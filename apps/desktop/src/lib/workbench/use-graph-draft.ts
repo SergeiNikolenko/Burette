@@ -3,6 +3,7 @@ import type { MolecularAtom, Vec3, MolecularForceField, MinimizerMethod } from "
 import { runGraphTask } from "../molecular-workbench/graph-compute-client";
 import type { MolecularStructure } from "../molecular-workbench/molecular-graph";
 import type { GraphEdit, GraphEditResult } from "../molecular-workbench/graph-edit";
+import type { FragmentSource } from "../molecular-workbench/fragment-source";
 import { useSourceEditing, type SourceEditingOperation } from "../source-editing/context";
 import { graphDraftText, graphSourceMetadata, structureEditAvailable } from "./graph-draft";
 import { atomAnnotations, type AtomAnnotation } from "./graph-annotations";
@@ -31,7 +32,9 @@ export type GraphOperation =
   // New coordinates for every atom, in order, of exactly the snapshot `from` (symmetrize).
   | { kind: "positions"; coordinates: Vec3[]; from: GraphSnapshot };
 
-export type GraphAdvancedOperation = { kind: "add-hydrogens" } | { kind: "optimize"; method?: MinimizerMethod; forceField?: MolecularForceField };
+export type GraphAdvancedOperation = { kind: "add-hydrogens" } | { kind: "optimize"; method?: MinimizerMethod; forceField?: MolecularForceField }
+  // One rigid fragment bonded to `target` in place of a hydrogen, or a separate molecule when `target` is null.
+  | { kind: "insert-fragment"; fragment: FragmentSource; target: number | null };
 export type GraphComputeResult = { structure: GraphEditResult; outcome: GraphOutcome | null };
 export type GraphAdvancedCompute = (operation: GraphAdvancedOperation, structure: GraphEditResult, signal: AbortSignal) => Promise<GraphComputeResult>;
 

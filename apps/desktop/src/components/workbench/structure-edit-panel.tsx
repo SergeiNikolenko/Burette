@@ -22,6 +22,8 @@ import { SelectionEditor } from "./structure-edit/selection-editor";
 import { AtomTable } from "./structure-edit/atom-table";
 import { BondTable } from "./structure-edit/bond-table";
 import { label, normalizeElement } from "./structure-edit/values";
+import { InsertFragmentDialog } from "./structure-edit/insert-fragment-dialog";
+import type { FragmentSource } from "../../lib/molecular-workbench/fragment-source";
 import "./workbench-layout.css";
 import "./structure-edit/structure-edit.css";
 
@@ -84,6 +86,7 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
   const [view, setView] = useState<"atoms" | "bonds">("atoms");
   const [addElement, setAddElement] = useState("C");
   const [inputError, setInputError] = useState<string | null>(null);
+  const [inserting, setInserting] = useState(false);
   const viewerSelection = useViewerAtomSelection(document.id);
   const send = useRef(actions.runStructureViewerAction);
   send.current = actions.runStructureViewerAction;
@@ -133,6 +136,13 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
   const hydrogens = async (kind: "add-hydrogens" | "remove-hydrogens") => {
     setInputError(null);
     if (await draft.apply({ kind })) setSelection(NO_SELECTION);
+  };
+
+  // One fragment per Undo step; the inserted atoms become the selection.
+  const insertFragment = async (fragment: FragmentSource) => {
+    setInputError(null);
+    const result = await draft.apply({ kind: "insert-fragment", fragment, target: atoms.length === 1 ? atoms[0] : null });
+    if (result) setSelection({ atoms: result.sourceAtomIndices.flatMap((source, index) => source < 0 ? [index] : []), from: "panel", structure: result });
   };
 
   const addAtom = () => {
@@ -209,6 +219,7 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
             </DropdownMenuTrigger>
           </ShortcutTooltip>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={() => setInserting(true)}>Insert fragment…</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => void hydrogens("add-hydrogens")}>Add hydrogens</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => void hydrogens("remove-hydrogens")}>Remove hydrogens</DropdownMenuItem>
           </DropdownMenuContent>
@@ -227,7 +238,9 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
           </ShortcutTooltip>
         ) : null}
       </div>
-      {error ? <p role="alert" className="workbench-error">{error}</p> : null}
+      {error && !inserting ? <p role="alert" className="workbench-error">{error}</p> : null}
+      <InsertFragmentDialog open={inserting} onOpenChange={setInserting} target={atoms.length === 1 ? label(structure, atoms[0]) : null}
+        busy={busy} error={error} onInsert={fragment => void insertFragment(fragment)} />
       {outcome ? <OptimizationOutcome outcome={outcome} onOpenSteps={() => openSteps(actions, document, outcome)} /> : null}
       {truncated ? <p className="workbench-value">Select at most {VIEWER_SELECTION_LIMIT} atoms to edit them.</p> : null}
       <SelectionEditor key={`${snapshotId(editor.current)}:${atoms.join(",")}`} structure={structure} annotations={annotations}

@@ -5,6 +5,7 @@ import type { ViewerDocument } from "../../types";
 import { useGraphDraft as useSharedGraphDraft, type GraphAdvancedCompute } from "../../lib/workbench/use-graph-draft";
 import { useSourceEditing } from "../../lib/source-editing/context";
 import { optimizerLabel } from "./optimize-button";
+import { runFragmentTask } from "../../lib/workbench/fragment-task";
 
 export type { GraphOutcome, GraphSnapshot, GraphHistory, GraphOperation } from "../../lib/workbench/use-graph-draft";
 
@@ -20,6 +21,8 @@ const computeAdvanced: GraphAdvancedCompute = async (operation, structure, signa
       outcome: { forceField: result.forceField ?? operation.forceField ?? "MMFF94", method: optimizerLabel(operation.method), initialEnergy: result.initialEnergy, energy: result.energy, converged: result.converged, iterations: result.iterations, frames: result.frames },
     };
   }
+  // Insertion output is already an ordered graph edit with exact provenance.
+  if (operation.kind === "insert-fragment") return { structure: (await runFragmentTask({ molecule: structure, fragment: operation.fragment, target: operation.target }, { signal })).structure, outcome: null };
   const changed = await runChemistryTask({ action: "add-hydrogens", molecule: structure }, { signal });
   const next = await normalized(changed, signal);
   return { structure: { ...next, sourceAtomIndices: next.sourceAtomIndices.map(index => index < structure.atoms.length ? index : -1) }, outcome: null };
