@@ -256,10 +256,13 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
     try {
       const { summary, artifacts } = await runJob(job, abort.signal);
       if (abort.signal.aborted || job.state !== "running" || lifetime.signal.aborted) return;
+      // Publish a terminal result only after binding refresh, with retention in
+      // the same turn. Cancellation or source closure during the read wins.
+      await refreshBinding(job);
+      if (abort.signal.aborted || job.state !== "running" || lifetime.signal.aborted) return;
       job.summary = summary;
       job.artifacts = artifacts;
       job.state = "succeeded";
-      await refreshBinding(job);
     } catch (error) {
       if (job.state !== "running") return;
       if (abort.signal.aborted || (error instanceof Error && error.name === "AbortError")) job.state = "cancelled";
