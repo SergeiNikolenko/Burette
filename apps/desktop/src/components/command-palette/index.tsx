@@ -4,6 +4,8 @@ import { openScientificSpectra, useScientificSpectraAvailable, SCIENTIFIC_SPECTR
 import { openOrbitals, useOrbitalsAvailable, ORBITALS_COMMAND } from "../../lib/workbench/orbitals-tool";
 import { focusToolDock, type WorkbenchToolDockKind } from "../../lib/workbench/focus-tool-dock";
 import { openVibrations, useVibrationsAvailable, VIBRATIONS_COMMAND } from "../../lib/workbench/vibrations-tool";
+import { structureEditAvailable } from "../../lib/workbench/graph-draft";
+import { geometryPanelAvailable } from "../geometry-panel";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Command,
@@ -97,6 +99,10 @@ export function CommandPalette({
       ...(hasVibrations && state.activeDocument ? [{ id: "workbench-tool-vibrations", group: "Suggested", ...VIBRATIONS_COMMAND, run: () => openVibrations(actions, state.activeDocument!.id) }] : []),
       ...(hasPlots && state.activeDocument ? [{ id: "workbench-tool-plots", group: "Suggested", ...PLOTS_COMMAND, run: () => openPlots(actions, state.activeDocument!.id) }] : []),
       ...(hasScientificSpectra && state.activeDocument ? [{ id: "workbench-tool-scientific-spectra", group: "Suggested", ...SCIENTIFIC_SPECTRA_COMMAND, run: () => openScientificSpectra(actions, state.activeDocument!.id) }] : []),
+      // The editing docks otherwise open only from the dock's add-tab menu.
+      ...([["structure-edit", "Edit atoms and bonds", "Elements, charges and bond orders", structureEditAvailable], ["geometry", "Edit geometry", "Bond lengths, angles and dihedrals", geometryPanelAvailable]] as const)
+        .flatMap(([kind, label, description, available]) => state.activeDocument && available(state.activeDocument) ? [{ id: `workbench-tool-${kind}`, group: "Suggested", label, description,
+          run: () => { actions.setDockDocument("right", state.activeDocument!.id); actions.openDockTab("right", kind); } }] : []),
       ...(state.activeDocument ? pluginCommands.map(entry => ({ id: `avogadro-command-${entry.id}`, group: "Extensions", label: entry.path.join(" › "),
         description: entry.plugin.name, run: () => startAvogadroCommand(entry, state.activeDocument!) })) : []),
       ...buildShellCommands(state, actions, query).map((command) => ({
@@ -149,7 +155,7 @@ export function CommandPalette({
   }, [firstValue, isOpen, query]);
 
   const runItem = (item: PaletteItem) => {
-    const kind = item.id === "workbench-tool-vibrations" ? "vibrations" : item.id === "workbench-tool-orbitals" ? "orbitals" : item.id === "workbench-tool-scientific-spectra" ? "scientific-spectra" : item.id === "workbench-tool-plots" ? "plots" : null;
+    const kind = item.id.startsWith("workbench-tool-") ? item.id.slice("workbench-tool-".length) as WorkbenchToolDockKind : null;
     workbenchFocus.current = kind && state.activeDocument && state.activeTab ? { kind, documentId: state.activeDocument.id, workspaceId: state.activeTab.id } : null;
     onClose();
     void Promise.resolve(item.run()).catch((error) => {

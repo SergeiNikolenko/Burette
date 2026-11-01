@@ -85,6 +85,8 @@ These actions are available from the command palette.
 | Ketcher | Open the Ketcher sketcher tab |
 | FEP Network Preview | Open a GraphML ligand-network preview |
 | Agents | Open the agent plugin status panel |
+| Edit atoms and bonds | Open the Edit dock for the active MOL or SDF structure |
+| Edit geometry | Open the Geometry dock for the active XYZ structure |
 | Hide Sidebar / Show Sidebar | Toggle sidebar |
 | Close Active Tab | Close the selected tab |
 | Close All Tabs | Close all workspace tabs |
