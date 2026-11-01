@@ -1,4 +1,5 @@
 import { Molecule } from 'openchemlib';
+import { readUnspecifiedMolfileStereo, retainUnknownStereo } from './molecule-stereochemistry';
 import { atomicNumber } from './elements';
 import type { MolecularAtom, MolecularBond } from './types';
 import { serializePhysicalMolfile } from './molecule-serialization';
@@ -40,11 +41,17 @@ export function parseMolecule(source: string, format: 'xyz' | 'sdf' | 'mol'): Mo
     catch { throw new Error('Could not read the molecule. Check the MOL or SDF connection table.'); }
     if (!parsed?.molecule) throw new Error('Could not read the molecule. Check the MOL or SDF connection table.');
     const { molecule: mol, map } = parsed;
+    checkMoleculeSize(mol.getAllAtoms());
+    const unspecified = readUnspecifiedMolfileStereo(mol, records[0], map);
     // OCL reads MOL coordinates in a frame rotated 180° about x. The public
     // molecular model shares the source/viewer's physical Cartesian frame.
     for (let i = 0; i < mol.getAllAtoms(); i++) {
       mol.setAtomY(i, -mol.getAtomY(i));
       mol.setAtomZ(i, -mol.getAtomZ(i));
+    }
+    if (unspecified.atoms.length || unspecified.bonds.length) {
+      mol.setParitiesValid(Molecule.cHelperBitCIP);
+      retainUnknownStereo(mol, unspecified.atoms, unspecified.bonds);
     }
     return snapshotMolecule(mol, records[0].split(/\r?\n/)[0], 'explicit', true, Array.from(map));
   }
