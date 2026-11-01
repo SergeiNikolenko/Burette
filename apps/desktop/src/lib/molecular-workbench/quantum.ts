@@ -14,6 +14,7 @@ import { parseFchk } from "./fchk";
 import { parseMolden } from "./gaussian";
 import { hessianFromOrcaSection } from "./hessian";
 import { atomsFromZmatrixDocument, parseZmatrixDocument } from "../../../../../scripts/zmatrix-document.mjs";
+import { readCoordinateInterchange } from "../../../../../scripts/coordinate-interchange.mjs";
 
 export const BOHR_ANGSTROM = 0.529177210903;
 const MAX_TEXT = 16 * 1024 * 1024;
@@ -55,6 +56,11 @@ function checkFrames(frames: ScientificFrame[]) {
 
 export function parseScientificFile(name: string, text: string): ScientificDocument {
   if (text.length > MAX_TEXT || text.includes("\0") || new TextEncoder().encode(text).byteLength > MAX_TEXT) throw new Error("Scientific text must be at most 16 MiB and contain no binary data.");
+  if (/\.(?:xyz|zmat|zmatrix)$/i.test(name) && text.includes("BURETTE_INTERNAL_COORDINATES_V")) {
+    const format = /\.xyz$/i.test(name) ? "xyz" : "zmat";
+    const { atoms, internalCoordinates, comment } = readCoordinateInterchange(text, format);
+    return { ...empty(format, atoms), internalCoordinates, frames: [{ atoms, comment, ...trajectoryMetadata(comment) }] };
+  }
   if (/\.(?:zmat|zmatrix)$/i.test(name)) {
     const internalCoordinates = parseZmatrixDocument(text);
     const atoms = atomsFromZmatrixDocument(internalCoordinates).map(({ element, position: [x, y, z] }) => ({ element, x, y, z }));

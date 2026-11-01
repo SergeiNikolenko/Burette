@@ -2,8 +2,8 @@
 
 `scripts/coordinate-interchange.mjs` carries the existing absolute atoms and
 internal-coordinate definition through one plain XYZ frame or headerless ZMAT.
-It is a pure codec shared by the coordinate CLI. Scientific-reader integration
-is separate; the codec does not change unmarked trajectory readers.
+It is a pure codec shared by the coordinate CLI. The scientific reader admits
+marked XYZ/ZMAT through the same codec and leaves unmarked trajectory readers unchanged.
 
 `readCoordinateInterchange(text, format)` returns `{ atoms, internalCoordinates,
 comment }`. Atoms use `{ element, x, y, z }`; definition rows/variables use the
@@ -43,3 +43,14 @@ and malformed/bounded input, and check unchanged real rows after definition-only
 changes. This does not establish CLI packaging or ordinary browser Copy/export/
 reopen acceptance. Geometry's later marker update must preserve original atom-row
 bytes and source identity; this stage deliberately exports no unused UI helper.
+
+Marked `.xyz`, `.zmat` and `.zmatrix` inputs produce one scientific frame with
+`referenceFrameIndex: 0`, exact Cartesian atoms and the complete definition.
+The frame retains the human comment and its normal trajectory metadata. Any
+reserved version marker selects strict interchange admission, including refusal
+of malformed markers; it cannot silently fall back to ordinary geometry.
+Run `vp run test:coordinate-interchange-reader` and
+`vp run typecheck:coordinate-interchange-reader` for the browser-target compiled
+reader worker. This reader foundation does not change generated XYZ source
+materialization, Geometry edits, clipboard or export writers. Their marker and
+original atom-row byte preservation require separate flow acceptance.
