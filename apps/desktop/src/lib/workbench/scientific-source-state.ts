@@ -251,7 +251,8 @@ export function recordImportedRevision(documentId: string, fromText: string, rev
 
 /** The revisions that include `text`, oldest first; the array is replaced on every change (compiler-safe snapshot). */
 export function useImportedRevisions(documentId: string | null, text: string) {
-  return useSyncExternalStore(subscribeImports, () => (documentId ? revisionsWith(documentId, text)?.revisions ?? null : null));
+  const getSnapshot = () => (documentId ? revisionsWith(documentId, text)?.revisions ?? null : null);
+  return useSyncExternalStore(subscribeImports, getSnapshot, getSnapshot);
 }
 
 /**
@@ -260,7 +261,8 @@ export function useImportedRevisions(documentId: string | null, text: string) {
  * (a lookup beside an unused version would be memoized per document by the React Compiler).
  */
 export function useImportedOriginal(documentId: string | null) {
-  return useSyncExternalStore(subscribeImports, () => (documentId ? importedOriginalFor(documentId) : null));
+  const getSnapshot = () => (documentId ? importedOriginalFor(documentId) : null);
+  return useSyncExternalStore(subscribeImports, getSnapshot, getSnapshot);
 }
 
 /** Releases imported data whose documents have all closed. Called by the dock, which knows the open documents. */

@@ -40,5 +40,6 @@ export function isWorkbenchDialogRequestCurrent(expected: WorkbenchDialogRequest
 }
 
 export function useWorkbenchDialogRequest() {
-  return useSyncExternalStore((listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; }, () => request);
+  const getSnapshot = () => request;
+  return useSyncExternalStore((listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; }, getSnapshot, getSnapshot);
 }

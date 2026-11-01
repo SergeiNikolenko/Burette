@@ -55,7 +55,8 @@ export function assertCompressedSourceCurrent(path: string, source: CompressedSo
 }
 
 export function useCompressedSource(path: string | null) {
-  return useSyncExternalStore(subscribe, () => (path ? sources.get(path) ?? null : null));
+  const getSnapshot = () => (path ? sources.get(path) ?? null : null);
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
 /**

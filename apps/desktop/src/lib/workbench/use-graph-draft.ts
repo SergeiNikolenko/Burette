@@ -122,7 +122,8 @@ export function useGraphDraft(document: ViewerDocument | null, computeAdvanced?:
   const enabled = structureEditAvailable(document);
   const { text: sourceText, error: readError } = useStructureSourceText(enabled ? document : null);
   const key = enabled && document ? `${document.id}\u0000${document.path}` : null;
-  const entry = useSyncExternalStore(subscribe, () => (key ? entries.get(key) ?? EMPTY : EMPTY));
+  const getSnapshot = () => (key ? entries.get(key) ?? EMPTY : EMPTY);
+  const entry = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
   useEffect(() => {
     if (!key || !document || sourceText === null) return;

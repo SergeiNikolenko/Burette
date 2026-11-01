@@ -13,7 +13,8 @@ type Scene = ReturnType<typeof useSceneSpectra>;
 /** Digest the source before a gesture; never queue an old click behind hashing. */
 export function useSpectrumAtomSelection(document: ViewerDocument | null, scene: Scene) {
   const editing = useSourceEditing(), logical = logicalSourceFor(document?.id);
-  const revision = useSyncExternalStore(subscribeImports, () => document && scene?.text ? scientificStateFor(document.id, scene.text).revision : null);
+  const getSnapshot = () => document && scene?.text ? scientificStateFor(document.id, scene.text).revision : null;
+  const revision = useSyncExternalStore(subscribeImports, getSnapshot, getSnapshot);
   const key = useMemo(() => ({ document, science: scene?.science, text: scene?.text, index: scene?.index,
     frameIndex: scene?.nativeFrame?.frameIndex, frameCount: scene?.nativeFrame?.frameCount, logical, revision }),
   [document, scene?.science, scene?.text, scene?.index, scene?.nativeFrame?.frameIndex, scene?.nativeFrame?.frameCount, logical, revision]);

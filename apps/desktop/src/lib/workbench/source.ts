@@ -70,7 +70,8 @@ export function useScientificDocument(document: ViewerDocument | null): Scientif
   // A revision's data is read in the same render as its text (the store value itself is the
   // snapshot), so moving between revisions never shows the document without it for a frame,
   // and data given to the current text later (a conversion) applies at once.
-  const registered = useSyncExternalStore(subscribeImports, () => (key && document && text !== null ? registeredRevision(document.id, text)?.revision.document ?? null : null));
+  const getSnapshot = () => (key && document && text !== null ? registeredRevision(document.id, text)?.revision.document ?? null : null);
+  const registered = useSyncExternalStore(subscribeImports, getSnapshot, getSnapshot);
   useEffect(() => {
     if (!key || !document || text === null || claimRegisteredRevision(document.id, text)) return undefined;
     // MOL science comes from an exact registered graph revision, never inferred from bare MOL text.
@@ -88,7 +89,9 @@ export function useScientificDocument(document: ViewerDocument | null): Scientif
 type FrameState = { frameIndex: number; frameCount: number };
 const frames = new Map<string, FrameState>();
 const frameListeners = new Set<() => void>();
-if (typeof window !== "undefined") {
+// The core store reaches this module through the Compute menu, so it also loads
+// where `window` is a partial host object without event listeners.
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
   window.addEventListener("burette:trajectory-frame-changed", (event) => {
     const detail = (event as CustomEvent<Record<string, unknown>>).detail;
     const documentId = String(detail?.documentId || "");
@@ -101,5 +104,6 @@ if (typeof window !== "undefined") {
 const subscribeFrames = (listener: () => void) => { frameListeners.add(listener); return () => { frameListeners.delete(listener); }; };
 
 export function useTrajectoryFrame(documentId: string | null) {
-  return useSyncExternalStore(subscribeFrames, () => (documentId ? frames.get(documentId) ?? null : null));
+  const getSnapshot = () => (documentId ? frames.get(documentId) ?? null : null);
+  return useSyncExternalStore(subscribeFrames, getSnapshot, getSnapshot);
 }

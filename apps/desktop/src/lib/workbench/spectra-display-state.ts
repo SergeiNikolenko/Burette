@@ -53,6 +53,7 @@ export function useSpectraDisplayState(document: ViewerDocument | null, scene: R
     entries.delete(key); entries.set(key, entry);
     while (entries.size > LIMIT) { const [oldest, old] = entries.entries().next().value!; old.valid = false; entries.delete(oldest); }
   }
-  const valid = useSyncExternalStore(subscribe, () => entry?.valid ?? false);
+  const getSnapshot = () => entry?.valid ?? false;
+  const valid = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   return valid ? entry : null;
 }

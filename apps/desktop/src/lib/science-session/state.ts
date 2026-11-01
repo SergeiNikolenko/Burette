@@ -25,7 +25,8 @@ export function logicalSourceFor(documentId: string | null | undefined) {
 
 /** The logical source as a store snapshot, so a restore that completes after mount re-renders. */
 export function useLogicalSource(documentId: string | null | undefined) {
-  return useSyncExternalStore(subscribe, () => logicalSourceFor(documentId));
+  const getSnapshot = () => logicalSourceFor(documentId);
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
 /** The extension of the text the document is edited as: its logical source, else its own. */
