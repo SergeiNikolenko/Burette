@@ -30702,6 +30702,8 @@ SOFTWARE.
     activeSdfPoseMode = readSdfPoseMode(config);
     activeSdfCollectionLayout = readSdfCollectionLayout(config);
     ensureMolstarStylesheet();
+    // The app shell floats its Compute button over the corner where Mol* shows hover info.
+    document.body.classList.toggle('buret-app-viewer', config.appViewer === true);
     const container = document.getElementById('app');
     if (container) container.innerHTML = '';
     const size = describeBytes(config.byteCount);
