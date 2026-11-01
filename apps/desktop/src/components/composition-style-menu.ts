@@ -1,6 +1,6 @@
 import type { MenuItemSpec } from "./menu-types";
 import type { CompositionSceneEdit, StructureSummaryRow, StructureViewerAction } from "../lib/structure-composition";
-import { pymolQueryForSelector } from "../lib/molstar-selection-query";
+import { molstarQueryForSelector } from "../lib/molstar-selection-query";
 
 // Commands deliberately don't pretend to show a single current style: a row
 // can span multiple scene components with different representations.
@@ -10,7 +10,7 @@ export function compositionStyleMenu(
   color?: string,
 ): MenuItemSpec[] {
   const selector = row.action && "selector" in row.action ? row.action.selector : undefined;
-  const query = pymolQueryForSelector(selector);
+  const query = molstarQueryForSelector(selector);
   const kind = selector?.kind;
   if (!query || (kind !== "polymer" && kind !== "ligand" && kind !== "ion" && kind !== "water")) return [];
   const edit = (change: CompositionSceneEdit) => run({

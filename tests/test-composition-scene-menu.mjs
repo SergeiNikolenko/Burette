@@ -77,6 +77,7 @@ const prepare = new Function('activeMolstarViewer', 'molstarCurrentStructures', 
   const scheduleSceneTreeRender = () => {};
   const sceneTreeSubtreeRefs = (_, ref) => [ref];
   const molstarCompositionQueries = new Map();
+  ${functionSource('molstarQueryComponentType')}
   ${functionSource('changeMolstarQueryComponents')}
   return changeMolstarQueryComponents;
 `)(() => ({ plugin }), () => [hierarchy], () => ({ StructureElement,
