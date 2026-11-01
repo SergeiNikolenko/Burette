@@ -30875,7 +30875,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
             if (next.showHydrogens !== molstarShowHydrogens) await toggleMolstarHydrogens();
             if (next.data === current) continue;
             await activeViewer.plugin.clear();
-            await loadPreparedStructure(activeViewer, { data: next.data, format: 'mol', label: 'Molecule' });
+            await loadPreparedStructure(activeViewer, { data: next.data, format: config.molstarFormat === 'mmcif' ? 'mmcif' : 'mol', label: config.label || 'Molecule' });
             await applyConfiguredMolstarPreset(activeViewer, activeConfig);
             current = next.data;
             await settlePreview();
