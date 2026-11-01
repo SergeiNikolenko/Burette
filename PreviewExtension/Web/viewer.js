@@ -19362,6 +19362,13 @@ SOFTWARE.
       if (pair.synthetic) await applyMolstarUniformRepresentation(viewer, molstarDerivedTopologyRepresentation());
       return !!options.representationPreset;
     }
+    if (normalizeFormat(pair.coordinateEntry.format) === 'trr') {
+      const indexed = window.molstar?.BuretteIndexedTrajectory;
+      if (!indexed?.loadRawTrr) throw new Error('TRR trajectory support is unavailable in this runtime.');
+      await indexed.loadRawTrr(viewer, pair, options);
+      if (pair.synthetic) await applyMolstarUniformRepresentation(viewer, molstarDerivedTopologyRepresentation());
+      return !!options.representationPreset;
+    }
     if (typeof viewer.loadTrajectory !== 'function') {
       throw new Error('Mol* trajectory pairing is unavailable in this viewer runtime.');
     }

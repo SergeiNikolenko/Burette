@@ -178,3 +178,13 @@ publishes verified Cube exports and session JSON atomically. See
 for requests, limits and the distinction between source tests and packaged/browser
 acceptance. Run `vp run test:orbital-agent` for the focused controller and compiled
 host/HTTP/CLI proof.
+
+
+`test:indexed-trajectory-runtime` covers the source-owned indexed Mol* adapter
+with the independent MDAnalysis TRR fixtures, DCD/XTC seeks, disposal and native
+state-tree reopen. Optional velocities/forces are preserved in model atom order;
+missing blocks remain absent. The cache accounts for all vector bytes (32 MiB,
+at most three frames), separately from active/pending/source storage. Raw-browser
+TRR retains one snapshot-owned binary source within the existing 75 MiB/100,000
+frame limits. No energy or temperature is inferred. Rebuild `vendor:molstar` and
+plugin mirrors before enabling a host consumer of the new frame-page methods.

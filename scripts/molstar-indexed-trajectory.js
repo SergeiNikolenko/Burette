@@ -1,3 +1,6 @@
+import { readActiveTrajectoryFrame } from './trajectory-frame-data.mjs';
+import { decodeTrrFrame } from './trr-frame.mjs';
+import { indexTrrFrames } from './trr-index.mjs';
 import { Task } from 'molstar/lib/mol-task/index.js';
 import { PluginStateObject, PluginStateTransform } from 'molstar/lib/mol-plugin-state/objects.js';
 import { ParamDefinition as PD } from 'molstar/lib/mol-util/param-definition.js';
@@ -8,6 +11,9 @@ import { Vec3 } from 'molstar/lib/mol-math/linear-algebra.js';
 import { parseXtc } from 'molstar/lib/mol-io/reader/xtc/parser.js';
 
 const readers = new WeakMap();
+const frameStatistics = new WeakMap();
+const identityPrefix = Math.random().toString(36).slice(2);
+let identitySequence = 0;
 const FRAME_CACHE_BYTES = 32 * 1024 * 1024;
 
 function dcdCell(values) {
@@ -53,29 +59,18 @@ function decodeDcd(data, timePs) {
 }
 
 function decodeTrr(data) {
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  const header = 12 + Math.ceil(view.getUint32(8) / 4) * 4;
-  const sizes = Array.from({ length: 10 }, (_, i) => view.getUint32(header + i * 4));
-  const count = view.getUint32(header + 40);
-  const precision = sizes[2] ? sizes[2] / 9 : sizes[7] / (count * 3);
-  if (![4, 8].includes(precision)) throw new Error('Invalid indexed TRR precision.');
-  const float = offset => precision === 8 ? view.getFloat64(offset) : view.getFloat32(offset);
-  const time = float(header + 52);
-  let offset = header + 52 + 2 * precision;
-  let cell;
-  if (sizes[2]) {
-    const box = Array.from({ length: 9 }, (_, i) => float(offset + i * precision) * 10);
-    if (box.some(value => value !== 0)) cell = Cell.fromBasis(Vec3.fromArray(Vec3(), box, 0), Vec3.fromArray(Vec3(), box, 3), Vec3.fromArray(Vec3(), box, 6));
-  }
-  offset += sizes[2] + sizes[3] + sizes[4];
-  const x = new Float32Array(count), y = new Float32Array(count), z = new Float32Array(count);
-  for (let atom = 0; atom < count; atom++) {
-    x[atom] = float(offset) * 10;
-    y[atom] = float(offset + precision) * 10;
-    z[atom] = float(offset + 2 * precision) * 10;
-    offset += 3 * precision;
-  }
-  return { elementCount: count, x, y, z, cell, xyzOrdering: { isIdentity: true }, time: Time(time, 'ps') };
+  const decoded = decodeTrrFrame(data);
+  const { box, timePs } = decoded;
+  return { ...decoded,
+    cell: box?.some(value => value !== 0) ? Cell.fromBasis(Vec3.fromArray(Vec3(), box, 0), Vec3.fromArray(Vec3(), box, 3), Vec3.fromArray(Vec3(), box, 6)) : undefined,
+    xyzOrdering: { isIdentity: true }, time: Time(timePs, 'ps') };
+}
+
+const modelFrames = new WeakMap();
+function decodedFrameBytes(frame) {
+  return frame.x.byteLength + frame.y.byteLength + frame.z.byteLength
+    + (frame.velocities ? frame.velocities.vx.byteLength + frame.velocities.vy.byteLength + frame.velocities.vz.byteLength : 0)
+    + (frame.forces ? frame.forces.fx.byteLength + frame.forces.fy.byteLength + frame.forces.fz.byteLength : 0);
 }
 
 async function decodeFrame(format, bytes, timePs, ctx, cellBasis) {
@@ -98,26 +93,30 @@ async function decodeFrame(format, bytes, timePs, ctx, cellBasis) {
 }
 
 function coordinates(frame) {
+  // Keep cached positions in source order; native models derive reordered arrays.
+  frame.xyzOrdering.frozen = true;
   return Coordinates.create([frame], Time(0, frame.time.unit), frame.time);
 }
 
 function createTrajectory(template, descriptor, first, requestFrame, releaseReader) {
-  const cache = new Map([[0, first]]);
-  let cacheBytes = first.x.byteLength * 3;
+  const firstBytes = decodedFrameBytes(first);
+  const cache = new Map(firstBytes <= FRAME_CACHE_BYTES ? [[0, first]] : []);
+  let cacheBytes = firstBytes <= FRAME_CACHE_BYTES ? firstBytes : 0;
   let disposed = false;
   let prefetch;
   let readTail = Promise.resolve();
   const pending = new Map();
-  const frameBytes = descriptor.atomCount * 12;
   const remember = (index, frame) => {
+    const frameBytes = decodedFrameBytes(frame);
     if (frameBytes > FRAME_CACHE_BYTES) return;
-    if (cache.has(index)) cacheBytes -= frameBytes;
+    if (cache.has(index)) cacheBytes -= decodedFrameBytes(cache.get(index));
     cache.delete(index);
     cache.set(index, frame);
     cacheBytes += frameBytes;
     while (cache.size > 3 || cacheBytes > FRAME_CACHE_BYTES) {
-      cache.delete(cache.keys().next().value);
-      cacheBytes -= frameBytes;
+      const oldest = cache.keys().next().value;
+      cacheBytes -= decodedFrameBytes(cache.get(oldest));
+      cache.delete(oldest);
     }
   };
   const fetch = async (index, ctx, signal) => {
@@ -135,8 +134,10 @@ function createTrajectory(template, descriptor, first, requestFrame, releaseRead
       return frame;
     } finally { release(); }
   };
+  const sourceId = `${identityPrefix}-source-${++identitySequence}`;
   const modelFor = (frame, index) => {
     const model = Model.trajectoryFromModelAndCoordinates(template, coordinates(frame)).representative;
+    modelFrames.set(model, { frame, index, descriptor, isAlive: () => !disposed, sourceId, modelId: `${sourceId}-model-${++identitySequence}` });
     model.modelNum = index;
     Model.TrajectoryInfo.set(model, { index, size: descriptor.frameCount });
     return model;
@@ -173,7 +174,7 @@ function createTrajectory(template, descriptor, first, requestFrame, releaseRead
         await ctx.update({ canAbort: true });
         if (disposed) throw Task.Aborted('Trajectory was closed.');
         const next = index + 1;
-        if (frameBytes <= FRAME_CACHE_BYTES / 3 && next < descriptor.frameCount && !cache.has(next) && !pending.has(next)) {
+        if (decodedFrameBytes(frame) <= FRAME_CACHE_BYTES / 3 && next < descriptor.frameCount && !cache.has(next) && !pending.has(next)) {
           const controller = new AbortController();
           prefetch = { index: next, controller };
           // Decoding uses its own task context so a completed presentation task
@@ -249,7 +250,98 @@ const IndexedTrajectory = PluginStateTransform.BuiltIn({
   dispose({ b }) { b?.data.dispose(); }
 });
 
+// Raw browser TRR uses ordinary snapshot-owned Binary data, so restoring a scene
+// recreates the index without an external reader or a second copy of every frame.
+const BrowserTrrTrajectory = PluginStateTransform.BuiltIn({
+  name: 'burette-browser-trr-trajectory',
+  display: { name: 'TRR trajectory' },
+  from: PluginStateObject.Root,
+  to: PluginStateObject.Molecule.Trajectory,
+  params: { modelRef: PD.Text(''), dataRef: PD.Text(''), segmentIndex: PD.Numeric(0) }
+})({
+  getDependencies: params => [params.modelRef, params.dataRef],
+  apply({ params, dependencies }) {
+    return Task.create('Open TRR trajectory', async ctx => {
+      let bytes = dependencies[params.dataRef]?.data;
+      const indexed = indexTrrFrames(bytes);
+      const descriptor = { format: 'trr', atomCount: indexed.atomCount, frameCount: indexed.frames.length, segmentIndex: params.segmentIndex };
+      const request = async (index, signal, validateOnly) => {
+        if (!bytes || signal?.aborted) throw Task.Aborted('TRR trajectory was closed.');
+        const frame = indexed.frames[index];
+        if (!frame) throw new Error('TRR frame is unavailable.');
+        return validateOnly ? {} : { bytes: bytes.subarray(frame.offset, frame.offset + frame.length), timePs: frame.timePs };
+      };
+      const first = await decodeFrame('trr', (await request(0)).bytes, indexed.frames[0].timePs, ctx);
+      const object = dependencies[params.modelRef];
+      const initial = object.type === PluginStateObject.Molecule.Topology.type
+        ? await Model.trajectoryFromTopologyAndCoordinates(object.data, coordinates(first)).runInContext(ctx)
+        : Model.trajectoryFromModelAndCoordinates(object.data, coordinates(first));
+      const trajectory = createTrajectory(initial.representative, descriptor, first, request, () => { bytes = undefined; });
+      return new PluginStateObject.Molecule.Trajectory(trajectory, { label: 'TRR trajectory', description: `${trajectory.frameCount} frames` });
+    });
+  },
+  dispose({ b }) { b?.data.dispose(); }
+});
+
 export const BuretteIndexedTrajectory = {
+  readActiveFrame(viewer, request) {
+    return readActiveTrajectoryFrame(viewer, request, (model, options) => this.frameData(model, options));
+  },
+  /** Bounded metadata for the displayed model, indexed in model atom order. No inferred temperature.
+   * @returns {Omit<import('./trajectory-frame-data.mjs').IndexedTrajectoryFrame, 'available' | 'structureRef'> | null}
+   */
+  frameData(model, { offset = 0, limit = 100, includeSummary = false } = {}) {
+    const held = modelFrames.get(model);
+    if (!held || !held.isAlive()) return null;
+    if (!Number.isInteger(offset) || offset < 0 || !Number.isInteger(limit) || limit < 1 || limit > 100 || typeof includeSummary !== 'boolean') throw new Error('Invalid trajectory vector page.');
+    const { frame, index, descriptor, sourceId, modelId } = held;
+    const sourceIndex = model.atomicHierarchy?.atomSourceIndex;
+    const atoms = [];
+    for (let atom = offset; atom < Math.min(frame.elementCount, offset + limit); atom++) {
+      const sourceAtomIndex = sourceIndex ? sourceIndex.value(atom) : atom;
+      if (!Number.isInteger(sourceAtomIndex) || sourceAtomIndex < 0 || sourceAtomIndex >= frame.elementCount) throw new Error('Invalid trajectory atom mapping.');
+      const v = frame.velocities, f = frame.forces;
+      const element = model.atomicHierarchy?.atoms?.type_symbol?.value(atom);
+      atoms.push({ index: atom, sourceAtomIndex, position: [frame.x[sourceAtomIndex], frame.y[sourceAtomIndex], frame.z[sourceAtomIndex]],
+        ...(element ? { element } : {}),
+        ...(v ? { velocity: [v.vx[sourceAtomIndex], v.vy[sourceAtomIndex], v.vz[sourceAtomIndex]] } : {}),
+        ...(f ? { force: [f.fx[sourceAtomIndex], f.fy[sourceAtomIndex], f.fz[sourceAtomIndex]] } : {}) });
+    }
+    let summary = includeSummary ? frameStatistics.get(frame) : {};
+    if (includeSummary && !summary) {
+      summary = {};
+      for (const [vectors, keys, kind] of [[frame.velocities, ['vx', 'vy', 'vz'], 'speed'], [frame.forces, ['fx', 'fy', 'fz'], 'force']]) {
+        if (!vectors) continue;
+        let meanSquare = 0, maximum = 0;
+        for (let atom = 0; atom < frame.elementCount; atom++) {
+          const magnitude = Math.hypot(vectors[keys[0]][atom], vectors[keys[1]][atom], vectors[keys[2]][atom]);
+          meanSquare += magnitude * magnitude / frame.elementCount;
+          maximum = Math.max(maximum, magnitude);
+        }
+        if (kind === 'force') { summary.maxForce = maximum; summary.rmsForce = Math.sqrt(meanSquare); }
+        else summary.rmsSpeed = Math.sqrt(meanSquare);
+      }
+      frameStatistics.set(frame, summary);
+    }
+    return { sourceId, modelId, summary, frameIndex: index, frameCount: descriptor.frameCount, segmentIndex: descriptor.segmentIndex ?? 0,
+      time: { ...frame.time }, ...(frame.step === undefined ? {} : { step: frame.step }),
+      units: { position: 'angstrom', ...(frame.velocities ? { velocity: 'angstrom/ps' } : {}), ...(frame.forces ? { force: 'kcal/mol/angstrom' } : {}) },
+      offset, total: frame.elementCount, atoms };
+  },
+  async loadRawTrr(viewer, pair, options = {}) {
+    const plugin = viewer.plugin;
+    // Validate all frame boundaries before publishing any part of the trajectory.
+    indexTrrFrames(pair.coordinateEntry.data);
+    const data = await plugin.builders.data.rawData({ data: pair.modelEntry.data, label: pair.modelEntry.label });
+    const model = pair.modelKind === 'model-data'
+      ? await plugin.builders.structure.createModel(await plugin.builders.structure.parseTrajectory(data, pair.modelEntry.format))
+      : (await plugin.dataFormats.get(pair.modelEntry.format).parse(plugin, data)).topology;
+    const raw = await plugin.builders.data.rawData({ data: pair.coordinateEntry.data, label: pair.coordinateEntry.label });
+    const trajectory = await plugin.build().toRoot().apply(BrowserTrrTrajectory, {
+      modelRef: model.ref, dataRef: raw.ref, segmentIndex: pair.coordinateEntry.segmentIndex ?? 0,
+    }, { dependsOn: [model.ref, raw.ref] }).commit();
+    await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default', options);
+  },
   async load(viewer, pair, options, request) {
     const plugin = viewer.plugin;
     const descriptor = { ...pair.coordinateEntry.indexedTrajectory, segmentIndex: pair.coordinateEntry.segmentIndex ?? 0 };
