@@ -151,8 +151,8 @@ export function writePoscar(structure: { title: string; atoms: MolecularAtom[]; 
   return `${lines.join("\n")}\n`;
 }
 
-/** File names VASP itself uses, with or without a suffix such as CONTCAR_relaxed or POSCAR.vasp. */
+/** `.vasp`/`.poscar` files and the names VASP itself uses, such as POSCAR or CONTCAR_relaxed. */
 export function isPoscarFileName(name: string) {
-  const base = name.split("/").pop() ?? "";
-  return /\.(?:vasp|poscar)$/iu.test(base) || /^(?:POSCAR|CONTCAR)(?:[._-].*)?$/u.test(base);
+  const base = name.split(/[\\/]/u).pop() ?? "";
+  return /\.(?:vasp|poscar)$/iu.test(base) || /^(?:POSCAR|CONTCAR)(?:[_-][^.]*)?$/u.test(base);
 }

@@ -5,6 +5,8 @@ import { isTauriRuntime } from "./tauri";
 import { inflateStructureBytes } from "./structure-inflate";
 import { demoLibraryUrl } from "./web-demo-library";
 import { standaloneDemoSnapshot } from "./web-demo-scenes";
+import { crystalPreviewData } from "./crystal-preview";
+import { isPoscarFileName } from "./molecular-workbench/poscar";
 import { collectionExtension, mergeCollectionSources, parseReactionCollectionRecords, parseSdfCollectionRecords } from "./collection-documents";
 import { assertConcreteConformerSource } from "./conformer-input";
 import { runBrowserDevMetalConformer } from "./browser-dev-compute";
@@ -951,9 +953,13 @@ async function openBrowserDevDocumentFromBytes(
   const pharmacophorePreview = isPharmacophorePreviewExtension(extension)
     ? convertedDataFromText(text, extension, fileTitle(path))
     : null;
+  // A small-molecule CIF or a POSCAR reaches Mol* as its full cell with a Lattice.
+  const crystalPreview: ConvertedStructureData | null = await crystalPreviewData(text, extension);
   const sourceXyzFrameCount = countXyzFrames(text);
   const format = pharmacophorePreview
     ? { molstarFormat: "pdb", binary: false, externalOnly: false, canOpenInVesta: false }
+    : crystalPreview
+    ? { molstarFormat: "xyz", binary: false, externalOnly: false, canOpenInVesta: formatForExtension(extension).canOpenInVesta }
     : sourceXyzFrameCount > 0 && shouldTreatTextAsXyzFrames(extension)
     ? { molstarFormat: "xyz", binary: false, externalOnly: false, canOpenInVesta: false }
     : formatForExtension(extension);
@@ -969,10 +975,10 @@ async function openBrowserDevDocumentFromBytes(
     ? { ...format, molstarFormat: maestroPreview.molstarFormat, binary: false, externalOnly: false }
     : format;
   const sourceXyzBytes = xyzDataFromText(text, extension, fileTitle(path));
-  const convertedMolstarData = pharmacophorePreview ?? maestroPreview ?? convertedDataFromText(text, extension, fileTitle(path));
-  const molstarBytes: Uint8Array | null = convertedMolstarData?.bytes && shouldUseConvertedMolstarData(format, convertedMolstarData, extension)
+  const convertedMolstarData = pharmacophorePreview ?? maestroPreview ?? crystalPreview ?? convertedDataFromText(text, extension, fileTitle(path));
+  const molstarBytes: Uint8Array | null = crystalPreview?.bytes ?? (convertedMolstarData?.bytes && shouldUseConvertedMolstarData(format, convertedMolstarData, extension)
     ? convertedMolstarData.bytes
-    : null;
+    : null);
   const runtimeFrameText = maestroPreview?.bytes ? decodeUtf8(maestroPreview.bytes) : text;
   const xyzFrameCount = runtimeFormat.molstarFormat === "xyz" && !runtimeFormat.binary ? Math.max(sourceXyzFrameCount, countXyzFrames(runtimeFrameText)) : 0;
   const pdbModelCount = runtimeFormat.molstarFormat === "pdb" && !runtimeFormat.binary ? countPdbModels(runtimeFrameText) : 0;
@@ -2222,6 +2228,8 @@ const COMPRESSED_STRUCTURE_NAME = /\.(pdb|ent|cif|mmcif)\.(?:gz|bgz|bgzf)$/iu;
 
 function fileExtension(path: string) {
   const name = fileTitle(path);
+  // VASP names its structures POSCAR and CONTCAR, usually without a suffix.
+  if (isPoscarFileName(name)) return "vasp";
   if (name.toLowerCase().endsWith(".mae.gz")) return "maegz";
   const compressed = COMPRESSED_STRUCTURE_NAME.exec(name);
   if (compressed) return compressed[1].toLowerCase();

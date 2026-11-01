@@ -1,3 +1,5 @@
+import { isPoscarFileName } from "./molecular-workbench/poscar";
+
 export const TAB_DRAG_MIME = "application/x-burette-tab-id";
 export const STRUCTURE_DRAG_MIME = "application/x-burette-structure-paths";
 
@@ -320,6 +322,7 @@ function normalizeStructureDragPath(path: string) {
 }
 
 function structureFileExtension(path: string) {
+  if (isPoscarFileName(path)) return "vasp";
   const name = path.replace(/\\/gu, "/").split("/").pop()?.toLowerCase() ?? "";
   if (name.endsWith(".mae.gz")) return "mae";
   const index = name.lastIndexOf(".");

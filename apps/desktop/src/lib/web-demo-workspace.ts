@@ -234,7 +234,7 @@ function registerFile(path: string, byteCount: number) {
 
 function selectFiles(directory: boolean) {
   return pickBrowserFiles({ multiple: true, directory,
-    accept: [".pdb,.ent,.pdbqt,.pqr,.cif,.mmcif,.mcif,.sdf,.sd,.mol,.mol2,.xyz,.gro,.txt,.md,.log,.out,.json,.csv,.tsv", SCIENTIFIC_FILE_ACCEPT, COMPRESSED_FILE_ACCEPT, ...Array.from(documentViewerExtensions, extension => `.${extension}`)].join(","),
+    accept: [".pdb,.ent,.pdbqt,.pqr,.cif,.mmcif,.mcif,.sdf,.sd,.mol,.mol2,.xyz,.vasp,.poscar,.gro,.txt,.md,.log,.out,.json,.csv,.tsv", SCIENTIFIC_FILE_ACCEPT, COMPRESSED_FILE_ACCEPT, ...Array.from(documentViewerExtensions, extension => `.${extension}`)].join(","),
   });
 }
 
