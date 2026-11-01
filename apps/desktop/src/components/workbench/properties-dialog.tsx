@@ -107,7 +107,7 @@ export function PropertiesDialogBody({ document, actions, onDone }: { document: 
     onDone();
   };
 
-  // Distinct minima, lowest first, open as one new SDF; the source is not changed.
+  // Each sample is relaxed; distinct minima, lowest first, open as one new SDF. The source is not changed.
   const searchConformers = async () => {
     if (!structure) return;
     const search = await job.run("Searching conformers", (signal) => runChemistryTask({ action: "conformers", molecule: structure, options: { count: conformerCount } }, { signal, timeoutMs: 300_000 }));
@@ -162,7 +162,7 @@ export function PropertiesDialogBody({ document, actions, onDone }: { document: 
           {structure?.graphComplete ? <div>
             <dt>Conformers</dt>
             <dd className="workbench-inline-field">
-              <Input variant="compact" type="number" min={1} max={CONFORMER_LIMITS.count} step={1} value={conformerCount} aria-label="Conformers to keep"
+              <Input variant="compact" type="number" min={1} max={CONFORMER_LIMITS.count} step={1} value={conformerCount} aria-label="Conformer samples"
                 onChange={(event) => setConformerCount(Math.min(CONFORMER_LIMITS.count, Math.max(1, Math.round(Number(event.target.value) || 1))))} />
               <Button type="button" variant="ghost" size="xs" disabled={Boolean(running)} onClick={() => void searchConformers()}>Search</Button>
             </dd>

@@ -187,3 +187,12 @@ test("optimize jobs follow the shared replay, stale, cancel and close semantics"
   f.close();
   expect((await f.ok({ operation: "status", jobId: closing.jobId })).job).toMatchObject({ status: "source_closed", binding: "source_closed", summary: null, artifacts: [] });
 }, 60_000);
+
+test("pair distribution of a simple cubic cell has its six nearest neighbours at the lattice constant", async () => {
+  const cubic = workspace(fixture("simple-cubic.xyz"), "xyz");
+  expect((await cubic.ok({ operation: "observe" })).jobs.pair_distribution).toEqual({ available: true });
+  const job = await cubic.finish((await cubic.submit("pair_distribution", { rMax: 3.5, binWidth: 0.05 })).jobId);
+  expect(job.summary).toMatchObject({ boundary: "periodic", atomCount: 1, distanceUnit: "angstrom", minDistance: expect.closeTo(3, 9), coordination: expect.closeTo(6, 9) });
+  const isolated = workspace(fixture("acetonitrile.sdf"), "sdf");
+  expect((await isolated.ok({ operation: "observe" })).jobs.pair_distribution).toEqual({ available: false, reason: "Open a structure with a unit cell to calculate g(r)." });
+});
