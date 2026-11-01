@@ -240,4 +240,6 @@ printed integral, density and population matrices as documented beside them. The
 `tests/fixtures/quantum/cclib-LICENSE.txt`. cclib itself is used only as an
 external test oracle (`tests/fixtures/quantum/cclib-reference.py`); no cclib code
 is bundled; PySCF (Apache-2.0) is likewise only an external oracle. The other outputs in those directories were generated for Burette with
-NWChem 7.3.0, Psi4 1.11 and xtb 6.7.1; the programs are not bundled.
+NWChem 7.3.0, Psi4 1.11 and xtb 6.7.1; the programs are not bundled. The QCSchema
+files under `tests/fixtures/quantum/qcschema/` were generated for Burette with QCEngine,
+QCElemental, Psi4 and optking (BSD-3-Clause), none of which is bundled.

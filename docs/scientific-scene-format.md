@@ -61,6 +61,17 @@ one value per atom and |q| ≤ 200 e, and a dipole moment in debye. Text-log rea
 attach these properties only to the geometry whose converged SCF produced them;
 line-search trial energies inside one optimization step do not own properties.
 
+QCSchema AtomicResults with the `hessian` driver keep their (3N)² Hartree/bohr² matrix
+and the molecule's masses on the frame. A result `wavefunction` supplies the basis and
+orbitals: shell coefficients carry the x^l primitive normalization, spherical components
+run m = +l…−l, Cartesian components are lexicographic and share the x^l normalization, and
+orbitals are stored (nbf, nmo); the reader converts them to Burette's conventions.
+Occupations come from the wavefunction or else from `calcinfo_nalpha`/`calcinfo_nbeta`.
+Optimizations whose `protocols.trajectory` kept only some gradients (`final`,
+`initial_and_final`, `none`) still assign `energies[0]` to the initial geometry and the
+last energy to the last kept gradient; the final molecule owns no energy unless it is
+that gradient's geometry.
+
 Optional `ScientificDocument.referenceFrameIndex` identifies the history frame of
 `document.atoms`, independently of native playback. Producers declare it only when
 known: XYZ uses the first source frame, ORCA, Gaussian, GAMESS, NWChem, Psi4, Q-Chem,
