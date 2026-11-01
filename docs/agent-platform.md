@@ -635,3 +635,22 @@ byte integrity, cancellation and stale/closed/error outcomes. This proves the
 source implementation in the browser shell; it does not prove a rebuilt packaged
 plugin, a live Browser user session, native app or hosted deployment. Other typed
 scientific jobs, batch workflows and Python/Jupyter clients remain separate work.
+
+
+### Private Geometry and scalar-field transports
+
+`geometry_binding`, `update_geometry`, `scalar_field_binding`,
+`scalar_field_validate` and `show_scalar_field` are private desktop-host routes,
+not public CLI/MCP actions. They use retained source/iframe leases; Geometry edits
+stage through source ownership and scalar display carries a full Cube payload.
+The public CLI rejects them before queueing, including malformed payloads. See
+[Geometry ownership](renderer-support.md#private-geometry-runtime-ownership) and
+[scalar source ownership](scalar-field-binding.md). Orbital jobs use the typed
+`workbench` contract and path-based export instead.
+
+`select_source_atom` is also a private source-bound NMR selection route. The public
+CLI rejects it before queueing; typed orbital jobs do not expose atom-selection
+transport payloads.
+
+`geometry_topology_scene_capture` and `geometry_topology_scene_validate` are private
+source-owner topology checkpoint routes, likewise rejected before CLI queueing.
