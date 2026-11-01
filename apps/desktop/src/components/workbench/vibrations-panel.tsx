@@ -38,7 +38,8 @@ function useSceneModes(document: ViewerDocument, science: ScientificDocument, si
   const frame = useTrajectoryFrame(document.id);
   const perFrame = science.frames.some((item) => item.modes?.length);
   if (singleGeometry || science.frames.length <= 1 || !perFrame) {
-    return { key: "final", frame: null, atoms: science.atoms, modes: vibrationalModes(science.modes), sourceModes: science.modes, hessian: science.frames.at(-1)?.hessian };
+    const reference = science.format === "cjson" ? science.graph?.activeFrameIndex : science.referenceFrameIndex;
+    return { key: "final", frame: null, atoms: science.atoms, modes: vibrationalModes(science.modes), sourceModes: science.modes, hessian: reference === undefined ? undefined : science.frames[reference]?.hessian };
   }
   // The scene starts at the first frame and reports every later change.
   const index = !frame ? 0 : frame.frameCount === science.frames.length ? frame.frameIndex : null;

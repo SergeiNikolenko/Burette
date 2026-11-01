@@ -31,8 +31,10 @@ export async function fixture(input, format="xyz"){
  const bindingStart=source.indexOf("    if (type === 'scene_science_binding') {");
  const read=new Function('window','activeMolstarViewer',"return async action=>{const type=action.type;"+source.slice(bindingStart,source.indexOf("    if (type === 'scene_science_restore_ack') {",bindingStart))+"};")(scope,()=>viewer);
  const execute=action=>action.type==='scene_science_binding'?read(action):pose(action);
- return {plugin,raw,model,scope,viewer,execute,expected,index:()=>model().transform.params.modelIndex,close:()=>plugin.dispose()};
+ return {plugin,raw,model,scope,science:scope.BuretteSceneFiles.science,viewer,execute,expected,index:()=>model().transform.params.modelIndex,close:()=>plugin.dispose()};
 }
 
 export const bundleSha256=hash(bundle);
 export async function closeRuntime(){for(const p of plugins)if(!p.disposed)p.dispose();await dom.happyDOM.close();}
+
+export const NativeFile = dom.File;

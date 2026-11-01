@@ -37,7 +37,7 @@ export function useRetainedTrajectorySource(document: ViewerDocument, science: S
     return () => { abort.abort(); operation?.release(); };
   }, [key, supported, graph, final, editing]);
   const binding = ready?.key === key ? ready.expected : null;
-  const cursor = !supported ? null : graph ? graph.activeFrameIndex : final ? science.frames.length - 1 : binding?.frameIndex ?? null;
+  const cursor = !supported ? null : graph ? graph.activeFrameIndex : final ? science.referenceFrameIndex ?? null : binding?.frameIndex ?? null;
   const seek = binding ? (index: number) => {
     const next = Math.max(0, Math.min(science.frames.length - 1, index));
     if (next === binding.frameIndex || current.current !== key) return;

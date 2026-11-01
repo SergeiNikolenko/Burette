@@ -11,7 +11,7 @@ export function useSceneSpectra(document: ViewerDocument | null) {
   // A single MOL model can show any retained CJSON set, including the first of many.
   const graph = science.format === "cjson" ? science.graph : undefined;
   if (graph && (sourceExtension(document) !== "mol" || graph.molfile !== text)) return null;
-  const index = graph ? graph.activeFrameIndex : final ? science.frames.length - 1 : !trajectory ? 0 : trajectory.frameCount === science.frames.length ? trajectory.frameIndex : -1;
+  const index = graph ? graph.activeFrameIndex : final ? science.referenceFrameIndex ?? -1 : !trajectory ? 0 : trajectory.frameCount === science.frames.length ? trajectory.frameIndex : -1;
   const frame = science.frames[index];
   const sources = [
     ...(science.spectra?.spectra.length ? [{ key: "file", label: "File", data: science.spectra }] : []),

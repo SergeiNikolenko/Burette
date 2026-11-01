@@ -24,7 +24,7 @@ const window = new Window({ url: "http://localhost/" });
 window.matchMedia = () => ({ matches: false, media: "", addEventListener() {}, removeEventListener() {} });
 const previousGlobals = new Map<string, PropertyDescriptor | undefined>();
 for (const [name, value] of Object.entries({
-  window, self: window, document: window.document, Node: window.Node, Element: window.Element, HTMLElement: window.HTMLElement,
+  window, self: window, document: window.document, CSS: window.CSS, Node: window.Node, Element: window.Element, HTMLElement: window.HTMLElement,
   SVGElement: window.SVGElement, HTMLFormElement: window.HTMLFormElement, HTMLSelectElement: window.HTMLSelectElement, HTMLButtonElement: window.HTMLButtonElement,
   DocumentFragment: window.DocumentFragment, MutationObserver: window.MutationObserver, CustomEvent: window.CustomEvent, Event: window.Event,
   KeyboardEvent: window.KeyboardEvent, MouseEvent: window.MouseEvent, PointerEvent: window.PointerEvent, navigator: window.navigator,
@@ -159,4 +159,31 @@ test("A finite but enormous FCHK frequency is kept as read and drawn on a bounde
     assert.equal(ticks().length, 8);
     assert.ok(Math.max(...lengths) <= 400, `largest array ${Math.max(...lengths)}`);
   } finally { Array.from = arrayFrom; await view.unmount(); }
+});
+
+
+test("global modes retain reference geometry; only its explicit frame supplies the Hessian", async () => {
+  const own = { ...hessian, values:Float64Array.from(hessian.values,()=>0) }, other = {...hessian,values:Float64Array.from(hessian.values,()=>0)};
+  for(let i=0;i<9;i++) { own.values[i*9+i]=1; other.values[i*9+i]=2; }
+  for(const referenceFrameIndex of [0,undefined]) {
+    const saved=[];
+    const doc={...science,atoms:atoms(0),referenceFrameIndex,modes:[{index:6,frequencyCm1:1600,intensityKmMol:70,displacements}],
+      frames:[{atoms:atoms(0),hessian:own},{atoms:atoms(.1),hessian:other}]};
+    const actions={runStructureViewerAction:async()=>({lease:"reference-main",text:"3\nmain\nO 0 0 0\nH .96 0 0\nH -.24 .93 0\n"}),saveKetcherExportFile:async(request)=>{saved.push(request);return {status:"saved",path:null};}};
+    const view=await mount(<VibrationsPanel document={{...source,id:`reference-${referenceFrameIndex}`}} science={doc} liveAnimation={true} actions={actions}/>);
+    try {
+      assert.ok([...view.host.querySelectorAll("td")].some(cell=>cell.textContent==="1600.0"));
+      assert.ok([...view.host.querySelectorAll("button")].some(button=>button.textContent==="Animate"));
+      const trigger=[...view.host.querySelectorAll("button")].find(button=>button.textContent==="Export");
+      await act(async()=>trigger.dispatchEvent(new window.KeyboardEvent("keydown",{key:"Enter",bubbles:true})));
+      const items=[...document.body.querySelectorAll('[role="menuitem"]')];
+      assert.deepEqual(items.map(item=>item.textContent),referenceFrameIndex===0?["Spectrum as CSV","Spectrum as JSON","Hessian as JSON"]:["Spectrum as CSV","Spectrum as JSON"]);
+      if(referenceFrameIndex===0) {
+        await act(async()=>items.find(item=>item.textContent==="Hessian as JSON").click());
+        const result=JSON.parse(saved.at(-1).text);
+        assert.deepEqual(result.matrix.flat(),Array.from(own.values));
+        assert.deepEqual(result.atoms,[{element:"O",xAngstrom:0,yAngstrom:0,zAngstrom:0},{element:"H",xAngstrom:.96,yAngstrom:0,zAngstrom:0},{element:"H",xAngstrom:-.24,yAngstrom:.93,zAngstrom:0}]);
+      } else await act(async()=>document.body.dispatchEvent(new window.KeyboardEvent("keydown",{key:"Escape",bubbles:true})));
+    } finally { await view.unmount(); }
+  }
 });

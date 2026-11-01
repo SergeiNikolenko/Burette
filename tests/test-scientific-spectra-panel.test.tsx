@@ -153,7 +153,7 @@ test("file, exact frame and paired MCD remain separate sources including origina
   const { checkMcdCompanion } = await import("../apps/desktop/src/lib/molecular-workbench/mcd-companion");
   const binding = { primaryOriginalSha256: "a".repeat(64), companionOriginalSha256: "b".repeat(64), sourceRevisionSha256: "c".repeat(64) };
   const companion = checkMcdCompanion({ ...binding, spectra: mcd }, { ...binding, frameIndex: 0, frameCount: 1, atomicNumbers: [8, 1, 1] });
-  const science = { format: "xyz" as const, atoms, frames: [{ atoms, spectra: frame, mcdCompanion: companion }], modes: [], orbitals: [], spectra: file };
+  const science = { format: "xyz" as const, atoms, referenceFrameIndex: 0, frames: [{ atoms, spectra: frame, mcdCompanion: companion }], modes: [], orbitals: [], spectra: file };
   adoptLogicalSource({ documentId: current.id, extension: "xyz", text: water }, "science-restore", null, []); addDocumentInternalCoordinates(current.id, water, science);
   const view = await mount(<ScientificSpectraDockContent document={current} actions={actions} />);
   try {
@@ -175,4 +175,28 @@ test("a range with no source peaks is an image, not an empty interactive slider"
     expect([chart.getAttribute("role"), chart.getAttribute("tabindex"), chart.getAttribute("aria-valuenow"), chart.getAttribute("aria-valuemin"), chart.getAttribute("aria-valuemax"), chart.getAttribute("aria-valuetext")]).toEqual(["img", "-1", null, null, null, null]);
     expect(view.host.querySelector("tbody")?.textContent).toContain("-10.0000");
   } finally { await view.close(); }
+});
+
+test("single native geometry uses declared frame spectra; unknown history exposes only file data", async () => {
+  for (const referenceFrameIndex of [0, undefined]) {
+    const current = doc(), atoms = parseXyz(water).atoms;
+    const file: ScientificSpectra = { ...sources, atomicNumbers:[8,1,1], spectra:[{kind:"electronic",xUnit:"eV",positions:[2],values:[1],valueUnit:null}] };
+    const frames = [0,1].map(index=>({atoms:index ? atoms.map(atom=>({...atom,x:atom.x+1})) : atoms,
+      spectra:{...file,source:{name:`frame-${index}.out`,format:"orca-output" as const,scope:"frame" as const,frameIndex:index,frameCount:2},
+        spectra:[{kind:"vcd" as const,xUnit:"cm^-1" as const,positions:[1000],values:[index ? 9 : -2],valueUnit:null}]}}));
+    const science={format:"xyz" as const,atoms,referenceFrameIndex,frames,modes:[],orbitals:[],spectra:file};
+    adoptLogicalSource({documentId:current.id,extension:"xyz",text:water},"reference-scene",null,[]);
+    addDocumentInternalCoordinates(current.id,water,science);
+    const view=await mount(<ScientificSpectraDockContent document={current} actions={actions}/>);
+    try {
+      await settle(view.host);
+      const choices=[...view.host.querySelectorAll('select[aria-label="Spectrum source"] option')].map(option=>option.textContent);
+      expect(choices).toEqual(referenceFrameIndex===0?["File","Frame 1"]:[]);
+      if(referenceFrameIndex===0) {
+        await select(view.host,"Spectrum source","frame-0");await settle(view.host);
+        await exportItem(view.host,"Source CSV");
+        expect(saved.at(-1)?.text).toBe(scientificSpectrumCsv(frames[0].spectra,"vcd"));
+      } else expect(view.host.querySelector("table")?.getAttribute("aria-label")).toBe("Electronic absorption source values");
+    } finally {await view.close();releaseClosedImports(new Set());releaseClosedScienceSessions(new Set());}
+  }
 });

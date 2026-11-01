@@ -2,7 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import React, { act } from "react";
 import { readFileSync } from "node:fs";
 import { browser } from "./test-cjson-import.test";
-import { fixture, closeRuntime } from "./fixtures/retained-trajectory-native.mjs";
+import { fixture, closeRuntime, NativeFile } from "./fixtures/retained-trajectory-native.mjs";
 import type { ViewerDocument } from "../apps/desktop/src/types";
 import { useRetainedTrajectorySource } from "../apps/desktop/src/lib/workbench/retained-trajectory-source";
 import { useScientificDocument } from "../apps/desktop/src/lib/workbench/source";
@@ -71,13 +71,13 @@ test("normal producer CJSON active0/5 keeps seven source sets and native0/1 with
   }
 });
 
-test("final XYZ cursor is retained last; steps require exact native source before seek", async () => {
+test("final XYZ cursor follows declared reference; steps require exact native source before seek", async () => {
   const raw = "2\nfirst\nC 0 0 0\nO 1 0 0\n2\nsecond\nC 0 0 0\nO 2 0 0\n", science = parseScientificFile("steps.xyz", raw);
   for (const layout of ["final", "steps"] as const) {
     await openScientificDocument(actions, "steps", science, layout); const owner = opened.at(-1)!, text = readBrowserDevVirtualTextDocument(owner.path)!;
     const f = await mount(owner, text);
     try {
-      await wait(() => f.host.querySelector("output")?.textContent === (layout === "final" ? "1/2" : "0/2"));
+      await wait(() => f.host.querySelector("output")?.textContent === "0/2");
       expect(f.host.querySelector("button")!.disabled).toBe(layout === "final");
       if (layout === "steps") {
         await act(async () => f.host.querySelector("button")!.click()); await wait(() => f.native.index() === 1); await f.emit();
@@ -102,4 +102,69 @@ test("same-count foreign source and held old reads cannot enable a replacement d
     release(); await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
     expect(f.host.querySelector("output")!.textContent).toBe("none"); expect(f.native.index()).toBe(0);
   } finally { await f.close(); }
+});
+
+
+test("final import keeps producer reference geometry, its own energy and exact Original across native MOLX", async () => {
+  const { encodeScienceSession, decodeScienceSession } = await import("../apps/desktop/src/lib/science-session/codec");
+  for (const [name, relative, reference, positions, energy] of [
+    ["steps.xyz","trajectory/reference/authored-two-frame.xyz",0,[0,0,0,1,0,0],-1.25],
+    ["steps.out","quantum/dispatcher/two-step-orca.out",1,[0,0,0,0,0,.7],-1.2],
+  ] as const) {
+    const raw = readFileSync(new URL(`./fixtures/${relative}`, import.meta.url)), science = parseScientificFile(name,raw.toString());
+    await openScientificDocument(actions,name,science,"final",{name,file:new Blob([raw])});
+    const owner = opened.at(-1)!, text = readBrowserDevVirtualTextDocument(owner.path)!, f = await mount(owner,text);
+    try {
+      await wait(() => f.host.querySelector("output")?.textContent === `${reference}/2`);
+      expect(text.split("\n")[1]).toContain(`Energy=${energy} Hartree`);
+      const runtime = f.native.science, report = runtime.binding(f.native.viewer);
+      for (const [i,coordinate] of positions.entries()) expect(report.positions[i]).toBeCloseTo(coordinate,6);
+      const binding = Object.fromEntries(["structureRef","modelRef","trajectoryRef","frameIndex","frameCount","atomCount"].map(k=>[k,report[k]]));
+      const encoded = await encodeScienceSession({documentUuid:crypto.randomUUID(),source:{extension:"xyz",text},atomIds:["reference-a","reference-b"],binding:binding as never,science,original:{name,file:new Blob([raw])}});
+      const blob = await runtime.serialize(f.native.viewer,{binding,positions:report.positions,assets:encoded.assets},{type:"molx",params:{camera:false,image:false}});
+      const bytes = new Uint8Array(await blob.arrayBuffer()), decoded = (await decodeScienceSession(bytes))!;
+      expect(decoded.science).toEqual(science); expect(new Uint8Array(await decoded.original!.file.arrayBuffer())).toEqual(new Uint8Array(raw));
+      const token = runtime.beginImport(f.native.plugin); await f.native.plugin.managers.snapshot.open(new NativeFile([bytes],"reference.molx"));
+      expect(runtime.completeImport(f.native.plugin,token)).toBe(true);
+      const reopened = runtime.binding(f.native.viewer);
+      for (const [i,coordinate] of positions.entries()) expect(reopened.positions[i]).toBeCloseTo(coordinate,6);
+      expect([reopened.frameIndex,reopened.frameCount]).toEqual([0,1]);
+    } finally { await f.close(); }
+  }
+});
+
+test("legacy unique and duplicate histories stay unknown through native reopen and resave, while global modes and spectra survive", async () => {
+  const { encodeScienceSession, decodeScienceSession } = await import("../apps/desktop/src/lib/science-session/codec");
+  for (const name of ["authored-legacy-unknown","authored-legacy-duplicate-geometry"]) {
+    const raw = readFileSync(new URL(`./fixtures/trajectory/reference/${name}.molx`, import.meta.url));
+    let decoded = (await decodeScienceSession(raw))!;
+    const expected = JSON.parse(readFileSync(new URL(`./fixtures/trajectory/reference/${name}.json`,import.meta.url),"utf8"));
+    expect(decoded.science).toEqual(expected); expect(decoded.science!.referenceFrameIndex).toBeUndefined();
+    // Reopen the original actual native archive, then reserialize the same full scientific payload.
+    const native = await fixture(decoded.source.text), runtime = native.science;
+    try {
+      const token = runtime.beginImport(native.plugin); await native.plugin.managers.snapshot.open(new NativeFile([raw],`${name}.molx`));
+      expect(runtime.completeImport(native.plugin,token)).toBe(true);
+      const report = runtime.binding(native.viewer); expect(Array.from(report.positions)).toEqual([0,0,0,1,0,0]);
+      const { restoreScienceSession } = await import("../apps/desktop/src/lib/science-session/restore");
+      const restoredOwner = { id:crypto.randomUUID(),title:`${name}.molx`,path:`/${name}.molx`,extension:"molx",renderer:"molstar",byteCount:raw.length } as ViewerDocument;
+      expect(await restoreScienceSession(restoredOwner,{readBytes:async()=>new Uint8Array(raw),isOpen:()=>true,request:(async (_id: string,action: Parameters<typeof import("../apps/desktop/src/lib/viewer-bridge").requestViewerAction>[1])=> {
+        if(action.type==="workspace_scene_state") return {ready:true};
+        if(action.type==="scene_science_binding") return runtime.binding(native.viewer);
+        if(action.type==="scene_science_restore_ack") return {adopted:await runtime.adoptValidated(native.viewer,action)};
+        throw new Error(`Unexpected action ${action.type}`);
+      }) as never})).toBe("restored");
+      expect(scientificStateFor(restoredOwner.id,decoded.source.text).revision!.document).toEqual(expected);
+      const encoded = await encodeScienceSession(decoded);
+      const blob = await runtime.serialize(native.viewer,{binding:decoded.binding,positions:report.positions,assets:encoded.assets},{type:"molx",params:{camera:false,image:false}});
+      decoded = (await decodeScienceSession(new Uint8Array(await blob.arrayBuffer())))!;
+      expect(decoded.science).toEqual(expected); expect(decoded.science!.referenceFrameIndex).toBeUndefined();
+      expect(new Uint8Array(await decoded.original!.file.arrayBuffer())).toEqual(new Uint8Array(readFileSync(new URL("./fixtures/trajectory/reference/authored-two-frame.xyz",import.meta.url))));
+      await openScientificDocument(actions,name,decoded.science!,"final");
+      const owner=opened.at(-1)!,text=readBrowserDevVirtualTextDocument(owner.path)!; expect(text.split("\n")[1]).not.toContain("Energy=");
+      const f=await mount(owner,text);
+      try { await wait(()=>f.host.querySelector("output")?.textContent==="none"); expect(f.host.querySelector("button")!.disabled).toBe(true); }
+      finally { await f.close(); }
+    } finally { native.close(); }
+  }
 });
