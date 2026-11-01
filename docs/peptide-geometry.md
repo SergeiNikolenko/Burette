@@ -99,7 +99,13 @@ and rendering peripherals in receiver tests are stubbed; this is not WebGL proof
 The preview uses the packaged Burette renderer and fixed frame-owned format;
 existing MOL inspector callers keep their default format and update behavior.
 
+Focused Browser acceptance covers Preview/Create, independent documents from
+identical inputs, both themes, narrow layouts, mmCIF export/reopen and native
+MOLX geometry reopening. The generated D-Pro-Gly-Ile case retains 43 atoms,
+43 bonds, charged termini, chain identity and its configured backbone angles.
+This does not establish every builder or native Info interaction.
+
 Insertion into existing structures/Undo, saved workspace metadata,
-secondary-structure assignment, filtered/modified exports, native macOS/Quick
-Look/iPhone and actual Browser build/export/reopen remain separate acceptance.
+secondary-structure assignment, filtered/modified exports and native
+macOS/Quick Look/iPhone remain separate acceptance.
 This stage does not complete Avogadro peptide or broader builder parity.

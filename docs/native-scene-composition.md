@@ -24,8 +24,7 @@ Ordinary visibility-only callers retain their existing payload and behavior.
 
 The reporter stays beside the existing private query/component owner because it
 reuses its cached query results and represented Loci union. It adds no native
-facade export or general-purpose action API. ROOT and selected query-language
-implementations remain separate and unchanged.
+facade export or general-purpose action API.
 
 `test:native-scene-composition` executes the actual built MolStar IIFE and the
 exact native reporter with the saved generated peptide fixture, duplicate
@@ -51,4 +50,4 @@ ordinary MOLX chooser and native scene, and exercises both Info consumers, chain
 actions, state restoration, detachment/reattachment and queued stale responses.
 The original scientific MOLX/CIF tests remain unchanged. The fixture is a peptide
 created in Burette, not experimental or quantum-producer output. Native Undo UI
-and the final Browser bundle remain separate parent acceptance steps.
+and Browser/WebGL behavior require separate runtime acceptance.
