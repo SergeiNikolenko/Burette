@@ -146,6 +146,15 @@ step docking poses, or the ligands while a ligand card is open.
 | R / F | Move the structure up / down |
 | Left / Right | Previous / next docking pose or ligand |
 
+With the pointer over the view, Mol*'s own scene keys also apply:
+
+| Shortcut | Action |
+| --- | --- |
+| T | Reset the view |
+| I / O | Spin / rock the scene |
+| G | Toggle realistic lighting |
+| Shift+Space | Toggle fly mode |
+
 The Camera button in the viewer rail opens Reset zoom, Lay flat, Reset axes,
 Perspective / Orthographic and View from +X, −X, +Y, −Y, +Z or −Z. Reach it
 with Tab, open it with Enter or Space and move through it with the arrow keys.

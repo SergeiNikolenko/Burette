@@ -4018,6 +4018,14 @@
       const snapshot = fitted || (typeof camera.getFocus === 'function'
         ? camera.getFocus(target, Math.max(0.1, safeRadius * radiusScale), up, direction)
         : null);
+      // getFocus keeps the camera on its current side of the target; a requested
+      // direction names the side, as the fitted path does.
+      const length = Math.hypot(direction[0], direction[1], direction[2]);
+      if (snapshot && !fitted && Array.isArray(options.direction) && length > 0 && snapshot.position && snapshot.target) {
+        const distance = Math.hypot(...[0, 1, 2].map(axis => snapshot.position[axis] - snapshot.target[axis]));
+        snapshot.position = [0, 1, 2].map(axis => snapshot.target[axis] + direction[axis] / length * distance);
+        snapshot.up = [up[0], up[1], up[2]];
+      }
       if (snapshot) snapshot.mode = mode;
       canvas3d.requestCameraReset({
         snapshot: snapshot || undefined,
@@ -10545,12 +10553,13 @@ SOFTWARE.
     VIEWPORT_AXIS_VIEWS.forEach(([axis], index) => viewportMenuItem(menu, `View from ${axis}`, 'camera-view-axis', { data: { viewportValue: String(index) } }));
   }
 
-  // Each view looks at the structure from the positive or negative side of a world
-  // axis, with an up direction that keeps the other two axes in their usual places.
+  // Each view puts the camera on the positive or negative side of a world axis
+  // (the focus direction points from the target to the camera), with an up
+  // direction that keeps the other two axes in their usual places.
   const VIEWPORT_AXIS_VIEWS = [
-    ['+X', [-1, 0, 0], [0, 1, 0]], ['−X', [1, 0, 0], [0, 1, 0]],
-    ['+Y', [0, -1, 0], [0, 0, -1]], ['−Y', [0, 1, 0], [0, 0, 1]],
-    ['+Z', [0, 0, -1], [0, 1, 0]], ['−Z', [0, 0, 1], [0, 1, 0]],
+    ['+X', [1, 0, 0], [0, 1, 0]], ['−X', [-1, 0, 0], [0, 1, 0]],
+    ['+Y', [0, 1, 0], [0, 0, -1]], ['−Y', [0, -1, 0], [0, 0, 1]],
+    ['+Z', [0, 0, 1], [0, 1, 0]], ['−Z', [0, 0, -1], [0, 1, 0]],
   ];
 
   // Mol* moves the camera from these keys only while the pointer is over the canvas.

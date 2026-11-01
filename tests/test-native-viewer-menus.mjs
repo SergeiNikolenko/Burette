@@ -160,7 +160,8 @@ const events = [];
   const { Vec3, Mat4 } = await import('molstar/lib/mol-math/linear-algebra.js');
   const resets = [], props = [];
   const state = { mode: 'orthographic', target: [1, 2, 3], radius: 5 };
-  const camera = { state, target: state.target, getFocus: (target, radius, up, direction) => ({ target, radius, up, direction }) };
+  // Like Mol*, getFocus keeps the camera on its current side (+Z here) whatever the direction's sign.
+  const camera = { state, target: state.target, getFocus: (target, radius) => ({ target, radius, position: [target[0], target[1], target[2] + 10], up: [0, 1, 0] }) };
   const viewer = { plugin: { canvas3d: { camera, boundingSphere: { center: [1, 2, 3], radius: 4 }, setProps: value => props.push(value),
     requestCameraReset: value => resets.push(value), requestDraw() {} } } };
   const bindings = { document, debug: () => {}, viewportPlugin: () => viewer.plugin, activeMolstarViewer: () => viewer,
@@ -172,17 +173,17 @@ const events = [];
   assert.deepEqual(props, [{ camera: { mode: 'perspective' } }]);
   api.requestMolstarStructureFocus(viewer);
   assert.equal(resets.at(-1).snapshot.mode, 'orthographic');
-  // "View from +X" puts the camera on the +X side looking back along −X, with an
-  // up direction square to the view; the six views are the six axis directions.
+  // "View from +X" puts the camera on the +X side of the structure, with an up
+  // direction square to the view; the six views are the six axis sides.
   const directions = api.VIEWPORT_AXIS_VIEWS.map(([label], index) => {
     api.runViewportMenuAction('camera-view-axis', control(String(index)));
-    const { direction, up, mode } = resets.at(-1).snapshot;
+    const { position, target, up, mode } = resets.at(-1).snapshot;
+    const side = position.map((value, i) => (value - target[i]) / 10);
     const axis = 'XYZ'.indexOf(label[1]);
-    assert.deepEqual([...direction].map(Math.abs), [0, 1, 2].map(i => Number(i === axis)), label);
-    assert.equal(Math.sign(direction[axis]), label[0] === '+' ? -1 : 1, label);
-    assert.equal(Vec3.dot(direction, up), 0, label);
+    assert.deepEqual(side.map(value => Math.round(value * 1e9) / 1e9), [0, 1, 2].map(i => i === axis ? (label[0] === '+' ? 1 : -1) : 0), label);
+    assert.equal(Vec3.dot(side, up), 0, label);
     assert.equal(mode, 'orthographic', label);
-    return direction.join();
+    return side.join();
   });
   assert.equal(new Set(directions).size, 6);
 
