@@ -5,7 +5,7 @@ import { plugin as bunPlugin } from "bun";
 import { transformSync } from "@babel/core";
 import { Window } from "happy-dom";
 import React, { act } from "react";
-import { PluginContext } from "molstar/lib/mol-plugin/context.js";
+import { PluginContext } from "@molstar/plugin";
 import { BuretteGeometry } from "../scripts/molstar-geometry.js";
 
 // The app's actual Compiler, source controller, iframe slots, receiver and model run

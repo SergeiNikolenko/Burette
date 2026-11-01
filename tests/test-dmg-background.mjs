@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
 import assert from "node:assert/strict";
-import { createRequire } from "node:module";
+import { PNG } from "pngjs";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { readFileSync, realpathSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { encodePng, renderSkySupersampled } from "../scripts/render-dmg-sky.mjs";
@@ -24,7 +24,6 @@ assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
 assert.equal(png.readUInt32BE(16), 32);
 assert.equal(png.readUInt32BE(20), 20);
 // Compression bytes vary across zlib versions; decoded pixels are the contract.
-const { PNG } = createRequire(realpathSync(new URL('../node_modules/molstar/package.json', import.meta.url)))('pngjs');
 const decoded = PNG.sync.read(png);
 const rgba = Buffer.alloc(32 * 20 * 4, 255);
 for (let pixel = 0; pixel < 32 * 20; pixel++) {

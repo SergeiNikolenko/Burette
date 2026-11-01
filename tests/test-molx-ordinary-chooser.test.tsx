@@ -6,7 +6,7 @@ import {zipSync, unzipSync} from "../apps/desktop/node_modules/fflate";
 import React, { act } from "react";
 import { Window } from "happy-dom";
 import { IDBFactory } from "fake-indexeddb";
-import type { UUID } from "molstar/lib/mol-util/uuid.js";
+import type { UUID } from "@molstar/core/util/uuid";
 import type { ViewerDocument } from "../apps/desktop/src/types";
 import type { ScienceSessionContent } from "../apps/desktop/src/lib/science-session/codec";
 import type { ScientificDocument } from "../apps/desktop/src/lib/molecular-workbench/scientific-types";
@@ -28,8 +28,8 @@ for (const [key, value] of Object.entries({ window: browser, self: browser, docu
 }
 afterAll(async () => { await browser.happyDOM.close(); for (const [key, value] of previous) { if (value) Object.defineProperty(globalThis, key, value); else Reflect.deleteProperty(globalThis, key); } });
 installPlugin(molstarMolV3000Plugin); installPlugin(molstarV3000ChargesPlugin);
-const { PluginContext } = await import("molstar/lib/mol-plugin/context.js");
-const { DefaultPluginSpec } = await import("molstar/lib/mol-plugin/spec.js");
+const { PluginContext } = await import("@molstar/plugin");
+const { DefaultPluginSpec } = await import("@molstar/plugin/default-spec");
 const { createRoot } = await import("react-dom/client");
 const { useAppFileOpen } = await import("../apps/desktop/src/hooks/use-app-file-open");
 const { useAppOpenActions } = await import("../apps/desktop/src/hooks/use-app-open-actions");
@@ -76,7 +76,7 @@ async function archive(version: 1 | 3 | 4 | "plain" | "mesoscale") {
       content.companions = [{ ...pair, role: "orca-mcd", frameIndex: 0, frameCount: 1, name, file }];
     }
     if (version === "mesoscale") {
-      const { MesoscaleState } = await import("molstar/lib/apps/mesoscale-explorer/data/state.js");
+      const { MesoscaleState } = await import("@molstar/mesoscale-explorer/data/state");
       Object.assign(plugin.customState as Record<string, unknown>, { graphicsMode: "quality" }); await MesoscaleState.init(plugin as never);
     }
     if (version !== "plain" && version !== "mesoscale") {
@@ -205,7 +205,7 @@ test("restored MOL graph keeps source-only Compute while XYZ and foreign MOLX ke
 
 test("normal MOLX restore drives Info composition from its validated logical source instead of archive text", async () => {
   const { DockPanel } = await import("../apps/desktop/src/components/dock-panel");
-  const { ExtensionMap } = await import("molstar/lib/apps/viewer/extensions.js");
+  const { ExtensionMap } = await import("@molstar/viewer/extensions");
   const { DEFAULT_XTB_SETTINGS, DEFAULT_CONFORMER_SETTINGS } = await import("../apps/desktop/src/lib/chemistry-settings");
   const cases = [
     { version: 1 as const, title: "Molecule: 1 atoms in first frame" },

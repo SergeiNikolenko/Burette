@@ -93,11 +93,34 @@ rejected. Run `vp run test:coordinate-cli` and
 
 ## Internal Helpers
 
+`vendor-xyzrender.py` regenerates the reviewed upstream snapshot wheel from
+hash-verified source and a reviewed density patch. The pinned build interpreter,
+tools, artifact hashes and commands are described in `config/xyzrender/README.md`.
+Ordinary app builds install this wheel from the locked requirements without
+source builds. Validate authentication with `python3 tests/test-vendor-xyzrender.py`.
+
 `prepare-xyzrender-bytecode.py` runs with the staged app's bundled Python from
 `build.sh`, after runtime pruning and before signing. It precompiles only imported
 renderer startup modules into checked-hash caches; it must not run against a
 source environment. Validate relocation and read-only cache invalidation with
 `python3 tests/test-prepare-xyzrender-bytecode.py`.
+
+`bun scripts/prepare-molstar-source.mjs` prepares the immutable Mol* revision
+and SHA-256 archive recorded in `config/molstar-source.json`; it never follows
+upstream HEAD. The ignored `.tmp/molstar/<revision>/` cache contains the verified
+source, compiled JavaScript and declarations. Preparation uses upstream class-field
+semantics and automatic JSX imports; declarations keep Burette's strict typecheck
+separate from upstream's compiler settings. Managed `node_modules/@molstar` links expose the compiled packages and their
+declarations. All consumers use the v6 package imports; there is no parallel npm
+Mol* runtime. Cache identity includes the preparation recipe and Bun
+version; preparation repairs aliases and recovers abandoned process locks.
+
+`bun run vendor:molstar` builds the viewer, styles and standalone Node MolViewSpec
+schema from that source; `bun run build:mesoscale` builds the Mesoscale assets.
+Both use the same reviewed build adapters. `bun run build:agent-shell` refreshes
+the packaged plugin mirror. `vendor-assets.lock.json` tracks source identity and
+all generated renderer/schema hashes. The Bun preload prepares the same source
+for integration tests; run `bun run test:renderers` after renderer upgrades.
 
 `molstar-surface-field-cache.mjs` adapts the version-locked Mol* unit-surface
 calculation during vendoring. Its 64 MiB LRU stores CPU scalar/group fields,
@@ -111,8 +134,8 @@ Run `bun tests/test-molstar-surface-field-cache.mjs` and `vp run vendor:molstar`
 after changes; rebuild the agent-shell mirror and check the vendor lock.
 
 `molstar-surface-loop.mjs` also patches the version-locked cold calculation: it
-resolves each atom pair's group IDs once and skips nonpositive grid cells before
-distance arithmetic. Probe/grid traversal, distances and group assignments stay
+skips nonpositive grid cells before distance arithmetic. Upstream already
+resolves each atom pair's group IDs once. Probe/grid traversal, distances and group assignments stay
 unchanged. `bun tests/test-molstar-surface-loop.mjs` compares fields and meshes
 bit-for-bit with upstream, including sparse selections and cancellation.
 
@@ -210,3 +233,24 @@ or partial-periodic metadata keeps ordinary XYZ atom-opening behavior.
 After rebuilding the native runtime, `vp run test:built-xyz-lattice` checks
 real provider/state seeks, unit-cell geometry, and native MOLX round trips.
 This prerequisite does not add Niggli actions, cell editing, or cell export.
+
+## Local diagnostics capture
+
+Run `python3 scripts/collect-diagnostics.py --output build/reports/<new-directory>`
+after an app failure. The parent directory must already exist; existing captures
+are never overwritten. For a development installation, pass its exact bundle
+identifier with `--app-id com.local.BuretteV10.<suffix>`.
+
+This local-only capture reads the app cache's current action journal, newest
+journal archive, and app log. It keeps at most 256 KiB and 500 recent lines per
+source, with timestamps, source sizes, truncation and missing-file status in
+`summary.json`. Journal targets are omitted; only event metadata and scalar detail fields
+`id`, `durableJobId`, `operation`, `status`, and `error` are retained for job
+correlation. All other detail fields are omitted. URLs, credentials and absolute paths (including percent-encoded paths)
+are redacted, and multiline log payloads are omitted. The capture directory is
+private (0700), its files are 0600. No databases or molecular files are copied,
+and nothing is uploaded. Arbitrary free-text messages may still contain sensitive
+context; review captures before sharing. This captures persisted desktop logs;
+browser-only failures and events never written by the app cannot be recovered.
+
+Validate with `python3 tests/test-collect-diagnostics.py`.

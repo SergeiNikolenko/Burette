@@ -6,9 +6,9 @@ import { buildPeptideGeometry, PEPTIDE_BACKBONE_PRESETS, type PeptideGeometry } 
 import { peptideMmcif } from '../apps/desktop/src/lib/molecular-workbench/peptide-mmcif';
 import { serializePhysicalMolfile } from '../apps/desktop/src/lib/molecular-workbench/molecule-serialization';
 const require = createRequire(import.meta.url);
-const { CIF } = require('molstar/lib/commonjs/mol-io/reader/cif.js');
-const { trajectoryFromMmCIF } = require('molstar/lib/commonjs/mol-model-formats/structure/mmcif.js');
-const { Structure, StructureProperties, StructureElement } = require('molstar/lib/commonjs/mol-model/structure.js');
+const { CIF } = require('@molstar/io/reader/cif');
+const { trajectoryFromMmCIF } = require('@molstar/model/formats/structure/mmcif');
+const { Structure, StructureProperties, StructureElement } = require('@molstar/model/model/structure');
 let rdkit: MainModule;
 beforeAll(async () => { rdkit = await initRDKitModule(); });
 const sub = (a: number[], b: number[]) => a.map((x,i) => x-b[i]);
@@ -131,7 +131,7 @@ test('ammonium hydrogens form a tetrahedron without changing any heavy atom or c
 });
 
 test('close nonbonded contacts stay nonbonded through full mmCIF import and native re-export', async () => {
-  const { to_mmCIF } = require('molstar/lib/commonjs/mol-model/structure/export/mmcif.js');
+  const { to_mmCIF } = require('@molstar/model/model/structure/export/mmcif');
   for(const [sequence,phi,psi] of [['WICPTAGHENKR',-87,143],['GG',0,0],['PP',90,-90]] as const) {
     const p=buildPeptideGeometry(sequence,{phi,psi,chirality:[...sequence].map((_,i)=>i%2?'D':'L'),nTerminus:'ammonium',cTerminus:'carboxylate',chain:'7'});
     let text=peptideMmcif(p);

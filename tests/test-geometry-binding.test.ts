@@ -3,7 +3,7 @@ import React, { act } from "react";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { Window } from "happy-dom";
-import { PluginContext } from "molstar/lib/mol-plugin/context.js";
+import { PluginContext } from "@molstar/plugin";
 import { BuretteGeometry } from "../scripts/molstar-geometry.js";
 import { readGeometryBinding } from "../apps/desktop/src/lib/geometry-binding";
 import { requestViewerAction } from "../apps/desktop/src/lib/viewer-bridge";

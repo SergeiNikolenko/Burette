@@ -202,6 +202,7 @@ pub(crate) fn execute_conformer_distance_geometry_with_service(
             mmff_parameters,
             input_positions,
             distance_backend,
+            stereo_backend,
             metal,
             compute_service.map(|service| (service, job_id)),
         );
@@ -459,6 +460,7 @@ fn optimize_input_geometries(
     mmff_parameters: &[Option<NativeMmffParameters>],
     input_positions: &[Option<Vec<[f32; 4]>>],
     backend: Backend,
+    stereo_backend: Backend,
     metal: Option<&MetalTanimotoRuntime>,
     compute_service: Option<(&ComputeServiceClient, Uuid)>,
 ) -> ComputeResult<ConformerDistanceComputation> {
@@ -499,7 +501,20 @@ fn optimize_input_geometries(
             options,
             request.limits.max_memory_bytes,
         )?;
-        gpu_time_ms = gpu_time_ms.saturating_add(optimized.gpu_time_ms.unwrap_or(0));
+        let stereo = local_stereo_terms(&output.deferred, record)?;
+        let validated = validate_stereo_attempts(
+            stereo_backend,
+            metal,
+            compute_service,
+            &optimized.positions,
+            positions.len() as u32,
+            &stereo.chiral,
+            &stereo.tetrahedral,
+            request.limits.max_memory_bytes,
+        )?;
+        gpu_time_ms = gpu_time_ms
+            .saturating_add(optimized.gpu_time_ms.unwrap_or(0))
+            .saturating_add(validated.gpu_time_ms.unwrap_or(0));
         output.conformer_molecule_indices.push(record as u32);
         output.conformer_ordinals.push(0);
         output.embedding_attempt_counts.push(0);
@@ -510,7 +525,9 @@ fn optimize_input_geometries(
         output.mmff_energies.push(optimized.energies[0]);
         output.mmff_statuses.push(optimized.statuses[0]);
         output.mmff_optimizer_kinds.push(optimized.optimizers[0]);
-        output.retry_stereo_failure_flags.push(0);
+        output
+            .retry_stereo_failure_flags
+            .extend(validated.failure_flags);
         output.seed_words.push([0; 4]);
         output.positions.extend(
             optimized
@@ -522,7 +539,9 @@ fn optimize_input_geometries(
             .conformer_atom_starts
             .push(output.positions.len() as u64);
     }
-    output.gpu_time_ms = (backend == Backend::NativeMetal).then_some(gpu_time_ms);
+    output.gpu_time_ms = (backend == Backend::NativeMetal
+        || stereo_backend == Backend::NativeMetal)
+        .then_some(gpu_time_ms);
     output.etk_cpu_reference_validated = true;
     output.validate(output.conformer_count() as u64)?;
     Ok(output)
@@ -1426,6 +1445,50 @@ mod tests {
             (distance - 1.5).abs() < 1.0e-3,
             "optimized distance={distance}"
         );
+    }
+
+    #[test]
+    fn input_geometry_retains_stereo_failures_for_final_validation() {
+        let mut builder = ConformerEnginePackBuilder::new(
+            burette_compute_protocol::ConformerVariant::EtkdgV3,
+            1024 * 1024,
+        );
+        builder
+            .append_valid(extracted_impossible_stereo())
+            .expect("valid topology");
+        let mut request = request();
+        request.parameters.initialization = ConformerInitialization::InputGeometry;
+        request.parameters.conformers_per_molecule = 1;
+        let result = execute_conformer_distance_geometry(
+            Uuid::from_u128(13),
+            &request,
+            builder.finish(1).expect("engine arrays"),
+            &[ConformerMoleculeIdentity {
+                source_record_id: 10,
+                molecule_content_sha256: "11".repeat(32),
+            }],
+            &[Some(mmff_parameters(4))],
+            &[Some(vec![
+                [0.0, 0.0, 0.0, 0.0],
+                [1.5, 0.0, 0.0, 0.0],
+                [1.5, 1.5, 0.0, 0.0],
+                [1.5, 1.5, 1.5, 0.0],
+            ])],
+            Backend::ReferenceCpu,
+            Backend::ReferenceCpu,
+            None,
+        )
+        .expect("input geometry optimization");
+        let validated =
+            super::super::conformer_stereo_executor::execute_conformer_stereo_validation(
+                &result,
+                Backend::ReferenceCpu,
+                None,
+                request.limits.max_memory_bytes,
+            )
+            .expect("stereo rejection is a result, not a protocol mismatch");
+        assert_eq!(validated.failure_flags, [1]);
+        assert_eq!(validated.passed_count, 0);
     }
 
     #[test]

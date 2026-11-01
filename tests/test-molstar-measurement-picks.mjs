@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { Window } from 'happy-dom';
-import { PluginContext } from 'molstar/lib/mol-plugin/context.js';
-import { StructureElement, Bond } from 'molstar/lib/mol-model/structure.js';
-import { Loci } from 'molstar/lib/mol-model/loci.js';
-import { OrderedSet } from 'molstar/lib/mol-data/int.js';
-import { setCanvasModule } from 'molstar/lib/mol-geo/geometry/text/font-atlas.js';
+import { DefaultRegistry } from '@molstar/plugin/default-registry';
+import { PluginContext } from '@molstar/plugin';
+import { StructureElement, Bond } from '@molstar/model/model/structure';
+import { Loci } from '@molstar/model/model/loci';
+import { OrderedSet } from '@molstar/core/data/int';
+import { setCanvasModule } from '@molstar/graphics/geo/geometry/text/font-atlas';
 
 setCanvasModule({ createCanvas: () => ({ getContext: () => ({
   measureText: () => ({ width: 12 }), clearRect() {}, fillText() {},
@@ -14,7 +15,7 @@ setCanvasModule({ createCanvas: () => ({ getContext: () => ({
 const dom = new Window();
 const previousDocument = globalThis.document;
 globalThis.document = dom.document;
-const plugin = new PluginContext({ actions: [], behaviors: [] });
+const plugin = new PluginContext({ registry: DefaultRegistry, behaviors: [] });
 const source = readFileSync(new URL('../PreviewExtension/Web/viewer.js', import.meta.url), 'utf8');
 const functionSource = name => source.match(new RegExp(`\n  function ${name}\\([\\s\\S]*?\n  \\}`, 'u'))[0];
 try {

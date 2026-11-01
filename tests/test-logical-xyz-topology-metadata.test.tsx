@@ -5,14 +5,14 @@ import { plugin as bunPlugin } from "bun";
 import { transformSync } from "@babel/core";
 import { Window } from "happy-dom";
 import React, { act } from "react";
-import { setCanvasModule } from "molstar/lib/mol-geo/geometry/text/font-atlas.js";
-import { DefaultPluginSpec } from "molstar/lib/mol-plugin/spec.js";
-import { StructureElement } from "molstar/lib/mol-model/structure.js";
-import { OrderedSet } from "molstar/lib/mol-data/int.js";
+import { setCanvasModule } from "@molstar/graphics/geo/geometry/text/font-atlas";
+import { DefaultPluginSpec } from "@molstar/plugin/default-spec";
+import { StructureElement } from "@molstar/model/model/structure";
+import { OrderedSet } from "@molstar/core/data/int";
 import { BuretteTopologyScene } from "../scripts/molstar-topology-scene.js";
 import { patchSceneLayers, listSceneLayers } from "../scripts/molstar-scene-layers.js";
-import { PluginContext } from "molstar/lib/mol-plugin/context.js";
-import { StateTransforms } from "molstar/lib/mol-plugin-state/transforms.js";
+import { PluginContext } from "@molstar/plugin";
+import { StateTransforms } from "@molstar/viewer/state-transforms";
 import { BuretteGeometry } from "../scripts/molstar-geometry.js";
 
 // The app's actual Compiler, source controller, iframe slots, receiver and model run

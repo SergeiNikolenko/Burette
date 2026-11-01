@@ -3,6 +3,9 @@ import Foundation
 @main
 struct MobilePreviewRuntimeTests {
     static func main() throws {
+        let style = MobileMolecularStyle(rawValue: "blob-surface")
+        precondition(style?.displayName == "Envelope")
+        precondition(style?.systemImage == "capsule")
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }

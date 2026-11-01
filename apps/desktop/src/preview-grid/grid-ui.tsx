@@ -270,7 +270,7 @@ function HydrogenToggle(props: GridControlProps) {
   if (!props.substructureSearch) return null;
   const shown = props.hydrogenDisplay === "all";
   return (
-    <ControlTooltip label={shown ? "Hide hydrogens" : "Show all hydrogens"}>
+    <ControlTooltip label={shown ? (props.cardRenderer === "xyzrender" ? "Show essential hydrogens" : "Hide hydrogens") : "Show all hydrogens"}>
     <Button variant="ghost" size="sm"
       id="grid-hydrogens"
       className="ab-btn"

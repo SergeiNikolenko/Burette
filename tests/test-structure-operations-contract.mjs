@@ -320,6 +320,7 @@ try {
   document.body.innerHTML = '<button id="buret-scene-tree-toggle"></button><div id="buret-viewport-rail"></div><div id="buret-scene-tree" class="hidden"><div data-buret-scene-tree-body></div></div>';
   let nodes = [{ label: 'Line' }], rowBuilds = 0, selectionUpdates = 0;
   const renderContext = {
+    window: treeWindow,
     document, activeMolstarViewer: () => ({}), sceneTreeNodes: () => nodes,
     reconcileSceneTreeExpansion() {}, updateSelectionBar: () => selectionUpdates++,
     updateSceneTreeExpandButton() {}, updateViewportCornerLayout() {},

@@ -806,6 +806,30 @@ mod tests {
     }
 
     #[test]
+    fn chemical_json_preserves_its_external_rendering_plan() {
+        let format = format_for_extension("cjson").expect("Chemical JSON should be supported");
+        assert_eq!(
+            format,
+            FormatInfo {
+                molstar_format: "cjson".to_string(),
+                is_binary: false,
+                external_only: true,
+                can_open_in_vesta: false,
+            }
+        );
+        for requested in ["auto", "molstar", "xyzrender-external"] {
+            let plan = preview_plan_for_extension("cjson", requested).unwrap();
+            assert_eq!(plan.strategy, PreviewStrategy::External);
+            assert_eq!(plan.renderer, "xyzrender-external");
+            assert_eq!(plan.primary.unwrap().format, "cjson");
+            assert!(plan.converter.is_none());
+            assert!(plan.fallbacks.is_empty());
+            assert!(!plan.capabilities.can_switch_renderer);
+        }
+        assert!(format_for_extension("json").is_err());
+    }
+
+    #[test]
     fn allows_explicit_xyzrender_for_sdf_files() {
         let sdf = format_for_extension("sdf").expect("sdf should be supported");
         assert_eq!(resolve_renderer(&sdf, "auto"), "molstar");
@@ -1237,14 +1261,14 @@ mod tests {
         assert_eq!(graphml.renderer, "fep-graphml");
         assert!(graphml.primary.is_none());
 
-        let edge = preview_plan_for_extension("edge", "auto")
-            .expect("FEP edge-list plan should resolve");
+        let edge =
+            preview_plan_for_extension("edge", "auto").expect("FEP edge-list plan should resolve");
         assert_eq!(edge.strategy, PreviewStrategy::Custom);
         assert_eq!(edge.renderer, "fep-graphml");
         assert!(edge.primary.is_none());
 
-        let ph4 = preview_plan_for_extension("ph4", "auto")
-            .expect("pharmacophore plan should resolve");
+        let ph4 =
+            preview_plan_for_extension("ph4", "auto").expect("pharmacophore plan should resolve");
         assert_eq!(ph4.strategy, PreviewStrategy::Convert);
         assert_eq!(ph4.renderer, "molstar");
         assert_eq!(

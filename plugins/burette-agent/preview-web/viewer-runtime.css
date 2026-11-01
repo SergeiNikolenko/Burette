@@ -1423,19 +1423,17 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
   transform: translateX(10px);
   pointer-events: none;
 }
-#buret-toolbar.collapsed .buret-grip,
-#buret-toolbar.buret-suppressed-by-molstar-panel .buret-grip {
+body #buret-toolbar.collapsed .buret-grip,
+body #buret-toolbar.buret-suppressed-by-molstar-panel .buret-grip {
   width: 36px;
   min-width: 36px;
   height: 36px;
   min-height: 36px;
-  border-radius: 12px;
+  border-radius: 50%;
   cursor: pointer;
   background: var(--buret-toolbar-background);
   border: 1px solid var(--buret-toolbar-border);
-  box-shadow:
-    0 8px 22px rgba(0, 0, 0, 0.22),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 8%);
   /* Rolled up, the grip is the only control left on the canvas — the muting that
      keeps it out of the way beside the open toolbar would wash the whole island. */
   opacity: 1;
@@ -4456,7 +4454,7 @@ body.buret-sequence-open:not(.burette-mobile-host) .msp-plugin .msp-layout-regio
 }
 /* A collapsed sequence panel leaves its handle on the viewport's top edge; the
    hairline would read as a toolbar rule, so it shows only while dragging. */
-.buret-sequence-layout .resizable-handle[aria-valuenow="0"]:not(:hover, :active)::after { opacity: 0; }
+body:not(.buret-sequence-open) .buret-sequence-layout .resizable-handle:not(:hover, :active)::after { opacity: 0; }
 .buret-sequence-layout .resizable-handle-grip {
   position: absolute;
   top: 50%;
@@ -5205,30 +5203,75 @@ body:has(#buret-toolbar[data-active-renderer="xyzrender-external"]) #buret-scene
 /* Native Codex widget: the host's file header floats over a band this viewer
    keeps free at its top edge, so the scene tree toggle and the toolbar share
    one row with it. The host sets the attribute and the toolbar's right inset
-   (apps/desktop/src/hooks/use-workspace-header-band.ts). */
-html[data-burette-header-band] #app { top: var(--burette-header-band-height, 50px); bottom: 0; height: auto; }
+   (apps/desktop/src/hooks/use-workspace-header-band.ts). Every control here is
+   a Codex viewer capsule like the header's own: 32px, 8px from the edges, on
+   the viewer control surface (apps/desktop/src/components/workspace-file-header.css).
+   The Codex tokens come from styleControls in applyViewerThemeTokens. */
+html[data-burette-header-band] #app { top: var(--burette-header-band-height, 48px); bottom: 0; height: auto; }
 /* Mol*'s expanded layout is fixed to the window rather than to #app. */
-html[data-burette-header-band] .msp-plugin-content.msp-layout-expanded { top: var(--burette-header-band-height, 50px) !important; }
-html[data-burette-header-band] .buret-viewport-corner { top: 8px !important; left: var(--burette-header-band-corner-left, 10px) !important; }
-html[data-burette-header-band] .buret-corner-toggle { width: 34px; height: 34px; }
+html[data-burette-header-band] .msp-plugin-content.msp-layout-expanded { top: var(--burette-header-band-height, 48px) !important; }
+/* The sequence resize layer overlays the window, so its handle follows the
+   viewer below the band. */
+html[data-burette-header-band] .buret-sequence-layout { top: var(--burette-header-band-height, 48px); }
+html[data-burette-header-band] .buret-viewport-corner { top: 8px !important; left: var(--burette-header-band-corner-left, 8px) !important; }
+html[data-burette-header-band] body :is(#buret-toolbar, #buret-scene-tree-toggle, #buret-viewport-rail, #buret-selection-bar) {
+  box-sizing: border-box; border: 0; border-radius: var(--radius-full); color: var(--color-text);
+  background: var(--color-surface-elevated); box-shadow: var(--shadow-viewer-surface);
+  font: var(--text-sm)/20px var(--font-sans);
+  -webkit-backdrop-filter: blur(var(--blur-xl)); backdrop-filter: blur(var(--blur-xl));
+}
+html[data-burette-header-band] body.buret-theme-dark :is(#buret-toolbar, #buret-scene-tree-toggle, #buret-viewport-rail, #buret-selection-bar) {
+  background: var(--color-surface-elevated-secondary);
+  box-shadow: 0 0 0 var(--border-width-hairline) var(--color-border), var(--shadow-xl-spread);
+}
+html[data-burette-header-band] body #buret-scene-tree-toggle { width: 32px; height: 32px; }
+html[data-burette-header-band] body #buret-scene-tree-toggle:hover {
+  background-image: linear-gradient(var(--color-background-primary-ghost-hover) 0 0);
+}
+/* The capsule shadow above replaces the toggle's own box-shadow focus ring. */
+html[data-burette-header-band] body #buret-scene-tree-toggle:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 0; }
+/* Codex marks a pressed viewer control with a blue-tinted surface; on dark
+   themes its text is chart blue lifted toward white by the theme contrast. */
+html[data-burette-header-band] body #buret-scene-tree-toggle[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--color-surface) 90%, var(--color-chart-blue)); color: var(--color-text-info);
+}
+/* The toolbar's content box clips anything outside its buttons, so focus rings
+   sit inside them, as on Codex's inset-ring chips. */
+html[data-burette-header-band] body :is(#buret-toolbar, #buret-viewport-rail, #buret-selection-bar) .atlas-button {
+  border-radius: var(--radius-full); --button-ring-offset: -2px;
+  --button-text-color: var(--color-text); --button-text-color-hover: var(--color-text);
+}
+html[data-burette-header-band] body :is(#buret-toolbar, #buret-viewport-rail) .atlas-button[data-selected] {
+  --button-background-color: color-mix(in srgb, var(--color-surface) 90%, var(--color-chart-blue));
+  --button-text-color-hover: var(--color-text-info);
+}
+html[data-burette-header-band] body.buret-theme-dark :is(#buret-toolbar, #buret-viewport-rail) .atlas-button[data-selected] {
+  --button-text-color-hover: color-mix(in srgb, var(--color-chart-blue), var(--white) calc(19.5% + var(--codex-base-contrast) * 0.325% + max(0, var(--codex-base-contrast) - 60) * 0.325%));
+}
+html[data-burette-header-band] body.buret-theme-dark #buret-scene-tree-toggle[aria-expanded="true"] {
+  color: color-mix(in srgb, var(--color-chart-blue), var(--white) calc(19.5% + var(--codex-base-contrast) * 0.325% + max(0, var(--codex-base-contrast) - 60) * 0.325%));
+}
+html[data-burette-header-band] body #buret-viewport-rail .atlas-button[data-buret-viewport-action="clear-selection"] {
+  --button-text-color: var(--color-text-danger); --button-text-color-hover: var(--color-text-danger);
+}
 html[data-burette-header-band] #buret-toolbar {
-  top: var(--burette-header-band-toolbar-top, 8px) !important; left: auto !important; right: var(--burette-header-band-right, 12px) !important;
-  height: 34px; box-sizing: border-box; padding: 2px;
-  max-width: var(--burette-header-band-width, calc(100vw - 24px)) !important;
+  top: var(--burette-header-band-toolbar-top, 8px) !important; left: auto !important; right: var(--burette-header-band-right, 8px) !important;
+  height: 32px; padding: 2px; gap: 0;
+  max-width: var(--burette-header-band-width, calc(100vw - 16px)) !important;
 }
 html[data-burette-header-band] #buret-toolbar .buret-toolbar-content {
-  min-width: 0; max-width: 100% !important;
-}
-/* Match the shared file header, including text buttons inside the viewer frame. */
-html[data-burette-header-band] #buret-toolbar .buret-button:not(.atlas-button) {
-  font: 400 14px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  min-width: 0; max-width: 100% !important; gap: 0;
 }
 html[data-burette-header-band] #buret-toolbar :is([data-buret-toggle="left"], [data-buret-toggle="right"], [data-drag-handle]) { display: none !important; }
-/* The rail normally hangs under the toolbar; here it keeps the right edge. */
-html[data-burette-header-band] #buret-viewport-rail { left: auto !important; right: 10px !important; top: calc(var(--burette-header-band-height, 50px) + 8px + var(--buret-viewport-top-inset, 0px)) !important; }
-/* Dark header pills are filled a step above the strip, without borders. */
-html[data-burette-header-band] body.buret-theme-dark :is(#buret-toolbar, .buret-corner-toggle) {
-  background: color-mix(in srgb, #fff 11%, #111); border-color: transparent;
+/* The rail normally hangs under the toolbar; here it keeps the right edge
+   below the header row, and the selection bar stands beside it. */
+html[data-burette-header-band] #buret-viewport-rail {
+  left: auto !important; right: 8px !important; top: calc(var(--burette-header-band-height, 48px) + var(--buret-viewport-top-inset, 0px)) !important;
+  width: 32px; padding: 2px; gap: 0;
+}
+html[data-burette-header-band] #buret-selection-bar {
+  top: calc(var(--burette-header-band-height, 48px) + var(--buret-viewport-top-inset, 0px)); left: auto; right: 46px;
+  width: max-content; max-width: calc(100vw - 54px); height: 32px; padding: 2px; gap: 2px;
 }
 
 /* Shown while a batch scene edit holds the canvas on its previous frame. Mirrors
@@ -5803,3 +5846,19 @@ html.buret-chrome-settled #buret-viewport-rail:not(.buret-dragging) {
 }
 .buret-scrub-field.buret-scrub-editing .buret-scrub-value { visibility: hidden; }
 .buret-scrub-field.buret-scrubbing .buret-scrub-box > input { background: var(--buret-menu-input-focus-background); }
+
+/* Volume tools share the scene panel's controls and theme tokens. */
+.buret-volume-segmentation { border-top: 1px solid var(--buret-molstar-border); padding-block: 4px; }
+.buret-volume-segmentation summary { cursor: pointer; pointer-events: auto; color: var(--buret-molstar-text); }
+.buret-volume-segmentation .buret-tree-menu-field { justify-content: space-between; }
+.buret-volume-segmentation .buret-tree-menu-text { width: 100px; }
+.buret-volume-actions { display: flex; flex-wrap: wrap; gap: 4px; padding: 3px 8px; }
+.buret-volume-count { display: block; padding: 4px 8px; font-size: 11px; }
+.buret-volume-polygon { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 10; cursor: crosshair; touch-action: none; }
+body.burette-opaque-background .msp-plugin canvas.buret-volume-polygon { background: transparent !important; }
+
+.buret-volume-confirm { padding: 4px 8px; }
+.buret-volume-confirm p { margin: 0 0 4px; font-size: 11px; }
+.buret-volume-confirm .buret-button + .buret-button { margin-left: 4px; }
+.buret-volume-count { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.buret-volume-polygon:focus-visible { outline: 2px solid var(--buret-molstar-text); outline-offset: -2px; }

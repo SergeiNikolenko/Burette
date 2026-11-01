@@ -5,9 +5,9 @@ import React from "react";
 import { buildPeptideGeometry } from "../apps/desktop/src/lib/molecular-workbench/peptide-geometry";
 import { peptideMmcif } from "../apps/desktop/src/lib/molecular-workbench/peptide-mmcif";
 const require = createRequire(import.meta.url);
-const { CIF } = require("molstar/lib/commonjs/mol-io/reader/cif.js");
-const { trajectoryFromMmCIF } = require("molstar/lib/commonjs/mol-model-formats/structure/mmcif.js");
-const { Structure } = require("molstar/lib/commonjs/mol-model/structure.js");
+const { CIF } = require("@molstar/io/reader/cif");
+const { trajectoryFromMmCIF } = require("@molstar/model/formats/structure/mmcif");
+const { Structure } = require("@molstar/model/model/structure");
 
 test("preview format changes replace the frame and keep the exact CIF bytes in both themes", () => {
   const source = readFileSync("apps/desktop/src/components/grid-molecule-3d.tsx", "utf8").replace(/^import .*;\n/gm, "")

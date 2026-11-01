@@ -1,18 +1,18 @@
-import { OrderedSet } from 'molstar/lib/mol-data/int.js';
-import { SIFTSMapping } from 'molstar/lib/mol-model-props/sequence/sifts-mapping.js';
+import { OrderedSet } from '@molstar/core/data/int';
+import { SIFTSMapping } from '@molstar/model/props/sequence/sifts-mapping';
 import {
   QueryContext,
   StructureElement,
   StructureProperties,
   StructureSelection,
-} from 'molstar/lib/mol-model/structure.js';
+} from '@molstar/model/model/structure';
 import {
   alignAndSuperpose,
   superpose,
-} from 'molstar/lib/mol-model/structure/structure/util/superposition.js';
-import { alignAndSuperposeWithSIFTSMapping } from 'molstar/lib/mol-model/structure/structure/util/superposition-sifts-mapping.js';
-import { tmAlign } from 'molstar/lib/mol-model/structure/structure/util/tm-align.js';
-import { StructureSelectionQueries } from 'molstar/lib/mol-plugin-state/helpers/structure-selection-query.js';
+} from '@molstar/model/model/structure/structure/util/superposition';
+import { alignAndSuperposeWithSIFTSMapping } from '@molstar/model/model/structure/structure/util/superposition-sifts-mapping';
+import { tmAlign } from '@molstar/model/model/structure/structure/util/tm-align';
+import { StructureSelectionQueries } from '@molstar/plugin/state/queries/structure/catalog';
 
 const DEFAULT_TM_ALIGN_MAX_DP_CELLS = 1_000_000;
 

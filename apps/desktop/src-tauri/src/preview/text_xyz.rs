@@ -2709,6 +2709,11 @@ fn element_symbol_from_cif(value: &str) -> Option<String> {
     is_element_symbol(&symbol).then_some(symbol)
 }
 
+pub(crate) fn is_xyz_coordinate_line(line: &str) -> bool {
+    parse_element_coordinate_line(line)
+        .is_some_and(|atom| atom.x.is_finite() && atom.y.is_finite() && atom.z.is_finite())
+}
+
 fn parse_element_coordinate_line(line: &str) -> Option<Atom> {
     let parts = fields(line);
     let symbol = normalize_element_symbol(parts.first()?);

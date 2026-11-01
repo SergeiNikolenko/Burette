@@ -22,7 +22,7 @@ test("ordinary scientific import without built-in spectra exposes Add MCD throug
   expect(saved.text).toBe(f.text); expect(await saved.companions[0].file.text()).toBe(await oneBlock().text());
   expect(await readBrowserSourceCheckpoint(f.doc.path)).toBeNull(); expect(f.source.sessionForDocument(f.doc)).toBeNull();
   Object.assign(browser, { setImmediate: globalThis.setImmediate, clearImmediate: globalThis.clearImmediate });
-  const { PluginContext } = await import("molstar/lib/mol-plugin/context.js"), { DefaultPluginSpec } = await import("molstar/lib/mol-plugin/spec.js");
+  const { PluginContext } = await import("@molstar/plugin"), { DefaultPluginSpec } = await import("@molstar/plugin/default-spec");
   const { science: native } = await import("./science-session-fixture"), { prepareSceneScienceExport } = await import("../apps/desktop/src/lib/science-session/export"), { decodeScienceSession } = await import("../apps/desktop/src/lib/science-session/codec");
   const plugin = new PluginContext(DefaultPluginSpec());
   try {

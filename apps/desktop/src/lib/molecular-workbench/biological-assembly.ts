@@ -1,8 +1,8 @@
-import { parseCifText } from "molstar/lib/mol-io/reader/cif/text/parser.js";
-import { parsePDB } from "molstar/lib/mol-io/reader/pdb/parser.js";
-import { pdbToMmCif } from "molstar/lib/mol-model-formats/structure/pdb/to-cif.js";
-import type { CifCategory, CifFrame } from "molstar/lib/mol-io/reader/cif/data-model.js";
-import { CifWriter } from "molstar/lib/mol-io/writer/cif.js";
+import { parseCifText } from "@molstar/io/reader/cif/text/parser";
+import { parsePDB } from "@molstar/io/reader/pdb/parser";
+import { pdbToMmCif } from "@molstar/model/formats/structure/pdb/to-cif";
+import type { CifBlock, CifCategory, CifFrame } from "@molstar/io/reader/cif/data-model";
+import { CifWriter } from "@molstar/io/writer/cif";
 
 import { assemblyChainKey, writeAssemblyConnections } from "./assembly-connections";
 
@@ -70,7 +70,7 @@ async function readAssemblySource(text: string, format: AssemblyFormat) {
   } else if (format === "cif") {
     const parsed = await parseCifText(text).run();
     if (parsed.isError) throw new Error(`Invalid mmCIF: ${parsed.message}`);
-    const blocks = parsed.result.blocks.filter(block => block.categories.atom_site?.getField("Cartn_x"));
+    const blocks = parsed.result.blocks.filter((block: CifBlock) => block.categories.atom_site?.getField("Cartn_x"));
     if (blocks.length !== 1) throw new Error("Choose a file with one macromolecular coordinate block.");
     frame = blocks[0];
   } else throw new Error("Assembly input must be PDB or text mmCIF.");

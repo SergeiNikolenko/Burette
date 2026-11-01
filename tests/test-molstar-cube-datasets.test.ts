@@ -5,19 +5,19 @@ import { Window } from "happy-dom";
 import { parseScientificFile } from "../apps/desktop/src/lib/molecular-workbench/quantum";
 import { molstarCubeUnitsPlugin } from "../scripts/molstar-cube-units.mjs";
 import { molstarCubeDatasetsPlugin, patchMolstarCubeDatasets } from "../scripts/molstar-cube-datasets.mjs";
-import { volumeFromCube as volumeFromUpstream } from "molstar/lib/commonjs/mol-model-formats/volume/cube.js";
+import { volumeFromCube as volumeFromUpstream } from "@molstar/model/formats/volume/cube";
 
 const browser = new Window();
 Object.assign(browser, { setImmediate, clearImmediate });
 Object.assign(globalThis, { window: browser, document: browser.document });
 plugin(molstarCubeUnitsPlugin);
 plugin(molstarCubeDatasetsPlugin);
-const { parseCube } = await import("molstar/lib/mol-io/reader/cube/parser.js");
-const { volumeFromCube } = await import("molstar/lib/mol-model-formats/volume/cube.js");
-const { trajectoryFromCube } = await import("molstar/lib/mol-model-formats/structure/cube.js");
-const { PluginContext } = await import("molstar/lib/mol-plugin/context.js");
-const { DefaultPluginSpec } = await import("molstar/lib/mol-plugin/spec.js");
-const { StateTransforms } = await import("molstar/lib/mol-plugin-state/transforms.js");
+const { parseCube } = await import("@molstar/io/reader/cube/parser");
+const { volumeFromCube } = await import("@molstar/model/formats/volume/cube");
+const { trajectoryFromCube } = await import("@molstar/model/formats/structure/cube");
+const { PluginContext } = await import("@molstar/plugin");
+const { DefaultPluginSpec } = await import("@molstar/plugin/default-spec");
+const { StateTransforms } = await import("@molstar/viewer/state-transforms");
 
 const nval = ["Three fields", "Known interleaved samples", "1 1.25 -2.5 3.75 3",
   "-2 0.5 0.125 0", "-1 0 0.75 -0.125", "-1 0.25 0 1.5", "8 8 2 3 4",

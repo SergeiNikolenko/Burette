@@ -8,9 +8,9 @@ import { preparePolymerRequest, runPolymerTask } from "../apps/desktop/src/lib/w
 import { sdfFromGraph } from "../apps/desktop/src/lib/workbench/formats";
 import fixture from "./fixtures/polymer/propylene-reference.json";
 const require = createRequire(import.meta.url);
-const { parseMol } = require("molstar/lib/commonjs/mol-io/reader/mol/parser.js");
-const { trajectoryFromMol } = require("molstar/lib/commonjs/mol-model-formats/structure/mol.js");
-const { Structure } = require("molstar/lib/commonjs/mol-model/structure.js");
+const { parseMol } = require("@molstar/io/reader/mol/parser");
+const { trajectoryFromMol } = require("@molstar/model/formats/structure/mol");
+const { Structure } = require("@molstar/model/model/structure");
 async function native(text: string) {
   const parsed = await parseMol(text).run(); if (parsed.isError) throw new Error(parsed.message);
   return Structure.ofModel((await trajectoryFromMol(parsed.result).run()).representative);

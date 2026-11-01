@@ -398,6 +398,8 @@ export function useAppGridConformerMessages({
             text,
             ...conformerGenerationPreferences(preferences),
             mode: "single" as const,
+            variant: conformerVariant,
+            mmffVariant,
             source3d: null,
           };
           const conformer = await generateBrowserDev3DConformer(request);

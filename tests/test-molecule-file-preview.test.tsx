@@ -10,9 +10,9 @@ import { parseMolecule } from "../apps/desktop/src/lib/molecular-workbench/molec
 import { buildPolymer } from "../apps/desktop/src/lib/molecular-workbench/polymer";
 import { sdfFromGraph } from "../apps/desktop/src/lib/workbench/formats";
 const require = createRequire(import.meta.url);
-const { parseSdf } = require("molstar/lib/commonjs/mol-io/reader/sdf/parser.js");
-const { trajectoryFromMol } = require("molstar/lib/commonjs/mol-model-formats/structure/mol.js");
-const { Structure } = require("molstar/lib/commonjs/mol-model/structure.js");
+const { parseSdf } = require("@molstar/io/reader/sdf/parser");
+const { trajectoryFromMol } = require("@molstar/model/formats/structure/mol");
+const { Structure } = require("@molstar/model/model/structure");
 const browser = new Window({ url: "http://localhost/", settings: { disableCSSFileLoading: true, disableJavaScriptFileLoading: true, disableIframePageLoading: true } });
 const originals = new Map<string, PropertyDescriptor | undefined>();
 for (const [key, value] of Object.entries({ window: browser, document: browser.document, HTMLElement: browser.HTMLElement, HTMLIFrameElement: browser.HTMLIFrameElement, IS_REACT_ACT_ENVIRONMENT: true })) {

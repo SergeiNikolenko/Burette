@@ -5,10 +5,10 @@ import { plugin as bunPlugin } from "bun";
 import { transformSync } from "@babel/core";
 import { Window } from "happy-dom";
 import React, { act } from "react";
-import { DefaultPluginSpec } from "molstar/lib/mol-plugin/spec.js";
-import { PluginContext } from "molstar/lib/mol-plugin/context.js";
-import { StateTransforms } from "molstar/lib/mol-plugin-state/transforms.js";
-import { StructureElement } from "molstar/lib/mol-model/structure.js";
+import { DefaultPluginSpec } from "@molstar/plugin/default-spec";
+import { PluginContext } from "@molstar/plugin";
+import { StateTransforms } from "@molstar/viewer/state-transforms";
+import { StructureElement } from "@molstar/model/model/structure";
 import { BuretteTopologyScene } from "../scripts/molstar-topology-scene.js";
 import { BuretteGeometry } from "../scripts/molstar-geometry.js";
 

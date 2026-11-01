@@ -1,0 +1,10 @@
+{
+  "chemicalJson": 1,
+  "name": "Water",
+  "atoms": {
+    "elements": { "number": [8, 1, 1] },
+    "coords": { "3d": [0, 0, 0, 0.9572, 0, 0, -0.239, 0.927, 0] },
+    "colors": [220, 40, 40, 240, 240, 240, 240, 240, 240]
+  },
+  "bonds": { "connections": { "index": [0, 1, 0, 2] }, "order": [1, 1] }
+}

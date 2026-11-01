@@ -1,5 +1,4 @@
 use std::{
-    collections::BTreeMap,
     fs::{self, File},
     io::Read,
     path::Path,
@@ -116,8 +115,16 @@ impl VerifiedEngineCatalog {
 #[serde(rename_all = "camelCase")]
 struct VendorLock {
     schema_version: u32,
-    packages: BTreeMap<String, VendorPackage>,
+    packages: ComputeVendorPackages,
     assets: Vec<VendorAsset>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ComputeVendorPackages {
+    // Decode only the package this consumer verifies. Other runtimes may be
+    // pinned from source archives instead of npm and use different metadata.
+    #[serde(rename = "rdkit-compute")]
+    rdkit_compute: Option<VendorPackage>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -166,7 +173,8 @@ fn verify_rdkit(viewer_root: &Path) -> Result<EngineIdentity, String> {
     }
     let package = lock
         .packages
-        .get(RDKIT_COMPUTE_PACKAGE)
+        .rdkit_compute
+        .as_ref()
         .ok_or_else(|| "The embedded vendor asset lock does not pin RDKit".to_string())?;
     if package.package_name != RDKIT_PACKAGE || package.version != RDKIT_BASELINE_VERSION {
         return Err(format!(
@@ -360,6 +368,19 @@ fn validate_sha256(label: &str, value: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn requires_integrity_for_the_rdkit_compute_package() {
+        let mut lock: serde_json::Value =
+            serde_json::from_slice(VENDOR_ASSETS_LOCK).expect("parse embedded lock");
+        lock["packages"][RDKIT_COMPUTE_PACKAGE]
+            .as_object_mut()
+            .expect("RDKit package metadata")
+            .remove("integrity");
+        let error = serde_json::from_value::<VendorLock>(lock)
+            .expect_err("RDKit package integrity must remain required");
+        assert!(error.to_string().contains("missing field `integrity`"));
+    }
 
     #[test]
     fn verifies_the_checked_in_rdkit_runtime_and_builds_cpu_identity() {

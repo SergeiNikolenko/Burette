@@ -19,6 +19,17 @@ test("new and remounted frames receive both palettes and preserve explicit backg
   }
 });
 
+test("widget frames take the Codex host theme and surface instead of the system appearance", () => {
+  const scope = globalThis as { window?: unknown };
+  scope.window = { BuretteMcpWorkspace: { theme: "dark", backgrounds: { dark: "#181818" } } };
+  try {
+    expect(viewerAppearanceMessage({ ...preferences, theme: "auto" }).value).toBe("dark");
+    expect(previewBackgroundStyle({ ...preferences, theme: "auto" })).toBe("html{color-scheme:dark;background:#181818}body{background:inherit}");
+  } finally {
+    delete scope.window;
+  }
+});
+
 test("mounted Molstar receives appearance in place, including old theme-only messages", () => {
   const source = readFileSync(new URL("../PreviewExtension/Web/viewer.js", import.meta.url), "utf8");
   const handler = source.slice(source.indexOf("    if (body.type === 'setViewerTheme')"), source.indexOf("    // Settings own the default Mol* appearance."));

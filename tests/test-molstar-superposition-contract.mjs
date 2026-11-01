@@ -39,8 +39,8 @@ assert.doesNotMatch(facade, /sequenceIdentity/);
 
 assert.match(vendor, /Bun\.build\(\{/);
 assert.match(entry, /globalThis\.molstar = Object\.assign\(\s*\{\},\s*globalThis\.molstar \|\| \{\}/);
-assert.match(vendor, /loader: \{ '\.jpg': 'dataurl' \}/);
-assert.match(vendor, /entrypoints: \[viewerEntry\]/);
+assert.match(vendor, /'\.jpg': 'dataurl'/);
+assert.match(vendor, /bundle\('scripts\/molstar-viewer-entry\.js'/);
 assert.match(bundle, /BuretteSuperposition/);
 assert.match(bundle, /defaultTmAlignMaxDpCells/);
 

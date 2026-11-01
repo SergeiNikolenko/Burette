@@ -83,6 +83,13 @@ export function registerBrowserDevNativeComputeRoute(server: ViteDevServer, repo
       sendJson(res, 405, { error: "Method not allowed" });
       return;
     }
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    const abortOnClose = () => {
+      if (!res.writableEnded) controller.abort();
+    };
+    req.once("aborted", abort);
+    res.once("close", abortOnClose);
     try {
       const body = await readJsonBody(req);
       const originalInput = JSON.stringify(body);
@@ -99,10 +106,15 @@ export function registerBrowserDevNativeComputeRoute(server: ViteDevServer, repo
         }
       }
       const input = JSON.stringify(body);
-      const response = await runNativeCompute(repoRoot, input);
+      const response = await runNativeCompute(repoRoot, input, controller.signal);
       sendJson(res, 200, cacheChemicalSpaceKnn(response, cacheKey), "no-cache");
     } catch (error) {
-      sendJsonError(res, 500, error);
+      if (!controller.signal.aborted && !res.destroyed && !res.writableEnded) {
+        sendJsonError(res, 500, error);
+      }
+    } finally {
+      req.off("aborted", abort);
+      res.off("close", abortOnClose);
     }
   });
 }
@@ -200,7 +212,7 @@ function nativeComputeRuntimeRoot(repoRoot: string) {
   return candidates.find((candidate) => existsSync(join(candidate, "current.json"))) ?? null;
 }
 
-async function runNativeCompute(repoRoot: string, input: string) {
+async function runNativeCompute(repoRoot: string, input: string, signal: AbortSignal) {
   const runtimeRoot = nativeComputeRuntimeRoot(repoRoot);
   if (!runtimeRoot) {
     throw new Error("Native Metal dev runtime is missing. Build the desktop compute runtime first.");
@@ -217,6 +229,8 @@ async function runNativeCompute(repoRoot: string, input: string) {
       input,
       repoRoot,
       REQUEST_TIMEOUT_MS,
+      {},
+      signal,
     );
     const payload = JSON.parse(output) as unknown;
     if (!payload || typeof payload !== "object") {
@@ -241,6 +255,8 @@ async function runNativeCompute(repoRoot: string, input: string) {
     input,
     repoRoot,
     REQUEST_TIMEOUT_MS,
+    {},
+    signal,
   );
   const payload = JSON.parse(output) as unknown;
   if (!payload || typeof payload !== "object") {
@@ -276,8 +292,9 @@ function runWithStdin(
     let forceKillTimeout: ReturnType<typeof setTimeout> | null = null;
     let settled = false;
     const terminate = (error: Error) => {
-      if (terminationError || child.exitCode !== null) return;
+      if (terminationError) return;
       terminationError = error;
+      if (child.exitCode !== null) return;
       child.kill("SIGTERM");
       forceKillTimeout = setTimeout(() => {
         if (child.exitCode === null) child.kill("SIGKILL");
@@ -333,6 +350,11 @@ function runWithStdin(
         return;
       }
       resolvePromise(stdout);
+    });
+    child.stdin.on("error", (error) => {
+      // Cancellation can close the pipe while a bounded payload is still
+      // buffered. Preserve that reason; otherwise surface the write failure.
+      if (!settled) terminate(error);
     });
     child.stdin.end(input);
   });

@@ -2,20 +2,20 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { Window } from 'happy-dom';
-import { PluginContext } from 'molstar/lib/mol-plugin/context.js';
-import { PluginStateSnapshotManager as Snapshots } from 'molstar/lib/mol-plugin-state/manager/snapshots.js';
-import { Canvas3DParams, Canvas3DContext } from 'molstar/lib/mol-canvas3d/canvas3d.js';
-import { Camera } from 'molstar/lib/mol-canvas3d/camera.js';
-import { ParamDefinition as PD } from 'molstar/lib/mol-util/param-definition.js';
-import { Asset } from 'molstar/lib/mol-util/assets.js';
-import { File_ } from 'molstar/lib/mol-util/nodejs-shims.js';
-import { unzip } from 'molstar/lib/mol-util/zip/zip.js';
-import { SyncRuntimeContext } from 'molstar/lib/mol-task/execution/synchronous.js';
+import { PluginContext } from '@molstar/plugin';
+import { PluginStateSnapshotManager as Snapshots } from '@molstar/plugin/state/manager/snapshots';
+import { Canvas3DParams, Canvas3DContext } from '@molstar/graphics/canvas3d/canvas3d';
+import { Camera } from '@molstar/graphics/canvas3d/camera';
+import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
+import { Asset } from '@molstar/core/util/assets';
+import { File_ } from '@molstar/core/util/nodejs-shims';
+import { unzip } from '@molstar/core/util/zip/zip';
+import { SyncRuntimeContext } from '@molstar/core/task/execution/synchronous';
 import { BuretteTopologyEnvironment as Environment } from '../scripts/molstar-topology-environment.js';
 const dom = new Window(), previous = Object.getOwnPropertyDescriptor(globalThis, 'document'), plugins = [], calls = [];
 Object.defineProperty(globalThis, 'document', { configurable: true, value: dom.document });
 Object.defineProperty(globalThis, 'window', { configurable: true, value: dom });
-const { createViewerSpec } = await import('molstar/lib/apps/viewer/plugin-spec.js');
+const { createViewerSpec } = await import('@molstar/viewer/plugin-spec');
 const defaults = PD.getDefaultValues(Canvas3DParams), contextDefaults = PD.getDefaultValues(Canvas3DContext.Params);
 function merge(target, changes) {
   for (const [key, value] of Object.entries(changes)) {
@@ -64,10 +64,10 @@ try {
   assert.deepEqual(read(reopened), expected);
   const lease = BuretteGeometry.binding(reopened).lease, restored = BuretteTopologyScene.capture(reopened, lease);
   assert.equal(BuretteTopologyScene.validate(reopened, restored.receipt, lease), true, 'native Viewer MOLX opens and remains editable');
-  const { IsMVSModelProvider } = await import('molstar/lib/extensions/mvs/components/is-mvs-model-prop.js');
-  const { MVSAnnotationsProvider } = await import('molstar/lib/extensions/mvs/components/annotation-prop.js');
-  const { CustomTooltipsProvider } = await import('molstar/lib/extensions/mvs/components/custom-tooltips-prop.js');
-  const { MVSAnnotationTooltipsProvider } = await import('molstar/lib/extensions/mvs/components/annotation-tooltips-prop.js');
+  const { IsMVSModelProvider } = await import('@molstar/mvs/components/is-mvs-model-prop');
+  const { MVSAnnotationsProvider } = await import('@molstar/mvs/components/annotation-prop');
+  const { CustomTooltipsProvider } = await import('@molstar/mvs/components/custom-tooltips-prop');
+  const { MVSAnnotationTooltipsProvider } = await import('@molstar/mvs/components/annotation-tooltips-prop');
   const reopenedRoot = reopened.managers.structure.hierarchy.current.structures[0].cell.obj.data;
   for (const [provider, owner] of [[IsMVSModelProvider, reopenedRoot.models[0]], [MVSAnnotationsProvider, reopenedRoot.models[0]], [CustomTooltipsProvider, reopenedRoot], [MVSAnnotationTooltipsProvider, reopenedRoot]]) {
     const box = provider.get(owner); assert.equal(box.version, 0); assert.equal(box.value, undefined);

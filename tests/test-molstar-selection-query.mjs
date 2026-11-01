@@ -12,9 +12,9 @@ import "./test-composition-scene-menu.mjs";
 const { molstarQueryForSelector } = await import("../apps/desktop/src/lib/molstar-selection-query.ts");
 const chainAQuery = molstarQueryForSelector({ kind: "polymer", auth_asym_id: "A" });
 const require = createRequire(import.meta.url);
-const { parse: transpile } = require("molstar/lib/commonjs/mol-script/transpile.js");
-const { parseMolScript } = require("molstar/lib/commonjs/mol-script/language/parser.js");
-const { transpileMolScript } = require("molstar/lib/commonjs/mol-script/script/mol-script/symbols.js");
+const { parse: transpile } = require("@molstar/query-language/transpile");
+const { parseMolScript } = require("@molstar/query-language/language/parser");
+const { transpileMolScript } = require("@molstar/query-language/script/mol-script/symbols");
 const compiled = query => transpileMolScript(parseMolScript(query)[0]);
 const assertSameAsPymol = (selector, pymol) =>
   assert.deepEqual(compiled(molstarQueryForSelector(selector)), transpile("pymol", pymol), pymol);
@@ -75,11 +75,11 @@ assert.ok(molstarQueryForSelector({ kind: "ion", label_comp_id: "ZN", auth_asym_
 // line 1 column 20, got '..._A1'"), so these rows used to lose their scene. Every
 // valid identifier below - underscore, space, both quote characters, a bare
 // number, and a prefix of another chain - must select exactly its own atom.
-const molModel = require("molstar/lib/commonjs/mol-model/structure.js");
+const molModel = require("@molstar/model/model/structure");
 const { StructureSelection, QueryContext } = molModel;
-const { parseCifText } = require("molstar/lib/commonjs/mol-io/reader/cif/text/parser.js");
-const { trajectoryFromMmCIF } = require("molstar/lib/commonjs/mol-model-formats/structure/mmcif.js");
-const { compile } = require("molstar/lib/commonjs/mol-script/runtime/query/compiler.js");
+const { parseCifText } = require("@molstar/io/reader/cif/text/parser");
+const { trajectoryFromMmCIF } = require("@molstar/model/formats/structure/mmcif");
+const { compile } = require("@molstar/model/script/runtime/query/compiler");
 const chains = [["A1", "Z_A1"], ["A2", "Z_A2"], ["B", '"A B"'], ["C", `"A'1"`], ["D", `'B"2'`], ["E", "7"], ["F", "Z"]];
 const cif = await parseCifText([
   "data_chains", "loop_",
@@ -136,7 +136,7 @@ const viewerFunction = name => {
   assert.ok(match, `missing ${name}`);
   return match[0];
 };
-const { StateTransforms } = require("molstar/lib/commonjs/mol-plugin-state/transforms.js");
+const { StateTransforms } = require("@molstar/viewer/state-transforms");
 const { molstarQueryComponentType, compositionQueryLoci } = new Function("window", "molstarStructureRuntime", "compositionQueryCache", `
   ${viewerFunction("molstarQueryComponentType")}
   ${viewerFunction("compositionQueryLoci")}
@@ -204,9 +204,9 @@ console.log("composition style menu routing ok");
 // Exercise the viewer snapshot against real Mol* loci: hidden objects remain,
 // removed subsets disappear, overlapping components do not double the counts,
 // and an empty scene still sends the snapshot needed to clear the inspector.
-const { Structure, StructureElement } = await import("molstar/lib/commonjs/mol-model/structure.js");
-const { parsePDB } = await import("molstar/lib/commonjs/mol-io/reader/pdb/parser.js");
-const { trajectoryFromPDB } = await import("molstar/lib/commonjs/mol-model-formats/structure/pdb.js");
+const { Structure, StructureElement } = await import("@molstar/model/model/structure");
+const { parsePDB } = await import("@molstar/io/reader/pdb/parser");
+const { trajectoryFromPDB } = await import("@molstar/model/formats/structure/pdb");
 const parsed = await parsePDB(await read("samples/mini.pdb")).run();
 assert.equal(parsed.isError, false);
 const trajectory = await trajectoryFromPDB(parsed.result).run();

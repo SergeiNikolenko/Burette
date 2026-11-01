@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { BuretteSelection } from '../scripts/molstar-selection-facade.js';
-import { OrderedSet } from 'molstar/lib/mol-data/int.js';
-import { StructureElement } from 'molstar/lib/mol-model/structure.js';
+import { OrderedSet } from '@molstar/core/data/int';
+import { StructureElement } from '@molstar/model/model/structure';
 
 function emitter() {
   const listeners = new Set();

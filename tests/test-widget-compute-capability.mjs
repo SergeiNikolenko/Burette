@@ -19,15 +19,15 @@ const context = {
 };
 runInNewContext(source.slice(start, end), context);
 
-for (const format of ['sdf', 'mol']) for (const capability of [{ hostedMcpWidgetBootstrap: true }, { visualizationOnly: true }]) {
-  // Both the public widget and the local native adapter set this bootstrap flag.
+for (const format of ['sdf', 'mol']) for (const capability of [{ hostedMcpWidgetBootstrap: true }, { visualizationOnly: true }, { quickLookViewer: true }]) {
+  // Public/local widgets, Finder Quick Look and mobile previews have no compute host.
   context.activeConfig = { format, renderer: 'molstar', ...capability };
   assert.equal(context.canGenerate3DConformerFromConfig(context.activeConfig, 'molstar'), false);
   for (const operation of ['generate3d', 'generateEnsemble', 'optimizeGeometry', 'semiempiricalRm1', 'alignPoses']) {
     context.requestMolecularCompute(operation);
   }
-  assert.deepEqual(posted, [], 'unavailable widget actions must not reach the host');
-  assert.deepEqual(statuses, [], 'widgets must not announce a computation they cannot start');
+  assert.deepEqual(posted, [], 'unavailable preview actions must not reach the host');
+  assert.deepEqual(statuses, [], 'previews must not announce a computation they cannot start');
 }
 
 for (const hostedMcpWidgetBootstrap of [undefined, false]) {

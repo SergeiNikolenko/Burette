@@ -5,9 +5,9 @@ import { buildPolymer } from "../apps/desktop/src/lib/molecular-workbench/polyme
 import { sdfFromGraph } from "../apps/desktop/src/lib/workbench/formats";
 import type { MolecularAtom } from "../apps/desktop/src/lib/molecular-workbench/types";
 const require = createRequire(import.meta.url);
-const { parseMol } = require("molstar/lib/commonjs/mol-io/reader/mol/parser.js");
-const { trajectoryFromMol } = require("molstar/lib/commonjs/mol-model-formats/structure/mol.js");
-const { Structure } = require("molstar/lib/commonjs/mol-model/structure.js");
+const { parseMol } = require("@molstar/io/reader/mol/parser");
+const { trajectoryFromMol } = require("@molstar/model/formats/structure/mol");
+const { Structure } = require("@molstar/model/model/structure");
 let rdkit: MainModule;
 beforeAll(async () => { rdkit = await initRDKitModule(); });
 const cc = 1.54, ch = 1.09;

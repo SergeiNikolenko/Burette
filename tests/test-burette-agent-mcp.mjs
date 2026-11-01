@@ -11,6 +11,7 @@ import { EventEmitter } from "node:events";
 import { syncBuiltinESMExports } from "node:module";
 import { PassThrough } from "node:stream";
 import { mock } from "node:test";
+import { getOfficialMvsAuthoringReference } from "../scripts/mvs-schema-validator.mjs";
 
 const repoRoot = process.cwd();
 const sourcePluginRoot = path.resolve("plugins/burette-agent");
@@ -264,7 +265,9 @@ async function testMcpRegistrations(tempRoot) {
   assert.match(component.structuredContent.result.markdown, /Parent: `structure`/);
   const primitive = await server.tools.get("burette.get_mvs_authoring_reference").handler({ schema: "scene", nodeKind: "primitive" });
   assert.equal(primitive.structuredContent.ok, true);
-  assert.equal(primitive.structuredContent.result.markdown.length > 30000, true);
+  // Schema documentation can become shorter upstream. Assert the complete
+  // version-matched contract survives the CLI/MCP transport without truncation.
+  assert.deepEqual(primitive.structuredContent.result, getOfficialMvsAuthoringReference({ schema: "scene", nodeKind: "primitive" }));
   assert.equal(primitive.structuredContent.bounds, undefined);
 }
 

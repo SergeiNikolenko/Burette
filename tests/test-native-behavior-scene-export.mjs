@@ -1,20 +1,20 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { Window } from 'happy-dom';
-import { PluginContext } from 'molstar/lib/mol-plugin/context.js';
-import { Camera } from 'molstar/lib/mol-canvas3d/camera.js';
-import { Canvas3DParams, Canvas3DContext } from 'molstar/lib/mol-canvas3d/canvas3d.js';
-import { ParamDefinition as PD } from 'molstar/lib/mol-util/param-definition.js';
-import { File_ } from 'molstar/lib/mol-util/nodejs-shims.js';
-import { unzip } from 'molstar/lib/mol-util/zip/zip.js';
-import { SyncRuntimeContext } from 'molstar/lib/mol-task/execution/synchronous.js';
+import { PluginContext } from '@molstar/plugin';
+import { Camera } from '@molstar/graphics/canvas3d/camera';
+import { Canvas3DParams, Canvas3DContext } from '@molstar/graphics/canvas3d/canvas3d';
+import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
+import { File_ } from '@molstar/core/util/nodejs-shims';
+import { unzip } from '@molstar/core/util/zip/zip';
+import { SyncRuntimeContext } from '@molstar/core/task/execution/synchronous';
 import { BuretteTopologyScene } from '../scripts/molstar-topology-scene.js';
 import { BuretteGeometry } from '../scripts/molstar-geometry.js';
 
 const dom = new Window(), originalDocument = Object.getOwnPropertyDescriptor(globalThis, 'document'), originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window'), plugins = [];
 Object.defineProperty(globalThis, 'document', { configurable: true, value: dom.document });
 Object.defineProperty(globalThis, 'window', { configurable: true, value: dom });
-const { createViewerSpec } = await import('molstar/lib/apps/viewer/plugin-spec.js');
+const { createViewerSpec } = await import('@molstar/viewer/plugin-spec');
 const code = readFileSync(process.argv[2] || new URL('../PreviewExtension/Web/viewer.js', import.meta.url), 'utf8');
 const extract = name => code.match(new RegExp(`\\n  (?:async )?function ${name}\\([\\s\\S]*?\\n  \\}`, 'u'))[0];
 const options = new Function('activeConfig', 'transparentBackground', 'canvasBackgroundCSS', 'isQuickLookHost', 'sdfGridPathForConfig', `${extract('createViewerOptions')} return createViewerOptions();`)

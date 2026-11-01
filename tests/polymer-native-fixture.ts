@@ -11,9 +11,9 @@ export async function attachNativePolymerSource(frame: HTMLIFrameElement, docume
   let pending = 0;
   const enqueue = (callback: () => void) => { pending++; setTimeout(() => { try { callback(); } finally { pending--; } }, 0); };
   Object.assign(hostWindow, { setImmediate, clearImmediate });
-  const { PluginContext } = await import("molstar/lib/mol-plugin/context.js");
-  const { StructureElement } = await import("molstar/lib/mol-model/structure.js");
-  const { OrderedSet } = await import("molstar/lib/mol-data/int.js");
+  const { PluginContext } = await import("@molstar/plugin");
+  const { StructureElement } = await import("@molstar/model/model/structure");
+  const { OrderedSet } = await import("@molstar/core/data/int");
   const plugin = new PluginContext({ actions: [], behaviors: [] }); await plugin.init();
   const load = async () => {
     const raw = await plugin.builders.data.rawData({ data: text }), trajectory = await plugin.builders.structure.parseTrajectory(raw, "sdf");

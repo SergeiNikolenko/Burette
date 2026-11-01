@@ -8,11 +8,11 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { Window } from 'happy-dom';
-import { PluginContext } from 'molstar/lib/mol-plugin/context.js';
-import { DefaultPluginSpec } from 'molstar/lib/mol-plugin/spec.js';
-import { applyStructureInteractivity } from 'molstar/lib/extensions/plugin/interactivity.js';
-import { StructureElement } from 'molstar/lib/mol-model/structure.js';
-import { DefaultCameraFocusOptions } from 'molstar/lib/mol-plugin-state/manager/camera.js';
+import { PluginContext } from '@molstar/plugin';
+import { DefaultPluginSpec } from '@molstar/plugin/default-spec';
+import { applyStructureInteractivity } from '@molstar/plugin-extension/interactivity';
+import { StructureElement } from '@molstar/model/model/structure';
+import { DefaultCameraFocusOptions } from '@molstar/plugin/state/manager/camera';
 
 const dom = new Window(); globalThis.document = dom.document;
 const plugin = new PluginContext(DefaultPluginSpec());

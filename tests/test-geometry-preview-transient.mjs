@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { Window } from 'happy-dom';
-import { PluginContext } from 'molstar/lib/mol-plugin/context.js';
-import { Structure, StructureElement } from 'molstar/lib/mol-model/structure.js';
+import { PluginContext } from '@molstar/plugin';
+import { Structure, StructureElement } from '@molstar/model/model/structure';
 import { BuretteGeometryMeasurement } from '../scripts/molstar-geometry-measurement.js';
-import { setCanvasModule } from 'molstar/lib/mol-geo/geometry/text/font-atlas.js';
+import { setCanvasModule } from '@molstar/graphics/geo/geometry/text/font-atlas';
 
 setCanvasModule({ createCanvas: () => ({ getContext: () => ({
   measureText: () => ({ width: 12 }), clearRect() {}, fillText() {},

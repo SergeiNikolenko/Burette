@@ -3,11 +3,11 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import vm from 'node:vm';
 import { Window } from 'happy-dom';
-import { PluginContext } from 'molstar/lib/mol-plugin/context.js';
-import { DefaultPluginSpec } from 'molstar/lib/mol-plugin/spec.js';
-import { StructureElement } from 'molstar/lib/mol-model/structure.js';
-import { StateTransforms } from 'molstar/lib/mol-plugin-state/transforms.js';
-import { setCanvasModule } from 'molstar/lib/mol-geo/geometry/text/font-atlas.js';
+import { PluginContext } from '@molstar/plugin';
+import { DefaultPluginSpec } from '@molstar/plugin/default-spec';
+import { StructureElement } from '@molstar/model/model/structure';
+import { StateTransforms } from '@molstar/viewer/state-transforms';
+import { setCanvasModule } from '@molstar/graphics/geo/geometry/text/font-atlas';
 import { BuretteGeometry } from '../scripts/molstar-geometry.js';
 
 const browser = new Window(), previous = new Map();

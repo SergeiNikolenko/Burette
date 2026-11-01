@@ -99,7 +99,7 @@ export function OpenInEditorMenu({ state, actions, presentation = "chrome", navi
     ];
   }, [actions, activeFile, filePath, defaultApplicationIconUrl, finderIconUrl, loading, targets, nativeIcons, state.preferences.openInDefaultDestination]);
 
-  if (!activeFile) return navigation ? <header className="workspace-file-header" aria-label="Workspace">{navigation([])}<span className="flex-1" /></header> : null;
+  if (!activeFile) return navigation ? <header className="workspace-file-header" aria-label="Workspace">{navigation([])}</header> : null;
   if (download && presentation !== "file-header") return download;
   if (!filePath && presentation !== "file-header") return null;
 
@@ -113,11 +113,8 @@ export function OpenInEditorMenu({ state, actions, presentation = "chrome", navi
   );
   const label = openDestinationLabel(state.preferences.openInDefaultDestination, preferredTarget);
   if (presentation === "file-header") {
-    const rootPath = state.sidebarProjects.map(project => project.rootPath)
-      .filter((path): path is string => Boolean(path && activeFile.path.startsWith(`${path}/`)))
-      .sort((a, b) => b.length - a.length)[0];
     const renderer = state.activeDocument?.renderer;
-    return <WorkspaceFileHeader navigation={navigation?.(items)} activeFile={activeFile} rootPath={rootPath} fileAction={download}
+    return <WorkspaceFileHeader navigation={navigation?.(items)} activeFile={activeFile} fileAction={download}
       bandDocumentId={renderer === "molstar" || renderer === "xyzrender-external" ? state.activeDocument?.id ?? null : null}
       fileActionsAvailable={Boolean(filePath)}
       rightDockOpen={state.rightDockOpen}

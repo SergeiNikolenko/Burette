@@ -361,6 +361,21 @@
       "quickLook": { "sizeLimitMiB": 100 }
     },
     {
+      "id": "cjson",
+      "contentType": "com.local.burette10.cjson",
+      "extensions": ["cjson"],
+      "mimeTypes": ["chemical/x-cjson"],
+      "conformsTo": ["public.json", "public.plain-text", "public.data"],
+      "description": "Chemical JSON molecular structure file",
+      "viewer": { "molstarFormat": "cjson", "binary": false, "externalOnly": true },
+      "preview": {
+        "strategy": "external",
+        "renderer": "xyzrender-external",
+        "primary": { "role": "external-artifact", "format": "cjson", "binary": false }
+      },
+      "quickLook": { "sizeLimitMiB": 25 }
+    },
+    {
       "id": "xyzrender-input",
       "contentType": "com.local.burette10.xyzrender-input",
       "contentTypeAliases": ["com.adobe.fdf", "com.apple.videoapps.cube", "com.gaussian.cube"],
@@ -542,7 +557,7 @@
   "documentTypes": {
     "name": "Molecular structure files",
     "extensions": [
-      "abi", "arc", "bcif", "ccp4", "cfg", "cif", "cms", "com", "config", "coor", "crdbox", "csv", "cub", "cube", "data", "dcd", "dms", "dump", "dwar", "edge", "edr", "ent", "fasta", "fdef", "fdf", "fhiaims", "gms", "graphml", "gro", "gsd", "h5md", "history",
+      "abi", "arc", "bcif", "ccp4", "cfg", "cif", "cjson", "cms", "com", "config", "coor", "crdbox", "csv", "cub", "cube", "data", "dcd", "dms", "dump", "dwar", "edge", "edr", "ent", "fasta", "fdef", "fdf", "fhiaims", "gms", "graphml", "gro", "gsd", "h5md", "history",
       "in", "inp", "inpcrd", "itp", "lammpstrj", "lammps", "lmp", "log", "mae", "mae.gz", "maegz", "magma", "mcif", "mdcrd", "mdl", "mgf", "mmcif", "mmtf", "mol",
       "json", "mesozip", "mol2", "molj", "molx", "ms", "msp", "mvsj", "mvsx", "mzml", "mzxml", "namdbin", "nc", "ncdf", "ncrst", "nctraj", "netcdf", "nw", "out", "par", "parm", "parm7", "pdb", "pdbqt", "pqr", "pos", "prm", "prmtop", "psf", "psi4", "qcin",
       "map", "mrc", "mtz", "rdf", "restrt", "rst", "rst7", "rtf", "rxn", "sd", "sdf", "smi", "smiles", "state", "str", "top", "tpr", "tng", "trc", "trj", "trr", "trz", "tsv", "txyz", "vasp", "xtc", "xml", "xpdb", "xvg", "xyz", "xyzr", "ph4",
@@ -574,6 +589,7 @@
       "com.local.burette10.mesozip",
       "com.local.burette10.molecular-dynamics",
       "com.local.burette10.schrodinger",
+      "com.local.burette10.cjson",
       "com.local.burette10.xyzrender-input",
       "com.local.burette10.graphml",
       "com.local.burette10.fep-edge-list",
@@ -612,6 +628,7 @@
       "com.schrodinger.sdf",
       "com.mdli.sketchfile",
       "com.local.burette10.xyz",
+      "com.local.burette10.cjson",
       "com.local.burette10.xyzrender-input",
       "net.sourceforge.openbabel.xyz",
       "com.adobe.fdf",

@@ -3,16 +3,16 @@ import { AnnotateToggle } from "./annotation-layer";
 import { useWorkspaceHeaderBand } from "../hooks/use-workspace-header-band";
 import { RadixDropdownMenu } from "./radix-menu";
 import { ShortcutTooltip } from "./shortcut-tooltip";
-import { ChevronDown, ChevronRight, Copy, SidebarRight } from "./ui/app-icons";
+import { FileKindIcon, fileKindForPath } from "./sidebar/file-kind-icon";
+import { ChevronDown, SidebarRight } from "./ui/app-icons";
 import type { ShellActions } from "./types";
 import type { MenuItemSpec } from "./menu-types";
 import "./workspace-file-header.css";
 
-export function WorkspaceFileHeader({ activeFile, rootPath, bandDocumentId = null, rightDockOpen, defaultApplicationIconUrl, items, actions, fileActionsAvailable = true, onOpen, openLabel = "Open with default app", navigation, fileAction }: {
+export function WorkspaceFileHeader({ activeFile, bandDocumentId = null, rightDockOpen, defaultApplicationIconUrl, items, actions, fileActionsAvailable = true, onOpen, openLabel = "Open with default app", navigation, fileAction }: {
   navigation?: ReactNode;
   fileAction?: ReactNode;
   activeFile: { path: string; label: string };
-  rootPath?: string | null;
   /** A viewer document whose own controls share this row. */
   bandDocumentId?: string | null;
   fileActionsAvailable?: boolean;
@@ -23,61 +23,42 @@ export function WorkspaceFileHeader({ activeFile, rootPath, bandDocumentId = nul
   openLabel?: string;
   actions: Pick<ShellActions, "openPathWithDefaultApp" | "copyPath" | "toggleDock">;
 }) {
-  const displayPath = rootPath && activeFile.path.startsWith(`${rootPath}/`)
-    ? `${rootPath.split("/").filter(Boolean).at(-1)}/${activeFile.path.slice(rootPath.length + 1)}`
-    : activeFile.path;
-  const segments = fileActionsAvailable ? displayPath.split("/").filter(Boolean) : [activeFile.label];
+  const name = fileActionsAvailable ? activeFile.path.split("/").filter(Boolean).at(-1) || activeFile.label : activeFile.label;
   const headerRef = useRef<HTMLElement>(null);
   useWorkspaceHeaderBand(headerRef, bandDocumentId);
-  // Laid out like the Codex Browser toolbar: separate rounded pills for the
-  // annotation tool, an address field with the file path, Open and panels.
+  // Laid out like a Codex file viewer: the file and annotation capsules lead,
+  // viewer controls and Open trail, and the panel toggle closes the row.
   return (
     <header ref={headerRef} className="workspace-file-header" aria-label="Current file" data-band={bandDocumentId ? "" : undefined}>
       {navigation ? <div className="workspace-file-navigation">{navigation}</div> : null}
-      <AnnotateToggle className="workspace-file-pill" />
-      <div className="workspace-file-path workspace-file-pill">
-        <div className="workspace-file-breadcrumb" aria-label={fileActionsAvailable ? activeFile.path : activeFile.label} title={fileActionsAvailable ? activeFile.path : "Unsaved structure"}>
-          <span className="workspace-file-ancestors">
-          {segments.slice(0, -1).map((segment, index) => (
-            <span className="workspace-file-parent" key={index}>
-              {index > 0 ? <ChevronRight size={14} aria-hidden /> : null}
-              <span>{segment}</span>
-            </span>
-          ))}
-          </span>
-          <span className="workspace-file-name" aria-current="page">
-            {segments.length > 1 ? <ChevronRight size={14} aria-hidden /> : null}
-            <span>{segments.at(-1) || activeFile.label}</span>
-          </span>
-        </div>
-        {fileActionsAvailable ? <ShortcutTooltip label="Copy file path">
-          <button type="button" className="workspace-file-icon-button" aria-label="Copy file path"
-            onClick={() => void actions.copyPath(activeFile.path, "file")}>
-            <Copy size={16} aria-hidden />
-          </button>
-        </ShortcutTooltip> : <span className="workspace-file-unsaved">Unsaved</span>}
+      <div className="workspace-file-title workspace-file-control" title={fileActionsAvailable ? activeFile.path : undefined}>
+        <FileKindIcon kind={fileKindForPath(activeFile.path)} />
+        <span className="workspace-file-name">{name}</span>
+        {fileActionsAvailable ? null : <span className="workspace-file-unsaved">Unsaved</span>}
       </div>
-      {bandDocumentId ? <div className="workspace-file-band-slot" aria-hidden /> : null}
-      {fileActionsAvailable ? <div className="workspace-file-open workspace-file-pill">
+      <AnnotateToggle className="workspace-file-control" />
+      {bandDocumentId ? <div className="workspace-file-band-slot" aria-hidden /> : <span className="workspace-file-spacer" />}
+      {fileActionsAvailable ? <div className="workspace-file-open workspace-file-control">
         <ShortcutTooltip label={openLabel}>
           <button type="button" className="workspace-file-open-primary" aria-label={openLabel}
             onClick={onOpen ?? (() => void actions.openPathWithDefaultApp(activeFile.path))}>
-            {defaultApplicationIconUrl ? <img src={defaultApplicationIconUrl} alt="" /> : null}
-            Open
+            {defaultApplicationIconUrl ? <img src={defaultApplicationIconUrl} alt="" width={18} height={18} /> : null}
+            <span>Open</span>
           </button>
         </ShortcutTooltip>
         <RadixDropdownMenu align="end" sideOffset={6} contentClassName="open-editor-menu-content workspace-file-menu"
-          items={items} trigger={(
+          items={[...items, { kind: "item", id: "copy-path", text: "Copy path", action: () => void actions.copyPath(activeFile.path, "file") }]}
+          trigger={(
             <ShortcutTooltip label="Open in another application">
               <button type="button" className="workspace-file-open-menu" aria-label="Open in another application">
-                <ChevronDown size={16} aria-hidden />
+                <ChevronDown size={14} aria-hidden />
               </button>
             </ShortcutTooltip>
           )} />
       </div> : null}
       {fileAction}
       <ShortcutTooltip label={rightDockOpen ? "Hide right panel" : "Show right panel"}>
-        <button type="button" className="workspace-file-icon-button workspace-file-pill" aria-label="Toggle right panel" aria-pressed={rightDockOpen}
+        <button type="button" className="chrome-button" aria-label="Toggle right panel" aria-pressed={rightDockOpen}
           onClick={() => actions.toggleDock("right")}>
           <SidebarRight size={18} aria-hidden />
         </button>

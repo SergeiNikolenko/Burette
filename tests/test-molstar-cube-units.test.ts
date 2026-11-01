@@ -3,12 +3,12 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { parseScientificFile } from "../apps/desktop/src/lib/molecular-workbench/quantum";
 import { molstarCubeUnitsPlugin, patchMolstarCubeUnits } from "../scripts/molstar-cube-units.mjs";
-import { parseCube as parseUpstream } from "molstar/lib/commonjs/mol-io/reader/cube/parser.js";
+import { parseCube as parseUpstream } from "@molstar/io/reader/cube/parser";
 
 plugin(molstarCubeUnitsPlugin);
-const { parseCube } = await import("molstar/lib/mol-io/reader/cube/parser.js");
-const { volumeFromCube } = await import("molstar/lib/mol-model-formats/volume/cube.js");
-const { trajectoryFromCube } = await import("molstar/lib/mol-model-formats/structure/cube.js");
+const { parseCube } = await import("@molstar/io/reader/cube/parser");
+const { volumeFromCube } = await import("@molstar/model/formats/volume/cube");
+const { trajectoryFromCube } = await import("@molstar/model/formats/structure/cube");
 
 const angstrom = ["Oblique units fixture", "Known Cartesian coordinates, signed scalar samples",
   "2 1.25 -2.5 3.75", "-2 0.5 0.125 0", "-2 0 0.75 -0.125", "-2 0.25 0 1.5",

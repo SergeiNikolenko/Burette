@@ -1,10 +1,10 @@
+import { readMolstarModule } from '../scripts/molstar-source.mjs';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 import { MolecularSurfaceFieldCache } from '../scripts/molstar-surface-field-cache.js';
 import { patchMolstarSurfaceFieldCache } from '../scripts/molstar-surface-field-cache.mjs';
-import { calcMolecularSurface } from 'molstar/lib/mol-math/geometry/molecular-surface.js';
-import { getBoundary } from 'molstar/lib/mol-math/geometry/boundary.js';
-import { computeMarchingCubesMesh } from 'molstar/lib/mol-geo/util/marching-cubes/algorithm.js';
+import { calcMolecularSurface } from '@molstar/core/math/geometry/molecular-surface';
+import { getBoundary } from '@molstar/core/math/geometry/boundary';
+import { computeMarchingCubesMesh } from '@molstar/graphics/geo/util/marching-cubes/algorithm';
 
 function input() {
   const position = { indices: Int32Array.of(0, 1), x: Float32Array.of(0, 2),
@@ -106,7 +106,7 @@ const mutable = failed.getOrCreate(a, moving, () => new Promise(resolve => { res
 moving.position.x[0] += 1; resolveOld(await compute(moving)); await mutable;
 assert.equal(failed.bytes, 0, 'inputs changed during the task are not cached');
 
-const source = await readFile(new URL('../node_modules/molstar/lib/mol-repr/structure/visual/util/molecular-surface.js', import.meta.url), 'utf8');
+const source = await readMolstarModule('@molstar/graphics/repr/structure/visual/util/molecular-surface');
 const patched = patchMolstarSurfaceFieldCache(source);
 assert.equal(patched.split('buretteSurfaceFields.getOrCreate').length, 2);
 assert.throws(() => patchMolstarSurfaceFieldCache(patched), /layout changed/);

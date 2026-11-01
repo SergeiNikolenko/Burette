@@ -49,6 +49,7 @@ const FILE_KIND_BY_EXTENSION: Record<string, FileKind> = {
   mdl: "molecule",
   mol2: "molecule",
   xyz: "molecule",
+  cjson: "molecule",
   txyz: "molecule",
   arc: "molecule",
   ph4: "molecule",

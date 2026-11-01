@@ -54,6 +54,7 @@
 				<string>com.schrodinger.sdf</string>
 				<string>com.mdli.sketchfile</string>
 				<string>com.local.burette10.xyz</string>
+				<string>com.local.burette10.cjson</string>
 				<string>com.local.burette10.xyzrender-input</string>
 				<string>net.sourceforge.openbabel.xyz</string>
 				<string>com.adobe.fdf</string>

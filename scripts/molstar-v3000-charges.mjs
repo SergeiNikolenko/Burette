@@ -1,5 +1,4 @@
-import { readFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import { molstarPatchPlugin } from './molstar-source.mjs';
 
 // Injected into the version-locked reader, with its own Column/Tokenizer imports.
 // Read logical V30 records: upstream's physical-line loop misreads continued atom
@@ -152,16 +151,14 @@ export function patchMolstarV3000Atoms(source) {
     || !source.slice(last, after).includes('atomIdxA: TokenColumn(atomIdxA)(Column.Schema.float)')) {
     throw new Error('Mol* V3000 atom reader changed; review before vendoring.');
   }
-  return `import { parseFloat as parseV3000Coordinate } from '../common/text/number-parser.js';\n${source.slice(0, first)}${v3000Records.toString()}\n${start}\n    return (${readV3000Atoms.toString()})(tokenizer, atomCount, Column, Tokenizer, parseV3000Coordinate);\n}\nexport function handleBondsV3(tokenizer, bondCount, atoms) {\n    return (${readV3000Bonds.toString()})(tokenizer, bondCount, atoms, Column, Tokenizer);\n}\n${source.slice(after)}`;
+  return `import { parseFloat as parseV3000Coordinate } from "@molstar/core/util/number-parser";\n${source.slice(0, first)}${v3000Records.toString()}\n${start}\n    return (${readV3000Atoms.toString()})(tokenizer, atomCount, Column, Tokenizer, parseV3000Coordinate);\n}\nexport function handleBondsV3(tokenizer, bondCount, atoms) {\n    return (${readV3000Bonds.toString()})(tokenizer, bondCount, atoms, Column, Tokenizer);\n}\n${source.slice(after)}`;
 }
 
 export function patchMolstarV3000Charges(source) {
-  const neutral = `    /* No support for formal charge parsing in V3000 molfiles at the moment,
-    so all charges default to 0.*/
-    const nullFormalCharges = {
-        atomIdx: Column.ofConst(0, atomCount, Column.Schema.int),
-        charge: Column.ofConst(0, atomCount, Column.Schema.int)
-    };
+  const neutral = `  const nullFormalCharges = {
+    atomIdx: Column.ofConst(0, atomCount, Column.Schema.int),
+    charge: Column.ofConst(0, atomCount, Column.Schema.int)
+  };
 `;
   const properties = 'const properties = molIsV3 ? { formalCharges: nullFormalCharges } : handlePropertiesBlock(tokenizer);';
   const bonds = 'handleBondsV3(tokenizer, bondCount)';
@@ -170,14 +167,14 @@ export function patchMolstarV3000Charges(source) {
     .replace(bonds, 'handleBondsV3(tokenizer, bondCount, atoms)');
 }
 
-export const molstarV3000ChargesPlugin = {
-  name: 'molstar-v3000-formal-charges',
-  setup(build) {
-    build.onLoad({ filter: /molstar\/lib\/mol-io\/reader\/sdf\/parser(?:-v3-util)?\.js$/u }, async ({ path }) => {
-      const { version } = JSON.parse(await readFile(resolve(dirname(path), '../../../../package.json'), 'utf8'));
-      if (version !== '5.11.0') throw new Error('Review the Mol* V3000 charge adapter before upgrading from 5.11.0.');
-      const source = await readFile(path, 'utf8');
-      return { contents: path.endsWith('/parser-v3-util.js') ? patchMolstarV3000Atoms(source) : patchMolstarV3000Charges(source), loader: 'js' };
-    });
-  },
-};
+// Atoms and bonds come from the V3 utility module, charges from the SDF reader that calls it.
+export const molstarV3000AtomsPlugin = molstarPatchPlugin(
+  'molstar-v3000-atoms',
+  '@molstar/io/reader/sdf/parser-v3-util',
+  patchMolstarV3000Atoms,
+);
+export const molstarV3000ChargesPlugin = molstarPatchPlugin(
+  'molstar-v3000-formal-charges',
+  '@molstar/io/reader/sdf/parser',
+  patchMolstarV3000Charges,
+);

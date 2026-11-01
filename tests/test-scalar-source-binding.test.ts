@@ -10,8 +10,8 @@ import { scalarSourceIdentity } from '../apps/desktop/src/lib/workbench/scalar-s
 installPlugin(molstarStatePreconditionPlugin);
 const dom = new Window(), documentDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'document');
 Object.defineProperty(globalThis, 'document', { configurable: true, value: dom.document });
-const { PluginContext } = await import('molstar/lib/mol-plugin/context.js');
-const { StateTransforms } = await import('molstar/lib/mol-plugin-state/transforms.js');
+const { PluginContext } = await import('@molstar/plugin');
+const { StateTransforms } = await import('@molstar/viewer/state-transforms');
 afterAll(async () => { await dom.happyDOM.close(); if (documentDescriptor) Object.defineProperty(globalThis, 'document', documentDescriptor); else Reflect.deleteProperty(globalThis, 'document'); });
 const hydrogen = '1\nsource\nH 0 0 0\n';
 const smallCube = 'Cube\noblique\n1 1 2 3\n2 1 .1 0\n2 0 1 .1\n2 .1 0 1\n1 0 0 0 0\n-1 0 1 2 -2 0 2 3\n';

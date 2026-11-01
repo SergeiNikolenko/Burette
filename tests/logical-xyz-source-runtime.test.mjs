@@ -34,10 +34,10 @@ const { restoreScienceSession } = await import('../apps/desktop/src/lib/science-
 const { prepareSceneScienceExport } = await import('../apps/desktop/src/lib/science-session/export.ts');
 const { logicalSourceFor, releaseClosedScienceSessions } = await import('../apps/desktop/src/lib/science-session/state.ts');
 const { releaseClosedImports } = await import('../apps/desktop/src/lib/workbench/scientific-source-state.ts');
-const { PluginContext } = await import('molstar/lib/mol-plugin/context.js');
-const { DefaultPluginSpec } = await import('molstar/lib/mol-plugin/spec.js');
-const { PluginStateObject: SO, PluginStateTransform } = await import('molstar/lib/mol-plugin-state/objects.js');
-const { Task } = await import('molstar/lib/mol-task/index.js');
+const { PluginContext } = await import('@molstar/plugin');
+const { DefaultPluginSpec } = await import('@molstar/plugin/default-spec');
+const { PluginStateObject: SO, PluginStateTransform } = await import('@molstar/plugin/state/objects');
+const { Task } = await import('@molstar/core/task');
 const { BuretteGeometry } = await import('../scripts/molstar-geometry.js');
 const scope = { molstar: { BuretteGeometry }, BuretteAgent: { run() { throw new Error('Unexpected generic agent route'); } } };
 for (const name of ['scene-file-actions', 'geometry-preview']) vm.runInNewContext(readFileSync(new URL(`../PreviewExtension/Web/${name}.js`, import.meta.url), 'utf8'), { window: scope, crypto, TextEncoder, TextDecoder, Uint8Array, Float64Array, File });

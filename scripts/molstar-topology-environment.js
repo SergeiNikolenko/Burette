@@ -1,15 +1,15 @@
-import { ExtensionMap } from 'molstar/lib/apps/viewer/extensions.js';
-import { FocusLoci, DefaultFocusLociBindings } from 'molstar/lib/mol-plugin/behavior/dynamic/camera.js';
-import { PluginBehavior } from 'molstar/lib/mol-plugin/behavior.js';
-import { StateTransformer } from 'molstar/lib/mol-state/index.js';
-import { DefaultPluginSpec } from 'molstar/lib/mol-plugin/spec.js';
-import { AnimateModelIndex } from 'molstar/lib/mol-plugin-state/animation/built-in/model-index.js';
-import { Canvas3DParams, Canvas3DContext } from 'molstar/lib/mol-canvas3d/canvas3d.js';
-import { ParamDefinition as PD } from 'molstar/lib/mol-util/param-definition.js';
-import { deepEqual } from 'molstar/lib/mol-util/index.js';
-import { InteractivityManager } from 'molstar/lib/mol-plugin-state/manager/interactivity.js';
-import { StructureComponentManager } from 'molstar/lib/mol-plugin-state/manager/structure/component.js';
-import { PluginStateSnapshotManager } from 'molstar/lib/mol-plugin-state/manager/snapshots.js';
+import { ExtensionMap } from '@molstar/viewer/extensions';
+import { FocusLoci, DefaultFocusLociBindings } from '@molstar/plugin/behavior/dynamic/camera';
+import { PluginBehavior } from '@molstar/plugin/behavior/behavior';
+import { StateTransformer } from '@molstar/core/state';
+import { DefaultPluginSpec } from '@molstar/plugin/default-spec';
+import { AnimateModelIndex } from '@molstar/plugin/state/animation/built-in/model-index';
+import { Canvas3DParams, Canvas3DContext } from '@molstar/graphics/canvas3d/canvas3d';
+import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
+import { deepEqual } from '@molstar/core/util';
+import { InteractivityManager } from '@molstar/plugin/state/manager/interactivity';
+import { StructureComponentManager } from '@molstar/plugin/state/manager/structure/component';
+import { PluginStateSnapshotManager } from '@molstar/plugin/state/manager/snapshots';
 
 const nativeAnimations = DefaultPluginSpec().animations, animationRevisions = new WeakMap();
 const managerRevisions = new WeakMap(), behaviorRevisions = new WeakMap();

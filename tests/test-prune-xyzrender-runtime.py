@@ -45,6 +45,10 @@ class PruneRuntimeTests(unittest.TestCase):
             with self.subTest(framework=framework), tempfile.TemporaryDirectory() as tmp:
                 runtime, python, site, stdlib = self.stage(Path(tmp), framework)
                 self.distribution(site, "xyzrender", ("ipykernel", "cclib", "networkx", 'formatreader; extra == "all"'))
+                provenance = site / 'xyzrender-1.0.dist-info/direct_url.json'
+                provenance.write_text('{"url":"file:///private/build/renderer.whl"}')
+                with (site / 'xyzrender-1.0.dist-info/RECORD').open('a') as stream:
+                    stream.write('xyzrender-1.0.dist-info/direct_url.json,,\n')
                 self.distribution(site, "rdkit", ("numpy",), (
                     "rdkit_data/forcefield.h",
                     "rdkit_data/tests/template.c",
@@ -75,6 +79,7 @@ class PruneRuntimeTests(unittest.TestCase):
                 expected = {"xyzrender", "rdkit", "formatreader", "shared", "decoder", "cclib", "networkx", "decorator", "scipy", "numpy"}
                 self.assertEqual({p.stem for p in site.glob("*.py")}, expected)
                 self.assertFalse((site / "datamol").exists())
+                self.assertFalse(provenance.exists())
                 self.assertTrue((site / "rdkit_data/forcefield.h").exists())
                 self.assertTrue((site / "rdkit_data/tests/template.c").exists())
                 self.assertTrue((site / "rdkit/Contrib/SA_Score/fpscores.pkl.gz").exists())

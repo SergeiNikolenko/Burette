@@ -18,6 +18,7 @@ export function styleViewerMainToolbar(toolbar: HTMLElement, tokens: Parameters<
       button.prepend(inner);
     }
     for (const [name, value] of Object.entries(toolbarButtonAttributes)) button.setAttribute(name, value);
+    if (button.hasAttribute("data-drag-handle")) button.setAttribute("data-atlas-size", "sm");
     button.classList.add("buret-main-toolbar-button");
     button.toggleAttribute("data-uniform", button.matches('[data-buret-toggle="left"], [data-buret-toggle="right"], [data-drag-handle], .buret-mode-button, [data-buret-action="theme"], [data-buret-action="molstar-lasso"], [data-buret-action="xyzrender-tune"]'));
     styleViewerButton(button, tokens, mode);

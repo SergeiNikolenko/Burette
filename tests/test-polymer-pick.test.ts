@@ -15,9 +15,9 @@ for (const [key, value] of Object.entries({ window: dom, document: dom.document,
   previous.set(key, Object.getOwnPropertyDescriptor(globalThis, key)); Object.defineProperty(globalThis, key, { configurable: true, value });
 }
 Object.assign(dom, { setImmediate, clearImmediate });
-const { PluginContext } = await import("molstar/lib/mol-plugin/context.js");
-const { StructureElement } = await import("molstar/lib/mol-model/structure.js");
-const { OrderedSet } = await import("molstar/lib/mol-data/int.js");
+const { PluginContext } = await import("@molstar/plugin");
+const { StructureElement } = await import("@molstar/model/model/structure");
+const { OrderedSet } = await import("@molstar/core/data/int");
 afterAll(async () => { await dom.happyDOM.close(); for (const [key, descriptor] of previous) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key); } });
 const text = sdfFromGraph(data.atoms, data.bonds, "Propylene");
 function deferred() { let resolve!: () => void; const promise = new Promise<void>(done => resolve = done); return { promise, resolve }; }

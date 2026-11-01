@@ -1,4 +1,4 @@
-import { PluginStateSnapshotManager } from "../node_modules/molstar/lib/mol-plugin-state/manager/snapshots.js";
+import { PluginStateSnapshotManager } from "@molstar/plugin/state/manager/snapshots";
 import type { ViewerDocument } from "../apps/desktop/src/types";
 import { expect, mock, test } from "bun:test";
 import { unzipSync } from "../apps/desktop/node_modules/fflate/esm/browser.js";

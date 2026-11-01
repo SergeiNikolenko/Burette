@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { parseCifText } from "molstar/lib/mol-io/reader/cif/text/parser.js";
+import { parseCifText } from "@molstar/io/reader/cif/text/parser";
 import { listBiologicalAssemblies, materializeBiologicalAssembly } from "../apps/desktop/src/lib/molecular-workbench/biological-assembly";
 
 const operators = `loop_

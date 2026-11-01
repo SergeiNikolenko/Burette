@@ -108,7 +108,7 @@ test("ordinary clean companion admission survives close/reopen and startup reloa
   expect(first.original).toBe(original);expect(await first.companions![0].file.text()).toBe(await sidecar().text());
   const persisted=(await readBrowserScientificAttachment(view.doc.path))!;expect(persisted.text).toBe(view.text);
   Object.assign(browser,{setImmediate:globalThis.setImmediate,clearImmediate:globalThis.clearImmediate});
-  const {PluginContext}=await import('molstar/lib/mol-plugin/context.js');const {DefaultPluginSpec}=await import('molstar/lib/mol-plugin/spec.js');
+  const {PluginContext}=await import('@molstar/plugin');const {DefaultPluginSpec}=await import('@molstar/plugin/default-spec');
   const {science:nativeScience}=await import('./science-session-fixture');const {prepareSceneScienceExport}=await import('../apps/desktop/src/lib/science-session/export');
   const {decodeScienceSession}=await import('../apps/desktop/src/lib/science-session/codec');const plugin=new PluginContext(DefaultPluginSpec());
   try{await plugin.init();const raw=await plugin.builders.data.rawData({data:view.text});const trajectory=await plugin.builders.structure.parseTrajectory(raw,'xyz');

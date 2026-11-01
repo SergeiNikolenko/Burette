@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { BuretteTrajectoryPlayback } from '../scripts/molstar-trajectory-playback.js';
-import { PluginAnimationManager } from 'molstar/lib/mol-plugin-state/manager/animation.js';
-import { PluginStateObject } from 'molstar/lib/mol-plugin-state/objects.js';
+import { PluginAnimationManager } from '@molstar/plugin/state/manager/animation';
+import { PluginStateObject } from '@molstar/plugin/state/objects';
 
 // The real Mol* manager + Burette animation; only the expensive state update is
 // a deferred command. This specifically covers stop() while applyFrame awaits.

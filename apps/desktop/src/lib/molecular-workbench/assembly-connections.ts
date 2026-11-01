@@ -1,5 +1,5 @@
-import type { CifCategory } from "molstar/lib/mol-io/reader/cif/data-model.js";
-import { CifWriter } from "molstar/lib/mol-io/writer/cif.js";
+import type { CifCategory } from "@molstar/io/reader/cif/data-model";
+import { CifWriter } from "@molstar/io/writer/cif";
 
 type Chain = { id: string; author: string };
 export const assemblyChainKey = (label: string, entity: string, transform: string) => JSON.stringify([label, entity, transform]);

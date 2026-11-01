@@ -1,7 +1,7 @@
 import { readUnitCell } from '../apps/desktop/src/lib/molecular-workbench/crystal.ts';
-import { ModelSymmetry } from 'molstar/lib/mol-model-formats/structure/property/symmetry.js';
-import { Spacegroup } from 'molstar/lib/mol-math/geometry.js';
-import { Mat4, Vec3 } from 'molstar/lib/mol-math/linear-algebra.js';
+import { ModelSymmetry } from '@molstar/model/formats/structure/property/symmetry';
+import { Spacegroup } from '@molstar/core/math/geometry';
+import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
 
 /** Optional native cell metadata must not tighten ordinary XYZ atom admission. */
 export function attachXyzLattice(model, comment) {

@@ -1,20 +1,20 @@
 import { createHash } from 'node:crypto';
 import { checkTopologyEnvelope } from './fixtures/topology-envelope-host.mjs';
-import { unzip } from 'molstar/lib/mol-util/zip/zip.js';
-import { SyncRuntimeContext } from 'molstar/lib/mol-task/execution/synchronous.js';
+import { unzip } from '@molstar/core/util/zip/zip';
+import { SyncRuntimeContext } from '@molstar/core/task/execution/synchronous';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { Window } from 'happy-dom';
-import { PluginContext } from 'molstar/lib/mol-plugin/context.js';
-import { Canvas3DParams, Canvas3DContext } from 'molstar/lib/mol-canvas3d/canvas3d.js';
-import { Camera } from 'molstar/lib/mol-canvas3d/camera.js';
-import { ParamDefinition as PD } from 'molstar/lib/mol-util/param-definition.js';
-import { File_ } from 'molstar/lib/mol-util/nodejs-shims.js';
+import { PluginContext } from '@molstar/plugin';
+import { Canvas3DParams, Canvas3DContext } from '@molstar/graphics/canvas3d/canvas3d';
+import { Camera } from '@molstar/graphics/canvas3d/camera';
+import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
+import { File_ } from '@molstar/core/util/nodejs-shims';
 import { BuretteTopologyEnvironment as Environment } from '../scripts/molstar-topology-environment.js';
 const dom = new Window(), previous = Object.getOwnPropertyDescriptor(globalThis, 'document'), plugins = [], calls = [];
 Object.defineProperty(globalThis, 'document', { configurable: true, value: dom.document });
 Object.defineProperty(globalThis, 'window', { configurable: true, value: dom });
-const { createViewerSpec } = await import('molstar/lib/apps/viewer/plugin-spec.js');
+const { createViewerSpec } = await import('@molstar/viewer/plugin-spec');
 const defaults = PD.getDefaultValues(Canvas3DParams), contextDefaults = PD.getDefaultValues(Canvas3DContext.Params);
 function merge(target, changes) {
   for (const [key, value] of Object.entries(changes)) {

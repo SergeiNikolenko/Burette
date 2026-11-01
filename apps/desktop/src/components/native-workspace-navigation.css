@@ -1,0 +1,8 @@
+/* The plugin sidebar reuses the Codex sidebar rows from styles.css. Its top row
+   matches the 48px file header so the sidebar toggle never moves. */
+.native-workspace-sidebar-top {flex:none; display:flex; align-items:center; height:48px; padding:0 8px}
+/* Sidebar and content share the host's surface, so a hairline parts them. */
+.sidebar.native-workspace-sidebar::after {background:var(--workspace-edge-border)}
+.native-workspace-section-title {margin:0 0 0 4px; padding:2px 4px; color:var(--color-text-tertiary); font-size:var(--text-base); line-height:21px; font-weight:500}
+/* Codex lists chats as text-only rows below the icon rows. */
+.sidebar-tool-row.native-workspace-page {padding-left:8px}

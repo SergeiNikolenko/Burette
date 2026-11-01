@@ -416,7 +416,7 @@ fn language_for_extension(extension: &str) -> &'static str {
         "sh" | "bash" | "zsh" => "shell",
         "js" | "jsx" | "mjs" | "cjs" => "javascript",
         "ts" | "tsx" => "typescript",
-        "json" => "json",
+        "json" | "cjson" => "json",
         "yaml" | "yml" => "yaml",
         "toml" => "toml",
         "py" => "python",

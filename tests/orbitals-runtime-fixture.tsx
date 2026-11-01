@@ -25,8 +25,8 @@ afterAll(()=>{console.log('Orbitals standard compiler cache:',JSON.stringify(com
 export const holdQuantum=()=>{holdNext=true;releaseHeld=null;};
 export const releaseQuantum=()=>{const callback=releaseHeld;releaseHeld=null;callback?.();};
 export const quantumHeld=()=>Boolean(releaseHeld);
-const {PluginContext}=await import('molstar/lib/mol-plugin/context.js');
-const {StateTransforms}=await import('molstar/lib/mol-plugin-state/transforms.js');
+const {PluginContext}=await import('@molstar/plugin');
+const {StateTransforms}=await import('@molstar/viewer/state-transforms');
 const {useAppMolstarActionSenders}=await import('../apps/desktop/src/hooks/use-app-molstar-action-senders');
 const {activeViewerIframeForDocument}=await import('../apps/desktop/src/lib/viewer-bridge');
 const {OrbitalsDockContent}=await import('../apps/desktop/src/components/workbench/orbitals-dock-content');

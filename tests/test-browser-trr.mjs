@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { Window } from 'happy-dom';
-import { PluginContext } from 'molstar/lib/mol-plugin/context.js';
+import { PluginContext } from '@molstar/plugin';
 import { BuretteIndexedTrajectory } from '../scripts/molstar-indexed-trajectory.js';
 
 const fixture = name => new Uint8Array(readFileSync(new URL(`./fixtures/trajectory/${name}`, import.meta.url)));

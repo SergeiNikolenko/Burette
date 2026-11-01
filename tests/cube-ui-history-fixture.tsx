@@ -18,16 +18,16 @@ for (const key of ["window", "document", "navigator", "DocumentFragment", "HTMLF
 }
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 installPlugin(molstarCubeUnitsPlugin); installPlugin(molstarCubeDatasetsPlugin); installPlugin(molstarCubeUiHistoryPlugin);
-const { PluginUIContext } = await import("molstar/lib/mol-plugin-ui/context.js");
-const { DefaultPluginUISpec } = await import("molstar/lib/mol-plugin-ui/spec.js");
-const { PluginReactContext } = await import("molstar/lib/mol-plugin-ui/base.js");
-const { LeftPanelControls } = await import("molstar/lib/mol-plugin-ui/left-panel.js");
-const { OpenFiles } = await import("molstar/lib/mol-plugin-state/actions/file.js");
-const { TransformUpdaterControl, UpdateTransformControl } = await import("molstar/lib/mol-plugin-ui/state/update-transform.js");
-const { StateTransforms } = await import("molstar/lib/mol-plugin-state/transforms.js");
-const { CubeProvider } = await import("molstar/lib/mol-plugin-state/formats/volume.js");
-const { Asset } = await import("molstar/lib/mol-util/assets.js");
-const { File_ } = await import("molstar/lib/mol-util/nodejs-shims.js");
+const { PluginUIContext } = await import("@molstar/plugin-ui/context");
+const { DefaultPluginUISpec } = await import("@molstar/plugin-ui/default-spec");
+const { PluginReactContext } = await import("@molstar/plugin-ui/base");
+const { LeftPanelControls } = await import("@molstar/plugin-ui/left-panel");
+const { OpenFiles } = await import("@molstar/plugin/state/actions/file");
+const { TransformUpdaterControl, UpdateTransformControl } = await import("@molstar/plugin-ui/state/update-transform");
+const { StateTransforms } = await import("@molstar/viewer/state-transforms");
+const { CubeProvider } = await import("@molstar/plugin/state/formats/volume/cube");
+const { Asset } = await import("@molstar/core/util/assets");
+const { File_ } = await import("@molstar/core/util/nodejs-shims");
 const { createRoot } = await import("react-dom/client");
 const { mountViewerSelectionActions } = await import("../apps/desktop/src/preview-controls/viewer-selection-controls");
 const { mountViewerSelectionToolbar } = await import("../apps/desktop/src/preview-controls/viewer-selection-toolbar");

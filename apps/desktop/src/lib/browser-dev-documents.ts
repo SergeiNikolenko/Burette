@@ -12,7 +12,7 @@ import { parseDataWarrior } from "./datawarrior";
 import { nativePreviewHtml } from "./native-mcp-workspace";
 import { isHostedMcpWidget } from "./hosted-mcp-widget";
 import { validatePdbMolecule } from "./pdb-chemistry";
-import { previewBackgroundStyle, readPreviewThemeTokens } from "./theme";
+import { previewBackgroundStyle, readPreviewThemeTokens, viewerThemePreference } from "./theme";
 import type { DockingDocumentRequest, DockingSceneMode, OpenDocumentsResult, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XyzrenderControls } from "../types";
 import previewFormatRegistry from "../../../../config/preview-formats.json";
 
@@ -190,6 +190,8 @@ type BrowserDevConformerGenerationRequest = {
   text: string;
   operation?: "generate" | "optimize";
   mode?: "single" | "ensemble";
+  variant?: import("./compute-conformer").ConformerVariant;
+  mmffVariant?: import("./compute-conformer").MmffVariant;
   candidateCount?: number;
   rmsdCutoff?: number;
   source3d?: {
@@ -236,7 +238,7 @@ export function browserDevRuntimeNeedsRefresh(document: ViewerDocument) {
 
 function resolvePreviewVisuals(preferences: ViewerPreferences): ResolvedPreviewVisuals {
   return {
-    theme: preferences.theme,
+    theme: viewerThemePreference(preferences.theme),
     canvasBackground: preferences.canvasBackground,
     transparentBackground: preferences.canvasBackground === "transparent",
   };
@@ -717,6 +719,8 @@ export async function generateBrowserDev3DConformer(
   assertConcreteConformerSource(source);
   return runBrowserDevMetalConformer(source, {
     mode: request.mode,
+    variant: request.variant,
+    mmffVariant: request.mmffVariant,
     optimize: request.operation === "optimize",
   });
 }

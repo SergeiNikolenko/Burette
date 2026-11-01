@@ -4,9 +4,9 @@ import { runPeptideTask } from "../apps/desktop/src/lib/workbench/peptide-task";
 import { buildPeptideGeometry } from "../apps/desktop/src/lib/molecular-workbench/peptide-geometry";
 import { peptideMmcif } from "../apps/desktop/src/lib/molecular-workbench/peptide-mmcif";
 const require = createRequire(import.meta.url);
-const { CIF } = require("molstar/lib/commonjs/mol-io/reader/cif.js");
-const { trajectoryFromMmCIF } = require("molstar/lib/commonjs/mol-model-formats/structure/mmcif.js");
-const { Structure } = require("molstar/lib/commonjs/mol-model/structure.js");
+const { CIF } = require("@molstar/io/reader/cif");
+const { trajectoryFromMmCIF } = require("@molstar/model/formats/structure/mmcif");
+const { Structure } = require("@molstar/model/model/structure");
 
 test("real worker normalizes native codes and retains the exact deterministic full-graph CIF", async () => {
   const options = { phi: -87, psi: 143, chirality: "D" as const, chain: "7", nTerminus: "ammonium" as const, cTerminus: "carboxylate" as const };

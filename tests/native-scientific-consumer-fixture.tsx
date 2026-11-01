@@ -126,8 +126,8 @@ mock.module("@tauri-apps/api/core", () => ({
     throw new Error(`Unexpected native IPC: ${command}`);
   },
 }));
-const { PluginContext } = await import("molstar/lib/mol-plugin/context.js"),
-  { DefaultPluginSpec } = await import("molstar/lib/mol-plugin/spec.js");
+const { PluginContext } = await import("@molstar/plugin"),
+  { DefaultPluginSpec } = await import("@molstar/plugin/default-spec");
 const { defaultPreferences } = await import("../apps/desktop/src/stores/settings-store");
 const { useMoleculeStore } = await import("../apps/desktop/src/stores/molecule-store");
 const { useSourceEditingController } = await import("../apps/desktop/src/hooks/use-source-editing");

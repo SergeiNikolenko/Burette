@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { Window } from "happy-dom";
 import { gzipSync, strToU8, zipSync } from "../apps/desktop/node_modules/fflate/esm/browser.js";
 const browser = new Window({ url: "http://localhost/" }); Object.assign(browser, { setImmediate, clearImmediate }); Object.assign(globalThis, { window: browser, document: browser.document, localStorage: browser.localStorage });
-const { PluginContext } = await import("molstar/lib/mol-plugin/context.js"), { DefaultPluginSpec } = await import("molstar/lib/mol-plugin/spec.js");
+const { PluginContext } = await import("@molstar/plugin"), { DefaultPluginSpec } = await import("@molstar/plugin/default-spec");
 const { openBrowserDevDocuments } = await import("../apps/desktop/src/lib/browser-dev-documents");
 const { defaultPreferences } = await import("../apps/desktop/src/stores/settings-store");
 const files = new Map<string, Uint8Array>();

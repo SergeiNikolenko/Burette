@@ -1,5 +1,5 @@
 import { expect, mock, test } from "bun:test";
-import { PluginStateSnapshotManager } from "../node_modules/molstar/lib/mol-plugin-state/manager/snapshots.js";
+import { PluginStateSnapshotManager } from "@molstar/plugin/state/manager/snapshots";
 import { fakeViewer, realXyzViewer, science, bindingOf, waterScience, XYZ } from "./science-session-fixture";
 import { encodeScienceSession } from "../apps/desktop/src/lib/science-session/codec";
 import { beginScienceSessionRestore, logicalSourceFor, releaseClosedScienceSessions } from "../apps/desktop/src/lib/science-session/state";

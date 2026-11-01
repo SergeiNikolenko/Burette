@@ -1,9 +1,9 @@
-import { PluginStateObject as SO, PluginStateTransform } from 'molstar/lib/mol-plugin-state/objects.js';
-import { ParamDefinition as PD } from 'molstar/lib/mol-util/param-definition.js';
-import { UUID } from 'molstar/lib/mol-util/uuid.js';
-import { Model } from 'molstar/lib/mol-model/structure/model/model.js';
-import { Coordinates, Time } from 'molstar/lib/mol-model/structure/coordinates.js';
-import { IndexPairBonds } from 'molstar/lib/mol-model-formats/structure/property/bonds/index-pair.js';
+import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
+import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
+import { UUID } from '@molstar/core/util/uuid';
+import { Model } from '@molstar/model/model/structure/model/model';
+import { Coordinates, Time } from '@molstar/model/model/structure/coordinates';
+import { IndexPairBonds } from '@molstar/model/formats/structure/property/bonds/index-pair';
 
 // Keep the scene branch and original bond candidates while coordinates move.
 // Recheck candidates against element-based distance thresholds on every frame,

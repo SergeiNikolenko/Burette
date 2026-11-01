@@ -74,7 +74,7 @@ export type ViewerReloadOptions = {
   sdfCollectionSpreadCells?: [number, number][] | null;
   trajectoryAutoPlayOnce?: boolean | null;
   activeModel?: number | null;
-  molstarStyle?: "default" | "illustrative" | "illustrative-surface" | "polymer-ligand" | "cartoon" | "ball-and-stick" | "spacefill" | "line" | "molecular-surface" | null;
+  molstarStyle?: "default" | "illustrative" | "illustrative-surface" | "polymer-ligand" | "cartoon" | "ball-and-stick" | "spacefill" | "line" | "molecular-surface" | "blob-surface" | null;
 };
 
 export type DockingSceneMode = "structureAll" | "structurePoses";
@@ -498,7 +498,7 @@ export type ViewerPreferences = {
   canvasBackground: "auto" | "black" | "graphite" | "white" | "transparent";
   openInDefaultDestination: "default-app" | "finder" | `editor:${string}`;
   rendererMode: "auto" | "grid2d" | "molstar" | "xyzrender-external";
-  molstarStyle: "default" | "illustrative" | "illustrative-surface" | "polymer-ligand" | "cartoon" | "ball-and-stick" | "spacefill" | "line" | "molecular-surface";
+  molstarStyle: "default" | "illustrative" | "illustrative-surface" | "polymer-ligand" | "cartoon" | "ball-and-stick" | "spacefill" | "line" | "molecular-surface" | "blob-surface";
   desktopPreviewLimitMiB: number;
   conformerCandidateCount: number;
   conformerRmsdCutoff: number;

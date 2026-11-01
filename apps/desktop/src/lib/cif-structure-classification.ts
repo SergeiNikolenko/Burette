@@ -1,5 +1,5 @@
-import { parseCifText } from "molstar/lib/mol-io/reader/cif/text/parser.js";
-import type { CifBlock, CifField } from "molstar/lib/mol-io/reader/cif/data-model.js";
+import { parseCifText } from "@molstar/io/reader/cif/text/parser";
+import type { CifBlock, CifField } from "@molstar/io/reader/cif/data-model";
 
 export type CifStructureClassification = {
   kind: "Crystal structure" | "Macromolecule" | null;
@@ -105,7 +105,7 @@ export async function classifyCifStructure(text: string): Promise<CifStructureCl
     const parsed = await parseCifText(text).run();
     if (parsed.isError) return { kind: null };
     const coordinates = (block: CifBlock) => ["fract", "Cartn"].map(prefix => ["x", "y", "z"].map(axis => siteField(block, `${prefix}_${axis}`)));
-    const blocks = parsed.result.blocks.filter(block => coordinates(block).flat().some(Boolean));
+    const blocks = parsed.result.blocks.filter((block: CifBlock) => coordinates(block).flat().some(Boolean));
     if (blocks.length !== 1) return { kind: null };
     const block = blocks[0], families = coordinates(block).filter(columns => columns.some(Boolean));
     const count = families[0][0]?.rowCount ?? 0;

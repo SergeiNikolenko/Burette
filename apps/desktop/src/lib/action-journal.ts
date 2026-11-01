@@ -20,6 +20,7 @@ type ActionJournalEntry = {
 
 const FLUSH_DELAY_MS = 750;
 const MAX_PENDING = 400;
+const MAX_BATCH = 200;
 const LABEL_CHARS = 120;
 const ACTIONABLE_SELECTOR = [
   "button", "a[href]", "summary", "select", "input", "textarea",
@@ -46,7 +47,11 @@ function flush() {
   if (pending.length === 0) return;
   const entries = pending;
   pending = [];
-  void invoke("append_action_journal", { entries }).catch(() => {});
+  // Match the native per-call limit; a busy UI can fill two batches before
+  // the flush timer fires. Sending all 400 at once silently lost the last 200.
+  for (let start = 0; start < entries.length; start += MAX_BATCH) {
+    void invoke("append_action_journal", { entries: entries.slice(start, start + MAX_BATCH) }).catch(() => {});
+  }
 }
 
 export function journalAction(kind: ActionJournalKind, action: string, fields: { target?: string | null; scope?: string | null; detail?: unknown } = {}) {

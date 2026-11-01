@@ -1,14 +1,15 @@
+import { readMolstarModule } from '../scripts/molstar-source.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { Vec3 } from 'molstar/lib/mol-math/linear-algebra.js';
-import { Cell } from 'molstar/lib/mol-math/geometry/spacegroup/cell.js';
-import { degToRad } from 'molstar/lib/mol-math/misc.js';
-import { EPSILON, equalEps } from 'molstar/lib/mol-math/linear-algebra/3d/common.js';
-import { parseDcd } from 'molstar/lib/mol-io/reader/dcd/parser.js';
+import { Vec3 } from '@molstar/core/math/linear-algebra';
+import { Cell } from '@molstar/core/math/geometry/spacegroup/cell';
+import { degToRad } from '@molstar/core/math/misc';
+import { EPSILON, equalEps } from '@molstar/core/math/linear-algebra/3d/common';
+import { parseDcd } from '@molstar/io/reader/dcd/parser';
 import { patchMolstarDcdTime } from '../scripts/molstar-dcd-time.mjs';
 
-const source = readFileSync(new URL('../node_modules/molstar/lib/mol-model-formats/structure/dcd.js', import.meta.url), 'utf8');
+const source = await readMolstarModule('@molstar/model/formats/structure/dcd');
 const patched = patchMolstarDcdTime(source).replace(/^import .*;$/gm, '')
   .replace('export function coordinatesFromDcd', 'function coordinatesFromDcd');
 const context = vm.createContext({ Cell, Vec3, degToRad, EPSILON, equalEps, halfPI: Math.PI / 2,

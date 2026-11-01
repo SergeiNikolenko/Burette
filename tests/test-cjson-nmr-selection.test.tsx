@@ -4,7 +4,7 @@ import { imported, browser } from "./test-cjson-import.test";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { createHash } from "node:crypto";
-import { OrderedSet } from "molstar/lib/mol-data/int.js";
+import { OrderedSet } from "@molstar/core/data/int";
 import type { ViewerDocument } from "../apps/desktop/src/types";
 import { recordImportedRevision, scientificStateFor } from "../apps/desktop/src/lib/workbench/scientific-source-state";
 import { prepareSceneScienceExport } from "../apps/desktop/src/lib/science-session/export";
@@ -15,7 +15,7 @@ const { createRoot } = await import("react-dom/client");
 const { ScientificSpectraDockContent } = await import("../apps/desktop/src/components/workbench/scientific-spectra-dock-content");
 const bundle = readFileSync(new URL("../PreviewExtension/Web/molstar.js", import.meta.url), "utf8"), previousMolstar = Object.getOwnPropertyDescriptor(globalThis, "molstar");
 vm.runInThisContext(bundle, { filename: "actual-built-molstar.js" });
-type Built = typeof import("molstar/lib/apps/viewer/lib.js") & typeof import("molstar/lib/apps/viewer/extensions.js");
+type Built = typeof import("@molstar/viewer/lib") & typeof import("@molstar/viewer/extensions");
 const built = (globalThis as unknown as { molstar: Built }).molstar;
 console.log(JSON.stringify({ actualBuiltMolstarSha256: createHash("sha256").update(bundle).digest("hex") }));
 const parserInput = built.lib.plugin.PluginStateTransform.BuiltIn({ name: "nmr-parser-input-proof", display: { name: "Parser input" },

@@ -10,10 +10,10 @@ import { adoptLogicalSource, releaseClosedScienceSessions } from "../apps/deskto
 import { addDocumentInternalCoordinates, recordImportedRevision, releaseClosedImports } from "../apps/desktop/src/lib/workbench/scientific-source-state";
 installPlugin(molstarStatePreconditionPlugin);
 Object.assign(browser, { setImmediate, clearImmediate });
-const { PluginContext } = await import("molstar/lib/mol-plugin/context.js");
-const { StateTransforms } = await import("molstar/lib/mol-plugin-state/transforms.js");
-const { StructureElement } = await import("molstar/lib/mol-model/structure.js");
-const { OrderedSet } = await import("molstar/lib/mol-data/int.js");
+const { PluginContext } = await import("@molstar/plugin");
+const { StateTransforms } = await import("@molstar/viewer/state-transforms");
+const { StructureElement } = await import("@molstar/model/model/structure");
+const { OrderedSet } = await import("@molstar/core/data/int");
 const { BuretteGeometry } = await import("../scripts/molstar-geometry.js");
 const { ScientificSpectraDockContent } = await import("../apps/desktop/src/components/workbench/scientific-spectra-dock-content");
 const previous = new Map<string, PropertyDescriptor | undefined>();
@@ -98,7 +98,7 @@ test("a native Geometry edit rejects the original NMR row without changing exist
     await act(async () => f.row("H3").click()); await waitFor(() => f.completed.length === 1);
     const token = BuretteGeometry.capture(f.plugin); await BuretteGeometry.update(f.plugin, f.text.replace("0.946053", "0.956053"), token);
     const structure = f.plugin.managers.structure.hierarchy.current.structures[0].cell.obj!.data;
-    f.plugin.managers.interactivity.lociSelects.selectOnly({ loci: StructureElement.Loci(structure, [{ unit: structure.units[0], indices: OrderedSet.ofSingleton(1 as import("molstar/lib/mol-model/structure/structure/element/util.js").UnitIndex) }]) }, false);
+    f.plugin.managers.interactivity.lociSelects.selectOnly({ loci: StructureElement.Loci(structure, [{ unit: structure.units[0], indices: OrderedSet.ofSingleton(1 as import("@molstar/model/model/structure/structure/element/util").UnitIndex) }]) }, false);
     const before = f.selected(); expect(before).toEqual([1]); await act(async () => f.row("H4").click()); await waitFor(() => f.completed.length === 2);
     expect(f.selected()).toEqual(before); expect(f.host.querySelector('[role="alert"]')?.textContent).toContain("differs");
   } finally { await f.close(); }

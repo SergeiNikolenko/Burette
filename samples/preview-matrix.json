@@ -11,6 +11,11 @@
   ],
   "representatives": [
     {
+      "formatId": "cjson",
+      "path": "samples/mini.cjson",
+      "surfaces": ["browser-dev-shell", "browser-quicklook", "agent-preview", "packaged-desktop", "native-quicklook"]
+    },
+    {
       "formatId": "pdb",
       "path": "samples/mini.pdb",
       "surfaces": [

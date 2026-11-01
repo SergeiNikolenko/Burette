@@ -1,6 +1,6 @@
-import { DistanceRepresentation, DistanceParams } from 'molstar/lib/mol-repr/shape/loci/distance.js';
-import { AngleRepresentation, AngleParams } from 'molstar/lib/mol-repr/shape/loci/angle.js';
-import { DihedralRepresentation, DihedralParams } from 'molstar/lib/mol-repr/shape/loci/dihedral.js';
+import { DistanceRepresentation, DistanceParams } from '@molstar/graphics/repr/shape/loci/distance';
+import { AngleRepresentation, AngleParams } from '@molstar/graphics/repr/shape/loci/angle';
+import { DihedralRepresentation, DihedralParams } from '@molstar/graphics/repr/shape/loci/dihedral';
 
 const definitions = new Map([
   ['bond', [DistanceRepresentation, DistanceParams, 'pairs']],

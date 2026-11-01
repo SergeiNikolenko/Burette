@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { Window } from 'happy-dom';
-import { PluginContext } from 'molstar/lib/mol-plugin/context.js';
-import { StateTransforms } from 'molstar/lib/mol-plugin-state/transforms.js';
+import { PluginContext } from '@molstar/plugin';
+import { StateTransforms } from '@molstar/viewer/state-transforms';
 import { BuretteGeometry } from '../scripts/molstar-geometry.js';
 
 const dom = new Window(), previous = globalThis.document; globalThis.document = dom.document;

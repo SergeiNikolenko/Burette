@@ -41,6 +41,7 @@ EXTENSIONS = {
     "smiles": "smi",
     "cube": "cube",
     "cub": "cub",
+    "cjson": "cjson",
 }
 
 

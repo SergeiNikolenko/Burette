@@ -1,9 +1,19 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const routePath = resolve('apps/burette-public-plugin/api/xyzrender.py');
+const rendererSource = JSON.parse(readFileSync('config/xyzrender/source.json', 'utf8'));
+const requirement = readFileSync('apps/burette-public-plugin/requirements.txt', 'utf8')
+  .split('\n').find(line => line.startsWith('xyzrender'));
+assert.match(requirement, /^xyzrender\[smi\] @ https:\/\/raw\.githubusercontent\.com\/SergeiNikolenko\/Burette\/[a-f0-9]{40}\//);
+const wheelUrl = new URL(requirement.split(' @ ')[1]);
+assert.equal(decodeURIComponent(wheelUrl.pathname.split('/').at(-1)), rendererSource.wheel);
+assert.equal(wheelUrl.hash, `#sha256=${rendererSource.wheelSha256}`);
+assert.equal(createHash('sha256').update(readFileSync(`config/xyzrender/vendor/${rendererSource.wheel}`)).digest('hex'), rendererSource.wheelSha256);
 const testProgram = String.raw`
 import base64
 import importlib.util
@@ -34,6 +44,18 @@ assert result["svg"] == "<svg><text>four carbons</text></svg>"
 assert result["preset"] == "flat"
 assert result["configArgument"] == "flat"
 assert calls == [("input.smi", "flat")]
+
+cjson_bytes = b'{"chemicalJson":1,"atoms":{"elements":{"number":[8,1,1]},"coords":{"3d":[0,0,0,1,0,0,0,1,0]}}}'
+def cjson_renderer(source_path, output_path, preset):
+    source = pathlib.Path(source_path)
+    assert source.suffix == ".cjson"
+    assert source.read_bytes() == cjson_bytes
+    pathlib.Path(output_path).write_text("<svg><text>authored CJSON</text></svg>", encoding="utf-8")
+
+assert module.render_request({
+    "inputDataBase64": base64.b64encode(cjson_bytes).decode("ascii"),
+    "inputExtension": "CJSON",
+}, renderer=cjson_renderer)["svg"] == "<svg><text>authored CJSON</text></svg>"
 
 original_input_limit = module.MAX_INPUT_BYTES
 module.MAX_INPUT_BYTES = 1

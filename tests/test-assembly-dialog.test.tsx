@@ -2,8 +2,8 @@ import { createRequire } from "node:module";
 import { act, test, expect, fixture, dialog, button, click, select, wait, prepared, holdPreparation, releasePreparation,
   readBrowserDevVirtualTextDocument, openWorkbenchDialog, closeWorkbenchDialog, useMoleculeStore, compiler, browser } from "./assembly-dialog-fixture";
 const require = createRequire(import.meta.url);
-const { CIF } = require("molstar/lib/commonjs/mol-io/reader/cif.js");
-const { trajectoryFromMmCIF } = require("molstar/lib/commonjs/mol-model-formats/structure/mmcif.js");
+const { CIF } = require("@molstar/io/reader/cif");
+const { trajectoryFromMmCIF } = require("@molstar/model/formats/structure/mmcif");
 
 async function chooseModel() { await wait(() => Boolean(dialog()?.querySelector('select[aria-label="Model"]')), "source models ready"); await select("Model", "2"); expect(button("Build").disabled).toBe(false); }
 async function prepare() { const before = prepared.length; holdPreparation(); await chooseModel(); await click("Build"); await wait(() => prepared.length > before, "generated document preparing"); return prepared.at(-1)!; }

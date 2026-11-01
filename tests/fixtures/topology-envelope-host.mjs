@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import { createHash } from 'node:crypto';
 import { plugin as bunPlugin } from 'bun';
 import { transformSync } from '@babel/core';
-import { StructureElement } from 'molstar/lib/mol-model/structure.js';
+import { StructureElement } from '@molstar/model/model/structure';
 
 export async function checkTopologyEnvelope({ dom, source, targetPlugin, science, nextText, geometry, scene }) {
   const descriptors = new Map();

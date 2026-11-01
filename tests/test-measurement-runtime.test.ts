@@ -9,11 +9,11 @@ import { molstarV3000ChargesPlugin } from "../scripts/molstar-v3000-charges.mjs"
 plugin(molstarMolV3000Plugin); plugin(molstarV3000ChargesPlugin);
 const browser = new Window(); Object.assign(browser, { setImmediate, clearImmediate });
 Object.assign(globalThis, { window: browser, document: browser.document });
-const { PluginContext } = await import("molstar/lib/mol-plugin/context.js");
-const { DefaultPluginSpec } = await import("molstar/lib/mol-plugin/spec.js");
-const { StructureElement } = await import("molstar/lib/mol-model/structure.js");
-const { StateTransforms } = await import("molstar/lib/mol-plugin-state/transforms.js");
-const { setCanvasModule } = await import("molstar/lib/mol-geo/geometry/text/font-atlas.js");
+const { PluginContext } = await import("@molstar/plugin");
+const { DefaultPluginSpec } = await import("@molstar/plugin/default-spec");
+const { StructureElement } = await import("@molstar/model/model/structure");
+const { StateTransforms } = await import("@molstar/viewer/state-transforms");
+const { setCanvasModule } = await import("@molstar/graphics/geo/geometry/text/font-atlas");
 setCanvasModule({ createCanvas: () => ({ getContext: () => ({ measureText: () => ({ width: 12 }), clearRect() {}, fillText() {},
   getImageData: (_x, _y, width, height) => ({ data: new Uint8ClampedArray(width * height * 4) }),
 }) }) } as never);

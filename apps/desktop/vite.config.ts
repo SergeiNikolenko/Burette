@@ -948,10 +948,14 @@ function normalizeXyzrenderPreset(value: string | null) {
 
 function normalizeXyzrenderInputExtension(value: string | null) {
   const normalized = String(value || "xyz").trim().toLowerCase().replace(/^\./, "");
-  return ["xyz", "sdf", "sd", "smi", "smiles", "pdb", "cif"].includes(normalized) ? normalized : "xyz";
+  return ["xyz", "sdf", "sd", "smi", "smiles", "pdb", "cif", "cjson"].includes(normalized) ? normalized : "xyz";
 }
 
 function resolveXyzrenderExecutable() {
+  if (process.env.BURETTE_XYZRENDER_ENV) {
+    const executable = join(process.env.BURETTE_XYZRENDER_ENV, "bin/xyzrender");
+    return existsSync(executable) ? executable : null;
+  }
   const candidates = [
     process.env.HOME ? join(process.env.HOME, ".local/bin/xyzrender") : "",
     "/opt/homebrew/bin/xyzrender",
@@ -3718,7 +3722,7 @@ function languageForTextExtension(extension: string) {
   if (extension === "sh" || extension === "bash" || extension === "zsh") return "shell";
   if (extension === "js" || extension === "jsx" || extension === "mjs" || extension === "cjs") return "javascript";
   if (extension === "ts" || extension === "tsx") return "typescript";
-  if (extension === "json") return "json";
+  if (extension === "json" || extension === "cjson") return "json";
   if (extension === "yaml" || extension === "yml") return "yaml";
   if (extension === "toml") return "toml";
   if (extension === "py") return "python";

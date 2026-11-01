@@ -9,10 +9,10 @@ import { serializeXyz } from "../apps/desktop/src/lib/molecular-workbench/xyz";
 installPlugin(molstarStatePreconditionPlugin);
 const dom = new Window(), previous = Object.getOwnPropertyDescriptor(globalThis, "document");
 Object.defineProperty(globalThis, "document", { configurable: true, value: dom.document });
-const { PluginContext } = await import("molstar/lib/mol-plugin/context.js");
-const { StateTransforms } = await import("molstar/lib/mol-plugin-state/transforms.js");
-const { StructureElement } = await import("molstar/lib/mol-model/structure.js");
-const { OrderedSet } = await import("molstar/lib/mol-data/int.js");
+const { PluginContext } = await import("@molstar/plugin");
+const { StateTransforms } = await import("@molstar/viewer/state-transforms");
+const { StructureElement } = await import("@molstar/model/model/structure");
+const { OrderedSet } = await import("@molstar/core/data/int");
 const { BuretteGeometry } = await import("../scripts/molstar-geometry.js");
 afterAll(async () => { await dom.happyDOM.close(); if (previous) Object.defineProperty(globalThis, "document", previous); else Reflect.deleteProperty(globalThis, "document"); });
 const source = "4\nowned-source\nC 0 0 0\nO 1 0 0\nH 0 1 0\nH 0 0 1\n";
@@ -97,7 +97,7 @@ test("newer row gesture and native user selection win over an older digest", asy
       const old = view.execute(await view.action(3)).then(() => "selected", (error: Error) => error.name); await started;
       if (nativeSelection) {
         const structure = view.plugin.managers.structure.hierarchy.current.structures[0].cell.obj!.data, unit = structure.units[0];
-        view.plugin.managers.interactivity.lociSelects.selectOnly({ loci: StructureElement.Loci(structure, [{ unit, indices: OrderedSet.ofSingleton(1 as import("molstar/lib/mol-model/structure/structure/element/util.js").UnitIndex) }]) }, false);
+        view.plugin.managers.interactivity.lociSelects.selectOnly({ loci: StructureElement.Loci(structure, [{ unit, indices: OrderedSet.ofSingleton(1 as import("@molstar/model/model/structure/structure/element/util").UnitIndex) }]) }, false);
       } else await view.execute(await view.action(1));
       release(); expect(await old).toBe("AbortError"); expect(view.selected()).toEqual([1]);
     } finally { release(); view.close(); }

@@ -1,5 +1,9 @@
 import { useEffect, type RefObject } from "react";
 
+// Codex viewer header geometry: 32px controls 8px inside a 48px band, 6px apart.
+const INSET = 8;
+const GAP = 6;
+
 // In the native Codex widget the file header and the Mol* viewer's own top
 // controls share one row. The viewer keeps a band free at its top edge
 // (html[data-burette-header-band] in viewer-runtime.css) and the header floats
@@ -23,10 +27,11 @@ export function useWorkspaceHeaderBand(header: RefObject<HTMLElement | null>, do
       const rootRect = root.getBoundingClientRect();
       const doc = frame.contentDocument;
       const navigationWidth = root.querySelector(".workspace-file-navigation")?.getBoundingClientRect().width ?? 0;
-      const cornerLeft = Math.max(10, rootRect.left + 10 + (navigationWidth ? navigationWidth + 8 : 0) - frameRect.left);
+      const cornerLeft = Math.max(INSET, rootRect.left + INSET + (navigationWidth ? navigationWidth + GAP : 0) - frameRect.left);
       viewer.style.setProperty("--burette-header-band-corner-left", `${cornerLeft}px`);
       const corner = doc?.getElementById("buret-viewport-corner")?.getBoundingClientRect();
-      root.style.setProperty("--band-leading", `${Math.max(10, Math.ceil(frameRect.left - rootRect.left + (corner?.right ?? 0) + 8))}px`);
+      const leading = Math.max(INSET, Math.ceil(frameRect.left - rootRect.left + (corner?.right ?? 0) + GAP));
+      root.style.setProperty("--band-leading", `${leading}px`);
       // The toolbar's right edge follows the slot, whose width follows the
       // toolbar. The slot ends before the trailing pills, or before the
       // viewer's own edge when the right dock takes that part of the row;
@@ -34,24 +39,25 @@ export function useWorkspaceHeaderBand(header: RefObject<HTMLElement | null>, do
       let trailing = slot.nextElementSibling;
       while (trailing && trailing.getBoundingClientRect().width === 0) trailing = trailing.nextElementSibling;
       const trailingLeft = trailing?.getBoundingClientRect().left ?? frameRect.right;
-      const slotEnd = Math.min(trailingLeft - 8, frameRect.right - 12);
-      const slotRight = slotEnd;
-      // Fixed navigation/annotation pills cannot give up their space. Bound
-      // the viewer's scrollable toolbar before measuring its resulting width.
-      const pathStart = root.querySelector(".workspace-file-path")?.previousElementSibling?.getBoundingClientRect().right ?? frameRect.left;
-      const available = Math.max(0, Math.floor(slotEnd - pathStart - 8));
+      const slotEnd = Math.min(trailingLeft - GAP, frameRect.right - INSET);
+      // The file title gives way; the annotation toggle keeps its width.
+      // Bound the viewer's scrollable toolbar before measuring its resulting width.
+      const annotateWidth = root.querySelector(".annotate-toggle")?.getBoundingClientRect().width ?? 0;
+      const fixedEnd = rootRect.left + leading + annotateWidth;
+      const available = Math.max(0, Math.floor(slotEnd - fixedEnd - GAP));
       // A narrow viewer needs a second row to keep Seq/Style readable.
       // Navigation keeps the first row, including when a dock is open.
       const stacked = available < 160;
-      root.style.setProperty("--band-slot-margin", `${stacked ? 0 : Math.max(0, Math.round(trailingLeft - 8 - slotEnd))}px`);
-      viewer.style.setProperty("--burette-header-band-height", stacked ? "100px" : "50px");
-      viewer.style.setProperty("--burette-header-band-toolbar-top", stacked ? "58px" : "8px");
-      viewer.style.setProperty("--burette-header-band-right", stacked ? "12px" : `${Math.max(12, Math.round(frameRect.right - slotRight))}px`);
-      viewer.style.setProperty("--burette-header-band-width", `${stacked ? Math.max(0, Math.floor(frameRect.width - 24)) : available}px`);
+      root.style.setProperty("--band-slot-margin", `${stacked ? 0 : Math.max(0, Math.round(trailingLeft - GAP - slotEnd))}px`);
+      viewer.style.setProperty("--burette-header-band-height", stacked ? "88px" : "48px");
+      viewer.style.setProperty("--burette-header-band-toolbar-top", stacked ? "48px" : `${INSET}px`);
+      viewer.style.setProperty("--burette-header-band-right", `${stacked ? INSET : Math.max(INSET, Math.round(frameRect.right - slotEnd))}px`);
+      viewer.style.setProperty("--burette-header-band-width", `${stacked ? Math.max(0, Math.floor(frameRect.width - 2 * INSET)) : available}px`);
       const toolbar = doc?.getElementById("buret-toolbar")?.getBoundingClientRect();
       root.style.setProperty("--band-controls", `${stacked ? 0 : Math.ceil(toolbar?.width ?? 0)}px`);
-      // A path squeezed below a readable width is dropped rather than shown as a stub.
-      root.toggleAttribute("data-band-compact", stacked || slotEnd - (toolbar?.width ?? 0) - pathStart - 16 < 120);
+      // A title squeezed below a readable width is dropped rather than shown as a stub.
+      const titleSpace = slotEnd - fixedEnd - 2 * GAP - (stacked ? 0 : toolbar?.width ?? 0);
+      root.toggleAttribute("data-band-compact", titleSpace < 120);
     };
     const schedule = () => { scheduled ||= requestAnimationFrame(measure); };
     const attach = () => {

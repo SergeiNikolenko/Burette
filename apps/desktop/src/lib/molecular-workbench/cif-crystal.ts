@@ -1,5 +1,5 @@
-import { parseCifText } from "molstar/lib/mol-io/reader/cif/text/parser.js";
-import type { CifBlock } from "molstar/lib/mol-io/reader/cif/data-model.js";
+import { parseCifText } from "@molstar/io/reader/cif/text/parser";
+import type { CifBlock } from "@molstar/io/reader/cif/data-model";
 import { ELEMENT_SYMBOLS } from "./elements";
 import { cartesianToFractional, cellFromParameters, fractionalToCartesian } from "./crystal";
 import type { MolecularAtom, UnitCell, Vec3 } from "./types";
@@ -146,8 +146,8 @@ export async function readCifCrystal(text: string, options: { block?: string } =
   if (text.length > 20_000_000) throw new Error("Crystal CIF input exceeds 20 MB.");
   const parsed = await parseCifText(text).run();
   if (parsed.isError) throw new Error(`Invalid CIF: ${parsed.message}`);
-  const blocks = parsed.result.blocks.filter(block => field(block, "atom_site_fract_x", "atom_site.fract_x", "atom_site_Cartn_x", "atom_site.Cartn_x"));
-  const block = options.block ? blocks.find(block => block.header === options.block) : blocks.length === 1 ? blocks[0] : undefined;
+  const blocks = parsed.result.blocks.filter((block: CifBlock) => field(block, "atom_site_fract_x", "atom_site.fract_x", "atom_site_Cartn_x", "atom_site.Cartn_x"));
+  const block = options.block ? blocks.find((block: CifBlock) => block.header === options.block) : blocks.length === 1 ? blocks[0] : undefined;
   if (!block) throw new Error(options.block ? "The selected CIF crystal block was not found." : "Choose one CIF crystal block containing atom coordinates.");
   const cellValues = ["length_a", "length_b", "length_c", "angle_alpha", "angle_beta", "angle_gamma"].map(name => {
     const value = field(block, `cell_${name}`, `cell.${name}`);

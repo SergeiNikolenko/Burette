@@ -11,9 +11,9 @@ import { molstarV3000ChargesPlugin } from "../scripts/molstar-v3000-charges.mjs"
 const browser = new Window(); Object.assign(browser, { setImmediate, clearImmediate });
 Object.assign(globalThis, { window: browser, document: browser.document });
 plugin(molstarMolV3000Plugin); plugin(molstarV3000ChargesPlugin);
-const { PluginContext } = await import("molstar/lib/mol-plugin/context.js");
-const { DefaultPluginSpec } = await import("molstar/lib/mol-plugin/spec.js");
-const { IndexPairBonds } = await import("molstar/lib/mol-model-formats/structure/property/bonds/index-pair.js");
+const { PluginContext } = await import("@molstar/plugin");
+const { DefaultPluginSpec } = await import("@molstar/plugin/default-spec");
+const { IndexPairBonds } = await import("@molstar/model/formats/structure/property/bonds/index-pair");
 let rdkit: MainModule; beforeAll(async () => { rdkit = await initRDKitModule(); });
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/cjson/${name}`, import.meta.url), "utf8");
 

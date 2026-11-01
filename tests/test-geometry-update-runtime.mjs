@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { Window } from 'happy-dom';
-import { PluginContext } from 'molstar/lib/mol-plugin/context.js';
-import { PluginStateObject as SO, PluginStateTransform } from 'molstar/lib/mol-plugin-state/objects.js';
-import { StateTransforms } from 'molstar/lib/mol-plugin-state/transforms.js';
-import { Task } from 'molstar/lib/mol-task/index.js';
-import { Camera } from 'molstar/lib/mol-canvas3d/camera.js';
+import { PluginContext } from '@molstar/plugin';
+import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
+import { StateTransforms } from '@molstar/viewer/state-transforms';
+import { Task } from '@molstar/core/task';
+import { Camera } from '@molstar/graphics/canvas3d/camera';
 import { BuretteGeometry } from '../scripts/molstar-geometry.js';
 
 const xyz = '4\noriginal comment\nO 0 0 0\nH 1 0 0\nH 0 1 0\nH 0 1 1\n';

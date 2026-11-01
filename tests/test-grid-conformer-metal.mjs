@@ -89,8 +89,10 @@ assert.equal(calls.length, 1, 'Metal failure must not retry Python or open a res
 assert.equal(jobs[0].status, 'failed');
 assert.equal(failed.find(message => message.type === 'gridGenerate3DError').error, 'Metal unavailable');
 fail = false; native = false;
-await execute(body);
+await execute({ ...body, conformerVariant: 'ETDG', mmffVariant: 'MMFF94' });
 assert.equal(calls[0][0], 'browserMetal');
+assert.equal(calls[0][1].variant, 'ETDG');
+assert.equal(calls[0][1].mmffVariant, 'MMFF94');
 assert.equal(jobs[0].backend, 'nativeMetal');
 assert.equal(jobs[0].status, 'success');
 console.log('Grid Metal routing, mixed selection, optimization and failure checks passed');

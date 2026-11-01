@@ -2,10 +2,10 @@ import { afterAll, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { Window } from "happy-dom";
-import { PluginContext } from "molstar/lib/mol-plugin/context.js";
-import { DefaultPluginSpec } from "molstar/lib/mol-plugin/spec.js";
-import type { Asset } from "molstar/lib/mol-util/assets.js";
-import type { UUID } from "molstar/lib/mol-util/uuid.js";
+import { PluginContext } from "@molstar/plugin";
+import { DefaultPluginSpec } from "@molstar/plugin/default-spec";
+import type { Asset } from "@molstar/core/util/assets";
+import type { UUID } from "@molstar/core/util/uuid";
 import { unzipSync } from "../apps/desktop/node_modules/fflate/esm/browser.js";
 
 const dom = new Window(), previous = Object.getOwnPropertyDescriptor(globalThis, "document");

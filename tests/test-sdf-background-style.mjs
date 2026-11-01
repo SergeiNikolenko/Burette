@@ -42,7 +42,7 @@ const state = context.activeSdfCollectionVisibilityState = {
   activeIndex: 0, activeRefs: ['s0'], backgroundRefs: targets.map(s => s.cell.transform.ref),
   allRefsByIndex: targets.map(s => [s.cell.transform.ref]), appearanceKey: 'line|0.4|gray',
 };
-for (const style of ['ball-and-stick', 'spacefill', 'molecular-surface', 'match', 'line']) {
+for (const style of ['ball-and-stick', 'spacefill', 'molecular-surface', 'blob-surface', 'match', 'line']) {
   context.activeConfig.style = style;
   await context.applySdfCollectionVisibilityNow(viewer, prepared);
   assert.deepEqual(plain(styled.at(-1)), {
@@ -93,7 +93,7 @@ const reps = targets.map((target, i) => {
   return entries[0].ref;
 });
 let commits = 0, yields = 0, fail = false;
-const providers = new Map(['line', 'spacefill', 'molecular-surface', 'ball-and-stick'].map(name => [name, {
+const providers = new Map(['line', 'spacefill', 'molecular-surface', 'blob-surface', 'ball-and-stick'].map(name => [name, {
   defaultValues: { alpha: 1, sizeFactor: 1, quality: 'auto' }, defaultSizeTheme: { name: 'physical' },
 }]));
 const plugin = {
@@ -123,8 +123,8 @@ for (const type of providers.keys()) {
     sizeTheme: { name: 'physical', params: { scale: 1 } },
   });
 }
-assert.equal(commits, 7);
-assert.equal(yields, 3);
+assert.equal(commits, 1 + (providers.size - 1) * 2);
+assert.equal(yields, providers.size - 1);
 assert.equal(await update(plugin, targets, [{ type: 'line', color: 'uniform', colorParams: { value: 123 }, typeParams: {} }]), true);
 assert.equal(params.get('r0').type.params.alpha, 1);
 assert.deepEqual(plain(params.get('r0').colorTheme), { name: 'uniform', params: { value: 123 } });

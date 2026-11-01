@@ -78,6 +78,13 @@ ditto --norsrc --noextattr "$PYTHON_EXE" "$DEST_PYTHON"
 ditto --norsrc --noextattr "$PYTHON_LIBRARY" "$DEST_LIBRARY"
 chmod 755 "$DEST_PYTHON" "$DEST_LIBRARY"
 
+# CJSON uses the same pinned renderer in-process: Quick Look denies process-fork.
+# Headers come from the interpreter being bundled, keeping PyConfig ABI aligned.
+BRIDGE_SOURCE="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)/PreviewExtension/EmbeddedXyzrender.c"
+DEST_BRIDGE="$DEST_LIB/burette-xyzrender-bridge.dylib"
+xcrun clang -dynamiclib -O2 -fvisibility=hidden -mmacosx-version-min=12.0 \
+  -I "$PYTHON_ROOT/include/python3.13" "$BRIDGE_SOURCE" -o "$DEST_BRIDGE"
+
 LINKED_LIBRARY="$(otool -L "$PYTHON_EXE" | awk '$1 ~ /libpython3.*\.dylib/ || $1 ~ /Python\.framework\/Versions\/.*\/Python/ { print $1; exit }')"
 if [[ -n "$LINKED_LIBRARY" && "$LINKED_LIBRARY" != "@executable_path/../lib/$PYTHON_LIBRARY_NAME" ]]; then
   install_name_tool -change "$LINKED_LIBRARY" "@executable_path/../lib/$PYTHON_LIBRARY_NAME" "$DEST_PYTHON" || true
@@ -90,5 +97,6 @@ if [[ "${CODE_SIGNING_ALLOWED:-NO}" == "YES" ]]; then
   if [[ -n "$SIGN_IDENTITY" ]]; then
     /usr/bin/codesign --force --sign "$SIGN_IDENTITY" -o runtime --timestamp=none "$DEST_LIBRARY"
     /usr/bin/codesign --force --sign "$SIGN_IDENTITY" -o runtime --timestamp=none "$DEST_PYTHON"
+    /usr/bin/codesign --force --sign "$SIGN_IDENTITY" -o runtime --timestamp=none "$DEST_BRIDGE"
   fi
 fi

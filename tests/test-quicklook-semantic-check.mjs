@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,6 +28,29 @@ const xyzrenderFile = path.join(root, "samples", "quantum", "inputs", "caffeine.
 const sdfFile = path.join(root, "samples", "collections", "sdf", "multi.sdf");
 const csvTableFile = path.join(root, "samples", "collections", "tables", "no-molecule-column.csv");
 const edgeFile = path.join(root, "samples", "fep", "ligand_network.edge");
+const volumeFile = path.join(root, "samples", "test.mrc");
+
+for (const volumeCount of [0, 1]) {
+  const result = await runCase(`volume-${volumeCount}`, volumeFile, [
+    `[VVVV0001] file.path=${volumeFile}`,
+    "[VVVV0001] [build] detected.format=ccp4 binary=true renderer=molstar",
+    `[VVVV0001] preview.evidence type=ready mode=structure renderer=molstar format=ccp4 molstarStructureCount=0 molstarVolumeCount=${volumeCount}`,
+  ]);
+  assert.equal(result.status, volumeCount ? 0 : 1);
+  assert.match(volumeCount ? result.stdout : result.stderr, volumeCount ? /molstar volumes=1/ : /did not expose a rendered volume/);
+}
+
+// A parsed map without a successfully created representation is not render proof.
+const viewerSource = await readFile(path.join(root, "PreviewExtension", "Web", "viewer.js"), "utf8");
+const countSource = viewerSource.match(/  function currentMolstarVolumeCount\([\s\S]*?\n  \}/u)?.[0];
+assert.ok(countSource);
+const countRenderedVolumes = new Function(`${countSource}; return currentMolstarVolumeCount;`)();
+const volumeViewer = volumes => ({ plugin: { managers: { volume: { hierarchy: { current: { volumes } } } } } });
+assert.equal(countRenderedVolumes(volumeViewer([
+  { cell: { status: "ok" }, representations: [] },
+  { cell: { status: "ok" }, representations: [{ cell: { status: "error" } }] },
+  { cell: { status: "ok" }, representations: [{ cell: { status: "ok", obj: {} } }] },
+])), 1);
 
 const xyzrenderSuccess = await runCase("xyzrender-success", xyzrenderFile, [
   `[AAAA0001] file.path=${xyzrenderFile}`,

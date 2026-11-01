@@ -8,8 +8,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { Window } from 'happy-dom';
 
 const require = createRequire(import.meta.url);
-const { IconButton } = require('molstar/lib/commonjs/mol-plugin-ui/controls/common.js');
-const { HomeOutlinedSvg, SaveOutlinedSvg, AccountTreeOutlinedSvg } = require('molstar/lib/commonjs/mol-plugin-ui/controls/icons.js');
+const { IconButton } = require('@molstar/plugin-ui/controls/common');
+const { HomeOutlinedSvg, SaveOutlinedSvg, AccountTreeOutlinedSvg } = require('@molstar/plugin-ui/controls/icons');
 const source = await readFile(new URL('../PreviewExtension/Web/viewer.js', import.meta.url), 'utf8');
 const start = source.indexOf('  let molstarControlTooltip = null;');
 const end = source.indexOf('  function installDownloadExportBridge()', start);

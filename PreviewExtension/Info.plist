@@ -59,6 +59,7 @@
 				<string>com.local.burette10.tsv</string>
 				<string>com.local.burette10.volume-map</string>
 				<string>com.local.burette10.xyz</string>
+				<string>com.local.burette10.cjson</string>
 				<string>com.local.burette10.xyzrender-input</string>
 				<string>com.mdli.molfile</string>
 				<string>com.mdli.sketchfile</string>
@@ -87,6 +88,29 @@
 	</dict>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.json</string>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Chemical JSON molecular structure file</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burette10.cjson</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>cjson</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>chemical/x-cjson</string>
+				</array>
+			</dict>
+		</dict>
 		<dict>
 			<key>UTTypeConformsTo</key>
 			<array>

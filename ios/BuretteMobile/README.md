@@ -32,6 +32,8 @@ trajectory/topology files, OpenMM artifacts, and related chemistry text
 formats. iOS exposes Burette in document handoff surfaces when the file type
 matches these registrations. DataWarrior files currently use the generic file
 summary on iOS; molecular-grid decoding is provided by the desktop, browser,
+and Quick Look runtimes. Chemical JSON (`.cjson`) files open in the read-only
+text view on iPhone; their rendered view is provided by the desktop, browser,
 and Quick Look runtimes.
 
 The runtime currently uses:

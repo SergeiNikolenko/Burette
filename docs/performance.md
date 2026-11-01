@@ -148,6 +148,10 @@ The staged copy is reduced to the dependency closure of xyzrender, RDKit, and in
 extras, excluding xyzrender's notebook-only `ipykernel` dependency. Shared
 requirements such as SciPy (through cclib) are retained. Datamol-only packages
 are removed using their distribution RECORDs; pruning never deletes from source environments.
+For the vendored xyzrender snapshot, pruning removes only local-file
+`direct_url.json` installer provenance from the staged metadata so the app does
+not carry the builder's absolute checkout path. Version metadata and the MIT
+license remain; source and wheel hashes live in `config/xyzrender/source.json`.
 
 The pruning helper keeps package resources, headers, and test/data directories
 because these can be imported or loaded at runtime. It removes bytecode caches

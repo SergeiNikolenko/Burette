@@ -2,16 +2,16 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { Window } from 'happy-dom';
-import { PluginContext } from 'molstar/lib/mol-plugin/context.js';
-import { DefaultPluginSpec } from 'molstar/lib/mol-plugin/spec.js';
-import { PluginStateSnapshotManager as Snapshots } from 'molstar/lib/mol-plugin-state/manager/snapshots.js';
-import { Canvas3DParams, Canvas3DContext } from 'molstar/lib/mol-canvas3d/canvas3d.js';
-import { Camera } from 'molstar/lib/mol-canvas3d/camera.js';
-import { ParamDefinition as PD } from 'molstar/lib/mol-util/param-definition.js';
-import { Asset } from 'molstar/lib/mol-util/assets.js';
-import { File_ } from 'molstar/lib/mol-util/nodejs-shims.js';
-import { unzip } from 'molstar/lib/mol-util/zip/zip.js';
-import { SyncRuntimeContext } from 'molstar/lib/mol-task/execution/synchronous.js';
+import { PluginContext } from '@molstar/plugin';
+import { DefaultPluginSpec } from '@molstar/plugin/default-spec';
+import { PluginStateSnapshotManager as Snapshots } from '@molstar/plugin/state/manager/snapshots';
+import { Canvas3DParams, Canvas3DContext } from '@molstar/graphics/canvas3d/canvas3d';
+import { Camera } from '@molstar/graphics/canvas3d/camera';
+import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
+import { Asset } from '@molstar/core/util/assets';
+import { File_ } from '@molstar/core/util/nodejs-shims';
+import { unzip } from '@molstar/core/util/zip/zip';
+import { SyncRuntimeContext } from '@molstar/core/task/execution/synchronous';
 import { BuretteTopologyEnvironment as Environment } from '../scripts/molstar-topology-environment.js';
 const dom = new Window(), previous = Object.getOwnPropertyDescriptor(globalThis, 'document'), plugins = [], calls = [];
 Object.defineProperty(globalThis, 'document', { configurable: true, value: dom.document });
@@ -43,7 +43,7 @@ function readonlyRefusal(plugin, action) {
 }
 const { BuretteTopologyScene } = await import('../scripts/molstar-topology-scene.js');
 const { BuretteGeometry } = await import('../scripts/molstar-geometry.js');
-const { AnimateCameraSpin } = await import('molstar/lib/mol-plugin-state/animation/built-in/camera-spin.js');
+const { AnimateCameraSpin } = await import('@molstar/plugin/state/animation/built-in/camera-spin');
 try {
   const source = await make(), target = await make(), tree = source.state.data.tree;
   const receipt = Environment.capture(source).owner;
@@ -64,7 +64,7 @@ try {
   assert.deepEqual(target.state.data.getSnapshot(), targetBefore);
   await source.managers.animation.stop();
   readonlyRefusal(source, () => Environment.capture(source)); // stopped Spin still owns nondefault parameters/state
-  const { AnimateModelIndex } = await import('molstar/lib/mol-plugin-state/animation/built-in/model-index.js');
+  const { AnimateModelIndex } = await import('@molstar/plugin/state/animation/built-in/model-index');
   source.managers.animation.updateParams({ current: AnimateModelIndex.name });
   readonlyRefusal(source, () => Environment.validate(source, receipt)); // play/stop/reset ABA cannot revive an old receipt
   const reset = Environment.capture(source).owner;

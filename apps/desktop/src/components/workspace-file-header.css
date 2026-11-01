@@ -1,67 +1,71 @@
-/* Mirrors the Codex Browser toolbar: a borderless strip of separate rounded
-   pills with hairline borders, an address-style path field in the middle. */
+/* The Codex file viewer header at compact density: 32px capsules on the viewer
+   control surface, 8px inside a 48px band, with ghost panel toggles. */
 .workspace-file-header {
-  --file-pill-bg:var(--bg-base, #fff); --file-pill-line:color-mix(in srgb, var(--text-primary, #161616) 11%, transparent);
-  --file-pill-hover:color-mix(in srgb, var(--text-primary, #161616) 6%, var(--file-pill-bg)); --file-pill-icon:var(--text-secondary, #5d5d5d);
-  display:flex; flex:none; align-items:center; gap:8px; min-width:0;
-  height:50px; padding:0 10px; background:var(--bg-base, #fff); color:var(--text-primary, #161616);
-  font:400 14px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; z-index:20; container-type:inline-size;
+  --file-control-bg:var(--color-surface-elevated); --file-control-shadow:var(--shadow-viewer-surface); --file-control-selected-text:var(--color-text-info);
+  display:flex; flex:none; align-items:center; gap:6px; min-width:0;
+  height:48px; padding:0 8px; box-sizing:border-box; background:var(--bg-base); color:var(--color-text);
+  font-family:var(--font-sans); font-size:var(--text-sm); line-height:20px; z-index:20; container-type:inline-size;
 }
-/* Dark Codex toolbar pills are filled a step above the strip, without borders. */
-[data-theme="dark"] .workspace-file-header {
-  --file-pill-bg:color-mix(in srgb, #fff 11%, var(--bg-base, #111)); --file-pill-line:transparent;
-  --file-pill-hover:color-mix(in srgb, #fff 16%, var(--bg-base, #111)); --file-pill-icon:#d4d4d4;
+[data-effective-theme="dark"] .workspace-file-header {
+  --file-control-bg:var(--color-surface-elevated-secondary);
+  --file-control-shadow:0 0 0 var(--border-width-hairline) var(--color-border), var(--shadow-xl-spread);
+  --file-control-selected-text:color-mix(in srgb, var(--color-chart-blue), var(--white) calc(19.5% + var(--codex-base-contrast) * 0.325% + max(0, var(--codex-base-contrast) - 60) * 0.325%));
 }
-[data-theme="dark"] .workspace-file-header .workspace-file-pill {box-shadow:none}
-[data-theme="dark"] .workspace-file-header .workspace-file-parent {color:#bdbdbd}
-.workspace-file-header .workspace-file-pill {
-  display:flex; align-items:center; flex:none; height:34px; box-sizing:border-box;
-  border:1px solid var(--file-pill-line); border-radius:999px; background:var(--file-pill-bg); box-shadow:0 1px 2px #0000000a;
+.workspace-file-header .workspace-file-control {
+  position:relative; isolation:isolate; display:inline-flex; align-items:center; flex:none; height:32px; box-sizing:border-box;
+  border:0; border-radius:var(--radius-full); background:var(--file-control-bg); box-shadow:var(--file-control-shadow);
+  backdrop-filter:blur(var(--blur-xl)); color:var(--color-text); font:inherit; white-space:nowrap;
 }
-.workspace-file-path {gap:2px; min-width:0; flex:1 1 auto; padding:0 4px 0 14px}
-.workspace-file-header .workspace-file-path.workspace-file-pill {flex:1 1 auto}
-.workspace-file-breadcrumb {display:flex; align-items:center; justify-content:center; gap:6px; min-width:0; flex:1; white-space:nowrap; font-size:14px}
-/* Parent folders give way first so the file name stays readable. */
-.workspace-file-ancestors {display:flex; flex:0 1000 auto; align-items:center; gap:6px; min-width:0; overflow:auto; scrollbar-width:none}
-.workspace-file-ancestors::-webkit-scrollbar {display:none}
-.workspace-file-name,.workspace-file-parent {display:inline-flex; align-items:center; gap:6px; flex:none}
-.workspace-file-parent {color:var(--text-secondary, #737373)}
-.workspace-file-unsaved {color:var(--text-secondary, #737373); font-size:12px; margin-inline:6px}
-.workspace-file-name {font-weight:400; min-width:0; max-width:100%; flex:0 0 auto}
-.workspace-file-name>span {overflow:hidden; text-overflow:ellipsis}
-.workspace-file-breadcrumb svg {color:var(--text-secondary, #737373); flex:none}
-.workspace-file-header button {position:relative; display:inline-flex; align-items:center; justify-content:center; gap:6px; height:100%; padding:0 12px; border:0; background:transparent; color:inherit; font:inherit; cursor:pointer}
-.workspace-file-header .workspace-file-icon-button {width:32px; padding:0; flex:none; border-radius:999px; color:var(--file-pill-icon)}
-.workspace-file-path .workspace-file-icon-button {width:28px; height:28px}
-.workspace-file-header button.workspace-file-icon-button.workspace-file-pill {width:34px}
-.workspace-file-header button[aria-pressed="true"] {background:var(--file-pill-hover); color:var(--text-primary, #161616)}
-.workspace-file-open-primary {border-radius:999px 0 0 999px}
+.workspace-file-header button {cursor:var(--cursor-interaction)}
+/* Hover paints a layer under the content, as Codex viewer buttons do. */
+.workspace-file-header :is(button.workspace-file-control, .workspace-file-control button)::after {content:""; position:absolute; inset:0; z-index:-1; border-radius:inherit; pointer-events:none}
+.workspace-file-header :is(button.workspace-file-control:not([data-active]), .workspace-file-control button):is(:hover, [data-state="open"])::after {background:var(--color-background-primary-ghost-hover)}
+.workspace-file-header :is(.workspace-file-control, .chrome-button):focus-visible,
+.workspace-file-control button:focus-visible {outline:2px solid var(--color-ring); outline-offset:0}
+.workspace-file-title {gap:8px; min-width:0; flex:0 1 auto; padding:0 12px}
+.workspace-file-title svg {flex:none; color:var(--color-text-secondary)}
+.workspace-file-name {min-width:0; overflow:hidden; text-overflow:ellipsis}
+.workspace-file-unsaved {color:var(--color-text-tertiary)}
+.workspace-file-spacer {flex:1}
+.workspace-file-open button {position:relative; display:inline-flex; align-items:center; height:100%; padding:0; border:0; background:transparent; color:inherit; font:inherit}
+.workspace-file-open .workspace-file-open-primary {gap:6px; padding:0 4px 0 12px; border-radius:var(--radius-full) 0 0 var(--radius-full)}
+.workspace-file-open .workspace-file-open-primary:has(img) {padding-left:8px}
 .workspace-file-open-primary img {width:18px; height:18px; object-fit:contain}
-.workspace-file-header .workspace-file-open-menu {padding:0 8px 0 6px; border-radius:0 999px 999px 0; color:var(--file-pill-icon)}
-.workspace-file-header button:hover,.workspace-file-header button[data-state="open"] {background:var(--file-pill-hover)}
-.workspace-file-header button:focus-visible {outline:2px solid var(--text-secondary, #777); outline-offset:2px}
-/* The annotation pill keeps its own colors and active blue from annotation-layer.css. */
-.workspace-file-header .annotate-toggle.annotate-toggle.workspace-file-pill {height:34px; padding:0 13px 0 11px; background:var(--file-pill-bg); border-color:var(--file-pill-line); font:inherit}
-.workspace-file-header .annotate-toggle.annotate-toggle.workspace-file-pill:hover {background:var(--file-pill-hover)}
-.workspace-file-header .annotate-toggle.annotate-toggle.workspace-file-pill[data-active] {background:#e0efff; color:#0065bc; border-color:#a8d3ff}
-[data-theme="dark"] .workspace-file-header .annotate-toggle.annotate-toggle.workspace-file-pill[data-active] {background:#323f4b; border-color:#3c5369; color:#58a9f3}
+.workspace-file-open .workspace-file-open-menu {padding:0 10px 0 4px; border-radius:0 var(--radius-full) var(--radius-full) 0; color:var(--color-text-secondary)}
+.workspace-file-header .chrome-button {flex:none}
+.workspace-file-header .chrome-button[aria-pressed="true"] {color:var(--color-text)}
+/* Codex marks a pressed viewer tool with a blue-tinted surface; dark themes
+   lift its chart-blue text toward white by the theme contrast. */
+.workspace-file-header .annotate-toggle.annotate-toggle.workspace-file-control {
+  height:32px; padding:0 12px; gap:8px; border:0; background:var(--file-control-bg); box-shadow:var(--file-control-shadow);
+  color:var(--color-text); font:inherit;
+}
+.workspace-file-header .annotate-toggle.annotate-toggle.workspace-file-control svg {width:16px; height:16px}
+.workspace-file-header .annotate-toggle.annotate-toggle.workspace-file-control[data-active] {
+  background:color-mix(in srgb, var(--color-surface) 90%, var(--color-chart-blue)); color:var(--file-control-selected-text);
+}
+.workspace-file-header .annotate-toggle.annotate-toggle.workspace-file-control[data-active]:hover {background:color-mix(in srgb, var(--color-surface) 85%, var(--color-chart-blue))}
 .workspace-file-menu {min-width:240px}
-/* Over a Mol* viewer the header floats on the viewer's own top band and the
-   viewer's controls (scene tree, Seq, Style) fill the leading edge and the slot;
-   see use-workspace-header-band.ts. */
-.workspace-file-header[data-band] {position:absolute; inset:0 0 auto; background:transparent; pointer-events:none; padding-left:var(--band-leading, 10px)}
+/* The header leads the content column. Over a Mol* viewer it floats on the
+   viewer's own top band, whose controls (scene tree, Seq, Style) fill the
+   leading edge and the slot; see use-workspace-header-band.ts. */
+.workbench:has(> .workspace-file-header) {position:relative; flex-direction:column}
+.workspace-file-header[data-band] {position:absolute; inset:0 0 auto; background:transparent; pointer-events:none; padding-left:var(--band-leading, 8px)}
 .workspace-file-header[data-band] > :not(.workspace-file-band-slot) {pointer-events:auto}
-.workspace-file-navigation {display:flex;flex:none}
-.workspace-file-header[data-band] > .workspace-file-navigation {position:absolute;left:10px;top:8px;height:34px}
+.workspace-file-navigation {display:flex; flex:none}
+.workspace-file-header[data-band] > .workspace-file-navigation {position:absolute; left:8px; top:10px}
 .workspace-file-band-slot {flex:0 1 auto; min-width:0; width:var(--band-controls, 0px); margin-left:auto; margin-right:var(--band-slot-margin, 0px)}
-.workspace-file-header[data-band-compact] .workspace-file-path {display:none}
-.app-shell:has(> .workspace-file-header[data-band]) .dock-panel[data-area="right"] {padding-top:50px; box-sizing:border-box}
+.workspace-file-header[data-band-compact] .workspace-file-title {display:none}
+.workbench:has(> .workspace-file-header[data-band]) .dock-panel[data-area="right"] {padding-top:48px; box-sizing:border-box}
+/* The plugin has no window chrome (--chrome-height is 0), so the dock's tab
+   row takes the hosted widget's height instead of collapsing. */
+.workbench:has(> .workspace-file-header) .dock-panel[data-area="right"] .dock-header {height:44px; flex-basis:44px; padding:7px 8px}
 @container (max-width:520px) {
   /* The workspace menu includes these file actions on narrow cards. */
   .workspace-file-header:has([aria-label="Workspace pages"]) .workspace-file-open {display:none}
-  .workspace-file-header .annotate-toggle.annotate-toggle.workspace-file-pill {width:34px; padding:0}
-  .workspace-file-header .annotate-toggle.annotate-toggle.workspace-file-pill>span {display:none}
-  /* Sharing the row with the viewer controls leaves no room for the path. */
-  .workspace-file-header[data-band] .workspace-file-path {display:none}
-  .workspace-file-header[data-band] .workspace-file-open-primary {font-size:0; gap:0}
+  .workspace-file-header .annotate-toggle.annotate-toggle.workspace-file-control {width:32px; padding:0}
+  .workspace-file-header .annotate-toggle.annotate-toggle.workspace-file-control > span {display:none}
+  /* Sharing the row with the viewer controls leaves no room for the title. */
+  .workspace-file-header[data-band] .workspace-file-title {display:none}
+  .workspace-file-header[data-band] .workspace-file-open-primary:has(img) > span {display:none}
 }

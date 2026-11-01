@@ -6,6 +6,11 @@ import { execPath } from "node:process";
 const isolatedNode = script => promisify(execFile)(execPath, [fileURLToPath(new URL(script, import.meta.url))]);
 
 const contractScripts = {
+  "test-browser-dev-trj.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-browser-dev-trj.mjs", import.meta.url))]),
+  "test-collect-diagnostics.py": () => promisify(execFile)("python3", [fileURLToPath(new URL("./test-collect-diagnostics.py", import.meta.url))]),
+  "test-action-journal.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-action-journal.mjs", import.meta.url))]),
+  "test-browser-native-compute-cancellation.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-browser-native-compute-cancellation.mjs", import.meta.url))]),
+  "test-browser-conformer-topology.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-browser-conformer-topology.mjs", import.meta.url))]),
   "test-sdf-background-style.mjs": () => isolatedNode("./test-sdf-background-style.mjs"),
   "test-conformer-variable-atoms.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-conformer-variable-atoms.mjs", import.meta.url))]),
   "test-clear-recent-structures.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-clear-recent-structures.mjs", import.meta.url))]),

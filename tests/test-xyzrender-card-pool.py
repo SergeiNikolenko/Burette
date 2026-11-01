@@ -52,7 +52,7 @@ def render(mol, **kwargs): return json.dumps(kwargs, sort_keys=True)
     @unittest.skipUnless(LIVE, 'Use --live for thumbnail chemistry and cache validation')
     def test_live_thumbnail_conformer_and_bounded_reuse(self):
         # Exercise the embedded helper without starting its stdin protocol loop.
-        script = HELPER.split('for line in sys.stdin:', 1)[0] + r"""
+        script = HELPER.split('\ndef serve():', 1)[0] + r"""
 from unittest.mock import patch
 from rdkit import Chem
 from rdkit.Chem import rdDistGeom
@@ -114,7 +114,8 @@ responses.write("thumbnail chemistry, deterministic coordinates, fallback and bo
     @unittest.skipUnless(LIVE, 'Use --live with the bundled xyzrender Python for API/CLI equivalence')
     def test_live_api_cli_hydrogen_geometry(self):
         from importlib.metadata import version
-        self.assertEqual(version('xyzrender'), '0.3.8', 'Verify against the bundled dependency pin')
+        expected = json.loads((ROOT / 'config/xyzrender/source.json').read_text())['version']
+        self.assertEqual(version('xyzrender'), expected, 'Verify against the bundled dependency pin')
         with tempfile.TemporaryDirectory(prefix='burette-card-live-') as directory:
             root = Path(directory)
             molecule = ROOT / 'apps/burette-public-plugin/public/demo-library/Quantum/caffeine.xyz'

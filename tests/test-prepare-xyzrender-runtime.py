@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -68,6 +69,7 @@ class RuntimePreparationTests(unittest.TestCase):
             self.assertIn('--no-config', command)
             self.assertIn('--no-cache', command)
             self.assertEqual(command[command.index('--only-binary') + 1], ':all:')
+            self.assertEqual(options['cwd'], self.root, 'Resolve the vendored wheel from the repository root')
             self.assertEqual(options['env']['MACOSX_DEPLOYMENT_TARGET'], '12.0')
             self.assertFalse(any(key.startswith(('UV_', 'PIP_', 'PYTHON')) or key == 'VIRTUAL_ENV' for key in options['env']))
 
@@ -108,20 +110,29 @@ class RuntimePreparationTests(unittest.TestCase):
             'otool': 'printf "%s\\n" "@rpath/libpython3.13.dylib (compatibility version 3.13.0)"',
             'ditto': 'cp "$3" "$4"',
             'install_name_tool': 'printf "%s\\n" "$@" > "$TEST_LINK_ARGS"',
+            'xcrun': 'printf "%s\\n" "$@" > "$TEST_COMPILE_ARGS"\n'
+                     'while [ "$#" -gt 0 ]; do\n'
+                     '  if [ "$1" = "-o" ]; then shift; printf "bridge fixture" > "$1"; fi\n'
+                     '  shift\ndone',
         }.items():
             executable = commands / name
             executable.write_text('#!/bin/sh\n' + body + '\n')
             executable.chmod(0o700)
         bundle = self.root / 'Preview.appex'
         args = self.root / 'link-args'
+        compile_args = self.root / 'compile-args'
         env = {**os.environ, 'PATH': str(commands) + os.pathsep + os.environ['PATH'],
                'BURETTE_XYZRENDER_ENV': str(venv), 'CODESIGNING_FOLDER_PATH': str(bundle),
-               'CODE_SIGNING_ALLOWED': 'NO', 'TEST_LINK_ARGS': str(args)}
+               'CODE_SIGNING_ALLOWED': 'NO', 'TEST_LINK_ARGS': str(args), 'TEST_COMPILE_ARGS': str(compile_args)}
         script = Path(__file__).resolve().parents[1] / 'scripts/bundle-quicklook-xyzrender-launcher.sh'
         subprocess.run(['bash', str(script)], env=env, check=True)
         self.assertEqual((bundle / 'Contents/lib/libpython3.13.dylib').read_bytes(), library.read_bytes())
         self.assertEqual((bundle / 'Contents/Resources/xyzrender-python3').read_bytes(), python.read_bytes())
         self.assertIn('@executable_path/../lib/libpython3.13.dylib', args.read_text())
+        self.assertEqual((bundle / 'Contents/lib/burette-xyzrender-bridge.dylib').read_bytes(), b'bridge fixture')
+        self.assertIn('-dynamiclib', compile_args.read_text())
+        self.assertIn(str(runtime / 'include/python3.13'), compile_args.read_text())
+        self.assertIn('PreviewExtension/EmbeddedXyzrender.c', compile_args.read_text())
         library.unlink()
         result = subprocess.run(['bash', str(script)], env=env, capture_output=True)
         self.assertNotEqual(result.returncode, 0)
@@ -135,6 +146,29 @@ class RuntimePreparationTests(unittest.TestCase):
             with self.assertRaises(subprocess.CalledProcessError):
                 prepare.prepare()
         self.assertEqual(list((self.root / 'build').iterdir()), [])
+
+    def test_native_build_rejects_stale_renderer_and_accepts_snapshot(self):
+        source = (Path(__file__).resolve().parents[1] / 'scripts/build.sh').read_text()
+        guard = 'ensure_xyzrender_rdkit() {' + source.split('ensure_xyzrender_rdkit() {', 1)[1].split('relocate_bundled_python_runtime() {', 1)[0]
+        expected = '9.9.9+fixture.1'
+        (self.locks / 'source.json').write_text(json.dumps({'version': expected}))
+        environment = self.root / 'venv'
+        (environment / 'bin').mkdir(parents=True)
+        (environment / 'bin/python3').symlink_to(sys.executable)
+        site = self.root / 'site'
+        (site / 'rdkit').mkdir(parents=True)
+        (site / 'rdkit/__init__.py').write_text('class Chem:\n    MolFromSmiles = staticmethod(lambda value: object())\n')
+        metadata = site / 'xyzrender-fixture.dist-info'
+        metadata.mkdir()
+        script = guard + '\nROOT="$1"\nLOCAL_XYZRENDER_ENV="$2"\nensure_xyzrender_rdkit\n'
+        for installed, success in [('0.3.8', False), (expected, True)]:
+            with self.subTest(installed=installed):
+                (metadata / 'METADATA').write_text(f'Name: xyzrender\nVersion: {installed}\n')
+                result = subprocess.run(['bash', '-c', script, 'guard', str(self.root), str(environment)],
+                                        env={**os.environ, 'PYTHONPATH': str(site)}, text=True, capture_output=True)
+                self.assertEqual(result.returncode == 0, success, result.stderr)
+                if not success:
+                    self.assertIn('BURETTE_BUILD_LOCKED_XYZRENDER=1', result.stderr)
 
 
 if __name__ == '__main__':

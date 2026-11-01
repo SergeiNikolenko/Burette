@@ -2,7 +2,7 @@
 // Lexical/numeric acceptance only: no symmetry expansion or scientific reference claim.
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { parseCifText } from 'molstar/lib/mol-io/reader/cif/text/parser.js';
+import { parseCifText } from '@molstar/io/reader/cif/text/parser';
 
 const lock = JSON.parse(readFileSync(new URL('../config/crystals-resource.lock.json', import.meta.url), 'utf8'));
 const bundle = JSON.parse(gunzipSync(readFileSync(new URL(`../${lock.bundle.path}`, import.meta.url)), { maxOutputLength: lock.limits.retainedBytes * 2 }).toString());

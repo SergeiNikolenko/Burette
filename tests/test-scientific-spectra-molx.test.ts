@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { Window } from "happy-dom";
-import { PluginContext } from "molstar/lib/mol-plugin/context.js";
-import { DefaultPluginSpec } from "molstar/lib/mol-plugin/spec.js";
-import type { UUID } from "molstar/lib/mol-util/uuid.js";
+import { PluginContext } from "@molstar/plugin";
+import { DefaultPluginSpec } from "@molstar/plugin/default-spec";
+import type { UUID } from "@molstar/core/util/uuid";
 import { unzipSync, zipSync, strToU8 } from "../apps/desktop/node_modules/fflate";
 import { encodeScienceSession, decodeScienceSession, SCIENCE_MANIFEST_ASSET_ID, type EncodedScienceSession } from "../apps/desktop/src/lib/science-session/codec";
 import { sha256Hex } from "../apps/desktop/src/lib/source-editing/source-identity";

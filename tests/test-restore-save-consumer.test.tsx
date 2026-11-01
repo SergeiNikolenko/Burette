@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { transformSync } from "@babel/core";
 import { Window } from "happy-dom";
 import React, { act } from "react";
-import { PluginStateSnapshotManager } from "../node_modules/molstar/lib/mol-plugin-state/manager/snapshots.js";
+import { PluginStateSnapshotManager } from "@molstar/plugin/state/manager/snapshots";
 import { fakeViewer, realSdfViewer, science, waterScience, XYZ, bindingOf } from "./science-session-fixture";
 
 plugin({ name: "compiled-restore-save-boundary", setup(build) {

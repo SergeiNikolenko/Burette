@@ -1,11 +1,6 @@
-use sha2::{Digest, Sha256};
-use std::{
-    os::unix::fs::DirBuilderExt,
-    sync::{Condvar, Mutex, OnceLock},
-};
+use std::sync::{Condvar, Mutex};
 
 static CONNECTIONS: (Mutex<usize>, Condvar) = (Mutex::new(0), Condvar::new());
-static CONTROL_DIRECTORY: OnceLock<Result<std::path::PathBuf, String>> = OnceLock::new();
 
 // Bound active channels without holding a global lock during network IO.
 pub(super) struct Connection;
@@ -32,33 +27,46 @@ impl Drop for Connection {
     }
 }
 
-pub(super) fn multiplex_options(host: &str) -> Result<[String; 3], String> {
-    let directory = CONTROL_DIRECTORY.get_or_init(|| {
-        // macOS's per-user temp path can exceed the Unix socket path limit.
-        // A fresh exclusive 0700 directory prevents socket sharing with any
-        // user-configured master, another app instance, or another local user.
-        // Alias hash below also isolates distinct ProxyCommand/identity configs.
-        // The whole socket path must stay under the 104-byte sun_path limit:
-        // "/tmp/burette-ssh-" + 8 + "/" + 8 + "-" + %C (40) is 75 bytes, and
-        // ssh appends a 17-byte temporary suffix while it binds the master.
-        let path = std::path::Path::new("/tmp").join(format!(
-            "burette-ssh-{}",
-            &uuid::Uuid::new_v4().simple().to_string()[..8]
-        ));
-        std::fs::DirBuilder::new()
-            .mode(0o700)
-            .create(&path)
-            .map_err(|e| e.to_string())?;
-        Ok(path)
-    });
-    let directory = directory.as_ref().map_err(Clone::clone)?;
-    let alias = Sha256::digest(host.as_bytes())[..4]
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    Ok([
-        "-oControlMaster=auto".into(),
-        "-oControlPersist=60".into(),
-        format!("-oControlPath={}/{}-%C", directory.display(), alias),
-    ])
+// Native subprocess pipes must not be passed through an OpenSSH master socket:
+// macOS can reject that descriptor handoff (mm_send_fd / EMSGSIZE) before the
+// remote worker starts. Explicitly disable both creating and reusing a master,
+// including one selected by the user's SSH config. Never replay a failed submit.
+pub(super) const CONNECTION_OPTIONS: [&str; 3] = [
+    "-oControlMaster=no",
+    "-oControlPath=none",
+    "-oControlPersist=no",
+];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process::Command;
+
+    #[test]
+    fn subprocess_transport_overrides_configured_multiplexing() {
+        let output = Command::new("/usr/bin/ssh")
+            .args(CONNECTION_OPTIONS)
+            .args([
+                "-G",
+                "-F",
+                "/dev/null",
+                "-oControlMaster=auto",
+                "-oControlPersist=60",
+                "-oControlPath=/tmp/unused-burette-test-master",
+                "example.invalid",
+            ])
+            .output()
+            .expect("inspect OpenSSH effective configuration without connecting");
+        assert!(output.status.success());
+        let config = String::from_utf8(output.stdout).expect("OpenSSH configuration");
+        let options = config
+            .lines()
+            .filter(|line| {
+                line.starts_with("controlmaster ")
+                    || line.starts_with("controlpersist ")
+                    || line.starts_with("controlpath ")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(options, ["controlmaster false", "controlpersist no"]);
+    }
 }

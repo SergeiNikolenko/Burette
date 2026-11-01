@@ -11,10 +11,10 @@ import { evaluateOrbitalGrid, parseMolden } from '../apps/desktop/src/lib/molecu
 installPlugin(molstarStatePreconditionPlugin);
 const dom = new Window(), descriptor = Object.getOwnPropertyDescriptor(globalThis, 'document');
 Object.defineProperty(globalThis, 'document', { configurable: true, value: dom.document });
-const { PluginContext } = await import('molstar/lib/mol-plugin/context.js');
-const { StateTransforms } = await import('molstar/lib/mol-plugin-state/transforms.js');
-const { PluginStateObject: SO, PluginStateTransform } = await import('molstar/lib/mol-plugin-state/objects.js');
-const { Task } = await import('molstar/lib/mol-task/index.js');
+const { PluginContext } = await import('@molstar/plugin');
+const { StateTransforms } = await import('@molstar/viewer/state-transforms');
+const { PluginStateObject: SO, PluginStateTransform } = await import('@molstar/plugin/state/objects');
+const { Task } = await import('@molstar/core/task');
 afterAll(async () => { await dom.happyDOM.close(); if (descriptor) Object.defineProperty(globalThis, 'document', descriptor); else Reflect.deleteProperty(globalThis, 'document'); });
 const input = parseMolden(readFileSync(new URL('fixtures/quantum/dispatcher/hydrogen.molden', import.meta.url), 'utf8'));
 const grid = evaluateOrbitalGrid(input, 0, { paddingAngstrom: 1, spacingAngstrom: 0.5 });

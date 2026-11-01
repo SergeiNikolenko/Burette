@@ -1,5 +1,4 @@
-import { readFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import { molstarPatchPlugin } from './molstar-source.mjs';
 
 // Framing only: the upstream V3K reader still owns atoms, bonds and properties.
 function molV3000Framing(data) {
@@ -22,27 +21,24 @@ function molV3000Framing(data) {
 // MOL's upstream provider only calls the V2000 reader. Reuse the existing SDF
 // V3K parser in this transform module, preserving MOL model format and raw source.
 export function patchMolstarMolV3000(source) {
-  const original = `            const parsed = await parseMol(a.data).runInContext(ctx);
-            if (parsed.isError)
-                throw new Error(parsed.message);
-            const models = await trajectoryFromMol(parsed.result).runInContext(ctx);`;
-  if (source.split(original).length !== 2 || !source.includes("import { parseSdf }")) throw new Error('Mol* MOL transform changed; review before vendoring.');
-  return source.replace(original, `            const v3000 = (${molV3000Framing.toString()})(a.data);
-            const parsed = await (v3000 ? parseSdf(a.data) : parseMol(a.data)).runInContext(ctx);
-            if (parsed.isError)
-                throw new Error(parsed.message);
-            if (v3000 && parsed.result.compounds.length !== 1)
-                throw new Error('Open one complete MOL structure.');
-            const mol = v3000 ? parsed.result.compounds[0].molFile : parsed.result;
-            const models = await trajectoryFromMol(mol).runInContext(ctx);`);
+  const original = `      const parsed = await parseMol(SO.Data.readBytes(a)).runInContext(ctx);
+      if (parsed.isError)
+        throw new Error(parsed.message);
+      const models = await trajectoryFromMol(parsed.result).runInContext(ctx);`;
+  const parserImport = 'import { parseMol } from "@molstar/io/reader/mol/parser";\n';
+  if (source.split(original).length !== 2 || source.split(parserImport).length !== 2 || source.includes('parseSdf')) throw new Error('Mol* MOL transform changed; review before vendoring.');
+  return source.replace(parserImport, `${parserImport}import { parseSdf } from "@molstar/io/reader/sdf/parser";\n`).replace(original, `      const bytes = SO.Data.readBytes(a);
+      const v3000 = (${molV3000Framing.toString()})(typeof a.data === 'string' ? a.data : new TextDecoder().decode(bytes));
+      const parsed = await (v3000 ? parseSdf(bytes) : parseMol(bytes)).runInContext(ctx);
+      if (parsed.isError)
+        throw new Error(parsed.message);
+      if (v3000 && parsed.result.compounds.length !== 1)
+        throw new Error('Open one complete MOL structure.');
+      const mol = v3000 ? parsed.result.compounds[0].molFile : parsed.result;
+      const models = await trajectoryFromMol(mol).runInContext(ctx);`);
 }
-export const molstarMolV3000Plugin = {
-  name: 'molstar-mol-v3000',
-  setup(build) {
-    build.onLoad({ filter: /molstar\/lib\/mol-plugin-state\/transforms\/model\.js$/u }, async ({ path }) => {
-      const { version } = JSON.parse(await readFile(resolve(dirname(path), '../../../package.json'), 'utf8'));
-      if (version !== '5.11.0') throw new Error('Review the MOL adapter before upgrading from Mol* 5.11.0.');
-      return { contents: patchMolstarMolV3000(await readFile(path, 'utf8')), loader: 'js' };
-    });
-  },
-};
+export const molstarMolV3000Plugin = molstarPatchPlugin(
+  'molstar-mol-v3000',
+  '@molstar/plugin/state/formats/trajectory/mol',
+  patchMolstarMolV3000,
+);

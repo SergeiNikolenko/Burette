@@ -3,7 +3,7 @@ import { plugin as installPlugin } from "bun";
 import { readFileSync } from "node:fs";
 import { Window } from "happy-dom";
 import { unzipSync, zipSync, strToU8 } from "../apps/desktop/node_modules/fflate";
-import type { UUID } from "molstar/lib/mol-util/uuid.js";
+import type { UUID } from "@molstar/core/util/uuid";
 import { molstarMolV3000Plugin } from "../scripts/molstar-mol-v3000.mjs";
 import { molstarV3000ChargesPlugin } from "../scripts/molstar-v3000-charges.mjs";
 import { readCjsonGraph } from "../apps/desktop/src/lib/molecular-workbench/cjson-graph";
@@ -11,8 +11,8 @@ import type { ScientificDocument } from "../apps/desktop/src/lib/molecular-workb
 import { encodeScienceSession, decodeScienceSession, SCIENCE_MANIFEST_ASSET_ID, type EncodedScienceSession, type ScienceSessionContent } from "../apps/desktop/src/lib/science-session/codec";
 import { sha256Hex } from "../apps/desktop/src/lib/source-editing/source-identity";
 installPlugin(molstarMolV3000Plugin); installPlugin(molstarV3000ChargesPlugin);
-const { PluginContext } = await import("molstar/lib/mol-plugin/context.js");
-const { DefaultPluginSpec } = await import("molstar/lib/mol-plugin/spec.js");
+const { PluginContext } = await import("@molstar/plugin");
+const { DefaultPluginSpec } = await import("@molstar/plugin/default-spec");
 const uuid = "0f8fad5b-d9cb-469f-a165-70867728950e";
 const binding = { structureRef: "s", modelRef: "m", trajectoryRef: "t", frameIndex: 0, frameCount: 1, atomCount: 4 };
 function content(name = "nmr.cjson"): ScienceSessionContent {

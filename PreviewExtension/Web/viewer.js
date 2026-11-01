@@ -54,7 +54,8 @@
     { value: 'ball-and-stick', label: 'Ball+Stick' },
     { value: 'spacefill', label: 'Spacefill' },
     { value: 'line', label: 'Line' },
-    { value: 'molecular-surface', label: 'Surface' }
+    { value: 'molecular-surface', label: 'Surface' },
+    { value: 'blob-surface', label: 'Envelope' }
   ];
   const MOLSTAR_APPEARANCE_OPTIONS = [
     { value: 'default', label: 'Default' },
@@ -66,6 +67,7 @@
     { value: 'ball-and-stick', label: 'Ball & Stick', group: 'Burette', legacyStyle: 'ball-and-stick' },
     { value: 'spacefill', label: 'Spacefill by Element', group: 'Burette', legacyStyle: 'spacefill' },
     { value: 'line', label: 'Line', group: 'Burette', legacyStyle: 'line' },
+    { value: 'blob-surface', label: 'Envelope', group: 'Burette', legacyStyle: 'blob-surface' },
     { value: 'atomic-detail', label: 'Atomic Detail', group: 'Basic', provider: 'preset-structure-representation-atomic-detail' },
     { value: 'polymer-cartoon', label: 'Polymer Cartoon', group: 'Basic', provider: 'preset-structure-representation-polymer-cartoon' },
     { value: 'polymer-ligand', label: 'Polymer & Ligand', group: 'Basic', provider: 'preset-structure-representation-polymer-and-ligand' },
@@ -165,7 +167,8 @@
     line: { type: 'line', typeParams: { sizeFactor: 0.08 }, color: 'element-symbol' },
     'ball-and-stick': { type: 'ball-and-stick', typeParams: { sizeFactor: 0.16 }, color: 'element-symbol' },
     spacefill: { type: 'spacefill', typeParams: { sizeFactor: 0.45 }, color: 'element-symbol' },
-    'molecular-surface': { type: 'molecular-surface', typeParams: { alpha: 0.72 }, color: 'element-symbol' }
+    'molecular-surface': { type: 'molecular-surface', typeParams: { alpha: 0.72 }, color: 'element-symbol' },
+    'blob-surface': { type: 'blob-surface', color: 'chain-id' }
   };
   // `Illustrative` keeps the scene as authored and only flattens the shading, so
   // it is not a representation of its own - but `ignoreLight` lives on each
@@ -513,7 +516,11 @@
     const response = await fetch(href);
     if (!response.ok) throw new Error(`Could not read export blob: HTTP ${response.status}`);
     const blob = await response.blob();
-    const mimeType = blob.type || response.headers.get('content-type') || 'application/octet-stream';
+    return exportBlobToHost(blob, name);
+  }
+
+  async function exportBlobToHost(blob, name) {
+    const mimeType = blob.type || 'application/octet-stream';
     let posted = false;
     if (shouldExportBlobAsText(name, mimeType)) {
       posted = postHostMessage({
@@ -2324,7 +2331,7 @@
     // config still asking for the legacy `cartoon` style means.
     if (normalized === 'cartoon') return 'polymer-cartoon';
     if (['ball-and-stick', 'spacefill', 'line', 'illustrative-surface'].includes(normalized)) return normalized;
-    if (normalized === 'molecular-surface') return 'molecular-surface';
+    if (normalized === 'molecular-surface' || normalized === 'blob-surface') return normalized;
     return DEFAULT_MOLSTAR_PRESET;
   }
 
@@ -2357,7 +2364,7 @@
 
   function normalizeSdfCollectionContextStyle(value) {
     const normalized = String(value || '').trim().toLowerCase();
-    if (['line', 'ball-and-stick', 'cartoon', 'spacefill', 'molecular-surface', 'match'].includes(normalized)) return normalized;
+    if (['line', 'ball-and-stick', 'cartoon', 'spacefill', 'molecular-surface', 'blob-surface', 'match'].includes(normalized)) return normalized;
     return 'match';
   }
 
@@ -2484,7 +2491,9 @@
     });
     const selectionBar = document.getElementById('buret-selection-bar');
     if (selectionBar) window.BuretteNativeViewerMenus?.styleControls?.(selectionBar, activeConfig?.themeTokens, resolvedTheme);
-    document.querySelectorAll('#buret-viewport-rail, .buret-viewport-tooltip').forEach(surface => {
+    // The toolbar and scene tree toggle only read these tokens as capsules in
+    // the Codex widget's header band (viewer-runtime.css).
+    document.querySelectorAll('#buret-viewport-rail, .buret-viewport-tooltip, #buret-toolbar, #buret-scene-tree-toggle').forEach(surface => {
       window.BuretteNativeViewerMenus?.styleControls?.(surface, activeConfig?.themeTokens, resolvedTheme);
     });
     if (molstarControlTooltip) window.BuretteNativeViewerMenus?.styleTooltip?.(molstarControlTooltip, activeConfig?.themeTokens, resolvedTheme);
@@ -3385,9 +3394,9 @@
 
   function requestMolecularCompute(operation = 'generate3d', options = {}) {
     const config = activeConfig || window.BuretteConfig || {};
-    // MCP widgets have no native-compute transport. Do not advertise or send
-    // desktop compute actions just because the document happens to be an SDF.
-    if (config.hostedMcpWidgetBootstrap === true || config.visualizationOnly === true) return;
+    // Widgets, Finder Quick Look and the mobile preview have no compute host.
+    // An SDF document alone does not imply that this transport is available.
+    if (config.hostedMcpWidgetBootstrap === true || config.visualizationOnly === true || config.quickLookViewer === true) return;
     const format = normalizeFormat(config.sourceExtension || config.molstarFormat || config.format);
     if (!['sdf', 'sd', 'mol'].includes(format)) {
       setStatus('Native molecular compute supports SDF and MOL structures in Molstar.', 'error');
@@ -3419,7 +3428,7 @@
   }
 
   function canGenerate3DConformerFromConfig(config, renderer) {
-    if (config?.hostedMcpWidgetBootstrap === true || config?.visualizationOnly === true) return false;
+    if (config?.hostedMcpWidgetBootstrap === true || config?.visualizationOnly === true || config?.quickLookViewer === true) return false;
     const format = normalizeFormat(config?.sourceExtension || config?.molstarFormat || config?.format);
     return renderer === 'molstar' && ['sdf', 'sd', 'mol'].includes(format);
   }
@@ -4277,6 +4286,7 @@
       setStatus(`[web] Rendered ${config.label || 'structure'}`);
       setTimeout(() => hideStatus(molstarReadyPayload(config, prepared, {
         molstarStructureCount: currentMolstarStructureCount(viewer),
+        molstarVolumeCount: currentMolstarVolumeCount(viewer),
         poseCount,
         trajectoryFrameCount: Math.max(Number(config?.trajectoryFrameCount || 0), poseCount)
       })), isQuickLookHost() ? 0 : 700);
@@ -4868,6 +4878,7 @@
     const { stage } = molstarPresetPreviewElements();
     if (!stage || !window.molstar?.Viewer) throw new Error('Mol* preview renderer is unavailable.');
     const viewer = await withTimeout(window.molstar.Viewer.create(stage, {
+      graphicsBackend: 'webgl',
       layoutIsExpanded: false,
       layoutShowControls: false,
       layoutShowRemoteState: false,
@@ -7006,7 +7017,9 @@
       event.stopPropagation();
       if (ignoreNextGripClick) {
         ignoreNextGripClick = false;
-        return;
+        // Pointer capture can retarget the click to the toolbar, leaving this
+        // guard pending. A later keyboard activation must still work.
+        if (event.detail !== 0) return;
       }
       activateToolbarGrip(toolbar, resizeState.viewer);
     });
@@ -8406,7 +8419,18 @@ SOFTWARE.
     } else {
       for (const node of nodes) root.appendChild(sceneTreeNodeElement(node));
     }
-    body.replaceChildren(root);
+    const segmentation = window.molstar?.BuretteVolumeSegmentation?.panel(activeMolstarViewer().plugin, {
+      download: downloadBlob,
+      canExport: !document.body?.classList.contains('burette-mobile-host'),
+      onError: error => setStatus(`[web] Map operation failed.\n\n${error?.message || String(error)}`, 'error')
+    });
+    if (segmentation?.parentElement === body) {
+      // Keep the live map controls attached so scene updates retain their focus.
+      for (const child of [...body.children]) if (child !== segmentation) child.remove();
+      body.prepend(root);
+    } else {
+      body.replaceChildren(root, ...(segmentation ? [segmentation] : []));
+    }
     document.querySelector('.buret-docking-poses')?.dispatchEvent(new Event('buret-scene-tree-rendered'));
     updateSceneTreeStoryCaption();
     requestAnimationFrame(() => root.classList.add('buret-tree-animate'));
@@ -8454,6 +8478,7 @@ SOFTWARE.
       panel.style.removeProperty('top');
       renderSceneTree();
     } else {
+      window.molstar?.BuretteVolumeSegmentation?.cancelDrawing(activeMolstarViewer()?.plugin);
       moveSceneTreeHighlight(null);
       closeSceneTreeMenu();
     }
@@ -8644,7 +8669,7 @@ SOFTWARE.
   // Everything else keeps its element colours and only the carbons take the pick,
   // which is what the default Mol* colouring does with its own carbon palette.
   const SCENE_TREE_FLAT_REPRESENTATIONS = new Set([
-    'cartoon', 'backbone', 'putty', 'molecular-surface', 'gaussian-surface', 'gaussian-volume'
+    'cartoon', 'backbone', 'putty', 'molecular-surface', 'blob-surface', 'gaussian-surface', 'gaussian-volume'
   ]);
 
   function sceneTreeTintParams(value) {
@@ -9213,7 +9238,7 @@ SOFTWARE.
     }
     if (!Array.isArray(types)) return [];
     return types
-      .map(entry => ({ name: String(entry?.[0] || ''), label: String(entry?.[1] || entry?.[0] || '') }))
+      .map(entry => ({ name: String(entry?.[0] || ''), label: entry?.[0] === 'blob-surface' ? 'Envelope' : String(entry?.[1] || entry?.[0] || '') }))
       .filter(entry => entry.name);
   }
 
@@ -9477,6 +9502,11 @@ SOFTWARE.
     ['sizeFactor', 'Scale'],
     ['sizeAspectRatio', 'Bond thickness'],
     ['probeRadius', 'Probe radius'],
+    ['blobSize', 'Envelope size'],
+    ['radiusOffset', 'Radius offset'],
+    ['smoothness', 'Surface smoothness'],
+    ['adjustResolution', 'Automatic detail'],
+    ['solidInterior', 'Solid cut surface'],
     ['resolution', 'Detail'],
     ['aspectRatio', 'Ribbon width'],
     ['thicknessFactor', 'Ribbon thickness'],
@@ -11117,7 +11147,7 @@ SOFTWARE.
     const types = typeof plugin?.managers?.structure?.component?.constructor?.getRepresentationTypes === 'function'
       ? plugin.managers.structure.component.constructor
         .getRepresentationTypes(plugin, plugin.managers.structure.hierarchy.current.structures[0])
-        .map(entry => ({ name: String(entry?.[0] || ''), label: String(entry?.[1] || entry?.[0] || '') }))
+        .map(entry => ({ name: String(entry?.[0] || ''), label: entry?.[0] === 'blob-surface' ? 'Envelope' : String(entry?.[1] || entry?.[0] || '') }))
         .filter(entry => entry.name)
       : [];
     viewportMenuControls = window.BuretteNativeViewerMenus.mountSelectionActions(menu, {
@@ -11837,6 +11867,7 @@ SOFTWARE.
     return previewReadyPayload(config, {
       renderer: 'molstar',
       molstarStructureCount: Number(extra.molstarStructureCount || 0),
+      molstarVolumeCount: Number(extra.molstarVolumeCount || 0),
       poseCount: Number.isFinite(poseCount) ? poseCount : 0,
       trajectoryFrameCount: Math.max(Number(config?.trajectoryFrameCount || 0), Number.isFinite(poseCount) ? poseCount : 0),
       ...extra
@@ -11849,6 +11880,12 @@ SOFTWARE.
     } catch (_) {
       return 0;
     }
+  }
+
+  function currentMolstarVolumeCount(viewer = activeViewer) {
+    const volumes = viewer?.plugin?.managers?.volume?.hierarchy?.current?.volumes || [];
+    return Array.from(volumes).filter(volume => volume.cell?.status === 'ok'
+      && volume.representations?.some(representation => representation.cell?.status === 'ok' && representation.cell?.obj)).length;
   }
 
   function assertMolstarLoadReady(viewer, prepared) {
@@ -13986,6 +14023,13 @@ SOFTWARE.
   }
 
   function downloadBlob(blob, name) {
+    if (canUseDownloadExportBridge()) {
+      // WKWebView asset pages cannot fetch their opaque-origin blob URLs.
+      // We already own the bytes, so send them directly to the save bridge.
+      return exportBlobToHost(blob, safeDownloadFileName(name)).catch(error => {
+        setStatus(`[web] Export failed.\n\n${error?.message || String(error)}`, 'error');
+      });
+    }
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -17524,13 +17568,13 @@ SOFTWARE.
 
   function xyzFrameRepresentationStyle(style) {
     const normalized = normalizeMolstarStyle(style);
-    if (normalized === 'line' || normalized === 'ball-and-stick' || normalized === 'spacefill' || normalized === 'molecular-surface') return normalized;
+    if (normalized === 'line' || normalized === 'ball-and-stick' || normalized === 'spacefill' || normalized === 'molecular-surface' || normalized === 'blob-surface') return normalized;
     return 'line';
   }
 
   function xyzFrameForegroundStyle(style) {
     const normalized = normalizeMolstarStyle(style);
-    if (normalized === 'line' || normalized === 'ball-and-stick' || normalized === 'spacefill' || normalized === 'molecular-surface') return normalized;
+    if (normalized === 'line' || normalized === 'ball-and-stick' || normalized === 'spacefill' || normalized === 'molecular-surface' || normalized === 'blob-surface') return normalized;
     return 'ball-and-stick';
   }
 
@@ -17905,6 +17949,9 @@ SOFTWARE.
     }
     if (normalized === 'spacefill') {
       return themed({ type: 'spacefill', typeParams: withAlpha({ sizeFactor: ghost ? 0.28 : 0.45 }) });
+    }
+    if (normalized === 'blob-surface') {
+      return themed({ type: 'blob-surface', typeParams: withAlpha({}) });
     }
     if (normalized === 'molecular-surface') {
       // A translucent background surface over a whole collection is re-sorted
@@ -18708,7 +18755,7 @@ SOFTWARE.
     }
     const edit = operation === 'edit' ? action.edit : null;
     if (operation === 'edit' && !(edit && (
-      (edit.operation === 'representation' && ['cartoon', 'backbone', 'ball-and-stick', 'spacefill', 'line', 'molecular-surface'].includes(edit.value))
+      (edit.operation === 'representation' && ['cartoon', 'backbone', 'ball-and-stick', 'spacefill', 'line', 'molecular-surface', 'blob-surface'].includes(edit.value))
       || (edit.operation === 'opacity' && Number.isFinite(edit.value) && edit.value >= 0 && edit.value <= 1)
       || (edit.operation === 'color' && /^#[0-9a-f]{6}$/i.test(edit.value))
     ))) return sceneActionFailure(command, 'INVALID_ARGUMENT', 'Unsupported component edit.');
@@ -21127,7 +21174,7 @@ SOFTWARE.
     }
     const requestedStyle = String(action.style || '').trim().toLowerCase();
     if (normalizeSdfCollectionContextStyle(requestedStyle) !== requestedStyle) {
-      return agentActionFailure('set_sdf_context_style', 'INVALID_STYLE', 'Background style must be line, ball-and-stick, cartoon, spacefill, molecular-surface or match.');
+      return agentActionFailure('set_sdf_context_style', 'INVALID_STYLE', 'Background style must be line, ball-and-stick, cartoon, spacefill, molecular-surface, blob-surface or match.');
     }
     const style = setSdfCollectionContextStyle(requestedStyle);
     try {
@@ -30571,7 +30618,7 @@ SOFTWARE.
       collapseRightPanel: true,
       pdbProvider: 'rcsb',
       emdbProvider: 'rcsb',
-      preferWebgl1: option('molstarPreferWebgl1', true),
+      graphicsBackend: activeConfig?.molstarPreferWebgl1 === true ? 'webgl1' : 'webgl',
       disableAntialiasing: option('molstarDisableAntialiasing', true),
       ...(pixelScale !== undefined ? { pixelScale } : {}),
       ...(pickScale !== undefined ? { pickScale } : {}),
@@ -30872,6 +30919,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       }
       const readyPayload = molstarReadyPayload(config, prepared, {
         molstarStructureCount: currentMolstarStructureCount(viewer),
+        molstarVolumeCount: currentMolstarVolumeCount(viewer),
         poseCount,
         trajectoryFrameCount: Math.max(Number(config?.trajectoryFrameCount || 0), poseCount)
       });

@@ -24,8 +24,8 @@ for (const [name, value] of Object.entries({ window: browser, self: browser, doc
 }
 afterAll(async () => { await browser.happyDOM.close(); for (const [name, value] of previous) { if (value) Object.defineProperty(globalThis, name, value); else Reflect.deleteProperty(globalThis, name); } });
 installPlugin(molstarMolV3000Plugin); installPlugin(molstarV3000ChargesPlugin);
-const { PluginContext } = await import("molstar/lib/mol-plugin/context.js");
-const { DefaultPluginSpec } = await import("molstar/lib/mol-plugin/spec.js");
+const { PluginContext } = await import("@molstar/plugin");
+const { DefaultPluginSpec } = await import("@molstar/plugin/default-spec");
 const { createRoot } = await import("react-dom/client");
 const { openScientificFiles } = await import("../apps/desktop/src/lib/workbench/open");
 const { isScientificFile } = await import("../apps/desktop/src/lib/workbench/scientific-files");

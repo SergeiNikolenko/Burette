@@ -7,10 +7,10 @@ import { buildPeptideGeometry } from "../apps/desktop/src/lib/molecular-workbenc
 import { peptideMmcif } from "../apps/desktop/src/lib/molecular-workbench/peptide-mmcif";
 import type { ShellViewState } from "../apps/desktop/src/components/types";
 const require = createRequire(import.meta.url);
-const { CIF } = require("molstar/lib/commonjs/mol-io/reader/cif.js");
-const { trajectoryFromMmCIF } = require("molstar/lib/commonjs/mol-model-formats/structure/mmcif.js");
-const { Structure, StructureProperties: P, StructureElement } = require("molstar/lib/commonjs/mol-model/structure.js");
-const { to_mmCIF } = require("molstar/lib/commonjs/mol-model/structure/export/mmcif.js");
+const { CIF } = require("@molstar/io/reader/cif");
+const { trajectoryFromMmCIF } = require("@molstar/model/formats/structure/mmcif");
+const { Structure, StructureProperties: P, StructureElement } = require("@molstar/model/model/structure");
+const { to_mmCIF } = require("@molstar/model/model/structure/export/mmcif");
 async function nativeStructure(text: string) { const parsed = await CIF.parse(text).run(); expect(parsed.isError).toBe(false); return Structure.ofModel((await trajectoryFromMmCIF(parsed.result.blocks[0]).run()).representative); }
 function snapshot(structure: any) {
   const loc = StructureElement.Location.create(structure), atoms: unknown[] = [], bonds: string[] = [], ids = new Map<string, number>();

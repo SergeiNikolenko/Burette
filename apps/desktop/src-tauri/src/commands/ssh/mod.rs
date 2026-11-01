@@ -123,7 +123,7 @@ fn run_worker(
     // Only the bundled worker is shell-quoted. User paths travel as JSON on stdin.
     let remote_command = format!("python3 -c '{}'", worker.replace('\'', "'\\''"));
     let mut child = Command::new("/usr/bin/ssh")
-        .args(transport::multiplex_options(host)?)
+        .args(transport::CONNECTION_OPTIONS)
         .args([
             "-T",
             "-oBatchMode=yes",
@@ -277,6 +277,31 @@ pub(crate) async fn ssh_preview(app: tauri::AppHandle, request: Request) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[ignore = "manual read-only SSH pipe smoke; set BURETTE_TEST_SSH_HOST"]
+    fn subprocess_transport_round_trips_piped_worker_io() {
+        let host = std::env::var("BURETTE_TEST_SSH_HOST").expect("SSH test host");
+        validate(&Request {
+            host: host.clone(),
+            root: String::new(),
+            path: String::new(),
+            chemical: false,
+            archive: false,
+        })
+        .expect("valid SSH host");
+        for _ in 0..2 {
+            let reply = run_worker(
+                &host,
+                "import sys; sys.stdout.buffer.write(sys.stdin.buffer.read())",
+                b"burette-ssh-pipe-check",
+                1024,
+                Duration::from_secs(20),
+            )
+            .expect("remote Python echo through piped stdin/stdout/stderr");
+            assert_eq!(reply, b"burette-ssh-pipe-check");
+        }
+    }
+
     #[test]
     fn rejects_ssh_options_and_shell_fragments_before_spawning() {
         for host in [

@@ -69,6 +69,38 @@ test("shared toolbar appearance retains command nodes, dynamic labels, disabled 
   toolbar.classList.remove("collapsed");
   await new Promise(resolve => setTimeout(resolve, 0));
   expect(content.inert).toBe(false);
+  const grip = toolbar.querySelector<HTMLButtonElement>("[data-drag-handle]")!;
+  const gripScope = {
+    document, toolbar, grip,
+    setXyzrenderPopoverVisibility() {}, hideMolstarPresetMenu() {}, hideGenerate3DMenu() {}, closeViewportMenu() {},
+    repositionToolbar() {}, updateFloatingLayoutOffsets() {}, scheduleViewerResize() {},
+  };
+  for (const collapsed of [true, false]) {
+    const expectedLabel = collapsed ? "Expand controls" : "Collapse controls";
+    const label = runInNewContext(`${source("setToolbarCollapsed")}\n${source("molstarTooltipLabel")}\nsetToolbarCollapsed(toolbar, ${collapsed}, null, false); molstarTooltipLabel(grip);`, gripScope);
+    expect([label, grip.getAttribute("aria-label"), grip.getAttribute("aria-expanded")]).toEqual([expectedLabel, expectedLabel, String(!collapsed)]);
+  }
   document.body.innerHTML = "";
   browser.happyDOM.abort();
+});
+
+test("keyboard grip activation works after a captured pointer click", () => {
+  const toolbar = document.createElement("div");
+  toolbar.innerHTML = '<button data-drag-handle></button>';
+  const grip = toolbar.querySelector("button")!;
+  Object.assign(toolbar, { setPointerCapture() {}, releasePointerCapture() {} });
+  let activations = 0;
+  runInNewContext(`${source("initToolbarDrag")}\ninitToolbarDrag(toolbar);`, {
+    toolbar, window: { addEventListener() {} }, resizeState: {},
+    applyDefaultToolbarPosition() {}, activateToolbarGrip() { activations++; },
+  });
+  for (const type of ["pointerdown", "pointerup"]) {
+    grip.dispatchEvent(new browser.PointerEvent(type, { bubbles: true, pointerId: 1, clientX: 10, clientY: 10 }));
+  }
+  expect(activations).toBe(1);
+  // Pointer capture retargets the subsequent click to the toolbar, so the grip
+  // does not receive it. The next click is the keyboard's detail=0 activation.
+  toolbar.dispatchEvent(new browser.MouseEvent("click", { bubbles: true, detail: 1 }));
+  grip.dispatchEvent(new browser.MouseEvent("click", { bubbles: true, detail: 0 }));
+  expect(activations).toBe(2);
 });

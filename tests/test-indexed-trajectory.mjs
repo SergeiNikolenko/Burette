@@ -7,12 +7,12 @@ import { Window } from 'happy-dom';
 import { decodeTrrFrame } from '../scripts/trr-frame.mjs';
 import { indexTrrFrames } from '../scripts/trr-index.mjs';
 import { readActiveTrajectoryFrame } from '../scripts/trajectory-frame-data.mjs';
-import { Task } from 'molstar/lib/mol-task/index.js';
-import { Coordinates, Time } from 'molstar/lib/mol-model/structure/coordinates.js';
-import { Cell } from 'molstar/lib/mol-math/geometry/spacegroup/cell.js';
-import { Vec3 } from 'molstar/lib/mol-math/linear-algebra.js';
-import { parseXtc } from 'molstar/lib/mol-io/reader/xtc/parser.js';
-import { StateTransformer } from 'molstar/lib/mol-state/transformer.js';
+import { Task } from '@molstar/core/task';
+import { Coordinates, Time } from '@molstar/model/model/structure/coordinates';
+import { Cell } from '@molstar/core/math/geometry/spacegroup/cell';
+import { Vec3 } from '@molstar/core/math/linear-algebra';
+import { parseXtc } from '@molstar/io/reader/xtc/parser';
+import { StateTransformer } from '@molstar/core/state/transformer';
 import '../scripts/molstar-indexed-trajectory.js';
 
 assert.equal(StateTransformer.get('ms-plugin.burette-indexed-trajectory').id, 'ms-plugin.burette-indexed-trajectory',

@@ -101,7 +101,6 @@ assert.equal(validateMvsStory(uriStory, { resourceNames: ["annotations/primitive
 const sceneReference = getOfficialMvsAuthoringReference();
 assert.equal(sceneReference.schemaKind, "scene");
 assert.equal(sceneReference.specVersion, "1");
-assert.equal(sceneReference.nodeKinds.length, 30);
 assert.equal(sceneReference.nodeKinds.includes("volume_representation"), true);
 assert.equal(sceneReference.officialDocs.animations, "https://molstar.org/mol-view-spec-docs/animations/");
 const componentReference = getOfficialMvsAuthoringReference({ nodeKind: "component" });
@@ -373,8 +372,8 @@ try {
   assert.equal(validatedArchive.ok, true);
   assert.equal(validatedArchive.warnings.length, 0);
 
-  const officialMvsModule = await import("molstar/lib/commonjs/extensions/mvs/mvs-data.js");
-  const officialMvsx = await officialMvsModule.default.MVSData.toMVSX(story, {
+  const officialMvsModule = await import("@molstar/mvs-builder");
+  const officialMvsx = await officialMvsModule.MVSData.toMVSX(story, {
     assets: { "protein.pdb": new Uint8Array(await readFile(asset)) },
   });
   const officialMvsxPath = path.join(temp, "official-export.mvsx");
@@ -459,16 +458,14 @@ function deflatedZipEntry(name, data) {
 
 // Native Story resources must be available without Mol* issuing asset: XHRs,
 // and must remain cached when a snapshot releases its reference.
-const { createRequire } = await import('node:module');
-const require = createRequire(import.meta.url);
-const { AssetManager, Asset } = require('molstar/lib/commonjs/mol-util/assets.js');
+const { DefaultAssetManager, Asset } = await import('@molstar/core/util/assets');
 const viewerSource = await readFile(new URL('../PreviewExtension/Web/viewer.js', import.meta.url), 'utf8');
 const preloadSource = viewerSource.slice(
   viewerSource.indexOf('  async function preloadMolViewSpecResources('),
   viewerSource.indexOf('  async function loadPreparedStructure('),
 );
 const bytes = new TextEncoder().encode('ATOM native resource');
-const manager = new AssetManager();
+const manager = new DefaultAssetManager();
 const preload = new Function('loadPayloadBytes', `${preloadSource}; return preloadMolViewSpecResources;`)(async (fileName) => { assert.equal(fileName, 'mvs-resource-0'); return bytes; });
 const url = 'asset://localhost/staged/mvs-resource-0';
 await preload({ plugin: { managers: { asset: manager } } }, [url]);

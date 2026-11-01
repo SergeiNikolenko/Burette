@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { parseSdf as upstreamParseSdf } from 'molstar/lib/mol-io/reader/sdf/parser.js';
-import { trajectoryFromSdf } from 'molstar/lib/mol-model-formats/structure/sdf.js';
-import { IndexPairBonds } from 'molstar/lib/mol-model-formats/structure/property/bonds/index-pair.js';
+import { parseSdf as upstreamParseSdf } from '@molstar/io/reader/sdf/parser';
+import { trajectoryFromSdf } from '@molstar/model/formats/structure/sdf';
+import { IndexPairBonds } from '@molstar/model/formats/structure/property/bonds/index-pair';
 import { molstarV3000ChargesPlugin, patchMolstarV3000Atoms, patchMolstarV3000Charges } from '../scripts/molstar-v3000-charges.mjs';
 
 // Use the actual build plugin's onLoad outputs without building or changing vendor assets.
