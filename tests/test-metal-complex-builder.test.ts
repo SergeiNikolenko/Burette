@@ -12,6 +12,9 @@ const require = createRequire(import.meta.url);
 const { parseSdf } = require("molstar/lib/commonjs/mol-io/reader/sdf/parser.js");
 const { trajectoryFromSdf } = require("molstar/lib/commonjs/mol-model-formats/structure/sdf.js");
 const { Structure, StructureProperties: P, StructureElement } = require("molstar/lib/commonjs/mol-model/structure.js");
+const { CIF } = require("molstar/lib/commonjs/mol-io/reader/cif.js");
+const { trajectoryFromMmCIF } = require("molstar/lib/commonjs/mol-model-formats/structure/mmcif.js");
+const { to_mmCIF } = require("molstar/lib/commonjs/mol-model/structure/export/mmcif.js");
 
 type Crystal = { angleTolerance: number; biteTolerance?: number; jahnTellerApical?: string };
 type Reference = { rdkit: { formula: string; charge: number; atoms: number; bonds: number; dative: number; donorToMetal: number; metal: string; metalCharge: number; ligandSmiles: string[] };
@@ -118,6 +121,11 @@ test("Burette's OpenChemLib reader and Mol* read the coordination bonds and form
     }
     expect({ charges, coordination: orders.filter(order => order === 9).length, bonds: orders.length }, id)
       .toEqual({ charges: complex.atoms.map(atom => atom.charge), coordination: complex.coordination.length, bonds: complex.bonds.length + complex.coordination.length });
+    // The viewer's mmCIF export route: atoms and formal charges survive, bond types are re-perceived.
+    const exported = Structure.ofModel((await trajectoryFromMmCIF((await CIF.parse(to_mmCIF(id, structure, false, { copyAllCategories: true })).run()).result.blocks[0]).run()).representative);
+    const exportedCharges: number[] = [];
+    for (const unit of exported.units) for (let i = 0; i < unit.elements.length; i++) { loc.unit = unit; loc.element = unit.elements[i]; exportedCharges.push(P.atom.pdbx_formal_charge(loc)); }
+    expect(exportedCharges, `${id} mmCIF`).toEqual(charges);
   }
 });
 

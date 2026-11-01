@@ -10,6 +10,7 @@
       "label": "H₂O (aqua)",
       "formula": "H2O",
       "file": "ligands/monodentate/aqua.cjson",
+      "sha256": "9e4f76f66e2d1f8814451d51d70436818de398e07a680597d9ddcb4bb501ce4d",
       "metal": [1.0536, -0.098, -0.0209],
       "donors": [0],
       "atoms": [
@@ -26,6 +27,7 @@
       "label": "OH⁻ (hydroxido)",
       "formula": "OH",
       "file": "ligands/monodentate/aqua.cjson",
+      "sha256": "9e4f76f66e2d1f8814451d51d70436818de398e07a680597d9ddcb4bb501ce4d",
       "derived": "aqua.cjson with one H removed",
       "metal": [1.0536, -0.098, -0.0209],
       "donors": [0],
@@ -41,6 +43,7 @@
       "label": "NH₃ (ammine)",
       "formula": "NH3",
       "file": "ligands/monodentate/ammine.cjson",
+      "sha256": "79c2715ac45976ebdafa4d02494d781513f11971036612b14164cf652c479fdf",
       "metal": [1.0773, 0.0496, 0.0855],
       "donors": [0],
       "atoms": [
@@ -59,6 +62,7 @@
       "label": "F⁻ (fluorido)",
       "formula": "F",
       "file": "ligands/monodentate/fluorido.cjson",
+      "sha256": "d14e96c6a524c23a86870cee5677a63cddcae8b3b7671023542a5d6ea7c31331",
       "metal": [2.7497, -0.0046, -0.0914],
       "donors": [0],
       "atoms": [
@@ -70,6 +74,7 @@
       "label": "Cl⁻ (chlorido)",
       "formula": "Cl",
       "file": "ligands/monodentate/chlorido.cjson",
+      "sha256": "ca07a68b0308632930bfed7712b6629400ec24f779cc903498cc32b67b1ca36c",
       "metal": [3.285, 0.0883, 0.0132],
       "donors": [0],
       "atoms": [
@@ -81,6 +86,7 @@
       "label": "Br⁻ (bromido)",
       "formula": "Br",
       "file": "ligands/monodentate/bromido.cjson",
+      "sha256": "e2f119d78d10893b648531eec857e10170713556b0a33ebdcded501211f52e4f",
       "metal": [3.3624, 0.0411, -0.0707],
       "donors": [0],
       "atoms": [
@@ -92,6 +98,7 @@
       "label": "I⁻ (iodido)",
       "formula": "I",
       "file": "ligands/monodentate/iodido.cjson",
+      "sha256": "946293cb3dc0f0f43a59bf2c389ff6018ec7e57c1076441ba3f4831b31587b5e",
       "metal": [3.6487, 0.091, 0.0151],
       "donors": [0],
       "atoms": [
@@ -103,6 +110,7 @@
       "label": "CN⁻ (cyanido)",
       "formula": "CN",
       "file": "ligands/monodentate/cyano.cjson",
+      "sha256": "b358c014a5bd7017e747081adabda9bdef9e0319da6e878dcca54e97653dc53f",
       "metal": [1.2042, 0.0055, 0.0077],
       "donors": [0],
       "atoms": [
@@ -117,6 +125,7 @@
       "label": "CO (carbonyl)",
       "formula": "CO",
       "file": "ligands/monodentate/carbonyl.cjson",
+      "sha256": "173b457d05008c998775aea9f445f382c6f7e1feafaf0ba5803b2a013eb80888",
       "metal": [1.089, -0.0913, 0.0374],
       "donors": [0],
       "atoms": [
@@ -131,6 +140,7 @@
       "label": "PH₃ (phosphane)",
       "formula": "PH3",
       "file": "ligands/monodentate/phosphine.cjson",
+      "sha256": "2e64a926b97c8d3067b76639c0adf6312d7a94ed377f8b1664b13d4de571a77d",
       "metal": [1.0953, -0.2634, 0.5595],
       "donors": [0],
       "atoms": [
@@ -149,6 +159,7 @@
       "label": "PMe₃ (trimethylphosphane)",
       "formula": "PMe3",
       "file": "ligands/monodentate/trimethylphosphine.cjson",
+      "sha256": "a866a40085de0448429a194a7cffb289d8f9ea80dd956767e35e8f957629f214",
       "metal": [1.4136, -1.2233, 0.6614],
       "donors": [0],
       "atoms": [
@@ -185,6 +196,7 @@
       "label": "py (pyridine)",
       "formula": "py",
       "file": "ligands/monodentate/pyridyl.cjson",
+      "sha256": "e25b1eb6be7544ed60bab93a8765ac9e8c4aa07a28ab9229e5c44f1e025b9f28",
       "metal": [1.0294, 0.0221, -0.0881],
       "donors": [0],
       "atoms": [
@@ -218,6 +230,7 @@
       "label": "en (ethylenediamine)",
       "formula": "en",
       "file": "ligands/bidentate/en-ethylenediamine.cjson",
+      "sha256": "a67cac1fdf0a7363c7ec13377f147c499c733eab1373db3f1751beb003e8b822",
       "metal": [-1.588, 0.6211, -0.2649],
       "donors": [0, 3],
       "atoms": [
@@ -252,6 +265,7 @@
       "label": "bpy (2,2′-bipyridine)",
       "formula": "bpy",
       "file": "ligands/bidentate/bpy-bipyridine.cjson",
+      "sha256": "22c5d149727470a7ec4573e021a96cd89eb9b45f734ed06d77abd0a2a06d881b",
       "metal": [-2.2016, -0.2648, -2.5582],
       "donors": [5, 6],
       "atoms": [
@@ -304,6 +318,7 @@
       "label": "phen (1,10-phenanthroline)",
       "formula": "phen",
       "file": "ligands/bidentate/phenanthroline.cjson",
+      "sha256": "89c692984c25a83f4ce5475f6aeee73021a80dec9b663f0d2f845565ae2cf03f",
       "metal": [-0.4638, -3.1741, -0.8817],
       "donors": [5, 6],
       "atoms": [
@@ -361,6 +376,7 @@
       "label": "ox²⁻ (oxalato)",
       "formula": "ox",
       "file": "ligands/bidentate/oxalate.cjson",
+      "sha256": "5b0b9ee57d2ace742ae354eb9f73b2691768d4a70c5da9d1f321d97f2f9f413f",
       "metal": [4.8673, 1.0251, -0.0592],
       "donors": [2, 3],
       "atoms": [
@@ -383,6 +399,7 @@
       "label": "acac⁻ (acetylacetonato)",
       "formula": "acac",
       "file": "ligands/bidentate/acac-acetylacetonate.cjson",
+      "sha256": "5713ef4cb11911563364ca5ee832c75f55ec876d5d1403417996ecae9b44a32c",
       "metal": [4.8719, -1.6033, 0.0916],
       "donors": [2, 5],
       "atoms": [
