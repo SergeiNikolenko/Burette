@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import React from 'react';
+import { Window } from 'happy-dom';
 
 let source = readFileSync('apps/desktop/src/components/grid-molecule-3d.tsx', 'utf8')
   .replace(/^import .*;\n/gm, '')
-  .replace(/const assets = import\.meta\.glob[^\n]+/, 'const assets = {};')
+  .replace(/const assets = import\.meta\.glob[^\n]+/, 'const assets = new Proxy({}, { get: (_target, key) => `/assets/${String(key).split("/").pop().replace(/\\.(css|js)$/, "-testhash.$1")}` });')
   .replace('export default function', 'function');
 const code = new Bun.Transpiler({ loader: 'tsx', tsconfig: { compilerOptions: { jsx: 'react' } } }).transformSync(source);
 const refs = []; let cursor = 0;
@@ -38,6 +39,24 @@ runInNewContext(readFileSync('apps/desktop/src/preview-grid/molecule-preview-boo
 assert.deepEqual(JSON.parse(JSON.stringify(window.BuretteConfig)), data.config);
 assert.equal(window.BuretteDataBase64, data.data);
 console.log('Inspector bootstrap: strict CSP, delayed source and iframe reuse passed.');
+
+const runtimeSource = readFileSync('PreviewExtension/Web/viewer.js', 'utf8');
+const stylesheetStart = runtimeSource.indexOf('  function ensureMolstarStylesheet() {');
+const stylesheetEnd = runtimeSource.indexOf('\n  function ', stylesheetStart + 1);
+const stylesheetCode = runtimeSource.slice(stylesheetStart, stylesheetEnd);
+for (const markup of [html, darkHtml, '<link rel="stylesheet" href="./molstar.css">', '<link rel="stylesheet" href="./molstar.css?v=native">', '']) {
+  const browser = new Window({ url: 'https://burette.test/', settings: { disableCSSFileLoading: true, disableJavaScriptFileLoading: true } });
+  try {
+    browser.document.write(markup);
+    const before = Array.from(browser.document.querySelectorAll('link[rel="stylesheet"]'), link => link.href);
+    const ensure = new Function('document', 'runtimeURL', `${stylesheetCode};return ensureMolstarStylesheet;`)(browser.document, (_key, fallback) => fallback);
+    ensure(); ensure();
+    const after = Array.from(browser.document.querySelectorAll('link[rel="stylesheet"]'), link => link.href);
+    assert.deepEqual(after, before.length ? before : ['https://burette.test/molstar.css'], 'the existing Molstar stylesheet is reused; missing native stylesheet is inserted only once');
+  } finally { await browser.happyDOM.close(); }
+}
+console.log('Inspector stylesheet: hashed light/dark CSS and plain native CSS reuse; missing CSS inserted once.');
+
 
 const layout = readFileSync('apps/desktop/src/components/app-layout.tsx', 'utf8');
 const begin = layout.indexOf('    if (!activeGridId) return;\n    const observer = new ResizeObserver');

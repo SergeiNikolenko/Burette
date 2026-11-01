@@ -25,7 +25,7 @@ export default function GridMolecule3D({ molblock, hydrogenDisplay, theme, heigh
     const data = btoa(Array.from(new TextEncoder().encode(initialMolblock), byte => String.fromCharCode(byte)).join(""));
     const scripts = ["molstar.js", "viewer-shell.js", "renderer-view-state.js", "molstar-preset-preview-controller.js", "color-picker.js", "sequence-panel.js", "native-viewer-menus.js", "scene-file-actions.js", "svg-sanitizer.js", "viewer.js"];
     return { channel, html: `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html{color-scheme:${theme === "dark" ? "dark" : "light"};background:${theme === "dark" ? "#111111" : "#ffffff"}}</style>
-      <link rel="stylesheet" href="${asset("molstar.css")}"><link rel="stylesheet" href="${asset("viewer-runtime.css")}">
+      <link rel="stylesheet" data-buret-molstar-stylesheet href="${asset("molstar.css")}"><link rel="stylesheet" href="${asset("viewer-runtime.css")}">
       <style>html,body,#app{margin:0;width:100%;height:100%;overflow:hidden}#status,.msp-toast-container,.msp-highlight-toast-wrapper{display:none!important}
       #buret-toolbar{left:auto!important;right:4px!important;top:4px!important;bottom:auto!important;width:auto!important}
       .buret-toolbar-content>*:not([data-buret-molstar-preset-slot]){display:none!important}
