@@ -1,6 +1,7 @@
 import { Molecule } from 'openchemlib';
 import { parseMolecule, type MolecularStructure } from './molecular-graph';
 import { serializePhysicalMolfile } from './molecule-serialization';
+import { readUnspecifiedMolfileStereo, retainUnknownStereo } from './molecule-stereochemistry';
 import { atomicNumber } from './elements';
 import type { Vec3 } from './types';
 
@@ -16,10 +17,11 @@ export type GraphEditResult = MolecularStructure & { sourceAtomIndices: number[]
 export function editGraph(structure: MolecularStructure, edit: GraphEdit): GraphEditResult {
   if (structure.graphSource !== 'explicit' || !structure.graphComplete) throw new Error('Editing bonds requires an explicit MOL or SDF graph.');
   if (structure.atoms.length < 1 || structure.atoms.length > 256 || structure.molfile.length > 2_000_000) throw new Error('Graph editing supports 1–256 atoms.');
-  const mol = Molecule.fromMolfile(structure.molfile);
+  const { molecule: mol, map: sourceMap } = Molecule.fromMolfileWithAtomMap(structure.molfile);
   mol.ensureHelperArrays(Molecule.cHelperNeighbours);
   const n = structure.atoms.length, mapping = structure.atomMap ?? structure.atoms.map((_, i) => i);
   if (mol.getAllAtoms() !== n || mapping.length !== n || new Set(mapping).size !== n || mapping.some(i => !Number.isInteger(i) || i < 0 || i >= n)) throw new Error('Invalid atom mapping.');
+  const unspecified = edit.kind === 'reorder-atoms' ? readUnspecifiedMolfileStereo(mol, structure.molfile, sourceMap) : null;
   const originalMap = new Map<number, number>();
   const index = (i: number) => {
     if (!Number.isInteger(i) || i < 0 || i >= n) throw new Error('Invalid atom index.');
@@ -94,6 +96,11 @@ export function editGraph(structure: MolecularStructure, edit: GraphEdit): Graph
     throw new Error('Atom identity was lost during editing.');
   });
   for (let i = 0; i < mol.getAllAtoms(); i++) mol.setAtomMapNo(i, originalMap.get(mol.getAtomMapNo(i)) ?? 0);
+  if (unspecified && (unspecified.atoms.length || unspecified.bonds.length)) {
+    // Reordering changes no source constraints; known stereo belongs to the actual coordinates.
+    mol.ensureHelperArrays(Molecule.cHelperCIP);
+    retainUnknownStereo(mol, unspecified.atoms, unspecified.bonds);
+  }
   const text = orderedMolfile(serializePhysicalMolfile(mol), internal);
   return { ...parseMolecule(text, 'mol'), molfile: text, title: structure.title, sourceAtomIndices: wanted.map(tag => tag <= n ? tag - 1 : -1) };
 }
