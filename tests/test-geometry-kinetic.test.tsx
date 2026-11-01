@@ -308,3 +308,104 @@ test("raw UTF8 BOM Geometry preserves its source bytes through an edit and Undo"
     assert.equal(sent.filter(action => action.type === "update_geometry").at(-1).text, original.slice(1));
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
+
+test("coordinate interchange: Copy Z-matrix retains the current absolute atom rows and human comment", async () => {
+  const { parseScientificFile } = await import("../apps/desktop/src/lib/molecular-workbench/quantum");
+  const { readCoordinateInterchange } = await import("../scripts/coordinate-interchange.mjs");
+  const previousClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+  let copied = "";
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (text) => { copied = text; } } });
+  const sources = [
+    "1\ntranslated atom\nHe 12.1234567890123 -7.25 0.125\n",
+    "2\nrotated pair\nH 12 -7 3\nF 12 -5.75 3\n",
+    "4\nchiral absolute pose\nC 12 -7 3\nH 12 -6 3\nF 11 -7 3\nCl 12 -7 4\n",
+    "3\nnear collinear\nO 12 -7 3\nH 13 -7 3\nH 14 -6.99999999 3\n",
+  ];
+  try {
+    for (const [index, text] of sources.entries()) {
+      session.content = text; copied = "";
+      const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+      const doc = { id: `copy-pose-${index}`, path: `/copy-pose-${index}.xyz`, extension: "xyz", renderer: "molstar" };
+      try {
+        await act(async () => root.render(<GeometryPanel document={doc} actions={{ runStructureViewerAction: () => ({ ok: true }) }} />));
+        await act(async () => host.querySelector('[aria-label="Copy Z-matrix"]').click());
+        const reopened = parseScientificFile("copied.zmat", copied);
+        const expected = readCoordinateInterchange(text, "xyz");
+        assert.deepEqual(reopened.atoms.map(({ element, x, y, z }) => ({ element, x, y, z })), expected.atoms);
+        assert.deepEqual(reopened.internalCoordinates, expected.internalCoordinates);
+        assert.equal(readCoordinateInterchange(copied, "zmat").comment, expected.comment);
+        assert.equal(session.content, text, "Copy never changes the source");
+      } finally { await act(async () => root.unmount()); host.remove(); }
+    }
+  } finally {
+    if (previousClipboard) Object.defineProperty(navigator, "clipboard", previousClipboard);
+    else Reflect.deleteProperty(navigator, "clipboard");
+  }
+});
+
+test("coordinate interchange: Copy validates output before writing and handles clipboard rejection", async () => {
+  const previousClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+  let calls = 0;
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async () => { calls++; throw new Error("Clipboard unavailable"); } } });
+  try {
+    for (const [index, source] of [xyz, `1\n${"x".repeat(1024 * 1024 - 30)}\nHe 12 -7 3\n`].entries()) {
+      session.content = source;
+      const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+      const doc = { id: `copy-refusal-${index}`, path: `/copy-refusal-${index}.xyz`, extension: "xyz", renderer: "molstar" };
+      try {
+        await act(async () => root.render(<GeometryPanel document={doc} actions={{ runStructureViewerAction: () => ({ ok: true }) }} />));
+        await act(async () => host.querySelector('[aria-label="Copy Z-matrix"]').click());
+        assert.ok(host.querySelector('[role="alert"]'));
+        assert.equal(calls, 1, "oversized output never reaches the clipboard");
+        assert.equal(session.content, source);
+      } finally { await act(async () => root.unmount()); host.remove(); }
+    }
+  } finally {
+    if (previousClipboard) Object.defineProperty(navigator, "clipboard", previousClipboard);
+    else Reflect.deleteProperty(navigator, "clipboard");
+  }
+});
+
+test("coordinate interchange: a successful Copy retry clears the previous failure", async () => {
+  const { readCoordinateInterchange } = await import("../scripts/coordinate-interchange.mjs");
+  const previousClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+  let attempts = 0, copied = "";
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async text => {
+    if (++attempts === 1) throw new Error("Private clipboard transport failure");
+    copied = text;
+  } } });
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  const doc = { id: "copy-retry", path: "/copy-retry.xyz", extension: "xyz", renderer: "molstar" };
+  try {
+    await act(async () => root.render(<GeometryPanel document={doc} actions={{ runStructureViewerAction: () => ({ ok: true }) }} />));
+    await act(async () => host.querySelector('[aria-label="Copy Z-matrix"]').click());
+    assert.equal(host.querySelector('[role="alert"]').textContent, "Could not copy the Z-matrix. Try again.");
+    assert.equal(copied, "");
+    await act(async () => host.querySelector('[aria-label="Copy Z-matrix"]').click());
+    assert.equal(attempts, 2);
+    assert.deepEqual(readCoordinateInterchange(copied, "zmat").atoms, readCoordinateInterchange(xyz, "xyz").atoms);
+    assert.equal(host.querySelector('[role="alert"]')?.textContent ?? null, null);
+    assert.equal(session.content, xyz);
+  } finally {
+    await act(async () => root.unmount()); host.remove();
+    if (previousClipboard) Object.defineProperty(navigator, "clipboard", previousClipboard);
+    else Reflect.deleteProperty(navigator, "clipboard");
+  }
+});
+
+test("coordinate interchange: missing clipboard API reports a failed Copy", async () => {
+  const previousClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  const doc = { id: "copy-unavailable", path: "/copy-unavailable.xyz", extension: "xyz", renderer: "molstar" };
+  try {
+    await act(async () => root.render(<GeometryPanel document={doc} actions={{ runStructureViewerAction: () => ({ ok: true }) }} />));
+    await act(async () => host.querySelector('[aria-label="Copy Z-matrix"]').click());
+    assert.equal(host.querySelector('[role="alert"]')?.textContent, "Could not copy the Z-matrix. Try again.");
+    assert.equal(session.content, xyz);
+  } finally {
+    await act(async () => root.unmount()); host.remove();
+    if (previousClipboard) Object.defineProperty(navigator, "clipboard", previousClipboard);
+    else Reflect.deleteProperty(navigator, "clipboard");
+  }
+});

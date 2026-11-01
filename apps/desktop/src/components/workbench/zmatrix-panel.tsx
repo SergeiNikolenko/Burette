@@ -1,6 +1,7 @@
+import { readCoordinateInterchange, writeCoordinateInterchange } from "../../../../../scripts/coordinate-interchange.mjs";
 import { summary, sceneReload, type OptimizationSummary } from "./zmatrix-session";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { formatZmatrixDocument, resolveZmatrixDocument, type ZmatrixDocument } from "../../../../../scripts/zmatrix-document.mjs";
+import { resolveZmatrixDocument, type ZmatrixDocument } from "../../../../../scripts/zmatrix-document.mjs";
 import { addZmatrixVariable, bindZmatrixCoordinate, removeZmatrixVariable, renameZmatrixVariable, setZmatrixReferences } from "../../../../../scripts/zmatrix-editing.mjs";
 import { editZmatrixRows, type ZmatrixRowAction } from "../../../../../scripts/zmatrix-rows.mjs";
 import { rendererXyzText } from "../../lib/geometry-source-text";
@@ -421,7 +422,14 @@ export function ZmatrixPanel({ document, actions, science, text }: {
       setError(message(caught));
     }
   };
-  const exportZmatrix = () => downloadTextFile(`${fileStem(original?.name ?? document.title)}.zmat`, formatZmatrixDocument(definition));
+  const exportZmatrix = () => {
+    try {
+      const pair = readCoordinateInterchange(text, "xyz");
+      const exported = writeCoordinateInterchange({ ...pair, internalCoordinates: definition }, "zmat", pair.comment);
+      downloadTextFile(`${fileStem(original?.name ?? document.title)}.zmat`, exported);
+      setError(null);
+    } catch { setError("Could not export the Z-matrix. Try again."); }
+  };
   const busy = applying || optimizing || !binding;
   const result = optimized?.text === text ? optimized.summary : null;
 

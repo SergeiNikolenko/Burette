@@ -6,9 +6,7 @@ import { IconAction, InternalCoordinateInput } from "./workbench/geometry-fields
 import { Copy, FileBlank, FileCode, Undo } from "./ui/app-icons";
 import { Spinner } from "./ui/spinner";
 import { measureGeometry } from "../../../../scripts/molecular-geometry.js";
-import { parseXyzAtoms } from "../../../../scripts/internal-coordinates.mjs";
-import { formatZmatrixDocument } from "../../../../scripts/zmatrix-document.mjs";
-import { zmatrixDocumentFromAtoms } from "../../../../scripts/zmatrix-export.mjs";
+import { readCoordinateInterchange, writeCoordinateInterchange } from "../../../../scripts/coordinate-interchange.mjs";
 import { runChemistryTask } from "../lib/molecular-workbench/compute-client";
 import type { GeometryConstraint, MolecularForceField } from "../lib/molecular-workbench/chemistry";
 import { parseXyz } from "../lib/molecular-workbench/xyz";
@@ -351,11 +349,14 @@ function CartesianGeometryPanel({ document, actions, convert }: {
     }
   };
   // The current geometry as the Z-matrix export writes it (a reference point added when needed).
-  const copyZmatrix = () => {
+  const copyZmatrix = async () => {
     try {
-      void navigator.clipboard?.writeText(formatZmatrixDocument(zmatrixDocumentFromAtoms(parseXyzAtoms(geometryText(editor.frame, editor.rows)))));
-    } catch (error) {
-      setEditError(error instanceof Error ? error.message : String(error));
+      const pair = readCoordinateInterchange(geometryText(editor.frame, editor.rows), "xyz");
+      if (typeof navigator.clipboard?.writeText !== "function") throw new Error("Clipboard unavailable.");
+      await navigator.clipboard.writeText(writeCoordinateInterchange(pair, "zmat", pair.comment));
+      setEditError(null);
+    } catch {
+      setEditError("Could not copy the Z-matrix. Try again.");
     }
   };
   const toggleFrozen = (atom: number) => setFrozen((current) => {

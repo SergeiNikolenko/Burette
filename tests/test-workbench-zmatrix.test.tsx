@@ -445,3 +445,53 @@ test("a converted raw XYZ with a UTF8 BOM edits and undoes through its projected
     assert.equal(shown(document), original.slice(1));
   } finally { await view.unmount(); }
 });
+
+test("coordinate interchange: Export Z-matrix reopens the exact translated pose with signed, shared, dummy and unused bindings", async () => {
+  const { writeCoordinateInterchange } = await import("../scripts/coordinate-interchange.mjs");
+  const { scientificStateFor, importedOriginalFor } = await import("../apps/desktop/src/lib/workbench/scientific-source-state");
+  const pair = readCoordinateInterchange("O\nX 1 1\nH 1 R 2 A\nH 1 R 2 A 3 -D\nR=0.9572\nA=52.26\nD=170\nUNUSED=2.5\n", "zmat");
+  pair.atoms = pair.atoms.map(({ element, x, y, z }) => ({ element, x: 12 - y, y: -7 + x, z: 3 + z }));
+  const uploaded = writeCoordinateInterchange(pair, "xyz", "  exact human comment  ");
+  await openScientificFiles(actions, [new File([uploaded], "absolute.xyz")]);
+  const document = useMoleculeStore.getState().documents.at(-1), before = current(document);
+  const original = importedOriginalFor(document.id);
+  const view = await mount(document), blobs = [], createObjectURL = URL.createObjectURL;
+  try {
+    URL.createObjectURL = blob => { blobs.push(blob); return "blob:coordinate-export"; };
+    await click(view.host, "Export Z-matrix");
+    assert.equal(blobs.length, 1);
+    const exported = await blobs[0].text(), result = readCoordinateInterchange(exported, "zmat");
+    assert.deepEqual(result.atoms, pair.atoms);
+    assert.deepEqual(result.internalCoordinates, pair.internalCoordinates);
+    assert.equal(result.comment, readCoordinateInterchange(before, "xyz").comment);
+    await openScientificFiles(actions, [new File([exported], "exported.zmat")]);
+    const reopened = useMoleculeStore.getState().documents.at(-1);
+    assert.notEqual(reopened.id, document.id);
+    assert.deepEqual(readCoordinateInterchange(current(reopened), "xyz").atoms, pair.atoms);
+    assert.deepEqual(scientificStateFor(reopened.id, current(reopened)).revision.document.internalCoordinates, pair.internalCoordinates);
+    assert.equal(await importedOriginalFor(reopened.id).file.text(), exported);
+    assert.equal(current(document), before);
+    assert.equal(importedOriginalFor(document.id), original);
+    assert.equal(await original.file.text(), uploaded);
+  } finally { URL.createObjectURL = createObjectURL; await view.unmount(); }
+});
+
+test("coordinate interchange: a successful Export retry clears the previous failure", async () => {
+  const document = await openZmatrix(zmat), before = current(document);
+  const view = await mount(document), createObjectURL = URL.createObjectURL;
+  let attempts = 0, exported;
+  try {
+    URL.createObjectURL = blob => {
+      if (++attempts === 1) throw new Error("Private download transport failure");
+      exported = blob; return "blob:export-retry";
+    };
+    await click(view.host, "Export Z-matrix");
+    assert.equal(view.host.querySelector('[role="alert"]').textContent, "Could not export the Z-matrix. Try again.");
+    assert.equal(exported, undefined);
+    await click(view.host, "Export Z-matrix");
+    assert.equal(attempts, 2);
+    assert.deepEqual(readCoordinateInterchange(await exported.text(), "zmat").atoms, readCoordinateInterchange(before, "xyz").atoms);
+    assert.equal(view.host.querySelector('[role="alert"]')?.textContent ?? null, null);
+    assert.equal(current(document), before);
+  } finally { URL.createObjectURL = createObjectURL; await view.unmount(); }
+});

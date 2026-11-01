@@ -102,3 +102,13 @@ The current Undo pair is retained; eviction never changes another document's
 shared data. Run `vp run test:coordinate-source-admission` and
 `vp run check:coordinate-source-admission`. These are owner/host checks; the
 transport uses the existing viewer action boundary and does not add a native API.
+
+The existing Geometry **Copy Z-matrix** action writes the current Cartesian
+positions with the measured definition through the shared interchange codec.
+The internal-coordinate **Export Z-matrix** action writes the current source
+positions with its owned symbolic definition, including signed/shared bindings,
+unused variables and reference points. Both retain the human comment and import
+token in the single transport marker format. Validation finishes before the
+clipboard write or download starts; neither action changes the source or its
+original file. Reopening the result through the ordinary scientific reader
+preserves absolute pose and the complete definition.
