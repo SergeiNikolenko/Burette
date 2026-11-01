@@ -27,6 +27,8 @@ contains only documents that describe the active project.
 - [Peptide graph prerequisite](peptide-graph-builder.md): neutral residue graphs,
   terminal chemistry, stereochemistry and the remaining 3D builder scope.
 - [Peptide geometry](peptide-geometry.md): named 3D backbone templates, charged termini, and mmCIF roundtrip.
+- [Hydrogens and pH protonation](hydrogen-protonation.md): Add/Remove Hydrogens
+  placement and the cited pKa rule table behind *Adjust hydrogens for pH*.
 - [Polymer builder](polymer-builder.md): attachment-directed repeat placement,
   source/copy mapping and supported terminal chemistry.
 - [Quantum input templates](quantum-input-export.md): engine routes, coordinate

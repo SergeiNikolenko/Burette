@@ -32,6 +32,12 @@ const computeAdvanced: GraphAdvancedCompute = async (operation, structure, signa
   }
   // Insertion output is already an ordered graph edit with exact provenance.
   if (operation.kind === "insert-fragment") return { structure: (await runFragmentTask({ molecule: structure, fragment: operation.fragment, target: operation.target }, { signal })).structure, outcome: null };
+  if (operation.kind === "protonate") {
+    const result = await runChemistryTask({ action: "protonate", molecule: structure, pH: operation.pH }, { signal });
+    // Protonation adds and removes hydrogens, so provenance comes from the worker, not the atom count.
+    const next = await normalized(result.structure, signal);
+    return { structure: { ...next, sourceAtomIndices: next.sourceAtomIndices.map(index => result.structure.sourceAtomIndices[index]) }, outcome: null };
+  }
   const changed = await runChemistryTask({ action: "add-hydrogens", molecule: structure }, { signal });
   return { structure: keep(await normalized(changed, signal)), outcome: null };
 };

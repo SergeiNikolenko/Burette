@@ -54,6 +54,15 @@ new H) and up to 64 changes (output atom, group, pKa crossed, protonated or
 deprotonated), with the count of omitted changes. Running it again at the same
 pH changes nothing.
 
+In the Edit tab, More actions → *Adjust hydrogens for pH…* asks for a pH from 0
+to 14 (default 7.4) and applies the result as one Undo step of the document's
+graph draft (graph-draft operation `{ kind: "protonate", pH }`); the selection is
+cleared because atoms are renumbered. Agents run the same operation as the
+`hydrogens` job with `mode: "ph"` and `pH` (see
+[agent-platform.md](agent-platform.md#structure-editing-and-builder-jobs)), which
+exports a new structure and never edits the open document. Focused tests:
+`bun run test:protonation` (rule table, references, Edit-tab draft and dialog).
+
 Charges of the modelled groups are re-assigned, whichever state the input had:
 carboxylate at pH 2 becomes the acid, ammonium at pH 12 the amine. Quaternary
 ammonium, N-alkyl pyridinium, nitro, N-oxide, metal and other charges are kept.

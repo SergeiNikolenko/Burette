@@ -37,7 +37,9 @@ export type GraphOperation =
 // `prepare-3d` embeds a flat depiction with hydrogens and relaxes it; source atoms keep their indices.
 export type GraphAdvancedOperation = { kind: "add-hydrogens" } | { kind: "prepare-3d" } | { kind: "optimize"; method: OptimizationMethod; forceField: MolecularForceField }
   // One rigid fragment bonded to `target` in place of a hydrogen, or a separate molecule when `target` is null.
-  | { kind: "insert-fragment"; fragment: FragmentSource; target: number | null };
+  | { kind: "insert-fragment"; fragment: FragmentSource; target: number | null }
+  // Protonation states for `pH`, then every hydrogen explicit; heavy atoms keep their indices and coordinates.
+  | { kind: "protonate"; pH: number };
 export type GraphComputeResult = { structure: GraphEditResult; outcome: GraphOutcome | null };
 export type GraphAdvancedCompute = (operation: GraphAdvancedOperation, structure: GraphEditResult, signal: AbortSignal) => Promise<GraphComputeResult>;
 
