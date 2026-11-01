@@ -1,3 +1,4 @@
+import { AssemblyDialogHost } from "./components/workbench/assembly-dialog-host";
 import { PeptideBuilderDialogHost } from "./components/workbench/peptide-builder-host";
 import { InputExportDialogHost } from "./components/workbench/input-export-host";
 import { useMoleculeStore } from "./stores/molecule-store";
@@ -1370,6 +1371,7 @@ export default function App() {
       <WindowTitle activeDocument={activeDocument} />
       <InputExportDialogHost actions={actions} />
       <PeptideBuilderDialogHost actions={actions} />
+      <AssemblyDialogHost actions={actions} />
       <AppLayout
         state={state}
         actions={actions}

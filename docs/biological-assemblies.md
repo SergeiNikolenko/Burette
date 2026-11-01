@@ -95,3 +95,10 @@ The retained assembly transport regressions run with
 `vp run test:assembly-dialog-transport`. Existing source/prepare/cancel assertions
 remain; intentional changes are an independent path for repeated generated
 output and an actionable file-read error without exposing transport details.
+
+
+Compute offers Build biological assembly for an individual PDB/mmCIF source.
+The command palette also opens the file chooser without a supported source.
+Both routes use the dedicated host; other workbench hosts leave assembly
+requests to it. `vp run test:assembly-activation` exercises these routes.
+Actual browser interaction remains separate from compiled component acceptance.

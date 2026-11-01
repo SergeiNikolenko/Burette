@@ -46,6 +46,10 @@ export function buildShellCommands(
       run: () => openWorkbenchDialog({ kind: "builder", builder: "peptide", document: null }),
     },
     {
+      id: "workbench-assembly", group: "Suggested", label: "Build biological assembly…", description: "",
+      run: () => openWorkbenchDialog({ kind: "assembly", document: state.activeDocument }),
+    },
+    {
       id: "open-clipboard",
       group: "Suggested",
       label: "Open from clipboard",
