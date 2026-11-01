@@ -27,6 +27,7 @@ export const releaseQuantum=()=>{const callback=releaseHeld;releaseHeld=null;cal
 export const quantumHeld=()=>Boolean(releaseHeld);
 const {PluginContext}=await import('@molstar/plugin');
 const {StateTransforms}=await import('@molstar/viewer/state-transforms');
+const {DefaultRegistry}=await import('@molstar/plugin/default-registry');
 const {useAppMolstarActionSenders}=await import('../apps/desktop/src/hooks/use-app-molstar-action-senders');
 const {activeViewerIframeForDocument}=await import('../apps/desktop/src/lib/viewer-bridge');
 const {OrbitalsDockContent}=await import('../apps/desktop/src/components/workbench/orbitals-dock-content');
@@ -44,7 +45,7 @@ export async function fixture(volumeOnly: boolean|string=false){
  let text='1\nimported\nH 0 0 0\n';
  if(volumeOnly){const {gridToCube}=await import('../apps/desktop/src/lib/molecular-workbench/quantum');text=typeof volumeOnly==='string'?volumeOnly:gridToCube(science.grid!,science.atoms);const {openBrowserDevTextDocument}=await import('../apps/desktop/src/lib/browser-dev-documents');const {defaultPreferences}=await import('../apps/desktop/src/stores/settings-store');current=await openBrowserDevTextDocument('source.cube','cube',text,{...defaultPreferences,rendererMode:'molstar'});science=await runReaderTask({action:'parse',name:'source.cube',text});}
  else {adoptLogicalSource({documentId:current.id,extension:'xyz',text},'orbitals-test',null,['H']);addDocumentInternalCoordinates(current.id,text,science);}
- const plugin=new PluginContext({actions:[],behaviors:[]});await plugin.init();const raw=await plugin.builders.data.rawData({data:text});if(volumeOnly){await plugin.state.data.build().to(raw).apply(StateTransforms.Data.ParseCube).apply(StateTransforms.Volume.VolumeFromCube).commit();}else{const trajectory=await plugin.builders.structure.parseTrajectory(raw,'xyz');const model=await plugin.builders.structure.createModel(trajectory);await plugin.builders.structure.createStructure(model);}
+ const plugin=new PluginContext({registry:DefaultRegistry,behaviors:[]});await plugin.init();const raw=await plugin.builders.data.rawData({data:text});if(volumeOnly){await plugin.state.data.build().to(raw).apply(StateTransforms.Data.ParseCube).apply(StateTransforms.Volume.VolumeFromCube).commit();}else{const trajectory=await plugin.builders.structure.parseTrajectory(raw,'xyz');const model=await plugin.builders.structure.createModel(trajectory);await plugin.builders.structure.createStructure(model);}
  const scope:any={molstar:{lib:{plugin:{StateTransforms}}}};vm.runInNewContext(readFileSync(new URL('../PreviewExtension/Web/geometry-preview.js',import.meta.url),'utf8'),{window:scope,crypto,TextEncoder,DataView,Uint8Array});
  const viewer={plugin},source=readFileSync(new URL('../PreviewExtension/Web/viewer.js',import.meta.url),'utf8');const start=source.indexOf("    if (type === 'show_scalar_field' || type === 'scalar_field_binding' || type === 'scalar_field_validate') {");
  const execute=new Function('window','activeMolstarViewer',`let scalarFieldRequest=0,scalarBindingRequest=0,geometryPreviewLoading=null;return async action=>{const type=action.type;${source.slice(start,source.indexOf("    if (type === 'preview_geometry') {",start))}};`)(scope,()=>viewer);

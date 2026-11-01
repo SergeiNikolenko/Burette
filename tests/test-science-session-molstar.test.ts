@@ -291,7 +291,8 @@ test("adoption refuses inventory, file or descriptor changes across the actual d
       const asset = fileAsset(f.assets[2].id, "foreign-original.bin"), file = new File([f.assets[2].bytes], asset.name);
       const entry = f.imported.managers.asset.get(asset)!;
       if (kind === "replace") f.imported.managers.asset.set(asset, file, { tag: "foreign-owner" });
-      if (kind === "file") entry.file = file;
+      // The pinned asset manager exposes `file` read-only; its held source is what a swap replaces.
+      if (kind === "file") Object.assign(entry, { source: file });
       if (kind === "descriptor") entry.asset = asset;
       if (kind === "added") f.imported.managers.asset.set(fileAsset("burette-science-other", "added"), file);
       const entries = f.imported.managers.asset.assets;

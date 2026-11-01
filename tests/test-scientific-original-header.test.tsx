@@ -62,7 +62,10 @@ test('ordinary file header retains Open/copy/dock controls and native mode does 
  const f=await mount();try{
   await f.render({id:'ordinary',path:'/project/ordinary.pdb',title:'ordinary.pdb',extension:'pdb',renderer:'molstar',runtimePath:'',byteCount:0});
   expect(f.host.querySelector('[aria-label="Download file"]')).toBeNull();
-  await act(async()=>{for(const label of ['Copy file path','Toggle right panel','Open with Default App'])f.host.querySelector<HTMLElement>(`[aria-label="${label}"]`)!.click();});expect(f.calls).toEqual(['copy','dock','open']);
+  await act(async()=>{for(const label of ['Toggle right panel','Open with Default App'])f.host.querySelector<HTMLElement>(`[aria-label="${label}"]`)!.click();});
+  // Copy path lives in the Open menu of the file header.
+  await act(async()=>f.host.querySelector('[aria-label="Open in another application"]')!.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,button:0,ctrlKey:false})));await choose('Copy path');
+  expect(f.calls).toEqual(['dock','open','copy']);
   await act(async()=>openScientificFiles(f.imported,[new File([fixture('hydrogen.molden')],'native.molden')]));native=true;await f.render();expect(f.host.querySelector('[aria-label="Download file"]')).toBeNull();
   expect(compiled.get('browser-structure-download.tsx')).toBe(true);expect(compiled.get('scientific-source-state.ts')).toBe(true);
  }finally{await f.close();}
