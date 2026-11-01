@@ -1,3 +1,20 @@
 .app-shell[data-sidebar-open="true"] .native-home-ketcher {
   display: none;
 }
+/* Codex list page: heading-xl title and pill rows of the token row height. */
+.native-home-title { margin: 0; color: var(--color-text); font-size: 28px; line-height: 1.2; font-weight: 500; }
+.native-home-list { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; }
+.native-home-list > li { min-width: 0; content-visibility: auto; contain-intrinsic-size: auto 31px; }
+.native-home-row {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; height: var(--height-token-row);
+  padding: 5px 8px; border: 0; border-radius: var(--radius-token-row); background: transparent;
+  color: var(--color-text); font: inherit; font-size: var(--text-base); line-height: 20px; text-align: left;
+  cursor: var(--cursor-interaction);
+}
+.native-home-row:not(:disabled):hover, .native-home-row:focus-visible { background: var(--color-background-primary-ghost-hover); }
+.native-home-row:focus-visible { outline: 2px solid var(--color-ring); outline-offset: -2px; }
+.native-home-row:disabled:not([aria-busy="true"]) { opacity: .5; }
+.native-home-row-icon { display: inline-flex; flex: none; color: var(--color-text-secondary); }
+.native-home-row-name { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.native-home-row-folder { flex: 1; min-width: 0; overflow: hidden; color: var(--color-text-tertiary); text-overflow: ellipsis; white-space: nowrap; }
+.native-home-row-time { flex: none; margin-left: auto; color: var(--color-text-tertiary); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }

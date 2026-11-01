@@ -2303,7 +2303,9 @@
     });
     const selectionBar = document.getElementById('buret-selection-bar');
     if (selectionBar) window.BuretteNativeViewerMenus?.styleControls?.(selectionBar, activeConfig?.themeTokens, resolvedTheme);
-    document.querySelectorAll('#buret-viewport-rail, .buret-viewport-tooltip').forEach(surface => {
+    // The toolbar and scene tree toggle only read these tokens as capsules in
+    // the Codex widget's header band (viewer-runtime.css).
+    document.querySelectorAll('#buret-viewport-rail, .buret-viewport-tooltip, #buret-toolbar, #buret-scene-tree-toggle').forEach(surface => {
       window.BuretteNativeViewerMenus?.styleControls?.(surface, activeConfig?.themeTokens, resolvedTheme);
     });
     if (molstarControlTooltip) window.BuretteNativeViewerMenus?.styleTooltip?.(molstarControlTooltip, activeConfig?.themeTokens, resolvedTheme);

@@ -3,9 +3,9 @@ import { RadixDropdownMenu } from "./radix-menu";
 import type { MenuItemSpec } from "./menu-types";
 import type { ShellActions, ShellViewState } from "./types";
 import { AnimatedOrbitIcon } from "./ui/animated-icons";
-import { SidebarLeft } from "./ui/app-icons";
-import { Button } from "./ui/button";
+import { History, SidebarLeft } from "./ui/app-icons";
 import { ShortcutTooltip } from "./shortcut-tooltip";
+import "./native-workspace-navigation.css";
 
 type Props = { state: ShellViewState; actions: ShellActions };
 
@@ -34,10 +34,23 @@ function ketcherAction({ state, actions }: Props) {
   else actions.openKetcher();
 }
 
-export function NativeWorkspaceMenu({ state, actions, sidebarVisible, onToggleSidebar, fileItems = [] }: Props & {
+// Sits at the same top-left spot whether the sidebar is open (its top row) or
+// closed (the file header), like the Codex title bar toggle.
+function SidebarToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  return <ShortcutTooltip label={open ? "Hide sidebar" : "Show sidebar"}>
+    <button type="button" className="chrome-button native-sidebar-toggle" aria-pressed={open}
+      aria-label={open ? "Hide workspace navigation" : "Show workspace navigation"} onClick={onToggle}>
+      <SidebarLeft size={18} aria-hidden />
+    </button>
+  </ShortcutTooltip>;
+}
+
+export function NativeWorkspaceMenu({ state, actions, onShowSidebar, fileItems = [] }: Props & {
   fileItems?: MenuItemSpec[];
-  sidebarVisible: boolean; onToggleSidebar?: () => void;
+  /** Expanded workspaces own a sidebar; compact cards list pages in a menu. */
+  onShowSidebar?: () => void;
 }) {
+  if (onShowSidebar) return <SidebarToggle open={false} onToggle={onShowSidebar} />;
   const items: MenuItemSpec[] = [
     { kind: "item", id: "home", text: "Recent files", action: () => homeAction({ state, actions }) },
     { kind: "item", id: "ketcher", text: "Ketcher", action: () => ketcherAction({ state, actions }) },
@@ -48,30 +61,36 @@ export function NativeWorkspaceMenu({ state, actions, sidebarVisible, onToggleSi
       action: () => actions.selectTab(tab.id),
     })),
   ];
-  return <div className="flex shrink-0 items-center gap-1">
-    {onToggleSidebar ? <button type="button" className="workspace-file-icon-button workspace-file-pill"
-      aria-label={sidebarVisible ? "Hide workspace navigation" : "Show workspace navigation"}
-      aria-pressed={sidebarVisible} onClick={onToggleSidebar}><SidebarLeft size={18} aria-hidden /></button> : null}
-    {!onToggleSidebar ? <RadixDropdownMenu items={items} align="start" trigger={<ShortcutTooltip label="Workspace pages"><button type="button" className="workspace-file-icon-button workspace-file-pill"
-      aria-label="Workspace pages"><SidebarLeft size={18} aria-hidden /></button></ShortcutTooltip>} /> : null}
-  </div>;
+  return <RadixDropdownMenu items={items} align="start" trigger={<ShortcutTooltip label="Workspace pages"><button type="button" className="chrome-button native-sidebar-toggle"
+    aria-label="Workspace pages"><SidebarLeft size={18} aria-hidden /></button></ShortcutTooltip>} />;
 }
 
-export function NativeWorkspaceSidebar({ state, actions }: Props) {
+// Codex sidebar anatomy: icon tool rows, a section title, then text-only rows.
+export function NativeWorkspaceSidebar({ state, actions, onToggleSidebar }: Props & { onToggleSidebar?: () => void }) {
   const pages = openPages(state);
-  return <nav aria-label="Workspace navigation" className="flex h-full flex-col gap-5 overflow-y-auto border-r border-border bg-muted/40 px-3 py-5 text-foreground">
-    <div className="flex flex-col gap-1">
-      <Button variant="ghost" className="justify-start gap-2 aria-[current=page]:bg-accent" aria-current={state.activeTab?.location.kind === "launcher" ? "page" : undefined}
-        onClick={() => homeAction({ state, actions })}>Recent files</Button>
-      <Button variant="ghost" className="justify-start gap-2 aria-[current=page]:bg-accent" aria-current={state.activeTab?.location.kind === "ketcher" ? "page" : undefined} onClick={() => ketcherAction({ state, actions })}><AnimatedOrbitIcon size={16} aria-hidden />Ketcher</Button>
+  const current = state.activeTab?.location.kind;
+  return <nav aria-label="Workspace navigation" className="sidebar native-workspace-sidebar">
+    <div className="native-workspace-sidebar-top">
+      {onToggleSidebar ? <SidebarToggle open onToggle={onToggleSidebar} /> : null}
     </div>
-    {pages.length ? <section className="flex min-h-0 flex-col gap-2" aria-label="Open pages">
-      <h2 className="px-2 text-xs font-medium text-muted-foreground">Open pages</h2>
-      {pages.map(({ tab, title }) => <Button key={tab.id} variant="ghost"
-        className={`justify-start overflow-hidden ${tab.id === state.activeTabId ? "bg-accent" : ""}`}
-        aria-current={tab.id === state.activeTabId ? "page" : undefined} onClick={() => actions.selectTab(tab.id)}>
-        <span className="truncate">{title}</span>
-      </Button>)}
-    </section> : null}
+    <div className="sidebar-scroll">
+      <button type="button" className="sidebar-tool-row" aria-current={current === "launcher" ? "page" : undefined}
+        onClick={() => homeAction({ state, actions })}>
+        <span className="sidebar-tool-icon" aria-hidden="true"><History size={16} /></span>
+        <span className="sidebar-tool-label">Recent files</span>
+      </button>
+      <button type="button" className="sidebar-tool-row" aria-current={current === "ketcher" ? "page" : undefined}
+        onClick={() => ketcherAction({ state, actions })}>
+        <span className="sidebar-tool-icon" aria-hidden="true"><AnimatedOrbitIcon size={16} /></span>
+        <span className="sidebar-tool-label">Ketcher</span>
+      </button>
+      {pages.length ? <section className="sidebar-section" aria-labelledby="native-open-pages">
+        <div className="sidebar-section-header"><h2 id="native-open-pages" className="native-workspace-section-title">Open pages</h2></div>
+        {pages.map(({ tab, title }) => <button key={tab.id} type="button" className="sidebar-tool-row native-workspace-page"
+          aria-current={tab.id === state.activeTabId ? "page" : undefined} onClick={() => actions.selectTab(tab.id)}>
+          <span className="sidebar-tool-label">{title}</span>
+        </button>)}
+      </section> : null}
+    </div>
   </nav>;
 }

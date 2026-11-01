@@ -45,6 +45,10 @@ test("Home reuses its page and keeps open structures available", async () => {
     await click("Ketcher");
     expect(calls.at(-1)).toBe("sketch");
     expect(container.querySelectorAll("button")).toHaveLength(3);
+    // The hide toggle lives in the sidebar's own top row, clear of its rows.
+    await act(async () => root.render(<NativeWorkspaceSidebar state={state} actions={actions} onToggleSidebar={() => calls.push("hide")} />));
+    await act(async () => container.querySelector<HTMLButtonElement>('.native-workspace-sidebar-top [aria-label="Hide workspace navigation"]')!.click());
+    expect(calls.at(-1)).toBe("hide");
   } finally { await act(async () => root.unmount()); container.remove(); }
 });
 
