@@ -101,7 +101,7 @@ async function fixture(format = "mol") {
     const ready = /    \{\n      const poseCount =[\s\S]*?\n    \}/u.exec(startup)!;
     // Execute actual startup statements in their original source order: the test does not supply restore-before-ready ordering.
     const boundary = [restore, ready].sort((a, b) => a.index - b.index).map(match => match[0]).join("\n");
-    const run = new Function("activeMolstarViewer", "window", "measurementCoordinateRuntime", "normalizeRenderer", "currentMolstarStructureCount", "setStatus", "setTimeout", "hideStatus", "isQuickLookHost", `${extract("restoreMeasurementPreview")};${extract("previewReadyPayload")};${extract("molstarReadyPayload")};return async (viewer,config,prepared)=>{${boundary}};`)(() => next, scope, runtimeGetter, value => value, v => v.plugin.managers.structure.hierarchy.current.structures.length, () => {}, callback => callback(), payload => {
+    const run = new Function("activeMolstarViewer", "window", "measurementCoordinateRuntime", "normalizeRenderer", "currentMolstarStructureCount", "setStatus", "setTimeout", "hideStatus", "isQuickLookHost", `${extract("restoreMeasurementPreview")};${extract("previewReadyPayload")};${extract("molstarReadyPayload")};${extract("currentMolstarVolumeCount")};return async (viewer,config,prepared)=>{${boundary}};`)(() => next, scope, runtimeGetter, value => value, v => v.plugin.managers.structure.hierarchy.current.structures.length, () => {}, callback => callback(), payload => {
       readyCounts.push(next.plugin.managers.structure.measurement.state.distances.length);
       window.dispatchEvent(new MessageEvent("message", { source: frame.contentWindow, data: { source: "burette-viewer", body: { type: "ready", ...payload } } }));
     }, () => false);

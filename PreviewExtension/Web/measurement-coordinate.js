@@ -54,13 +54,15 @@
     'fontVariant', 'fontWeight', 'radiusScale', 'scaleFactor', 'variant', 'radialSegments', 'attachment', 'scaleByRadius',
     'snapshotKey', 'tooltip', 'tether', 'tetherLength', 'tetherBaseWidth', 'quality', 'sizeFactor', 'instanceGranularity',
     'cellSize', 'batchSize', 'doubleSided', 'flipSided', 'flatShaded', 'celShaded', 'xrayShaded', 'transparentBackfaces',
-    'bumpFrequency', 'bumpAmplitude', 'emissive', 'density',
+    'bumpFrequency', 'bumpAmplitude', 'emissive', 'density', 'renderMerged', 'gpuCulling', 'solidInterior',
   ]);
+  // Mol* 6 additions share these native defaults across all six representations.
+  const DEFAULT_PARAMS = { renderMerged: 'auto', gpuCulling: 'auto', solidInterior: false };
   const material = { metalness: 'number', roughness: 'number', bumpiness: 'number' };
   const vector = ['number', 3, 3];
   const NESTED = {
     material, lod: vector,
-    clip: { variant: new Set(['instance', 'pixel']), objects: [{ type: new Set(['none', 'plane', 'sphere', 'cube', 'cylinder', 'infiniteCone']), invert: 'boolean', position: vector, rotation: { axis: vector, angle: 'number' }, scale: vector, transform: ['number', 16, 16] }, 8] },
+    clip: { variant: new Set(['instance', 'pixel']), objects: [{ type: new Set(['none', 'plane', 'sphere', 'cube', 'cylinder', 'infiniteCone']), invert: 'boolean', position: vector, rotation: { axis: vector, angle: 'number' }, scale: vector, transform: ['number', 16, 16], tag: 'string' }, 8] },
     animation: { wiggleMode: new Set(['position', 'group']), wiggleSpeed: 'number', wiggleAmplitude: 'number', wiggleFrequency: 'number', tumbleSpeed: 'number', tumbleAmplitude: 'number', tumbleFrequency: 'number' },
     interior: { color: 'number', colorStrength: 'number', substance: material, substanceStrength: 'number' },
   };
@@ -118,10 +120,11 @@
     const result = {};
     for (const [key, value] of Object.entries(params || {})) {
       if (key === 'visuals' && Array.isArray(value) && value.length <= 8 && value.every(v => typeof v === 'string' && v.length <= 24)) result[key] = value.slice();
-      else if (PARAMS.has(key) && (typeof value === 'boolean' || typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1e9 || typeof value === 'string' && value.length <= 1024)) result[key] = value;
-      else if (Object.hasOwn(NESTED, key)) {
+      // Omit known defaults to leave the bounded payload for authored settings.
+      else if (PARAMS.has(key) && (typeof value === 'boolean' || typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1e9 || typeof value === 'string' && value.length <= 1024)) {
+        if (!Object.hasOwn(DEFAULT_PARAMS, key) || DEFAULT_PARAMS[key] !== value) result[key] = value;
+      } else if (Object.hasOwn(NESTED, key)) {
         const copied = copySetting(value, NESTED[key]);
-        // Omit known defaults to leave the bounded payload for authored settings.
         if (JSON.stringify(copied) !== JSON.stringify(DEFAULT_NESTED[key])) result[key] = copied;
       } else fail('A measurement setting cannot be retained.');
     }
