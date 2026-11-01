@@ -42,3 +42,32 @@ pure scientific export contract; they do not certify a production structure,
 worker, ordinary file chooser, native viewer, or browser workflow. UI activation
 and underscore-containing copied-chain query support require their own paired
 host/viewer validation. No panels or general science worker are activated here.
+
+
+## Worker and source publication owner
+
+`assembly-task.ts` sends only assembly listing/materialization requests to its
+private worker through the existing worker runner. Abort and timeout terminate
+that worker; the general science worker and unrelated builders are not loaded.
+
+`assembly-source.ts` reads the exact open document or current draft through the
+shared source reader, with a 20 MB limit. Its capture belongs to the same document
+object, logical source lifetime and draft revision until released. A document
+replacement remains retired even if the old object is restored before React
+commits. The source editor's existing monotonic revision distinguishes a draft
+edit followed by restoring identical text. This stricter assembly publication
+contract supplements the existing document-lifetime `captureOperation` contract;
+it does not change that operation's semantics. UI requests must additionally
+retain their own request identity and pass the capture through `shouldApply`
+until generated-document preparation finishes.
+
+```sh
+vp run test:assembly-worker
+vp run test:assembly-source
+vp run typecheck:assembly-workflow
+```
+
+Worker tests execute bundled browser JavaScript using a real worker. Source tests
+compile the hook and exercise the real source-editing controller; read transport
+and native IPC are held at their existing boundaries. These checks do not certify
+an ordinary browser chooser or rendered assembly controls.

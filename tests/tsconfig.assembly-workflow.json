@@ -1,0 +1,16 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": [
+      "bun"
+    ]
+  },
+  "files": [
+    "test-assembly-worker.test.ts",
+    "test-assembly-source.test.tsx",
+    "test-assembly-source-owner.test.tsx"
+  ],
+  "include": [
+    "../apps/desktop/src/**/*.d.ts"
+  ]
+}

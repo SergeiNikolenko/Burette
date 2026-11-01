@@ -15,6 +15,8 @@ export type SourcePreviewState = "current" | "queued" | "staging" | "manual" | "
 export type SourceEditingView = {
   /** The source session lifetime; retained across its own revisions, replaced after close or restore. */
   readonly sessionId: string;
+  /** Monotonic draft revision, including edits that restore identical text. */
+  readonly revision: number;
   documentId: string;
   path: string;
   content: string;
