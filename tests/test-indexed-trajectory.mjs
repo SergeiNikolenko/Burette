@@ -30,7 +30,8 @@ class TrajectoryObject { constructor(data) { this.data = data; } }
 const context = vm.createContext({ indexTrrFrames, readActiveTrajectoryFrame, decodeTrrFrame, Task, Coordinates, Time, Cell, Vec3, parseXtc, DataView, Float32Array, AbortController, Map: ObservedMap,
   PluginStateTransform: { BuiltIn: () => definition => definition }, PluginStateObject: { Root: {}, Molecule: { Trajectory: TrajectoryObject, Topology: { type: 'topology' } } },
   PD: { Text: () => ({}), Value: () => ({}), Numeric: () => ({}) },
-  Model: { trajectoryFromModelAndCoordinates: (_template, coords) => ({ representative: { ..._template, frame: coords.frames[0] } }), TrajectoryInfo: { set: (model, info) => { model.info = info; } } }
+  // Like Mol*, every frame model gets fresh dynamic property data.
+  Model: { trajectoryFromModelAndCoordinates: (_template, coords) => ({ representative: { ..._template, frame: coords.frames[0], _dynamicPropertyData: Object.create(null) } }), TrajectoryInfo: { set: (model, info) => { model.info = info; } } }
 });
 vm.runInContext(`${source}\nglobalThis.adapter = { decodeFrame, createTrajectory, readers, IndexedTrajectory, BuretteIndexedTrajectory };`, context);
 const { decodeFrame, createTrajectory, readers, IndexedTrajectory, BuretteIndexedTrajectory } = context.adapter;

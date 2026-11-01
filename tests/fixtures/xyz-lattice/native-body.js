@@ -18,9 +18,10 @@
   for (let i = 0; i < expected.positions.length; i++) {
    assert.equal(c.x[i], expected.positions[i][0]); assert.equal(c.y[i], expected.positions[i][1]); assert.equal(c.z[i], expected.positions[i][2]);
   }
-  const symmetry = model._staticPropertyData.model_symmetry;
+  // Mol* 6 keeps ModelSymmetry per frame in dynamic property data.
+  const symmetry = model._dynamicPropertyData.model_symmetry;
   if (!expected.basis) {
-   assert.equal(Object.hasOwn(model._staticPropertyData, 'model_symmetry'), false);
+   assert.equal(Object.hasOwn(model._dynamicPropertyData, 'model_symmetry'), false);
    assert.equal(model.customProperties.all.some(d => d.name === 'model_symmetry'), false);
    assert.equal(p.state.data.cells.get(cellRef).obj.type.name, 'Null');
    return;
@@ -75,7 +76,7 @@
    const admitted = await make();
    const data = await admitted.builders.data.rawData({ data: `1\nLattice="0 2 0 -3 1 0 0 0 5"${pbc}\nC 0.25 -0.5 2\n` });
    const tr = await admitted.builders.structure.parseTrajectory(data, 'xyz');
-   const nativeCell = tr.data.getFrameAtIndex(0)._staticPropertyData.model_symmetry.spacegroup.cell;
+   const nativeCell = tr.data.getFrameAtIndex(0)._dynamicPropertyData.model_symmetry.spacegroup.cell;
    near(Array.from(nativeCell.fromFractional), oracle.frames[0].fromFractional);
    assert.equal(nativeCell.volume, 30);
   }
@@ -86,7 +87,7 @@
    const tr = await ordinary.builders.structure.parseTrajectory(data, 'xyz');
    await ordinary.builders.structure.hierarchy.applyPreset(tr, 'default', { representationPreset: 'empty' });
    const m = tr.data.getFrameAtIndex(0);
-   assert.equal(Object.hasOwn(m._staticPropertyData, 'model_symmetry'), false, comment);
+   assert.equal(Object.hasOwn(m._dynamicPropertyData, 'model_symmetry'), false, comment);
    assert.equal(m.customProperties.all.some(d => d.name === 'model_symmetry'), false);
    assert.deepEqual([m.atomicConformation.x[0], m.atomicConformation.y[0], m.atomicConformation.z[0]], [0.25,-0.5,2]);
    assert.equal(data.data, text);

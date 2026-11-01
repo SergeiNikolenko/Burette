@@ -54,7 +54,6 @@ export function attachXyzLattice(model, comment) {
     fromFractional,
     toFractional: Mat4.invert(Mat4.zero(), fromFractional),
   };
-  // Native XYZ frames may share static properties; the cell belongs to this frame.
-  model._staticPropertyData = { ...model._staticPropertyData };
+  // ModelSymmetry is dynamic (per-frame) property data, so the cell belongs to this frame.
   ModelSymmetry.Provider.set(model, { spacegroup: Spacegroup.create(cell), assemblies: [], isNonStandardCrystalFrame: false, ncsOperators: [] });
 }

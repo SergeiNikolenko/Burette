@@ -59,14 +59,19 @@ function decodeDcd(data, timePs) {
 }
 
 function decodeTrr(data) {
-  const decoded = decodeTrrFrame(data);
-  const { box, timePs } = decoded;
+  // Mol* Frame.box is a PeriodicBox; the raw TRR box only defines the cell.
+  const { box, ...decoded } = decodeTrrFrame(data);
+  const { timePs } = decoded;
   return { ...decoded,
     cell: box?.some(value => value !== 0) ? Cell.fromBasis(Vec3.fromArray(Vec3(), box, 0), Vec3.fromArray(Vec3(), box, 3), Vec3.fromArray(Vec3(), box, 6)) : undefined,
     xyzOrdering: { isIdentity: true }, time: Time(timePs, 'ps') };
 }
 
-const modelFrames = new WeakMap();
+// Mol* derives displayed models from trajectory frames (periodic "whole" by
+// default) through Model.withAtomicConformation, which copies dynamic
+// properties but not object identity. The frame record rides along there;
+// pages report the file's positions, which the display may show as periodic images.
+const HELD_FRAME = '__BuretteIndexedTrajectoryFrame__';
 function decodedFrameBytes(frame) {
   return frame.x.byteLength + frame.y.byteLength + frame.z.byteLength
     + (frame.velocities ? frame.velocities.vx.byteLength + frame.velocities.vy.byteLength + frame.velocities.vz.byteLength : 0)
@@ -137,7 +142,7 @@ function createTrajectory(template, descriptor, first, requestFrame, releaseRead
   const sourceId = `${identityPrefix}-source-${++identitySequence}`;
   const modelFor = (frame, index) => {
     const model = Model.trajectoryFromModelAndCoordinates(template, coordinates(frame)).representative;
-    modelFrames.set(model, { frame, index, descriptor, isAlive: () => !disposed, sourceId, modelId: `${sourceId}-model-${++identitySequence}` });
+    model._dynamicPropertyData[HELD_FRAME] = { frame, index, descriptor, isAlive: () => !disposed, sourceId, modelId: `${sourceId}-model-${++identitySequence}` };
     model.modelNum = index;
     Model.TrajectoryInfo.set(model, { index, size: descriptor.frameCount });
     return model;
@@ -291,7 +296,7 @@ export const BuretteIndexedTrajectory = {
    * @returns {Omit<import('./trajectory-frame-data.mjs').IndexedTrajectoryFrame, 'available' | 'structureRef'> | null}
    */
   frameData(model, { offset = 0, limit = 100, includeSummary = false } = {}) {
-    const held = modelFrames.get(model);
+    const held = model?._dynamicPropertyData?.[HELD_FRAME];
     if (!held || !held.isAlive()) return null;
     if (!Number.isInteger(offset) || offset < 0 || !Number.isInteger(limit) || limit < 1 || limit > 100 || typeof includeSummary !== 'boolean') throw new Error('Invalid trajectory vector page.');
     const { frame, index, descriptor, sourceId, modelId } = held;

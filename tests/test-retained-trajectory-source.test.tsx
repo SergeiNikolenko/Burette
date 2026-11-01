@@ -4,15 +4,19 @@ import { readFileSync } from "node:fs";
 import { browser } from "./test-cjson-import.test";
 import { fixture, closeRuntime, NativeFile } from "./fixtures/retained-trajectory-native.mjs";
 import type { ViewerDocument } from "../apps/desktop/src/types";
-import { useRetainedTrajectorySource } from "../apps/desktop/src/lib/workbench/retained-trajectory-source";
-import { useScientificDocument } from "../apps/desktop/src/lib/workbench/source";
-import { openScientificDocument } from "../apps/desktop/src/lib/workbench/generated-document-open";
-import { openScientificFiles } from "../apps/desktop/src/lib/workbench/open";
-import { parseScientificFile } from "../apps/desktop/src/lib/molecular-workbench/quantum";
-import { openBrowserDevTextDocument, readBrowserDevVirtualTextDocument, deleteBrowserDevVirtualTextDocument } from "../apps/desktop/src/lib/browser-dev-documents";
-import { useMoleculeStore } from "../apps/desktop/src/stores/molecule-store";
-import { defaultPreferences } from "../apps/desktop/src/stores/settings-store";
-import { scientificStateFor } from "../apps/desktop/src/lib/workbench/scientific-source-state";
+import type { ScientificDocument } from "../apps/desktop/src/lib/molecular-workbench/scientific-types";
+// The browser import above is asynchronous (top-level await), so sibling static
+// imports would evaluate before its DOM exists; the frame-event store binds its
+// window listener at module load. Load the app modules once the DOM is installed.
+const { useRetainedTrajectorySource } = await import("../apps/desktop/src/lib/workbench/retained-trajectory-source");
+const { useScientificDocument } = await import("../apps/desktop/src/lib/workbench/source");
+const { openScientificDocument } = await import("../apps/desktop/src/lib/workbench/generated-document-open");
+const { openScientificFiles } = await import("../apps/desktop/src/lib/workbench/open");
+const { parseScientificFile } = await import("../apps/desktop/src/lib/molecular-workbench/quantum");
+const { openBrowserDevTextDocument, readBrowserDevVirtualTextDocument, deleteBrowserDevVirtualTextDocument } = await import("../apps/desktop/src/lib/browser-dev-documents");
+const { useMoleculeStore } = await import("../apps/desktop/src/stores/molecule-store");
+const { defaultPreferences } = await import("../apps/desktop/src/stores/settings-store");
+const { scientificStateFor } = await import("../apps/desktop/src/lib/workbench/scientific-source-state");
 const { createRoot } = await import("react-dom/client");
 afterAll(closeRuntime);
 const opened: ViewerDocument[] = [];
@@ -28,7 +32,7 @@ function Probe({ owner }: { owner: ViewerDocument }) {
   const state = useScientificDocument(owner);
   return state.document && state.text !== null ? <Cursor owner={owner} science={state.document} text={state.text} /> : <output>none</output>;
 }
-function Cursor({ owner, science, text }: { owner: ViewerDocument; science: ReturnType<typeof parseScientificFile>; text: string }) {
+function Cursor({ owner, science, text }: { owner: ViewerDocument; science: ScientificDocument; text: string }) {
   const source = useRetainedTrajectorySource(owner, science, text);
   return <><output>{source.cursor === null ? "none" : `${source.cursor}/${science.frames.length}`}</output>
     <button disabled={!source.seek} onClick={() => source.seek?.(1)}>Next</button>{source.error}</>;

@@ -19,7 +19,7 @@
    const trajectory = await plugin.builders.structure.parseTrajectory(raw, 'xyz');
    const { model } = await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default', { representationPreset: 'empty' });
    const check = (data) => {
-    const cell = data._staticPropertyData.model_symmetry?.spacegroup.cell;
+    const cell = data._dynamicPropertyData.model_symmetry?.spacegroup.cell;
     assert.equal(Boolean(cell), example.hasCell, `${example.name}: quoted metadata must not change cell admission`);
     assert.equal(data.atomicConformation.x[0], example.positions[0][0]);
     assert.equal(data.atomicConformation.y[0], example.positions[0][1]);
@@ -28,7 +28,7 @@
      example.fromFractional.forEach((value, index) => assert.ok(Math.abs(cell.fromFractional[index] - value) <= 1e-12, `${example.name}: matrix ${index}`));
      assert.equal(cell.volume, example.physicalVolume);
     } else {
-     assert.equal(Object.hasOwn(data._staticPropertyData, 'model_symmetry'), false);
+     assert.equal(Object.hasOwn(data._dynamicPropertyData, 'model_symmetry'), false);
      assert.equal(data.customProperties.all.some(d => d.name === 'model_symmetry'), false);
     }
    };

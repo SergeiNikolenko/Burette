@@ -57,9 +57,12 @@ try {
   const identity = page => Object.fromEntries(['sourceId','modelId','structureRef','frameIndex','frameCount','segmentIndex'].map(k=>[k,page[k]]));
   const near = (actual,expected) => assert.ok(Math.abs(actual-expected)<1e-6,`${actual} != ${expected}`);
   const position=[[1.25,-2.5,15],[10,20,30],[-10,0,5]], velocity=[[.1,-.2,.3],[.4,0,-.6],[-.7,.8,.9]], force=[[1,-2,3],[0,.5,-.5],[.1,.2,.3]];
+  // Both fixture frames share this triclinic box (rows a, b, c in Å). Mol* makes
+  // molecules whole in a box, so the displayed atom is a lattice image of the file position.
+  const lattice = (d) => { const k=d[2]/40, j=(d[1]-5*k)/30, i=(d[0]-2.5*j+1.25*k)/20; return [i,j,k]; };
   const check = (page,index) => {
     const displayed = native.model().atomicConformation;
-    for (const atom of page.atoms) for (let axis = 0; axis < 3; axis++) near(atom.position[axis], displayed[['x','y','z'][axis]][atom.index]);
+    for (const atom of page.atoms) for (const n of lattice(['x','y','z'].map((axis,j)=>displayed[axis][atom.index]-atom.position[j]))) near(n, Math.round(n));
     assert.equal(page.available,true);assert.equal(page.frameIndex,index);assert.equal(page.frameCount,2);assert.equal(page.segmentIndex,2);assert.equal(page.total,3);
     assert.equal(page.time.unit,'ps');near(page.time.value,index?4.25:2.75);assert.equal(page.step,index?175:125);
     assert.equal(page.units.position,'angstrom');assert.equal(page.units.force,'kcal/mol/angstrom');assert.equal(page.units.velocity,index?undefined:'angstrom/ps');
