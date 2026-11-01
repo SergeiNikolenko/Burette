@@ -11,7 +11,8 @@ of these files was established against PySCF's own SCF density for the same mole
   normalization of the x^l component (PySCF's Cartesian AOs are rescaled accordingly);
 - orbitals are stored (nbf, nmo) row-major.
 
-The script also records orthonormality in that basis and orbital values at fixed points.
+The script also records orthonormality in that basis, orbital values at fixed points and the
+total (and, unrestricted, spin) density PySCF evaluates from the stored occupied orbitals.
 Usage (PySCF 2.14):
 
     python orbital-reference.py *-wavefunction.json > orbital-reference.json
@@ -24,6 +25,7 @@ from pathlib import Path
 
 import numpy as np
 from pyscf import gto, scf
+from pyscf.dft import numint
 
 ANGSTROM_PER_BOHR = 0.529177210903
 
@@ -87,6 +89,7 @@ def reference(path):
         reference_density = np.einsum("pi,ij,pj->p", raw_ao, scf.RHF(mol).run(conv_tol=1e-11).make_rdm1(), raw_ao)
     result = {"sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "pointsAngstrom": points.tolist(), "spins": []}
     density = np.zeros(len(points))
+    spin_densities = []  # PySCF's eval_rho of each spin's density matrix from the stored orbitals
     for spin in ("a", "b"):
         key = wavefunction.get(f"orbitals_{spin}") if spin == "a" or not wavefunction["restricted"] else None
         if not key:
@@ -97,11 +100,16 @@ def reference(path):
         occupied = int(data["properties"]["calcinfo_nalpha" if spin == "a" else "calcinfo_nbeta"])
         values = ao @ full.T
         density += (1 if not wavefunction["restricted"] else 2) * (values[:, :occupied] ** 2).sum(axis=1)
+        spin_densities.append(numint.eval_rho(mol, ao, full[:occupied].T @ full[:occupied]))
         error = np.abs(full @ overlap @ full.T - np.eye(len(full))).max()
         picks = sorted({0, occupied - 1, occupied, len(full) - 1})
         result["spins"].append({"orthonormalityError": float(error), "orbitals": {str(n): values[:, n].tolist() for n in picks}})
     if reference_density is not None:
         result["densityError"] = float(np.abs(density - reference_density).max())
+    alpha, beta = spin_densities if len(spin_densities) == 2 else spin_densities * 2
+    result["densityAtPoints"] = (alpha + beta).tolist()
+    if len(spin_densities) == 2:
+        result["spinDensityAtPoints"] = (alpha - beta).tolist()
     return result
 
 

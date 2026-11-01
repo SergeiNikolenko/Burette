@@ -16,8 +16,9 @@ with only `stdout` and `provenance` (host names, scratch paths and timings) remo
 Oracles (PySCF 2.14.0, Apache-2.0, run outside the repository):
 
 - `orbital-reference.json` (`python orbital-reference.py *-wavefunction.json`) rebuilds each basis
-  in PySCF, records orbital values at fixed points and orthonormality in PySCF's AO overlap
-  (≤ 6e-15). For the closed-shell files, the density from the stored orbitals agrees with PySCF's
+  in PySCF, records orbital values at fixed points, orthonormality in PySCF's AO overlap
+  (≤ 6e-15) and the electron and UHF spin density PySCF's `eval_rho` gives for the stored
+  occupied orbitals. For the closed-shell files, the density from the stored orbitals agrees with PySCF's
   own SCF density to 6e-6 (Psi4 density-fits), which is what established the AO convention
   described in that script.
 - `hessian-reference.json` (`python hessian-reference.py water-hf-hessian.json`) is PySCF's analytic

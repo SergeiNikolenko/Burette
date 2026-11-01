@@ -1,10 +1,10 @@
 import { expect, test } from 'bun:test';
 import { parseQcschema } from '../apps/desktop/src/lib/molecular-workbench/quantum/qcschema';
-import { evaluateOrbital } from '../apps/desktop/src/lib/molecular-workbench/gaussian';
+import { evaluateDensity, evaluateSpinDensity, evaluateOrbital } from '../apps/desktop/src/lib/molecular-workbench/gaussian';
 import type { Vec3 } from '../apps/desktop/src/lib/molecular-workbench/types';
 import { expectClose, expectSchema, fixtureText, harmonicFrequencies } from './quantum-output-fixture';
 
-type OrbitalReference = { pointsAngstrom: Vec3[]; densityError?: number; spins: { orthonormalityError: number; orbitals: Record<string, number[]> }[] };
+type OrbitalReference = { pointsAngstrom: Vec3[]; densityError?: number; densityAtPoints: number[]; spinDensityAtPoints?: number[]; spins: { orthonormalityError: number; orbitals: Record<string, number[]> }[] };
 const orbitalReference: Record<string, OrbitalReference> = JSON.parse(fixtureText('qcschema/orbital-reference.json'));
 const hessianReference: Record<string, { energyHartree: number; hessian: number[]; frequenciesCm1: number[] }> = JSON.parse(fixtureText('qcschema/hessian-reference.json'));
 const text = (name: string) => fixtureText(`qcschema/${name}`);
@@ -28,6 +28,11 @@ test('Psi4 wavefunctions in spherical and Cartesian bases match PySCF orbital va
       }
     });
     expect(document.orbitals.every(orbital => orbital.coefficients.length === data.wavefunction.basis.nbf)).toBe(true);
+    // Electron and (unrestricted) spin density from the occupied orbitals, as PySCF's eval_rho gives them.
+    values.pointsAngstrom.forEach((point, p) => {
+      expect(Math.abs(evaluateDensity(document, point) - values.densityAtPoints[p])).toBeLessThanOrEqual(1e-9 * Math.max(1, values.densityAtPoints[p]));
+      if (values.spinDensityAtPoints) expect(Math.abs(evaluateSpinDensity(document, point) - values.spinDensityAtPoints[p])).toBeLessThanOrEqual(1e-9);
+    });
     expectSchema(document);
   }
   expect(read('water-hf-631gs-wavefunction.json').basis!.filter(shell => shell.kind === 'd').every(shell => !shell.spherical)).toBe(true);
