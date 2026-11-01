@@ -85,7 +85,10 @@ test("Geometry Dock renders the complete editor and opens one input export host"
     await act(async () => root.render(<><DockPanel area="right" state={state} actions={actions} /><InputExportDialogHost actions={actions} /></>));
     assert.ok(host.querySelector('[role="spinbutton"][aria-label="Bond of H2, Å"]'));
     assert.ok(host.querySelector('[aria-label="Copy Z-matrix"]'));
-    assert.ok(host.querySelector('[aria-label="Keep bond of h2 fixed"]'));
+    assert.ok(host.querySelector('[aria-label="Keep bond of H2 fixed"]'));
+    // Each header is one text run, so assistive tech reads "Bond, Å" rather than "Bond ,  Å".
+    assert.deepEqual([...host.querySelectorAll('thead th')].map((th) => [...th.childNodes].map((node) => node.textContent)),
+      [["Atom"], ["Bond, Å"], ["Angle, °"], ["Dihedral, °"]]);
     await act(async () => host.querySelector('[aria-label="Export input file"]').click());
     assert.equal(document.querySelectorAll('[role="dialog"]').length, 1);
     assert.ok(document.querySelector('[role="dialog"]').textContent.includes('Export input file'));

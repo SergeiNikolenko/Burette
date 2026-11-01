@@ -178,10 +178,10 @@ test("Optimize holds frozen atoms and fixed coordinates on real atoms, writes on
     const before = seen.science;
     // Reference points have no atom freeze; their coordinates can be held exactly.
     assert.equal(byLabel("Freeze Ref 1"), null);
-    assert.equal(byLabel("Keep angle of h2 fixed").disabled, false);
+    assert.equal(byLabel("Keep angle of H2 fixed").disabled, false);
     await click(byLabel("Freeze O1"));
-    await click(byLabel("Keep bond of h3 fixed"));
-    assert.ok(pressed("Freeze O1") && pressed("Keep bond of h3 fixed"));
+    await click(byLabel("Keep bond of H3 fixed"));
+    assert.ok(pressed("Freeze O1") && pressed("Keep bond of H3 fixed"));
 
     await click(optimizeButton());
     assert.equal(jobs.length, 1);
@@ -229,7 +229,7 @@ test("Optimize holds frozen atoms and fixed coordinates on real atoms, writes on
     assert.deepEqual({ frames, modes: left, orbitals, basis, converged }, { frames: [{ atoms }], modes: [], orbitals: [], basis: undefined, converged: undefined });
     assert.equal(seen.original, original);
     // Constraints stay with the same rows.
-    assert.ok(pressed("Freeze O1") && pressed("Keep bond of h3 fixed"));
+    assert.ok(pressed("Freeze O1") && pressed("Keep bond of H3 fixed"));
 
     // Undo returns to the imported revision with its data; its own result is not shown there.
     await click(byLabel("Undo"));

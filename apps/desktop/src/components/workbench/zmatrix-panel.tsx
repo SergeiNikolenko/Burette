@@ -497,7 +497,7 @@ export function ZmatrixPanel({ document, actions, science, text }: {
           <thead>
             <tr>
               <th scope="col">Row</th>
-              {INTERNAL_COORDINATE_KINDS.map((kind) => <th key={kind} scope="col">{COLUMN_LABELS[kind]}, {internalCoordinateUnit(kind)}</th>)}
+              {INTERNAL_COORDINATE_KINDS.map((kind) => <th key={kind} scope="col">{`${COLUMN_LABELS[kind]}, ${internalCoordinateUnit(kind)}`}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -523,7 +523,7 @@ export function ZmatrixPanel({ document, actions, science, text }: {
                           token={token} variables={variableNames} disabled={busy} canBind={(binding) => canBind(index, slot, binding)}
                           onReference={(next) => void changeReference(index, slot, next)}
                           onBind={(binding) => void edit(() => bindZmatrixCoordinate(definition, index, slot, binding))} />
-                        <ConstraintToggle label={`Keep ${label.toLowerCase()} fixed`} active={constraints.locked.has(zmatrixLockKey(index, slot))} disabled={busy}
+                        <ConstraintToggle label={`Keep ${COLUMN_LABELS[kind].toLowerCase()} of ${labels[index]} fixed`} active={constraints.locked.has(zmatrixLockKey(index, slot))} disabled={busy}
                           unavailable={null} onToggle={() => toggleLocked(index, slot)} />
                         {typeof token === "string" ? (
                           <span className="zmatrix-bound" aria-label={`${label}, ${formatInternalCoordinate(kind, values[index].values[slot])} ${internalCoordinateUnit(kind)}, set by ${token}`}>
