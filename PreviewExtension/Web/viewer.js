@@ -736,7 +736,7 @@
     }
     if (type === 'scene_science_binding') {
       if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
-      return { ok: true, result: action.sourceExtension === 'sdf' ? await window.BuretteSceneFiles.science.sdfBinding(activeMolstarViewer()) : action.sourceExtension === 'mol' ? await window.BuretteSceneFiles.science.graphBinding(activeMolstarViewer(), 'mol') : window.BuretteSceneFiles.science.binding(activeMolstarViewer()) };
+      return { ok: true, result: action.sourceExtension === 'sdf' ? await window.BuretteSceneFiles.science.sdfBinding(activeMolstarViewer()) : ['mol', 'xyz'].includes(action.sourceExtension) ? await window.BuretteSceneFiles.science.graphBinding(activeMolstarViewer(), action.sourceExtension) : window.BuretteSceneFiles.science.binding(activeMolstarViewer()) };
     }
     if (type === 'scene_science_restore_ack') {
       if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
@@ -20775,7 +20775,19 @@ SOFTWARE.
     const outOfRange = agentFrameIndexFailure('set_structure_pose', index, Number(activeTrajectoryPlaybackControl?.frameCount?.()));
     if (outOfRange) return outOfRange;
     try {
-      await activeStructurePoseSetter(index);
+      const setter = activeStructurePoseSetter;
+      if (action.expected !== undefined) {
+        const viewer = activeMolstarViewer(), expected = action.expected;
+        if (!expected || expected.sourceExtension !== 'xyz' || typeof expected.sourceSha256 !== 'string' || !/^[a-f0-9]{64}$/u.test(expected.sourceSha256)
+          || !Number.isSafeInteger(expected.frameIndex) || !Number.isSafeInteger(expected.frameCount)
+          || expected.frameIndex < 0 || expected.frameIndex >= expected.frameCount || expected.frameCount > 2000
+          || !['structureRef', 'modelRef', 'trajectoryRef'].every(key => typeof expected[key] === 'string' && expected[key].length > 0 && expected[key].length <= 128)) throw new Error('Invalid trajectory source binding.');
+        if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
+        const current = await window.BuretteSceneFiles.science.graphBinding(viewer, 'xyz');
+        if (activeMolstarViewer() !== viewer || activeStructurePoseSetter !== setter
+          || !['sourceSha256', 'structureRef', 'modelRef', 'trajectoryRef', 'frameIndex', 'frameCount'].every(key => current[key] === expected[key])) throw new Error('The trajectory source changed. Select the current frame again.');
+      }
+      await setter(index);
       return {
         ok: true,
         command: 'set_structure_pose',

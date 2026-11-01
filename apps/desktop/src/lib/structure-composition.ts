@@ -92,6 +92,7 @@ export type StructureViewerAction =
       type: "set_structure_pose";
       label: string;
       index: number;
+      expected?: { sourceExtension: "xyz"; sourceSha256: string; structureRef: string; modelRef: string; trajectoryRef: string; frameIndex: number; frameCount: number };
     }
   | {
       type: "show_assembly_symmetry" | "hide_assembly_symmetry";

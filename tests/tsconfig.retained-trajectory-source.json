@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.cjson-import.json",
+  "compilerOptions": {
+    "strict": true
+  },
+  "include": [
+    "test-retained-trajectory-source.test.tsx",
+    "../apps/desktop/src/**/*.d.ts"
+  ]
+}

@@ -673,3 +673,9 @@ source replacement, close or new runtime rejects a mismatched identity. The
 request accepts only its typed page/identity fields; unknown fields and limits
 outside 1–100 fail before queueing. This public read does not expose private
 Geometry/scalar lease commands or add computation to hosted widgets.
+
+### Retained scientific trajectory addresses
+
+`scene_science_binding` with `sourceExtension: "xyz"` returns the exact bounded XYZ parser-input SHA-256 in addition to its existing model/trajectory/frame binding. This is a private host read, not a new public CLI command. `set_structure_pose` accepts an optional `expected` XYZ source binding (SHA-256, structure/model/trajectory refs, current frame index/count). It refuses a changed source before seeking; existing callers that omit this field retain their behavior.
+
+Retained scientific coordinate-set indices are distinct from native poses. An exact registered CJSON MOL graph uses `graph.activeFrameIndex` and native pose 0/1; a final-only XYZ uses the retained final cursor and native pose 0/1. Neither makes the other retained sets seekable. Only a matching XYZ trajectory source enables direct indexed seeking. Full graph-preserving coordinate-set activation and trajectory-range calculations remain separate operations.
