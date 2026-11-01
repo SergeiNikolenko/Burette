@@ -1,8 +1,6 @@
-import type { WorkbenchCrystalTransform, WorkbenchJobRequest } from "../../../../../scripts/workbench-agent-contract.mjs";
+import type { WorkbenchCrystalTransform } from "../../../../../scripts/workbench-agent-contract.mjs";
 import type { CrystalEdit } from "../molecular-workbench/crystal-edit";
 import { SYMMETRY_ATOM_LIMIT } from "../molecular-workbench/crystal-symmetry";
-import { PAIR_DISTRIBUTION_LIMITS, pairDistributionCsv, pairDistributionJson, selectPairs } from "../molecular-workbench/pair-distribution/pair-distribution";
-import { runPairDistributionTask } from "../molecular-workbench/pair-distribution/pair-distribution-client";
 import { MAX_POINT_GROUP_ATOMS } from "../molecular-workbench/symmetry/point-group";
 import { runSymmetryTask } from "../molecular-workbench/symmetry/symmetry-client";
 import type { UnitCell } from "../molecular-workbench/types";
@@ -10,33 +8,27 @@ import { powderPatternCsv, powderPatternJson, XRD_LIMITS, XRD_RADIATION } from "
 import { XRD_ENGINE } from "../molecular-workbench/xrd/xrd-engine";
 import { serializeXyz } from "../molecular-workbench/xyz";
 import { runCrystalTask } from "./crystal-task";
-import { fileStem } from "./formats";
 import { operationClasses, pointGroupAtoms } from "./molecular-symmetry";
 import { runPowderXrdTask } from "./xrd-task";
+import type { AgentJobRunner } from "./agent-jobs";
 import type { Snapshot } from "./agent-source";
-
-/** Agent jobs of the Crystal and Symmetry panels; each returns a summary and named artifacts. */
-export type CrystalJobKind = "point_group" | "space_group" | "powder_xrd" | "pair_distribution" | "crystal_transform";
-export const CRYSTAL_JOB_KINDS: readonly CrystalJobKind[] = ["point_group", "space_group", "powder_xrd", "pair_distribution", "crystal_transform"];
-type CrystalJob = Extract<WorkbenchJobRequest, { kind: CrystalJobKind }>;
-type ArtifactWriter<Artifact> = (name: string, fileName: string, mimeType: string, content: string) => Promise<Artifact>;
 
 /** Rows of a summary that an agent response carries; the full lists are artifacts. */
 const SUMMARY_ROWS = 50;
-const PAIR_DISTRIBUTION_ENGINE = "Burette periodic radial distribution 1";
 
-const ATOM_LIMITS: Record<Exclude<CrystalJobKind, "point_group">, number> = {
-  space_group: SYMMETRY_ATOM_LIMIT, powder_xrd: XRD_LIMITS.atoms, pair_distribution: PAIR_DISTRIBUTION_LIMITS.atoms, crystal_transform: Number.POSITIVE_INFINITY,
-};
+/** Why a molecule-only point-group job cannot run, or null. */
+function moleculeUnavailable(snapshot: Snapshot) {
+  if (snapshot.crystal || snapshot.crystalError) return "This source has a unit cell; use space_group.";
+  if (!snapshot.structure) return snapshot.structureError ?? snapshot.sourceError ?? "The atoms could not be read.";
+  return snapshot.structure.atoms.length > MAX_POINT_GROUP_ATOMS ? `Point groups are found for up to ${MAX_POINT_GROUP_ATOMS} atoms.` : null;
+}
 
-export function crystalJobUnavailable(snapshot: Snapshot, kind: CrystalJobKind): string | null {
-  if (kind === "point_group") {
-    if (snapshot.crystal || snapshot.crystalError) return "This source has a unit cell; use space_group.";
-    if (!snapshot.structure) return snapshot.structureError ?? snapshot.sourceError ?? "The atoms could not be read.";
-    return snapshot.structure.atoms.length > MAX_POINT_GROUP_ATOMS ? `Point groups are found for up to ${MAX_POINT_GROUP_ATOMS} atoms.` : null;
-  }
-  if (!snapshot.crystal) return snapshot.crystalError ?? "This source has no unit cell (open a small-molecule CIF, a POSCAR or an extended XYZ with a Lattice).";
-  return snapshot.crystal.atoms.length > ATOM_LIMITS[kind] ? `${kind} supports at most ${ATOM_LIMITS[kind].toLocaleString("en-US")} atoms in the cell.` : null;
+/** Why a job on the full periodic cell cannot run, or null. */
+function crystalUnavailable(kind: string, atomLimit: number) {
+  return (snapshot: Snapshot) => {
+    if (!snapshot.crystal) return snapshot.crystalError ?? "This source has no unit cell (open a small-molecule CIF, a POSCAR or an extended XYZ with a Lattice).";
+    return snapshot.crystal.atoms.length > atomLimit ? `${kind} supports at most ${atomLimit.toLocaleString("en-US")} atoms in the cell.` : null;
+  };
 }
 
 function crystalEdit(params: WorkbenchCrystalTransform): CrystalEdit {
@@ -55,12 +47,12 @@ function crystalEdit(params: WorkbenchCrystalTransform): CrystalEdit {
 const MIME = { cif: "chemical/x-cif", xyz: "chemical/x-xyz", vasp: "text/plain" } as const;
 const EXTENSION = { cif: "cif", xyz: "xyz", vasp: "vasp" } as const;
 
-/** Runs one crystal or symmetry job on the snapshot it was submitted with. */
-export async function runCrystalJob<Artifact>(request: CrystalJob, input: Snapshot, options: { signal: AbortSignal; timeoutMs: number }, artifact: ArtifactWriter<Artifact>) {
-  const stem = fileStem(input.document.title);
-  if (request.kind === "point_group") {
+/** Point group and symmetrized coordinates of a molecule, in chemical-graph atom order. */
+export const pointGroupJob: AgentJobRunner<"point_group"> = {
+  unavailable: moleculeUnavailable,
+  async run(input, params, { signal, timeoutMs, stem, artifact }) {
     const atoms = pointGroupAtoms(input.structure!.atoms);
-    const result = await runSymmetryTask({ action: "symmetrize", input: { atoms, tolerance: request.params.tolerance } }, options);
+    const result = await runSymmetryTask({ action: "symmetrize", input: { atoms, tolerance: params.tolerance } }, { signal, timeoutMs });
     const xyz = serializeXyz(atoms.map((atom, index) => { const [x, y, z] = result.coordinates[index]; return { element: atom.element, x, y, z }; }),
       `${stem} symmetrized to ${result.pointGroup}`);
     return {
@@ -72,15 +64,23 @@ export async function runCrystalJob<Artifact>(request: CrystalJob, input: Snapsh
       },
       artifacts: [await artifact("symmetrized", `${stem}-symmetrized.xyz`, "chemical/x-xyz", xyz)],
     };
-  }
-  const crystal = input.crystal!, source = input.crystalSource!;
-  if (request.kind === "space_group") {
-    const result = await runCrystalTask({ action: "analyze", source, tolerance: request.params.toleranceAngstrom }, options);
+  },
+};
+
+export const spaceGroupJob: AgentJobRunner<"space_group"> = {
+  unavailable: crystalUnavailable("space_group", SYMMETRY_ATOM_LIMIT),
+  async run(input, params, { signal, timeoutMs }) {
+    const result = await runCrystalTask({ action: "analyze", source: input.crystalSource!, tolerance: params.toleranceAngstrom }, { signal, timeoutMs });
     return { summary: { ...result, sites: result.sites.slice(0, SUMMARY_ROWS) }, artifacts: [] };
-  }
-  if (request.kind === "powder_xrd") {
-    const { wavelengthAngstrom: wavelength, twoThetaMinDegrees: twoThetaMin, twoThetaMaxDegrees: twoThetaMax } = request.params;
-    const pattern = await runPowderXrdTask({ atoms: crystal.atoms, cell: crystal.cell, wavelength, twoThetaMin, twoThetaMax }, options);
+  },
+};
+
+export const powderXrdJob: AgentJobRunner<"powder_xrd"> = {
+  unavailable: crystalUnavailable("powder_xrd", XRD_LIMITS.atoms),
+  async run(input, params, { signal, timeoutMs, stem, artifact }) {
+    const crystal = input.crystal!;
+    const { wavelengthAngstrom: wavelength, twoThetaMinDegrees: twoThetaMin, twoThetaMaxDegrees: twoThetaMax } = params;
+    const pattern = await runPowderXrdTask({ atoms: crystal.atoms, cell: crystal.cell, wavelength, twoThetaMin, twoThetaMax }, { signal, timeoutMs });
     const radiation = XRD_RADIATION.find((item) => item.wavelength === wavelength)?.label ?? "Custom wavelength";
     const context = { title: input.document.title, radiation, profile: null, engine: XRD_ENGINE };
     const strongest = [...pattern.peaks].sort((a, b) => b.relativeIntensity - a.relativeIntensity).slice(0, SUMMARY_ROWS);
@@ -92,28 +92,19 @@ export async function runCrystalJob<Artifact>(request: CrystalJob, input: Snapsh
         await artifact("pattern", `${stem}-xrd.json`, "application/json", powderPatternJson(pattern, context)),
       ],
     };
-  }
-  if (request.kind === "pair_distribution") {
-    const result = await runPairDistributionTask({ atoms: crystal.atoms, cell: crystal.cell, rMax: request.params.rMaxAngstrom, binWidth: request.params.binWidthAngstrom }, options);
-    const all = selectPairs(result, null, null), context = { title: input.document.title, engine: PAIR_DISTRIBUTION_ENGINE };
-    const kinds = result.species.length;
+  },
+};
+
+/** The Crystal panel's edits; the edited source is an artifact in the source's format (CIF for an asymmetric unit). */
+export const crystalTransformJob: AgentJobRunner<"crystal_transform"> = {
+  unavailable: crystalUnavailable("crystal_transform", Number.POSITIVE_INFINITY),
+  async run(input, params, { signal, timeoutMs, stem, artifact }) {
+    const result = await runCrystalTask({ action: "edit", source: input.crystalSource!, edit: crystalEdit(params) }, { signal, timeoutMs });
+    const format = result.newDocument ? "cif" : result.format;
     return {
-      summary: { rMaxAngstrom: result.rMax, binWidthAngstrom: result.binWidth, bins: result.bins, volumeCubicAngstrom: result.volume, atomCount: result.atomCount, pairs: result.pairs,
-        species: result.species.map((symbol, index) => ({ symbol, count: result.speciesCounts[index] })),
-        nearest: result.species.flatMap((centre, a) => result.species.map((neighbour, b) => ({ centre, neighbour,
-          distanceAngstrom: Number.isFinite(result.minDistance[a * kinds + b]) ? result.minDistance[a * kinds + b] : null }))).slice(0, SUMMARY_ROWS) },
-      artifacts: [
-        await artifact("histogram", `${stem}-pair-distribution.json`, "application/json", pairDistributionJson(result, all, context)),
-        await artifact("g_r", `${stem}-gr.csv`, "text/csv", pairDistributionCsv(result, all, context)),
-      ],
+      summary: { operation: params.operation, format, atomCount: result.atomCount, parameters: result.parameters, volumeCubicAngstrom: result.volume, spaceGroup: result.spaceGroup,
+        niggliTransform: result.niggliTransform, addedAtoms: result.addedAtoms },
+      artifacts: [await artifact("structure", `${stem}-${params.operation.replace(/_/gu, "-")}.${EXTENSION[format]}`, MIME[format], result.text)],
     };
-  }
-  const operation = request.params.operation;
-  const result = await runCrystalTask({ action: "edit", source, edit: crystalEdit(request.params) }, options);
-  const format = result.newDocument ? "cif" : result.format;
-  return {
-    summary: { operation, format, atomCount: result.atomCount, parameters: result.parameters, volumeCubicAngstrom: result.volume, spaceGroup: result.spaceGroup,
-      niggliTransform: result.niggliTransform, addedAtoms: result.addedAtoms },
-    artifacts: [await artifact("structure", `${stem}-${operation.replace(/_/gu, "-")}.${EXTENSION[format]}`, MIME[format], result.text)],
-  };
-}
+  },
+};

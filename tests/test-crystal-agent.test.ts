@@ -16,7 +16,7 @@ const revision = `sha256-${"a".repeat(64)}`;
 const submit = (kind: string, params?: unknown) => ({ type: "workbench", operation: "submit", operationId: "crystal", expectedSourceRevision: revision, job: { kind, params } });
 
 test("the contract lists nine job kinds and validates crystal parameters before queueing", () => {
-  expect(Object.keys(workbenchContractSummary().jobs)).toEqual(["properties", "energy", "energy_forces", "orbital_cube", "point_group", "space_group", "powder_xrd", "pair_distribution", "crystal_transform"]);
+  expect(Object.keys(workbenchContractSummary().jobs)).toEqual(["properties", "energy", "energy_forces", "frame_energy_forces", "optimize", "prepare_3d", "conformers", "metadata_edit", "pair_distribution", "point_group", "space_group", "powder_xrd", "crystal_transform", "orbital_cube"]);
   const accepted = (kind: string, params?: unknown) => {
     const result = validateWorkbenchRequest(submit(kind, params));
     if (!result.ok) throw new Error(JSON.stringify(result.error));
@@ -25,13 +25,12 @@ test("the contract lists nine job kinds and validates crystal parameters before 
   expect(accepted("point_group")).toEqual({ tolerance: "normal" });
   expect(accepted("space_group")).toEqual({ toleranceAngstrom: 0.01 });
   expect(accepted("powder_xrd")).toEqual({ wavelengthAngstrom: 1.5405929, twoThetaMinDegrees: 10, twoThetaMaxDegrees: 90 });
-  expect(accepted("pair_distribution", { rMaxAngstrom: 6 })).toEqual({ rMaxAngstrom: 6, binWidthAngstrom: 0.1 });
   expect(accepted("crystal_transform", { operation: "supercell", repeats: [2, 2, 1] })).toEqual({ operation: "supercell", repeats: [2, 2, 1] });
   expect(accepted("crystal_transform", { operation: "primitive" })).toEqual({ operation: "primitive", toleranceAngstrom: 0.01 });
   expect(accepted("crystal_transform", { operation: "set_cell", cell: [[5, 0, 0], [0, 5, 0], [0, 0, 5]] })).toEqual({ operation: "set_cell", cell: [[5, 0, 0], [0, 5, 0], [0, 0, 5]], keep: "fractional" });
   for (const [kind, params] of [
     ["point_group", { tolerance: "huge" }], ["space_group", { toleranceAngstrom: 1 }], ["powder_xrd", { twoThetaMinDegrees: 50, twoThetaMaxDegrees: 40 }],
-    ["pair_distribution", { rMaxAngstrom: 500 }], ["crystal_transform", {}], ["crystal_transform", { operation: "supercell", repeats: [2, 2] }],
+    ["crystal_transform", {}], ["crystal_transform", { operation: "supercell", repeats: [2, 2] }],
     ["crystal_transform", { operation: "supercell", repeats: [21, 1, 1] }], ["crystal_transform", { operation: "fill", hallNumber: 531 }],
     ["crystal_transform", { operation: "wrap", repeats: [2, 2, 2] }], ["crystal_transform", { operation: "set_cell", cell: [[1, 0], [0, 1, 0], [0, 0, 1]] }],
   ] as const) expect(validateWorkbenchRequest(submit(kind, params))).toMatchObject({ ok: false, error: { code: "INVALID_ARGS" } });
@@ -84,8 +83,8 @@ test("space_group, powder_xrd and pair_distribution match spglib, pymatgen and A
   expect(peaks).toHaveLength(rutile.xrd!.length);
   peaks.forEach(([twoTheta, , , , , multiplicity], index) => { expect(Math.abs(twoTheta - rutile.xrd![index].twoTheta)).toBeLessThan(1e-5); expect(multiplicity).toBe(rutile.xrd![index].multiplicity); });
   expect(JSON.parse(xrd.artifacts.pattern).format).toBe("burette-powder-xrd");
-  const pairs = await session("quartz.cif").run("pair_distribution", { rMaxAngstrom: quartz.pairDistribution!.rMax, binWidthAngstrom: quartz.pairDistribution!.binWidth });
-  const histograms = JSON.parse(pairs.artifacts.histogram).histograms as { counts: number[] }[];
+  const pairs = await session("quartz.cif").run("pair_distribution", { rMax: quartz.pairDistribution!.rMax, binWidth: quartz.pairDistribution!.binWidth });
+  const histograms = JSON.parse(pairs.artifacts.distribution).histograms as { counts: number[] }[];
   expect(histograms[0].counts.map((_, bin) => histograms.reduce((sum, item) => sum + item.counts[bin], 0))).toEqual(quartz.pairDistribution!.total);
 });
 

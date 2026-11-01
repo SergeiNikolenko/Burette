@@ -119,7 +119,7 @@ afterAll(async () => {
 
 test("compiled host and CLI produce signed orbital, total density and spin density Cube files with exact hashes and analytic values", async () => {
   const capabilities = await ok({ operation: "capabilities" });
-  expect([capabilities.available, capabilities.draftsVisible, Object.keys(capabilities.jobs)]).toEqual([true, true, ["properties", "energy", "energy_forces", "orbital_cube", "point_group", "space_group", "powder_xrd", "pair_distribution", "crystal_transform"]]);
+  expect([capabilities.available, capabilities.draftsVisible, Object.keys(capabilities.jobs)]).toEqual([true, true, ["properties", "energy", "energy_forces", "frame_energy_forces", "optimize", "prepare_3d", "conformers", "metadata_edit", "pair_distribution", "point_group", "space_group", "powder_xrd", "crystal_transform", "orbital_cube"]]);
   const observed = await ok({ operation: "observe" });
   expect(observed.sourceTextSha256).toBe(`sha256-${createHash("sha256").update(sourceText).digest("hex")}`);
   const orbitals = await ok({ operation: "orbitals", limit: 1, offset: 1 });
@@ -344,7 +344,7 @@ test("held actual energy worker replies cannot publish after explicit cancel or 
 test("CLI errors, cancellation and permanent page close use the real compiled controller lifecycle", async () => {
   const actionCount = async () => JSON.parse(await readFile(join(session, "actions.json"), "utf8")).actions.length;
   const before = await actionCount();
-  expect((await cli({ operation: "submit", operationId: "not-accepted", expectedSourceRevision: `sha256-${"a".repeat(64)}`, job: { kind: "optimize" } })).body.error.code).toBe("UNSUPPORTED_WORKBENCH_JOB");
+  expect((await cli({ operation: "submit", operationId: "not-accepted", expectedSourceRevision: `sha256-${"a".repeat(64)}`, job: { kind: "molecular_dynamics" } })).body.error.code).toBe("UNSUPPORTED_WORKBENCH_JOB");
   expect(await actionCount()).toBe(before);
   const observed = await ok({ operation: "observe" });
   const nativePost = Worker.prototype.postMessage, nativeTerminate = Worker.prototype.terminate;

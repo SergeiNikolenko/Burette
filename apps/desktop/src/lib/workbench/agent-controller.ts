@@ -5,15 +5,13 @@ import {
   validateWorkbenchRequest,
   workbenchContractSummary,
   type WorkbenchJobKind,
+  type WorkbenchJobParams,
   type WorkbenchJobRequest,
   type WorkbenchRequest,
 } from "../../../../../scripts/workbench-agent-contract.mjs";
-import { runChemistryTask } from "../molecular-workbench/compute-client";
-import { computeQuantumGrid } from "../molecular-workbench/quantum-client";
-import { serializeCube } from "./cube-task";
 import { fileStem } from "./formats";
 import { createAgentSourceOwner, WorkbenchError, sha256, type Snapshot } from "./agent-source";
-import { CRYSTAL_JOB_KINDS, crystalJobUnavailable, runCrystalJob, type CrystalJobKind } from "./agent-crystal-jobs";
+import { AGENT_JOBS, type AgentArtifact, type AgentJobRunner } from "./agent-jobs";
 import type { ViewerDocument } from "../../types";
 export { readWorkbenchAgentSource } from "./agent-source";
 
@@ -47,7 +45,7 @@ export type WorkbenchAgentController = {
 type DocumentRef = Pick<ViewerDocument, "id" | "path" | "title" | "extension" | "renderer">;
 const COMMENT_LENGTH = 256;
 
-type Artifact = { name: string; fileName: string; mimeType: string; content: string; byteCount: number; sha256: string };
+type Artifact = AgentArtifact;
 type JobState = "queued" | "running" | "succeeded" | "failed" | "cancelled" | "source_closed";
 type Job = {
   jobId: string;
@@ -112,7 +110,7 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
   function limitations() {
     const notes = [
       "Results are never applied to an open document. Export an artifact and open it explicitly.",
-      "Workbench UI commands that are not listed under jobs (builders, structure editing, input-deck export, Z-matrix editing, spectra and plots) are not automated.",
+      "Workbench UI commands that are not listed under jobs (builders, graph and hydrogen edits, input-deck export, Z-matrix editing, spectra and plots) are not automated yet.",
     ];
     if (!environment.draftsVisible) notes.unshift("Unsaved editor drafts are not visible to this session; reads and jobs use the saved source.");
     if (!enabled) notes.unshift(`Workbench reads and jobs run only in ${WORKBENCH_RUNTIMES.join(", ")} sessions; this session is ${environment.runtime}.`);
@@ -122,40 +120,38 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
   const sourceOwner = createAgentSourceOwner(environment, lifetime.signal);
   const { snapshotOf, assertOpen } = sourceOwner;
 
-  function jobUnavailable(snapshot: Snapshot, kind: WorkbenchJobKind): string | null {
-    if ((CRYSTAL_JOB_KINDS as readonly string[]).includes(kind)) return crystalJobUnavailable(snapshot, kind as CrystalJobKind);
-    if (kind === "properties" || kind === "energy" || kind === "energy_forces") {
-      if (!snapshot.structure) return snapshot.structureError ?? snapshot.sourceError ?? "The chemical graph could not be read.";
-      if (!snapshot.structure.graphComplete) return "This source has no complete bond orders or charges. Open an SDF or MOL version of the structure.";
-      return kind === "energy_forces" && snapshot.structure.atoms.length > 64 ? "Forces support at most 64 atoms." : null;
-    }
-    if (!snapshot.scientific?.basis?.length) return "This source has no Gaussian basis set (open an FCHK or Molden file).";
-    return snapshot.scientific.orbitals.length ? null : "This source has no molecular orbitals.";
+  const runner = <K extends WorkbenchJobKind>(kind: K) => AGENT_JOBS[kind] as AgentJobRunner<K>;
+  function jobUnavailable(snapshot: Snapshot, job: WorkbenchJobRequest): string | null {
+    const definition = runner(job.kind);
+    return definition.unavailable(snapshot) ?? definition.paramsUnavailable?.(snapshot, job.params as WorkbenchJobParams<typeof job.kind>) ?? null;
   }
 
-  function paramsUnavailable(snapshot: Snapshot, job: WorkbenchJobRequest): string | null {
-    if (job.kind === "orbital_cube" && job.params.field === "orbital" && job.params.orbitalIndex! >= snapshot.scientific!.orbitals.length) {
-      return `orbitalIndex must be below ${snapshot.scientific!.orbitals.length}.`;
-    }
-    return null;
-  }
-
-  async function read(request: Extract<WorkbenchRequest, { operation: "observe" | "orbitals" }>) {
+  async function read(request: Extract<WorkbenchRequest, { operation: "observe" | "atoms" | "orbitals" }>) {
     const snapshot = await snapshotOf(request);
     const base = { documentId: snapshot.document.id, sourceRevision: snapshot.revision, sourceTextSha256: snapshot.sourceTextSha256 };
     if (request.operation === "observe") {
-      const jobs = Object.fromEntries((["properties", "energy", "energy_forces", "orbital_cube", ...CRYSTAL_JOB_KINDS] as const).map(kind => {
-        const reason = jobUnavailable(snapshot, kind);
+      const jobs = Object.fromEntries((Object.keys(AGENT_JOBS) as WorkbenchJobKind[]).map(kind => {
+        const reason = runner(kind).unavailable(snapshot);
         return [kind, reason ? { available: false, reason } : { available: true }];
       }));
       return { ...base, document: { ...documentRef(snapshot.document), active: environment.activeDocument()?.id === snapshot.document.id },
         source: { origin: snapshot.origin, byteCount: snapshot.byteCount, draftsVisible: environment.draftsVisible },
+        structure: snapshot.structure ? { atomCount: snapshot.structure.atoms.length, bondCount: snapshot.structure.bonds.length,
+          graph: snapshot.structure.graphSource, graphComplete: snapshot.structure.graphComplete } : null,
+        frames: { count: snapshot.sdfRecords || Math.max(snapshot.scientific?.frames.length ?? 0, snapshot.source ? 1 : 0), source: snapshot.sdfRecords ? "sdf-records" : "frames" },
         scientific: snapshot.scientific ? { origin: snapshot.scientificOrigin, format: snapshot.scientific.format,
           atomCount: snapshot.scientific.atoms.length, orbitalCount: snapshot.scientific.orbitals.length,
           basisShellCount: snapshot.scientific.basis?.length ?? 0 } : null,
         sourceError: snapshot.sourceError,
         crystal: snapshot.crystal ? { format: snapshot.crystalSource!.format, atomCount: snapshot.crystal.atoms.length, cell: snapshot.crystal.cell } : null,
         jobs };
+    }
+    if (request.operation === "atoms") {
+      const frames = snapshot.scientific?.frames ?? [];
+      if (request.frameIndex !== undefined && request.frameIndex >= Math.max(frames.length, 1)) throw new WorkbenchError("INDEX_OUT_OF_RANGE", `frameIndex must be below ${Math.max(frames.length, 1)}.`);
+      const atoms = request.frameIndex !== undefined && frames.length ? frames[request.frameIndex].atoms : snapshot.source?.atoms;
+      if (!atoms) throw new WorkbenchError("JOB_UNAVAILABLE", snapshot.structureError ?? snapshot.sourceError ?? "The atoms of this source could not be read.");
+      return { ...base, frameIndex: request.frameIndex ?? 0, unit: "angstrom", ...page(atoms, request.offset, request.limit, (atom, index) => ({ index, element: atom.element, x: atom.x, y: atom.y, z: atom.z })) };
     }
     return { ...base, ...page(snapshot.scientific?.orbitals ?? [], request.offset, request.limit, (orbital, index) => ({
       index, orbitalNumber: orbital.index, energyHartree: orbital.energyHartree, occupancy: orbital.occupancy,
@@ -243,46 +239,11 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
     return { name, fileName, mimeType, content, byteCount, sha256: `sha256-${await sha256(content)}` };
   }
 
-  async function runJob(job: Job, signal: AbortSignal): Promise<{ summary: Record<string, unknown>; artifacts: Artifact[] }> {
+  function runJob(job: Job, signal: AbortSignal) {
     const { input, request } = job;
-    const options = { signal, timeoutMs: WORKBENCH_LIMITS.jobTimeoutMs };
-    if (request.kind === "properties") {
-      const deadline = performance.now() + options.timeoutMs;
-      const properties = await runChemistryTask({ action: "properties", molecule: input.structure! }, options);
-      const remainingMs = deadline - performance.now();
-      if (request.params.chargeModel && remainingMs <= 0) throw new Error("Calculation exceeded the browser time limit.");
-      const partialCharges = request.params.chargeModel === "Gasteiger"
-        ? await runChemistryTask({ action: "charges", molecule: input.structure! }, { ...options, timeoutMs: remainingMs }) : undefined;
-      return { summary: { method: "OpenChemLib", ...properties, ...(partialCharges ? { partialCharges } : {}) }, artifacts: [] };
-    }
-    if (request.kind === "point_group" || request.kind === "space_group" || request.kind === "powder_xrd" || request.kind === "pair_distribution" || request.kind === "crystal_transform") {
-      return runCrystalJob(request, input, options, artifact);
-    }
-    const stem = fileStem(input.document.title);
-    if (request.kind === "energy") {
-      return { summary: { method: request.params.forceField === "UFF" ? "UFF (RDKit)" : `${request.params.forceField} (OpenChemLib)`, forceField: request.params.forceField, energy: await runChemistryTask({ action: "energy", molecule: input.structure!, forceField: request.params.forceField }, options), unit: "kcal/mol" }, artifacts: [] };
-    }
-    if (request.kind === "energy_forces") {
-      const result = await runChemistryTask({ action: "energy-forces", molecule: input.structure!, forceField: request.params.forceField }, options);
-      const magnitudes = result.forces.map((force) => Math.hypot(...force));
-      const forces = JSON.stringify({ forceField: request.params.forceField, unit: result.forceUnit, energy: result.energy, energyUnit: result.energyUnit, method: result.method, stepAngstrom: result.stepAngstrom, atoms: input.structure!.atoms.map((atom, index) => ({ index, element: atom.element, force: result.forces[index] })) }, null, 1);
-      return {
-        summary: { method: request.params.forceField === "UFF" ? "UFF (RDKit), analytic" : `${request.params.forceField} (OpenChemLib), central difference`, forceField: request.params.forceField, energy: result.energy, energyUnit: result.energyUnit, forceUnit: result.forceUnit, maxForce: Math.max(...magnitudes), rmsForce: Math.sqrt(magnitudes.reduce((sum, value) => sum + value * value, 0) / magnitudes.length), atomCount: magnitudes.length },
-        artifacts: [await artifact("forces", `${stem}-forces.json`, "application/json", `${forces}\n`)],
-      };
-    }
-    const { field, orbitalIndex, spacingAngstrom, paddingAngstrom } = request.params;
-    const scientific = input.scientific!;
-    const grid = await computeQuantumGrid(scientific, field === "orbital" ? { kind: "orbital", orbitalIndex: orbitalIndex! } : { kind: field }, { spacingAngstrom, paddingAngstrom }, signal);
-    let min = Infinity;
-    let max = -Infinity;
-    for (const value of grid.values) { if (value < min) min = value; if (value > max) max = value; }
-    const cube = await serializeCube(grid, scientific.atoms, options);
-    const label = field === "orbital" ? `orbital-${orbitalIndex}` : field;
-    return {
-      summary: { field, orbitalIndex: orbitalIndex ?? null, dimensions: grid.dimensions, pointCount: grid.values.length, min, max },
-      artifacts: [await artifact("cube", `${stem}-${label}.cube`, "chemical/x-cube", cube)],
-    };
+    return runner(request.kind).run(input, request.params as WorkbenchJobParams<typeof request.kind>, {
+      signal, timeoutMs: WORKBENCH_LIMITS.jobTimeoutMs, stem: fileStem(input.document.title), artifact,
+    });
   }
 
   async function start(job: Job) {
@@ -342,7 +303,7 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
     }
     const snapshot = await snapshotOf(request);
     assertOpen(snapshot.document, snapshot.lifetime);
-    const reason = jobUnavailable(snapshot, request.job.kind) ?? paramsUnavailable(snapshot, request.job);
+    const reason = jobUnavailable(snapshot, request.job);
     if (reason) throw new WorkbenchError("JOB_UNAVAILABLE", `${request.job.kind} cannot run on ${snapshot.document.title}: ${reason}`, { kind: request.job.kind, documentId: snapshot.document.id });
     const pending = [...jobs.values()].filter((job) => job.state === "queued").length;
     if (pending >= WORKBENCH_LIMITS.queuedJobs) throw new WorkbenchError("JOB_QUEUE_FULL", `${pending} workbench jobs are already queued. Wait for one to finish or cancel one.`);

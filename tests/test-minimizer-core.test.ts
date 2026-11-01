@@ -23,3 +23,15 @@ test('invalid numerical objectives and iteration limits refuse before publishing
   expect(()=>minimize([1],()=>({energy:1,gradient:[1]}),method,Infinity)).toThrow('configuration');
  }
 });
+test('non-finite trial points are rejected, never integrated or published, and stop the run explicitly', () => {
+  // A finite quadratic with an undefined band the descent path must cross.
+  const banded = (x: number[]) => x[0] > 1.9 && x[0] < 2.1 ? { energy: NaN, gradient: [NaN, NaN, NaN] } : { energy: x.reduce((s, v) => s + v * v, 0), gradient: x.map(v => 2 * v) };
+  for (const method of methods) {
+    const seen: number[] = [];
+    const result = minimize([3, 0, 0], banded, method, 1000, (_, energy) => { seen.push(energy); });
+    expect(seen.every(Number.isFinite)).toBe(true);
+    expect(Number.isFinite(result.energy)).toBe(true);
+    if (result.x[0] > 2) expect([result.converged, result.stopReason]).toEqual([false, 'line-search']);
+    else expect(result.x[0]).toBeLessThan(1.9);
+  }
+});

@@ -15,9 +15,16 @@ export const WORKBENCH_LIMITS = Object.freeze({
   artifactBytes: 16 * 1024 * 1024,
   jobTimeoutMs: 120_000,
   stringLength: 256,
+  constraints: 64,
+  optimizationIterations: 1000,
+  conformers: 32,
+  batchFrames: 64,
+  batchAtomFrames: 2048,
 });
 
 const FORCE_FIELDS = ['MMFF94', 'MMFF94s', 'UFF'];
+const OPTIMIZE_METHODS = ['bfgs', 'lbfgs', 'fire', 'abc-fire', 'hybrid'];
+const SEED_MAX = 2_147_483_639;
 
 const DOCUMENT_FIELDS = ['documentId', 'expectedSourceRevision'];
 const PAGE_FIELDS = ['offset', 'limit'];
@@ -26,6 +33,7 @@ const PAGE_FIELDS = ['offset', 'limit'];
 const OPERATION_FIELDS = Object.freeze({
   capabilities: [],
   observe: DOCUMENT_FIELDS,
+  atoms: [...DOCUMENT_FIELDS, ...PAGE_FIELDS, 'frameIndex'],
   orbitals: [...DOCUMENT_FIELDS, ...PAGE_FIELDS],
   submit: [...DOCUMENT_FIELDS, 'operationId', 'job'],
   status: ['jobId', 'operationId'],
@@ -36,75 +44,6 @@ const OPERATION_FIELDS = Object.freeze({
 
 export const WORKBENCH_OPERATIONS = Object.freeze(Object.keys(OPERATION_FIELDS));
 
-/**
- * Local jobs the browser workbench can run. `requires` states what the source
- * document must provide; `artifacts` names the files `export` can write.
- */
-export const WORKBENCH_JOB_KINDS = Object.freeze({
-  properties: {
-    engine: 'OpenChemLib properties; optional RDKit Gasteiger charges',
-    requires: 'A complete chemical graph, 1–256 atoms; Gasteiger requires explicit hydrogens.',
-    params: { chargeModel: ['Gasteiger'] },
-    artifacts: [],
-  },
-  energy: {
-    engine: 'OpenChemLib MMFF94/MMFF94s or RDKit UFF',
-    requires: 'A complete chemical graph, 1–256 atoms; calculations require explicit hydrogens.',
-    params: { forceField: FORCE_FIELDS },
-    artifacts: [],
-  },
-  energy_forces: {
-    engine: 'OpenChemLib MMFF94/MMFF94s central-difference forces or RDKit UFF analytic forces',
-    requires: 'A complete chemical graph, 1–64 atoms; calculations require explicit hydrogens.',
-    params: { forceField: FORCE_FIELDS },
-    artifacts: ['forces'],
-  },
-  orbital_cube: {
-    engine: 'Workbench Gaussian-basis evaluator',
-    requires: 'A document parsed with a Gaussian basis and orbitals (FCHK or Molden source).',
-    params: { field: ['orbital', 'density', 'spin-density'], orbitalIndex: 'required for orbital', spacingAngstrom: '0.05–1', paddingAngstrom: '0–10' },
-    artifacts: ['cube'],
-  },
-  point_group: {
-    engine: 'libmsym point groups and symmetrization',
-    requires: 'A molecule without a unit cell, 1–256 atoms (SDF, MOL or XYZ).',
-    params: { tolerance: ['tight', 'normal', 'loose', 'very-loose'] },
-    artifacts: ['symmetrized'],
-  },
-  space_group: {
-    engine: 'moyo space-group search',
-    requires: 'A crystal with its own cell (small-molecule CIF, POSCAR/CONTCAR or extended XYZ with a Lattice), 1–5000 atoms.',
-    params: { toleranceAngstrom: '0.0001–0.5' },
-    artifacts: [],
-  },
-  powder_xrd: {
-    engine: 'Gemmi structure factors (IT92 form factors), Lorentz-polarization, no Debye-Waller factor',
-    requires: 'A crystal with its own cell, 1–2000 atoms.',
-    params: { wavelengthAngstrom: '0.1–5', twoThetaMinDegrees: '0–170', twoThetaMaxDegrees: '0–170' },
-    artifacts: ['peaks', 'pattern'],
-  },
-  pair_distribution: {
-    engine: 'Burette periodic radial distribution',
-    requires: 'A crystal with its own cell, 1–5000 atoms.',
-    params: { rMaxAngstrom: '1–100', binWidthAngstrom: '0.001–1' },
-    artifacts: ['histogram', 'g_r'],
-  },
-  crystal_transform: {
-    engine: 'Burette cell operations; moyo standardization; spglib Niggli reduction',
-    requires: 'A crystal with its own cell.',
-    params: {
-      operation: ['set_cell', 'wrap', 'standard_orientation', 'scale_volume', 'supercell', 'niggli', 'primitive', 'conventional', 'symmetrize', 'asymmetric_unit', 'fill'],
-      cell: 'set_cell: three lattice vectors in angstrom', keep: ['fractional', 'cartesian'], volumeCubicAngstrom: 'scale_volume', repeats: 'supercell: three integers 1–20',
-      toleranceAngstrom: 'primitive, conventional, symmetrize, asymmetric_unit: 0.0001–0.5', hallNumber: 'fill: 1–530',
-    },
-    artifacts: ['structure'],
-  },
-});
-
-const FIELDS = new Set(WORKBENCH_JOB_KINDS.orbital_cube.params.field);
-const POINT_GROUP_TOLERANCES = new Set(WORKBENCH_JOB_KINDS.point_group.params.tolerance);
-const CRYSTAL_OPERATIONS = new Set(WORKBENCH_JOB_KINDS.crystal_transform.params.operation);
-const SYMMETRY_TOLERANCE = { min: 1e-4, max: 0.5, fallback: 0.01 };
 const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const REVISION = /^sha256-[0-9a-f]{64}$/u;
 const ARTIFACT = /^[a-z_]{1,32}$/u;
@@ -178,90 +117,305 @@ function oneOf(value, field, allowed, fallback) {
   return value;
 }
 
-function jobParams(kind, value) {
-  const params = value ?? {};
-  if (!plainObject(params)) invalid('job.params must be a JSON object.');
-  if (kind === 'energy' || kind === 'energy_forces') {
-    rejectUnknownFields(params, ['forceField'], `${kind} job.params`);
-    return { forceField: oneOf(params.forceField, 'job.params.forceField', new Set(FORCE_FIELDS), 'MMFF94') };
-  }
-  if (kind === 'properties') {
-    rejectUnknownFields(params, ['chargeModel'], 'properties job.params');
-    const chargeModel = oneOf(params.chargeModel, 'job.params.chargeModel', new Set(['Gasteiger']), undefined);
-    return chargeModel === undefined ? {} : { chargeModel };
-  }
-  if (kind === 'point_group') {
-    rejectUnknownFields(params, ['tolerance'], 'point_group job.params');
-    return { tolerance: oneOf(params.tolerance, 'job.params.tolerance', POINT_GROUP_TOLERANCES, 'normal') };
-  }
-  if (kind === 'space_group') {
-    rejectUnknownFields(params, ['toleranceAngstrom'], 'space_group job.params');
-    return { toleranceAngstrom: finite(params.toleranceAngstrom, 'job.params.toleranceAngstrom', SYMMETRY_TOLERANCE.min, SYMMETRY_TOLERANCE.max) ?? SYMMETRY_TOLERANCE.fallback };
-  }
-  if (kind === 'powder_xrd') {
-    rejectUnknownFields(params, ['wavelengthAngstrom', 'twoThetaMinDegrees', 'twoThetaMaxDegrees'], 'powder_xrd job.params');
-    const result = {
-      wavelengthAngstrom: finite(params.wavelengthAngstrom, 'job.params.wavelengthAngstrom', 0.1, 5) ?? 1.5405929,
-      twoThetaMinDegrees: finite(params.twoThetaMinDegrees, 'job.params.twoThetaMinDegrees', 0, 170) ?? 10,
-      twoThetaMaxDegrees: finite(params.twoThetaMaxDegrees, 'job.params.twoThetaMaxDegrees', 0, 170) ?? 90,
-    };
-    if (!(result.twoThetaMaxDegrees > result.twoThetaMinDegrees)) invalid('job.params.twoThetaMaxDegrees must exceed twoThetaMinDegrees.');
-    return result;
-  }
-  if (kind === 'pair_distribution') {
-    rejectUnknownFields(params, ['rMaxAngstrom', 'binWidthAngstrom'], 'pair_distribution job.params');
-    return {
-      rMaxAngstrom: finite(params.rMaxAngstrom, 'job.params.rMaxAngstrom', 1, 100) ?? 10,
-      binWidthAngstrom: finite(params.binWidthAngstrom, 'job.params.binWidthAngstrom', 0.001, 1) ?? 0.1,
-    };
-  }
-  if (kind === 'crystal_transform') return crystalTransformParams(params);
-  // orbital_cube
-  rejectUnknownFields(params, ['field', 'orbitalIndex', 'spacingAngstrom', 'paddingAngstrom'], 'orbital_cube job.params');
-  const field = oneOf(params.field, 'job.params.field', FIELDS, undefined);
-  if (!field) invalid('job.params.field is required for orbital_cube.');
-  if (field !== 'orbital' && params.orbitalIndex !== undefined) invalid('job.params.orbitalIndex is only used by the orbital field.');
-  const result = { field };
-  if (field === 'orbital') result.orbitalIndex = integer(params.orbitalIndex, 'job.params.orbitalIndex', 0, MAX_INDEX);
-  const spacing = finite(params.spacingAngstrom, 'job.params.spacingAngstrom', 0.05, 1);
-  const padding = finite(params.paddingAngstrom, 'job.params.paddingAngstrom', 0, 10);
-  if (spacing !== undefined) result.spacingAngstrom = spacing;
-  if (padding !== undefined) result.paddingAngstrom = padding;
-  return result;
-}
+const CONSTRAINT_ATOMS = { freeze: 1, distance: 2, angle: 3, dihedral: 4 };
+const ORBITAL_FIELDS = ['orbital', 'density', 'spin-density'];
+const POINT_GROUP_TOLERANCES = ['tight', 'normal', 'loose', 'very-loose'];
+const symmetryTolerance = value => finite(value, 'job.params.toleranceAngstrom', 1e-4, 0.5) ?? 0.01;
 
 const TRANSFORM_FIELDS = Object.freeze({
   set_cell: ['cell', 'keep'], wrap: [], standard_orientation: [], scale_volume: ['volumeCubicAngstrom'], supercell: ['repeats'], niggli: [],
   primitive: ['toleranceAngstrom'], conventional: ['toleranceAngstrom'], symmetrize: ['toleranceAngstrom'], asymmetric_unit: ['toleranceAngstrom'], fill: ['hallNumber'],
 });
 
-function crystalTransformParams(params) {
-  const operation = oneOf(params.operation, 'job.params.operation', CRYSTAL_OPERATIONS, undefined);
+function crystalTransformParams(p) {
+  const operation = oneOf(p.operation, 'job.params.operation', new Set(Object.keys(TRANSFORM_FIELDS)), undefined);
   if (!operation) invalid('job.params.operation is required for crystal_transform.');
-  rejectUnknownFields(params, ['operation', ...TRANSFORM_FIELDS[operation]], `crystal_transform ${operation} job.params`);
+  rejectUnknownFields(p, ['operation', ...TRANSFORM_FIELDS[operation]], `crystal_transform ${operation} job.params`);
   if (operation === 'set_cell') {
-    const cell = params.cell;
+    const cell = p.cell;
     if (!Array.isArray(cell) || cell.length !== 3 || cell.some(row => !Array.isArray(row) || row.length !== 3 || row.some(value => typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) > 1e4))) {
       invalid('job.params.cell must be three lattice vectors of three numbers, in angstrom.');
     }
-    return { operation, cell: cell.map(row => [...row]), keep: oneOf(params.keep, 'job.params.keep', new Set(['fractional', 'cartesian']), 'fractional') };
+    return { operation, cell: cell.map(row => [...row]), keep: oneOf(p.keep, 'job.params.keep', new Set(['fractional', 'cartesian']), 'fractional') };
   }
   if (operation === 'scale_volume') {
-    const volume = finite(params.volumeCubicAngstrom, 'job.params.volumeCubicAngstrom', 1e-3, 1e9);
+    const volume = finite(p.volumeCubicAngstrom, 'job.params.volumeCubicAngstrom', 1e-3, 1e9);
     if (volume === undefined) invalid('job.params.volumeCubicAngstrom is required for scale_volume.');
     return { operation, volumeCubicAngstrom: volume };
   }
   if (operation === 'supercell') {
-    const repeats = params.repeats;
-    if (!Array.isArray(repeats) || repeats.length !== 3) invalid('job.params.repeats must be three integers from 1 to 20.');
-    return { operation, repeats: repeats.map((value, axis) => integer(value, `job.params.repeats[${axis}]`, 1, 20)) };
+    if (!Array.isArray(p.repeats) || p.repeats.length !== 3) invalid('job.params.repeats must be three integers from 1 to 20.');
+    return { operation, repeats: p.repeats.map((value, axis) => integer(value, `job.params.repeats[${axis}]`, 1, 20)) };
   }
-  if (operation === 'fill') return { operation, hallNumber: integer(params.hallNumber, 'job.params.hallNumber', 1, 530) };
-  if (TRANSFORM_FIELDS[operation].includes('toleranceAngstrom')) {
-    return { operation, toleranceAngstrom: finite(params.toleranceAngstrom, 'job.params.toleranceAngstrom', SYMMETRY_TOLERANCE.min, SYMMETRY_TOLERANCE.max) ?? SYMMETRY_TOLERANCE.fallback };
-  }
-  return { operation };
+  if (operation === 'fill') return { operation, hallNumber: integer(p.hallNumber, 'job.params.hallNumber', 1, 530) };
+  return TRANSFORM_FIELDS[operation].includes('toleranceAngstrom') ? { operation, toleranceAngstrom: symmetryTolerance(p.toleranceAngstrom) } : { operation };
 }
+
+function params(value, allowed, label) {
+  const result = value ?? {};
+  if (!plainObject(result)) invalid('job.params must be a JSON object.');
+  rejectUnknownFields(result, allowed, label);
+  return result;
+}
+
+const forceField = value => oneOf(value, 'job.params.forceField', new Set(FORCE_FIELDS), 'MMFF94');
+const seed = value => integer(value, 'job.params.seed', 0, SEED_MAX, 1);
+
+function constraints(value) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > WORKBENCH_LIMITS.constraints) invalid(`job.params.constraints must be an array of at most ${WORKBENCH_LIMITS.constraints} constraints.`);
+  return value.map((item, index) => {
+    const label = `job.params.constraints[${index}]`;
+    if (!plainObject(item)) invalid(`${label} must be an object.`);
+    rejectUnknownFields(item, ['kind', 'atoms', 'target'], label);
+    const count = typeof item.kind === 'string' && Object.hasOwn(CONSTRAINT_ATOMS, item.kind) ? CONSTRAINT_ATOMS[item.kind] : undefined;
+    if (!count) invalid(`${label}.kind must be freeze, distance, angle or dihedral.`);
+    if (!Array.isArray(item.atoms) || item.atoms.length !== count || item.atoms.some(atom => !Number.isInteger(atom) || atom < 0 || atom >= MAX_INDEX) || new Set(item.atoms).size !== count) {
+      invalid(`${label}.atoms must hold ${count} distinct zero-based atom indices.`);
+    }
+    if (item.kind === 'freeze' && item.target !== undefined) invalid(`${label}.target is not used by freeze.`);
+    const target = finite(item.target, `${label}.target`, -1e6, 1e6);
+    if (target !== undefined && ((item.kind === 'distance' && target <= 0) || (item.kind === 'angle' && (target <= 0 || target >= 180)) || (item.kind === 'dihedral' && Math.abs(target) > 180))) {
+      invalid(`${label}.target must be positive for distance, strictly between 0 and 180 for angle, or from -180 to 180 for dihedral.`);
+    }
+    return target === undefined ? { kind: item.kind, atoms: [...item.atoms] } : { kind: item.kind, atoms: [...item.atoms], target };
+  });
+}
+
+/** BFGS for unconstrained MMFF, L-BFGS otherwise: the default is resolved here, so status reports the method that runs. */
+function optimizer(value, field, constrained) {
+  return oneOf(value, 'job.params.method', new Set(OPTIMIZE_METHODS), field === 'UFF' || constrained ? 'lbfgs' : 'bfgs');
+}
+
+function metadataLabel(value, field, max, empty = false) {
+  if (value === null) return null;
+  if (typeof value !== 'string' || (!empty && !value.length) || value.length > max || /[\p{Cc}\p{Cf}]/u.test(value)) {
+    invalid(`${field} must be ${empty ? '0' : '1'}–${max} characters without control characters, or null to clear.`);
+  }
+  return value;
+}
+
+function metadataAtom(value, position, seen) {
+  const field = `job.params.atoms[${position}]`;
+  if (!plainObject(value)) invalid(`${field} must be an object.`);
+  rejectUnknownFields(value, ['index', 'atomName', 'residue'], field);
+  const index = integer(value.index, `${field}.index`, 0, 255);
+  if (seen.has(index)) invalid('metadata_edit atom indices must be distinct.');
+  seen.add(index);
+  if (value.atomName === undefined && value.residue === undefined) invalid(`${field} must request an atomName or residue change.`);
+  const atom = { index };
+  if (value.atomName !== undefined) atom.atomName = metadataLabel(value.atomName, `${field}.atomName`, 32);
+  if (value.residue === null) atom.residue = null;
+  else if (value.residue !== undefined) {
+    if (!plainObject(value.residue)) invalid(`${field}.residue must be an object or null.`);
+    rejectUnknownFields(value.residue, ['name', 'sequence', 'chain', 'insertionCode'], `${field}.residue`);
+    const residue = value.residue;
+    if (['name', 'chain', 'insertionCode'].some(key => residue[key] === null)) invalid(`${field}.residue fields cannot be null.`);
+    atom.residue = { name: metadataLabel(residue.name, `${field}.residue.name`, 32),
+      sequence: integer(residue.sequence, `${field}.residue.sequence`, -999999, 999999),
+      chain: metadataLabel(residue.chain, `${field}.residue.chain`, 32, true),
+      insertionCode: metadataLabel(residue.insertionCode, `${field}.residue.insertionCode`, 4, true) };
+  }
+  return atom;
+}
+
+/**
+ * Every job kind the browser workbench can run: `describe` is what `capabilities`
+ * advertises (engine, source requirements, parameters, exportable artifacts) and
+ * `params` validates and normalizes `job.params` before anything is queued.
+ * A new typed operation adds one entry here and one runner in the shell's
+ * agent job registry (apps/desktop/src/lib/workbench/agent-jobs.ts).
+ */
+const JOB_DEFINITIONS = {
+  properties: {
+    describe: {
+      engine: 'OpenChemLib properties; optional RDKit Gasteiger charges',
+      requires: 'A complete chemical graph, 1–256 atoms; Gasteiger requires explicit hydrogens.',
+      params: { chargeModel: ['Gasteiger'] },
+      artifacts: [],
+    },
+    params(value) {
+      const p = params(value, ['chargeModel'], 'properties job.params');
+      const chargeModel = oneOf(p.chargeModel, 'job.params.chargeModel', new Set(['Gasteiger']), undefined);
+      return chargeModel === undefined ? {} : { chargeModel };
+    },
+  },
+  energy: {
+    describe: {
+      engine: 'OpenChemLib MMFF94/MMFF94s or RDKit UFF',
+      requires: 'A complete chemical graph, 1–256 atoms; calculations require explicit hydrogens.',
+      params: { forceField: FORCE_FIELDS },
+      artifacts: [],
+    },
+    params: value => ({ forceField: forceField(params(value, ['forceField'], 'energy job.params').forceField) }),
+  },
+  energy_forces: {
+    describe: {
+      engine: 'OpenChemLib MMFF94/MMFF94s central-difference forces or RDKit UFF analytic forces',
+      requires: 'A complete chemical graph, 1–64 atoms; calculations require explicit hydrogens.',
+      params: { forceField: FORCE_FIELDS },
+      artifacts: ['forces'],
+    },
+    params: value => ({ forceField: forceField(params(value, ['forceField'], 'energy_forces job.params').forceField) }),
+  },
+  frame_energy_forces: {
+    describe: {
+      engine: 'Same energies and forces as energy_forces, for a page of frames sharing one graph',
+      requires: 'A multi-frame XYZ with a complete graph, or a multi-record SDF whose records share one graph; 1–64 atoms; at most 64 frames and 2048 atom-frames per job.',
+      params: { forceField: FORCE_FIELDS, offset: 'first zero-based frame (default 0)', count: '1–64 frames (default: as many as fit)' },
+      artifacts: ['forces', 'extxyz'],
+    },
+    params(value) {
+      const p = params(value, ['forceField', 'offset', 'count'], 'frame_energy_forces job.params');
+      const result = { forceField: forceField(p.forceField), offset: integer(p.offset, 'job.params.offset', 0, MAX_INDEX, 0) };
+      if (p.count !== undefined) result.count = integer(p.count, 'job.params.count', 1, WORKBENCH_LIMITS.batchFrames);
+      return result;
+    },
+  },
+  optimize: {
+    describe: {
+      engine: 'OpenChemLib MMFF94/MMFF94s BFGS, or L-BFGS/FIRE/ABC-FIRE/hybrid on MMFF94/MMFF94s (central-difference gradients) or RDKit UFF (analytic gradients)',
+      requires: 'A complete chemical graph with explicit hydrogens, 1–256 atoms; methods other than bfgs, UFF and constraints need at most 64 atoms; bfgs holds no constraints.',
+      params: { forceField: FORCE_FIELDS, method: OPTIMIZE_METHODS, maxIterations: '1–1000 (default 250)', constraints: 'up to 64 of freeze/distance/angle/dihedral; zero-based source atoms; target in Å or degrees (default: current value)' },
+      artifacts: ['structure', 'xyz', 'trajectory'],
+    },
+    params(value) {
+      const p = params(value, ['forceField', 'method', 'maxIterations', 'constraints'], 'optimize job.params');
+      const field = forceField(p.forceField), held = constraints(p.constraints);
+      return { forceField: field, method: optimizer(p.method, field, held.length > 0), maxIterations: integer(p.maxIterations, 'job.params.maxIterations', 1, WORKBENCH_LIMITS.optimizationIterations, 250), constraints: held };
+    },
+  },
+  prepare_3d: {
+    describe: {
+      engine: 'OpenChemLib embedding with a stereo identity check, then the optimize engines',
+      requires: 'A complete flat chemical graph (2D or all z = 0), 1–256 atoms after hydrogens are added; methods other than bfgs and UFF need at most 64.',
+      params: { forceField: FORCE_FIELDS, method: OPTIMIZE_METHODS, seed: '0–2147483639 (default 1); up to 8 consecutive seeds are tried', maxIterations: '1–1000 (default 250)' },
+      artifacts: ['structure', 'xyz', 'trajectory'],
+    },
+    params(value) {
+      const p = params(value, ['forceField', 'method', 'seed', 'maxIterations'], 'prepare_3d job.params');
+      const field = forceField(p.forceField);
+      return { forceField: field, method: optimizer(p.method, field, false), seed: seed(p.seed), maxIterations: integer(p.maxIterations, 'job.params.maxIterations', 1, WORKBENCH_LIMITS.optimizationIterations, 250) };
+    },
+  },
+  conformers: {
+    describe: {
+      engine: 'OpenChemLib torsion sampling, each sample relaxed with MMFF94/MMFF94s BFGS or RDKit UFF L-BFGS; duplicate minima dropped',
+      requires: 'A complete chemical graph, 1–256 atoms after hydrogens are added (UFF: at most 64).',
+      params: { forceField: FORCE_FIELDS, count: '1–32 samples (default 8)', seed: '0–2147483639 (default 1)' },
+      artifacts: ['conformers'],
+    },
+    params(value) {
+      const p = params(value, ['forceField', 'count', 'seed'], 'conformers job.params');
+      return { forceField: forceField(p.forceField), count: integer(p.count, 'job.params.count', 1, WORKBENCH_LIMITS.conformers, 8), seed: seed(p.seed) };
+    },
+  },
+  metadata_edit: {
+    describe: {
+      engine: 'Burette SDF atom/conformer metadata',
+      requires: 'One SDF record, 1–256 atoms; MOL and collections are unsupported. The result is exported, never applied to the document.',
+      params: { atoms: 'up to 256 distinct source indices with atomName and/or residue; null clears', conformerLabel: '1–128 characters, or null to clear' },
+      artifacts: ['structure'],
+    },
+    params(value) {
+      const p = params(value, ['atoms', 'conformerLabel'], 'metadata_edit job.params');
+      if (p.atoms !== undefined && (!Array.isArray(p.atoms) || p.atoms.length > 256)) invalid('job.params.atoms must be an array of at most 256 edits.');
+      const seen = new Set(), atoms = (p.atoms ?? []).map((atom, position) => metadataAtom(atom, position, seen));
+      if (!atoms.length && p.conformerLabel === undefined) invalid('metadata_edit requires at least one requested change.');
+      return { atoms, ...(p.conformerLabel === undefined ? {} : { conformerLabel: metadataLabel(p.conformerLabel, 'job.params.conformerLabel', 128) }) };
+    },
+  },
+  pair_distribution: {
+    describe: {
+      engine: 'Burette periodic radial distribution',
+      requires: 'An explicit periodic unit cell (small-molecule CIF, POSCAR/CONTCAR or extended XYZ with a Lattice), 1–5000 atoms and at most 12 elements; isolated structures are unsupported.',
+      params: { rMax: '1–100 Å (default 10)', binWidth: '0.001–1 Å (default 0.1), at most 20000 bins', centre: 'element symbol or null for all', neighbour: 'element symbol or null for all' },
+      artifacts: ['distribution', 'csv'],
+    },
+    params(value) {
+      const p = params(value, ['rMax', 'binWidth', 'centre', 'neighbour'], 'pair_distribution job.params');
+      const rMax = finite(p.rMax, 'job.params.rMax', 1, 100) ?? 10, binWidth = finite(p.binWidth, 'job.params.binWidth', 0.001, 1) ?? 0.1;
+      if (Math.floor(rMax / binWidth + 1e-9) > 20_000) invalid('pair_distribution supports at most 20000 bins. Widen binWidth or lower rMax.');
+      for (const key of ['centre', 'neighbour']) {
+        if (p[key] !== undefined && p[key] !== null && (typeof p[key] !== 'string' || !/^[A-Z][a-z]?$/u.test(p[key]))) invalid(`job.params.${key} must be an element symbol or null for all elements.`);
+      }
+      return { rMax, binWidth, centre: p.centre ?? null, neighbour: p.neighbour ?? null };
+    },
+  },
+  point_group: {
+    describe: {
+      engine: 'libmsym point groups and symmetrization',
+      requires: 'A molecule without a unit cell, 1–256 atoms (SDF, MOL or XYZ).',
+      params: { tolerance: POINT_GROUP_TOLERANCES },
+      artifacts: ['symmetrized'],
+    },
+    params: value => ({ tolerance: oneOf(params(value, ['tolerance'], 'point_group job.params').tolerance, 'job.params.tolerance', new Set(POINT_GROUP_TOLERANCES), 'normal') }),
+  },
+  space_group: {
+    describe: {
+      engine: 'moyo space-group search',
+      requires: 'A crystal with its own cell (small-molecule CIF, POSCAR/CONTCAR or extended XYZ with a Lattice), 1–5000 atoms.',
+      params: { toleranceAngstrom: '0.0001–0.5 (default 0.01)' },
+      artifacts: [],
+    },
+    params: value => ({ toleranceAngstrom: symmetryTolerance(params(value, ['toleranceAngstrom'], 'space_group job.params').toleranceAngstrom) }),
+  },
+  powder_xrd: {
+    describe: {
+      engine: 'Gemmi structure factors (IT92 form factors), Lorentz-polarization, no Debye-Waller factor',
+      requires: 'A crystal with its own cell, 1–2000 atoms.',
+      params: { wavelengthAngstrom: '0.1–5 (default 1.5405929, Cu Kα1)', twoThetaMinDegrees: '0–170 (default 10)', twoThetaMaxDegrees: '0–170 (default 90)' },
+      artifacts: ['peaks', 'pattern'],
+    },
+    params(value) {
+      const p = params(value, ['wavelengthAngstrom', 'twoThetaMinDegrees', 'twoThetaMaxDegrees'], 'powder_xrd job.params');
+      const result = {
+        wavelengthAngstrom: finite(p.wavelengthAngstrom, 'job.params.wavelengthAngstrom', 0.1, 5) ?? 1.5405929,
+        twoThetaMinDegrees: finite(p.twoThetaMinDegrees, 'job.params.twoThetaMinDegrees', 0, 170) ?? 10,
+        twoThetaMaxDegrees: finite(p.twoThetaMaxDegrees, 'job.params.twoThetaMaxDegrees', 0, 170) ?? 90,
+      };
+      if (!(result.twoThetaMaxDegrees > result.twoThetaMinDegrees)) invalid('job.params.twoThetaMaxDegrees must exceed twoThetaMinDegrees.');
+      return result;
+    },
+  },
+  crystal_transform: {
+    describe: {
+      engine: 'Burette cell operations; moyo standardization; spglib Niggli reduction',
+      requires: 'A crystal with its own cell. The result is exported, never applied to the document.',
+      params: {
+        operation: Object.keys(TRANSFORM_FIELDS),
+        cell: 'set_cell: three lattice vectors in angstrom', keep: ['fractional', 'cartesian'], volumeCubicAngstrom: 'scale_volume', repeats: 'supercell: three integers 1–20',
+        toleranceAngstrom: 'primitive, conventional, symmetrize, asymmetric_unit: 0.0001–0.5 (default 0.01)', hallNumber: 'fill: 1–530',
+      },
+      artifacts: ['structure'],
+    },
+    params: value => crystalTransformParams(params(value, ['operation', 'cell', 'keep', 'volumeCubicAngstrom', 'repeats', 'toleranceAngstrom', 'hallNumber'], 'crystal_transform job.params')),
+  },
+  orbital_cube: {
+    describe: {
+      engine: 'Workbench Gaussian-basis evaluator',
+      requires: 'A document parsed with a Gaussian basis and orbitals (FCHK or Molden source).',
+      params: { field: ORBITAL_FIELDS, orbitalIndex: 'required for orbital', spacingAngstrom: '0.05–1', paddingAngstrom: '0–10' },
+      artifacts: ['cube'],
+    },
+    params(value) {
+      const p = params(value, ['field', 'orbitalIndex', 'spacingAngstrom', 'paddingAngstrom'], 'orbital_cube job.params');
+      const field = oneOf(p.field, 'job.params.field', new Set(ORBITAL_FIELDS), undefined);
+      if (!field) invalid('job.params.field is required for orbital_cube.');
+      if (field !== 'orbital' && p.orbitalIndex !== undefined) invalid('job.params.orbitalIndex is only used by the orbital field.');
+      const result = { field };
+      if (field === 'orbital') result.orbitalIndex = integer(p.orbitalIndex, 'job.params.orbitalIndex', 0, MAX_INDEX);
+      const spacing = finite(p.spacingAngstrom, 'job.params.spacingAngstrom', 0.05, 1);
+      const padding = finite(p.paddingAngstrom, 'job.params.paddingAngstrom', 0, 10);
+      if (spacing !== undefined) result.spacingAngstrom = spacing;
+      if (padding !== undefined) result.paddingAngstrom = padding;
+      return result;
+    },
+  },
+};
+
+/** What `capabilities` advertises for each job kind. */
+export const WORKBENCH_JOB_KINDS = Object.freeze(Object.fromEntries(Object.entries(JOB_DEFINITIONS).map(([kind, definition]) => [kind, definition.describe])));
 
 function job(value) {
   if (!plainObject(value)) invalid('submit requires job: { kind, params }.');
@@ -273,7 +427,7 @@ function job(value) {
       { kind: typeof value.kind === 'string' ? value.kind.slice(0, 64) : null, supportedJobs: Object.keys(WORKBENCH_JOB_KINDS) },
     );
   }
-  return { kind: value.kind, params: jobParams(value.kind, value.params) };
+  return { kind: value.kind, params: JOB_DEFINITIONS[value.kind].params(value.params) };
 }
 
 function page(action) {
@@ -317,6 +471,7 @@ export function validateWorkbenchRequest(action) {
       if (expected !== undefined) request.expectedSourceRevision = expected;
     }
     if (OPERATION_FIELDS[operation].includes('offset')) Object.assign(request, page(action));
+    if (OPERATION_FIELDS[operation].includes('frameIndex') && action.frameIndex !== undefined) request.frameIndex = integer(action.frameIndex, 'frameIndex', 0, MAX_INDEX);
     if (operation === 'submit') {
       request.operationId = identifier(action.operationId, 'operationId', true);
       request.job = job(action.job);

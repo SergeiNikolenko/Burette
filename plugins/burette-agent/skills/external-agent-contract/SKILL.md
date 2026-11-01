@@ -71,6 +71,26 @@ that was opened before this contract existed.
    every mutation; never reuse a revision after a conflict or tab switch.
 8. For adjacent notes or review panels, call `burette.render_panel`.
 
+## Calculations
+
+In a browser-agent-shell session, typed calculations run through
+`burette.control_viewer` with `{"type":"workbench", "operation": ...}` (the CLI
+equivalent is `burette-agent.mjs workbench`). Call `capabilities` for the job
+kinds and their parameters, then `observe` for `sourceRevision` and per-kind
+availability. Submit with that revision and a stable `operationId`, poll
+`status`, and `export` artifacts to files; never ask for inline artifact text.
+
+- `optimize`: pick `method` explicitly when it matters (`bfgs`, `lbfgs`, `fire`,
+  `abc-fire`, `hybrid`); report `converged`, `iterations` and every
+  `constraintResiduals` entry, not only the final energy.
+- `prepare_3d` for flat SDF/MOL drawings; `conformers` for distinct minima;
+  `frame_energy_forces` for trajectories and SDF ensembles, paging with
+  `offset` until `nextOffset` is null.
+- `JOB_UNAVAILABLE` and `REVISION_CONFLICT` are answers, not transient errors:
+  report the reason or observe again instead of retrying with other parameters.
+- For notebooks, use `python/burette_workbench.py` (`Workbench.run`,
+  `iter_frame_energy_forces`).
+
 ## Desktop links
 
 Use `burette.create_link` for a PDB ID (`kind: "pdb"`, `target: "1HTB"`),
