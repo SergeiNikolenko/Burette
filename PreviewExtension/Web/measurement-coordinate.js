@@ -38,6 +38,8 @@
     let binding;
     try { binding = await science.graphBinding(viewer); }
     catch { fail('Coordinate editing needs a single MOL or SDF structure.'); }
+    // graphBinding also identifies XYZ sources, which carry no bond graph to move fragments along.
+    if (!['mol', 'sdf'].includes(binding.sourceFormat)) fail('Coordinate editing needs a single MOL or SDF structure.');
     if (binding.atomCount > 256 || binding.frameCount !== 1 || binding.frameIndex !== 0) fail('Coordinate editing needs one MOL or SDF record of up to 256 atoms.');
     if (viewer.plugin.state.data.cells.get(target.transform.ref) !== target || String(points(viewer, target, kind)) !== String(atoms)) fail('The measurement changed. Open it again.');
     const { structureRef, modelRef, trajectoryRef, frameIndex, frameCount, atomCount, sourceSha256, sourceFormat } = binding;
@@ -161,6 +163,8 @@
   async function capture(viewer, science, options) {
     if (options && (options.sourceFormat !== 'xyz' || typeof options.lease !== 'string' || !options.lease || options.lease.length > 128)) fail('XYZ measurement transfer requires its current Geometry receipt.');
     const binding = options ? await xyzBinding(viewer, science, options.lease) : await science.graphBinding(viewer);
+    // XYZ transfer is admitted only through its explicit Geometry receipt above.
+    if (!options && !['mol', 'sdf'].includes(binding.sourceFormat)) fail('XYZ measurement transfer requires its current Geometry receipt.');
     if (binding.atomCount > 256 || binding.frameCount !== 1) fail('Coordinate editing needs one MOL or SDF record of up to 256 atoms.');
     const root = viewer.plugin.managers.structure.hierarchy.current.structures[0].cell.obj.data;
     const Loci = window.molstar.lib.structure.StructureElement.Loci, cells = viewer.plugin.state.data.cells, items = [];
