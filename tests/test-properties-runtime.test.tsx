@@ -10,7 +10,7 @@ test("logical XYZ properties retain fields and export ordered, finite charges an
   const doc = documentFor("molx"); logical(doc); const f = await mount(doc);
   try {
     await until(() => formula() === "H2O" && csvButton("MMFF94 forces"));
-    expect([...document.querySelectorAll("dt")].map(node => node.textContent)).toEqual(["Formula", "Molecular weight", "Exact mass", "Atoms", "Bonds", "Net charge", "H-bond donors", "H-bond acceptors", "Rotatable bonds", "Polar surface area", "cLogP", "MMFF94 energy", "Gasteiger charges", "MMFF94 forces"]);
+    expect([...document.querySelectorAll("dt")].map(node => node.textContent)).toEqual(["Formula", "Molecular weight", "Exact mass", "Atoms", "Bonds", "Net charge", "H-bond donors", "H-bond acceptors", "Rotatable bonds", "Polar surface area", "cLogP", "MMFF94 energy", "Gasteiger charges", "Conformers", "MMFF94 forces"]);
     await click(csvButton("Gasteiger charges")); await until(() => f.saved.length === 1);
     const rows = f.saved[0].text.trim().split("\n").map(row => row.split(","));
     expect(rows[0]).toEqual(["atom", "element", "charge_e"]); expect(rows.slice(1).map(row => row.slice(0, 2))).toEqual([["1", "O"], ["2", "H"], ["3", "H"]]);

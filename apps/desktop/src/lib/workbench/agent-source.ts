@@ -4,7 +4,7 @@ import { readStructureText } from "../structure-text";
 import type { ScientificDocument } from "../molecular-workbench/scientific-types";
 import { scientificDocumentPayload } from "../science-session/codec";
 import { SCIENCE_SESSION_LIMITS } from "../science-session/contracts";
-import { readMolecularStructure, readWorkbenchSource, workbenchSupportsDocument } from "./structure";
+import { readMolecularStructure, readWorkbenchSource, workbenchSupportsDocument, type WorkbenchSource } from "./structure";
 import type { MolecularStructure } from "../molecular-workbench/molecular-graph";
 import { scientificStateFor } from "./scientific-source-state";
 import { runReaderTask } from "./reader-task";
@@ -26,15 +26,27 @@ export async function readWorkbenchAgentSource(document: ViewerDocument, draftFo
 }
 
 type DocumentLifetime = { path: string; runtimePath: string | undefined; abort: AbortController };
+/** One immutable revision of a document's source, as every job of that revision sees it. */
 export type Snapshot = {
-  lifetime: DocumentLifetime; document: ViewerDocument; revision: string; sourceTextSha256: string; text: string; extension: string;
+  lifetime: DocumentLifetime; document: ViewerDocument; revision: string; sourceTextSha256: string;
   origin: WorkbenchSourceRead["origin"]; byteCount: number; scientific: ScientificDocument | null;
   scientificOrigin: "attached" | "parsed" | null; sourceError: string | null;
   structure: MolecularStructure | null; structureError: string | null;
+  /** Exact text and logical extension the revision was read from. */
+  text: string; extension: string;
+  /** Atoms in source order (first frame), with the declared unit cell. */
+  source: WorkbenchSource | null;
+  /** Records of a multi-record SDF; their shared graph is checked by the job that reads them. */
+  sdfRecords: number;
 };
 
 type ParsedSource = { scientific: ScientificDocument | null; sourceError: string | null;
-  structure: MolecularStructure | null; structureError: string | null };
+  structure: MolecularStructure | null; structureError: string | null; source: WorkbenchSource | null };
+/** Non-empty records of an SDF text, each without its `$$$$` terminator. */
+export function sdfRecords(text: string) {
+  // Every record after the first starts with the newline that ended the previous terminator.
+  return text.replace(/\r\n?/gu, "\n").split(/^\$\$\$\$[^\n]*$/mu).map((record, index) => index ? record.replace(/^\n/u, "") : record).filter(record => record.trim());
+}
 const diagnostic = (error: unknown) => (error instanceof Error ? error.message : String(error)).slice(0, 500);
 
 /** Source ownership for the existing job registry. Revisions include full science and the chemical graph. */
@@ -81,21 +93,21 @@ export function createAgentSourceOwner(environment: WorkbenchAgentEnvironment, l
       const signal = opened.abort.signal;
       const pending = (async (): Promise<ParsedSource> => {
         let scientific: ScientificDocument | null = null, sourceError: string | null = null;
-        let structure: MolecularStructure | null = null, structureError: string | null = null;
+        let structure: MolecularStructure | null = null, structureError: string | null = null, source: WorkbenchSource | null = null;
         if (!attached) {
           try { scientific = await runReaderTask({ action: "parse", name: `source.${extension}`, text: read.text }, { signal }); }
           catch (error) { sourceError = diagnostic(error); }
         }
         if (workbenchSupportsDocument(document)) {
           try {
-            const source = await readWorkbenchSource(document, read.text, signal);
+            source = await readWorkbenchSource(document, read.text, signal);
             if (source.atoms.length > 256) structureError = "Browser chemistry supports 1–256 atoms.";
             else structure = await readMolecularStructure(source, signal);
             // A valid chemical graph need not have quantum/scientific sections.
             sourceError = null;
           } catch (error) { structureError = diagnostic(error); }
         }
-        return { scientific, sourceError, structure, structureError };
+        return { scientific, sourceError, structure, structureError, source };
       })();
       cached = { lifetime: opened, pending }; snapshots.set(key, cached);
       pending.catch(() => { if (snapshots.get(key)?.pending === pending) snapshots.delete(key); });
@@ -115,9 +127,10 @@ export function createAgentSourceOwner(environment: WorkbenchAgentEnvironment, l
       throw new WorkbenchError("REVISION_CONFLICT", "The source or its scientific calculation data changed. Observe again and use the current sourceRevision.",
         { documentId: document.id, expectedSourceRevision: request.expectedSourceRevision, sourceRevision: revision });
     }
-    return { lifetime: opened, document: { ...document }, revision, sourceTextSha256, text: read.text, extension, origin: read.origin, byteCount,
+    return { lifetime: opened, document: { ...document }, revision, sourceTextSha256, origin: read.origin, byteCount,
       scientific, scientificOrigin: scientific ? attached ? "attached" : "parsed" : null, sourceError: parsed.sourceError,
-      structure: parsed.structure, structureError: parsed.structureError };
+      structure: parsed.structure, structureError: parsed.structureError, text: read.text, extension, source: parsed.source,
+      sdfRecords: extension === "sdf" || extension === "sd" ? sdfRecords(read.text).length : 0 };
   }
   return { snapshotOf, assertOpen,
     documentsChanged(openIds: ReadonlySet<string>) {

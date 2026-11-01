@@ -107,6 +107,16 @@
   text-align: right;
   overflow-wrap: anywhere;
 }
+.workbench-properties dd.workbench-inline-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.workbench-inline-field [data-slot="input"] {
+  width: 52px;
+  height: 24px;
+  font-size: 12px;
+}
 .workbench-toolbar {
   display: flex;
   min-width: 0;

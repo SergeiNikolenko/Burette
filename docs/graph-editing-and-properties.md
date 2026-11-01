@@ -26,9 +26,22 @@ history. See [Scientific scene format](scientific-scene-format.md) for MOLX.
 Properties includes formula, masses, graph counts, charge, hydrogen-bond
 counts, rotatable bonds, polar surface area and cLogP. Gasteiger charge CSV
 preserves atom order. Energy and force export require a supported force field
-and finite results. The current optimization controls offer MMFF94, MMFF94s
-and UFF, with L-BFGS, FIRE, ABC-FIRE and FIRE followed by L-BFGS, subject to the
-existing atom limits. Numerical optimization can open its steps as XYZ.
+and finite results. The optimization controls offer MMFF94, MMFF94s and UFF,
+with BFGS (the MMFF toolkit minimizer, unconstrained only), L-BFGS, FIRE,
+ABC-FIRE and FIRE followed by L-BFGS. A method or force field that cannot run on
+the structure (UFF or numerical methods above 64 atoms, BFGS with constraints,
+UFF or coupled Z-matrix variables) is shown disabled with its reason, and the
+checked method is the one that runs. Methods other than BFGS can open their
+steps as XYZ with per-step energies. Geometry lists each distance, angle and
+dihedral constraint with its value and signed residual, and refuses constraints
+that are undefined on the current geometry before optimizing.
+
+A flat SDF/MOL drawing (every z at zero) offers Generate 3D in Properties and in
+the Edit menu: hydrogens are added after the source atoms, the structure is
+embedded with its stereochemistry checked against the drawing, relaxed with
+MMFF94 BFGS and published as one undoable edit. Conformer search in Properties
+relaxes the requested number of samples and opens the distinct minima, lowest
+energy first, as a new SDF.
 
 Adding H preserves existing coordinates, graph/stereo annotations and IDs.
 It does not optimize the heavy-atom geometry. Invalid new-H geometry is refused

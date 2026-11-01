@@ -116,6 +116,12 @@ test("smiles builds export an explicit-hydrogen 3D structure; unreadable input f
   const mol = rdkit.get_mol(artifact.content, JSON.stringify({ removeHs: false }))!;
   const block = mol.get_molblock(); mol.delete();
   expect(block.split("\n")[1]).toContain("3D");
+  // Requested stereo survives embedding and relaxation; RDKit perceives it from the exported 3D coordinates.
+  for (const [index, smiles] of ["C/C=C\\C", "C[C@H](N)C(=O)O", "C[C@@H](N)C(=O)O"].entries()) {
+    const stereo = await f.finish((await f.ok({ operation: "build", operationId: `stereo-${index}`, job: { kind: "smiles", params: { smiles } } })).job.jobId);
+    expect(stereo).toMatchObject({ status: "succeeded", summary: { method: "bfgs", forceField: "MMFF94", converged: true } });
+    expect(canonical((await f.ok({ operation: "export", jobId: stereo.jobId, artifact: "structure" })).artifact.content)).toBe(canonical(smiles));
+  }
   const bad = await f.ok({ operation: "build", operationId: "bad", job: { kind: "smiles", params: { smiles: "C1CC" } } });
   expect(await f.finish(bad.job.jobId)).toMatchObject({ status: "failed", artifacts: [] });
-});
+}, 60_000);

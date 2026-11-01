@@ -3,7 +3,7 @@ import { act } from "react";
 import { fixture } from "./measurement-pair-fixture";
 const { useGraphDraft } = await import("../apps/desktop/src/components/workbench/use-graph-draft");
 
-for (const method of [undefined, "lbfgs"] as const) test(`the full adapter keeps add-H and ${method ?? "default"} optimization in the same published source history`, async () => {
+for (const [method, label] of [["bfgs", "BFGS"], ["lbfgs", "L-BFGS"]] as const) test(`the full adapter keeps add-H and ${label} optimization in the same published source history`, async () => {
   const view = await fixture("sdf", useGraphDraft);
   try {
     const before = view.graph.history!.current;
@@ -23,7 +23,7 @@ for (const method of [undefined, "lbfgs"] as const) test(`the full adapter keeps
     const optimization = await view.apply({ kind: "optimize", forceField: "MMFF94", method });
     expect(view.graph.error).toBeNull(); expect(optimization).not.toBeNull();
     const optimized = view.graph.history!.current;
-    expect(optimized.outcome?.method).toBe("L-BFGS");
+    expect(optimized.outcome?.method).toBe(label);
     expect(Number.isFinite(optimized.outcome?.energy)).toBe(true);
     expect(view.focused.history).toBe(view.graph.history);
     expect(view.controller.sessionForDocument(view.doc)?.content).toBe(optimized.text);
