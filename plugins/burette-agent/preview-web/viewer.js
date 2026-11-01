@@ -30538,7 +30538,7 @@ SOFTWARE.
   }
 
   function ensureMolstarStylesheet() {
-    if (document.querySelector('link[href*="molstar.css"]')) return;
+    if (document.querySelector('link[data-buret-molstar-stylesheet], link[href*="molstar.css"]')) return;
     const link = document.createElement('link');
     link.rel = 'stylesheet';
     link.href = runtimeURL('BuretteMolstarCSSURL', './molstar.css');
