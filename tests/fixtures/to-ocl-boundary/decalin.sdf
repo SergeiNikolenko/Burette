@@ -1,0 +1,42 @@
+decalin
+     RDKit          2D
+
+  0  0  0  0  0  0  0  0  0  0999 V3000
+M  V30 BEGIN CTAB
+M  V30 COUNTS 10 11 0 0 0
+M  V30 BEGIN ATOM
+M  V30 1 C 1.500000 0.000000 0.000000 101
+M  V30 2 C 0.750000 1.299038 0.000000 102
+M  V30 3 C -0.750000 1.299038 0.000000 103
+M  V30 4 C -1.500000 0.000000 0.000000 104
+M  V30 5 C -3.000000 0.000000 0.000000 105
+M  V30 6 C -3.750000 -1.299038 0.000000 106
+M  V30 7 C -3.000000 -2.598076 0.000000 107
+M  V30 8 C -1.500000 -2.598076 0.000000 108
+M  V30 9 C -0.750000 -1.299038 0.000000 109
+M  V30 10 C 0.750000 -1.299038 0.000000 110
+M  V30 END ATOM
+M  V30 BEGIN BOND
+M  V30 1 1 1 2
+M  V30 2 1 2 3
+M  V30 3 1 4 3 CFG=3
+M  V30 4 1 4 5
+M  V30 5 1 5 6
+M  V30 6 1 6 7
+M  V30 7 1 7 8
+M  V30 8 1 9 8 CFG=3
+M  V30 9 1 9 10
+M  V30 10 1 10 1
+M  V30 11 1 9 4
+M  V30 END BOND
+M  V30 END CTAB
+M  END
+>  <BURETTE_METADATA_V1>
+{"version":1,"atoms":[{"id":"54d9d9ee-de43-55bd-9685-2c905c49dcb2","atomName":"SRC0","residue":{"name":"ORC","sequence":11,"chain":"Q","insertionCode":""}},{"id":"716b319a-b51b-5f72-bdd7-453e92e009ca","atomName":"SRC1","residue":{"name":"ORC","sequence":11,"chain":"Q","insertionCode":""}},{"id":"db687371-f79c-5790-8650-ac2165f4bad5","atomName":"SRC2","residue":{"name":"ORC","sequence":11,"chain":"Q","insertionCode":""}},{"id":"0b4f2542-be20-5376-b3fa-3d4745885674","atomName":"SRC3","residue":{"name":"ORC","sequence":11,"chain":"Q","insertionCode":""}},{"id":"1d40601d-05f0-53fd-ac5b-d1a65e2223f2","atomName":"SRC4","residue":{"name":"ORC","sequence":11,"chain":"Q","insertionCode":""}},{"id":"312ad352-9bb0-5d32-8af4-e03fc4056b4f","atomName":"SRC5","residue":{"name":"ORC","sequence":11,"chain":"Q","insertionCode":""}},{"id":"5cfe0fc1-d20a-575f-add0-0352bcb1fd89","atomName":"SRC6","residue":{"name":"ORC","sequence":11,"chain":"Q","insertionCode":""}},{"id":"a54f4806-cf89-589a-ad80-76586fad23f8","atomName":"SRC7","residue":{"name":"ORC","sequence":11,"chain":"Q","insertionCode":""}},{"id":"fb6402bd-cfd2-5333-80b8-5f35208ddc95","atomName":"SRC8","residue":{"name":"ORC","sequence":11,"chain":"Q","insertionCode":""}},{"id":"51a3bb4c-179b-546e-ad85-88c14d205c1e","atomName":"SRC9","residue":{"name":"ORC","sequence":11,"chain":"Q","insertionCode":""}}],"conformer":{"id":"9d723f26-ce77-506d-8780-13e354ee06af","label":"Original 2D reference"}}
+
+>  <FOREIGN_MULTILINE>
+retain this value exactly
+> <Not a new data field>
+UTF-8: αβ
+
+$$$$

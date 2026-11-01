@@ -4,6 +4,7 @@ import { measureGeometry } from '../../../../../scripts/molecular-geometry.js';
 import type { MolecularAtom, Vec3 } from './types';
 import { appendHydrogens } from './hydrogen-geometry';
 import { serializePhysicalMolfile } from './molecule-serialization';
+import { readUnspecifiedMolfileStereo, retainUnknownStereo } from './molecule-stereochemistry';
 import { optimizeWithMethod } from './optimization';
 import type { MinimizerMethod } from './minimizer';
 import { createForceField, type MolecularForceField } from './forcefield';
@@ -35,15 +36,28 @@ function expandedAtomMap(structure: MolecularStructure, count: number): number[]
 function toOcl(structure: MolecularStructure, requireComplete = true): Molecule {
   checkSize(structure.atoms.length);
   if (requireComplete && !structure.graphComplete) throw new Error('XYZ does not specify bond orders or charges. Provide SMILES or SDF before this calculation.');
-  const mol = Molecule.fromMolfile(structure.molfile);
+  const { molecule: mol, map: sourceMap } = Molecule.fromMolfileWithAtomMap(structure.molfile);
   mol.ensureHelperArrays(Molecule.cHelperNeighbours);
   if (mol.getAllAtoms() !== structure.atoms.length) throw new Error('Molecular graph and coordinates have different atom counts.');
   if (structure.atomMap && (structure.atomMap.length !== structure.atoms.length || new Set(structure.atomMap).size !== structure.atoms.length || structure.atomMap.some(i => !Number.isInteger(i) || i < 0 || i >= structure.atoms.length))) throw new Error('Invalid molecular atom mapping.');
+  const diagram = !mol.is3D() && structure.atoms.every(a => a.z === 0);
+  // Resolve diagram stereo before XYZ writeback invalidates its source-frame helpers.
+  const unspecified = readUnspecifiedMolfileStereo(mol, structure.molfile, sourceMap);
   structure.atoms.forEach((a, i) => {
     const index = structure.atomMap?.[i] ?? i;
     if (a.element !== mol.getAtomLabel(index) || ![a.x, a.y, a.z].every(Number.isFinite)) throw new Error('Molecular graph and atom identities do not match.');
     mol.setAtomX(index, a.x); mol.setAtomY(index, a.y); mol.setAtomZ(index, a.z);
   });
+  if (diagram) {
+    // Encode the retained diagram parity in the physical drawing frame.
+    mol.setParitiesValid(0);
+    mol.setStereoBondsFromParity();
+  }
+  if (unspecified.atoms.length || unspecified.bonds.length) {
+    // Changed 3D coordinates own known stereo; only explicit unknown constraints survive from source.
+    if (!diagram) mol.ensureHelperArrays(Molecule.cHelperCIP);
+    retainUnknownStereo(mol, unspecified.atoms, unspecified.bonds);
+  }
   return mol;
 }
 
@@ -196,6 +210,8 @@ export function searchConformers(structure: MolecularStructure, options: { count
   const count = options.count ?? 8;
   if (!Number.isInteger(count) || count < 1 || count > 32) throw new Error('Request 1–32 conformers.');
   const mol = toOcl(structure), generator = new ConformerGenerator(options.seed ?? 1);
+  const unknownAtoms = Array.from({ length: mol.getAllAtoms() }, (_, i) => i).filter(i => mol.isAtomConfigurationUnknown(i));
+  const unknownBonds = Array.from({ length: mol.getAllBonds() }, (_, b) => b).filter(b => mol.getBondParity(b) === Molecule.cBondParityUnknown);
   checkHydrogenExpansion(mol);
   if (!generator.initializeConformers(mol, { maxTorsionSets: 256 })) throw new Error('Could not initialize conformer generation.');
   const candidates: { molecule: MolecularStructure; energy: number; unit: 'kcal/mol' }[] = [];
@@ -205,6 +221,11 @@ export function searchConformers(structure: MolecularStructure, options: { count
     checkSize(conformer.getAllAtoms());
     const ff = createForceField(conformer, options.forceField); ff.minimise({ maxIts: 150 });
     const energy = createForceField(conformer, options.forceField).getTotalEnergy();
+    if (unknownAtoms.length || unknownBonds.length) {
+      // Keep the sampled pose and actual known parity, but retain unknown source constraints.
+      conformer.ensureHelperArrays(Molecule.cHelperCIP);
+      retainUnknownStereo(conformer, unknownAtoms, unknownBonds);
+    }
     if (Number.isFinite(energy)) candidates.push({ molecule: snapshot(conformer, structure.title, structure.graphSource, structure.graphComplete, expandedAtomMap(structure, conformer.getAllAtoms())), energy, unit: 'kcal/mol' });
   }
   if (!candidates.length) throw new Error('No conformers could be generated.');

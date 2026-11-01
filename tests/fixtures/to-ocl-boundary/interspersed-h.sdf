@@ -1,0 +1,38 @@
+interspersed-h
+     RDKit          2D
+
+  0  0  0  0  0  0  0  0  0  0999 V3000
+M  V30 BEGIN CTAB
+M  V30 COUNTS 9 8 0 0 0
+M  V30 BEGIN ATOM
+M  V30 1 H -1.299038 -2.250000 0.000000 101
+M  V30 2 O -0.000000 -1.500000 0.000000 102
+M  V30 3 C 0.000000 0.000000 0.000000 103
+M  V30 4 H 1.500000 0.000000 0.000000 104
+M  V30 5 H -1.500000 0.000000 0.000000 105
+M  V30 6 C 0.000000 1.500000 0.000000 106
+M  V30 7 H -1.500000 1.500000 0.000000 107
+M  V30 8 H 1.500000 1.500000 0.000000 108
+M  V30 9 H 0.000000 3.000000 0.000000 109
+M  V30 END ATOM
+M  V30 BEGIN BOND
+M  V30 1 1 1 2
+M  V30 2 1 2 3
+M  V30 3 1 3 4
+M  V30 4 1 3 5
+M  V30 5 1 3 6
+M  V30 6 1 6 7
+M  V30 7 1 6 8
+M  V30 8 1 6 9
+M  V30 END BOND
+M  V30 END CTAB
+M  END
+>  <BURETTE_METADATA_V1>
+{"version":1,"atoms":[{"id":"1a92dbe4-d34c-50bc-b12d-d0f5424ed709","atomName":"SRC0","residue":{"name":"ORC","sequence":12,"chain":"Q","insertionCode":""}},{"id":"2958c8c3-87e9-5691-ac82-63d8145a689e","atomName":"SRC1","residue":{"name":"ORC","sequence":12,"chain":"Q","insertionCode":""}},{"id":"e8808a16-9996-59d9-b8b7-23937119a1c7","atomName":"SRC2","residue":{"name":"ORC","sequence":12,"chain":"Q","insertionCode":""}},{"id":"5fdca496-6a1e-5267-adf3-8f0fe7bceca2","atomName":"SRC3","residue":{"name":"ORC","sequence":12,"chain":"Q","insertionCode":""}},{"id":"3aa454fb-1f1b-566a-bdc5-e2c6eb45e764","atomName":"SRC4","residue":{"name":"ORC","sequence":12,"chain":"Q","insertionCode":""}},{"id":"e6d6cd2c-604c-55c8-b131-3d9cc03e975d","atomName":"SRC5","residue":{"name":"ORC","sequence":12,"chain":"Q","insertionCode":""}},{"id":"eb37feb5-167b-5e9a-a7c1-838e7b71569e","atomName":"SRC6","residue":{"name":"ORC","sequence":12,"chain":"Q","insertionCode":""}},{"id":"dc3e8f0c-7107-5367-af11-8831306159e2","atomName":"SRC7","residue":{"name":"ORC","sequence":12,"chain":"Q","insertionCode":""}},{"id":"63f4b295-18e3-5d63-b681-eff00a4f2eb1","atomName":"SRC8","residue":{"name":"ORC","sequence":12,"chain":"Q","insertionCode":""}}],"conformer":{"id":"1507e410-e383-51f8-b07a-3f5caeacca6d","label":"Original 2D reference"}}
+
+>  <FOREIGN_MULTILINE>
+retain this value exactly
+> <Not a new data field>
+UTF-8: αβ
+
+$$$$
