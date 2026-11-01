@@ -27,23 +27,18 @@ PubChem primary records anchor the exceptional absolute configurations:
 They are respectively 2S, 2R, 2S/3R and 2S/3S. The compact reviewed structures
 and formulas are retained in `tests/fixtures/peptide/references.json`.
 
-## Upstream behavior and remaining work
+## Relation to the 3D builder
 
-The reference is OpenChemistry/avogadrolibs commit
+This helper is graph-only. The Avogadro-style builder is `peptide-geometry.ts`, and
+[peptide-geometry.md](peptide-geometry.md) covers it: internal-coordinate placement
+with phi/psi presets, trans omega, NH2/NH3+ and CO2H/CO2− termini, CCD residue and
+atom identity, chain IDs, the worker and dialog, and independent acceptance. Its
+reference is OpenChemistry/avogadrolibs commit
 `d250eb3c62a61470b1e0cdf205dcfe26b06f991f`,
-[`insertpeptide.cpp`](https://github.com/OpenChemistry/avogadrolibs/blob/d250eb3c62a61470b1e0cdf205dcfe26b06f991f/avogadro/qtplugins/insertpeptide/insertpeptide.cpp)
-and its adjacent `insertpeptidedialog.ui`. That builder places atoms from
-internal coordinates, exposes phi/psi and secondary-structure presets, uses
-trans omega, and records residue/chain identity. Its terminal choices include
-NH2/NH3+ and CO2H/CO2−, which differ from this helper's neutral capped graphs.
-This is an interface/behavior reference, not a port of its coordinate algorithm.
-
-A later coherent stage must place a reviewed 3D backbone, honor phi/psi/omega
-and handedness without moving a requested source pose, define charged termini
-and residue identity, and connect the existing builder/worker/open-document flow.
-It needs stale/cancel and actual Browser build/export/reopen acceptance. A generic
-SMILES conformer or a D/L control does not prove those requirements or complete
-Avogadro stage 7.
+[`insertpeptide.cpp`](https://github.com/OpenChemistry/avogadrolibs/blob/d250eb3c62a61470b1e0cdf205dcfe26b06f991f/avogadro/qtplugins/insertpeptide/insertpeptide.cpp).
+The 3D builder's termini differ from this helper's neutral acetyl/amide caps, and
+its Arg/Lys/His side chains are the charged CCD forms. A generic SMILES conformer
+from this graph is not a substitute for that builder.
 
 ## Validation
 
