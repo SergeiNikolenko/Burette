@@ -7,9 +7,11 @@ import { snapshotMolecule, type MolecularStructure } from '../apps/desktop/src/l
 
 const sample = readFileSync(new URL('../samples/collections/sdf/single.sdf', import.meta.url), 'utf8');
 const add = (molecule: MolecularStructure) => runChemistryTask({ action: 'add-hydrogens', molecule });
+// Bond endpoints are unordered; OCL lists the stereocenter first on CFG=2 (either) bonds.
+const undirected = (bonds: MolecularStructure['bonds']) => bonds.map(({ a, b, ...rest }) => ({ ...rest, a: Math.min(a, b), b: Math.max(a, b) }));
 function check(before: MolecularStructure, after: MolecularStructure) {
   expect(after.atoms.slice(0, before.atoms.length)).toEqual(before.atoms);
-  expect(after.bonds.slice(0, before.bonds.length)).toEqual(before.bonds);
+  expect(undirected(after.bonds.slice(0, before.bonds.length))).toEqual(undirected(before.bonds));
   const distances: number[] = [];
   for (let i = before.atoms.length; i < after.atoms.length; i++) {
     const bonds = after.bonds.filter(b => b.a === i || b.b === i);

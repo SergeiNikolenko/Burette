@@ -69,7 +69,7 @@ test("steps preserve frame geometry, energies and frame modes while final-only d
   assert.ok(result); const { record, document } = result, lines = record.text.trimEnd().split("\n");
   assert.deepEqual([parseXyz(lines.slice(0,3).join("\n")).atoms, parseXyz(lines.slice(3,6).join("\n")).atoms], science.frames.map(frame => frame.atoms));
   assert.match(lines[1], /^Step 1 Energy=-1 Hartree import-/); assert.equal(lines[4], "Step 2 Energy=-2 Hartree");
-  assert.deepEqual(scientificStateFor(document.id, record.text).revision?.document, { format: science.format, atoms: science.frames[0].atoms, frames: science.frames, modes: [], orbitals: [], converged: true });
+  assert.deepEqual(scientificStateFor(document.id, record.text).revision?.document, { format: science.format, atoms: science.frames[0].atoms, referenceFrameIndex: 0, frames: science.frames, modes: [], orbitals: [], converged: true });
 });
 
 test("failed, empty, ambiguous and already-closed opens release only their own registration", async () => {

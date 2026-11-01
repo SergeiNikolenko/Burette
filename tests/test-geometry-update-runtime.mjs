@@ -111,7 +111,7 @@ try {
 
   // Exercise the actual viewer dispatcher and its real message ACK wrapper.
   const source = readFileSync(new URL('../PreviewExtension/Web/viewer.js', import.meta.url), 'utf8');
-  const declaration = source.match(/\n  async function executeBuretteAgentAction\(action\) \{[\s\S]*?\n  \}/u)[0];
+  const declaration = source.match(/\n  async function executeBuretteAgentAction\(action, requestOwner\) \{[\s\S]*?\n  \}/u)[0];
   const globals = source.slice(source.indexOf('  let geometryPreviewRequest ='), source.indexOf(declaration));
   const start = source.indexOf("  window.addEventListener('message', event => {", source.indexOf(declaration));
   const end = source.indexOf('  window.BuretteViewerActions =', start);

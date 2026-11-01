@@ -56,7 +56,7 @@ for (const [name, text, format, layout] of cases) test(`actual scientific open p
   expect([document.extension, document.renderer, document.virtual]).toEqual(["xyz", "molstar", true]);
   expect(state.revision?.document.format).toBe(format);
   expect(state.revision?.document).toEqual(layout === "final" ? parsed : {
-    format: parsed.format, atoms: parsed.frames[0].atoms, frames: parsed.frames, modes: [], orbitals: [], converged: parsed.converged,
+    format: parsed.format, atoms: parsed.frames[0].atoms, referenceFrameIndex: 0, frames: parsed.frames, modes: [], orbitals: [], converged: parsed.converged,
   });
   // XYZ serialization canonicalizes signed zero; scientific data above retains its exact values.
   const geometry = (layout === "final" ? [parsed.atoms] : parsed.frames.map(frame => frame.atoms)).map(atoms => atoms.map(({ element, x, y, z }) => ({ element, x: x + 0, y: y + 0, z: z + 0 })));

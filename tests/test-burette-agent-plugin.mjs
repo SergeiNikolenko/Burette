@@ -334,7 +334,8 @@ assert.equal(packedFiles.has("scripts/rdkit_conformer.py"), false, "browser shel
 
 for (const entrypoint of ["browser-shell-dist/index.html", "browser-shell-dist/index.js"]) {
   const source = await read(entrypoint);
-  for (const match of source.matchAll(/["'`](?:\.\/)?(assets\/[^"'`?#\s]+)["'`]/gu)) {
+  // Packaged files carry an extension; MOLX archive entry prefixes such as `assets/burette-science-` do not.
+  for (const match of source.matchAll(/["'`](?:\.\/)?(assets\/[^"'`?#\s]+\.[a-z0-9]+)["'`]/gu)) {
     const reference = path.posix.normalize(match[1]);
     if (!reference.startsWith("assets/")) continue;
     const referencedAsset = path.posix.join("browser-shell-dist", reference);

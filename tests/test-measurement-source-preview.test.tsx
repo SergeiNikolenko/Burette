@@ -97,11 +97,11 @@ async function fixture(format = "mol") {
     const next = await viewer(staged.raw + (foreign ? "\n" : ""), format); plugins.push(next.plugin);
     const frame = attach(next); frame.dataset.sourcePreviewRole = "staging";
     await act(async () => controller.stagingLoaded(doc, staged.candidate.identity!, frame));
-    const startup = extract("startMolstar"), restore = /    await restoreMeasurementPreview\(viewer, config\);/u.exec(startup)!;
+    const startup = extract("startMolstar"), restore = /    (?:const topologyCamera = )?await restoreMeasurementPreview\(viewer, config\);/u.exec(startup)!;
     const ready = /    \{\n      const poseCount =[\s\S]*?\n    \}/u.exec(startup)!;
     // Execute actual startup statements in their original source order: the test does not supply restore-before-ready ordering.
     const boundary = [restore, ready].sort((a, b) => a.index - b.index).map(match => match[0]).join("\n");
-    const run = new Function("window", "measurementCoordinateRuntime", "normalizeRenderer", "currentMolstarStructureCount", "setStatus", "setTimeout", "hideStatus", "isQuickLookHost", `${extract("restoreMeasurementPreview")};${extract("previewReadyPayload")};${extract("molstarReadyPayload")};return async (viewer,config,prepared)=>{${boundary}};`)(scope, runtimeGetter, value => value, v => v.plugin.managers.structure.hierarchy.current.structures.length, () => {}, callback => callback(), payload => {
+    const run = new Function("activeMolstarViewer", "window", "measurementCoordinateRuntime", "normalizeRenderer", "currentMolstarStructureCount", "setStatus", "setTimeout", "hideStatus", "isQuickLookHost", `${extract("restoreMeasurementPreview")};${extract("previewReadyPayload")};${extract("molstarReadyPayload")};return async (viewer,config,prepared)=>{${boundary}};`)(() => next, scope, runtimeGetter, value => value, v => v.plugin.managers.structure.hierarchy.current.structures.length, () => {}, callback => callback(), payload => {
       readyCounts.push(next.plugin.managers.structure.measurement.state.distances.length);
       window.dispatchEvent(new MessageEvent("message", { source: frame.contentWindow, data: { source: "burette-viewer", body: { type: "ready", ...payload } } }));
     }, () => false);
@@ -189,15 +189,18 @@ test("direct source APIs cannot mutate or preview another document's same-path s
 }, 10_000);
 
 test("a closed source preview cannot pause a new same-path session at the same revision", async () => {
-  const previousConfirm = browser.confirm; browser.confirm = () => true;
-  try { for (const removeFrame of [false, true]) {
+  for (const removeFrame of [false, true]) {
     const view = await fixture();
     try {
       view.holdCapture(); await view.change(view.changed);
       let pending!: Promise<void>;
       await act(async () => { pending = view.controller.applyPreview(view.doc) as Promise<void>; });
       await until(() => view.captureHeld);
-      await act(async () => { expect(await view.controller.closeDocuments([view.doc.id])).toBe(true); });
+      // Unsaved source close is answered in the application dialog.
+      let closing!: Promise<boolean>;
+      await act(async () => { closing = view.controller.closeDocuments([view.doc.id]); });
+      await act(async () => { view.controller.closeConfirmation!.discard(); });
+      await act(async () => { expect(await closing).toBe(true); });
       const replacement = await view.replace({ ...view.doc, id: view.doc.id + "-replacement", runtimePath: "replacement runtime" });
       const nextSource = view.text.replace("Preview", "Replacement"); inputs.set(view.doc.path, nextSource);
       await act(async () => { await view.controller.beginEditing(replacement); view.controller.updateDraft(replacement, nextSource + "\n", { previewApplied: true }); });
@@ -209,5 +212,5 @@ test("a closed source preview cannot pause a new same-path session at the same r
       expect(view.controller.sessionForDocument(replacement)?.previewState).toBe("current");
       expect(view.controller.sessionForDocument(replacement)?.content).toBe(nextSource + "\n");
     } finally { await view.close(); }
-  } } finally { browser.confirm = previousConfirm; }
+  }
 }, 10_000);

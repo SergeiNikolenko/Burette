@@ -13,11 +13,13 @@ const doc: ViewerDocument = { byteCount: source.length, id: "copy", title: "mole
 let native = false;
 const commands: { command: string; args: Record<string, unknown> }[] = [], downloads: { blob: Blob; name: string | null }[] = [];
 const revision = { modifiedAt: 1, byteCount: source.length, contentHash: "original" };
-mock.module("../apps/desktop/src/lib/tauri", () => ({ isTauriRuntime: () => native }));
-mock.module("../apps/desktop/src/lib/structure-text", () => ({ readStructureTextDocument: async () => ({ content: source, truncated: false }) }));
+const tauri = await import("../apps/desktop/src/lib/tauri");
+const structureText = await import("../apps/desktop/src/lib/structure-text");
 const browserDocuments = await import("../apps/desktop/src/lib/browser-dev-documents");
+mock.module("../apps/desktop/src/lib/tauri", () => ({ ...tauri, isTauriRuntime: () => native }));
+mock.module("../apps/desktop/src/lib/structure-text", () => ({ ...structureText, readStructureTextDocument: async () => ({ content: source, truncated: false }) }));
 mock.module("../apps/desktop/src/lib/browser-dev-documents", () => ({ ...browserDocuments, openBrowserDevTextDocument: async () => doc }));
-mock.module("../apps/desktop/src/hooks/use-deferred-viewer-runtime", () => ({ prepareDeferredViewerRuntime: async (document: ViewerDocument) => document }));
+mock.module("../apps/desktop/src/hooks/use-deferred-viewer-runtime", () => ({ useDeferredViewerRuntime: (document: ViewerDocument) => document, prepareDeferredViewerRuntime: async (document: ViewerDocument) => document }));
 const core = await import("@tauri-apps/api/core");
 mock.module("@tauri-apps/api/core", () => ({ ...core, invoke: async (command: string, args: Record<string, unknown>) => {
   commands.push({ command, args });

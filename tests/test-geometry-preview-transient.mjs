@@ -124,7 +124,7 @@ try {
   window.BuretteAgent = { run: () => { throw new Error('Preview must not change agent selection'); } };
   // Execute the real receiver body, with only its asynchronous script transport held.
   const source = readFileSync(new URL('../PreviewExtension/Web/viewer.js', import.meta.url), 'utf8');
-  const declaration = source.match(/\n  async function executeBuretteAgentAction\(action\) \{[\s\S]*?\n  \}/u)[0];
+  const declaration = source.match(/\n  async function executeBuretteAgentAction\(action, requestOwner\) \{[\s\S]*?\n  \}/u)[0];
   const globals = source.slice(source.indexOf('  let geometryPreviewRequest ='), source.indexOf(declaration));
   let active = viewer, loads = 0, loading = gate();
   let load = async () => { loads++; loading.start(); await loading.waiting; window.BuretteGeometryPreview = runtime; };

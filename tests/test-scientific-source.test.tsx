@@ -1,7 +1,10 @@
 import { plugin } from "bun";
 import { afterAll, expect, mock, test } from "bun:test";
 import { transformSync } from "@babel/core";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { Window } from "happy-dom";
 import React, { act, useLayoutEffect } from "react";
 import type { ViewerDocument } from "../apps/desktop/src/types";
@@ -36,9 +39,13 @@ const { adoptLogicalSource, releaseClosedScienceSessions } = await import("../ap
 const { parseScientificFile } = await import('../apps/desktop/src/lib/molecular-workbench/quantum');
 const { useScientificDocument, useTrajectoryFrame, addDocumentInternalCoordinates, recordImportedRevision, releaseClosedImports, useImportedRevisions } = await import('../apps/desktop/src/lib/workbench/source');
 type Request = { action: string; name: string; text: string };
-const workerBuild = await Bun.build({ entrypoints: [new URL('../apps/desktop/src/lib/workbench/reader-worker.ts', import.meta.url).pathname], target: 'browser' });
+// Production starts this reader as a module worker; its bundle (openchemlib) uses import.meta, so run it as one.
+const workerBuild = await Bun.build({ entrypoints: [new URL('../apps/desktop/src/lib/workbench/reader-worker.ts', import.meta.url).pathname], target: 'browser', format: 'esm' });
 if (!workerBuild.success) throw new AggregateError(workerBuild.logs, 'Reader worker build failed');
-const workerCode = await workerBuild.outputs[0].text();
+const workerDirectory = mkdtempSync(join(tmpdir(), 'scientific-source-reader-')), workerFile = pathToFileURL(join(workerDirectory, 'worker.js'));
+await Bun.write(workerFile.pathname, workerBuild.outputs[0]);
+afterAll(() => rmSync(workerDirectory, { recursive: true, force: true }));
+const NativeWorker = globalThis.Worker;
 const jobs: ReaderTransport[] = [];
 class ReaderTransport {
   request!: Request; onmessage: ((event: { data: unknown }) => void) | null = null; onerror = null; terminated = false;
@@ -46,10 +53,15 @@ class ReaderTransport {
   postMessage(request: Request) { this.request = request; }
   terminate() { this.terminated = true; }
   async deliver() {
-    const scope = { onmessage: null as unknown as (event: { data: Request }) => Promise<void>,
-      postMessage: (data: unknown) => this.onmessage?.({ data }) };
-    new Function('globalThis', workerCode)(scope);
-    await scope.onmessage({ data: this.request });
+    const worker = new NativeWorker(workerFile, { type: 'module' });
+    try {
+      const data = await new Promise<unknown>((resolve, reject) => {
+        worker.onmessage = event => resolve(event.data);
+        worker.onerror = event => reject(event.error ?? new Error(event.message));
+        worker.postMessage(this.request);
+      });
+      this.onmessage?.({ data });
+    } finally { worker.terminate(); }
   }
 }
 previous.set('Worker', Object.getOwnPropertyDescriptor(globalThis, 'Worker'));

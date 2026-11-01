@@ -68,7 +68,7 @@ import type { ShellActions } from "../apps/desktop/src/components/types";
 
 const zmat = "O\r\nX 1 1.0\r\nH 1 R 2 A\r\nH 1 R 2 A 3 180\r\n\r\nR = 0.9572\r\nA = 52.26\r\n";
 const source = readFileSync(new URL("../PreviewExtension/Web/viewer.js", import.meta.url), "utf8");
-const declaration = source.match(/\n  async function executeBuretteAgentAction\(action\) \{[\s\S]*?\n  \}/u)![0];
+const declaration = source.match(/\n  async function executeBuretteAgentAction\(action, requestOwner\) \{[\s\S]*?\n  \}/u)![0];
 const globals = source.slice(source.indexOf("  let geometryPreviewRequest ="), source.indexOf(declaration));
 const start = source.indexOf("  window.addEventListener('message', event => {", source.indexOf(declaration));
 const end = source.indexOf("  window.BuretteViewerActions =", start);

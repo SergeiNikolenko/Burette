@@ -28,8 +28,13 @@ const source = ["Pair publication", "Burette", "", "  3  2  0  0  0  0          
 const sourceOverrides = new Map<string, string>();
 const sourceFor = (path: string) => sourceOverrides.get(path) ?? (path.endsWith(".mol") ? source.replace("$$$$\n", "") : source);
 export const holds: { read: boolean; graph: boolean; releaseRead: (() => void) | null; releaseWorker: (() => void) | null } = { read: false, graph: false, releaseRead: null, releaseWorker: null };
-mock.module("../apps/desktop/src/lib/tauri", () => ({ isTauriRuntime: () => false }));
+const tauri = await import("../apps/desktop/src/lib/tauri");
+const structureText = await import("../apps/desktop/src/lib/structure-text");
+const browserDevDocuments = await import("../apps/desktop/src/lib/browser-dev-documents");
+const selection = await import("../apps/desktop/src/lib/workbench/selection");
+mock.module("../apps/desktop/src/lib/tauri", () => ({ ...tauri, isTauriRuntime: () => false }));
 mock.module("../apps/desktop/src/lib/structure-text", () => ({
+  ...structureText,
   readStructureText: async (path: string) => sourceFor(path),
   readStructureTextDocument: async (path: string) => {
     if (holds.read) { holds.read = false; await new Promise<void>(resolve => { holds.releaseRead = resolve; }); }
@@ -37,11 +42,12 @@ mock.module("../apps/desktop/src/lib/structure-text", () => ({
   },
 }));
 mock.module("../apps/desktop/src/lib/browser-dev-documents", () => ({
+  ...browserDevDocuments,
   isBrowserDraftSource: () => false,
   openBrowserDevTextDocument: async () => { throw new Error("Preview was not requested in this test."); },
 }));
-mock.module("../apps/desktop/src/hooks/use-deferred-viewer-runtime", () => ({ prepareDeferredViewerRuntime: async (document: ViewerDocument) => document }));
-mock.module("../apps/desktop/src/lib/workbench/selection", () => ({ forgetViewerAtomSelection() {} }));
+mock.module("../apps/desktop/src/hooks/use-deferred-viewer-runtime", () => ({ useDeferredViewerRuntime: (document: ViewerDocument) => document, prepareDeferredViewerRuntime: async (document: ViewerDocument) => document }));
+mock.module("../apps/desktop/src/lib/workbench/selection", () => ({ ...selection, forgetViewerAtomSelection() {} }));
 const NativeWorker = globalThis.Worker;
 class HeldWorker extends NativeWorker {
   postMessage(request: unknown) {

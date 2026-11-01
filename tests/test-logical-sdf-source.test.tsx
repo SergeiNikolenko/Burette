@@ -16,13 +16,16 @@ for (const key of ["document", "navigator", "HTMLElement", "HTMLIFrameElement", 
 Object.assign(globalThis, { window: browser, IS_REACT_ACT_ENVIRONMENT: true });
 let native = false;
 const calls: [string, any][] = [];
-mock.module("../apps/desktop/src/lib/tauri", () => ({ isTauriRuntime: () => native, trackTauriListener: () => () => {} }));
-mock.module("@tauri-apps/api/core", () => ({ invoke: async (command: string, body: any) => {
+const tauri = await import("../apps/desktop/src/lib/tauri");
+const tauriCore = await import("@tauri-apps/api/core");
+const structureText = await import("../apps/desktop/src/lib/structure-text");
+mock.module("../apps/desktop/src/lib/tauri", () => ({ ...tauri, isTauriRuntime: () => native, trackTauriListener: () => () => {} }));
+mock.module("@tauri-apps/api/core", () => ({ ...tauriCore, invoke: async (command: string, body: any) => {
   calls.push([command, body]);
   if (command === "open_text_structure") return { id: "candidate", runtimePath: "<html>native candidate</html>" };
   throw new Error(`Unexpected archive file I/O: ${command}`);
 } }));
-mock.module("../apps/desktop/src/lib/structure-text", () => ({ readStructureText: async () => { throw new Error("Archive read as text"); }, readStructureTextDocument: async () => { throw new Error("Archive read as text"); } }));
+mock.module("../apps/desktop/src/lib/structure-text", () => ({ ...structureText, readStructureText: async () => { throw new Error("Archive read as text"); }, readStructureTextDocument: async () => { throw new Error("Archive read as text"); } }));
 mock.module("../apps/desktop/src/hooks/use-deferred-viewer-runtime", () => ({ prepareDeferredViewerRuntime: async (document: ViewerDocument) => document, useDeferredViewerRuntime: (document: ViewerDocument) => document }));
 const { defaultPreferences } = await import("../apps/desktop/src/stores/settings-store");
 const { useSourceEditingController } = await import("../apps/desktop/src/hooks/use-source-editing");

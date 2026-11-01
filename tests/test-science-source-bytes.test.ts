@@ -12,7 +12,7 @@ mock.module("@tauri-apps/api/core", () => ({ invoke: async (command: string, arg
 } }));
 mock.module("../apps/desktop/src/lib/tauri", () => ({ isTauriRuntime: () => native }));
 const { readSceneDocumentBytes } = await import("../apps/desktop/src/lib/science-session/source-bytes");
-const { saveBrowserImport } = await import("../apps/desktop/src/lib/browser-import-storage");
+const { openBrowserImportDatabase, saveBrowserImport } = await import("../apps/desktop/src/lib/browser-import-storage");
 const { writeBrowserDevVirtualTextDocument } = await import("../apps/desktop/src/lib/browser-dev-documents");
 const { registerCompressedSource } = await import("../apps/desktop/src/lib/compressed-files/sources");
 const { supportedCompressedName } = await import("../apps/desktop/src/lib/compressed-files/formats");
@@ -73,14 +73,12 @@ test("server streaming enforces observed bytes and cancels the reader on overflo
 
 test("a corrupt persisted original cannot be hidden by a virtual draft or HTTP fallback", async () => {
   const path = "/OpenedFiles/corrupt-original.sdf";
-  const db = await new Promise<IDBDatabase>((resolve, reject) => {
-    const request = factory.open("burette-browser-imports", 1); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
-  });
+  const db = await openBrowserImportDatabase();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction("files", "readwrite"); tx.objectStore("files").put({ path, name: "corrupt-original.sdf", kind: "text", file: "not a Blob" });
     tx.oncomplete = () => resolve(); tx.onabort = () => reject(tx.error);
   });
-  db.close(); writeBrowserDevVirtualTextDocument(path, "current draft");
+  writeBrowserDevVirtualTextDocument(path, "current draft");
   let fetched = false; globalThis.fetch = Object.assign(async () => { fetched = true; return new Response("wrong original"); }, { preconnect: previousFetch.preconnect });
   await expect(readSceneDocumentBytes(document(path))).rejects.toThrow("could not be restored");
   expect(fetched).toBe(false);

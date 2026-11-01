@@ -101,10 +101,11 @@ assert.deepEqual(resolveDockDropPaths(
 
 assert.deepEqual(defaultDockTabs("right").map((tab) => tab.kind), ["inspector", "text", "files"]);
 assert.deepEqual(defaultDockTabs("bottom").map((tab) => tab.kind), ["files", "chemical-space", "jobs"]);
-assert.deepEqual(dockTabCatalog("right"), ["scene", "xyzrender", "chemical-space", "inspector", "story", "text", "files"]);
+// Scientific tools are catalogued here; DockPanel shows them only for applicable content.
+assert.deepEqual(dockTabCatalog("right"), ["scene", "xyzrender", "chemical-space", "inspector", "story", "text", "vibrations", "scientific-spectra", "orbitals", "geometry", "structure-edit", "files"]);
 // Structure Basket, Compare and Review render and accept drops but used to be
 // reachable from no catalog; they now sit in the bottom dock's add menu.
-assert.deepEqual(dockTabCatalog("bottom"), ["files", "chemical-space", "jobs", "folding", "spectrum", "structure-basket", "compare", "review", "logs"]);
+assert.deepEqual(dockTabCatalog("bottom"), ["plots", "files", "chemical-space", "jobs", "folding", "spectrum", "structure-basket", "compare", "review", "logs"]);
 for (const kind of ["xyzrender", "inspector", "text", "files", "folding", "spectrum"]) {
   assert.equal(dockTabLoadsDroppedDocument(kind), true, kind);
 }

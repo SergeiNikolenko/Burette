@@ -23,15 +23,17 @@ afterAll(async () => { for (const [key, descriptor] of previous) { if (descripto
 const xyz = "3\nwater\nO 0 0 0\nH 0.9572 0 0\nH -0.24 0.927 0\n", changed = xyz.replace("0.9572", "1.7");
 let waitForRead: Promise<void> | null = null, waitForBuild: Promise<void> | null = null, built = 0;
 const tauri = await import("../apps/desktop/src/lib/tauri");
+const structureText = await import("../apps/desktop/src/lib/structure-text");
 mock.module("../apps/desktop/src/lib/tauri", () => ({ ...tauri, isTauriRuntime: () => false }));
-mock.module("../apps/desktop/src/lib/structure-text", () => ({ readStructureTextDocument: async () => { await waitForRead; return { content: xyz, truncated: false }; } }));
+mock.module("../apps/desktop/src/lib/structure-text", () => ({ ...structureText, readStructureTextDocument: async () => { await waitForRead; return { content: xyz, truncated: false }; } }));
 const browserDocuments = await import("../apps/desktop/src/lib/browser-dev-documents");
 mock.module("../apps/desktop/src/lib/browser-dev-documents", () => ({ ...browserDocuments, openBrowserDevTextDocument: async () => {
   const serial = ++built; await waitForBuild; return { runtimePath: `<html>candidate ${serial}</html>` };
 } }));
 mock.module("../apps/desktop/src/hooks/use-deferred-viewer-runtime", () => ({ prepareDeferredViewerRuntime: async (document: ViewerDocument) => document, useDeferredViewerRuntime: () => ({}) }));
 mock.module("../apps/desktop/src/hooks/use-settings", () => ({ useViewerPreferences: () => ({}) }));
-mock.module("../apps/desktop/src/lib/web-demo-workspace", () => ({ isWebDemoHeroEmbed: () => false }));
+const webDemoWorkspace = await import("../apps/desktop/src/lib/web-demo-workspace");
+mock.module("../apps/desktop/src/lib/web-demo-workspace", () => ({ ...webDemoWorkspace, isWebDemoHeroEmbed: () => false }));
 mock.module("../apps/desktop/src/lib/hosted-mcp-widget", () => ({ isHostedMcpWidget: () => false }));
 const { createRoot } = await import("react-dom/client");
 const { ViewerFrame } = await import("../apps/desktop/src/components/editor-area/viewer-frame");

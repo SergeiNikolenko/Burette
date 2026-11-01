@@ -21,7 +21,9 @@ Object.assign(globalThis, { window: browser, IS_REACT_ACT_ENVIRONMENT: true });
 const source = "ATOM      1  C   MOL A   1       0.000   0.000   0.000\n";
 let waitForRead: Promise<void> | null = null;
 mock.module("../apps/desktop/src/lib/tauri", () => ({ isTauriRuntime: () => false, trackTauriListener: () => () => {} }));
+const structureText = await import("../apps/desktop/src/lib/structure-text");
 mock.module("../apps/desktop/src/lib/structure-text", () => ({
+  ...structureText,
   readStructureTextDocument: async () => { await waitForRead; return { content: source, truncated: false }; },
 }));
 const browserDocuments = await import("../apps/desktop/src/lib/browser-dev-documents");
@@ -77,20 +79,28 @@ test("independent operations survive hiding and release, but expire on close wit
   } catch (error) { await view.close(); throw error; }
 });
 test("Cancel preserves a dirty operation, successful close permanently expires it", async () => {
-  const view = await fixture(), previous = browser.confirm;
+  const view = await fixture();
+  // Unsaved source close is answered in the application dialog.
+  const closeWith = async (choice: "cancel" | "discard") => {
+    let closing!: Promise<boolean>;
+    await act(async () => { closing = view.controller.closeDocuments([view.doc.id]); });
+    expect(view.controller.closeConfirmation).not.toBeNull();
+    await act(async () => { view.controller.closeConfirmation![choice](); });
+    let closed!: boolean;
+    await act(async () => { closed = await closing; });
+    return closed;
+  };
   try {
     await act(async () => view.controller.beginEditing(view.doc));
     await act(async () => view.controller.updateDraft(view.doc, source + "REMARK unsaved\n"));
     const operation = view.controller.captureOperation(view.doc);
-    browser.confirm = () => false;
-    await act(async () => { expect(await view.controller.closeDocuments([view.doc.id])).toBe(false); });
+    expect(await closeWith("cancel")).toBe(false);
     expect(operation.isCurrent()).toBe(true);
     expect(view.controller.sessionForDocument(view.doc)?.dirty).toBe(true);
-    browser.confirm = () => true;
-    await act(async () => { expect(await view.controller.closeDocuments([view.doc.id])).toBe(true); });
+    expect(await closeWith("discard")).toBe(true);
     expect(operation.isCurrent()).toBe(false); expect(view.controller.sessionForDocument(view.doc)).toBeNull();
     operation.release();
-  } finally { browser.confirm = previous; await view.close(); }
+  } finally { await view.close(); }
 });
 test("close during source read cannot resurrect a session or its old document operation", async () => {
   const view = await fixture(); let release!: () => void;

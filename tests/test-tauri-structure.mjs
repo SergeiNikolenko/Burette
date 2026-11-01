@@ -937,6 +937,7 @@ assert.deepEqual(vendorAssetsLock.assets.map((asset) => asset.path).toSorted(), 
   'PreviewExtension/Web/mesoscale.js',
   'PreviewExtension/Web/molstar.css',
   'PreviewExtension/Web/molstar.js',
+  'PreviewExtension/Web/openchemlib/LICENSE',
   'PreviewExtension/Web/openchemlib/openchemlib.js',
   'PreviewExtension/Web/rdkit-compute/RDKit_minimal.js',
   'PreviewExtension/Web/rdkit-compute/RDKit_minimal.wasm',
@@ -1817,7 +1818,7 @@ assert.match(previewRuntimeUtils, /pub\(crate\) fn prune_runtime_dirs/);
 assert.match(quickLookPreviewController, /viewer-runtime\.css/);
 assert.match(quickLookPreviewController, /viewer-shell\.js/);
 assert.match(viewerJS, /function appendCacheBuster\(url, cb\)/);
-assert.match(viewerJS, /startsWith\('asset:\/\/'\)/);
+assert.match(viewerJS, /\^\(asset:\\\/\\\/\|blob:\)/);
 assert.match(viewerJS, /function runtimeURL\(globalName, fallback\)/);
 assert.match(viewerJS, /runtimeURL\('BurettePreviewConfigURL', '\.\/preview-config\.js'\)/);
 assert.match(viewerJS, /runtimeURL\('BurettePreviewDataScriptURL', '\.\/preview-data\.js'\)/);

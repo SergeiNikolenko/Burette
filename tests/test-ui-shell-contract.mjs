@@ -997,7 +997,8 @@ assert.match(moleculeStore, /from "\.\.\/lib\/temporary-documents"/);
 assert.doesNotMatch(moleculeStore, /function persistedDocuments/);
 assert.match(moleculeStore, /tab\.location\.kind !== "file"/);
 assert.match(moleculeStore, /recentStructures: recentStructures\.filter\(isPersistentRecentStructure\)/);
-assert.match(moleculeStore, /\.filter\(isPersistentViewerDocument\)\s*\.map\(toRecentStructure\)/);
+// Only persistent files, or browser scientific imports with a stored Original, become recent.
+assert.match(moleculeStore, /\.filter\(document => isPersistentViewerDocument\(document\) \|\| \(document\.virtual\s*&& !isTemporaryDocumentPath\(document\.path\)[^;]{0,120}&& Boolean\(importedOriginalFor\(document\.id\)\)\)\)\s*\.map\(toRecentStructure\)/);
 assert.match(moleculeStore, /invoke\("merge_recent_documents", \{ documents: remembered \}\)/);
 assert.match(moleculeStore, /invoke\("prune_recent_documents", \{ checkedDocuments, existingPaths \}\)/);
 assert.match(moleculeStore, /listen<GlobalRecentStructuresSnapshot>\(\s*"recent-documents:changed"/);
@@ -4293,7 +4294,7 @@ assert.match(appDockingWorkflowsHook, /pushErrorStatus\(error, isTrajectory \? "
 assert.match(app, /openDockingStructureRecords,/);
 assert.match(appFileOpenHook, /const openStructureRecords = useCallback/);
 assert.match(appFileOpenHook, /invoke<ViewerDocument>\("open_text_structure"/);
-assert.match(appFileOpenHook, /openBrowserDevTextDocument\(record\.path, record\.inputExtension, record\.text, preferences\)/);
+assert.match(appFileOpenHook, /openBrowserDevTextDocument\(record\.path, record\.inputExtension, record\.text, preferences(?:, undefined, undefined, options)?\)/);
 assert.match(app, /openStructureRecords,/);
 assert.match(appFileOpenHook, /const openStructureUrlInMolstar = useCallback/);
 assert.match(appFileOpenHook, /fetchRemoteStructure\(url\)/);
@@ -5696,7 +5697,7 @@ assert.match(previewViewer, /const control = window\.BuretteAgentControl;/);
 assert.match(previewViewer, /await window\.BuretteAgent\.run\(\{ command: 'summary', args: \{ includeLigands: true \} \}\)/);
 assert.match(previewViewer, /await fetch\(reportUrl, \{/);
 assert.match(previewViewer, /function startBuretteAgentActionPolling\(\)/);
-assert.match(previewViewer, /async function executeBuretteAgentAction\(action\)/);
+assert.match(previewViewer, /async function executeBuretteAgentAction\(action, requestOwner\)/);
 assert.match(previewViewer, /const previewDockState = \{ right: false, bottom: false \}/);
 assert.match(previewViewer, /function bindPreviewDockControls\(toolbar\)/);
 assert.doesNotMatch(previewViewer, /data-buret-dock-toggle/);
@@ -8755,7 +8756,7 @@ assert.match(moleculeStore, /tab\.location\.kind !== "fep-network"/);
 assert.match(moleculeStore, /openFepNetworkTab:/);
 assert.match(
   moleculeStore,
-  /normalizeGlobalRecentStructures\(incoming\s*\.filter\(isPersistentViewerDocument\)\s*\.map\(toRecentStructure\)\)/,
+  /normalizeGlobalRecentStructures\(incoming\s*\.filter\(document => isPersistentViewerDocument\(document\) \|\|/,
 );
 
 // The shell must not re-render for every pixel of a window drag: each render also

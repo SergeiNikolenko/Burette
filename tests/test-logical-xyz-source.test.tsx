@@ -25,7 +25,8 @@ afterAll(async () => { for (const [key, descriptor] of previous) {
 } await browser.happyDOM.close(); });
 let native = false;
 const nativeCalls: { command: string; args: unknown }[] = [];
-mock.module("@tauri-apps/api/core", () => ({ invoke: async (command: string, args: unknown) => {
+const tauriCore = await import("@tauri-apps/api/core");
+mock.module("@tauri-apps/api/core", () => ({ ...tauriCore, invoke: async (command: string, args: unknown) => {
   nativeCalls.push({ command, args });
   if (command === "open_source_edit_session") return { handleId: "xyz-source-handle", content: XYZ, revision: { modifiedAt: 1, byteCount: Buffer.byteLength(XYZ), contentHash: "hash" }, previewMode: "live" };
   if (command === "close_source_edit_session") return;
@@ -34,7 +35,7 @@ mock.module("@tauri-apps/api/core", () => ({ invoke: async (command: string, arg
 mock.module("../apps/desktop/src/lib/tauri", () => ({ isTauriRuntime: () => native, trackTauriListener: () => () => {} }));
 
 let prepare: (document: ViewerDocument) => Promise<ViewerDocument> = async document => document;
-mock.module("../apps/desktop/src/hooks/use-deferred-viewer-runtime", () => ({ prepareDeferredViewerRuntime: (document: ViewerDocument) => prepare(document) }));
+mock.module("../apps/desktop/src/hooks/use-deferred-viewer-runtime", () => ({ useDeferredViewerRuntime: (document: ViewerDocument) => document, prepareDeferredViewerRuntime: (document: ViewerDocument) => prepare(document) }));
 const { createRoot } = await import("react-dom/client");
 const { defaultPreferences } = await import("../apps/desktop/src/stores/settings-store");
 const { useSourceEditingController } = await import("../apps/desktop/src/hooks/use-source-editing");

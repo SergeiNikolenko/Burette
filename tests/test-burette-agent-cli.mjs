@@ -623,12 +623,13 @@ try {
   ])].sort();
   const viewerSource = await readFile('PreviewExtension/Web/viewer.js', 'utf8');
   const shellSource = await readFile('apps/desktop/src/hooks/use-agent-session.ts', 'utf8');
-  // Geometry edits and scalar fields use host-owned source/iframe leases. They do
+  // Geometry edits, scalar fields and polymer role picks use host-owned source/iframe leases. They do
   // not belong to the public CLI: edits stage through the source, and fields carry
   // a full Cube payload. See renderer-support.md and scalar-field-binding.md.
   const hostOnlyViewerActions = [
     'workspace_scene_snapshot', 'scene_source_paths', 'scene_science_binding', 'scene_science_restore_ack', 'measurement_preview_capture', 'preview_geometry',
     'geometry_binding', 'update_geometry', 'scalar_field_binding', 'scalar_field_validate', 'show_scalar_field', 'select_source_atom', 'geometry_topology_scene_capture', 'geometry_topology_scene_validate',
+    'polymer_source_binding', 'polymer_pick_atom', 'polymer_source_release', 'polymer_source_validate',
   ];
   for (const privateAction of hostOnlyViewerActions) {
     assert.ok(!cliTypeList('SESSION_VIEWER_ACTION_TYPES').includes(privateAction), `${privateAction} must stay outside the public CLI`);
