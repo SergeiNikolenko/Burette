@@ -795,7 +795,9 @@ Build jobs report `documentId`, `sourceRevision` and `sourceTextSha256` as null
 and `binding: "none"`; closing documents does not release them. `peptide`
 accepts `sequence`, `codes` (`one`/`three`), `chirality` (`L`/`D`), `phiDegrees`,
 `psiDegrees`, `nTerminus` (`amine`/`ammonium`), `cTerminus` (`acid`/`carboxylate`)
-and `chain`, and exports the same mmCIF as the Build peptide dialog.
+and `chain`, and exports the same mmCIF as the Build peptide dialog. `smiles` accepts one
+`smiles` string and exports an OpenChemLib 3D conformer with explicit hydrogens
+as SDF (the same generator as opening a SMILES from the command palette).
 
 `bun run test:builder-agent` drives the actual controller and workers: RDKit
 reads each exported structure as the independent product (diethyl ether,

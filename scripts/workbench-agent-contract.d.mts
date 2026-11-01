@@ -16,7 +16,7 @@ export type WorkbenchOperation =
   | 'submit' | 'build' | 'status' | 'jobs' | 'cancel' | 'export';
 export const WORKBENCH_OPERATIONS: readonly WorkbenchOperation[];
 export type WorkbenchForceField = 'MMFF94' | 'MMFF94s' | 'UFF';
-export type WorkbenchJobKind = 'properties' | 'energy' | 'energy_forces' | 'orbital_cube' | 'insert_fragment' | 'hydrogens' | 'polymer' | 'peptide';
+export type WorkbenchJobKind = 'properties' | 'energy' | 'energy_forces' | 'orbital_cube' | 'insert_fragment' | 'hydrogens' | 'polymer' | 'smiles' | 'peptide';
 export type WorkbenchJobKindDescription = { operation: 'submit' | 'build'; engine: string; requires: string; params: Record<string, unknown>; artifacts: string[] };
 export type WorkbenchPolymerEndGroup = 'hydrogen' | 'methyl' | 'hydroxyl' | 'phenyl' | 'tert-butyl';
 export const WORKBENCH_JOB_KINDS: Readonly<Record<WorkbenchJobKind, WorkbenchJobKindDescription>>;
@@ -33,6 +33,7 @@ export type WorkbenchJobRequest =
       tacticity?: 'isotactic' | 'syndiotactic' | 'atactic'; headEnd: WorkbenchPolymerEndGroup; tailEnd: WorkbenchPolymerEndGroup; relax: boolean } };
 /** Jobs that build a new structure without a source document (operation `build`). */
 export type WorkbenchBuildJobRequest =
+  | { kind: 'smiles'; params: { smiles: string } }
   | { kind: 'peptide'; params: { sequence: string; codes: 'one' | 'three'; chirality: 'L' | 'D'; phiDegrees: number; psiDegrees: number;
       nTerminus: 'amine' | 'ammonium'; cTerminus: 'acid' | 'carboxylate'; chain: string } };
 

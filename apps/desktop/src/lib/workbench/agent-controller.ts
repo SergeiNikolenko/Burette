@@ -281,6 +281,12 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
   }
 
   async function runBuild(request: WorkbenchBuildJobRequest, options: { signal: AbortSignal; timeoutMs: number }) {
+    if (request.kind === "smiles") {
+      const molecule = await runChemistryTask({ action: "generate", smiles: request.params.smiles }, options);
+      const lines = molecule.molfile.replace(/\s+$/u, "").split("\n"); lines[0] = request.params.smiles.slice(0, 80);
+      return { summary: { atomCount: molecule.atoms.length, bondCount: molecule.bonds.length, ...formulaOf(molecule.atoms.map(atom => atom.element), molecule.molfile) },
+        artifacts: [await artifact("structure", "smiles-3d.sdf", "chemical/x-mdl-sdfile", `${lines.join("\n")}\n$$$$\n`)] };
+    }
     const { params } = request;
     const result = await runPeptideTask({ sequence: params.sequence, codes: params.codes, options: { chirality: params.chirality, phi: params.phiDegrees, psi: params.psiDegrees, nTerminus: params.nTerminus, cTerminus: params.cTerminus, chain: params.chain } }, options);
     return { summary: { sequence: result.sequence, residueCount: result.residueCount, atomCount: result.atomCount, formalCharge: result.charge },
@@ -314,7 +320,7 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
 
   async function runJob(job: Job, signal: AbortSignal): Promise<{ summary: Record<string, unknown>; artifacts: Artifact[] }> {
     const options = { signal, timeoutMs: WORKBENCH_LIMITS.jobTimeoutMs };
-    if (job.request.kind === "peptide") return runBuild(job.request, options);
+    if (job.request.kind === "peptide" || job.request.kind === "smiles") return runBuild(job.request, options);
     const input = job.input!, request = job.request as WorkbenchJobRequest;
     if (request.kind === "insert_fragment" || request.kind === "hydrogens" || request.kind === "polymer") return runGraphEdit(input, request, options);
     if (request.kind === "properties") {

@@ -105,3 +105,17 @@ test("polymer jobs reproduce the frozen isotactic reference; peptide builds need
   expect(Object.fromEntries(["C", "H", "N", "O"].map(element => [element, elements.filter((value: string) => value === element).length]))).toEqual({ C: 8, H: 15, N: 3, O: 5 });
   expect(exported.artifact).toMatchObject({ fileName: "Peptide AGS.cif", mimeType: "chemical/x-mmcif" });
 });
+
+test("smiles builds export an explicit-hydrogen 3D structure; unreadable input fails as a job", async () => {
+  const f = workspace(ethanol, "sdf");
+  const built = await f.ok({ operation: "build", operationId: "acetic", job: { kind: "smiles", params: { smiles: "CC(=O)O" } } });
+  const job = await f.finish(built.job.jobId);
+  expect(job).toMatchObject({ status: "succeeded", summary: { formula: "C2H4O2", atomCount: 8, formalCharge: 0 } });
+  const { artifact } = await f.ok({ operation: "export", jobId: job.jobId, artifact: "structure" });
+  expect(canonical(artifact.content)).toBe("CC(=O)O");
+  const mol = rdkit.get_mol(artifact.content, JSON.stringify({ removeHs: false }))!;
+  const block = mol.get_molblock(); mol.delete();
+  expect(block.split("\n")[1]).toContain("3D");
+  const bad = await f.ok({ operation: "build", operationId: "bad", job: { kind: "smiles", params: { smiles: "C1CC" } } });
+  expect(await f.finish(bad.job.jobId)).toMatchObject({ status: "failed", artifacts: [] });
+});

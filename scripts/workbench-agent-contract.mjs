@@ -98,6 +98,13 @@ export const WORKBENCH_JOB_KINDS = Object.freeze({
       bondLengthAngstrom: '0.5–3, default 1.54', tacticity: ['isotactic', 'syndiotactic', 'atactic'], headEnd: POLYMER_END_GROUPS, tailEnd: POLYMER_END_GROUPS, relax: 'boolean' },
     artifacts: ['structure'],
   },
+  smiles: {
+    operation: 'build',
+    engine: 'OpenChemLib SMILES parser and conformer generator',
+    requires: 'No source document; 1–256 atoms with explicit hydrogens.',
+    params: { smiles: 'one SMILES string' },
+    artifacts: ['structure'],
+  },
   peptide: {
     operation: 'build',
     engine: 'Template peptide geometry from OpenChemistry residue internal coordinates',
@@ -228,6 +235,10 @@ function jobParams(kind, value) {
       headEnd: oneOf(params.headEnd, 'job.params.headEnd', ends, 'hydrogen'), tailEnd: oneOf(params.tailEnd, 'job.params.tailEnd', ends, 'hydrogen'),
       relax: bool(params.relax, 'job.params.relax') ?? false,
     });
+  }
+  if (kind === 'smiles') {
+    rejectUnknownFields(params, ['smiles'], 'smiles job.params');
+    return { smiles: text(params.smiles, 'job.params.smiles', 1024, /^\S+$/u) };
   }
   if (kind === 'peptide') {
     rejectUnknownFields(params, ['sequence', 'codes', 'chirality', 'phiDegrees', 'psiDegrees', 'nTerminus', 'cTerminus', 'chain'], 'peptide job.params');
