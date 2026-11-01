@@ -1,14 +1,16 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { analyzeCrystalSymmetry, standardizeCrystal, SYMMETRY_TOLERANCE, type CrystalSites, type MoyoAnalyzer } from "../apps/desktop/src/lib/molecular-workbench/crystal-symmetry";
-import { readCrystalSites, runCrystalRequest, type CrystalSource } from "../apps/desktop/src/lib/molecular-workbench/crystal-symmetry-io";
+import { readCrystalDocument as readCrystalSites, type CrystalSource } from "../apps/desktop/src/lib/molecular-workbench/crystal-io";
+import { runCrystalRequest } from "../apps/desktop/src/lib/molecular-workbench/crystal-symmetry-io";
 import { readCifCrystal } from "../apps/desktop/src/lib/molecular-workbench/cif-crystal";
 
 // The real moyo 0.21.0 WebAssembly module, as the crystal worker runs it.
 const MOYO = new URL("../apps/desktop/node_modules/@spglib/moyo-wasm/", import.meta.url);
 const moyo = await import(new URL("moyo_wasm.js", MOYO).href);
 moyo.initSync({ module: readFileSync(new URL("moyo_wasm_bg.wasm", MOYO)) });
-const finder: MoyoAnalyzer = { analyze_cell: moyo.analyze_cell, operations_from_number: moyo.operations_from_number };
+const finder: MoyoAnalyzer = { analyze_cell: moyo.analyze_cell, operations_from_number: moyo.operations_from_number, hall_symbol_entry: moyo.hall_symbol_entry };
+const engines = { moyo: async () => finder, niggli: async () => { throw new Error("Niggli is not used here."); } };
 const fixture = (name: string) => readFileSync(new URL(`fixtures/crystal-symmetry/${name}`, import.meta.url), "utf8");
 const source = (name: string): CrystalSource => ({ format: name.endsWith(".xyz") ? "xyz" : "cif", text: fixture(name) });
 
@@ -45,7 +47,7 @@ test("triclinic P1 stays P1, with every atom its own site and an honest P1 CIF",
 });
 
 test("rock salt listed in P1 is Fm-3m (225): sites, cells, refined CIF and its reparse", async () => {
-  const analysis = (await runCrystalRequest(finder, { action: "analyze", source: source("nacl-p1.cif"), tolerance: 0.01 })) as Awaited<ReturnType<typeof analyzeCrystalSymmetry>>;
+  const analysis = (await runCrystalRequest(engines, { action: "analyze", source: source("nacl-p1.cif"), tolerance: 0.01 })) as Awaited<ReturnType<typeof analyzeCrystalSymmetry>>;
   expect({ number: analysis.number, symbol: analysis.symbol, system: analysis.crystalSystem, pearson: analysis.pearson, operations: analysis.operationCount }).toEqual({ number: 225, symbol: "F m -3 m", system: "cubic", pearson: "cF8", operations: 192 });
   // Charged type symbols are the species; the four Na and four Cl atoms are one site each.
   expect(analysis.sites).toEqual([
@@ -70,7 +72,7 @@ test("rock salt listed in P1 is Fm-3m (225): sites, cells, refined CIF and its r
   const toFractional = (atom: { x: number; y: number; z: number }) => solve(columns(reread.cell), [atom.x, atom.y, atom.z]);
   const of = (element: string) => reread.atoms.filter((atom) => atom.element === element).map(toFractional);
   expect(sameSites(of("Na"), FCC) && sameSites(of("Cl"), shifted(FCC, [0.5, 0.5, 0.5]))).toBe(true);
-  const again = await runCrystalRequest(finder, { action: "analyze", source: { format: "cif", text: conventional.cif }, tolerance: 0.001 });
+  const again = await runCrystalRequest(engines, { action: "analyze", source: { format: "cif", text: conventional.cif }, tolerance: 0.001 });
   expect([again.number, (again as typeof analysis).sites.map((site) => site.species)]).toEqual([225, ["Na1+", "Cl1-"]]);
 
   const primitive = await standardizeCrystal(finder, await readCrystalSites(source("nacl-p1.cif")), 0.01, "primitive", { title: "nacl", readCif: readCifCrystal });
@@ -124,7 +126,7 @@ test("a left-handed basis keeps the enantiomorph; a mirror image gives the other
   // The written right-handed cell is still P3_221: the output is rotated, never reflected.
   const conventional = await standardizeCrystal(finder, left, 0.01, "conventional", { title: "quartz", readCif: readCifCrystal });
   expect(conventional.atomCount).toBe(9);
-  expect((await runCrystalRequest(finder, { action: "analyze", source: { format: "cif", text: conventional.cif }, tolerance: 0.01 })).number).toBe(154);
+  expect((await runCrystalRequest(engines, { action: "analyze", source: { format: "cif", text: conventional.cif }, tolerance: 0.01 })).number).toBe(154);
 });
 
 test("charged species stay distinct: Fe2+/Fe3+ is primitive cubic, a single Fe species would be body-centred", async () => {
@@ -177,7 +179,7 @@ test("invalid tolerance, duplicates, close atoms, oversize cells, bad cells and 
   expect(() => analyzeCrystalSymmetry(finder, { ...salt, species: salt.species.map((value, i) => (i ? value : "D")) }, 0.01)).toThrow("Atom Na1 has an unsupported species D.");
   await expect(readCrystalSites(source("nacl-partial-occupancy.cif"))).rejects.toThrow("Resolve partially occupied or disordered CIF sites before building a supercell.");
   await expect(readCrystalSites({ format: "xyz", text: "1\nplain molecule\nC 0 0 0\n" })).rejects.toThrow("This XYZ file has no Lattice in its comment line, so it has no unit cell.");
-  await expect(readCrystalSites({ format: "xyz", text: "1\nLattice=\"3 0 0 0 3 0 0 0 3\"\nC 0 0 0\n1\nf2\nC 0 0 0\n" })).rejects.toThrow("Symmetry needs one XYZ frame of element symbols and coordinates.");
+  await expect(readCrystalSites({ format: "xyz", text: "1\nLattice=\"3 0 0 0 3 0 0 0 3\"\nC 0 0 0\n1\nf2\nC 0 0 0\n" })).rejects.toThrow("Crystal tools need one XYZ frame of element symbols and coordinates.");
 });
 
 test("finder output is checked: tampered operations, cells and symbols are rejected", () => {

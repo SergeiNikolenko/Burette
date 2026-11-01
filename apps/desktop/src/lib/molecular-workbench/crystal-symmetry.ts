@@ -22,7 +22,8 @@ export type CrystalSites = { atoms: MolecularAtom[]; cell: UnitCell; species: st
 export type StandardCellKind = "conventional" | "primitive";
 export type MoyoAnalyzer = {
   analyze_cell(cellJson: string, symprec: number, setting: string): unknown;
-  operations_from_number(number: number, setting: { type: "Spglib" }, primitive: boolean): unknown;
+  operations_from_number(number: number, setting: { type: "Spglib" } | { type: "HallNumber"; value: number }, primitive: boolean): unknown;
+  hall_symbol_entry(hallNumber: number): unknown;
 };
 
 /** Distance tolerance in angstrom. */
@@ -226,6 +227,8 @@ type Dataset = {
   operations: SymmetryOperation[]; orbits: number[]; wyckoffs: string[]; siteSymmetry: string[];
   std: OutputCell; stdLinear: Mat3; stdShift: Vec3; stdRotation: Mat3;
   prim: OutputCell; primLinear: Mat3; primShift: Vec3;
+  /** Primitive-cell site of each input atom. */
+  primMapping: number[];
 };
 
 const invalid = (what: string) => new Error(`The symmetry finder returned an invalid ${what}.`);
@@ -287,7 +290,7 @@ function readDataset(raw: unknown, input: { numbers: number[]; count: number; sp
   const mapping = numbers(data.mapping_std_prim, input.count, "primitive mapping", true);
   if (mapping.some((index, atom) => index < 0 || index >= prim.numbers.length || prim.numbers[index] !== input.numbers[atom])) throw invalid("primitive mapping");
   return {
-    number, operations, orbits, wyckoffs, siteSymmetry, std, prim, stdRotation,
+    number, operations, orbits, wyckoffs, siteSymmetry, std, prim, stdRotation, primMapping: mapping,
     hallNumber: integer(data.hall_number, 1, 530, "Hall number"),
     symbol: text(data.hm_symbol, /^[A-Za-z0-9_/:\- ]+$/u, "space-group symbol"),
     pearson: text(data.pearson_symbol, /^[a-zA-Z]+\d+$/u, "Pearson symbol"),
@@ -534,4 +537,173 @@ async function reproduces(cif: string, cell: OutputCell, input: PreparedCrystal,
     if (match) matched.add(match.index);
     return Boolean(match);
   });
+}
+
+// ---- cell edits ------------------------------------------------------------------------------
+
+/**
+ * Space-group edits of Avogadro's Crystal ▸ Space Group menu, which calls spglib's
+ * standardize_cell (avogadrolibs avospglib.cpp):
+ *   primitive     to_primitive = 1, no_idealize = 1 — the primitive basis of the same
+ *                 atoms, without moving them onto refined positions;
+ *   conventional  to_primitive = 0, idealize — the refined conventional cell;
+ *   symmetrize    to_primitive = 1, idealize — the refined primitive cell.
+ * The finder here is moyo; its refined cells are rotated to the standard
+ * orientation by a proper rotation, so the handedness of the structure is kept.
+ */
+export type SymmetryEditKind = "primitive" | "conventional" | "symmetrize" | "asymmetric-unit";
+export type SymmetryEditResult = {
+  sites: CrystalSites;
+  /** Operations that expand `sites` to the full cell; only for the asymmetric unit. */
+  operations: SymmetryOperation[] | null;
+  number: number;
+  hallNumber: number;
+  symbol: string;
+};
+
+function sitesFrom(cell: OutputCell, input: PreparedCrystal, labels: string[]): CrystalSites {
+  const atoms = cell.fractional.map((point, index) => {
+    const [x, y, z] = apply(cell.lattice, point);
+    return { element: SPECIES.exec(input.species[cell.numbers[index] - 1])![1], x, y, z };
+  });
+  return { atoms, cell: vectorsOf(cell.lattice), species: cell.numbers.map((number) => input.species[number - 1]), labels };
+}
+
+function refinedLabels(cell: OutputCell, linear: Mat3, shift: Vec3, input: PreparedCrystal) {
+  return sourceAtoms(cell, linear, shift, input).map((match, index) => (match ? input.labels[match.index] : `${SPECIES.exec(input.species[cell.numbers[index] - 1])![1]}${index + 1}`));
+}
+
+export function editCrystalSymmetry(moyo: MoyoAnalyzer, sites: CrystalSites, tolerance: number, kind: SymmetryEditKind): SymmetryEditResult {
+  const { input, dataset } = analyzed(moyo, sites, tolerance);
+  const group = { number: dataset.number, hallNumber: dataset.hallNumber, symbol: dataset.symbol };
+  if (kind === "conventional") {
+    return { ...group, operations: null, sites: sitesFrom(dataset.std, input, refinedLabels(dataset.std, dataset.stdLinear, dataset.stdShift, input)) };
+  }
+  if (kind === "symmetrize") {
+    return { ...group, operations: null, sites: sitesFrom(dataset.prim, input, refinedLabels(dataset.prim, dataset.primLinear, dataset.primShift, input)) };
+  }
+  if (kind === "asymmetric-unit") {
+    const keep = input.numbers.flatMap((_, atom) => (dataset.orbits[atom] === atom ? [atom] : []));
+    // A representative on a special position is averaged over the operations that fix
+    // it (moving it by at most the tolerance), so its images coincide exactly when the
+    // CIF is expanded again instead of becoming near-duplicates.
+    const projected = keep.map((atom) => {
+      const point = input.fractional[atom];
+      const images = dataset.operations.flatMap((operation) => {
+        const image = apply(operation.rotation, point).map((value, axis) => value + operation.translation[axis]) as Vec3;
+        const delta = image.map((value, axis) => { const d = value - point[axis]; return d - Math.round(d); }) as Vec3;
+        return norm(apply(input.lattice, delta)) <= 2 * tolerance ? [delta] : [];
+      });
+      const mean = [0, 1, 2].map((axis) => point[axis] + images.reduce((sum, delta) => sum + delta[axis], 0) / images.length) as Vec3;
+      const [x, y, z] = apply(input.lattice, mean);
+      return { ...sites.atoms[atom], x, y, z };
+    });
+    return {
+      ...group,
+      operations: [...dataset.operations].sort((a, b) => Number(isIdentity(b)) - Number(isIdentity(a))),
+      sites: { cell: sites.cell, atoms: projected, species: keep.map((atom) => sites.species[atom]), labels: keep.map((atom) => sites.labels[atom]) },
+    };
+  }
+  // Primitive basis of the same atoms: the lattice A·P, atoms kept at their Cartesian
+  // positions modulo the new lattice, the first atom of each primitive site in source order.
+  const lattice = multiply(input.lattice, dataset.primLinear);
+  const toFractional = inverse(lattice);
+  const kept = [...new Map(dataset.primMapping.map((site, atom) => [site, atom] as const).reverse()).values()].sort((x, y) => x - y);
+  if (kept.length !== dataset.prim.numbers.length) throw invalid("primitive mapping");
+  return {
+    ...group, operations: null,
+    sites: {
+      cell: vectorsOf(lattice),
+      atoms: kept.map((atom) => {
+        const [x, y, z] = apply(lattice, wrapped(apply(toFractional, [sites.atoms[atom].x, sites.atoms[atom].y, sites.atoms[atom].z])));
+        return { ...sites.atoms[atom], x, y, z };
+      }),
+      species: kept.map((atom) => sites.species[atom]),
+      labels: kept.map((atom) => sites.labels[atom]),
+    },
+  };
+}
+
+/** One of the 530 Hall settings of the 230 space-group types, as a fill choice. */
+export type SpaceGroupSetting = { hallNumber: number; number: number; symbol: string; hallSymbol: string; setting: string };
+
+export function spaceGroupSettings(moyo: MoyoAnalyzer): SpaceGroupSetting[] {
+  return Array.from({ length: 530 }, (_, index) => {
+    const entry = record(moyo.hall_symbol_entry(index + 1), "Hall entry");
+    return {
+      hallNumber: integer(entry.hall_number, 1, 530, "Hall number"),
+      number: integer(entry.number, 1, 230, "space-group number"),
+      symbol: text(entry.hm_short, /^[A-Za-z0-9_/:\- ]+$/u, "space-group symbol"),
+      hallSymbol: text(entry.hall_symbol, /^[A-Za-z0-9_/:\-+" ()'*=.]+$/u, "Hall symbol"),
+      setting: typeof entry.setting === "string" ? entry.setting.slice(0, 16) : "",
+    };
+  });
+}
+
+/** Atoms closer than this, modulo the lattice, are one site after filling (Avogadro's 0.25 Å). */
+export const FILL_DISTANCE = 0.25;
+
+/**
+ * Applies every operation of one Hall setting to every atom, in the cell as given,
+ * and adds the images not already present (Avogadro's Fill Unit Cell). Source atoms
+ * keep their positions and order; new atoms follow, wrapped into the cell. A site
+ * that two different species would occupy is refused.
+ */
+export function fillUnitCell(moyo: MoyoAnalyzer, sites: CrystalSites, hallNumber: number): { sites: CrystalSites; added: number; number: number; symbol: string } {
+  if (!Number.isInteger(hallNumber) || hallNumber < 1 || hallNumber > 530) throw new Error("Choose a space-group setting (Hall number 1 to 530).");
+  const entry = record(moyo.hall_symbol_entry(hallNumber), "Hall entry");
+  const number = integer(entry.number, 1, 230, "space-group number");
+  const operations = list(moyo.operations_from_number(number, { type: "HallNumber", value: hallNumber }, false), 192, "operation list").map((value) => {
+    const operation = record(value, "operation");
+    return { rotation: fromColumnMajor(numbers(operation.rotation, 9, "rotation", true)), translation: numbers(operation.translation, 3, "translation") as Vec3 };
+  });
+  const lattice = latticeOf(sites.cell);
+  checkLattice(lattice);
+  const toFractional = inverse(lattice);
+  const spacings = planeSpacings(lattice);
+  const counts = spacings.map((spacing) => Math.max(1, Math.min(64, Math.floor(spacing / FILL_DISTANCE))));
+  const bins = new Map<string, number[]>();
+  const placed: { point: Vec3; species: string }[] = [];
+  const binOf = (point: Vec3) => point.map((value, axis) => Math.min(counts[axis] - 1, Math.floor(wrap(value) * counts[axis])));
+  const occupant = (point: Vec3) => {
+    const [i, j, k] = binOf(point);
+    for (const di of [-1, 0, 1]) for (const dj of [-1, 0, 1]) for (const dk of [-1, 0, 1]) {
+      const key = [(i + di + counts[0]) % counts[0], (j + dj + counts[1]) % counts[1], (k + dk + counts[2]) % counts[2]].join(",");
+      for (const index of bins.get(key) ?? []) {
+        const delta = placed[index].point.map((value, axis) => { const d = value - point[axis]; return d - Math.round(d); }) as Vec3;
+        if (norm(apply(lattice, delta)) < FILL_DISTANCE) return placed[index];
+      }
+    }
+    return null;
+  };
+  const place = (point: Vec3, species: string) => {
+    const key = binOf(point).join(",");
+    const bin = bins.get(key);
+    if (bin) bin.push(placed.length); else bins.set(key, [placed.length]);
+    placed.push({ point, species });
+  };
+  const atoms = sites.atoms.map((atom) => ({ ...atom })), species = [...sites.species], labels = [...sites.labels];
+  const fractional = sites.atoms.map((atom) => apply(toFractional, [atom.x, atom.y, atom.z]));
+  fractional.forEach((point, index) => {
+    const other = occupant(point);
+    if (other && other.species !== sites.species[index]) throw new Error(`Atom ${sites.labels[index]} shares its site with a different element.`);
+    place(point, sites.species[index]);
+  });
+  fractional.forEach((point, index) => {
+    for (const operation of operations) {
+      const image = wrapped(apply(operation.rotation, point).map((value, axis) => value + operation.translation[axis]) as Vec3);
+      const other = occupant(image);
+      if (other) {
+        if (other.species !== sites.species[index]) throw new Error(`A symmetry copy of ${sites.labels[index]} lands on a different element. Check the space group.`);
+        continue;
+      }
+      if (atoms.length >= OUTPUT_ATOM_LIMIT) throw new Error(`Filling the cell would exceed ${OUTPUT_ATOM_LIMIT.toLocaleString("en-US")} atoms.`);
+      place(image, sites.species[index]);
+      const [x, y, z] = apply(lattice, image);
+      atoms.push({ ...sites.atoms[index], x, y, z });
+      species.push(sites.species[index]);
+      labels.push(sites.labels[index]);
+    }
+  });
+  return { sites: { atoms, cell: sites.cell, species, labels }, added: atoms.length - sites.atoms.length, number, symbol: text(entry.hm_short, /^[A-Za-z0-9_/:\- ]+$/u, "space-group symbol") };
 }

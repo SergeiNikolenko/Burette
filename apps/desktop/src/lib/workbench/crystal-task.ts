@@ -1,17 +1,17 @@
 import type { CrystalRequest, CrystalResults } from "../molecular-workbench/crystal-symmetry-io";
 import type { ViewerDocument } from "../../types";
-import { documentExtension } from "./source";
+import { sourceExtension } from "./source";
 import { workbenchSupportsDocument } from "./structure";
 
-export type { CrystalRequest, CrystalResults, CrystalSourceFormat } from "../molecular-workbench/crystal-symmetry-io";
+export type { CrystalFormat, CrystalRequest, CrystalResults } from "../molecular-workbench/crystal-symmetry-io";
 
 const CRYSTAL_TIMEOUT_MS = 60_000;
 
-/** Documents whose own text holds an explicit cell the symmetry finder can read. */
+/** The crystal format of a document's own source; an XYZ is periodic only when it declares a Lattice. */
 export function crystalSourceFormat(document: ViewerDocument | null) {
   if (!workbenchSupportsDocument(document)) return null;
-  const extension = documentExtension(document);
-  return extension === "cif" || extension === "mmcif" || extension === "mcif" ? "cif" as const : extension === "xyz" ? "xyz" as const : null;
+  const extension = sourceExtension(document);
+  return extension === "cif" || extension === "mmcif" || extension === "mcif" ? "cif" as const : extension === "xyz" ? "xyz" as const : extension === "vasp" ? "vasp" as const : null;
 }
 
 /**
