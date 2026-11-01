@@ -87,7 +87,7 @@ test("Export saves the shown frame's whole spectrum and Hessian, and the line sh
   };
   try {
     await showFrame(1);
-    assert.deepEqual((await exportItems()).map((node) => node.textContent), ["Spectrum as CSV", "Spectrum as JSON", "Hessian as JSON"]);
+    assert.deepEqual((await exportItems()).map((node) => node.textContent), ["Spectrum as CSV", "Spectrum as JSON", "Modes as JSON", "Hessian as JSON"]);
     await act(async () => { document.body.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
     const csv = await exportAs("Spectrum as CSV");
     assert.equal(csv.title, "scan-frame-2-spectrum.csv");
@@ -102,10 +102,14 @@ test("Export saves the shown frame's whole spectrum and Hessian, and the line sh
 
     // The other geometry: its own modes, and no Hessian to save.
     await showFrame(0);
-    assert.deepEqual((await exportItems()).map((node) => node.textContent), ["Spectrum as CSV", "Spectrum as JSON"]);
+    assert.deepEqual((await exportItems()).map((node) => node.textContent), ["Spectrum as CSV", "Spectrum as JSON", "Modes as JSON"]);
     await act(async () => { document.body.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
     const json = JSON.parse((await exportAs("Spectrum as JSON")).text);
     assert.deepEqual(json.source, { name: "scan.out", format: "orca", frame: 1, frameCount: 2 });
+    const modes = await exportAs("Modes as JSON"), table = JSON.parse(modes.text);
+    assert.equal(modes.title, "scan-frame-1-modes.json");
+    assert.deepEqual({ frame: table.source.frame, atoms: table.atoms.map((atom) => atom.xAngstrom), modes: table.modes.map((mode) => [mode.mode, mode.frequencyCm1, mode.displacements]) },
+      { frame: 1, atoms: atoms(0).map((atom) => atom.x), modes: [[6, 1600, displacements]] });
     assert.deepEqual(json.modes.map((mode) => [mode.mode, mode.frequencyCm1, mode.irIntensityKmMol, mode.ramanActivityAngstrom4Amu]), [[0, 0, null, null], [6, 1600, 70, null]]);
 
     // The preserved supplemental mode retains sticks and unit-area broadening.
@@ -177,7 +181,7 @@ test("global modes retain reference geometry; only its explicit frame supplies t
       const trigger=[...view.host.querySelectorAll("button")].find(button=>button.textContent==="Export");
       await act(async()=>trigger.dispatchEvent(new window.KeyboardEvent("keydown",{key:"Enter",bubbles:true})));
       const items=[...document.body.querySelectorAll('[role="menuitem"]')];
-      assert.deepEqual(items.map(item=>item.textContent),referenceFrameIndex===0?["Spectrum as CSV","Spectrum as JSON","Hessian as JSON"]:["Spectrum as CSV","Spectrum as JSON"]);
+      assert.deepEqual(items.map(item=>item.textContent),referenceFrameIndex===0?["Spectrum as CSV","Spectrum as JSON","Modes as JSON","Hessian as JSON"]:["Spectrum as CSV","Spectrum as JSON","Modes as JSON"]);
       if(referenceFrameIndex===0) {
         await act(async()=>items.find(item=>item.textContent==="Hessian as JSON").click());
         const result=JSON.parse(saved.at(-1).text);
@@ -186,4 +190,27 @@ test("global modes retain reference geometry; only its explicit frame supplies t
       } else await act(async()=>document.body.dispatchEvent(new window.KeyboardEvent("keydown",{key:"Escape",bubbles:true})));
     } finally { await view.unmount(); }
   }
+});
+
+test("a geometry with a Hessian and masses but no modes computes them on request", async () => {
+  const { parseScientificFile } = await import("../apps/desktop/src/lib/molecular-workbench/quantum");
+  const { harmonicModes } = await import("../apps/desktop/src/lib/molecular-workbench/normal-modes");
+  const science = parseScientificFile("water-hf-hessian.json", readFileSync(new URL("./fixtures/quantum/qcschema/water-hf-hessian.json", import.meta.url), "utf8"));
+  const saved = [];
+  const actions = { runStructureViewerAction: async () => {}, saveKetcherExportFile: async (request) => { saved.push(request); return { status: "saved", path: null }; } };
+  const view = await mount(<VibrationsPanel document={{ ...source, id: "hessian-only", title: "water-hf-hessian.json" }} science={science} liveAnimation={false} actions={actions} />);
+  try {
+    assert.equal(view.host.querySelector("table"), null);
+    const compute = [...view.host.querySelectorAll("button")].find((button) => button.textContent === "Compute modes");
+    await act(async () => { compute.click(); });
+    for (let wait = 0; wait < 200 && !view.host.querySelector("table"); wait++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+    const expected = harmonicModes(science.atoms, science.frames[0].hessian);
+    assert.deepEqual([...view.host.querySelectorAll("tbody td:first-of-type")].map((cell) => cell.textContent), expected.map((mode) => mode.frequencyCm1.toFixed(1)));
+    const trigger = [...view.host.querySelectorAll("button")].find((button) => button.textContent === "Export");
+    await act(async () => { trigger.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+    await act(async () => { [...document.body.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent === "Modes as JSON").click(); });
+    const table = JSON.parse(saved.at(-1).text);
+    assert.equal(saved.at(-1).title, "water-hf-hessian-modes.json");
+    assert.deepEqual(table.modes.map((mode) => [mode.frequencyCm1, mode.reducedMassAmu, mode.displacements]), expected.map((mode) => [mode.frequencyCm1, mode.reducedMassAmu, mode.displacements]));
+  } finally { await view.unmount(); }
 });

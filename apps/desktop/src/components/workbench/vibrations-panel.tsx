@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { displaceNormalMode, type ScientificDocument, type VibrationalMode } from "../../lib/molecular-workbench/quantum";
 import type { CartesianHessian } from "../../lib/molecular-workbench/hessian";
 import type { MolecularAtom } from "../../lib/molecular-workbench/types";
-import { hessianJson, spectrumCsv, spectrumJson, type SpectrumProvenance } from "../../lib/molecular-workbench/vibrational-spectrum";
+import { hessianJson, modesJson, spectrumCsv, spectrumJson, type SpectrumProvenance } from "../../lib/molecular-workbench/vibrational-spectrum";
+import { computeHarmonicModes } from "../../lib/molecular-workbench/quantum-client";
 import { useImportedOriginal, useTrajectoryFrame } from "../../lib/workbench/source";
 import { vibrationalModes, formatFrequency } from "../../lib/workbench/vibrational-modes";
 import { VibrationalSpectrum } from "./vibrational-spectrum";
@@ -63,10 +64,35 @@ export function VibrationsPanel({ document, actions, science, liveAnimation }: {
     return <div className="dock-content dock-content-empty"><PanelEmptyState icon={<FileBlank />} title="No modes for this frame" description="The scene shows different frames than this file." /></div>;
   }
   if (!scene.modes.length) {
+    if (scene.hessian?.massesAmu) return <HessianModes key={scene.key} document={document} actions={actions} science={science} scene={scene} liveAnimation={liveAnimation} />;
     return <div className="dock-content dock-content-empty"><PanelEmptyState icon={<FileBlank />} title={`No vibrational modes for ${scene.frame ? `Frame ${scene.frame}` : "this geometry"}`} /></div>;
   }
   // A new frame remounts the list: its animation stops and nothing of the previous geometry carries over.
   return <FrameVibrations key={scene.key} document={document} actions={actions} science={science} scene={scene} liveAnimation={liveAnimation} />;
+}
+
+/** A geometry whose file gives a Hessian with masses but no modes: its harmonic modes, on request. */
+function HessianModes({ scene, ...props }: { document: ViewerDocument; actions: ShellActions; science: ScientificDocument; scene: FrameModes; liveAnimation: boolean }) {
+  const [computed, setComputed] = useState<VibrationalMode[] | null>(null);
+  const [state, setState] = useState<{ running: boolean; error: string | null }>({ running: false, error: null });
+  const controller = useRef<AbortController | null>(null);
+  useEffect(() => () => controller.current?.abort(), []);
+  if (computed) return <FrameVibrations {...props} scene={{ ...scene, modes: vibrationalModes(computed), sourceModes: computed }} />;
+  const run = () => {
+    controller.current?.abort();
+    const current = controller.current = new AbortController();
+    setState({ running: true, error: null });
+    computeHarmonicModes(scene.atoms, scene.hessian!, current.signal).then(setComputed, (caught) => {
+      if (!current.signal.aborted) setState({ running: false, error: caught instanceof Error ? caught.message : String(caught) });
+    });
+  };
+  return (
+    <div className="dock-content dock-content-empty">
+      <PanelEmptyState icon={<FileBlank />} title={`No vibrational modes for ${scene.frame ? `Frame ${scene.frame}` : "this geometry"}`}
+        action={state.running ? undefined : { label: "Compute modes", run }} />
+      {state.error ? <p role="alert" className="workbench-error">{state.error}</p> : null}
+    </div>
+  );
 }
 
 function FrameVibrations({ document, actions, science, scene, liveAnimation }: { document: ViewerDocument; actions: ShellActions; science: ScientificDocument; scene: FrameModes; liveAnimation: boolean }) {
@@ -127,16 +153,18 @@ function FrameVibrations({ document, actions, science, scene, liveAnimation }: {
 
   // Saved spectra name the uploaded file and the geometry their modes belong to.
   const original = useImportedOriginal(document.id);
-  const save = (kind: "csv" | "json" | "hessian") => {
+  const save = (kind: "csv" | "json" | "modes" | "hessian") => {
     setError(null);
     void Promise.resolve().then(() => {
       const provenance: SpectrumProvenance = { sourceName: original?.name ?? document.title, format: science.format, frame: scene.frame, frameCount: science.frames.length };
       const stem = `${fileStem(original?.name ?? document.title)}${scene.frame ? `-frame-${scene.frame}` : ""}`;
       const text = kind === "csv" ? spectrumCsv(scene.sourceModes, provenance)
         : kind === "json" ? spectrumJson(scene.sourceModes, provenance)
+        : kind === "modes" ? modesJson(scene.sourceModes, geometry, provenance)
         : hessianJson(scene.hessian!, geometry, provenance);
       const extension = kind === "csv" ? "csv" : "json";
-      return actions.saveKetcherExportFile({ title: `${stem}-${kind === "hessian" ? "hessian" : "spectrum"}.${extension}`, extension, text });
+      const name = kind === "hessian" ? "hessian" : kind === "modes" ? "modes" : "spectrum";
+      return actions.saveKetcherExportFile({ title: `${stem}-${name}.${extension}`, extension, text });
     }).catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)));
   };
 
@@ -197,6 +225,7 @@ function FrameVibrations({ document, actions, science, scene, liveAnimation }: {
             <DropdownMenuContent align="end">
               <DropdownMenuItem onSelect={() => save("csv")}>Spectrum as CSV</DropdownMenuItem>
               <DropdownMenuItem onSelect={() => save("json")}>Spectrum as JSON</DropdownMenuItem>
+              {scene.sourceModes.some((item) => item.displacements) ? <DropdownMenuItem onSelect={() => save("modes")}>Modes as JSON</DropdownMenuItem> : null}
               {scene.hessian ? <DropdownMenuItem onSelect={() => save("hessian")}>Hessian as JSON</DropdownMenuItem> : null}
             </DropdownMenuContent>
           </DropdownMenu>

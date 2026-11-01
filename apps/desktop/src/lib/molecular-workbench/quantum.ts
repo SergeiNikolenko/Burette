@@ -328,6 +328,8 @@ function parseHessian(text: string): ScientificDocument {
   // IR table is wavenumber, T**2, TX, TY, TZ (atomic units), not km/mol.
   // Reference: opan/test/resource/orca/test_orca_v3.0.3.hess and
   // opan/test/orca_hess.py in https://github.com/bskinn/opan.
+  // ORCA 5's six columns are wavenumber, eps (L/(mol·cm)), Int (km/mol), TX, TY, TZ, as the
+  // IR SPECTRUM table of the same run prints them (tests/fixtures/quantum/orca-property).
   for (const name of ["ir_spectrum", "raman_spectrum"] as const) {
     const rows = sections.get(name);
     if (!rows) continue;
@@ -336,15 +338,17 @@ function parseHessian(text: string): ScientificDocument {
     }
     rows.slice(1).forEach((line, index) => {
       const p = fields(line);
-      const expected = name === "ir_spectrum" ? 5 : 3;
-      if (p.length !== expected) throw new Error(`Unsupported ORCA Hessian ${name} row layout.`);
+      // One layout per table: a row of the other width is not a row of this table.
+      const layouts = name === "ir_spectrum" ? [5, 6] : [3];
+      if (!layouts.includes(p.length) || p.length !== fields(rows[1]).length) throw new Error(`Unsupported ORCA Hessian ${name} row layout.`);
       const values = p.map(number);
       const mode = modes.get(index)!;
-      if (Math.abs(values[0] - mode.frequencyCm1) > 0.02 || values[1] < 0) {
+      if (Math.abs(values[0] - mode.frequencyCm1) > 0.02 || values[1] < 0 || (p.length === 6 && values[2] < 0)) {
         throw new Error(`Invalid ORCA Hessian ${name} values or mismatched frequency.`);
       }
       if (name === "ir_spectrum") {
-        mode.transitionDipoleSquared = values[1];
+        if (p.length === 6) mode.intensityKmMol = values[2];
+        else mode.transitionDipoleSquared = values[1];
       } else {
         if (values[2] < 0 || values[2] > 1) throw new Error("Invalid ORCA Hessian Raman depolarization ratio.");
         mode.ramanActivityAngstrom4Amu = values[1];

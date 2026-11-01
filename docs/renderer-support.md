@@ -163,7 +163,11 @@ and iPhone acceptance remain separate; their file registration is unchanged by
 this browser import path.
 
 Vibrations is available through Compute and the command palette when the current
-scientific source has normal modes. IR and Raman use separate physical units;
+scientific source has normal modes, or a Hessian with the masses its source states. A
+geometry with only such a Hessian offers Compute modes: a worker projects translations and
+rotations out of the mass-weighted Hessian and diagonalizes it (`normal-modes.ts`; 3N − 6, or
+3N − 5 for a linear geometry). Modes as JSON saves each mode's columns with its Cartesian
+displacement vectors and the atoms they displace. IR and Raman use separate physical units;
 older ORCA output carrying only squared transition dipoles keeps its T² atomic
 units. Peak-height Gaussian curves and the supplemental sticks/area-normalized
 view remain distinct. Mode selection, live Mol* animation, frame-specific data,

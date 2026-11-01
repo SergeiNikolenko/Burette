@@ -252,3 +252,9 @@ kmilozeta), Spin-Chemistry-Labs/radicalpy (Copyright (c) 2022 Lewis Antill),
 arpank-2380/PyEPFD (Copyright (c) 2023 Arpan Kundu) and
 shabab-kabir/Density_Functional_Theory_Research (Copyright (c) 2023 Shabab Kabir). Their
 licenses and source commits are retained beside the files. They are test inputs only.
+
+## JAMA eigenvalue routines
+
+`apps/desktop/src/lib/molecular-workbench/normal-modes.ts` follows the Householder `tred2` and
+implicit-QL `tql2` routines of EISPACK as published in JAMA (A Java Matrix Package, MathWorks
+and NIST), which its authors released into the public domain.
