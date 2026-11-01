@@ -62,7 +62,7 @@ fn read_small(path: &Path) -> Option<String> {
     fs::read_to_string(path).ok()
 }
 
-fn describe(root: &Path, receipt: Receipt) -> Option<InstalledPlugin> {
+pub(crate) fn describe_receipt(root: &Path, receipt: Receipt) -> Option<InstalledPlugin> {
     let dir = package_dir(root, &receipt);
     let pyproject = read_small(&dir.join("pyproject.toml"))?;
     let license_text = LICENSE_FILES
@@ -93,7 +93,7 @@ pub(crate) fn installed(root: &Path) -> Vec<InstalledPlugin> {
         .filter_map(|child| child.file_name().into_string().ok())
         .filter(|name| super::index::valid_name(name))
         .filter_map(|name| read_receipt(root, &name))
-        .filter_map(|receipt| describe(root, receipt))
+        .filter_map(|receipt| describe_receipt(root, receipt))
         .collect();
     plugins.sort_by(|left, right| left.receipt.name.cmp(&right.receipt.name));
     plugins
@@ -172,7 +172,8 @@ pub(crate) fn install(
         if let Some(previous) = previous.filter(|previous| previous.commit != receipt.commit) {
             discard(root, &package_dir(root, &previous));
         }
-        describe(root, receipt).ok_or_else(|| "The installed plugin could not be read".to_string())
+        describe_receipt(root, receipt)
+            .ok_or_else(|| "The installed plugin could not be read".to_string())
     })();
     if staging.exists() {
         let _ = fs::remove_dir_all(&staging);

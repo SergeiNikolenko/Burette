@@ -7,6 +7,7 @@
 
 mod archive;
 mod index;
+mod runner;
 mod store;
 
 use std::collections::HashMap;
@@ -178,6 +179,52 @@ pub(crate) async fn avogadro_plugin_remove<R: Runtime>(
     tauri::async_runtime::spawn_blocking(move || store::remove(&root, &name))
         .await
         .map_err(|error| format!("The plugin task failed: {error}"))?
+}
+
+/// Creates the package's environment with `pixi install`. This runs code from
+/// the package and downloads its dependencies; the shell asks first.
+#[tauri::command]
+pub(crate) async fn avogadro_plugin_prepare<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    job_id: String,
+    name: String,
+) -> Result<InstalledPlugin, String> {
+    let root = plugins_root(&app)?;
+    let job = JobGuard::register(&job_id)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let pixi = crate::commands::conformer::resolve_executable("pixi");
+        runner::prepare(&root, &name, pixi, &job.cancel)
+    })
+    .await
+    .map_err(|error| format!("The plugin task failed: {error}"))?
+}
+
+/// Runs one declared command of a prepared package and returns its JSON text.
+#[tauri::command]
+pub(crate) async fn avogadro_plugin_run<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    job_id: String,
+    name: String,
+    script: String,
+    identifier: String,
+    input: String,
+) -> Result<String, String> {
+    let root = plugins_root(&app)?;
+    let job = JobGuard::register(&job_id)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        runner::run(&root, &name, &script, &identifier, &input, &job.cancel)
+    })
+    .await
+    .map_err(|error| format!("The plugin task failed: {error}"))?
+}
+
+#[tauri::command]
+pub(crate) fn avogadro_plugin_options<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    name: String,
+    path: String,
+) -> Result<String, String> {
+    runner::read_options(&plugins_root(&app)?, &name, &path)
 }
 
 #[tauri::command]
