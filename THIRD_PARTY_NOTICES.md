@@ -231,12 +231,12 @@ The exact license and source hashes are retained beside these test-only extracts
 
 ## cclib quantum-chemistry test outputs
 
-Files named `cclib-*` under `tests/fixtures/quantum/{nwchem,psi4,xtb,gamess,qchem,molpro}/` are
+Files named `cclib-*` under `tests/fixtures/quantum/{nwchem,psi4,xtb,gamess,qchem,molpro,gaussian}/` are
 byte-identical copies of program outputs from the `data/` directory of
 [cclib](https://github.com/cclib/cclib) commit
 `0c6e08e0a0d04b308201666793030ef3b77b2973`, under cclib's BSD-3-Clause license
-(Copyright the cclib development team); `gamess/cclib-C_bigbasis-trimmed.out` drops
-the printed integral and population matrices as documented beside it. The license is retained as
+(Copyright the cclib development team); the two `cclib-C_bigbasis-trimmed.out` files drop
+printed integral, density and population matrices as documented beside them. The license is retained as
 `tests/fixtures/quantum/cclib-LICENSE.txt`. cclib itself is used only as an
 external test oracle (`tests/fixtures/quantum/cclib-reference.py`); no cclib code
 is bundled; PySCF (Apache-2.0) is likewise only an external oracle. The other outputs in those directories were generated for Burette with
