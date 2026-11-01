@@ -1,3 +1,4 @@
+import { writeCoordinateInterchangeXyzSource } from "../scripts/coordinate-interchange.mjs";
 import { expect, test } from 'bun:test';
 import { atomsFromZmatrixDocument, parseZmatrixDocument } from '../scripts/zmatrix-document.mjs';
 import { measureGeometry } from '../scripts/molecular-geometry.js';
@@ -64,7 +65,7 @@ test('holding one use holds the whole variable, including coordinates measured f
   expect(result.converged).toBe(true);
   expect(result.energy).toBeCloseTo(result.initialEnergy, 10);
   expect(result.molecule.atoms).toEqual(molecule.atoms);
-  const text = serializeXyz(molecule.atoms);
+  const text = writeCoordinateInterchangeXyzSource(serializeXyz(molecule.atoms), { atoms: molecule.atoms, internalCoordinates: definition });
   const science = { ...parseScientificFile('water.xyz', text), internalCoordinates: definition };
   const written = zmatrixOptimizedRevision(science, definition, result.molecule.atoms.map(({ element, x, y, z }) => ({ element, position: [x, y, z] })), zmatrixRowLabels(definition), text, [{ text, document: science }], result.definition);
   expect(written.revision).toEqual({ text, document: science, topology: undefined });

@@ -1,3 +1,4 @@
+import { readCoordinateInterchange } from "../scripts/coordinate-interchange.mjs";
 import { ensureGeometryViewerFrame } from "./fixtures/geometry-viewer-frame";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -332,8 +333,8 @@ test("a definition-only edit is its own revision: it exports, undoes and never g
     assert.deepEqual(atomLines(dummy), atomLines(imported));
     assert.equal((await exported(view.host)).rows[1].values[0], 1.01);
     const comment = (text) => text.split("\n")[1];
-    assert.equal(comment(dummy).length, comment(unused).length, "one marker, replaced");
-    assert.ok(comment(dummy).startsWith(comment(imported)), "the import token stays");
+    assert.equal(comment(dummy).match(/BURETTE_INTERNAL_COORDINATES_V1=/gu).length, 1, "one full marker, replaced");
+    assert.equal(readCoordinateInterchange(dummy, "xyz").comment, readCoordinateInterchange(imported, "xyz").comment, "the import token stays");
 
     await click(view.host, "Undo");
     await click(view.host, "Undo");
@@ -344,9 +345,9 @@ test("a definition-only edit is its own revision: it exports, undoes and never g
     await click(view.host, "Redo");
     assert.equal(current(document), unused);
 
-    // A geometry change needs no marker.
+    // A geometry change updates the same full marker and retains its human comment.
     await press(view.host, "Variable R", "ArrowUp");
-    assert.equal(comment(current(document)), comment(imported));
+    assert.equal(readCoordinateInterchange(current(document), "xyz").comment, readCoordinateInterchange(imported, "xyz").comment);
   } finally { await view.unmount(); }
 });
 
@@ -370,7 +371,8 @@ test("an XYZ whose first atoms are collinear converts to internal coordinates in
 
     await press(view.host, "Bond of H4, Å", "ArrowUp");
     const edited = current(document);
-    assert.deepEqual(edited.split("\n").slice(0, 5), text.split("\n").slice(0, 5), "the leading atoms keep their lines: no reorientation or translation");
+    assert.deepEqual([edited.split("\n")[0], ...edited.split("\n").slice(2, 5)], [text.split("\n")[0], ...text.split("\n").slice(2, 5)], "count and leading atoms keep their lines: no reorientation or translation");
+    assert.equal(readCoordinateInterchange(edited, "xyz").comment, text.split("\n")[1], "the human comment stays");
     assert.notEqual(edited.split("\n")[5], text.split("\n")[5], "the edited atom moved");
 
     // The exported definition rebuilds exactly the edited source geometry.

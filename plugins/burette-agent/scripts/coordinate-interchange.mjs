@@ -75,6 +75,37 @@ function sameAtoms(a, b) {
 }
 function formatKind(format) { if (format !== 'xyz' && format !== 'zmat') invalid('Coordinate format must be xyz or zmat.'); }
 
+function xyzComment(comment, occurrences) {
+  if (occurrences > 1) invalid('Only one internal-coordinate marker is allowed.');
+  if (!occurrences) return { comment, saved: null };
+  const match = /(?:^|[ \t])BURETTE_INTERNAL_COORDINATES_V1=([A-Za-z0-9_-]+)$/u.exec(comment);
+  if (!match) invalid('Unsupported or misplaced internal-coordinate marker.');
+  return { comment: comment.slice(0, match.index), saved: decode(match[1]) };
+}
+function markedComment(checked, comment, appendComment = '') {
+  bounded(comment);
+  if (/[\r\n]/u.test(comment) || comment.includes(NAMESPACE)) invalid('Use an ordinary single-line coordinate comment.');
+  comment = comment.replace(/ zdef-[0-9a-f]{8}$/u, '');
+  if (appendComment) {
+    bounded(appendComment);
+    if (/[\r\n]/u.test(appendComment) || appendComment.includes(NAMESPACE)) invalid('Use an ordinary single-line coordinate comment.');
+    comment += `${comment ? ' ' : ''}${appendComment}`;
+  }
+  return `${comment}${comment ? ' ' : ''}${PREFIX}${encode(checked)}`;
+}
+
+/** Replace only the XYZ comment; managed atom rows must already match the new pair. */
+export function writeCoordinateInterchangeXyzSource(text, pair, appendComment = '') {
+  bounded(text);
+  const header = /^([^\r\n]*(?:\r\n|\r|\n))([^\r\n]*)(\r\n|\r|\n)/u.exec(text);
+  if (!header) invalid('Expected an XYZ count and comment line.');
+  // An existing marker must be valid, but may describe the pre-edit geometry.
+  const { comment } = xyzComment(header[2], text.split(NAMESPACE).length - 1);
+  const checked = checkedPair({ atoms: pair.atoms, internalCoordinates: pair.internalCoordinates });
+  if (!sameAtoms(fromGeometry(parseXyzAtoms(text)), checked.atoms)) invalid('XYZ atom rows conflict with the new internal-coordinate pair.');
+  return bounded(`${header[1]}${markedComment(checked, comment, appendComment)}${header[3]}${text.slice(header[0].length)}`);
+}
+
 /** Read one plain XYZ frame or headerless ZMAT. A recognized bad marker never falls back. */
 export function readCoordinateInterchange(text, format) {
   formatKind(format);
@@ -83,13 +114,7 @@ export function readCoordinateInterchange(text, format) {
   if (occurrences > 1) invalid('Only one internal-coordinate marker is allowed.');
   let saved = null, comment = '';
   if (format === 'xyz') {
-    comment = lines[1] ?? '';
-    if (occurrences) {
-      const match = /(?:^|[ \t])BURETTE_INTERNAL_COORDINATES_V1=([A-Za-z0-9_-]+)$/u.exec(comment);
-      if (!match) invalid('Unsupported or misplaced internal-coordinate marker.');
-      saved = decode(match[1]);
-      comment = comment.slice(0, match.index);
-    }
+    ({ comment, saved } = xyzComment(lines[1] ?? '', occurrences));
     const atoms = fromGeometry(parseXyzAtoms(lines.join('\n')));
     if (saved && !sameAtoms(atoms, saved.atoms)) invalid('XYZ atom rows conflict with the internal-coordinate marker.');
     const pair = saved ?? checkedPair({ atoms, internalCoordinates: zmatrixDocumentFromAtoms(toGeometry(atoms)) });
@@ -113,13 +138,11 @@ export function readCoordinateInterchange(text, format) {
 export function writeCoordinateInterchange(pair, format, comment = '') {
   formatKind(format);
   if (!pair || typeof pair !== 'object') invalid('Coordinate interchange requires atoms and a definition.');
-  bounded(comment);
-  if (/[\r\n]/u.test(comment) || comment.includes(NAMESPACE)) invalid('Use an ordinary single-line coordinate comment.');
-  // Only the exact old terminal discriminator is migrated. Similar human text is untouched.
-  comment = comment.replace(/ zdef-[0-9a-f]{8}$/u, '');
   const checked = checkedPair({ atoms: pair.atoms, internalCoordinates: pair.internalCoordinates });
-  const marker = PREFIX + encode(checked);
+  const fullComment = markedComment(checked, comment);
+  const markerAt = fullComment.indexOf(PREFIX);
+  const human = markerAt ? fullComment.slice(0, markerAt - 1) : '';
   return bounded(format === 'xyz'
-    ? formatXyz(toGeometry(checked.atoms), `${comment}${comment ? ' ' : ''}${marker}`)
-    : `${comment ? `# ${comment}\n` : ''}# ${marker}\n${formatZmatrixDocument(checked.internalCoordinates)}`);
+    ? formatXyz(toGeometry(checked.atoms), fullComment)
+    : `${human ? `# ${human}\n` : ''}# ${fullComment.slice(markerAt)}\n${formatZmatrixDocument(checked.internalCoordinates)}`);
 }

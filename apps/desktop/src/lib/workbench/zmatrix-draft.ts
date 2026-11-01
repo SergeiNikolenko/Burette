@@ -1,3 +1,4 @@
+import { writeCoordinateInterchangeXyzSource } from "../../../../../scripts/coordinate-interchange.mjs";
 import { atomsFromZmatrixRows, formatXyz, placeInReferenceFrame, type CoordinateAtom } from "../../../../../scripts/internal-coordinates.mjs";
 import { measureGeometry } from "../../../../../scripts/molecular-geometry.js";
 import { atomsFromZmatrixDocument, resolveZmatrixDocument, type ZmatrixDocument } from "../../../../../scripts/zmatrix-document.mjs";
@@ -240,27 +241,9 @@ function keptByDefinition(definition: ZmatrixDocument, reference: readonly Coord
   return keeping(low);
 }
 
-// A definition that leaves every real atom where it was (an unused variable, a reference
-// point's distance) still needs text of its own, or its revision could not be told apart.
-// The comment carries at most one such marker, replaced on every edit, so it never grows.
-const DEFINITION_MARKER = / zdef-[0-9a-f]{8}$/u;
-
-function definitionMarker(definition: ZmatrixDocument) {
-  let hash = 0x811c9dc5;
-  for (const char of JSON.stringify(definition)) hash = Math.imul(hash ^ char.charCodeAt(0), 0x01000193) >>> 0;
-  return ` zdef-${hash.toString(16).padStart(8, "0")}`;
-}
-
-// XYZ `lines` (count, comment, atoms) as the text of `definition`, with the marker when an
-// earlier revision with another definition has the same text.
-function revisionText(lines: readonly string[], definition: ZmatrixDocument, revisions: readonly ImportedRevision[]) {
-  const comment = (lines[1] ?? "").replace(DEFINITION_MARKER, "");
-  const withComment = (value: string) => [lines[0], value, ...lines.slice(2)].join("\n");
-  const taken = (candidate: string) => revisions.some((revision) => revision.text === candidate && !sameDefinition(revision.document.internalCoordinates, definition));
-  let next = withComment(comment);
-  if (taken(next)) next = withComment(`${comment}${definitionMarker(definition)}`);
-  if (taken(next)) throw new Error("This Z-matrix edit cannot be told apart from an earlier one.");
-  return next;
+// Keep each source line's terminator, including mixed endings and a missing final newline.
+function sourceLines(text: string) {
+  return [...text.matchAll(/([^\r\n]*)(\r\n|\r|\n|$)/gu)].slice(0, -1).map(match => ({ value: match[1], end: match[2] }));
 }
 
 // The data of `atoms` defined by `definition`. Real atoms that are all where they were, in
@@ -334,15 +317,15 @@ function geometryRevision(science: ScientificDocument, definition: ZmatrixDocume
   if (placed.length !== science.atoms.length || placed.some(({ element }, index) => element !== science.atoms[index].element)) {
     throw new Error("The geometry does not match the Z-matrix atoms.");
   }
-  const lines = text.replace(/\r\n?/gu, "\n").split("\n");
+  const lines = sourceLines(text);
   const atoms = placed.map(({ element, position: [x, y, z] }, index) => {
     const source = science.atoms[index];
-    if (x !== source.x || y !== source.y || z !== source.z) lines[index + 2] = formatXyz([{ element, position: [x, y, z] }], "").split("\n")[2];
+    if (x !== source.x || y !== source.y || z !== source.z) lines[index + 2].value = formatXyz([{ element, position: [x, y, z] }], "").split("\n")[2];
     return { element, x, y, z };
   });
   const document = revisionDocument(science, atoms, definition);
   const retainedScienceFrom = retainedScientificOrigin(science, document, text, revisions);
-  return { text: revisionText(lines, definition, revisions), document, topology: topologyOf(revisions, text),
+  return { text: writeCoordinateInterchangeXyzSource(lines.map(line => line.value + line.end).join(""), { atoms, internalCoordinates: definition }), document, topology: topologyOf(revisions, text),
     ...(retainedScienceFrom ? { retainedScienceFrom } : {}) };
 }
 
@@ -358,7 +341,7 @@ function geometryRevision(science: ScientificDocument, definition: ZmatrixDocume
  * all their data and the topology.
  */
 export function zmatrixRowsRevision(science: ScientificDocument, edit: ZmatrixRowEdit, text: string, revisions: readonly ImportedRevision[]): ImportedRevision {
-  const lines = text.replace(/\r\n?/gu, "\n").split("\n");
+  const lines = sourceLines(text);
   const count = science.atoms.length;
   // The new rows anchor the frame on other atoms; they are placed in it and checked like a
   // definition edit, so the atoms written are the geometry the rows describe.
@@ -370,13 +353,17 @@ export function zmatrixRowsRevision(science: ScientificDocument, edit: ZmatrixRo
     const [x, y, z] = position;
     if (source && x === source.x && y === source.y && z === source.z) {
       atoms.push({ ...source });
-      return lines[(edit.atomMap[index] as number) + 2];
+      return { ...lines[(edit.atomMap[index] as number) + 2] };
     }
     atoms.push({ element, x, y, z });
-    return formatXyz([{ element, position }], "").split("\n")[2];
+    return { value: formatXyz([{ element, position }], "").split("\n")[2], end: lines[0].end };
   });
   const sameAtoms = edit.atomMap.length === count && edit.atomMap.every((old, index) => old === index);
-  const next = revisionText([sameAtoms ? lines[0] : String(atoms.length), lines[1] ?? "", ...atomLines, ...lines.slice(count + 2)], edit.document, revisions);
+  if (!sameAtoms) lines[0].value = `${lines[0].value.startsWith("\uFEFF") ? "\uFEFF" : ""}${atoms.length}`;
+  atomLines.forEach((line, index) => { if (index < atomLines.length - 1 && !line.end) line.end = lines[0].end; });
+  atomLines.at(-1)!.end = lines[count + 1].end;
+  const next = writeCoordinateInterchangeXyzSource([lines[0], lines[1], ...atomLines, ...lines.slice(count + 2)]
+    .map(line => line.value + line.end).join(""), { atoms, internalCoordinates: edit.document });
   const document = revisionDocument(science, atoms, edit.document);
   const retainedScienceFrom = sameAtoms ? retainedScientificOrigin(science, document, text, revisions) : undefined;
   return { text: next, document, topology: sameAtoms ? topologyOf(revisions, text) : ++topologies,

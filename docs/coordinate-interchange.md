@@ -54,3 +54,24 @@ Run `vp run test:coordinate-interchange-reader` and
 reader worker. This reader foundation does not change generated XYZ source
 materialization, Geometry edits, clipboard or export writers. Their marker and
 original atom-row byte preservation require separate flow acceptance.
+
+`writeCoordinateInterchangeXyzSource(text, pair, appendComment?)` replaces only
+the XYZ comment. BOM, count spelling, every atom row, individual line endings
+and final-newline presence remain unchanged. The current rows must exactly
+match the new absolute atom pair. An old valid envelope may describe the
+pre-edit geometry; malformed, duplicate or unknown envelopes cannot be erased
+by this managed writer. The optional suffix is the generated import token,
+added after terminal legacy marker migration. The whole final source is bounded
+before publication.
+
+Scientific materialization uses this writer for definitions, preserving the
+human comment and frame energy. Z-matrix revisions retain unchanged atom row
+bytes while updating the one full marker. No-op marked revisions are stable;
+geometry-changing revisions update the pair without changing source ownership
+or native publication guards. Run `vp run test:coordinate-source-writers` and
+`vp run typecheck:coordinate-source-writers`.
+
+Editable ordinary marked XYZ admission is a separate owner boundary: parsed
+definitions need a document-scoped scientific revision before a Z-matrix
+gesture can publish. Copy/export consumers and that admission are separate
+from this source-writer foundation; it does not establish their Browser flow.

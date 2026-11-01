@@ -7,3 +7,5 @@ export type CoordinateInterchange = {
 export type CoordinateInterchangeRead = CoordinateInterchange & { comment: string };
 export function readCoordinateInterchange(text: string, format: 'xyz' | 'zmat'): CoordinateInterchangeRead;
 export function writeCoordinateInterchange(pair: CoordinateInterchange, format: 'xyz' | 'zmat', comment?: string): string;
+/** Replace only the XYZ comment, preserving all other source bytes. */
+export function writeCoordinateInterchangeXyzSource(text: string, pair: CoordinateInterchange, appendComment?: string): string;

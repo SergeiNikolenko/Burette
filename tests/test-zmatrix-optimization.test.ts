@@ -1,3 +1,4 @@
+import { writeCoordinateInterchangeXyzSource } from "../scripts/coordinate-interchange.mjs";
 import { expect, test } from 'bun:test';
 import { parseScientificFile } from '../apps/desktop/src/lib/molecular-workbench/quantum';
 import { atomsFromZmatrixDocument, formatZmatrixDocument, parseZmatrixDocument } from '../scripts/zmatrix-document.mjs';
@@ -168,7 +169,7 @@ test('a linear angle, or a torsion over collinear atoms, cannot be a force-field
 function zmatrixSource(zmatrix: string, orient = (atoms: Atom[]) => atoms) {
   const definition = parseZmatrixDocument(zmatrix);
   const atoms = orient(atomsFromZmatrixDocument(definition)).map(({ element, position: [x, y, z] }) => ({ element, x, y, z }));
-  const text = serializeXyz(atoms, 'imported');
+  const text = writeCoordinateInterchangeXyzSource(serializeXyz(atoms, 'imported'), { atoms, internalCoordinates: definition });
   const science = { format: 'xyz', atoms, frames: [{ atoms, energy: -1 }], modes: [{ frequency: 1000 }], orbitals: [], internalCoordinates: definition } as any;
   return { definition, science, text, revisions: [{ text, document: science }] };
 }
@@ -195,7 +196,7 @@ test('atoms an optimization left in place keep their lines, and the definition i
   const after = shifted(before, { 2: [2e-3, -1e-3, 5e-4], 3: [0.9e-6, 0, 0] });
   const { revision } = zmatrixOptimizedRevision(source.science, source.definition, after, names, source.text, source.revisions);
   const next = revision.text.split('\n');
-  expect(next.filter((line, i) => line !== lines[i])).toEqual([next[4]]);
+  expect(next.filter((line, i) => line !== lines[i])).toEqual([next[1], next[4]]);
   expect(revision.document.atoms[3]).toEqual(source.science.atoms[3]);
   expect(revision.document.atoms[2]).toEqual({ element: 'O', x: after[2].position[0], y: after[2].position[1], z: after[2].position[2] });
   // A new geometry: data computed for the old one is left out.
@@ -258,7 +259,7 @@ test('a sub-micron authored edit is written where the definition places it, so l
   expect(Math.hypot(h.x - old.x, h.y - old.y, h.z - old.z)).toBeGreaterThan(0.5e-6);
   // The other atoms keep their lines and exact coordinates; the authored value is kept as typed.
   const next = edited.text.split('\n');
-  expect(next.filter((line, i) => line !== lines[i])).toEqual([next[5]]);
+  expect(next.filter((line, i) => line !== lines[i])).toEqual([next[1], next[5]]);
   expect(edited.document.atoms.slice(0, 3)).toEqual(source.science.atoms.slice(0, 3));
   expect(edited.document.internalCoordinates).toEqual(authored);
   expect(edited.document.modes).toEqual([]);
@@ -373,7 +374,7 @@ for (const [angle, zmatrix] of Object.entries(linearRows)) {
     const placed = placeInReferenceFrame(atomsFromZmatrixDocument(authored), coordinates(source.science.atoms))[3].position;
     const h = edited.document.atoms[3];
     expect(Math.hypot(h.x - placed[0], h.y - placed[1], h.z - placed[2])).toBeLessThan(1e-12);
-    expect(changed(edited)).toEqual([5]);
+    expect(changed(edited)).toEqual([1, 5]);
     expect(edited.document.internalCoordinates).toEqual(authored);
     expect(edited.document.modes).toEqual([]);
     expectShape(edited);

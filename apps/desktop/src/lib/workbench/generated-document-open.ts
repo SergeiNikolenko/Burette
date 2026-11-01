@@ -1,5 +1,7 @@
 import type { ScientificDocument } from "../molecular-workbench/scientific-types";
 import { serializeXyz } from "../molecular-workbench/xyz";
+import { trajectoryMetadata } from "../molecular-workbench/trajectory-metadata";
+import { writeCoordinateInterchangeXyzSource } from "../../../../../scripts/coordinate-interchange.mjs";
 import type { ShellActions, StructureRecordsOpenOptions } from "../../components/types";
 import type { ViewerDocument } from "../../types";
 import { safeExportFileName } from "../file-export";
@@ -22,7 +24,12 @@ const energyComment = (energy: number | undefined) => energy === undefined ? "" 
 
 /** Reference geometry as one XYZ frame, the geometry normal modes and orbitals refer to. */
 function finalGeometryText(document: ScientificDocument, token: string) {
-  return serializeXyz(document.atoms, `${energyComment(document.referenceFrameIndex === undefined ? undefined : document.frames[document.referenceFrameIndex]?.energyHartree)}${token}`);
+  const frame = document.referenceFrameIndex === undefined ? undefined : document.frames[document.referenceFrameIndex];
+  if (!document.internalCoordinates) return serializeXyz(document.atoms, `${energyComment(frame?.energyHartree)}${token}`);
+  let comment = frame?.comment ?? "";
+  if (frame?.energyHartree !== undefined && trajectoryMetadata(comment).energyHartree !== frame.energyHartree) comment = comment ? `${energyComment(frame.energyHartree)}${comment}` : energyComment(frame.energyHartree).trimEnd();
+  const text = serializeXyz(document.atoms, comment);
+  return writeCoordinateInterchangeXyzSource(text, { atoms: document.atoms, internalCoordinates: document.internalCoordinates }, token);
 }
 
 /** XYZ the trajectory toolbar can play: every retained step, with its energy in the comment line. */

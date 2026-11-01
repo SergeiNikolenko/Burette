@@ -1,3 +1,4 @@
+import { readCoordinateInterchange } from "../scripts/coordinate-interchange.mjs";
 import { ensureGeometryViewerFrame } from "./fixtures/geometry-viewer-frame";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -207,7 +208,7 @@ test("Optimize holds frozen atoms and fixed coordinates on real atoms, writes on
     assert.notEqual(t1, imported);
     assert.deepEqual(seen.revisions, [imported, t1], "one revision");
     assert.equal(lines(t1)[2], lines(imported)[2], "the frozen atom keeps its source line");
-    assert.equal(lines(t1)[1], lines(imported)[1], "the comment keeps its import token");
+    assert.equal(readCoordinateInterchange(t1, "xyz").comment, readCoordinateInterchange(imported, "xyz").comment, "the comment keeps its import token");
     assert.equal(shown(document), t1, "the scene moves the atoms at the same camera");
     assert.equal(staged(document), null, "no reload");
     assert.equal(alert(), null);
