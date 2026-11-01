@@ -78,7 +78,28 @@ RDKit MOL parsing, checks Pro/charged termini, and opens mmCIF in actual Mol* to
 compare the complete structure. `check:peptide-geometry` checks source and tests.
 These are deterministic source/runtime checks, not interactive Browser proof.
 
-Builder UI, worker/cancellation, insertion ownership, saved workspace metadata,
-secondary-structure assignment, native macOS/Quick Look/iPhone and actual Browser
-build/export/reopen scenarios remain separate integration work. This stage does
-not complete Avogadro peptide or broader builder parity.
+The peptide-only dialog calls a private cancellable worker (`peptide-task.ts`)
+for deterministic placement and full-graph mmCIF serialization. One-letter and
+three-letter codes are explicit modes; the latter accepts spaces or hyphens.
+The controls expose native global L/D, backbone presets or custom phi/psi,
+amine/ammonium and acid/carboxylate termini, and a one-character chain ID.
+
+A preview caches the exact request and CIF. Create reuses those bytes, passes
+`newDocument: true` to the existing document owner, and closes only after opening
+succeeds. Document identity lives in the source path, not a private CIF category.
+Cancellation, unmount and a replaced dialog prevent late publication and release
+unadopted prepared sources. Synchronous duplicate submissions share one operation.
+Open failure retains the preview for retry. Inputs changing after a preview hide
+that stale preview; subsequent Create computes the new request.
+
+`test:peptide-worker`, `test:peptide-preview` and `test:peptide-builder` exercise
+real workers, the existing preview receiver, actual browser document preparation,
+and the viewer's full mmCIF export function followed by native parsing. Camera
+and rendering peripherals in receiver tests are stubbed; this is not WebGL proof.
+The preview uses the packaged Burette renderer and fixed frame-owned format;
+existing MOL inspector callers keep their default format and update behavior.
+
+Insertion into existing structures/Undo, saved workspace metadata,
+secondary-structure assignment, filtered/modified exports, native macOS/Quick
+Look/iPhone and actual Browser build/export/reopen remain separate acceptance.
+This stage does not complete Avogadro peptide or broader builder parity.

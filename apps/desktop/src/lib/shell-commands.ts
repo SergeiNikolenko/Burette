@@ -1,3 +1,4 @@
+import { openWorkbenchDialog } from "./workbench/dialog-store";
 import type { ShellActions, ShellViewState } from "../components/types";
 import { parsePdbFetchCommand, parseSmilesCommand } from "./structure-fetch";
 import type { ViewerPreferences } from "../types";
@@ -40,6 +41,10 @@ export function buildShellCommands(
       run: actions.chooseFiles,
     },
     ...shellCommandsForQuery(query, actions),
+    {
+      id: "workbench-peptide", group: "Suggested", label: "Build peptide…", description: "",
+      run: () => openWorkbenchDialog({ kind: "builder", builder: "peptide", document: null }),
+    },
     {
       id: "open-clipboard",
       group: "Suggested",

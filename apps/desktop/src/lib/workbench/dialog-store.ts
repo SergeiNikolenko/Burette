@@ -34,6 +34,11 @@ export function closeWorkbenchDialog() {
   listeners.forEach((listener) => listener());
 }
 
+/** Async dialog work belongs to the exact request, including a same-kind replacement. */
+export function isWorkbenchDialogRequestCurrent(expected: WorkbenchDialogRequest) {
+  return request === expected;
+}
+
 export function useWorkbenchDialogRequest() {
   return useSyncExternalStore((listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; }, () => request);
 }

@@ -1,3 +1,4 @@
+import { PeptideBuilderDialogHost } from "./components/workbench/peptide-builder-host";
 import { InputExportDialogHost } from "./components/workbench/input-export-host";
 import { useMoleculeStore } from "./stores/molecule-store";
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
@@ -1368,6 +1369,7 @@ export default function App() {
     <SourceEditingProvider value={sourceEditing}>
       <WindowTitle activeDocument={activeDocument} />
       <InputExportDialogHost actions={actions} />
+      <PeptideBuilderDialogHost actions={actions} />
       <AppLayout
         state={state}
         actions={actions}
