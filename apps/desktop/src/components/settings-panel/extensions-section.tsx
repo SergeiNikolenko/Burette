@@ -1,19 +1,34 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { useResourceExtensions } from "../../hooks/use-resource-extensions";
 import { CRYSTALS_RESOURCE } from "../../lib/extensions/resource-bundle";
+import { createAvogadroCatalog } from "../../lib/extensions/avogadro-catalog";
+import { pluginLinkUrl, type AvogadroPlugin, type AvogadroPluginLink } from "../../lib/extensions/avogadro-plugin-index";
 import { isTauriRuntime } from "../../lib/tauri";
 import { Button } from "../ui/button";
 import { DotsHorizontal } from "../ui/app-icons";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import type { ShellActions } from "../types";
 import { CrystalsBrowser } from "./crystals-browser";
+import { AvogadroPluginsSection } from "./avogadro-plugins-section";
 import { SettingsSection, type SettingRow } from "./setting-control";
 
-export type ExtensionsSectionProps = { extensions: ReturnType<typeof useResourceExtensions> & Pick<ShellActions, "openCrystalsStructure"> };
+export type ExtensionsSectionProps = {
+  extensions: ReturnType<typeof useResourceExtensions> & Pick<ShellActions, "openCrystalsStructure">;
+  catalog?: ReturnType<typeof createAvogadroCatalog>;
+};
 const links = { Source: "https://github.com/OpenChemistry/crystals", Issues: "https://github.com/OpenChemistry/crystals/issues" };
 
-export function ExtensionsSection({ extensions }: ExtensionsSectionProps) {
+async function openPluginLink(plugin: AvogadroPlugin, link: AvogadroPluginLink) {
+  // The desktop shell resolves the address from the index itself.
+  if (isTauriRuntime()) await invoke("open_avogadro_plugin_link", { name: plugin.name, link });
+  else window.open(pluginLinkUrl(plugin, link), "_blank", "noopener,noreferrer");
+}
+
+export function ExtensionsSection({ extensions, catalog: providedCatalog }: ExtensionsSectionProps) {
+  const [catalog] = useState(() => providedCatalog ?? createAvogadroCatalog());
+  const catalogState = useSyncExternalStore(catalog.subscribe, catalog.getSnapshot, catalog.getSnapshot);
+  useEffect(() => { void catalog.refresh(); }, [catalog]);
   const [issue, setIssue] = useState<{ message: string; retry: () => void; focusTarget: "primary" | "links" } | null>(null);
   const [browsing, setBrowsing] = useState(false);
   const library = useRef<HTMLDivElement>(null);
@@ -97,5 +112,6 @@ export function ExtensionsSection({ extensions }: ExtensionsSectionProps) {
         return path;
       }} />
     </div>}
+    <AvogadroPluginsSection catalog={catalogState} onRetry={() => { void catalog.refresh(); }} openLink={openPluginLink} />
   </>;
 }

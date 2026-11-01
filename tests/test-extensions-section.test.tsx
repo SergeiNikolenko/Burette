@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { createResourceStore } from "../apps/desktop/src/lib/extensions/resource-store";
 import { createResourceInstallRunner } from "../apps/desktop/src/lib/extensions/resource-install-runner";
 import { CRYSTALS_RESOURCE } from "../apps/desktop/src/lib/extensions/resource-bundle";
+import { createAvogadroCatalog } from "../apps/desktop/src/lib/extensions/avogadro-catalog";
 
 const browser = new Window({ url: "http://localhost/" }), previous = new Map<string, PropertyDescriptor | undefined>();
 for (const key of ["window", "document", "navigator", "HTMLElement", "HTMLInputElement", "HTMLIFrameElement", "Element", "Node", "NodeFilter", "Event", "MouseEvent", "MutationObserver", "ResizeObserver", "getComputedStyle", "DOMRect", "CustomEvent", "KeyboardEvent", "PointerEvent", "FocusEvent", "requestAnimationFrame", "cancelAnimationFrame"] as const) {
@@ -20,6 +21,7 @@ afterAll(() => { for (const [key, descriptor] of previous) {
 const { createRoot } = await import("react-dom/client");
 const { ExtensionsSection } = await import("../apps/desktop/src/components/settings-panel/extensions-section");
 const bytes = new Uint8Array(readFileSync(new URL("../resources/extensions/openchemistry-crystals.bin", import.meta.url)));
+const savedIndex = readFileSync(new URL("../config/avogadro-plugin-index.snapshot.json", import.meta.url), "utf8");
 type Runner = ReturnType<typeof createResourceInstallRunner>;
 function deferred<T = void>() {
   let resolve!: (value: T) => void;
@@ -31,7 +33,9 @@ function until(runner: Runner, ready: () => boolean) {
 }
 async function fixture(runner: Runner) {
   const host = browser.document.createElement("div"); browser.document.body.append(host); const root = createRoot(host);
-  function Probe() { const state = useSyncExternalStore(runner.subscribe, runner.getSnapshot); return <ExtensionsSection extensions={{ ...state, ...runner, openCrystalsStructure: async () => { throw new Error("No document opener in this fixture"); } }} />; }
+  function Probe() { const state = useSyncExternalStore(runner.subscribe, runner.getSnapshot); return <ExtensionsSection catalog={catalog} extensions={{ ...state, ...runner, openCrystalsStructure: async () => { throw new Error("No document opener in this fixture"); } }} />; }
+  // The plugin catalog shares the page; it answers from the recorded index so no request leaves the test.
+  const catalog = createAvogadroCatalog({ loadLive: async () => savedIndex });
   await act(async () => root.render(<Probe />));
   return { host, button(label: string) { return host.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!; },
     async press(label: string) {
