@@ -41,6 +41,11 @@ export async function capturePolymerPickOwner(document: ViewerDocument, input: P
         || index < 0 || index >= input.atoms.length || result.element !== input.atoms[index].element) throw new Error("Pick an atom in the source molecule.");
       return index;
     };
-    return { isCurrent, pick, release };
+    const validate = async () => {
+      if (!isCurrent()) return false;
+      const result = await requestViewerAction(document.id, { type: "polymer_source_validate", lease, label: "Polymer", notify: false }, 15000, controller.signal, { target });
+      return isCurrent() && result.lease === lease;
+    };
+    return { isCurrent, pick, release, validate };
   } catch (error) { release(); throw error; }
 }

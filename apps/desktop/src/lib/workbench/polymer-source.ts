@@ -37,10 +37,10 @@ export function usePolymerSource(document: ViewerDocument | null) {
       }).finally(() => { pending = null; });
       return pending;
     };
-    const create = async (actions: Pick<ShellActions, "openStructureRecords">) => {
+    const create = async (actions: Pick<ShellActions, "openStructureRecords">, validateBeforeAdopt?: () => Promise<boolean>) => {
       const output = await build();
       if (!output || !isCurrent()) return [];
-      return openGeneratedStructure(actions, "Polymer", "sdf", output.sdf, isCurrent, { newDocument: true });
+      return openGeneratedStructure(actions, "Polymer", "sdf", output.sdf, isCurrent, { newDocument: true, validateBeforeAdopt });
     };
     return { request, build, create, release, isCurrent };
   };

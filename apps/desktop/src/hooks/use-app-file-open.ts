@@ -6,7 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import { showNativeContextMenu } from "../components/native-context-menu";
 import type { FepNetworkLocation } from "../components/editor-area/page-kinds/fep-network";
-import type { FileOpenOptions, StatusKind } from "../components/types";
+import type { FileOpenOptions, StatusKind, StructureRecordsOpenOptions } from "../components/types";
 import { deleteBrowserDevVirtualTextDocument, openBrowserDevDocuments, openBrowserDevTextDocument } from "../lib/browser-dev-documents";
 import { openStoredScientificFile } from "../lib/workbench/browser-import";
 import { importedOriginalFor } from "../lib/workbench/scientific-source-state";
@@ -633,7 +633,7 @@ export function useAppFileOpen({
     return { opened, errors };
   }, [preferences]);
 
-  const openStructureRecords = useCallback(async (records: StructureDragRecord[], directory?: string, options: { shouldApply?: () => boolean; newDocument?: boolean } = {}) => {
+  const openStructureRecords = useCallback(async (records: StructureDragRecord[], directory?: string, options: StructureRecordsOpenOptions = {}) => {
     const mayApply = () => options.shouldApply?.() !== false;
     if (!mayApply()) return [];
     if (directory) {
@@ -648,6 +648,12 @@ export function useAppFileOpen({
     }
     pushStatus("Opening pasted structures...");
     const { opened, errors } = await openStructureRecordDocuments(records, options);
+    if (options.validateBeforeAdopt && opened.length && mayApply()) {
+      let accepted: boolean;
+      try { accepted = await options.validateBeforeAdopt(); }
+      catch (error) { await releaseUnadoptedStructures(opened); throw error; }
+      if (!accepted) { await releaseUnadoptedStructures(opened); return []; }
+    }
     if (!mayApply()) {
       await releaseUnadoptedStructures(opened);
       return [];

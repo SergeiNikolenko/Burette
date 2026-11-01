@@ -112,7 +112,7 @@ export async function requestViewerAction(documentId: string, action: Record<str
   const id = `workspace-${crypto.randomUUID()}`;
   return new Promise<Record<string, unknown>>((resolve, reject) => {
     const polymerPick = action.type === "polymer_pick_atom" || action.type === "polymer_source_binding";
-    const status = polymerPick || action.type === "select_source_atom" || action.type === "geometry_binding" || action.type === "scalar_field_binding"
+    const status = polymerPick || action.type === "polymer_source_validate" || action.type === "select_source_atom" || action.type === "geometry_binding" || action.type === "scalar_field_binding"
       || action.type === "scalar_field_validate" || action.type === "show_scalar_field"
       ? retainGeometryActionStatus(id, target, action.type === "select_source_atom" ? 60_000 : timeoutMs) : null;
     const finish = (retired = false) => { if (retired) status?.retire(); else status?.settle(); window.clearTimeout(timer); window.removeEventListener("message", receive); signal?.removeEventListener("abort", abort); };

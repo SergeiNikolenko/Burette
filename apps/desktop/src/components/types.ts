@@ -141,13 +141,20 @@ export type ChemicalEditorTarget = {
 
 export type FileOpenOptions = { shouldApply?: () => boolean; requireSuccess?: boolean; preferredPath?: string; preserveActiveTab?: boolean };
 
+export type StructureRecordsOpenOptions = {
+  shouldApply?: () => boolean;
+  newDocument?: boolean;
+  /** Host-only validation after preparation, immediately before the final adoption guard. */
+  validateBeforeAdopt?: () => Promise<boolean>;
+};
+
 export type ShellActions = {
   chooseFiles: () => void | Promise<void>;
   openStructurePaths: (paths: string[], options?: { mode?: OpenDocumentsMode; rendererMode?: "molstar" | "grid2d" | "xyzrender-external"; shouldApply?: () => boolean }) => void | Promise<void>;
   openTextPaths: (paths: string[]) => void | Promise<void>;
   openPaths: (paths: string[], options?: FileOpenOptions) => void | Promise<void>;
   /** Prepared records are published only while shouldApply remains true; discarded results are released. */
-  openStructureRecords: (records: StructureDragPayload["records"], directory?: string, options?: { shouldApply?: () => boolean; newDocument?: boolean }) => Promise<ViewerDocument[]>;
+  openStructureRecords: (records: StructureDragPayload["records"], directory?: string, options?: StructureRecordsOpenOptions) => Promise<ViewerDocument[]>;
   openStructureUrlInMolstar: (url: string) => void | Promise<void>;
   openRecentStructure: (structure: RecentStructure) => void | Promise<void>;
   openMostRecentStructure: () => void | Promise<void>;

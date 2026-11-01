@@ -82,5 +82,6 @@ if (!window.BurettePolymerPick) {
     });
   }
   function release(viewer, lease) { const owner = owners.get(viewer?.plugin); if (owner?.lease === lease) owner.retire(); }
-  window.BurettePolymerPick = { bind, pick, release };
+  function validate(viewer, lease) { return { lease: owned(viewer, lease).lease }; }
+  window.BurettePolymerPick = { bind, pick, release, validate };
 }
