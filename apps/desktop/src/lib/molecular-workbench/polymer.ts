@@ -4,6 +4,7 @@ export type { MolecularBond } from "./types";
 export type PolymerOptions = {
   head: number; tail: number; headLeaving: number; tailLeaving: number;
   count: number; bondLength: number; endGroups?: "hydrogen" | "open";
+  tacticity?: { kind: "isotactic" | "syndiotactic" } | { kind: "atactic"; alternatives: readonly (0 | 1)[] };
 };
 
 // Explicit bonds and replaceable hydrogens are required: XYZ distances alone do not
@@ -33,6 +34,25 @@ export function buildPolymer(atoms: MolecularAtom[], bonds: MolecularBond[], opt
   for (const [attachment, leaving] of [[head, headLeaving], [tail, tailLeaving]]) {
     if (atoms[leaving].element !== "H" || adjacency[leaving].length !== 1 || adjacency[leaving][0] !== attachment || valence[leaving] !== 1 || atoms[attachment].element === "H") throw new Error("Each leaving atom must be a singly bonded hydrogen on its attachment atom.");
   }
+  const repeatAlternatives: (0 | 1)[] = Array(count).fill(0);
+  let alternateLeaving = tailLeaving;
+  if (options.tacticity) {
+    const { kind } = options.tacticity;
+    if (!["isotactic", "syndiotactic", "atactic"].includes(kind)) throw new Error("Unsupported polymer tacticity.");
+    const hydrogens = adjacency[tail].filter(index => atoms[index].element === "H");
+    const heavy = adjacency[tail].filter(index => atoms[index].element !== "H");
+    if (atoms[head].element !== "C" || atoms[tail].element !== "C" || hydrogens.length !== 2 || heavy.length !== 2 || !heavy.includes(head)
+      || heavy.some(index => atoms[index].element !== "C") || valence[tail] !== 4
+      || hydrogens.some(index => adjacency[index].length !== 1 || valence[index] !== 1)) throw new Error("Tacticity requires a directly connected C-head / CH2-tail vinyl repeat with two distinct leaving-H alternatives.");
+    alternateLeaving = hydrogens.find(index => index !== tailLeaving)!;
+    if (kind === "syndiotactic") for (let i = 0; i < count; i++) repeatAlternatives[i] = i % 2 as 0 | 1;
+    if (options.tacticity.kind === "atactic") {
+      const choices = options.tacticity.alternatives;
+      if (choices.length !== count || Array.from(choices).some(choice => choice !== 0 && choice !== 1)) throw new Error("Atactic construction requires one resolved binary alternative per repeat.");
+      choices.forEach((choice, i) => { repeatAlternatives[i] = choice; });
+    }
+  }
+  const tailLeavingByRepeat = repeatAlternatives.map(choice => choice ? alternateLeaving : tailLeaving);
   const visited = new Set([head]);
   const pending = [head];
   while (pending.length) for (const next of adjacency[pending.pop()!]) if (!visited.has(next)) { visited.add(next); pending.push(next); }
@@ -48,6 +68,29 @@ export function buildPolymer(atoms: MolecularAtom[], bonds: MolecularBond[], opt
   const perpendicular = (v: number[], axis: number[]) => v.map((value, i) => value - dot(v, axis) * axis[i]);
   const headPosition = position(head), headDirection = unit(subtract(position(headLeaving), headPosition));
   const tailDirection = unit(subtract(position(tailLeaving), position(tail)));
+  if (options.tacticity) {
+    const branch = adjacency[tail].find(index => index !== head && atoms[index].element !== "H")!;
+    // RDKit 2026.03.6 assignChiralTypesFrom3D uses |triple product| > 0.1 Å³.
+    // Require every neighbor triple to survive that threshold in any atom order.
+    // SDF rounds to 0.0001 Å: each center-to-neighbor vector's error is bounded
+    // by sqrt(3)*0.0001. Expanding the determinant gives the rounding margin.
+    const epsilon = Math.sqrt(3) * 0.0001;
+    for (const leaving of [tailLeaving, alternateLeaving]) {
+      const kept = leaving === tailLeaving ? alternateLeaving : tailLeaving;
+      const replacement = unit(subtract(position(leaving), position(tail))).map((value, i) => position(tail)[i] + bondLength * value);
+      const neighbors = [position(head), position(branch), position(kept), replacement].map(point => subtract(point, position(tail)));
+      let handedness = 0;
+      for (let omitted = 0; omitted < 4; omitted++) {
+        const vectors = neighbors.filter((_, index) => index !== omitted);
+        const [a, b, c] = vectors.map(vector => Math.hypot(...vector));
+        const uncertainty = epsilon * (a * b + a * c + b * c) + epsilon ** 2 * (a + b + c) + epsilon ** 3;
+        const orientation = dot(vectors[0], cross(vectors[1], vectors[2]));
+        const sign = Math.sign(orientation) * (omitted % 2 ? -1 : 1);
+        if (!Number.isFinite(orientation) || Math.abs(orientation) <= 0.1 + uncertainty || handedness && sign !== handedness) throw new Error("This local tacticity site is not a resolved tetrahedron at molecular export precision.");
+        handedness = sign;
+      }
+    }
+  }
   let frameReference = perpendicular(delta, headDirection);
   if (Math.hypot(...frameReference) < 1e-8) frameReference = perpendicular(tailDirection, headDirection);
   const linearAttachments = Math.hypot(...frameReference) < 1e-8;
@@ -63,7 +106,7 @@ export function buildPolymer(atoms: MolecularAtom[], bonds: MolecularBond[], opt
   for (let repeat = 0; repeat < count; repeat++) {
     if (repeat > 0) {
       const previousTail = rotate(delta).map((value, i) => value + origin[i]);
-      const outgoing = rotate(tailDirection);
+      const outgoing = rotate(unit(subtract(position(tailLeavingByRepeat[repeat - 1]), position(tail))));
       const targetX = outgoing.map(value => -value);
       if (!linearAttachments) {
         let reference = perpendicular(rotate(delta), targetX);
@@ -76,7 +119,7 @@ export function buildPolymer(atoms: MolecularAtom[], bonds: MolecularBond[], opt
     }
     const map = new Map<number, number>();
     atoms.forEach((atom, index) => {
-      if ((index === headLeaving && repeat > 0) || (index === tailLeaving && repeat < count - 1)) return;
+      if ((index === headLeaving && repeat > 0) || (index === tailLeavingByRepeat[repeat] && repeat < count - 1)) return;
       map.set(index, output.length);
       const xyz = repeat === 0 ? position(index) : rotate(subtract(position(index), headPosition)).map((value, i) => value + origin[i]);
       if (xyz.some(value => !Number.isFinite(value))) throw new Error("Polymer coordinates exceed the finite coordinate range.");
@@ -102,5 +145,5 @@ export function buildPolymer(atoms: MolecularAtom[], bonds: MolecularBond[], opt
     entries.push({ atom, repeat });
     grid.set(bucket, entries);
   }
-  return { atoms: output, bonds: outputBonds, sourceAtomIndices, repeatIndices, requiresRelaxation: true as const };
+  return { atoms: output, bonds: outputBonds, sourceAtomIndices, repeatIndices, repeatAlternatives, requiresRelaxation: true as const };
 }
