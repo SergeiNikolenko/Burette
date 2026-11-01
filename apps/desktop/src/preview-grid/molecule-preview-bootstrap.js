@@ -3,6 +3,7 @@
   const input = JSON.parse(document.getElementById('burette-inspector-input').textContent);
   window.BuretteConfig = input.config;
   window.BuretteDataBase64 = input.data;
+  window.BuretteDataURL = input.dataURL;
   let errors = 0;
   const report = message => {
     if (errors++ < 10) window.parent.postMessage({ source: 'burette-inspector-error', channel: input.config.inspectorChannel, message: String(message).slice(0, 1024) }, '*');
