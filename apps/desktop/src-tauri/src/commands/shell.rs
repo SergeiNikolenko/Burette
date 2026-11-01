@@ -536,8 +536,14 @@ fn is_allowed_external_url(url: &str) -> bool {
     const PROJECT_URL: &str = "https://github.com/SergeiNikolenko/Burette";
     const RELEASES_URL: &str = "https://github.com/SergeiNikolenko/Burette/releases";
     const NEW_ISSUE_URL: &str = "https://github.com/SergeiNikolenko/Burette/issues/new";
+    // Settings > Extensions links for the reviewed Crystals resource.
+    const CRYSTALS_URLS: [&str; 2] = [
+        "https://github.com/OpenChemistry/crystals",
+        "https://github.com/OpenChemistry/crystals/issues",
+    ];
 
-    url == PROJECT_URL
+    CRYSTALS_URLS.contains(&url)
+        || url == PROJECT_URL
         || url == NEW_ISSUE_URL
         || url == RELEASES_URL
         || url.starts_with(&(String::from(RELEASES_URL) + "/"))
@@ -910,6 +916,8 @@ mod tests {
             "https://github.com/SergeiNikolenko/Burette/releases",
             "https://github.com/SergeiNikolenko/Burette/releases/tag/v1.0.0",
             "https://github.com/SergeiNikolenko/Burette/issues/new",
+            "https://github.com/OpenChemistry/crystals",
+            "https://github.com/OpenChemistry/crystals/issues",
         ] {
             assert!(is_allowed_external_url(url), "expected {url} to be allowed");
         }
@@ -920,6 +928,7 @@ mod tests {
             "https://github.com/SergeiNikolenko/Burette/issues/new/extra",
             "https://github.com/SergeiNikolenko/Burette/releases.evil.example",
             "https://github.com.evil.example/SergeiNikolenko/Burette/releases",
+            "https://github.com/OpenChemistry/crystals/pulls",
         ] {
             assert!(
                 !is_allowed_external_url(url),
