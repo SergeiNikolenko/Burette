@@ -2,7 +2,7 @@
 import { browserGeneratedFilesRoot } from './generated-files-root.mjs';
 import { navigationLink, registerSessionLink } from './burette-deep-links.mjs';
 import { spawn } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, open as openFile, readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
@@ -12,6 +12,8 @@ import { delimiter, dirname, isAbsolute, relative, resolve } from 'node:path';
 import { validateMvsDocumentFile, validateMvsStoryFile, writeMvsStoryFile } from './mvs-story.mjs';
 import { instantiateMvsStoryTemplate, listMvsStoryTemplates } from './mvs-story-templates.mjs';
 import { getOfficialMvsAuthoringReference } from './mvs-schema-validator.mjs';
+import { WORKBENCH_LIMITS, validateWorkbenchRequest } from './workbench-agent-contract.mjs';
+import { writeWorkbenchArtifact } from './workbench-artifact.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
@@ -45,6 +47,8 @@ function usage() {
   node scripts/burette-agent.mjs scene <reset-camera|hide-waters|show-waters|show-surface|color-by-chain|focus-ligand|contacts> --session-dir <session> [--wait-ms 5000]
   node scripts/burette-agent.mjs render-panel --session-dir <desktop-agent-session> --kind markdown --file /tmp/notes.md [--area right]
   node scripts/burette-agent.mjs capture --session-dir <session> | --url <url> [--output /tmp/view.png] [--width 1600 --height 1000] [--format png|jpeg|webp] [--quality 0.9] [--transparent] [--auto-crop] [--overwrite] [--wait-ms 15000]
+  node scripts/burette-agent.mjs workbench --session-dir <browser-agent-shell-session> '{"operation":"observe"}' [--stdin] [--action-file request.json] [--wait-ms 15000]
+  node scripts/burette-agent.mjs workbench --session-dir <session> '{"operation":"export","jobId":"wbj-…","artifact":"cube"}' [--output /tmp/result.cube] [--overwrite]
   node scripts/burette-agent.mjs story-create --spec /tmp/story.json --output /tmp/story.mvsx [--asset protein.pdb=/path/protein.pdb]
   node scripts/burette-agent.mjs story-validate --file /tmp/story.mvsx
   node scripts/burette-agent.mjs story-template-list
@@ -250,6 +254,10 @@ async function main() {
   }
   if (command === 'capture') {
     await capture(options);
+    return;
+  }
+  if (command === 'workbench') {
+    await workbench(options);
     return;
   }
   if (command === 'story-create') {
@@ -848,8 +856,70 @@ async function scene(options) {
 }
 
 async function act(options) {
-  const { result } = await runAgentAction(options, () => readAction(options));
+  const { sessionDir, result } = await runAgentAction(options, () => readAction(options));
+  if (result.action?.type === 'workbench') await finishWorkbenchAction(sessionDir, result);
   console.log(JSON.stringify({ ok: true, apiVersion, result }, null, 2));
+}
+
+// Runs one workbench operation and prints only its bounded result. An export's
+// artifact is written to --output (or the session's workbench-artifacts folder)
+// and only its path, size and digest are printed.
+async function workbench(options) {
+  const waitMs = Number.isFinite(options.waitMs) ? options.waitMs : 15000;
+  if (!(waitMs > 0)) fail('INVALID_ARGS', 'workbench waits for its result; --wait-ms must be positive.', 2);
+  const outputPath = options.output ? resolve(options.output) : null;
+  if (outputPath && !options.overwrite && existsSync(outputPath)) fail('OUTPUT_EXISTS', `${outputPath} already exists. Pass --overwrite to replace it.`, 2);
+  if (outputPath && !existsSync(dirname(outputPath))) fail('INVALID_ARGS', `The --output folder ${dirname(outputPath)} does not exist.`, 2);
+  const { sessionDir, result } = await runAgentAction({ ...options, command: 'workbench', waitMs }, async () => {
+    const action = await readAction(options);
+    const request = action && typeof action === 'object' && !Array.isArray(action) && action.type === undefined ? { type: 'workbench', ...action } : action;
+    if (request?.type !== 'workbench') fail('INVALID_ARGS', 'workbench requests are objects with an "operation" and no other action type.', 2);
+    if (outputPath && request.operation !== 'export') fail('INVALID_ARGS', '--output applies only to the export operation.', 2);
+    return request;
+  });
+  await finishWorkbenchAction(sessionDir, result, { outputPath, overwrite: options.overwrite === true });
+  const outcome = result.action?.result;
+  if (outcome?.ok !== true) {
+    const error = outcome?.error || { code: 'WORKBENCH_FAILED', message: 'The workspace did not report a workbench result.' };
+    fail(error.code || 'WORKBENCH_FAILED', error.message || 'Workbench operation failed.', 1, error.details ?? null);
+  }
+  const body = { ok: true, apiVersion, result: outcome.result, actionId: result.action.id };
+  if (Buffer.byteLength(JSON.stringify(body)) > WORKBENCH_LIMITS.responseBytes) {
+    fail('RESPONSE_TOO_LARGE', `The workbench response exceeds ${WORKBENCH_LIMITS.responseBytes} bytes.`, 1, { actionId: result.action.id });
+  }
+  console.log(JSON.stringify(body, null, 2));
+}
+
+// Writes a completed workbench export to a file and replaces its inline content in
+// actions.json and in `result` with that path, as capture does for images.
+async function finishWorkbenchAction(sessionDir, result, { outputPath = null, overwrite = false } = {}) {
+  const outcome = result.action?.result;
+  if (!sessionDir || outcome?.ok !== true || outcome.result?.operation !== 'export') return;
+  const { content, ...artifact } = outcome.result.artifact || {};
+  if (typeof content !== 'string') fail('INVALID_RESPONSE', 'The workbench export returned no artifact content.', 1, { actionId: result.action.id });
+  const bytes = Buffer.from(content, 'utf8');
+  const sha256 = `sha256-${createHash('sha256').update(bytes).digest('hex')}`;
+  if (bytes.length > WORKBENCH_LIMITS.artifactBytes) fail('ARTIFACT_TOO_LARGE', 'The workbench artifact exceeds the transport limit.', 1);
+  if (bytes.length !== artifact.byteCount || sha256 !== artifact.sha256) {
+    fail('ARTIFACT_INTEGRITY', 'The exported artifact does not match its reported size and digest.', 1, { actionId: result.action.id, byteCount: bytes.length, sha256 });
+  }
+  const fileName = String(artifact.fileName || `${artifact.name || 'artifact'}.txt`).replace(/[^A-Za-z0-9._-]/gu, '_').replace(/^\.+/u, '').slice(0, 128) || 'artifact.txt';
+  const path = outputPath || resolve(sessionDir, 'workbench-artifacts', `${outcome.result.jobId}-${fileName}`);
+  if (!outputPath) await mkdir(dirname(path), { recursive: true });
+  try {
+    await writeWorkbenchArtifact(path, bytes, { overwrite });
+  } catch (error) {
+    fail(error?.code === 'EEXIST' ? 'OUTPUT_EXISTS' : 'WRITE_FAILED', `Could not write ${path}: ${error?.message || String(error)}`, 1);
+  }
+  const written = { ...artifact, path };
+  outcome.result.artifact = written;
+  const actionsPath = resolve(sessionDir, 'actions.json');
+  const actionsFile = await readJsonFile(actionsPath, null);
+  const item = actionsFile?.actions?.find?.(entry => entry?.id === result.action.id);
+  if (item?.result?.result?.artifact) {
+    item.result.result.artifact = written;
+    await writeJsonFile(actionsPath, actionsFile);
+  }
 }
 
 // Resolves the workspace transport, queues one action and, with waitMs, waits
@@ -861,7 +931,9 @@ async function runAgentAction(options, loadAction) {
   const localUrl = requireLocalAgentUrl(options.url, 'INVALID_URL');
   const shellSessionDir = await browserShellSessionDir(localUrl.toString());
   if (shellSessionDir) return { sessionDir: shellSessionDir, result: await runSessionAction(shellSessionDir, loadAction, waitMs) };
-  const action = await normalizeAgentActionPaths(await loadAction());
+  const loaded = await loadAction();
+  if (loaded?.type === 'workbench') fail('SURFACE_UNSUPPORTED', 'Tokenized browser previews have no workbench. Open a browser-agent-shell workspace and pass its --session-dir.', 2);
+  const action = await normalizeAgentActionPaths(loaded);
   const response = await fetch(buildAgentUrl(localUrl, '/__agent/act'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1047,6 +1119,7 @@ async function runSessionAction(sessionDir, loadAction, waitMs) {
   const session = await assertSessionResponsive(sessionDir);
   let action = await loadAction();
   assertSessionActionSupported(action);
+  if (action.type === 'workbench') action = assertWorkbenchAction(action, session, waitMs);
   action = await normalizeAgentActionPaths(action);
   await assertActionPathsAllowed(action, session);
   const actionsPath = resolve(sessionDir, 'actions.json');
@@ -1153,7 +1226,7 @@ function isVirtualDocumentPath(path) {
 // list in sync with both sources.
 const SESSION_SHELL_ACTION_TYPES = [
   'set_workspace_panel', 'open_ketcher', 'control_ketcher', 'open_files',
-  'open_docking_view', 'manage_tabs', 'render_panel',
+  'open_docking_view', 'manage_tabs', 'render_panel', 'workbench',
 ];
 const SESSION_VIEWER_ACTION_TYPES = [
   'workspace_scene_state', 'align_scene_files', 'export_scene_structure', 'copy_scene_sequence',
@@ -1185,6 +1258,20 @@ function assertSessionActionSupported(action) {
     2,
     { type: type || null, supportedTypes: [...SESSION_ACTION_TYPES] },
   );
+}
+
+// Workbench requests are validated against the shared contract before queueing.
+// Reads and jobs run only in browser agent shells; capabilities answers anywhere.
+// An export needs a waiting caller that takes its artifact off the action log.
+function assertWorkbenchAction(action, session, waitMs) {
+  const validated = validateWorkbenchRequest(action);
+  if (!validated.ok) fail(validated.error.code, validated.error.message, 2, validated.error.details ?? null);
+  const { request } = validated;
+  if (request.operation !== 'capabilities' && session?.mode !== 'browser-dev-shell') {
+    fail('SURFACE_UNSUPPORTED', `Workbench ${request.operation} runs only in browser-agent-shell workspaces; this session is ${session?.mode || 'unknown'}. The capabilities operation describes any session.`, 2, { mode: session?.mode ?? null });
+  }
+  if (request.operation === 'export' && !(waitMs > 0)) fail('INVALID_ARGS', 'A workbench export must wait for its artifact; pass --wait-ms.', 2);
+  return request;
 }
 
 function actionFilePaths(action) {
@@ -1425,7 +1512,7 @@ async function readJsonFile(path, fallback) {
 }
 
 async function writeJsonFile(path, value) {
-  await writeFile(path, `${JSON.stringify(value, null, 2)}\n`);
+  await writeWorkbenchArtifact(path, Buffer.from(`${JSON.stringify(value, null, 2)}\n`), { overwrite: true });
 }
 
 function buildAgentUrl(input, pathname) {

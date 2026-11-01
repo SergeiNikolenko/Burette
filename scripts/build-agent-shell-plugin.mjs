@@ -17,6 +17,8 @@ const runtimeScripts = [
   'model-runtime-path.mjs',
   'generated-files-root.mjs',
   'burette-agent.mjs',
+  'workbench-agent-contract.mjs',
+  'workbench-artifact.mjs',
   'burette-deep-links.mjs',
   'dev-namespace.mjs',
   'mvs-story.mjs',
