@@ -377,15 +377,17 @@ const JOB_DEFINITIONS = {
   },
   hydrogens: {
     describe: {
-      engine: 'OpenChemLib graph with RDKit hydrogen placement',
+      engine: 'OpenChemLib graph with Burette hydrogen placement; ph uses a cited per-group pKa table',
       requires: 'An explicit MOL/SDF graph, 1–256 atoms after the change.',
-      params: { mode: ['add', 'remove'] },
+      params: { mode: ['add', 'remove', 'ph'], pH: '0–14, required for ph' },
       artifacts: ['structure'],
     },
     params(value) {
-      const mode = oneOf(params(value, ['mode'], 'hydrogens job.params').mode, 'job.params.mode', new Set(['add', 'remove']), undefined);
+      const p = params(value, ['mode', 'pH'], 'hydrogens job.params');
+      const mode = oneOf(p.mode, 'job.params.mode', new Set(['add', 'remove', 'ph']), undefined);
       if (!mode) invalid('job.params.mode is required for hydrogens.');
-      return { mode };
+      if ((mode === 'ph') !== (p.pH !== undefined)) invalid('job.params.pH is required for mode ph and unused otherwise.');
+      return mode === 'ph' ? { mode, pH: finite(p.pH, 'job.params.pH', 0, 14) } : { mode };
     },
   },
   polymer: {

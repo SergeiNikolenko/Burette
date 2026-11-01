@@ -79,3 +79,12 @@ symmetry of XH2 pairs, the cyclopropane H–C–H angle (114.5° electron
 diffraction to about 116° microwave) and, through RDKit perception from the 3D
 coordinates, the specified stereo. The panel has no deuterium: Burette removes
 every hydrogen isotope (as Avogadro does), RDKit `RemoveHs` keeps isotopic H.
+
+## Edit-tab fixture
+
+`glycine.sdf` is neutral glycine with explicit hydrogens, written by RDKit
+2025.09.1 (BSD-3-Clause; generated data, no license restriction):
+`uv run --with rdkit==2025.9.1 python -c` with `Chem.AddHs(Chem.MolFromSmiles("NCC(=O)O"))`,
+`AllChem.EmbedMolecule(m, randomSeed=7)`, `AllChem.MMFFOptimizeMolecule(m)` and
+`Chem.SDWriter`. `test-graph-draft-protonate` adjusts it through the Edit-tab
+draft and has RDKit read the written SDF draft back.

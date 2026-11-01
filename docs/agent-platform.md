@@ -849,7 +849,10 @@ document or its Undo history; open the exported file explicitly.
   fragment is added as a separate molecule. The summary reports formula, net
   formal charge, counts, `addedAtoms`, `anchorAtom`, `replacedAtom`,
   `bondLengthAngstrom` and `sourceAtomIndices` (`-1` for new atoms).
-- `hydrogens`: `mode` `add` or `remove`, the same operations as the Edit tab.
+- `hydrogens`: `mode` `add`, `remove` or `ph` (with `pH` 0–14), the same
+  operations as the Edit tab. `ph` also reports `pH`, the per-site `changes`
+  (output atom, group, pKa, protonated/deprotonated) and `omittedChanges`; see
+  [hydrogen-protonation.md](hydrogen-protonation.md).
 - `polymer`: zero-based `head`, `tail`, `headLeaving`, `tailLeaving`, `count`
   1–500, `bondLengthAngstrom` (default 1.54), optional `tacticity`, `headEnd` and
   `tailEnd` (`hydrogen`, `methyl`, `hydroxyl`, `phenyl`, `tert-butyl`) and

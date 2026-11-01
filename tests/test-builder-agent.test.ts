@@ -41,7 +41,7 @@ test("structure job contracts admit only their typed parameters; build kinds nee
   expect(validateWorkbenchRequest(submit("insert_fragment", { library: "alkanes/ethyl", atomIndex: 3 }))).toMatchObject({ ok: true, request: { job: { params: { library: "alkanes/ethyl", atomIndex: 3 } } } });
   expect(validateWorkbenchRequest(submit("polymer", { head: 0, tail: 1, headLeaving: 5, tailLeaving: 4, count: 6 }))).toMatchObject({ ok: true, request: { job: { params: { bondLengthAngstrom: 1.54, headEnd: "hydrogen", tailEnd: "hydrogen", relax: false } } } });
   for (const [kind, params] of [["insert_fragment", {}], ["insert_fragment", { library: "alkanes/ethyl", smiles: "C" }], ["insert_fragment", { smiles: "C C" }], ["insert_fragment", { library: "../etc" }],
-    ["insert_fragment", { smiles: "C", atomIndex: 256 }], ["hydrogens", {}], ["hydrogens", { mode: "ph" }], ["polymer", { head: 0, tail: 1, headLeaving: 5, tailLeaving: 4, count: 501 }],
+    ["insert_fragment", { smiles: "C", atomIndex: 256 }], ["hydrogens", {}], ["hydrogens", { mode: "ph" }], ["hydrogens", { mode: "add", pH: 7 }], ["hydrogens", { mode: "ph", pH: 15 }], ["hydrogens", { mode: "neutralize" }], ["polymer", { head: 0, tail: 1, headLeaving: 5, tailLeaving: 4, count: 501 }],
     ["polymer", { head: 0, tail: 1, headLeaving: 5, tailLeaving: 4, count: 2, headEnd: "acetyl" }], ["polymer", { head: 0, tail: 1, headLeaving: 5, tailLeaving: 4, count: 2, apply: true }], ["peptide", { sequence: "AG" }]] as const) {
     expect(validateWorkbenchRequest(submit(kind, params))).toMatchObject({ ok: false, error: { code: "INVALID_ARGS" } });
   }
@@ -74,6 +74,14 @@ test("insert_fragment and hydrogens export new structures that RDKit reads as th
   expect(canonical(added.artifact.content)).toBe("CCO");
   const mol = rdkit.get_mol(added.artifact.content, JSON.stringify({ removeHs: false }))!;
   expect(JSON.parse(mol.get_descriptors()).NumHeavyAtoms).toBe(3); expect(mol.get_num_atoms()).toBe(9); mol.delete();
+  // pH mode: glycine (RDKit-written) becomes the zwitterion at 7.4; heavy atoms keep their source indices.
+  const glycine = workspace(readFileSync(new URL("./fixtures/protonation/glycine.sdf", import.meta.url), "utf8"), "sdf");
+  const zwitterion = await glycine.run("ph", { kind: "hydrogens", params: { mode: "ph", pH: 7.4 } });
+  expect(canonical(zwitterion.artifact.content)).toBe(canonical("[NH3+]CC(=O)[O-]"));
+  expect(zwitterion.job.summary).toMatchObject({ mode: "ph", pH: 7.4, formula: "C2H5NO2", formalCharge: 0, atomCount: 10, omittedChanges: 0 });
+  expect(zwitterion.job.summary.changes.map((change: { group: string; change: string }) => [change.group, change.change]).sort()).toEqual([["carboxylic-acid", "deprotonated"], ["primary-amine", "protonated"]]);
+  expect(zwitterion.job.summary.sourceAtomIndices.slice(0, 5)).toEqual([0, 1, 2, 3, 4]);
+  expect(zwitterion.artifact.fileName).toBe("fixture-ph-7.4.sdf");
 });
 
 test("graph jobs refuse sources without explicit connection tables and out-of-range atoms before queueing", async () => {

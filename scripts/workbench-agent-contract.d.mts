@@ -50,7 +50,7 @@ export type WorkbenchJobRequest =
   | { kind: 'properties'; params: { chargeModel?: 'Gasteiger' } }
   | { kind: 'orbital_cube'; params: { field: 'orbital' | 'density' | 'spin-density'; orbitalIndex?: number; spacingAngstrom?: number; paddingAngstrom?: number } }
   | { kind: 'insert_fragment'; params: { library?: string; smiles?: string; atomIndex?: number } }
-  | { kind: 'hydrogens'; params: { mode: 'add' | 'remove' } }
+  | { kind: 'hydrogens'; params: { mode: 'add' | 'remove' } | { mode: 'ph'; pH: number } }
   | { kind: 'polymer'; params: { head: number; tail: number; headLeaving: number; tailLeaving: number; count: number; bondLengthAngstrom: number;
       tacticity?: 'isotactic' | 'syndiotactic' | 'atactic'; headEnd: WorkbenchPolymerEndGroup; tailEnd: WorkbenchPolymerEndGroup; relax: boolean } }
   | { kind: 'smiles'; params: { smiles: string; forceField: WorkbenchForceField; method: WorkbenchOptimizeMethod; seed: number; maxIterations: number } }

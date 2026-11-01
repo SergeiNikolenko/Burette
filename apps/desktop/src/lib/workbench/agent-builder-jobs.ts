@@ -50,19 +50,25 @@ export const builderJobs: { [K in "insert_fragment" | "hydrogens" | "polymer"]: 
   },
   hydrogens: {
     unavailable: explicitGraph,
-    async run(input, { mode }, context) {
-      const structure = input.structure!, identity = (atoms: number) => ({ kind: "reorder-atoms" as const, order: Array.from({ length: atoms }, (_, i) => i) });
+    async run(input, params, context) {
+      const { mode } = params, structure = input.structure!, identity = (atoms: number) => ({ kind: "reorder-atoms" as const, order: Array.from({ length: atoms }, (_, i) => i) });
       const hydrogens = structure.atoms.flatMap((atom, index) => atom.element === "H" ? [index] : []);
-      let edited: GraphEditResult;
-      if (mode === "remove") edited = await runGraphTask({ action: "edit-graph", molecule: structure, edits: [hydrogens.length ? { kind: "delete-atoms", indices: hydrogens } : identity(structure.atoms.length)] }, context);
+      let edited: GraphEditResult, protonation = {};
+      if (params.mode === "ph") {
+        const result = await runChemistryTask({ action: "protonate", molecule: structure, pH: params.pH }, context);
+        const ordered = await runGraphTask({ action: "edit-graph", molecule: result.structure, edits: [identity(result.structure.atoms.length)] }, context);
+        // Protonation adds and removes hydrogens; provenance comes from the worker.
+        edited = { ...ordered, sourceAtomIndices: ordered.sourceAtomIndices.map(index => result.structure.sourceAtomIndices[index]) };
+        protonation = { pH: result.pH, changes: result.changes, omittedChanges: result.omittedChanges };
+      } else if (mode === "remove") edited = await runGraphTask({ action: "edit-graph", molecule: structure, edits: [hydrogens.length ? { kind: "delete-atoms", indices: hydrogens } : identity(structure.atoms.length)] }, context);
       else {
         const added = await runChemistryTask({ action: "add-hydrogens", molecule: structure }, context);
         const ordered = await runGraphTask({ action: "edit-graph", molecule: added, edits: [identity(added.atoms.length)] }, context);
         // Added hydrogens follow the source atoms, so only the source prefix keeps its provenance.
         edited = { ...ordered, sourceAtomIndices: ordered.sourceAtomIndices.map(index => index < structure.atoms.length ? index : -1) };
       }
-      return { summary: { ...graphSummary(edited, structure.atoms.length), mode, changedAtoms: Math.abs(edited.atoms.length - structure.atoms.length) },
-        artifacts: [await structureArtifact(input, mode === "add" ? "with-h" : "no-h", edited.molfile, context)] };
+      return { summary: { ...graphSummary(edited, structure.atoms.length), mode, ...protonation, changedAtoms: Math.abs(edited.atoms.length - structure.atoms.length) },
+        artifacts: [await structureArtifact(input, params.mode === "ph" ? `ph-${params.pH}` : mode === "add" ? "with-h" : "no-h", edited.molfile, context)] };
     },
   },
   polymer: {
