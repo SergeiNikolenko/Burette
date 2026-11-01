@@ -11920,7 +11920,7 @@ SOFTWARE.
   }
 
   function appendCacheBuster(url, cb) {
-    if (String(url || '').startsWith('asset://')) return url;
+    if (/^(asset:\/\/|blob:)/.test(String(url || ''))) return url;
     const separator = url.includes('?') ? '&' : '?';
     return url + separator + 'v=' + encodeURIComponent(cb);
   }
@@ -30961,7 +30961,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
             if (next.showHydrogens !== molstarShowHydrogens) await toggleMolstarHydrogens();
             if (next.data === current) continue;
             await activeViewer.plugin.clear();
-            await loadPreparedStructure(activeViewer, { data: next.data, format: config.molstarFormat === 'mmcif' ? 'mmcif' : 'mol', label: config.label || 'Molecule' });
+            await loadPreparedStructure(activeViewer, { data: next.data, format: config.molstarFormat === 'mmcif' ? 'mmcif' : config.molstarFormat === 'sdf' ? 'sdf' : 'mol', label: config.label || 'Molecule' });
             await applyConfiguredMolstarPreset(activeViewer, activeConfig);
             current = next.data;
             await settlePreview();
