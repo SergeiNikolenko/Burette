@@ -13,7 +13,7 @@ export async function loadXrdEngine(source: BufferSource | URL): Promise<XrdEngi
   } else {
     bytes = source;
   }
-  const { instance } = await WebAssembly.instantiate(bytes, { env: { emscripten_notify_memory_growth() {} } });
+  const instance = await WebAssembly.instantiate(await WebAssembly.compile(bytes), { env: { emscripten_notify_memory_growth() {} } });
   const exports = instance.exports as XrdEngineExports & { _initialize?: () => void };
   exports._initialize?.();
   return exports;
