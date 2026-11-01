@@ -51,7 +51,7 @@ test("shared viewport controls preserve camera, lighting, selection, animation, 
     clearMolstarSelection: async () => { plugin.managers.structure.selection.stats.elementCount = 0; calls.push(["clear-selection"]); },
     hideMolstarContextMenu: () => {}, setStatus: () => {},
   };
-  const methods = ["initViewportControls", "viewportRailState", "updateViewportAnimateState", "updateSelectionBar", "runViewportRailAction", "closeViewportMenu"].map(source).join("\n");
+  const methods = ["initViewportControls", "installViewportKeyboardCamera", "viewportRailState", "updateViewportAnimateState", "updateSelectionBar", "runViewportRailAction", "closeViewportMenu"].map(source).join("\n");
   const api = new Function(...Object.keys(bindings), `let viewportControlsDisposers = []; let viewportSelectionControls = null; let viewportMenuControls = null; let viewportRailControls = null;
     ${methods}; return { init: initViewportControls, update: updateSelectionBar, animate: updateViewportAnimateState, dispose: () => {
       viewportSelectionControls?.dispose(); viewportRailControls?.dispose(); viewportControlsDisposers.forEach(dispose => dispose());

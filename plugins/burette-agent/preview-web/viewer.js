@@ -4012,11 +4012,13 @@
       const direction = Array.isArray(options.direction) && options.direction.length >= 3
         ? options.direction
         : [0.85, -0.38, 0.92];
-      const fitted = options.mode === 'orthographic' ? null : fittedMolstarStructureFocus(viewer, camera, direction, up);
+      // Framing keeps the projection the user chose unless the caller names one.
+      const mode = options.mode || (camera.state?.mode === 'orthographic' ? 'orthographic' : 'perspective');
+      const fitted = mode === 'orthographic' ? null : fittedMolstarStructureFocus(viewer, camera, direction, up);
       const snapshot = fitted || (typeof camera.getFocus === 'function'
         ? camera.getFocus(target, Math.max(0.1, safeRadius * radiusScale), up, direction)
         : null);
-      if (snapshot) snapshot.mode = options.mode || 'perspective';
+      if (snapshot) snapshot.mode = mode;
       canvas3d.requestCameraReset({
         snapshot: snapshot || undefined,
         durationMs: Number.isFinite(Number(options.durationMs)) ? Number(options.durationMs) : 160,
@@ -10535,6 +10537,81 @@ SOFTWARE.
     viewportMenuItem(menu, 'Reset zoom', 'camera-reset', { icon: SCENE_TREE_ICON.focus });
     viewportMenuItem(menu, 'Lay flat', 'camera-orient', { icon: VIEWPORT_ICON.layFlat });
     viewportMenuItem(menu, 'Reset axes', 'camera-axes', { icon: SCENE_TREE_ICON.restore });
+    appendMolstarPresetMenuSeparator(menu);
+    const mode = viewportPlugin()?.canvas3d?.camera?.state?.mode === 'orthographic' ? 'orthographic' : 'perspective';
+    viewportScreenshotChoice(menu, 'camera-projection', 'perspective', 'Perspective', mode);
+    viewportScreenshotChoice(menu, 'camera-projection', 'orthographic', 'Orthographic', mode);
+    appendMolstarPresetMenuSeparator(menu);
+    VIEWPORT_AXIS_VIEWS.forEach(([axis], index) => viewportMenuItem(menu, `View from ${axis}`, 'camera-view-axis', { data: { viewportValue: String(index) } }));
+  }
+
+  // Each view looks at the structure from the positive or negative side of a world
+  // axis, with an up direction that keeps the other two axes in their usual places.
+  const VIEWPORT_AXIS_VIEWS = [
+    ['+X', [-1, 0, 0], [0, 1, 0]], ['−X', [1, 0, 0], [0, 1, 0]],
+    ['+Y', [0, -1, 0], [0, 0, -1]], ['−Y', [0, 1, 0], [0, 0, 1]],
+    ['+Z', [0, 0, -1], [0, 1, 0]], ['−Z', [0, 0, 1], [0, 1, 0]],
+  ];
+
+  // Mol* moves the camera from these keys only while the pointer is over the canvas.
+  // A focused 3D view without the pointer takes them here, one step per press or
+  // repeat, in Mol*'s directions. Plain arrows stay with pose and ligand stepping.
+  const VIEWPORT_KEY_CAMERA = {
+    ArrowLeft: ['yaw', 1], ArrowRight: ['yaw', -1], ArrowUp: ['pitch', 1], ArrowDown: ['pitch', -1],
+    KeyQ: ['roll', -1], KeyE: ['roll', 1], KeyW: ['zoom', 0.9], KeyS: ['zoom', 1 / 0.9],
+    KeyA: ['pan', [1, 0]], KeyD: ['pan', [-1, 0]], KeyR: ['pan', [0, -1]], KeyF: ['pan', [0, 1]],
+  };
+
+  function rotateViewportCamera(plugin, axis, radians) {
+    const { Vec3, Mat4 } = window.molstar.lib.math.LinearAlgebra;
+    const camera = plugin.canvas3d.camera;
+    const snapshot = camera.getSnapshot();
+    const rotation = Mat4.fromRotation(Mat4(), radians, Vec3.normalize(Vec3(), axis));
+    const offset = Vec3.sub(Vec3(), snapshot.position, snapshot.target);
+    const position = Vec3.add(Vec3(), Vec3.transformMat4(Vec3(), offset, rotation), snapshot.target);
+    const up = Vec3.transformMat4(Vec3(), snapshot.up, rotation);
+    camera.setState({ position, target: snapshot.target, up }, 0);
+    plugin.canvas3d.requestDraw();
+  }
+
+  function stepViewportCamera(plugin, kind, amount) {
+    const { Vec3 } = window.molstar.lib.math.LinearAlgebra;
+    const camera = plugin.canvas3d.camera;
+    const { position, target, up } = camera.getSnapshot();
+    const eye = Vec3.sub(Vec3(), position, target);
+    const right = Vec3.cross(Vec3(), up, eye);
+    if (kind === 'yaw' || kind === 'pitch' || kind === 'roll') {
+      rotateViewportCamera(plugin, kind === 'yaw' ? up : kind === 'pitch' ? right : eye, amount * Math.PI / 36);
+      return;
+    }
+    if (kind === 'zoom') {
+      camera.setState({ position: Vec3.scaleAndAdd(Vec3(), target, eye, amount) }, 0);
+    } else {
+      const step = Vec3.magnitude(eye) * 0.05;
+      const offset = Vec3.add(Vec3(), Vec3.setMagnitude(Vec3(), right, amount[0] * step), Vec3.setMagnitude(Vec3(), up, amount[1] * step));
+      camera.setState({ position: Vec3.add(Vec3(), position, offset), target: Vec3.add(Vec3(), target, offset) }, 0);
+    }
+    plugin.canvas3d.requestDraw();
+  }
+
+  function installViewportKeyboardCamera(plugin) {
+    const canvas = plugin?.canvas3dContext?.canvas;
+    if (!canvas || canvas.dataset.buretKeyboardCamera === '1') return;
+    canvas.dataset.buretKeyboardCamera = '1';
+    canvas.tabIndex = 0;
+    canvas.setAttribute('role', 'application');
+    canvas.setAttribute('aria-label', '3D view');
+    canvas.setAttribute('aria-keyshortcuts', 'Shift+ArrowLeft Shift+ArrowRight Shift+ArrowUp Shift+ArrowDown Q E W S A D R F');
+    let pointerInside = false;
+    canvas.addEventListener('pointerenter', () => { pointerInside = true; });
+    canvas.addEventListener('pointerleave', () => { pointerInside = false; });
+    canvas.addEventListener('keydown', event => {
+      const step = VIEWPORT_KEY_CAMERA[event.code];
+      if (!step || pointerInside || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (event.code.startsWith('Arrow') !== event.shiftKey) return;
+      event.preventDefault();
+      stepViewportCamera(plugin, ...step);
+    });
   }
 
   function viewportScreenshotHelper() {
@@ -11070,15 +11147,7 @@ SOFTWARE.
         if (!Array.isArray(axis) || axis.length !== 3 || !axis.every(Number.isFinite) || !Number.isFinite(Math.hypot(...axis)) || Math.hypot(...axis) === 0 || !Number.isFinite(action.angleDegrees)) {
           throw new Error('Camera rotation requires a nonzero finite axis [x,y,z] and angleDegrees.');
         }
-        const { Vec3, Mat4 } = window.molstar.lib.math.LinearAlgebra;
-        const camera = plugin.canvas3d.camera;
-        const snapshot = camera.getSnapshot();
-        const rotation = Mat4.fromRotation(Mat4(), (action.angleDegrees % 360) * Math.PI / 180, axis.map(value => value / Math.hypot(...axis)));
-        const offset = Vec3.sub(Vec3(), snapshot.position, snapshot.target);
-        const position = Vec3.add(Vec3(), Vec3.transformMat4(Vec3(), offset, rotation), snapshot.target);
-        const up = Vec3.transformMat4(Vec3(), snapshot.up, rotation);
-        camera.setState({ position, target: snapshot.target, up }, 0);
-        plugin.canvas3d.requestDraw();
+        rotateViewportCamera(plugin, axis, (action.angleDegrees % 360) * Math.PI / 180);
       }
       return { ok: true, command: action.type, result: describeViewportScene() };
     } catch (error) {
@@ -11253,7 +11322,11 @@ SOFTWARE.
     if (action === 'camera-reset') plugin.canvas3d?.requestCameraReset?.({ durationMs: 250 });
     else if (action === 'camera-orient') plugin.managers.camera.orientAxes(undefined, 250);
     else if (action === 'camera-axes') plugin.managers.camera.resetAxes(250);
-    else if (action.startsWith('screenshot-')) {
+    else if (action === 'camera-projection') plugin.canvas3d?.setProps({ camera: { mode: control.dataset.viewportValue } });
+    else if (action === 'camera-view-axis') {
+      const [, direction, up] = VIEWPORT_AXIS_VIEWS[Number(control.dataset.viewportValue)];
+      requestMolstarStructureFocus(activeMolstarViewer(), { direction, up, durationMs: 250 });
+    } else if (action.startsWith('screenshot-')) {
       return runViewportScreenshotAction(action.slice('screenshot-'.length), control);
     } else if (action === 'animation-play') {
       playViewportAnimation(Number(control.dataset.animationIndex));
@@ -11476,6 +11549,7 @@ SOFTWARE.
     for (const disposer of viewportControlsDisposers) disposer();
     viewportControlsDisposers = [];
     const plugin = viewer?.plugin;
+    installViewportKeyboardCamera(plugin);
     const subscriptions = [
       plugin?.behaviors?.interaction?.selectionMode?.subscribe?.(updateSelectionBar),
       plugin?.managers?.structure?.selection?.events?.changed?.subscribe?.(updateSelectionBar),
@@ -23099,6 +23173,7 @@ SOFTWARE.
           return;
         }
       }
+      if (event.shiftKey) return; // Shift+arrows rotate the camera.
       if (event.key === 'ArrowLeft') {
         event.preventDefault();
         if (activePose > stepBounds(activePose).start) void setPose(activePose - 1, { userStep: true });
@@ -30244,7 +30319,7 @@ SOFTWARE.
       const step = event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1
         : event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1
         : 0;
-      if (!step || event.metaKey || event.ctrlKey || event.altKey) return;
+      if (!step || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
       if (event.target instanceof Element
         && event.target.closest('input, select, textarea, [contenteditable="true"], .msp-sequence')) return;
       event.preventDefault();
