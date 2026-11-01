@@ -729,6 +729,11 @@
       if (archive.size > 24 * 1024 * 1024) throw new Error('The scene is too large to move.');
       return { ok: true, result: { dataBase64: bytesToBase64(new Uint8Array(await archive.arrayBuffer())) } };
     }
+    if (type === 'indexed_trajectory_frame') {
+      const indexed = window.molstar?.BuretteIndexedTrajectory;
+      if (!indexed) throw new Error('Trajectory frame data is unavailable in this runtime.');
+      return { ok: true, result: indexed.readActiveFrame(activeMolstarViewer(), action) };
+    }
     if (type === 'scene_science_binding') {
       if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
       return { ok: true, result: action.sourceExtension === 'sdf' ? await window.BuretteSceneFiles.science.sdfBinding(activeMolstarViewer()) : action.sourceExtension === 'mol' ? await window.BuretteSceneFiles.science.graphBinding(activeMolstarViewer(), 'mol') : window.BuretteSceneFiles.science.binding(activeMolstarViewer()) };

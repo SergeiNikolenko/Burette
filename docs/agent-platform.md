@@ -654,3 +654,22 @@ transport payloads.
 
 `geometry_topology_scene_capture` and `geometry_topology_scene_validate` are private
 source-owner topology checkpoint routes, likewise rejected before CLI queueing.
+
+
+### Read the displayed indexed trajectory frame
+
+`act '{"type":"indexed_trajectory_frame","offset":0,"limit":100}'` is a
+read-only page of the current indexed model; it does not seek or scan a
+trajectory. A page contains at most 100 atoms in model order with source atom
+indices, Å positions, optional Å/ps velocities and kcal/(mol·Å) forces. Absent
+blocks omit their units and vectors. `includeSummary:true` explicitly requests
+whole-active-frame RMS speed and force summaries; the default reads only its page.
+No energy or temperature is inferred. A non-indexed scene returns
+`{available:false}`; multiple eligible structures require `structureRef`.
+
+For subsequent pages supply `expected` with the returned `sourceId`, `modelId`,
+`structureRef`, `frameIndex` and `segmentIndex` (optionally `frameCount`). A seek,
+source replacement, close or new runtime rejects a mismatched identity. The
+request accepts only its typed page/identity fields; unknown fields and limits
+outside 1–100 fail before queueing. This public read does not expose private
+Geometry/scalar lease commands or add computation to hosted widgets.

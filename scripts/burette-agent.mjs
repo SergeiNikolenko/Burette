@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { validateTrajectoryFrameRequest } from './trajectory-frame-data.mjs';
 import { browserGeneratedFilesRoot } from './generated-files-root.mjs';
 import { navigationLink, registerSessionLink } from './burette-deep-links.mjs';
 import { spawn } from 'node:child_process';
@@ -1119,6 +1120,10 @@ async function runSessionAction(sessionDir, loadAction, waitMs) {
   const session = await assertSessionResponsive(sessionDir);
   let action = await loadAction();
   assertSessionActionSupported(action);
+  if (action.type === 'indexed_trajectory_frame') {
+    try { action = { type: 'indexed_trajectory_frame', ...validateTrajectoryFrameRequest(action) }; }
+    catch (error) { fail('INVALID_ARGS', error.message, 2); }
+  }
   if (action.type === 'workbench') action = assertWorkbenchAction(action, session, waitMs);
   action = await normalizeAgentActionPaths(action);
   await assertActionPathsAllowed(action, session);
@@ -1229,7 +1234,7 @@ const SESSION_SHELL_ACTION_TYPES = [
   'open_docking_view', 'manage_tabs', 'render_panel', 'workbench',
 ];
 const SESSION_VIEWER_ACTION_TYPES = [
-  'workspace_scene_state', 'align_scene_files', 'export_scene_structure', 'copy_scene_sequence',
+  'indexed_trajectory_frame', 'workspace_scene_state', 'align_scene_files', 'export_scene_structure', 'copy_scene_sequence',
   'append_scene_files', 'story_observe', 'story_control', 'get_xtb_context', 'focus_ligand',
   'show_ligands', 'hide_components', 'show_components', 'edit_components', 'open_components_menu',
   'remove_components', 'create_component', 'select_residues', 'clear_selection', 'set_sdf_molecule',

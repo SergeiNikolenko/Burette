@@ -588,6 +588,17 @@ try {
       assert.equal(unsupportedError.details.supportedTypes.includes('reset_camera'), true);
     }
     assert.equal(await readFile(resolve(sessionDir, 'actions.json'), 'utf8'), actionsBeforeUnsupported);
+    for (const request of [
+      { type: 'indexed_trajectory_frame', limit: 101 },
+      { type: 'indexed_trajectory_frame', includeSummary: 'yes' },
+      { type: 'indexed_trajectory_frame', expected: { frameIndex: 2, frameCount: 2 } },
+      { type: 'indexed_trajectory_frame', rawSource: 'not an allowed field' },
+    ]) {
+      const invalid = runCli(['act', '--session-dir', sessionDir, JSON.stringify(request), '--wait-ms', '1000']);
+      assert.equal(invalid.status, 2);
+      assert.equal(JSON.parse(invalid.stderr).error.code, 'INVALID_ARGS');
+    }
+    assert.equal(await readFile(resolve(sessionDir, 'actions.json'), 'utf8'), actionsBeforeUnsupported);
   } finally {
     await rm(sessionDir, { recursive: true, force: true });
   }
