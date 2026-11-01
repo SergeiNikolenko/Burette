@@ -77,7 +77,8 @@ through `lib/workbench/scientific-files.ts`. FCHK/FCH, Molden (`.molden`, `.molf
 names. `.out`/`.log`/`.dat` require ORCA, Gaussian, GAMESS/Firefly, NWChem, Psi4,
 Q-Chem, Molpro or xtb evidence (program banner, or the `energy: … gnorm: … xtb:` comment of an
 `xtbopt.log` trajectory) in the first 64 KiB;
-`.json` requires a recognised QCSchema `schema_name` at the root. A nested schema
+`*.property.txt`/`*_property.txt` require the ORCA 6 property banner or ORCA 5's
+`!PROPERTIES!` banner; `.json` requires a recognised QCSchema `schema_name` at the root. A nested schema
 field does not reroute unrelated JSON. Ordinary XYZ retains its normal structure
 route; the explicit scientific import function also accepts XYZ.
 

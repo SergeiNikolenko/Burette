@@ -61,6 +61,12 @@ one value per atom and |q| ≤ 200 e, and a dipole moment in debye. Text-log rea
 attach these properties only to the geometry whose converged SCF produced them;
 line-search trial energies inside one optimization step do not own properties.
 
+ORCA property files attach each property to its `GeometryIndex`: the final single-point
+energy (dispersion included; ORCA 5 files give SCF plus the van der Waals correction), SCF
+Mulliken/Löwdin charges, the SCF dipole, the nuclear gradient, the Cartesian Hessian (ORCA 6)
+and normal modes with every thermochemistry frequency, rigid motions included. They state no
+atomic masses, so their Hessians carry none.
+
 QCSchema AtomicResults with the `hessian` driver keep their (3N)² Hartree/bohr² matrix
 and the molecule's masses on the frame. A result `wavefunction` supplies the basis and
 orbitals: shell coefficients carry the x^l primitive normalization, spherical components
@@ -74,8 +80,8 @@ that gradient's geometry.
 
 Optional `ScientificDocument.referenceFrameIndex` identifies the history frame of
 `document.atoms`, independently of native playback. Producers declare it only when
-known: XYZ uses the first source frame, ORCA, Gaussian, GAMESS, NWChem, Psi4, Q-Chem,
-Molpro and xtb outputs use their last parsed geometry,
+known: XYZ uses the first source frame, ORCA outputs and property files, Gaussian, GAMESS,
+NWChem, Psi4, Q-Chem, Molpro and xtb outputs use their last parsed geometry,
 QCSchema uses its retained final geometry, and single-geometry readers use zero.
 An explicit index must be an integer in range and describe the main geometry.
 CJSON's `graph.activeFrameIndex` remains authoritative; a declared reference cannot

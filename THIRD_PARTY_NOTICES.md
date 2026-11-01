@@ -243,3 +243,12 @@ is bundled; PySCF (Apache-2.0) is likewise only an external oracle. The other ou
 NWChem 7.3.0, Psi4 1.11 and xtb 6.7.1; the programs are not bundled. The QCSchema
 files under `tests/fixtures/quantum/qcschema/` were generated for Burette with QCEngine,
 QCElemental, Psi4 and optking (BSD-3-Clause), none of which is bundled.
+
+## ORCA property-file test inputs
+
+The ORCA property files under `tests/fixtures/quantum/orca-property/` are byte-identical copies
+from MIT-licensed repositories: kmilozeta27/MAA-quantum-chemical-protocol (Copyright (c) 2026
+kmilozeta), Spin-Chemistry-Labs/radicalpy (Copyright (c) 2022 Lewis Antill),
+arpank-2380/PyEPFD (Copyright (c) 2023 Arpan Kundu) and
+shabab-kabir/Density_Functional_Theory_Research (Copyright (c) 2023 Shabab Kabir). Their
+licenses and source commits are retained beside the files. They are test inputs only.

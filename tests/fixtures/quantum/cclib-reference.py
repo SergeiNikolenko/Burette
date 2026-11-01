@@ -30,6 +30,8 @@ def hartree(values):
 
 
 def as_list(value):
+    if isinstance(value, (list, tuple)) and len({np.shape(item) for item in value}) > 1:
+        return [as_list(item) for item in value]  # spin channels of different lengths
     return np.asarray(value).tolist()
 
 
