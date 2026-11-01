@@ -296,7 +296,9 @@
     "check:mcd-recent-reopen": "tsc --noEmit -p tests/tsconfig.mcd-recent-reopen.json",
     "test:settings-sidebar-preservation": "bun tests/test-settings-sidebar-preservation.mjs",
     "test:new-generated-document": "bun test tests/test-new-generated-document.test.tsx",
-    "check:new-generated-document": "tsc --noEmit -p tests/tsconfig.new-generated-document.json"
+    "check:new-generated-document": "tsc --noEmit -p tests/tsconfig.new-generated-document.json",
+    "test:peptide-worker": "bun test tests/test-peptide-worker.test.ts",
+    "check:peptide-worker": "tsc --noEmit -p tests/tsconfig.peptide-worker.json"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",
