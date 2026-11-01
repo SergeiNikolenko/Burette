@@ -5,6 +5,12 @@ contains only documents that describe the active project.
 
 ## Current Docs
 
+- [Avogadro capability adoption](avogadro-adoption.md): complete twelve-stage
+  functional contract and scientific acceptance requirements.
+- [Avogadro parity acceptance ledger](avogadro-parity-checklist.md): adopted
+  foundations, partial workflows and remaining surface-specific evidence.
+- [Avogadro extension contracts](avogadro-extensions.md): pinned candidate
+  protocols, licenses, resource publication and remaining adapter scope.
 - [Performance and reliability audit, 2026-09-20](performance-reliability-audit-2026-09-20.md):
   22 source-backed findings, isolated mechanism checks, priorities and acceptance scenarios.
 - [macOS product quality priorities](macos-product-quality.md): calendar release
