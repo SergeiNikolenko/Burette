@@ -140,6 +140,30 @@ test("edits that move atoms between cells keep molecules whole", async () => {
   }
 });
 
+// The reported bug: changing the cell lost the bonds that cross a face and duplicated others.
+test("changing the cell keeps every periodic bond exactly once, in both coordinate policies", async () => {
+  const pairs = (atoms: { x: number; y: number; z: number; element: string }[], cell: number[][]) =>
+    perceivePeriodicBonds(atoms, cell as never).map((bond) => [Math.min(bond.a, bond.b), Math.max(bond.a, bond.b)].join("-")).sort();
+  for (const name of ["urea.cif", "quartz.cif", "triclinic-molecule.xyz"]) {
+    const before = await readCrystalView(source(name));
+    const expected = pairs(before.atoms, before.cell);
+    expect(expected.length).toBe(reference.fixtures[name].periodicBonds!.bonds.length);
+    // Fractional: 2% larger along each axis, so no bond length crosses the perception cutoff.
+    // Cartesian: the same lattice in a sheared basis (b + a), so every bond now crosses another face.
+    const cells = {
+      fractional: before.cell.map((vector) => vector.map((value) => value * 1.02)),
+      cartesian: [before.cell[0], before.cell[1].map((value, axis) => value + before.cell[0][axis]), before.cell[2]],
+    };
+    for (const policy of ["fractional", "cartesian"] as const) {
+      const result = await edit(name, { kind: "set-cell", cell: cells[policy] as never, policy });
+      const after = await readCrystalView(result);
+      expect(pairs(after.atoms, after.cell)).toEqual(expected);
+      expect(new Set(pairs(after.atoms, after.cell)).size).toBe(new Set(expected).size);
+      expect(after.atoms).toHaveLength(before.atoms.length);
+    }
+  }
+});
+
 test("the crystal worker runs edits and lists the 530 space-group settings", async () => {
   const settings = await runCrystalTask({ action: "space-groups" });
   expect(settings).toHaveLength(530);
