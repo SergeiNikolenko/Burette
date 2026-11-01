@@ -23,6 +23,8 @@ Neither limit is an optimization/relaxation budget. Charges, isotope labels, and
 radicals are refused after the metadata-preserving parse, before graph writing.
 Only the accepted hydrogen termination and resolved local tacticity class apply.
 
+The [private native role-picking prerequisite](polymer-picking.md) does not activate the builder UI.
+
 Pending stage 7 work includes actual native 3D role picking and UI acceptance,
 automatic 3D preparation of 2D sources with graph/stereo preservation (requirement
 03.08), real relaxation, other terminations, copolymers, and geometry-preserving
