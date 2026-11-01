@@ -221,6 +221,17 @@ also included in `apps/desktop/public/third-party-licenses/`. Source identities 
 regeneration instructions are in `config/peptide-residue-sources.json` and
 `docs/peptide-geometry.md`.
 
+## OpenChemistry functional-group fragments
+
+`fragment-library.json` mechanically extracts the 166 functional groups under
+`groups/` of OpenChemistry/fragments `7d842f435aec4729a308b23ad7f9501bdd44aa02`
+(BSD-3-Clause, Copyright 2022 Open Chemistry): their Cartesian coordinates,
+bond orders, formal charges and dummy attachment atoms. The same fragment
+license applies; per-file hashes are pinned in `config/fragment-library-sources.json`
+and `scripts/generate-fragment-library.mjs` regenerates or checks the extract.
+`tests/fixtures/fragments/groups.smi` concatenates the upstream `groups.smi`
+reference lists of that revision under the same license.
+
 ## Chemical JSON stereochemistry test graphs
 
 `tests/fixtures/cjson/L-alanine.cjson` and `D-alanine.cjson` retain the graph and
