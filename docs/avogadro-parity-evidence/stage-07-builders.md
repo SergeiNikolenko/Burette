@@ -253,8 +253,8 @@ Fixture `tests/fixtures/protonation/glycine.sdf` (RDKit-generated, see README).
   stereocentre or double bond: its stereo identity check compares the source
   ID code against an embedding normalized by `retainUnknownStereo`, which adds
   explicit "unknown" flags, so `CC(N)C(=O)O`, `CC=CC` and `CC(O)CC(C)O` fail on
-  all eight seeds (both OpenChemLib- and RDKit-written 2D MOL input). Reported to
-  the stage 3 owner; the `smiles` build therefore uses `generate` + `optimize`.
+  all eight seeds (both OpenChemLib- and RDKit-written 2D MOL input). Raised for
+  stage 3 in the stage 7 report; the `smiles` build therefore uses `generate` + `optimize`.
 - pH adjustment treats each site independently with one pKa (no coupled
   centres, microstates, tautomers or substituent corrections); piperazine at
   pH 7.4 becomes a dication. Sulfonamides, imides, pyridones, aminopyridines
