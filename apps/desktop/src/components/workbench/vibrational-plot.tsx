@@ -1,21 +1,30 @@
 import { useState, type KeyboardEvent } from "react";
 import type { VibrationalMode } from "../../lib/molecular-workbench/scientific-types";
-import { plotVibrationalSpectrum, VIBRATIONAL_PLOT_DEFAULTS, type VibrationalPlotKind, type VibrationalPlotOptions } from "../../lib/molecular-workbench/vibrational-spectrum-plot";
+import { plotVibrationalSpectrum, vibrationalAxisRange, VIBRATIONAL_PLOT_DEFAULTS, type VibrationalPlotKind, type VibrationalPlotOptions } from "../../lib/molecular-workbench/vibrational-spectrum-plot";
 import { formatFrequency } from "../../lib/workbench/vibrational-modes";
 import { Checkbox } from "../ui/checkbox";
 import { ScrubNumberField } from "../ui/scrub-number-input";
 
 const remembered: Partial<Record<VibrationalPlotKind, VibrationalPlotOptions>> = {};
+// The axis follows each mode set until the user sets either end of it for that set.
+const manualAxes = new WeakMap<readonly VibrationalMode[], Partial<Record<VibrationalPlotKind, Pick<VibrationalPlotOptions, "axisStartCm1" | "axisEndCm1">>>>();
 const WIDTH = 320, HEIGHT = 120, LEFT = 38, RIGHT = 8, TOP = 8, BOTTOM = 22;
 
 /** Peak-height curves and their raw sticks share one physical x axis and one display y scale. */
 export function VibrationalPlot({ modes, sourceModes = modes, kind, selected, onSelect }: { modes: VibrationalMode[]; sourceModes?: VibrationalMode[]; kind: VibrationalPlotKind; selected: number | null; onSelect: (index: number) => void }) {
-  const [options, setOptions] = useState(() => remembered[kind] ?? { ...VIBRATIONAL_PLOT_DEFAULTS[kind] });
+  const [display, setDisplay] = useState(() => remembered[kind] ?? { ...VIBRATIONAL_PLOT_DEFAULTS[kind] });
+  const [, setAxisVersion] = useState(0);
   const [showRaw, setShowRaw] = useState(true);
+  const options = { ...display, ...(manualAxes.get(sourceModes)?.[kind] ?? vibrationalAxisRange(sourceModes, kind, display)) };
   const update = (key: keyof VibrationalPlotOptions, value: number) => {
-    const next = { ...options, [key]: value };
+    if (key === "axisStartCm1" || key === "axisEndCm1") {
+      manualAxes.set(sourceModes, { ...manualAxes.get(sourceModes), [kind]: { axisStartCm1: options.axisStartCm1, axisEndCm1: options.axisEndCm1, [key]: value } });
+      setAxisVersion(version => version + 1);
+      return;
+    }
+    const next = { ...display, [key]: value };
     remembered[kind] = next;
-    setOptions(next);
+    setDisplay(next);
   };
   const quantity = (mode: VibrationalMode) => kind === "ir" ? mode.intensityKmMol : mode.ramanActivityAngstrom4Amu;
   const center = (mode: VibrationalMode) => (mode.frequencyCm1 - options.offsetCm1) / options.scale;

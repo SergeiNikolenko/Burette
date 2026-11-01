@@ -66,3 +66,30 @@ test('plotting keeps source rows excluded only from the selectable mode list',as
   expect(host.querySelector('[role="slider"][aria-label="IR peak"]')?.getAttribute('aria-valuemax')).toBe('1');
  }finally{await act(async()=>root.unmount());host.remove();}
 });
+
+test('the default axis covers every band of a real Gaussian frequency job until the user sets a range',async()=>{
+ const {parseFchk}=await import('../apps/desktop/src/lib/molecular-workbench/fchk');
+ // HF/STO-3G water: Gaussian 16 prints 2169.9, 4141.3 and 4392.4 cm^-1, beyond the 4000 cm^-1 convention.
+ const science=parseFchk(readFileSync(new URL('./fixtures/quantum/gaussian16-water-raman.fchk',import.meta.url),'utf8'));
+ const frequencies=science.modes.filter(mode=>mode.frequencyCm1>0).map(mode=>mode.frequencyCm1);
+ expect(Math.max(...frequencies)).toBeGreaterThan(4300);
+ const host=document.createElement('div');document.body.append(host);const root=createRoot(host);
+ const axis=(label:string)=>Number(host.querySelector(`[aria-label="${label}"]`)!.getAttribute('aria-valuenow'));
+ try{
+  for(const kind of ['ir','raman'] as const){
+   await act(async()=>root.render(<VibrationalPlot key={kind} modes={science.modes} kind={kind} selected={null} onSelect={()=>{}}/>));
+   const [low,high]=[Math.min(axis('Axis start, cm⁻¹'),axis('Axis end, cm⁻¹')),Math.max(axis('Axis start, cm⁻¹'),axis('Axis end, cm⁻¹'))];
+   expect(frequencies.every(frequency=>frequency-low>=100&&high-frequency>=100)).toBe(true);
+   expect(axis('Axis start, cm⁻¹')>axis('Axis end, cm⁻¹')).toBe(kind==='ir');
+   expect(host.querySelectorAll('.workbench-peak')).toHaveLength(3);
+  }
+  const end=host.querySelector('[aria-label="Axis end, cm⁻¹"]')!;
+  await act(async()=>end.dispatchEvent(new KeyboardEvent('keydown',{key:'End',bubbles:true})));
+  expect(axis('Axis end, cm⁻¹')).toBe(20000);
+  await act(async()=>root.render(<VibrationalPlot key="again" modes={science.modes} kind="raman" selected={null} onSelect={()=>{}}/>));
+  expect(axis('Axis end, cm⁻¹')).toBe(20000);
+  const other=science.modes.map(mode=>({...mode}));
+  await act(async()=>root.render(<VibrationalPlot key="other" modes={other} kind="raman" selected={null} onSelect={()=>{}}/>));
+  expect(axis('Axis end, cm⁻¹')).toBe(4500);
+ }finally{await act(async()=>root.unmount());host.remove();}
+});
