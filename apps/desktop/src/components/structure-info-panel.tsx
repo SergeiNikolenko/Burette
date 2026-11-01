@@ -1,3 +1,4 @@
+import { useNativeSceneComposition } from "../hooks/use-native-scene-composition";
 import { Checkbox } from "./ui/checkbox";
 import { Slider } from "./ui/slider";
 import { TrajectorySetting } from "./trajectory-setting";
@@ -642,7 +643,7 @@ const HEADER_STAT_LABELS = ["Chains", "Molecules", "Frames", "Models"] as const;
 function inspectorHeaderStats(document: ViewerDocument, summary: StructureCompositionSummary | null) {
   const size = { label: "Size", value: formatBytes(document.byteCount) };
   if (!summary) return [size];
-  const atomCount = structureAtomCountFromSummary(summary);
+  const atomCount = structureAtomCountFromSummary(summary) ?? (summary.sceneRequestId && valueForLabel(summary.rows, "Atoms") === "0" ? 0 : null);
   const counts = [
     atomCount === null ? null : { label: "Atoms", value: atomCount.toLocaleString() },
     ...HEADER_STAT_LABELS.map((label) => {
@@ -2140,6 +2141,7 @@ function XtbArtifactInfoCard({
 
 function useStructureComposition(document: ViewerDocument | null) {
   const logical = useLogicalSource(document?.id);
+  const native = useNativeSceneComposition(document?.renderer === "molstar" && document.extension.replace(/^\./u, "").toLowerCase() === "molx" && !logical ? document : null);
   const draft = useSourceEditing()?.sessionForDocument(document)?.content;
   const sourceIdentity = useMemo(() => ({ document, logical, draft }), [document, logical, draft]);
   const [state, setState] = useState<{
@@ -2193,7 +2195,7 @@ function useStructureComposition(document: ViewerDocument | null) {
     };
   }, [document, logical, draft]);
 
-  return { ...state, cifKind: state.sourceIdentity === sourceIdentity ? state.cifKind : null };
+  return { ...state, summary: native ?? state.summary, cifKind: state.sourceIdentity === sourceIdentity ? state.cifKind : null };
 }
 
 function structureCompositionSourceForDocument(document: ViewerDocument): InspectorStructureTextSource {
@@ -3786,6 +3788,7 @@ function StructureCompositionCard({
       const body = event.data?.body;
       if (body?.type === "ready") requestVisibility();
       if (body?.type !== "compositionVisibilityChanged" || !Array.isArray(body.rows)) return;
+      if (summary?.sceneRequestId && (!Array.isArray(body.hierarchyRequestIds) || body.hierarchyRequestIds.length > 16 || !body.hierarchyRequestIds.includes(summary.sceneRequestId))) return;
       setSceneRows(current => {
         const next = new Map(current);
         for (const row of body.rows.slice(0, 128)) {
@@ -3818,7 +3821,7 @@ function StructureCompositionCard({
     window.addEventListener("message", receive);
     requestVisibility();
     return () => window.removeEventListener("message", receive);
-  }, [document.id, sourceGroups]);
+  }, [document.id, sourceGroups, summary?.sceneRequestId]);
   const markHidden = (row: StructureSummaryRow, hide: boolean) => {
     setHiddenRows((current) => {
       const next = new Set(current);

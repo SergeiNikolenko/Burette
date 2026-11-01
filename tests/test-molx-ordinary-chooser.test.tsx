@@ -254,3 +254,6 @@ test("normal MOLX restore drives Info composition from its validated logical sou
     } finally {transport.mockRestore();await act(async()=>root.unmount());host.remove();native.dispose();}
   }
 });
+
+// Reuse the actual ordinary chooser and browser for native Info integration.
+export { choose, browser, defaultPreferences, useMoleculeStore, logicalSourceFor, readSceneDocumentBytes };

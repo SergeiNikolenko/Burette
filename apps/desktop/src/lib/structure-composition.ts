@@ -7,6 +7,8 @@ export type StructureSummaryRow = {
 };
 
 export type StructureCompositionSummary = {
+  /** Native summaries and subsequent row updates share one viewer-owned subscription. */
+  sceneRequestId?: string;
   rows: StructureSummaryRow[];
   componentRows: StructureSummaryRow[];
   maestroRows?: StructureSummaryRow[];
