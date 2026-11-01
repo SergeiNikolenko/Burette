@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { isTauriRuntime } from "../lib/tauri";
 import { isTemporaryDocumentPath } from "../lib/temporary-documents";
 import { useAppLevelPreferences } from "./use-app-level-preferences";
-import { viewerAppearanceMessage } from "../lib/theme";
+import { subscribeSystemThemeMode, viewerAppearanceMessage } from "../lib/theme";
 import type { MoleculeTab } from "../stores/molecule-store";
 import type { OpenDocumentsResult, ViewerDocument, ViewerPreferences } from "../types";
 
@@ -110,6 +110,12 @@ export function useAppPreferenceEffects({
   const currentInputsRef = useRef({ documents, preferences, isDocumentDirty });
   currentInputsRef.current = { documents, preferences, isDocumentDirty };
   useAppLevelPreferences(preferences, pushErrorStatus);
+
+  // The Codex host switches the widget's theme without a preference change.
+  useEffect(() => {
+    if (!window.BuretteMcpWorkspace) return;
+    return subscribeSystemThemeMode(() => broadcastLiveAppliedPreferences(["theme"], currentInputsRef.current.preferences));
+  }, []);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;

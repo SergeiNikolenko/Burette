@@ -556,10 +556,6 @@ function WorkspaceAppLayout({
           </header>
         </>
       )}
-      {window.BuretteMcpWorkspace ? <>
-        <OpenInEditorMenu state={layoutState} actions={actions} presentation="file-header" navigation={items => <NativeWorkspaceMenu fileItems={items} state={layoutState} actions={actions} sidebarVisible={sidebarVisible}
-          onToggleSidebar={nativeExpanded ? () => setNativeNavigationOpen(open => !open) : undefined} />} />
-      </> : null}
       {isHostedKetcherWidget() ? <HostedKetcherViewSwitch state={state} actions={actions} /> : null}
       <section className="workspace">
         {/* Sizes AND open flags are persisted from onLayoutChanged, not
@@ -601,7 +597,7 @@ function WorkspaceAppLayout({
             groupResizeBehavior="preserve-pixel-size"
           >
             <div className="sidebar-shell-inner">
-              {window.BuretteMcpWorkspace ? <NativeWorkspaceSidebar state={layoutState} actions={actions} /> : <Sidebar state={layoutState} actions={actions} open={sidebarVisible} />}
+              {window.BuretteMcpWorkspace ? <NativeWorkspaceSidebar state={layoutState} actions={actions} onToggleSidebar={() => setNativeNavigationOpen(false)} /> : <Sidebar state={layoutState} actions={actions} open={sidebarVisible} />}
             </div>
           </ResizablePanel>
           {chromeVisible && !window.BuretteMcpWorkspace ? (
@@ -615,6 +611,11 @@ function WorkspaceAppLayout({
           ) : null}
           <ResizablePanel id="center" className="workspace-center-panel" style={CLIPPED_PANEL_STYLE}>
             <section className="workbench">
+              {/* The plugin's file header leads the content column, so an open
+                  sidebar never sits under it. */}
+              {window.BuretteMcpWorkspace ? <OpenInEditorMenu state={layoutState} actions={actions} presentation="file-header"
+                navigation={sidebarVisible ? undefined : items => <NativeWorkspaceMenu fileItems={items} state={layoutState} actions={actions}
+                  onShowSidebar={nativeExpanded ? () => setNativeNavigationOpen(true) : undefined} />} /> : null}
               <ResizablePanelGroup
                 orientation="horizontal"
                 className="workbench-panels"

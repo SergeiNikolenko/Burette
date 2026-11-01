@@ -54,30 +54,29 @@ export function NativeWorkspaceHome({ actions, home }: { actions: ShellActions; 
     }
   };
 
+  // Laid out like a Codex list page (Archive): a large title with its action,
+  // then plain pill rows.
   return (
     <div className="native-workspace-home h-full w-full overflow-y-auto overscroll-contain px-5 py-8 sm:px-8">
-      <div className="mx-auto flex w-full max-w-[680px] flex-col gap-4">
-        <header className="flex items-center justify-between gap-4">
-          <h1 className="text-(length:--text-heading-lg) leading-9 font-semibold text-(--color-text)">Recent files</h1>
+      <div className="mx-auto flex w-full max-w-[720px] flex-col gap-5">
+        <header className="flex items-start justify-between gap-4">
+          <h1 className="native-home-title">Recent files</h1>
           <Button type="button" className="native-home-ketcher" variant="secondary" size="xs" onClick={actions.openKetcher}>Ketcher</Button>
         </header>
         <section aria-label="Recent files" aria-busy={loading} className="flex flex-col">
-          {loading ? <div role="status" className="flex items-center gap-2 px-5 py-4 text-sm text-(--color-text-secondary)"><Spinner aria-hidden />Loading recent files…</div> : null}
+          {loading ? <div role="status" className="flex items-center gap-2 px-2 py-[5px] text-sm text-(--color-text-secondary)"><Spinner aria-hidden />Loading recent files…</div> : null}
           {!loading && !recent.length && !notice ? <PanelEmptyState title="No recent files" icon={<FileBlank />} /> : null}
-          {recent.length > 0 ? <ul className="grid rounded-[20px] border border-(--color-border) px-5 py-4">
-            {recent.map(file => <li key={file.path} className="min-w-0 [content-visibility:auto] [contain-intrinsic-size:auto_44px]">
-              <Button type="button" variant="ghost" disabled={pending !== null} aria-label={`Open ${file.label}`} aria-busy={pending === file.path}
-                onClick={() => void open(file)} title={file.path}
-                className="h-auto w-full min-w-0 justify-start gap-3 rounded-lg px-0 py-1 text-left font-normal text-(--color-text)">
-                <span className="shrink-0 text-(--color-text-secondary) [&_svg]:size-5" aria-hidden><FileKindIcon kind={fileKindForPath(file.path)} /></span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm">{file.label}</span>
-                  {folderOf(file.path) ? <span className="block truncate text-xs text-(--color-text-secondary)">{folderOf(file.path)}</span> : null}
-                </span>
-                <span className="shrink-0 text-xs text-(--color-text-tertiary) tabular-nums">
+          {recent.length > 0 ? <ul className="native-home-list">
+            {recent.map(file => <li key={file.path}>
+              <button type="button" className="native-home-row" disabled={pending !== null} aria-label={`Open ${file.label}`} aria-busy={pending === file.path}
+                onClick={() => void open(file)} title={file.path}>
+                <span className="native-home-row-icon" aria-hidden><FileKindIcon kind={fileKindForPath(file.path)} /></span>
+                <span className="native-home-row-name">{file.label}</span>
+                {folderOf(file.path) ? <span className="native-home-row-folder">{folderOf(file.path)}</span> : null}
+                <span className="native-home-row-time">
                   {pending === file.path ? <Spinner aria-label="Opening file" /> : openedAgo(file.openedAt)}
                 </span>
-              </Button>
+              </button>
             </li>)}
           </ul> : null}
         </section>
