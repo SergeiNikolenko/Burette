@@ -21,6 +21,8 @@ contains only documents that describe the active project.
 - [Peptide graph prerequisite](peptide-graph-builder.md): neutral residue graphs,
   terminal chemistry, stereochemistry and the remaining 3D builder scope.
 - [Peptide geometry](peptide-geometry.md): named 3D backbone templates, charged termini, and mmCIF roundtrip.
+- [Polymer builder](polymer-builder.md): attachment-directed repeat placement,
+  source/copy mapping and supported terminal chemistry.
 - [Quantum input templates](quantum-input-export.md): engine routes, coordinate
   conventions, constraints, periodic cells and template validation.
 - [Chemical JSON graph source prerequisite](cjson-graph-source.md): explicit bonds,
