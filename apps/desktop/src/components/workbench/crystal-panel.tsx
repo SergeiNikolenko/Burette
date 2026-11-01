@@ -51,7 +51,8 @@ export function CrystalPanel({ document, actions }: { document: ViewerDocument |
   const draft = useCrystalDraft(document, (name, text) => openGeneratedStructure(actions, name, "cif", text, undefined, { newDocument: true }));
   const sourceEditing = useSourceEditing();
   const [running, setRunning] = useState<CrystalEdit["kind"] | null>(null);
-  if (!document || !draft.format) return <div className="dock-content dock-content-empty"><PanelEmptyState icon={<Grid />} title="No crystal selected" /></div>;
+  if (draft.reading) return null;
+  if (!document || !draft.available) return <div className="dock-content dock-content-empty"><PanelEmptyState icon={<Grid />} title="No crystal selected" /></div>;
   const history = draft.history;
   const current = history?.current ?? null;
   const locked = draft.busy || !draft.editable;
@@ -83,16 +84,16 @@ export function CrystalPanel({ document, actions }: { document: ViewerDocument |
         ) : null}
       </div>
       {draft.error ? <p role="alert" className="workbench-error">{draft.error}</p> : null}
-      {current ? (
+      {current && draft.format ? (
         <>
           <CellSection key={`cell:${current.id}`} revision={current} disabled={locked} apply={apply} />
           <TransformSection key={`transform:${current.id}`} revision={current} disabled={locked} apply={apply} />
           <CrystalSpaceGroupSection format={draft.format} revision={current} disabled={locked} apply={apply} />
           <AnalysisSection title="Powder diffraction">
-            <PowderXrdSection title={document.title} atoms={current.crystal.atoms} cell={current.crystal.cell} revision={String(current.id)} actions={actions} />
+            <PowderXrdSection title={document.title} atoms={current.value.atoms} cell={current.value.cell} revision={String(current.id)} actions={actions} />
           </AnalysisSection>
           <AnalysisSection title="Pair distribution">
-            <PairDistributionSection title={document.title} atoms={current.crystal.atoms} cell={current.crystal.cell} revision={String(current.id)} actions={actions} />
+            <PairDistributionSection title={document.title} atoms={current.value.atoms} cell={current.value.cell} revision={String(current.id)} actions={actions} />
           </AnalysisSection>
         </>
       ) : draft.error ? null : <span role="status" className="workbench-status"><Spinner aria-hidden className="size-3" />Reading crystal</span>}
@@ -107,7 +108,7 @@ function AnalysisSection({ title, children }: { title: string; children: ReactNo
 }
 
 function CellSection({ revision, disabled, apply }: { revision: CrystalRevision; disabled: boolean; apply: (edit: CrystalEdit) => Promise<void> }) {
-  const cell = revision.crystal.cell;
+  const cell = revision.value.cell;
   const [mode, setMode] = useState<"parameters" | "vectors">("parameters");
   const [policy, setPolicy] = useState<CoordinatePolicy>("fractional");
   const [parameters, setParameters] = useState<CellParameters>(() => cellParametersOf(cell));
@@ -123,7 +124,7 @@ function CellSection({ revision, disabled, apply }: { revision: CrystalRevision;
   const changed = mode === "vectors" ? vectors.some((row, i) => row.some((value, j) => value !== cell[i][j]))
     : (Object.keys(original) as (keyof CellParameters)[]).some((key) => Math.abs(parameters[key] - original[key]) > 1e-9);
   return (
-    <CollapsibleSection title="Cell" detail={`${Math.abs(signedVolume(cell)).toFixed(2)} Å³, ${plural(revision.crystal.atoms.length, "atom")}`}>
+    <CollapsibleSection title="Cell" detail={`${Math.abs(signedVolume(cell)).toFixed(2)} Å³, ${plural(revision.value.atoms.length, "atom")}`}>
       <div className="workbench-form">
         <SegmentedControl aria-label="Cell as" className="self-start" value={mode} onValueChange={(value) => setMode(value as typeof mode)}>
           <SegmentedControlItem value="parameters">Parameters</SegmentedControlItem>
@@ -160,10 +161,10 @@ function CellSection({ revision, disabled, apply }: { revision: CrystalRevision;
 }
 
 function TransformSection({ revision, disabled, apply }: { revision: CrystalRevision; disabled: boolean; apply: (edit: CrystalEdit) => Promise<void> }) {
-  const volume = Math.abs(signedVolume(revision.crystal.cell));
+  const volume = Math.abs(signedVolume(revision.value.cell));
   const [target, setTarget] = useState(volume);
   const [repeats, setRepeats] = useState<[number, number, number]>([2, 2, 2]);
-  const supercellAtoms = revision.crystal.atoms.length * repeats[0] * repeats[1] * repeats[2];
+  const supercellAtoms = revision.value.atoms.length * repeats[0] * repeats[1] * repeats[2];
   const tooLarge = supercellAtoms > SUPERCELL_LIMITS.atoms;
   return (
     <CollapsibleSection title="Transform">
