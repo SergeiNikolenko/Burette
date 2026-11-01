@@ -1,0 +1,248 @@
+# Stage 3 and 10 evidence: optimization, constraints and automation
+
+Branch `parity/optimization-automation`, from `a5f7303cd`. Nothing here was run
+in a live browser, the packaged plugin or the native app; those lanes have exact
+acceptance scripts below. Every numeric expectation comes from an independent
+reference (Python RDKit, RDKit's own UFF fixture, or an analytic lattice
+result), never from Burette output.
+
+## References and fixtures
+
+| File | Provenance |
+| --- | --- |
+| `tests/fixtures/optimization/generate-rdkit-optimization-reference.py` | Generator. `uv run --with rdkit==2026.9.1 python tests/fixtures/optimization/generate-rdkit-optimization-reference.py`. |
+| `tests/fixtures/optimization/rdkit-optimization-reference.json` | RDKit 2026.09.1 output: analytic gradients at the fixed inputs of `tests/fixtures/forcefield/rdkit-reference.json`, unconstrained MMFF94/MMFF94s/UFF minima (`forceTol 1e-9`), the constrained ethanol minimum, conformer minima of butane and pentane, and stereo SMILES of four flat inputs. The script checks that RDKit's constraint terms sum to Burette's restraint formula after every minimization. |
+| `compute/rdkit-conformer/fixtures/uff-rdkit-2025.03.4.json` | Existing RDKit 2025.03.4 UFF energies and gradients (water case). |
+| `tests/fixtures/automation/ethanol.sdf`, `acetonitrile.sdf`, `n-methylacetamide.sdf` | The CCO, CC#N and CC(=O)NC molfiles of `tests/fixtures/forcefield/rdkit-reference.json`; ethanol has one `ID` data item. |
+| `tests/fixtures/automation/ethanol-ensemble.sdf` | Record 1 = the ethanol input; record 2 = the same graph at RDKit's MMFF94 minimum coordinates. |
+| `tests/fixtures/automation/butan-2-ol-2d.mol` | RDKit 2D depiction of `CC[C@@H](C)O` (heavy atoms only, z = 0). |
+| `tests/fixtures/automation/water-trajectory.xyz` | Frame 0 = RDKit UFF water reference coordinates; frame 1 = frame 0 rotated 90° about z and translated (4, −3, 2) Å; frame 2 = frame 0 translated (1.5, 0, −0.5) Å. |
+| `tests/fixtures/automation/simple-cubic.xyz` | One Cu atom in a 3 Å cubic cell (extended XYZ `Lattice`). Analytic g(r): first shell of 6 at 3 Å. |
+
+## Requirements
+
+### Stage 3
+
+| Requirement | Status | Evidence |
+| --- | --- | --- |
+| MMFF94/MMFF94s/UFF minimization with L-BFGS, FIRE, ABC-FIRE and hybrid; BFGS and L-BFGS kept | Done | `optimization.ts`, `minimizer.ts`. `test:optimization-reference` reaches the RDKit minima for every model and method. `test:minimizer-core` covers the minimizer stop rules and non-finite trial points. BFGS is the OpenChemLib MMFF minimizer (unconstrained MMFF only); L-BFGS is the shared numerical route. |
+| Frozen atoms; distance/angle/torsion constraints; residual reporting | Done | Frozen atoms are removed from the variables, so they stay exact. Other constraints are harmonic 10⁴·Δ² restraints. Constrained ethanol matches RDKit's constrained minimum, and a stationarity check starts from RDKit's coordinates. Residuals carry kind, atoms, target, value, signed error and unit in every result; `converged` requires every residual within 0.01 Å / 1°. Geometry lists each residual (`test-geometry-optimization-result`); agents read `constraintResiduals` (`test:workbench-automation-jobs`). |
+| Z-matrix shared-variable optimization | Done | `zmatrix-coupled-optimization.ts` refuses BFGS and exposes every numerical method. New RDKit check: water with shared R/A reaches the RDKit MMFF94 minimum with every method (`test:optimization-reference`). Existing invariant tests cover shared-use equality, frozen rows, periodic torsions and the central derivative along a shared variable. |
+| Conformer search | Done | `searchConformers` relaxes every sample to a converged minimum and drops permutation-equivalent duplicates by sorted heavy-atom distances. Butane and pentane minima match RDKit. UI: Properties → Conformers → Search opens an energy-ordered SDF (`test-workbench-prepare-conformers-ui`). Agent: `conformers` job. |
+| Accepted / failed / cancelled / stale outcomes | Done | UI: a result publishes one draft edit only when the source is unchanged; cancel terminates the worker (`test-workbench-zmatrix-optimize`, `test-workbench-prepare-conformers-ui`). Agent: replay, `OPERATION_ID_CONFLICT`, stale binding, `STALE_RESULT`, `allowStale`, cancel and source close (`test:workbench-automation-jobs`, `test:workbench-python-client`). |
+| One undoable revision plus an inspectable step trajectory | Done | Edit, Properties and Geometry publish one Undo step. Methods other than BFGS keep every accepted step; Open steps opens them as XYZ with per-step energies for Plots. Agents get a `trajectory` artifact (`Step i Energy=E kcal/mol`), which the test parses back. |
+| Automatic 3D preparation for flat input, exposed to the user | Done | `prepare3d` adds hydrogens after the source atoms, embeds, checks the stereo identity (up to 8 seeds) and relaxes. Properties → 3D coordinates → Generate and Edit → More actions → Generate 3D coordinates each publish one undoable edit; RDKit reads the stereocentre back (`test-workbench-prepare-conformers-ui`). Agent: `prepare_3d`. |
+| Enforced limits (256 graph, 64 numerical/UFF), no silent substitution | Done | `optimizationUnavailable` produces the refusal messages. The optimizer menu disables an unavailable force field or method and shows the reason; the checked method is the one that runs (`test-optimize-button`). This fixed the old button, which labelled BFGS as L-BFGS and silently dropped numerical methods above 64 atoms. Agents get `JOB_UNAVAILABLE` before queueing. |
+| Known gaps: MMFF94 boron, sodium, allenes | Documented | OpenChemLib MMFF has no boron or covalent Na types and refuses them with its own error; nothing else is substituted. Allene energies match RDKit. OCL MMFF returns NaN only at exactly collinear double-precision geometries: the generic refusal stays (`test-mmff-collinear`), and the minimizer rejects non-finite trial points instead of propagating them. |
+
+### Stage 10
+
+| Requirement | Status | Evidence |
+| --- | --- | --- |
+| Optimization and remaining job types on the typed bounded CLI/MCP surface | Done | New kinds: `optimize`, `prepare_3d`, `conformers` and `frame_energy_forces`. Ported from the WIP snapshot into the registry: `metadata_edit` and `pair_distribution`. Existing kinds kept: `properties`, `energy`, `energy_forces` and `orbital_cube`. New `atoms` paging operation. All share observe/submit/status/jobs/cancel/export, response and artifact bounds, and malformed, replayed, stale and cancelled handling. Tests: `test:workbench-automation-jobs`, `test:energy-agent`/`test:orbital-agent` (the compiled CLI test now lists 10 kinds) and `test:workbench-python-client` (CLI and stdio MCP). |
+| Conformer and frame energy/force batching | Done | `frame_energy_forces` pages XYZ frames and SDF records: at most 64 frames and 2048 atom-frames per job, with `nextOffset`. Every SDF record is checked against record 1's elements, bonds and graph. Energies and forces match RDKit for ensembles and are rotation-covariant for frames. `extxyz` reopens with the same values. |
+| Python/Jupyter client on the same protocol | Done | `plugins/burette-agent/python/burette_workbench.py` (standard library only) provides `Workbench.run`, the `iter_atoms`/`iter_orbitals` pagers, `iter_frame_energy_forces` with a pinned revision and replay-safe operation ids, and `WorkbenchError` codes. It is shipped in the npm package (`python/` is in `files`). An end-to-end test runs `python3` against the packaged CLI, the HTTP server, the production host hook and the MCP tool. |
+| Compute-free widget contract kept separate | Done | No widget, hosted plugin or `mcp/lib` bundle changed. Workbench jobs exist only in `browser-agent-shell` sessions; tokenized previews still answer `SURFACE_UNSUPPORTED`. |
+| Extension points for other stages | Done | See below and [Adding a typed job kind](../agent-platform.md#adding-a-typed-job-kind). |
+
+## Extension points for other stage agents
+
+1. **Contract.** Add one entry to `JOB_DEFINITIONS` in
+   `scripts/workbench-agent-contract.mjs`. `describe` is what `capabilities`
+   advertises; `params(value)` rejects unknown fields and resolves defaults.
+   Add the type to `WorkbenchJobParams` in `workbench-agent-contract.d.mts`. Copy
+   the contract to `plugins/burette-agent/scripts/` (`test-packaged-plugin-mirror`
+   checks it).
+2. **Runner.** Add one `AgentJobRunner` to `AGENT_JOBS` in
+   `apps/desktop/src/lib/workbench/agent-jobs.ts`; the mapped type turns a
+   missing kind into a compile error. A runner has three parts:
+   - `unavailable(snapshot)`, shown by `observe`;
+   - optional `paramsUnavailable(snapshot, params)`, which refuses before queueing;
+   - `run(snapshot, params, { signal, timeoutMs, stem, artifact })`, which returns a bounded summary and artifacts.
+
+   The `Snapshot` holds the exact text, extension, parsed graph, scientific
+   document, source atoms with cell, and the SDF record count.
+3. **Shared helpers.** `sdfRecords(text)` (`agent-source.ts`) and
+   `conformerSdfRecord` (`formats.ts`), plus the `record-forces`, `frame-forces`
+   and `prepare-3d` compute-worker actions.
+4. **`point_group`** is not registered: its engine (`point-group.ts`, libmsym)
+   is not on this branch. The crystals stage registers it through the two steps
+   above. `UNSUPPORTED_WORKBENCH_JOB` is pinned for it in
+   `test-orbital-cli-compiled` and must change together with that registration.
+
+## Edits to shared or central files
+
+- `scripts/workbench-agent-contract.mjs` / `.d.mts`, and its plugin copy:
+  limits, the `atoms` operation and `JOB_DEFINITIONS`.
+- `apps/desktop/src/lib/workbench/agent-controller.ts`: dispatches through the
+  registry; `observe` reports `structure` and `frames`; adds `atoms` paging. The
+  orbital runner moved to `agent-orbital-job.ts`.
+- `apps/desktop/src/lib/workbench/agent-source.ts`: the snapshot gains `text`,
+  `extension`, `source` and `sdfRecords`.
+- `apps/desktop/src/lib/molecular-workbench/chemistry.ts`, `optimization.ts`,
+  `minimizer.ts`, `energy-forces.ts`, `compute-client.ts`, `compute-worker.ts`.
+- `apps/desktop/src/lib/workbench/use-graph-draft.ts`: the `optimize` operation
+  now requires `method` and `forceField`; adds `prepare-3d`.
+- UI: `optimize-button.tsx`, `geometry-panel.tsx`, `zmatrix-panel.tsx`,
+  `structure-edit-panel.tsx`, `properties-dialog.tsx`, `geometry.css` and
+  `workbench-layout.css`.
+- `package.json`: new `test:*` scripts appended at the end of `test:ui` and
+  `test:agent`. `plugins/burette-agent/package.json` ships `python/`.
+- Docs: `docs/agent-platform.md`, `docs/graph-editing-and-properties.md`,
+  `scripts/README.md`, and the plugin skill `external-agent-contract`.
+
+`App.tsx`, `viewer.js`, `viewer-shell.js`, `vite.config.ts`, the Mol* adapters,
+`browser-shell-dist` and `docs/avogadro-parity-checklist.md` are unchanged.
+
+## Focused validation run
+
+`bun run typecheck` and `bun run check:js` passed, as did:
+
+- `test:optimization-reference`, `test:minimizer-core` and `test:workbench-automation-jobs`;
+- `test:workbench-python-client` and `test:workbench-prepare-conformers-ui`;
+- `test:energy-agent`, `test:orbital-agent`, `test:properties-agent` and `test:agent-graph-source`;
+- `test:structure-edit-controls` and `test:properties-consumer`;
+- `test-optimize-button`, `test-geometry-optimization-result`, `test-graph-draft-adapter`
+  and `test-workbench-zmatrix-optimize`;
+- `test-zmatrix-coupled-*`, `test-mmff-collinear` and `test-burette-agent-plugin`;
+- `test-packaged-plugin-mirror`.
+
+## Remaining gaps
+
+- **BFGS steps.** OpenChemLib publishes coordinates only on convergence, so BFGS
+  results are endpoints (`frameSampling: "endpoints"`, `iterations: null`) and
+  offer no Open steps. Every other method records each step.
+- **Numerical MMFF speed.** MMFF gradients are central differences (h = 10⁻⁴ Å),
+  about 37 ms per iteration for 12 atoms. FIRE on N-methylacetamide does not
+  converge in 1000 iterations, and that is reported as `stopReason:
+  "iterations"`, `converged: false`. UFF gradients are analytic.
+- **Conformer method.** Conformers come from OpenChemLib torsion sampling.
+  Avogadro's Open Babel systematic, weighted and genetic search modes are not
+  ported, because Open Babel is GPL. Count and seed are exposed.
+- **`point_group`** belongs to stage 8 (see above).
+- **Not yet observed:** the live browser shell, the rebuilt packaged plugin and
+  the native app. Use the scripts below.
+
+## Acceptance scripts (live browser shell, packaged plugin)
+
+Setup, once per run: `bun run build:agent-shell` (its output is not committed).
+Each scenario starts a fresh session:
+
+```bash
+OPEN=$(node scripts/burette-agent.mjs open --mode browser-agent-shell "$PWD/<fixture>")
+SESSION=$(jq -r .result.sessionDir <<<"$OPEN")   # open jq -r .result.url in the Codex in-app Browser
+wb() { node scripts/burette-agent.mjs workbench --session-dir "$SESSION" "$@"; }
+REV=$(wb '{"operation":"observe"}' | jq -r .result.sourceRevision)
+```
+
+For the packaged plugin, run the same commands with
+`plugins/burette-agent/scripts/burette-agent.mjs` in place of
+`scripts/burette-agent.mjs`; the Python client resolves that copy by default.
+
+### A. Constrained optimization with steps (`ethanol.sdf`)
+
+1. Submit:
+   ```bash
+   wb "{\"operation\":\"submit\",\"operationId\":\"opt-1\",\"expectedSourceRevision\":\"$REV\",\"job\":{\"kind\":\"optimize\",\"params\":{\"forceField\":\"UFF\",\"constraints\":[{\"kind\":\"freeze\",\"atoms\":[0]},{\"kind\":\"distance\",\"atoms\":[1,2],\"target\":1.5}]}}}"
+   ```
+   Then poll `{"operation":"status","operationId":"opt-1"}` until it is terminal.
+
+   Expect `succeeded` with:
+   - `method: "lbfgs"`, `gradient: "analytic"`, `frameSampling: "steps"`;
+   - `converged: true`, `frozenAtoms: [0]`;
+   - one residual with |error| < 0.01 Å.
+2. Export:
+   ```bash
+   wb '{"operation":"export","jobId":"<id>","artifact":"trajectory"}' --output /tmp/a-steps.xyz
+   ```
+   Do the same for `structure` (to `/tmp/a.sdf`).
+
+   Expect:
+   - `/tmp/a.sdf` has the source bonds and atom 0 at its exact input coordinates;
+   - frame 0 of `/tmp/a-steps.xyz` has `Energy=` equal to `initialEnergy`, and the last frame has `energy`.
+3. Reopen both files with `open --mode browser-agent-shell`.
+   - `observe.frames.count` on the trajectory equals `frameCount`.
+   - Plots charts one energy per step.
+4. Replay and malformed requests:
+   - Resubmitting step 1 unchanged returns `deduplicated: true` with the same job.
+   - The same `operationId` with `"method":"fire"` returns `OPERATION_ID_CONFLICT`.
+   - `"method":"steepest"`, `"maxIterations":1001` and a 2-atom angle each return `INVALID_ARGS`, and `actions.json` stays the same length.
+5. Stale result: edit the document in the shell (any coordinate), then:
+   - `status` reports `stale`;
+   - `export` returns `STALE_RESULT`;
+   - `export` with `"allowStale":true` writes the old file.
+
+   Submitting with the old `$REV` returns `REVISION_CONFLICT`.
+6. Cancel and close:
+   - Submit `{"method":"fire","maxIterations":1000}` on `n-methylacetamide.sdf` and cancel it immediately: expect `cancelled`, `summary: null` and no artifacts.
+   - Close the tab while the next job runs: `source_closed`.
+
+### B. Refusals before queueing (`acetonitrile.sdf`)
+
+Each of these returns `JOB_UNAVAILABLE` with the stated reason, and `jobs.total`
+stays at 0:
+
+- `optimize` with an `angle` over [0,1,2] (linear angle);
+- a `dihedral` over [3,0,1,2] (collinear);
+- `{"forceField":"UFF","method":"bfgs"}`;
+- `freeze` of atom 6.
+
+### C. Generate 3D in the UI (`butan-2-ol-2d.mol`)
+
+1. Open the file in the shell and choose Properties → 3D coordinates → Generate.
+   Expect:
+   - the Edit tab opens with "MMFF94, BFGS … kcal/mol · Converged" and no Open steps;
+   - the draft has 15 atoms;
+   - RDKit reads `CC[C@@H](C)O` from the saved file.
+2. Undo restores the 2D text byte for byte. Edit → More actions → Generate 3D
+   coordinates gives the same result.
+3. Agent equivalent: `prepare_3d` with `{"seed":2}` on the same file. Expect
+   `preparation: {addedHydrogens: 10, seed: 2, attempts: 1}`. Running
+   `prepare_3d` on `ethanol.sdf` reports
+   `observe.jobs.prepare_3d.available: false`.
+4. Check both themes, keyboard-only use (Tab to the Generate button, Enter) and
+   a 320 px dock: the Generate and Search rows stay readable without clipping.
+
+### D. Optimizer menu (any SDF; `n-methylacetamide.sdf` for steps)
+
+1. In Edit, open the Optimize menu.
+   - Select UFF: BFGS is disabled, its tooltip gives the reason, and L-BFGS is checked.
+   - In Geometry, freeze an atom: BFGS is disabled with "cannot hold frozen atoms".
+   - Lock the linear angle on acetonitrile: Optimize is disabled with the linear-angle reason.
+2. Run FIRE: the result line shows the method and step count, and Open steps
+   opens an XYZ trajectory that Plots charts. The Geometry residual list shows
+   each constraint with its signed deviation; a failing deviation is red only on
+   that value.
+3. Screen reader check: the menu trigger announces "Optimization method:
+   L-BFGS, UFF".
+
+### E. Conformers (`ethanol.sdf`; `n-methylacetamide.sdf` to cancel)
+
+1. Properties → Conformers: entering 40 clamps to 32. Search opens
+   `<name>-conformers.sdf`, ordered by `MMFF94 energy (kcal/mol)` with relative
+   energies; the source stays unchanged.
+2. Cancel during the search on N-methylacetamide: nothing opens.
+3. Agent equivalent: `conformers` `{"count":16,"seed":4}`.
+   - `energies` is sorted ascending.
+   - Each exported record reopens with the source SMILES.
+
+### F. Frame batches (`water-trajectory.xyz`, `ethanol-ensemble.sdf`)
+
+1. Run the Python client with batches of 2:
+   ```bash
+   PYTHONPATH=plugins/burette-agent/python python3 -c "from burette_workbench import Workbench; import json,sys; wb=Workbench(sys.argv[1]); print(json.dumps([f['energy'] for f in wb.iter_frame_energy_forces('UFF', batch_size=2, operation_prefix='w')]))" "$SESSION"
+   ```
+   Expect three energies equal to 5.6964874763 kcal/mol (within 10⁻⁶). Rerun:
+   `jobs.total` is unchanged (replay).
+2. Ensemble, MMFF94: energies are 37.9166 and −1.5171 kcal/mol (RDKit). Export
+   `extxyz` and reopen it: per-atom forces are shown, and `Energy` matches.
+3. A mixed SDF (ethanol + acetonitrile records) fails with "SDF record 2 has a
+   different graph". `{"offset":2}` on the two-record ensemble returns
+   `JOB_UNAVAILABLE`.
+4. Edit the source between batches: the loop raises `REVISION_CONFLICT`.
+
+### G. MCP
+
+Through `burette.control_viewer` with `{"type":"workbench", …}`, repeat steps A1,
+A4 and F3. The responses must match the CLI responses, and `structuredContent`
+must never contain inline artifact content.

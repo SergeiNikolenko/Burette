@@ -63,7 +63,7 @@ describe('browser molecular chemistry', () => {
     const saturated = await addHydrogens(water);
     expect(saturated.atoms).toEqual(water.atoms);
     expect(saturated.bonds).toEqual(water.bonds);
-    const conformer = searchConformers(water, { count: 1 })[0].molecule;
+    const conformer = searchConformers(water, { count: 1 }).conformers[0].molecule;
     expect(conformer.atoms.map(a => a.element)).toEqual(['H', 'O', 'H']);
     expect(conformer.bonds).toEqual(water.bonds);
     expect(Number.isFinite(getEnergy(conformer))).toBe(true);
@@ -79,13 +79,13 @@ describe('browser molecular chemistry', () => {
     expect(expanded.atoms.slice(0, 2)).toEqual(partial.atoms);
     expect(expanded.atoms.map(a => a.element)).toEqual(['H', 'O', 'H']);
     expect(Number.isFinite(getEnergy(expanded))).toBe(true);
-    const generated = searchConformers(partial, { count: 1 })[0].molecule;
+    const generated = searchConformers(partial, { count: 1 }).conformers[0].molecule;
     expect(generated.atoms.map(a => a.element)).toEqual(['H', 'O', 'H']);
     expect(Number.isFinite(getEnergy(generated))).toBe(true);
   });
   test('conformer search produces real sorted energies and conserved atom identities', () => {
     const molecule = generateFromSmiles('CCCC');
-    const results = searchConformers(molecule, { count: 3, seed: 7 });
+    const results = searchConformers(molecule, { count: 3, seed: 7 }).conformers;
     expect(results.length).toBeGreaterThan(0);
     for (let i = 0; i < results.length; i++) {
       expect(results[i].molecule.atoms.map(a => a.element)).toEqual(molecule.atoms.map(a => a.element));

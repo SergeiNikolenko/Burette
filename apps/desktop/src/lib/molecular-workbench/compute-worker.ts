@@ -1,8 +1,8 @@
-import { addHydrogens, adjustHydrogensForPh, generateFromSmiles, getEnergy, getPartialCharges, getProperties, optimize, parseMolecule, removeHydrogens, searchConformers } from './chemistry';
+import { addHydrogens, adjustHydrogensForPh, generateFromSmiles, getEnergy, getPartialCharges, getProperties, optimize, parseMolecule, prepare3d, removeHydrogens, searchConformers } from './chemistry';
 import { prepareUffWasm } from './uff-wasm';
 import { optimizeZmatrix } from '../workbench/zmatrix-coupled-optimization';
 import type { ChemistryRequest } from './compute-client';
-import { evaluateEnergyForces, evaluateFrameBatch } from './energy-forces';
+import { evaluateEnergyForces, evaluateFrameBatch, evaluateRecordBatch } from './energy-forces';
 import { runGraphOperation } from './graph-operations';
 
 const scope = globalThis as unknown as { onmessage: (event: MessageEvent<ChemistryRequest>) => void; postMessage: (message: unknown) => void };
@@ -16,6 +16,7 @@ scope.onmessage = async ({ data }) => {
       case 'parse': result = data.format === 'smiles' ? parseMolecule(data.source, data.format) : runGraphOperation({ ...data, format: data.format }); break;
       case 'optimize-zmatrix': result = optimizeZmatrix(data.molecule, data.definition, data.options); break;
       case 'optimize': result = optimize(data.molecule, data.options); break;
+      case 'prepare-3d': result = prepare3d(data.molecule, data.options); break;
       case 'energy': result = getEnergy(data.molecule, data.forceField); break;
       case 'charges': result = await getPartialCharges(data.molecule); break;
       case 'properties': result = getProperties(data.molecule); break;
@@ -26,6 +27,7 @@ scope.onmessage = async ({ data }) => {
       case 'edit-graph': result = runGraphOperation(data); break;
       case 'energy-forces': result = evaluateEnergyForces(data.molecule, data.forceField); break;
       case 'frame-forces': result = evaluateFrameBatch(data.molecule, data.frames, data.forceField); break;
+      case 'record-forces': result = evaluateRecordBatch(data.reference, data.records, data.firstIndex, data.forceField); break;
       default: throw new Error('Unknown chemistry operation.');
     }
     scope.postMessage({ ok: true, result });

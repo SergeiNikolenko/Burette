@@ -14,18 +14,21 @@ export type ChemistryRequest =
   | { action: 'parse'; source: string; format: 'xyz' | 'mol' | 'sdf' | 'smiles' }
   | { action: 'optimize-zmatrix'; molecule: MolecularStructure; definition: ZmatrixDocument; options?: ZmatrixOptimizeOptions }
   | { action: 'optimize'; molecule: MolecularStructure; options?: OptimizeOptions }
+  | { action: 'prepare-3d'; molecule: MolecularStructure; options?: Parameters<typeof import('./chemistry').prepare3d>[1] }
   | { action: 'properties' | 'add-hydrogens' | 'remove-hydrogens' | 'charges'; molecule: MolecularStructure }
   | { action: 'protonate'; molecule: MolecularStructure; pH: number }
   | { action: 'energy'; molecule: MolecularStructure; forceField?: MolecularForceField }
   | { action: 'conformers'; molecule: MolecularStructure; options?: { count?: number; seed?: number; forceField?: MolecularForceField } }
   | { action: 'edit-graph'; molecule: MolecularStructure; edits: GraphEdit[] }
   | { action: 'energy-forces'; molecule: MolecularStructure; forceField?: MolecularForceField }
-  | { action: 'frame-forces'; molecule: MolecularStructure; frames: MolecularAtom[][]; forceField?: MolecularForceField };
+  | { action: 'frame-forces'; molecule: MolecularStructure; frames: MolecularAtom[][]; forceField?: MolecularForceField }
+  | { action: 'record-forces'; reference: string; records: string[]; firstIndex: number; forceField?: MolecularForceField };
 
 export type ChemistryResults = {
   generate: MolecularStructure;
   parse: MolecularStructure;
   optimize: ReturnType<typeof import('./chemistry').optimize>;
+  'prepare-3d': ReturnType<typeof import('./chemistry').prepare3d>;
   'optimize-zmatrix': ReturnType<typeof import('../workbench/zmatrix-coupled-optimization').optimizeZmatrix>;
   energy: number;
   charges: Awaited<ReturnType<typeof import('./chemistry').getPartialCharges>>;
@@ -37,6 +40,7 @@ export type ChemistryResults = {
   'edit-graph': GraphEditResult;
   'energy-forces': EnergyForces;
   'frame-forces': EnergyForces[];
+  'record-forces': (EnergyForces & { atoms: MolecularAtom[] })[];
 };
 
 /** Each job has an isolated worker. Termination cancels synchronous OCL work,

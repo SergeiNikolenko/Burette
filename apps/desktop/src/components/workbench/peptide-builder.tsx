@@ -16,6 +16,8 @@ import { Spinner } from "../ui/spinner";
 import { useCancellableJob } from "./use-workbench-source";
 
 const PRESETS = { extended: "Extended", alpha: "α helix", beta: "β sheet", helix310: "3₁₀ helix", pi: "π helix" };
+// A D chain takes the mirror image of each conformation, e.g. a left-handed α helix.
+const mirror = (angle: number) => angle === 180 ? 180 : -angle;
 
 export function PeptideBuilderBody({ actions, isCurrent, onDone }: {
   actions: Pick<ShellActions, "openStructureRecords">; isCurrent: () => boolean; onDone: () => void;
@@ -36,7 +38,8 @@ export function PeptideBuilderBody({ actions, isCurrent, onDone }: {
   const job = useCancellableJob();
   const preferences = useSettingsStore(state => state.preferences);
   const theme = resolveThemeMode(preferences.theme, useSystemThemeMode());
-  const preset = Object.entries(PEPTIDE_BACKBONE_PRESETS).find(([, angles]) => angles.phi === phi && angles.psi === psi)?.[0] ?? "custom";
+  const oriented = (angle: number) => chirality === "D" ? mirror(angle) : angle;
+  const preset = Object.entries(PEPTIDE_BACKBONE_PRESETS).find(([, angles]) => oriented(angles.phi) === phi && oriented(angles.psi) === psi)?.[0] ?? "custom";
 
   const build = async (create: boolean) => {
     if (submission.current || !isCurrent()) return;
@@ -66,7 +69,10 @@ export function PeptideBuilderBody({ actions, isCurrent, onDone }: {
         <SegmentedControl aria-label="Amino-acid codes" value={codes} onValueChange={value => setCodes(value as "one" | "three")}>
           <SegmentedControlItem value="one">One letter</SegmentedControlItem><SegmentedControlItem value="three">Three letters</SegmentedControlItem>
         </SegmentedControl>
-        <SegmentedControl aria-label="Chirality" value={chirality} onValueChange={value => setChirality(value as "L" | "D")}>
+        <SegmentedControl aria-label="Chirality" value={chirality} onValueChange={value => {
+          if ((value !== "L" && value !== "D") || value === chirality) return;
+          setChirality(value as "L" | "D"); setPhi(mirror(phi)); setPsi(mirror(psi));
+        }}>
           <SegmentedControlItem value="L">L</SegmentedControlItem><SegmentedControlItem value="D">D</SegmentedControlItem>
         </SegmentedControl>
       </div>
@@ -74,7 +80,7 @@ export function PeptideBuilderBody({ actions, isCurrent, onDone }: {
         <label className="workbench-field"><span>Backbone</span>
           <NativeSelect aria-label="Backbone" size="sm" value={preset} onChange={event => {
             const angles = PEPTIDE_BACKBONE_PRESETS[event.target.value as keyof typeof PEPTIDE_BACKBONE_PRESETS];
-            if (angles) { setPhi(angles.phi); setPsi(angles.psi); }
+            if (angles) { setPhi(oriented(angles.phi)); setPsi(oriented(angles.psi)); }
           }}>
             {Object.entries(PRESETS).map(([value, label]) => <NativeSelectOption key={value} value={value}>{label}</NativeSelectOption>)}
             <NativeSelectOption value="custom" disabled>Custom</NativeSelectOption>

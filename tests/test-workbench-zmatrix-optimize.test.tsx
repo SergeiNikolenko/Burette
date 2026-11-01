@@ -191,7 +191,7 @@ test("Optimize holds frozen atoms and fixed coordinates on real atoms, writes on
     assert.deepEqual(atomsOf(parsed.at(-1).source).map(({ element }) => element), ["O", "H", "H"]);
     assert.equal(job.request.action, "optimize-zmatrix");
     assert.deepEqual(job.request.definition, before.internalCoordinates);
-    assert.deepEqual(job.request.options, { frozenRows: [0], lockedCoordinates: ['3:0'], forceField: 'MMFF94' });
+    assert.deepEqual(job.request.options, { frozenRows: [0], lockedCoordinates: ['3:0'], forceField: 'MMFF94', method: 'lbfgs' });
     assert.equal(job.options.timeoutMs, 300_000);
     assert.equal(body().querySelector('.zmatrix-panel .workbench-status[role="status"]')?.textContent, "Optimizing");
     assert.deepEqual(statuses(), []);
@@ -349,7 +349,7 @@ test("frozen atoms and fixed coordinates stay with the rows they were set on: a 
     assert.equal(pressed("Freeze H2"), false);
     assert.ok(statuses().includes("Frozen atoms and fixed coordinates stay with the previous rows; Undo returns to them."));
     await click(optimizeButton());
-    assert.deepEqual(jobs.at(-1).request.options, { frozenRows: [], lockedCoordinates: [], forceField: 'MMFF94' });
+    assert.deepEqual(jobs.at(-1).request.options, { frozenRows: [], lockedCoordinates: [], forceField: 'MMFF94', method: 'lbfgs' });
     await click(cancelButton());
 
     await click(byLabel("Undo"));
@@ -358,7 +358,7 @@ test("frozen atoms and fixed coordinates stay with the rows they were set on: a 
     assert.deepEqual(statuses(), []);
     await click(optimizeButton());
     // The coupled optimizer receives row identities, including dummy rows.
-    assert.deepEqual(jobs.at(-1).request.options, { frozenRows: [2], lockedCoordinates: [], forceField: 'MMFF94' });
+    assert.deepEqual(jobs.at(-1).request.options, { frozenRows: [2], lockedCoordinates: [], forceField: 'MMFF94', method: 'lbfgs' });
     await click(cancelButton());
   } finally { await view.unmount(); }
 }, TIMEOUT_MS);
