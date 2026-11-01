@@ -1,0 +1,271 @@
+{
+  "cisplatin": {
+    "options": {
+      "metal": "Pt",
+      "oxidationState": 2,
+      "geometry": "square-planar",
+      "ligands": [
+        { "ligand": "chlorido", "sites": [0] },
+        { "ligand": "chlorido", "sites": [1] },
+        { "ligand": "ammine", "sites": [2] },
+        { "ligand": "ammine", "sites": [3] }
+      ]
+    },
+    "crystal": {
+      "cod": "2235566",
+      "donors": ["Cl", "N"],
+      "cutoff": 2.6,
+      "structure": "cis-[PtCl2(NH3)2]·DMF, Acta Cryst. E 2012",
+      "angleTolerance": 7
+    }
+  },
+  "transplatin": {
+    "options": {
+      "metal": "Pt",
+      "oxidationState": 2,
+      "geometry": "square-planar",
+      "ligands": [
+        { "ligand": "chlorido", "sites": [0] },
+        { "ligand": "ammine", "sites": [1] },
+        { "ligand": "chlorido", "sites": [2] },
+        { "ligand": "ammine", "sites": [3] }
+      ]
+    },
+    "crystal": {
+      "cod": "1538403",
+      "donors": ["Cl", "N"],
+      "cutoff": 2.6,
+      "structure": "trans-[PtCl2(NH3)2], Milburn & Truter 1966",
+      "angleTolerance": 7
+    }
+  },
+  "hexaamminecobalt": {
+    "options": {
+      "metal": "Co",
+      "oxidationState": 3,
+      "geometry": "octahedral",
+      "ligands": [
+        { "ligand": "ammine", "sites": [0] },
+        { "ligand": "ammine", "sites": [1] },
+        { "ligand": "ammine", "sites": [2] },
+        { "ligand": "ammine", "sites": [3] },
+        { "ligand": "ammine", "sites": [4] },
+        { "ligand": "ammine", "sites": [5] }
+      ]
+    },
+    "crystal": {
+      "cod": "2106540",
+      "donors": ["N"],
+      "cutoff": 2.3,
+      "structure": "[Co(NH3)6]Cl3, Kruger & Reynhardt 1978",
+      "angleTolerance": 7
+    }
+  },
+  "tetracyanonickelate": {
+    "options": {
+      "metal": "Ni",
+      "oxidationState": 2,
+      "geometry": "square-planar",
+      "ligands": [
+        { "ligand": "cyanido", "sites": [0] },
+        { "ligand": "cyanido", "sites": [1] },
+        { "ligand": "cyanido", "sites": [2] },
+        { "ligand": "cyanido", "sites": [3] }
+      ]
+    },
+    "crystal": {
+      "cod": "2002899",
+      "donors": ["C"],
+      "cutoff": 2.2,
+      "structure": "Na2[Ni(CN)4]·3H2O, 295 K, Acta Cryst. B 1998",
+      "angleTolerance": 7
+    }
+  },
+  "pentacarbonyliron": {
+    "options": {
+      "metal": "Fe",
+      "oxidationState": 0,
+      "geometry": "trigonal-bipyramidal",
+      "ligands": [
+        { "ligand": "carbonyl", "sites": [0] },
+        { "ligand": "carbonyl", "sites": [1] },
+        { "ligand": "carbonyl", "sites": [2] },
+        { "ligand": "carbonyl", "sites": [3] },
+        { "ligand": "carbonyl", "sites": [4] }
+      ]
+    },
+    "crystal": {
+      "cod": "2310564",
+      "donors": ["C"],
+      "cutoff": 2.2,
+      "structure": "Fe(CO)5, Donohue & Caron 1964",
+      "angleTolerance": 7
+    }
+  },
+  "tetraammineaquacopper": {
+    "options": {
+      "metal": "Cu",
+      "oxidationState": 2,
+      "geometry": "square-pyramidal",
+      "ligands": [
+        { "ligand": "ammine", "sites": [0] },
+        { "ligand": "ammine", "sites": [1] },
+        { "ligand": "ammine", "sites": [2] },
+        { "ligand": "ammine", "sites": [3] },
+        { "ligand": "aqua", "sites": [4] }
+      ]
+    },
+    "crystal": {
+      "cod": "2310816",
+      "donors": ["N", "O"],
+      "cutoff": 2.8,
+      "structure": "[Cu(NH3)4(H2O)]SO4, 1955",
+      "angleTolerance": 7,
+      "jahnTellerApical": "O"
+    }
+  },
+  "tetrabromozincate": {
+    "options": {
+      "metal": "Zn",
+      "oxidationState": 2,
+      "geometry": "tetrahedral",
+      "ligands": [
+        { "ligand": "bromido", "sites": [0] },
+        { "ligand": "bromido", "sites": [1] },
+        { "ligand": "bromido", "sites": [2] },
+        { "ligand": "bromido", "sites": [3] }
+      ]
+    },
+    "crystal": {
+      "cod": "2310916",
+      "donors": ["Br"],
+      "cutoff": 2.7,
+      "structure": "Cs2[ZnBr4], 1959",
+      "angleTolerance": 7
+    }
+  },
+  "dicyanoaurate": {
+    "options": {
+      "metal": "Au",
+      "oxidationState": 1,
+      "geometry": "linear",
+      "ligands": [
+        { "ligand": "cyanido", "sites": [0] },
+        { "ligand": "cyanido", "sites": [1] }
+      ]
+    },
+    "crystal": {
+      "cod": "2310938",
+      "donors": ["C"],
+      "cutoff": 2.3,
+      "structure": "K[Au(CN)2], 1959",
+      "angleTolerance": 7
+    }
+  },
+  "tris-acac-iron": {
+    "options": {
+      "metal": "Fe",
+      "oxidationState": 3,
+      "geometry": "octahedral",
+      "ligands": [
+        { "ligand": "acetylacetonato", "sites": [0, 1], "distance": 2.0 },
+        { "ligand": "acetylacetonato", "sites": [2, 4], "distance": 2.0 },
+        { "ligand": "acetylacetonato", "sites": [3, 5], "distance": 2.0 }
+      ]
+    },
+    "crystal": {
+      "cod": "2241338",
+      "donors": ["O"],
+      "cutoff": 2.3,
+      "structure": "[Fe(acac)3], Acta Cryst. E 2015",
+      "angleTolerance": 12,
+      "biteTolerance": 5
+    }
+  },
+  "trioxalatoferrate": {
+    "options": {
+      "metal": "Fe",
+      "oxidationState": 3,
+      "geometry": "octahedral",
+      "ligands": [
+        { "ligand": "oxalato", "sites": [0, 1], "distance": 2.01 },
+        { "ligand": "oxalato", "sites": [2, 4], "distance": 2.01 },
+        { "ligand": "oxalato", "sites": [3, 5], "distance": 2.01 }
+      ]
+    },
+    "crystal": {
+      "cod": "1528614",
+      "donors": ["O"],
+      "cutoff": 2.3,
+      "structure": "K3[Fe(C2O4)3]·3H2O, 2005",
+      "angleTolerance": 12,
+      "biteTolerance": 5
+    }
+  },
+  "tris-bpy-ruthenium": {
+    "options": {
+      "metal": "Ru",
+      "oxidationState": 2,
+      "geometry": "octahedral",
+      "ligands": [
+        { "ligand": "bipyridine", "sites": [0, 1], "distance": 2.07 },
+        { "ligand": "bipyridine", "sites": [2, 4], "distance": 2.07 },
+        { "ligand": "bipyridine", "sites": [3, 5], "distance": 2.07 }
+      ]
+    },
+    "crystal": {
+      "cod": "2105090",
+      "donors": ["N"],
+      "cutoff": 2.3,
+      "structure": "[Ru(bpy)3]Cl2·6H2O, Acta Cryst. B 2012",
+      "angleTolerance": 12,
+      "biteTolerance": 5
+    }
+  },
+  "tris-en-cobalt": {
+    "options": {
+      "metal": "Co",
+      "oxidationState": 3,
+      "geometry": "octahedral",
+      "ligands": [
+        { "ligand": "ethylenediamine", "sites": [0, 1], "distance": 1.96 },
+        { "ligand": "ethylenediamine", "sites": [2, 4], "distance": 1.96 },
+        { "ligand": "ethylenediamine", "sites": [3, 5], "distance": 1.96 }
+      ]
+    },
+    "crystal": {
+      "cod": "2243918",
+      "donors": ["N"],
+      "cutoff": 2.3,
+      "structure": "(Δ/Λ)-[Co(en)3]Cl3 NaCl double salt, 2021",
+      "angleTolerance": 12,
+      "biteTolerance": 5
+    }
+  },
+  "mixed-octahedral": {
+    "options": {
+      "metal": "Cr",
+      "oxidationState": 3,
+      "geometry": "octahedral",
+      "ligands": [
+        { "ligand": "phenanthroline", "sites": [0, 1] },
+        { "ligand": "hydroxido", "sites": [2] },
+        { "ligand": "pyridine", "sites": [3] },
+        { "ligand": "trimethylphosphane", "sites": [4] },
+        { "ligand": "fluorido", "sites": [5] }
+      ]
+    }
+  },
+  "trigonal-planar": {
+    "options": {
+      "metal": "Cu",
+      "oxidationState": 1,
+      "geometry": "trigonal-planar",
+      "ligands": [
+        { "ligand": "iodido", "sites": [0] },
+        { "ligand": "phosphane", "sites": [1] },
+        { "ligand": "carbonyl", "sites": [2] }
+      ]
+    }
+  }
+}

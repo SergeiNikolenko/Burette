@@ -6,7 +6,7 @@ export type CoordinationGeometry = "linear" | "trigonal-planar" | "tetrahedral" 
 export type MetalLigandId = keyof typeof ligandData.ligands;
 type LigandTemplate = { label: string; formula: string; file: string; metal: Vec3; donors: number[]; atoms: [element: string, x: number, y: number, z: number, charge: number][]; bonds: [number, number, 1 | 2 | 3][] };
 /** Rigid ligand templates from OpenChemistry/fragments (BSD-3-Clause); `metal` is the template's attachment dummy. */
-export const METAL_LIGANDS = ligandData.ligands as Record<MetalLigandId, LigandTemplate>;
+export const METAL_LIGANDS = ligandData.ligands as unknown as Record<MetalLigandId, LigandTemplate>;
 
 const h = Math.sqrt(3) / 2, t = 1 / Math.sqrt(3);
 type Site = readonly [position: string, direction: Vec3];
