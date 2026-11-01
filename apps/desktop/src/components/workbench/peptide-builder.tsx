@@ -5,6 +5,7 @@ import { openGeneratedStructure } from "../../lib/workbench/generated-document-o
 import { resolveThemeMode, useSystemThemeMode } from "../../lib/theme";
 import { useSettingsStore } from "../../stores/settings-store";
 import type { ShellActions } from "../types";
+import type { ViewerDocument } from "../../types";
 import GridMolecule3D from "../grid-molecule-3d";
 import { Button } from "../ui/button";
 import { DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
@@ -14,13 +15,16 @@ import { ScrubNumberField } from "../ui/scrub-number-input";
 import { SegmentedControl, SegmentedControlItem } from "../ui/segmented-control";
 import { Spinner } from "../ui/spinner";
 import { useCancellableJob } from "./use-workbench-source";
+import { InsertBuiltStructureButton } from "./insert-built-structure";
 
 const PRESETS = { extended: "Extended", alpha: "α helix", beta: "β sheet", helix310: "3₁₀ helix", pi: "π helix" };
 // A D chain takes the mirror image of each conformation, e.g. a left-handed α helix.
 const mirror = (angle: number) => angle === 180 ? 180 : -angle;
 
-export function PeptideBuilderBody({ actions, isCurrent, onDone }: {
+export function PeptideBuilderBody({ actions, document, isCurrent, onDone }: {
   actions: Pick<ShellActions, "openStructureRecords">; isCurrent: () => boolean; onDone: () => void;
+  /** The active document: an editable MOL/SDF also offers Insert into it. */
+  document: ViewerDocument | null;
 }) {
   const [sequence, setSequence] = useState("");
   const [codes, setCodes] = useState<"one" | "three">("one");
@@ -57,6 +61,12 @@ export function PeptideBuilderBody({ actions, isCurrent, onDone }: {
         onDone();
       });
     } finally { if (submission.current === own) submission.current = null; }
+  };
+  // Insert reuses the preview of the current request, or builds it and shows it.
+  const built = async () => {
+    const result = currentPreview ?? await runPeptideTask(request);
+    if (latest.current === request) setPreview({ request, result });
+    return result.graph;
   };
   const cancel = () => { submission.current = null; job.cancel(); };
   return <>
@@ -103,6 +113,7 @@ export function PeptideBuilderBody({ actions, isCurrent, onDone }: {
       {job.running ? <span className="workbench-status" role="status" aria-live="polite"><Spinner aria-label={job.running} />{job.running}</span> : null}
       <Button type="button" variant="outline" onClick={() => { if (job.running) cancel(); else onDone(); }}>Cancel</Button>
       <Button type="button" variant="outline" disabled={Boolean(job.running) || !sequence.trim()} onClick={() => { void build(false); }}>Preview</Button>
+      <InsertBuiltStructureButton document={document} name={`Peptide ${sequence.trim()}`} disabled={Boolean(job.running) || !sequence.trim()} build={built} />
       <Button type="button" disabled={Boolean(job.running) || !sequence.trim()} onClick={() => { void build(true); }}>Create</Button>
     </DialogFooter>
   </>;

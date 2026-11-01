@@ -48,7 +48,7 @@ export function buildShellCommands(
     }] : []),
     {
       id: "workbench-peptide", group: "Suggested", label: "Build peptide…", description: "",
-      run: () => openWorkbenchDialog({ kind: "builder", builder: "peptide", document: null }),
+      run: () => openWorkbenchDialog({ kind: "builder", builder: "peptide", document: state.activeDocument }),
     },
     {
       id: "workbench-assembly", group: "Suggested", label: "Build biological assembly…", description: "",

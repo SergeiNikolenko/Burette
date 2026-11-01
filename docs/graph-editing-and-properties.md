@@ -119,6 +119,18 @@ bonds plus the deleted hydrogen in one validated OpenChemLib edit within the
 atoms) for SDF data items and MOL atom identities. The inserted atoms become the
 selection; the dialog stays open for the next insertion.
 
+Builders insert the same way. When the active document is an editable MOL/SDF,
+the peptide builder (and the other builders that return a graph) shows
+**Insert** beside Preview: it builds or reuses the preview and adds it to that
+document as a separate molecule through `insert-fragment` with a `graph` source,
+one Undo step in the document's Edit history. The built geometry is kept and
+translated beside the structure like any separate molecule, stereo collections
+are remapped with the atom order, and the 256-atom budget counts the result. Opening from the
+command palette passes the active document; without one the button is absent.
+`test:insert-built-structure` inserts the real Ala-Gly worker output into an
+ethanol SDF and has RDKit read the draft (ethanol plus L-Ala-Gly zwitterion),
+then checks Undo and a builder failure.
+
 `test:fragment-insertion` checks all 166 library groups against the upstream
 SMILES including the attachment atom (RDKit constitution with a francium marker),
 insertion products against independent RDKit SMILES (ethylbenzene, 2-propanol,
