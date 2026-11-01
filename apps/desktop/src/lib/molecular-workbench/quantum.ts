@@ -5,6 +5,10 @@ import { atomicNumber, elementSymbol } from "./elements";
 import { parseXyz, serializeXyz } from "./xyz";
 import { parseExtendedFrame, trajectoryMetadata } from "./trajectory-metadata";
 import { parseGaussianLog } from "./quantum/gaussian-log";
+import { parseNwchemLog } from "./quantum/nwchem-log";
+import { parsePsi4Log } from "./quantum/psi4-log";
+import { parseXtbOutput, parseXtbTrajectory } from "./quantum/xtb";
+import { NWCHEM_SIGNATURE, ORCA_BANNER, PSI4_SIGNATURE, XTB_SIGNATURE, XTB_TRAJECTORY_SIGNATURE } from "./quantum/signatures";
 import { readOrcaVcdTables } from "./orca-circular-spectra";
 import { withOrcaSourceSpectra, type OrcaSourceSpectrum } from "./orca-source-spectra";
 import { validateParsedSpectra } from "./parsed-spectral-document";
@@ -78,11 +82,18 @@ export function parseScientificFile(name: string, text: string): ScientificDocum
   if (/\.(?:molden|molf)$|(?:^|[._-])molden\.input$/i.test(name)) return parseMolden(text);
   if (/\.hess$/i.test(name)) return parseHessian(text);
   if (/^\s*\{/.test(text)) return parseQcschema(text, name);
+  // Program banners are definitive; they precede the looser Gaussian/ORCA table markers.
+  const head = text.slice(0, 64 * 1024);
+  if (NWCHEM_SIGNATURE.test(head)) return parseNwchemLog(text);
+  if (PSI4_SIGNATURE.test(head)) return parsePsi4Log(text);
+  if (XTB_TRAJECTORY_SIGNATURE.test(head)) return parseXtbTrajectory(text);
+  // ORCA's xtb interface can echo the xtb banner inside an ORCA output.
+  if (XTB_SIGNATURE.test(head) && !ORCA_BANNER.test(head)) return parseXtbOutput(text);
   if (/Entering Gaussian System|Gaussian, Inc\.|Gaussian \d+:|^\s*(?:Standard|Input|Z-Matrix) orientation:/m.test(text)) return parseGaussianLog(text);
   if (/\[Molden Format\]/i.test(text)) return parseMolden(text);
   if (/\$vibrational_frequencies\b/.test(text)) return parseHessian(text);
   if (/CARTESIAN COORDINATES \(ANGSTROEM\)/.test(text)) return parseOrca(name, text);
-  throw new Error("Supported scientific inputs are ORCA output/Hessian, Molden, Gaussian log/FCHK/cube, QCSchema, Chemical JSON and XYZ trajectories.");
+  throw new Error("Supported scientific inputs are ORCA output/Hessian, Gaussian log/FCHK/cube, NWChem, Psi4 and xtb outputs, Molden, QCSchema, Chemical JSON and XYZ trajectories.");
 }
 
 function parseXyzTrajectory(text: string): ScientificDocument {

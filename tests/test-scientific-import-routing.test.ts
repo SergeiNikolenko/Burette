@@ -27,6 +27,11 @@ test("ordinary opens send quantum outputs to the scientific import and leave oth
     ["orca.out", orcaBanner, true],
     ["scan.log", "CARTESIAN COORDINATES (ANGSTROEM)\n", true],
     ["gaussian.log", " Entering Gaussian System, Link 0=g16\n", true],
+    ["nwchem.out", "              Northwest Computational Chemistry Package (NWChem) 7.3.0\n", true],
+    ["output.dat", "    Psi4: An Open-Source Ab Initio Electronic Structure Package\n", true],
+    ["xtb.out", "      -----------------------------------------------------------\n     |                           x T B                           |\n", true],
+    ["xtbopt.log", "3\n energy: -5.070544440612 gnorm: 0.000367 xtb: 6.7.1 (edcfbbe)\nO 0 0 0\n", true],
+    ["table.dat", "1 2 3\n", false],
     ["notes.log", "build finished\n", false],
     ["vasp.out", "running on 4 total cores\n", false],
     // Only the start of a log is read; an ORCA marker deep inside other text does not claim it.

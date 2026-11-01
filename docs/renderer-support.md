@@ -74,7 +74,9 @@ Actual Browser/WebGL and packaged acceptance remain separate from these tests.
 Ordinary Open, project-folder selection and file drop classify scientific files
 through `lib/workbench/scientific-files.ts`. FCHK/FCH, Molden (`.molden`, `.molf`,
 `molden.input`), ORCA `.hess`, Cube/CUB, Z-matrix and `.qcschema` use their declared
-names. `.out`/`.log` require ORCA or Gaussian evidence in the first 64 KiB;
+names. `.out`/`.log`/`.dat` require ORCA, Gaussian, NWChem, Psi4 or xtb
+evidence (program banner, or the `energy: … gnorm: … xtb:` comment of an
+`xtbopt.log` trajectory) in the first 64 KiB;
 `.json` requires a recognised QCSchema `schema_name` at the root. A nested schema
 field does not reroute unrelated JSON. Ordinary XYZ retains its normal structure
 route; the explicit scientific import function also accepts XYZ.
