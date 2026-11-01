@@ -1,5 +1,5 @@
 import { plugin } from "bun";
-import { molstarV3000AtomsPlugin, molstarV3000ChargesPlugin } from "../scripts/molstar-v3000-charges.mjs";
+import { molstarV3000ChargesPlugin } from "../scripts/molstar-v3000-charges.mjs";
 import { expect, spyOn, test } from "bun:test";
 import { Window } from "happy-dom";
 import { readMolstarModule } from "../scripts/molstar-source.mjs";
@@ -9,7 +9,6 @@ const browser = new Window();
 Object.assign(browser, { setImmediate, clearImmediate });
 Object.assign(globalThis, { window: browser, document: browser.document });
 plugin(molstarMolV3000Plugin);
-plugin(molstarV3000AtomsPlugin);
 plugin(molstarV3000ChargesPlugin);
 const { PluginContext } = await import("@molstar/plugin");
 const { DefaultPluginSpec } = await import("@molstar/plugin/default-spec");

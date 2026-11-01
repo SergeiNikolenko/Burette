@@ -167,14 +167,10 @@ export function patchMolstarV3000Charges(source) {
     .replace(bonds, 'handleBondsV3(tokenizer, bondCount, atoms)');
 }
 
-// Atoms and bonds come from the V3 utility module, charges from the SDF reader that calls it.
-export const molstarV3000AtomsPlugin = molstarPatchPlugin(
-  'molstar-v3000-atoms',
-  '@molstar/io/reader/sdf/parser-v3-util',
-  patchMolstarV3000Atoms,
-);
-export const molstarV3000ChargesPlugin = molstarPatchPlugin(
-  'molstar-v3000-formal-charges',
-  '@molstar/io/reader/sdf/parser',
-  patchMolstarV3000Charges,
-);
+// Charges, atoms and bonds are read by two modules; the plugin adapts both together.
+const atoms = molstarPatchPlugin('molstar-v3000-atoms', '@molstar/io/reader/sdf/parser-v3-util', patchMolstarV3000Atoms);
+const charges = molstarPatchPlugin('molstar-v3000-formal-charges', '@molstar/io/reader/sdf/parser', patchMolstarV3000Charges);
+export const molstarV3000ChargesPlugin = {
+  name: 'molstar-v3000-formal-charges',
+  setup(build) { atoms.setup(build); charges.setup(build); },
+};

@@ -3,17 +3,16 @@ import { trajectoryFromSdf } from '@molstar/model/formats/structure/sdf';
 import { IndexPairBonds } from '@molstar/model/formats/structure/property/bonds/index-pair';
 import { readFileSync } from 'node:fs';
 import { readMolstarModule, resolveMolstarModule } from '../scripts/molstar-source.mjs';
-import { molstarV3000AtomsPlugin, molstarV3000ChargesPlugin, patchMolstarV3000Atoms, patchMolstarV3000Charges } from '../scripts/molstar-v3000-charges.mjs';
+import { molstarV3000ChargesPlugin, patchMolstarV3000Atoms, patchMolstarV3000Charges } from '../scripts/molstar-v3000-charges.mjs';
 import { importMolstarModuleVariant, molstarModuleVariantUrl } from './fixtures/molstar-module-variant.mjs';
 
-// Use the actual build plugins' onLoad outputs without building or changing vendor assets.
-const loads = new Map();
-for (const plugin of [molstarV3000AtomsPlugin, molstarV3000ChargesPlugin]) plugin.setup({ onLoad(_options, load) { loads.set(plugin.name, load); } });
-assert.equal(loads.size, 2, 'the vendor build must intercept both SDF reader modules');
-const contents = async name => (await loads.get(name)()).contents;
-const atomsSource = await contents('molstar-v3000-atoms');
+// Use the actual build plugin's onLoad outputs without building or changing vendor assets.
+const loads = [];
+molstarV3000ChargesPlugin.setup({ onLoad(_options, load) { loads.push(load); } });
+assert.equal(loads.length, 2, 'the vendor build must intercept both SDF reader modules');
+const atomsSource = (await loads[0]()).contents;
 const atomsModule = await molstarModuleVariantUrl('@molstar/io/reader/sdf/parser-v3-util', () => atomsSource);
-const parserSource = await contents('molstar-v3000-formal-charges');
+const parserSource = (await loads[1]()).contents;
 const { parseSdf } = await importMolstarModuleVariant('@molstar/io/reader/sdf/parser',
   () => parserSource.replace('from "./parser-v3-util.js"', `from "${atomsModule}"`));
 const { parseSdf: upstreamParseSdf } = await importMolstarModuleVariant('@molstar/io/reader/sdf/parser');
