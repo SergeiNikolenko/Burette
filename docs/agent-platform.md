@@ -669,6 +669,41 @@ plugin, a live Browser user session, native app or hosted deployment. Further ty
 scientific jobs, batch workflows and Python/Jupyter clients remain separate work.
 
 
+### Crystal and molecular symmetry jobs
+
+The same `workbench` contract runs the Crystal and Symmetry panels' calculations
+in `browser-agent-shell` sessions. `observe` reports `crystal` (format, atom count
+and lattice vectors) for a small-molecule CIF, a POSCAR/CONTCAR or an extended XYZ
+with a `Lattice`, and the availability of each job:
+
+| Kind | Params (defaults) | Artifacts |
+| --- | --- | --- |
+| `point_group` | `tolerance`: `tight`, `normal`, `loose`, `very-loose` (`normal`) | `symmetrized` (XYZ in chemical-graph atom order) |
+| `space_group` | `toleranceAngstrom` 0.0001–0.5 (0.01) | none; the summary carries the group, Hall number, sites and standard cells |
+| `powder_xrd` | `wavelengthAngstrom` 0.1–5 (Cu Kα1), `twoThetaMinDegrees`/`twoThetaMaxDegrees` 0–170 (10, 90) | `peaks` (CSV), `pattern` (JSON) |
+| `pair_distribution` | `rMaxAngstrom` 1–100 (10), `binWidthAngstrom` 0.001–1 (0.1) | `histogram` (JSON, every ordered element pair), `g_r` (CSV, all atoms) |
+| `crystal_transform` | `operation` and its fields, below | `structure` |
+
+`crystal_transform` operations: `set_cell` (`cell`: three lattice vectors in Å,
+`keep`: `fractional` or `cartesian`), `wrap`, `standard_orientation`,
+`scale_volume` (`volumeCubicAngstrom`), `supercell` (`repeats`: three integers
+1–20), `niggli`, `primitive`, `conventional`, `symmetrize`, `asymmetric_unit`
+(`toleranceAngstrom`) and `fill` (`hallNumber` 1–530). The structure artifact is
+in the source's own format; an asymmetric unit of an XYZ or POSCAR source is a
+CIF with its symmetry operations. Summaries keep at most 50 rows of sites, peaks
+or element pairs; the artifacts hold the full data. As for every job, nothing is
+applied to an open document; the Crystal and Symmetry panels make the same edits
+as undoable revisions of the source draft.
+
+```json
+{"operation":"submit","operationId":"supercell-1","expectedSourceRevision":"sha256-<64 hex from observe>","job":{"kind":"crystal_transform","params":{"operation":"supercell","repeats":[2,2,1]}}}
+```
+
+Validation: `bun run test:crystal-agent` runs every kind through the controller
+and its workers against the pymatgen, spglib and ASE references in
+`tests/fixtures/crystals/`.
+
+
 ### Private Geometry and scalar-field transports
 
 `geometry_binding`, `update_geometry`, `scalar_field_binding`,

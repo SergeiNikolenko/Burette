@@ -13,6 +13,7 @@ import { computeQuantumGrid } from "../molecular-workbench/quantum-client";
 import { serializeCube } from "./cube-task";
 import { fileStem } from "./formats";
 import { createAgentSourceOwner, WorkbenchError, sha256, type Snapshot } from "./agent-source";
+import { CRYSTAL_JOB_KINDS, crystalJobUnavailable, runCrystalJob, type CrystalJobKind } from "./agent-crystal-jobs";
 import type { ViewerDocument } from "../../types";
 export { readWorkbenchAgentSource } from "./agent-source";
 
@@ -111,7 +112,7 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
   function limitations() {
     const notes = [
       "Results are never applied to an open document. Export an artifact and open it explicitly.",
-      "Workbench UI commands that are not listed under jobs (builders, structure editing, input-deck export, Z-matrix editing, crystal symmetry, spectra and plots) are not automated.",
+      "Workbench UI commands that are not listed under jobs (builders, structure editing, input-deck export, Z-matrix editing, spectra and plots) are not automated.",
     ];
     if (!environment.draftsVisible) notes.unshift("Unsaved editor drafts are not visible to this session; reads and jobs use the saved source.");
     if (!enabled) notes.unshift(`Workbench reads and jobs run only in ${WORKBENCH_RUNTIMES.join(", ")} sessions; this session is ${environment.runtime}.`);
@@ -122,6 +123,7 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
   const { snapshotOf, assertOpen } = sourceOwner;
 
   function jobUnavailable(snapshot: Snapshot, kind: WorkbenchJobKind): string | null {
+    if ((CRYSTAL_JOB_KINDS as readonly string[]).includes(kind)) return crystalJobUnavailable(snapshot, kind as CrystalJobKind);
     if (kind === "properties" || kind === "energy" || kind === "energy_forces") {
       if (!snapshot.structure) return snapshot.structureError ?? snapshot.sourceError ?? "The chemical graph could not be read.";
       if (!snapshot.structure.graphComplete) return "This source has no complete bond orders or charges. Open an SDF or MOL version of the structure.";
@@ -142,7 +144,7 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
     const snapshot = await snapshotOf(request);
     const base = { documentId: snapshot.document.id, sourceRevision: snapshot.revision, sourceTextSha256: snapshot.sourceTextSha256 };
     if (request.operation === "observe") {
-      const jobs = Object.fromEntries((["properties", "energy", "energy_forces", "orbital_cube"] as const).map(kind => {
+      const jobs = Object.fromEntries((["properties", "energy", "energy_forces", "orbital_cube", ...CRYSTAL_JOB_KINDS] as const).map(kind => {
         const reason = jobUnavailable(snapshot, kind);
         return [kind, reason ? { available: false, reason } : { available: true }];
       }));
@@ -152,6 +154,7 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
           atomCount: snapshot.scientific.atoms.length, orbitalCount: snapshot.scientific.orbitals.length,
           basisShellCount: snapshot.scientific.basis?.length ?? 0 } : null,
         sourceError: snapshot.sourceError,
+        crystal: snapshot.crystal ? { format: snapshot.crystalSource!.format, atomCount: snapshot.crystal.atoms.length, cell: snapshot.crystal.cell } : null,
         jobs };
     }
     return { ...base, ...page(snapshot.scientific?.orbitals ?? [], request.offset, request.limit, (orbital, index) => ({
@@ -251,6 +254,9 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
       const partialCharges = request.params.chargeModel === "Gasteiger"
         ? await runChemistryTask({ action: "charges", molecule: input.structure! }, { ...options, timeoutMs: remainingMs }) : undefined;
       return { summary: { method: "OpenChemLib", ...properties, ...(partialCharges ? { partialCharges } : {}) }, artifacts: [] };
+    }
+    if (request.kind === "point_group" || request.kind === "space_group" || request.kind === "powder_xrd" || request.kind === "pair_distribution" || request.kind === "crystal_transform") {
+      return runCrystalJob(request, input, options, artifact);
     }
     const stem = fileStem(input.document.title);
     if (request.kind === "energy") {

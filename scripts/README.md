@@ -187,7 +187,8 @@ publishes verified Cube exports and session JSON atomically. See
 [Orbital Cube jobs](../docs/agent-platform.md#orbital-cube-jobs-through-the-browser-shell)
 for requests, limits and the distinction between source tests and packaged/browser
 acceptance. Run `vp run test:orbital-agent` for the focused controller and compiled
-host/HTTP/CLI proof.
+host/HTTP/CLI proof. Crystal and point-group jobs use the same contract; see
+[Crystal and molecular symmetry jobs](../docs/agent-platform.md#crystal-and-molecular-symmetry-jobs).
 
 
 `test:indexed-trajectory-runtime` covers the source-owned indexed Mol* adapter

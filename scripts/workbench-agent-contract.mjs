@@ -65,9 +65,46 @@ export const WORKBENCH_JOB_KINDS = Object.freeze({
     params: { field: ['orbital', 'density', 'spin-density'], orbitalIndex: 'required for orbital', spacingAngstrom: '0.05–1', paddingAngstrom: '0–10' },
     artifacts: ['cube'],
   },
+  point_group: {
+    engine: 'libmsym point groups and symmetrization',
+    requires: 'A molecule without a unit cell, 1–256 atoms (SDF, MOL or XYZ).',
+    params: { tolerance: ['tight', 'normal', 'loose', 'very-loose'] },
+    artifacts: ['symmetrized'],
+  },
+  space_group: {
+    engine: 'moyo space-group search',
+    requires: 'A crystal with its own cell (small-molecule CIF, POSCAR/CONTCAR or extended XYZ with a Lattice), 1–5000 atoms.',
+    params: { toleranceAngstrom: '0.0001–0.5' },
+    artifacts: [],
+  },
+  powder_xrd: {
+    engine: 'Gemmi structure factors (IT92 form factors), Lorentz-polarization, no Debye-Waller factor',
+    requires: 'A crystal with its own cell, 1–2000 atoms.',
+    params: { wavelengthAngstrom: '0.1–5', twoThetaMinDegrees: '0–170', twoThetaMaxDegrees: '0–170' },
+    artifacts: ['peaks', 'pattern'],
+  },
+  pair_distribution: {
+    engine: 'Burette periodic radial distribution',
+    requires: 'A crystal with its own cell, 1–5000 atoms.',
+    params: { rMaxAngstrom: '1–100', binWidthAngstrom: '0.001–1' },
+    artifacts: ['histogram', 'g_r'],
+  },
+  crystal_transform: {
+    engine: 'Burette cell operations; moyo standardization; spglib Niggli reduction',
+    requires: 'A crystal with its own cell.',
+    params: {
+      operation: ['set_cell', 'wrap', 'standard_orientation', 'scale_volume', 'supercell', 'niggli', 'primitive', 'conventional', 'symmetrize', 'asymmetric_unit', 'fill'],
+      cell: 'set_cell: three lattice vectors in angstrom', keep: ['fractional', 'cartesian'], volumeCubicAngstrom: 'scale_volume', repeats: 'supercell: three integers 1–20',
+      toleranceAngstrom: 'primitive, conventional, symmetrize, asymmetric_unit: 0.0001–0.5', hallNumber: 'fill: 1–530',
+    },
+    artifacts: ['structure'],
+  },
 });
 
 const FIELDS = new Set(WORKBENCH_JOB_KINDS.orbital_cube.params.field);
+const POINT_GROUP_TOLERANCES = new Set(WORKBENCH_JOB_KINDS.point_group.params.tolerance);
+const CRYSTAL_OPERATIONS = new Set(WORKBENCH_JOB_KINDS.crystal_transform.params.operation);
+const SYMMETRY_TOLERANCE = { min: 1e-4, max: 0.5, fallback: 0.01 };
 const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const REVISION = /^sha256-[0-9a-f]{64}$/u;
 const ARTIFACT = /^[a-z_]{1,32}$/u;
@@ -153,6 +190,32 @@ function jobParams(kind, value) {
     const chargeModel = oneOf(params.chargeModel, 'job.params.chargeModel', new Set(['Gasteiger']), undefined);
     return chargeModel === undefined ? {} : { chargeModel };
   }
+  if (kind === 'point_group') {
+    rejectUnknownFields(params, ['tolerance'], 'point_group job.params');
+    return { tolerance: oneOf(params.tolerance, 'job.params.tolerance', POINT_GROUP_TOLERANCES, 'normal') };
+  }
+  if (kind === 'space_group') {
+    rejectUnknownFields(params, ['toleranceAngstrom'], 'space_group job.params');
+    return { toleranceAngstrom: finite(params.toleranceAngstrom, 'job.params.toleranceAngstrom', SYMMETRY_TOLERANCE.min, SYMMETRY_TOLERANCE.max) ?? SYMMETRY_TOLERANCE.fallback };
+  }
+  if (kind === 'powder_xrd') {
+    rejectUnknownFields(params, ['wavelengthAngstrom', 'twoThetaMinDegrees', 'twoThetaMaxDegrees'], 'powder_xrd job.params');
+    const result = {
+      wavelengthAngstrom: finite(params.wavelengthAngstrom, 'job.params.wavelengthAngstrom', 0.1, 5) ?? 1.5405929,
+      twoThetaMinDegrees: finite(params.twoThetaMinDegrees, 'job.params.twoThetaMinDegrees', 0, 170) ?? 10,
+      twoThetaMaxDegrees: finite(params.twoThetaMaxDegrees, 'job.params.twoThetaMaxDegrees', 0, 170) ?? 90,
+    };
+    if (!(result.twoThetaMaxDegrees > result.twoThetaMinDegrees)) invalid('job.params.twoThetaMaxDegrees must exceed twoThetaMinDegrees.');
+    return result;
+  }
+  if (kind === 'pair_distribution') {
+    rejectUnknownFields(params, ['rMaxAngstrom', 'binWidthAngstrom'], 'pair_distribution job.params');
+    return {
+      rMaxAngstrom: finite(params.rMaxAngstrom, 'job.params.rMaxAngstrom', 1, 100) ?? 10,
+      binWidthAngstrom: finite(params.binWidthAngstrom, 'job.params.binWidthAngstrom', 0.001, 1) ?? 0.1,
+    };
+  }
+  if (kind === 'crystal_transform') return crystalTransformParams(params);
   // orbital_cube
   rejectUnknownFields(params, ['field', 'orbitalIndex', 'spacingAngstrom', 'paddingAngstrom'], 'orbital_cube job.params');
   const field = oneOf(params.field, 'job.params.field', FIELDS, undefined);
@@ -165,6 +228,39 @@ function jobParams(kind, value) {
   if (spacing !== undefined) result.spacingAngstrom = spacing;
   if (padding !== undefined) result.paddingAngstrom = padding;
   return result;
+}
+
+const TRANSFORM_FIELDS = Object.freeze({
+  set_cell: ['cell', 'keep'], wrap: [], standard_orientation: [], scale_volume: ['volumeCubicAngstrom'], supercell: ['repeats'], niggli: [],
+  primitive: ['toleranceAngstrom'], conventional: ['toleranceAngstrom'], symmetrize: ['toleranceAngstrom'], asymmetric_unit: ['toleranceAngstrom'], fill: ['hallNumber'],
+});
+
+function crystalTransformParams(params) {
+  const operation = oneOf(params.operation, 'job.params.operation', CRYSTAL_OPERATIONS, undefined);
+  if (!operation) invalid('job.params.operation is required for crystal_transform.');
+  rejectUnknownFields(params, ['operation', ...TRANSFORM_FIELDS[operation]], `crystal_transform ${operation} job.params`);
+  if (operation === 'set_cell') {
+    const cell = params.cell;
+    if (!Array.isArray(cell) || cell.length !== 3 || cell.some(row => !Array.isArray(row) || row.length !== 3 || row.some(value => typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) > 1e4))) {
+      invalid('job.params.cell must be three lattice vectors of three numbers, in angstrom.');
+    }
+    return { operation, cell: cell.map(row => [...row]), keep: oneOf(params.keep, 'job.params.keep', new Set(['fractional', 'cartesian']), 'fractional') };
+  }
+  if (operation === 'scale_volume') {
+    const volume = finite(params.volumeCubicAngstrom, 'job.params.volumeCubicAngstrom', 1e-3, 1e9);
+    if (volume === undefined) invalid('job.params.volumeCubicAngstrom is required for scale_volume.');
+    return { operation, volumeCubicAngstrom: volume };
+  }
+  if (operation === 'supercell') {
+    const repeats = params.repeats;
+    if (!Array.isArray(repeats) || repeats.length !== 3) invalid('job.params.repeats must be three integers from 1 to 20.');
+    return { operation, repeats: repeats.map((value, axis) => integer(value, `job.params.repeats[${axis}]`, 1, 20)) };
+  }
+  if (operation === 'fill') return { operation, hallNumber: integer(params.hallNumber, 'job.params.hallNumber', 1, 530) };
+  if (TRANSFORM_FIELDS[operation].includes('toleranceAngstrom')) {
+    return { operation, toleranceAngstrom: finite(params.toleranceAngstrom, 'job.params.toleranceAngstrom', SYMMETRY_TOLERANCE.min, SYMMETRY_TOLERANCE.max) ?? SYMMETRY_TOLERANCE.fallback };
+  }
+  return { operation };
 }
 
 function job(value) {
