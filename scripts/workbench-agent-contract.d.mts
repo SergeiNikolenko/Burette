@@ -10,13 +10,26 @@ export const WORKBENCH_LIMITS: Readonly<{
   artifactBytes: number;
   jobTimeoutMs: number;
   stringLength: number;
+  constraints: number;
+  optimizationIterations: number;
+  conformers: number;
+  batchFrames: number;
+  batchAtomFrames: number;
 }>;
 export type WorkbenchOperation =
-  | 'capabilities' | 'observe' | 'orbitals'
+  | 'capabilities' | 'observe' | 'atoms' | 'orbitals'
   | 'submit' | 'status' | 'jobs' | 'cancel' | 'export';
 export const WORKBENCH_OPERATIONS: readonly WorkbenchOperation[];
 export type WorkbenchForceField = 'MMFF94' | 'MMFF94s' | 'UFF';
-export type WorkbenchJobKind = 'properties' | 'energy' | 'energy_forces' | 'orbital_cube';
+export type WorkbenchJobKind = WorkbenchJobRequest['kind'];
+export type WorkbenchOptimizeMethod = 'bfgs' | 'lbfgs' | 'fire' | 'abc-fire' | 'hybrid';
+export type WorkbenchConstraint = { kind: 'freeze' | 'distance' | 'angle' | 'dihedral'; atoms: number[]; target?: number };
+export type WorkbenchMetadataEdit = {
+  atoms: { index: number; atomName?: string | null; residue?: { name: string; sequence: number; chain: string; insertionCode: string } | null }[];
+  conformerLabel?: string | null;
+};
+/** The normalized `params` of one job kind. */
+export type WorkbenchJobParams<K extends WorkbenchJobKind> = Extract<WorkbenchJobRequest, { kind: K }>['params'];
 export type WorkbenchJobKindDescription = { engine: string; requires: string; params: Record<string, unknown>; artifacts: string[] };
 export const WORKBENCH_JOB_KINDS: Readonly<Record<WorkbenchJobKind, WorkbenchJobKindDescription>>;
 export const WORKBENCH_RUNTIMES: readonly ['browser-agent-shell'];
@@ -24,6 +37,12 @@ export const WORKBENCH_RUNTIMES: readonly ['browser-agent-shell'];
 export type WorkbenchJobRequest =
   | { kind: 'energy'; params: { forceField: WorkbenchForceField } }
   | { kind: 'energy_forces'; params: { forceField: WorkbenchForceField } }
+  | { kind: 'frame_energy_forces'; params: { forceField: WorkbenchForceField; offset: number; count?: number } }
+  | { kind: 'optimize'; params: { forceField: WorkbenchForceField; method: WorkbenchOptimizeMethod; maxIterations: number; constraints: WorkbenchConstraint[] } }
+  | { kind: 'prepare_3d'; params: { forceField: WorkbenchForceField; method: WorkbenchOptimizeMethod; seed: number; maxIterations: number } }
+  | { kind: 'conformers'; params: { forceField: WorkbenchForceField; count: number; seed: number } }
+  | { kind: 'metadata_edit'; params: WorkbenchMetadataEdit }
+  | { kind: 'pair_distribution'; params: { rMax: number; binWidth: number; centre: string | null; neighbour: string | null } }
   | { kind: 'properties'; params: { chargeModel?: 'Gasteiger' } }
   | { kind: 'orbital_cube'; params: { field: 'orbital' | 'density' | 'spin-density'; orbitalIndex?: number; spacingAngstrom?: number; paddingAngstrom?: number } };
 
@@ -32,6 +51,7 @@ type Page = { offset: number; limit: number };
 export type WorkbenchRequest = { type: 'workbench' } & (
   | { operation: 'capabilities' }
   | ({ operation: 'observe' } & DocumentTarget)
+  | ({ operation: 'atoms'; frameIndex?: number } & DocumentTarget & Page)
   | ({ operation: 'orbitals' } & DocumentTarget & Page)
   | ({ operation: 'submit'; operationId: string; job: WorkbenchJobRequest; expectedSourceRevision: string; documentId?: string })
   | { operation: 'status'; jobId?: string; operationId?: string }

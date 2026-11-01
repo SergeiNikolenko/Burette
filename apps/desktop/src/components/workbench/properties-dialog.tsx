@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { runChemistryTask, type ChemistryResults } from "../../lib/molecular-workbench/compute-client";
 import type { MolecularForceField } from "../../lib/molecular-workbench/forcefield";
-import type { MinimizerMethod } from "../../lib/molecular-workbench/minimizer";
-import { HARTREE_KCAL_MOL, fileStem, forcesCsv, sdfRecord } from "../../lib/workbench/formats";
+import { CONFORMER_LIMITS, flatDepiction, type OptimizationMethod } from "../../lib/molecular-workbench/optimization";
+import { HARTREE_KCAL_MOL, conformerSdfRecord, fileStem, forcesCsv, sdfRecord } from "../../lib/workbench/formats";
 import { openGeneratedStructure, openScientificDocument } from "../../lib/workbench/generated-document-open";
 import type { ShellActions } from "../types";
 import type { ViewerDocument } from "../../types";
 import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "../ui/dialog";
 import { Spinner } from "../ui/spinner";
 import { toast } from "../ui/toast";
@@ -16,9 +17,9 @@ import { useGraphDraft, type GraphOperation } from "./use-graph-draft";
 import { useCancellableJob, useWorkbenchSource } from "./use-workbench-source";
 
 type Properties = ChemistryResults["properties"];
-type Operation = "add-hydrogens" | "remove-hydrogens" | "optimize";
-const OPERATION_LABELS: Record<Operation, string> = { "add-hydrogens": "Add hydrogens", "remove-hydrogens": "Remove hydrogens", optimize: "Optimize" };
-const OPERATION_SUFFIX: Record<Operation, string> = { "add-hydrogens": "with-h", "remove-hydrogens": "no-h", optimize: "mmff94" };
+type Operation = "add-hydrogens" | "remove-hydrogens" | "optimize" | "prepare-3d";
+const OPERATION_LABELS: Record<Operation, string> = { "add-hydrogens": "Add hydrogens", "remove-hydrogens": "Remove hydrogens", optimize: "Optimize", "prepare-3d": "Generate 3D" };
+const OPERATION_SUFFIX: Record<Operation, string> = { "add-hydrogens": "with-h", "remove-hydrogens": "no-h", optimize: "mmff94", "prepare-3d": "3d" };
 const FORCES_ATOM_LIMIT = 64;
 
 function rows(properties: Properties, energy: number | null): [string, string][] {
@@ -46,6 +47,8 @@ export function PropertiesDialogBody({ document, actions, onDone }: { document: 
   const values = computedValues?.structure === structure ? computedValues : null;
   const valuesError = computedError?.structure === structure ? computedError.message : null;
   const job = useCancellableJob(source.revision);
+  const [conformerCount, setConformerCount] = useState(8);
+  const flat = Boolean(structure && flatDepiction(structure));
   // SDF/MOL documents change in place: the result is an undoable step of the document's
   // own draft, continued in the Edit tab. Other formats have no explicit graph to edit
   // and open the result as a new document.
@@ -75,23 +78,25 @@ export function PropertiesDialogBody({ document, actions, onDone }: { document: 
     return () => controller.abort();
   }, [structure]);
 
-  const runOperation = async (operation: Operation, method?: MinimizerMethod, forceField: MolecularForceField = "MMFF94") => {
+  const runOperation = async (operation: Operation, method: OptimizationMethod = "bfgs", forceField: MolecularForceField = "MMFF94") => {
     if (!structure) return;
     const result = await job.run(OPERATION_LABELS[operation], async (signal) => {
-      if (operation === "optimize") {
-        const optimized = await runChemistryTask({ action: "optimize", molecule: structure, options: { method, forceField } }, { signal, timeoutMs: 300_000 });
-        const steps = optimized.iterations === undefined ? "" : `, ${optimized.iterations} step${optimized.iterations === 1 ? "" : "s"}`;
-        return { molfile: optimized.molecule.molfile, frames: optimized.frames,
-          note: `${forceField}, ${optimizerLabel(method)}: ${optimized.initialEnergy.toFixed(2)} → ${optimized.energy.toFixed(2)} kcal/mol${steps}${optimized.converged ? "" : ", not converged"}` };
+      if (operation === "optimize" || operation === "prepare-3d") {
+        const optimized = operation === "optimize"
+          ? await runChemistryTask({ action: "optimize", molecule: structure, options: { method, forceField } }, { signal, timeoutMs: 300_000 })
+          : await runChemistryTask({ action: "prepare-3d", molecule: structure, options: {} }, { signal, timeoutMs: 300_000 });
+        const steps = optimized.iterations === null ? "" : `, ${optimized.iterations} step${optimized.iterations === 1 ? "" : "s"}`;
+        return { molfile: optimized.molecule.molfile, frames: optimized.frameSampling === "steps" ? optimized.frames : undefined, title: operation === "optimize" ? `${optimized.forceField} optimization` : "3D coordinates",
+          note: `${optimized.forceField}, ${optimizerLabel(optimized.method)}: ${optimized.initialEnergy.toFixed(2)} → ${optimized.energy.toFixed(2)} kcal/mol${steps}${optimized.converged ? "" : ", not converged"}` };
       }
       const changed = await runChemistryTask({ action: operation, molecule: structure }, { signal });
-      return { molfile: changed.molfile, frames: undefined, note: null };
+      return { molfile: changed.molfile, frames: undefined, title: null, note: null };
     });
     if (!result) return;
     const stem = `${fileStem(document.title)}-${operation === "optimize" ? forceField.toLowerCase() : OPERATION_SUFFIX[operation]}`;
     // Numerical minimizers report every step; the steps open as a trajectory the Plots tab can chart.
     const frames = result.frames;
-    if (result.note) toast.add({ title: `${forceField} optimization`, description: result.note, ...(frames && frames.length > 1 ? { actionProps: {
+    if (result.note) toast.add({ title: result.title, description: result.note, ...(frames && frames.length > 1 ? { actionProps: {
       children: "Open steps",
       onClick: () => void openScientificDocument(actions, `${stem}-steps`, {
         format: "xyz", atoms: frames[0].atoms, modes: [], orbitals: [],
@@ -99,6 +104,16 @@ export function PropertiesDialogBody({ document, actions, onDone }: { document: 
       }, "steps"),
     } } : {}) });
     await openGeneratedStructure(actions, stem, "sdf", sdfRecord(result.molfile));
+    onDone();
+  };
+
+  // Each sample is relaxed; distinct minima, lowest first, open as one new SDF. The source is not changed.
+  const searchConformers = async () => {
+    if (!structure) return;
+    const search = await job.run("Searching conformers", (signal) => runChemistryTask({ action: "conformers", molecule: structure, options: { count: conformerCount } }, { signal, timeoutMs: 300_000 }));
+    if (!search) return;
+    await openGeneratedStructure(actions, `${fileStem(document.title)}-conformers`, "sdf",
+      search.conformers.map((item, index) => conformerSdfRecord(sdfRecord(item.molecule.molfile), index + 1, search.forceField, item.energy, item.relativeEnergy)).join(""));
     onDone();
   };
 
@@ -137,6 +152,21 @@ export function PropertiesDialogBody({ document, actions, onDone }: { document: 
             <dt>Gasteiger charges</dt>
             <dd><Button type="button" variant="ghost" size="xs" disabled={Boolean(job.running)} onClick={() => void exportCharges()}>Export CSV</Button></dd>
           </div>
+          {flat ? (
+            <div>
+              <dt>3D coordinates</dt>
+              <dd><Button type="button" variant="ghost" size="xs" disabled={!ready || Boolean(running)}
+                onClick={() => void (inPlace ? runInPlace({ kind: "prepare-3d" }) : runOperation("prepare-3d"))}>Generate</Button></dd>
+            </div>
+          ) : null}
+          {structure?.graphComplete ? <div>
+            <dt>Conformers</dt>
+            <dd className="workbench-inline-field">
+              <Input variant="compact" type="number" min={1} max={CONFORMER_LIMITS.count} step={1} value={conformerCount} aria-label="Conformer samples"
+                onChange={(event) => setConformerCount(Math.min(CONFORMER_LIMITS.count, Math.max(1, Math.round(Number(event.target.value) || 1))))} />
+              <Button type="button" variant="ghost" size="xs" disabled={Boolean(running)} onClick={() => void searchConformers()}>Search</Button>
+            </dd>
+          </div> : null}
           {values.energy !== null && structure && structure.atoms.length <= FORCES_ATOM_LIMIT ? (
             <div>
               <dt>MMFF94 forces</dt>

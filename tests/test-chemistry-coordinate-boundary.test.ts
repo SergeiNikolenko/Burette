@@ -14,7 +14,7 @@ test('actual worker preserves specified source R/S, isotope, ring and E/Z config
   ['decalin',[[3,'S'],[8,'S']],null],['alkene-e',[],-1],['alkene-z',[],1],
  ]as const){
   const source=await task({action:'parse',source:fixture(id),format:'sdf'}),saved=JSON.stringify(source);
-  for(const seed of[1,17])for(const result of await task({action:'conformers',molecule:source,options:{count:2,seed}})){
+  for(const seed of[1,17])for(const result of (await task({action:'conformers',molecule:source,options:{count:2,seed}})).conformers){
    const m=result.molecule,mol=rdkit.get_mol(coordinatesOnly(m.molfile),JSON.stringify({removeHs:false}))!;
    try{
     const codes=JSON.parse(mol.get_json()).molecules[0].extensions.find((x:any)=>x.name==='rdkitRepresentation').cipCodes??[];
@@ -37,7 +37,7 @@ test('worker sampling retains unspecified 2D and mixed 3D source constraints wit
  const rdkit=await initRDKitModule();
  for(const[id,group,unknown,known]of[['unspecified-center','to-ocl-boundary',1,null],['mixed-known-first-3d','source-stereo',3,1]]as const){
   const source=await task({action:'parse',source:fixture(id,group),format:'mol'});
-  for(const result of await task({action:'conformers',molecule:source,options:{count:2,seed:17}})){
+  for(const result of (await task({action:'conformers',molecule:source,options:{count:2,seed:17}})).conformers){
    const m=result.molecule,mol=rdkit.get_mol(m.molfile,JSON.stringify({removeHs:false}))!;
    try{
     const json=JSON.parse(mol.get_json()),row=json.molecules[0];
@@ -51,7 +51,7 @@ test('worker sampling retains unspecified 2D and mixed 3D source constraints wit
 
 test('3D no-op publication follows reflected physical coordinates rather than stale source labels',async()=>{
  const rdkit=await initRDKitModule(),source=await task({action:'parse',source:fixture('lactic-at'),format:'mol'});
- const original=(await task({action:'conformers',molecule:source,options:{count:2,seed:1}}))[0].molecule;
+ const original=(await task({action:'conformers',molecule:source,options:{count:2,seed:1}})).conformers[0].molecule;
  const reflected={...original,atoms:original.atoms.map(a=>({...a,x:-a.x}))};
  const output=await task({action:'add-hydrogens',molecule:reflected});
  output.atoms.forEach((a,i)=>(['x','y','z']as const).forEach(axis=>expect(a[axis]).toBe(reflected.atoms[i][axis])));
@@ -65,7 +65,7 @@ test('3D no-op publication follows reflected physical coordinates rather than st
 
 test('worker forces retain caller H mapping and physical axes under a proper rigid transform',async()=>{
  const source=await task({action:'parse',source:fixture('interspersed-h'),format:'mol'});
- const pose=(await task({action:'conformers',molecule:source,options:{count:2,seed:1}}))[0].molecule;
+ const pose=(await task({action:'conformers',molecule:source,options:{count:2,seed:1}})).conformers[0].molecule;
  const body:MolecularStructure={...pose,atoms:pose.atoms.map(a=>({...a,x:a.x*1.03,y:a.y*1.03,z:a.z*1.03}))};
  const moved={...body,atoms:body.atoms.map(a=>({...a,x:a.z+7,y:-a.x+3,z:-a.y-2}))};
  const before=JSON.stringify(body),a=await task({action:'energy-forces',molecule:body}),b=await task({action:'energy-forces',molecule:moved});

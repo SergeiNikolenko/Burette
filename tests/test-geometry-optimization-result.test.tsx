@@ -42,10 +42,13 @@ mock.module("../apps/desktop/src/lib/source-editing/context", () => ({ useSource
   updateDraft: (_document, text) => { session.content = text; writes.push(text); },
 }) }));
 // The panel's contract with the optimizer: same atoms back, new positions and energies.
+const optimizedAtoms = [{ element: "O", x: 0, y: 0, z: 0 }, { element: "H", x: 0.97, y: 0, z: 0 }, { element: "H", x: -0.25, y: 0.94, z: 0 }];
 mock.module("../apps/desktop/src/lib/molecular-workbench/compute-client", () => ({
   runChemistryTask: async (request) => (request.action === "parse" ? { atoms: [] } : {
-    molecule: { atoms: [{ element: "O", x: 0, y: 0, z: 0 }, { element: "H", x: 0.97, y: 0, z: 0 }, { element: "H", x: -0.25, y: 0.94, z: 0 }] },
-    initialEnergy: 0.15, energy: 0, converged: true, constraintResiduals: [],
+    molecule: { atoms: optimizedAtoms },
+    initialEnergy: 0.15, energy: 0, converged: true, forceField: "MMFF94", method: "lbfgs", iterations: 12, frameSampling: "steps",
+    frames: [0.15, 0.05, 0].map((energy) => ({ atoms: optimizedAtoms, energy })),
+    constraintResiduals: [{ kind: "distance", atoms: [0, 1], target: 0.97, value: 0.9712, error: 0.0012, unit: "angstrom" }, { kind: "angle", atoms: [1, 0, 2], target: 100, value: 102.5, error: 2.5, unit: "degrees" }],
   }),
 }));
 const { createRoot } = await import("react-dom/client");
@@ -58,15 +61,23 @@ const { GeometryPanel } = await import("../apps/desktop/src/components/geometry-
 test("Geometry shows an optimization result only for the coordinates it produced", async () => {
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
-  const doc = { id: "water", path: "/water.xyz", extension: "xyz", renderer: "molstar" };
-  const result = () => host.querySelector(".geometry-panel-result")?.textContent ?? null;
+  const doc = { id: "water", title: "water.xyz", path: "/water.xyz", extension: "xyz", renderer: "molstar" };
+  const result = () => host.querySelector(".geometry-panel-result > p")?.textContent ?? null;
+  const opened = [];
   const undo = () => act(async () => host.querySelector('[aria-label="Undo"]').click());
   const bond = () => host.querySelector('[role="spinbutton"][aria-label="Bond of H2, Å"]');
   try {
-    await act(async () => root.render(React.createElement(GeometryPanel, { document: doc, actions: { runStructureViewerAction() {} } })));
+    await act(async () => root.render(React.createElement(GeometryPanel, { document: doc, actions: { runStructureViewerAction() {}, openStructureRecords: async (records) => { opened.push(records); return []; } } })));
     const optimize = [...host.querySelectorAll("button")].find((button) => button.textContent === "Optimize");
     await act(async () => optimize.click());
-    assert.match(result(), /0\.15 → 0\.00 kcal\/mol · Converged/u);
+    assert.match(result(), /^MMFF94, L-BFGS 0\.15 → 0\.00 kcal\/mol, 12 steps · ConvergedOpen steps$/u);
+    // Each constraint reports its measured value and signed deviation; only the deviation carries a status.
+    const residuals = [...host.querySelectorAll('[aria-label="Constraint residuals"] li')];
+    assert.deepEqual(residuals.map((item) => [...item.children].map((cell) => cell.textContent)), [["O1–H2", "0.971 Å", "+0.001 Å"], ["H2–O1–H3", "102.5 °", "+2.5 °"]]);
+    assert.deepEqual(residuals.map((item) => item.lastElementChild.dataset.status), ["success", "failure"]);
+    await act(async () => [...host.querySelectorAll("button")].find((button) => button.textContent === "Open steps").click());
+    assert.equal(opened.length, 1);
+    assert.equal((opened[0][0].text.match(/^3$/gmu) ?? []).length, 3, "the steps open as a three-frame trajectory");
     const optimized = Number(bond().getAttribute("aria-valuenow"));
 
     await act(async () => bond().dispatchEvent(new window.KeyboardEvent("keydown", { bubbles: true, key: "ArrowUp", altKey: true })));
@@ -76,6 +87,7 @@ test("Geometry shows an optimization result only for the coordinates it produced
     await undo();
     assert.equal(Number(bond().getAttribute("aria-valuenow")), optimized);
     assert.match(result(), /Converged/u, "Undo back to the optimized coordinates brings their result back");
+    assert.ok(result().endsWith("Open steps"), "the latest run keeps its steps");
 
     await undo();
     assert.equal(writes.at(-1), xyz);
