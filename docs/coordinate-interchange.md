@@ -88,3 +88,17 @@ Run `vp run test:scientific-open-entrypoints` and
 `vp run check:coordinate-xyz-admission`. Source edits after import still need
 the separate explicit-gesture revision admission; the ordinary opener alone
 does not close that owner boundary.
+
+A current Geometry gesture can admit a parsed coordinate source that has no
+registered scientific revision. The existing imported-source store retains it
+as a separate scoped root, so a Text Undo can still reach older owned Geometry
+histories and the same Original. Reads do not register sources. Document
+identity, logical source operation, current session/revision, native binding
+and scientific revision are checked before publication. Failure or cancellation
+rolls back an unchanged admission; a later legitimate record is left alone.
+
+All coordinate roots of one document share the existing 100-revision budget.
+The current Undo pair is retained; eviction never changes another document's
+shared data. Run `vp run test:coordinate-source-admission` and
+`vp run check:coordinate-source-admission`. These are owner/host checks; the
+transport uses the existing viewer action boundary and does not add a native API.

@@ -19,7 +19,7 @@ export type ImportedOriginal = { name: string; file: Blob };
 // `sourceAtomIndices` maps each atom of a revision that changed topology to its index in the
 // previous revision (−1 for an inserted atom), so durable atom ids follow it (science-session/state).
 export type ImportedRevision = { text: string; document: ScientificDocument; topology?: number; sourceAtomIndices?: readonly number[]; readonly retainedScienceFrom?: ImportedRevision };
-type ImportedSource = { revisions: readonly ImportedRevision[]; original: ImportedOriginal | null; companions?: readonly McdCompanionOriginal[]; documentIds: Set<string>; scoped: boolean };
+type ImportedSource = { revisions: readonly ImportedRevision[]; original: ImportedOriginal | null; companions?: readonly McdCompanionOriginal[]; documentIds: Set<string>; scoped: boolean; coordinateRoot?: true };
 const REVISION_LIMIT = 100;
 const imported = new Map<string, ImportedSource>();
 const importListeners = new Set<() => void>();
@@ -165,6 +165,63 @@ export function revisionIndex(revisions: readonly ImportedRevision[], text: stri
   return -1;
 }
 
+function ownedSnapshot(documentId: string) {
+  return [...imported].filter(([, entry]) => entry.documentIds.has(documentId))
+    .map(([key, entry]) => ({ key, entry, revisions: entry.revisions, documents: [...entry.documentIds] }));
+}
+
+// All coordinate-source roots of one document share the existing history budget.
+function limitCoordinateHistory(documentId: string, current: ImportedSource, reserve = 0) {
+  const owned = ownedSnapshot(documentId).sort((a, b) => Number(a.entry === current) - Number(b.entry === current));
+  let excess = owned.reduce((sum, item) => sum + item.revisions.length, reserve) - REVISION_LIMIT;
+  const trims: Array<{ key: string; entry: ImportedSource; remaining: readonly ImportedRevision[] }> = [];
+  for (const { key, entry, revisions } of owned) {
+    if (excess <= 0) break;
+    // Another document's retained data must never be evicted by this gesture.
+    if (entry.documentIds.size !== 1) continue;
+    const count = Math.min(excess, revisions.length - (entry === current ? Math.min(2, revisions.length) : 0));
+    if (count > 0) { trims.push({ key, entry, remaining: revisions.slice(count) }); excess -= count; }
+  }
+  if (excess > 0) throw new Error("Coordinate source history exceeds its supported limit.");
+  for (const { key, entry, remaining } of trims) {
+    if (remaining.length) entry.revisions = remaining;
+    else imported.delete(key);
+  }
+}
+
+function ownedRollback(documentId: string, before: ReturnType<typeof ownedSnapshot>) {
+  const after = ownedSnapshot(documentId);
+  return () => {
+    const now = ownedSnapshot(documentId);
+    if (now.length !== after.length || after.some(item => {
+      const current = now.find(value => value.key === item.key);
+      return !current || current.entry !== item.entry || current.revisions !== item.revisions
+        || current.documents.length !== item.documents.length || item.documents.some(id => !current.entry.documentIds.has(id));
+    })) return;
+    if (before.some(item => imported.has(item.key) && imported.get(item.key) !== item.entry)) return;
+    for (const item of after) if (!before.some(previous => previous.key === item.key)) imported.delete(item.key);
+    for (const item of before) { item.entry.revisions = item.revisions; imported.set(item.key, item.entry); }
+    importsChanged();
+  };
+}
+
+/** Admit a verified current coordinate source only at an explicit, owned edit gesture. */
+export function admitCoordinateSourceRevision(documentId: string, revision: ImportedRevision & {
+  document: ScientificDocument & { internalCoordinates: NonNullable<ScientificDocument["internalCoordinates"]> };
+}) {
+  if (revisionsWith(documentId, revision.text)) throw new Error("The source changed. Try the edit again.");
+  const before = ownedSnapshot(documentId), original = sourceWithOriginal(documentId);
+  const key = `coordinate:${crypto.randomUUID()}`;
+  const entry: ImportedSource = { revisions: [revision], original: original?.original ?? null,
+    companions: original?.companions, documentIds: new Set([documentId]), scoped: true, coordinateRoot: true };
+  imported.set(key, entry);
+  // Reserve the next slot for the edit this source admission is about to record.
+  try { limitCoordinateHistory(documentId, entry, 1); } catch (error) { imported.delete(key); throw error; }
+  const rollback = ownedRollback(documentId, before);
+  importsChanged();
+  return { revision, rollback };
+}
+
 /**
  * Records an edit made through a document's imported data as the revision after the
  * one whose text it replaces; revisions after that one (a Redo branch) are dropped.
@@ -175,8 +232,15 @@ export function recordImportedRevision(documentId: string, fromText: string, rev
   const entry = revisionsWith(documentId, fromText);
   if (!entry) return null;
   const previous = entry.revisions;
+  const before = ownedSnapshot(documentId);
   const recorded = [...previous.slice(0, revisionIndex(previous, fromText) + 1), revision].slice(-REVISION_LIMIT);
   entry.revisions = recorded;
+  if (before.some(item => item.entry.coordinateRoot)) {
+    try { limitCoordinateHistory(documentId, entry); } catch (error) { entry.revisions = previous; throw error; }
+    const rollback = ownedRollback(documentId, before);
+    importsChanged();
+    return rollback;
+  }
   importsChanged();
   return () => {
     if (entry.revisions !== recorded) return;

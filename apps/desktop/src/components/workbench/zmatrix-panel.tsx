@@ -19,6 +19,8 @@ import { fileStem } from "../../lib/workbench/formats";
 import { openWorkbenchDialog } from "../../lib/workbench/dialog-store";
 import { isAbortError } from "../../lib/viewer-errors";
 import { forgetViewerAtomSelection } from "../../lib/workbench/selection";
+import { useMoleculeStore } from "../../stores/molecule-store";
+import { admitCoordinateSourceRevision, scientificStateFor, subscribeImports } from "../../lib/workbench/scientific-source-state";
 import { recordImportedRevision, revisionIndex, useImportedOriginal, useImportedRevisions, type ImportedRevision } from "../../lib/workbench/source";
 import { isReferencePoint, nextVariableName, sameDefinition, variableUses, withReference, withRowValue, withVariable, zmatrixOptimizedRevision, zmatrixRevision, zmatrixRowLabels, zmatrixRowsRevision } from "../../lib/workbench/zmatrix-draft";
 import { zmatrixConstraints, zmatrixLockKey, zmatrixRowStructure } from "../../lib/workbench/zmatrix-optimization";
@@ -177,16 +179,42 @@ export function ZmatrixPanel({ document, actions, science, text }: {
     const started = lifetime.current;
     const fromText = text;
     const nextText = target.text;
-    const unchanged = () => started === lifetime.current && latestText.current === fromText;
+    const needsAdmission = record && position < 0;
+    const operation = needsAdmission ? sourceEditing?.captureOperation(document) : undefined;
+    let sourceSession = sourceEditing?.sessionForDocument(document) ?? null;
+    let retired = needsAdmission && !useMoleculeStore.getState().documents.includes(document);
+    const stopDocument = needsAdmission ? useMoleculeStore.subscribe(state => { if (!state.documents.includes(document)) retired = true; }) : undefined;
+    let admission: ReturnType<typeof admitCoordinateSourceRevision> | undefined;
+    let stopScience: (() => void) | undefined;
+    let accepted = false;
+    const unchanged = () => {
+      if (started !== lifetime.current || latestText.current !== fromText) return false;
+      if (!needsAdmission) return true;
+      const current = sourceEditing?.sessionForDocument(document);
+      return !retired && binding.target.isCurrent() && (!operation || operation.isCurrent())
+        && current?.sessionId === sourceSession?.sessionId && current?.revision === sourceSession?.revision
+        && scientificStateFor(document.id, fromText).revision === (admission?.revision ?? null);
+    };
     const reloads = (target.topology ?? 0) !== (revisions[position]?.topology ?? 0);
     let shown = false;
     try {
+      if (needsAdmission && !sourceEditing) throw new Error("This structure can only be edited from its source.");
       if (sourceEditing && !session) await sourceEditing.beginEditing(document, "geometry", { geometryBinding: binding });
+      if (needsAdmission && !sourceSession) {
+        const opened = sourceEditing!.sessionForDocument(document);
+        if (!opened || opened.revision !== 0 || opened.content !== fromText) return false;
+        sourceSession = opened;
+      }
       if (!unchanged()) return false;
       // Opening reports its own failure and resolves without a session.
       if (sourceEditing && !sourceEditing.sessionForDocument(document)) throw new Error("The source could not be opened for editing.");
       if (sourceEditing && sourceEditing.sessionForDocument(document)?.content !== fromText) throw new Error("The source changed. Try the edit again.");
-      if (reloads) return await reload(target, record, fromText, unchanged);
+      if (needsAdmission) {
+        admission = admitCoordinateSourceRevision(document.id, { text: fromText, document: science });
+        if (!unchanged()) return false;
+        stopScience = subscribeImports(() => { if (scientificStateFor(document.id, fromText).revision !== admission!.revision) retired = true; });
+      }
+      if (reloads) { accepted = await reload(target, record, fromText, unchanged); return accepted; }
       await live.commit(runtimeText(nextText), binding.text);
       shown = true;
       if (!unchanged()) {
@@ -205,6 +233,7 @@ export function ZmatrixPanel({ document, actions, science, text }: {
         throw caught;
       }
       setError(null);
+      accepted = true;
       return true;
     } catch (caught) {
       if (started !== lifetime.current) return false;
@@ -213,6 +242,8 @@ export function ZmatrixPanel({ document, actions, science, text }: {
       setError(message(caught));
       return false;
     } finally {
+      stopScience?.(); stopDocument?.(); operation?.release();
+      if (!accepted) admission?.rollback();
       applyingDocuments.delete(document.id);
       setApplying(false);
     }

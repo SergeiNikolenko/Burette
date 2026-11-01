@@ -1,3 +1,6 @@
+import { readCoordinateInterchange, writeCoordinateInterchange } from "../scripts/coordinate-interchange.mjs";
+import { parseScientificFile } from "../apps/desktop/src/lib/molecular-workbench/quantum";
+import { scientificStateFor, releaseClosedImports } from "../apps/desktop/src/lib/workbench/scientific-source-state";
 import { captureViewerActionTarget } from "../apps/desktop/src/lib/viewer-bridge";
 import { ensureGeometryViewerFrame } from "./fixtures/geometry-viewer-frame";
 import assert from "node:assert/strict";
@@ -158,6 +161,73 @@ const release = async (document) => {
   await settle();
 };
 
+
+async function markedGeometry() {
+  viewer = async () => {};
+  const science = parseScientificFile("raw.zmat", zmat);
+  const text = writeCoordinateInterchange({ atoms: science.atoms, internalCoordinates: science.internalCoordinates }, "xyz", "raw source");
+  const [document] = await actions.openStructureRecords([{ path: "raw.xyz", inputExtension: "xyz", text }]);
+  const view = await mount(document);
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const field = view.host.querySelector('[aria-label="Variable R"]');
+    if (field && !field.hasAttribute("disabled") && field.getAttribute("aria-disabled") !== "true") break;
+    await settle();
+  }
+  return { document, text, view };
+}
+
+test("coordinate source: explicit raw marked XYZ gesture records its own history and changes both physical bonds", async () => {
+  const { document, text, view } = await markedGeometry();
+  try {
+    assert.equal(scientificStateFor(document.id, text).revision, null, "rendering alone does not admit a revision");
+    await press(view.host, "Variable R", "ArrowUp");
+    const next = current(document), decoded = readCoordinateInterchange(next, "xyz");
+    assert.notEqual(next, text); assert.equal(decoded.internalCoordinates.variables[0].value, .9672);
+    const [o, ...hydrogens] = decoded.atoms;
+    for (const h of hydrogens) assert.ok(Math.abs(Math.hypot(h.x-o.x, h.y-o.y, h.z-o.z) - .9672) < 1e-12);
+    assert.equal(scientificStateFor(document.id, next).revisions.length, 2);
+    await act(async () => view.host.querySelector('button[aria-label="Undo"]').click()); await settle();
+    assert.equal(current(document), text, "Undo reaches this exact parsed-source root");
+    await act(async () => view.host.querySelector('button[aria-label="Redo"]').click()); await settle();
+    assert.equal(current(document), next);
+  } finally { await view.unmount(); }
+});
+
+test("coordinate source: a failed viewer acknowledgement leaves no admitted source or edit", async () => {
+  const { document, text, view } = await markedGeometry();
+  try {
+    viewer = async () => { throw new Error("fixture transport failed"); };
+    await press(view.host, "Variable R", "ArrowUp");
+    await settle();
+    assert.equal(current(document), text);
+    assert.equal(scientificStateFor(document.id, text).revision, null);
+  } finally { viewer = async () => {}; await view.unmount(); }
+});
+
+for (const mode of ["draft ABA", "unmount", "close"]) test(`coordinate source: held viewer ACK cannot publish after ${mode}`, async () => {
+  const { document, text, view } = await markedGeometry();
+  let release;
+  const held = new Promise(resolve => { release = resolve; });
+  let calls = 0, unmounted = false;
+  try {
+    viewer = async () => { calls++; await held; };
+    await press(view.host, "Variable R", "ArrowUp");
+    assert.ok(calls > 0); assert.ok(scientificStateFor(document.id, text).revision, "only the baseline is admitted while the edit waits");
+    if (mode === "draft ABA") await act(async () => {
+      controller.updateDraft(document, text.replace("raw source", "changed source")); controller.updateDraft(document, text);
+    });
+    else if (mode === "unmount") { await view.unmount(); unmounted = true; }
+    else await act(async () => {
+      useMoleculeStore.setState(state => ({ documents: state.documents.filter(item => item !== document) }));
+      releaseClosedImports(new Set(useMoleculeStore.getState().documents.map(item => item.id)));
+    });
+    await act(async () => release());
+    await settle(); await settle();
+    assert.equal(current(document), text);
+    assert.equal(scientificStateFor(document.id, text).revision, null, "failed admission is not retained or resurrected");
+  } finally { release(); viewer = async () => {}; if (!unmounted) await view.unmount(); }
+});
+
 test("a source that cannot open for editing keeps the edit out of the scene and the history; once it opens, the edit applies", async () => {
   const document = await openWater();
   const imported = current(document);
@@ -297,6 +367,7 @@ const typeText = async (host, from, to, insert) => {
 test("source Text: the command key undoes and redoes typing, across a dock tab switch, never over a newer Geometry edit", async () => {
   const document = await openWater();
   const imported = current(document);
+  const originalHistory = scientificStateFor(document.id, imported).revisions;
   const view = await mount(document);
   // The Z-matrix definitions belong to the exact imported text; its comment line is part of it.
   const comment = imported.indexOf("\n") + 1;
@@ -315,7 +386,7 @@ test("source Text: the command key undoes and redoes typing, across a dock tab s
     // The typed change is undone after Geometry was shown in between, and the definitions come back.
     await typeText(view.host, comment, comment, "x");
     await view.render(document);
-    assert.equal(zmatrixRows(), false, "the typed source is no longer the import");
+    assert.equal(zmatrixRows(), true, "the full source marker retains its definition after a human-comment edit");
     await view.render(document, "text");
     await undoText(view.host);
     assert.equal(current(document), imported);
@@ -327,9 +398,25 @@ test("source Text: the command key undoes and redoes typing, across a dock tab s
     await typeText(view.host, comment, comment, "x");
     const typed = current(document);
     await view.render(document);
-    await press(view.host, "Bond of H2, Å", "ArrowUp");
+    await act(async () => controller.applyPreview(document));
+    const preview = controller.sessionForDocument(document).sourcePreview;
+    const identity = preview.slots[preview.activeSlot === "primary" ? "secondary" : "primary"].identity;
+    const frame = { contentWindow: {} };
+    controller.stagingLoaded(document, identity, frame);
+    await act(async () => {
+      const event = new window.Event("message");
+      Object.defineProperty(event, "source", { value: frame.contentWindow });
+      Object.defineProperty(event, "data", { value: { source: "burette-viewer", body: { type: "ready", renderer: "molstar", molstarStructureCount: 1 } } });
+      window.dispatchEvent(event);
+    });
+    await settle();
+    assert.equal(controller.sessionForDocument(document).previewState, "current", "actual source preview acknowledged");
+    await press(view.host, "Variable R", "ArrowUp");
     const geometryEdit = current(document);
-    assert.notEqual(geometryEdit, typed);
+    assert.notEqual(geometryEdit, typed, "the owned variable gesture publishes");
+    assert.ok(Math.abs(bond(geometryEdit) - bond(typed) - .01) < 1e-12, "the physical bond changes");
+    assert.ok(scientificStateFor(document.id, geometryEdit).revision);
+    assert.equal(scientificStateFor(document.id, imported).revisions, originalHistory, "Text Undo retains the imported Geometry history");
     await view.render(document, "text");
     await undoText(view.host);
     assert.equal(current(document), geometryEdit);
