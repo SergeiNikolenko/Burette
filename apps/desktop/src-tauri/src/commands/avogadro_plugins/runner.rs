@@ -339,4 +339,50 @@ mod tests {
         }
         std::fs::remove_dir_all(root).unwrap();
     }
+
+    /// Real environment and real command: downloads RDKit from conda-forge, so
+    /// it is opt-in (`cargo test -- --ignored real_rdkit_plugin`).
+    #[test]
+    #[ignore]
+    fn real_rdkit_plugin_prepares_and_optimizes_caffeine() {
+        let root = installed_rdkit();
+        let pixi = crate::commands::conformer::resolve_executable("pixi");
+        assert!(
+            prepare(&root, "avogadro-rdkit", pixi, &AtomicBool::new(false))
+                .unwrap()
+                .prepared
+        );
+        let sdf = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../samples/structures/small-molecules/caffeine.sdf"
+        ))
+        .unwrap();
+        let input = serde_json::json!({ "sdf": sdf, "inputMoleculeFormat": "sdf", "selectedAtoms": [], "charge": 0, "spin": 1, "options": {} });
+        let output = run(
+            &root,
+            "avogadro-rdkit",
+            "avogadro-rdkit",
+            "mmff94",
+            &input.to_string(),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+        let result: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(result["moleculeFormat"], "sdf");
+        assert!(result["sdf"].as_str().unwrap().contains("M  END"));
+        let selected = run(
+            &root,
+            "avogadro-rdkit",
+            "avogadro-rdkit",
+            "select-smarts",
+            &serde_json::json!({ "sdf": sdf, "options": { "SMARTS": "[#7]" } }).to_string(),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&selected).unwrap()["selectedAtoms"],
+            serde_json::json!([2, 3, 4, 5])
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }
