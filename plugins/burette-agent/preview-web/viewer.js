@@ -1779,10 +1779,15 @@
   window.addEventListener('message', event => {
     const body = event.data && event.data.source === 'burette-agent-host' ? event.data.body : null;
     if (body?.type === 'compositionVisibilityRequest') {
+      if (typeof body.releaseId === 'string' && body.releaseId.length <= 128) molstarCompositionHierarchyRequests.delete(body.releaseId);
+      if (body.hierarchy === true && typeof body.requestId === 'string' && body.requestId.length > 0 && body.requestId.length <= 128
+        && (molstarCompositionHierarchyRequests.has(body.requestId) || molstarCompositionHierarchyRequests.size < 16)) {
+        molstarCompositionHierarchyRequests.add(body.requestId); molstarCompositionQueries.set('all', null);
+      }
       for (const query of (Array.isArray(body.queries) ? body.queries.slice(0, 128) : [])) {
         if (typeof query === 'string' && query.length > 0 && query.length <= 4096) molstarCompositionQueries.set(query, null);
       }
-      while (molstarCompositionQueries.size > 128) molstarCompositionQueries.delete(molstarCompositionQueries.keys().next().value);
+      while (molstarCompositionQueries.size > 128) molstarCompositionQueries.delete([...molstarCompositionQueries.keys()].find(query => query !== 'all' || !molstarCompositionHierarchyRequests.size));
       molstarCompositionVisibilitySignature = '';
       reportMolstarCompositionVisibility();
       return;
@@ -18527,6 +18532,7 @@ SOFTWARE.
   }
 
   const molstarCompositionQueries = new Map();
+  const molstarCompositionHierarchyRequests = new Set();
   let molstarCompositionVisibilitySignature = '';
   let molstarQueryComponentActions = Promise.resolve();
 
@@ -18566,6 +18572,10 @@ SOFTWARE.
       const matched = [];
       const counts = { atoms: 0, residues: 0, chains: 0, types: 0 };
       const residueTypes = new Set();
+      const hierarchy = query === 'all' && molstarCompositionHierarchyRequests.size > 0
+        ? { polymer: { atoms: 0, residues: 0, chains: 0 }, chains: [], truncated: false } : null;
+      // Leave two of the existing 128 query slots for the whole scene and Polymer group.
+      const chainRows = new Map();
       for (const structure of structures) {
         const loci = compositionQueryLoci(structure, query);
         if (!loci) continue;
@@ -18583,6 +18593,31 @@ SOFTWARE.
           // Count the union: overlapping representations must not count atoms twice.
           const data = StructureElement.Loci.toStructure(represented);
           counts.atoms += data.elementCount;
+          if (hierarchy) {
+            // The same query as the existing Polymer controls; no atom objects or coordinates are retained.
+            const polymer = compositionQueryLoci(structure, 'polymer');
+            const subset = polymer && StructureElement.Loci.toStructure(StructureElement.Loci.remap(polymer, data));
+            if (subset) {
+              hierarchy.polymer.atoms += subset.elementCount;
+              let currentChain = null;
+              Structure.eachAtomicHierarchyElement(subset, {
+                chain: location => {
+                  hierarchy.polymer.chains++;
+                  const table = location.unit.model.atomicHierarchy.chains, index = location.unit.chainIndex[location.element];
+                  const authId = table.auth_asym_id.value(index);
+                  const key = authId;
+                  currentChain = chainRows.get(key) || null;
+                  if (!currentChain && typeof authId === 'string' && authId.length <= 128 && !authId.includes('\0') && chainRows.size < 126) {
+                    currentChain = { authId, atoms: 0, residues: 0 };
+                    chainRows.set(key, currentChain);
+                  }
+                  if (!currentChain) hierarchy.truncated = true;
+                },
+                residue: () => { hierarchy.polymer.residues++; if (currentChain) currentChain.residues++; },
+                atom: () => { if (currentChain) currentChain.atoms++; }
+              });
+            }
+          }
           Structure.eachAtomicHierarchyElement(data, {
             chain: () => { counts.chains++; },
             residue: location => {
@@ -18593,11 +18628,13 @@ SOFTWARE.
         }
       }
       counts.types = residueTypes.size;
+      if (hierarchy) hierarchy.chains = [...chainRows.values()];
       const tint = sceneTreeColorState(matched).value;
       return {
         query,
         present: matched.length > 0,
         counts,
+        ...(hierarchy ? { hierarchy } : {}),
         hidden: !matched.some(component => !component.cell.state.isHidden
           && component.representations?.some(repr => !repr.cell.state.isHidden)),
         color: Number.isFinite(tint) ? sceneTreeColorHex(tint) : null
@@ -18606,7 +18643,7 @@ SOFTWARE.
     const signature = JSON.stringify(rows);
     if (signature === molstarCompositionVisibilitySignature) return;
     molstarCompositionVisibilitySignature = signature;
-    post('compositionVisibilityChanged', '', { rows });
+    post('compositionVisibilityChanged', '', { rows, ...(molstarCompositionHierarchyRequests.size ? { hierarchyRequestIds: [...molstarCompositionHierarchyRequests] } : {}) });
   }
 
   function queueMolstarQueryComponentAction(action, operation) {
@@ -18762,7 +18799,7 @@ SOFTWARE.
       }, { canUndo: `${operation} ${label}`, rethrowErrors: true });
       molstarCompositionQueries.delete(query);
       molstarCompositionQueries.set(query, affectedRefs);
-      while (molstarCompositionQueries.size > 128) molstarCompositionQueries.delete(molstarCompositionQueries.keys().next().value);
+      while (molstarCompositionQueries.size > 128) molstarCompositionQueries.delete([...molstarCompositionQueries.keys()].find(query => query !== 'all' || !molstarCompositionHierarchyRequests.size));
     } finally {
       selection.setSnapshot(savedSelection);
       scheduleSceneTreeRender();
