@@ -25,6 +25,8 @@ contains only documents that describe the active project.
   conventions, constraints, periodic cells and template validation.
 - [Chemical JSON graph source prerequisite](cjson-graph-source.md): explicit bonds,
   source atom order, Cartesian sets and graph-preserving import constraints.
+- [Biological assemblies](biological-assemblies.md): explicit deposited operators,
+  materialized atom and connection identity, export limits and validation scope.
 - [Native scene composition](native-scene-composition.md): bounded live MOLX counts,
   chain controls and viewer ownership.
 - [Scientific scene format](scientific-scene-format.md): MOLX attachment protocol,

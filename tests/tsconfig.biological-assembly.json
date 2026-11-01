@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": [
+      "bun"
+    ]
+  },
+  "files": [
+    "test-biological-assembly.test.ts"
+  ],
+  "include": []
+}
