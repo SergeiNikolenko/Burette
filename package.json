@@ -350,7 +350,8 @@
     "test:coordinate-interchange-reader": "bun test tests/test-coordinate-interchange-reader.test.ts",
     "typecheck:coordinate-interchange-reader": "tsc --noEmit -p tests/tsconfig.coordinate-interchange-reader.json",
     "test:polymer-publication": "bun test tests/test-polymer-publication.test.tsx",
-    "typecheck:polymer-publication": "tsc --noEmit -p tests/tsconfig.polymer-publication.json"
+    "typecheck:polymer-publication": "tsc --noEmit -p tests/tsconfig.polymer-publication.json",
+    "test:retained-plots-chart": "bun test tests/test-workbench-frame-plots.test.tsx"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",
