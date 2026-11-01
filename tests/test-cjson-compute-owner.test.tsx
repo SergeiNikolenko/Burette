@@ -29,7 +29,7 @@ const {detectContentSpectrumPaths}=await import('../apps/desktop/src/lib/content
 const {openBrowserDevTextDocument,readBrowserDevVirtualTextDocument,writeBrowserDevVirtualTextDocument,deleteBrowserDevVirtualTextDocument}=await import('../apps/desktop/src/lib/browser-dev-documents');
 const {releaseClosedImports,scientificStateFor}=await import('../apps/desktop/src/lib/workbench/scientific-source-state');
 const {useMoleculeStore}=await import('../apps/desktop/src/stores/molecule-store');
-const {useTabWorkspaceStore,getTabWorkspace}=await import('../apps/desktop/src/stores/tab-workspace-store');
+const {useTabWorkspaceStore,getTabWorkspace,WINDOW_TOOLS_ID}=await import('../apps/desktop/src/stores/tab-workspace-store');
 const {DEFAULT_XTB_SETTINGS,DEFAULT_CONFORMER_SETTINGS}=await import('../apps/desktop/src/lib/chemistry-settings');
 const {defaultPreferences}=await import('../apps/desktop/src/stores/settings-store');
 const opened:ViewerDocument[]=[];const before=useMoleculeStore.getState().documents;
@@ -52,21 +52,21 @@ async function openThroughApp(file:File) {
   opened.push(...useMoleculeStore.getState().documents.filter(doc=>!baseline.includes(doc)));
  }finally{await act(async()=>root.unmount());host.remove();}
 }
-async function fixture(kind: "cjson" | "cjson-no-spectra" | "mol" | "sdf" | "xyz" | "cif" = "cjson") {
- let original=readFileSync(new URL('./fixtures/quantum/spectra-native-nmr.cjson',import.meta.url),'utf8');
+async function fixture(kind: "cjson" | "cjson-no-spectra" | "mol" | "sdf" | "xyz" | "cif" = "cjson", options: { original?: string; query?: string; area?: "right" | "bottom" } = {}) {
+ let original=options.original??readFileSync(new URL('./fixtures/quantum/spectra-native-nmr.cjson',import.meta.url),'utf8');
  if(kind==='cjson-no-spectra'){const value=JSON.parse(original);delete value.spectra;original=JSON.stringify(value);}
  if(kind.startsWith('cjson')) await openThroughApp(new File([original],`nmr-${crypto.randomUUID()}.cjson`));
  else {
   const {readCjsonGraph}=await import('../apps/desktop/src/lib/molecular-workbench/cjson-graph');
   const text=kind==='mol'||kind==='sdf'?readCjsonGraph('nmr.cjson',original).structure.molfile+(kind==='sdf'?'$$$$\n':'')
-   :kind==='xyz'?'1\nplain\nH 0 0 0\n':'data_plain\n_cell_length_a 4\n_cell_length_b 4\n_cell_length_c 4\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\nH1 H 0 0 0\n';
+   :kind==='xyz'?(options.original??'1\nplain\nH 0 0 0\n'):'data_plain\n_cell_length_a 4\n_cell_length_b 4\n_cell_length_c 4\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\nH1 H 0 0 0\n';
   await openStructureRecords([{path:'plain.'+kind,inputExtension:kind,text}]);
  }
  expect(opened).toHaveLength(1);const current=opened[0];
  const source=scientificStateFor(current.id,readBrowserDevVirtualTextDocument(current.path)!);
  if(kind==='cjson') expect(source.revision?.document.spectra?.spectra[0].kind).toBe('nmr');
  const other=await openBrowserDevTextDocument('other.xyz','xyz','1\nother\nH 0 0 0\n',defaultPreferences);opened.push(other);useMoleculeStore.setState(state=>({documents:[...state.documents,other]}));
- const workspace=`vibrations-${crypto.randomUUID()}`;getTabWorkspace(workspace);
+ const workspace=`vibrations-${crypto.randomUUID()}`;getTabWorkspace(workspace);getTabWorkspace(WINDOW_TOOLS_ID);
  const store=useTabWorkspaceStore.getState();store.setDockDocument(workspace,'right',other.id);store.openDockTab(workspace,'right','text');store.setDockOpen(workspace,'right',false);
  const host=document.createElement('div');host.className='app-shell';document.body.append(host);const root=createRoot(host);
  const saveRequests:string[]=[];let showCommands:()=>void=()=>{};
@@ -81,15 +81,15 @@ async function fixture(kind: "cjson" | "cjson-no-spectra" | "mol" | "sdf" | "xyz
  } satisfies Pick<ShellActions,'openStructureRecords'|'setStructureDragActive'|'setDockDocument'|'openDockTab'|'setDockActiveTab'|'setDockOpen'|'closeDockTab'|'saveKetcherExportFile'|'runStructureViewerAction'>;
  function Workspace(){
   const documents=useMoleculeStore(state=>state.documents);const active=documents.find(doc=>doc.id===current.id)??null;
-  const dock=useTabWorkspaceStore(state=>state.workspaces[workspace].right);const [commands,setCommands]=useState(false);showCommands=()=>setCommands(true);
+  const dock=useTabWorkspaceStore(state=>state.workspaces[workspace].right), bottom=useTabWorkspaceStore(state=>state.workspaces[WINDOW_TOOLS_ID]?.bottom??state.workspaces[workspace].bottom);const [commands,setCommands]=useState(false);showCommands=()=>setCommands(true);
   const state:Partial<ShellViewState>={page:'viewer',documents,textDocuments:[],activeDocument:active,
    activeTab:{id:workspace,location:{kind:'document',path:current.path},back:[],forward:[]},preferences:defaultPreferences,
-   rightDockTabs:dock.tabs,rightDockActiveTab:dock.activeTab,rightDockOpen:dock.open,rightDockDocumentId:dock.documentId,rightDockTool:null,
+   rightDockTabs:dock.tabs,rightDockActiveTab:dock.activeTab,rightDockOpen:dock.open,rightDockDocumentId:dock.documentId,rightDockTool:null,bottomDockTabs:bottom.tabs,bottomDockActiveTab:bottom.activeTab,bottomDockOpen:bottom.open,bottomDockDocumentId:bottom.documentId,bottomDockTool:null,
    dockDroppedStructures:[],hoveredGridRows:{},visibleDocuments:opened,sidebarProjects:[],xtbJobs:[],xtbSettings:DEFAULT_XTB_SETTINGS,conformerSettings:DEFAULT_CONFORMER_SETTINGS,buildInfo:{name:"Burette",version:"test",identifier:"test",flavor:null,isDevBuild:true,isBrowserDev:true,isAgentShell:false,notes:[],limitations:[]},
   };
   return <><button onClick={()=>setCommands(true)}>Commands</button>{active?<FilePage tabId={workspace} location={{kind:"file",documentId:active.id,path:active.path}} state={state as ShellViewState} actions={actions as ShellActions} isActive/>:null}
-   <DockPanel area="right" state={state as ShellViewState} actions={actions as ShellActions}/>
-   {commands?<CommandPalette state={state as ShellViewState} actions={actions as ShellActions} isOpen query="spectra" onQueryChange={()=>{}} onClose={()=>setCommands(false)} onRunError={error=>{throw error;}}/>:null}</>;
+   <DockPanel area={options.area??"right"} state={state as ShellViewState} actions={actions as ShellActions}/>
+   {commands?<CommandPalette state={state as ShellViewState} actions={actions as ShellActions} isOpen query={options.query??"spectra"} onQueryChange={()=>{}} onClose={()=>setCommands(false)} onRunError={error=>{throw error;}}/>:null}</>;
  }
  await act(async()=>root.render(<Workspace/>));
  return {host,current,other,workspace,source,saveRequests,showCommands,close:async()=>{await act(async()=>root.unmount());host.remove();}};
@@ -184,3 +184,5 @@ test('Spectra keeps legacy Files hidden while Add panel still places the same fi
   await view.close();useMoleculeStore.setState({tabs:[],activeTabId:null,activeDocumentId:null});
  }
 });
+
+export { fixture, browser };

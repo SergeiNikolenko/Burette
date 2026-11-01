@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.cjson-compute-owner.json",
+  "compilerOptions": {
+    "strict": true,
+    "allowJs": true
+  },
+  "include": [
+    "test-plots-owner.test.tsx",
+    "fixtures/plots-compiler.ts",
+    "../apps/desktop/src/**/*.d.ts"
+  ]
+}

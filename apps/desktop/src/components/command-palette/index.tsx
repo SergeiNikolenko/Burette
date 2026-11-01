@@ -1,3 +1,4 @@
+import { openPlots, usePlotsAvailable, PLOTS_COMMAND } from "../../lib/workbench/plots-tool";
 import { openScientificSpectra, useScientificSpectraAvailable, SCIENTIFIC_SPECTRA_COMMAND } from "../../lib/workbench/scientific-spectra-tool";
 import { openOrbitals, useOrbitalsAvailable, ORBITALS_COMMAND } from "../../lib/workbench/orbitals-tool";
 import { focusToolDock, type WorkbenchToolDockKind } from "../../lib/workbench/focus-tool-dock";
@@ -60,6 +61,7 @@ export function CommandPalette({
   const listRef = useRef<HTMLDivElement | null>(null);
   const workbenchFocus = useRef<{ kind: WorkbenchToolDockKind; documentId: string; workspaceId: string } | null>(null);
   const hasOrbitals = useOrbitalsAvailable(state.activeDocument ?? null);
+  const hasPlots = usePlotsAvailable(state.activeDocument);
   const hasScientificSpectra = useScientificSpectraAvailable(state.activeDocument ?? null);
   const hasVibrations = useVibrationsAvailable(state.activeDocument ?? null);
 
@@ -91,6 +93,7 @@ export function CommandPalette({
       ...projectItems,
       ...(hasOrbitals && state.activeDocument ? [{ id: "workbench-tool-orbitals", group: "Suggested", ...ORBITALS_COMMAND, run: () => openOrbitals(actions, state.activeDocument!.id) }] : []),
       ...(hasVibrations && state.activeDocument ? [{ id: "workbench-tool-vibrations", group: "Suggested", ...VIBRATIONS_COMMAND, run: () => openVibrations(actions, state.activeDocument!.id) }] : []),
+      ...(hasPlots && state.activeDocument ? [{ id: "workbench-tool-plots", group: "Suggested", ...PLOTS_COMMAND, run: () => openPlots(actions, state.activeDocument!.id) }] : []),
       ...(hasScientificSpectra && state.activeDocument ? [{ id: "workbench-tool-scientific-spectra", group: "Suggested", ...SCIENTIFIC_SPECTRA_COMMAND, run: () => openScientificSpectra(actions, state.activeDocument!.id) }] : []),
       ...buildShellCommands(state, actions, query).map((command) => ({
         ...command,
@@ -100,7 +103,7 @@ export function CommandPalette({
       })),
     ];
     return commands;
-  }, [actions, query, state, hasVibrations, hasOrbitals, hasScientificSpectra]);
+  }, [actions, query, state, hasVibrations, hasOrbitals, hasScientificSpectra, hasPlots]);
 
   const visibleItems = useMemo(() => {
     const queryUrl = query.trim();
@@ -142,7 +145,7 @@ export function CommandPalette({
   }, [firstValue, isOpen, query]);
 
   const runItem = (item: PaletteItem) => {
-    const kind = item.id === "workbench-tool-vibrations" ? "vibrations" : item.id === "workbench-tool-orbitals" ? "orbitals" : item.id === "workbench-tool-scientific-spectra" ? "scientific-spectra" : null;
+    const kind = item.id === "workbench-tool-vibrations" ? "vibrations" : item.id === "workbench-tool-orbitals" ? "orbitals" : item.id === "workbench-tool-scientific-spectra" ? "scientific-spectra" : item.id === "workbench-tool-plots" ? "plots" : null;
     workbenchFocus.current = kind && state.activeDocument && state.activeTab ? { kind, documentId: state.activeDocument.id, workspaceId: state.activeTab.id } : null;
     onClose();
     void Promise.resolve(item.run()).catch((error) => {
