@@ -15,6 +15,18 @@ import { parseXyz, serializeXyz } from "./xyz";
 
 export type CrystalFormat = "cif" | "xyz" | "vasp";
 export type CrystalSource = { format: CrystalFormat; text: string };
+
+// Small-molecule CIF lists fractional sites (DDL1 `_atom_site_fract_x` or DDLm
+// `_atom_site.fract_x`); macromolecular mmCIF never does and keeps its own route.
+const FRACTIONAL_SITES = /^\s*_atom_site[._]fract_[xyz]\b/imu;
+const XYZ_LATTICE = /\bLattice\s*=\s*"/iu;
+
+/** The crystal format of a periodic source, or null for a molecule or a macromolecular mmCIF. */
+export function periodicCrystalFormat(extension: string, text: string): CrystalFormat | null {
+  if (extension === "vasp") return "vasp";
+  if (extension === "xyz") return XYZ_LATTICE.test(text.replace(/^\uFEFF/u, "").split(/\r?\n/u, 2)[1] ?? "") ? "xyz" : null;
+  return (extension === "cif" || extension === "mcif" || extension === "mmcif") && FRACTIONAL_SITES.test(text) ? "cif" : null;
+}
 /** A full cell plus what its file carried that the next write should keep. */
 export type CrystalDocument = CrystalSites & {
   title: string;
