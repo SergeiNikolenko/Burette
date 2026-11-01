@@ -607,7 +607,7 @@ export function useAppFileOpen({
     if (paths.length > 0) await openPathBatch(paths, options);
   }, [openPathBatch]);
 
-  const openStructureRecordDocuments = useCallback(async (records: StructureDragRecord[]) => {
+  const openStructureRecordDocuments = useCallback(async (records: StructureDragRecord[], options: { newDocument?: boolean } = {}) => {
     const cleanRecords = records.filter((record) => record.text.trim().length > 0);
     if (cleanRecords.length === 0) return { opened: [], errors: [] };
     const opened: ViewerDocument[] = [];
@@ -624,7 +624,7 @@ export function useAppFileOpen({
               preferences,
               reloadOptions: undefined,
             })
-          : await openBrowserDevTextDocument(record.path, record.inputExtension, record.text, preferences);
+          : await openBrowserDevTextDocument(record.path, record.inputExtension, record.text, preferences, undefined, undefined, options);
         opened.push(document);
       } catch (error) {
         errors.push(error instanceof Error ? error.message : String(error));
@@ -633,7 +633,7 @@ export function useAppFileOpen({
     return { opened, errors };
   }, [preferences]);
 
-  const openStructureRecords = useCallback(async (records: StructureDragRecord[], directory?: string, options: { shouldApply?: () => boolean } = {}) => {
+  const openStructureRecords = useCallback(async (records: StructureDragRecord[], directory?: string, options: { shouldApply?: () => boolean; newDocument?: boolean } = {}) => {
     const mayApply = () => options.shouldApply?.() !== false;
     if (!mayApply()) return [];
     if (directory) {
@@ -647,7 +647,7 @@ export function useAppFileOpen({
       return [];
     }
     pushStatus("Opening pasted structures...");
-    const { opened, errors } = await openStructureRecordDocuments(records);
+    const { opened, errors } = await openStructureRecordDocuments(records, options);
     if (!mayApply()) {
       await releaseUnadoptedStructures(opened);
       return [];

@@ -147,7 +147,7 @@ export type ShellActions = {
   openTextPaths: (paths: string[]) => void | Promise<void>;
   openPaths: (paths: string[], options?: FileOpenOptions) => void | Promise<void>;
   /** Prepared records are published only while shouldApply remains true; discarded results are released. */
-  openStructureRecords: (records: StructureDragPayload["records"], directory?: string, options?: { shouldApply?: () => boolean }) => Promise<ViewerDocument[]>;
+  openStructureRecords: (records: StructureDragPayload["records"], directory?: string, options?: { shouldApply?: () => boolean; newDocument?: boolean }) => Promise<ViewerDocument[]>;
   openStructureUrlInMolstar: (url: string) => void | Promise<void>;
   openRecentStructure: (structure: RecentStructure) => void | Promise<void>;
   openMostRecentStructure: () => void | Promise<void>;

@@ -310,10 +310,13 @@ export async function openBrowserDevTextDocument(
   preferences: ViewerPreferences,
   reloadOptions?: ViewerReloadOptions,
   documentId?: string,
+  options: { newDocument?: boolean } = {},
 ): Promise<ViewerDocument> {
   const cleanExtension = extension.toLowerCase().replace(/^\./u, "");
   const cleanTitle = fileTitle(title).replace(/[\\/]/gu, "").trim() || `ketcher-sketch.${cleanExtension}`;
-  const path = `burette-ketcher://${stableId(`${cleanTitle}:${text}`)}/${cleanTitle}`;
+  // Match native text imports: a requested new document owns its own source path.
+  const sourceId = options.newDocument ? crypto.randomUUID() : stableId(`${cleanTitle}:${text}`);
+  const path = `burette-ketcher://${sourceId}/${cleanTitle}`;
   const bytes = new TextEncoder().encode(text);
   browserDevVirtualTextDocuments.set(path, text);
   const document = await openBrowserDevDocumentFromBytes(path, cleanExtension, bytes, bytes.length, preferences, reloadOptions, documentId);

@@ -474,3 +474,13 @@ loop and trajectory playback. Recent views retain zoom, filters and cameras;
 evicted views recreate their runtime when selected again.
 Browser-picked binary documents retain their original bytes (at most 32 files,
 subject to the existing per-file byte limit).
+
+### Independent Generated Documents
+
+`ShellActions.openStructureRecords` accepts `newDocument: true` for a user action
+that creates an independent structure. The browser text-document owner allocates
+a fresh virtual source path while retaining the exact filename and source bytes;
+native text imports already allocate a fresh cache directory. The default browser
+mode retains its content-addressed deduplication. `openGeneratedStructure` forwards
+this option alongside its existing `shouldApply` publication guard. Cancellation
+releases the unadopted source without affecting another identical document.

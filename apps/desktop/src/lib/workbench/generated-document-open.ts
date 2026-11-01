@@ -10,11 +10,12 @@ import { claimImportedSource, forgetImportedSource, newImportToken, registerImpo
 /**
  * Generated structures open as new documents; the source document stays untouched.
  * `shouldApply` lets a caller drop the document while it is still being prepared.
+ * `newDocument` keeps repeated identical generated outputs independent.
  */
-export function openGeneratedStructure(actions: Pick<ShellActions, "openStructureRecords">, name: string, extension: "xyz" | "sdf" | "mol" | "cif", text: string, shouldApply?: () => boolean) {
+export function openGeneratedStructure(actions: Pick<ShellActions, "openStructureRecords">, name: string, extension: "xyz" | "sdf" | "mol" | "cif", text: string, shouldApply?: () => boolean, options: { newDocument?: boolean } = {}) {
   const fileName = safeExportFileName(`${fileStem(name)}.${extension}`);
   const records = [{ path: fileName, inputExtension: extension, text }];
-  return shouldApply ? actions.openStructureRecords(records, undefined, { shouldApply }) : actions.openStructureRecords(records);
+  return shouldApply || options.newDocument ? actions.openStructureRecords(records, undefined, { ...options, shouldApply }) : actions.openStructureRecords(records);
 }
 
 const energyComment = (energy: number | undefined) => energy === undefined ? "" : `Energy=${energy} Hartree `;
