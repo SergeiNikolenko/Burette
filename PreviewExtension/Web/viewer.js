@@ -8172,7 +8172,7 @@ SOFTWARE.
             note: measurementName && measurementEditable
               ? ([typeof customText === 'string' ? customText.trim() : '', measurementSource]
                 .filter(Boolean).join(' · '))
-              : String(cell.obj.description || display.note || display.format || ''),
+              : sceneTreeCellNote(cell, display),
             sourceLabel: rawLabel === label ? '' : rawLabel,
             group: String(cell.obj.type?.name || '') === 'Primitive Data' ? 'annotations' : 'structures',
             typeClass: String(cell.obj.type?.typeClass || 'Object'),
@@ -8540,6 +8540,14 @@ SOFTWARE.
   let unitCellPreferenceKey = 'burette.unit-cell-visible.crystal';
   function isUnitCellCell(cell) {
     return cell?.transform?.transformer?.definition?.name === 'model-unitcell-3d';
+  }
+
+  // Mol* names a cell by its model's space group. A crystal shown from its expanded
+  // P1 cell (every CIF, POSCAR and XYZ lattice) would read "P 1" whatever its real
+  // group, so that cell carries no group; the Crystal panel reports the real one.
+  function sceneTreeCellNote(cell, display) {
+    if (isUnitCellCell(cell) && cell.obj?.data?.sourceData?.sourceData?.kind === 'xyz') return '';
+    return String(cell.obj.description || display.note || display.format || '');
   }
 
   function applyDefaultUnitCellVisibility(viewer, prepared) {
