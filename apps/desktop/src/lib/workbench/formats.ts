@@ -68,6 +68,11 @@ export function sdfRecord(molfile: string) {
   return `${molfile.replace(/\s*$/u, "")}\n$$$$\n`;
 }
 
+/** One conformer as an SDF record: `record` (with or without its terminator) plus its rank and energies. */
+export function conformerSdfRecord(record: string, rank: number, forceField: string, energy: number, relativeEnergy: number) {
+  return `${record.replace(/\$\$\$\$\n?$/u, "")}> <Burette conformer>\n${rank}\n\n> <${forceField} energy (kcal/mol)>\n${energy}\n\n> <${forceField} relative energy (kcal/mol)>\n${relativeEnergy}\n\n$$$$\n`;
+}
+
 /**
  * MMFF94 energy and per-atom forces (force = −dE/dr) as CSV, one row per atom and frame.
  * Units are in the header so the numbers stay interpretable outside Burette.

@@ -3,6 +3,7 @@ import type { GraphEdit, GraphEditResult } from "../../lib/molecular-workbench/g
 import type { Vec3 } from "../../lib/molecular-workbench/types";
 import { HARTREE_KCAL_MOL, fileStem } from "../../lib/workbench/formats";
 import { openScientificDocument } from "../../lib/workbench/generated-document-open";
+import { flatDepiction } from "../../lib/molecular-workbench/optimization";
 import { useViewerAtomSelection } from "../../lib/workbench/selection";
 import { useSourceEditing } from "../../lib/source-editing/context";
 import type { ShellActions } from "../types";
@@ -129,8 +130,8 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
       from: "panel", structure: result,
     }));
   };
-  // Adding or removing hydrogens renumbers atoms, so the selection does not carry over.
-  const hydrogens = async (kind: "add-hydrogens" | "remove-hydrogens") => {
+  // Adding or removing hydrogens (also when generating 3D coordinates) renumbers atoms, so the selection does not carry over.
+  const renumbering = async (kind: "add-hydrogens" | "remove-hydrogens" | "prepare-3d") => {
     setInputError(null);
     if (await draft.apply({ kind })) setSelection(NO_SELECTION);
   };
@@ -209,8 +210,10 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
             </DropdownMenuTrigger>
           </ShortcutTooltip>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onSelect={() => void hydrogens("add-hydrogens")}>Add hydrogens</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => void hydrogens("remove-hydrogens")}>Remove hydrogens</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void renumbering("add-hydrogens")}>Add hydrogens</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void renumbering("remove-hydrogens")}>Remove hydrogens</DropdownMenuItem>
+            {flatDepiction(structure)
+              ? <DropdownMenuItem onSelect={() => void renumbering("prepare-3d")}>Generate 3D coordinates</DropdownMenuItem> : null}
           </DropdownMenuContent>
         </DropdownMenu>
         {busy ? (
@@ -246,10 +249,10 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
   );
 }
 
-/** The minimizer steps as a trajectory; MMFF94 kcal/mol become hartree so Plots can chart them in any unit. */
+/** The minimizer steps as a trajectory; kcal/mol become hartree so Plots can chart them in any unit. */
 function openSteps(actions: ShellActions, document: ViewerDocument, outcome: GraphOutcome) {
   const frames = outcome.frames;
-  if (!frames || frames.length < 2) return;
+  if (outcome.frameSampling !== "steps" || !frames || frames.length < 2) return;
   void openScientificDocument(actions, `${fileStem(document.title)}-optimization`, {
     format: "xyz", atoms: frames[0].atoms, modes: [], orbitals: [],
     frames: frames.map((frame) => ({ atoms: frame.atoms, energyHartree: frame.energy / HARTREE_KCAL_MOL })),
@@ -257,12 +260,12 @@ function openSteps(actions: ShellActions, document: ViewerDocument, outcome: Gra
 }
 
 function OptimizationOutcome({ outcome, onOpenSteps }: { outcome: GraphOutcome; onOpenSteps: () => void }) {
-  const steps = outcome.iterations === undefined ? "" : `, ${outcome.iterations} step${outcome.iterations === 1 ? "" : "s"}`;
+  const steps = outcome.iterations == null ? "" : `, ${outcome.iterations} step${outcome.iterations === 1 ? "" : "s"}`;
   return (
     <p className="geometry-panel-result structure-edit-outcome" role="status">
       <span>{outcome.forceField ?? "MMFF94"}, {outcome.method} {outcome.initialEnergy.toFixed(2)} → {outcome.energy.toFixed(2)} kcal/mol{steps}</span>
       <span className="workbench-value" data-status={outcome.converged ? "success" : "failure"}>{outcome.converged ? "Converged" : "Not converged"}</span>
-      {outcome.frames && outcome.frames.length > 1 ? <Button type="button" variant="ghost" size="xs" onClick={onOpenSteps}>Open steps</Button> : null}
+      {outcome.frameSampling === "steps" && outcome.frames && outcome.frames.length > 1 ? <Button type="button" variant="ghost" size="xs" onClick={onOpenSteps}>Open steps</Button> : null}
     </p>
   );
 }
