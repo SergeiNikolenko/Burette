@@ -23,10 +23,11 @@ type Actions = Pick<ShellActions, "saveKetcherExportFile">;
 type AtomSelection = { onSelectAtom?: (data: ScientificSpectra, atomIndex: number) => void };
 
 /** Sources remain explicit: a file-wide dataset is never silently substituted for a frame. */
-export function ScientificSpectraPanel({ sources, actions, onSelectAtom, display }: { sources: Source[]; actions: Actions; display?: SpectraDisplayState } & AtomSelection) {
+export function ScientificSpectraPanel({ sources, actions, onSelectAtom, display, sourceSelection }: { sources: Source[]; actions: Actions; display?: SpectraDisplayState; sourceSelection?: { key: string; onHandled: () => void } } & AtomSelection) {
   const [memory] = useState<SpectraDisplayState>(() => display ?? { sources: new Map() });
   const [chosen, setChosen] = useState(memory.source ?? sources[0]?.key);
   useLayoutEffect(() => { memory.source = chosen; }, [memory, chosen]);
+  useLayoutEffect(() => { if (sourceSelection) { setChosen(sourceSelection.key); sourceSelection.onHandled(); } }, [sourceSelection]);
   const source = sources.find(value => value.key === chosen) ?? sources[0];
   if (!source) return null;
   return <div className="dock-content workbench-panel">

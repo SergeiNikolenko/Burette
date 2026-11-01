@@ -38,6 +38,35 @@ The source prerequisite is tested with actual ordinary import/startup hooks,
 source controllers, IndexedDB, compressed-file decoding and native MolStar CPU
 MOLX serialization. Original and companion bytes survive export and reopen, and
 late file reads or staged reopen results cannot replace a newer document. This
-packet does not activate a companion picker UI or establish actual Browser,
-packaged macOS, Quick Look or iPhone acceptance. The sidecar fixtures are authored
+source validation does not establish actual Browser, packaged macOS,
+Quick Look or iPhone acceptance. The sidecar fixtures are authored
 format cases; no real producer MCD dataset is claimed.
+
+## Explicit MCD selection
+
+In the browser agent shell, Show spectra is available for a clean scientific XYZ
+import with a retained Original even when the file has no built-in spectrum. The
+Spectra owner offers Add MCD. The real file chooser accepts an explicitly selected
+`.mcd` or `.mcd.gz`; it never searches for adjacent files. Source ownership is
+captured synchronously before the chooser opens. One parsed block is admitted
+directly; multiple blocks require an explicit range/row-count choice and Add.
+Cancel releases the pending operation and does not create a dirty source session.
+
+After admission, a one-shot request selects the separate companion dataset for
+that exact scientific revision. Subsequent user choices belong to the existing
+bounded Spectra display memory; returning from Settings does not replay the
+attachment selection over them. Close/reopen restores the exact registered XYZ,
+science and paired Originals through the clean-attachment store.
+
+Malformed files, changed Originals, stale sources and storage failures are not
+reported as successful additions. Source/provider changes retire the pending UI.
+Native documents, logical MOLX sources, dirty sources, Chemical JSON/MOL and
+non-session browser surfaces are not eligible for this clean XYZ picker. Those
+routes remain separate MCD parity work; their existing spectra stay viewable.
+
+`test:mcd-companion-picker` checks real chooser ordering, explicit blocks, gzip,
+cancellation and failure preservation. `test:mcd-companion-activation` exercises
+ordinary import and Compute routing, source-owned plotting, native MolStar CPU
+MOLX serialization with exact Original bytes, close/reopen and display-choice
+remount. These authored sidecar tests do not replace actual Browser acceptance
+or a retained real-producer MCD dataset.
