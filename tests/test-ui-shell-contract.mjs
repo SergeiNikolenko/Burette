@@ -2919,9 +2919,9 @@ assert.match(structureInfoPanel, /Start here\. RMSD tracks how far the structure
 assert.match(structureInfoPanel, /Use DeepTICA only when PCA or tICA miss/);
 assert.match(structureInfoPanel, /getMdsmoothCapabilities/);
 assert.match(structureInfoPanel, /function trajectoryPlaybackControlsFor/);
-assert.match(structureInfoPanel, /globalFrameIndex: number/);
-assert.match(structureInfoPanel, /segmentStartFrame: number/);
-assert.match(structureInfoPanel, /sourcePath: string/);
+// Info reads the shared frame store, which keeps the global frame and segment start.
+assert.match(structureInfoPanel, /const trajectoryPlayback = useTrajectoryFrame\(document\?\.id \?\? null\)/);
+assert.match(await source('apps/desktop/src/lib/workbench/source.ts'), /globalFrameIndex: number; segmentStartFrame: number; sourcePath: string/);
 assert.match(structureInfoPanel, /function trajectoryPathsFor\(document: ViewerDocument, playback: TrajectoryPlaybackState \| null\)/);
 assert.match(structureInfoPanel, /const derivedTopology = document\.dockingRequest\?\.syntheticTopology === true/);
 assert.match(structureInfoPanel, /const compositionSummary = !derivedTopology && composition\.documentId === document\.id \? composition\.summary : null/);
