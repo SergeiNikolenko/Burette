@@ -6,8 +6,8 @@ import type { ShellActions } from "../apps/desktop/src/components/types";
 import type { ViewerDocument } from "../apps/desktop/src/types";
 import { fixtureText, reference } from "./crystal-reference";
 
-// The Crystal panel on the real browser source-editing controller: every edit is
-// one Undo step of the document's own draft, read back by the crystal reader.
+// The Crystal and Symmetry panels on the real browser source-editing controller:
+// every edit is one Undo step of the document's own draft, read back independently.
 const browser = new Window({ url: "http://localhost/" });
 const previous = new Map<string, PropertyDescriptor | undefined>();
 for (const [name, value] of Object.entries({ window: browser, self: browser, document: browser.document, Node: browser.Node, Element: browser.Element, HTMLElement: browser.HTMLElement,
@@ -27,6 +27,7 @@ const { defaultPreferences } = await import("../apps/desktop/src/stores/settings
 const { SourceEditingProvider } = await import("../apps/desktop/src/lib/source-editing/context");
 const { useSourceEditingController } = await import("../apps/desktop/src/hooks/use-source-editing");
 const { CrystalPanel } = await import("../apps/desktop/src/components/workbench/crystal-panel");
+const { SymmetryPanel } = await import("../apps/desktop/src/components/workbench/symmetry-panel");
 const { readCrystalDocument } = await import("../apps/desktop/src/lib/molecular-workbench/crystal-io");
 
 const wait = async (check: () => boolean, label: string) => {
@@ -38,8 +39,9 @@ const button = (label: string) => buttons().find(node => node.textContent === la
 const click = async (label: string) => { await act(async () => button(label).click()); };
 const text = () => browser.document.body.textContent ?? "";
 
-async function mount(name: string, fileName = name) {
-  const imported = await registerDroppedBrowserFiles([new File([fixtureText(name)], fileName)], 20_000_000);
+async function mount(name: string, options: { text?: string; panel?: typeof CrystalPanel; ready?: string } = {}) {
+  const Panel = options.panel ?? CrystalPanel;
+  const imported = await registerDroppedBrowserFiles([new File([options.text ?? fixtureText(name)], name.split("/").at(-1)!)], 20_000_000);
   expect(imported.errors).toEqual([]);
   const { documents: [source] } = await openBrowserDevDocuments(imported.paths, defaultPreferences);
   useMoleculeStore.setState({ documents: [source], tabs: [], activeTabId: null });
@@ -53,11 +55,11 @@ async function mount(name: string, fileName = name) {
       openDocumentTab: noop, openFepNetworkTab: noop, openTextDocumentsInActiveTab: noop, pushErrorStatus: noop, pushStatus: noop,
       rememberRecentStructures: noop, replaceDocument: noop, setActiveDocument: noop, setDockActiveTab: noop, setDockDocument: noop, setDockOpen: noop, setDocuments: noop });
     editing = useSourceEditingController({ activeDocument: source, preferences: defaultPreferences, pushErrorStatus: error => errors.push(error), setDockOpen: noop, setDockActiveTab: noop });
-    return <SourceEditingProvider value={editing}><CrystalPanel document={source} actions={{ openStructureRecords: files.openStructureRecords } as ShellActions} /></SourceEditingProvider>;
+    return <SourceEditingProvider value={editing}><Panel document={source} actions={{ openStructureRecords: files.openStructureRecords, runStructureViewerAction: async () => ({ ok: true }) } as unknown as ShellActions} /></SourceEditingProvider>;
   }
   const host = browser.document.createElement("div"); browser.document.body.append(host); const root = createRoot(host as unknown as Element);
   await act(async () => root.render(<App />));
-  await wait(() => Boolean(button("Build supercell")), "crystal read");
+  await wait(() => Boolean(button(options.ready ?? "Build supercell")), "panel read");
   return {
     source, errors, opened, get editing() { return editing; },
     draft: () => editing.sessionForDocument(source)?.content ?? null,
@@ -117,6 +119,64 @@ test("CONTCAR: standard orientation stays a POSCAR draft with its selective dyna
     expect(after.atoms.map(atom => atom.element)).toEqual(before.atoms.map(atom => atom.element));
     after.cell.flat().forEach((value, index) => expect(value).toBeCloseTo(reference.fixtures.CONTCAR.standardOrientation.flat()[index], 6));
     expect(button("Undo standard orientation").disabled).toBe(false);
+  } finally { await panel.close(); }
+});
+
+/** Every atom of a pymatgen reference molecule moved by up to 0.02 Å. */
+function distorted(file: string) {
+  const lines = fixtureText(file).trimEnd().split("\n");
+  return lines.map((line, index) => {
+    if (index < 2) return line;
+    const [element, ...xyz] = line.trim().split(/\s+/u);
+    return [element, ...xyz.map((value, axis) => (Number(value) + 0.02 * Math.sin(index * 3 + axis)).toFixed(6))].join(" ");
+  }).join("\n") + "\n";
+}
+
+test("distorted XYZ ammonia: C3v at the loose tolerance, Symmetrize as one Undo step that pymatgen's group survives at the tight one", async () => {
+  const { analyzePointGroup } = await import("../apps/desktop/src/lib/molecular-workbench/symmetry/point-group");
+  const { instantiateStandaloneWasm } = await import("../apps/desktop/src/lib/molecular-workbench/symmetry/wasm-module");
+  const { parseXyz } = await import("../apps/desktop/src/lib/molecular-workbench/xyz");
+  const msym = await instantiateStandaloneWasm(new URL("../apps/desktop/src/lib/molecular-workbench/symmetry/burette-msym.wasm", import.meta.url));
+  const source = distorted(reference.molecules.ammonia.file);
+  expect(analyzePointGroup(msym, { atoms: parseXyz(source).atoms, tolerance: "tight" }, "detect").pointGroup).not.toBe("C3v");
+  const panel = await mount("ammonia.xyz", { text: source, panel: SymmetryPanel, ready: "Undo" });
+  try {
+    await act(async () => buttons().find(node => node.textContent === "Loose")!.click());
+    await wait(() => Boolean(button("Symmetrize")) && text().includes("Point group"), "point group found");
+    expect(browser.document.querySelector('[aria-label="C3v"]')).not.toBeNull();
+    await click("Symmetrize");
+    await wait(() => panel.draft() !== null && panel.draft() !== source, "symmetrized draft");
+    const symmetrized = parseXyz(panel.draft()!);
+    expect(symmetrized.atoms.map(atom => atom.element)).toEqual(parseXyz(source).atoms.map(atom => atom.element));
+    expect(analyzePointGroup(msym, { atoms: symmetrized.atoms, tolerance: "tight" }, "detect").pointGroup).toBe(reference.molecules.ammonia.schoenflies);
+    expect(panel.draft()!.split("\n")[1]).toBe(source.split("\n")[1]);
+    await wait(() => !button("Undo").disabled, "undo enabled");
+    await click("Undo");
+    await wait(() => panel.draft() === source, "undo restores the distorted source");
+  } finally { await panel.close(); }
+});
+
+test("distorted MOL water: Symmetrize is one step of the shared graph draft and reaches C2v exactly", async () => {
+  const { analyzePointGroup } = await import("../apps/desktop/src/lib/molecular-workbench/symmetry/point-group");
+  const { instantiateStandaloneWasm } = await import("../apps/desktop/src/lib/molecular-workbench/symmetry/wasm-module");
+  const { parseXyz } = await import("../apps/desktop/src/lib/molecular-workbench/xyz");
+  const msym = await instantiateStandaloneWasm(new URL("../apps/desktop/src/lib/molecular-workbench/symmetry/burette-msym.wasm", import.meta.url));
+  const atoms = parseXyz(distorted(reference.molecules.water.file)).atoms;
+  const row = (atom: (typeof atoms)[number]) => `${atom.x.toFixed(4).padStart(10)}${atom.y.toFixed(4).padStart(10)}${atom.z.toFixed(4).padStart(10)} ${atom.element.padEnd(3)} 0  0  0  0  0  0  0  0  0  0  0  0`;
+  const mol = ["water", "  Burette", "", "  3  2  0  0  0  0  0  0  0  0999 V2000", ...atoms.map(row), "  1  2  1  0", "  1  3  1  0", "M  END", ""].join("\n");
+  const panel = await mount("water.mol", { text: mol, panel: SymmetryPanel, ready: "Undo" });
+  try {
+    await act(async () => buttons().find(node => node.textContent === "Loose")!.click());
+    await wait(() => Boolean(button("Symmetrize")) && Boolean(browser.document.querySelector('[aria-label="C2v"]')), "point group found");
+    await click("Symmetrize");
+    await wait(() => panel.draft() !== null && panel.draft() !== mol && Boolean(button("Symmetrize")), "symmetrized draft");
+    // The graph draft is the V3000 connection table the Edit panel writes.
+    const moved = [...panel.draft()!.matchAll(/^M {2}V30 \d+ ([A-Z][a-z]?) (\S+) (\S+) (\S+)/gmu)].map(([, element, x, y, z]) => ({ element, x: Number(x), y: Number(y), z: Number(z) }));
+    expect(moved.map(atom => atom.element)).toEqual(["O", "H", "H"]);
+    expect(analyzePointGroup(msym, { atoms: moved, tolerance: "tight" }, "detect").pointGroup).toBe(reference.molecules.water.schoenflies);
+    await wait(() => !button("Undo").disabled, "undo enabled");
+    await click("Undo");
+    await wait(() => panel.draft() === mol, "undo restores the source");
   } finally { await panel.close(); }
 });
 

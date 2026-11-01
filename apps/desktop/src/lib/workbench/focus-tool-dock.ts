@@ -1,4 +1,4 @@
-export type WorkbenchToolDockKind = "vibrations" | "orbitals" | "scientific-spectra" | "plots" | "crystal";
+export type WorkbenchToolDockKind = "vibrations" | "orbitals" | "scientific-spectra" | "plots" | "crystal" | "symmetry";
 
 /** Return focus after the command dialog closes, only if its requested workspace and document still own the pane. */
 export function focusToolDock(kind: WorkbenchToolDockKind, documentId: string, workspaceId: string) {

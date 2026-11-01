@@ -294,9 +294,9 @@ export function useSourceEditingController({
     const xyzGeometry = revealTab === "geometry" && (restored?.extension ?? document.extension.replace(/^\./u, "").toLowerCase()) === "xyz";
     const browserXyzSource = !restored && document.extension.replace(/^\./u, "").toLowerCase() === "xyz"
       && (revealTab === "text" || (xyzGeometry && Boolean(suppliedBinding))) && isBrowserDraftSource(document);
-    // A generated crystal (a standardized cell, an asymmetric unit) takes Crystal edits in its own draft.
-    const browserCrystalSource = !restored && revealTab === "crystal" && ["cif", "xyz", "vasp"].includes(document.extension.replace(/^\./u, "").toLowerCase())
-      && isBrowserDraftSource(document);
+    // A generated crystal or XYZ molecule takes Crystal and Symmetry edits in its own draft.
+    const browserCrystalSource = !restored && (revealTab === "crystal" || revealTab === "symmetry")
+      && ["cif", "xyz", "vasp"].includes(document.extension.replace(/^\./u, "").toLowerCase()) && isBrowserDraftSource(document);
     const browserDraftSource = browserXyzSource || browserCrystalSource;
     // The editor's model key may end after its accepted edit; the session keeps
     // the same physical renderer and source generation, without minting a new lease.

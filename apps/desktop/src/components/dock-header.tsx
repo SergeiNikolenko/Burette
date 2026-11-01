@@ -7,7 +7,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/t
 
 const icons: Record<DockTabKind, AppIconType> = {
   scene: Stack, xyzrender: Atom, files: Folder, spectrum: Chart, text: FileDocument,
-  plots: BarChart, orbitals: Cube, "scientific-spectra": Chart, vibrations: MoveHorizontal, geometry: SettingsSlider, crystal: Grid, "structure-edit": Edit,
+  plots: BarChart, orbitals: Cube, "scientific-spectra": Chart, vibrations: MoveHorizontal, geometry: SettingsSlider, crystal: Grid, symmetry: Atom, "structure-edit": Edit,
   story: FileDocument, inspector: InfoCircle, folding: Atom, "structure-basket": Stack,
   compare: Compare, jobs: Stopwatch, logs: FileCode, diagnostics: SettingsWrench,
   review: Eye, "chemical-space": Orbit,
