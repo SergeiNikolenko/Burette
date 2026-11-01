@@ -4,18 +4,18 @@ import type { PeptideGeometry } from "./peptide-geometry";
 export function peptideMmcif(model: PeptideGeometry): string {
   const chain = model.atoms[0].chain;
   const residues = [...new Map(model.atoms.map(atom => [atom.residueNumber, atom.residue])).entries()];
-  const components = [...new Set(residues.map(([, name]) => name))];
-  // A mixed D/L chain is not declared to be an all-L polypeptide. The generic
-  // peptide component type and each atom's 3D coordinates retain its chemistry.
-  const polymerType = model.chirality.every(value => value === "L") ? "polypeptide(L)" : model.chirality.every(value => value === "D") ? "polypeptide(D)" : "other";
+  // Component types follow the CCD: GLY is achiral, D residues carry D identifiers.
+  const components = new Map(residues.map(([number, name]) => [name, name === "GLY" ? "peptide linking" : `${model.chirality[number - 1]}-peptide linking`]));
+  const kinds = new Set([...components.values()].filter(type => type !== "peptide linking"));
+  const polymerType = kinds.size > 1 ? "other" : kinds.has("D-peptide linking") ? "polypeptide(D)" : "polypeptide(L)";
   const lines = [
     "data_peptide", "_entry.id peptide", "_exptl.entry_id peptide", '_exptl.method "THEORETICAL MODEL"',
     "_entity.id 1", "_entity.type polymer", "_entity_poly.entity_id 1", `_entity_poly.type '${polymerType}'`,
-    `_entity_poly.pdbx_strand_id ${chain}`, "_entity_poly.nstd_linkage no", "_entity_poly.nstd_monomer yes",
+    `_entity_poly.pdbx_strand_id ${chain}`, "_entity_poly.nstd_linkage no", `_entity_poly.nstd_monomer ${kinds.has("D-peptide linking") ? "yes" : "no"}`,
     "loop_", "_entity_poly_seq.entity_id", "_entity_poly_seq.num", "_entity_poly_seq.mon_id", "_entity_poly_seq.hetero",
     ...residues.map(([number, name]) => `1 ${number} ${name} n`), "#",
     `_struct_asym.id ${chain}`, "_struct_asym.entity_id 1", "loop_", "_chem_comp.id", "_chem_comp.type",
-    ...components.map(name => `${name} 'peptide linking'`), "#",
+    ...[...components].map(([name, type]) => `${name} '${type}'`), "#",
     "loop_", "_chem_comp_bond.comp_id", "_chem_comp_bond.atom_id_1", "_chem_comp_bond.atom_id_2", "_chem_comp_bond.value_order", "_chem_comp_bond.pdbx_aromatic_flag",
   ];
   const bonds = new Map<string, string>();
