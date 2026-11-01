@@ -75,3 +75,16 @@ Editable ordinary marked XYZ admission is a separate owner boundary: parsed
 definitions need a document-scoped scientific revision before a Z-matrix
 gesture can publish. Copy/export consumers and that admission are separate
 from this source-writer foundation; it does not establish their Browser flow.
+
+The ordinary scientific-file boundary recognizes reserved-marker XYZ, including
+invalid reserved versions that strict admission must reject before opening a
+viewer. Unmarked XYZ keeps its ordinary route, including extended and multiple
+frames. A verified marked XYZ passes its already-read source to materialization;
+only its comment gains the new import token. Plain XYZ decoding preserves BOM
+and rejects malformed UTF-8. Compressed inputs retain the existing decoder's
+text policy and their exact outer Original bytes.
+
+Run `vp run test:scientific-open-entrypoints` and
+`vp run check:coordinate-xyz-admission`. Source edits after import still need
+the separate explicit-gesture revision admission; the ordinary opener alone
+does not close that owner boundary.

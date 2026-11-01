@@ -5,10 +5,11 @@ import { decodeCompressedFile } from "../compressed-files/task";
  * the same parse and open path as "Open quantum output…". Formats only that
  * import reads are recognised by name; ORCA/Gaussian logs and QCSchema JSON by their own
  * start, so other logs and text files keep opening as before. XYZ stays an
- * ordinary structure: its frames and metadata already attach to the opened file.
+ * ordinary structure unless it explicitly carries the reserved coordinate marker.
  */
 const BY_NAME = /\.(?:fchk|fch|molden|molf|hess|cube|cub|zmat|zmatrix|qcschema|cjson)$|(?:^|[._-])molden\.input$/iu;
 const OUTPUT = /\.(?:out|log|json)$/iu;
+const XYZ = /\.xyz$/iu;
 // ORCA's banner, or the coordinate block the ORCA parser reads.
 const ORCA = /O {3}R {3}C {3}A|CARTESIAN COORDINATES \(ANGSTROEM\)/u;
 const GAUSSIAN = /Entering Gaussian System|Gaussian, Inc\.|Gaussian \d+:|^\s*(?:Standard|Input|Z-Matrix) orientation:/mu;
@@ -36,7 +37,7 @@ export const SCIENTIFIC_FILE_LIMIT = 16 * 1024 * 1024;
 /** A name that can contain a scientific input; output/log/json still require content recognition. */
 export function mayBeScientificFile(fileName: string) {
   const name = compressedName(fileName)?.innerName ?? fileName;
-  return BY_NAME.test(name) || OUTPUT.test(name);
+  return BY_NAME.test(name) || OUTPUT.test(name) || XYZ.test(name);
 }
 
 // A compressed output is recognised by the file inside it: water.fchk.gz, run.out.xz.
@@ -44,8 +45,15 @@ export async function isScientificFile(file: Pick<File, "name" | "slice">) {
   const compressed = compressedName(file.name);
   const name = compressed?.innerName ?? file.name;
   if (BY_NAME.test(name)) return true;
-  if (!OUTPUT.test(name)) return false;
+  if (!OUTPUT.test(name) && !XYZ.test(name)) return false;
   try {
+    if (XYZ.test(name)) {
+      const text = compressed
+        ? (await decodeCompressedFile(file.name, file.slice(0, SCIENTIFIC_FILE_LIMIT), { prefixBytes: SCIENTIFIC_FILE_LIMIT })).text
+        : await file.slice(0, SCIENTIFIC_FILE_LIMIT).text();
+      // All reserved versions enter strict admission; malformed metadata must not fall back.
+      return text.includes("BURETTE_INTERNAL_COORDINATES_V");
+    }
     // Only the start is decoded; a compressed file larger than the import limit cannot be imported anyway.
     if (compressed) return recognized(name, (await decodeCompressedFile(file.name, file.slice(0, SCIENTIFIC_FILE_LIMIT), { prefixBytes: SNIFF_BYTES })).text);
     return recognized(name, await file.slice(0, SNIFF_BYTES).text());

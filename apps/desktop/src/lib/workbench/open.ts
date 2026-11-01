@@ -23,7 +23,9 @@ async function openScientificFile(actions: Pick<ShellActions, "openStructureReco
   const compressed = compressedName(file.name);
   const { name, text } = compressed
     ? { name: compressed.innerName, text: (await decodeCompressedFile(file.name, file, { maxBytes: SCIENTIFIC_FILE_LIMIT })).text }
-    : { name: file.name, text: await file.text() };
+    : { name: file.name, text: /\.xyz$/iu.test(file.name)
+      ? new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(await file.arrayBuffer())
+      : await file.text() };
   const parsed = await runReaderTask({ action: "parse", name, text });
   // Live mode animation and orbital surfaces edit one frame; a pure trajectory keeps its steps.
   // When several geometries carry their own modes (an ORCA scan or optimization with
@@ -31,7 +33,8 @@ async function openScientificFile(actions: Pick<ShellActions, "openStructureReco
   const framesWithModes = parsed.frames.filter((frame) => frame.modes?.length).length;
   const steps = parsed.frames.length > 1 && !parsed.basis?.length && !parsed.grid && (!parsed.modes.length || framesWithModes > 1);
   // The parser reads decoded text; the download keeps the uploaded bytes, BOM and compression included.
-  await openScientificDocument(actions, name, parsed, steps ? "steps" : "final", { name: file.name, file });
+  await openScientificDocument(actions, name, parsed, steps ? "steps" : "final", { name: file.name, file },
+    parsed.format === "xyz" && parsed.internalCoordinates ? text : undefined);
 }
 
 type ScientificOpenActions = Pick<ShellActions, "openStructureRecords"> & Partial<Pick<ShellActions, "openPaths">>;

@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.cjson-import.json",
+  "compilerOptions": {
+    "strict": true
+  },
+  "include": [
+    "test-scientific-open-entrypoints.test.tsx",
+    "../apps/desktop/src/**/*.d.ts"
+  ]
+}

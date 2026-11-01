@@ -1,3 +1,4 @@
+import { readCoordinateInterchange, writeCoordinateInterchangeXyzSource } from "../scripts/coordinate-interchange.mjs";
 import { afterAll, expect, spyOn, test } from "bun:test";
 import { Window } from "happy-dom";
 import React, { act } from "react";
@@ -86,4 +87,54 @@ test("a real browser drop retains the ordinary XYZ route while importing scienti
     expect(await sourceState(scientific).original!.file.text()).toBe(molden);
     expect(view.created().some(document => document.title === "ordinary.xyz")).toBe(true);
   } finally { await view.close(); }
+});
+
+
+const markedPair = readCoordinateInterchange("H\nF 1 R\nR=1.25\nUNUSED=-17\n", "zmat");
+markedPair.atoms = markedPair.atoms.map(atom => ({ ...atom, x: atom.x + 42, y: atom.y - 12, z: atom.z + 7 }));
+const styledXyz = "\ufeff 2 \r\n  human α  \r\nH\t+4.2e1 -12.000 7\r\nF 42 -12 +8.25000";
+const markedXyz = writeCoordinateInterchangeXyzSource(styledXyz, markedPair);
+const withoutComment = (text: string) => text.replace(/^([^\r\n]*(?:\r\n|\r|\n))[^\r\n]*/u, "$1");
+async function chooseFiles(files: File[], run: (view: Awaited<ReturnType<typeof fixture>>) => Promise<void>) {
+  const click = spyOn(browser.HTMLInputElement.prototype, "click").mockImplementation(function (this: InstanceType<typeof browser.HTMLInputElement>) {
+    Object.defineProperty(this, "files", { value: files }); this.dispatchEvent(new browser.Event("change"));
+  });
+  const view = await fixture();
+  try { await act(async () => { await view.chooser.chooseFiles(); }); await run(view); }
+  finally { click.mockRestore(); await view.close(); }
+}
+
+test("ordinary chooser admits marked XYZ with exact styled rows, full definition and uploaded Original", async () => {
+  const file = new File([markedXyz], "marked.xyz");
+  await chooseFiles([file], async view => {
+    expect(view.created()).toHaveLength(1);
+    const document = view.created()[0], text = readBrowserDevVirtualTextDocument(document.path)!;
+    const state = sourceState(document), decoded = readCoordinateInterchange(text, "xyz");
+    expect(withoutComment(text)).toBe(withoutComment(markedXyz));
+    expect(decoded.atoms).toEqual(markedPair.atoms); expect(decoded.internalCoordinates).toEqual(markedPair.internalCoordinates);
+    expect(decoded.comment).toStartWith("  human α   import-");
+    expect(state.revision!.text).toBe(text); expect(state.revision!.document.internalCoordinates).toEqual(markedPair.internalCoordinates);
+    expect(new Uint8Array(await state.original!.file.arrayBuffer())).toEqual(new Uint8Array(await file.arrayBuffer()));
+  });
+});
+
+test("reserved invalid XYZ metadata is refused before any ordinary structure is adopted", async () => {
+  for (const text of [markedXyz.replace("V1=", "V2="), markedXyz.replace("V1=", "V1=="), markedXyz + markedXyz,
+    markedXyz.replace("F 42 -12 +8.25000", "F 42 -12 8.3"), markedXyz + " ".repeat(1024 * 1024)]) {
+    await chooseFiles([new File([text], "invalid.xyz")], async view => { expect(view.created()).toHaveLength(0); });
+  }
+  await chooseFiles([new File([markedXyz, new Uint8Array([255])], "invalid-utf8.xyz")], async view => { expect(view.created()).toHaveLength(0); });
+});
+
+test("unmarked wide, extended and multi-frame XYZ keep their ordinary chooser owner", async () => {
+  const inputs = ["1\n" + "x".repeat(1024 * 1024 + 1) + "\nHe 0 0 0\n",
+    '1\nProperties=species:S:1:pos:R:3:forces:R:3 force_unit=eV/angstrom\nH 1 2 3 .1 .2 .3\n',
+    "1\nfirst\nH 0 0 0\n1\nsecond\nH 1 2 3\n"];
+  await chooseFiles(inputs.map((text, i) => new File([text], `ordinary-${i}.xyz`)), async view => {
+    expect(view.created()).toHaveLength(3);
+    for (const [i, document] of view.created().entries()) {
+      expect(readBrowserDevVirtualTextDocument(document.path)).toBe(inputs[i]);
+      expect(sourceState(document).revision).toBeNull();
+    }
+  });
 });

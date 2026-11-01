@@ -23,7 +23,8 @@ export function openGeneratedStructure(actions: Pick<ShellActions, "openStructur
 const energyComment = (energy: number | undefined) => energy === undefined ? "" : `Energy=${energy} Hartree `;
 
 /** Reference geometry as one XYZ frame, the geometry normal modes and orbitals refer to. */
-function finalGeometryText(document: ScientificDocument, token: string) {
+function finalGeometryText(document: ScientificDocument, token: string, coordinateSource?: string) {
+  if (coordinateSource !== undefined && document.internalCoordinates) return writeCoordinateInterchangeXyzSource(coordinateSource, { atoms: document.atoms, internalCoordinates: document.internalCoordinates }, token);
   const frame = document.referenceFrameIndex === undefined ? undefined : document.frames[document.referenceFrameIndex];
   if (!document.internalCoordinates) return serializeXyz(document.atoms, `${energyComment(frame?.energyHartree)}${token}`);
   let comment = frame?.comment ?? "";
@@ -44,13 +45,13 @@ function stepsText(document: ScientificDocument, token: string) {
  * Opens parsed scientific data as XYZ or an explicit CJSON-derived MOL graph,
  * and the uploaded file it came from when there is one.
  */
-export async function openScientificDocument(actions: Pick<ShellActions, "openStructureRecords">, name: string, document: ScientificDocument, layout: "final" | "steps", original: ImportedOriginal | null = null) {
+export async function openScientificDocument(actions: Pick<ShellActions, "openStructureRecords">, name: string, document: ScientificDocument, layout: "final" | "steps", original: ImportedOriginal | null = null, coordinateSource?: string) {
   const token = newImportToken();
   const graph = document.format === "cjson" ? document.graph : undefined;
   if (document.format === "cjson" && !graph) throw new Error("Chemical JSON requires its explicit molecular graph.");
   const lines = graph?.molfile.split("\n");
   if (lines) lines[2] = token;
-  const text = lines ? lines.join("\n") : layout === "steps" ? stepsText(document, token) : finalGeometryText(document, token);
+  const text = lines ? lines.join("\n") : layout === "steps" ? stepsText(document, token) : finalGeometryText(document, token, coordinateSource);
   // Steps are a trajectory of frames and energies; a frame's own modes travel with it.
   // The document's modes, orbitals and fields refer to its main reference geometry, so
   // they stay with the single-frame document. File-scoped spectra travel with either layout.

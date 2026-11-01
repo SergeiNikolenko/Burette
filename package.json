@@ -360,7 +360,8 @@
     "test:polymer-builder": "bun test tests/test-polymer-builder.test.tsx",
     "typecheck:polymer-builder": "tsc --noEmit -p tests/tsconfig.polymer-builder.json",
     "test:coordinate-source-writers": "bun test tests/test-coordinate-source-writers.test.ts",
-    "typecheck:coordinate-source-writers": "tsc --noEmit -p tests/tsconfig.coordinate-source-writers.json"
+    "typecheck:coordinate-source-writers": "tsc --noEmit -p tests/tsconfig.coordinate-source-writers.json",
+    "check:coordinate-xyz-admission": "tsc --noEmit -p tests/tsconfig.coordinate-xyz-admission.json"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",
