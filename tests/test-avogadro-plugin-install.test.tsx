@@ -54,6 +54,7 @@ function nativeShell() {
       installed.set(receipt.name, receipt); return receipt as T;
     }
     if (command === "avogadro_plugin_remove") { installed.delete(args!.name as string); return undefined as T; }
+    if (command === "avogadro_plugin_prepare") { const prepared = { ...receipt, prepared: true }; installed.set(receipt.name, prepared); return prepared as T; }
     return undefined as T;
   };
   return { call, calls, installed, failNextWith(message: string, gate?: Promise<void>) { next = async () => { await gate; throw message; }; } };
@@ -138,6 +139,14 @@ test("Settings shows the license before installing, then the installed commands,
     await act(async () => confirm("Install").click());
     await finished();
     expect(host.querySelector('li [role="status"]')?.textContent).toBe("Installed");
+
+    await act(async () => byLabel("Set up avogadro-rdkit")!.click());
+    expect(browser.document.querySelector('[role="alertdialog"]')?.textContent).toContain("runs the package's installer");
+    expect(native.calls.some(entry => entry.command === "avogadro_plugin_prepare")).toBe(false);
+    await act(async () => confirm("Set up").click());
+    await finished();
+    expect(host.querySelector('li [role="status"]')?.textContent).toBe("Ready");
+    expect(byLabel("Set up avogadro-rdkit")).toBeNull();
 
     await act(async () => byLabel("avogadro-rdkit details")!.click());
     expect(host.textContent).toContain("RDKit › Standardize");

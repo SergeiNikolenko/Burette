@@ -129,7 +129,8 @@ export function ExtensionsSection({ extensions, catalog: providedCatalog, plugin
         const job = pluginState.jobs.find(entry => entry.plugin === plugin.name);
         return pluginRowParts({ plugin, installed: pluginState.installed.find(entry => entry.name === plugin.name),
           job: job && !dismissedPluginJobs.has(job.id) ? job : undefined,
-          install: target => { void plugins.install(target); }, remove: name => { void plugins.remove(name); }, cancel: plugins.cancel,
+          install: target => { void plugins.install(target); }, prepare: name => { void plugins.prepare(name); },
+          remove: name => { void plugins.remove(name); }, cancel: plugins.cancel,
           dismiss: jobId => setDismissedPluginJobs(previous => new Set(previous).add(jobId)) });
       })} />
   </>;

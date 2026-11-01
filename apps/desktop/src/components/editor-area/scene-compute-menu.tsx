@@ -7,6 +7,7 @@ import { openScientificSpectra, useScientificSpectraAvailable, SCIENTIFIC_SPECTR
 import { openOrbitals, useOrbitalsAvailable, ORBITALS_COMMAND } from "../../lib/workbench/orbitals-tool";
 import { openVibrations, useVibrationsAvailable, VIBRATIONS_COMMAND } from "../../lib/workbench/vibrations-tool";
 import { useState } from "react";
+import { commandMenuItems, startAvogadroCommand, useAvogadroCommands } from "../../lib/extensions/avogadro-commands";
 
 import type { ConformerOperation, ViewerDocument, XtbOperation } from "../../types";
 import type { ShellActions } from "../types";
@@ -41,12 +42,13 @@ export function SceneComputeMenu({ document, actions }: { document: ViewerDocume
   const hasPlots = usePlotsAvailable(document);
   const hasScientificSpectra = useScientificSpectraAvailable(document);
   const hasVibrations = useVibrationsAvailable(document);
+  const pluginCommands = useAvogadroCommands(document);
   const host = useComputeHost();
   const connections = useSshConnections().filter(connection => connection.enabled);
   if (window.BuretteMcpWorkspace || !["molstar", "xyzrender-external"].includes(document.renderer)) return null;
   const combined = document.renderer === "molstar" && new Set(recordedScenePaths(document)).size > 1;
   const embeddedGraph = !combined && document.renderer === "molstar" && ["sdf", "sd", "mol"].includes(sourceExtension(document));
-  if (embeddedGraph && !hasScientificSpectra && !hasPlots && !hasPolymer) return null;
+  if (embeddedGraph && !hasScientificSpectra && !hasPlots && !hasPolymer && !pluginCommands.length) return null;
 
   const fileItems = (path: string): MenuItemSpec[] => [
     ...CALCULATIONS.map(([operation, text]) => ({
@@ -83,6 +85,7 @@ export function SceneComputeMenu({ document, actions }: { document: ViewerDocume
   if (!combined && hasPlots) items.push(...(embeddedGraph || hasOrbitals || hasVibrations || hasScientificSpectra ? [] : [{ kind: "separator" as const }]), { kind: "item", id: "workbench-tool-plots", text: PLOTS_COMMAND.label, action: () => openPlots(actions, document.id) });
   if (!combined && assemblySourceFormat(document)) items.push({ kind: "separator" }, { kind: "item", id: "workbench-assembly", text: "Build biological assembly…", action: () => openWorkbenchDialog({ kind: "assembly", document }) });
   if (!combined && hasPolymer) items.push({ kind: "item", id: "workbench-polymer", text: "Build polymer…", action: () => openWorkbenchDialog({ kind: "builder", builder: "polymer", document }) });
+  if (!combined && pluginCommands.length) items.push(...(items.length ? [{ kind: "separator" as const }] : []), ...commandMenuItems(pluginCommands, entry => startAvogadroCommand(entry, document)));
   // Every calculation here, and xTB/CREST started elsewhere, runs where this points.
   if (!embeddedGraph && connections.length > 0) items.push({ kind: "separator" }, {
     kind: "select", id: "scene-run-on", label: "Run on", value: host ?? THIS_MAC,

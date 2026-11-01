@@ -49,7 +49,8 @@ export type StructureViewerAction =
       label: string;
       notify?: boolean;
       selector: StructureViewerSelector;
-      granularity: "residue";
+      /** "atom" with an `atom_index` selector selects exactly those model atoms. */
+      granularity: "residue" | "atom";
       mode?: "replace";
     }
   | {

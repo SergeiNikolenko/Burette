@@ -48,6 +48,10 @@ export function forgetViewerAtomSelection(documentId: string) {
 
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 
+export function viewerAtomSelection(documentId: string): ViewerAtomSelection | null {
+  return selections.get(documentId) ?? null;
+}
+
 export function useViewerAtomSelection(documentId: string | null) {
   const getSnapshot = () => (documentId ? selections.get(documentId) ?? null : null);
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);

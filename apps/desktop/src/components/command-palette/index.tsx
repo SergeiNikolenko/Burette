@@ -1,4 +1,5 @@
 import { openPlots, usePlotsAvailable, PLOTS_COMMAND } from "../../lib/workbench/plots-tool";
+import { startAvogadroCommand, useAvogadroCommands } from "../../lib/extensions/avogadro-commands";
 import { openScientificSpectra, useScientificSpectraAvailable, SCIENTIFIC_SPECTRA_COMMAND } from "../../lib/workbench/scientific-spectra-tool";
 import { openOrbitals, useOrbitalsAvailable, ORBITALS_COMMAND } from "../../lib/workbench/orbitals-tool";
 import { focusToolDock, type WorkbenchToolDockKind } from "../../lib/workbench/focus-tool-dock";
@@ -64,6 +65,7 @@ export function CommandPalette({
   const hasPlots = usePlotsAvailable(state.activeDocument);
   const hasScientificSpectra = useScientificSpectraAvailable(state.activeDocument ?? null);
   const hasVibrations = useVibrationsAvailable(state.activeDocument ?? null);
+  const pluginCommands = useAvogadroCommands(state.activeDocument ?? null);
 
   const items = useMemo<PaletteItem[]>(() => {
     const projectItems = state.sidebarProjects.flatMap((project) => project.items.map((item) => ({
@@ -95,6 +97,8 @@ export function CommandPalette({
       ...(hasVibrations && state.activeDocument ? [{ id: "workbench-tool-vibrations", group: "Suggested", ...VIBRATIONS_COMMAND, run: () => openVibrations(actions, state.activeDocument!.id) }] : []),
       ...(hasPlots && state.activeDocument ? [{ id: "workbench-tool-plots", group: "Suggested", ...PLOTS_COMMAND, run: () => openPlots(actions, state.activeDocument!.id) }] : []),
       ...(hasScientificSpectra && state.activeDocument ? [{ id: "workbench-tool-scientific-spectra", group: "Suggested", ...SCIENTIFIC_SPECTRA_COMMAND, run: () => openScientificSpectra(actions, state.activeDocument!.id) }] : []),
+      ...(state.activeDocument ? pluginCommands.map(entry => ({ id: `avogadro-command-${entry.id}`, group: "Extensions", label: entry.path.join(" › "),
+        description: entry.plugin.name, run: () => startAvogadroCommand(entry, state.activeDocument!) })) : []),
       ...buildShellCommands(state, actions, query).map((command) => ({
         ...command,
         group: command.group === "Suggested" ? "Quick actions" : command.group,
@@ -103,7 +107,7 @@ export function CommandPalette({
       })),
     ];
     return commands;
-  }, [actions, query, state, hasVibrations, hasOrbitals, hasScientificSpectra, hasPlots]);
+  }, [actions, query, state, hasVibrations, hasOrbitals, hasScientificSpectra, hasPlots, pluginCommands]);
 
   const visibleItems = useMemo(() => {
     const queryUrl = query.trim();

@@ -16,6 +16,8 @@ export type PluginControlsProps = {
   /** The newest job for this plugin. */
   job?: ResourceJob;
   install: (plugin: AvogadroPlugin) => void;
+  /** Creates the package environment; runs the package's own installer. */
+  prepare: (name: string) => void;
   remove: (name: string) => void;
   cancel: (jobId: string) => void;
   dismiss: (jobId: string) => void;
@@ -45,35 +47,52 @@ function InstallDialog({ plugin, update, open, onOpenChange, onConfirm }: { plug
 /** Desktop install state and actions for one catalog row. */
 export function pluginRowParts(props: PluginControlsProps): PluginRowParts {
   const { plugin, job, install, remove, dismiss } = props;
-  const failed = job?.status === "failed" ? job : undefined;
+  const failed = job?.status === "failed" && job.operation !== "run" ? job : undefined;
   return {
     actions: <PluginActions {...props} />,
     alert: failed && <>
       <span role="alert" className="min-w-0 flex-1 break-words text-sm">{failed.error}</span>
-      <Button variant="outline" size="settings" onClick={() => failed.operation === "remove" ? remove(plugin.name) : install(plugin)}>Retry</Button>
+      <Button variant="outline" size="settings" onClick={() => failed.operation === "remove" ? remove(plugin.name) : failed.operation === "prepare" ? props.prepare(plugin.name) : install(plugin)}>Retry</Button>
       <Button variant="ghost" size="settings" onClick={() => dismiss(failed.id)}>Dismiss</Button>
     </>,
     details: props.installed && <PluginDetails plugin={plugin} installed={props.installed} />,
   };
 }
 
-function PluginActions({ plugin, installed, job, install, remove, cancel }: PluginControlsProps) {
-  const [dialog, setDialog] = useState<"install" | "remove" | null>(null);
-  const busy = job && (job.status === "queued" || job.status === "running") ? job : undefined;
+const BUSY: Partial<Record<ResourceJob["operation"], string>> = { install: "Installing…", update: "Updating…", remove: "Removing…", prepare: "Setting up…" };
+
+function PluginActions({ plugin, installed, job, install, prepare, remove, cancel }: PluginControlsProps) {
+  const [dialog, setDialog] = useState<"install" | "prepare" | "remove" | null>(null);
+  // A running command keeps the row usable; it is listed in Jobs.
+  const busy = job && (job.status === "queued" || job.status === "running") && job.operation !== "run" ? job : undefined;
   const current = installed?.commit === plugin.commit;
-  const status = busy ? (!busy.cancelable && busy.operation !== "remove" ? "Cancelling…" : busy.operation === "remove" ? "Removing…" : busy.operation === "update" ? "Updating…" : "Installing…")
-    : installed ? (current ? "Installed" : `${installed.version} installed`) : null;
+  const status = busy ? (!busy.cancelable && busy.operation !== "remove" ? "Cancelling…" : BUSY[busy.operation])
+    : installed ? (!current ? `${installed.version} installed` : installed.prepared ? "Ready" : "Installed") : null;
   return <>
     {status && <span role="status" className="text-sm whitespace-nowrap">{status}</span>}
     {busy ? busy.operation !== "remove" && <Button variant="outline" size="settings" disabled={!busy.cancelable}
-      aria-label={`Cancel ${plugin.name} ${busy.operation === "update" ? "update" : "installation"}`} onClick={() => cancel(busy.id)}>Cancel</Button>
+      aria-label={`Cancel ${plugin.name} ${busy.operation === "update" ? "update" : busy.operation === "prepare" ? "setup" : "installation"}`} onClick={() => cancel(busy.id)}>Cancel</Button>
       : <>
         {(!installed || !current) && <Button variant="outline" size="settings" aria-label={`${installed ? "Update" : "Install"} ${plugin.name}`}
           onClick={() => setDialog("install")}>{installed ? "Update" : "Install"}</Button>}
+        {installed && current && !installed.prepared && <Button variant="outline" size="settings" aria-label={`Set up ${plugin.name}`}
+          onClick={() => setDialog("prepare")}>Set up</Button>}
         {installed && <Button variant="ghost" size="settings" aria-label={`Remove ${plugin.name}`} onClick={() => setDialog("remove")}>Remove</Button>}
       </>}
     <InstallDialog plugin={plugin} update={Boolean(installed)} open={dialog === "install"} onOpenChange={open => setDialog(open ? "install" : null)}
       onConfirm={() => install(plugin)} />
+    <AlertDialog open={dialog === "prepare"} onOpenChange={open => setDialog(open ? "prepare" : null)}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{`Set up ${plugin.name}?`}</AlertDialogTitle>
+          <AlertDialogDescription>This runs the package's installer, which downloads its dependencies. Its commands then run on this Mac from Compute › Extensions.</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={() => prepare(plugin.name)}>Set up</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
     <AlertDialog open={dialog === "remove"} onOpenChange={open => setDialog(open ? "remove" : null)}>
       <AlertDialogContent>
         <AlertDialogHeader>
