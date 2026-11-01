@@ -89,3 +89,9 @@ registered browser imports, actual generated-document preparation and native
 mmCIF rereading. Its held preparation checks cover cancellation, request/source
 close, document replacement and draft ABA. Host mounting and menu/palette routes
 are a separate activation step. Browser interaction acceptance is still separate.
+
+
+The retained assembly transport regressions run with
+`vp run test:assembly-dialog-transport`. Existing source/prepare/cancel assertions
+remain; intentional changes are an independent path for repeated generated
+output and an actionable file-read error without exposing transport details.
