@@ -390,7 +390,7 @@ export async function decodeScienceSession(archive: Uint8Array): Promise<Decoded
       return values;
     });
     if (referenced.size !== arrays.size) fail("science", "The scene file carries scientific arrays nothing refers to.");
-    science = validateScientificDocument(decoded, frames, manifest.source.extension === "mol" ? text : undefined);
+    science = validateScientificDocument(decoded, frames, manifest.source.extension === "mol" ? text : undefined, { normalizeReference: true });
     if (manifest.version === 4 && science.format !== "cjson") fail("science", "Scientific data version 4 requires explicit CJSON graph ownership.");
   }
   let original: ScienceSessionContent["original"] = null;

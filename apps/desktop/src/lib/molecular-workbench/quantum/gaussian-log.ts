@@ -91,5 +91,5 @@ export function parseGaussianLog(text: string): ScientificDocument {
     }
   }
   if (!frames.length) throw new Error('No supported Gaussian orientation was found.');
-  return { format: 'gaussian-log', atoms: frames.at(-1)!.atoms, frames, modes: frames.at(-1)!.modes ?? [], orbitals: [], ...(converged === undefined ? {} : { converged }) };
+  return { format: 'gaussian-log', atoms: frames.at(-1)!.atoms, referenceFrameIndex: frames.length - 1, frames, modes: frames.at(-1)!.modes ?? [], orbitals: [], ...(converged === undefined ? {} : { converged }) };
 }

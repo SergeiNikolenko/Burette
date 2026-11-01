@@ -63,9 +63,9 @@ async function checked<S extends BrowserSourceStore>(value: unknown, store: S): 
       || typeof item.baseText !== "string" || encoder.encode(item.baseText).byteLength > MAX_TEXT_BYTES) throw error();
   if (store === "source-checkpoints" && item.version === 1 ? item.companions !== undefined : !Array.isArray(item.companions) || !item.companions.length
     || item.companions.length > SCIENCE_SESSION_LIMITS.attachments || item.companions.some(entry => !entry || !(entry.file instanceof Blob))) throw error();
-  if (item.science !== null) validateScientificDocument(item.science, readXyzFrames(item.text));
-  if (store === "scientific-attachments" && !item.science?.frames.some(frame => frame.mcdCompanion)) throw error();
-  const payload = item.science === null ? null : scientificDocumentPayload(item.science);
+  const science = item.science === null ? null : validateScientificDocument(item.science, readXyzFrames(item.text), undefined, { normalizeReference: true });
+  if (store === "scientific-attachments" && !science?.frames.some(frame => frame.mcdCompanion)) throw error();
+  const payload = science === null ? null : scientificDocumentPayload(science);
   if (recordBytes(item, payload?.byteLength ?? 4) > BROWSER_SOURCE_CHECKPOINT_BYTES) throw error();
   // Snapshot before the first await; only dense visible typed-array values are retained.
   const captured = {

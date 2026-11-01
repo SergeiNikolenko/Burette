@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.retained-trajectory-source.json",
+  "include": [
+    "test-scientific-reference.test.ts",
+    "test-retained-trajectory-source.test.tsx",
+    "test-science-archive-codec.test.ts",
+    "../apps/desktop/src/**/*.d.ts"
+  ]
+}

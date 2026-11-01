@@ -274,7 +274,7 @@ function revisionDocument(science: ScientificDocument, atoms: MolecularAtom[], d
   });
   return same
     ? { ...science, internalCoordinates: definition }
-    : { format: science.format, atoms, frames: [{ atoms }], modes: [], orbitals: [], internalCoordinates: definition };
+    : { format: science.format, atoms, referenceFrameIndex: 0, frames: [{ atoms }], modes: [], orbitals: [], internalCoordinates: definition };
 }
 
 // Each row edit that changes the real atoms or their order starts a topology of its own.

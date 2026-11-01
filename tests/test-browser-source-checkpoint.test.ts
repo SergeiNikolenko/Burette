@@ -68,6 +68,18 @@ test("internal coordinate variables and dummy references survive as the exact va
   expect(await writeBrowserSourceCheckpoint(original, edited.id, null, () => true)).toBe(true);
 });
 
+test("legacy sole-frame checkpoint admission normalizes reference once without mutating its input", async () => {
+  const { referenceFrameIndex: _, ...legacy } = science;
+  Object.freeze(legacy);
+  const checkpoint = { ...first, id:"legacy-reference:4", science:legacy };
+  expect(await writeBrowserSourceCheckpoint(original,null,checkpoint,()=>true)).toBe(true);
+  const restored = await readBrowserSourceCheckpoint(path);
+  expect(restored!.science).toEqual({...legacy,referenceFrameIndex:0});
+  expect(legacy).not.toHaveProperty("referenceFrameIndex");
+  expect(restored!.science!.frames).toEqual(legacy.frames);
+  expect(await writeBrowserSourceCheckpoint(original,checkpoint.id,null,()=>true)).toBe(true);
+});
+
 test("bounds and mismatched scientific geometry reject without replacing the previous checkpoint", async () => {
   await writeBrowserSourceCheckpoint(original, null, first, () => true);
   await expect(writeBrowserSourceCheckpoint(original, first.id, { ...first, text: "x".repeat(3_000_001) }, () => true)).rejects.toThrow();

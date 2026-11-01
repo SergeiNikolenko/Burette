@@ -67,7 +67,7 @@ export function parseFchk(text: string): ScientificDocument {
   for (const key of ['Number of Normal Modes', 'Vib-NDim', 'Vib-LE2Fix']) if (data.has(key)) array(key, 1);
   if (xyz.some(v => Math.abs(v) > 1e6)) throw new Error('FCHK atomic coordinates exceed the supported range.');
   const atoms = z.map((value, i) => ({ element: elementSymbol(value), x: xyz[3 * i] * BOHR, y: xyz[3 * i + 1] * BOHR, z: xyz[3 * i + 2] * BOHR }));
-  const document: ScientificDocument = { format: 'fchk', atoms, frames: [{ atoms }], orbitals: [], modes: [] };
+  const document: ScientificDocument = { format: 'fchk', atoms, referenceFrameIndex: 0, frames: [{ atoms }], orbitals: [], modes: [] };
   if (data.has('Total Energy')) document.frames[0].energyHartree = array('Total Energy', 1)[0];
   // The masses the frequency analysis used (isotopes included), else the file's atomic weights.
   const masses = data.has('Vib-AtMass') ? array('Vib-AtMass', n) : data.has('Real atomic weights') ? array('Real atomic weights', n) : undefined;

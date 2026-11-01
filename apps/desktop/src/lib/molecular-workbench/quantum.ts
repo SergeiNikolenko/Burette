@@ -43,7 +43,7 @@ function atom(element: string, xyz: string[], scale = 1): MolecularAtom {
 }
 function empty(format: ScientificDocument["format"], atoms: MolecularAtom[]): ScientificDocument {
   if (!atoms.length || atoms.length > MAX_ATOMS) throw new Error("No supported atomic geometry was found.");
-  return { format, atoms, frames: [{ atoms }], modes: [], orbitals: [] };
+  return { format, atoms, referenceFrameIndex: 0, frames: [{ atoms }], modes: [], orbitals: [] };
 }
 function checkFrames(frames: ScientificFrame[]) {
   if (!frames.length || frames.length > MAX_FRAMES) throw new Error("Unsupported trajectory size.");
@@ -120,7 +120,7 @@ function parseOrca(name: string, text: string): ScientificDocument {
     if (energy && frames.length) frames[frames.length - 1].energyHartree = number(energy[1]);
   }
   checkFrames(frames);
-  const result = { ...empty("orca", frames.at(-1)!.atoms), frames };
+  const result = { ...empty("orca", frames.at(-1)!.atoms), referenceFrameIndex: frames.length - 1, frames };
   const orbitalStart = text.lastIndexOf("ORBITAL ENERGIES");
   if (orbitalStart >= 0) {
     let spin: MolecularOrbital["spin"] = "alpha";

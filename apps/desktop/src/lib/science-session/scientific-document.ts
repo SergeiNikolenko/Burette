@@ -47,7 +47,7 @@ function matchesFrame(atoms: readonly MolecularAtom[], frame: XyzFrame) {
 const frameOf = (atoms: readonly MolecularAtom[]): XyzFrame => ({ elements: atoms.map((atom) => normalizeElement(atom.element)!), positions: Float64Array.from(atoms.flatMap((atom) => [atom.x, atom.y, atom.z])) });
 
 /** Fully validates the schema panels and field evaluators consume, plus its source geometry. */
-export function validateScientificDocument(value: unknown, sourceFrames: readonly XyzFrame[], graphSource?: string): ScientificDocument {
+export function validateScientificDocument(value: unknown, sourceFrames: readonly XyzFrame[], graphSource?: string, options: { normalizeReference?: boolean } = {}): ScientificDocument {
   if (!isRecord(value) || !FORMATS.has(value.format as ScientificDocument["format"])) fail("Scientific data has an unknown format.");
   const document = value;
   const elements = sourceFrames[0].elements;
@@ -133,6 +133,12 @@ export function validateScientificDocument(value: unknown, sourceFrames: readonl
     }
     return frameAtoms;
   });
+  if (document.referenceFrameIndex !== undefined) {
+    const reference = document.referenceFrameIndex;
+    if (!Number.isSafeInteger(reference) || (reference as number) < 0 || (reference as number) >= scientificFrames.length
+      || !matchesFrame(scientificFrames[reference as number], geometry)) fail("The declared reference frame does not describe the scientific atoms.");
+    if (document.format === "cjson" && isRecord(document.graph) && reference !== document.graph.activeFrameIndex) fail("The CJSON graph owns a different reference frame.");
+  }
   if (document.format === "cjson") {
     const graph = document.graph;
     if (!isRecord(graph) || typeof graph.molfile !== "string" || graph.molfile !== graphSource
@@ -201,6 +207,10 @@ export function validateScientificDocument(value: unknown, sourceFrames: readonl
     }
     catch (error) { return fail(`The Z-matrix definition is invalid: ${error instanceof Error ? error.message : String(error)}`); }
     if (!matchesFrame(real, geometry)) fail("The Z-matrix definition does not match the scientific geometry.");
+  }
+  // Only read/admission boundaries normalize a proven sole frame; validation keeps caller identity.
+  if (options.normalizeReference && document.referenceFrameIndex === undefined && document.format !== "cjson" && scientificFrames.length === 1) {
+    return { ...document, referenceFrameIndex: 0 } as unknown as ScientificDocument;
   }
   return document as unknown as ScientificDocument;
 }

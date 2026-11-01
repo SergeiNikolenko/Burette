@@ -113,7 +113,7 @@ export function parseMolden(text: string): ScientificDocument {
   }
   finish();
   if (!orbitals.length) throw new Error("Molden contains no orbitals.");
-  return { format: "molden", atoms, frames: [{ atoms }], modes: [], orbitals, basis };
+  return { format: "molden", atoms, referenceFrameIndex: 0, frames: [{ atoms }], modes: [], orbitals, basis };
 }
 
 type GaussianTerm = { center: Vec3; powers: Vec3; primitives: { exponent: number; weight: number }[] };

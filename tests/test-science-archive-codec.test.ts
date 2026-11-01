@@ -97,3 +97,16 @@ test("MOLX keeps source XYZ aliases exact while scientific element symbols stay 
     expect([decoded.science!.atoms[0].element, decoded.science!.frames[0].atoms[0].element]).toEqual(["O", "O"]);
   }
 });
+
+test("legacy sole-frame codec reads normalize reference without mutating frozen encoder input", async () => {
+  const { referenceFrameIndex: _, ...legacy } = waterScience();
+  Object.freeze(legacy); Object.freeze(legacy.frames); Object.freeze(legacy.atoms);
+  const encoded = await encodeScienceSession({ documentUuid:uuid, source:{extension:"xyz",text:XYZ}, atomIds:["a","b","c"], binding, science:legacy, original:null });
+  expect(legacy).not.toHaveProperty("referenceFrameIndex");
+  const scientificAsset = encoded.assets.find(asset=>asset.id===encoded.manifest.science!.attachment)!;
+  expect(JSON.parse(new TextDecoder().decode(scientificAsset.bytes))).not.toHaveProperty("referenceFrameIndex");
+  const decoded = (await decodeScienceSession(archive(encoded)))!;
+  expect(decoded.science).toEqual({...legacy,referenceFrameIndex:0});
+  const again = (await decodeScienceSession(archive(await encodeScienceSession(decoded))))!;
+  expect(again.science).toEqual(decoded.science);
+});

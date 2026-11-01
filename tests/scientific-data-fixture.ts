@@ -14,6 +14,7 @@ export function waterScience(): ScientificDocument {
   hessian[9] = hessian[1];
   return {
     format: "orca",
+    referenceFrameIndex: 0,
     atoms: list,
     frames: [{ atoms: list, energyHartree: -76.0263, hessian: { units: HESSIAN_UNITS, dimension: 9, values: hessian, massesAmu: [15.999, 1.008, 1.008], source: "orca-hess" },
       modes: [{ index: 6, frequencyCm1: 1648.2, intensityKmMol: 71.3, displacements: [[0, 0, -0.07], [0, -0.43, 0.56], [0, 0.43, 0.56]] }] }],

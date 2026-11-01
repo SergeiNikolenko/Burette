@@ -117,5 +117,5 @@ export function parseQcschema(text: string, name = "QCSchema input"): Scientific
   if (frames.length > MAX_FRAMES || frames.reduce((sum, f) => sum + f.atoms.length * 3, 0) > MAX_VALUES) throw new Error('QCSchema trajectory exceeds browser limit.');
   const ownedFrames = frames.map(({ propertySpectra, ...frame }, frameIndex) => propertySpectra ? { ...frame, spectra: { ...propertySpectra,
     source: { ...propertySpectra.source, scope: 'frame' as const, frameIndex, frameCount: frames.length } } } : frame);
-  return validateParsedSpectra({ format: 'qcschema', atoms: frames.at(-1)!.atoms, frames: ownedFrames, modes: [], orbitals: [], ...(converged === undefined ? {} : { converged }) });
+  return validateParsedSpectra({ format: 'qcschema', atoms: frames.at(-1)!.atoms, referenceFrameIndex: frames.length - 1, frames: ownedFrames, modes: [], orbitals: [], ...(converged === undefined ? {} : { converged }) });
 }

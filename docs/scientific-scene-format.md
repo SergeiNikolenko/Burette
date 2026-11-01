@@ -56,6 +56,26 @@ Their values remain unsymmetrized: every transposed pair may differ by at most
 1% of the matrix's largest absolute element. Optional masses are finite, positive,
 at most 1,000 amu and one per atom. Source readers use the same Hessian validator.
 
+Optional `ScientificDocument.referenceFrameIndex` identifies the history frame of
+`document.atoms`, independently of native playback. Producers declare it only when
+known: XYZ uses the first source frame, ORCA/Gaussian use their last parsed geometry,
+QCSchema uses its retained final geometry, and single-geometry readers use zero.
+An explicit index must be an integer in range and describe the main geometry.
+CJSON's `graph.activeFrameIndex` remains authoritative; a declared reference cannot
+conflict with it. Steps materialization starts with reference zero. Final import
+keeps the main atoms and only their explicitly referenced energy. Frame Hessians
+and frame-scoped spectra follow that reference; global modes/orbitals still belong
+to the main atoms even when the history index is unknown.
+
+Legacy multi-frame documents without the field remain unknown, including unique
+and duplicate coordinate matches. The validator's default and encoder preserve
+input identity. Exactly two admission boundaries opt into sole-frame compatibility:
+MOLX decode and browser source-record admission. After full existing geometry
+validation, a missing reference on a non-CJSON document with one scientific frame
+becomes zero via a shallow copy. Atoms, frames and managed companion witnesses
+keep identity; an explicit reference needs no new copy. Consumers do not infer a
+reference from frame count or search history coordinates.
+
 Optional `ScientificDocument.spectra` is explicitly file-scoped, never a current
 or final-frame alias. `ScientificFrame.spectra` must declare that exact scientific
 history index and frame count, even when two frames have identical coordinates.

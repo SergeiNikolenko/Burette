@@ -61,6 +61,8 @@ export interface ScalarGrid {
 export interface ScientificDocument {
   format: "gaussian-log" | "qcschema" | "fchk" | "orca" | "orca-hessian" | "molden" | "cube" | "xyz" | "zmat" | "cjson";
   atoms: MolecularAtom[];
+  /** Producer-declared history frame of atoms; absent means the reference index is unknown. */
+  referenceFrameIndex?: number;
   /** Exact materialized MOL source, including graph metadata, and the original CJSON set index. */
   graph?: { molfile: string; activeFrameIndex: number };
   frames: ScientificFrame[];
