@@ -129,3 +129,15 @@ test("named failures leave the structure unchanged", async () => {
   expect(canonical(tertiary.structure.molfile)).toBe(reference("CC(C)(C)Cl"));
   expect(isobutane).toEqual(before);
 });
+
+test("a built graph inserts as one separate molecule with its charges, and refuses an attachment atom", async () => {
+  // Glycine zwitterion, NH3+ and CO2-; coordinates are a rigid input, not a reference.
+  const atoms = [["N", 0, 0, 0, 1], ["C", 1.47, 0, 0], ["C", 2.0, 1.42, 0], ["O", 1.3, 2.4, 0], ["O", 3.25, 1.5, 0, -1],
+    ["H", -0.35, -0.95, 0], ["H", -0.35, 0.47, 0.82], ["H", -0.35, 0.47, -0.82], ["H", 1.83, -0.51, 0.89], ["H", 1.83, -0.51, -0.89]] as const;
+  const graph = { source: "graph" as const, name: "Glycine", atoms: atoms.map(([element, x, y, z, charge]) => ({ element, x, y, z, ...(charge ? { charge } : {}) })),
+    bonds: [[0, 1, 1], [1, 2, 1], [2, 3, 2], [2, 4, 1], [0, 5, 1], [0, 6, 1], [0, 7, 1], [1, 8, 1], [1, 9, 1]].map(([a, b, order]) => ({ a, b, order: order as 1 | 2 })) };
+  const result = await insertFragment(benzene, graph, null);
+  expect(canonical(result.structure.molfile)).toBe(reference("c1ccccc1.[NH3+]CC(=O)[O-]"));
+  expect(result.addedAtoms).toBe(10);
+  await expect(insertFragment(benzene, graph, 0)).rejects.toThrow("separate molecule");
+});

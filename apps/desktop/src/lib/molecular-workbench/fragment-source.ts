@@ -5,11 +5,13 @@ import { editGraph, type GraphEditResult } from './graph-edit';
 import { checkMoleculeSize, type MolecularStructure } from './molecular-graph';
 import { elementSymbol } from './elements';
 import { placeFragment, type AttachmentSite, type FragmentTemplate } from './fragment-insertion';
-import type { Vec3 } from './types';
+import type { MolecularAtom, Vec3 } from './types';
 
-/** A library group (OpenChemistry/fragments `groups/`, by id) or a SMILES string.
- * In SMILES, one `*` marks the attachment point; without it the first atom attaches through one of its hydrogens. */
-export type FragmentSource = { source: 'library'; id: string } | { source: 'smiles'; smiles: string };
+/** A library group (OpenChemistry/fragments `groups/`, by id), a SMILES string, or a built 3D graph.
+ * In SMILES, one `*` marks the attachment point; without it the first atom attaches through one of its hydrogens.
+ * A built graph (a peptide or nucleic acid from its builder) has no attachment point and inserts as a separate molecule. */
+export type FragmentSource = { source: 'library'; id: string } | { source: 'smiles'; smiles: string }
+  | { source: 'graph'; name: string; atoms: (MolecularAtom & { charge?: number })[]; bonds: { a: number; b: number; order: 1 | 2 | 3 }[] };
 export type FragmentInsertion = { structure: GraphEditResult; name: string; anchor: number | null; replaced: number | null; bondLength: number | null; addedAtoms: number };
 type LibraryEntry = { id: string; category: string; name: string; elements: number[]; coords: number[]; bonds: number[]; charges?: number[] };
 
@@ -82,7 +84,11 @@ async function attachmentSite(structure: MolecularStructure, target: number): Pr
 export async function fragmentTemplate(fragment: FragmentSource, attach: boolean): Promise<FragmentTemplate & { name: string }> {
   if (fragment.source === 'library') return libraryTemplate(fragment.id);
   if (fragment.source === 'smiles') return smilesTemplate(fragment.smiles, attach);
-  throw new Error('Unknown fragment source.');
+  if (fragment.source !== 'graph') throw new Error('Unknown fragment source.');
+  if (attach) throw new Error('This structure inserts as a separate molecule. Clear the atom selection first.');
+  checkMoleculeSize(fragment.atoms.length);
+  if (fragment.atoms.some(atom => ![atom.x, atom.y, atom.z].every(Number.isFinite)) || fragment.bonds.length > 4 * fragment.atoms.length) throw new Error('The structure has invalid atoms or bonds.');
+  return { name: fragment.name.slice(0, 128), atoms: fragment.atoms.map(({ element, x, y, z }) => ({ element, x, y, z })), bonds: fragment.bonds, charges: fragment.atoms.map(atom => atom.charge ?? 0), attachment: null };
 }
 
 /** Inserts one rigid fragment into an explicit graph as a single edit; existing atoms keep their coordinates. */
