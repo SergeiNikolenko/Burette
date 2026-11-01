@@ -27,6 +27,8 @@ contains only documents that describe the active project.
   source atom order, Cartesian sets and graph-preserving import constraints.
 - [Scientific scene format](scientific-scene-format.md): MOLX attachment protocol,
   scientific validation, source identity and runtime asset ownership.
+- [Clean scientific attachments](browser-scientific-attachments.md): tab-scoped MCD
+  admission, shared storage limits and exact-source reopening.
 - [Repository layout](repository-layout.md): top-level code map, app surfaces,
   checked-in samples, and scratch-file policy.
 - [Product direction](product.md): current product surfaces, users, core jobs,

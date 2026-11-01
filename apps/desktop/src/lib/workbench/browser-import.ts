@@ -4,9 +4,11 @@ import { isExplicitBrowserDevServerPath } from "../browser-dev-paths";
 import { deleteBrowserDevVirtualTextDocument, openBrowserDevTextDocument, writeBrowserDevVirtualTextDocument } from "../browser-dev-documents";
 import { openScientificFiles } from "./open";
 import { isScientificFile } from "./scientific-files";
+import { readBrowserSourceRecord } from "../browser-source-storage";
+import { adoptRestoredScientificSource } from "./scientific-source-state";
 import { readServerScientificFile } from "./server-scientific-file";
 
-/** Reparse a durable original on every fresh open; its generated geometry keeps the durable tab path. */
+/** Reopen a verified clean attachment or reparse the durable Original at its stable tab path. */
 export async function openStoredScientificFile(path: string, preferences: ViewerPreferences,
   adopt: (document: ViewerDocument) => void, shouldApply: () => boolean): Promise<ViewerDocument[] | null> {
   if (!shouldApply()) return [];
@@ -20,6 +22,19 @@ export async function openStoredScientificFile(path: string, preferences: Viewer
     const original = await readBrowserImport(path);
     if (!shouldApply()) return [];
     if (!original) return null;
+    const attachment = await readBrowserSourceRecord("scientific-attachments", path);
+    if (!shouldApply()) return [];
+    if (attachment) {
+      const generated = await openBrowserDevTextDocument(attachment.title, "xyz", attachment.text, preferences);
+      try {
+        if (!shouldApply()) return [];
+        const document = { ...generated, path };
+        writeBrowserDevVirtualTextDocument(path, attachment.text);
+        adoptRestoredScientificSource(document.id, { text: attachment.text, document: attachment.science }, { name: original.name, file: original.file }, attachment.companions);
+        adopt(document);
+        return [document];
+      } finally { if (generated.path !== path) deleteBrowserDevVirtualTextDocument(generated.path); }
+    }
     file = new File([original.file], original.name, { type: original.file.type });
     if (!original.scientific && !await isScientificFile(file)) return null;
   }

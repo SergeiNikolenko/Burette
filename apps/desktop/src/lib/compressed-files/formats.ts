@@ -21,11 +21,11 @@ const SUFFIXES: Record<string, { codec: CompressionCodec; label: string }> = {
 };
 
 // Text formats the browser opens from an ordinary file, structures and tables
-// (the browser drop set) and scientific outputs (the scientific import).
+// (the browser drop set), scientific outputs and explicitly selected MCD companions.
 const INNER_EXTENSIONS = new Set([
   "arc", "cfg", "cif", "cms", "com", "cub", "cube", "csv", "data", "dump", "dwar", "ent",
   "fasta", "fch", "fchk", "fdf", "gro", "hess", "in", "inp", "lammpstrj", "lammps", "lmp", "log",
-  "mae", "mcif", "mmcif", "mol", "mol2", "molden", "molf", "nw", "out", "pdb", "pdbqt", "ph4",
+  "mae", "mcd", "mcif", "mmcif", "mol", "mol2", "molden", "molf", "nw", "out", "pdb", "pdbqt", "ph4",
   "pqr", "psi4", "qcin", "rdf", "rxn", "sd", "sdf", "smi", "smiles", "tsv", "vasp", "xyz",
   "zmat", "zmatrix", "json", "qcschema", "cjson",
 ]);

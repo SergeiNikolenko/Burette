@@ -68,8 +68,8 @@ MCD sidecar in this fixture is authored; real producer fixtures, companion picke
 activation and actual Browser acceptance remain separate requirements.
 
 This lane persists dirty source sessions. Attaching a sidecar to an otherwise
-unchanged import needs a separate clean-admission integration; a picker must not
-claim reload persistence from this edited-source checkpoint alone.
+unchanged import uses [clean scientific attachments](browser-scientific-attachments.md);
+a picker must not claim reload persistence from this edited-source checkpoint alone.
 
 Scientific snapshots reuse the scene codec's bounded JSON/typed-array boundary.
 Unsupported binary metadata is rejected. Grid and Hessian views retain only
