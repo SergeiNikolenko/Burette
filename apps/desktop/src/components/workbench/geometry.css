@@ -1,5 +1,6 @@
 .geometry-panel {
   min-width: 0;
+  container-type: inline-size;
   grid-template-columns: minmax(0, 1fr);
   padding-top: 8px;
   gap: 6px;
@@ -20,8 +21,6 @@
 }
 .geometry-table {
   width: 100%;
-  /* Keep numeric values readable; narrower docks scroll inside their content. */
-  min-width: 416px;
   border-collapse: collapse;
   table-layout: fixed;
   font-size: 12px;
@@ -61,6 +60,20 @@
   min-width: 0;
   align-items: center;
   gap: 3px;
+}
+/* Below this width the reference and its pin sit above the value, so all three
+   columns fit the default 360 px dock and narrower without scrolling sideways. */
+@container (max-width: 439px) {
+  .geometry-table thead th {
+    white-space: normal;
+  }
+  .geometry-value {
+    flex-wrap: wrap;
+    row-gap: 1px;
+  }
+  .geometry-value > :is(div, .zmatrix-bound) {
+    flex-basis: 100%;
+  }
 }
 .geometry-ref {
   flex: none;
@@ -169,8 +182,8 @@
   color: var(--text-secondary);
   font-style: italic;
 }
-/* The toolbar stays in place; only the tables scroll, sideways in a narrow dock, with
-   their header row and row names in view. */
+/* The toolbar stays in place; only the tables scroll, with their header row and row
+   names in view. */
 .zmatrix-panel {
   display: flex;
   flex-direction: column;

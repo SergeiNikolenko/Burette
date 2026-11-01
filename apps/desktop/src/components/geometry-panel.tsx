@@ -437,7 +437,7 @@ function CartesianGeometryPanel({ document, actions, convert }: {
         <thead>
           <tr>
             <th scope="col">Atom</th>
-            {INTERNAL_COORDINATE_KINDS.map((kind) => <th key={kind} scope="col">{COLUMN_LABELS[kind]}, {internalCoordinateUnit(kind)}</th>)}
+            {INTERNAL_COORDINATE_KINDS.map((kind) => <th key={kind} scope="col">{`${COLUMN_LABELS[kind]}, ${internalCoordinateUnit(kind)}`}</th>)}
           </tr>
         </thead>
         <tbody onDoubleClick={(event) => {
