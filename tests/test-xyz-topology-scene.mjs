@@ -33,7 +33,7 @@ const measurement = scope.BuretteMeasurementCoordinate, science = scope.BuretteS
 function cameraFor(plugin) {
   if (plugin.canvas3d) return plugin.canvas3d.camera;
   const original = plugin.canvas3d, camera = new Camera(); canvases.push([plugin, original]);
-  plugin.canvas3d = { camera, props: structuredClone(PD.getDefaultValues(Canvas3DParams)), setProps(props) { for (const [key, value] of Object.entries(props)) this.props[key] = value && typeof value === 'object' && !Array.isArray(value) ? { ...this.props[key], ...structuredClone(value) } : value; }, pause() {}, resume() {}, commit() {}, add() {}, remove() {}, commit() {}, syncVisibility() {}, mark() {}, requestCameraReset({ snapshot }) { camera.setState(snapshot, 0); } };
+  plugin.canvas3d = { camera, props: structuredClone(PD.getDefaultValues(Canvas3DParams)), setProps(props) { for (const [key, value] of Object.entries(props)) this.props[key] = value && typeof value === 'object' && !Array.isArray(value) ? { ...this.props[key], ...structuredClone(value) } : value; }, pause() {}, resume() {}, commit() {}, add() {}, remove() {}, commit() {}, syncVisibility() {}, mark() {}, precompile: async () => {}, requestCameraReset({ snapshot }) { camera.setState(snapshot, 0); } };
   return camera;
 }
 const xyz = '4\nfixture\nO 0 0 0\nH 1 0 0\nH 0 1 0\nC 0 0 1\n';
@@ -134,10 +134,13 @@ try {
   const repr = [...old.plugin.state.data.cells.values()].find(c => c.transform.transformer === StateTransforms.Representation.StructureRepresentation3D).obj.data.repr;
   repr.setState({ transform: [1,0,0,0,0,1,0,0,0,0,1,0,2,0,0,1] });
   unchanged(old, () => assert.throws(() => BuretteTopologyScene.capture(old.plugin, lease), /Custom visual decorations/)); repr.setState({ transform: [1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1] });
-  const supportedVisual = repr.state.alphaFactor; repr.setState({ alphaFactor: 0.75, pickable: false });
+  // Mol* 6 removed alphaFactor; themeStrength is the retained numeric visual state.
+  const supportedVisual = repr.state.themeStrength, strength = changes => ({ ...supportedVisual, ...changes });
+  repr.setState({ themeStrength: strength({ overpaint: 0.75 }), pickable: false });
   const visualCopy = BuretteTopologyScene.capture(old.plugin, lease);
   const visualTarget = await make(); await BuretteTopologyScene.restore(visualTarget.plugin, payload(visualCopy));
-  assert.deepEqual(BuretteTopologyScene.capture(visualTarget.plugin, visualTarget.lease()).components, visualCopy.components); repr.setState({ alphaFactor: supportedVisual, pickable: true });
+  assert.deepEqual(BuretteTopologyScene.capture(visualTarget.plugin, visualTarget.lease()).components, visualCopy.components); repr.setState({ themeStrength: supportedVisual, pickable: true });
+  assert.deepEqual(visualCopy.components[0].representations[0].visual, { pickable: false, themeStrength: strength({ overpaint: 0.75 }) });
   const props = [...old.plugin.state.data.cells.values()].find(c => c.transform.transformer === StateTransforms.Model.CustomModelProperties);
   props.params.values.properties.foreign = { value: 1 };
   unchanged(old, () => assert.throws(() => BuretteTopologyScene.capture(old.plugin, lease), /custom property provider/)); delete props.params.values.properties.foreign;
@@ -148,8 +151,8 @@ try {
   const decorator = PluginStateTransform.BuiltIn({ name: 'topology-foreign-child', from: SO.Molecule.Structure, to: SO.Molecule.Structure })({ apply({ a }) { return new SO.Molecule.Structure(a.data); } });
   const foreignChild = await old.plugin.state.data.build().to(old.component).apply(decorator).commit();
   unchanged(old, () => assert.throws(() => BuretteTopologyScene.capture(old.plugin, lease), /foreign component child/)); await old.plugin.state.data.build().delete(foreignChild).commit();
-  const styleReceipt = BuretteTopologyScene.capture(old.plugin, lease); repr.setState({ alphaFactor: 0.5 });
-  unchanged(old, () => assert.throws(() => BuretteTopologyScene.validate(old.plugin, styleReceipt.receipt, lease), /scene changed/)); repr.setState({ alphaFactor: 1 });
+  const styleReceipt = BuretteTopologyScene.capture(old.plugin, lease); repr.setState({ themeStrength: strength({ transparency: 0.5 }) });
+  unchanged(old, () => assert.throws(() => BuretteTopologyScene.validate(old.plugin, styleReceipt.receipt, lease), /scene changed/)); repr.setState({ themeStrength: supportedVisual });
   const malformed = payload(captured); malformed.components.find(c => c.kind === 'bundle').indices = [0, 0];
   const invalidTarget = await make(), invalidBefore = structuredClone(invalidTarget.plugin.state.data.getSnapshot());
   await assert.rejects(BuretteTopologyScene.restore(invalidTarget.plugin, malformed), /Invalid topology source indices/);

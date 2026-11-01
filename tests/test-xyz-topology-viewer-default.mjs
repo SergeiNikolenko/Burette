@@ -32,7 +32,7 @@ async function make() {
   const camera = new Camera(); camera.setState({ radius: 3 }, 0);
   // Public-shape adapters only: the native Plugin/state/archive/Camera below are real; no WebGL claim.
   plugin.canvas3d = { camera, props: structuredClone(defaults), setProps(value) { calls.push(['canvas', structuredClone(value)]); merge(this.props, value); },
-    add() {}, remove() {}, commit() {}, syncVisibility() {}, mark() {}, requestCameraReset({ snapshot }) { camera.setState(snapshot, 0); } };
+    add() {}, remove() {}, commit() {}, syncVisibility() {}, mark() {}, precompile: async () => {}, requestCameraReset({ snapshot }) { camera.setState(snapshot, 0); } };
   plugin.canvas3dContext = { props: structuredClone(contextDefaults), setProps(value) { calls.push(['context', structuredClone(value)]); merge(this.props, value); } };
   plugin.state.setSnapshotParams({ image: false, animation: false, cameraTransition: { name: 'instant', params: {} } });
   return plugin;
@@ -69,8 +69,10 @@ try {
   const { CustomTooltipsProvider } = await import('@molstar/mvs/components/custom-tooltips-prop');
   const { MVSAnnotationTooltipsProvider } = await import('@molstar/mvs/components/annotation-tooltips-prop');
   const reopenedRoot = reopened.managers.structure.hierarchy.current.structures[0].cell.obj.data;
-  for (const [provider, owner] of [[IsMVSModelProvider, reopenedRoot.models[0]], [MVSAnnotationsProvider, reopenedRoot.models[0]], [CustomTooltipsProvider, reopenedRoot], [MVSAnnotationTooltipsProvider, reopenedRoot]]) {
-    const box = provider.get(owner); assert.equal(box.version, 0); assert.equal(box.value, undefined);
+  // Mol* 6 always attaches these hidden providers: one native attach with the default props' empty value.
+  for (const [provider, owner, empty] of [[IsMVSModelProvider, reopenedRoot.models[0], {}], [MVSAnnotationsProvider, reopenedRoot.models[0], { dict: {} }],
+    [CustomTooltipsProvider, reopenedRoot, []], [MVSAnnotationTooltipsProvider, reopenedRoot, { tooltips: [] }]]) {
+    const box = provider.get(owner); assert.equal(box.version, 1); assert.deepEqual(JSON.parse(JSON.stringify(box.value)), empty);
     assert.deepEqual(provider.props(owner), PD.getDefaultValues(provider.defaultParams));
   }
   for (const [provider, kind] of [[IsMVSModelProvider, 'flag'], [MVSAnnotationsProvider, 'annotation'], [CustomTooltipsProvider, 'tooltip'], [MVSAnnotationTooltipsProvider, 'annotation-tooltip']]) {

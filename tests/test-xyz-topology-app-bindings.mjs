@@ -27,7 +27,7 @@ async function make() {
   const camera = new Camera(); camera.setState({ radius: 3 }, 0);
   // Public-shape adapters only: the native Plugin/state/archive/Camera below are real; no WebGL claim.
   plugin.canvas3d = { camera, props: structuredClone(defaults), setProps(value) { calls.push(['canvas', structuredClone(value)]); merge(this.props, value); },
-    add() {}, remove() {}, commit() {}, syncVisibility() {}, mark() {}, requestCameraReset({ snapshot }) { camera.setState(snapshot, 0); } };
+    add() {}, remove() {}, commit() {}, syncVisibility() {}, mark() {}, precompile: async () => {}, requestCameraReset({ snapshot }) { camera.setState(snapshot, 0); } };
   plugin.canvas3dContext = { props: structuredClone(contextDefaults), setProps(value) { calls.push(['context', structuredClone(value)]); merge(this.props, value); } };
   plugin.state.setSnapshotParams({ image: false, animation: false, cameraTransition: { name: 'instant', params: {} } });
   return plugin;

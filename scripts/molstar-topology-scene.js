@@ -1,6 +1,6 @@
 import { BuretteTopologyEnvironment as Environment } from './molstar-topology-environment.js';
 import { IsMVSModelProvider } from '@molstar/mvs/components/is-mvs-model-prop';
-import { MVSAnnotationsProvider } from '@molstar/mvs/components/annotation-prop';
+import { MVSAnnotationsProvider, MVSAnnotations } from '@molstar/mvs/components/annotation-prop';
 import { CustomTooltipsProvider } from '@molstar/mvs/components/custom-tooltips-prop';
 import { MVSAnnotationTooltipsProvider } from '@molstar/mvs/components/annotation-tooltips-prop';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
@@ -23,6 +23,13 @@ const receipts = new WeakMap();
 const emptyModelProviders = [IsMVSModelProvider, MVSAnnotationsProvider], emptyStructureProviders = [CustomTooltipsProvider, MVSAnnotationTooltipsProvider];
 const emptyModelParams = Object.fromEntries(emptyModelProviders.map(p => [p.descriptor.name, PD.getDefaultValues(p.defaultParams)]));
 const emptyStructureParams = Object.fromEntries(emptyStructureProviders.map(p => [p.descriptor.name, PD.getDefaultValues(p.defaultParams)]));
+// Hidden MVS providers always attach; for default props each obtains exactly these empty values.
+const emptyNativeValues = {
+  [IsMVSModelProvider.descriptor.name]: v => plain(v) && !Reflect.ownKeys(v).length,
+  [MVSAnnotationsProvider.descriptor.name]: v => v instanceof MVSAnnotations && Reflect.ownKeys(v).length === 1 && !v.getAllAnnotations().length,
+  [CustomTooltipsProvider.descriptor.name]: v => Array.isArray(v) && !v.length,
+  [MVSAnnotationTooltipsProvider.descriptor.name]: v => deepEqual(v, emptyStructureParams[MVSAnnotationTooltipsProvider.descriptor.name]),
+};
 const modelProviders = ['asym_id_offset', 'index', 'max_index'];
 const structureProviders = ['index', 'max_index', 'molstar_accessible_surface_area', 'molstar_computed_interactions', 'molstar_computed_secondary_structure', 'molstar_computed_valence_model'];
 const staticKinds = ['all', 'polymer', 'protein', 'nucleic', 'branched', 'ligand', 'non-standard', 'water', 'ion', 'lipid', 'coarse'];
@@ -43,9 +50,11 @@ function copy(value, depth = 0) {
   if (!plain(value) || Object.keys(value).some(k => ['__proto__', 'constructor', 'prototype'].includes(k))) fail('A scene setting cannot be retained.');
   return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, copy(v, depth + 1)]));
 }
+const visualNames = ['visible', 'pickable', 'colorOnly', 'syncManually', 'themeStrength', 'markerActions'];
+// The native StructureFromModel default for a single-model XYZ (no symmetry merge, default bonds).
+const nativeRootParams = { type: { name: 'model', params: { dynamicBonds: false, mergeBySymmetry: false, bonds: { name: 'default', params: {} } } } };
 function visualState(state) {
-  const names = ['visible', 'alphaFactor', 'pickable', 'colorOnly', 'syncManually', 'themeStrength', 'markerActions'];
-  const visual = Object.fromEntries(names.map(k => [k, copy(state[k])]));
+  const visual = Object.fromEntries(visualNames.map(k => [k, copy(state[k])]));
   if (!deepEqual(state, { ...StructureRepresentationStateBuilder.create(), ...visual })) fail('Custom visual decorations prevent topology editing.');
   const defaults = { ...StructureRepresentationStateBuilder.create(), syncManually: true };
   return Object.fromEntries(Object.entries(visual).filter(([k, v]) => !deepEqual(v, defaults[k])));
@@ -71,18 +80,35 @@ function measurementGroupTags(tags) {
   return values;
 }
 function descriptors(values, allowed = ['index', 'max_index']) { return values.every(p => allowed.includes(p.name)); }
-function emptyNativeCache(cache, props) {
-  return keys(cache, ['props', 'data']) && deepEqual(cache.props, props) && keys(cache.data, ['id', 'version', 'value', 'metadata'])
-    && Number.isInteger(cache.data.id) && cache.data.id >= 0 && cache.data.version === 0 && cache.data.value === undefined && cache.data.metadata === undefined;
+// An empty native MVS cache is either the unattached seed or the provider's attached default value.
+function emptyNativeCache(cache, props, name) {
+  if (!keys(cache, ['props', 'data']) || !deepEqual(cache.props, props) || !keys(cache.data, ['id', 'version', 'value', 'metadata'])
+    || !Number.isInteger(cache.data.id) || cache.data.id < 0 || !Number.isInteger(cache.data.version) || cache.data.metadata !== undefined) return false;
+  return cache.data.value === undefined ? cache.data.version === 0 : cache.data.version > 0 && emptyNativeValues[name](cache.data.value);
+}
+// Attached empty MVS descriptors must be the registered provider's own, with an empty native cache.
+function emptyDescriptors(values, providers, registry, store) {
+  return values.every(p => {
+    const provider = providers.find(e => e.descriptor.name === p.name);
+    return !provider || p === provider.descriptor && registry.get(p.name) === provider && store[p.name] !== undefined;
+  });
+}
+// Native chain-id coloring caches its asym serial map on the root structure; a single-chain XYZ has one entry.
+function chainSerialMap(key, value, root) {
+  const type = { __ChainIdColorTheme_AsymIdSerialMap_auth__: 'auth', __ChainIdColorTheme_AsymIdSerialMap_label__: 'label' }[key];
+  if (!type) return false;
+  const offset = root.models[0]._staticPropertyData.asym_id_offset?.data?.value?.[type] || 0;
+  return value instanceof Map && deepEqual([...value], [['A', offset]]);
 }
 function canonical(model, plugin) {
-  if (model.sourceData.kind !== 'xyz' || !descriptors(model.customProperties.all, modelProviders)) fail('This model has unsupported atom properties.');
+  if (model.sourceData.kind !== 'xyz' || !descriptors(model.customProperties.all, [...modelProviders, ...Object.keys(emptyModelParams)])
+    || !emptyDescriptors(model.customProperties.all, emptyModelProviders, plugin.customModelProperties, model._staticPropertyData)) fail('This model has unsupported atom properties.');
   const statics = ['index', 'asym_id_offset', 'max_index', '__CoarseGrained__', '__AtomicRadii__', '__srcIndexArray__', '__InvertedAtomSrcIndex__', '__IndexPairBonds__'];
-  // Native Viewer extension queries seed empty, unattached MVS caches even for ordinary XYZ.
+  // The native Viewer's hidden MVS providers attach their empty values even for ordinary XYZ.
   for (const [name, props] of Object.entries(emptyModelParams)) {
     const cache = model._staticPropertyData[name];
     if (cache === undefined) continue;
-    if (plugin.customModelProperties.get(name) !== emptyModelProviders.find(p => p.descriptor.name === name) || !emptyNativeCache(cache, props)) fail('Authored MVS metadata cannot be retained by topology editing.');
+    if (plugin.customModelProperties.get(name) !== emptyModelProviders.find(p => p.descriptor.name === name) || !emptyNativeCache(cache, props, name)) fail('Authored MVS metadata cannot be retained by topology editing.');
     statics.push(name);
   }
   const dynamics = ['__TrajectoryInfo__', '__AsymIdCount__', 'ElementSetIntraBondCache', 'index_pair_bonds'];
@@ -132,9 +158,12 @@ function sourceIndices(root, structure) {
   return result;
 }
 function structureProperties(structure, root, plugin) {
-  if (!descriptors(structure.customPropertyDescriptors.all)) fail('A structure property prevents topology editing.');
+  const all = structure.customPropertyDescriptors.all;
+  if (!descriptors(all, ['index', 'max_index', ...Object.keys(emptyStructureParams)])
+    || !emptyDescriptors(all, emptyStructureProviders, plugin.customStructureProperties, structure.currentPropertyData)) fail('A structure property prevents topology editing.');
   for (const store of [structure.currentPropertyData, structure.inheritedPropertyData]) for (const [key, value] of Object.entries(store)) {
-    if (Object.hasOwn(emptyStructureParams, key) && plugin.customStructureProperties.get(key) === emptyStructureProviders.find(p => p.descriptor.name === key) && emptyNativeCache(value, emptyStructureParams[key])) continue;
+    if (Object.hasOwn(emptyStructureParams, key) && plugin.customStructureProperties.get(key) === emptyStructureProviders.find(p => p.descriptor.name === key) && emptyNativeCache(value, emptyStructureParams[key], key)) continue;
+    if (chainSerialMap(key, value, root)) continue;
     if (!structureProviders.includes(key) || (!['index', 'max_index'].includes(key) && value?.data?.value !== undefined)
       || (['index', 'max_index'].includes(key) && !deepEqual(value, root.inheritedPropertyData[key]))) fail('Unsupported structure metadata prevents topology editing.');
   }
@@ -186,7 +215,7 @@ function audit(plugin, environment = Environment.capture(plugin)) {
     if (cell !== rootCell && type !== StateTransforms.Model.CustomModelProperties && Object.values(flags(cell)).some(Boolean)) fail('Nondefault source-branch visibility prevents topology editing.');
     known.add(cell.transform.ref);
   }
-  if (!raw || !base || base.params.values.modelIndex !== 0 || !deepEqual(rootCell.params.values, { type: { name: 'model', params: { dynamicBonds: false } } })) fail('The XYZ source branch is unsupported.');
+  if (!raw || !base || base.params.values.modelIndex !== 0 || !deepEqual(rootCell.params.values, nativeRootParams)) fail('The XYZ source branch is unsupported.');
   if (base.obj.data._dynamicPropertyData.index_pair_bonds) fail('Custom source bond metadata prevents topology editing.');
   if (geometry) {
     const original = Structure.ofModel(base.obj.data).units[0], graph = original.bonds;
@@ -321,9 +350,8 @@ function validateTransfer(value) {
     }
     for (const r of item.representations) { if (!keys(r, ['params', 'state', 'visual', 'tags'])) fail('Invalid representation transfer.'); appearance(r.params); transferFlags(r.state);
       const v = r.visual;
-      if (!keys(v, ['visible', 'alphaFactor', 'pickable', 'colorOnly', 'syncManually', 'themeStrength', 'markerActions'])
+      if (!keys(v, visualNames)
         || ['visible', 'pickable', 'colorOnly', 'syncManually'].some(k => v[k] !== undefined && typeof v[k] !== 'boolean')
-        || (v.alphaFactor !== undefined && (!Number.isFinite(v.alphaFactor) || v.alphaFactor < 0 || v.alphaFactor > 1))
         || (v.markerActions !== undefined && (!Number.isInteger(v.markerActions) || v.markerActions < 0 || v.markerActions > 63))
         || (v.themeStrength !== undefined && (!keys(v.themeStrength, ['overpaint', 'transparency', 'emissive', 'substance', 'wiggle']) || Object.keys(v.themeStrength).length !== 5 || Object.values(v.themeStrength).some(n => !Number.isFinite(n))))) fail('Invalid representation visual state.'); }
   }
