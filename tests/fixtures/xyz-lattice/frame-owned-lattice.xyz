@@ -1,0 +1,12 @@
+2
+Lattice="0 2 0 -3 1 0 0 0 5" pbc="T T T" Note="frame zero"
+C 0.25 -0.5 2
+O 1 0 2
+2
+Lattice="0 2 0 3 1 0 0 0 5" pbc="T T T" Note="frame one"
+C -0.25 0.5 3
+O -1 0 3
+2
+Note="frame two has no lattice"
+C 0.5 0.25 4
+O 0 1 4

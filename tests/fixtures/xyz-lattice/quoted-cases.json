@@ -1,0 +1,283 @@
+[
+  {
+    "name": "top-level",
+    "comment": "Lattice=\"0 2 0 -3 1 0 0 0 5\" pbc=\"T T T\"",
+    "hasCell": true,
+    "positions": [
+      [
+        0.25,
+        -0.5,
+        2
+      ]
+    ],
+    "fromFractional": [
+      0,
+      2,
+      0,
+      0,
+      -3,
+      1,
+      0,
+      0,
+      0,
+      0,
+      5,
+      0,
+      0,
+      0,
+      0,
+      1
+    ],
+    "physicalVolume": 30
+  },
+  {
+    "name": "reported-single-note",
+    "comment": "Note='retain Lattice=\"2 0 0 0 3 0 0 0 5\" as text'",
+    "hasCell": false,
+    "positions": [
+      [
+        0.25,
+        -0.5,
+        2
+      ]
+    ],
+    "fromFractional": null,
+    "physicalVolume": null
+  },
+  {
+    "name": "double-note",
+    "comment": "Note=\"retain Lattice='2 0 0 0 3 0 0 0 5' as text\"",
+    "hasCell": false,
+    "positions": [
+      [
+        0.25,
+        -0.5,
+        2
+      ]
+    ],
+    "fromFractional": null,
+    "physicalVolume": null
+  },
+  {
+    "name": "real-after-single-note",
+    "comment": "Note='retain Lattice=\"2 0 0 0 3 0 0 0 5\" as text' Lattice=\"0 2 0 -3 1 0 0 0 5\"",
+    "hasCell": true,
+    "positions": [
+      [
+        0.25,
+        -0.5,
+        2
+      ]
+    ],
+    "fromFractional": [
+      0,
+      2,
+      0,
+      0,
+      -3,
+      1,
+      0,
+      0,
+      0,
+      0,
+      5,
+      0,
+      0,
+      0,
+      0,
+      1
+    ],
+    "physicalVolume": 30
+  },
+  {
+    "name": "real-before-single-note",
+    "comment": "Lattice=\"0 2 0 -3 1 0 0 0 5\" Note='retain Lattice=\"2 0 0 0 3 0 0 0 5\" as text'",
+    "hasCell": true,
+    "positions": [
+      [
+        0.25,
+        -0.5,
+        2
+      ]
+    ],
+    "fromFractional": [
+      0,
+      2,
+      0,
+      0,
+      -3,
+      1,
+      0,
+      0,
+      0,
+      0,
+      5,
+      0,
+      0,
+      0,
+      0,
+      1
+    ],
+    "physicalVolume": 30
+  },
+  {
+    "name": "nested-nonperiodic-pbc",
+    "comment": "Note='retain pbc=\"F F F\" as text' Lattice=\"0 2 0 -3 1 0 0 0 5\"",
+    "hasCell": true,
+    "positions": [
+      [
+        0.25,
+        -0.5,
+        2
+      ]
+    ],
+    "fromFractional": [
+      0,
+      2,
+      0,
+      0,
+      -3,
+      1,
+      0,
+      0,
+      0,
+      0,
+      5,
+      0,
+      0,
+      0,
+      0,
+      1
+    ],
+    "physicalVolume": 30
+  },
+  {
+    "name": "escaped-single-quote",
+    "comment": "Note='retain \\' Lattice=\"2 0 0 0 3 0 0 0 5\" as text'",
+    "hasCell": false,
+    "positions": [
+      [
+        0.25,
+        -0.5,
+        2
+      ]
+    ],
+    "fromFractional": null,
+    "physicalVolume": null
+  },
+  {
+    "name": "escaped-double-quote",
+    "comment": "Note=\"retain \\\" Lattice=\\\"2 0 0 0 3 0 0 0 5\\\" as text\"",
+    "hasCell": false,
+    "positions": [
+      [
+        0.25,
+        -0.5,
+        2
+      ]
+    ],
+    "fromFractional": null,
+    "physicalVolume": null
+  },
+  {
+    "name": "unterminated-single-note",
+    "comment": "Note='retain Lattice=\"2 0 0 0 3 0 0 0 5\" as text",
+    "hasCell": false,
+    "positions": [
+      [
+        0.25,
+        -0.5,
+        2
+      ]
+    ],
+    "fromFractional": null,
+    "physicalVolume": null
+  },
+  {
+    "name": "unterminated-double-note",
+    "comment": "Note=\"retain Lattice='2 0 0 0 3 0 0 0 5' as text",
+    "hasCell": false,
+    "positions": [
+      [
+        0.25,
+        -0.5,
+        2
+      ]
+    ],
+    "fromFractional": null,
+    "physicalVolume": null
+  },
+  {
+    "name": "unterminated-lattice",
+    "comment": "Lattice=\"2 0 0 0 3 0 0 0 5",
+    "hasCell": false,
+    "positions": [
+      [
+        0.25,
+        -0.5,
+        2
+      ]
+    ],
+    "fromFractional": null,
+    "physicalVolume": null
+  },
+  {
+    "name": "genuine-partial-pbc",
+    "comment": "Lattice=\"0 2 0 -3 1 0 0 0 5\" pbc=\"T F T\"",
+    "hasCell": false,
+    "positions": [
+      [
+        0.25,
+        -0.5,
+        2
+      ]
+    ],
+    "fromFractional": null,
+    "physicalVolume": null
+  },
+  {
+    "name": "real-after-escaped-note",
+    "comment": "Note=\"retain \\\"quoted\\\" text\" Lattice=\"0 2 0 -3 1 0 0 0 5\"",
+    "hasCell": true,
+    "positions": [
+      [
+        0.25,
+        -0.5,
+        2
+      ]
+    ],
+    "fromFractional": [
+      0,
+      2,
+      0,
+      0,
+      -3,
+      1,
+      0,
+      0,
+      0,
+      0,
+      5,
+      0,
+      0,
+      0,
+      0,
+      1
+    ],
+    "physicalVolume": 30
+  },
+  {
+    "name": "ordinary",
+    "comment": "ordinary XYZ without cell metadata",
+    "hasCell": false,
+    "positions": [
+      [
+        0.25,
+        -0.5,
+        2
+      ]
+    ],
+    "fromFractional": null,
+    "physicalVolume": null
+  }
+]

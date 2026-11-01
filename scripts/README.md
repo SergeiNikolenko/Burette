@@ -198,3 +198,15 @@ at most three frames), separately from active/pending/source storage. Raw-browse
 TRR retains one snapshot-owned binary source within the existing 75 MiB/100,000
 frame limits. No energy or temperature is inferred. Rebuild `vendor:molstar` and
 plugin mirrors before enabling a host consumer of the new frame-page methods.
+
+## Native XYZ Lattice
+
+`molstar-xyz-lattice.mjs` is a version-locked build adapter used by both
+`vp run vendor:molstar` and `vp run build:mesoscale`. It attaches admitted
+per-frame XYZ `Lattice` metadata through the existing native symmetry provider,
+preserving the full Cartesian cell frame and physical volume. Missing, malformed,
+or partial-periodic metadata keeps ordinary XYZ atom-opening behavior.
+
+After rebuilding the native runtime, `vp run test:built-xyz-lattice` checks
+real provider/state seeks, unit-cell geometry, and native MOLX round trips.
+This prerequisite does not add Niggli actions, cell editing, or cell export.
