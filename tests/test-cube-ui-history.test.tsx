@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readMolstarModule } from "../scripts/molstar-source.mjs";
 import { test, expect, act, fixture, click, wait, original, oracle } from "./cube-ui-history-fixture";
 import { patchMolstarCubeUiHistory } from "../scripts/molstar-cube-ui-history.mjs";
 
@@ -46,8 +46,8 @@ test("a native non-Cube editor update does not enter Cube scene history", async 
   } finally { await f.close(); }
 });
 
-test("the build adapter rejects changed or already adapted upstream editor source", () => {
-  const source = readFileSync(new URL("../node_modules/molstar/lib/mol-plugin-ui/state/update-transform.js", import.meta.url), "utf8");
+test("the build adapter rejects changed or already adapted upstream editor source", async () => {
+  const source = await readMolstarModule("@molstar/plugin-ui/state/update-transform");
   expect(() => patchMolstarCubeUiHistory("changed layout")).toThrow("review Cube UI history");
   expect(() => patchMolstarCubeUiHistory(patchMolstarCubeUiHistory(source))).toThrow("review Cube UI history");
 });

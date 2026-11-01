@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { Window } from 'happy-dom';
 import { PluginContext } from '@molstar/plugin';
+import { DefaultRegistry } from '@molstar/plugin/default-registry';
 import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
 import { StateTransforms } from '@molstar/viewer/state-transforms';
 import { Task } from '@molstar/core/task';
@@ -18,7 +19,7 @@ const gate = () => {
 };
 const dom = new Window(), previous = globalThis.document;
 globalThis.document = dom.document;
-const plugin = new PluginContext({ actions: [], behaviors: [] });
+const plugin = new PluginContext({ registry: DefaultRegistry, behaviors: [] });
 let hold, failure = false;
 const Probe = PluginStateTransform.BuiltIn({ name: 'geometry-runtime-test-probe', from: [SO.Molecule.Structure, SO.Data.String], to: SO.Data.String })({
   apply() { return Task.create('Dependent geometry work', async () => {

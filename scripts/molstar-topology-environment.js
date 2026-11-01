@@ -3,6 +3,8 @@ import { FocusLoci, DefaultFocusLociBindings } from '@molstar/plugin/behavior/dy
 import { PluginBehavior } from '@molstar/plugin/behavior/behavior';
 import { StateTransformer } from '@molstar/core/state';
 import { DefaultPluginSpec } from '@molstar/plugin/default-spec';
+import { DefaultRegistry } from '@molstar/plugin/default-registry';
+import { createViewerRegistry } from '@molstar/viewer/registry';
 import { AnimateModelIndex } from '@molstar/plugin/state/animation/built-in/model-index';
 import { Canvas3DParams, Canvas3DContext } from '@molstar/graphics/canvas3d/canvas3d';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
@@ -11,7 +13,10 @@ import { InteractivityManager } from '@molstar/plugin/state/manager/interactivit
 import { StructureComponentManager } from '@molstar/plugin/state/manager/structure/component';
 import { PluginStateSnapshotManager } from '@molstar/plugin/state/manager/snapshots';
 
-const nativeAnimations = DefaultPluginSpec().animations, animationRevisions = new WeakMap();
+// The pinned Mol* takes animations from registry entries: the default plugin's and the Viewer's
+// (which adds particle playback) are the native catalogs.
+const registryAnimations = registry => registry.flatMap(entry => entry.animations ?? []);
+const nativeAnimationCatalogs = [registryAnimations(DefaultRegistry), registryAnimations(createViewerRegistry())], animationRevisions = new WeakMap();
 const managerRevisions = new WeakMap(), behaviorRevisions = new WeakMap();
 const nativeBehaviors = [...DefaultPluginSpec().behaviors, ...Object.values(ExtensionMap)];
 const interactivityDefaults = PD.getDefaultValues(InteractivityManager.Params), componentDefaults = PD.getDefaultValues(StructureComponentManager.OptionsParams);
@@ -128,7 +133,7 @@ function animationRevision(manager) {
 }
 function animationOwner(plugin) {
   const manager = plugin.managers.animation, current = manager?.current;
-  if (!manager || manager.animations.length !== nativeAnimations.length || manager.animations.some((animation, index) => animation !== nativeAnimations[index])) fail('Custom native animation catalogs cannot be retained by a topology edit.');
+  if (!manager || !nativeAnimationCatalogs.some(native => manager.animations.length === native.length && manager.animations.every((animation, index) => animation === native[index]))) fail('Custom native animation catalogs cannot be retained by a topology edit.');
   // Only the native stopped trajectory-animation default is representable by the new candidate.
   if (!current || current.anim !== AnimateModelIndex || manager.isAnimating || !manager.isStopped || manager.isApplying
     || plugin.behaviors.state.isAnimating.value || current.startedTime !== -1 || current.lastTime !== 0) fail('Native animation must be reset to its stopped default before changing topology.');

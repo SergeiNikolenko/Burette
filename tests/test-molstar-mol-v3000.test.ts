@@ -1,14 +1,15 @@
 import { plugin } from "bun";
-import { molstarV3000ChargesPlugin } from "../scripts/molstar-v3000-charges.mjs";
+import { molstarV3000AtomsPlugin, molstarV3000ChargesPlugin } from "../scripts/molstar-v3000-charges.mjs";
 import { expect, spyOn, test } from "bun:test";
 import { Window } from "happy-dom";
-import { readFileSync } from "node:fs";
+import { readMolstarModule } from "../scripts/molstar-source.mjs";
 import { patchMolstarMolV3000, molstarMolV3000Plugin } from "../scripts/molstar-mol-v3000.mjs";
 import { IndexPairBonds } from "@molstar/model/formats/structure/property/bonds/index-pair";
 const browser = new Window();
 Object.assign(browser, { setImmediate, clearImmediate });
 Object.assign(globalThis, { window: browser, document: browser.document });
 plugin(molstarMolV3000Plugin);
+plugin(molstarV3000AtomsPlugin);
 plugin(molstarV3000ChargesPlugin);
 const { PluginContext } = await import("@molstar/plugin");
 const { DefaultPluginSpec } = await import("@molstar/plugin/default-spec");
@@ -67,8 +68,8 @@ test("incomplete, concatenated or tailed V3000 fails before publishing a replace
   } finally { consoleError.mockRestore(); subscription.unsubscribe(); plugin.dispose(); }
 });
 
-test("MOL source adapter refuses unexpected or already patched upstream transforms", () => {
-  const original = readFileSync(new URL("../node_modules/molstar/lib/mol-plugin-state/transforms/model.js", import.meta.url), "utf8");
+test("MOL source adapter refuses unexpected or already patched upstream transforms", async () => {
+  const original = await readMolstarModule("@molstar/plugin/state/formats/trajectory/mol");
   expect(() => patchMolstarMolV3000("unexpected upstream")).toThrow("review before vendoring");
   expect(() => patchMolstarMolV3000(patchMolstarMolV3000(original))).toThrow("review before vendoring");
 });

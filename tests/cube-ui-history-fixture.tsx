@@ -23,6 +23,7 @@ const { DefaultPluginUISpec } = await import("@molstar/plugin-ui/default-spec");
 const { PluginReactContext } = await import("@molstar/plugin-ui/base");
 const { LeftPanelControls } = await import("@molstar/plugin-ui/left-panel");
 const { OpenFiles } = await import("@molstar/plugin/state/actions/file");
+const { PluginStateObject } = await import("@molstar/plugin/state/objects");
 const { TransformUpdaterControl, UpdateTransformControl } = await import("@molstar/plugin-ui/state/update-transform");
 const { StateTransforms } = await import("@molstar/viewer/state-transforms");
 const { CubeProvider } = await import("@molstar/plugin/state/formats/volume/cube");
@@ -95,7 +96,8 @@ export async function fixture() {
       expect({ index: cell().params!.values.dataIndex, values: Array.from(grid.cells.data), dimensions: grid.cells.space.dimensions, matrix: Array.from(grid.transform.matrix), atoms: atomPositions() })
         .toEqual({ index: oracle.datasetIds.indexOf(id), values: oracle.fieldValues[String(id)], dimensions: oracle.dimensions, matrix: oracle.matrixColumnMajor, atoms: oracle.atomsAngstrom });
       expect(data.cell!.obj).toBe(sourceObject); expect(plugin.state.data.cells.get(formatRef)!.obj).toBe(formatObject);
-      expect(data.data).toBe(original); expect(plugin.managers.asset.get(asset)!.asset).toBe(asset);
+      // The pinned reader keeps the file as a response body; its bytes are the original text.
+      expect(new TextDecoder().decode(PluginStateObject.Data.readBytes(data.cell!.obj!))).toBe(original); expect(plugin.managers.asset.get(asset)!.asset).toBe(asset);
       expect(await plugin.managers.asset.get(asset)!.file.text()).toBe(original);
     },
     history: async (direction: "Undo" | "Redo") => { await click(bar, "Apply"); const menu = document.querySelector(".buret-selection-apply")!; await click(menu, direction); },

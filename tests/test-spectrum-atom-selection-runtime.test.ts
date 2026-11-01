@@ -10,6 +10,7 @@ installPlugin(molstarStatePreconditionPlugin);
 const dom = new Window(), previous = Object.getOwnPropertyDescriptor(globalThis, "document");
 Object.defineProperty(globalThis, "document", { configurable: true, value: dom.document });
 const { PluginContext } = await import("@molstar/plugin");
+const { DefaultRegistry } = await import("@molstar/plugin/default-registry");
 const { StateTransforms } = await import("@molstar/viewer/state-transforms");
 const { StructureElement } = await import("@molstar/model/model/structure");
 const { OrderedSet } = await import("@molstar/core/data/int");
@@ -18,7 +19,7 @@ afterAll(async () => { await dom.happyDOM.close(); if (previous) Object.definePr
 const source = "4\nowned-source\nC 0 0 0\nO 1 0 0\nH 0 1 0\nH 0 0 1\n";
 const digest = async (text: string) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text))), value => value.toString(16).padStart(2, "0")).join("");
 async function fixture(text = source, options: { crypto?: Pick<Crypto, "subtle">; loading?: Promise<void> } = {}) {
-  const plugin = new PluginContext({ actions: [], behaviors: [] }); await plugin.init();
+  const plugin = new PluginContext({ registry: DefaultRegistry, behaviors: [] }); await plugin.init();
   const raw = await plugin.builders.data.rawData({ data: text }), trajectory = await plugin.builders.structure.parseTrajectory(raw, "xyz");
   const model = await plugin.builders.structure.createModel(trajectory); await plugin.builders.structure.createStructure(model);
   const viewer = { plugin }; let active = viewer;

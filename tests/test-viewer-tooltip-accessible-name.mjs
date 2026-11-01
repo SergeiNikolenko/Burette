@@ -1,15 +1,13 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
 import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Window } from 'happy-dom';
 
-const require = createRequire(import.meta.url);
-const { IconButton } = require('@molstar/plugin-ui/controls/common');
-const { HomeOutlinedSvg, SaveOutlinedSvg, AccountTreeOutlinedSvg } = require('@molstar/plugin-ui/controls/icons');
+const { IconButton } = await import('@molstar/plugin-ui/controls/common');
+const { HomeOutlinedSvg, SaveOutlinedSvg, AccountTreeOutlinedSvg } = await import('@molstar/plugin-ui/controls/icons');
 const source = await readFile(new URL('../PreviewExtension/Web/viewer.js', import.meta.url), 'utf8');
 const start = source.indexOf('  let molstarControlTooltip = null;');
 const end = source.indexOf('  function installDownloadExportBridge()', start);

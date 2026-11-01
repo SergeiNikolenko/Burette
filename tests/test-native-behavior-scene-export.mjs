@@ -34,7 +34,7 @@ async function make() {
   await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default', { representationPreset: 'empty' });
   const camera = new Camera(); camera.setState({ radius: 3 }, 0);
   plugin.canvas3d = { camera, props: structuredClone(PD.getDefaultValues(Canvas3DParams)), setProps(value) { merge(this.props, value); },
-    add() {}, remove() {}, syncVisibility() {}, mark() {}, requestCameraReset({ snapshot }) { camera.setState(snapshot, 0); } };
+    add() {}, remove() {}, commit() {}, syncVisibility() {}, mark() {}, requestCameraReset({ snapshot }) { camera.setState(snapshot, 0); } };
   plugin.canvas3dContext = { props: structuredClone(PD.getDefaultValues(Canvas3DContext.Params)), setProps(value) { merge(this.props, value); } };
   plugin.state.setSnapshotParams({ image: false, animation: false, cameraTransition: { name: 'instant', params: {} } });
   return plugin;

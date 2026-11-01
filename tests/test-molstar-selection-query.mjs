@@ -12,6 +12,8 @@ import "./test-composition-scene-menu.mjs";
 const { molstarQueryForSelector } = await import("../apps/desktop/src/lib/molstar-selection-query.ts");
 const chainAQuery = molstarQueryForSelector({ kind: "polymer", auth_asym_id: "A" });
 const require = createRequire(import.meta.url);
+// The pinned Mol* registers script languages explicitly.
+require("@molstar/query-language/transpilers/pymol");
 const { parse: transpile } = require("@molstar/query-language/transpile");
 const { parseMolScript } = require("@molstar/query-language/language/parser");
 const { transpileMolScript } = require("@molstar/query-language/script/mol-script/symbols");

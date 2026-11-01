@@ -16,6 +16,7 @@ for (const [key, value] of Object.entries({ window: dom, document: dom.document,
 }
 Object.assign(dom, { setImmediate, clearImmediate });
 const { PluginContext } = await import("@molstar/plugin");
+const { DefaultRegistry } = await import("@molstar/plugin/default-registry");
 const { StructureElement } = await import("@molstar/model/model/structure");
 const { OrderedSet } = await import("@molstar/core/data/int");
 afterAll(async () => { await dom.happyDOM.close(); for (const [key, descriptor] of previous) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key); } });
@@ -23,7 +24,7 @@ const text = sdfFromGraph(data.atoms, data.bonds, "Propylene");
 function deferred() { let resolve!: () => void; const promise = new Promise<void>(done => resolve = done); return { promise, resolve }; }
 let serial = 0;
 async function fixture(input = text, format: "mol" | "sdf" = "sdf", digestGate?: ReturnType<typeof deferred>) {
-  const plugin = new PluginContext({ actions: [], behaviors: [] }); await plugin.init();
+  const plugin = new PluginContext({ registry: DefaultRegistry, behaviors: [] }); await plugin.init();
   const raw = await plugin.builders.data.rawData({ data: input }), trajectory = await plugin.builders.structure.parseTrajectory(raw, format);
   const model = await plugin.builders.structure.createModel(trajectory); await plugin.builders.structure.createStructure(model);
   const viewer = { plugin }; let active = viewer;

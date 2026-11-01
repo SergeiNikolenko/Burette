@@ -1,26 +1,23 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
-import { parseSdf as upstreamParseSdf } from '@molstar/io/reader/sdf/parser';
 import { trajectoryFromSdf } from '@molstar/model/formats/structure/sdf';
 import { IndexPairBonds } from '@molstar/model/formats/structure/property/bonds/index-pair';
-import { molstarV3000ChargesPlugin, patchMolstarV3000Atoms, patchMolstarV3000Charges } from '../scripts/molstar-v3000-charges.mjs';
+import { readFileSync } from 'node:fs';
+import { readMolstarModule, resolveMolstarModule } from '../scripts/molstar-source.mjs';
+import { molstarV3000AtomsPlugin, molstarV3000ChargesPlugin, patchMolstarV3000Atoms, patchMolstarV3000Charges } from '../scripts/molstar-v3000-charges.mjs';
+import { importMolstarModuleVariant, molstarModuleVariantUrl } from './fixtures/molstar-module-variant.mjs';
 
-// Use the actual build plugin's onLoad outputs without building or changing vendor assets.
-const parserUrl = new URL('../node_modules/molstar/lib/mol-io/reader/sdf/parser.js', import.meta.url);
-const atomsUrl = new URL('./parser-v3-util.js', parserUrl);
-const handlers = [];
-molstarV3000ChargesPlugin.setup({ onLoad(options, load) { handlers.push({ ...options, load }); } });
-async function load(url) {
-  const path = fileURLToPath(url), handler = handlers.find(item => item.filter.test(path));
-  assert.ok(handler, 'the vendor build must intercept both SDF reader modules');
-  return (await handler.load({ path })).contents;
-}
-const asModule = (source, base, atoms) => `data:text/javascript;base64,${Buffer.from(source.replace(/from '(\.[^']+)'/gu,
-  (_, path) => `from '${path === './parser-v3-util.js' ? atoms : new URL(path, base)}'`)).toString('base64')}`;
-const atomsModule = asModule(await load(atomsUrl), atomsUrl);
-const { parseSdf } = await import(asModule(await load(parserUrl), parserUrl, atomsModule));
-const originalParser = await readFile(parserUrl, 'utf8'), originalAtoms = await readFile(atomsUrl, 'utf8');
+// Use the actual build plugins' onLoad outputs without building or changing vendor assets.
+const loads = new Map();
+for (const plugin of [molstarV3000AtomsPlugin, molstarV3000ChargesPlugin]) plugin.setup({ onLoad(_options, load) { loads.set(plugin.name, load); } });
+assert.equal(loads.size, 2, 'the vendor build must intercept both SDF reader modules');
+const contents = async name => (await loads.get(name)()).contents;
+const atomsSource = await contents('molstar-v3000-atoms');
+const atomsModule = await molstarModuleVariantUrl('@molstar/io/reader/sdf/parser-v3-util', () => atomsSource);
+const parserSource = await contents('molstar-v3000-formal-charges');
+const { parseSdf } = await importMolstarModuleVariant('@molstar/io/reader/sdf/parser',
+  () => parserSource.replace('from "./parser-v3-util.js"', `from "${atomsModule}"`));
+const { parseSdf: upstreamParseSdf } = await importMolstarModuleVariant('@molstar/io/reader/sdf/parser');
+const originalParser = await readMolstarModule('@molstar/io/reader/sdf/parser'), originalAtoms = await readMolstarModule('@molstar/io/reader/sdf/parser-v3-util');
 assert.throws(() => patchMolstarV3000Charges('changed upstream'), /reader changed/);
 assert.throws(() => patchMolstarV3000Atoms('changed upstream'), /reader changed/);
 assert.throws(() => patchMolstarV3000Charges(patchMolstarV3000Charges(originalParser)), /reader changed/);
@@ -142,6 +139,6 @@ await assert.rejects(parsed(charged.slice(0, charged.indexOf('M  V30 END ATOM'))
 await assert.rejects(parsed(charged.replace('M  V30 END ATOM', 'M  V30 END CTAB')), /Missing V3000 END ATOM/);
 await assert.rejects(parsed(sdf([`1 C 0 0 0 0 LABEL=${'x'.repeat(65_536)}`, '2 O 1.2 0 0 0'])), /65,536 characters/);
 await assert.rejects(parsed(sdf([`1 C 0 0 0 0 ${'-\nM  V30 '.repeat(256)}CHG=1`, '2 O 1.2 0 0 0'])), /256 continuation lines/);
-assert.equal(await readFile(parserUrl, 'utf8'), originalParser, 'never edit installed Mol* source');
-assert.equal(await readFile(atomsUrl, 'utf8'), originalAtoms);
+assert.equal(readFileSync(resolveMolstarModule('@molstar/io/reader/sdf/parser'), 'utf8'), originalParser, 'never edit the pinned Mol* source');
+assert.equal(readFileSync(resolveMolstarModule('@molstar/io/reader/sdf/parser-v3-util'), 'utf8'), originalAtoms);
 console.log('Mol* V3000 id-to-row bonds, formal charges, continuations, V2000 parity, stereo geometry and bounded malformed rejection passed');

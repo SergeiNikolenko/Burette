@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { Window } from 'happy-dom';
 import { PluginContext } from '@molstar/plugin';
+import { DefaultRegistry } from '@molstar/plugin/default-registry';
 import { BuretteIndexedTrajectory } from '../scripts/molstar-indexed-trajectory.js';
 
 const fixture = name => new Uint8Array(readFileSync(new URL(`./fixtures/trajectory/${name}`, import.meta.url)));
@@ -12,7 +13,7 @@ const bytes = new Uint8Array(first.length + second.length); bytes.set(first); by
 const previousDocument = globalThis.document;
 globalThis.document = new Window().document;
 const plugins = [];
-const makePlugin = async () => { const plugin = new PluginContext({ actions: [], behaviors: [] }); plugins.push(plugin); await plugin.init(); return plugin; };
+const makePlugin = async () => { const plugin = new PluginContext({ registry: DefaultRegistry, behaviors: [] }); plugins.push(plugin); await plugin.init(); return plugin; };
 const near = (value, expected) => assert.ok(Math.abs(value - expected) < 1e-6, `${value} != ${expected}`);
 try {
   const plugin = await makePlugin();

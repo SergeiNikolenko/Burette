@@ -1,11 +1,12 @@
 import { plugin } from "bun";
 import { expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import { parseScientificFile } from "../apps/desktop/src/lib/molecular-workbench/quantum";
 import { molstarCubeUnitsPlugin, patchMolstarCubeUnits } from "../scripts/molstar-cube-units.mjs";
-import { parseCube as parseUpstream } from "@molstar/io/reader/cube/parser";
+import { readMolstarModule } from "../scripts/molstar-source.mjs";
+import { importMolstarModuleVariant } from "./fixtures/molstar-module-variant.mjs";
 
 plugin(molstarCubeUnitsPlugin);
+const { parseCube: parseUpstream }: typeof import("@molstar/io/reader/cube/parser") = await importMolstarModuleVariant("@molstar/io/reader/cube/parser");
 const { parseCube } = await import("@molstar/io/reader/cube/parser");
 const { volumeFromCube } = await import("@molstar/model/formats/volume/cube");
 const { trajectoryFromCube } = await import("@molstar/model/formats/structure/cube");
@@ -82,8 +83,8 @@ test("mixed or nonintegral voxel-unit declarations fail before a native field is
   }
 });
 
-test("the version-owned adapter refuses drift or double application", () => {
-  const source = readFileSync(new URL("../node_modules/molstar/lib/mol-io/reader/cube/parser.js", import.meta.url), "utf8");
+test("the version-owned adapter refuses drift or double application", async () => {
+  const source = await readMolstarModule("@molstar/io/reader/cube/parser");
   expect(() => patchMolstarCubeUnits("unexpected source")).toThrow("review units");
   expect(() => patchMolstarCubeUnits(patchMolstarCubeUnits(source))).toThrow("review units");
 });

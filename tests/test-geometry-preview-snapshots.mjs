@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { Window } from 'happy-dom';
 import { PluginContext } from '@molstar/plugin';
+import { DefaultRegistry } from '@molstar/plugin/default-registry';
 import { PluginStateSnapshotManager } from '@molstar/plugin/state/manager/snapshots';
 import { StructureElement } from '@molstar/model/model/structure';
 import { setCanvasModule } from '@molstar/graphics/geo/geometry/text/font-atlas';
@@ -14,8 +15,8 @@ setCanvasModule({ createCanvas: () => ({ getContext: () => ({
 }) }) });
 const dom = new Window(), previousDocument = globalThis.document;
 globalThis.document = dom.document;
-const plugin = new PluginContext({ actions: [], behaviors: [] });
-const opened = new PluginContext({ actions: [], behaviors: [] });
+const plugin = new PluginContext({ registry: DefaultRegistry, behaviors: [] });
+const opened = new PluginContext({ registry: DefaultRegistry, behaviors: [] });
 try {
   await plugin.init();
   const data = await plugin.builders.data.rawData({ data: '4\npreview\nO 0 0 0\nH 1 0 0\nH 0 1 0\nH 0 1 1\n' });

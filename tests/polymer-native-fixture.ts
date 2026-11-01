@@ -12,9 +12,10 @@ export async function attachNativePolymerSource(frame: HTMLIFrameElement, docume
   const enqueue = (callback: () => void) => { pending++; setTimeout(() => { try { callback(); } finally { pending--; } }, 0); };
   Object.assign(hostWindow, { setImmediate, clearImmediate });
   const { PluginContext } = await import("@molstar/plugin");
+  const { DefaultRegistry } = await import("@molstar/plugin/default-registry");
   const { StructureElement } = await import("@molstar/model/model/structure");
   const { OrderedSet } = await import("@molstar/core/data/int");
-  const plugin = new PluginContext({ actions: [], behaviors: [] }); await plugin.init();
+  const plugin = new PluginContext({ registry: DefaultRegistry, behaviors: [] }); await plugin.init();
   const load = async () => {
     const raw = await plugin.builders.data.rawData({ data: text }), trajectory = await plugin.builders.structure.parseTrajectory(raw, "sdf");
     const model = await plugin.builders.structure.createModel(trajectory); await plugin.builders.structure.createStructure(model); return raw;

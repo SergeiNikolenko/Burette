@@ -11,12 +11,13 @@ installPlugin(molstarStatePreconditionPlugin);
 const dom = new Window(), documentDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'document');
 Object.defineProperty(globalThis, 'document', { configurable: true, value: dom.document });
 const { PluginContext } = await import('@molstar/plugin');
+const { DefaultRegistry } = await import('@molstar/plugin/default-registry');
 const { StateTransforms } = await import('@molstar/viewer/state-transforms');
 afterAll(async () => { await dom.happyDOM.close(); if (documentDescriptor) Object.defineProperty(globalThis, 'document', documentDescriptor); else Reflect.deleteProperty(globalThis, 'document'); });
 const hydrogen = '1\nsource\nH 0 0 0\n';
 const smallCube = 'Cube\noblique\n1 1 2 3\n2 1 .1 0\n2 0 1 .1\n2 .1 0 1\n1 0 0 0 0\n-1 0 1 2 -2 0 2 3\n';
 async function fixture(text: string, cube = false, nativeCrypto: Pick<Crypto, 'subtle' | 'randomUUID'> = crypto) {
- const plugin = new PluginContext({ actions: [], behaviors: [] }); await plugin.init();
+ const plugin = new PluginContext({ registry: DefaultRegistry, behaviors: [] }); await plugin.init();
  const raw = await plugin.builders.data.rawData({ data: text });
  if (cube) await plugin.state.data.build().to(raw).apply(StateTransforms.Data.ParseCube).apply(StateTransforms.Volume.VolumeFromCube).commit();
  else { const trajectory = await plugin.builders.structure.parseTrajectory(raw, 'xyz'); const model = await plugin.builders.structure.createModel(trajectory); await plugin.builders.structure.createStructure(model); }

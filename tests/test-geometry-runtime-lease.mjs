@@ -3,11 +3,12 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { Window } from 'happy-dom';
 import { PluginContext } from '@molstar/plugin';
+import { DefaultRegistry } from '@molstar/plugin/default-registry';
 import { StateTransforms } from '@molstar/viewer/state-transforms';
 import { BuretteGeometry } from '../scripts/molstar-geometry.js';
 
 const dom = new Window(), previous = globalThis.document; globalThis.document = dom.document;
-const plugin = new PluginContext({ actions: [], behaviors: [] });
+const plugin = new PluginContext({ registry: DefaultRegistry, behaviors: [] });
 const xyz = '3\nsource baseline\nO 0 0 0\nH 1 0 0\nH 0 1 0\n';
 const text = value => xyz.replace('H 1 0 0', `H ${value} 0 0`);
 try {

@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { Window } from 'happy-dom';
 import { PluginContext } from '@molstar/plugin';
+import { DefaultRegistry } from '@molstar/plugin/default-registry';
 import { StructureElement } from '@molstar/model/model/structure';
 import { Loci } from '@molstar/model/model/loci';
 import { Vec3 } from '@molstar/core/math/linear-algebra';
@@ -18,7 +19,7 @@ setCanvasModule({ createCanvas: () => ({ getContext: () => ({
 const dom = new Window();
 const previousDocument = globalThis.document;
 globalThis.document = dom.document;
-const plugin = new PluginContext({ actions: [], behaviors: [] });
+const plugin = new PluginContext({ registry: DefaultRegistry, behaviors: [] });
 try {
   await plugin.init();
   const data = await plugin.builders.data.rawData({ data: '4\nfixture\nO 0 0 0\nH 1 0 0\nH 0 1 0\nH 0 1 1\n' });

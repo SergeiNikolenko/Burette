@@ -1,17 +1,18 @@
 import { plugin } from "bun";
 import { expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import { Window } from "happy-dom";
 import { parseScientificFile } from "../apps/desktop/src/lib/molecular-workbench/quantum";
 import { molstarCubeUnitsPlugin } from "../scripts/molstar-cube-units.mjs";
 import { molstarCubeDatasetsPlugin, patchMolstarCubeDatasets } from "../scripts/molstar-cube-datasets.mjs";
-import { volumeFromCube as volumeFromUpstream } from "@molstar/model/formats/volume/cube";
+import { readMolstarModule } from "../scripts/molstar-source.mjs";
+import { importMolstarModuleVariant } from "./fixtures/molstar-module-variant.mjs";
 
 const browser = new Window();
 Object.assign(browser, { setImmediate, clearImmediate });
 Object.assign(globalThis, { window: browser, document: browser.document });
 plugin(molstarCubeUnitsPlugin);
 plugin(molstarCubeDatasetsPlugin);
+const { volumeFromCube: volumeFromUpstream }: typeof import("@molstar/model/formats/volume/cube") = await importMolstarModuleVariant("@molstar/model/formats/volume/cube");
 const { parseCube } = await import("@molstar/io/reader/cube/parser");
 const { volumeFromCube } = await import("@molstar/model/formats/volume/cube");
 const { trajectoryFromCube } = await import("@molstar/model/formats/structure/cube");
@@ -69,8 +70,7 @@ test("ordinary single-field native Cube output remains identical for both suppor
     const parsed = await parseCube(text, "single.cube").run();
     if (parsed.isError) throw new Error(parsed.message);
     const fixed = await volumeFromCube(parsed.result, {}).run();
-    // The pinned ESM/CJS builds duplicate nominal Column enum types; runtime fields are identical.
-    const original = await volumeFromUpstream(parsed.result as unknown as Parameters<typeof volumeFromUpstream>[0], {}).run();
+    const original = await volumeFromUpstream(parsed.result, {}).run();
     expect({ values: fixed.grid.cells.data, transform: fixed.grid.transform, stats: fixed.grid.stats })
       .toEqual({ values: original.grid.cells.data, transform: original.grid.transform, stats: original.grid.stats });
     expect(parseScientificFile("single.cube", text).grid!.values).toEqual(new Float32Array([-4, -3]));
@@ -85,8 +85,8 @@ test("out-of-range or nonintegral dataset choices reject instead of publishing a
   }
 });
 
-test("dataset adapter refuses a changed or already patched upstream source", () => {
-  const source = readFileSync(new URL("../node_modules/molstar/lib/mol-model-formats/volume/cube.js", import.meta.url), "utf8");
+test("dataset adapter refuses a changed or already patched upstream source", async () => {
+  const source = await readMolstarModule("@molstar/model/formats/volume/cube");
   expect(() => patchMolstarCubeDatasets("unexpected source")).toThrow("review dataset selection");
   expect(() => patchMolstarCubeDatasets(patchMolstarCubeDatasets(source))).toThrow("review dataset selection");
 });

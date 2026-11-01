@@ -33,7 +33,7 @@ const measurement = scope.BuretteMeasurementCoordinate, science = scope.BuretteS
 function cameraFor(plugin) {
   if (plugin.canvas3d) return plugin.canvas3d.camera;
   const original = plugin.canvas3d, camera = new Camera(); canvases.push([plugin, original]);
-  plugin.canvas3d = { camera, props: structuredClone(PD.getDefaultValues(Canvas3DParams)), setProps(props) { for (const [key, value] of Object.entries(props)) this.props[key] = value && typeof value === 'object' && !Array.isArray(value) ? { ...this.props[key], ...structuredClone(value) } : value; }, pause() {}, resume() {}, commit() {}, add() {}, remove() {}, syncVisibility() {}, mark() {}, requestCameraReset({ snapshot }) { camera.setState(snapshot, 0); } };
+  plugin.canvas3d = { camera, props: structuredClone(PD.getDefaultValues(Canvas3DParams)), setProps(props) { for (const [key, value] of Object.entries(props)) this.props[key] = value && typeof value === 'object' && !Array.isArray(value) ? { ...this.props[key], ...structuredClone(value) } : value; }, pause() {}, resume() {}, commit() {}, add() {}, remove() {}, commit() {}, syncVisibility() {}, mark() {}, requestCameraReset({ snapshot }) { camera.setState(snapshot, 0); } };
   return camera;
 }
 const xyz = '4\nfixture\nO 0 0 0\nH 1 0 0\nH 0 1 0\nC 0 0 1\n';

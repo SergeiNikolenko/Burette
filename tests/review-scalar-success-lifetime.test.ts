@@ -12,6 +12,7 @@ installPlugin(molstarStatePreconditionPlugin);
 const dom = new Window(), descriptor = Object.getOwnPropertyDescriptor(globalThis, 'document');
 Object.defineProperty(globalThis, 'document', { configurable: true, value: dom.document });
 const { PluginContext } = await import('@molstar/plugin');
+const { DefaultRegistry } = await import('@molstar/plugin/default-registry');
 const { StateTransforms } = await import('@molstar/viewer/state-transforms');
 const { PluginStateObject: SO, PluginStateTransform } = await import('@molstar/plugin/state/objects');
 const { Task } = await import('@molstar/core/task');
@@ -21,7 +22,7 @@ const grid = evaluateOrbitalGrid(input, 0, { paddingAngstrom: 1, spacingAngstrom
 const cube = gridToCube(grid, input.atoms);
 const gate = () => { let release!: () => void, enter!: () => void; return { held: new Promise<void>(r => release = r), entered: new Promise<void>(r => enter = r), release: () => release(), enter: () => enter() }; };
 async function setup() {
- const plugin = new PluginContext({ actions: [], behaviors: [] }); await plugin.init();
+ const plugin = new PluginContext({ registry: DefaultRegistry, behaviors: [] }); await plugin.init();
  const raw = await plugin.builders.data.rawData({ data: '1\nsource\nH 0 0 0\n' });
  const trajectory = await plugin.builders.structure.parseTrajectory(raw, 'xyz');
  const model = await plugin.builders.structure.createModel(trajectory); await plugin.builders.structure.createStructure(model);

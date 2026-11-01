@@ -11,6 +11,7 @@ import { addDocumentInternalCoordinates, recordImportedRevision, releaseClosedIm
 installPlugin(molstarStatePreconditionPlugin);
 Object.assign(browser, { setImmediate, clearImmediate });
 const { PluginContext } = await import("@molstar/plugin");
+const { DefaultRegistry } = await import("@molstar/plugin/default-registry");
 const { StateTransforms } = await import("@molstar/viewer/state-transforms");
 const { StructureElement } = await import("@molstar/model/model/structure");
 const { OrderedSet } = await import("@molstar/core/data/int");
@@ -32,7 +33,7 @@ async function fixture() {
   const text = serializeXyz(science.atoms, current.id);
   adoptLogicalSource({ documentId: current.id, extension: "xyz", text }, "nmr-science", null, science.atoms.map(atom => atom.element));
   addDocumentInternalCoordinates(current.id, text, science);
-  const plugin = new PluginContext({ actions: [], behaviors: [] }); await plugin.init();
+  const plugin = new PluginContext({ registry: DefaultRegistry, behaviors: [] }); await plugin.init();
   const raw = await plugin.builders.data.rawData({ data: text }), trajectory = await plugin.builders.structure.parseTrajectory(raw, "xyz");
   const model = await plugin.builders.structure.createModel(trajectory); await plugin.builders.structure.createStructure(model);
   let gate: Promise<void> | null = null, entered = false;

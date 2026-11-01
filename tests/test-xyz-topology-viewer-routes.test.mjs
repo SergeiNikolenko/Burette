@@ -48,7 +48,7 @@ function cameraFor(viewer) {
   const original = viewer.plugin.canvas3d, camera = new Camera();
   viewer.plugin.canvas3d = { camera, props: structuredClone(PD.getDefaultValues(Canvas3DParams)),
     setProps(props) { for (const [key, value] of Object.entries(props)) this.props[key] = value && typeof value === 'object' && !Array.isArray(value) ? { ...this.props[key], ...structuredClone(value) } : value; },
-    dispose() {}, add() {}, remove() {}, syncVisibility() {}, mark() {}, requestCameraReset({ snapshot }) { camera.setState(snapshot, 0); } };
+    dispose() {}, add() {}, remove() {}, commit() {}, syncVisibility() {}, mark() {}, requestCameraReset({ snapshot }) { camera.setState(snapshot, 0); } };
   return { camera, dispose() { viewer.plugin.canvas3d = original; } };
 }
 const code = readFileSync(new URL('../PreviewExtension/Web/viewer.js', import.meta.url), 'utf8');

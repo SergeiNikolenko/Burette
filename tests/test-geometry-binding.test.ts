@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { Window } from "happy-dom";
 import { PluginContext } from "@molstar/plugin";
+import { DefaultRegistry } from "@molstar/plugin/default-registry";
 import { BuretteGeometry } from "../scripts/molstar-geometry.js";
 import { readGeometryBinding } from "../apps/desktop/src/lib/geometry-binding";
 import { requestViewerAction } from "../apps/desktop/src/lib/viewer-bridge";
@@ -17,7 +18,7 @@ const previous = new Map<string, PropertyDescriptor | undefined>();
 for (const [key, value] of Object.entries({ window: dom, document: dom.document, CSS: dom.CSS, navigator: dom.navigator, HTMLElement: dom.HTMLElement, Node: dom.Node, IS_REACT_ACT_ENVIRONMENT: true })) {
   previous.set(key, Object.getOwnPropertyDescriptor(globalThis, key)); Object.defineProperty(globalThis, key, { configurable: true, value, writable: true });
 }
-const plugin = new PluginContext({ actions: [], behaviors: [] });
+const plugin = new PluginContext({ registry: DefaultRegistry, behaviors: [] });
 const xyz = "3\r\nsource\r\nO 0 0 0\r\nH 1 0 0\r\nH 0 1 0\r\n";
 const text = (value: number) => xyz.replace("H 1 0 0", `H ${value} 0 0`);
 const doc = { id: "binding-integration", path: "/source.xyz", extension: "xyz", renderer: "molstar" } as ViewerDocument;

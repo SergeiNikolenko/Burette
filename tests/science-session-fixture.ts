@@ -9,7 +9,7 @@ import { serializeXyz } from "../apps/desktop/src/lib/molecular-workbench/xyz";
 import { parseXyz } from "@molstar/io/reader/xyz/parser";
 import { trajectoryFromXyz } from "@molstar/model/formats/structure/xyz";
 import { Structure } from "@molstar/model/model/structure/structure/structure";
-import { AssetManager } from "@molstar/core/util/assets";
+import { DefaultAssetManager } from "@molstar/core/util/assets";
 import { readXyzFrames, type ScienceSceneBinding } from "../apps/desktop/src/lib/science-session/codec";
 import { XYZ } from "./scientific-data-fixture";
 export { XYZ, waterScience } from "./scientific-data-fixture";
@@ -25,7 +25,7 @@ const STATE = { entries: [{ snapshot: { id: "s1", data: { tree: { transforms: [{
 /** A Mol* plugin with one XYZ structure whose coordinates the test moves. */
 export function fakeViewer(text: string, refs = { structure: "s", model: "m", trajectory: "t" }) {
   let frame = readXyzFrames(text)[0];
-  const assets = new AssetManager();
+  const assets = new DefaultAssetManager();
   const runTask = (task: { run: () => Promise<unknown> }) => task.run();
   const manager = { plugin: { managers: { asset: assets }, runTask }, getStateSnapshot: async () => STATE };
   const unit = {

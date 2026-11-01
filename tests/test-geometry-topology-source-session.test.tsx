@@ -6,6 +6,7 @@ import { transformSync } from "@babel/core";
 import { Window } from "happy-dom";
 import React, { act } from "react";
 import { PluginContext } from "@molstar/plugin";
+import { DefaultRegistry } from "@molstar/plugin/default-registry";
 import { BuretteGeometry } from "../scripts/molstar-geometry.js";
 
 // The app's actual Compiler, source controller, iframe slots, receiver and model run
@@ -76,7 +77,7 @@ const failure = source.match(/\n  function agentActionFailure\(command, code, me
 const actors = new Map<HTMLIFrameElement, { plugin: PluginContext; original: string; reads: number }>();
 let heldRead: (() => void) | null = null, holdNextRead = false;
 async function attach(frame: HTMLIFrameElement, text: string) {
-  const plugin = new PluginContext({ actions: [], behaviors: [] }); await plugin.init();
+  const plugin = new PluginContext({ registry: DefaultRegistry, behaviors: [] }); await plugin.init();
   const raw = await plugin.builders.data.rawData({ data: text });
   const trajectory = await plugin.builders.structure.parseTrajectory(raw, "xyz");
   const model = await plugin.builders.structure.createModel(trajectory); await plugin.builders.structure.createStructure(model);
