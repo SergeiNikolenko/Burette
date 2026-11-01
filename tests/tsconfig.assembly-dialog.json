@@ -1,0 +1,1 @@
+{"extends":"./tsconfig.assembly-workflow.json","files":["test-assembly-dialog.test.tsx"],"include":["../apps/desktop/src/**/*.d.ts"]}

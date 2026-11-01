@@ -71,3 +71,21 @@ Worker tests execute bundled browser JavaScript using a real worker. Source test
 compile the hook and exercise the real source-editing controller; read transport
 and native IPC are held at their existing boundaries. These checks do not certify
 an ordinary browser chooser or rendered assembly controls.
+
+
+## Assembly dialog
+
+The dedicated assembly host owns an exact dialog request. Listing, file picking,
+building and generated-document preparation cannot publish after that request,
+the source lifetime or its draft revision changes. Several source models or
+assemblies require an explicit choice. Cancel keeps the original document and
+can be followed by another Build. Each intentional Build opens an independent
+new document, even when its bytes match an earlier build. A chosen file replaces
+the source only after the chooser accepts it; a cancelled chooser preserves the
+current source. Copied chain labels remain the materialized mmCIF labels.
+
+`vp run test:assembly-dialog` checks compiled controls with the real worker,
+registered browser imports, actual generated-document preparation and native
+mmCIF rereading. Its held preparation checks cover cancellation, request/source
+close, document replacement and draft ABA. Host mounting and menu/palette routes
+are a separate activation step. Browser interaction acceptance is still separate.
