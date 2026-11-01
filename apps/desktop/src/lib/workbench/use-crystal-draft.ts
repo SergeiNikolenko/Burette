@@ -1,5 +1,6 @@
 import type { CrystalEdit } from "../molecular-workbench/crystal-edit";
 import { periodicCrystalFormat, type CrystalDocument, type CrystalFormat } from "../molecular-workbench/crystal-io";
+import { SOURCE_EDIT_MAX_BYTES } from "../source-editing/policy";
 import { useStructureSourceText } from "../source-editing/use-structure-source-text";
 import { sourceExtension } from "../science-session/state";
 import { runCrystalTask } from "./crystal-task";
@@ -10,8 +11,12 @@ import type { ViewerDocument } from "../../types";
 
 export type CrystalRevision = TextRevision<CrystalDocument, CrystalEdit["kind"]>;
 
+const PERIODIC_EXTENSIONS = new Set(["cif", "mmcif", "mcif", "vasp", "xyz"]);
+
+/** Documents whose source can be a crystal the panel edits; only these are read to find out. */
 function crystalDocument(document: ViewerDocument | null) {
-  return document && workbenchSupportsDocument(document) ? document : null;
+  return document && workbenchSupportsDocument(document) && PERIODIC_EXTENSIONS.has(sourceExtension(document))
+    && document.byteCount <= SOURCE_EDIT_MAX_BYTES ? document : null;
 }
 
 /** Whether the document's current source is a crystal the Crystal panel can open. */

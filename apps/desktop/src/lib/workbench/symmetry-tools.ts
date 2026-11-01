@@ -1,6 +1,6 @@
 import type { ShellActions } from "../../components/types";
 import { periodicCrystalFormat } from "../molecular-workbench/crystal-io";
-import { classifySourceShape } from "../source-editing/policy";
+import { classifySourceShape, SOURCE_EDIT_MAX_BYTES } from "../source-editing/policy";
 import { useStructureSourceText } from "../source-editing/use-structure-source-text";
 import { sourceExtension } from "../science-session/state";
 import { structureEditAvailable } from "./graph-draft";
@@ -24,7 +24,8 @@ export function moleculeXyz(document: ViewerDocument | null, text: string | null
 
 /** Whether the document is a molecule whose point group the Symmetry panel finds. */
 export function useSymmetryAvailable(document: ViewerDocument | null) {
-  const xyz = document && !structureEditAvailable(document) && workbenchSupportsDocument(document) && sourceExtension(document) === "xyz" ? document : null;
+  const xyz = document && workbenchSupportsDocument(document) && sourceExtension(document) === "xyz"
+    && document.byteCount <= SOURCE_EDIT_MAX_BYTES ? document : null;
   const { text } = useStructureSourceText(xyz);
   return structureEditAvailable(document) || moleculeXyz(xyz, text);
 }
