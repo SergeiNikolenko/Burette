@@ -37,6 +37,8 @@ receive H without moving C–C–O; its four-atom MMFF torsions remain undefined
 The actual MMFF evaluator returns a nonfinite energy for that geometry, so the
 operation is rejected without changing the document. Automatic preparation of
 a different 3D starting geometry is a separate, still-unaccepted workflow.
+[Hydrogens and pH protonation](hydrogen-protonation.md) describes the H
+placement rules, Remove Hydrogens and the pH protonation model.
 
 ## Focused validation
 

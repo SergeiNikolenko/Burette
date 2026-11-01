@@ -1,4 +1,6 @@
-import type { MolecularStructure, OptimizeOptions, MolecularForceField } from './chemistry';
+import type { MolecularStructure, OptimizeOptions, MolecularForceField, ProtonationResult } from './chemistry';
+export type { ProtonationResult } from './chemistry';
+export type { ProtonationChange, ProtonationGroup } from './protonation';
 import type { GraphEdit, GraphEditResult } from './graph-edit';
 import type { EnergyForces } from './energy-forces';
 import type { MolecularAtom } from './types';
@@ -13,6 +15,7 @@ export type ChemistryRequest =
   | { action: 'optimize-zmatrix'; molecule: MolecularStructure; definition: ZmatrixDocument; options?: ZmatrixOptimizeOptions }
   | { action: 'optimize'; molecule: MolecularStructure; options?: OptimizeOptions }
   | { action: 'properties' | 'add-hydrogens' | 'remove-hydrogens' | 'charges'; molecule: MolecularStructure }
+  | { action: 'protonate'; molecule: MolecularStructure; pH: number }
   | { action: 'energy'; molecule: MolecularStructure; forceField?: MolecularForceField }
   | { action: 'conformers'; molecule: MolecularStructure; options?: { count?: number; seed?: number; forceField?: MolecularForceField } }
   | { action: 'edit-graph'; molecule: MolecularStructure; edits: GraphEdit[] }
@@ -29,6 +32,7 @@ export type ChemistryResults = {
   properties: ReturnType<typeof import('./chemistry').getProperties>;
   'add-hydrogens': MolecularStructure;
   'remove-hydrogens': MolecularStructure;
+  protonate: ProtonationResult;
   conformers: ReturnType<typeof import('./chemistry').searchConformers>;
   'edit-graph': GraphEditResult;
   'energy-forces': EnergyForces;
