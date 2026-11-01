@@ -105,3 +105,10 @@ Text edits fail closed while the previous scene and recoverable draft remain.
 The receiver, XYZ measurement transfer and Mol* topology-scene adapter must ship
 together. Older receivers refuse preflight before source publication. These are
 private preview actions, not additions to the public agent CLI protocol.
+
+Browser dirty-source closes use `use-source-close-confirmation.ts` and the existing
+source-editing provider to host the shared Atlas AlertDialog. The source owner
+holds the close transition through the answer and checkpoint acknowledgement;
+Cancel or unmount preserves the draft. Tauri uses its native confirmation, and
+browser `beforeunload`, Grid/scene guards and retired-draft recovery remain separate.
+Run `vp run test:browser-source-close-dialog` and `vp run check:browser-source-close-dialog`.

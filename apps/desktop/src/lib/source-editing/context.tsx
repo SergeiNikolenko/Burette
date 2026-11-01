@@ -3,6 +3,8 @@ import type { GeometryBinding } from "../geometry-binding";
 import type { TextFileSaveOutcome } from "../file-export";
 import type { DockTabKind } from "../dock";
 import { createContext, useContext, type ReactNode } from "react";
+import type { SourceCloseConfirmationRequest } from "../../hooks/use-source-close-confirmation";
+import { SourceCloseConfirmationDialog } from "../../components/source-close-confirmation-dialog";
 import { SourceDraftRecoveryDialog } from "../../components/source-draft-recovery-dialog";
 import type { ViewerDocument } from "../../types";
 import type { SourcePreviewFrameSnapshot, SourcePreviewIdentity } from "../source-preview/types";
@@ -67,6 +69,7 @@ export type SourceDraftRecoveryRequest = Readonly<{
 
 export type SourceEditingContextValue = {
   recovery?: SourceDraftRecoveryRequest | null;
+  closeConfirmation?: SourceCloseConfirmationRequest | null;
   sessionForDocument: (document: ViewerDocument | null) => SourceEditingView | null;
   captureOperation: (document: ViewerDocument) => SourceEditingOperation;
   beginEditing: (document: ViewerDocument, revealTab?: DockTabKind, options?: SourceEditingBeginOptions) => void | Promise<void>;
@@ -84,7 +87,7 @@ export type SourceEditingContextValue = {
 const SourceEditingContext = createContext<SourceEditingContextValue | null>(null);
 
 export function SourceEditingProvider({ value, children }: { value: SourceEditingContextValue; children: ReactNode }) {
-  return <SourceEditingContext.Provider value={value}>{children}<SourceDraftRecoveryDialog request={value.recovery ?? null} /></SourceEditingContext.Provider>;
+  return <SourceEditingContext.Provider value={value}>{children}<SourceDraftRecoveryDialog request={value.recovery ?? null} /><SourceCloseConfirmationDialog request={value.closeConfirmation ?? null} /></SourceEditingContext.Provider>;
 }
 
 export function useSourceEditing() {

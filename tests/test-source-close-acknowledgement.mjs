@@ -19,7 +19,7 @@ globalThis.window = { location: { search: "" }, addEventListener() {}, removeEve
 const react = await import("react");
 mock.module("react", () => ({
   ...react,
-  useCallback: callback => callback, useMemo: callback => callback(), useEffect() {},
+  useCallback: callback => callback, useMemo: callback => callback(), useEffect() {}, useLayoutEffect() {},
   useRef: current => ({ current }), useState: initial => [initial, value => { sessions = value; }],
 }));
 const core = await import("@tauri-apps/api/core");
@@ -86,9 +86,11 @@ for (const route of ["closeTab", "clearAllDocuments"]) {
 assert.equal(calls.filter(([command]) => command === "close_opened_source_documents").length, 0);
 assert.deepEqual(dialogs.at(-1)[2], { title: "Unsaved Source Changes", kind: "warning", okLabel: "Discard", cancelLabel: "Cancel" });
 
-let answer;
-confirm = () => new Promise(resolve => { answer = resolve; });
+let answer, promptShown;
+const promptReady = new Promise(resolve => { promptShown = resolve; });
+confirm = () => new Promise(resolve => { answer = resolve; promptShown(); });
 const prompting = controller.closeDocuments([document.id]);
+await promptReady;
 controller.updateDraft(document, "must not replace draft during confirmation");
 await controller.save(document);
 assert.equal(await controller.closeDocuments([document.id]), false, "overlapping closes cannot bypass the pending prompt");
@@ -116,11 +118,11 @@ let closeStarted;
 const closing = new Promise(resolve => { closeStarted = resolve; });
 close = () => { closeStarted(); return new Promise(resolve => { release = resolve; }); };
 const pending = controller.closeDocuments([document.id]);
+await closing;
 controller.updateDraft(document, "must not replace draft during close");
 await controller.save(document);
 assert.equal(sessions[document.path], draft);
 assert.equal(controller.getWindowDirtySnapshot().closeTransitionActive, true);
-await closing;
 release();
 assert.equal(await pending, true);
 assert.equal(operation.isCurrent(), false, "the close acknowledgement permanently invalidates the pending edit");

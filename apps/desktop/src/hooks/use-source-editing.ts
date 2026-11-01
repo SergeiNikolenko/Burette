@@ -7,6 +7,7 @@ import { rememberViewerAtomSelection } from "../lib/workbench/selection";
 import { rendererXyzText } from "../lib/geometry-source-text";
 import { readGeometryBinding, type GeometryBinding } from "../lib/geometry-binding";
 import { useSourceDraftRecovery } from "./use-source-draft-recovery";
+import { useSourceCloseConfirmation } from "./use-source-close-confirmation";
 import { structureEditAvailable } from "../lib/workbench/graph-draft";
 import type { DockTabKind } from "../lib/dock";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -143,6 +144,7 @@ export function useSourceEditingController({
   ownsCurrentSourceFrame: (document: ViewerDocument, frame: HTMLIFrameElement) => boolean;
 } {
   const { recovery, requestRecovery, invalidateRecovery } = useSourceDraftRecovery();
+  const { closeConfirmation, requestCloseConfirmation } = useSourceCloseConfirmation();
   const topologyTransfer = useTopologyTransfer();
   const topologyLifetime = useRef(Symbol());
   const [sessions, setSessions] = useState<Record<string, InternalSourceSession>>({});
@@ -947,9 +949,10 @@ export function useSourceEditingController({
       }
       return false;
     }
-    // The asynchronous native prompt is part of the close transition. Keep its
+    // The asynchronous confirmation is part of the close transition. Keep its
     // draft stable and reject overlapping saves/closes until Cancel or release.
     for (const id of wanted) closingDocumentIdsRef.current.add(id);
+    let releaseConfirmation: (() => void) | undefined;
     try {
       const retired = targets.filter(session => session.dirty && !ownsSource(session));
       if (retired.length) return await recoverRetiredSessions(retired);
@@ -958,9 +961,11 @@ export function useSourceEditingController({
         const text = dirtyCount === 1
           ? "Discard the unsaved source edit and close this document?"
           : `Discard unsaved source edits in ${dirtyCount} documents and close them?`;
-        const confirmed = isTauriRuntime()
-          ? await confirmDialog(text, { title: "Unsaved Source Changes", kind: "warning", okLabel: "Discard", cancelLabel: "Cancel" })
-          : window.confirm(text);
+        const browserPrompt = isTauriRuntime() ? null : requestCloseConfirmation(dirtyCount === 1
+          ? `Discard unsaved changes to “${targets.find(session => session.dirty)!.title}” and close this document?` : text);
+        releaseConfirmation = browserPrompt?.release;
+        const confirmed = browserPrompt ? await browserPrompt.result
+          : await confirmDialog(text, { title: "Unsaved Source Changes", kind: "warning", okLabel: "Discard", cancelLabel: "Cancel" });
         if (!confirmed || !canClose()) return false;
       }
       if (!canClose()) return false;
@@ -992,9 +997,10 @@ export function useSourceEditingController({
       pushErrorStatus(error, "Close source");
       return false;
     } finally {
+      releaseConfirmation?.();
       for (const id of wanted) closingDocumentIdsRef.current.delete(id);
     }
-  }, [preparePreview, beginEditing, cancelGeometryPreview, clearStagingWindows, commitSessions, pushErrorStatus, recoverRetiredSessions]);
+  }, [preparePreview, beginEditing, cancelGeometryPreview, clearStagingWindows, commitSessions, pushErrorStatus, recoverRetiredSessions, requestCloseConfirmation]);
 
   const checkpointActions = useMemo(() => ({ beginEditing, applyPreview: preparePreview,
     sessionForDocument: (document: ViewerDocument | null) => document ? sessionsRef.current[document.path] ?? null : null,
@@ -1002,7 +1008,7 @@ export function useSourceEditingController({
   useBrowserSourceRecovery(activeDocument, checkpointActions, pushErrorStatus);
 
   return useMemo(() => ({
-    recovery,
+    recovery, closeConfirmation,
     // Async callers must see updates made since their render.
     sessionForDocument: (document: ViewerDocument | null) => {
       if (!document) return null;
@@ -1036,5 +1042,5 @@ export function useSourceEditingController({
     confirmCloseWindow,
     getWindowDirtySnapshot,
     hasUnsavedOrSavingSessions,
-  }), [beginEditing, captureOperation, closeDocuments, confirmCloseWindow, recovery, getWindowDirtySnapshot, hasUnsavedOrSavingSessions, prepareGeometryTopology, preparePreview, save, sessions, stagingLoaded, updateDraft]);
+  }), [beginEditing, captureOperation, closeDocuments, confirmCloseWindow, recovery, closeConfirmation, getWindowDirtySnapshot, hasUnsavedOrSavingSessions, prepareGeometryTopology, preparePreview, save, sessions, stagingLoaded, updateDraft]);
 }

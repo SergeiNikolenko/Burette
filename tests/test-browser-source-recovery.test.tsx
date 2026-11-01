@@ -94,6 +94,10 @@ async function sourceFixture(doc: ViewerDocument) {
   await act(async()=>root.render(<Probe/>));
   return { get api(){return controller;}, errors, dock, async close(){await act(async()=>root.unmount());host.remove();} };
 }
+async function answerSourceClose(source: Awaited<ReturnType<typeof sourceFixture>>, discard: boolean, shown: () => void = () => {}) {
+  await settle(() => Boolean(source.api.closeConfirmation));
+  await act(async () => { shown(); const request = source.api.closeConfirmation!; if (discard) request.discard(); else request.cancel(); });
+}
 async function checkpointMatches(path: string, text: string) {
   for(let n=0;n<100;n++){
     const saved: { value: Awaited<ReturnType<typeof readBrowserSourceCheckpoint>> } = { value: null };
@@ -129,8 +133,9 @@ test("edited internal-coordinate revision reloads as a fresh dirty session with 
     expect(recovered.dock).toEqual([]);
     expect(scientificStateFor(nextDoc.id,session.content).revision?.document.internalCoordinates).toEqual(zmat.internalCoordinates);
     expect(new Uint8Array(await importedOriginalFor(nextDoc.id)!.file.arrayBuffer())).toEqual(new Uint8Array(bytes));
-    let prompts=0;Object.defineProperty(browser,"confirm",{configurable:true,value:()=>{prompts++;return false;}});
-    let closed=true;await act(async()=>{closed=await recovered.api.closeDocuments([nextDoc.id]);});
+    let prompts=0;
+    let closed=true, close!:Promise<boolean>;await act(async()=>{close=recovered.api.closeDocuments([nextDoc.id]);});
+    await answerSourceClose(recovered,false,()=>prompts++);await act(async()=>{closed=await close;});
     expect([closed,prompts,recovered.api.sessionForDocument(nextDoc)?.dirty]).toEqual([false,1,true]);
     await settle(()=>recovered.api.sessionForDocument(nextDoc)?.sourcePreview?.slots.secondary?.identity!==undefined);
     const identity=recovered.api.sessionForDocument(nextDoc)!.sourcePreview!.slots.secondary!.identity!;
@@ -141,8 +146,8 @@ test("edited internal-coordinate revision reloads as a fresh dirty session with 
     await settle(()=>recovered.api.sessionForDocument(nextDoc)?.previewState==="current");iframe.remove();
     expect([recovered.api.sessionForDocument(nextDoc)?.dirty,recovered.api.sessionForDocument(nextDoc)?.status]).toEqual([true,"Edited"]);
     expect(recovered.errors).toEqual([]);
-    Object.defineProperty(browser,"confirm",{configurable:true,value:()=>true});
-    await act(async()=>{closed=await recovered.api.closeDocuments([nextDoc.id]);});
+    await act(async()=>{close=recovered.api.closeDocuments([nextDoc.id]);});
+    await answerSourceClose(recovered,true);await act(async()=>{closed=await close;});
     expect(closed).toBe(true);
     expect(await readBrowserSourceCheckpoint(nextDoc.path)).toBeNull();
   } finally {await recovered.close();await reloaded.close();}
@@ -174,9 +179,9 @@ test("confirmed close waits for queued checkpoint removal and cannot resurrect t
   try {
     await act(async()=>{await source.api.beginEditing(doc);});
     const base=source.api.sessionForDocument(doc)!.content;
-    Object.defineProperty(browser,"confirm",{configurable:true,value:()=>true});
-    let closed=false;
-    await act(async()=>{source.api.updateDraft(doc,base+"\n",{previewApplied:true});closed=await source.api.closeDocuments([doc.id]);});
+    let closed=false, close!:Promise<boolean>;
+    await act(async()=>{source.api.updateDraft(doc,base+"\n",{previewApplied:true});close=source.api.closeDocuments([doc.id]);});
+    await answerSourceClose(source,true);await act(async()=>{closed=await close;});
     expect(closed).toBe(true);
     expect(await readBrowserSourceCheckpoint(doc.path)).toBeNull();
     expect(new Uint8Array(await (await readBrowserImport(doc.path))!.file.arrayBuffer())).toEqual(new Uint8Array(bytes));
@@ -197,8 +202,9 @@ test("closing before automatic recovery finishes still admits a dirty source and
   const recovered=await sourceFixture(doc);
   try {
     await entered.promise;
-    let prompts=0;Object.defineProperty(browser,"confirm",{configurable:true,value:()=>{prompts++;return false;}});
+    let prompts=0;
     let close!:Promise<boolean>;await act(async()=>{close=recovered.api.closeDocuments([doc.id]);gate.resolve();});
+    await answerSourceClose(recovered,false,()=>prompts++);
     let closed=true;await act(async()=>{closed=await close;});
     expect([closed,prompts,recovered.api.sessionForDocument(doc)?.dirty]).toEqual([false,1,true]);
     expect(recovered.errors).toEqual([]);

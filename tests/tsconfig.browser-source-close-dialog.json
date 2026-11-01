@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": [
+      "vite/client",
+      "bun"
+    ]
+  },
+  "include": [
+    "../apps/desktop/src/**/*.d.ts",
+    "test-browser-source-close-dialog.test.tsx"
+  ],
+  "references": []
+}
