@@ -665,8 +665,10 @@ Validation: `vp run test:orbital-agent` exercises the actual compiled host hook,
 HTTP session server, CLI subprocess, reader/quantum/Cube workers, numerical values,
 byte integrity, cancellation and stale/closed/error outcomes. This proves the
 source implementation in the browser shell; it does not prove a rebuilt packaged
-plugin, a live Browser user session, native app or hosted deployment. Further typed
-scientific jobs, batch workflows and Python/Jupyter clients remain separate work.
+plugin, a live Browser user session, native app or hosted deployment. Optimization,
+3D preparation, conformer, frame-batch, metadata and pair-distribution jobs, plus the
+Python client, are described in
+[Optimization, conformers and frame batches](#optimization-conformers-and-frame-batches).
 
 
 ### Private Geometry and scalar-field transports
@@ -765,3 +767,114 @@ CLI/MCP through emitted host code and a browser-target chemistry worker with
 the pinned WASM. It retains Properties and orbital checks. This is transport
 and numeric acceptance, not an ordinary chooser, live Browser, native app or
 Python/batch acceptance.
+
+## Optimization, conformers and frame batches
+
+These job kinds share the revision pin, `operationId` deduplication, queue,
+cancellation, stale/closed binding and path-based export described above.
+`capabilities` lists every kind with its engine, requirements, parameters and
+artifacts; the validator resolves defaults, so `status` reports the parameters
+that ran. All energies are kcal/mol, distances Å, angles degrees, gradients and
+forces kcal/(mol·Å). No job modifies the open document.
+
+| Kind | Parameters | Artifacts |
+| --- | --- | --- |
+| `optimize` | `forceField` (`MMFF94`, `MMFF94s`, `UFF`), `method` (`bfgs`, `lbfgs`, `fire`, `abc-fire`, `hybrid`), `maxIterations` 1–1000 (250), `constraints` | `structure` (SDF), `xyz`, `trajectory` |
+| `prepare_3d` | `forceField`, `method`, `seed` 0–2147483639 (1), `maxIterations` | `structure`, `xyz`, `trajectory` |
+| `conformers` | `forceField`, `count` 1–32 samples (8), `seed` | `conformers` (multi-record SDF) |
+| `frame_energy_forces` | `forceField`, `offset` (0), `count` 1–64 | `forces` (JSON), `extxyz` |
+| `metadata_edit` | `atoms` (index, `atomName`, `residue`), `conformerLabel` | `structure` |
+| `pair_distribution` | `rMax` 1–100 Å (10), `binWidth` 0.001–1 Å (0.1), `centre`, `neighbour` | `distribution` (JSON), `csv` |
+
+`optimize` defaults to `bfgs` (the OpenChemLib MMFF minimizer) for unconstrained
+MMFF and to `lbfgs` for UFF or any constraint. Nothing is substituted: `bfgs` with
+UFF or constraints, numerical methods or UFF above 64 atoms, more than 64
+constraints, out-of-range atom indices and constraints that are undefined on the
+input geometry (a linear angle, a dihedral with collinear atoms) are refused with
+`JOB_UNAVAILABLE` before queueing. A constraint is `{"kind":"freeze","atoms":[i]}`
+or a `distance`/`angle`/`dihedral` over 2/3/4 zero-based source atoms with an
+optional `target` (default: the current value). Frozen atoms are exact; the other
+constraints are harmonic restraints of 10⁴·Δ² kcal/mol (Δ in Å or radians).
+
+The optimize summary reports `method`, `gradient` (`toolkit`, `analytic` or
+`central-difference`), `initialEnergy`, `energy`, `iterations` (null for `bfgs`,
+whose toolkit does not report steps), `stopReason` (`converged`, `iterations`,
+`line-search`, `no-variables`), `maxGradient`, `frameSampling`, `frameCount`,
+`frozenAtoms` and `constraintResiduals` (kind, atoms, target, value, signed error,
+unit). `converged` is true only when the minimizer converged (maximum gradient
+below 10⁻³ kcal/(mol·Å)) and every residual is within 0.01 Å or 1°. The
+`trajectory` artifact exists only when `frameSampling` is `steps`: one XYZ frame
+per accepted step with `Step <i> Energy=<E> kcal/mol` comments, which Burette's
+trajectory reader and Plots tab parse back. `structure` keeps the source atom
+order; for SDF/MOL sources it also keeps the title, data items and atom identities.
+
+`prepare_3d` accepts an explicit SDF/MOL graph whose z coordinates are all zero,
+adds hydrogens after the source atoms, embeds it and relaxes it. An embedding
+whose stereochemistry differs from the input is discarded and the next of up to
+eight consecutive seeds is tried; the summary's `preparation` reports
+`addedHydrogens`, the `seed` used and `attempts`. `conformers` relaxes each
+torsion sample to a converged minimum, drops minima whose sorted heavy-atom
+distances differ by less than 0.05 Å RMS, and returns the distinct minima lowest
+first with `energies`, `relativeEnergies`, `samples` and `duplicates`; each SDF
+record carries `Burette conformer`, `<FF> energy (kcal/mol)` and
+`<FF> relative energy (kcal/mol)` data items.
+
+`frame_energy_forces` evaluates a page of a multi-frame XYZ (one perceived graph)
+or of a multi-record SDF. Every SDF record must repeat the first record's
+elements, bonds and graph in the same atom order; otherwise the job fails and
+names the record. A page holds at most 64 frames and 2048 atom-frames; without
+`count` the page is as large as fits. The summary reports `source`
+(`frames` or `sdf-records`), `totalFrames`, `offset`, `frameCount`, `nextOffset`
+(null on the last page) and per-frame `energies`. `forces` holds
+`frames[].{frameIndex, energy, forces}`; `extxyz` writes the same frames with
+`Properties=species:S:1:pos:R:3:forces:R:3`. An `offset` beyond the last frame is
+refused before queueing. `observe` reports `frames: {count, source}`.
+
+The `atoms` operation pages source-order atoms (`offset`, `limit` ≤ 100,
+optional `frameIndex`) with element and Å positions, pinned with
+`expectedSourceRevision` like `orbitals`.
+
+### Python and Jupyter client
+
+`plugins/burette-agent/python/burette_workbench.py` is a standard-library client
+over the same CLI route. It resolves `../scripts/burette-agent.mjs` next to
+itself (override with `BURETTE_AGENT_CLI`; Node from `BURETTE_NODE` or `PATH`).
+
+```python
+import sys; sys.path.insert(0, "<plugin>/python")
+from burette_workbench import Workbench, WorkbenchError
+wb = Workbench(session_dir)
+job = wb.run("optimize", {"method": "lbfgs", "constraints": [{"kind": "freeze", "atoms": [0]}]})
+wb.export(job.job_id, "trajectory", "steps.xyz")
+energies = [frame["energy"] for frame in wb.iter_frame_energy_forces("UFF", batch_size=16, operation_prefix="run-1")]
+```
+
+`iter_atoms`/`iter_orbitals` page with the first page's revision pinned.
+`iter_frame_energy_forces` pins the revision once and submits one job per page
+with operation ids `<operation_prefix>-<offset>`, so rerunning an interrupted
+loop reuses finished pages and an edited source raises `REVISION_CONFLICT`.
+Every failure raises `WorkbenchError` with the protocol code.
+
+### Adding a typed job kind
+
+1. Add one entry to `JOB_DEFINITIONS` in `scripts/workbench-agent-contract.mjs`:
+   `describe` (what `capabilities` advertises) and `params(value)`, which rejects
+   unknown fields and returns normalized parameters with defaults resolved.
+   Add the parameter type to `WorkbenchJobParams` in
+   `scripts/workbench-agent-contract.d.mts` and copy the contract to
+   `plugins/burette-agent/scripts/`.
+2. Add one `AgentJobRunner` to `AGENT_JOBS` in
+   `apps/desktop/src/lib/workbench/agent-jobs.ts` (the mapped type rejects a
+   missing kind): `unavailable(snapshot)` for `observe`, optional
+   `paramsUnavailable(snapshot, params)` for refusals before queueing, and
+   `run(snapshot, params, context)` returning a bounded summary and artifacts built
+   with `context.artifact`. Run work in a worker with `context.signal` and
+   `context.timeoutMs`; the controller owns queueing, deduplication, cancellation,
+   stale/closed binding and export.
+3. Keep summaries under the 64 KiB response limit; bulk data belongs in artifacts.
+
+Validation: `vp run test:workbench-automation-jobs` runs the controller with real
+workers against Python RDKit references; `vp run test:workbench-python-client`
+drives the Python client through the packaged CLI, the HTTP session server, the
+production host hook and the stdio MCP tool. Packaged-plugin rebuilds, a live
+Browser session and the native app remain separate acceptance lanes.
