@@ -140,14 +140,22 @@ function orderedMolfile(text: string, order: number[]): string {
   if (end - begin - 1 !== order.length || rows.slice(begin + 1, end).some(row => row.endsWith('-'))) throw new Error('This atom record cannot be reordered safely.');
   const atoms = rows.slice(begin + 1, end), reverse = new Map(order.map((old, i) => [old + 1, i + 1]));
   rows.splice(begin + 1, order.length, ...order.map((old, i) => atoms[old].replace(/^M  V30 \d+ /, `M  V30 ${i + 1} `)));
-  let inBonds = false;
+  let inBonds = false, inCollection = false;
+  const reordered = order.some((old, i) => old !== i);
   return rows.map(row => {
     if (row === 'M  V30 BEGIN BOND') inBonds = true;
     else if (row === 'M  V30 END BOND') inBonds = false;
     else if (inBonds) return row.replace(/^(M  V30 \d+ \d+ )([0-9]+) ([0-9]+)/, (_, prefix, a, b) => `${prefix}${reverse.get(Number(a))} ${reverse.get(Number(b))}`);
-    // Sgroups/collections reference atom IDs too. Until those are remapped,
+    if (row === 'M  V30 BEGIN COLLECTION') inCollection = true;
+    else if (row === 'M  V30 END COLLECTION') inCollection = false;
+    // Stereo collections (MDLV30/STEABS, STERAC, STEREL) list atom IDs only, on one line each.
+    else if (inCollection && reordered) {
+      if (row.endsWith('-') || !/^M {2}V30 MDLV30\/STE(?:ABS|RAC\d+|REL\d+) ATOMS=\(\d+(?: \d+)*\)$/u.test(row)) throw new Error('This atom collection cannot be reordered safely.');
+      return row.replace(/ATOMS=\((\d+)((?: \d+)*)\)/u, (_, count, ids: string) => `ATOMS=(${count}${ids.trim().split(' ').map(id => ` ${reverse.get(Number(id))}`).join('')})`);
+    }
+    // Sgroups reference atoms and bonds in many fields. Until those are remapped,
     // reject instead of silently changing annotated chemical identities.
-    if (/^M  V30 BEGIN (?:SGROUP|COLLECTION)/.test(row) && order.some((old, i) => old !== i)) throw new Error('Reordering annotated atom groups is not supported.');
+    if (row.startsWith('M  V30 BEGIN SGROUP') && reordered) throw new Error('Reordering annotated atom groups is not supported.');
     return row;
   }).join('\n');
 }

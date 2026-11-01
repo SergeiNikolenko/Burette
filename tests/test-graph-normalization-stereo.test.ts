@@ -20,7 +20,7 @@ test('reorder and its inverse retain unknown tetra/axial/E-Z source identities t
   }
 }, 30_000);
 
-test('identity normalization preserves actual reflected 3D bodies and keeps annotated-group refusal', async () => {
+test('identity normalization preserves actual reflected 3D bodies; reordering remaps stereo collections', async () => {
   const original = JSON.parse(readFileSync(new URL('./fixtures/graph-normalization/physical-lactic-at.json', import.meta.url), 'utf8'));
   for (const sign of [1, -1]) {
     const source = { ...original, atoms: original.atoms.map((a: {x: number}) => ({ ...a, x: sign * a.x })) };
@@ -28,5 +28,10 @@ test('identity normalization preserves actual reflected 3D bodies and keeps anno
     expect(result.sourceAtomIndices).toEqual(source.atoms.map((_: unknown, i: number) => i));
     for (let i = 0; i < source.atoms.length; i++) for (const axis of ['x', 'y', 'z'] as const) expect(result.atoms[i][axis]).toBeCloseTo(source.atoms[i][axis], 8);
   }
-  await expect(task({ action: 'edit-graph', molecule: original, edits: [{ kind: 'reorder-atoms', order: original.atoms.map((_: unknown, i: number) => original.atoms.length - i - 1) }] })).rejects.toThrow('annotated atom groups');
+  const reversed = original.atoms.map((_: unknown, i: number) => original.atoms.length - i - 1);
+  const result = await task({ action: 'edit-graph', molecule: original, edits: [{ kind: 'reorder-atoms', order: reversed }] });
+  // The MDLV30/STEABS collection follows the stereocentre (row 2 becomes row 11) and the configuration survives.
+  expect(result.molfile).toContain('M  V30 MDLV30/STEABS ATOMS=(1 11)');
+  const smiles = (molfile: string) => Molecule.fromMolfile(molfile).toIsomericSmiles();
+  expect(smiles(result.molfile)).toBe(smiles(original.molfile));
 });
