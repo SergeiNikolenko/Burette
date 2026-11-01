@@ -8,3 +8,5 @@ export const XTB_SIGNATURE = /^\s*\|\s+x T B\s+\|\s*$|^\s*\* xtb version \d/mu;
 /** `xtbopt.log`: XYZ frames whose comment is `energy: <Eh> gnorm: <Eh/bohr> xtb: <version>`. */
 export const XTB_TRAJECTORY_SIGNATURE = /^\s*\d+\s*\n\s*energy:\s+\S+\s+gnorm:\s+\S+\s+xtb:\s/u;
 export const ORCA_BANNER = /O {3}R {3}C {3}A/u;
+/** GAMESS-US (`GAMESS VERSION = ...`) and its Firefly / PC GAMESS descendants. */
+export const GAMESS_SIGNATURE = /^\s*\*\s+GAMESS VERSION = |^\s*\*\s+(?:Firefly|PC GAMESS) version \d/mu;

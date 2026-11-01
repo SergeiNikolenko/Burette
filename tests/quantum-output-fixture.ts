@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { validateScientificDocument } from '../apps/desktop/src/lib/science-session/scientific-document';
 import { elementSymbol } from '../apps/desktop/src/lib/molecular-workbench/elements';
 import type { ScientificDocument } from '../apps/desktop/src/lib/molecular-workbench/scientific-types';
+import type { CartesianHessian } from '../apps/desktop/src/lib/molecular-workbench/hessian';
 
 /** cclib's parse of a fixture directory (see fixtures/quantum/cclib-reference.py). */
 export type CclibReference = {
@@ -68,4 +69,32 @@ export function expectTruncationsKeepHistory(text: string, parse: (text: string)
 /** CRLF line endings and a UTF-8 byte-order mark do not change the parse. */
 export function expectLineEndingsIgnored(text: string, parse: (text: string) => ScientificDocument) {
   expect(JSON.stringify(parse(`﻿${text.replace(/\n/g, '\r\n')}`))).toBe(JSON.stringify(parse(text)));
+}
+
+const CM1_PER_AU = Math.sqrt(4.3597447222071e-18 / (5.29177210903e-11 ** 2 * 1.6605390666e-27)) / (2 * Math.PI * 2.99792458e10);
+/**
+ * Measurement instrument for parsed Hessians: cyclic-Jacobi eigenvalues of the symmetrized
+ * mass-weighted matrix, converted with CODATA 2018 constants to signed wavenumbers (ascending).
+ * Comparing them with the frequencies the program itself printed checks units, masses and the
+ * matrix layout without trusting either parser.
+ */
+export function harmonicFrequencies(hessian: CartesianHessian) {
+  const n = hessian.dimension;
+  const weight = (index: number) => 1 / Math.sqrt(hessian.massesAmu![Math.floor(index / 3)]);
+  const at = (i: number, j: number) => hessian.values[i * n + j];
+  const a = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => (at(i, j) + at(j, i)) / 2 * weight(i) * weight(j)));
+  for (let sweep = 0; sweep < 100; sweep++) {
+    let off = 0;
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) off += a[i][j] ** 2;
+    if (off < 1e-28) break;
+    for (let p = 0; p < n; p++) for (let q = p + 1; q < n; q++) {
+      if (Math.abs(a[p][q]) < 1e-300) continue;
+      const theta = (a[q][q] - a[p][p]) / (2 * a[p][q]);
+      const t = Math.sign(theta || 1) / (Math.abs(theta) + Math.sqrt(theta * theta + 1));
+      const c = 1 / Math.sqrt(t * t + 1), s = t * c;
+      for (let k = 0; k < n; k++) { const kp = a[k][p], kq = a[k][q]; a[k][p] = c * kp - s * kq; a[k][q] = s * kp + c * kq; }
+      for (let k = 0; k < n; k++) { const pk = a[p][k], qk = a[q][k]; a[p][k] = c * pk - s * qk; a[q][k] = s * pk + c * qk; }
+    }
+  }
+  return a.map((row, i) => row[i]).sort((x, y) => x - y).map(value => Math.sign(value) * Math.sqrt(Math.abs(value)) * CM1_PER_AU);
 }

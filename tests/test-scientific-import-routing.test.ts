@@ -31,6 +31,7 @@ test("ordinary opens send quantum outputs to the scientific import and leave oth
     ["output.dat", "    Psi4: An Open-Source Ab Initio Electronic Structure Package\n", true],
     ["xtb.out", "      -----------------------------------------------------------\n     |                           x T B                           |\n", true],
     ["xtbopt.log", "3\n energy: -5.070544440612 gnorm: 0.000367 xtb: 6.7.1 (edcfbbe)\nO 0 0 0\n", true],
+    ["gamess.log", "          *         GAMESS VERSION = 30 SEP 2018 (R3)         *\n", true],
     ["table.dat", "1 2 3\n", false],
     ["notes.log", "build finished\n", false],
     ["vasp.out", "running on 4 total cores\n", false],
