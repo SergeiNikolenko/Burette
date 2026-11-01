@@ -27,7 +27,7 @@ export async function readWorkbenchAgentSource(document: ViewerDocument, draftFo
 
 type DocumentLifetime = { path: string; runtimePath: string | undefined; abort: AbortController };
 export type Snapshot = {
-  lifetime: DocumentLifetime; document: ViewerDocument; revision: string; sourceTextSha256: string;
+  lifetime: DocumentLifetime; document: ViewerDocument; revision: string; sourceTextSha256: string; text: string; extension: string;
   origin: WorkbenchSourceRead["origin"]; byteCount: number; scientific: ScientificDocument | null;
   scientificOrigin: "attached" | "parsed" | null; sourceError: string | null;
   structure: MolecularStructure | null; structureError: string | null;
@@ -115,7 +115,7 @@ export function createAgentSourceOwner(environment: WorkbenchAgentEnvironment, l
       throw new WorkbenchError("REVISION_CONFLICT", "The source or its scientific calculation data changed. Observe again and use the current sourceRevision.",
         { documentId: document.id, expectedSourceRevision: request.expectedSourceRevision, sourceRevision: revision });
     }
-    return { lifetime: opened, document: { ...document }, revision, sourceTextSha256, origin: read.origin, byteCount,
+    return { lifetime: opened, document: { ...document }, revision, sourceTextSha256, text: read.text, extension, origin: read.origin, byteCount,
       scientific, scientificOrigin: scientific ? attached ? "attached" : "parsed" : null, sourceError: parsed.sourceError,
       structure: parsed.structure, structureError: parsed.structureError };
   }

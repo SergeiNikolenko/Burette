@@ -28,6 +28,7 @@ const OPERATION_FIELDS = Object.freeze({
   observe: DOCUMENT_FIELDS,
   orbitals: [...DOCUMENT_FIELDS, ...PAGE_FIELDS],
   submit: [...DOCUMENT_FIELDS, 'operationId', 'job'],
+  build: ['operationId', 'job'],
   status: ['jobId', 'operationId'],
   jobs: PAGE_FIELDS,
   cancel: ['jobId'],
@@ -36,38 +37,78 @@ const OPERATION_FIELDS = Object.freeze({
 
 export const WORKBENCH_OPERATIONS = Object.freeze(Object.keys(OPERATION_FIELDS));
 
+const POLYMER_END_GROUPS = ['hydrogen', 'methyl', 'hydroxyl', 'phenyl', 'tert-butyl'];
+const PEPTIDE_TERMINI = { nTerminus: ['amine', 'ammonium'], cTerminus: ['acid', 'carboxylate'] };
+
 /**
- * Local jobs the browser workbench can run. `requires` states what the source
- * document must provide; `artifacts` names the files `export` can write.
+ * Local jobs the browser workbench can run. `operation` is `submit` for jobs on
+ * an open source document and `build` for new structures that need none.
+ * `requires` states what the source document must provide; `artifacts` names the
+ * files `export` can write. Structure artifacts are new files, never applied to
+ * the open document.
  */
 export const WORKBENCH_JOB_KINDS = Object.freeze({
   properties: {
+    operation: 'submit',
     engine: 'OpenChemLib properties; optional RDKit Gasteiger charges',
     requires: 'A complete chemical graph, 1–256 atoms; Gasteiger requires explicit hydrogens.',
     params: { chargeModel: ['Gasteiger'] },
     artifacts: [],
   },
   energy: {
+    operation: 'submit',
     engine: 'OpenChemLib MMFF94/MMFF94s or RDKit UFF',
     requires: 'A complete chemical graph, 1–256 atoms; calculations require explicit hydrogens.',
     params: { forceField: FORCE_FIELDS },
     artifacts: [],
   },
   energy_forces: {
+    operation: 'submit',
     engine: 'OpenChemLib MMFF94/MMFF94s central-difference forces or RDKit UFF analytic forces',
     requires: 'A complete chemical graph, 1–64 atoms; calculations require explicit hydrogens.',
     params: { forceField: FORCE_FIELDS },
     artifacts: ['forces'],
   },
   orbital_cube: {
+    operation: 'submit',
     engine: 'Workbench Gaussian-basis evaluator',
     requires: 'A document parsed with a Gaussian basis and orbitals (FCHK or Molden source).',
     params: { field: ['orbital', 'density', 'spin-density'], orbitalIndex: 'required for orbital', spacingAngstrom: '0.05–1', paddingAngstrom: '0–10' },
     artifacts: ['cube'],
   },
+  insert_fragment: {
+    operation: 'submit',
+    engine: 'Rigid fragment placement: OpenChemistry/fragments groups or an OpenChemLib SMILES conformer',
+    requires: 'An explicit MOL/SDF graph; at most 256 atoms after insertion.',
+    params: { library: 'group id such as alkanes/ethyl (exactly one of library or smiles)', smiles: 'one SMILES; a single * marks the attachment point', atomIndex: 'zero-based source atom to attach to; omit for a separate molecule' },
+    artifacts: ['structure'],
+  },
+  hydrogens: {
+    operation: 'submit',
+    engine: 'OpenChemLib graph with RDKit hydrogen placement',
+    requires: 'An explicit MOL/SDF graph, 1–256 atoms after the change.',
+    params: { mode: ['add', 'remove'] },
+    artifacts: ['structure'],
+  },
+  polymer: {
+    operation: 'submit',
+    engine: 'Rigid repeat-unit assembly with optional OpenChemLib MMFF94 relaxation',
+    requires: 'One explicit MOL/SDF repeat unit with explicit leaving hydrogens; relaxation within 256 atoms.',
+    params: { head: 'zero-based atom', tail: 'zero-based atom', headLeaving: 'H bonded to head', tailLeaving: 'H bonded to tail', count: '1–500',
+      bondLengthAngstrom: '0.5–3, default 1.54', tacticity: ['isotactic', 'syndiotactic', 'atactic'], headEnd: POLYMER_END_GROUPS, tailEnd: POLYMER_END_GROUPS, relax: 'boolean' },
+    artifacts: ['structure'],
+  },
+  peptide: {
+    operation: 'build',
+    engine: 'Template peptide geometry from OpenChemistry residue internal coordinates',
+    requires: 'No source document.',
+    params: { sequence: '1–64 standard residues', codes: ['one', 'three'], chirality: ['L', 'D'], phiDegrees: '-180–180', psiDegrees: '-180–180', ...PEPTIDE_TERMINI, chain: 'one letter or digit' },
+    artifacts: ['structure'],
+  },
 });
 
 const FIELDS = new Set(WORKBENCH_JOB_KINDS.orbital_cube.params.field);
+const LIBRARY_ID = /^[a-z_]{1,32}\/[A-Za-z0-9 ,_+()-]{1,64}$/u;
 const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const REVISION = /^sha256-[0-9a-f]{64}$/u;
 const ARTIFACT = /^[a-z_]{1,32}$/u;
@@ -141,9 +182,66 @@ function oneOf(value, field, allowed, fallback) {
   return value;
 }
 
+function text(value, field, max, pattern) {
+  if (typeof value !== 'string' || !value.length || value.length > max || (pattern && !pattern.test(value))) invalid(`${field} must be a string of 1–${max} characters${pattern ? ' in the documented form' : ''}.`);
+  return value;
+}
+
+function bool(value, field) {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'boolean') invalid(`${field} must be a boolean.`);
+  return value;
+}
+
+/** Copies the defined entries; optional parameters that were omitted stay absent. */
+function defined(entries) {
+  return Object.fromEntries(Object.entries(entries).filter(([, value]) => value !== undefined));
+}
+
 function jobParams(kind, value) {
   const params = value ?? {};
   if (!plainObject(params)) invalid('job.params must be a JSON object.');
+  if (kind === 'insert_fragment') {
+    rejectUnknownFields(params, ['library', 'smiles', 'atomIndex'], 'insert_fragment job.params');
+    if ((params.library === undefined) === (params.smiles === undefined)) invalid('insert_fragment requires exactly one of job.params.library or job.params.smiles.');
+    return defined({
+      library: params.library === undefined ? undefined : text(params.library, 'job.params.library', 97, LIBRARY_ID),
+      smiles: params.smiles === undefined ? undefined : text(params.smiles, 'job.params.smiles', 1024, /^\S+$/u),
+      atomIndex: params.atomIndex === undefined ? undefined : integer(params.atomIndex, 'job.params.atomIndex', 0, 255),
+    });
+  }
+  if (kind === 'hydrogens') {
+    rejectUnknownFields(params, ['mode'], 'hydrogens job.params');
+    const mode = oneOf(params.mode, 'job.params.mode', new Set(WORKBENCH_JOB_KINDS.hydrogens.params.mode), undefined);
+    if (!mode) invalid('job.params.mode is required for hydrogens.');
+    return { mode };
+  }
+  if (kind === 'polymer') {
+    rejectUnknownFields(params, ['head', 'tail', 'headLeaving', 'tailLeaving', 'count', 'bondLengthAngstrom', 'tacticity', 'headEnd', 'tailEnd', 'relax'], 'polymer job.params');
+    const ends = new Set(POLYMER_END_GROUPS);
+    return defined({
+      head: integer(params.head, 'job.params.head', 0, 99_999), tail: integer(params.tail, 'job.params.tail', 0, 99_999),
+      headLeaving: integer(params.headLeaving, 'job.params.headLeaving', 0, 99_999), tailLeaving: integer(params.tailLeaving, 'job.params.tailLeaving', 0, 99_999),
+      count: integer(params.count, 'job.params.count', 1, 500),
+      bondLengthAngstrom: finite(params.bondLengthAngstrom, 'job.params.bondLengthAngstrom', 0.5, 3) ?? 1.54,
+      tacticity: oneOf(params.tacticity, 'job.params.tacticity', new Set(WORKBENCH_JOB_KINDS.polymer.params.tacticity), undefined),
+      headEnd: oneOf(params.headEnd, 'job.params.headEnd', ends, 'hydrogen'), tailEnd: oneOf(params.tailEnd, 'job.params.tailEnd', ends, 'hydrogen'),
+      relax: bool(params.relax, 'job.params.relax') ?? false,
+    });
+  }
+  if (kind === 'peptide') {
+    rejectUnknownFields(params, ['sequence', 'codes', 'chirality', 'phiDegrees', 'psiDegrees', 'nTerminus', 'cTerminus', 'chain'], 'peptide job.params');
+    return {
+      sequence: text(params.sequence, 'job.params.sequence', 1024),
+      codes: oneOf(params.codes, 'job.params.codes', new Set(['one', 'three']), 'one'),
+      chirality: oneOf(params.chirality, 'job.params.chirality', new Set(['L', 'D']), 'L'),
+      phiDegrees: finite(params.phiDegrees, 'job.params.phiDegrees', -180, 180) ?? 180,
+      psiDegrees: finite(params.psiDegrees, 'job.params.psiDegrees', -180, 180) ?? 180,
+      nTerminus: oneOf(params.nTerminus, 'job.params.nTerminus', new Set(PEPTIDE_TERMINI.nTerminus), 'amine'),
+      cTerminus: oneOf(params.cTerminus, 'job.params.cTerminus', new Set(PEPTIDE_TERMINI.cTerminus), 'acid'),
+      chain: params.chain === undefined ? 'A' : text(params.chain, 'job.params.chain', 1, /^[A-Za-z0-9]$/u),
+    };
+  }
   if (kind === 'energy' || kind === 'energy_forces') {
     rejectUnknownFields(params, ['forceField'], `${kind} job.params`);
     return { forceField: oneOf(params.forceField, 'job.params.forceField', new Set(FORCE_FIELDS), 'MMFF94') };
@@ -167,7 +265,7 @@ function jobParams(kind, value) {
   return result;
 }
 
-function job(value) {
+function job(value, operation) {
   if (!plainObject(value)) invalid('submit requires job: { kind, params }.');
   rejectUnknownFields(value, ['kind', 'params'], 'job');
   if (typeof value.kind !== 'string' || !Object.hasOwn(WORKBENCH_JOB_KINDS, value.kind)) {
@@ -176,6 +274,9 @@ function job(value) {
       'Unsupported workbench job kind. It was rejected before queueing; see details.supportedJobs.',
       { kind: typeof value.kind === 'string' ? value.kind.slice(0, 64) : null, supportedJobs: Object.keys(WORKBENCH_JOB_KINDS) },
     );
+  }
+  if (WORKBENCH_JOB_KINDS[value.kind].operation === 'build' ? operation !== 'build' : operation === 'build') {
+    invalid(`${value.kind} jobs use operation ${operation === 'build' ? 'submit with an open source document' : 'build; they need no source document'}.`);
   }
   return { kind: value.kind, params: jobParams(value.kind, value.params) };
 }
@@ -221,9 +322,9 @@ export function validateWorkbenchRequest(action) {
       if (expected !== undefined) request.expectedSourceRevision = expected;
     }
     if (OPERATION_FIELDS[operation].includes('offset')) Object.assign(request, page(action));
-    if (operation === 'submit') {
+    if (operation === 'submit' || operation === 'build') {
       request.operationId = identifier(action.operationId, 'operationId', true);
-      request.job = job(action.job);
+      request.job = job(action.job, operation);
     }
     if (operation === 'status') {
       if ((action.jobId === undefined) === (action.operationId === undefined)) invalid('status requires exactly one of jobId or operationId.');

@@ -765,3 +765,40 @@ CLI/MCP through emitted host code and a browser-target chemistry worker with
 the pinned WASM. It retains Properties and orbital checks. This is transport
 and numeric acceptance, not an ordinary chooser, live Browser, native app or
 Python/batch acceptance.
+
+### Structure editing and builder jobs
+
+`insert_fragment`, `hydrogens` and `polymer` are `submit` jobs on an open
+explicit MOL/SDF source; they share the revision pinning, queue, cancellation,
+stale/closed handling and export rules above. Each succeeded job has one
+`structure` artifact: a new V3000 record under the source title, as SDF (with
+`$$$$`) for SDF sources and bare MOL for MOL sources. Results never edit the open
+document or its Undo history; open the exported file explicitly.
+
+- `insert_fragment`: exactly one of `library` (an id such as `alkanes/ethyl`
+  from the Edit-tab library) or `smiles` (one `*` marks the attachment point),
+  and an optional zero-based `atomIndex` to attach to. Without `atomIndex` the
+  fragment is added as a separate molecule. The summary reports formula, net
+  formal charge, counts, `addedAtoms`, `anchorAtom`, `replacedAtom`,
+  `bondLengthAngstrom` and `sourceAtomIndices` (`-1` for new atoms).
+- `hydrogens`: `mode` `add` or `remove`, the same operations as the Edit tab.
+- `polymer`: zero-based `head`, `tail`, `headLeaving`, `tailLeaving`, `count`
+  1–500, `bondLengthAngstrom` (default 1.54), optional `tacticity`, `headEnd` and
+  `tailEnd` (`hydrogen`, `methyl`, `hydroxyl`, `phenyl`, `tert-butyl`) and
+  `relax`. Atactic choices are sampled once per job; the summary returns
+  `repeatAlternatives` and the MMFF94 `relaxation` energies when requested.
+
+`build` is a separate operation for new structures without a source document:
+`{"operation":"build","operationId":"pep-1","job":{"kind":"peptide","params":{"sequence":"AGS"}}}`.
+It accepts `operationId` and `job` only; `expectedSourceRevision` is refused.
+Build jobs report `documentId`, `sourceRevision` and `sourceTextSha256` as null
+and `binding: "none"`; closing documents does not release them. `peptide`
+accepts `sequence`, `codes` (`one`/`three`), `chirality` (`L`/`D`), `phiDegrees`,
+`psiDegrees`, `nTerminus` (`amine`/`ammonium`), `cTerminus` (`acid`/`carboxylate`)
+and `chain`, and exports the same mmCIF as the Build peptide dialog.
+
+`bun run test:builder-agent` drives the actual controller and workers: RDKit
+reads each exported structure as the independent product (diethyl ether,
+ethanol/water, ethanol with and without hydrogens, the frozen isotactic
+polypropylene hexamer), the Ala-Gly-Ser mmCIF has C8H15N3O5, and invalid
+parameters, XYZ sources, out-of-range atoms and failed placements are refused.

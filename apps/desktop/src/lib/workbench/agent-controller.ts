@@ -4,11 +4,17 @@ import {
   WORKBENCH_RUNTIMES,
   validateWorkbenchRequest,
   workbenchContractSummary,
+  type WorkbenchBuildJobRequest,
   type WorkbenchJobKind,
   type WorkbenchJobRequest,
   type WorkbenchRequest,
 } from "../../../../../scripts/workbench-agent-contract.mjs";
 import { runChemistryTask } from "../molecular-workbench/compute-client";
+import { runGraphTask } from "../molecular-workbench/graph-compute-client";
+import type { GraphEditResult } from "../molecular-workbench/graph-edit";
+import { runFragmentTask } from "./fragment-task";
+import { preparePolymerRequest, runPolymerTask } from "./polymer-task";
+import { runPeptideTask } from "./peptide-task";
 import { computeQuantumGrid } from "../molecular-workbench/quantum-client";
 import { serializeCube } from "./cube-task";
 import { fileStem } from "./formats";
@@ -47,17 +53,30 @@ type DocumentRef = Pick<ViewerDocument, "id" | "path" | "title" | "extension" | 
 const COMMENT_LENGTH = 256;
 
 type Artifact = { name: string; fileName: string; mimeType: string; content: string; byteCount: number; sha256: string };
+type AnyJobRequest = WorkbenchJobRequest | WorkbenchBuildJobRequest;
+const DOCUMENT_JOB_KINDS = ["properties", "energy", "energy_forces", "orbital_cube", "insert_fragment", "hydrogens", "polymer"] as const satisfies readonly WorkbenchJobKind[];
+const GRAPH_EDIT_KINDS = new Set<WorkbenchJobKind>(["insert_fragment", "hydrogens", "polymer"]);
+
+/** Hill-order formula of explicit atoms with the net formal charge of a V3000 table. */
+function formulaOf(elements: readonly string[], molfile: string) {
+  const counts = new Map<string, number>();
+  for (const element of elements) counts.set(element, (counts.get(element) ?? 0) + 1);
+  const order = [...counts.keys()].sort((a, b) => counts.has("C") && (a === "C" || b === "C") ? (a === "C" ? -1 : 1) : counts.has("C") && (a === "H" || b === "H") ? (a === "H" ? -1 : 1) : a.localeCompare(b));
+  const charge = [...molfile.matchAll(/ CHG=(-?\d+)/gu)].reduce((sum, match) => sum + Number(match[1]), 0);
+  return { formula: order.map(element => `${element}${counts.get(element)! > 1 ? counts.get(element) : ""}`).join(""), formalCharge: charge };
+}
 type JobState = "queued" | "running" | "succeeded" | "failed" | "cancelled" | "source_closed";
 type Job = {
   jobId: string;
   operationId: string;
   fingerprint: string;
-  request: WorkbenchJobRequest;
-  document: DocumentRef;
-  sourceRevision: string;
-  input: Snapshot;
+  request: AnyJobRequest;
+  /** Null for `build` jobs, which read no source document. */
+  document: DocumentRef | null;
+  sourceRevision: string | null;
+  input: Snapshot | null;
   state: JobState;
-  binding: "current" | "stale" | "source_closed";
+  binding: "current" | "stale" | "source_closed" | "none";
   submittedAt: string;
   startedAt: string | null;
   finishedAt: string | null;
@@ -111,7 +130,8 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
   function limitations() {
     const notes = [
       "Results are never applied to an open document. Export an artifact and open it explicitly.",
-      "Workbench UI commands that are not listed under jobs (builders, structure editing, input-deck export, Z-matrix editing, crystal symmetry, spectra and plots) are not automated.",
+      "Structure jobs (insert_fragment, hydrogens, polymer and the build kinds) write new structure artifacts; they never edit the open document or its Undo history.",
+      "Workbench UI commands that are not listed under jobs (atom/bond editing, input-deck export, Z-matrix editing, crystal symmetry, spectra and plots) are not automated.",
     ];
     if (!environment.draftsVisible) notes.unshift("Unsaved editor drafts are not visible to this session; reads and jobs use the saved source.");
     if (!enabled) notes.unshift(`Workbench reads and jobs run only in ${WORKBENCH_RUNTIMES.join(", ")} sessions; this session is ${environment.runtime}.`);
@@ -122,6 +142,10 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
   const { snapshotOf, assertOpen } = sourceOwner;
 
   function jobUnavailable(snapshot: Snapshot, kind: WorkbenchJobKind): string | null {
+    if (GRAPH_EDIT_KINDS.has(kind)) {
+      if (!["sdf", "sd", "mol"].includes(snapshot.extension) || !snapshot.structure) return snapshot.structureError ?? "This job requires one explicit MOL or SDF connection table.";
+      return snapshot.structure.graphSource === "explicit" && snapshot.structure.graphComplete ? null : "This job requires one explicit MOL or SDF connection table.";
+    }
     if (kind === "properties" || kind === "energy" || kind === "energy_forces") {
       if (!snapshot.structure) return snapshot.structureError ?? snapshot.sourceError ?? "The chemical graph could not be read.";
       if (!snapshot.structure.graphComplete) return "This source has no complete bond orders or charges. Open an SDF or MOL version of the structure.";
@@ -132,6 +156,9 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
   }
 
   function paramsUnavailable(snapshot: Snapshot, job: WorkbenchJobRequest): string | null {
+    const atoms = snapshot.structure?.atoms.length ?? 0;
+    if (job.kind === "insert_fragment" && job.params.atomIndex !== undefined && job.params.atomIndex >= atoms) return `atomIndex must be below ${atoms}.`;
+    if (job.kind === "polymer" && [job.params.head, job.params.tail, job.params.headLeaving, job.params.tailLeaving].some(index => index >= atoms)) return `Polymer atom indices must be below ${atoms}.`;
     if (job.kind === "orbital_cube" && job.params.field === "orbital" && job.params.orbitalIndex! >= snapshot.scientific!.orbitals.length) {
       return `orbitalIndex must be below ${snapshot.scientific!.orbitals.length}.`;
     }
@@ -142,7 +169,7 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
     const snapshot = await snapshotOf(request);
     const base = { documentId: snapshot.document.id, sourceRevision: snapshot.revision, sourceTextSha256: snapshot.sourceTextSha256 };
     if (request.operation === "observe") {
-      const jobs = Object.fromEntries((["properties", "energy", "energy_forces", "orbital_cube"] as const).map(kind => {
+      const jobs = Object.fromEntries(DOCUMENT_JOB_KINDS.map(kind => {
         const reason = jobUnavailable(snapshot, kind);
         return [kind, reason ? { available: false, reason } : { available: true }];
       }));
@@ -169,10 +196,10 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
       operationId: job.operationId,
       kind: job.request.kind,
       params: job.request.params,
-      documentId: job.document.id,
-      documentTitle: job.document.title.slice(0, COMMENT_LENGTH),
+      documentId: job.document?.id ?? null,
+      documentTitle: job.document?.title.slice(0, COMMENT_LENGTH) ?? null,
       sourceRevision: job.sourceRevision,
-      sourceTextSha256: job.input.sourceTextSha256,
+      sourceTextSha256: job.input?.sourceTextSha256 ?? null,
       status,
       binding: job.binding,
       submittedAt: job.submittedAt,
@@ -209,20 +236,21 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
 
   /** Re-reads the job's document and records whether its source is still the job's input. */
   async function refreshBinding(job: Job) {
-    if (job.binding === "source_closed") return;
-    const document = environment.documents().find((item) => item.id === job.document.id);
+    if (job.binding === "source_closed" || !job.document || !job.input) return;
+    const jobDocument = job.document, input = job.input;
+    const document = environment.documents().find((item) => item.id === jobDocument.id);
     if (!document) {
       closeJob(job);
       return;
     }
     try {
-      assertOpen(document, job.input.lifetime);
+      assertOpen(document, input.lifetime);
       const { revision } = await snapshotOf({ documentId: document.id });
-      assertOpen(document, job.input.lifetime);
+      assertOpen(document, input.lifetime);
       job.binding = revision === job.sourceRevision ? "current" : "stale";
     } catch (error) {
       if (error instanceof WorkbenchError && error.code === "SOURCE_CLOSED") closeJob(job);
-      else if (!job.input.lifetime.abort.signal.aborted) job.binding = "stale";
+      else if (!input.lifetime.abort.signal.aborted) job.binding = "stale";
     }
   }
 
@@ -240,9 +268,55 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
     return { name, fileName, mimeType, content, byteCount, sha256: `sha256-${await sha256(content)}` };
   }
 
+  /** A structure artifact: the edited V3000 table under the source title, as an SDF record or bare MOL. */
+  async function structureArtifact(input: Snapshot, suffix: string, molfile: string) {
+    const stem = fileStem(input.document.title), mol = input.extension === "mol", lines = molfile.replace(/\s+$/u, "").split("\n");
+    lines[0] = stem.slice(0, 80);
+    return artifact("structure", `${stem}-${suffix}.${mol ? "mol" : "sdf"}`, mol ? "chemical/x-mdl-molfile" : "chemical/x-mdl-sdfile", `${lines.join("\n")}\n${mol ? "" : "$$$$\n"}`);
+  }
+
+  function graphSummary(structure: GraphEditResult, source: number) {
+    return { atomCount: structure.atoms.length, bondCount: structure.bonds.length, ...formulaOf(structure.atoms.map(atom => atom.element), structure.molfile),
+      sourceAtomCount: source, sourceAtomIndices: structure.sourceAtomIndices };
+  }
+
+  async function runBuild(request: WorkbenchBuildJobRequest, options: { signal: AbortSignal; timeoutMs: number }) {
+    const { params } = request;
+    const result = await runPeptideTask({ sequence: params.sequence, codes: params.codes, options: { chirality: params.chirality, phi: params.phiDegrees, psi: params.psiDegrees, nTerminus: params.nTerminus, cTerminus: params.cTerminus, chain: params.chain } }, options);
+    return { summary: { sequence: result.sequence, residueCount: result.residueCount, atomCount: result.atomCount, formalCharge: result.charge },
+      artifacts: [await artifact("structure", `Peptide ${result.sequence.slice(0, 32)}.cif`, "chemical/x-mmcif", result.cif)] };
+  }
+
+  async function runGraphEdit(input: Snapshot, request: Extract<WorkbenchJobRequest, { kind: "insert_fragment" | "hydrogens" | "polymer" }>, options: { signal: AbortSignal; timeoutMs: number }) {
+    const structure = input.structure!;
+    if (request.kind === "insert_fragment") {
+      const { library, smiles, atomIndex } = request.params;
+      const inserted = await runFragmentTask({ molecule: structure, fragment: library !== undefined ? { source: "library", id: library } : { source: "smiles", smiles: smiles! }, target: atomIndex ?? null }, options);
+      return { summary: { ...graphSummary(inserted.structure, structure.atoms.length), fragment: inserted.name.slice(0, 128), addedAtoms: inserted.addedAtoms, anchorAtom: inserted.anchor, replacedAtom: inserted.replaced, bondLengthAngstrom: inserted.bondLength },
+        artifacts: [await structureArtifact(input, "fragment", inserted.structure.molfile)] };
+    }
+    if (request.kind === "hydrogens") {
+      const hydrogens = structure.atoms.flatMap((atom, index) => atom.element === "H" ? [index] : []);
+      const edited = request.params.mode === "remove"
+        ? hydrogens.length ? await runGraphTask({ action: "edit-graph", molecule: structure, edits: [{ kind: "delete-atoms", indices: hydrogens }] }, options)
+          : await runGraphTask({ action: "edit-graph", molecule: structure, edits: [{ kind: "reorder-atoms", order: structure.atoms.map((_, i) => i) }] }, options)
+        : await runChemistryTask({ action: "add-hydrogens", molecule: structure }, options).then(added => runGraphTask({ action: "edit-graph", molecule: added, edits: [{ kind: "reorder-atoms", order: added.atoms.map((_, i) => i) }] }, options))
+          .then(added => ({ ...added, sourceAtomIndices: added.sourceAtomIndices.map(index => index < structure.atoms.length ? index : -1) }));
+      return { summary: { ...graphSummary(edited, structure.atoms.length), mode: request.params.mode, changedAtoms: Math.abs(edited.atoms.length - structure.atoms.length) },
+        artifacts: [await structureArtifact(input, request.params.mode === "add" ? "with-h" : "no-h", edited.molfile)] };
+    }
+    const { head, tail, headLeaving, tailLeaving, count, bondLengthAngstrom, tacticity, headEnd, tailEnd, relax } = request.params;
+    const polymer = await runPolymerTask(preparePolymerRequest({ text: input.text, format: input.extension === "mol" ? "mol" : "sdf" },
+      { head, tail, headLeaving, tailLeaving, count, bondLength: bondLengthAngstrom, endGroups: "hydrogen", tacticity, ends: { head: headEnd, tail: tailEnd }, relax }), options);
+    return { summary: { atomCount: polymer.atomCount, bondCount: polymer.bondCount, repeatCount: count, repeatAlternatives: polymer.repeatAlternatives, relaxation: polymer.relaxation ?? null },
+      artifacts: [await artifact("structure", `${fileStem(input.document.title)}-polymer-${count}.sdf`, "chemical/x-mdl-sdfile", polymer.sdf)] };
+  }
+
   async function runJob(job: Job, signal: AbortSignal): Promise<{ summary: Record<string, unknown>; artifacts: Artifact[] }> {
-    const { input, request } = job;
     const options = { signal, timeoutMs: WORKBENCH_LIMITS.jobTimeoutMs };
+    if (job.request.kind === "peptide") return runBuild(job.request, options);
+    const input = job.input!, request = job.request as WorkbenchJobRequest;
+    if (request.kind === "insert_fragment" || request.kind === "hydrogens" || request.kind === "polymer") return runGraphEdit(input, request, options);
     if (request.kind === "properties") {
       const deadline = performance.now() + options.timeoutMs;
       const properties = await runChemistryTask({ action: "properties", molecule: input.structure! }, options);
@@ -364,6 +438,26 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
     return { deduplicated: false, job: publicJob(job) };
   }
 
+  /** A documentless build shares the job queue, deduplication, cancellation and export of `submit`. */
+  function build(request: Extract<WorkbenchRequest, { operation: "build" }>) {
+    if (!enabled) throw new WorkbenchError("SURFACE_UNSUPPORTED", limitations()[0]);
+    const fingerprint = JSON.stringify(["build", request.job]);
+    const existing = jobs.get(operations.get(request.operationId) ?? "");
+    if (existing) {
+      if (existing.fingerprint !== fingerprint) throw new WorkbenchError("OPERATION_ID_CONFLICT", `operationId ${request.operationId} was already used for a different request (job ${existing.jobId}).`, { operationId: request.operationId, jobId: existing.jobId });
+      return { deduplicated: true, job: publicJob(existing) };
+    }
+    const pending = [...jobs.values()].filter((job) => job.state === "queued").length;
+    if (pending >= WORKBENCH_LIMITS.queuedJobs) throw new WorkbenchError("JOB_QUEUE_FULL", `${pending} workbench jobs are already queued. Wait for one to finish or cancel one.`);
+    const job: Job = { jobId: `wbj-${crypto.randomUUID().replace(/-/gu, "").slice(0, 16)}`, operationId: request.operationId, fingerprint, request: request.job,
+      document: null, sourceRevision: null, input: null, state: "queued", binding: "none", submittedAt: new Date().toISOString(), startedAt: null, finishedAt: null,
+      error: null, summary: null, artifacts: [], abort: null };
+    jobs.set(job.jobId, job);
+    operations.set(job.operationId, job.jobId);
+    pump();
+    return { deduplicated: false, job: publicJob(job) };
+  }
+
   async function status(request: Extract<WorkbenchRequest, { operation: "status" }>) {
     const jobId = request.jobId ?? operations.get(request.operationId!);
     if (!jobId) throw new WorkbenchError("JOB_NOT_FOUND", `No job was submitted with operationId ${request.operationId}.`, { operationId: request.operationId });
@@ -390,7 +484,7 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
     if (job.binding === "source_closed") throw new WorkbenchError("SOURCE_CLOSED", `The source document of job ${job.jobId} was closed; its results were released.`, { job: publicJob(job) });
     if (job.state !== "succeeded") throw new WorkbenchError("JOB_NOT_SUCCEEDED", `Job ${job.jobId} is ${job.state}; only succeeded jobs have artifacts.`, { job: publicJob(job) });
     if (job.binding === "stale" && !request.allowStale) {
-      throw new WorkbenchError("STALE_RESULT", `The source of ${job.document.title} changed after job ${job.jobId} was submitted. Pass allowStale: true to export a result of the earlier revision ${job.sourceRevision}.`, { job: publicJob(job) });
+      throw new WorkbenchError("STALE_RESULT", `The source of ${job.document?.title} changed after job ${job.jobId} was submitted. Pass allowStale: true to export a result of the earlier revision ${job.sourceRevision}.`, { job: publicJob(job) });
     }
     const found = job.artifacts.find((item) => item.name === request.artifact);
     if (!found) throw new WorkbenchError("ARTIFACT_NOT_FOUND", `Job ${job.jobId} has no ${request.artifact} artifact.`, { artifacts: job.artifacts.map((item) => item.name) });
@@ -398,7 +492,7 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
     return {
       jobId: job.jobId,
       sourceRevision: job.sourceRevision,
-      sourceTextSha256: job.input.sourceTextSha256,
+      sourceTextSha256: job.input?.sourceTextSha256 ?? null,
       binding: job.binding,
       artifact: { name: found.name, fileName: found.fileName, mimeType: found.mimeType, byteCount: found.byteCount, sha256: found.sha256, encoding: "utf8", content: found.content },
     };
@@ -420,6 +514,8 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
     switch (request.operation) {
       case "submit":
         return submit(request);
+      case "build":
+        return build(request);
       case "status":
         return status(request);
       case "jobs":
@@ -454,7 +550,7 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
       if (lifetime.signal.aborted) return;
       sourceOwner.documentsChanged(openDocumentIds);
       for (const job of jobs.values()) {
-        if (!openDocumentIds.has(job.document.id) && job.binding !== "source_closed") closeJob(job);
+        if (job.document && !openDocumentIds.has(job.document.id) && job.binding !== "source_closed") closeJob(job);
       }
       retain();
       pump();
