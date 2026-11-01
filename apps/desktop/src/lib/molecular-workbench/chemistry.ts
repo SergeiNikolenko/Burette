@@ -4,7 +4,7 @@ import type { MolecularAtom } from './types';
 import { appendHydrogens } from './hydrogen-geometry';
 import { serializePhysicalMolfile } from './molecule-serialization';
 import { readUnspecifiedMolfileStereo, retainUnknownStereo } from './molecule-stereochemistry';
-import { optimizeCartesian, defaultOptimizationMethod, optimizationUnavailable, OPTIMIZATION_LIMITS, type EnergyEvaluator, type OptimizeOptions, type OptimizationResult } from './optimization';
+import { optimizeCartesian, defaultOptimizationMethod, optimizationUnavailable, OPTIMIZATION_LIMITS, CONFORMER_LIMITS, flatDepiction, type EnergyEvaluator, type OptimizeOptions, type OptimizationResult } from './optimization';
 import { createForceField, type MolecularForceField } from './forcefield';
 import { ForceFieldMMFF94 } from 'openchemlib';
 import { calculateGasteigerWasm, createUffWasmEvaluator, prepareUffWasm } from './uff-wasm';
@@ -164,7 +164,6 @@ export function optimize(structure: MolecularStructure, options: OptimizeOptions
     frames: [{ atoms: structure.atoms.map(atom => ({ ...atom })), energy: initialEnergy }, { atoms: molecule.atoms, energy }], constraintResiduals: [], frozenAtoms: [] };
 }
 
-export const CONFORMER_LIMITS = Object.freeze({ count: 32, seeds: 2_147_483_647 });
 // RMS difference of sorted heavy-atom distances, Å, below which two relaxed conformers are the same minimum.
 const DUPLICATE_RMS = 0.05;
 const EMBEDDING_ATTEMPTS = 8;
@@ -226,7 +225,7 @@ export function searchConformers(structure: MolecularStructure, options: { count
 export function prepare3d(structure: MolecularStructure, options: { forceField?: MolecularForceField; method?: OptimizeOptions['method']; seed?: number; maxIterations?: number } = {}): OptimizationResult & { preparation: { addedHydrogens: number; seed: number; attempts: number } } {
   const forceField = options.forceField ?? 'MMFF94', requestedSeed = options.seed ?? 1;
   if (!Number.isInteger(requestedSeed) || requestedSeed < 0 || requestedSeed > CONFORMER_LIMITS.seeds - EMBEDDING_ATTEMPTS) throw new Error('The embedding seed must be an integer from 0 to 2147483639.');
-  if (structure.atoms.some(atom => Math.abs(atom.z) > 1e-6)) throw new Error('This structure already has 3D coordinates; optimize it instead.');
+  if (!flatDepiction(structure)) throw new Error('This structure already has 3D coordinates; optimize it instead.');
   const source = toOcl(structure);
   checkHydrogenExpansion(source);
   const addedHydrogens = Array.from({ length: source.getAllAtoms() }, (_, i) => source.getImplicitHydrogens(i)).reduce((a, b) => a + b, 0);

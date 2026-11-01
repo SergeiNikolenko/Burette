@@ -11,6 +11,12 @@ import { measureGeometry } from '../../../../../scripts/molecular-geometry.js';
 export type OptimizationMethod = 'bfgs' | MinimizerMethod;
 export const OPTIMIZATION_METHODS: readonly OptimizationMethod[] = ['bfgs', ...MINIMIZER_METHODS];
 export const OPTIMIZATION_LIMITS = Object.freeze({ graphAtoms: 256, numericalAtoms: 64, constraints: 64, iterations: 1000 });
+/** A 2D drawing: an explicit SDF/MOL graph with every z at zero. XYZ coordinates are always a geometry. */
+export function flatDepiction(structure: Pick<MolecularStructure, 'atoms' | 'graphSource'>) {
+  return structure.graphSource === 'explicit' && structure.atoms.every(atom => Math.abs(atom.z) <= 1e-6);
+}
+/** Conformers kept per search, and the largest embedding seed. */
+export const CONFORMER_LIMITS = Object.freeze({ count: 32, seeds: 2_147_483_647 });
 
 export type GeometryConstraint = { kind: 'freeze' | 'distance' | 'angle' | 'dihedral'; atoms: number[]; target?: number };
 export type ConstraintResidual = { kind: Exclude<GeometryConstraint['kind'], 'freeze'>; atoms: number[]; target: number; value: number; error: number; unit: 'angstrom' | 'degrees' };

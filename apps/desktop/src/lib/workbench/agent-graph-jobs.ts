@@ -3,12 +3,12 @@ import { runChemistryTask } from "../molecular-workbench/compute-client";
 import { runGraphTask } from "../molecular-workbench/graph-compute-client";
 import type { MolecularStructure } from "../molecular-workbench/molecular-graph";
 import type { EnergyForces } from "../molecular-workbench/energy-forces";
-import { optimizationUnavailable, resolveConstraints, type OptimizationResult } from "../molecular-workbench/optimization";
+import { flatDepiction, optimizationUnavailable, resolveConstraints, type OptimizationResult } from "../molecular-workbench/optimization";
 import type { MolecularAtom } from "../molecular-workbench/types";
 import { serializeXyz } from "../molecular-workbench/xyz";
 import { graphDraftText } from "./graph-draft";
 import { hasGraphMetadata, readGraphMetadata, remapGraphMetadata } from "./graph-metadata";
-import { multiFrameXyz, sdfFromGraph } from "./formats";
+import { conformerSdfRecord, multiFrameXyz, sdfFromGraph } from "./formats";
 import { sdfRecords, type Snapshot } from "./agent-source";
 import type { AgentJobContext, AgentJobRunner } from "./agent-jobs";
 
@@ -19,8 +19,6 @@ function graphUnavailable(snapshot: Snapshot): string | null {
   if (!snapshot.structure) return snapshot.structureError ?? snapshot.sourceError ?? "The chemical graph could not be read.";
   return snapshot.structure.graphComplete ? null : "This source has no complete bond orders or charges. Open an SDF or MOL version of the structure.";
 }
-
-const flat = (structure: MolecularStructure) => structure.atoms.every(atom => Math.abs(atom.z) <= 1e-6);
 
 /**
  * A result graph as SDF in source atom order. Explicit graphs keep the source record's
@@ -170,7 +168,7 @@ export const graphJobs: { [K in "properties" | "energy" | "energy_forces" | "fra
     },
   },
   prepare_3d: {
-    unavailable: snapshot => graphUnavailable(snapshot) ?? (flat(snapshot.structure!) ? null : "This structure already has 3D coordinates; use optimize."),
+    unavailable: snapshot => graphUnavailable(snapshot) ?? (flatDepiction(snapshot.structure!) ? null : "This structure already has 3D coordinates; use optimize."),
     paramsUnavailable: (snapshot, { forceField, method }) => optimizationUnavailable(snapshot.structure!.atoms.length, forceField, method, 0),
     async run(input, params, context) {
       const result = await runChemistryTask({ action: "prepare-3d", molecule: input.structure!, options: params }, { signal: context.signal, timeoutMs: context.timeoutMs });
@@ -183,8 +181,7 @@ export const graphJobs: { [K in "properties" | "energy" | "energy_forces" | "fra
       const search = await runChemistryTask({ action: "conformers", molecule: input.structure!, options: params }, { signal, timeoutMs });
       const records: string[] = [];
       for (const [index, conformer] of search.conformers.entries()) {
-        const record = (await structureSdf(input, conformer.molecule, signal)).replace(/\$\$\$\$\n$/u, "");
-        records.push(`${record}> <Burette conformer>\n${index + 1}\n\n> <${params.forceField} energy (kcal/mol)>\n${conformer.energy}\n\n> <${params.forceField} relative energy (kcal/mol)>\n${conformer.relativeEnergy}\n\n$$$$\n`);
+        records.push(conformerSdfRecord(await structureSdf(input, conformer.molecule, signal), index + 1, params.forceField, conformer.energy, conformer.relativeEnergy));
       }
       return {
         summary: { method: `OpenChemLib torsion sampling, ${params.forceField === "UFF" ? "RDKit UFF L-BFGS" : `OpenChemLib ${params.forceField} BFGS`} relaxation`, forceField: params.forceField, seed: search.seed,
