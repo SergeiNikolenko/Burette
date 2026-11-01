@@ -7,13 +7,13 @@ let source = readFileSync("apps/desktop/src/hooks/use-app-preference-effects.ts"
 source = new Bun.Transpiler({ loader: "ts" }).transformSync(source);
 const refs = [], effects = [];
 let refIndex = 0, effectIndex = 0, pending = [];
-const hook = new Function("useRef", "useEffect", "isTauriRuntime", "isTemporaryDocumentPath", "useAppLevelPreferences", source + "\nreturn useAppPreferenceEffects;")(
+const hook = new Function("useRef", "useEffect", "isTauriRuntime", "isTemporaryDocumentPath", "useAppLevelPreferences", "window", source + "\nreturn useAppPreferenceEffects;")(
   value => refs[refIndex++] ?? (refs[refIndex - 1] = { current: value }),
   (run, dependencies) => {
     const index = effectIndex++;
     if (!effects[index] || dependencies.some((value, i) => value !== effects[index][i])) pending.push(run);
     effects[index] = dependencies;
-  }, () => false, () => false, () => {},
+  }, () => false, () => false, () => {}, {},
 );
 const posted = [];
 globalThis.document = { querySelectorAll: () => [{ contentWindow: { postMessage: message => posted.push(message.body) } }] };

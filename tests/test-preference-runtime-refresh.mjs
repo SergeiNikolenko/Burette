@@ -7,13 +7,15 @@ source = new Bun.Transpiler({ loader: "ts" }).transformSync(source);
 const refs = [], effects = [];
 let refIndex = 0, effectIndex = 0, pending = [];
 const messages = [];
-const hook = new Function("useRef", "useEffect", "isTauriRuntime", "isTemporaryDocumentPath", "useAppLevelPreferences", "viewerAppearanceMessage", "document", source + "\nreturn useAppPreferenceEffects;")(
+const hostWindow = {}, hostThemeListeners = [];
+const hook = new Function("useRef", "useEffect", "isTauriRuntime", "isTemporaryDocumentPath", "useAppLevelPreferences", "viewerAppearanceMessage", "subscribeSystemThemeMode", "window", "document", source + "\nreturn useAppPreferenceEffects;")(
   value => refs[refIndex++] ?? (refs[refIndex - 1] = { current: value }),
   (run, dependencies) => {
     const index = effectIndex++;
     if (!effects[index] || dependencies.some((value, i) => value !== effects[index][i])) pending.push(run);
     effects[index] = dependencies;
   }, () => false, () => false, () => {}, viewerAppearanceMessage,
+  listener => { hostThemeListeners.push(listener); return () => {}; }, hostWindow,
   { querySelectorAll: () => [{ contentWindow: { postMessage: message => messages.push(message) } }] },
 );
 const documents = [{ id: "a", path: "/a.pdb" }, { id: "b", path: "/b.pdb" }];
@@ -71,3 +73,12 @@ assert.equal(newer.shouldApply(), true);
 render({ documents: documents.filter(document => document.id !== "b") });
 assert.equal(newer.shouldApply(), false, "closing during preparation must not reopen the document");
 console.log("Stale/closed preference rebuild checks passed.");
+
+assert.equal(hostThemeListeners.length, 0, "desktop viewers follow the system appearance themselves");
+hostWindow.BuretteMcpWorkspace = { theme: "dark" };
+effects.length = 0;
+render({});
+const sent = messages.length;
+for (const listener of hostThemeListeners) listener();
+assert.deepEqual(messages.slice(sent), [{ source: "burette-host", body: viewerAppearanceMessage(options.preferences) }], "a Codex theme switch re-themes mounted widget frames");
+console.log("Host theme broadcast checks passed.");

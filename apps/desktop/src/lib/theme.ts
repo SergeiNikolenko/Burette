@@ -82,24 +82,31 @@ export function readPreviewThemeTokens(preferences: ViewerPreferences, mode: The
   return { ...tokens, accent: codex.accent, background: codex.surface, foreground: codex.ink, contrast: codex.contrast };
 }
 
+// The Codex host owns the widget's theme. A viewer frame left on "auto" would
+// read the system appearance instead, which the host may override.
+export function viewerThemePreference(theme: ViewerPreferences["theme"]): ViewerPreferences["theme"] {
+  return typeof window !== "undefined" && window.BuretteMcpWorkspace ? window.BuretteMcpWorkspace.theme : theme;
+}
+
 export function viewerAppearanceMessage(preferences: ViewerPreferences) {
   return {
     type: "setViewerTheme" as const,
-    value: preferences.theme,
+    value: viewerThemePreference(preferences.theme),
     themeTokens: { light: readPreviewThemeTokens(preferences, "light"), dark: readPreviewThemeTokens(preferences, "dark") },
     canvasBackground: preferences.canvasBackground,
   };
 }
 
 export function previewBackgroundStyle(preferences: ViewerPreferences): string {
+  const theme = viewerThemePreference(preferences.theme);
   const background = (mode: ThemeMode) => {
     const selected = preferences.canvasBackground;
     return selected === "auto" ? readPreviewThemeTokens(preferences, mode).background
       : selected === "transparent" ? "transparent"
       : selected === "white" ? "#ffffff" : selected === "graphite" ? "#111111" : "#000000";
   };
-  return `html{color-scheme:${preferences.theme === "auto" ? "light dark" : preferences.theme};background:${background(preferences.theme === "light" ? "light" : "dark")}}body{background:inherit}`
-    + (preferences.theme === "auto" ? `@media(prefers-color-scheme:light){html{background:${background("light")}}}` : "");
+  return `html{color-scheme:${theme === "auto" ? "light dark" : theme};background:${background(theme === "light" ? "light" : "dark")}}body{background:inherit}`
+    + (theme === "auto" ? `@media(prefers-color-scheme:light){html{background:${background("light")}}}` : "");
 }
 
 export function buildThemeStyle(preferences: ViewerPreferences, systemThemeMode?: ThemeMode): CSSProperties {

@@ -4686,7 +4686,7 @@ assert.match(browserDevDocuments, /if \(!document\.runtimePath\.includes\(VIEWER
 assert.match(browserDevDocuments, /function resolvePreviewVisuals/);
 assert.match(browserDevDocuments, /theme: ViewerPreferences\["theme"\]/);
 assert.match(browserDevDocuments, /canvasBackground: ViewerPreferences\["canvasBackground"\]/);
-assert.match(browserDevDocuments, /theme: preferences\.theme,/);
+assert.match(browserDevDocuments, /theme: viewerThemePreference\(preferences\.theme\),/);
 assert.match(browserDevDocuments, /canvasBackground: preferences\.canvasBackground,/);
 assert.doesNotMatch(browserDevDocuments, /preferences\.theme === "auto" \? "dark" : preferences\.theme/);
 assert.doesNotMatch(browserDevDocuments, /preferences\.canvasBackground === "auto" \? "black" : preferences\.canvasBackground/);
