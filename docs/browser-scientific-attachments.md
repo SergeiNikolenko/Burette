@@ -58,6 +58,11 @@ bounded Spectra display memory; returning from Settings does not replay the
 attachment selection over them. Close/reopen restores the exact registered XYZ,
 science and paired Originals through the clean-attachment store.
 
+Reopen the same imported document from Open recent or the command palette in the
+same browser tab. Scientific imports retain their exact stored paths in Recent,
+including generated XYZ/MOL views. Choosing the source file again creates a new
+import with a separate path; it does not borrow another import's MCD attachment.
+
 Malformed files, changed Originals, stale sources and storage failures are not
 reported as successful additions. Source/provider changes retire the pending UI.
 Native documents, logical MOLX sources, dirty sources, Chemical JSON/MOL and

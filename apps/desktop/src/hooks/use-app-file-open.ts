@@ -487,13 +487,14 @@ export function useAppFileOpen({
         try {
           scientific = await openStoredScientificFile(path, preferences, (document) => {
             addDocuments([document], { preserveActiveTab: options.preserveActiveTab });
-            rememberRecentStructures([document]);
           }, () => mayApply() && sourceCurrent);
         } finally { stopWatching(); }
         if (!mayApply()) return;
         if (scientific !== null) {
           const current = useMoleculeStore.getState().documents.find((document) => document.path === path);
           const opened = scientific[0] ?? (current?.virtual && importedOriginalFor(current.id) ? current : null);
+          // The scientific import claims its Original after the open callback returns.
+          if (opened) rememberRecentStructures([opened]);
           openedAny ||= Boolean(opened);
           preferredStructureDocumentId ??= opened?.id ?? null;
           continue;

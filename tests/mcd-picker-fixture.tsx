@@ -41,7 +41,7 @@ async function fixture() {
   const options: Parameters<typeof useAppFileOpen>[0] = { ...store, preferences: { ...defaultPreferences, rendererMode: "molstar" },
     addProjectRoot: noop, detectContentSpectrumPaths, expandStructureBundles: async paths => paths,
     openDockTab: noop, openDocumentTab: path => { ordinary.push(path); }, openFepNetworkTab: noop,
-    pushErrorStatus: error => { errors.push(error); }, pushStatus: noop, rememberRecentStructures: noop,
+    pushErrorStatus: error => { errors.push(error); }, pushStatus: noop, rememberRecentStructures: store.rememberRecentStructures,
     setDockActiveTab: noop, setDockDocument: noop, setDockOpen: noop,
   };
   function Probe() { api = useAppFileOpen(options); return null; }
