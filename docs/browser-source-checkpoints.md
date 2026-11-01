@@ -2,7 +2,9 @@
 
 The browser agent shell's source checkpoints share `burette-browser-imports`
 IndexedDB with immutable imported files. Version 2 adds a `source-checkpoints`
-store without rewriting the existing `files` store. A sessionStorage identifier
+store without rewriting the existing `files` store. Version 3 adds tab-scoped
+`scientific-attachments` for metadata on unchanged imports; neither existing
+store is rewritten. A sessionStorage identifier
 scopes drafts to the current browser tab; native, MCP, hosted widgets, web demo
 and explicit server workspaces do not enter this persistence lane.
 
@@ -14,7 +16,8 @@ No renderer leases, native Undo, or serialized source-editing session are stored
 
 Records use compare-and-swap IDs. A delayed write or discard cannot replace a
 successor. Limits are 3,000,000 bytes per source text, 16 MiB per checkpoint,
-64 checkpoints and 32 MiB total. Capacity or validation failures preserve the
+64 records and 32 MiB total across dirty checkpoints and clean scientific
+attachments. Capacity or validation failures preserve the
 previous records; nothing is automatically evicted. A replaced Original fails
 validation instead of adopting an unrelated draft.
 
@@ -44,8 +47,8 @@ fixture is explicit; actual browser/renderer acceptance remains separate.
 ## Paired Scientific Originals
 
 Checkpoint record version 2 additionally retains bounded MCD companion metadata
-and exact Blob bytes. Ordinary records remain version 1, and the IndexedDB
-schema stays at version 2. Both record types remain readable. Binary sizes count
+and exact Blob bytes. Ordinary records remain version 1; both record versions
+remain readable after the additive IndexedDB version 3 upgrade. Binary sizes count
 towards the existing 16 MiB record and 32 MiB aggregate limits before publication.
 Companion validation uses the scene archive's source, frame and checksum contract;
 missing, mismatched or corrupt paired Originals reject the record.
@@ -65,8 +68,8 @@ MCD sidecar in this fixture is authored; real producer fixtures, companion picke
 activation and actual Browser acceptance remain separate requirements.
 
 This lane persists dirty source sessions. Attaching a sidecar to an otherwise
-unchanged import still requires explicit durable companion admission; a picker
-must not claim reload persistence from this edited-source checkpoint alone.
+unchanged import needs a separate clean-admission integration; a picker must not
+claim reload persistence from this edited-source checkpoint alone.
 
 Scientific snapshots reuse the scene codec's bounded JSON/typed-array boundary.
 Unsupported binary metadata is rejected. Grid and Hessian views retain only

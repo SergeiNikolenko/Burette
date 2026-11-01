@@ -25,7 +25,7 @@ export function openBrowserImportDatabase() {
       reject(storageError());
       return;
     }
-    const request = indexedDB.open("burette-browser-imports", 2);
+    const request = indexedDB.open("burette-browser-imports", 3);
     let failed = false;
     const fail = () => { failed = true; reject(storageError()); };
     request.onerror = fail;
@@ -34,6 +34,9 @@ export function openBrowserImportDatabase() {
       if (!request.result.objectStoreNames.contains(STORE)) request.result.createObjectStore(STORE, { keyPath: "path" });
       if (!request.result.objectStoreNames.contains("source-checkpoints")) {
         request.result.createObjectStore("source-checkpoints", { keyPath: ["scope", "path"] });
+      }
+      if (!request.result.objectStoreNames.contains("scientific-attachments")) {
+        request.result.createObjectStore("scientific-attachments", { keyPath: ["scope", "path"] });
       }
     };
     request.onsuccess = () => {
