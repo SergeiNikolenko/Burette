@@ -13,11 +13,22 @@ integer lattice translations. Wrapping does not snap sites near a face. Only
 a boundary rounded to exactly 1 by floating-point subtraction is normalized.
 
 This is a passive lattice basis change. It does not determine space groups,
-find primitive cells, refine geometry or merge symmetry-equivalent atoms.
-Moyo analysis, primitive/conventional standardization, output formats, workers
-and UI activation are separate stages.
+find primitive cells, refine geometry or merge symmetry-equivalent atoms; those
+belong to moyo in `../crystal-symmetry.ts`, and every crystal edit, Niggli
+included, runs through `../crystal-edit.ts` in the crystal worker.
 
-Run `vp run test:niggli-cell` and `vp run typecheck:niggli-cell`. The focused
+# Molecular point groups
+
+`point-group.ts` drives the libmsym engine of the same build contract for
+molecules of up to 256 atoms: detection with Avogadro's four tolerance presets
+and symmetrization, both in `symmetry-worker.ts` behind `symmetry-client.ts`.
+Isotopes are separate species, so D2O and HDO keep their own groups. The
+Symmetry dock panel and the `point_group` agent job are its consumers; molecules
+with a unit cell use the crystal tools instead.
+
+Run `vp run test:niggli-cell` and `vp run typecheck:niggli-cell`; point groups
+are covered by `bun run test:point-group` and, against pymatgen, by
+`bun run test:crystal-analysis`. The focused
 suite retains the original Niggli engine assertions, eight Python spglib 2.8.0
 reference cases, and an exact near-face Cartesian reconstruction regression.
 The WASM asset/build provenance and loader checks remain separate.
