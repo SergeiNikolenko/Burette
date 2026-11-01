@@ -69,7 +69,10 @@ test("atom-count orbital flag remains separate from units and multi-field parser
         values: [-4, 40, -3, 30, -2, 20, -1, 10, 0, 0, 1, -10, 2, -20, 3, -30],
         origin: single === angstrom ? [1.25, -2.5, 3.75] : [1.25, -2.5, 3.75].map(n => n * 0.529177210859),
       });
-      expect(() => parseScientificFile("multi.cube", text)).toThrow(/Multi-/);
+      const science = parseScientificFile("multi.cube", text);
+      expect(science.gridDatasets!.map(dataset => [dataset.orbitalNumber, Array.from(dataset.grid.values)])).toEqual(parsed.result.header.dataSetIds.map((id: number, k: number) =>
+        [text === orbital ? id : undefined, Array.from(parsed.result.values).filter((_, i) => i % 2 === k)]));
+      expect(Array.from(science.grid!.origin)).toEqual(Array.from(parsed.result.header.origin).map(value => expect.closeTo(value, 9))); // Mol* uses an older bohr constant
     }
   }
 });

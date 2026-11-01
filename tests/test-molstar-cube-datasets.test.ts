@@ -42,7 +42,11 @@ test("every native Cube dataset uses its tuple offset and shared stride without 
         .toEqual({ x: [2], y: [3], z: [4] });
     }
     expect(Array.from(parsed.result.values)).toEqual([-4, 40, 400, -3, 30, 300]);
-    expect(() => parseScientificFile("fields.cube", text)).toThrow(/Multi-/);
+    // The scientific reader keeps the same fields, in the same order, on Burette's grid.
+    const science = parseScientificFile("fields.cube", text);
+    expect(science.gridDatasets!.map(dataset => [dataset.label, dataset.orbitalNumber, Array.from(dataset.grid.values)]))
+      .toEqual(fields.map((values, k) => text === nval ? [`Field ${k + 1}`, undefined, values] : [`Orbital ${[7, 11, 17][k]}`, [7, 11, 17][k], values]));
+    expect(science.grid).toBe(science.gridDatasets![0].grid);
   }
 });
 

@@ -357,13 +357,19 @@ function parseHessian(text: string): ScientificDocument {
   return result;
 }
 
+/**
+ * Gaussian Cube. A negative atom count announces a line of dataset (orbital) numbers after the
+ * atoms; a positive one may state NVAL fields per point after the origin. Several fields are
+ * interleaved point by point and share one grid; together they stay within one million values.
+ */
 function parseCube(text: string): ScientificDocument {
   const lines = text.replace(/\r/g, "").split("\n");
   const header = fields(lines[2] ?? "");
   const signedAtoms = number(header[0]);
-  if (!Number.isInteger(signedAtoms) || signedAtoms < 1) throw new Error("Multi-orbital and atom-free cube files are not supported; export one scalar field.");
-  const count = integer(header[0], MAX_ATOMS);
-  if (header[4] && number(header[4]) !== 1) throw new Error("Multi-field cube files are not supported.");
+  if (!Number.isInteger(signedAtoms) || signedAtoms === 0) throw new Error("Atom-free cube files are not supported.");
+  const count = integer(String(Math.abs(signedAtoms)), MAX_ATOMS);
+  const nval = header[4] === undefined ? 1 : integer(header[4], MAX_GRID);
+  if (signedAtoms < 0 && nval !== 1) throw new Error("Cube files with both orbital datasets and several values per point are not supported.");
   const axisLines = lines.slice(3, 6).map(fields);
   if (axisLines.length !== 3) throw new Error("Cube grid header is incomplete.");
   const signs = axisLines.map(parts => Math.sign(number(parts[0])));
@@ -376,11 +382,30 @@ function parseCube(text: string): ScientificDocument {
   const axes = axisLines.map(p => p.slice(1, 4).map(v => number(v) * scale)) as ScalarGrid["axes"];
   validateGridGeometry(dimensions, origin, axes);
   const atoms = lines.slice(6, 6 + count).map(line => { const p = fields(line); return atom(elementSymbol(integer(p[0], 118)), p.slice(2), scale); });
-  const tokens = lines.slice(6 + count).join(" ").trim().split(/\s+/);
-  if (tokens.length !== size) throw new Error("Cube data length does not match its dimensions.");
-  const values = new Float32Array(tokens.map(number));
-  if (values.some(value => !Number.isFinite(value))) throw new Error("Cube values exceed float range.");
-  return { ...empty("cube", atoms), grid: { dimensions, origin, axes, values } };
+  let dataStart = 6 + count;
+  let orbitalNumbers: number[] | undefined;
+  if (signedAtoms < 0) {
+    const ids = fields(lines.slice(dataStart).join(" "));
+    const datasets = integer(ids[0], MAX_GRID);
+    orbitalNumbers = ids.slice(1, 1 + datasets).map(id => integer(id, MAX_GRID));
+    if (orbitalNumbers.length !== datasets) throw new Error("Cube dataset numbers are incomplete.");
+    // The numbers may wrap over several lines.
+    let consumed = 0;
+    while (consumed < datasets + 1 && dataStart < lines.length) consumed += fields(lines[dataStart++]).length;
+    if (consumed !== datasets + 1) throw new Error("Cube dataset numbers share a line with grid values.");
+  }
+  const fieldCount = orbitalNumbers?.length ?? nval;
+  if (size * fieldCount > MAX_GRID) throw new Error("Cube fields exceed one million values together.");
+  const tokens = lines.slice(dataStart).join(" ").trim().split(/\s+/);
+  if (tokens.length !== size * fieldCount) throw new Error("Cube data length does not match its dimensions.");
+  const datasets = Array.from({ length: fieldCount }, (_, k) => {
+    const values = new Float32Array(size);
+    for (let point = 0; point < size; point++) values[point] = number(tokens[point * fieldCount + k]);
+    if (values.some(value => !Number.isFinite(value))) throw new Error("Cube values exceed float range.");
+    const grid: ScalarGrid = { dimensions, origin, axes, values };
+    return orbitalNumbers ? { label: `Orbital ${orbitalNumbers[k]}`, orbitalNumber: orbitalNumbers[k], grid } : { label: `Field ${k + 1}`, grid };
+  });
+  return { ...empty("cube", atoms), grid: datasets[0].grid, ...(fieldCount > 1 ? { gridDatasets: datasets } : {}) };
 }
 
 function validateGridGeometry(dimensions: ScalarGrid["dimensions"], origin: Vec3, axes: ScalarGrid["axes"]) {

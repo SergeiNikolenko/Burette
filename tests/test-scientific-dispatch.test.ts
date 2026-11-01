@@ -71,7 +71,8 @@ test("Malformed and unsupported scientific files fail without guessed fields", (
   expect(() => parseScientificFile("bad.molden", hydrogenMolden.replace("1 1.0\nSym", "2 1.0\nSym"))).toThrow("coefficient");
   expect(() => parseScientificFile("bad.molden", hydrogenMolden.replace("1.0D+00", "-1.0"))).toThrow("exponent");
   expect(() => parseScientificFile("binary.gbw", "\0")).toThrow("binary");
-  expect(() => parseScientificFile("bad.cube", "a\nb\n-1 0 0 0\n")).toThrow("Multi-orbital");
+  expect(() => parseScientificFile("bad.cube", "a\nb\n0 0 0 0\n")).toThrow("Atom-free");
+  expect(() => parseScientificFile("bad.cube", "a\nb\n-1 0 0 0\n")).toThrow("incomplete");
   expect(() => evaluateOrbitalGrid(parseScientificFile("h.molden", hydrogenMolden), 0, { spacingAngstrom: 0.1, paddingAngstrom: 10 })).toThrow("limit");
 });
 

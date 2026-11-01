@@ -5,7 +5,7 @@ import { checkMcdCompanion } from "../molecular-workbench/mcd-companion";
 import { checkScientificSpectra, SCIENTIFIC_SPECTRA_LIMITS, type ScientificSpectra } from "../molecular-workbench/scientific-spectra";
 import { shellSize } from "../molecular-workbench/gaussian-angular";
 import { checkHessianValues, HESSIAN_SOURCES, HESSIAN_UNITS } from "../molecular-workbench/hessian";
-import { ATOMIC_CHARGE_MODELS, type GaussianShell, type ScientificDocument } from "../molecular-workbench/scientific-types";
+import { ATOMIC_CHARGE_MODELS, type GaussianShell, type ScalarGrid, type ScientificDocument } from "../molecular-workbench/scientific-types";
 import type { MolecularAtom } from "../molecular-workbench/types";
 import type { XyzFrame } from "./source-frames";
 import { normalizeElement, ScienceSessionError, SCIENCE_SESSION_LIMITS } from "./contracts";
@@ -195,13 +195,30 @@ export function validateScientificDocument(value: unknown, sourceFrames: readonl
     coefficients += orbital.coefficients.length;
     if (coefficients > MAX_COEFFICIENTS) fail("The orbital coefficient matrix exceeds the supported size.");
   });
-  const grid = document.grid;
-  if (grid !== undefined) {
+  const checkGrid = (grid: unknown) => {
     if (!isRecord(grid) || !(grid.values instanceof Float32Array) || !numbers(grid.dimensions) || grid.dimensions.length !== 3
       || !isVec3(grid.origin) || !Array.isArray(grid.axes) || grid.axes.length !== 3 || !grid.axes.every(isVec3)) fail("The scalar grid is malformed.");
     if (!grid.dimensions.every((size) => Number.isInteger(size) && size >= 1)) fail("The scalar grid dimensions are invalid.");
     const product = grid.dimensions.reduce((total, size) => total * size, 1);
     if (product > SCIENCE_SESSION_LIMITS.gridValues || grid.values.length !== product || !grid.values.every(Number.isFinite)) fail("The scalar grid values do not match its dimensions.");
+    return grid as unknown as ScalarGrid;
+  };
+  const grid = document.grid === undefined ? undefined : checkGrid(document.grid);
+  const datasets = document.gridDatasets;
+  if (datasets !== undefined) {
+    // Every field of one Cube shares its grid geometry; together they stay within the grid budget.
+    if (!grid || !Array.isArray(datasets) || datasets.length < 2) fail("Grid datasets require their first field as the scalar grid.");
+    let total = 0;
+    datasets.forEach((dataset: unknown, index) => {
+      if (!isRecord(dataset) || typeof dataset.label !== "string" || !dataset.label || dataset.label.length > 256) fail(`gridDatasets[${index}] has no valid label.`);
+      if (dataset.orbitalNumber !== undefined && !(Number.isInteger(dataset.orbitalNumber) && (dataset.orbitalNumber as number) >= 1)) fail(`gridDatasets[${index}] has an invalid orbital number.`);
+      const field = checkGrid(dataset.grid);
+      total += field.values.length;
+      if (JSON.stringify([field.dimensions, field.origin, field.axes]) !== JSON.stringify([grid!.dimensions, grid!.origin, grid!.axes])) fail(`gridDatasets[${index}] does not share the scalar grid geometry.`);
+    });
+    if (total > SCIENCE_SESSION_LIMITS.gridValues) fail("Grid datasets exceed the supported number of grid values.");
+    const first = (datasets[0] as { grid: ScalarGrid }).grid.values;
+    if (first.some((value, i) => value !== grid!.values[i])) fail("The scalar grid is not the first grid dataset.");
   }
   if (document.converged !== undefined && typeof document.converged !== "boolean") fail("Scientific convergence must be a boolean.");
   if (document.internalCoordinates !== undefined) {

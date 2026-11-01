@@ -52,7 +52,9 @@ scientific reader. The native Cube dataset selector deinterleaves each voxel's v
 selected index as the offset and the number of datasets as the stride. Out-of-range
 and nonintegral indices fail before a volume is produced. `test:molstar-cube-datasets`
 covers all three fields, native state selection/Undo and unchanged single-field
-output. The scientific single-field import still rejects multi-field files. These checks and generated
+output. The scientific import reads the same fields, in file order, into `gridDatasets` (orbital
+datasets keep their MO numbers); its first field stays the document's scalar grid, and all
+fields together stay within one million values. These checks and generated
 bundle builds do not establish packaged, Quick Look or browser UI acceptance.
 
 The interactive Mol* build adapts the native Cube editor's Update action through
