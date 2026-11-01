@@ -10,3 +10,5 @@ export const XTB_TRAJECTORY_SIGNATURE = /^\s*\d+\s*\n\s*energy:\s+\S+\s+gnorm:\s
 export const ORCA_BANNER = /O {3}R {3}C {3}A/u;
 /** GAMESS-US (`GAMESS VERSION = ...`) and its Firefly / PC GAMESS descendants. */
 export const GAMESS_SIGNATURE = /^\s*\*\s+GAMESS VERSION = |^\s*\*\s+(?:Firefly|PC GAMESS) version \d/mu;
+export const QCHEM_SIGNATURE = /Welcome to Q-Chem|Q-Chem, Inc\., /u;
+export const MOLPRO_SIGNATURE = /\*\*\*\s+PROGRAM SYSTEM MOLPRO\s+\*\*\*/u;

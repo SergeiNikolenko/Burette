@@ -231,7 +231,7 @@ The exact license and source hashes are retained beside these test-only extracts
 
 ## cclib quantum-chemistry test outputs
 
-Files named `cclib-*` under `tests/fixtures/quantum/{nwchem,psi4,xtb,gamess}/` are
+Files named `cclib-*` under `tests/fixtures/quantum/{nwchem,psi4,xtb,gamess,qchem,molpro}/` are
 byte-identical copies of program outputs from the `data/` directory of
 [cclib](https://github.com/cclib/cclib) commit
 `0c6e08e0a0d04b308201666793030ef3b77b2973`, under cclib's BSD-3-Clause license

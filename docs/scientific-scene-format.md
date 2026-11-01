@@ -63,8 +63,8 @@ line-search trial energies inside one optimization step do not own properties.
 
 Optional `ScientificDocument.referenceFrameIndex` identifies the history frame of
 `document.atoms`, independently of native playback. Producers declare it only when
-known: XYZ uses the first source frame, ORCA/Gaussian/NWChem/Psi4/xtb outputs use
-their last parsed geometry,
+known: XYZ uses the first source frame, ORCA, Gaussian, GAMESS, NWChem, Psi4, Q-Chem,
+Molpro and xtb outputs use their last parsed geometry,
 QCSchema uses its retained final geometry, and single-geometry readers use zero.
 An explicit index must be an integer in range and describe the main geometry.
 CJSON's `graph.activeFrameIndex` remains authoritative; a declared reference cannot

@@ -43,6 +43,8 @@ test('content fallback still accepts scientific data under generic or unknown na
     ['result.out', await fixture('xtb/water-gfnff-opt.out'), 'xtb'],
     ['result.log', await fixture('gamess/cclib-dvb_sp.out'), 'gamess-log'],
     ['result.out', await fixture('gamess/cclib-firefly-dvb_raman.out'), 'gamess-log'],
+    ['result.out', await fixture('qchem/cclib-dvb_ir.out'), 'qchem-log'],
+    ['result.log', await fixture('molpro/cclib-dvb_ir.out'), 'molpro-log'],
   ] as const;
   for (const [name, text, format] of cases) expect(parseScientificFile(name, text).format).toBe(format);
 });
