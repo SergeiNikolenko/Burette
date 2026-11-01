@@ -111,12 +111,13 @@ export async function requestViewerAction(documentId: string, action: Record<str
   const source = target.source;
   const id = `workspace-${crypto.randomUUID()}`;
   return new Promise<Record<string, unknown>>((resolve, reject) => {
-    const status = action.type === "select_source_atom" || action.type === "geometry_binding" || action.type === "scalar_field_binding"
+    const polymerPick = action.type === "polymer_pick_atom" || action.type === "polymer_source_binding";
+    const status = polymerPick || action.type === "select_source_atom" || action.type === "geometry_binding" || action.type === "scalar_field_binding"
       || action.type === "scalar_field_validate" || action.type === "show_scalar_field"
       ? retainGeometryActionStatus(id, target, action.type === "select_source_atom" ? 60_000 : timeoutMs) : null;
     const finish = (retired = false) => { if (retired) status?.retire(); else status?.settle(); window.clearTimeout(timer); window.removeEventListener("message", receive); signal?.removeEventListener("abort", abort); };
     const cancelSelection = () => {
-      if (action.type === "select_source_atom") {
+      if (action.type === "select_source_atom" || polymerPick) {
         try { source.postMessage({ source: "burette-agent-host", body: { type: "agent-action-cancel", id } }, "*"); } catch { /* A closed frame is already cancelled. */ }
       }
     };
@@ -129,7 +130,7 @@ export async function requestViewerAction(documentId: string, action: Record<str
       else if (body.result?.ok) resolve(body.result.result ?? {});
       else reject(new Error(body.result?.error?.message ?? body.result?.message ?? "The viewer could not complete this action."));
     };
-    const timer = window.setTimeout(() => { finish(action.type === "select_source_atom"); cancelSelection(); reject(new Error("The scene did not respond. Check it before retrying.")); }, timeoutMs);
+    const timer = window.setTimeout(() => { finish(action.type === "select_source_atom" || polymerPick); cancelSelection(); reject(new Error("The scene did not respond. Check it before retrying.")); }, timeoutMs);
     window.addEventListener("message", receive);
     signal?.addEventListener("abort", abort, { once: true });
     if (signal?.aborted) { abort(); return; }

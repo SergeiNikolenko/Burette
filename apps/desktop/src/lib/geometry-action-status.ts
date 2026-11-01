@@ -13,14 +13,20 @@ function release(id: string, receipt: Receipt) {
 /** A cancelled read loses its ACK listener before its runtime can send the final reply. */
 export function retainGeometryActionStatus(id: string, target: ViewerActionTarget, timeoutMs: number) {
   const receipt: Receipt = { source: target.source, isCurrent: target.isCurrent, retired: false, timer: 0 };
-  receipt.timer = window.setTimeout(() => release(id, receipt), Math.min(60_000, Math.max(1, timeoutMs)));
+  const graceMs = Math.min(60_000, Math.max(1, timeoutMs));
+  // Preserve the full native request deadline, then a bounded late-ACK grace.
+  receipt.timer = window.setTimeout(() => release(id, receipt), Math.max(1, timeoutMs) + graceMs);
   receipts.set(id, receipt);
   if (receipts.size > MAX_RECEIPTS) {
     const oldest = receipts.entries().next().value!;
     release(oldest[0], oldest[1]);
   }
   return {
-    retire() { receipt.retired = true; receipt.isCurrent = undefined; },
+    retire() {
+      receipt.retired = true; receipt.isCurrent = undefined;
+      window.clearTimeout(receipt.timer);
+      receipt.timer = window.setTimeout(() => release(id, receipt), graceMs);
+    },
     settle() {
       receipt.retired ||= receipt.isCurrent?.() === false;
       receipt.isCurrent = undefined;

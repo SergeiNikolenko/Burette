@@ -28,6 +28,8 @@ export type CompositionSceneEdit =
   | { operation: "color"; value: string };
 
 export type StructureViewerAction =
+  | { type: "polymer_source_binding"; lease: string; expected: { format: "mol" | "sdf"; sourceSha256: string; atoms: import("./molecular-workbench/types").MolecularAtom[] }; label: string; notify: false }
+  | { type: "polymer_pick_atom" | "polymer_source_release"; lease: string; label: string; notify: false }
   | { type: "select_source_atom"; sourceSha256: string; frameIndex: number; frameCount: number; atomIndex: number; label: string; notify: false }
   | { type: "scalar_field_binding"; expected: ScalarSourceIdentity; label: string; notify: false }
   | { type: "scalar_field_validate"; lease: string; label: string; notify: false }

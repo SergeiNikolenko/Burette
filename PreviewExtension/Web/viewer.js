@@ -859,6 +859,22 @@
       return withMolstarDrawHold(activeViewer, async () => (await window.BuretteSceneActions?.createComponent?.(action))
         || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.createComponent is unavailable.'));
     }
+    if (type === 'polymer_source_binding' || type === 'polymer_pick_atom' || type === 'polymer_source_release') {
+      const viewer = activeMolstarViewer(), controller = new AbortController();
+      const cancel = event => { if (requestOwner && event.source === requestOwner.source && event.data?.source === 'burette-agent-host'
+        && event.data.body?.type === 'agent-action-cancel' && event.data.body.id === requestOwner.id) controller.abort(); };
+      window.addEventListener('message', cancel);
+      try {
+        if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
+        if (!window.BurettePolymerPick) await loadScript(runtimeURL('BurettePolymerPickURL', './polymer-pick.js'), 'polymer picking', 10000);
+        controller.signal.throwIfAborted();
+        if (viewer !== activeMolstarViewer()) throw new Error('The polymer source changed.');
+        const result = type === 'polymer_source_binding' ? await window.BurettePolymerPick.bind(viewer, action, activeMolstarViewer, postHostMessage, controller.signal)
+          : type === 'polymer_pick_atom' ? await window.BurettePolymerPick.pick(viewer, action.lease, controller.signal)
+          : window.BurettePolymerPick.release(viewer, action.lease);
+        return { ok: true, result: result || {} };
+      } finally { window.removeEventListener('message', cancel); }
+    }
     if (type === 'geometry_binding') {
       const viewer = activeMolstarViewer();
       if (!window.molstar?.BuretteGeometry) throw new Error('Reload a runtime supporting live Geometry.');
