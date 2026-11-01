@@ -637,6 +637,30 @@ function parseXyzComposition(text: string): StructureCompositionSummary | null {
   };
 }
 
+/**
+ * A periodic crystal summarized by the full unit cell the viewer shows. A CIF keeps its
+ * site rows, so "Atoms" (the cell) and "Atom sites" (the asymmetric unit) read together.
+ */
+export function unitCellComposition(sites: StructureCompositionSummary | null, atoms: readonly { element: string }[]): StructureCompositionSummary {
+  const elements = new Map<string, number>();
+  for (const atom of atoms) increment(elements, atom.element, 1);
+  return {
+    rows: [
+      { label: "Atoms", value: formatInteger(atoms.length) },
+      ...(sites?.rows ?? []).filter((row) => row.label !== "Elements"),
+      { label: "Elements", value: formatElementCounts(elements, 8) },
+    ],
+    componentRows: [
+      { label: "Unit cell", value: `${formatInteger(atoms.length)} ${plural(atoms.length, "atom")}` },
+      ...(sites?.componentRows ?? []).filter((row) => row.label !== "Asymmetric unit"),
+    ],
+    polymerRows: [],
+    ligandRows: [],
+    solventRows: [],
+    notes: sites?.notes ?? [],
+  };
+}
+
 function summarizeCrystalCif(
   sites: number,
   elements: Map<string, number>,
