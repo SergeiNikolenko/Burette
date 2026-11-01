@@ -2,7 +2,10 @@ import type { ViewerDocument } from "../../types";
 import { logicalSourceFor } from "../science-session/state";
 import { readStructureText } from "../structure-text";
 import type { ScientificDocument } from "../molecular-workbench/scientific-types";
-import { quantumCalculationInput } from "../molecular-workbench/quantum-client";
+import { scientificDocumentPayload } from "../science-session/codec";
+import { SCIENCE_SESSION_LIMITS } from "../science-session/contracts";
+import { readMolecularStructure, readWorkbenchSource, workbenchSupportsDocument } from "./structure";
+import type { MolecularStructure } from "../molecular-workbench/molecular-graph";
 import { scientificStateFor } from "./scientific-source-state";
 import { runReaderTask } from "./reader-task";
 import type { WorkbenchAgentEnvironment, WorkbenchSourceRead } from "./agent-controller";
@@ -27,13 +30,18 @@ export type Snapshot = {
   lifetime: DocumentLifetime; document: ViewerDocument; revision: string; sourceTextSha256: string;
   origin: WorkbenchSourceRead["origin"]; byteCount: number; scientific: ScientificDocument | null;
   scientificOrigin: "attached" | "parsed" | null; sourceError: string | null;
+  structure: MolecularStructure | null; structureError: string | null;
 };
 
-/** Source ownership for the existing job registry. Revisions include the actual calculation data. */
+type ParsedSource = { scientific: ScientificDocument | null; sourceError: string | null;
+  structure: MolecularStructure | null; structureError: string | null };
+const diagnostic = (error: unknown) => (error instanceof Error ? error.message : String(error)).slice(0, 500);
+
+/** Source ownership for the existing job registry. Revisions include full science and the chemical graph. */
 export function createAgentSourceOwner(environment: WorkbenchAgentEnvironment, lifetime: AbortSignal) {
   const documentLifetimes = new Map<string, DocumentLifetime>();
-  // Cache parsing only. Attached data is projected on every read so in-place changes cannot hide behind object identity.
-  const snapshots = new Map<string, { lifetime: DocumentLifetime; pending: Promise<ScientificDocument> }>();
+  // Cache parsing only. Attached data is captured on every read, including in-place changes.
+  const snapshots = new Map<string, { lifetime: DocumentLifetime; pending: Promise<ParsedSource> }>();
   function assertOpen(document: ViewerDocument, opened: DocumentLifetime) {
     if (lifetime.aborted) throw new WorkbenchError("WORKBENCH_CLOSED", "The workspace closed.");
     if (opened.abort.signal.aborted || documentLifetimes.get(document.id) !== opened
@@ -56,37 +64,60 @@ export function createAgentSourceOwner(environment: WorkbenchAgentEnvironment, l
     assertOpen(document, opened);
     const byteCount = new TextEncoder().encode(read.text).length;
     if (byteCount > 12 * 1024 * 1024) throw new WorkbenchError("SOURCE_TOO_LARGE", "Agent scientific sources are limited to 12 MiB.");
-    // Project attached input synchronously before the first digest await; jobs never retain a mutable scientific owner.
+    // Capture full attached data before yielding. The quantum worker owns its smaller calculation projection.
     const attached = scientificStateFor(document.id, read.text).revision?.document ?? null;
-    let scientific: ScientificDocument | null = null, sourceError: string | null = null;
-    if (attached) {
-      try { scientific = quantumCalculationInput(attached); }
-      catch (error) { sourceError = (error instanceof Error ? error.message : String(error)).slice(0, 500); }
+    const payload = attached ? scientificDocumentPayload(attached) : null;
+    if (payload && payload.byteLength > SCIENCE_SESSION_LIMITS.attachmentBytes) {
+      throw new WorkbenchError("SOURCE_TOO_LARGE", "Agent scientific data exceeds the scene's 20 MiB data limit.");
     }
-    const sourceTextSha256 = `sha256-${await sha256(read.text)}`;
-    if (!attached) {
-      const extension = logicalSourceFor(document.id)?.extension ?? document.extension.replace(/^\./u, "");
-      const key = `${document.id}\u0000${extension}\u0000${sourceTextSha256}`;
-      let cached = snapshots.get(key);
-      if (!cached || cached.lifetime !== opened) {
-        const pending = runReaderTask({ action: "parse", name: `source.${extension}`, text: read.text }, { signal: opened.abort.signal });
-        cached = { lifetime: opened, pending };
-        snapshots.set(key, cached);
-        pending.catch(() => { if (snapshots.get(key)?.pending === pending) snapshots.delete(key); });
-        while (snapshots.size > 4) snapshots.delete(snapshots.keys().next().value!);
-      }
-      try { scientific = quantumCalculationInput(await cached.pending); }
-      catch (error) { sourceError = (error instanceof Error ? error.message : String(error)).slice(0, 500); }
-    }
+    const captured = payload?.clone() ?? null;
+    const extension = logicalSourceFor(document.id)?.extension ?? document.extension.replace(/^\./u, "");
+    const [textHash, attachedDigest] = await Promise.all([sha256(read.text), payload?.sha256() ?? null]);
     assertOpen(document, opened);
-    const revision = `sha256-${await sha256(JSON.stringify([sourceTextSha256, scientific]))}`;
+    const sourceTextSha256 = `sha256-${textHash}`;
+    const key = `${document.id}\u0000${extension}\u0000${sourceTextSha256}\u0000${Boolean(attached)}`;
+    let cached = snapshots.get(key);
+    if (!cached || cached.lifetime !== opened) {
+      const signal = opened.abort.signal;
+      const pending = (async (): Promise<ParsedSource> => {
+        let scientific: ScientificDocument | null = null, sourceError: string | null = null;
+        let structure: MolecularStructure | null = null, structureError: string | null = null;
+        if (!attached) {
+          try { scientific = await runReaderTask({ action: "parse", name: `source.${extension}`, text: read.text }, { signal }); }
+          catch (error) { sourceError = diagnostic(error); }
+        }
+        if (workbenchSupportsDocument(document)) {
+          try {
+            const source = await readWorkbenchSource(document, read.text, signal);
+            if (source.atoms.length > 256) structureError = "Browser chemistry supports 1–256 atoms.";
+            else structure = await readMolecularStructure(source, signal);
+            // A valid chemical graph need not have quantum/scientific sections.
+            sourceError = null;
+          } catch (error) { structureError = diagnostic(error); }
+        }
+        return { scientific, sourceError, structure, structureError };
+      })();
+      cached = { lifetime: opened, pending }; snapshots.set(key, cached);
+      pending.catch(() => { if (snapshots.get(key)?.pending === pending) snapshots.delete(key); });
+      while (snapshots.size > 4) snapshots.delete(snapshots.keys().next().value!);
+    }
+    const parsed = await cached.pending;
+    assertOpen(document, opened);
+    const scientific = captured ?? parsed.scientific;
+    const parsedPayload = !attachedDigest && scientific ? scientificDocumentPayload(scientific) : null;
+    if (parsedPayload && parsedPayload.byteLength > SCIENCE_SESSION_LIMITS.attachmentBytes) {
+      throw new WorkbenchError("SOURCE_TOO_LARGE", "Agent scientific data exceeds the scene's 20 MiB data limit.");
+    }
+    const scienceDigest = attachedDigest ?? await parsedPayload?.sha256() ?? null;
+    const revision = `sha256-${await sha256(JSON.stringify([sourceTextSha256, scienceDigest, parsed.structure]))}`;
     assertOpen(document, opened);
     if (request.expectedSourceRevision && request.expectedSourceRevision !== revision) {
       throw new WorkbenchError("REVISION_CONFLICT", "The source or its scientific calculation data changed. Observe again and use the current sourceRevision.",
         { documentId: document.id, expectedSourceRevision: request.expectedSourceRevision, sourceRevision: revision });
     }
     return { lifetime: opened, document: { ...document }, revision, sourceTextSha256, origin: read.origin, byteCount,
-      scientific, scientificOrigin: scientific ? attached ? "attached" : "parsed" : null, sourceError };
+      scientific, scientificOrigin: scientific ? attached ? "attached" : "parsed" : null, sourceError: parsed.sourceError,
+      structure: parsed.structure, structureError: parsed.structureError };
   }
   return { snapshotOf, assertOpen,
     documentsChanged(openIds: ReadonlySet<string>) {

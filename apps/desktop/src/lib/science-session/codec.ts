@@ -162,6 +162,15 @@ export function scientificDocumentPayload(document: ScientificDocument) {
     byteLength: jsonBytes + arrays.reduce((sum, item) => sum + item.values.byteLength, 0),
     retainedBytes: jsonBytes + arrays.reduce((sum, item) => sum + item.values.buffer.byteLength, 0),
     clone: () => fromJson(json, "science", 0, id => arrays[Number(id)].values.slice()) as ScientificDocument,
+    // Use the same JSON/array boundary for scientific revision identity. Capture
+    // each visible array's bytes before awaiting any digest; backing-buffer tails
+    // and caller mutations after this call cannot change the captured receipt.
+    sha256: async () => {
+      const attachments = await Promise.all(arrays.map(async allocation => ({
+        dtype: allocation.dtype, count: allocation.values.length, sha256: await sha256Hex(floatBytes(allocation)),
+      })));
+      return sha256Hex(new TextEncoder().encode(JSON.stringify([json, attachments])));
+    },
   };
 }
 

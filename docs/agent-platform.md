@@ -641,8 +641,9 @@ node scripts/burette-agent.mjs workbench --session-dir "$SESSION" '{"operation":
 ```
 
 `field` also accepts `density` and `spin-density`, without `orbitalIndex`.
-`sourceRevision` hashes the source text digest and an immutable ordered projection
-of actual atoms, Gaussian shells and orbitals. `sourceTextSha256` separately
+`sourceRevision` hashes the source text digest, the full immutable scientific
+payload and the bounded chemical graph, including its source atom order. The
+quantum worker separately projects only its calculation input. `sourceTextSha256` separately
 identifies the exact text. Unsaved drafts are visible when the host supplies its
 source editor accessor. Changing the text or attached calculation data makes old
 results stale; `allowStale:true` explicitly exports the earlier result. Closing or
@@ -651,7 +652,9 @@ Jobs never modify an open document.
 
 The existing registry allows two running workers, eight queued jobs and 32 retained
 terminal jobs. Requests are limited to 256 KiB, ordinary responses to 64 KiB, source
-text to 12 MiB and each artifact to 16 MiB. Numerical inputs and grid work also have
+text to 12 MiB, captured scientific data to the existing 20 MiB scene budget,
+and each artifact to 16 MiB. Capturing a chemical graph does not advertise a new
+job kind. Numerical inputs and grid work also have
 the accepted quantum-worker limits. The field worker has a 60-second deadline;
 Cube serialization uses the 120-second worker deadline. Artifact publication
 verifies bytes and SHA-256, uses an atomic file write, and refuses an existing file
