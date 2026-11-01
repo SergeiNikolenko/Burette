@@ -50,9 +50,15 @@
   assert.equal(trajectory.data.frameCount, 3);
   const model = await p.builders.structure.createModel(trajectory, { modelIndex: 0 });
   const cell = await p.build().to(model).apply(StateTransforms.Representation.ModelUnitcell3D, { ref: 'origin', attachment: 'corner', cellScale: 2 }).commit();
+  const cellEvents = [];
+  p.state.data.events.object.updated.subscribe(e => { if (e.ref === cell.ref) cellEvents.push(e); });
   for (const index of [0, 1, 2, 0]) {
+   const shownCell = p.state.data.cells.get(cell.ref).obj;
+   cellEvents.length = 0;
    await p.build().to(model).update({ modelIndex: index }).commit();
    check(p, model.ref, cell.ref, index);
+   // The canvas only drops geometry the event names; a cell-less frame must release the shown cage.
+   if (!oracle.frames[index].basis) assert.ok(cellEvents.some(e => e.oldObj === shownCell && e.oldObj.data.repr), 'cell-less frame releases the previous cage');
    assert.equal(raw.cell.obj.data, sourceText);
    const snapshot = JSON.parse(JSON.stringify(p.state.data.getSnapshot()));
    const restored = await make();

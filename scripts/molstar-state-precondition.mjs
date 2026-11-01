@@ -18,13 +18,24 @@ export function patchMolstarStatePrecondition(source) {
     .replace(clear, '                        if (!this.undoingHistory && !options?.buretteKeepHistory)\n                            this.clearHistory();');
 }
 
+// Mol* 5.11 turns an object into Null without reporting the object it replaced,
+// so listeners keep rendering it: an XYZ frame without a lattice still showed the
+// previous frame's cell. Report the released object like a recreate does.
+export function patchMolstarNullUpdateRelease(source) {
+  const nullCase = '                dispose(transform, current.obj, oldParams, oldCache, ctx.parent.globalContext);\n                current.obj = StateObject.Null;\n                return { ref: currentRef, action: \'updated\', obj: current.obj };';
+  const event = "action: 'in-place', obj: update.obj, oldData: update.oldData });";
+  if (source.split(nullCase).length !== 2 || source.split(event).length !== 2) throw new Error('Mol* null update layout changed; review released-object events before building.');
+  return source.replace(nullCase, '                const oldObj = current.obj;\n                dispose(transform, oldObj, oldParams, oldCache, ctx.parent.globalContext);\n                current.obj = StateObject.Null;\n                return { ref: currentRef, action: \'updated\', oldObj, obj: current.obj };')
+    .replace(event, "action: 'in-place', obj: update.obj, oldObj: update.oldObj, oldData: update.oldData });");
+}
+
 export const molstarStatePreconditionPlugin = {
   name: 'molstar-conditional-state-admission',
   setup(build) {
     build.onLoad({ filter: /molstar\/lib\/mol-state\/state\.js$/u }, async ({ path }) => {
       const { version } = JSON.parse(await readFile(resolve(dirname(path), '../../package.json'), 'utf8'));
       if (version !== '5.11.0') throw new Error('Review the Mol* conditional-state adapter before upgrading from 5.11.0.');
-      return { contents: patchMolstarStatePrecondition(await readFile(path, 'utf8')), loader: 'js' };
+      return { contents: patchMolstarNullUpdateRelease(patchMolstarStatePrecondition(await readFile(path, 'utf8'))), loader: 'js' };
     });
   },
 };
