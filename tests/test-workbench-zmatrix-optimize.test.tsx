@@ -67,7 +67,7 @@ mock.module("../apps/desktop/src/lib/molecular-workbench/compute-client", () => 
 // The panel/source fixture supplies the runtime read; actual frame/lease ownership is paired separately.
 mock.module("../apps/desktop/src/lib/geometry-binding", () => ({ readGeometryBinding: async (document, _send, isCurrent) => ({
   lease: "zmatrix-fixture", text: current(document),
-  target: { documentId: document.id, source: window, isCurrent },
+  target: { documentId: document.id, source: ensureGeometryViewerFrame(document).contentWindow, isCurrent },
 }) }));
 const { SourceEditingProvider } = await import("../apps/desktop/src/lib/source-editing/context");
 const { useSourceEditingController } = await import("../apps/desktop/src/hooks/use-source-editing");

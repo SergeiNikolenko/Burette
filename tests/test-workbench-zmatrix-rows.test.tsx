@@ -1,3 +1,4 @@
+import { readCoordinateInterchange } from "../scripts/coordinate-interchange.mjs";
 import { ensureGeometryViewerFrame } from "./fixtures/geometry-viewer-frame";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -51,7 +52,7 @@ mock.module("../apps/desktop/src/hooks/use-deferred-viewer-runtime", () => ({ pr
 // The panel/source fixture supplies the runtime read; actual frame/lease ownership is paired separately.
 mock.module("../apps/desktop/src/lib/geometry-binding", () => ({ readGeometryBinding: async (document, _send, isCurrent) => ({
   lease: "zmatrix-fixture", text: current(document),
-  target: { documentId: document.id, source: window, isCurrent },
+  target: { documentId: document.id, source: ensureGeometryViewerFrame(document).contentWindow, isCurrent },
 }) }));
 const { SourceEditingProvider } = await import("../apps/desktop/src/lib/source-editing/context");
 const { useSourceEditingController } = await import("../apps/desktop/src/hooks/use-source-editing");
@@ -192,6 +193,17 @@ async function mount(document) {
   for (let attempt = 0; attempt < 50 && !host.querySelector('[aria-label="Z-matrix rows"]'); attempt++) await settle();
   return { host, unmount: async () => { await act(async () => root.unmount()); host.remove(); } };
 }
+async function discardSource(document) {
+  let closing;
+  await act(async () => { closing = controller.closeDocuments([document.id]); });
+  for (let attempt = 0; attempt < 50 && !body().querySelector('[role="alertdialog"]'); attempt++) await settle();
+  const dialog = body().querySelector('[role="alertdialog"]');
+  assert.ok(dialog, "the real source-close dialog asks before discarding");
+  const discard = [...dialog.querySelectorAll("button")].find(button => button.textContent === "Discard");
+  assert.ok(discard);
+  await act(async () => { discard.click(); });
+  assert.equal(await closing, true);
+}
 async function openZmat(text, name = "molecule.zmat") {
   await openScientificFiles(actions, [new File([text], name)]);
   return useMoleculeStore.getState().documents.at(-1);
@@ -216,7 +228,8 @@ test("atoms and reference points are appended, moved and removed in the same doc
     assert.equal(current(document).split("\n")[0], "4", "the draft holds the new atom");
     await reloadScene(document);
     const t1 = current(document);
-    assert.deepEqual(lines(t1).slice(0, 5), ["4", ...lines(imported).slice(1, 5)], "count line, comment with its import token and every existing atom line");
+    assert.deepEqual([lines(t1)[0], ...lines(t1).slice(2, 5)], ["4", ...lines(imported).slice(2, 5)], "count and every existing atom line");
+    assert.equal(readCoordinateInterchange(t1, "xyz").comment, readCoordinateInterchange(imported, "xyz").comment, "human comment and import token");
     assert.match(lines(t1)[5], /^F /u);
     assert.ok(Math.abs(distance(atomsOf(t1)[0], atomsOf(t1)[3]) - 1.4) < 1e-6, "the atom is where its row places it");
     assert.deepEqual(rows(), ["O1", "Ref 1", "H2", "H3", "F4"]);
@@ -230,7 +243,7 @@ test("atoms and reference points are appended, moved and removed in the same doc
     const t2 = current(document);
     assert.deepEqual(atomsOf(t2), atomsOf(t1));
     assert.deepEqual(lines(t2).filter((_, index) => index !== 1), lines(t1).filter((_, index) => index !== 1), "only the definition marker changes");
-    assert.match(lines(t2)[1], /^.* zdef-[0-9a-f]{8}$/u);
+    assert.deepEqual(readCoordinateInterchange(t2, "xyz").internalCoordinates, seen.science.internalCoordinates, "the single marker retains the complete definition");
     assert.equal(shown(document), t2);
     assert.equal(staged(document), null, "no reload");
     assert.deepEqual(seen.selection?.atoms, [3]);
@@ -253,8 +266,9 @@ test("atoms and reference points are appended, moved and removed in the same doc
     assert.equal(await rowAction("F4", "Remove F4"), true);
     await reloadScene(document);
     const t5 = current(document);
-    // Its text differs from every earlier one, so the comment no longer needs a definition marker.
-    assert.deepEqual(lines(t5).slice(0, 5), ["3", lines(imported)[1], ...lines(t4).slice(2, 5)]);
+    // Every coordinate export keeps the complete definition, including after removing an atom.
+    assert.deepEqual([lines(t5)[0], ...lines(t5).slice(2, 5)], ["3", ...lines(t4).slice(2, 5)]);
+    assert.equal(readCoordinateInterchange(t5, "xyz").comment, readCoordinateInterchange(imported, "xyz").comment);
     assert.deepEqual(rows(), ["O1", "Ref 1", "H2", "H3"]);
 
     // The first row cannot move up, the last cannot move down.
@@ -354,7 +368,8 @@ test("a reload that fails, a source edited or closed meanwhile never leaves a ha
     assert.ok(busy());
     const external = `${imported}\n`;
     await act(async () => controller.updateDraft(document, external));
-    // The panel leaves with the text it edited; the edit's wait for its scene ends too.
+    // The valid full marker keeps the panel; its replacement source must show before controls re-enable.
+    await reloadScene(document);
     for (let attempt = 0; attempt < 15; attempt++) await settle();
     assert.equal(busy(), false);
     assert.equal(current(document), external, "the reload of the replaced draft does not write it back");
@@ -368,8 +383,7 @@ test("a reload that fails, a source edited or closed meanwhile never leaves a ha
     await addRow("atom", { Element: "F", "Bond measured from": "0", "Bond, Å": "1.4" });
     assert.ok(busy());
     // Closing discards the unsaved draft, as the user confirms.
-    window.confirm = () => true;
-    await act(async () => { await controller.closeDocuments([closing.id]); });
+    await discardSource(closing);
     for (let attempt = 0; attempt < 50 && busy(); attempt++) await settle();
     assert.equal(controller.sessionForDocument(closing), null);
     assert.equal(readBrowserDevVirtualTextDocument(closing.path), closingText, "nothing was written to the closed source");
@@ -435,7 +449,8 @@ test("rows of a converted XYZ keep each surviving atom's own source line, number
     assert.equal(await rowAction("H4", "Remove H4"), true);
     await reloadScene(document);
     const removed = current(document);
-    assert.deepEqual(lines(removed), ["4", "leading collinear chain", ...[2, 3, 4, 6].map((index) => lines(text)[index]), ""]);
+    assert.deepEqual([lines(removed)[0], ...lines(removed).slice(2)], ["4", ...[2, 3, 4, 6].map((index) => lines(text)[index]), ""]);
+    assert.equal(readCoordinateInterchange(removed, "xyz").comment, "leading collinear chain");
     assert.equal(await rowAction("F4", "Move up"), true);
     await reloadScene(document);
     assert.deepEqual(lines(current(document)).slice(2, 6), [2, 3, 6, 4].map((index) => lines(text)[index]), "moved rows carry their lines");
@@ -486,8 +501,7 @@ test("a row edit the source moved past or closed before its scene showed gives b
   // The source closes while the scene loads the Cl atom: the file is untouched, the history whole.
   const closed = await branch("water-superseded-closing.zmat");
   try {
-    window.confirm = () => true;
-    await act(async () => { await controller.closeDocuments([closed.document.id]); });
+    await discardSource(closed.document);
     // The closed model can unmount before sceneReload settles its revision rollback.
     for (let attempt = 0; attempt < 50 && seen.revisions?.[2] !== closed.t2; attempt++) await settle();
     for (let attempt = 0; attempt < 50 && busy(); attempt++) await settle();
@@ -546,7 +560,7 @@ test("edits that leave every real atom in place keep all data of the geometry; e
     await press("Variable R", "ArrowUp");
     const { atoms, ...rest } = data(seen.science);
     assert.notDeepEqual(atoms, imported.atoms);
-    assert.deepEqual({ ...rest, atoms: atoms.length }, { format: imported.format, frames: [{ atoms }], modes: [], orbitals: [], atoms: 3 });
+    assert.deepEqual({ ...rest, atoms: atoms.length }, { format: imported.format, referenceFrameIndex: 0, frames: [{ atoms }], modes: [], orbitals: [], atoms: 3 });
     assert.equal(seen.original, original);
     await click(byLabel("Undo"));
     await kept("Undo of the moved atoms");

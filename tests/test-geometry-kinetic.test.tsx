@@ -106,7 +106,14 @@ test("Geometry kinetic drag commits once, Undo restores precision, and keyboard/
     assert.equal(writes.length, 0, "intermediate positions do not consume Undo history");
     await pointer("pointerup", 70);
     assert.equal(writes.length, 1, "release writes one geometry draft");
-    assert.deepEqual(writeOptions.at(-1), { previewApplied: true });
+    const applied = writeOptions.at(-1);
+    assert.deepEqual(Object.keys(applied).sort(), ["geometryBinding", "previewApplied"]);
+    assert.equal(applied.previewApplied, true);
+    assert.equal(applied.geometryBinding.lease, "panel-fixture");
+    assert.equal(applied.geometryBinding.text, xyz);
+    assert.equal(applied.geometryBinding.target.documentId, doc.id);
+    assert.equal(applied.geometryBinding.target.source, window);
+    assert.equal(applied.geometryBinding.target.isCurrent(), true);
     assert.ok(Math.abs(geometryBase(writes[0]).rows[1].values[0] - dragged) < 1e-5);
     assert.equal(selections.filter(action => action.type === "update_geometry").at(-1).text, writes[0], "release flushes the final coordinates");
     assert.equal(selections.some(action => action.type === "select_residues"), false, "scrubbing never commits molecular selection");

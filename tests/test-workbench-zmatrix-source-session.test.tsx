@@ -147,6 +147,19 @@ const press = async (host, label, key) => {
   await settle();
 };
 const disabled = (host, label) => host.querySelector(`[aria-label="${label}"]`).disabled;
+async function discardSource(document) {
+  let closing;
+  await act(async () => { closing = controller.closeDocuments([document.id]); });
+  for (let attempt = 0; attempt < 50 && !window.document.querySelector('[role="alertdialog"]'); attempt++) await settle();
+  const dialog = window.document.querySelector('[role="alertdialog"]');
+  assert.ok(dialog, "the real source-close dialog must ask before discarding");
+  assert.ok(dialog.textContent.includes(`“${document.title}”`), "the dialog names this source");
+  const discard = [...dialog.querySelectorAll("button")].find(button => button.textContent === "Discard");
+  assert.ok(discard);
+  await act(async () => { discard.click(); });
+  assert.equal(await closing, true);
+}
+
 async function openWater() {
   await openScientificFiles(actions, [new File([zmat], "water.zmat")]);
   return useMoleculeStore.getState().documents.at(-1);
@@ -435,7 +448,6 @@ test("independent review: parked Text undo history cannot migrate to a new docum
   const { undoDepth, undo } = await import("@codemirror/commands");
   const document = await openWater();
   const view = await mount(document);
-  const confirm = window.confirm;
   try {
     await act(async () => controller.beginEditing(document, "text"));
     await view.render(document, "text");
@@ -446,8 +458,7 @@ test("independent review: parked Text undo history cannot migrate to a new docum
     assert.equal(undoDepth(editor.state), 1);
     // Leaving Text parks its history. Closing A explicitly discards that source session.
     await view.render(document, "geometry");
-    window.confirm = () => true;
-    await act(async () => assert.equal(await controller.closeDocuments([document.id]), true));
+    await discardSource(document);
     // A new document/source owner can legitimately arrive with the same path and bytes.
     const next = { ...document, id: document.id + "-new-owner" };
     writeBrowserDevVirtualTextDocument(next.path, changed);
@@ -459,7 +470,7 @@ test("independent review: parked Text undo history cannot migrate to a new docum
     await act(async () => { didUndo = undo(reopened); });
     assert.deepEqual({ inheritedDepth, didUndo, text: current(next) }, { inheritedDepth: 0, didUndo: false, text: changed },
       "discarded A history must not become the new document's Undo or rewrite its source");
-  } finally { window.confirm = confirm; await view.unmount(); }
+  } finally { await view.unmount(); }
 });
 
 test("independent review: a same-id logical restore starts a new Text history lifetime", async () => {
@@ -493,16 +504,16 @@ test("independent review: a same-id logical restore starts a new Text history li
 
 test("independent review: an already mounted Text editor resets for a replacement source session", async () => {
   const { undoDepth, undo } = await import("@codemirror/commands");
-  const document = await openWater(), view = await mount(document), confirm = window.confirm;
+  const document = await openWater(), view = await mount(document);
   try {
     await act(async () => controller.beginEditing(document, "text")); await view.render(document, "text");
     const firstSession = controller.sessionForDocument(document).sessionId;
     const editor = EditorView.findFromDOM(view.host.querySelector(".cm-editor"));
     const changed = current(document).replace("\n", "\nreplacement ");
     await act(async () => editor.dispatch({changes:{from:0,to:editor.state.doc.length,insert:changed}}));
-    assert.equal(undoDepth(editor.state), 1); window.confirm = () => true;
+    assert.equal(undoDepth(editor.state), 1);
+    await discardSource(document);
     await act(async () => {
-      assert.equal(await controller.closeDocuments([document.id]), true);
       writeBrowserDevVirtualTextDocument(document.path, changed);
       await controller.beginEditing(document, "text");
     });
@@ -510,7 +521,7 @@ test("independent review: an already mounted Text editor resets for a replacemen
     const reopened = EditorView.findFromDOM(view.host.querySelector(".cm-editor"));
     let didUndo; await act(async () => { didUndo = undo(reopened); });
     assert.deepEqual({depth:undoDepth(reopened.state),didUndo,text:current(document)}, {depth:0,didUndo:false,text:changed});
-  } finally {window.confirm=confirm;await view.unmount();}
+  } finally {await view.unmount();}
 });
 
 for (const kind of ["zmat", "xyz"]) test(`a ${kind} gesture cannot overwrite a source recovered during admission`, async () => {
@@ -549,18 +560,18 @@ test("Cartesian Geometry Undo survives a dock tab change in the same source sess
 });
 
 test("a fresh source session cannot reuse Cartesian Geometry history for identical draft bytes", async () => {
-  const document = await openXyz(), view = await mount(document), confirm = window.confirm;
+  const document = await openXyz(), view = await mount(document);
   try {
     await press(view.host, "Bond of H2, Å", "ArrowUp");
     const edited = current(document), firstSession = controller.sessionForDocument(document).sessionId;
-    await view.render(document, "text"); window.confirm = () => true;
+    await view.render(document, "text");
+    await discardSource(document);
     await act(async () => {
-      assert.equal(await controller.closeDocuments([document.id]), true);
       writeBrowserDevVirtualTextDocument(document.path, edited);
       await controller.beginEditing(document, "text");
     });
     assert.notEqual(controller.sessionForDocument(document).sessionId, firstSession);
     await view.render(document, "geometry");
     assert.deepEqual({ text: current(document), undo: disabled(view.host, "Undo") }, { text: edited, undo: true });
-  } finally { window.confirm = confirm; await view.unmount(); }
+  } finally { await view.unmount(); }
 });
