@@ -5,8 +5,9 @@ on an ideal coordination polyhedron around one metal and returns an explicit gra
 formal charges and separate metal–donor coordination bonds. The worker
 (`lib/workbench/metal-complex-task.ts`, `metal-complex-worker.ts`) serializes it as SDF or
 MOL; the dialog (`components/workbench/metal-complex-builder-host.tsx`, request
-`{ kind: "builder", builder: "metal", document: null }`) previews it and opens it as a new
-document. Placement alone establishes neither energetic stability nor the metal's
+`{ kind: "builder", builder: "metal", document: null }`, command palette *Build metal
+complex…*) previews it and opens it as a new document. Agents build the same file with
+the documentless `metal_complex` job ([agent-platform.md](agent-platform.md#structure-editing-and-builder-jobs)). Placement alone establishes neither energetic stability nor the metal's
 oxidation or spin state: the builder writes the oxidation state the user chose, and the
 geometry is an unrelaxed model.
 

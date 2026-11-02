@@ -49,6 +49,7 @@ const { defaultPreferences } = await import("../apps/desktop/src/stores/settings
 const { MetalComplexBuilderDialogHost } = await import("../apps/desktop/src/components/workbench/metal-complex-builder-host");
 const { openWorkbenchDialog, closeWorkbenchDialog } = await import("../apps/desktop/src/lib/workbench/dialog-store");
 const { parseMolecule } = await import("../apps/desktop/src/lib/molecular-workbench/molecular-graph");
+const { buildShellCommands, filterShellCommands } = await import("../apps/desktop/src/lib/shell-commands");
 afterAll(async () => { await act(async () => new Promise(resolve => setTimeout(resolve, 30))); await browser.happyDOM.close(); for (const [name, descriptor] of previous) { if (descriptor) Object.defineProperty(globalThis, name, descriptor); else Reflect.deleteProperty(globalThis, name); } });
 
 const wait = async (check: () => boolean, label: string) => { for (let i = 0; i < 200 && !check(); i++) await act(async () => new Promise(resolve => setTimeout(resolve, 10))); expect(check(), label).toBe(true); };
@@ -148,5 +149,16 @@ test("duplicate Create is one request; Cancel terminates the held real worker an
     await click("Cancel"); expect(workers[0].terminated).toBe(true); await act(async () => releaseHeld?.()); expect(f.opened).toEqual([]);
     await click("Create"); await wait(() => f.opened.length === 1, "retry");
     expect(readBrowserDevVirtualTextDocument(f.opened[0].path)).toBe(sample("cisplatin")); expect(f.opened[0].title).toBe("[PtCl2(NH3)2].sdf");
+  } finally { await f.close(); }
+});
+
+test("the palette command opens the metal complex builder", async () => {
+  const f = await fixture();
+  try {
+    await act(async () => closeWorkbenchDialog()); await wait(() => !dialog(), "closed");
+    const state = { activeDocument: null, documents: [], tabs: [], recentStructures: [], preferences: { rendererMode: "auto" } } as unknown as Parameters<typeof buildShellCommands>[0];
+    const command = filterShellCommands(buildShellCommands(state, {} as ShellActions, "metal"), "metal").find(item => item.id === "workbench-metal")!;
+    expect(command.label).toBe("Build metal complex…");
+    await act(async () => command.run()); await wait(() => Boolean(dialog()?.querySelector('select[aria-label="Metal"]')), "metal controls from the palette");
   } finally { await f.close(); }
 });
