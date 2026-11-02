@@ -148,6 +148,74 @@ glycine into a draft RDKit reads as `[NH3+]CC(=O)[O-]` at pH 7.4 and
 pH 15 refused without history; the dialog refuses values outside 0–14 and
 applies 7.45.
 
+## Peptide builder (07.02)
+
+Avogadro reference: `insertpeptide.cpp`/`insertpeptidedialog.ui`
+(avogadrolibs `d250eb3`; master of 2026-11-01 differs only in `const`
+references). Burette offers the same global L/D choice and φ/ψ presets (α,
+β, 3₁₀, π, custom; D chains take the mirrored angles) plus one/three-letter
+codes, N/C termini (amine/ammonium, acid/carboxylate) and chain id; per-residue
+chirality is API-only. Fixes made while checking against references: D residues
+are written with their CCD component ids (DAL, DPR, MED …) and `chem_comp`
+types; atom rows follow CCD order; Pro closes a planar-N Cγ-endo/exo ring at
+CCD N–CD 1.4866 Å (φ fixed by the ring at −70.7° or −51.7°; 3NIR: −77°/−49°);
+the amide H is in the peptide plane; the neutral NH2 terminus is tetrahedral;
+staggered χ1/χ2 rotamers replace clashing template rotamers.
+
+`bun run test:peptide-reference` (7 tests, plus `test:peptide-geometry`,
+`-graph`, `-worker`, `-builder`, `-preview`) compares 33 built cases (6
+backbones × Ala16 L/D and two 10-residue sequences, D side chains, mixed
+L,D,L,D chain Z, four terminus states, two Mol* `to_mmCIF` re-exports) whose
+SHA-256 must equal the current output, against values measured by
+`tests/fixtures/peptide/measure-reference.py`: Biopython 1.88 φ/ψ (≤ 0.002°),
+gemmi 0.7.5 ω (180° ± 0.002°), MDAnalysis 2.11.0 HELANAL rise/residues per turn
+(α 3.48/1.58 Å, 3₁₀ 2.99/2.01, π 4.20/0.96, PPII 2.98/3.10), DSSP 4.6.1 (H, G,
+I, P), RDKit 2026.09.1 CIP from 3D versus CCD `pdbx_stereo_config`, formula and
+charge versus CCD sums, intra-residue geometry versus CCD ideal coordinates
+(bonds ≤ 0.001 Å, angles ≤ 0.06° except at N), Engh & Huber 1991 peptide bond
+(1.329 Å, 116.2°, 121.7°), RDKit `DetermineConnectivity` from coordinates only,
+and the Mol* re-export through gemmi (≤ 0.0005 Å). Reference data: wwPDB CCD
+(CC0, hashes recorded, not committed). Details in
+[peptide-geometry.md](../peptide-geometry.md) and the fixture README.
+
+Insert: with an editable MOL/SDF active, the dialog's Insert adds the built
+peptide graph (`PeptideBuildResult.graph`) to it as a separate molecule in one
+Undo step (`InsertBuiltStructureButton`). `bun run test:insert-built-structure`
+inserts real Ala-Gly worker output into ethanol: RDKit reads the draft as
+`CCO.C[C@H]([NH3+])C(=O)NCC(=O)[O-]`, ethanol atoms are unchanged, provenance
+is exact and Undo restores the source. This found that reordering a graph with
+a V3000 stereo collection (`MDLV30/STEABS`) was refused; `graph-edit.ts` now
+remaps collection atom ids (`test:graph-normalization-stereo` checks the
+remapped STEABS row and the unchanged configuration).
+
+## Metal complex builder (07.03)
+
+Core `metal-complex.ts` (rigid OpenChemistry/fragments `7d842f4` ligand
+templates, 17 ligands with per-file SHA-256, `scripts/generate-metal-ligands.ts`),
+worker, dialog (`metal-complex-builder.tsx`, palette *Build metal complex…*) and
+[metal-complex-builder.md](../metal-complex-builder.md). Geometries: linear,
+trigonal planar, tetrahedral, square planar, trigonal bipyramidal, square
+pyramidal, octahedral; monodentate and bidentate ligands; Cordero 2008 default
+M–donor distances. Coordination bonds are written as V2000 type 9 with
+`M  CHG` (RDKit DATIVE, Open Babel order 9, OpenChemLib metal–ligand bond, Mol*
+order 9; Mol* ignores V3000 `CHG=`).
+
+`bun run test:metal-complex` (13 tests): the 14 sample SDFs are byte-identical
+to the builder's output and were read by RDKit 2025.09.1 and Open Babel
+3.1.1 (`tests/fixtures/metal-complex/reference.py`): Hill formula, net charge,
+atom/bond counts, coordination number, metal charge = oxidation state and
+ligand SMILES. Donor–metal–donor angles versus COD crystal structures (CC0):
+cisplatin 2235566 2.6°, transplatin 1538403 1.7°, [Co(NH3)6]3+ 2106540 ≤ 2.1°,
+[Ni(CN)4]2− 2002899 2.0°, Fe(CO)5 2310564 3.9°, [Cu(NH3)4(H2O)]2+ 2310816 6.7°,
+[ZnBr4]2− 2310916 5.4°, [Au(CN)2]− 2310938 0°, Fe(acac)3 2241338 5.9°,
+[Fe(ox)3]3− 1528614 10.8°, [Ru(bpy)3]2+ 2105090 1.8°, [Co(en)3]3+ 2243918 5.4°
+(tolerance 7° monodentate, 12° tris-chelate, 5° per chelate bite). Polyhedra
+match Avogadro's templates (`064eeb4`) within 0.2° except square pyramidal
+(Burette: octahedron minus a vertex). The dialog test drives the real worker to
+the exact [Ru(bpy)3]2+ file, the overlap refusal and recovery, duplicate
+Create, Cancel and the palette command. The typed `metal_complex` build
+reproduces all 14 samples byte for byte (`test:builder-agent`).
+
 ## Browser acceptance scripts
 
 Start the shell for each script (`runtime` must be `vite-dev`), open `result.url`
@@ -238,6 +306,45 @@ Fixture `tests/fixtures/protonation/glycine.sdf` (RDKit-generated, see README).
    → summary `changes` lists carboxylic-acid deprotonated and primary-amine
    protonated; the exported `fixture-ph-7.4.sdf`-style artifact opens as the zwitterion.
 
+### B6. Peptide builder, D presets and Insert
+
+Fixture `tests/fixtures/fragments/ethanol-cid702.sdf` (for Insert); the builder
+itself needs no input.
+
+1. Palette → Build peptide…. Sequence `ACIPGT`, Backbone α helix. Expected:
+   φ −60, ψ −40. Press D: φ 60, ψ 40 and the preset still reads α helix; L
+   restores −60/−40.
+2. N-terminus Ammonium, C-terminus Carboxylate, Chain `B`; Preview, Create.
+   Expected: a new “Peptide ACIPGT.cif” tab, a right-handed helix; Info lists
+   chain B and ALA…THR (with D: DAL, DIL, DPR …).
+3. Export → Structure → mmCIF…, reopen the file: identical structure. Save
+   scene… (.molx) and reopen: same geometry.
+4. With ethanol active, open Build peptide… again, Sequence `AG`, Insert.
+   Expected: “Inserted”; the ethanol tab now also holds Ala-Gly (Edit tab
+   Atoms 9 + peptide); one ⌘Z removes it. Sequence `BAD!` → Insert shows the
+   sequence error and ethanol is unchanged.
+5. Error case: Sequence `BAD!` → Create keeps the dialog with the error;
+   `G` → Create succeeds. Known defect: Export → PDB… on the peptide `.cif`
+   reports that PDB export is unavailable (the PDB route only filters PDB
+   sources).
+
+### B7. Metal complex builder
+
+Fixture `tests/fixtures/metal-complex/samples/cisplatin.sdf` (builder output,
+MIT) for the shell; the builder needs no input.
+
+1. Palette → Build metal complex…. Expected: Pt, oxidation state 2, Square
+   planar, Site 1–4 Cl⁻, Cl⁻, NH₃, NH₃, Charge 0. Preview, Create: a new
+   “[PtCl2(NH3)2].sdf” tab equal to `samples/cisplatin.sdf`.
+2. Ru, 2, Octahedral; Equatorial 1 → bpy (partner With 2), Equatorial 3 → bpy
+   with partner 5, Equatorial 4 → bpy (With 6); distance 2.07 on Equatorial 1,
+   3 and 4. Expected: Charge +2; Create → “[Ru(bpy)3]2+.sdf” byte-equal to
+   `samples/tris-bpy-ruthenium.sdf`; reopened: 6 coordination bonds, +2.
+3. Error case: Fe, Octahedral, six PMe₃ → Create shows the overlap message and
+   keeps the form; Tetrahedral → Create gives “[Fe(PMe3)4]2+”.
+4. Linear: the Bidentate group is disabled. Create then Cancel at once: nothing
+   opens; Create again works.
+
 ## Known limits (fragment insertion, polymer, automation)
 
 - Insertion edits only explicit single-record MOL/SDF graphs within 256 atoms
@@ -259,3 +366,12 @@ Fixture `tests/fixtures/protonation/glycine.sdf` (RDKit-generated, see README).
   centres, microstates, tautomers or substituent corrections); piperazine at
   pH 7.4 becomes a dication. Sulfonamides, imides, pyridones, aminopyridines
   and purines are not modelled.
+- Peptides: the 256-atom browser chemistry budget applies (about 25 residues);
+  π helices and Pro inside helices clash by construction at their φ/ψ; no
+  residue palette, cis-ω or ω choice (Avogadro sets no ω either). Built
+  peptides save as mmCIF and MOLX; SDF/MOL/PDB export routes for mmCIF
+  documents do not exist (Mol* exports mmCIF/BinaryCIF only).
+- Metal complexes: one metal, coordination numbers 2–6, no tri- or higher
+  dentate or haptic ligands, no relaxation, no Insert into an open document
+  (coordination bonds are not part of the graph-edit model), and placement
+  says nothing about stability, oxidation or spin state.
