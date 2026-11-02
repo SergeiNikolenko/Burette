@@ -53,7 +53,7 @@ test("the contract resolves explicit optimizer defaults and rejects malformed ty
     ["metadata_edit", {}], ["metadata_edit", { atoms: [{ index: 0 }] }], ["pair_distribution", { rMax: 100, binWidth: 0.001 }],
   ] as const) expect(params(kind, value)).toBe("INVALID_ARGS");
   expect(validateWorkbenchRequest(submitRequest("point_group"))).toMatchObject({ ok: false, error: { code: "UNSUPPORTED_WORKBENCH_JOB" } });
-  expect(Object.keys(workbenchContractSummary().jobs)).toEqual(["properties", "energy", "energy_forces", "frame_energy_forces", "optimize", "prepare_3d", "conformers", "metadata_edit", "pair_distribution", "orbital_cube", "insert_fragment", "hydrogens", "polymer", "smiles", "peptide"]);
+  expect(Object.keys(workbenchContractSummary().jobs)).toEqual(["properties", "energy", "energy_forces", "frame_energy_forces", "optimize", "prepare_3d", "conformers", "metadata_edit", "pair_distribution", "orbital_cube", "insert_fragment", "hydrogens", "polymer", "smiles", "metal_complex", "peptide"]);
 });
 
 test("optimize jobs reach the RDKit minimum, export source-ordered artifacts and an energy-per-step trajectory", async () => {

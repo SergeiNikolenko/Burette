@@ -133,3 +133,26 @@ test("smiles builds export an explicit-hydrogen 3D structure; unreadable input f
   const bad = await f.ok({ operation: "build", operationId: "bad", job: { kind: "smiles", params: { smiles: "C1CC" } } });
   expect(await f.finish(bad.job.jobId)).toMatchObject({ status: "failed", artifacts: [] });
 }, 60_000);
+
+test("metal_complex builds reproduce the reference-checked samples through the typed contract", async () => {
+  const { METAL_LIGANDS } = await import("../apps/desktop/src/lib/molecular-workbench/metal-complex");
+  expect([...(workbenchContractSummary().jobs.metal_complex.params.ligand as string[])].sort()).toEqual(Object.keys(METAL_LIGANDS).sort());
+  const complexes = JSON.parse(readFileSync(new URL("./fixtures/metal-complex/complexes.json", import.meta.url), "utf8")) as Record<string, { options: { ligands: { ligand: string; sites: number[]; distance?: number }[] } & Record<string, unknown> }>;
+  const f = workspace(ethanol, "sdf");
+  for (const [id, { options }] of Object.entries(complexes)) {
+    const params = { ...options, ligands: options.ligands.map(({ distance, ...ligand }) => distance === undefined ? ligand : { ...ligand, distanceAngstrom: distance }) };
+    const job = await f.finish((await f.ok({ operation: "build", operationId: `metal-${id}`, job: { kind: "metal_complex", params } })).job.jobId);
+    expect(job).toMatchObject({ status: "succeeded", binding: "none" });
+    // samples/<id>.sdf are the files RDKit and Open Babel read for reference.json.
+    const { artifact } = await f.ok({ operation: "export", jobId: job.jobId, artifact: "structure" });
+    expect([artifact.fileName.endsWith(".sdf"), artifact.content]).toEqual([true, readFileSync(new URL(`./fixtures/metal-complex/samples/${id}.sdf`, import.meta.url), "utf8")]);
+  }
+  const overlap = await f.ok({ operation: "build", operationId: "metal-crowded", job: { kind: "metal_complex", params: { metal: "Fe", oxidationState: 2, geometry: "octahedral",
+    ligands: [0, 1, 2, 3, 4, 5].map(site => ({ ligand: "trimethylphosphane", sites: [site] })) } } });
+  expect(await f.finish(overlap.job.jobId)).toMatchObject({ status: "failed", artifacts: [] });
+  for (const params of [{ metal: "Pt", geometry: "square-planar", ligands: [] }, { metal: "Pt", geometry: "cube", ligands: [{ ligand: "aqua", sites: [0] }] },
+    { metal: "Pt", geometry: "linear", ligands: [{ ligand: "glycinato", sites: [0] }] }, { metal: "pt", geometry: "linear", ligands: [{ ligand: "aqua", sites: [0] }] }]) {
+    expect(validateWorkbenchRequest({ type: "workbench", operation: "build", operationId: "m", job: { kind: "metal_complex", params } })).toMatchObject({ ok: false, error: { code: "INVALID_ARGS" } });
+  }
+}, 120_000);
+

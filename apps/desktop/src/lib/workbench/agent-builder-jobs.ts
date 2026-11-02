@@ -4,6 +4,8 @@ import type { GraphEditResult } from "../molecular-workbench/graph-edit";
 import { runFragmentTask } from "./fragment-task";
 import { preparePolymerRequest, runPolymerTask } from "./polymer-task";
 import { runPeptideTask } from "./peptide-task";
+import { runMetalComplexTask } from "./metal-complex-task";
+import type { MetalLigandId } from "../molecular-workbench/metal-complex";
 import { optimizationArtifacts, optimizationSummary } from "./agent-graph-jobs";
 import type { Snapshot } from "./agent-source";
 import type { AgentBuildRunner, AgentJobContext, AgentJobRunner } from "./agent-jobs";
@@ -84,7 +86,7 @@ export const builderJobs: { [K in "insert_fragment" | "hydrogens" | "polymer"]: 
 };
 
 /** Documentless builders requested with operation `build`. */
-export const buildJobs: { [K in "smiles" | "peptide"]: AgentBuildRunner<K> } = {
+export const buildJobs: { [K in "smiles" | "peptide" | "metal_complex"]: AgentBuildRunner<K> } = {
   smiles: {
     // The conformer that opening a SMILES produces, relaxed by the optimize engine.
     async run({ smiles, seed, ...options }, context) {
@@ -95,6 +97,15 @@ export const buildJobs: { [K in "smiles" | "peptide"]: AgentBuildRunner<K> } = {
       return { summary: { ...optimizationSummary(result), seed, atomCount: result.molecule.atoms.length, bondCount: result.molecule.bonds.length,
         ...formulaOf(result.molecule.atoms.map(atom => atom.element), result.molecule.molfile) },
         artifacts: await optimizationArtifacts(`${lines.join("\n")}\n$$$$\n`, result, "smiles-3d", context) };
+    },
+  },
+  metal_complex: {
+    async run({ ligands, ...options }, context) {
+      // Ligand ids are validated against the same list as metal-ligands.json; the core refuses invalid site assignments.
+      const result = await runMetalComplexTask({ ...options, ligands: ligands.map(({ ligand, sites, distanceAngstrom }) => ({ ligand: ligand as MetalLigandId, sites, distance: distanceAngstrom })) }, context);
+      const { name, formula, charge, atomCount, bondCount, coordinationNumber, geometry } = result;
+      return { summary: { name, formula, formalCharge: charge, atomCount, bondCount, coordinationNumber, geometry },
+        artifacts: [await context.artifact("structure", `${name}.${result.format}`, result.format === "mol" ? "chemical/x-mdl-molfile" : "chemical/x-mdl-sdfile", result.text)] };
     },
   },
   peptide: {

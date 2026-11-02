@@ -871,13 +871,23 @@ and `chain`, and exports the same mmCIF as the Build peptide dialog. `smiles` ac
 `smiles` string plus `forceField`, `method`, `seed` and `maxIterations`: the
 OpenChemLib conformer used when a SMILES is opened (embedding `seed`) is relaxed by
 the `optimize` engine, with the optimize summary and `structure`/`xyz`/`trajectory`
-artifacts.
+artifacts. `metal_complex` accepts `metal` (element symbol), `oxidationState`
+(−2–8), `geometry` (`linear`, `trigonal-planar`, `tetrahedral`, `square-planar`,
+`trigonal-bipyramidal`, `square-pyramidal`, `octahedral`), up to 8 `ligands`
+(`{ ligand, sites, distanceAngstrom? }`, one site per monodentate and two for a
+bidentate ligand, zero-based in the polyhedron's site order) and `format`
+(`sdf`/`mol`). It exports the same file as the Build metal complex dialog
+(coordination bonds as V2000 type 9 with `M  CHG`); invalid site assignments
+and overlapping ligands fail the job. See
+[metal-complex-builder.md](metal-complex-builder.md).
 
 `bun run test:builder-agent` drives the actual controller and workers: RDKit
 reads each exported structure as the independent product (diethyl ether,
 ethanol/water, ethanol with and without hydrogens, the frozen isotactic
-polypropylene hexamer), the Ala-Gly-Ser mmCIF has C8H15N3O5, and invalid
-parameters, XYZ sources, out-of-range atoms and failed placements are refused.
+polypropylene hexamer, the glycine zwitterion), the Ala-Gly-Ser mmCIF has
+C8H15N3O5, `smiles` builds keep their stereo, every `metal_complex` sample
+equals the file RDKit and Open Babel checked, and invalid parameters, XYZ
+sources, out-of-range atoms and failed placements are refused.
 
 ### Python and Jupyter client
 

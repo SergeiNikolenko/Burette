@@ -147,6 +147,10 @@ function defined(entries) {
 const POLYMER_END_GROUPS = ['hydrogen', 'methyl', 'hydroxyl', 'phenyl', 'tert-butyl'];
 const TACTICITIES = ['isotactic', 'syndiotactic', 'atactic'];
 const PEPTIDE_TERMINI = { nTerminus: ['amine', 'ammonium'], cTerminus: ['acid', 'carboxylate'] };
+const METAL_GEOMETRIES = ['linear', 'trigonal-planar', 'tetrahedral', 'square-planar', 'trigonal-bipyramidal', 'square-pyramidal', 'octahedral'];
+// Ids of apps/desktop/src/lib/molecular-workbench/metal-ligands.json (kept equal by test:builder-agent).
+const METAL_LIGANDS = ['aqua', 'hydroxido', 'ammine', 'fluorido', 'chlorido', 'bromido', 'iodido', 'cyanido', 'carbonyl', 'phosphane', 'trimethylphosphane',
+  'pyridine', 'ethylenediamine', 'bipyridine', 'phenanthroline', 'oxalato', 'acetylacetonato'];
 const LIBRARY_ID = /^[a-z_]{1,32}\/[A-Za-z0-9 ,_+()-]{1,64}$/u;
 const SMILES = /^\S+$/u;
 
@@ -424,6 +428,34 @@ const JOB_DEFINITIONS = {
       const field = forceField(p.forceField);
       return { smiles: text(p.smiles, 'job.params.smiles', 1024, SMILES), forceField: field, method: optimizer(p.method, field, false), seed: seed(p.seed),
         maxIterations: integer(p.maxIterations, 'job.params.maxIterations', 1, WORKBENCH_LIMITS.optimizationIterations, 250) };
+    },
+  },
+  metal_complex: {
+    build: true,
+    describe: {
+      engine: 'Rigid ligand placement on ideal coordination polyhedra (OpenChemistry/fragments ligand templates)',
+      requires: 'No source document; one metal, 1–8 ligands filling every site of the geometry exactly once.',
+      params: { metal: 'element symbol', oxidationState: '-2–8', geometry: METAL_GEOMETRIES,
+        ligands: 'array of { ligand, sites (zero-based polyhedron sites, two for bidentate ligands), distanceAngstrom 1.4–3.5 (default: covalent radii) }',
+        ligand: METAL_LIGANDS, format: ['sdf', 'mol'] },
+      artifacts: ['structure'],
+    },
+    params(value) {
+      const p = params(value, ['metal', 'oxidationState', 'geometry', 'ligands', 'format'], 'metal_complex job.params');
+      const geometry = oneOf(p.geometry, 'job.params.geometry', new Set(METAL_GEOMETRIES), undefined);
+      if (!geometry) invalid('job.params.geometry is required for metal_complex.');
+      if (!Array.isArray(p.ligands) || !p.ligands.length || p.ligands.length > 8) invalid('job.params.ligands must be an array of 1–8 ligand assignments.');
+      const ligands = p.ligands.map((item, index) => {
+        const label = `job.params.ligands[${index}]`;
+        if (!plainObject(item)) invalid(`${label} must be an object.`);
+        rejectUnknownFields(item, ['ligand', 'sites', 'distanceAngstrom'], label);
+        const ligand = oneOf(item.ligand, `${label}.ligand`, new Set(METAL_LIGANDS), undefined);
+        if (!ligand) invalid(`${label}.ligand is required.`);
+        if (!Array.isArray(item.sites) || item.sites.length < 1 || item.sites.length > 2) invalid(`${label}.sites must hold one or two site indices.`);
+        return defined({ ligand, sites: item.sites.map((site, i) => integer(site, `${label}.sites[${i}]`, 0, 5)), distanceAngstrom: finite(item.distanceAngstrom, `${label}.distanceAngstrom`, 1.4, 3.5) });
+      });
+      return { metal: text(p.metal, 'job.params.metal', 2, /^[A-Z][a-z]?$/u), oxidationState: integer(p.oxidationState, 'job.params.oxidationState', -2, 8, 0),
+        geometry, ligands, format: oneOf(p.format, 'job.params.format', new Set(['sdf', 'mol']), 'sdf') };
     },
   },
   peptide: {
