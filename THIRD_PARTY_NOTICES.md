@@ -185,6 +185,29 @@ Copyright (c) 2011-2020, Kitware, Inc. BSD-3-Clause; the full notice and license
 are retained in `docs/third-party/avogadro-LICENSE` and shipped in
 `apps/desktop/public/third-party-licenses/avogadro-LICENSE`.
 
+## Avogadro coordinate block and Cartesian coordinate editor
+
+`apps/desktop/src/lib/molecular-workbench/coordinate-block.ts` adapts the
+coordinate-block format, the field widths and precisions, the ragged and padded
+Z-matrix field rules, the editor presets, the element names and the empty-format
+detection from OpenChemistry/avogadrolibs revision
+`064eeb4706877ffed8ddc4b037489ed3748b0547`
+(`avogadro/core/coordinateblockgenerator.cpp`,
+`avogadro/qtplugins/coordinateeditor/coordinateeditordialog.cpp`,
+`avogadro/core/elementdata.h`). Copyright (c) 2011-2020, Kitware, Inc.
+BSD-3-Clause; the license is retained in `docs/third-party/avogadro-LICENSE` and
+shipped in `apps/desktop/public/third-party-licenses/avogadro-LICENSE`. The
+program presets reproduce the coordinate specifications of the Avogadro input
+generators, OpenChemistry/avogenerators revision
+`965ea6302b930cfc34b0b2deefdab5737bfe15c0`, Copyright (c) 2011-2018, Kitware,
+Inc., BSD-3-Clause, retained in `docs/third-party/avogenerators-LICENSE` and
+`apps/desktop/public/third-party-licenses/avogenerators-LICENSE`.
+
+Open Babel is used only as an external test oracle by
+`tests/support/regenerate-coordinate-block-oracles.py`; its GPL code is not
+bundled or adapted. The committed files under `tests/fixtures/coordinate-block/`
+are its outputs for the existing RDKit test conformers.
+
 ## Compressed file codecs
 
 The browser reads and writes gzip, XZ and Zstandard files with npm packages, loaded
