@@ -284,6 +284,68 @@ coordinate trajectory parser. This keeps MVS usable as a declarative scene and
 agent-control format for camera, components, selections, annotations, and
 representation state.
 
+## 3D Model Export
+
+The viewport Screenshot menu ends with **Export 3D model**, a folded group with
+one action per format: PLY, glTF, OBJ, X3D, VRML and POV-Ray. Image export
+(PNG/JPEG/WebP up to 8K, transparency, axes, crop) stays in the same menu above
+it. Each action writes the visible Mol* scene to `<document>.<ext>` through the
+viewer's ordinary download path (host `exportData`/`exportText`, or a browser
+download when no host is attached).
+
+`scripts/molstar-scene-export.js` (bundled into `molstar.js` as
+`molstar.BuretteSceneExport`) tessellates every visible render object with Mol*'s
+geo-export `MeshExporter`: meshes, GPU texture meshes, impostor spheres and
+cylinders, and lines and points as thin tubes and small spheres. Unlike Mol*'s own
+GLB/OBJ/STL/USDZ exporters it does not recentre, scale or quantize: positions stay
+in scene coordinates in ångström, each instance is expanded with its own
+transform, normals use the inverse transpose, and reflecting or flip-sided
+instances keep outward winding. Each vertex carries the drawn colour (palette and
+overpaint) and an opacity from the object alpha and per-group transparency.
+Hidden objects, fully transparent objects and triangles that are fully transparent
+at every corner are left out. Text labels, images, direct-volume rendering and
+clipping cannot be held by a triangle mesh and stop the export with a message.
+Hover and selection markers are neither exported nor a reason to refuse.
+
+Limits: tessellated size is checked against 64 MiB before any object is built or
+its instances are expanded, GPU readback of a texture mesh is checked before its
+buffers are allocated, coordinates must be finite and within ±1,000,000 Å, every
+output file is at most 64 MiB, and an empty scene is an error. The export runs as
+a Mol* task with progress and Abort in the viewer's task overlay, checked inside
+the loops of a single large object and between batches of text output. The scene
+is snapshotted when the export is requested (render objects, visibility, opacity
+and the value cell of every exported property); a change before the file is
+complete or downloaded, such as a playing trajectory frame, rejects the export
+without pausing anything. A failed or cancelled export changes neither the scene
+nor its source.
+
+`scripts/ply-mesh.mjs` validates the tessellated chunks and writes binary
+little-endian PLY; `scripts/scene-mesh-formats.mjs` writes the other formats from
+the same chunks:
+
+| Format | File | Colour and opacity | View |
+| --- | --- | --- | --- |
+| PLY | `.ply`, binary, float32 xyz/normal + RGBA bytes | per vertex | — |
+| glTF | `.glb`, one indexed primitive, `extras.lengthUnit = "angstrom"` | linear `COLOR_0` RGBA, `BLEND` when translucent | — |
+| OBJ | `.obj` with `v x y z r g b` and `vn` | per vertex RGB; translucent scenes are refused | — |
+| X3D 3.3 | `.x3d`, `IndexedTriangleSet`, `<unit … conversionFactor="1e-10">` | `ColorRGBA` per vertex | viewport `Viewpoint`/`OrthoViewpoint`, background |
+| VRML 2.0 | `.wrl`, `IndexedFaceSet` | per vertex RGB, one shape per opacity; opacity varying across a face is refused | viewport `Viewpoint`, background |
+| POV-Ray 3.7 | `.pov`, `mesh2` with per-vertex textures | `srgbt` per distinct colour | viewport camera (right-handed), headlight, background |
+
+glTF, OBJ, X3D and VRML have no ångström unit of their own; one model unit is one
+ångström (X3D also declares it). Avogadro 2 exports POV-Ray and VRML from its
+ball-and-stick primitives; these exports carry every visible Mol*
+representation instead, including surfaces and cartoons. No Avogadro code is
+ported.
+
+Verification: `node --test tests/test-molstar-scene-export.mjs` covers transforms,
+winding, colours, refusals, limits, Abort and scene changes on real Mol* render
+objects; `bun tests/test-scene-export-readers.mjs` exports a headless Mol* scene of
+`tests/fixtures/scene-export/ethanol.sdf` in every format and reads it back with
+plyfile, trimesh and XML parsing through `uv`
+(`tests/fixtures/scene-export/read-exports.py`), plus VTK's VRML importer and a
+POV-Ray render when those are installed.
+
 ## Ketcher Editing
 
 The embedded Ketcher page is currently a small-molecule and reaction editor.

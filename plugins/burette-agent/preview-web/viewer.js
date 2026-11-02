@@ -10426,6 +10426,16 @@ SOFTWARE.
     ['jpeg', 'JPEG'],
     ['webp', 'WebP']
   ];
+  // The visible scene as a 3D model file (molstar.BuretteSceneExport).
+  const VIEWPORT_MODEL_FORMATS = [
+    ['ply', 'PLY'],
+    ['glb', 'glTF'],
+    ['obj', 'OBJ'],
+    ['x3d', 'X3D'],
+    ['wrl', 'VRML'],
+    ['pov', 'POV-Ray']
+  ];
+  let viewportModelExport = null;
   let selectionQueryModifier = 'set';
   let viewportControlsDisposers = [];
   let viewportMenuControls = null;
@@ -10617,7 +10627,11 @@ SOFTWARE.
     summary.append(name, value, chevron);
     disclosure.appendChild(summary);
     menu.appendChild(disclosure);
-    for (const [entry, label] of entries) viewportScreenshotChoice(disclosure, action, entry, label, current);
+    // Without a current entry the group lists actions rather than choices.
+    for (const [entry, label] of entries) {
+      if (current === undefined) viewportMenuItem(disclosure, label, action, { data: { viewportValue: entry }, disabled: Boolean(viewportModelExport) });
+      else viewportScreenshotChoice(disclosure, action, entry, label, current);
+    }
   }
 
   function viewportScreenshotToggle(menu, label, action, checked) {
@@ -10652,6 +10666,30 @@ SOFTWARE.
     viewportScreenshotToggle(menu, 'Transparent background', 'screenshot-transparent', values.transparent === true);
     viewportScreenshotToggle(menu, 'Show axes', 'screenshot-axes', values.axes?.name === 'on');
     viewportScreenshotToggle(menu, 'Crop to content', 'screenshot-crop', helper.cropParams?.auto === true);
+    if (window.molstar?.BuretteSceneExport) {
+      sceneTreeMenuSection(menu);
+      viewportScreenshotGroup(menu, 'Export 3D model', 'screenshot-model', VIEWPORT_MODEL_FORMATS);
+    }
+  }
+
+  // The visible scene as a 3D model file in scene coordinates. Mol*'s task overlay shows
+  // its progress and Abort; the file leaves through the same download path as any export,
+  // and a failure leaves the scene and its source as they were.
+  function exportViewportModel(format) {
+    const plugin = viewportPlugin();
+    const exporter = window.molstar?.BuretteSceneExport;
+    if (!plugin || !exporter?.formats[format] || viewportModelExport) return;
+    const name = `${safeExportBaseName(activeConfig?.label, 'scene')}.${exporter.formats[format].extension}`;
+    viewportModelExport = exporter.exportScene(plugin, format)
+      .then(({ blob, assertSceneUnchanged }) => {
+        assertSceneUnchanged();
+        downloadBlob(blob, name);
+      })
+      .catch(error => {
+        if (error?.name === 'AbortError') setStatus('[web] 3D model export cancelled.');
+        else setStatus(`[web] 3D model export failed. ${error?.message || error}`, 'error');
+      })
+      .finally(() => { viewportModelExport = null; });
   }
 
   // Motion and wiggle are always explicit. A task animation appears only when the
@@ -11190,6 +11228,10 @@ SOFTWARE.
   // the next capture, and a menu that closed on each toggle would have to be
   // reopened three times to set up one image. Only the two captures dismiss it.
   function runViewportScreenshotAction(action, control) {
+    if (action === 'model') {
+      exportViewportModel(control.dataset.viewportValue);
+      return false;
+    }
     const helper = viewportScreenshotHelper();
     if (!helper) return false;
     if (action === 'save') {
