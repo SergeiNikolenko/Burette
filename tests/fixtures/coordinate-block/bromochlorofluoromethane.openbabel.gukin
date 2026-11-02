@@ -1,0 +1,31 @@
+title
+bromochlorofluoromethane RDKit ETKDGv3 MMFF94
+
+#
+# NB: Class I directives (e.g. memory, multiplicity, charge etc) go here
+#
+# For more information see: http://www.cfs.dl.ac.uk/docs/index.shtml
+#
+
+geometry angstrom
+    -0.21511104     -1.13114761     -0.82351157   9   F
+    -0.05845127     -0.11760153      0.06473953   6   C
+    -1.28216178      1.12009056     -0.21510388  17  Cl
+     1.71462931      0.64262343     -0.10423079  35  Br
+    -0.15890522     -0.51396484      1.07810672   1   H
+end
+
+
+basis 6-31G
+
+#
+# NB: Class II directives go here
+#
+# To perform a dft calculation with b3lyp and medium quadrature uncomment the below
+# dft b3lyp
+# dft quadrature medium
+#
+
+runtype scf
+
+enter
