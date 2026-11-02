@@ -430,6 +430,22 @@ const JOB_DEFINITIONS = {
         maxIterations: integer(p.maxIterations, 'job.params.maxIterations', 1, WORKBENCH_LIMITS.optimizationIterations, 250) };
     },
   },
+  nucleic_acid: {
+    build: true,
+    describe: {
+      engine: 'Ideal-helix nucleotide templates: Open-Source PyMOL fnab fragments (3DNA fiber models) for A/B DNA and A-RNA, PDB 4OCB for Z-DNA',
+      requires: 'No source document; 1–500 nucleotides per strand.',
+      params: { sequence: 'one-letter bases (ACGT for DNA, ACGU for RNA)', type: ['DNA', 'RNA'], form: ['B', 'A', 'Z'], strands: ['double', 'single'], fivePrime: ['hydroxyl', 'phosphate'] },
+      artifacts: ['structure'],
+    },
+    params(value) {
+      const p = params(value, ['sequence', 'type', 'form', 'strands', 'fivePrime'], 'nucleic_acid job.params');
+      const type = oneOf(p.type, 'job.params.type', new Set(['DNA', 'RNA']), 'DNA'), form = oneOf(p.form, 'job.params.form', new Set(['B', 'A', 'Z']), type === 'RNA' ? 'A' : 'B');
+      if (type === 'RNA' && form !== 'A') invalid('RNA is built as an A-form helix; use form A.');
+      return { sequence: text(p.sequence, 'job.params.sequence', 4000), type, form, strands: oneOf(p.strands, 'job.params.strands', new Set(['double', 'single']), 'double'),
+        fivePrime: oneOf(p.fivePrime, 'job.params.fivePrime', new Set(['hydroxyl', 'phosphate']), 'hydroxyl') };
+    },
+  },
   metal_complex: {
     build: true,
     describe: {

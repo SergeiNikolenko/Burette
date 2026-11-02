@@ -52,7 +52,7 @@ JobKind = Literal[
     "insert_fragment", "hydrogens", "polymer",
 ]
 # Kinds that build a new structure without a source document (operation ``build``).
-BuildKind = Literal["smiles", "peptide", "metal_complex"]
+BuildKind = Literal["smiles", "peptide", "metal_complex", "nucleic_acid"]
 
 
 class WorkbenchError(RuntimeError):

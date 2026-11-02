@@ -5,6 +5,7 @@ import { runFragmentTask } from "./fragment-task";
 import { preparePolymerRequest, runPolymerTask } from "./polymer-task";
 import { runPeptideTask } from "./peptide-task";
 import { runMetalComplexTask } from "./metal-complex-task";
+import { runNucleicTask } from "./nucleic-task";
 import type { MetalLigandId } from "../molecular-workbench/metal-complex";
 import { optimizationArtifacts, optimizationSummary } from "./agent-graph-jobs";
 import type { Snapshot } from "./agent-source";
@@ -86,7 +87,7 @@ export const builderJobs: { [K in "insert_fragment" | "hydrogens" | "polymer"]: 
 };
 
 /** Documentless builders requested with operation `build`. */
-export const buildJobs: { [K in "smiles" | "peptide" | "metal_complex"]: AgentBuildRunner<K> } = {
+export const buildJobs: { [K in "smiles" | "peptide" | "metal_complex" | "nucleic_acid"]: AgentBuildRunner<K> } = {
   smiles: {
     // The conformer that opening a SMILES produces, relaxed by the optimize engine.
     async run({ smiles, seed, ...options }, context) {
@@ -97,6 +98,14 @@ export const buildJobs: { [K in "smiles" | "peptide" | "metal_complex"]: AgentBu
       return { summary: { ...optimizationSummary(result), seed, atomCount: result.molecule.atoms.length, bondCount: result.molecule.bonds.length,
         ...formulaOf(result.molecule.atoms.map(atom => atom.element), result.molecule.molfile) },
         artifacts: await optimizationArtifacts(`${lines.join("\n")}\n$$$$\n`, result, "smiles-3d", context) };
+    },
+  },
+  nucleic_acid: {
+    async run({ sequence, ...options }, context) {
+      const result = await runNucleicTask({ sequence, options }, context);
+      return { summary: { sequence: result.sequence, strands: result.strands, residueCount: result.residueCount, atomCount: result.atomCount,
+        formula: formulaOf(result.graph.atoms.map(atom => atom.element), "").formula, formalCharge: result.charge },
+        artifacts: [await context.artifact("structure", `${result.name}.cif`, "chemical/x-mmcif", result.text)] };
     },
   },
   metal_complex: {

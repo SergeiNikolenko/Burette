@@ -156,3 +156,20 @@ test("metal_complex builds reproduce the reference-checked samples through the t
   }
 }, 120_000);
 
+test("nucleic_acid builds match RDKit's sequence molecules in formula, charge and atom count", async () => {
+  // tests/fixtures/nucleic/rdkit-references.json: RDKit MolFromSequence products, not builder output.
+  const { cases } = JSON.parse(readFileSync(new URL("./fixtures/nucleic/rdkit-references.json", import.meta.url), "utf8")) as { cases: { type: "DNA" | "RNA"; fivePrime: string; strands: string; sequence: string; formula: string; charge: number; atoms: number }[] };
+  const f = workspace(ethanol, "sdf");
+  for (const [index, { type, fivePrime, strands, sequence, formula, charge, atoms }] of cases.entries()) {
+    const job = await f.finish((await f.ok({ operation: "build", operationId: `na-${index}`, job: { kind: "nucleic_acid", params: { sequence, type, strands, fivePrime } } })).job.jobId);
+    expect(job).toMatchObject({ status: "succeeded", binding: "none", summary: { formula: formula.replace(/[+-]\d*$/u, ""), formalCharge: charge, atomCount: atoms } });
+    const { artifact } = await f.ok({ operation: "export", jobId: job.jobId, artifact: "structure" });
+    expect([artifact.mimeType, artifact.fileName.endsWith(".cif"), artifact.content.startsWith("data_")]).toEqual(["chemical/x-mmcif", true, true]);
+  }
+  for (const params of [{ sequence: "ACGU", type: "RNA", form: "B" }, { sequence: "" }, { sequence: "ACGT", strands: "triple" }]) {
+    expect(validateWorkbenchRequest({ type: "workbench", operation: "build", operationId: "n", job: { kind: "nucleic_acid", params } })).toMatchObject({ ok: false, error: { code: "INVALID_ARGS" } });
+  }
+  const bad = await f.ok({ operation: "build", operationId: "na-bad", job: { kind: "nucleic_acid", params: { sequence: "ACGU" } } });
+  expect(await f.finish(bad.job.jobId)).toMatchObject({ status: "failed", artifacts: [] });
+}, 120_000);
+

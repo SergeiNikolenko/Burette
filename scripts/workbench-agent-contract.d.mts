@@ -23,7 +23,7 @@ export const WORKBENCH_OPERATIONS: readonly WorkbenchOperation[];
 export type WorkbenchForceField = 'MMFF94' | 'MMFF94s' | 'UFF';
 export type WorkbenchJobKind = WorkbenchJobRequest['kind'];
 /** Kinds that build a new structure without a source document (operation `build`). */
-export type WorkbenchBuildJobKind = 'smiles' | 'peptide' | 'metal_complex';
+export type WorkbenchBuildJobKind = 'smiles' | 'peptide' | 'metal_complex' | 'nucleic_acid';
 export type WorkbenchSubmitJobKind = Exclude<WorkbenchJobKind, WorkbenchBuildJobKind>;
 export type WorkbenchPolymerEndGroup = 'hydrogen' | 'methyl' | 'hydroxyl' | 'phenyl' | 'tert-butyl';
 export type WorkbenchOptimizeMethod = 'bfgs' | 'lbfgs' | 'fire' | 'abc-fire' | 'hybrid';
@@ -54,6 +54,7 @@ export type WorkbenchJobRequest =
   | { kind: 'polymer'; params: { head: number; tail: number; headLeaving: number; tailLeaving: number; count: number; bondLengthAngstrom: number;
       tacticity?: 'isotactic' | 'syndiotactic' | 'atactic'; headEnd: WorkbenchPolymerEndGroup; tailEnd: WorkbenchPolymerEndGroup; relax: boolean } }
   | { kind: 'smiles'; params: { smiles: string; forceField: WorkbenchForceField; method: WorkbenchOptimizeMethod; seed: number; maxIterations: number } }
+  | { kind: 'nucleic_acid'; params: { sequence: string; type: 'DNA' | 'RNA'; form: 'B' | 'A' | 'Z'; strands: 'double' | 'single'; fivePrime: 'hydroxyl' | 'phosphate' } }
   | { kind: 'metal_complex'; params: { metal: string; oxidationState: number; format: 'sdf' | 'mol';
       geometry: 'linear' | 'trigonal-planar' | 'tetrahedral' | 'square-planar' | 'trigonal-bipyramidal' | 'square-pyramidal' | 'octahedral';
       ligands: { ligand: string; sites: number[]; distanceAngstrom?: number }[] } }
