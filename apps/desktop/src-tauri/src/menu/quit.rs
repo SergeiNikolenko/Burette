@@ -32,10 +32,10 @@ impl ExitIntent {
     fn message(self) -> &'static str {
         match self {
             Self::Quit => {
-                "One or more molecule collections have unsaved or in-progress changes. Review them before quitting, or quit without saving."
+                "One or more documents have unsaved or in-progress changes. Review them before quitting, or quit without saving."
             }
             Self::RestartForUpdate => {
-                "One or more molecule collections have unsaved or in-progress changes. Review them before restarting, or restart without saving."
+                "One or more documents have unsaved or in-progress changes. Review them before restarting, or restart without saving."
             }
         }
     }
