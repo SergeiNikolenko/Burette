@@ -128,6 +128,11 @@ test("Geometry kinetic drag commits once, Undo restores precision, and keyboard/
     assert.ok(Number(field().getAttribute("aria-valuenow")) > original);
     await key("Enter");
     assert.equal(field().tagName, "INPUT", "Enter opens numeric typing");
+    // Typing targets the focused input. Edit mode focuses it on a later frame.
+    for (let attempt = 0; document.activeElement !== field() && attempt < 40; attempt++) {
+      await act(async () => new Promise(resolve => window.setTimeout(resolve, 5)));
+    }
+    assert.equal(document.activeElement, field(), "numeric typing waits for edit focus");
     await act(async () => {
       Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set.call(field(), "1,25");
       field().dispatchEvent(new window.Event("input", { bubbles: true }));

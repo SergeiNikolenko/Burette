@@ -175,8 +175,20 @@ test had passed earlier in that run. Re-running from
 scope's final workspace, responsiveness, compute and plist checks exited 0
 without Geometry changes. Logs are `/tmp/burette-polymer-mode-ci.log` and
 `/tmp/burette-polymer-mode-ci-resume.log`. This split run does not establish
-a clean uninterrupted JS gate; the intermittent Geometry failure remains
-unexplained.
+a clean uninterrupted JS gate.
+
+Follow-up isolated a focus race in the Geometry test. Its synthetic input and
+Enter could run before the numeric field's two animation-frame focus callbacks.
+Enter commits by blurring that input, so an unfocused input did not commit.
+Twenty ordinary isolated runs passed, while temporarily delaying the entry
+focus frame by 50 ms reproduced the same decimal-comma assertion failure.
+Waiting for `document.activeElement` to become that input made the delayed
+case pass. The test now waits with a bounded focus assertion before typing
+`1,25`; the diagnostic frame delay was removed. This establishes the test
+ordering defect, without adding browser acceptance evidence or proving an
+uninterrupted full JS gate.
+`vp run test:geometry-source-lifecycle` then exited 0 with 41 passing tests
+across four files (`/tmp/burette-geometry-focus-lifecycle.log`).
 
 ## Live preparation automation with mixed stereochemistry (2026-11-03)
 
