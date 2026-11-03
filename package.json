@@ -110,7 +110,7 @@
     "io-ts": "2.2.22",
     "mediabunny": "1.61.3",
     "mutative": "1.3.0",
-    "openchemlib": "9.25.0",
+    "openchemlib": "9.25.2",
     "plotly.js-basic-dist-min": "^4.1.1",
     "pngjs": "7.0.0",
     "radix-ui": "^1.6.7",
