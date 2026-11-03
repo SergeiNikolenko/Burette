@@ -6,6 +6,8 @@ import { HARTREE_KCAL_MOL, fileStem } from "../../lib/workbench/formats";
 import { openScientificDocument } from "../../lib/workbench/generated-document-open";
 import { flatDepiction } from "../../lib/molecular-workbench/optimization";
 import { useViewerAtomSelection } from "../../lib/workbench/selection";
+import { useLogicalSource } from "../../lib/science-session/state";
+import { useWorkspaceMenus } from "../workspace-menus";
 import { useSourceEditing } from "../../lib/source-editing/context";
 import type { ShellActions } from "../types";
 import type { ViewerDocument } from "../../types";
@@ -83,6 +85,9 @@ function newAtomPosition(structure: GraphEditResult, anchor: number | null): Vec
 
 export function StructureEditPanel({ document, actions }: { document: ViewerDocument; actions: ShellActions }) {
   const sourceEditing = useSourceEditing();
+  const logicalSource = useLogicalSource(document.id);
+  const workspaceMenus = useWorkspaceMenus();
+  const saveScene = logicalSource ? workspaceMenus.saveScene : undefined;
   const draft = useGraphDraft(document);
   const session = draft.session;
   const editor = draft.history;
@@ -238,10 +243,10 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
           </span>
         ) : null}
         {session?.dirty ? (
-          <ShortcutTooltip label={session.saveDisabledReason ?? session.saveLabel ?? "Save"}>
+          <ShortcutTooltip label={saveScene ? "Save scene" : session.saveDisabledReason ?? session.saveLabel ?? "Save"}>
             <span className="ml-auto">
-              <Button type="button" variant="secondary" size="xs" disabled={busy || Boolean(session.saveDisabledReason) || session.saving}
-                onClick={() => void sourceEditing?.save(document)}>{session.saveLabel ?? "Save"}</Button>
+              <Button type="button" variant="secondary" size="xs" disabled={busy || (!saveScene && Boolean(session.saveDisabledReason)) || session.saving}
+                onClick={() => saveScene ? saveScene(document) : void sourceEditing?.save(document)}>{saveScene ? "Save scene" : session.saveLabel ?? "Save"}</Button>
             </span>
           </ShortcutTooltip>
         ) : null}

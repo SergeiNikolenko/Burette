@@ -17,6 +17,7 @@ import { FolderOpenDialog, readFolderContents } from "./folder-open-dialog";
 import { toast } from "./ui/toast";
 
 type Menus = {
+  saveScene?: (document: ViewerDocument) => void;
   scene: (document: ViewerDocument) => MenuItemSpec[];
   files: (paths: string[]) => Promise<MenuItemSpec[]>;
   folder: (project: SidebarProject, path: string, root: boolean, rename: () => void) => MenuItemSpec[];
@@ -114,7 +115,7 @@ export function WorkspaceMenus({ state, actions, children }: { state: ShellViewS
     ...submenu("merge-scene", "Add to scene", workflows.mergeTargets(document).map((target, index) =>
       menuItem(`merge-scene-${index}`, target.title, run(() => workflows.mergeScene(document, target))))),
   ] : [];
-  return <Context.Provider value={{ scene, files, folder, selected, select, folders, batch: localBatch }}>{children}{batchFiles.dialog}<SceneNameDialog document={renamingScene} onClose={() => setRenamingScene(null)} />
+  return <Context.Provider value={{ scene, files, folder, selected, select, folders, batch: localBatch, saveScene: document => run(() => workflows.saveScene(document))() }}>{children}{batchFiles.dialog}<SceneNameDialog document={renamingScene} onClose={() => setRenamingScene(null)} />
     <FolderOpenDialog path={batch?.path ?? null} initialMode={batch?.mode ?? "tabs"} workflows={workflows} state={state} actions={actions} openBatch={localBatch.open} cancelBatch={localBatch.cancel} progress={localBatch.progress} onClose={() => setBatch(null)} />
   </Context.Provider>;
 }

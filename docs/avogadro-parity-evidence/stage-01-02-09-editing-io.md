@@ -211,3 +211,38 @@ This run covers a coordinate-only edit in one restored molecule. Chemical
 identity/topology edits, the theme/viewport accessibility matrix, and native
 editing acceptance remain open. The Edit panel's Save copy stayed disabled for
 the restored source; scene saving used the workspace tab's Save scene action.
+
+### Save scene from the restored Edit panel (2026-11-03)
+
+The disabled Save copy described above protected the MOLX archive from the
+plain-text source writer. For a restored logical source, the Edit panel now
+offers Save scene through the existing workspace scene workflow. The source
+writer remains guarded; the scene path captures and confirms the acknowledged
+source revision and reports failures through the existing workspace toast.
+
+In the rebuilt packaged browser shell, opened the original unspecified-alanine
+MOLX, changed C1 X to −2.4 Å, then clicked Save scene in the light theme at
+1280 × 720. In dark mode at 320 × 720, Tab from More actions focused Save scene
+with a visible focus ring; Enter downloaded a second MOLX. The control wrapped
+within the panel without horizontal clipping. Both archives carried identical
+logical source bytes (SHA-256
+`0877a3244b736b8a2fd579dcce751c4d65f3dda1c6da85fcf3ccfe69cc14de8a`).
+RDKit 2026.09.1 confirmed exactly one changed coordinate, 13 atoms/12 bonds,
+unchanged isomeric SMILES and unspecified C2. Document and atom UUIDs survived.
+Embedded Mol* raw data equalled the science source attachment in each archive.
+The ordinary picker reopened the keyboard-saved file; Edit at 760 × 720
+displayed C1 X = −2.400 Å. Browser error logs were empty.
+
+Evidence: `/tmp/burette-edit-save-scene-oracle.json`,
+`/tmp/burette-edit-save-scene-light.png`,
+`/tmp/burette-edit-save-scene-dark-320.png`, and
+`/tmp/burette-edit-save-scene-reopened-760.png`. The wide screenshot also shows
+the restored camera placing part of the molecule outside the viewport; camera
+framing after restoration remains to be investigated. Theme and viewport
+emulation were reset after the check.
+
+Validation passed: typecheck, agent-shell build, plugin checks, structure-edit
+panel suites (13 tests both uncompiled and React-compiled), and
+`test:science-sdf-molx-flow` (6 codec/export tests and one compiled scene flow).
+This establishes the Edit-panel save route for this restored molecule. Full
+accessibility, topology-edit acceptance and native scene saving remain open.
