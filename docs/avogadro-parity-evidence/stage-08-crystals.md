@@ -160,6 +160,12 @@ that the result exceeds the 3 MB source editing limit. The crystal worker's
 readback held 96,000 atoms in 5,469,044 bytes. The smaller supercell above
 succeeded after the refusal.
 
+For B5, the extensionless `CONTCAR` opened as a Mol* 3D view in the browser
+and exposed Show crystal tools in the command palette. Niggli reduction gave
+a = 2.959 Å at the same 62.45 Å³ and six atoms, with a working Undo and a Redo
+entry. The component test also checks that the POSCAR selective-dynamics flags
+survive standard orientation. Saved-copy reopen remains unverified.
+
 Start: `BURETTE_AGENT_SHELL_FORCE_VP=1 bun scripts/burette-agent.mjs open --mode browser-agent-shell --no-launch <fixture>`
 and open the returned `url`. Fixtures are in `tests/fixtures/crystals/` (CC0, see its
 README); `tests/fixtures/crystal-symmetry/` and `tests/fixtures/assemblies/` are

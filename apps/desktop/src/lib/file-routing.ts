@@ -1,4 +1,5 @@
 import previewFormatRegistry from "../../../../config/preview-formats.json";
+import { isPoscarFileName } from "./molecular-workbench/poscar";
 import { basename } from "./sidebar-projects";
 
 export const NOT_RENDERABLE_RENDERER = "not-renderable";
@@ -247,6 +248,8 @@ export function isFepGraphmlPath(path: string) {
 export function pathExtension(path: string) {
   const fileName = path.split(/[\\/]/).filter(Boolean).pop() ?? path;
   if (fileName.toLowerCase().endsWith(".mae.gz")) return "maegz";
+  // VASP names its structures POSCAR and CONTCAR, usually without an extension.
+  if (isPoscarFileName(fileName)) return "vasp";
   const index = fileName.lastIndexOf(".");
   if (index <= 0 || index === fileName.length - 1) return "";
   return fileName.slice(index + 1).toLowerCase();
