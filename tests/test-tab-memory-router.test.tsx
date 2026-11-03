@@ -116,10 +116,10 @@ test("reopen restores order, pinned placement, history, and renderer without cha
   const { reopenClosedTab } = await import("../apps/desktop/src/components/workspace-panes/pane-actions");
   const { takeClosedTab } = await import("../apps/desktop/src/stores/closed-tabs");
   while (takeClosedTab()) { /* Isolate user close history. */ }
-  const document = { id: "reopen-original", path: "/reopen.xyz", title: "reopen.xyz", extension: "xyz", renderer: "xyzrender-external" as const, runtimePath: "", byteCount: 1 };
+  const document = { id: "reopen-original", path: "/reopen.xyz", recoveryPath: "/popout-scenes/reopen.molx", title: "reopen.xyz", extension: "xyz", renderer: "xyzrender-external" as const, runtimePath: "", byteCount: 1 };
   const tab = {
     id: "reopen-view", title: "My pose", pinned: true, pane: "bottom" as const,
-    location: { kind: "file" as const, documentId: document.id, path: document.path },
+    location: { kind: "file" as const, documentId: document.id, path: document.path, recoveryPath: document.recoveryPath },
     back: [{ kind: "jobs" as const }], forward: [{ kind: "chemical-space" as const }],
   };
   const retained = { id: "retained", location: { kind: "jobs" as const }, back: [], forward: [] };
@@ -133,7 +133,7 @@ test("reopen restores order, pinned placement, history, and renderer without cha
   } });
   const restored = useMoleculeStore.getState().tabs[0];
   expect({ ...restored, id: tab.id, location: { ...restored.location, documentId: document.id } }).toEqual(tab);
-  expect(requests).toEqual([[[document.path], { rendererMode: "xyzrender-external" }]]);
+  expect(requests).toEqual([[[document.recoveryPath], { rendererMode: "xyzrender-external" }]]);
   expect(useMoleculeStore.getState().tabs.find(current => current.id === retained.id)).toEqual(retained);
   useMoleculeStore.getState().navigateTabHistory(restored.id, -1);
   expect(useMoleculeStore.getState().tabs[0].location).toEqual({ kind: "jobs" });
@@ -144,22 +144,27 @@ test("failed reopen remains retryable and rapid reopen requests are serialized",
   const { takeClosedTab } = await import("../apps/desktop/src/stores/closed-tabs");
   while (takeClosedTab()) { /* Isolate user close history. */ }
   useMoleculeStore.getState().closeAllDocuments();
-  const document = { id: "retry", path: "/retry.pdb", title: "retry.pdb", extension: "pdb", renderer: "molstar" as const, runtimePath: "", byteCount: 1 };
+  const document = { id: "retry", path: "/retry.pdb", recoveryPath: "/popout-scenes/retry.molx", title: "retry.pdb", extension: "pdb", renderer: "molstar" as const, runtimePath: "", byteCount: 1 };
   useMoleculeStore.getState().addDocuments([document]);
   useMoleculeStore.getState().closeActiveDocument();
-  await reopenClosedTab({ openTextPaths: () => {}, openStructurePaths: async () => { throw new Error("unavailable"); } });
+  const failedPaths: string[] = [];
+  await reopenClosedTab({ openTextPaths: () => {}, openStructurePaths: async (paths) => {
+    failedPaths.push(...paths);
+    throw new Error("unavailable");
+  } });
+  expect(failedPaths).toEqual([document.recoveryPath]);
   let release!: () => void;
   const wait = new Promise<void>(resolve => { release = resolve; });
   const opened: string[] = [];
-  const actions = { openTextPaths: () => {}, openStructurePaths: async () => {
-    opened.push(document.path);
+  const actions = { openTextPaths: () => {}, openStructurePaths: async (paths: string[]) => {
+    opened.push(...paths);
     await wait;
     useMoleculeStore.getState().addDocuments([document]);
   } };
   const first = reopenClosedTab(actions);
   const second = reopenClosedTab(actions);
   await Promise.resolve();
-  expect(opened).toEqual([document.path]);
+  expect(opened).toEqual([document.recoveryPath]);
   release();
   await Promise.all([first, second]);
   expect(useMoleculeStore.getState().tabs.filter(tab => tab.location.kind === "file")).toHaveLength(1);
