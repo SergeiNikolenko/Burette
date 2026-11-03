@@ -119,7 +119,7 @@
     "react-dom": "^19.3.0",
     "react-markdown": "10.1.0",
     "react-resizable-panels": "^4.14.0",
-    "react-router": "^8.4.0",
+    "react-router": "^8.5.0",
     "remark-gfm": "4.0.1",
     "rxjs": "7.8.2",
     "shiki": "^4.5.0",
