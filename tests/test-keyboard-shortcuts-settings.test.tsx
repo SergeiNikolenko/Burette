@@ -13,6 +13,17 @@ const { createRoot } = await import("react-dom/client");
 const { KeyboardShortcutsSection } = await import("../apps/desktop/src/components/settings-panel/keyboard-shortcuts-section");
 const { SearchInput } = await import("../apps/desktop/src/components/ui/search-input");
 
+test("macOS tab shortcuts match shifted physical bracket keys and exclude Back/Forward", async () => {
+  const { matchesAccelerator, resolveShortcutBindings } = await import("../apps/desktop/src/lib/keyboard-shortcuts");
+  const bindings = resolveShortcutBindings({});
+  const previous = new KeyboardEvent("keydown", { key: "{", code: "BracketLeft", metaKey: true, shiftKey: true });
+  const next = new KeyboardEvent("keydown", { key: "}", code: "BracketRight", metaKey: true, shiftKey: true });
+  expect(matchesAccelerator(previous, bindings["window.previous-tab"])).toBe(true);
+  expect(matchesAccelerator(next, bindings["window.next-tab"])).toBe(true);
+  expect(matchesAccelerator(previous, bindings["view.navigate-back"])).toBe(false);
+  expect(matchesAccelerator(next, bindings["view.navigate-forward"])).toBe(false);
+});
+
 test("shortcut search matches commands, descriptions and key combinations; clear restores focus and results", async () => {
   const shell = document.createElement("div"); document.body.append(shell);
   const root = createRoot(shell);
