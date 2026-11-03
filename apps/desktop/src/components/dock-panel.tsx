@@ -186,6 +186,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
     ...contentSource,
     [area === "right" ? "rightDockOpen" : "bottomDockOpen"]: open,
   }), [area, contentSource, open]);
+  const contentDocumentId = area === "right" ? contentState?.rightDockDocumentId : contentState?.bottomDockDocumentId;
   const fileSelection = dockFileDocuments(state, area);
   const mediaPath = dockMediaPath(dockDocumentId) ?? (!dockDocumentId && !dockTool && state.activeTab?.location.kind === "document" ? state.activeTab.location.path : null);
   const filesTabDragPayload = mediaPath ? { paths: [mediaPath], records: [] } : dockFilesDragPayload(fileSelection.document, fileSelection.textDocument, dockTool);
@@ -306,7 +307,8 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
             dockDrops={contentState.dockDroppedStructures.filter(item => item.area === area && item.tabKind === "files")} />
         </div>}
         {contentState && contentKind !== "files" && <DockPanelContent
-          key={`tool:${contentState.activeTab?.id}`}
+          // A dock pinned to a document keeps that document's tool, with its local history, across page switches such as Settings.
+          key={contentDocumentId ? `tool:document:${contentDocumentId}` : `tool:${contentState.activeTab?.id}`}
           area={area} activeTabKind={contentKind} state={contentState} actions={actions} dockDrops={dockDrops}
         />}
         </div>

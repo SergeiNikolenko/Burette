@@ -756,6 +756,16 @@ Retained scientific coordinate-set indices are distinct from native poses. An ex
 
 The focused Plots route opens in the existing bottom dock from Compute or the command palette. It plots retained geometry and explicitly imported energy, temperature and force metadata; it does not infer energy or kinetic temperature. A retained CJSON coordinate-set cursor is displayed without making those sets native poses. Materializing another graph-preserving set, indexed range analysis and calculated force batches remain separate workflows.
 
+An indexed trajectory that the viewer streams (XTC, TRR, DCD and other Mol* coordinate sources) gets Plots once a frame is displayed. It samples only displayed frames through the bounded `indexed_trajectory_frame` read: RMS speed, maximum and RMS force when the frame states velocities or forces, and a distance, angle or dihedral of 2–4 typed atom numbers. History keeps at most 256 visited frames per source, sparse frame numbers stay sparse, and chart keys seek the viewer. **Export frame** pages the displayed frame into CSV (`frame,atom,source_atom,element,x_A,…`, velocity and force columns only when present, 16 MiB limit); a seek, replacement or Cancel during paging saves nothing. No temperature is derived from positions. A dock pinned to a document keeps its tool and history across page switches such as Settings.
+
+The `vite-dev` browser acceptance used the topology and the two MDAnalysis
+frames in [the TRR reference](../tests/fixtures/trajectory/TRR.md). Show plots
+reported 0.931 Å/ps RMS speed and 3.742 kcal/(mol·Å) maximum force at 2.750 ps.
+ArrowRight on the force chart moved the viewer to frame 2 at 4.250 ps, where the
+maximum force was 7.483 kcal/(mol·Å) and the speed had no value. The dock retained
+two samples. Atoms 1 and 2 gave 28.422 Å on frame 2, matching the reference
+positions. Paged CSV content and cancellation were exercised in `test:indexed-plots`.
+
 ## Molecular properties through the browser shell
 
 `properties` uses the same revision-pinned job owner, queue, cancellation and
