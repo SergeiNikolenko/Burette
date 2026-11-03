@@ -52,16 +52,19 @@ function currentDocument(tabId: string) {
   return document;
 }
 
-async function checkpoint(tabId: string) {
+async function checkpoint(tabId: string, signal?: AbortSignal) {
   const document = currentDocument(tabId);
-  await focusSceneDocument(document, useMoleculeStore.getState().setActiveDocument);
+  await focusSceneDocument(document, useMoleculeStore.getState().setActiveDocument, signal);
+  signal?.throwIfAborted();
   const source = sourceEditing?.sessionForDocument(document);
   if (source?.saving) throw new Error("Wait for source changes to finish saving.");
   if (document.renderer === "molstar") {
     const story = await requestViewerAction(document.id, { type: "observe_story" });
     if (Number(story.count) > 1) throw new Error("Keep this Story in its workspace.");
   }
+  signal?.throwIfAborted();
   const archive = await requestViewerAction(document.id, { type: "workspace_scene_snapshot" });
+  signal?.throwIfAborted();
   const identity = { sourcePath: document.path, sceneUnsaved: document.sceneUnsaved === true, sceneSourcePaths: document.sceneSourcePaths ?? [] };
   if (archive.sheet) return invoke<string>("save_popout_sheet", { ...identity, recoveryPath: document.recoveryPath, sheet: archive.sheet });
   if (typeof archive.dataBase64 !== "string") throw new Error("The scene could not be captured.");
@@ -188,6 +191,64 @@ function retainCheckpoint(tabId: string, path: string) {
     documents: state.documents.map(doc => doc.id === document.id ? { ...doc, recoveryPath: path } : doc),
     tabs: state.tabs.map(tab => tab.id === tabId && tab.location.kind === "file" ? { ...tab, location: { ...tab.location, recoveryPath: path } } : tab),
   }));
+}
+
+// Reopening a closed sheet must use the view at close time, not the previous
+// exit/transfer checkpoint. A failed capture leaves the tab and source alive.
+export async function checkpointNativeScenesForClose(tabIds: string[]) {
+  if (!isTauriRuntime()) return;
+  const store = useMoleculeStore.getState();
+  const wanted = new Set(tabIds);
+  const targets = store.tabs.filter(tab => wanted.has(tab.id) && tab.location.kind === "file")
+    .filter(tab => {
+      const location = tab.location;
+      const document = location.kind === "file"
+        ? store.documents.find(document => document.id === location.documentId)
+        : undefined;
+      // An unopened restored tab has no live scene to capture. Keep its saved
+      // location intact instead of loading it merely to close it.
+      return document && !document.runtimeDeferred
+        && (document.renderer === "xyzrender-external" || !!document.recoveryPath);
+    });
+  if (!targets.length) return;
+  if (nativePopoutBusy()) throw new Error("Wait for the scene to finish moving.");
+  const activeTabId = store.activeTabId;
+  const controller = new AbortController();
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const surfaces = targets.map(tab => activeViewerIframeForDocument(currentDocument(tab.id).id)?.closest<HTMLElement>(".page-surface"))
+    .filter((surface): surface is HTMLElement => !!surface)
+    .map(surface => ({ surface, inert: surface.inert }));
+  usePopout.setState({ busy: true });
+  for (const { surface } of surfaces) surface.inert = true;
+  try {
+    await Promise.race([
+      (async () => {
+        for (const tab of targets) {
+          controller.signal.throwIfAborted();
+          const documentId = currentDocument(tab.id).id;
+          const documentPath = currentDocument(tab.id).path;
+          const path = await checkpoint(tab.id, controller.signal);
+          controller.signal.throwIfAborted();
+          const current = currentDocument(tab.id);
+          if (current.id !== documentId || current.path !== documentPath) throw new Error("The tab changed while its scene was being saved. Try closing it again.");
+          retainCheckpoint(tab.id, path);
+        }
+      })(),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => {
+          controller.abort();
+          reject(new Error("The scene did not finish saving. The tab is still open; try again when its viewer is ready."));
+        }, 15000);
+      }),
+    ]);
+  } finally {
+    controller.abort();
+    clearTimeout(timeout);
+    for (const { surface, inert } of surfaces) surface.inert = inert;
+    const current = useMoleculeStore.getState();
+    if (activeTabId && current.tabs.some(tab => tab.id === activeTabId)) current.setActiveTab(activeTabId);
+    usePopout.setState({ busy: false });
+  }
 }
 
 export async function checkpointNativePopoutForExit() {

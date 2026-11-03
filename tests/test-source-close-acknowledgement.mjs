@@ -35,6 +35,7 @@ mock.module("@tauri-apps/plugin-dialog", () => ({
 }));
 mock.module("../apps/desktop/src/components/workspace-panes/native-scene-window", () => ({
   nativePopoutBusy: () => false, isNativePopoutTab: () => false, returnNativePopout: async () => false,
+  checkpointNativeScenesForClose: async () => {},
 }));
 mock.module("../apps/desktop/src/lib/tauri", () => ({ isTauriRuntime: () => true, trackTauriListener: () => () => {} }));
 mock.module("../apps/desktop/src/hooks/use-deferred-viewer-runtime", () => ({ prepareDeferredViewerRuntime: async document => document, useDeferredViewerRuntime: document => document }));

@@ -8,9 +8,10 @@ import { isMolstarSceneImportSource, isStructureComparisonSource } from "../lib/
 import { isTauriRuntime } from "../lib/tauri";
 import { useSettingsStore } from "../stores/settings-store";
 
-export async function focusSceneDocument(document: ViewerDocument, select: (id: string) => void) {
+export async function focusSceneDocument(document: ViewerDocument, select: (id: string) => void, signal?: AbortSignal) {
+  signal?.throwIfAborted();
   select(document.id);
-  return waitForSceneDocument(document);
+  return waitForSceneDocument(document, signal);
 }
 
 async function waitForSceneDocument(document: ViewerDocument, signal?: AbortSignal) {

@@ -1,4 +1,4 @@
-import { isNativePopoutTab, returnNativePopout } from "../components/workspace-panes/native-scene-window";
+import { checkpointNativeScenesForClose, isNativePopoutTab, returnNativePopout } from "../components/workspace-panes/native-scene-window";
 import { nativeWindowTransferBusy } from "../lib/window-transfer";
 import { confirmUnsavedSceneClose } from "./file-batch-scene";
 import { rendererViewReloadOptions } from "../lib/renderer-view-state";
@@ -1279,10 +1279,17 @@ export function createDocumentCloseShellActions({
     return [...new Set([...additionalIds, ...targets.flatMap(documentIdsForTab)])]
       .filter(id => !retained.has(id));
   };
-  const confirmClose = async (documentIds: string[]) => {
+  const confirmClose = async (documentIds: string[], targets: MoleculeTab[]) => {
     if (!confirmSceneClose(documentIds)) return null;
     const permit = await confirmDiscardDirtyGridDocuments(documentIds);
     if (!permit) return null;
+    try {
+      await checkpointNativeScenesForClose(targets.map(tab => tab.id));
+    } catch (error) {
+      permit.release();
+      pushStatus(error instanceof Error ? error.message : "Could not save the scene before closing. The tab is still open.", "error");
+      return null;
+    }
     try {
       // Source disposal is the final acknowledgement: a cancelled Grid prompt
       // must leave the source draft and its recovery handle intact.
@@ -1309,7 +1316,7 @@ export function createDocumentCloseShellActions({
       const targets = tabs.filter(tab => tab.location.kind === "file" && (tab.location.documentId === id || tab.location.path === documents.find(doc => doc.id === id)?.path));
       if (!await returnOwner(targets)) return;
       const documentIds = documentIdsClosingWithTabs(targets, [id]);
-      const permit = await confirmClose(documentIds);
+      const permit = await confirmClose(documentIds, targets);
       if (!permit) return;
       completeClose(permit, () => {
         for (const documentId of documentIds) closeGridRuntime(documentId);
@@ -1321,7 +1328,7 @@ export function createDocumentCloseShellActions({
       const tab = tabs.find((candidate) => candidate.id === id);
       if (!await returnOwner(tab ? [tab] : [])) return;
       const documentIds = documentIdsClosingWithTabs(tab ? [tab] : []);
-      const permit = await confirmClose(documentIds);
+      const permit = await confirmClose(documentIds, tab ? [tab] : []);
       if (!permit) return;
       completeClose(permit, () => {
         for (const documentId of documentIds) closeGridRuntime(documentId);
@@ -1341,7 +1348,7 @@ export function createDocumentCloseShellActions({
       }
       if (!targets.length) return;
       const documentIds = documentIdsClosingWithTabs(targets);
-      const permit = await confirmClose(documentIds);
+      const permit = await confirmClose(documentIds, targets);
       if (!permit) return;
       completeClose(permit, () => {
         for (const documentId of documentIds) closeGridRuntime(documentId);
@@ -1361,7 +1368,7 @@ export function createDocumentCloseShellActions({
       }
       if (!otherTabs.length) return;
       const documentIds = documentIdsClosingWithTabs(otherTabs);
-      const permit = await confirmClose(documentIds);
+      const permit = await confirmClose(documentIds, otherTabs);
       if (!permit) return;
       completeClose(permit, () => {
         for (const documentId of documentIds) closeGridRuntime(documentId);
@@ -1375,7 +1382,7 @@ export function createDocumentCloseShellActions({
         ?? tabs.find(tab => tab.location.kind === "file" && tab.location.documentId === activeDocument?.id);
       if (!await returnOwner(activeTab ? [activeTab] : [])) return;
       const documentIds = documentIdsClosingWithTabs(activeTab ? [activeTab] : []);
-      const permit = await confirmClose(documentIds);
+      const permit = await confirmClose(documentIds, activeTab ? [activeTab] : []);
       if (!permit) return;
       completeClose(permit, () => {
         for (const documentId of documentIds) closeGridRuntime(documentId);

@@ -10,6 +10,7 @@ let latest: Record<string, any>;
 let failSave = false;
 let sheetArchive: object | undefined;
 let savedSheet: Record<string, any> | undefined;
+let writeSheet = async () => path;
 let closedWindows: string[] = [];
 let openIncoming = async () => {};
 let readiness = async () => ({ ready: true });
@@ -33,20 +34,66 @@ mock.module("../apps/desktop/src/components/ui/toast", () => ({ toast: { add: ()
 mock.module("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ label: "workspace-child", listen: async (_: string, receive: typeof listener) => { listener = receive; return () => {}; } }), Window: { getByLabel: async (label: string) => ({ close: async () => { closedWindows.push(label); } }) } }));
 mock.module("@tauri-apps/api/core", () => ({ convertFileSrc: (path: string) => path, invoke: async (command: string, args: any) => {
   if (command === "save_popout_scene") { if (failSave) throw new Error("disk full"); savedSources.push(args.sourcePath); return path; }
-  if (command === "save_popout_sheet") { savedSheet = args; return path; }
+  if (command === "save_popout_sheet") { savedSheet = args; return writeSheet(); }
   if (command === "open_new_workspace_window") return "workspace-peer";
   if (command === "relay_popout_handoff") latest = { ...args.message, target: args.target };
 } }));
-const { useNativePopoutSession, popOutNativeScene, returnNativePopout, nativePopoutBusy, checkpointNativePopoutForExit, isNativePopoutTab } = await import("../apps/desktop/src/components/workspace-panes/native-scene-window");
+const { useNativePopoutSession, popOutNativeScene, returnNativePopout, nativePopoutBusy, checkpointNativePopoutForExit, checkpointNativeScenesForClose, isNativePopoutTab } = await import("../apps/desktop/src/components/workspace-panes/native-scene-window");
 function Listener() { useNativePopoutSession({ openStructurePaths: async () => openIncoming() } as any); return null; }
 async function withListener(run: () => Promise<void>) {
   reset(); openIncoming = async () => {}; readiness = async () => ({ ready: true }); savedSources.length = 0;
   sheetArchive = undefined; savedSheet = undefined;
+  writeSheet = async () => path;
   const mount = document.createElement("div"); document.body.append(mount); const root = createRoot(mount);
   try { await act(async () => root.render(<Listener />)); await run(); }
   finally { await act(async () => root.unmount()); mount.remove(); }
 }
 const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+test("closing an unmounted restored tab keeps its existing recovery without requiring a live document", async () => withListener(async () => {
+  state.documents = [];
+  await checkpointNativeScenesForClose(["tab"]);
+  expect(state.tabs[0].location.recoveryPath).toBe(path);
+  expect(savedSheet).toBeUndefined(); expect(nativePopoutBusy()).toBe(false);
+  state.documents = [{ ...doc, runtimeDeferred: true }];
+  await checkpointNativeScenesForClose(["tab"]);
+  expect(savedSources).toHaveLength(0); expect(state.tabs[0].location.recoveryPath).toBe(path);
+}));
+test("close captures a fresh sheet and restores selection before the caller removes it", async () => withListener(async () => {
+  state.documents = [{ ...doc, renderer: "xyzrender-external", recoveryPath: undefined }];
+  state.tabs = [{ ...tab, location: { ...tab.location, recoveryPath: undefined } }, { id: "other", location: { kind: "launcher" } }];
+  state.activeTabId = "other"; state.setActiveTab = (id: string) => { state.activeTabId = id; };
+  sheetArchive = { version: 1, angle: 45 };
+  await checkpointNativeScenesForClose(["tab"]);
+  expect(savedSheet?.sheet).toEqual(sheetArchive);
+  expect(state.tabs[0].location.recoveryPath).toBe(path);
+  expect(state.activeTabId).toBe("other");
+  expect(state.tabs).toHaveLength(2); expect(nativePopoutBusy()).toBe(false);
+}));
+
+test("timed-out close cannot publish a late checkpoint and unlocks the viewer", async () => withListener(async () => {
+  state.documents = [{ ...doc, renderer: "xyzrender-external", recoveryPath: undefined }];
+  state.tabs = [{ ...tab, location: { ...tab.location, recoveryPath: undefined } }];
+  sheetArchive = { version: 1, angle: 45 };
+  let finishWrite!: (path: string) => void;
+  writeSheet = () => new Promise(resolve => { finishWrite = resolve; });
+  const closing = checkpointNativeScenesForClose(["tab"]);
+  await flush(); expect(nativePopoutBusy()).toBe(true); expect(surface.inert).toBe(true);
+  await expect(checkpointNativeScenesForClose(["tab"])).rejects.toThrow("Wait for the scene");
+  await expect(closing).rejects.toThrow("did not finish saving");
+  expect(nativePopoutBusy()).toBe(false); expect(surface.inert).not.toBe(true);
+  finishWrite(path); await flush();
+  expect(state.tabs[0].location.recoveryPath).toBeUndefined(); expect(state.tabs).toHaveLength(1);
+}), 20000);
+test("a path replacement during capture rejects the checkpoint without replacing recovery", async () => withListener(async () => {
+  state.documents = [{ ...doc, renderer: "xyzrender-external" }];
+  sheetArchive = { version: 1, angle: 45 };
+  writeSheet = async () => {
+    state.documents[0] = { ...state.documents[0], path: "/data/replacement.xyz" };
+    return "/private/popout-scenes/new.xyz";
+  };
+  await expect(checkpointNativeScenesForClose(["tab"])).rejects.toThrow("tab changed");
+  expect(state.tabs[0].location.recoveryPath).toBe(path); expect(nativePopoutBusy()).toBe(false);
+}));
 test("sheet checkpoint separates recovery bytes from original identity", async () => withListener(async () => {
   sheetArchive = { version: 1, items: [] };
   await checkpointNativePopoutForExit();

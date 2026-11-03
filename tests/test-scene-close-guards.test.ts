@@ -4,10 +4,12 @@ let busy = false;
 let pageBusy = false;
 let owner: string | null = null;
 const returning = mock(async () => { owner = null; return false; });
+const checkpoint = mock(async (_ids: string[]) => {});
 mock.module("../apps/desktop/src/components/workspace-panes/native-scene-window", () => ({
   nativePopoutBusy: () => busy,
   isNativePopoutTab: (id: string) => owner === id,
   returnNativePopout: returning,
+  checkpointNativeScenesForClose: checkpoint,
 }));
 mock.module("../apps/desktop/src/components/workspace-panes/native-page-window", () => ({
   nativePageTransferBusy: () => pageBusy,
@@ -18,6 +20,7 @@ const confirm = mock(() => false);
 Object.assign(globalThis, { window: { confirm } });
 
 function fixture() {
+  checkpoint.mockReset(); checkpoint.mockImplementation(async () => {});
   busy = false; pageBusy = false; owner = null; returning.mockClear(); confirm.mockClear(); confirm.mockReturnValue(false);
   const scene = { id: "scene", path: "/scene.pdb", sceneUnsaved: true };
   const current = { id: "current", path: "/current.pdb" };
@@ -33,6 +36,26 @@ function fixture() {
   } as never);
   return { actions, close, source, grid, release };
 }
+
+test("close waits for a fresh scene checkpoint before disposing source or removing the tab", async () => {
+  const f = fixture(); confirm.mockReturnValue(true);
+  let finish!: () => void;
+  checkpoint.mockImplementation(() => new Promise<void>(resolve => { finish = resolve; }));
+  const closing = f.actions.closeTab("history-tab");
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(checkpoint.mock.calls).toEqual([[["history-tab"]]]);
+  expect(f.source).not.toHaveBeenCalled(); expect(f.close).not.toHaveBeenCalled();
+  finish(); await closing;
+  expect(f.source).toHaveBeenCalledTimes(1); expect(f.close).toHaveBeenCalledTimes(1);
+});
+
+test("failed scene checkpoint keeps source and tab open and releases the grid permit", async () => {
+  const f = fixture(); confirm.mockReturnValue(true);
+  checkpoint.mockImplementation(async () => { throw new Error("disk full"); });
+  await f.actions.closeTab("history-tab");
+  expect(f.source).not.toHaveBeenCalled(); expect(f.close).not.toHaveBeenCalled();
+  expect(f.release).toHaveBeenCalledTimes(1);
+});
 
 test("close current tab includes unsaved Back scene; cancellation leaves all runtimes and source prompts untouched", async () => {
   const f = fixture(); await f.actions.closeTab("history-tab");
