@@ -741,3 +741,41 @@ browser acceptance cases.
   dentate or haptic ligands, no relaxation, no Insert into an open document
   (coordination bonds are not part of the graph-edit model), and placement
   says nothing about stability, oxidation or spin state.
+
+### Compact polymer picking (2026-11-03)
+
+At 760 × 720 the expanded builder covered the right side of the repeat unit,
+including the head leaving hydrogen. While a role is armed, the builder now
+shows its title, role buttons and a live picking instruction. Source details,
+parameters, preview and build actions return after picking or toggling the
+active role off. The preview iframe stays mounted while hidden, preserving its
+view when picking is cancelled. Existing role ownership and cancellation are
+unchanged.
+
+Browser-agent-shell on port 56065 (PID 83210, session metadata
+`/tmp/burette-polymer-compact-session.json`) exercised the rebuilt frontend at
+760 × 720. In dark mode, actual canvas clicks assigned C1/H6/C2/H5 and Preview
+produced 38 atoms with four repeats, picked tacticity, hydrogen ends and Relax
+off. Re-arming Head and cancelling with Space restored the roles, parameters
+and 38-atom preview. Light mode confirmed the compact picking layout and
+Space cancellation. Screenshots are `/tmp/burette-polymer-compact-picking-dark.png`,
+`/tmp/burette-polymer-compact-preview-dark.png` and
+`/tmp/burette-polymer-compact-picking-light.png`. The viewport override was reset.
+Typed CLI observe confirmed the source and Mol* viewer ready, recorded in
+`/tmp/burette-polymer-compact-observe.json`.
+
+The browser pass preceded the final iframe-retention adjustment. The extended
+existing component test verifies that arming hides parameters and the same
+preview iframe, cancellation restores both, and subsequent Create still uses
+exactly the cached SDF. `vp run test:polymer-builder` and
+`vp run build:agent-shell` are the focused validation commands, with logs at
+`/tmp/burette-polymer-compact-test.log` and
+`/tmp/burette-polymer-compact-build.log`.
+
+This remains partial acceptance. The first dark C1 click required another click;
+in light mode C1 was not accepted in the attempted sequence. Selection mode was
+off and canvas clicks also moved the camera. The cause of the missed clicks is
+still undiagnosed. Full light picking/build, preview-footer scrolling, 320 px,
+final-build live iframe retention, and the capped relaxed B3 export/reopen
+scenario remain open. No new scientific-convergence or SDF-export claim follows
+from this layout change.

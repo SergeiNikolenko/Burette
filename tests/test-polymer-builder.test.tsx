@@ -156,6 +156,16 @@ test("normal SDF Compute → explicit native role picks → cached preview and o
     const encoded = JSON.parse(dialog()!.querySelector("iframe")!.srcdoc.match(/id="burette-inspector-input">([^]*?)<\/script>/)![1]), preview = await (await fetch(encoded.dataURL)).text();
     expect(requests.filter(request => request.action === "build").length).toBe(before + 1);
     expect(requests.at(-1).options).toMatchObject({ head: 3, tail: 1, headLeaving: 0, tailLeaving: 2, count: 6, tacticity: { kind: "atactic" } });
+    const previewFrame = dialog()!.querySelector("iframe")!;
+    await act(async () => pickButton("Head").click());
+    await wait(() => pickButton("Head").getAttribute("aria-pressed") === "true");
+    expect(dialog()!.querySelector('[aria-label="Repeat count"]')).toBeNull();
+    expect(previewFrame.closest("[hidden]")).not.toBeNull();
+    await act(async () => pickButton("Head").click());
+    await wait(() => pickButton("Head").getAttribute("aria-pressed") === "false");
+    expect(dialog()!.querySelector("iframe")).toBe(previewFrame);
+    expect(previewFrame.closest("[hidden]")).toBeNull();
+    expect(dialog()!.querySelector('[aria-label="Repeat count"]')).not.toBeNull();
     preparationGate = deferred<void>(); const create = button("Create"); await act(async () => { create.click(); create.click(); });
     await wait(() => prepared.length === 1); expect(opened).toEqual([]); await act(async () => preparationGate!.resolve());
     await wait(() => opened.length === 1 && !dialog()); expect(requests.filter(request => request.action === "build").length).toBe(before + 1);
