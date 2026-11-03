@@ -22,8 +22,11 @@
   SMILES. See `tests/fixtures/reorder-stereo/oracle-cases.ts` for the commands.
 - Draft transaction tests cover retaining measurements by atom identity
   across multiple reorders and their inverses, and publication only after a
-  successful source write. A live scene measurement through reorder,
-  Undo and Redo still needs browser acceptance.
+  successful source write. In the packaged browser shell, Edit → Atoms →
+  Move down swapped the first two atoms of the edited butanol. Both scene
+  measurements survived the reload. The dihedral dialog followed its atoms
+  from C1–C2–C4–C5 to C2–C1–C4–C5, then back on Undo and forward on Redo.
+  Each readback was −75.0000000005°.
 
 ## Stage 1: editing a distance from a 3D measurement
 
@@ -75,8 +78,7 @@ component difference was 1.29 × 10⁻¹⁰ Å. The isomeric SMILES and
 The packaged viewer's native compute restriction is separate from graph
 editing. Menu regressions keep the coordinate command hidden on hosted,
 visualization-only, Quick Look, XYZ, docking and multi-pose inputs. Live
-negative cases, transfer through atom reorder, draft recovery and compact
-viewport verification remain open.
+negative cases, draft recovery and compact viewport verification remain open.
 
 ## Stage 9: browser routes for compressed files
 
