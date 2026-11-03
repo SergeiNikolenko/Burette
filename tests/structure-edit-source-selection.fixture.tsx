@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Window as HappyWindow } from "happy-dom";
 import React, { act } from "react";
@@ -217,9 +218,17 @@ test("real queued source, promotion and in-place ACK own the atom selection of t
     const old = activeFrame(),
       oldWindow = old.contentWindow!;
     let captureRequest: string | null = null;
+    let measurementRequest: string | null = null;
     oldWindow.postMessage = (message: unknown) => {
-      const body = (message as { body?: { type?: string; requestId?: string } })?.body;
+      const { source: channel, body } = message as {
+        source?: string;
+        body?: { type?: string; requestId?: string; id?: string; action?: { type?: string } };
+      };
       if (body?.type === "captureRendererViewState") captureRequest = body.requestId!;
+      if (channel === "burette-agent-host" && body?.type === "agent-action" &&
+          body.action?.type === "measurement_preview_capture") {
+        measurementRequest = body.id!;
+      }
     };
     assert.equal(
       controller.ownsCurrentSourceFrame(target, old),
@@ -251,6 +260,30 @@ test("real queued source, promotion and in-place ACK own the atom selection of t
               documentId: target.id,
               viewState: { camera: { position: [0, 0, 10] } },
               viewport: { width: 640, height: 480 },
+            },
+          },
+        }),
+      ),
+    );
+    await until(host, () => measurementRequest, "the measurement capture from the original scene");
+    await act(async () =>
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          source: oldWindow,
+          data: {
+            source: "burette-agent-viewer",
+            body: {
+              type: "agent-action-result",
+              id: measurementRequest,
+              result: {
+                ok: true,
+                result: {
+                  sourceFormat: "sdf",
+                  sourceSha256: createHash("sha256").update(source).digest("hex"),
+                  atomCount: 3,
+                  items: [],
+                },
+              },
             },
           },
         }),
