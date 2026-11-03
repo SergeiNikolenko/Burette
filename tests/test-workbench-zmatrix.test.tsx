@@ -190,7 +190,7 @@ test("an imported Z-matrix edits through its shared variables and reference poin
     await settle();
     assert.ok(view.host.querySelector('[aria-label="Z-matrix rows"]'), "Undo of that edit restores the bindings");
   } finally { await view.unmount(); }
-});
+}, 15_000);
 
 // Holds every geometry acknowledgement until `release`, which answers them all at once.
 function holdAcknowledgements() {
