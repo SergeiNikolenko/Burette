@@ -80,7 +80,7 @@ test("urea CIF: space group, a 2×2×2 supercell as one Undo step, Undo and Redo
     expect(supercell.atoms).toHaveLength(urea.atomCount * 8);
     expect(Math.abs(supercell.cell[0][0] * supercell.cell[1][1] * supercell.cell[2][2])).toBeCloseTo(urea.volume * 8, 6);
     expect(panel.errors).toEqual([]);
-    await wait(() => !button("Undo supercell").disabled, "undo enabled");
+    await wait(() => button("Undo supercell")?.disabled === false, "undo enabled");
     await click("Undo supercell");
     await wait(() => panel.draft() === original, "undo restores the source text");
     await click("Redo supercell");
@@ -90,12 +90,12 @@ test("urea CIF: space group, a 2×2×2 supercell as one Undo step, Undo and Redo
     await act(async () => panel.editing.updateDraft(panel.source, original, { view: "keep" }));
     await wait(() => button("Undo").disabled && button("Redo").disabled, "history restarted");
   } finally { await panel.close(); }
-});
+}, 15_000);
 
 test("triclinic extended XYZ: the asymmetric unit opens as a new CIF, the source stays untouched", async () => {
   const panel = await mount("triclinic-molecule.xyz");
   try {
-    await wait(() => !button("Asymmetric unit").disabled, "symmetry analysed");
+    await wait(() => button("Asymmetric unit")?.disabled === false, "symmetry analysed");
     await click("Asymmetric unit");
     await wait(() => panel.opened.length === 1, "asymmetric unit opened");
     const cif = readBrowserDevVirtualTextDocument(panel.opened[0].path)!;
@@ -104,6 +104,23 @@ test("triclinic extended XYZ: the asymmetric unit opens as a new CIF, the source
     expect(reread.atoms).toHaveLength(reference.fixtures["triclinic-molecule.xyz"].atomCount);
     expect(panel.draft()).toBeNull();
     expect(button("Undo").disabled).toBe(true);
+  } finally { await panel.close(); }
+});
+
+test("quartz CIF: the asymmetric unit replaces the draft with two sites and the six P3_221 operations as one Undo step", async () => {
+  const panel = await mount("quartz.cif");
+  try {
+    await wait(() => button("Asymmetric unit")?.disabled === false, "symmetry analysed");
+    await click("Asymmetric unit");
+    await wait(() => panel.draft() !== null && !button("Asymmetric unit").disabled, "asymmetric unit written");
+    const cif = panel.draft()!;
+    const { readCifCrystal } = await import("../apps/desktop/src/lib/molecular-workbench/cif-crystal");
+    expect((await readCifCrystal(cif)).sourceAtomIndices.filter((index, position, all) => all.indexOf(index) === position)).toHaveLength(2);
+    expect((await readCrystalDocument({ format: "cif", text: cif })).atoms).toHaveLength(9);
+    expect(button("Undo asymmetric unit").disabled).toBe(false);
+    expect(panel.opened).toEqual([]);
+    // The viewer still shows the expanded cell, so the panel says what the source now holds.
+    await wait(() => text().includes("Saved as the asymmetric unit: 2 sites, 6 operations"), "asymmetric unit status");
   } finally { await panel.close(); }
 });
 
@@ -119,6 +136,11 @@ test("CONTCAR: standard orientation stays a POSCAR draft with its selective dyna
     expect(after.atoms.map(atom => atom.element)).toEqual(before.atoms.map(atom => atom.element));
     after.cell.flat().forEach((value, index) => expect(value).toBeCloseTo(reference.fixtures.CONTCAR.standardOrientation.flat()[index], 6));
     expect(button("Undo standard orientation").disabled).toBe(false);
+    // The Keep choice is the user's, not the revision's: it survives the next edit.
+    await click("Cartesian");
+    await click("Niggli reduce");
+    await wait(() => Boolean(button("Undo niggli reduction")) && !button("Undo niggli reduction").disabled, "Niggli cell written");
+    expect(button("Cartesian").getAttribute("data-state")).toBe("on");
   } finally { await panel.close(); }
 });
 

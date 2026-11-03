@@ -37,15 +37,17 @@ test("editing a cell keeps fractional or Cartesian coordinates exactly as pymatg
     });
     // A CIF stores parameters, not orientation, so Cartesian positions are only defined for POSCAR and XYZ.
     if (name.endsWith(".cif")) continue;
+    // Cartesian keeps the shown positions, where every molecule is whole across the old faces.
+    const shown = await readCrystalView(source(name)), shownMatches = matchSites(shown.atoms, shown.cell, expected.sites);
     const keepCartesian = await reread(await edit(name, { kind: "set-cell", cell, policy: "cartesian" }));
     keepCartesian.atoms.forEach((atom, index) => {
-      const shift = matches[index].shift, old = original.cell;
+      const shift = shownMatches[index].shift, old = original.cell;
       const offset = fractional([0, 1, 2].map((axis) => shift[0] * old[0][axis] + shift[1] * old[1][axis] + shift[2] * old[2][axis]) as [number, number, number], cell);
       const ours = fractional([atom.x, atom.y, atom.z], cell);
-      const theirs = expected.editedCell.cartesianPolicyFractional[matches[index].site].map((value, axis) => value + offset[axis]);
+      const theirs = expected.editedCell.cartesianPolicyFractional[shownMatches[index].site].map((value, axis) => value + offset[axis]);
       ours.forEach((value, axis) => expect(value).toBeCloseTo(theirs[axis], 8));
       // POSCAR stores Direct coordinates, so Cartesian positions return to rounding.
-      (["x", "y", "z"] as const).forEach((axis) => expect(atom[axis]).toBeCloseTo(original.atoms[index][axis], 10));
+      (["x", "y", "z"] as const).forEach((axis) => expect(atom[axis]).toBeCloseTo(shown.atoms[index][axis], 10));
     });
   }
 });
@@ -162,6 +164,20 @@ test("changing the cell keeps every periodic bond exactly once, in both coordina
       expect(after.atoms).toHaveLength(before.atoms.length);
     }
   }
+});
+
+test("a Cartesian cell change keeps the shown whole molecules in place and re-analyses the cell", async () => {
+  // The browser acceptance step: urea 2 × 2 × 1, then c lengthened by 0.5 Å along z.
+  const supercell = await edit("urea.cif", { kind: "supercell", repeats: [2, 2, 1] });
+  const before = await readCrystalView(supercell);
+  const cell = before.cell.map((vector, axis) => axis === 2 ? [vector[0], vector[1], vector[2] + 0.5] : vector);
+  const after = await readCrystalView(await runCrystalEdit(engines, supercell, { kind: "set-cell", cell: cell as never, policy: "cartesian" }));
+  expect(after.atoms).toHaveLength(64);
+  after.atoms.forEach((atom, index) => (["x", "y", "z"] as const).forEach((axis) => expect(atom[axis]).toBeCloseTo(before.atoms[index][axis], 6)));
+  const bonds = (view: typeof before) => perceivePeriodicBonds(view.atoms, view.cell).map((bond) => `${bond.a}-${bond.b}-${bond.image}`).sort();
+  expect(bonds(after)).toEqual(bonds(before));
+  // A longer c keeps every operation of P-42_1m on these positions; the analysis says so, not a cached header.
+  expect(analyzeCrystalSymmetry(moyo, after, 0.01).number).toBe(113);
 });
 
 test("the crystal worker runs edits and lists the 530 space-group settings", async () => {

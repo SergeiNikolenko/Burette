@@ -1,4 +1,4 @@
-import { readCrystalDocument, writeCrystalCif, writeCrystalDocument, type CrystalDocument, type CrystalFormat, type CrystalSource } from "./crystal-io";
+import { crystalView, readCrystalDocument, writeCrystalCif, writeCrystalDocument, type CrystalDocument, type CrystalFormat, type CrystalSource } from "./crystal-io";
 import { buildSupercell, cellParametersOf, replaceCell, scaleVolume, signedVolume, standardOrientation, wrapAtoms, type CoordinatePolicy } from "./crystal-operations";
 import { editCrystalSymmetry, fillUnitCell, type MoyoAnalyzer } from "./crystal-symmetry";
 import { cartesianToFractional, type CellParameters } from "./crystal";
@@ -67,7 +67,12 @@ export async function runCrystalEdit(engines: CrystalEngines, source: CrystalSou
   const keepFlags = (atoms: CrystalDocument["atoms"], cell: UnitCell): CrystalDocument => ({ ...document, atoms, cell });
   const replaced = (sites: Pick<CrystalDocument, "atoms" | "cell" | "species" | "labels">): CrystalDocument => ({ ...document, ...sites, selectiveDynamics: null });
   switch (edit.kind) {
-    case "set-cell": { const model = replaceCell(document, edit.cell, edit.policy); next = keepFlags(model.atoms, model.cell); break; }
+    case "set-cell": {
+      // Cartesian positions are the ones on screen: molecules whole across the old cell's faces.
+      const model = replaceCell(edit.policy === "cartesian" ? crystalView(document) : document, edit.cell, edit.policy);
+      next = keepFlags(model.atoms, model.cell);
+      break;
+    }
     case "wrap": { const model = wrapAtoms(document); next = keepFlags(model.atoms, model.cell); break; }
     case "standard-orientation": { const model = standardOrientation(document); next = keepFlags(model.atoms, model.cell); break; }
     case "scale-volume": { const model = scaleVolume(document, edit.volume); next = keepFlags(model.atoms, model.cell); break; }

@@ -51,6 +51,9 @@ export function CrystalPanel({ document, actions }: { document: ViewerDocument |
   const draft = useCrystalDraft(document, (name, text) => openGeneratedStructure(actions, name, "cif", text, undefined, { newDocument: true }));
   const sourceEditing = useSourceEditing();
   const [running, setRunning] = useState<CrystalEdit["kind"] | null>(null);
+  // The cell fields restart from each revision; how the user edits them does not.
+  const [cellMode, setCellMode] = useState<CellMode>("parameters");
+  const [policy, setPolicy] = useState<CoordinatePolicy>("fractional");
   if (draft.reading) return null;
   if (!document || !draft.available) return <div className="dock-content dock-content-empty"><PanelEmptyState icon={<Grid />} title="No crystal selected" /></div>;
   const history = draft.history;
@@ -86,7 +89,8 @@ export function CrystalPanel({ document, actions }: { document: ViewerDocument |
       {draft.error ? <p role="alert" className="workbench-error">{draft.error}</p> : null}
       {current && draft.format ? (
         <>
-          <CellSection key={`cell:${current.id}`} revision={current} disabled={locked} apply={apply} />
+          <CellSection key={`cell:${current.id}`} revision={current} disabled={locked} apply={apply}
+            mode={cellMode} setMode={setCellMode} policy={policy} setPolicy={setPolicy} />
           <TransformSection key={`transform:${current.id}`} revision={current} disabled={locked} apply={apply} />
           <CrystalSpaceGroupSection format={draft.format} revision={current} disabled={locked} apply={apply} />
           <AnalysisSection title="Powder diffraction">
@@ -107,10 +111,13 @@ function AnalysisSection({ title, children }: { title: string; children: ReactNo
   return <CollapsibleSection title={title} open={open} onOpenChange={setOpen}>{open ? children : null}</CollapsibleSection>;
 }
 
-function CellSection({ revision, disabled, apply }: { revision: CrystalRevision; disabled: boolean; apply: (edit: CrystalEdit) => Promise<void> }) {
+type CellMode = "parameters" | "vectors";
+
+function CellSection({ revision, disabled, apply, mode, setMode, policy, setPolicy }: {
+  revision: CrystalRevision; disabled: boolean; apply: (edit: CrystalEdit) => Promise<void>;
+  mode: CellMode; setMode: (mode: CellMode) => void; policy: CoordinatePolicy; setPolicy: (policy: CoordinatePolicy) => void;
+}) {
   const cell = revision.value.cell;
-  const [mode, setMode] = useState<"parameters" | "vectors">("parameters");
-  const [policy, setPolicy] = useState<CoordinatePolicy>("fractional");
   const [parameters, setParameters] = useState<CellParameters>(() => cellParametersOf(cell));
   const [vectors, setVectors] = useState<UnitCell>(cell);
   let next: UnitCell | null = null, problem: string | null = null;
@@ -126,7 +133,7 @@ function CellSection({ revision, disabled, apply }: { revision: CrystalRevision;
   return (
     <CollapsibleSection title="Cell" detail={`${Math.abs(signedVolume(cell)).toFixed(2)} Å³, ${plural(revision.value.atoms.length, "atom")}`}>
       <div className="workbench-form">
-        <SegmentedControl aria-label="Cell as" className="self-start" value={mode} onValueChange={(value) => setMode(value as typeof mode)}>
+        <SegmentedControl aria-label="Cell as" className="self-start" value={mode} onValueChange={(value) => setMode(value as CellMode)}>
           <SegmentedControlItem value="parameters">Parameters</SegmentedControlItem>
           <SegmentedControlItem value="vectors">Vectors</SegmentedControlItem>
         </SegmentedControl>

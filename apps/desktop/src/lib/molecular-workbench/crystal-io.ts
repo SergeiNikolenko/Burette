@@ -99,7 +99,11 @@ export const WHOLE_MOLECULE_ATOM_LIMIT = 20_000;
  * finite molecule is whole and bonds across cell faces are drawn.
  */
 export async function readCrystalView(source: CrystalSource): Promise<CrystalDocument> {
-  const document = await readCrystalDocument(source);
+  return crystalView(await readCrystalDocument(source));
+}
+
+/** The cell of `readCrystalView` for an already read document. */
+export function crystalView(document: CrystalDocument): CrystalDocument {
   return document.atoms.length > WHOLE_MOLECULE_ATOM_LIMIT ? document : { ...document, atoms: wholeMolecules(document.atoms, document.cell).atoms };
 }
 

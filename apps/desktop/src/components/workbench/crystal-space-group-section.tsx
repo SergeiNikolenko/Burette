@@ -98,6 +98,10 @@ export function CrystalSpaceGroupSection({ format, revision, disabled, apply }: 
           <Button type="button" size="xs" variant="secondary" disabled={disabled || !result} onClick={symmetry("symmetrize")}>Symmetrize</Button>
           <Button type="button" size="xs" variant="secondary" disabled={disabled || !result} onClick={symmetry("asymmetric-unit")}>Asymmetric unit</Button>
         </div>
+        {/* The CIF now lists only the distinct sites; the viewer still expands them to the cell. */}
+        {revision.edit === "asymmetric-unit" && result ? (
+          <span role="status" className="workbench-value">{`Saved as the asymmetric unit: ${result.siteCount} ${result.siteCount === 1 ? "site" : "sites"}, ${result.operationCount} ${result.operationCount === 1 ? "operation" : "operations"}`}</span>
+        ) : null}
         <div className="workbench-row">
           <label className="workbench-field crystal-fill-group">
             <span>Fill with</span>

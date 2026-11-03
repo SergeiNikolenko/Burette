@@ -137,9 +137,16 @@ At `3a62c357b`, each script run separately on the Mac. After the merge, at
 
 ## Browser acceptance scripts
 
-Not run: this stage was not allowed to open a browser. Run each in the Codex
-in-app browser against a `vite-dev` agent shell, in light and dark theme, and
-once with the window at 900 px wide and the right dock at its minimum width.
+Run each in the Codex in-app browser against a `vite-dev` agent shell, in
+light and dark theme, and once with the window at 900 px wide and the right dock
+at its minimum width.
+
+On the integration branch, the in-app Browser opened the rutile fixture and
+Show crystal tools from the command palette. Applying a = 5 Å with Keep
+Fractional gave 67.97 Å³, 6 atoms and Pnnm (58). Undo restored 62.45 Å³ and
+Redo reapplied the cell change. With Vectors and Cartesian selected, Wrap atoms
+created its own Undo step and retained both settings. The saved copy was not
+reopened in this run.
 
 Start: `BURETTE_AGENT_SHELL_FORCE_VP=1 bun scripts/burette-agent.mjs open --mode browser-agent-shell --no-launch <fixture>`
 and open the returned `url`. Fixtures are in `tests/fixtures/crystals/` (CC0, see its
@@ -157,7 +164,8 @@ across the face, the cell box is shown.
 
 **B2. Cell edit, undo, save, reopen.** Open `rutile.cif`, Compute → Show crystal
 tools. Cell: Parameters, set a, Å = 5.0000, Keep Fractional, Apply. Expected: the
-cell grows along a, the Cell header reads 68.00 Å³, 6 atoms, the Undo button is
+cell grows along a, the Cell header reads 67.97 Å³ (5 × 4.594 × 2.959), 6 atoms,
+the Undo button is
 named "Undo cell change", the source text tab shows the edited CIF. Undo: the
 original text and P4_2/mnm (136) return. Redo, Save, reopen the saved CIF:
 a = 5.0000 Å, 6 atoms, Space group Pnnm (58). Error: type 0 into a and leave the
