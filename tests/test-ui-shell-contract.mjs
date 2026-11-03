@@ -1172,7 +1172,7 @@ assert.match(app, /useAppDirtyGridDocuments\(\)/);
 assert.doesNotMatch(app, /setDirtyGridDocuments/);
 assert.match(appGridControlMessagesHook, /updateDirtyGridDocument\(documentId, body\.dirty === true\)/);
 assert.match(appGridFileActionsHook, /forgetDirtyGridDocument\(documentId\)/);
-assert.match(appShellActionsHook, /clearDirtyGridDocuments\(\);/);
+assert.match(appShellActionsHook, /forgetDirtyGridDocuments\(documentIds\);/);
 assert.match(appDirtyGridHook, /useState<Set<string>>\(\(\) => new Set\(\)\)/);
 assert.match(appDirtyGridHook, /const dirtyGridDocumentsRef = useRef\(dirtyGridDocuments\)/);
 assert.match(appDirtyGridHook, /dirtyGridDocumentsRef\.current = next;\s*setDirtyGridDocuments\(next\)/s);
@@ -1186,7 +1186,7 @@ assert.match(appDirtyGridHook, /transition\.pendingDocumentIds/);
 // Closing must not be gated on in-flight mutations: an unbounded wait here used
 // to strand the window with the grid overlay up and every later close refused.
 assert.doesNotMatch(appShellActionsHook, /waitForPending/);
-assert.match(appShellActionsHook, /const completeClose = \(permit: WindowCloseMutationPermit, close: \(\) => void\) => \{\s*try \{\s*if \(!nativePopoutBusy\(\)\) close\(\);\s*\} finally \{\s*permit\.release\(\);/s);
+assert.match(appShellActionsHook, /const completeClose = \(permit: WindowCloseMutationPermit, close: \(\) => void\) => \{\s*try \{\s*if \(!nativeWindowTransferBusy\(\)\) close\(\);\s*\} finally \{\s*permit\.release\(\);/s);
 assert.match(appGridWorkflowsHook, /if \(result\.recordsAppended > 0\) updateDirtyGridDocument\(targetDocument\.id, true\);\s*notifyGridRecordsAppended\(targetDocument\.id, result\)/s);
 assert.match(appKetcherActionsHook, /updateDirtyGridDocument\(request\.documentId, true\);\s*iframe\.contentWindow\.postMessage/s);
 assert.match(appKetcherActionsHook, /isGridDocumentCloseTransitionActive\(request\.documentId\)/);
@@ -1306,7 +1306,7 @@ assert.match(appStartupEffectsHook, /dockingRequestForDrop\(paths\[0\], paths\.s
 assert.match(appStartupEffectsHook, /await openDockingDocument\(trajectoryDockingRequest\.receptorPath, trajectoryDockingRequest\.ligandPaths\)/);
 assert.match(appStartupEffectsHook, /openedPersistedTabsRef/);
 assert.match(appStartupEffectsHook, /invoke<string\[\]>\("existing_paths", \{ paths \}\)/);
-assert.match(appStartupEffectsHook, /pruneMissingFileTabs\(paths, existingPaths\)/);
+assert.match(appStartupEffectsHook, /pruneMissingFileTabs\(paths\.map\(logicalPath\), existingPaths\.map\(logicalPath\)\)/);
 assert.match(appStartupEffectsHook, /await openPaths\(existingPaths, \{ preferredPath, preserveActiveTab: true \}\)/);
 assert.match(app, /useAppOpenDropController\(\{/);
 assert.equal((appOpenDropControllerHook.match(/useOpenEvents\(/g) || []).length, 1);
@@ -1420,7 +1420,8 @@ assert.match(appStartupEffectsHook, /function uniqueParentDirectories\(paths: st
 assert.match(appStartupEffectsHook, /function commonParentDirectory\(paths: string\[\]\)/);
 assert.match(appStartupEffectsHook, /invoke<string\[\]>\("existing_paths", \{ paths \}\)/);
 assert.match(openEventsHook, /return startupOpenSettled/);
-assert.match(openEventsHook, /openPendingDocuments\(\{ replace: true \}, true\)/);
+assert.match(openEventsHook, /openPendingDocuments\(true\)/);
+assert.doesNotMatch(openEventsHook, /replace: true/);
 assert.match(appLayout, /from "\.\/editor-area"/);
 assert.match(appLayout, /from "\.\/editor-area\/editor-tabs"/);
 assert.match(appLayout, /from "\.\/sidebar"/);
@@ -3799,7 +3800,7 @@ assert.match(sidebarSurface, /pinnedItems/);
 assert.match(sidebarSurface, /state\.projectsOpen/);
 assert.match(sidebarSurface, /actions\.toggleProjectsOpen/);
 assert.match(sidebarSurface, /actions\.setExpandedProjectIds/);
-assert.match(sidebarSurface, /actions\.openRecentStructure/);
+assert.match(sidebarSurface, /openSidebarFile\(item\.path, permanent/);
 assert.match(sidebarSurface, /from "@\/components\/ui\/app-icon-data"/);
 assert.match(sidebarSurface, /from "@hugeicons\/react"/);
 assert.doesNotMatch(sidebarSurface, /from "\.\.\/system-icon"/);
@@ -4343,7 +4344,7 @@ assert.match(appShellNavigationActionsHook, /openSettingsSectionTab\(section\)/)
 assert.match(appShellNavigationActionsHook, /activateLastNonSettingsTab\(\)/);
 assert.match(appOpenActionsHook, /await invoke<string\[]>\("pick_open_targets"\)/);
 assert.match(appOpenActionsHook, /await pickWebDemoFiles\(\)/);
-assert.match(app, /<WindowTitle activeDocument=\{activeDocument\} \/>/);
+assert.match(app, /<WindowTitle state=\{state\} \/>/);
 assert.match(app, /useAppViewerRuntimeRefs\(\)/);
 assert.match(appViewerRuntimeRefsHook, /const pendingViewerReloadOptionsRef = useRef<ViewerReloadOptions \| null>\(null\)/);
 assert.match(appViewerRuntimeRefsHook, /const pendingViewerReloadDocumentIdRef = useRef<string \| null>\(null\)/);
@@ -4356,7 +4357,7 @@ assert.doesNotMatch(app, /const reloadXyzrenderDocument = useCallback/);
 assert.doesNotMatch(app, /source: "burette-host"[\s\S]*type: "setXyzrenderControls"/);
 assert.match(appViewerReloadActionsHook, /export function useAppViewerReloadActions\(\{/);
 assert.match(appViewerReloadActionsHook, /const reloadActive = useCallback/);
-assert.match(appViewerReloadActionsHook, /await openDocuments\(\[targetDocument\.path\], reloadOptions, preferences, \{ inActiveTab: true \}\)/);
+assert.match(appViewerReloadActionsHook, /await openDocuments\(\[targetDocument\.path\], reloadOptions, preferences, \{ inActiveTab: true, fromSource: !reloadOptions \}\)/);
 assert.match(appViewerReloadActionsHook, /source: "burette-host"[\s\S]*type: "setXyzrenderControls"/);
 assert.match(appViewerReloadActionsHook, /const canPatchXyzrenderIframe = iframe\?\.dataset\.renderer === "xyzrender-external"/);
 assert.match(appViewerReloadActionsHook, /\.buret-external-artifact-root, \.buret-xyzrender-sheet-item-base, \.buret-external-artifact-object/);
@@ -4455,7 +4456,7 @@ assert.match(appMolstarContextMessagesHook, /void openDockingDocument\(targetDoc
 assert.doesNotMatch(app, /const targetDocument = \(pendingViewerReloadDocumentIdRef\.current/);
 assert.match(appViewerReloadActionsHook, /const targetDocument = \(pendingViewerReloadDocumentIdRef\.current/);
 assert.match(appViewerReloadActionsHook, /const reloadOptions = pendingViewerReloadOptionsRef\.current \?\? undefined/);
-assert.match(appViewerReloadActionsHook, /await openDocuments\(\[targetDocument\.path\], reloadOptions, preferences, \{ inActiveTab: true \}\)/);
+assert.match(appViewerReloadActionsHook, /await openDocuments\(\[targetDocument\.path\], reloadOptions, preferences, \{ inActiveTab: true, fromSource: !reloadOptions \}\)/);
 assert.match(app, /from "\.\/hooks\/use-app-drop-actions"/);
 assert.match(app, /useAppDropActions\(\{/);
 assert.match(appDropActionsHook, /from "\.\.\/components\/native-context-menu"/);
@@ -7119,11 +7120,8 @@ assert.match(appNativeMenuHook, /hasActiveFile: activeDocumentFileBacked \|\| ac
 assert.match(appNativeMenuHook, /canExportExternalPreview: activeDocument\?\.renderer === "xyzrender-external"/);
 assert.match(appNativeMenuHook, /getCurrentWindow\(\)\.onFocusChanged/);
 assert.match(appNativeMenuHook, /getCurrentWindow\(\)\.onCloseRequested/);
-// The close button and File > Close Window share one coordinator: with other
-// windows open it closes just this window through close_workspace_window;
-// the last window keeps quitting through request_app_quit, whose Rust flow
-// runs the unsaved-changes preflight (a plain window close left a windowless
-// process alive that recreated a window, so the button did nothing).
+// The close button and File > Close Window share one dirty-state coordinator,
+// including the last window. macOS keeps the app running for Dock reopening.
 assert.match(
   appNativeMenuHook,
   /onCloseRequested\(\(event\) => \{[\s\S]*event\.preventDefault\(\);\s*void closeCurrentWindow\(\);/s,
@@ -7131,7 +7129,7 @@ assert.match(
 assert.match(appNativeMenuHook, /case "file\.close-window":\s*await closeCurrentWindow\(\);/s);
 assert.match(
   appNativeMenuHook,
-  /const closeCurrentWindow = useCallback\(async \(\) => \{[\s\S]*if \(windowCount <= 1\) \{\s*void invoke\("request_app_quit"\)[\s\S]*invoke<boolean>\("close_workspace_window"\)/s,
+  /const closeCurrentWindow = useCallback\(async \(\) => \{[\s\S]*decideWindowClose\([\s\S]*invoke<boolean>\("close_workspace_window"\)/s,
 );
 assert.doesNotMatch(appNativeMenuHook, /getCurrentWindow\(\)\.close\(\)/);
 assert.doesNotMatch(appNativeMenuHook, /confirmCloseWindowRef/);
@@ -7145,7 +7143,7 @@ assert.match(appNativeMenuHook, /invoke<string>\("register_exit_preflight_listen
 assert.match(appNativeMenuHook, /invoke\("unregister_exit_preflight_listener", \{ registrationId/);
 assert.match(appNativeMenuHook, /invoke\("respond_to_exit_preflight"/);
 assert.match(appNativeMenuHook, /const barrier = sealWindowMutations\(\)/);
-assert.match(appNativeMenuHook, /closeTransitionActive: snapshot\.closeTransitionActive\s*\|\| checkpointFailed\s*\|\| barrier\.closeTransitionActive\s*\|\| barrier\.pendingCount > 0/);
+assert.match(appNativeMenuHook, /closeTransitionActive: snapshot\.closeTransitionActive\s*\|\| transferBusy\s*\|\| checkpointFailed\s*\|\| barrier\.closeTransitionActive\s*\|\| barrier\.pendingCount > 0/);
 assert.match(appNativeMenuHook, /dirty: snapshot\.dirty \|\| barrier\.pendingCount > 0/);
 assert.match(appNativeMenuHook, /revision: snapshot\.revision/);
 assert.match(appNativeMenuHook, /listen\(EXIT_TRANSITION_RESUMED_EVENT, resumeWindowMutations\)/);
@@ -7621,7 +7619,7 @@ assert.doesNotMatch(editorTabs, /id: "show-tab-document-metadata"/);
 assert.match(editorTabs, /id: "reveal-tab-text-file"/);
 assert.match(editorTabs, /id: "copy-tab-text-file-path"/);
 assert.doesNotMatch(editorTabs, /id: "show-tab-text-file-metadata"/);
-assert.match(windowTitle, /activeDocument\.path/);
+assert.match(windowTitle, /pageKind\(tab\.location\)\.title\(tab\.location, state\)/);
 assert.match(app, /from "\.\/hooks\/use-app-active-text-document"/);
 assert.match(app, /const activeTextDocument = useAppActiveTextDocument\(\{ activeTab, textDocuments \}\)/);
 assert.doesNotMatch(app, /const activeTextDocument = useMemo/);
@@ -8595,7 +8593,9 @@ assert.match(editorTabs, /const handleEmptyTabStripDrop = useCallback/);
 assert.match(editorTabs, /shellDropActionChoices\(payload, \{ kind: "workspace" \}, \{ kind: "tab" \}\)/);
 assert.match(editorTabs, /runShellDropActionChoices\(actions, payload, choices, \{ x: event\.clientX, y: event\.clientY \}\)/);
 assert.match(editorTabs, /onKeyDown=\{handleTabListKeyDown\}/);
-assert.match(editorTabs, /draggable=\{!readOnly\}\s+tabIndex=/);
+assert.match(editorTabs, /draggable=\{false\}\s+tabIndex=/);
+assert.match(editorTabs, /event\.currentTarget\.draggable = event\.altKey/);
+assert.match(editorTabs, /button\.setPointerCapture\(event\.pointerId\)/);
 assert.match(editorTabs, /startMouseTabReorder\(tab\.id, true, event\)/);
 assert.match(editorTabs, /event\.dataTransfer\.setData\(TAB_DRAG_MIME, tab\.id\)/);
 assert.match(editorTabs, /paths: tabPath \? \[tabPath\] : \[\]/);

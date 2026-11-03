@@ -93,6 +93,33 @@ source tab. Resizing, Files/Info remounts, and opening an already mounted Files
 view do not repeat the transfer. File formats and ordinary file selection are
 unchanged; native popout scene transfer remains a separate workflow.
 
+Native scene moves use a prepared/commit acknowledgement exchange. The source
+stays open until the destination confirms commitment; the destination stages its
+view inert and locks transferred source drafts until commit. Cancellation removes
+only the tab introduced by that transfer. A destination already displaying the
+same logical source rejects the move rather than replacing that document. If
+commit acknowledgement is lost, both copies remain available rather than retiring
+an unconfirmed source. Parent ownership is tracked per transferred tab.
+
+Scene recovery archives have a separate `recoveryPath`; document paths, native
+source registrations and recent-file identity remain tied to the original source.
+File-tab persistence retains the recovery path, and startup checks the recovery
+artifact before reopening its logical source. Exit checkpoints all recovery-backed
+scenes, including scenes restored after relaunch without a live parent window.
+Checkpoint files remain durable recovery data and must not be deleted while a
+saved tab references them.
+
+Successful source saves retire the recovery reference, including tab history.
+Explicit Reload reads the original source and retires recovery only after that
+read succeeds; renderer-only rebuilds continue using the checkpoint.
+
+Page and grid moves use the same offer, ready, commit and committed phases.
+The destination remains inert until commit; cancellation removes only newly
+introduced tabs. Grid snapshots carry edits, undo/redo and view state within a
+1.5 MiB limit. Their baseline fingerprint comes from the source window's loaded
+database and must match the destination's loaded data before restoration.
+Failed or unconfirmed moves keep the source available.
+
 
 The desktop shell is a compact molecule workspace:
 
@@ -100,6 +127,9 @@ The desktop shell is a compact molecule workspace:
 - tab strip for active structure pages and settings
 - command palette for app actions
 - native macOS menu bar with stateful, context-dependent items
+- Closing the last macOS workspace keeps the app running. Dock activation
+  restores the last available workspace or creates one, even if only a preview
+  window remains. Window close checks that window's edits; Cmd+Q checks all windows.
 - macOS Dock menu for New Workspace, Open Structure, up to seven recent
   documents, Resume Last Session, Open from Clipboard, and Settings. Commands
   reuse the File/App menu handlers; recent entries refresh when the Dock menu
@@ -110,7 +140,19 @@ The desktop shell is a compact molecule workspace:
 - native context menus for sidebar files, folders, projects, and sidebar menu buttons;
   editor tabs also use the native menu adapter. Pinned tabs persist in workspace
   sessions, stay at the left edge, and survive Close Other Tabs / Close Tabs to
-  the Right. Explicit Close Tab and Close All Tabs remain available.
+  the Right and Close All Tabs. Explicit Close Tab can close a pinned tab.
+  File/command-palette Close All and the tab menu both use the guarded batch
+  close path and retain closed tabs in reopen history. Internal workspace/widget
+  resets still clear the complete session without adding user close history.
+  Reopen Closed Tab restores strip position, pin, pane, label, navigation history,
+  and supported renderer choice. File contents reload from disk; this is not an
+  undo of discarded document edits. Reopen requests run sequentially and failed
+  loads remain retryable in the bounded in-memory history.
+  Single file selection in the sidebar opens a temporary preview, one per pane.
+  Enter or double-click makes it permanent; edited previews are promoted before
+  replacement. Temporary previews are omitted from saved sessions and closed-tab
+  history. macOS tab cycling uses Command-Shift-brackets in the native menu,
+  with Control-Tab available as an alternate in the shell.
   macOS draws the pinned OpenAI Apps SDK UI icons, separators, and submenus in AppKit through
   `popup_macos_context_menu`, including the live controls some menus carry:
   number fields become slider rows, swatches a scrolling colour carousel with an
@@ -440,7 +482,7 @@ for chemical perception); the native converter check is
 
 ### Detached structure previews
 
-On desktop, **Pop out** for a file opens an independent `workspace-preview-*` native window. It can move between displays and appears across macOS workspaces; it starts compact, above normal windows, with the original compact 36 px pane header and the viewer. The header provides Close, Minimize, Return to main window and Expand controls with native dragging. Returning transfers the current scene to an existing normal workspace (or creates one if needed) before closing the preview. Workspace tabs, browser navigation, sidebars and guides are not mounted in this window. Files offer **Open → Popout**, and a single molecule selected in Mol* offers **Open in → Popout**. Geometry and restoration use the existing workspace-window registry. Mol* viewers export the live scene (including camera and representations) to a bounded 24 MiB MOLJ snapshot in the application cache before opening the window. Opening another molecule reuses the existing preview webview, with prior documents available from the compact title menu. Selected-molecule popouts persist the validated source directly and prepare it only in the destination, avoiding construction of an unused viewer in the originating window. Transferred scenes retain their canvas presentation and fit the destination viewport while preserving orientation. Preview windows use a transparent borderless native surface without the workspace backdrop. The title text is a native drag region, with the document menu restricted to its arrow. Preview windows with valid UUIDs participate in desktop compute ownership. Only the main window consumes a process startup agent session; secondary windows accept explicit session attachments. Frontend status errors persist in a 256 KiB application log with one bounded previous copy and at most 20 bounded recent errors in memory. The original tab remains available. Non-Mol* files use the existing path-based open contract; non-file pages and browser previews retain the embedded pane.
+On desktop, **Pop out** for a file opens an independent `workspace-preview-*` native window. It can move between displays and appears across macOS workspaces; it starts compact, above normal windows, with the original compact 36 px pane header and the viewer. The header provides Close, Minimize, Return to main window and Expand controls with native dragging. Returning transfers the current scene to an existing normal workspace (or creates one if needed) before closing the preview. Workspace tabs, browser navigation, sidebars and guides are not mounted in this window. Files offer **Open → Popout**, and a single molecule selected in Mol* offers **Open in → Popout**. Preview windows are excluded from normal workspace restoration. Mol* viewers export the live scene (including camera and representations) to a bounded 24 MiB MOLJ snapshot in the application cache before opening the window. Opening another molecule reuses the existing preview webview, with prior documents available from the compact title menu. Selected-molecule popouts persist the validated source directly and prepare it only in the destination, avoiding construction of an unused viewer in the originating window. Transferred scenes retain their canvas presentation and fit the destination viewport while preserving orientation. Preview windows use a transparent borderless native surface without the workspace backdrop. The title text is a native drag region, with the document menu restricted to its arrow. Preview windows with valid UUIDs participate in desktop compute ownership. The workspace selected for a process startup consumes its queued agent session; other windows accept explicit session attachments. Frontend status errors persist in a 256 KiB application log with one bounded previous copy and at most 20 bounded recent errors in memory. The original tab remains available. Non-Mol* files use the existing path-based open contract; non-file pages and browser previews retain the embedded pane.
 
 `open_new_workspace_window` accepts optional `presentation` (`workspace` by default, or `preview`) and an optional `scene` object (`title`, `dataBase64`). A scene requires preview presentation and no file paths. Snapshot names and payloads are validated before writing; existing callers that supply only paths retain their behavior.
 

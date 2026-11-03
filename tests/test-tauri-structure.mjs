@@ -1371,10 +1371,17 @@ for (const [id, accelerator] of [
   ['view.zoom-actual', 'CmdOrCtrl+0'],
   ['view.zoom-in', 'CmdOrCtrl+='],
   ['view.zoom-out', 'CmdOrCtrl+-'],
-  ['window.previous-tab', 'Ctrl+Shift+Tab'],
-  ['window.next-tab', 'Ctrl+Tab'],
 ]) {
   assertMenuItemAccelerator(nativeMenuSource, id, accelerator);
+}
+for (const [id, mac, other] of [
+  ['window.previous-tab', 'CmdOrCtrl+Shift+[', 'Ctrl+Shift+Tab'],
+  ['window.next-tab', 'CmdOrCtrl+Shift+]', 'Ctrl+Tab'],
+]) {
+  const start = nativeMenuSource.indexOf(`with_id("${id}"`);
+  const item = nativeMenuSource.slice(start, nativeMenuSource.indexOf('.build(app)', start));
+  const compact = item.replace(/\s+/g, ' ');
+  assert.ok(compact.includes(`.accelerator(if cfg!(target_os = "macos") { "${mac}" } else { "${other}" })`), `${id} platform accelerator`);
 }
 assert.match(menuEvents, /crate::zoom::handle_menu_command/);
 // Settings > Keyboard shortcuts: every customizable menu row in the shared
@@ -1475,7 +1482,7 @@ assert.match(nativeMenuSource, /emit_command_to_window\(&window, "file\.open-rec
 assert.match(nativeMenuSource, /PendingNativeMenuCommands/);
 assert.match(nativeMenuSource, /MAX_PENDING_COMMANDS_PER_WINDOW/);
 assert.match(nativeMenuSource, /pending\.drain\(window\.label\(\)\)/);
-assert.match(nativeMenuSource, /window\.emit\(MENU_COMMAND_EVENT, \(\)\)/);
+assert.match(nativeMenuSource, /emit_to\(window\.label\(\), MENU_COMMAND_EVENT, \(\)\)/);
 assert.doesNotMatch(nativeMenuSource, /strictly_focused_window/);
 assert.doesNotMatch(nativeMenuSource, /DirtyWindowRegistry/);
 assert.match(nativeMenuSource, /ExitPreflightCoordinator/);
