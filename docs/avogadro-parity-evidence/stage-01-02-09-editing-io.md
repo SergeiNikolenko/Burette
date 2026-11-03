@@ -112,10 +112,48 @@ attempt, so the visible draft was not evidence of recovery.
   those atom/bond counts and zero displacement of all three heavy atoms.
   Download → Original after editing retained the exact original gzip bytes,
   SHA-256 `47794e604a5cfda4e3548f52fa30729a963129fdbc017cb8a49eba462f79290d`.
-- Remaining browser scenarios include drop, XZ/Zstandard edited-copy reopening
-  and reload of an IndexedDB import. The dirty-document reload attempt retained
+- Remaining browser scenarios include drop and reload of an IndexedDB import.
+  The dirty-document reload attempt retained
   the same top-level loader ID, so it provides no recovery evidence. Native
   acceptance remains separate.
+
+### XZ and Zstandard edited-copy reopening, 2026-11-03
+
+The `prebuilt-static` shell at `767cb673c` opened
+`tests/fixtures/compressed/caffeine.sdf.xz` with 24 atoms and 25 bonds.
+In Edit, select O1, double-click its X field, enter `0.5` and press Enter.
+After the row reports 0.500 Å, Download → Compressed writes `caffeine.sdf.xz`.
+Cmd+O opens that downloaded file as a separate document. Opening its Edit
+panel reports O1 at (0.500, 2.569, 0.001) Å and 24 atoms/25 bonds.
+
+For Zstandard, decompress the same original fixture with `xz -dc` and compress
+it with the independent `zstd` CLI. Import the resulting
+`burette-parity-caffeine.sdf.zst` through Cmd+O, change O1 X to `0.6` and choose
+Download → Compressed with Enter. Reopen the downloaded file through Cmd+O.
+The imported copy receives the collision-safe name
+`burette-parity-caffeine (2).sdf.zst`; its Edit panel reports O1 X = 0.600 Å,
+24 atoms and 25 bonds. Browser error logs were empty.
+
+Python LZMA and the independent `zstd -dc` CLI decoded the downloads. RDKit
+confirmed unchanged isomeric SMILES and all original SDF properties. Each
+copy changed only atom 0, axis X, from 0.47 Å to its requested value, with no
+other displacement above 1e-8 Å. Both copies added `BURETTE_METADATA_V1` with
+24 atom identities. The decoded SHA-256 hashes are
+`e85be636640d828184d825ba21ab0b6520b039218c7d46bfc6352f22f1518f7f`
+(XZ) and `ea6d6885c5f8e475808a7c15da75cbef0b9bb6ac04807914b2d81c7b27301f24`
+(Zstandard).
+
+Dark 1280 × 720 screenshots show the complete reopened molecules and coordinate
+tables. Light-theme checks exposed remaining layout problems: at 760 × 720,
+the XZ molecule is clipped on the right with Edit open after resizing; at
+320 × 720, the reopened Zstandard coordinate table is readable, but its
+Atoms/Bonds/Cartesian selector is partially covered. These remain acceptance
+gaps. Local artifacts are `burette-compressed-roundtrip-oracle.json`,
+`burette-xz-reopened-dark.png`, `burette-xz-reopened-light-760.png`,
+`burette-zstd-reopened-dark.png` and `burette-zstd-reopened-light-320.png`.
+This covers compressed SDF coordinate edits and picker reopening. Drop,
+crash/reload recovery, broader format coverage and native counterparts remain
+open.
 
 ### Hydrogen source-pose preservation, 2026-11-03
 
