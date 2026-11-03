@@ -5148,7 +5148,7 @@ assert.match(previewViewer, /function setGenerate3DPending\(pending, mode = 'sin
 assert.match(previewViewer, /function applyGenerate3DPendingState\(button\)/);
 assert.match(previewViewer, /requestMolecularCompute\(selectedOperation, \{ mode \}\)/);
 assert.match(previewViewer, /function canGenerate3DConformerFromConfig\(config, renderer\)/);
-assert.match(previewViewer, /return renderer === 'molstar' && \['sdf', 'sd', 'mol'\]\.includes\(format\)/);
+assert.match(previewViewer, /renderer === 'molstar' && hasExplicitMolecularGraphFormat\(config\)/);
 assert.match(previewViewer, /function isSdfPoseConformerSet\(config\)/);
 assert.match(previewViewer, /activeMolstarPrepared\?\.sdfPoseRecordCount/);
 assert.doesNotMatch(previewViewer, /3D conformer generation is disabled for SDF pose\/conformer sets/);

@@ -18,15 +18,20 @@ const streamed = [];
 const undo = [];
 const nodes = {
   'label-ref': { label: 'Label', hidden: false, measurementEditable: true },
+  'angle-ref': { label: 'Angle', hidden: false, measurementEditable: true },
   'polymer-ref': { label: 'Polymer', hidden: false },
 };
 const measurementTargets = {
+  'angle-ref': [{ obj: { label: 'Angle' }, transform: { ref: 'angle-repr', params: {} } }],
   'label-ref': [{ transform: { ref: 'label-repr', params: {
     customText: '', textColor: 0x000000, textSize: 0.5, borderWidth: 0.2,
   } } }],
 };
 const deps = {
-  activeConfig: { appViewer: true },
+  activeConfig: { appViewer: true, format: 'sdf' },
+  normalizeFormat: value => String(value ?? '').toLowerCase(),
+  isSdfPoseConformerSet: config => config.trajectoryFrameCount > 1,
+  requestMeasurementCoordinate: ref => actions.push(['coordinate', ref]),
   document: {
     body: { classList: { contains: () => false } },
   },
@@ -53,6 +58,9 @@ const menu = new Function(...Object.keys(deps), `
   ${fieldsTable}
   ${functionBody('sceneTreeMeasurementParam')}
   ${functionBody('sceneTreeMeasurementValue')}
+  ${functionBody('isVisualizationOnly')}
+  ${functionBody('hasExplicitMolecularGraphFormat')}
+  ${functionBody('canEditMeasurementCoordinates')}
   ${functionBody('showNativeMeasurementMenu')}
   ${functionBody('handleSceneTreeNativeMenuResult')}
   return { showNativeMeasurementMenu, handleSceneTreeNativeMenuResult };
@@ -99,6 +107,21 @@ assert.equal(posted.length, 1);
 assert.equal(menu.showNativeMeasurementMenu('label-ref', { clientX: 20, clientY: 30 }), true);
 reply(posted[1], 'unsupported');
 assert.deepEqual(actions, [['settings', 'label-ref', 20, 30]]);
+actions.length = 0;
+deps.activeConfig.nativeMolecularComputeUnavailable = true;
+assert.equal(menu.showNativeMeasurementMenu('angle-ref', { clientX: 12, clientY: 24 }), true);
+const angle = posted.at(-1);
+assert.equal(angle.items.find(item => item.id === 'measurement-coordinate')?.text, 'Set angle…');
+reply(angle, 'select', 'measurement-coordinate');
+assert.deepEqual(actions, [['coordinate', 'angle-ref']]);
+for (const config of [{ visualizationOnly: true }, { quickLookViewer: true }, { hostedMcpWidgetBootstrap: true },
+  { format: 'xyz' }, { trajectoryFrameCount: 2 }, { docking: true }]) {
+  Object.assign(deps.activeConfig, config);
+  assert.equal(menu.showNativeMeasurementMenu('angle-ref', { clientX: 12, clientY: 24 }), true);
+  assert.equal(posted.at(-1).items.some(item => item.id === 'measurement-coordinate'), false);
+  for (const key of Object.keys(config)) delete deps.activeConfig[key];
+  deps.activeConfig.format = 'sdf';
+}
 deps.activeConfig.appViewer = false;
 assert.equal(menu.showNativeMeasurementMenu('label-ref', { clientX: 0, clientY: 0 }), false);
 console.log('Scene tree native menu transport and measurement settings passed');

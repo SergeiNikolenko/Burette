@@ -49,6 +49,35 @@
   dihedral still need browser gestures. This run did not test package
   surfaces or a live reorder of measured atoms.
 
+## Stage 1: angle and dihedral in the packaged browser shell
+
+In the prebuilt static shell (Codex in-app browser, light theme, 1280 × 720),
+open the 15-atom butanol fixture, choose Ball & Stick and set Picking level
+to Atom. Right-click the molecule and use Analyze → Measure angle. Pick
+C4–C2–C1 and open Scene tree → Edit Angle settings → Set angle. The initial
+value was 114.172078759°. Enter 112 and Apply. The scene displayed 112.00°
+and the restored measurement opened at 112.000000002°.
+
+Use Analyze → Measure dihedral and pick C1–C2–C4–C5. In Set dihedral, type
+35° and Cancel. Reopening showed the original −60.0011198951°. Applying −60°
+read back −59.9999999993°, and applying −75° read back −75.0000000005°.
+Edit → Undo restored −59.9999999993°, and Redo restored −75.0000000005°.
+
+Edit → Save copy downloaded the revised SDF (SHA-256
+`82725f7ed4445f4514c636265e5a90474b6028b4494d3ed419faaa4839f7b8b9`).
+The ordinary file picker reopened it in a separate 3D tab. RDKit 2026.09.1
+replayed `SetAngleDeg(3, 1, 0, 112)` and
+`SetDihedralDeg(0, 1, 3, 4, -75)` from the input. The largest coordinate
+component difference was 1.29 × 10⁻¹⁰ Å. The isomeric SMILES and
+`SOURCE_NOTE` survived. The original SDF remained byte-identical (SHA-256
+`9096c1c116aafe190d4f7bfd07ef94d6e81df4b378a7437963738ff92d749548`).
+
+The packaged viewer's native compute restriction is separate from graph
+editing. Menu regressions keep the coordinate command hidden on hosted,
+visualization-only, Quick Look, XYZ, docking and multi-pose inputs. Live
+negative cases, transfer through atom reorder, draft recovery and compact
+viewport verification remain open.
+
 ## Stage 9: browser routes for compressed files
 
 - In a fresh `vite-dev` shell in the Codex in-app browser on 2026-11-03,

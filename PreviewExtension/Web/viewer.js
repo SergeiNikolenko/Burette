@@ -3396,7 +3396,7 @@
     const config = activeConfig || window.BuretteConfig || {};
     // Widgets, Finder Quick Look and the mobile preview have no compute host.
     // An SDF document alone does not imply that this transport is available.
-    if (config.hostedMcpWidgetBootstrap === true || config.visualizationOnly === true || config.quickLookViewer === true) return;
+    if (config.nativeMolecularComputeUnavailable === true || isVisualizationOnly(config)) return;
     const format = normalizeFormat(config.sourceExtension || config.molstarFormat || config.format);
     if (!['sdf', 'sd', 'mol'].includes(format)) {
       setStatus('Native molecular compute supports SDF and MOL structures in Molstar.', 'error');
@@ -3428,9 +3428,16 @@
   }
 
   function canGenerate3DConformerFromConfig(config, renderer) {
-    if (config?.hostedMcpWidgetBootstrap === true || config?.visualizationOnly === true || config?.quickLookViewer === true) return false;
-    const format = normalizeFormat(config?.sourceExtension || config?.molstarFormat || config?.format);
-    return renderer === 'molstar' && ['sdf', 'sd', 'mol'].includes(format);
+    return config?.nativeMolecularComputeUnavailable !== true && !isVisualizationOnly(config)
+      && renderer === 'molstar' && hasExplicitMolecularGraphFormat(config);
+  }
+
+  function isVisualizationOnly(config) {
+    return config?.hostedMcpWidgetBootstrap === true || config?.visualizationOnly === true || config?.quickLookViewer === true;
+  }
+
+  function hasExplicitMolecularGraphFormat(config) {
+    return ['sdf', 'sd', 'mol'].includes(normalizeFormat(config?.sourceExtension || config?.molstarFormat || config?.format));
   }
 
   function isSdfPoseConformerSet(config) {
@@ -9249,7 +9256,7 @@ SOFTWARE.
 
   function canEditMeasurementCoordinates(targets) {
     const config = activeConfig || window.BuretteConfig;
-    return config?.appViewer === true && canGenerate3DConformerFromConfig(config, 'molstar')
+    return config?.appViewer === true && !isVisualizationOnly(config) && hasExplicitMolecularGraphFormat(config)
       && !config.docking && !isSdfPoseConformerSet(config) && targets.length === 1
       && ['Distance', 'Angle', 'Dihedral'].includes(targets[0].obj?.label);
   }

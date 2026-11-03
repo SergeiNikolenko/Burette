@@ -19,7 +19,7 @@ const context = {
 };
 runInNewContext(source.slice(start, end), context);
 
-for (const format of ['sdf', 'mol']) for (const capability of [{ hostedMcpWidgetBootstrap: true }, { visualizationOnly: true }, { quickLookViewer: true }]) {
+for (const format of ['sdf', 'mol']) for (const capability of [{ hostedMcpWidgetBootstrap: true }, { visualizationOnly: true }, { quickLookViewer: true }, { nativeMolecularComputeUnavailable: true }]) {
   // Public/local widgets, Finder Quick Look and mobile previews have no compute host.
   context.activeConfig = { format, renderer: 'molstar', ...capability };
   assert.equal(context.canGenerate3DConformerFromConfig(context.activeConfig, 'molstar'), false);
