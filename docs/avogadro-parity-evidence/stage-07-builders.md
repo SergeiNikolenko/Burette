@@ -834,3 +834,8 @@ including restoration from initially off and initially on selection mode;
 `vp run build:agent-shell` passed. Logs are
 `/tmp/burette-polymer-selection-mode-test.log` and
 `/tmp/burette-polymer-selection-mode-build.log`.
+
+The full `vp run ci:fast js` invocation for this implementation subsequently
+completed with exit code 0 (session 81499). Its log is
+`/tmp/burette-polymer-selection-mode-ci.log`. The live first-click defect above
+remains open despite the passing automated gate.
