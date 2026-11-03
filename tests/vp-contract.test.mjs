@@ -114,6 +114,7 @@ const contractScripts = {
   "test-pose-camera-stability.mjs": () => import("./test-pose-camera-stability.mjs"),
   "test-viewer-scene-recovery.mjs": () => import("./test-viewer-scene-recovery.mjs"),
   "test-story-preset-entrypoints.mjs": () => promisify(execFile)(process.execPath, [fileURLToPath(new URL("./test-story-preset-entrypoints.mjs", import.meta.url))]),
+  "test-native-menu-paths.mjs": () => import("./test-native-menu-paths.mjs"),
   "test-collection-analysis-menu.mjs": () => import("./test-collection-analysis-menu.mjs"),
   "test-conformer-collection.mjs": () => import("./test-conformer-collection.mjs"),
   "test-burette-deep-links.mjs": () => import("./test-burette-deep-links.mjs"),

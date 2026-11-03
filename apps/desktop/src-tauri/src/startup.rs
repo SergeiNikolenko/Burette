@@ -7,10 +7,25 @@ use url::Url;
 #[derive(Default)]
 pub(crate) struct PendingOpenDocuments {
     paths_by_window: Mutex<HashMap<String, Vec<String>>>,
+    external: Mutex<ExternalOpenQueue>,
     sessions_by_window: Mutex<HashMap<String, String>>,
 }
 
+#[derive(Default)]
+struct ExternalOpenQueue {
+    restoration_complete: bool,
+    paths: Vec<String>,
+}
+
 impl PendingOpenDocuments {
+    fn take_external(&self, owners_ready: bool) -> Vec<String> {
+        let mut external = self.external.lock().unwrap();
+        if !external.restoration_complete || !owners_ready {
+            return Vec::new();
+        }
+        std::mem::take(&mut external.paths)
+    }
+
     pub(crate) fn take_session(&self, window_label: &str) -> Option<String> {
         self.sessions_by_window.lock().unwrap().remove(window_label)
     }
@@ -160,9 +175,41 @@ pub(crate) fn route_external_open_documents<R: Runtime>(
     app: &tauri::AppHandle<R>,
     paths: Vec<String>,
 ) {
-    use crate::{menu, windows};
-    if paths.is_empty() || menu::exit_transition_is_active(app) {
+    if paths.is_empty() || crate::menu::exit_transition_is_active(app) {
         return;
+    }
+    {
+        let pending = app.state::<PendingOpenDocuments>();
+        let mut external = pending.external.lock().unwrap();
+        for path in paths {
+            if !external.paths.contains(&path) {
+                external.paths.push(path);
+            }
+        }
+    }
+    flush_external_open_documents(app);
+}
+
+pub(crate) fn finish_workspace_restoration<R: Runtime>(app: &tauri::AppHandle<R>) {
+    app.state::<PendingOpenDocuments>()
+        .external
+        .lock()
+        .unwrap()
+        .restoration_complete = true;
+    flush_external_open_documents(app);
+}
+
+pub(crate) fn flush_external_open_documents<R: Runtime>(app: &tauri::AppHandle<R>) {
+    use crate::{menu, windows};
+    if menu::exit_transition_is_active(app) {
+        return;
+    }
+    let pending = app.state::<PendingOpenDocuments>();
+    {
+        let external = pending.external.lock().unwrap();
+        if !external.restoration_complete || external.paths.is_empty() {
+            return;
+        }
     }
     let default_label = match windows::focused_window_label(app) {
         Some(label) => label,
@@ -178,6 +225,16 @@ pub(crate) fn route_external_open_documents<R: Runtime>(
         .cloned()
         .collect();
     let registry = app.try_state::<menu::OpenDocumentRegistry>();
+    // Each restored shell publishes its hydrated tabs, including lazy viewers.
+    // Until then an absent owner means "unknown", not "open in the main window".
+    let paths = pending.take_external(
+        registry
+            .as_ref()
+            .is_some_and(|registry| registry.has_snapshots(&candidates)),
+    );
+    if paths.is_empty() {
+        return;
+    }
     let mut batches = std::collections::BTreeMap::<String, Vec<String>>::new();
     let mut focus_label = None;
     for path in paths {
@@ -222,6 +279,25 @@ pub(crate) fn emit_agent_session<R: Runtime>(
 mod tests {
     use super::{agent_session_from_argv, file_args_from_argv, LaunchMode};
     use std::fs;
+
+    #[test]
+    fn cold_external_queue_retains_requests_until_restoration_and_ownership_are_ready() {
+        let pending = super::PendingOpenDocuments::default();
+        let paths = vec!["/tmp/owned.xyz".to_string(), "/tmp/new.pdb".to_string()];
+        pending.external.lock().unwrap().paths = paths.clone();
+        assert!(pending.take_external(true).is_empty());
+        pending.external.lock().unwrap().restoration_complete = true;
+        assert!(pending.take_external(false).is_empty());
+        assert_eq!(pending.take_external(true), paths);
+        assert!(pending.take_external(true).is_empty());
+        pending
+            .external
+            .lock()
+            .unwrap()
+            .paths
+            .push("/tmp/later.pdb".into());
+        assert_eq!(pending.take_external(true), vec!["/tmp/later.pdb"]);
+    }
 
     #[test]
     fn routes_files_and_session_only_to_the_selected_restored_window() {

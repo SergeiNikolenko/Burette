@@ -37,6 +37,10 @@ pub(crate) fn window_destroyed<R: tauri::Runtime>(app: &tauri::AppHandle<R>, win
     events::window_destroyed(app, window_label);
     if let Some(registry) = app.try_state::<OpenDocumentRegistry>() {
         registry.remove_window(window_label);
+        let app = app.clone();
+        let handle = app.clone();
+        let _ =
+            app.run_on_main_thread(move || crate::startup::flush_external_open_documents(&handle));
     }
     let has_other_window = app
         .webview_windows()

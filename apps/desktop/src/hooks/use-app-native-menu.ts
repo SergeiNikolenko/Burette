@@ -25,6 +25,7 @@ import {
   fileBackedViewerDocumentPath,
   isAbsoluteNativeFilePath,
   nativeOpenDocumentPaths,
+  nativeTabDocumentPaths,
 } from "../lib/native-menu-paths";
 import type { DerivedColumnKind } from "../lib/derived-columns";
 import { nativeMenuAccelerators } from "../lib/keyboard-shortcuts";
@@ -184,7 +185,7 @@ export function useAppNativeMenu({
     () => nativeOpenDocumentPaths(
       state.documents,
       state.textDocuments,
-      state.tabs.flatMap((tab) => (tab.location.kind === "document" ? [tab.location.path] : [])),
+      nativeTabDocumentPaths(state.tabs),
     ),
     [state.documents, state.textDocuments, state.tabs],
   );

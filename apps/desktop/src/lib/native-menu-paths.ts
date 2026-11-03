@@ -1,3 +1,5 @@
+import type { MoleculeTab } from "../stores/molecule-store";
+
 type ViewerDocumentPath = {
   path: string;
   virtual?: boolean;
@@ -14,6 +16,13 @@ export function isAbsoluteNativeFilePath(path: string) {
 export function fileBackedViewerDocumentPath(document: ViewerDocumentPath) {
   if (document.virtual || !isAbsoluteNativeFilePath(document.path)) return null;
   return document.path;
+}
+
+export function nativeTabDocumentPaths(tabs: Pick<MoleculeTab, "location">[]) {
+  return tabs.flatMap(({ location }) => (
+    location.kind === "file" || location.kind === "text-file" || location.kind === "document"
+      ? [location.path] : []
+  ));
 }
 
 export function nativeOpenDocumentPaths(

@@ -114,6 +114,14 @@ enum WritePermitMode {
 }
 
 impl OpenDocumentRegistry {
+    pub(crate) fn has_snapshots(&self, labels: &[String]) -> bool {
+        self.state.lock().is_ok_and(|state| {
+            labels
+                .iter()
+                .all(|label| state.paths_by_window.contains_key(label))
+        })
+    }
+
     pub(crate) fn owner_for_path(
         &self,
         path: &Path,
@@ -629,6 +637,7 @@ pub(super) fn sync_native_menu<R: Runtime>(
             state.document_registry_revision,
             &state.open_document_paths,
         )?;
+    crate::startup::flush_external_open_documents(&app);
     sync_document_edited(&window, state.document_dirty)?;
 
     if !window.is_focused().map_err(|error| error.to_string())? {
@@ -1520,6 +1529,26 @@ mod tests {
         contextual_history_title, recent_menu_titles, validate_recent_documents, NativeMenuState,
         OpenDocumentRegistry, RecentMenuDocument, RecentMenuSnapshot, MAX_MENU_TITLE_CHARS,
     };
+
+    #[test]
+    fn cold_external_owner_is_unknown_until_all_restored_snapshots_arrive() {
+        let registry = OpenDocumentRegistry::default();
+        let labels = vec!["main".into(), "workspace-restored".into()];
+        let path = "/tmp/burette-cold-owned.xyz";
+        assert!(!registry.has_snapshots(&labels));
+        registry.replace("main", 1, &[]).unwrap();
+        assert!(!registry.has_snapshots(&labels));
+        registry
+            .replace("workspace-restored", 1, &[path.into()])
+            .unwrap();
+        assert!(registry.has_snapshots(&labels));
+        assert_eq!(
+            registry.owner_for_path(std::path::Path::new(path), &labels, Some("main")),
+            Some("workspace-restored".into())
+        );
+        registry.remove_window("workspace-restored");
+        assert!(registry.has_snapshots(&["main".into()]));
+    }
 
     #[test]
     fn external_open_reuses_live_workspace_owner_and_excludes_preview() {

@@ -147,6 +147,7 @@ pub fn run() {
             menu::configure_menu(app)?;
             if launch_mode.is_register() && startup_paths.is_empty() {
                 windows::hide_workspace_application(app.handle());
+                startup::finish_workspace_restoration(app.handle());
             } else {
                 preview::xyzrender::warmup_renderer(preview::xyzrender::XyzrenderWarmup::Startup);
                 let initial_app = app.handle().clone();
@@ -155,6 +156,7 @@ pub fn run() {
                         eprintln!("failed to restore Burette workspaces: {error}");
                     }
                     show_and_emit_startup(&initial_app, startup_paths, startup_session);
+                    startup::finish_workspace_restoration(&initial_app);
                     deep_links::receive(&initial_app, startup_links);
                 };
                 #[cfg(target_os = "macos")]

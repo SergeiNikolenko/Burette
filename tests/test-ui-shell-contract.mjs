@@ -7113,7 +7113,7 @@ assert.match(appNativeMenuHook, /invoke\("sync_native_menu", \{ state: nativeSta
 assert.match(appNativeMenuHook, /const openDocumentPaths = useMemo/);
 // Retab document tabs must reach the registry sync too: they hold no
 // ViewerDocument, but their file is open and needs the write guard.
-assert.match(appNativeMenuHook, /nativeOpenDocumentPaths\(\s*state\.documents,\s*state\.textDocuments,\s*state\.tabs\.flatMap\(\(tab\) => \(tab\.location\.kind === "document" \? \[tab\.location\.path\] : \[\]\)\),?\s*\)/);
+assert.match(appNativeMenuHook, /nativeOpenDocumentPaths\(\s*state\.documents,\s*state\.textDocuments,\s*nativeTabDocumentPaths\(state\.tabs\),?\s*\)/);
 assert.match(appNativeMenuHook, /const activeDocumentReadable = activeDocumentFileBacked/);
 assert.match(appNativeMenuHook, /const documentRegistryRevision = useMemo\([\s\S]*nextDocumentRegistryRevision\(\)/);
 assert.match(appNativeMenuHook, /hasActiveFile: activeDocumentFileBacked \|\| activeTextTabFileBacked/);
