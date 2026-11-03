@@ -13,7 +13,7 @@ import { Window } from "happy-dom";
 import React, { act } from "react";
 import type { ViewerDocument } from "../apps/desktop/src/types";
 import { parseMolecule } from "../apps/desktop/src/lib/molecular-workbench/chemistry";
-import { mcpPropertiesClient } from "./fixtures/typed-properties-host";
+import { builtPropertiesWorkers, mcpPropertiesClient } from "./fixtures/typed-properties-host";
 import reference from "./fixtures/optimization/rdkit-optimization-reference.json";
 
 // The browser agent shell build sets this flag; the hook stays idle without it.
@@ -183,18 +183,24 @@ print(json.dumps({
 test("Python cancel and the stdio MCP tool share one job registry", async () => {
   await open("n-methylacetamide.sdf");
   const mcp = await mcpPropertiesClient(repo);
+  const workers = await builtPropertiesWorkers(root, repo);
+  // Keep the real worker result pending while Python starts the cancellation CLI.
+  // Fast machines can finish this molecule before that second process starts.
+  workers.hold("optimize");
   try {
     const cancelled = await python(`
 doc = wb.observe()
 job = wb.submit("optimize", {"method": "fire", "maxIterations": 1000}, expected_source_revision=doc["sourceRevision"], operation_id="shared-run")
 print(json.dumps({"cancelled": wb.cancel(job.job_id).raw, "revision": doc["sourceRevision"]}))`);
     expect(cancelled.cancelled).toMatchObject({ status: "cancelled", summary: null, artifacts: [] });
+    expect(workers.records).toContainEqual({ name: "compute-worker.ts", action: "optimize", terminated: true });
+    workers.release();
     const replay = await mcp.control(session, { operation: "submit", operationId: "shared-run", expectedSourceRevision: cancelled.revision, job: { kind: "optimize", params: { method: "fire", maxIterations: 1000 } } });
     expect(replay.structuredContent.result.action.result.result).toMatchObject({ deduplicated: true, job: { jobId: cancelled.cancelled.jobId, status: "cancelled" } });
     const prepared = await mcp.control(session, { operation: "submit", operationId: "mcp-3d", expectedSourceRevision: cancelled.revision, job: { kind: "prepare_3d", params: {} } });
     expect(prepared.structuredContent.error.code).toBe("JOB_UNAVAILABLE");
     const status = await python(`print(json.dumps(wb.status(${JSON.stringify(cancelled.cancelled.jobId)}).raw))`);
-    expect(status).toMatchObject({ status: "cancelled", operationId: "shared-run" });
-  } finally { mcp.close(); }
+    expect(status).toMatchObject({ status: "cancelled", operationId: "shared-run", summary: null, artifacts: [] });
+  } finally { workers.release(); workers.restore(); mcp.close(); }
   expect(hookErrors).toEqual([]);
 }, 60_000);

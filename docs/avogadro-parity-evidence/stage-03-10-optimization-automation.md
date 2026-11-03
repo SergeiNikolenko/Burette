@@ -18,6 +18,25 @@ below records the observed UI output separately.
 | `tests/fixtures/automation/water-trajectory.xyz` | Frame 0 = RDKit UFF water reference coordinates; frame 1 = frame 0 rotated 90° about z and translated (4, −3, 2) Å; frame 2 = frame 0 translated (1.5, 0, −0.5) Å. |
 | `tests/fixtures/automation/simple-cubic.xyz` | One Cu atom in a 3 Å cubic cell (extended XYZ `Lattice`). Analytic g(r): first shell of 6 at 3 Å. |
 
+## Python cancellation delivery ordering (2026-11-03)
+
+The integration JavaScript sweep passed the logical XYZ topology checks after
+the explicit-preview timer fix, then exposed a timing assumption in
+`test-workbench-python-client.test.tsx`. The 1,000-step FIRE optimization of
+N-methylacetamide completed in 371 ms before Python's separate cancellation CLI
+process delivered its request. Returning the completed job was valid, but did
+not exercise cancellation of a pending job.
+
+The cancellation test now uses the existing `builtPropertiesWorkers` fixture
+to hold delivery of the real browser-target chemistry worker's optimization
+result. Python cancellation must terminate that worker and return a cancelled
+job without summary or artifacts. Releasing any delayed result must preserve
+that terminal state through MCP operation replay and subsequent Python status.
+The complete `vp run test:workbench-python-client` passed all three tests and
+83 assertions. This is Python/CLI/HTTP/host-hook/worker/MCP integration evidence
+under happy-dom. Live browser cancellation remains a separate acceptance item.
+The full JavaScript sweep still needs a successful terminal run.
+
 ## Requirements
 
 ### Stage 3
