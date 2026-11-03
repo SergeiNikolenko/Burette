@@ -20,7 +20,52 @@ C–C/C–H bond-length bounds pass without relaxing their assertions or deadlin
 and builder UI suites also pass. Logs are `/tmp/burette-polymer-ends-final.log`,
 `/tmp/burette-polymer-worker-final.log`, and
 `/tmp/burette-polymer-builder-final.log`. The full JS gate remains failed at
-the earlier revision; rebuilt live-browser polymer acceptance remains pending.
+the earlier revision; live-browser results follow below.
+
+### Live compiled-browser relaxation and picking asset (2026-11-03)
+
+On frontend `8c1ddefad`, the compiled Browser shell's Build polymer dialog
+failed before picking with `Could not load polymer picking from
+./polymer-pick.js.` The asset existed in the runtime but was missing from the
+static server's explicit asset allowlist. Adding that filename fixes delivery.
+`test-agent-shell-security.mjs` now requests both its runtime and filesystem
+alias routes and checks the JavaScript MIME type and exact source bytes. The
+suite passes, including its existing authentication and containment checks.
+
+A fresh server with that correction opened `propylene-repeat.sdf` through
+the ordinary picker. Command Palette → Build polymer loaded enabled controls,
+and a real atom click assigned C2 to Head. The remaining four-role UI workflow
+was not completed: subsequent clicks did not select the intended terminal
+carbon while the camera framing changed. The dialog was cancelled. Full B3
+UI acceptance, end caps, error recovery and accessibility remain pending.
+
+The CLI then submitted `polymer-relaxation-live-20261103` against that open
+source, with zero-based roles head 0, tail 1, head H 5, tail H 4, six isotactic
+repeats, hydrogen ends and relaxation enabled. Browser job
+`wbj-777d2c4af40e46b1` succeeded in 9.077 seconds with 56 atoms / 55 bonds and
+MMFF94 energy 4225.500222311152 → 37.26778298414793 kcal/mol, converged.
+Its exported SDF has SHA-256
+`e180b6bd506f60235474ab558caf2affb2288c9d1f481592e37a8e63d55dacbe`.
+
+Independent Python RDKit 2026.09.1 confirmed C18H38, the explicit graph counts,
+a 3D conformer and canonical stereochemistry matching the frozen isotactic
+reference. Removing all stereo annotations and deriving them again from the
+exported coordinates also matched. C–C lengths were 1.520657–1.554397 Å and
+C–H lengths 1.091992–1.099882 Å, within the existing reference tolerances.
+Independent MMFF94 energy was 37.267834292747985 kcal/mol, differing by
+0.000051309 from the reported value after coordinate serialization.
+Evidence is `/tmp/burette-polymer-live-status.json`,
+`/tmp/burette-polymer-live-oracle.json` and
+`/tmp/burette-live-polypropylene-relaxed.sdf`.
+The exported SDF reopened through the ordinary picker as a separate tab and
+rendered the chain in the light 1280×720 view. Screenshot:
+`/tmp/burette-live-polypropylene-reopened.png`.
+
+The post-`test:ui` JS-gate commands also pass on `8c1ddefad`: workspace
+split/dock/native-page/source-binding, agent-workspace-panel, responsiveness,
+Tauri structure, compute-metal, compute-reliability and the four plist checks.
+This is a successful partial rerun; a complete JS gate on the latest revision
+is still required.
 
 ## Live preparation automation with mixed stereochemistry (2026-11-03)
 
