@@ -133,12 +133,15 @@ impl WindowStateRegistry {
         };
         let monitors = window.available_monitors().unwrap_or_default();
         let geometry = visible_geometry(saved, &monitors);
+        // AppKit constrains content size to the window's current display. Move
+        // to the destination before restoring a size that may exceed the
+        // initial display's work area.
+        let _ = window.set_position(Position::Physical(PhysicalPosition::new(
+            geometry.x, geometry.y,
+        )));
         let _ = window.set_size(Size::Physical(PhysicalSize::new(
             geometry.width,
             geometry.height,
-        )));
-        let _ = window.set_position(Position::Physical(PhysicalPosition::new(
-            geometry.x, geometry.y,
         )));
     }
 
