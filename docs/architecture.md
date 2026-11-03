@@ -182,6 +182,16 @@ batch does not initialize unseen viewers. Grid Save acknowledgements carry the s
 remain dirty. Save As temporarily disables editing until the host finishes,
 fails, or cancels the document switch.
 
+The grid Table/Cards choice is part of the file tab location and is serialized
+with the window session. Native iframe localStorage is unavailable because the
+viewer sandbox has an opaque origin. The `gridViewModeReady` /
+`gridRestoreViewMode` handshake initializes each runtime once; subsequent
+`gridViewModeChanged` messages update only its owning tab. The host checks the
+iframe source and current path, and replacement documents retain this choice.
+Reopening a closed grid supplies its mode when creating the new tab, before
+publishing it to the viewer; an already-open tab retains its own mode.
+This metadata contains no collection edits or undo history.
+
 Settings that require new runtime HTML are applied when each open file next
 becomes active, after its unsaved edits have been resolved. Live theme and style
 changes are broadcast without rebuilding the viewer. Theme defaults to Auto

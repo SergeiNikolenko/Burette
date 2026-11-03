@@ -10,6 +10,7 @@ const contractScripts = {
   "test-source-editor-transfer-view.test.ts": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-source-editor-transfer-view.test.ts", import.meta.url))]),
   "test-native-tab-transfer.test.ts": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-native-tab-transfer.test.ts", import.meta.url))]),
   "test-window-title.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-window-title.test.tsx", import.meta.url))]),
+  "test-grid-view-mode-session.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-grid-view-mode-session.mjs", import.meta.url))]),
   "test-grid-window-state.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-grid-window-state.mjs", import.meta.url))]),
   "test-native-grid-window.test.ts": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-native-grid-window.test.ts", import.meta.url))]),
   "test-recovery-session.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-recovery-session.mjs", import.meta.url))]),

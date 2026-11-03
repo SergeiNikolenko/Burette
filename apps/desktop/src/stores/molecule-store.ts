@@ -74,7 +74,7 @@ type MoleculeState = {
   activeDocumentId: string | null;
   recentStructures: RecentStructure[];
   setDocuments: (documents: ViewerDocument[]) => void;
-  addDocuments: (documents: ViewerDocument[], options?: { preserveActiveTab?: boolean }) => void;
+  addDocuments: (documents: ViewerDocument[], options?: { preserveActiveTab?: boolean; gridViewMode?: "cards" | "table" }) => void;
   addBackgroundDocuments: (documents: ViewerDocument[]) => void;
   replaceDocument: (documentId: string, replacement: ViewerDocument) => void;
   openDocumentsInActiveTab: (documents: ViewerDocument[], options?: { backLocation?: Location }) => void;
@@ -190,7 +190,7 @@ function replaceFileLocation(
     || (location.documentId !== documentId && location.path !== previousPath)) {
     return location;
   }
-  return fileLocation(replacement);
+  return { ...fileLocation(replacement), ...(replacement.renderer === "grid2d" && location.gridViewMode ? { gridViewMode: location.gridViewMode } : {}) };
 }
 
 export function createTextFileTab(document: TextFileDocument, id = createTabId()): MoleculeTab {
@@ -627,11 +627,14 @@ export const useMoleculeStore = create<MoleculeState>()(
           for (const document of incoming) {
             const existing = tabByPath.get(document.path);
             if (existing) {
-              existing.location = fileLocation(document);
+              existing.location = replaceFileLocation(existing.location, document.id, document.path, document);
               openedTabId ??= existing.id;
             } else {
               const tab = createFileTab(document);
               tab.pane = state.tabs.find(current => current.id === state.activeTabId)?.pane;
+              if (document.renderer === "grid2d" && options.gridViewMode && tab.location.kind === "file") {
+                tab.location.gridViewMode = options.gridViewMode;
+              }
               tabs.push(tab);
               tabByPath.set(document.path, tab);
               openedTabId ??= tab.id;
@@ -713,7 +716,7 @@ export const useMoleculeStore = create<MoleculeState>()(
           for (const document of incoming.slice(1)) {
             const existing = tabByPath.get(document.path);
             if (existing) {
-              existing.location = fileLocation(document);
+              existing.location = replaceFileLocation(existing.location, document.id, document.path, document);
             } else {
               const tab = createFileTab(document);
               tab.pane = state.tabs.find(current => current.id === state.activeTabId)?.pane;

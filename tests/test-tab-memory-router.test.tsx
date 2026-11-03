@@ -196,3 +196,33 @@ test("sidebar previews replace clean views per pane, promote dirty/explicit view
   await openSidebarFile("/preview-main.pdb", false, () => actions, () => false, () => true);
   expect(useMoleculeStore.getState().tabs.filter(tab => tab.preview).map(tab => tab.pane ?? "main").sort()).toEqual(["main", "right"]);
 });
+
+test("reopening a grid publishes its view mode before the viewer can mount", async () => {
+  const { reopenClosedTab } = await import("../apps/desktop/src/components/workspace-panes/pane-actions");
+  const { takeClosedTab } = await import("../apps/desktop/src/stores/closed-tabs");
+  while (takeClosedTab()) { /* Isolate close history. */ }
+  const doc = { id: "closed-grid", path: "/closed.csv", title: "closed.csv", extension: "csv", renderer: "grid2d" as const, runtimePath: "", byteCount: 1 };
+  const tab = { id: "closed-grid-tab", location: { kind: "file" as const, path: doc.path, documentId: doc.id, gridViewMode: "table" as const }, back: [], forward: [] };
+  useMoleculeStore.setState({ documents: [doc], tabs: [tab], activeTabId: tab.id });
+  useMoleculeStore.getState().closeTab(tab.id);
+  const modes: unknown[] = [];
+  const unsubscribe = useMoleculeStore.subscribe(state => {
+    const opened = state.tabs.find(current => current.location.kind === "file" && current.location.path === doc.path);
+    if (opened?.location.kind === "file") modes.push(opened.location.gridViewMode);
+  });
+  const actions = { openTextPaths: () => {}, openStructurePaths: async (_paths: string[], options?: { gridViewMode?: "cards" | "table" }) => {
+    useMoleculeStore.getState().addDocuments([{ ...doc, id: "reopened-grid" }], options);
+    await Promise.resolve();
+  } };
+  try {
+    await reopenClosedTab(actions);
+    expect(modes.length).toBeGreaterThan(0);
+    expect(modes.every(mode => mode === "table")).toBe(true);
+  } finally { unsubscribe(); }
+  const restored = useMoleculeStore.getState().tabs.find(current => current.location.kind === "file")!;
+  useMoleculeStore.getState().closeTab(restored.id);
+  useMoleculeStore.getState().addDocuments([doc], { gridViewMode: "cards" });
+  await reopenClosedTab(actions);
+  const existing = useMoleculeStore.getState().tabs.find(current => current.location.kind === "file")!;
+  expect(existing.location.kind === "file" && existing.location.gridViewMode).toBe("cards");
+});

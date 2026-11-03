@@ -682,6 +682,16 @@
       }
       if (!data || (data.source !== 'burette-grid-host' && data.source !== 'burette-host')) return;
       const body = data.body || {};
+      if (body.type === 'gridRestoreViewMode') {
+        if (event.source !== window.parent || state.hostViewModeSession) return;
+        state.hostViewModeSession = true;
+        if (body.value === 'cards' || body.value === 'table') {
+          const cfg = config();
+          setGridViewMode(effectiveMolecularGrid(cfg) ? body.value : 'table', cfg);
+        }
+        notifyGridMenuState(config());
+        return;
+      }
       if (body.type === 'gridWindowCapture' || body.type === 'gridWindowRestore' || body.type === 'gridWindowReady') {
         if (event.source !== window.parent || typeof body.requestId !== 'string' || body.requestId.length > 120) return;
         void handleGridWindowTransfer(body);
@@ -1317,6 +1327,7 @@
 
   function notifyGridMenuState(cfg) {
     if (cfg?.appViewer !== true) return;
+    if (state.hostViewModeSession) post('gridViewModeChanged', '', { value: state.viewMode });
     const undoEntry = state.undoStack[state.undoStack.length - 1] || null;
     const redoEntry = state.redoStack[state.redoStack.length - 1] || null;
     const caps = capabilities(cfg);
@@ -9885,6 +9896,7 @@
       normalizeCardRenderer(cfg);
       normalizeGridViewMode(cfg);
       buildUI(cfg);
+      post('gridViewModeReady', '', {});
       installGridTextFocusListeners();
       installRowHoverPreview(cfg);
       refresh(cfg);

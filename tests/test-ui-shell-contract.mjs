@@ -1585,7 +1585,7 @@ assert.match(fileKind, /export const fileKind = definePageKind/);
 assert.match(fileKind, /keepAlive: true/);
 assert.match(fileKind, /kind: "file"/);
 assert.match(fileKind, /path: location\.path/);
-assert.match(fileKind, /const document = findIndexedDocument\(state\.documents, location\);\s*return document \? <ViewerSurface document=\{document\} actions=\{actions\} preferences=\{state\.preferences\} isActive=\{isActive\} \/> : null;/);
+assert.match(fileKind, /const document = findIndexedDocument\(state\.documents, location\);\s*return document \? <ViewerSurface tabId=\{tabId\} document=\{document\} actions=\{actions\} preferences=\{state\.preferences\} isActive=\{isActive\} \/> : null;/);
 assert.doesNotMatch(fileKind, /findIndexedDocument\(state\.documents, location\) \?\? state\.activeDocument/);
 assert.match(fileKind, /className=\{`molecule-stage/);
 assert.match(fileKind, /sourcePreview=\{sourceSession\?\.sourcePreview \?\? undefined\}/);
@@ -5127,7 +5127,7 @@ assert.match(previewViewer, /updateSceneTreeAssemblySymmetry\(ref, \{ scale: Num
 assert.doesNotMatch(previewRuntimeCss, /\.buret-assembly-symmetry \{\s*align-self: center;\s*height: 28px;\s*line-height: 1;/);
 assert.match(previewViewer, /function toolbarViewportBounds\(\)/);
 assert.match(previewViewer, /document\.querySelector\('\.msp-layout-region\.msp-layout-main, \.msp-layout-main, \.msp-viewport'\)/);
-assert.match(previewViewer, /const bounds = toolbarViewportBounds\(\);[\s\S]*const rightEdge = bounds\.right;/);
+assert.match(previewViewer, /const bounds = toolbarViewportBounds\(\);[\s\S]*toolbar\.style\.right = Math\.max\(TOOLBAR_MARGIN, window\.innerWidth - bounds\.right \+ TOOLBAR_MARGIN\)/);
 assert.match(previewShell, /data-buret-renderer="molstar"[\s\S]*data-buret-renderer="xyzrender-external"/);
 assert.doesNotMatch(previewShell, /data-buret-renderer="xyz-fast"/);
 assert.doesNotMatch(previewShell, /id="buret-open-in-app"/);
@@ -7143,7 +7143,8 @@ assert.match(appNativeMenuHook, /invoke<string>\("register_exit_preflight_listen
 assert.match(appNativeMenuHook, /invoke\("unregister_exit_preflight_listener", \{ registrationId/);
 assert.match(appNativeMenuHook, /invoke\("respond_to_exit_preflight"/);
 assert.match(appNativeMenuHook, /const barrier = sealWindowMutations\(\)/);
-assert.match(appNativeMenuHook, /closeTransitionActive: snapshot\.closeTransitionActive\s*\|\| transferBusy\s*\|\| checkpointFailed\s*\|\| barrier\.closeTransitionActive\s*\|\| barrier\.pendingCount > 0/);
+assert.match(appNativeMenuHook, /const closeTransitionActive = snapshot\.closeTransitionActive\s*\|\| transferBusy\s*\|\| checkpointFailed\s*\|\| barrier\.closeTransitionActive\s*\|\| barrier\.pendingCount > 0/);
+assert.match(appNativeMenuHook, /requestId: payload\.requestId,\s*closeTransitionActive,/);
 assert.match(appNativeMenuHook, /dirty: snapshot\.dirty \|\| barrier\.pendingCount > 0/);
 assert.match(appNativeMenuHook, /revision: snapshot\.revision/);
 assert.match(appNativeMenuHook, /listen\(EXIT_TRANSITION_RESUMED_EVENT, resumeWindowMutations\)/);
@@ -8425,7 +8426,7 @@ assert.doesNotMatch(gridCss, /\.buret-grid-molecule-context-menu button:hover,[\
 assert.match(gridViewer, /function installRowHoverPreview\(cfg\)/);
 assert.match(gridViewer, /\.buret-card\[data-index\], \.buret-grid-table-row\[data-index\], \.buret-grid-rail-tick\[data-buret-grid-rail-index\]/);
 assert.match(gridViewer, /postGridRowHover\(index, cfg\);\s*postChemicalSpaceHover\(index\);/);
-assert.match(gridViewer, /buildUI\(cfg\);\s*installGridTextFocusListeners\(\);\s*installRowHoverPreview\(cfg\);/);
+assert.match(gridViewer, /buildUI\(cfg\);\s*post\('gridViewModeReady', '', \{\}\);\s*installGridTextFocusListeners\(\);\s*installRowHoverPreview\(cfg\);/);
 assert.match(gridViewer, /function updateGridToolbarCondensed\(\) \{[\s\S]*classList\.toggle\('buret-grid-controls-condensed', scrollTop\(\) > 24\);/);
 assert.match(gridViewer, /function handleGridScroll\(cfg\) \{\s*updateGridToolbarCondensed\(\);/);
 assert.match(gridCss, /#grid-controls\.buret-grid-controls-condensed \.buret-grid-toolbar \{[^}]*padding: 8px;/s);

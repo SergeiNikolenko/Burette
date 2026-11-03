@@ -137,7 +137,7 @@ export type FileOpenOptions = { shouldApply?: () => boolean; requireSuccess?: bo
 
 export type ShellActions = {
   chooseFiles: () => void | Promise<void>;
-  openStructurePaths: (paths: string[], options?: { mode?: OpenDocumentsMode; rendererMode?: "molstar" | "grid2d" | "xyzrender-external"; shouldApply?: () => boolean }) => void | Promise<void>;
+  openStructurePaths: (paths: string[], options?: { mode?: OpenDocumentsMode; rendererMode?: "molstar" | "grid2d" | "xyzrender-external"; gridViewMode?: "cards" | "table"; shouldApply?: () => boolean }) => void | Promise<void>;
   openTextPaths: (paths: string[]) => void | Promise<void>;
   openPaths: (paths: string[], options?: FileOpenOptions) => void | Promise<void>;
   openStructureRecords: (records: StructureDragPayload["records"], directory?: string) => void | Promise<void>;

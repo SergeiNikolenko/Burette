@@ -63,7 +63,7 @@ type UseAppFileOpenOptions = {
   addProjectRoot: (path: string) => void;
   addBackgroundDocuments: (documents: ViewerDocument[]) => void;
   addBackgroundTextDocuments: (documents: TextFileDocument[]) => void;
-  addDocuments: (documents: ViewerDocument[], options?: { preserveActiveTab?: boolean }) => void;
+  addDocuments: (documents: ViewerDocument[], options?: { preserveActiveTab?: boolean; gridViewMode?: "cards" | "table" }) => void;
   addTextDocuments: (documents: TextFileDocument[], options?: { preserveActiveTab?: boolean }) => void;
   closeDocument: (id: string) => void;
   detectContentSpectrumPaths: (paths: string[]) => Promise<Set<string>>;
@@ -177,7 +177,7 @@ export function useAppFileOpen({
       paths: string[],
       reloadOptions?: ViewerReloadOptions,
       preferencesOverride?: Partial<ViewerPreferences>,
-      options: { replace?: boolean; inActiveTab?: boolean; fromSource?: boolean; mode?: OpenDocumentsMode; deferErrorStatus?: boolean; preserveActiveTab?: boolean; reuseExisting?: boolean; shouldApply?: () => boolean } = {},
+      options: { replace?: boolean; inActiveTab?: boolean; fromSource?: boolean; mode?: OpenDocumentsMode; gridViewMode?: "cards" | "table"; deferErrorStatus?: boolean; preserveActiveTab?: boolean; reuseExisting?: boolean; shouldApply?: () => boolean } = {},
     ) => {
       const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
       if (!cleanPaths.length) return;
@@ -274,7 +274,7 @@ export function useAppFileOpen({
           try {
             if (result.documents.length === 0 && options.replace) setDocuments(batch.documents);
             else if (result.documents.length === 0 && options.inActiveTab) openDocumentsInActiveTab(batch.documents);
-            else addDocuments(batch.documents, { preserveActiveTab: options.preserveActiveTab || result.documents.length > 0 });
+            else addDocuments(batch.documents, { preserveActiveTab: options.preserveActiveTab || result.documents.length > 0, gridViewMode: options.gridViewMode });
           } catch (error) {
             void abortOpenDocumentClaims(batch.documents).catch((abortError) => {
               console.warn("Open document claim abort failed", abortError);
