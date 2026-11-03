@@ -101,5 +101,5 @@ describe('browser molecular chemistry', () => {
     const pending = runChemistryTask({ action: 'conformers', molecule: generateFromSmiles('CCCCCCCC'), options: { count: 32 } }, { signal: controller.signal });
     controller.abort();
     await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
-  });
+  }, 15_000); // Includes cold starts for generation and properties before testing abort.
 });

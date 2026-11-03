@@ -23,7 +23,7 @@ test('real worker retains AddH, all force fields and optimizer methods, charges 
   expect(batch).toEqual([forces]);
  }
  expect((await runChemistryTask({action:'charges',molecule})).charges).toHaveLength(3);
-});
+}, 15_000); // Each command starts a new worker, including the UFF WASM loader.
 
 test('actual coupled Z-matrix worker branch preserves frozen source position',async()=>{
  const definition=parseZmatrixDocument('O\nX 1 1\nH 1 R 2 A\nH 1 R 2 A 3 180\n\nR = 1.15\nA = 50\n');
