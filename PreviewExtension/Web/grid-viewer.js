@@ -3684,7 +3684,7 @@
     if (!rect || rect.top <= window.innerHeight + GRID_LOAD_AHEAD_PX) loadMore(cfg);
   }
 
-  async function render(cfg) {
+  async function render(cfg, { visibleCount } = {}) {
     const token = ++state.token;
     const grid = document.getElementById('grid');
     cancelVirtualWindowRender();
@@ -3696,7 +3696,9 @@
     state.renderedCount = 0;
     state.windowStart = 0;
     state.windowEnd = 0;
-    state.visibleCount = state.remoteMode ? Math.min(loadBatchSize(cfg), state.rows.length) : state.rows.length;
+    state.visibleCount = Number.isSafeInteger(visibleCount) && visibleCount >= 0
+      ? Math.min(visibleCount, state.rows.length)
+      : state.remoteMode ? Math.min(loadBatchSize(cfg), state.rows.length) : state.rows.length;
     if (!state.rows.length) {
       grid.innerHTML = '<div class="buret-empty">No molecules match this search.</div>';
       updateChrome(cfg);
@@ -7392,7 +7394,7 @@
           const scrollY = restoreGridWindowState(body.snapshot);
           refreshGridControls(cfg);
           applyGridPreferences(cfg);
-          await render(cfg);
+          await render(cfg, { visibleCount: state.visibleCount });
           window.scrollTo({ top: scrollY, behavior: 'instant' });
           state.lastGridWindowRestoreId = body.requestId;
         }
@@ -7410,7 +7412,7 @@
       : entry instanceof Map ? { collection: 'map', entries: [...entry] } : entry));
     const view = {};
     for (const key of gridWindowViewKeys()) view[key] = state[key];
-    const snapshot = JSON.stringify({ version: 1, scrollY: scrollTop(), edit: encode(snapshotGridEditState()),
+    const snapshot = JSON.stringify({ version: 1, scrollY: scrollTop(), visibleCount: state.visibleCount, edit: encode(snapshotGridEditState()),
       undo: encode(state.undoStack), redo: encode(state.redoStack), view: encode(view) });
     if (new TextEncoder().encode(snapshot).length > 1500 * 1024) throw new Error('This collection is too large to move with its edits. Keep it in this window.');
     return snapshot;
@@ -7438,12 +7440,14 @@
     const validHistory = history => Array.isArray(history) && history.length <= GRID_EDIT_HISTORY_LIMIT
       && history.every(entry => typeof entry.label === 'string' && validEdit(entry.snapshot));
     if (snapshot?.version !== 1 || !Number.isFinite(snapshot.scrollY) || snapshot.scrollY < 0 || !validEdit(snapshot.edit) || !validHistory(snapshot.undo) || !validHistory(snapshot.redo) || !snapshot.view || typeof snapshot.view !== 'object') throw new Error('Invalid collection transfer.');
+    if (snapshot.visibleCount !== undefined && (!Number.isSafeInteger(snapshot.visibleCount) || snapshot.visibleCount < 0 || snapshot.visibleCount > snapshot.edit.rows.length)) throw new Error('Invalid collection visible row count.');
     for (const key of gridWindowViewKeys()) {
       const value = snapshot.view[key], current = state[key];
       if (current instanceof Set ? !(value instanceof Set) : current instanceof Map ? !(value instanceof Map)
         : Array.isArray(current) ? !Array.isArray(value) : current !== null && typeof value !== typeof current) throw new Error('Invalid collection view.');
     }
     restoreGridEditState(snapshot.edit);
+    state.visibleCount = snapshot.visibleCount ?? state.rows.length;
     state.undoStack = snapshot.undo;
     state.redoStack = snapshot.redo;
     for (const key of gridWindowViewKeys()) state[key] = snapshot.view[key];
