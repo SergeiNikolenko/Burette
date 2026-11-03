@@ -256,3 +256,22 @@ stays at 0:
 Through `burette.control_viewer` with `{"type":"workbench", …}`, repeat steps A1,
 A4 and F3. The responses must match the CLI responses, and `structuredContent`
 must never contain inline artifact content.
+## Packaged CLI coordinate jobs
+
+A packaged browser shell loaded a single 15-atom butanol SDF. The packaged CLI
+observed the editable revision, submitted `measurement_set` and `coordinate_align`
+against that revision, then polled each through success and exported the
+`structure` artifacts. The final observation still reported the input revision.
+Both exports reopened in the same shell through the ordinary file picker and
+each displayed a 3D view.
+
+| Job | Request (zero-based source rows) | Independent check | Export SHA-256 |
+| --- | --- | --- | --- |
+| `measurement_set` | Angle [3, 1, 0], move last fragment, 112° | RDKit 2026.09.1 measured 112.0000000023°. Maximum coordinate component difference from `SetAngleDeg` was 4.74 × 10⁻¹¹ Å. | `e69387bf505a6ff46b011563b6faeb7673a22dd64cbb8e3064422f798580a9a5` |
+| `coordinate_align` | Atom 1 at the origin, atom 3 on +z | Maximum coordinate component difference from SciPy `Rotation.align_vectors` was 4.83 × 10⁻¹¹ Å. | `8f99d46ddba1254ce513531aa59a1e4762da92c90f032794c26c5701c7c7d587` |
+
+Both copies retained the isomeric SMILES and the source's `SOURCE_NOTE` data item.
+The focused automation suite also exercised a MOL V2000 input, a MOL V3000
+input, rejection before queueing, cancellation, a changed source revision and
+a closed document. Execution of these two job kinds from MCP and a live Jupyter
+notebook remains open.

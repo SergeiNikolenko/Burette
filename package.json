@@ -142,7 +142,7 @@
     "test:uff-wasm": "node tests/test-uff-wasm.mjs",
     "test:minimizer-core": "bun test tests/test-minimizer-core.test.ts",
     "test:optimization-reference": "bun test tests/test-optimization-reference.test.ts",
-    "test:workbench-automation-jobs": "bun test tests/test-workbench-automation-jobs.test.ts",
+    "test:workbench-automation-jobs": "bun test tests/test-workbench-automation-jobs.test.ts && bun test tests/test-workbench-coordinate-jobs.test.ts",
     "test:workbench-python-client": "bun test tests/test-workbench-python-client.test.tsx",
     "test:workbench-prepare-conformers-ui": "bun test tests/test-workbench-prepare-conformers-ui.test.tsx",
     "test:workbench-physics": "bun test tests/test-workbench-forcefields.test.ts tests/test-workbench-minimizer.test.ts tests/test-workbench-energy-forces.test.ts",

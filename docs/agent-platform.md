@@ -889,6 +889,21 @@ optional `frameIndex`) with element and Å positions, pinned with
 
 ### Structure editing and builder jobs
 
+`measurement_set` and `coordinate_align` take one explicit MOL or SDF record
+of up to 256 atoms. Both export a new `structure` artifact and leave the source
+revision and its Undo history untouched. Indices are zero-based source rows.
+
+- `measurement_set` takes `measurement` (`distance`, `angle` or `dihedral`),
+  ordered `atoms` (two, three or four), and either `valueAngstrom` for a
+  distance or `valueDegrees` for an angle or dihedral. `fragment` can be
+  `smaller` (default), `first` or `last`. The summary reports the old and new
+  values, units, chosen fragment and moved rows. A ring bond cannot split
+  into two fragments.
+- `coordinate_align` moves `originAtom` to (0, 0, 0). With a distinct
+  `axisAtom` it also rotates the molecule to place that atom on the positive
+  `axis` (`x` by default, `y` or `z`). The summary includes translation in
+  Å and the proper rotation matrix applied after translation.
+
 `insert_fragment`, `hydrogens` and `polymer` are `submit` jobs on an open
 explicit MOL/SDF source; they share the revision pinning, queue, cancellation,
 stale/closed handling and export rules above. Each succeeded job has one

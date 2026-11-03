@@ -39,6 +39,11 @@ export type WorkbenchCrystalTransform =
   | { operation: 'supercell'; repeats: [number, number, number] }
   | { operation: 'primitive' | 'conventional' | 'symmetrize' | 'asymmetric_unit'; toleranceAngstrom: number }
   | { operation: 'fill'; hallNumber: number };
+export type WorkbenchMeasurementFragment = 'smaller' | 'first' | 'last';
+export type WorkbenchMeasurementSet =
+  | { measurement: 'distance'; atoms: number[]; valueAngstrom: number; fragment: WorkbenchMeasurementFragment }
+  | { measurement: 'angle' | 'dihedral'; atoms: number[]; valueDegrees: number; fragment: WorkbenchMeasurementFragment };
+export type WorkbenchCoordinateAlign = { originAtom: number; axisAtom?: number; axis?: 'x' | 'y' | 'z' };
 /** The normalized `params` of one job kind. */
 export type WorkbenchJobParams<K extends WorkbenchJobKind> = Extract<WorkbenchJobRequest, { kind: K }>['params'];
 export type WorkbenchJobKindDescription = { operation: 'submit' | 'build'; engine: string; requires: string; params: Record<string, unknown>; artifacts: string[] };
@@ -53,6 +58,8 @@ export type WorkbenchJobRequest =
   | { kind: 'prepare_3d'; params: { forceField: WorkbenchForceField; method: WorkbenchOptimizeMethod; seed: number; maxIterations: number } }
   | { kind: 'conformers'; params: { forceField: WorkbenchForceField; count: number; seed: number } }
   | { kind: 'metadata_edit'; params: WorkbenchMetadataEdit }
+  | { kind: 'measurement_set'; params: WorkbenchMeasurementSet }
+  | { kind: 'coordinate_align'; params: WorkbenchCoordinateAlign }
   | { kind: 'pair_distribution'; params: { rMax: number; binWidth: number; centre: string | null; neighbour: string | null } }
   | { kind: 'point_group'; params: { tolerance: 'tight' | 'normal' | 'loose' | 'very-loose' } }
   | { kind: 'space_group'; params: { toleranceAngstrom: number } }

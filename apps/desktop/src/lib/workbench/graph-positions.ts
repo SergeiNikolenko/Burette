@@ -1,3 +1,5 @@
+import { runGraphTask } from "../molecular-workbench/graph-compute-client";
+import type { MolecularStructure } from "../molecular-workbench/molecular-graph";
 import type { GraphEditResult } from "../molecular-workbench/graph-edit";
 import type { Vec3 } from "../molecular-workbench/types";
 import { atomAnnotations } from "./graph-annotations";
@@ -32,6 +34,23 @@ export function checkPositionsOnlyEdit(before: GraphEditResult, after: GraphEdit
   if (!same) throw new Error("The structure would change chemically, so it was left as it was.");
   const off = after.atoms.some((atom, index) => [atom.x, atom.y, atom.z].some((value, axis) => Math.abs(value - coordinates[index][axis]) > 1e-8));
   if (off) throw new Error("The new coordinates could not be written exactly.");
+}
+
+/** Rewrite the connection table in source atom order. */
+export function normalizeGraphOrder(structure: MolecularStructure, signal: AbortSignal) {
+  return runGraphTask({
+    action: "edit-graph",
+    molecule: structure,
+    edits: [{ kind: "reorder-atoms", order: structure.atoms.map((_, index) => index) }],
+  }, { signal });
+}
+
+export async function replaceGraphPositions(structure: GraphEditResult, coordinates: Vec3[], signal: AbortSignal) {
+  const source = molfileWithPositions(structure.molfile, coordinates);
+  const parsed = await runGraphTask({ action: "parse", source, format: "mol" }, { signal });
+  const next = await normalizeGraphOrder(parsed, signal);
+  checkPositionsOnlyEdit(structure, next, coordinates);
+  return next;
 }
 
 function bondKeys(structure: GraphEditResult) {

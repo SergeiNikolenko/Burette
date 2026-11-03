@@ -2,13 +2,12 @@ import { useEffect, useSyncExternalStore } from "react";
 import type { MolecularAtom, Vec3, MolecularForceField } from "../molecular-workbench/types";
 import type { OptimizationMethod } from "../molecular-workbench/optimization";
 import { runGraphTask } from "../molecular-workbench/graph-compute-client";
-import type { MolecularStructure } from "../molecular-workbench/molecular-graph";
 import type { GraphEdit, GraphEditResult } from "../molecular-workbench/graph-edit";
 import type { FragmentSource } from "../molecular-workbench/fragment-source";
 import { useSourceEditing, type SourceEditingOperation } from "../source-editing/context";
 import { graphDraftText, graphSourceMetadata, structureEditAvailable } from "./graph-draft";
 import { atomAnnotations, type AtomAnnotation } from "./graph-annotations";
-import { checkPositionsOnlyEdit, molfileWithPositions } from "./graph-positions";
+import { normalizeGraphOrder, replaceGraphPositions } from "./graph-positions";
 import { forgetViewerAtomSelection } from "./selection";
 import { useStructureSourceText } from "../source-editing/use-structure-source-text";
 import type { ViewerDocument } from "../../types";
@@ -69,11 +68,6 @@ function message(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** The connection table rewritten in displayed atom order, with the coordinates the structure carries. */
-function normalized(structure: MolecularStructure, signal: AbortSignal) {
-  return runGraphTask({ action: "edit-graph", molecule: structure, edits: [{ kind: "reorder-atoms", order: structure.atoms.map((_, index) => index) }] }, { signal });
-}
-
 function snapshot(structure: GraphEditResult, text: string, outcome: GraphOutcome | null, metadata: GraphMetadata | null, atomIds: readonly string[] | null = null): GraphSnapshot {
   return { structure, annotations: atomAnnotations(structure.molfile), text, outcome, metadata, atomIds: metadata?.atoms.map(atom => atom.id) ?? atomIds };
 }
@@ -92,7 +86,7 @@ async function load(key: string, document: ViewerDocument, text: string) {
   update(key, { ...(entries.get(key)?.owner !== owner ? { history: null, busy: false, error: null } : {}), owner, loading: text, controller });
   try {
     const parsed = await runGraphTask({ action: "parse", source: text, format: sourceExtension(document) === "mol" ? "mol" : "sdf" }, { signal: controller.signal });
-    const structure = await normalized(parsed, controller.signal);
+    const structure = await normalizeGraphOrder(parsed, controller.signal);
     if (controller.signal.aborted || logicalSourceFor(document.id) !== owner || entries.get(key)?.controller !== controller) return;
     update(key, { history: { origin: text, current: snapshot(structure, text, null, graphSourceMetadata(text, sourceExtension(document), structure.atoms.length), sourceExtension(document) === "mol" ? graphAtomIds(document.id, text, structure.atoms.length) : null), undo: [], redo: [] }, error: null, loading: null, controller: null });
   } catch (error) {
@@ -103,10 +97,7 @@ async function load(key: string, document: ViewerDocument, text: string) {
 async function compute(operation: Exclude<GraphOperation, { kind: "metadata" }>, structure: GraphEditResult, signal: AbortSignal, advanced?: GraphAdvancedCompute): Promise<GraphComputeResult> {
   if (operation.kind === "edits") return { structure: await runGraphTask({ action: "edit-graph", molecule: structure, edits: operation.edits }, { signal }), outcome: null };
   if (operation.kind === "positions") {
-    const parsed = await runGraphTask({ action: "parse", source: molfileWithPositions(structure.molfile, operation.coordinates), format: "mol" }, { signal });
-    const next = await normalized(parsed, signal);
-    checkPositionsOnlyEdit(structure, next, operation.coordinates);
-    return { structure: next, outcome: null };
+    return { structure: await replaceGraphPositions(structure, operation.coordinates, signal), outcome: null };
   }
   if (operation.kind === "remove-hydrogens") {
     const indices = structure.atoms.flatMap((atom, index) => atom.element === "H" ? [index] : []);

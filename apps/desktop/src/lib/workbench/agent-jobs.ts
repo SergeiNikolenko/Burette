@@ -2,6 +2,7 @@ import type { WorkbenchBuildJobKind, WorkbenchJobParams, WorkbenchSubmitJobKind 
 import type { Snapshot } from "./agent-source";
 import { builderJobs, buildJobs } from "./agent-builder-jobs";
 import { graphJobs } from "./agent-graph-jobs";
+import { coordinateAlignJob, measurementSetJob } from "./agent-coordinate-jobs";
 import { metadataJob } from "./agent-metadata";
 import { orbitalCubeJob } from "./agent-orbital-job";
 import { pairDistributionJob } from "./agent-pair-distribution";
@@ -44,6 +45,8 @@ export const AGENT_JOBS: { [K in WorkbenchSubmitJobKind]: AgentJobRunner<K> } = 
   ...graphJobs,
   ...builderJobs,
   metadata_edit: metadataJob,
+  measurement_set: measurementSetJob,
+  coordinate_align: coordinateAlignJob,
   pair_distribution: pairDistributionJob,
   point_group: pointGroupJob,
   space_group: spaceGroupJob,

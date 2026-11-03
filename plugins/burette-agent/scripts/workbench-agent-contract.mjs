@@ -119,6 +119,10 @@ function oneOf(value, field, allowed, fallback) {
 }
 
 const CONSTRAINT_ATOMS = { freeze: 1, distance: 2, angle: 3, dihedral: 4 };
+const MEASUREMENT_KINDS = ['distance', 'angle', 'dihedral'];
+const FRAGMENTS = ['smaller', 'first', 'last'];
+const AXES = ['x', 'y', 'z'];
+const COORDINATE_REQUIREMENT = 'One MOL or SDF record with an explicit bond graph, 1–256 atoms; XYZ, collections and perceived graphs are unsupported. Atom order, graph, stereo flags and metadata are kept; the result is exported, never applied to the document.';
 const ORBITAL_FIELDS = ['orbital', 'density', 'spin-density'];
 const POINT_GROUP_TOLERANCES = ['tight', 'normal', 'loose', 'very-loose'];
 const symmetryTolerance = value => finite(value, 'job.params.toleranceAngstrom', 1e-4, 0.5) ?? 0.01;
@@ -369,6 +373,48 @@ const JOB_DEFINITIONS = {
       const seen = new Set(), atoms = (p.atoms ?? []).map((atom, position) => metadataAtom(atom, position, seen));
       if (!atoms.length && p.conformerLabel === undefined) invalid('metadata_edit requires at least one requested change.');
       return { atoms, ...(p.conformerLabel === undefined ? {} : { conformerLabel: metadataLabel(p.conformerLabel, 'job.params.conformerLabel', 128) }) };
+    },
+  },
+  measurement_set: {
+    describe: {
+      engine: 'Burette rigid fragment motion (the Edit measurement dialog)',
+      requires: `${COORDINATE_REQUIREMENT} The moved fragment must separate at the measured bond; ring and nonbonded cuts are refused.`,
+      params: { measurement: MEASUREMENT_KINDS, atoms: 'ordered zero-based source atoms: 2, 3 or 4, consecutive atoms bonded (a distance may join disconnected parts)', valueAngstrom: 'distance target, 0.000001–1000000 Å', valueDegrees: 'angle target strictly between 0 and 180, or dihedral target from -180 to 180', fragment: 'smaller (default), first or last: the side of the first or last atom moves' },
+      artifacts: ['structure'],
+    },
+    params(value) {
+      const p = params(value, ['measurement', 'atoms', 'valueAngstrom', 'valueDegrees', 'fragment'], 'measurement_set job.params');
+      const measurement = oneOf(p.measurement, 'job.params.measurement', new Set(MEASUREMENT_KINDS), undefined);
+      if (!measurement) invalid('job.params.measurement is required: distance, angle or dihedral.');
+      const count = CONSTRAINT_ATOMS[measurement];
+      if (!Array.isArray(p.atoms) || p.atoms.length !== count || Array.from(p.atoms).some(atom => !Number.isInteger(atom) || atom < 0 || atom > 255) || new Set(p.atoms).size !== count) {
+        invalid(`job.params.atoms must hold ${count} distinct zero-based atom indices below 256.`);
+      }
+      const [unit, other] = measurement === 'distance' ? ['valueAngstrom', 'valueDegrees'] : ['valueDegrees', 'valueAngstrom'];
+      if (p[other] !== undefined) invalid(`job.params.${other} is not used by ${measurement}; pass ${unit}.`);
+      if (p[unit] === undefined) invalid(`job.params.${unit} is required for ${measurement}.`);
+      const target = measurement === 'distance' ? finite(p[unit], `job.params.${unit}`, 1e-6, 1e6) : finite(p[unit], `job.params.${unit}`, -180, 180);
+      if (measurement === 'angle' && (target <= 0 || target >= 180)) invalid('job.params.valueDegrees must be strictly between 0 and 180 for angle.');
+      return { measurement, atoms: [...p.atoms], [unit]: target, fragment: oneOf(p.fragment, 'job.params.fragment', new Set(FRAGMENTS), 'smaller') };
+    },
+  },
+  coordinate_align: {
+    describe: {
+      engine: 'Avogadro Align tool semantics: translation, then the minimal rotation about the origin',
+      requires: COORDINATE_REQUIREMENT,
+      params: { originAtom: 'zero-based source atom moved to the origin', axisAtom: 'optional zero-based source atom then placed on the positive axis', axis: `${AXES.join(', ')} (default x; only with axisAtom)` },
+      artifacts: ['structure'],
+    },
+    params(value) {
+      const p = params(value, ['originAtom', 'axisAtom', 'axis'], 'coordinate_align job.params');
+      const originAtom = integer(p.originAtom, 'job.params.originAtom', 0, 255);
+      if (p.axisAtom === undefined) {
+        if (p.axis !== undefined) invalid('job.params.axis is only used with axisAtom.');
+        return { originAtom };
+      }
+      const axisAtom = integer(p.axisAtom, 'job.params.axisAtom', 0, 255);
+      if (axisAtom === originAtom) invalid('job.params.axisAtom must differ from originAtom.');
+      return { originAtom, axisAtom, axis: oneOf(p.axis, 'job.params.axis', new Set(AXES), 'x') };
     },
   },
   pair_distribution: {

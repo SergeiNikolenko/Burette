@@ -44,11 +44,11 @@ export function graphDraftText(source: string, extension: string, molfile: strin
 }
 
 /** Metadata is read before editing; malformed reserved data never reaches a draft. */
-export function graphSourceMetadata(source: string, extension: string, atomCount: number) {
+export function graphSourceMetadata(source: string, extension: string, atomCount: number, { initialize = true } = {}) {
   const { data } = recordParts(source);
   if (extension === "mol") {
     if (hasGraphMetadata(data)) throw new Error("MOL files cannot carry SDF metadata. Save as SDF first.");
     return null;
   }
-  return readGraphMetadata(data, atomCount);
+  return initialize || hasGraphMetadata(data) ? readGraphMetadata(data, atomCount) : null;
 }
