@@ -63,6 +63,11 @@ function changedLiveAppliedKeys(previous: ViewerPreferences, next: ViewerPrefere
   const changed: LiveAppliedPreferenceKey[] = [];
   for (const key of Object.keys(next) as (keyof ViewerPreferences)[]) {
     if (previous[key] === next[key]) continue;
+    if (key === "shortcutOverrides") {
+      const before = previous.shortcutOverrides ?? {};
+      const after = next.shortcutOverrides ?? {};
+      if (Object.keys({ ...before, ...after }).every(command => before[command] === after[command])) continue;
+    }
     if (!(key in LIVE_APPLIED_PREFERENCE_MESSAGES)) return null;
     changed.push(key as LiveAppliedPreferenceKey);
   }
