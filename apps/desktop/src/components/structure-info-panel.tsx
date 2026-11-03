@@ -37,6 +37,7 @@ import { ScrubNumberField } from "@/components/ui/scrub-number-input";
 import { Item, ItemContent, ItemDescription, ItemGroup } from "@/components/ui/item";
 import { InspectorToolRow } from "./inspector-tool-row";
 import { PropertiesToolRow } from "./workbench/properties-entrypoint";
+import { useTrajectoryFrame, type TrajectoryFrameState } from "../lib/workbench/source";
 import { CollapsibleSection } from "./ui/collapsible-section";
 import { Field, FieldGroup, FieldTitle, FieldLabel, FieldDescription, FieldSet, FieldLegend } from "./ui/field";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
@@ -108,14 +109,7 @@ type TrajectorySmoothingResult = {
   preset?: "light" | "balanced" | "strong";
   settingsSignature?: string;
 };
-type TrajectoryPlaybackState = {
-  frameIndex: number;
-  frameCount: number;
-  globalFrameIndex: number;
-  segmentStartFrame: number;
-  sourcePath: string;
-  playing: boolean;
-};
+type TrajectoryPlaybackState = TrajectoryFrameState;
 type AssemblySymmetryState = {
   available: boolean;
   shown: boolean;
@@ -183,7 +177,7 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
   const [trajectorySmoothingResult, setTrajectorySmoothingResult] = useState<TrajectorySmoothingResult | null>(null);
   const [trajectorySmoothingSignal, setTrajectorySmoothingSignal] = useState<MdsmoothSignal>("rmsd");
   const [trajectorySmoothingMode, setTrajectorySmoothingMode] = useState<MdsmoothMode>("extrema");
-  const [trajectoryPlayback, setTrajectoryPlayback] = useState<TrajectoryPlaybackState | null>(null);
+  const trajectoryPlayback = useTrajectoryFrame(document?.id ?? null);
   const [assemblySymmetry, setAssemblySymmetry] = useState<AssemblySymmetryState>({ available: false, shown: false });
   const [assemblySymmetryPending, setAssemblySymmetryPending] = useState(false);
   const trajectorySmoothingSourcePath = useRef("");
@@ -196,7 +190,6 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
     setTrajectorySmoothingBuilt(false);
     setTrajectorySmoothingView("original");
     setTrajectorySmoothingResult(null);
-    setTrajectoryPlayback(null);
     trajectorySmoothingSourcePath.current = "";
   }, [document?.id]);
 
@@ -237,24 +230,6 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
     if (viewerLigandSelection) return;
     setActiveActionKey((current) => current && current.includes("focus_ligand") ? null : current);
   }, [viewerLigandSelection]);
-
-  useEffect(() => {
-    const handle = (event: Event) => {
-      const detail = (event as CustomEvent<Record<string, unknown>>).detail;
-      if (String(detail?.documentId || "") !== document?.id) return;
-      const frameCount = Math.max(1, Math.trunc(Number(detail.frameCount) || 1));
-      setTrajectoryPlayback({
-        frameIndex: Math.max(0, Math.min(frameCount - 1, Math.trunc(Number(detail.frameIndex) || 0))),
-        frameCount,
-        globalFrameIndex: Math.max(0, Math.trunc(Number(detail.globalFrameIndex) || 0)),
-        segmentStartFrame: Math.max(0, Math.trunc(Number(detail.segmentStartFrame) || 0)),
-        sourcePath: String(detail.sourcePath || ""),
-        playing: detail.playing === true,
-      });
-    };
-    window.addEventListener("burette:trajectory-frame-changed", handle);
-    return () => window.removeEventListener("burette:trajectory-frame-changed", handle);
-  }, [document?.id]);
 
   useEffect(() => {
     const handle = (event: Event) => {

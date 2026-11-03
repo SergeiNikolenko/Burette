@@ -269,6 +269,9 @@ Burette settings cover:
 - Files, recent structures, and project folders
 - Burette/Codex integration status
 - Quick Look reset, preview cache cleanup, logs, diagnostics, and maintenance
+- Extensions: the Crystals structure library and the Avogadro plugin index;
+  the desktop app installs Avogadro plugins, sets them up after a confirmation
+  and runs their commands from Compute › Extensions
 
 Optional integrations include a local `xyzrender` executable, VESTA, external
 chemistry editors discovered by macOS, and managed or detected scientific

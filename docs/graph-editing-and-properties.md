@@ -2,7 +2,9 @@
 
 ## Entry points and ownership
 
-Open a single MOL, SDF or SD document and add **Edit** to the right dock.
+Open a single MOL, SDF or SD document and add **Edit** to the right dock, or run
+**Edit atoms and bonds** from the command palette. **Edit geometry** opens the
+Geometry dock the same way for an XYZ document.
 **Info → Tools → Properties → Calculate** opens the same document's properties.
 A browser-owned generated document must still own its original source when an
 editing session begins. Existing Text sessions do not bypass this check.

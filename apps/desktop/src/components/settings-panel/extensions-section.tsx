@@ -1,19 +1,44 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { useResourceExtensions } from "../../hooks/use-resource-extensions";
 import { CRYSTALS_RESOURCE } from "../../lib/extensions/resource-bundle";
+import { createAvogadroCatalog } from "../../lib/extensions/avogadro-catalog";
+import { pluginLinkUrl, type AvogadroPlugin, type AvogadroPluginLink } from "../../lib/extensions/avogadro-plugin-index";
+import { avogadroPluginRunner, type createAvogadroPluginRunner } from "../../lib/extensions/avogadro-plugin-runner";
+import { pluginRowParts } from "./avogadro-plugin-controls";
 import { isTauriRuntime } from "../../lib/tauri";
 import { Button } from "../ui/button";
 import { DotsHorizontal } from "../ui/app-icons";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import type { ShellActions } from "../types";
 import { CrystalsBrowser } from "./crystals-browser";
+import { AvogadroPluginsSection } from "./avogadro-plugins-section";
 import { SettingsSection, type SettingRow } from "./setting-control";
 
-export type ExtensionsSectionProps = { extensions: ReturnType<typeof useResourceExtensions> & Pick<ShellActions, "openCrystalsStructure"> };
+export type ExtensionsSectionProps = {
+  extensions: ReturnType<typeof useResourceExtensions> & Pick<ShellActions, "openCrystalsStructure">;
+  catalog?: ReturnType<typeof createAvogadroCatalog>;
+  /** Avogadro package installs; the desktop shell provides them by default. */
+  plugins?: ReturnType<typeof createAvogadroPluginRunner>;
+};
+const noPlugins = { installed: [], initialized: true, error: null, jobs: [] } as const;
+const subscribeNothing = () => () => {};
 const links = { Source: "https://github.com/OpenChemistry/crystals", Issues: "https://github.com/OpenChemistry/crystals/issues" };
 
-export function ExtensionsSection({ extensions }: ExtensionsSectionProps) {
+async function openPluginLink(plugin: AvogadroPlugin, link: AvogadroPluginLink) {
+  // The desktop shell resolves the address from the index itself.
+  if (isTauriRuntime()) await invoke("open_avogadro_plugin_link", { name: plugin.name, link });
+  else window.open(pluginLinkUrl(plugin, link), "_blank", "noopener,noreferrer");
+}
+
+export function ExtensionsSection({ extensions, catalog: providedCatalog, plugins: providedPlugins }: ExtensionsSectionProps) {
+  const [catalog] = useState(() => providedCatalog ?? createAvogadroCatalog());
+  const catalogState = useSyncExternalStore(catalog.subscribe, catalog.getSnapshot, catalog.getSnapshot);
+  useEffect(() => { void catalog.refresh(); }, [catalog]);
+  const [plugins] = useState(() => providedPlugins ?? (isTauriRuntime() ? avogadroPluginRunner() : undefined));
+  const pluginState = useSyncExternalStore(plugins?.subscribe ?? subscribeNothing, plugins?.getSnapshot ?? (() => noPlugins), plugins?.getSnapshot ?? (() => noPlugins));
+  useEffect(() => { void plugins?.refresh(); }, [plugins]);
+  const [dismissedPluginJobs, setDismissedPluginJobs] = useState<ReadonlySet<string>>(new Set());
   const [issue, setIssue] = useState<{ message: string; retry: () => void; focusTarget: "primary" | "links" } | null>(null);
   const [browsing, setBrowsing] = useState(false);
   const library = useRef<HTMLDivElement>(null);
@@ -38,7 +63,8 @@ export function ExtensionsSection({ extensions }: ExtensionsSectionProps) {
   function rememberFocus(from: HTMLButtonElement) {
     if (document.activeElement === from) restoreFocus.current = { from, to: issue?.focusTarget ?? "primary" };
   }
-  const job = extensions.jobs[0], busy = extensions.jobs.find(entry => entry.status === "queued" || entry.status === "running");
+  const crystalJobs = extensions.jobs.filter(entry => !entry.plugin);
+  const job = crystalJobs[0], busy = crystalJobs.find(entry => entry.status === "queued" || entry.status === "running");
   const failed = job?.status === "failed" && job.id !== dismissedJob ? job : undefined;
   const error = issue?.message ?? extensions.error ?? failed?.error;
   async function run(action: () => Promise<unknown>, message = "Could not complete this action. Try again.", focusTarget: "primary" | "links" = "primary") {
@@ -97,5 +123,15 @@ export function ExtensionsSection({ extensions }: ExtensionsSectionProps) {
         return path;
       }} />
     </div>}
+    <AvogadroPluginsSection catalog={catalogState} onRetry={() => { void catalog.refresh(); }} openLink={openPluginLink}
+      installedError={pluginState.error} onRetryInstalled={() => { void plugins?.refresh(); }}
+      renderPlugin={plugins && (plugin => {
+        const job = pluginState.jobs.find(entry => entry.plugin === plugin.name);
+        return pluginRowParts({ plugin, installed: pluginState.installed.find(entry => entry.name === plugin.name),
+          job: job && !dismissedPluginJobs.has(job.id) ? job : undefined,
+          install: target => { void plugins.install(target); }, prepare: name => { void plugins.prepare(name); },
+          remove: name => { void plugins.remove(name); }, cancel: plugins.cancel,
+          dismiss: jobId => setDismissedPluginJobs(previous => new Set(previous).add(jobId)) });
+      })} />
   </>;
 }

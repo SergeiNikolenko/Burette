@@ -3,8 +3,12 @@
 This is stage 11 of the [full adoption contract](avogadro-adoption.md).
 The [acceptance ledger](avogadro-parity-checklist.md) distinguishes adopted
 resources from future scientific adapters and other-runtime verification.
-Settings Extensions, Jobs and the Crystals browser resource workflow are adopted;
-this does not establish arbitrary Python/C++ plugin compatibility.
+Settings Extensions, Jobs and the Crystals browser resource workflow are adopted.
+Settings Extensions also browses the Avogadro plugin index on every surface and,
+in the desktop shell only, installs, sets up and runs Avogadro Python packages
+through the protocol described below. That runner is not a compatibility claim
+for every package in the index; each package's commands are verified
+individually.
 
 ## Pinned upstream boundaries
 
@@ -124,6 +128,115 @@ removal leaves already opened documents and user exports intact. Scientific
 validity, symmetry completeness and large-file behavior are independent of
 successful installation or lexical parsing of all CIFs.
 
+## Avogadro plugin index
+
+Settings Extensions lists `https://avogadro.cc/plugins2.json`. Burette ships the
+recorded snapshot [`config/avogadro-plugin-index.snapshot.json`](../config/avogadro-plugin-index.snapshot.json)
+(retrieved 2026-11-01, `Last-Modified: Sun, 01 Nov 2026 12:04:11 GMT`, 34,929
+bytes, SHA-256 `bcc5fe247bfbd8e54b4abc878bb9e50fe7191708a98b57420c1d7318dbbf8816`,
+31 entries, all `pypkg` packages with `pyproject.toml` metadata) and shows it
+first. Opening the section then refreshes once from the live index: the
+browser shell fetches it directly (the host answers with
+`Access-Control-Allow-Origin: *`); the desktop shell uses the native
+`fetch_avogadro_plugin_index` command with one fixed address, a 1 MiB and
+20-second bound and the shared public-address guard. A failed or unreadable
+refresh keeps the last good list and shows one fixed message with Retry.
+
+Entries are untrusted display data, validated one by one
+([`avogadro-plugin-index.ts`](../apps/desktop/src/lib/extensions/avogadro-plugin-index.ts)):
+names, versions, 40-hex commits and 64-hex archive hashes have fixed shapes;
+text rejects control and format characters; repositories must be plain https
+on GitHub, GitLab or Codeberg; archives must be served by `plugins.avogadro.cc`.
+A malformed entry is dropped without hiding the rest; duplicate names keep the
+first. Rows show name, description, version and, expanded, authors, license,
+provided feature kinds, update date and revision with Source, Readme, issue and
+Download links. In the desktop shell the native side resolves those links from
+its own last fetched index or the snapshot, so the webview never asks it to
+open an arbitrary URL.
+
+## Command and script extensions by surface
+
+Avogadro 2.1 runs a package by creating its environment with `pixi install`
+(or a virtual environment) in the package folder and starting its console
+script with the feature identifier, `--lang` and molecule JSON on stdin
+(`avogadro/qtgui/pythonscript.cpp`, `packagemanager.cpp` and
+`interfacescript.cpp` at the pinned avogadrolibs revision). Burette follows that
+protocol where a process model exists and never runs downloaded code without
+an explicit user step:
+
+| Surface | Index | Install | Run |
+| --- | --- | --- | --- |
+| Browser shell, browser-dev, hosted plugin | Browse, search, links | Not offered; rows show `Desktop app` | Not offered |
+| Desktop app | Browse, search, links | Downloads the indexed archive, requires its index SHA-256, unpacks it into private app data; nothing runs | `Set up` runs `pixi install` after a confirmation naming the package; commands then run from Compute › Extensions and the command palette as Jobs |
+| Quick Look, iPhone | None | None | None |
+
+The browser shell does not run these packages. They are Python programs, and
+many depend on compiled conda-forge packages or executables (the index lists,
+for example, `xtb-python`, `ambertools`, `psi4`, `crest` and `openjdk`; RDKit
+and others come through PyPI dependencies). The archive host redirects to
+`codeload.github.com`, whose CORS policy only admits GitHub's own renderer, so
+even reading an archive would need a proxy, which 11.05 forbids. A Pyodide host
+could load some pure-Python packages, but it would still execute downloaded
+code inside the app origin next to stored documents, so Burette does not offer
+it. The supported browser alternatives are the per-operation ports listed under
+11.08–11.11 (for example RDKit operations in the existing RDKit WASM) and the
+remote compute hosts.
+
+### Desktop package lifecycle
+
+[The native module](../apps/desktop/src-tauri/src/commands/avogadro_plugins/mod.rs)
+takes only a package name and the revision the user saw. It looks the package
+up in its own index copy, refuses a changed revision, downloads the archive
+(32 MiB, 120 seconds, cancellable, at most three validated redirects), and
+compares the bytes with the index SHA-256. [A small ZIP reader](../apps/desktop/src-tauri/src/commands/avogadro_plugins/archive.rs)
+accepts stored or deflated regular files below one top-level folder and refuses
+encryption, ZIP64, symbolic links, absolute, parent or backslash paths,
+case-insensitive duplicates, more than 4,096 entries, entries above 64 MiB and
+more than 128 MiB in total, checking each CRC-32. Files are private and not
+executable. The package must declare the indexed name in `[project]`.
+[The store](../apps/desktop/src-tauri/src/commands/avogadro_plugins/store.rs)
+publishes `<name>/<commit>/` and then the `installed.json` receipt atomically;
+failure or cancellation before the receipt leaves the previous version, and an
+update removes the old revision only after the new receipt is written. Removal
+renames the package folder away before deleting it. Documents opened from a
+plugin's results are ordinary documents and stay after removal.
+
+`Set up` requires `pixi` (looked up in `~/.pixi/bin`, `~/.local/bin`, `PATH`
+and Homebrew) and a declared pixi workspace (`[tool.pixi.*]` or `pixi.toml`),
+runs `pixi install` with a 30-minute deadline and cancellation, and reports
+success only when `.pixi/envs/default/bin` exists. A run starts
+`.pixi/envs/default/bin/<script> <identifier> --lang en` from the package
+folder with that `bin` directory first on `PATH`, `PYTHONPATH`/`PYTHONHOME`
+removed, molecule JSON (16 MiB) on stdin, 32 MiB stdout, 256 KiB stderr, a
+30-minute deadline and cancellation. Script names (`avogadro-*`), identifiers
+and `user-options` files are validated against the installed folder.
+
+The webview reads the package's own `pyproject.toml` with a TOML subset reader
+([`avogadro-plugin-manifest.ts`](../apps/desktop/src/lib/extensions/avogadro-plugin-manifest.ts))
+for the console script and `[[tool.avogadro.menu-commands]]` entries. Command
+input carries the declared format (`sdf`, `mol`, `xyz` or `cjson`), CJSON as
+well when `input-cjson` is set, `selectedAtoms` from the 3D selection (none when
+the viewer reports a truncated selection, with a notice), `charge`, `spin` and
+`options` from a typed dialog built from the package's `user-options` file
+(`integer`, `float`, `string`, `text`, `boolean`, `stringList`). Output follows
+Avogadro's reader ([`avogadro-command-io.ts`](../apps/desktop/src/lib/extensions/avogadro-command-io.ts)):
+leading non-JSON lines are ignored; a returned `sdf`/`mol`/`xyz`/`pdb` or CJSON
+molecule opens as a new document (CJSON coordinate sets become SDF records and
+atom/bond labels a notice); `selectedAtoms` becomes the viewer selection;
+`message`, `warning` and `error` become notices. Burette never replaces or
+appends to the active molecule, unlike Avogadro's undoable in-place replace;
+closing the result document is the undo. Other feature kinds in the index
+(`file-formats`, `input-generators`, `energy-models`, `electrostatic-models`)
+are listed but not yet wired to Burette's reader, input-export, optimizer or
+charge routes.
+
+The verified package is `avogadro-rdkit` 0.3.0
+(`82498e3a3cedc2d465ccdcd93cabec1b2505dc5a`, archive SHA-256
+`f93c4df5296eae7a52e482a3b334452adab1123d06330845db334879ceea9fa4`, recorded in
+`tests/fixtures/avogadro/`): its eight declared commands are listed, and MMFF94,
+SMARTS selection and ETKDG answers for caffeine are recorded from the real
+package (RDKit 2026.09.1 from conda-forge).
+
 ## Focused checks and remaining acceptance
 
 Run from the repository root:
@@ -134,6 +247,12 @@ vp run test:extension-resources
 vp run test:extension-runner
 vp run test:extension-ui
 vp run test:crystals-browser
+vp run test:avogadro-plugin-index
+vp run test:avogadro-plugin-install
+vp run test:avogadro-commands
+(cd apps/desktop/src-tauri && cargo test --lib avogadro_plugins)
+# Real package, downloads RDKit from conda-forge:
+(cd apps/desktop/src-tauri && cargo test --lib real_rdkit_plugin -- --ignored)
 ```
 
 Keep deterministic offline regeneration, corrupt/truncated/unsafe bundles,
@@ -143,5 +262,39 @@ keyboard/focus, light/dark and narrow layouts, search/25-row pagination,
 duplicate-name opening, exact source/export/reload and representative
 chemical classes require target-surface evidence. Native storage/opening and
 hosted deployment are separate from browser source or local packaging checks.
-The other four candidates remain operation-specific work, not accepted plugin
-execution. Shared camera requirements remain **11.12** in the adoption contract.
+The other four candidates remain operation-specific browser work; on the
+desktop they install and run through the package runner only once their own
+commands are verified.
+
+Plugin commands are not registered as agent workbench jobs: they run downloaded
+third-party code, which the plugin/MCP surface excludes
+([security](security-and-permissions.md#browser-and-agent-surfaces)); setup
+and every run stay user gestures.
+
+## Shared interactions (11.12)
+
+- **Camera.** The Mol* Camera rail menu offers Reset zoom, Lay flat, Reset
+  axes, Perspective/Orthographic and View from ±X/±Y/±Z. Framing and axis views
+  keep the chosen projection. MOLX scene files and per-document view
+  checkpoints keep the camera and its projection, because Mol*'s state snapshot
+  includes the camera (with `mode`) and the canvas settings. Keys are listed in
+  [3D view camera](keyboard-shortcuts.md#3d-view-camera). The focused 3D view
+  takes Shift+arrow rotation and Q/E, W/S, A/D, R/F steps. Plain arrows keep pose
+  and ligand stepping, which no longer react to Shift.
+- **Active frame.** Info, Plots, Vibrations and the spectra panels read one
+  frame store (`useTrajectoryFrame` in `lib/workbench/source.ts`). It keeps the
+  segment index, global index, segment start and source path from the viewer's
+  `trajectoryFrameChanged` report, so a panel opened later starts at the frame
+  the player shows. Geometry, Edit and Properties edit one structure and do not
+  follow trajectory frames.
+- **Property editing.** Edit (MOL/SDF) and Geometry (XYZ) also open from the
+  command palette (**Edit atoms and bonds**, **Edit geometry**). Properties
+  opens from Info → Tools.
+
+Remaining:
+- The mesoscale viewer, Mol* preset previews, Ketcher's Miew view and the
+  three.js chemical-space view keep their own camera controls, without the
+  projection toggle, axis views or keyboard steps.
+- The 3D context menu has no Edit, Geometry or Properties entry.
+- Agents cannot set the projection or an axis view; `rotate_camera` rotates
+  about a world axis.

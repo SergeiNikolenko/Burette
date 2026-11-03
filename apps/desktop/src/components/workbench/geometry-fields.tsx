@@ -39,7 +39,7 @@ export function InternalCoordinateInput({ kind, value, reference, label, disable
       <div className="geometry-value"
         onClick={(event) => event.stopPropagation()}>
         <span className="geometry-ref">{reference}</span>
-        <ConstraintToggle label={`Keep ${label.toLowerCase()} fixed`} active={locked} disabled={disabled} onToggle={onToggleLock} />
+        <ConstraintToggle label={`Keep ${label[0].toLowerCase()}${label.slice(1)} fixed`} active={locked} disabled={disabled} onToggle={onToggleLock} />
         <ScrubNumberField disabled={disabled} aria-label={`${label}, ${internalCoordinateUnit(kind)}`}
           className="w-full" value={draft} onValueChange={(next) => { setDraft(next); onPreview(next); }} onValueCommitted={(next) => void commit(next)}
           step={step} smallStep={step / 10} largeStep={step * 10}

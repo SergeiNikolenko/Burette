@@ -1,5 +1,6 @@
 import { PolymerBuilderDialogHost } from "./components/workbench/polymer-builder-host";
 import { AssemblyDialogHost } from "./components/workbench/assembly-dialog-host";
+import { AvogadroCommandHost } from "./components/workbench/avogadro-command-host";
 import { PeptideBuilderDialogHost } from "./components/workbench/peptide-builder-host";
 import { MetalComplexBuilderDialogHost } from "./components/workbench/metal-complex-builder-host";
 import { InputExportDialogHost } from "./components/workbench/input-export-host";
@@ -1376,6 +1377,7 @@ export default function App() {
       <MetalComplexBuilderDialogHost actions={actions} />
       <PolymerBuilderDialogHost actions={actions} />
       <AssemblyDialogHost actions={actions} />
+      <AvogadroCommandHost actions={actions} />
       <AppLayout
         state={state}
         actions={actions}

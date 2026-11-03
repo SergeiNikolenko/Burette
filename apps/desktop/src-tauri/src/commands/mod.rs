@@ -1,6 +1,7 @@
 pub(crate) mod action_journal;
 pub(crate) mod agent_integration;
 pub(crate) mod app_preferences;
+pub(crate) mod avogadro_plugins;
 pub(crate) mod chemical_editors;
 pub(crate) mod chemical_space_models;
 pub(crate) mod clipboard;

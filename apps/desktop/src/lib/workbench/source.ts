@@ -85,9 +85,13 @@ export function useScientificDocument(document: ViewerDocument | null): Scientif
 }
 
 // The viewer reports frame changes; remember the latest per document so a panel
-// mounted later starts at the frame the trajectory toolbar shows.
-type FrameState = { frameIndex: number; frameCount: number };
-const frames = new Map<string, FrameState>();
+// mounted later starts at the frame the trajectory toolbar shows. Every frame
+// consumer (Info, Plots, Vibrations, spectra) reads this one store.
+/** `frameIndex` counts within the active segment; `globalFrameIndex` across the whole trajectory. */
+export type TrajectoryFrameState = {
+  frameIndex: number; frameCount: number; globalFrameIndex: number; segmentStartFrame: number; sourcePath: string; playing: boolean;
+};
+const frames = new Map<string, TrajectoryFrameState>();
 const frameListeners = new Set<() => void>();
 // The core store reaches this module through the Compute menu, so it also loads
 // where `window` is a partial host object without event listeners.
@@ -97,7 +101,14 @@ if (typeof window !== "undefined" && typeof window.addEventListener === "functio
     const documentId = String(detail?.documentId || "");
     if (!documentId) return;
     const frameCount = Math.max(1, Math.trunc(Number(detail.frameCount) || 1));
-    frames.set(documentId, { frameIndex: Math.max(0, Math.min(frameCount - 1, Math.trunc(Number(detail.frameIndex) || 0))), frameCount });
+    frames.set(documentId, {
+      frameIndex: Math.max(0, Math.min(frameCount - 1, Math.trunc(Number(detail.frameIndex) || 0))),
+      frameCount,
+      globalFrameIndex: Math.max(0, Math.trunc(Number(detail.globalFrameIndex) || 0)),
+      segmentStartFrame: Math.max(0, Math.trunc(Number(detail.segmentStartFrame) || 0)),
+      sourcePath: String(detail.sourcePath || ""),
+      playing: detail.playing === true,
+    });
     frameListeners.forEach((listener) => listener());
   });
 }

@@ -127,8 +127,9 @@ test('frame reports clamp and persist for remount without crossing document iden
   const d = doc(), f = await fixture();
   try {
     await f.render(null);
-    await act(async () => browser.dispatchEvent(new browser.CustomEvent('burette:trajectory-frame-changed', { detail: { documentId: d.id, frameIndex: 9, frameCount: 3 } })));
-    await f.render(d, xyz(0)); expect(f.frame()).toEqual({ frameIndex: 2, frameCount: 3 });
+    await act(async () => browser.dispatchEvent(new browser.CustomEvent('burette:trajectory-frame-changed', { detail: { documentId: d.id, frameIndex: 9, frameCount: 3, globalFrameIndex: 12, segmentStartFrame: 10, sourcePath: '/md/run.xtc', playing: true } })));
+    await f.render(d, xyz(0));
+    expect(f.frame()).toEqual({ frameIndex: 2, frameCount: 3, globalFrameIndex: 12, segmentStartFrame: 10, sourcePath: '/md/run.xtc', playing: true });
     await f.render(doc(), xyz(0)); expect(f.frame()).toBeNull();
     for (const job of jobs.filter(job => !job.terminated)) await settle(job);
   } finally { await f.close(); }

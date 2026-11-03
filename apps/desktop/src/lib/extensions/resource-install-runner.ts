@@ -3,11 +3,13 @@ import { downloadCrystals } from "./crystals-download";
 import { createResourceStore } from "./resource-store";
 
 export type ResourceJob = {
-  id: string; title: string; operation: "install" | "remove";
+  id: string; title: string; operation: "install" | "update" | "remove" | "prepare" | "run";
   status: "queued" | "running" | "success" | "failed" | "cancelled";
   startedAt: number; completedAt?: number; cancelable: boolean;
-  phase: "reading" | "installing" | "removing"; receivedBytes: number; totalBytes: number;
+  phase: "reading" | "installing" | "removing" | "preparing" | "running"; receivedBytes: number; totalBytes: number;
   error?: string;
+  /** Set for Avogadro plugin jobs (the package name); absent for Crystals. */
+  plugin?: string;
 };
 type Snapshot = { installed: InstalledResource | null; initialized: boolean; error: string | null; jobs: readonly ResourceJob[] };
 type Options = { store?: ReturnType<typeof createResourceStore>; fetcher?: typeof fetch };
@@ -22,7 +24,7 @@ function failure(operation: ResourceJob["operation"], error: unknown) {
 export function createResourceInstallRunner({ store = createResourceStore(), fetcher = globalThis.fetch }: Options = {}) {
   let snapshot: Snapshot = { installed: null, initialized: false, error: null, jobs: [] }, refreshEpoch = 0, refreshRequested = false;
   const listeners = new Set<() => void>();
-  let flight: { id: string; operation: ResourceJob["operation"]; controller: AbortController; promise: Promise<ResourceJob> } | undefined;
+  let flight: { id: string; operation: "install" | "remove"; controller: AbortController; promise: Promise<ResourceJob> } | undefined;
   function publish(patch: Partial<Snapshot>) {
     snapshot = { ...snapshot, ...patch };
     listeners.forEach(listener => listener());
@@ -42,7 +44,7 @@ export function createResourceInstallRunner({ store = createResourceStore(), fet
       if (epoch === refreshEpoch) publish({ initialized: true, error: "Installed extensions could not be read. Retry." });
     }
   }
-  function start(operation: ResourceJob["operation"]): Promise<ResourceJob> {
+  function start(operation: "install" | "remove"): Promise<ResourceJob> {
     if (flight) return flight.operation === operation ? flight.promise : Promise.reject(new Error("An extension operation is still running. Cancel it before retrying."));
     ++refreshEpoch;
     const id = crypto.randomUUID(), controller = new AbortController();

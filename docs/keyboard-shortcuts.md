@@ -85,6 +85,8 @@ These actions are available from the command palette.
 | Ketcher | Open the Ketcher sketcher tab |
 | FEP Network Preview | Open a GraphML ligand-network preview |
 | Agents | Open the agent plugin status panel |
+| Edit atoms and bonds | Open the Edit dock for the active MOL or SDF structure |
+| Edit geometry | Open the Geometry dock for the active XYZ structure |
 | Hide Sidebar / Show Sidebar | Toggle sidebar |
 | Close Active Tab | Close the selected tab |
 | Close All Tabs | Close all workspace tabs |
@@ -127,3 +129,36 @@ project group.
 Preview iframes keep their own renderer-level keyboard behavior. Do not add
 global shortcuts that steal common Mol* interactions while the preview iframe
 is focused.
+
+### 3D view camera
+
+The Mol* 3D view moves its camera from the keyboard. While the pointer is over
+the view, Mol* moves continuously as long as a key is held. Without the pointer,
+press Tab until the view has keyboard focus (it shows a focus ring); each press
+or key repeat then moves one step. Shift+arrows rotate because plain arrows
+step docking poses, or the ligands while a ligand card is open.
+
+| Shortcut | Action |
+| --- | --- |
+| Shift+Left / Shift+Right | Rotate around the vertical screen axis (5° per step) |
+| Shift+Up / Shift+Down | Rotate around the horizontal screen axis (5° per step) |
+| Q / E | Roll (5° per step) |
+| W / S | Zoom in / out (10% of the distance per step) |
+| A / D | Move the structure left / right |
+| R / F | Move the structure up / down |
+| Left / Right | Previous / next docking pose or ligand |
+
+With the pointer over the view, Mol*'s own scene keys also apply:
+
+| Shortcut | Action |
+| --- | --- |
+| T | Reset the view |
+| I / O | Spin / rock the scene |
+| G | Toggle realistic lighting |
+| Shift+Space | Toggle fly mode |
+
+The Camera button in the viewer rail opens Reset zoom, Lay flat, Reset axes,
+Perspective / Orthographic and View from +X, −X, +Y, −Y, +Z or −Z. Reach it
+with Tab, open it with Enter or Space and move through it with the arrow keys.
+The chosen projection survives framing, axis views and pose changes, and Mol*
+scene files (MOLX) save it with the camera.
