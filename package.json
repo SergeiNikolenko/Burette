@@ -380,7 +380,7 @@
     "test:coordinate-editor-graph": "bun test --preload ./tests/fixtures/coordinate-editor-compiler.ts tests/test-coordinate-editor-graph.test.tsx && bun test tests/test-coordinate-editor-graph.test.tsx",
     "test:coordinate-editor-geometry": "bun test --preload ./tests/fixtures/coordinate-editor-compiler.ts tests/test-coordinate-editor-geometry.test.tsx && bun test tests/test-coordinate-editor-geometry.test.tsx",
     "test:coordinate-editor": "vp run test:coordinate-editor-graph && vp run test:coordinate-editor-geometry",
-    "test:scene-export": "bun tests/test-molstar-scene-export.mjs && bun test tests/test-ply-mesh.test.ts",
+    "test:scene-export": "bun test tests/molstar-scene-export.test.mjs && bun test tests/test-ply-mesh.test.ts",
     "test:scene-export-readers": "bun tests/test-scene-export-readers.mjs",
     "test:zmatrix-reference": "bun test tests/test-zmatrix-reference.test.ts",
     "test:coordinate-interchange-reader": "bun test tests/test-coordinate-interchange-reader.test.ts",

@@ -1,3 +1,4 @@
+import { isMergedRenderObject } from '@molstar/graphics/gl/render-object';
 import { MeshExporter } from '@molstar/geo-export-extension/mesh-exporter';
 import { Mesh } from '@molstar/graphics/geo/geometry/mesh/mesh';
 import { MeshBuilder } from '@molstar/graphics/geo/geometry/mesh/mesh-builder';
@@ -19,7 +20,6 @@ const MAX_COORDINATE = 1e6;
 // GPU readback buffers share the 64 MiB budget of the file.
 const READBACK_LIMIT = 64 * 1024 * 1024;
 // MeshExporter's framebuffer name for texture readback, shared with Mol*'s own exporters.
-const GEO_EXPORT_FRAMEBUFFER = 'geo-export';
 const UNSUPPORTED = { text: 'text labels', image: 'images', 'direct-volume': 'direct volume rendering' };
 
 // Vertex and triangle counts of one Mol* primitive, measured with Mol*'s own builders.
@@ -60,6 +60,8 @@ const OUT_OF_RANGE = '3D model coordinates must be finite and within ±1,000,000
 // pyramid reports at least one vertex, so a level without any crossing has
 // drawCount = uVertexCount = 1 and draws nothing; every other count holds whole triangles.
 function textureMeshTriangles(values) {
+  if (value(values, 'drawIndirect') || value(values, 'dIsoChunks'))
+    throw new Error('This GPU surface uses indirect geometry and cannot be exported as a 3D model.');
   const drawCount = value(values, 'drawCount');
   if (drawCount === 1 && value(values, 'uVertexCount') === 1) return 0;
   if (!Number.isSafeInteger(drawCount) || drawCount < 0 || drawCount % 3 !== 0) throw new Error(INVALID_SURFACE);
@@ -69,19 +71,19 @@ function textureMeshTriangles(values) {
 // Bytes Mol* reads back from the GPU for one object before it uses any of them: the whole
 // position, normal and group textures of a texture mesh, and the whole grid texture of
 // each volume colouring it interpolates.
-function readbackBytes(renderObject, webgl) {
+function readbackBytes(renderObject) {
   const { type, values } = renderObject;
   let bytes = 0;
   if (type === 'texture-mesh') {
     const [width, height] = value(values, 'uGeoTexDim') ?? [];
     if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0) throw new Error(INVALID_SURFACE);
-    bytes += width * height * 4 * (4 + 4 + (webgl.isWebGL2 ? 1 : 4));
+    bytes += width * height * 4 * (4 + 4 + 4);
   }
-  const colorType = value(values, 'dColorType');
+  const colorType = value(values, 'colorType');
   const grids = [
     (colorType === 'volume' || colorType === 'volumeInstance') && 'tColorGrid',
-    value(values, 'dOverpaintType') === 'volumeInstance' && 'tOverpaintGrid',
-    value(values, 'dTransparencyType') === 'volumeInstance' && 'tTransparencyGrid',
+    value(values, 'overpaintType') === 'volumeInstance' && 'tOverpaintGrid',
+    value(values, 'transparencyType') === 'volumeInstance' && 'tTransparencyGrid',
   ].filter(Boolean);
   for (const name of grids) {
     const texture = value(values, name), width = texture?.getWidth(), height = texture?.getHeight();
@@ -205,7 +207,7 @@ class SceneMeshExporter extends MeshExporter {
     }
   }
 
-  add(renderObject, webgl, ctx) {
+  add(renderObject, graphics, ctx) {
     const { type, values, state } = renderObject;
     if (!state.visible || value(values, 'drawCount') === 0 || value(values, 'instanceCount') === 0) return undefined;
     // Fully transparent objects are not drawn.
@@ -222,15 +224,15 @@ class SceneMeshExporter extends MeshExporter {
       throw new Error(OUT_OF_RANGE);
     }
     this.writer.checkCapacity(estimate.vertices, estimate.faces);
-    if (type === 'texture-mesh' && !webgl) throw new Error('This surface can only be exported from the live viewer.');
-    if (webgl && (type === 'mesh' || type === 'texture-mesh') && readbackBytes(renderObject, webgl) > READBACK_LIMIT) {
+    if (type === 'texture-mesh' && !graphics) throw new Error('This surface can only be exported from the live viewer.');
+    if (graphics && (type === 'mesh' || type === 'texture-mesh') && readbackBytes(renderObject) > READBACK_LIMIT) {
       throw new Error('Reading this GPU surface back would exceed the 64 MiB export limit.');
     }
-    return super.add(renderObject, webgl, ctx);
+    return super.add(renderObject, graphics, ctx);
   }
 
   // MeshExporter.addTextureMesh, once the textures are known to hold every vertex it reads.
-  async addTextureMesh(values, webgl, ctx) {
+  async addTextureMesh(values, graphics, ctx) {
     const [width, height] = value(values, 'uGeoTexDim');
     const textures = [value(values, 'tPosition'), value(values, 'tNormal'), value(values, 'tGroup')];
     const vertexCount = value(values, 'uVertexCount'), drawCount = textureMeshTriangles(values) * 3;
@@ -238,21 +240,19 @@ class SceneMeshExporter extends MeshExporter {
         || !Number.isSafeInteger(vertexCount) || drawCount > vertexCount || vertexCount > width * height) {
       throw new Error(INVALID_SURFACE);
     }
-    if (!webgl.namedFramebuffers[GEO_EXPORT_FRAMEBUFFER]) webgl.namedFramebuffers[GEO_EXPORT_FRAMEBUFFER] = webgl.resources.framebuffer();
-    const framebuffer = webgl.namedFramebuffers[GEO_EXPORT_FRAMEBUFFER];
-    const vertices = new Float32Array(width * height * 4), normals = new Float32Array(width * height * 4);
-    const groups = webgl.isWebGL2 ? new Uint8Array(width * height * 4) : new Float32Array(width * height * 4);
-    framebuffer.bind();
-    [vertices, normals, groups].forEach((array, i) => {
-      textures[i].attachFramebuffer(framebuffer, 0);
-      webgl.readPixels(0, 0, width, height, array);
-    });
-    await this.addMeshWithColors({ mesh: { vertices, normals, indices: undefined, groups, vertexCount, drawCount }, meshes: undefined, values, isGeoTexture: true, mode: 'triangles', webgl, ctx });
+    const [{ array: vertices }, { array: normals }, { array: groups }] =
+      await Promise.all(textures.map(texture => graphics.readTextureData(texture)));
+    if (!(vertices instanceof Float32Array) || !(normals instanceof Float32Array)
+        || !(groups instanceof Uint8Array || groups instanceof Float32Array)
+        || [vertices, normals, groups].some(array => array.length !== width * height * 4)) {
+      throw new Error(INVALID_SURFACE);
+    }
+    await this.addMeshWithColors({ mesh: { vertices, normals, indices: undefined, groups, vertexCount, drawCount }, meshes: undefined, values, isGeoTexture: true, mode: 'triangles', graphics, ctx });
   }
 
   // MeshExporter.addSpheres reads instanceCount times as many centres as one instance
   // holds; every instance of an object shares the same spheres.
-  async addSpheres(values, webgl, ctx) {
+  async addSpheres(values, graphics, ctx) {
     const center = Vec3();
     const centers = value(values, 'centerBuffer'), groups = value(values, 'groupBuffer');
     const instanceCount = value(values, 'instanceCount'), sphereCount = value(values, 'uVertexCount') / 6;
@@ -269,26 +269,26 @@ class SceneMeshExporter extends MeshExporter {
       }
       meshes.push(MeshBuilder.getMesh(state));
     }
-    await this.addMeshWithColors({ mesh: undefined, meshes, values, isGeoTexture: false, mode: 'triangles', webgl, ctx, vertexMapping });
+    await this.addMeshWithColors({ mesh: undefined, meshes, values, isGeoTexture: false, mode: 'triangles', graphics, ctx, vertexMapping });
   }
 
   async addMeshWithColors(input) {
-    const { mesh, values, isGeoTexture, mode, webgl, ctx } = input;
+    const { mesh, values, isGeoTexture, mode, graphics, ctx } = input;
     if (mode !== 'triangles') throw new Error(`A 3D model cannot include ${mode} primitives.`);
     const instanceCount = value(values, 'uInstanceCount');
-    const colorType = value(values, 'dColorType'), overpaintType = value(values, 'dOverpaintType');
-    const transparencyType = value(values, 'dTransparencyType');
-    const needsWebgl = colorType === 'volume' || colorType === 'volumeInstance'
+    const colorType = value(values, 'colorType'), overpaintType = value(values, 'overpaintType');
+    const transparencyType = value(values, 'transparencyType');
+    const needsGraphics = colorType === 'volume' || colorType === 'volumeInstance'
       || (value(values, 'dOverpaint') && overpaintType === 'volumeInstance')
       || (value(values, 'dTransparency') && transparencyType === 'volumeInstance');
-    if (needsWebgl && !(webgl && mesh)) throw new Error('This volume colouring can only be exported from the live viewer.');
+    if (needsGraphics && !(graphics && mesh)) throw new Error('This volume colouring can only be exported from the live viewer.');
     const stride = isGeoTexture ? 4 : 3;
-    const interpolatedColors = webgl && mesh && (colorType === 'volume' || colorType === 'volumeInstance')
-      ? MeshExporter.getInterpolatedColors(webgl, { vertices: mesh.vertices, vertexCount: mesh.vertexCount, values, stride, colorType }) : undefined;
-    const interpolatedOverpaint = webgl && mesh && overpaintType === 'volumeInstance'
-      ? MeshExporter.getInterpolatedOverpaint(webgl, { vertices: mesh.vertices, vertexCount: mesh.vertexCount, values, stride, colorType: overpaintType }) : undefined;
-    const interpolatedTransparency = webgl && mesh && transparencyType === 'volumeInstance'
-      ? MeshExporter.getInterpolatedTransparency(webgl, { vertices: mesh.vertices, vertexCount: mesh.vertexCount, values, stride, colorType: transparencyType }) : undefined;
+    const interpolatedColors = graphics && mesh && (colorType === 'volume' || colorType === 'volumeInstance')
+      ? await MeshExporter.getInterpolatedColors(graphics, { vertices: mesh.vertices, vertexCount: mesh.vertexCount, values, stride, colorType }) : undefined;
+    const interpolatedOverpaint = graphics && mesh && overpaintType === 'volumeInstance'
+      ? await MeshExporter.getInterpolatedOverpaint(graphics, { vertices: mesh.vertices, vertexCount: mesh.vertexCount, values, stride, colorType: overpaintType }) : undefined;
+    const interpolatedTransparency = graphics && mesh && transparencyType === 'volumeInstance'
+      ? await MeshExporter.getInterpolatedTransparency(graphics, { vertices: mesh.vertices, vertexCount: mesh.vertexCount, values, stride, colorType: transparencyType }) : undefined;
 
     // Every instance is expanded into its own chunk: check them together first.
     let vertexTotal = 0, faceTotal = 0;
@@ -367,7 +367,7 @@ class SceneMeshExporter extends MeshExporter {
  * Mol* task context. The file holds one moment of the scene: any change after the
  * snapshot rejects the export.
  */
-async function writeScene(snapshot, webgl, ctx, format, view) {
+async function writeScene(snapshot, graphics, ctx, format, view) {
   const writer = new PlyMeshWriter();
   const exporter = new SceneMeshExporter(writer, snapshot);
   const { objects } = snapshot;
@@ -377,7 +377,7 @@ async function writeScene(snapshot, webgl, ctx, format, view) {
       await exporter.yield(ctx, { message: `Exporting object ${i + 1} of ${objects.length}`, isIndeterminate: false, current: i, max: objects.length, canAbort: true });
     }
     try {
-      await exporter.add(objects[i].renderObject, webgl, ctx);
+      await exporter.add(objects[i].renderObject, graphics, ctx);
     } catch (error) {
       if (error && typeof error === 'object' && !Task.isAbort(error)) error.sceneObject = describeObject(objects[i].renderObject, i, objects.length);
       throw error;
@@ -425,10 +425,11 @@ export const BuretteSceneExport = {
    * now; with `liveObjects`, the scene must also still hold exactly these objects. `view`
    * is the camera the X3D, VRML and POV-Ray files open with.
    */
-  task(renderObjects, { format = 'ply', webgl, liveObjects, view } = {}) {
+  task(renderObjects, { format = 'ply', graphics, liveObjects, view } = {}) {
     if (!SCENE_MESH_FORMATS[format]) throw new Error(`Unknown 3D model format: ${format}.`);
-    const snapshot = new SceneSnapshot(renderObjects, liveObjects);
-    return Task.create('Export 3D model', ctx => writeScene(snapshot, webgl, ctx, format, view));
+    const members = objects => objects.flatMap(object => isMergedRenderObject(object) ? object.members : [object]);
+    const snapshot = new SceneSnapshot(members(renderObjects), liveObjects && (() => members(liveObjects())));
+    return Task.create('Export 3D model', ctx => writeScene(snapshot, graphics, ctx, format, view));
   },
   /**
    * The visible scene of `plugin` as a `format` file in scene coordinates (angstrom), run
@@ -439,7 +440,7 @@ export const BuretteSceneExport = {
     const canvas = plugin.canvas3d;
     if (!canvas) throw new Error('The 3D viewer is not ready.');
     const task = this.task(canvas.getRenderObjects(), {
-      format, webgl: canvas.webgl, liveObjects: () => canvas.getRenderObjects(), view: viewOf(canvas),
+      format, graphics: canvas.graphics, liveObjects: () => canvas.getRenderObjects(), view: viewOf(canvas),
     });
     try {
       return await plugin.runTask(task, { useOverlay: true });

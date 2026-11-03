@@ -423,7 +423,7 @@ ball-and-stick primitives; these exports carry every visible Mol*
 representation instead, including surfaces and cartoons. No Avogadro code is
 ported.
 
-Verification: `bun tests/test-molstar-scene-export.mjs` covers transforms,
+Verification: `bun test tests/molstar-scene-export.test.mjs` covers transforms,
 winding, colours, refusals, limits, Abort and scene changes on real Mol* render
 objects; `bun tests/test-scene-export-readers.mjs` exports a headless Mol* scene of
 `tests/fixtures/scene-export/ethanol.sdf` in every format and reads it back with

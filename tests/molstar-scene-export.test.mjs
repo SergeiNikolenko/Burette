@@ -86,7 +86,7 @@ const triangle = [[0, 0, 0], [1, 0, 0], [0, 1, 0]];
 
 // The viewer canvas as the facade reads it: the live render objects, the camera and the background.
 const canvasOf = (getRenderObjects) => ({
-  getRenderObjects, webgl: undefined, props: { renderer: { backgroundColor: Color(0xffffff) } },
+  getRenderObjects, graphics: undefined, props: { renderer: { backgroundColor: Color(0xffffff) } },
   camera: { scale: 1, viewport: { width: 800, height: 600 }, getSnapshot: () => ({ mode: 'perspective', position: Vec3.create(0, 0, 50), target: Vec3(), up: Vec3.create(0, 1, 0), fov: Math.PI / 4 }) },
 });
 
@@ -174,14 +174,14 @@ test('cylinders follow the bond between their ends', async () => {
 test('colours, overpaint and transparency are written per vertex; object opacity scales alpha', async () => {
   const object = spheresObject([[0, 0, 0], [5, 0, 0]], 1, [IDENTITY], { alpha: 0.5 });
   const { values } = object;
-  ValueCell.update(values.dColorType, 'group');
-  ValueCell.update(values.tColor, { array: Uint8Array.from([255, 0, 0, 0, 255, 0]), width: 2, height: 1 });
+  ValueCell.update(values.colorType, 'group');
+  ValueCell.update(values.tColor, { array: Uint8Array.from([255, 0, 0, 255, 0, 255, 0, 255]), width: 2, height: 1 });
   // Group 1 is fully overpainted blue; group 0 is 75% transparent.
   ValueCell.update(values.dOverpaint, true);
-  ValueCell.update(values.dOverpaintType, 'groupInstance');
+  ValueCell.update(values.overpaintType, 'groupInstance');
   ValueCell.update(values.tOverpaint, { array: Uint8Array.from([0, 0, 0, 0, 0, 0, 255, 255]), width: 2, height: 1 });
   ValueCell.update(values.dTransparency, true);
-  ValueCell.update(values.dTransparencyType, 'groupInstance');
+  ValueCell.update(values.transparencyType, 'groupInstance');
   ValueCell.update(values.tTransparency, { array: Uint8Array.from([191, 0]), width: 2, height: 1 });
   const ply = await exportPly([object]);
   const colors = new Set(ply.vertices.map(({ position, color }) => `${position[0] < 2.5 ? 0 : 1}:${color}`));
@@ -392,24 +392,16 @@ test('a GPU surface whose texture readback exceeds 64 MiB is refused before any 
     return Reflect.construct(target, args);
   } });
   try {
-    await assert.rejects(BuretteSceneExport.task([surface], { webgl: { isWebGL2: true, namedFramebuffers: {} } }).run(), /64 MiB/u);
+    await assert.rejects(BuretteSceneExport.task([surface], { graphics: { isWebGL2: true, namedFramebuffers: {} } }).run(), /64 MiB/u);
   } finally { globalThis.Float32Array = FloatArray; }
   assert.ok(largest < 1024 * 1024, `no readback buffer was allocated (largest ${largest} bytes)`);
 });
 
-// A WebGL2 context reduced to what texture readback touches: framebuffers and readPixels
-// copying the texels of the attached texture. Textures hold RGBA texels as Mol*'s
-// isosurface extraction writes them (position xyz, normal xyz, packed group).
+// The graphics context seam returns the RGBA texels that the surface writes.
 function gpu() {
-  const webgl = { isWebGL2: true, namedFramebuffers: {}, reads: 0, bound: undefined };
-  webgl.resources = { framebuffer: () => { const framebuffer = { bind: () => { webgl.bound = framebuffer; } }; return framebuffer; } };
-  webgl.readPixels = (x, y, width, height, array) => { webgl.reads++; array.set(webgl.bound.attached.texels.subarray(0, width * height * 4)); };
-  return webgl;
+  return { reads: 0, async readTextureData(texture) { this.reads++; return { array: texture.texels }; } };
 }
-const gpuTexture = (width, height, texels) => ({
-  texels, getWidth: () => width, getHeight: () => height,
-  attachFramebuffer(framebuffer) { framebuffer.attached = this; },
-});
+const gpuTexture = (width, height, texels) => ({ texels, getWidth: () => width, getHeight: () => height });
 function textureMeshObject(vertexCount, [width, height], vertices, normals, matrices = [IDENTITY]) {
   const texels = (rows) => { const array = new Float32Array(width * height * 4); rows.slice(0, width * height).forEach((row, i) => array.set(row, i * 4)); return array; };
   const mesh = TextureMesh.create(vertexCount, 1, gpuTexture(width, height, texels(vertices)), gpuTexture(width, height, new Uint8Array(width * height * 4)),
@@ -425,10 +417,10 @@ test('a GPU isosurface exports what WebGL draws; an empty one is left out unread
   // pyramid still reports one vertex, in large textures cached from an earlier level.
   const empty = textureMeshObject(1, [4096, 4096], [], []);
   assert.deepEqual([empty.values.drawCount.ref.value, empty.values.uVertexCount.ref.value], [1, 1]);
-  const webgl = gpu();
-  const result = await BuretteSceneExport.task([surface, empty], { webgl }).run();
+  const graphics = gpu();
+  const result = await BuretteSceneExport.task([surface, empty], { graphics }).run();
   const ply = parsePly(new Uint8Array(await result.blob.arrayBuffer()));
-  assert.equal(webgl.reads, 3, 'only the drawn surface was read back');
+  assert.equal(graphics.reads, 3, 'only the drawn surface was read back');
   assert.deepEqual(ply.vertices.map(({ position }) => position), corners.map((p) => apply(translation(5, 0, 0), p)));
   assert.deepEqual(ply.faces, [[0, 1, 2], [3, 4, 5]]);
   assert.deepEqual(ply.vertices.map(({ color }) => color), Array(6).fill([0x33, 0x99, 0xcc, 255]));
@@ -440,7 +432,7 @@ test('a GPU surface whose counts or textures disagree is refused with its metada
   const surface = (vertexCount, dim) => textureMeshObject(vertexCount, dim, corners, corners.map(() => [0, 0, 1]));
   const stale = surface(3, [4, 2]);
   ValueCell.update(stale.values.tNormal, gpuTexture(2, 2, new Float32Array(16)));
-  await assert.rejects(BuretteSceneExport.task([meshObject([triangle]), stale], { webgl: gpu() }).run(), (error) => {
+  await assert.rejects(BuretteSceneExport.task([meshObject([triangle]), stale], { graphics: gpu() }).run(), (error) => {
     assert.match(error.message, /out of sync with its textures/u);
     assert.deepEqual(error.sceneObject, { index: 1, count: 2, type: 'texture-mesh', visible: true, drawCount: 3, vertexCount: 3, instanceCount: 1, geoTexDim: [4, 2] });
     return true;
@@ -449,9 +441,9 @@ test('a GPU surface whose counts or textures disagree is refused with its metada
   ValueCell.update(fractional.values.uGeoTexDim, [4.5, 2]);
   // More vertices than texels, an incomplete triangle, and one vertex that is not the empty-level count.
   const oneVertex = surface(1, [4, 2]);
-  ValueCell.update(oneVertex.values.uVertexCount, 3);
+  oneVertex.values.uVertexCount = ValueCell.create(3);
   for (const object of [surface(3, [1, 2]), surface(4, [4, 2]), surface(2, [4, 2]), oneVertex, fractional]) {
-    await assert.rejects(BuretteSceneExport.task([object], { webgl: gpu() }).run(), /out of sync with its textures/u);
+    await assert.rejects(BuretteSceneExport.task([object], { graphics: gpu() }).run(), /out of sync with its textures/u);
   }
 });
 
@@ -462,7 +454,7 @@ test('triangles that are fully transparent at every corner are left out of every
   ValueCell.update(values.aGroup, Float32Array.from([0, 0, 0, 1, 1, 1]));
   ValueCell.update(values.uGroupCount, 2);
   ValueCell.update(values.dTransparency, true);
-  ValueCell.update(values.dTransparencyType, 'groupInstance');
+  ValueCell.update(values.transparencyType, 'groupInstance');
   ValueCell.update(values.tTransparency, { array: Uint8Array.from([255, 0]), width: 2, height: 1 });
   const ply = await exportPly([object]);
   assert.equal(ply.faces.length, 1);
