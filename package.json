@@ -370,7 +370,7 @@
     "typecheck:polymer-worker": "tsc --noEmit -p tests/tsconfig.polymer-worker.json",
     "test:scientific-reference": "bun test tests/test-scientific-reference.test.ts",
     "check:scientific-reference": "tsc --noEmit -p tests/tsconfig.scientific-reference.json",
-    "test:polymer-pick": "bun test tests/test-polymer-pick.test.ts",
+    "test:polymer-pick": "bun test tests/test-polymer-pick.test.ts tests/test-molstar-pick-readback.test.js",
     "typecheck:polymer-pick": "tsc --noEmit -p tests/tsconfig.polymer-pick.json",
     "test:coordinate-interchange": "bun test tests/test-coordinate-interchange.test.ts",
     "typecheck:coordinate-interchange": "tsc --noEmit -p tests/tsconfig.coordinate-interchange.json",

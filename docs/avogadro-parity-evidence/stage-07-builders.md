@@ -839,3 +839,35 @@ The full `vp run ci:fast js` invocation for this implementation subsequently
 completed with exit code 0 (session 81499). Its log is
 `/tmp/burette-polymer-selection-mode-ci.log`. The live first-click defect above
 remains open despite the passing automated gate.
+
+### Pending hover readback and the first atom click (2026-11-03)
+
+The pinned Mol* `PickHelper.identify` checked buffer readiness only for backends
+without synchronous reads. A preceding hover can nevertheless start an async
+read on WebGL: it clears the dirty flag while `PickBuffers.ready` is false. A
+click then read an unavailable picking ID as empty. The source adapter
+`scripts/molstar-pick-readback.mjs` checks readiness for both backend types and
+uses the existing pending-click path until the read completes. Failed reads
+still invalidate the buffer, and resolved background hits remain empty.
+
+The regression executes the pinned helper and real `PickBuffers` with controlled
+GPU read completion. The unpatched helper returns undefined while the fixed
+helper returns pending, then the expected object/instance/group IDs. It also
+checks failed reads, disposal and source-adapter drift. `vp run test:polymer-pick`
+passes 10 tests, including the existing source identity and cancellation tests.
+`vp run vendor:molstar` and `vp run build:agent-shell` completed with exit code 0.
+
+The rebuilt packaged browser-agent-shell on port 63158 used the same propylene
+fixture, with startup metadata `/tmp/burette-pick-readback-session.json`.
+At 1280 × 720, all four roles C1/H6/C2/H5 were assigned with exactly one actual
+click each in dark and light themes. Both previews produced 38 atoms (four
+repeats, picked tacticity, Hydrogen/Hydrogen, Relax off), and light Create opened
+a separate `Polymer.sdf` tab. The camera snapshot recorded after the first dark
+C1 pick remained byte-identical through the remaining dark and light picks.
+After H6, selection statistics still reported zero selected elements. Diagnostic
+subscriptions were removed. Screenshots are `/tmp/burette-pick-readback-dark.png`
+and `/tmp/burette-pick-readback-created-light.png`.
+
+This resolves the reproduced first-click sequence in these browser runs. Narrow
+screen picking, existing nonempty selection preservation, capped relaxation and
+standalone SDF export/reopen still need their own acceptance evidence.
