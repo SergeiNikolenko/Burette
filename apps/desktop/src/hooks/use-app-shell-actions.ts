@@ -972,7 +972,7 @@ export function useAppShellActions({
 
   return useMemo<ShellActions>(() => createWorkspaceHistoryShellActions(createAppShellActions({
     chooseFiles,
-    openStructurePaths: async (paths: string[], options?: { mode?: OpenDocumentsMode; rendererMode?: "molstar" | "grid2d" | "xyzrender-external"; gridViewMode?: "cards" | "table"; shouldApply?: () => boolean }) => {
+    openStructurePaths: async (paths: string[], options?: { mode?: OpenDocumentsMode; rendererMode?: "molstar" | "grid2d" | "xyzrender-external"; gridViewMode?: "cards" | "table"; gridViewState?: string; shouldApply?: () => boolean }) => {
       await openDocuments(paths, options?.rendererMode ? rendererViewReloadOptions(paths[0]) : undefined, options?.rendererMode ? { rendererMode: options.rendererMode } : undefined, options);
     },
     openTextPaths: async (paths: string[]) => {

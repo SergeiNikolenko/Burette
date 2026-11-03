@@ -36,7 +36,11 @@ export function reopenClosedTab(actions: Pick<ShellActions, "openStructurePaths"
     const { location } = tab;
     const existingIds = new Set(useMoleculeStore.getState().tabs.map(current => current.id));
     try {
-      if (location.kind === "file") await actions.openStructurePaths([location.recoveryPath ?? location.path], { rendererMode, ...(location.gridViewMode ? { gridViewMode: location.gridViewMode } : {}) });
+      if (location.kind === "file") await actions.openStructurePaths([location.recoveryPath ?? location.path], {
+        rendererMode,
+        ...(location.gridViewMode ? { gridViewMode: location.gridViewMode } : {}),
+        ...(location.gridViewState !== undefined ? { gridViewState: location.gridViewState } : {}),
+      });
       else if (location.kind === "text-file") await actions.openTextPaths([location.path]);
       else openScreen(location, tab.pane ?? null, { newTab: true });
       const matches = (current: MoleculeTab) => current.location === location || (

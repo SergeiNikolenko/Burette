@@ -202,20 +202,25 @@ test("sidebar previews replace clean views per pane, promote dirty/explicit view
   expect(useMoleculeStore.getState().tabs.filter(tab => tab.preview).map(tab => tab.pane ?? "main").sort()).toEqual(["main", "right"]);
 });
 
-test("reopening a grid publishes its view mode before the viewer can mount", async () => {
+test("reopening a grid publishes its presentation before the viewer can mount", async () => {
   const { reopenClosedTab } = await import("../apps/desktop/src/components/workspace-panes/pane-actions");
   const { takeClosedTab } = await import("../apps/desktop/src/stores/closed-tabs");
   while (takeClosedTab()) { /* Isolate close history. */ }
   const doc = { id: "closed-grid", path: "/closed.csv", title: "closed.csv", extension: "csv", renderer: "grid2d" as const, runtimePath: "", byteCount: 1 };
-  const tab = { id: "closed-grid-tab", location: { kind: "file" as const, path: doc.path, documentId: doc.id, gridViewMode: "table" as const }, back: [], forward: [] };
+  const checkpoint = JSON.stringify({ version: 1, scrollY: 12340, visibleCount: 960, selected: [768] });
+  const tab = { id: "closed-grid-tab", location: { kind: "file" as const, path: doc.path, documentId: doc.id, gridViewMode: "table" as const, gridViewState: checkpoint }, back: [], forward: [] };
   useMoleculeStore.setState({ documents: [doc], tabs: [tab], activeTabId: tab.id });
   useMoleculeStore.getState().closeTab(tab.id);
   const modes: unknown[] = [];
+  const snapshots: unknown[] = [];
   const unsubscribe = useMoleculeStore.subscribe(state => {
     const opened = state.tabs.find(current => current.location.kind === "file" && current.location.path === doc.path);
-    if (opened?.location.kind === "file") modes.push(opened.location.gridViewMode);
+    if (opened?.location.kind === "file") {
+      modes.push(opened.location.gridViewMode);
+      snapshots.push(opened.location.gridViewState);
+    }
   });
-  const actions = { openTextPaths: () => {}, openStructurePaths: async (_paths: string[], options?: { gridViewMode?: "cards" | "table" }) => {
+  const actions = { openTextPaths: () => {}, openStructurePaths: async (_paths: string[], options?: { gridViewMode?: "cards" | "table"; gridViewState?: string }) => {
     useMoleculeStore.getState().addDocuments([{ ...doc, id: "reopened-grid" }], options);
     await Promise.resolve();
   } };
@@ -223,6 +228,7 @@ test("reopening a grid publishes its view mode before the viewer can mount", asy
     await reopenClosedTab(actions);
     expect(modes.length).toBeGreaterThan(0);
     expect(modes.every(mode => mode === "table")).toBe(true);
+    expect(snapshots.every(snapshot => snapshot === checkpoint)).toBe(true);
   } finally { unsubscribe(); }
   const restored = useMoleculeStore.getState().tabs.find(current => current.location.kind === "file")!;
   useMoleculeStore.getState().closeTab(restored.id);
@@ -230,4 +236,18 @@ test("reopening a grid publishes its view mode before the viewer can mount", asy
   await reopenClosedTab(actions);
   const existing = useMoleculeStore.getState().tabs.find(current => current.location.kind === "file")!;
   expect(existing.location.kind === "file" && existing.location.gridViewMode).toBe("cards");
+  expect(existing.location.kind === "file" && existing.location.gridViewState).toBeUndefined();
+});
+
+test("new grid presentation snapshots keep the persisted size bound", () => {
+  for (const snapshot of [undefined, "", "x".repeat(32768), "x".repeat(32769)]) {
+    useMoleculeStore.setState({ documents: [], tabs: [], activeTabId: null });
+    useMoleculeStore.getState().addDocuments([{
+      id: "bounded-grid", path: "/bounded.csv", title: "bounded.csv", extension: "csv",
+      renderer: "grid2d", runtimePath: "", byteCount: 1,
+    }], { gridViewState: snapshot });
+    const tab = useMoleculeStore.getState().tabs.find(current => current.location.kind === "file")!;
+    expect(tab.location.kind === "file" && tab.location.gridViewState)
+      .toBe(snapshot !== undefined && snapshot.length <= 32768 ? snapshot : undefined);
+  }
 });

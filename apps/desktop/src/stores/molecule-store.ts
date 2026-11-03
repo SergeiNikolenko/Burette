@@ -74,7 +74,7 @@ type MoleculeState = {
   activeDocumentId: string | null;
   recentStructures: RecentStructure[];
   setDocuments: (documents: ViewerDocument[]) => void;
-  addDocuments: (documents: ViewerDocument[], options?: { preserveActiveTab?: boolean; gridViewMode?: "cards" | "table" }) => void;
+  addDocuments: (documents: ViewerDocument[], options?: { preserveActiveTab?: boolean; gridViewMode?: "cards" | "table"; gridViewState?: string }) => void;
   addBackgroundDocuments: (documents: ViewerDocument[]) => void;
   replaceDocument: (documentId: string, replacement: ViewerDocument) => void;
   openDocumentsInActiveTab: (documents: ViewerDocument[], options?: { backLocation?: Location }) => void;
@@ -637,6 +637,10 @@ export const useMoleculeStore = create<MoleculeState>()(
               tab.pane = state.tabs.find(current => current.id === state.activeTabId)?.pane;
               if (document.renderer === "grid2d" && options.gridViewMode && tab.location.kind === "file") {
                 tab.location.gridViewMode = options.gridViewMode;
+              }
+              if (document.renderer === "grid2d" && tab.location.kind === "file"
+                && typeof options.gridViewState === "string" && options.gridViewState.length <= 32768) {
+                tab.location.gridViewState = options.gridViewState;
               }
               tabs.push(tab);
               tabByPath.set(document.path, tab);
