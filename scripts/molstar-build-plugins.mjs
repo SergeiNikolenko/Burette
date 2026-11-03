@@ -11,8 +11,10 @@ import { molstarResizeDrawPlugin } from './molstar-resize-draw.mjs';
 import { molstarSurfaceLoopPlugin } from './molstar-surface-loop.mjs';
 import { molstarSurfaceFieldCachePlugin } from './molstar-surface-field-cache.mjs';
 
+import { molstarLegacySnapshotPlugin } from './molstar-legacy-snapshot.mjs';
+
 export const molstarBuildPlugins = [
   molstarSourcePlugin, molstarXyzLatticePlugin, molstarCubeUiHistoryPlugin, molstarCubeDatasetsPlugin, molstarCubeUnitsPlugin,
   molstarV3000ChargesPlugin, molstarMolV3000Plugin, molstarStatePreconditionPlugin, molstarDcdTimePlugin,
-  molstarResizeDrawPlugin, molstarSurfaceFieldCachePlugin, molstarSurfaceLoopPlugin,
+  molstarResizeDrawPlugin, molstarSurfaceFieldCachePlugin, molstarSurfaceLoopPlugin, molstarLegacySnapshotPlugin,
 ];

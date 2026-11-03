@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
 import { checkTopologyEnvelope } from './fixtures/topology-envelope-host.mjs';
 import { unzip, zip } from '@molstar/core/util/zip/zip';
-import { StructureComponentManager } from '@molstar/plugin/state/manager/structure/component';
 import { SyncRuntimeContext } from '@molstar/core/task/execution/synchronous';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -48,17 +47,6 @@ try {
   const archive = readFileSync(new URL('./fixtures/topology-real-browser-water.molx', import.meta.url));
   const entries = await unzip(SyncRuntimeContext, archive);
   const state = JSON.parse(new TextDecoder().decode(entries['state.json'])), saved = state.entries[0].snapshot;
-  // The archive is a Mol* 5 Browser capture. Opened as is, its legacy settings are not the Mol* 6 native shape
-  // (focus ball-and-stick bumpFrequency 0 where 6 defaults to 5, component options without solidSurface) and refuse.
-  const legacy = await make();
-  await legacy.managers.snapshot.open(new File_([archive], 'legacy-browser-water.molx'));
-  assert.throws(() => BuretteTopologyScene.capture(legacy, BuretteGeometry.binding(legacy).lease), { code: 'UNSUPPORTED_TOPOLOGY_ENVIRONMENT' });
-  // The same Browser session as Mol* 6 holds it: native focus providers and complete component options, app values kept.
-  const focusTransform = saved.behaviour.tree.transforms.find(t => t.ref === 'ms-plugin.create-structure-focus-representation');
-  const focusDefaults = PD.getDefaultValues(legacy.state.behaviors.cells.get(focusTransform.ref).transform.transformer.definition.params(undefined, legacy));
-  for (const key of ['targetParams', 'surroundingsParams', 'nciParams']) focusTransform.params[key] = focusDefaults[key];
-  saved.structureComponentManager.options = { ...PD.getDefaultValues(StructureComponentManager.OptionsParams), ...saved.structureComponentManager.options };
-  const current6 = await zip(SyncRuntimeContext, { ...entries, 'state.json': new TextEncoder().encode(JSON.stringify(state)) });
   const source = await make();
   // Native setSnapshot deliberately skips camera/helper settings when a camera pose exists.
   // Start with the actual Browser canvas configuration, including the app's styled axes, in the shape native open
@@ -66,7 +54,7 @@ try {
   const savedCanvas = structuredClone(defaults); merge(savedCanvas, PD.normalizeParams(Canvas3DParams, saved.canvas3d.props, 'children'));
   source.canvas3d.props = structuredClone(savedCanvas);
   source.canvas3dContext.props = structuredClone(saved.canvas3dContext.props);
-  await source.managers.snapshot.open(new File_([current6], 'actual-browser-water.molx'));
+  await source.managers.snapshot.open(new File_([archive], 'actual-browser-water.molx'));
   assert.deepEqual(source.canvas3d.props, savedCanvas);
   assert.deepEqual(source.canvas3dContext.props, saved.canvas3dContext.props);
   const root = source.managers.structure.hierarchy.current.structures[0].cell.obj.data;
@@ -90,6 +78,14 @@ try {
   await reopened.managers.snapshot.open(new File_([bytes], 'retained-four-atom.molx'));
   const { receipt: reopenedReceipt, ...reopenedTransfer } = BuretteTopologyScene.capture(reopened, BuretteGeometry.binding(reopened).lease);
   assert.deepEqual(reopenedTransfer, retained, 'native MOLX retains all fields and permits continued capture');
+  const custom = structuredClone(state);
+  const focusId = 'ms-plugin.create-structure-focus-representation';
+  const focus = custom.entries[0].snapshot.behaviour.tree.transforms.find(t => t.ref === focusId);
+  focus.params.targetParams.type.params.sizeFactor = 0.41;
+  const customArchive = await zip(SyncRuntimeContext, { ...entries, 'state.json': new TextEncoder().encode(JSON.stringify(custom)) });
+  await reopened.managers.snapshot.open(new File_([customArchive], 'custom-focus.molx'));
+  assert.equal(reopened.state.behaviors.cells.get(focusId).params.values.targetParams.type.params.sizeFactor, 0.41);
+  readonlyRefusal(reopened, () => BuretteTopologyScene.capture(reopened, BuretteGeometry.binding(reopened).lease));
   const maximum = structuredClone(transfer), component = maximum.components[0];
   const tags = Array.from({ length: 16 }, (_, index) => String(index).padStart(2, '0') + '界'.repeat(98));
   component.tags = tags;
