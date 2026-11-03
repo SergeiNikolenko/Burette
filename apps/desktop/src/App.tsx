@@ -1354,7 +1354,7 @@ export default function App() {
 
   return (
     <SourceEditingProvider value={sourceEditing}>
-      <WindowTitle activeDocument={activeDocument} />
+      <WindowTitle state={state} />
       <AppLayout
         state={state}
         actions={actions}
