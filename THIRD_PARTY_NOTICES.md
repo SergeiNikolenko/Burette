@@ -221,6 +221,30 @@ also included in `apps/desktop/public/third-party-licenses/`. Source identities 
 regeneration instructions are in `config/peptide-residue-sources.json` and
 `docs/peptide-geometry.md`.
 
+## OpenChemistry functional-group fragments
+
+`fragment-library.json` mechanically extracts the 166 functional groups under
+`groups/` of OpenChemistry/fragments `7d842f435aec4729a308b23ad7f9501bdd44aa02`
+(BSD-3-Clause, Copyright 2022 Open Chemistry): their Cartesian coordinates,
+bond orders, formal charges and dummy attachment atoms. The same fragment
+license applies; per-file hashes are pinned in `config/fragment-library-sources.json`
+and `scripts/generate-fragment-library.mjs` regenerates or checks the extract.
+`tests/fixtures/fragments/groups.smi` concatenates the upstream `groups.smi`
+reference lists of that revision under the same license.
+
+## OpenChemistry ligand templates
+
+`metal-ligands.json` copies the Cartesian coordinates and bonds of 16 ligand files
+under `ligands/monodentate` and `ligands/bidentate` of OpenChemistry/fragments
+`7d842f435aec4729a308b23ad7f9501bdd44aa02` (BSD-3-Clause, Copyright 2022 Open
+Chemistry; `docs/third-party/fragments-LICENSE`), with each file's path and SHA-256;
+formal charges are reassigned for dative coordination and hydroxido is aqua with one
+H removed. `scripts/generate-metal-ligands.ts` regenerates the extract. The metal
+complex builder follows the OpenChemistry/avogadrolibs Template tool
+(`avogadro/qtplugins/templatetool`, `064eeb4706877ffed8ddc4b037489ed3748b0547`,
+`docs/third-party/avogadro-LICENSE`) as an interface reference; its center templates
+are used only as test references.
+
 ## Chemical JSON stereochemistry test graphs
 
 `tests/fixtures/cjson/L-alanine.cjson` and `D-alanine.cjson` retain the graph and
@@ -228,3 +252,23 @@ Cartesian coordinates from OpenChemistry/avogadrodata commit
 `67ab090bb4cc1ec9417d420f8df1f316c6a214f3`, under its molecules-directory
 BSD-3-Clause license (Copyright 2016 Geoffrey Hutchison, University of Pittsburgh).
 The exact license and source hashes are retained beside these test-only extracts.
+
+## Open-Source PyMOL nucleotide templates and Z-DNA data
+
+The DNA/RNA builder (`apps/desktop/src/lib/molecular-workbench/nucleic-templates.ts`)
+uses the heavy-atom coordinates of the `fnab` nucleotide fragments shipped with
+Open-Source PyMOL 3.1 (`data/chempy/fragments/{atp,ctp,gtp,ttp}{A,B}.pkl` and
+`utpA.pkl`, identical in the `pymol-open-source-whl` 3.1.0.4 wheel), which PyMOL
+credits to the 3DNA fiber models (Lu & Olson, Nucleic Acids Res. 32, W667, 2004).
+Open-Source PyMOL is Copyright (C) Schrodinger, LLC, under its BSD-like permission
+notice; the full text is the `LICENSE` file at the root of
+<https://github.com/schrodinger/pymol-open-source> (shipped as
+`pymol_open_source_whl-3.1.0.4.dist-info/licenses/LICENSE`) and is retained in
+`docs/third-party/pymol-LICENSE` and `apps/desktop/public/third-party-licenses/pymol-LICENSE`.
+PyMOL is a trademark of Schrodinger, LLC.
+
+The Z-DNA backbone is derived from PDB entry 4OCB (Z-DNA d(CGCGCGCGCGCG)2 at 0.75 A),
+wwPDB data under CC0 1.0. Atom names and bonds follow the wwPDB Chemical Component
+Dictionary (CC0). Test-only references in `tests/fixtures/nucleic/` (wwPDB entries
+1BNA, 1RNA, 1DCG, 2F8W and CCD components, CC0; PyMOL `fnab` outputs; MDAnalysis and
+RDKit results) are described in that directory's README.

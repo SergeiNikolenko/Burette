@@ -35,9 +35,14 @@ test('all native backbone presets measure requested phi/psi/trans omega and pept
     const at=(residue:number,name:string)=>p.atoms.find(a=>a.residueNumber===residue&&a.name===name)!.position;
     for(let r=2;r<=6;r++) {
       const measured=[torsion(at(r-1,'C'),at(r,'N'),at(r,'CA'),at(r,'C')),torsion(at(r-1,'N'),at(r-1,'CA'),at(r-1,'C'),at(r,'N')),torsion(at(r-1,'CA'),at(r-1,'C'),at(r,'N'),at(r,'CA'))];
-      for(const [i,value] of measured.entries()) expect(Math.abs(((value-[preset.phi,preset.psi,180][i]+540)%360)-180)).toBeLessThan(1e-8);
-      expect(Math.hypot(...sub(at(r,'N'),at(r-1,'C')))).toBeCloseTo(1.329,10);
       const angle=(a:number[],b:number[],c:number[])=>Math.acos(dot(sub(a,b),sub(c,b))/Math.hypot(...sub(a,b))/Math.hypot(...sub(c,b)))*180/Math.PI;
+      // The pyrrolidine ring fixes Pro phi: its N stays planar near the observed −65 ± 15° (mirrored for D).
+      if(r===4) {
+        expect(angle(at(3,'C'),at(4,'N'),at(4,'CA'))+angle(at(4,'CA'),at(4,'N'),at(4,'CD'))+angle(at(4,'CD'),at(4,'N'),at(3,'C'))).toBeCloseTo(360,6);
+        expect(Math.abs(measured[0]*(chirality==='D'?-1:1)+65)).toBeLessThan(20);
+      }
+      for(const [i,value] of measured.entries()) if(r!==4||i) expect(Math.abs(((value-[preset.phi,preset.psi,180][i]+540)%360)-180)).toBeLessThan(1e-8);
+      expect(Math.hypot(...sub(at(r,'N'),at(r-1,'C')))).toBeCloseTo(1.329,10);
       expect(angle(at(r-1,'CA'),at(r-1,'C'),at(r,'N'))).toBeCloseTo(116.2,8);
       expect(angle(at(r-1,'C'),at(r,'N'),at(r,'CA'))).toBeCloseTo(121.7,8);
     }

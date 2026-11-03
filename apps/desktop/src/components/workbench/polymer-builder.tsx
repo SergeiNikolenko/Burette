@@ -5,11 +5,15 @@ import { resolveThemeMode, useSystemThemeMode } from "../../lib/theme";
 import { useSettingsStore } from "../../stores/settings-store";
 import { atomLabel } from "../../lib/workbench/formats";
 import { MoleculeFilePreview } from "../molecule-file-preview";
+import { POLYMER_END_GROUPS, POLYMER_RELAXATION_ATOMS, type PolymerEndGroup } from "../../lib/workbench/polymer-task";
 import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
 import { DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { NativeSelect, NativeSelectOption } from "../ui/native-select";
 import { ScrubNumberField } from "../ui/scrub-number-input";
 import { Spinner } from "../ui/spinner";
+
+const END_LABELS: Record<PolymerEndGroup, string> = { hydrogen: "Hydrogen", methyl: "Methyl", hydroxyl: "Hydroxyl", phenyl: "Phenyl", "tert-butyl": "tert-Butyl" };
 
 export function PolymerBuilderBody({ document, actions, isCurrent, onDone }: { document: ViewerDocument | null; actions: Pick<ShellActions, "openStructureRecords">; isCurrent: () => boolean; onDone: () => void }) {
   const form = usePolymerBuilder(document, actions, isCurrent, onDone), preferences = useSettingsStore(state => state.preferences);
@@ -28,10 +32,17 @@ export function PolymerBuilderBody({ document, actions, isCurrent, onDone }: { d
       <label className="workbench-field"><span>Tacticity</span><NativeSelect aria-label="Tacticity" name="tacticity" autoComplete="off" size="sm" value={form.tacticity} onChange={event => form.setTacticity(event.target.value as typeof form.tacticity)}>
         <NativeSelectOption value="picked">From picked H</NativeSelectOption><NativeSelectOption value="atactic">Atactic</NativeSelectOption><NativeSelectOption value="isotactic">Isotactic</NativeSelectOption><NativeSelectOption value="syndiotactic">Syndiotactic</NativeSelectOption>
       </NativeSelect></label>
-      <div className="workbench-row"><span>Ends</span><span>Hydrogen</span></div>
+      <div className="grid grid-cols-2 gap-2">{([["Head end", form.headEnd, form.setHeadEnd], ["Tail end", form.tailEnd, form.setTailEnd]] as const).map(([label, value, set]) =>
+        <label key={label} className="workbench-field"><span>{label}</span><NativeSelect aria-label={label} autoComplete="off" size="sm" value={value} onChange={event => set(event.target.value as PolymerEndGroup)}>
+          {(Object.keys(POLYMER_END_GROUPS) as PolymerEndGroup[]).map(group => <NativeSelectOption key={group} value={group}>{END_LABELS[group]}</NativeSelectOption>)}
+        </NativeSelect></label>)}</div>
+      <label className="flex cursor-pointer items-center gap-2 text-sm" title={`Up to ${POLYMER_RELAXATION_ATOMS} atoms`}>
+        <Checkbox aria-label="Relax geometry" checked={form.relax} onCheckedChange={checked => form.setRelax(checked === true)} /><span>Relax geometry</span>
+      </label>
     </fieldset>
     {form.preview ? <MoleculeFilePreview data={form.preview.sdf} format="sdf" label="Polymer" height={210} theme={theme} hydrogenDisplay={preferences.hydrogenDisplay} onOpen={() => void form.build(true)} /> : null}
-    {form.preview ? <span role="status" aria-live="polite">{form.preview.atomCount.toLocaleString("en-US")} atoms</span> : null}
+    {form.preview ? <span role="status" aria-live="polite" className="workbench-status">{form.preview.atomCount.toLocaleString("en-US")} atoms
+      {form.preview.relaxation ? <span className="workbench-value" data-status={form.preview.relaxation.converged ? "success" : "failure"}>{form.preview.relaxation.converged ? "Relaxed" : "Not converged"}</span> : null}</span> : null}
     {form.unavailable || form.error ? <p role="alert" className="text-sm text-destructive">{form.unavailable ?? form.error}</p> : null}
     {!form.ready && !form.unavailable && !form.error ? <Spinner aria-label="Reading repeat unit" /> : null}
     {!form.ready && !form.unavailable && form.error ? <Button variant="outline" size="sm" onClick={form.retry}>Retry</Button> : null}

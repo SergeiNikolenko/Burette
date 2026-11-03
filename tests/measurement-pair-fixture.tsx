@@ -60,7 +60,8 @@ const { SourceEditingProvider } = await import("../apps/desktop/src/lib/source-e
 const { useSourceEditingController } = await import("../apps/desktop/src/hooks/use-source-editing");
 const { useGraphDraft: useFocusedGraphDraft } = await import("../apps/desktop/src/lib/workbench/use-graph-draft");
 let serial = 0;
-export async function fixture(format: "sdf" | "mol" = "sdf", useAdapter: typeof useFocusedGraphDraft = useFocusedGraphDraft, sourceText?: string) {
+/** `render` adds components that edit the same document inside the source-editing provider. */
+export async function fixture(format: "sdf" | "mol" = "sdf", useAdapter: typeof useFocusedGraphDraft = useFocusedGraphDraft, sourceText?: string, render?: (document: ViewerDocument) => React.ReactNode) {
   const doc = { id: `pair-publication-${++serial}`, path: `/pair-publication-${serial}.${format}`, title: `source.${format}`,
     extension: format, renderer: "molstar", runtimePath: "<html>scene</html>" } as ViewerDocument;
   if (sourceText !== undefined) sourceOverrides.set(doc.path, sourceText);
@@ -77,7 +78,7 @@ export async function fixture(format: "sdf" | "mol" = "sdf", useAdapter: typeof 
       if (writeMode === "throw") throw new Error("Draft write rejected.");
       if (writeMode === "noop") return;
       controller.updateDraft(document, content, options); if (afterWrite) queueMicrotask(afterWrite);
-    } }}><Probe /></SourceEditingProvider>;
+    } }}><Probe />{render?.(doc)}</SourceEditingProvider>;
   }
   const settle = async (ready: () => boolean) => {
     for (let attempt = 0; attempt < 200 && !ready(); attempt++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
@@ -86,7 +87,7 @@ export async function fixture(format: "sdf" | "mol" = "sdf", useAdapter: typeof 
   await act(async () => root.render(<Fixture />)); await settle(() => !graph.loading);
   expect(graph.error).toBeNull(); expect(graph.history).not.toBeNull();
   expect(focused.history).toBe(graph.history);
-  return { doc, dockTabs, get controller() { return controller; }, get graph() { return graph; }, get focused() { return focused; }, settle,
+  return { doc, host, dockTabs, get controller() { return controller; }, get graph() { return graph; }, get focused() { return focused; }, settle,
     setWriteMode(mode: typeof writeMode) { writeMode = mode; }, afterWrite(probe: () => void) { afterWrite = probe; },
     edit(label: string) {
       const from = graph.history!.current, patch = { conformerLabel: label };

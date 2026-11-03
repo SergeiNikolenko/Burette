@@ -110,7 +110,9 @@ doc = wb.observe()
 atoms = list(wb.iter_atoms())
 job = wb.run("optimize", {"forceField": "UFF", "constraints": [{"kind": "freeze", "atoms": [0]}]})
 exported = wb.export(job.job_id, "structure", "optimized.sdf")
+built = wb.build("peptide", {"sequence": "AG"})
 print(json.dumps({
+  "built": built.raw, "builtExport": wb.export(built.job_id, "structure", "ag.cif"), "misrouted": code(lambda: wb.build("energy", {})),
   "jobs": list(wb.capabilities()["jobs"]), "structure": doc["structure"], "atoms": atoms, "job": job.raw, "exported": exported,
   "replayed": wb.submit("optimize", job.params, expected_source_revision=doc["sourceRevision"], operation_id=job.operation_id).job_id,
   "conflict": code(lambda: wb.submit("optimize", {"method": "fire"}, expected_source_revision=doc["sourceRevision"], operation_id=job.operation_id)),
@@ -120,7 +122,7 @@ print(json.dumps({
   "unavailable": code(lambda: wb.run("optimize", {"forceField": "UFF", "method": "bfgs"})),
   "unknown": code(lambda: wb.submit("point_group", {}, expected_source_revision=doc["sourceRevision"])),
 }))`);
-  expect(report.jobs).toEqual(["properties", "energy", "energy_forces", "frame_energy_forces", "optimize", "prepare_3d", "conformers", "metadata_edit", "pair_distribution", "orbital_cube"]);
+  expect(report.jobs).toEqual(["properties", "energy", "energy_forces", "frame_energy_forces", "optimize", "prepare_3d", "conformers", "metadata_edit", "pair_distribution", "orbital_cube", "insert_fragment", "hydrogens", "polymer", "smiles", "nucleic_acid", "metal_complex", "peptide"]);
   expect([report.structure.atomCount, report.atoms.map((atom: any) => atom.element)]).toEqual([9, source.atoms.map(atom => atom.element)]);
   report.atoms.forEach((atom: any, i: number) => expect([atom.x, atom.y, atom.z]).toEqual([source.atoms[i].x, source.atoms[i].y, source.atoms[i].z]));
   expect(report.job).toMatchObject({ status: "succeeded", binding: "current", params: { method: "lbfgs" }, summary: { method: "lbfgs", forceField: "UFF", converged: true, frozenAtoms: [0], frameSampling: "steps" } });
@@ -129,6 +131,8 @@ print(json.dumps({
   expect([bytes.length, sha256(bytes), report.exported.content]).toEqual([report.exported.byteCount, report.exported.sha256, undefined]);
   expect([optimized.bonds, optimized.atoms[0]]).toEqual([source.bonds, source.atoms[0]]);
   expect(report).toMatchObject({ replayed: report.job.jobId, conflict: "OPERATION_ID_CONFLICT", exists: "OUTPUT_EXISTS", stale: "REVISION_CONFLICT", invalid: "INVALID_ARGS", unavailable: "JOB_UNAVAILABLE", unknown: "UNSUPPORTED_WORKBENCH_JOB" });
+  expect(report.built).toMatchObject({ kind: "peptide", status: "succeeded", binding: "none", documentId: null, sourceRevision: null, summary: { sequence: "AG", residueCount: 2 } });
+  expect([report.misrouted, (await readFile(report.builtExport.path, "utf8")).includes("_atom_site.")]).toEqual(["INVALID_ARGS", true]);
   expect(hookErrors).toEqual([]);
 }, 60_000);
 

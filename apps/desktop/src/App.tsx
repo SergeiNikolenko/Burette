@@ -1,6 +1,7 @@
 import { PolymerBuilderDialogHost } from "./components/workbench/polymer-builder-host";
 import { AssemblyDialogHost } from "./components/workbench/assembly-dialog-host";
 import { PeptideBuilderDialogHost } from "./components/workbench/peptide-builder-host";
+import { MetalComplexBuilderDialogHost } from "./components/workbench/metal-complex-builder-host";
 import { InputExportDialogHost } from "./components/workbench/input-export-host";
 import { useMoleculeStore } from "./stores/molecule-store";
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
@@ -1372,6 +1373,7 @@ export default function App() {
       <WindowTitle activeDocument={activeDocument} />
       <InputExportDialogHost actions={actions} />
       <PeptideBuilderDialogHost actions={actions} />
+      <MetalComplexBuilderDialogHost actions={actions} />
       <PolymerBuilderDialogHost actions={actions} />
       <AssemblyDialogHost actions={actions} />
       <AppLayout

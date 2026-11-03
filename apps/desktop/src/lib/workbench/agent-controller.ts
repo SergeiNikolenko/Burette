@@ -4,14 +4,15 @@ import {
   WORKBENCH_RUNTIMES,
   validateWorkbenchRequest,
   workbenchContractSummary,
-  type WorkbenchJobKind,
+  type WorkbenchBuildJobKind,
   type WorkbenchJobParams,
+  type WorkbenchSubmitJobKind,
   type WorkbenchJobRequest,
   type WorkbenchRequest,
 } from "../../../../../scripts/workbench-agent-contract.mjs";
 import { fileStem } from "./formats";
 import { createAgentSourceOwner, WorkbenchError, sha256, type Snapshot } from "./agent-source";
-import { AGENT_JOBS, type AgentArtifact, type AgentJobRunner } from "./agent-jobs";
+import { AGENT_BUILDS, AGENT_JOBS, type AgentArtifact, type AgentBuildRunner, type AgentJobRunner } from "./agent-jobs";
 import type { ViewerDocument } from "../../types";
 export { readWorkbenchAgentSource } from "./agent-source";
 
@@ -52,11 +53,12 @@ type Job = {
   operationId: string;
   fingerprint: string;
   request: WorkbenchJobRequest;
-  document: DocumentRef;
-  sourceRevision: string;
-  input: Snapshot;
+  /** Null for `build` jobs, which read no source document. */
+  document: DocumentRef | null;
+  sourceRevision: string | null;
+  input: Snapshot | null;
   state: JobState;
-  binding: "current" | "stale" | "source_closed";
+  binding: "current" | "stale" | "source_closed" | "none";
   submittedAt: string;
   startedAt: string | null;
   finishedAt: string | null;
@@ -110,7 +112,8 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
   function limitations() {
     const notes = [
       "Results are never applied to an open document. Export an artifact and open it explicitly.",
-      "Workbench UI commands that are not listed under jobs (builders, graph and hydrogen edits, input-deck export, Z-matrix editing, crystal symmetry and point groups, spectra and plots) are not automated yet.",
+      "Structure jobs (insert_fragment, hydrogens, polymer and the build kinds) write new structure artifacts; they never edit the open document or its Undo history.",
+      "Workbench UI commands that are not listed under jobs (atom and bond editing, input-deck export, Z-matrix editing, crystal symmetry and point groups, spectra and plots) are not automated yet.",
     ];
     if (!environment.draftsVisible) notes.unshift("Unsaved editor drafts are not visible to this session; reads and jobs use the saved source.");
     if (!enabled) notes.unshift(`Workbench reads and jobs run only in ${WORKBENCH_RUNTIMES.join(", ")} sessions; this session is ${environment.runtime}.`);
@@ -120,8 +123,11 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
   const sourceOwner = createAgentSourceOwner(environment, lifetime.signal);
   const { snapshotOf, assertOpen } = sourceOwner;
 
-  const runner = <K extends WorkbenchJobKind>(kind: K) => AGENT_JOBS[kind] as AgentJobRunner<K>;
-  function jobUnavailable(snapshot: Snapshot, job: WorkbenchJobRequest): string | null {
+  const runner = <K extends WorkbenchSubmitJobKind>(kind: K) => AGENT_JOBS[kind] as AgentJobRunner<K>;
+  type SubmitJob = Extract<WorkbenchJobRequest, { kind: WorkbenchSubmitJobKind }>;
+  type BuildJob = Extract<WorkbenchJobRequest, { kind: WorkbenchBuildJobKind }>;
+  const isBuild = (job: WorkbenchJobRequest): job is BuildJob => Object.hasOwn(AGENT_BUILDS, job.kind);
+  function jobUnavailable(snapshot: Snapshot, job: SubmitJob): string | null {
     const definition = runner(job.kind);
     return definition.unavailable(snapshot) ?? definition.paramsUnavailable?.(snapshot, job.params as WorkbenchJobParams<typeof job.kind>) ?? null;
   }
@@ -130,7 +136,7 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
     const snapshot = await snapshotOf(request);
     const base = { documentId: snapshot.document.id, sourceRevision: snapshot.revision, sourceTextSha256: snapshot.sourceTextSha256 };
     if (request.operation === "observe") {
-      const jobs = Object.fromEntries((Object.keys(AGENT_JOBS) as WorkbenchJobKind[]).map(kind => {
+      const jobs = Object.fromEntries((Object.keys(AGENT_JOBS) as WorkbenchSubmitJobKind[]).map(kind => {
         const reason = runner(kind).unavailable(snapshot);
         return [kind, reason ? { available: false, reason } : { available: true }];
       }));
@@ -167,10 +173,10 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
       operationId: job.operationId,
       kind: job.request.kind,
       params: job.request.params,
-      documentId: job.document.id,
-      documentTitle: job.document.title.slice(0, COMMENT_LENGTH),
+      documentId: job.document?.id ?? null,
+      documentTitle: job.document?.title.slice(0, COMMENT_LENGTH) ?? null,
       sourceRevision: job.sourceRevision,
-      sourceTextSha256: job.input.sourceTextSha256,
+      sourceTextSha256: job.input?.sourceTextSha256 ?? null,
       status,
       binding: job.binding,
       submittedAt: job.submittedAt,
@@ -207,20 +213,21 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
 
   /** Re-reads the job's document and records whether its source is still the job's input. */
   async function refreshBinding(job: Job) {
-    if (job.binding === "source_closed") return;
-    const document = environment.documents().find((item) => item.id === job.document.id);
+    const { document: source, input } = job;
+    if (job.binding === "source_closed" || !source || !input) return;
+    const document = environment.documents().find((item) => item.id === source.id);
     if (!document) {
       closeJob(job);
       return;
     }
     try {
-      assertOpen(document, job.input.lifetime);
+      assertOpen(document, input.lifetime);
       const { revision } = await snapshotOf({ documentId: document.id });
-      assertOpen(document, job.input.lifetime);
+      assertOpen(document, input.lifetime);
       job.binding = revision === job.sourceRevision ? "current" : "stale";
     } catch (error) {
       if (error instanceof WorkbenchError && error.code === "SOURCE_CLOSED") closeJob(job);
-      else if (!job.input.lifetime.abort.signal.aborted) job.binding = "stale";
+      else if (!input.lifetime.abort.signal.aborted) job.binding = "stale";
     }
   }
 
@@ -239,10 +246,9 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
   }
 
   function runJob(job: Job, signal: AbortSignal) {
-    const { input, request } = job;
-    return runner(request.kind).run(input, request.params as WorkbenchJobParams<typeof request.kind>, {
-      signal, timeoutMs: WORKBENCH_LIMITS.jobTimeoutMs, stem: fileStem(input.document.title), artifact,
-    });
+    const { input, request } = job, context = { signal, timeoutMs: WORKBENCH_LIMITS.jobTimeoutMs, artifact };
+    if (isBuild(request)) return (AGENT_BUILDS[request.kind] as AgentBuildRunner<typeof request.kind>).run(request.params as WorkbenchJobParams<typeof request.kind>, context);
+    return runner(request.kind).run(input!, request.params as WorkbenchJobParams<typeof request.kind>, { ...context, stem: fileStem(input!.document.title) });
   }
 
   async function start(job: Job) {
@@ -330,6 +336,25 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
     return { deduplicated: false, job: publicJob(job) };
   }
 
+  /** A documentless build shares the job queue, deduplication, cancellation and export of `submit`. */
+  function build(request: Extract<WorkbenchRequest, { operation: "build" }>) {
+    const fingerprint = JSON.stringify(["build", request.job]);
+    const existing = jobs.get(operations.get(request.operationId) ?? "");
+    if (existing) {
+      if (existing.fingerprint !== fingerprint) throw new WorkbenchError("OPERATION_ID_CONFLICT", `operationId ${request.operationId} was already used for a different request (job ${existing.jobId}).`, { operationId: request.operationId, jobId: existing.jobId });
+      return { deduplicated: true, job: publicJob(existing) };
+    }
+    const pending = [...jobs.values()].filter((job) => job.state === "queued").length;
+    if (pending >= WORKBENCH_LIMITS.queuedJobs) throw new WorkbenchError("JOB_QUEUE_FULL", `${pending} workbench jobs are already queued. Wait for one to finish or cancel one.`);
+    const job: Job = { jobId: `wbj-${crypto.randomUUID().replace(/-/gu, "").slice(0, 16)}`, operationId: request.operationId, fingerprint, request: request.job,
+      document: null, sourceRevision: null, input: null, state: "queued", binding: "none", submittedAt: new Date().toISOString(), startedAt: null, finishedAt: null,
+      error: null, summary: null, artifacts: [], abort: null };
+    jobs.set(job.jobId, job);
+    operations.set(job.operationId, job.jobId);
+    pump();
+    return { deduplicated: false, job: publicJob(job) };
+  }
+
   async function status(request: Extract<WorkbenchRequest, { operation: "status" }>) {
     const jobId = request.jobId ?? operations.get(request.operationId!);
     if (!jobId) throw new WorkbenchError("JOB_NOT_FOUND", `No job was submitted with operationId ${request.operationId}.`, { operationId: request.operationId });
@@ -356,7 +381,7 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
     if (job.binding === "source_closed") throw new WorkbenchError("SOURCE_CLOSED", `The source document of job ${job.jobId} was closed; its results were released.`, { job: publicJob(job) });
     if (job.state !== "succeeded") throw new WorkbenchError("JOB_NOT_SUCCEEDED", `Job ${job.jobId} is ${job.state}; only succeeded jobs have artifacts.`, { job: publicJob(job) });
     if (job.binding === "stale" && !request.allowStale) {
-      throw new WorkbenchError("STALE_RESULT", `The source of ${job.document.title} changed after job ${job.jobId} was submitted. Pass allowStale: true to export a result of the earlier revision ${job.sourceRevision}.`, { job: publicJob(job) });
+      throw new WorkbenchError("STALE_RESULT", `The source of ${job.document?.title} changed after job ${job.jobId} was submitted. Pass allowStale: true to export a result of the earlier revision ${job.sourceRevision}.`, { job: publicJob(job) });
     }
     const found = job.artifacts.find((item) => item.name === request.artifact);
     if (!found) throw new WorkbenchError("ARTIFACT_NOT_FOUND", `Job ${job.jobId} has no ${request.artifact} artifact.`, { artifacts: job.artifacts.map((item) => item.name) });
@@ -364,7 +389,7 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
     return {
       jobId: job.jobId,
       sourceRevision: job.sourceRevision,
-      sourceTextSha256: job.input.sourceTextSha256,
+      sourceTextSha256: job.input?.sourceTextSha256 ?? null,
       binding: job.binding,
       artifact: { name: found.name, fileName: found.fileName, mimeType: found.mimeType, byteCount: found.byteCount, sha256: found.sha256, encoding: "utf8", content: found.content },
     };
@@ -386,6 +411,8 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
     switch (request.operation) {
       case "submit":
         return submit(request);
+      case "build":
+        return build(request);
       case "status":
         return status(request);
       case "jobs":
@@ -420,7 +447,7 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
       if (lifetime.signal.aborted) return;
       sourceOwner.documentsChanged(openDocumentIds);
       for (const job of jobs.values()) {
-        if (!openDocumentIds.has(job.document.id) && job.binding !== "source_closed") closeJob(job);
+        if (job.document && !openDocumentIds.has(job.document.id) && job.binding !== "source_closed") closeJob(job);
       }
       retain();
       pump();

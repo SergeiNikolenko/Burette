@@ -16,7 +16,8 @@ scope.onmessage = ({ data }) => {
       : data.sequence.replace(/\s+/g, "").toUpperCase();
     const model = buildPeptideGeometry(sequence, data.options);
     const result: PeptideBuildResult = { cif: peptideMmcif(model), sequence, atomCount: model.atoms.length,
-      residueCount: model.chirality.length, charge: model.atoms.reduce((total, atom) => total + atom.charge, 0) };
+      residueCount: model.chirality.length, charge: model.atoms.reduce((total, atom) => total + atom.charge, 0),
+      graph: { atoms: model.atoms.map(({ element, charge, position: [x, y, z] }) => ({ element, x, y, z, charge })), bonds: model.bonds.map(({ a, b, order }) => ({ a, b, order: order as 1 | 2 })) } };
     scope.postMessage({ ok: true, result });
   } catch (error) {
     scope.postMessage({ ok: false, error: error instanceof Error ? error.message.slice(0, 500) : "Could not build the peptide." });

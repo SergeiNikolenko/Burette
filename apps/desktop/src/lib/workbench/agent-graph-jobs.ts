@@ -36,7 +36,7 @@ async function structureSdf(input: Snapshot, molecule: MolecularStructure, signa
   return graphDraftText(input.text, "sdf", normalized.molfile, metadata);
 }
 
-function optimizationSummary(result: OptimizationResult) {
+export function optimizationSummary(result: OptimizationResult) {
   return {
     method: result.method, forceField: result.forceField, model: label(result.forceField), gradient: result.gradient,
     initialEnergy: result.initialEnergy, energy: result.energy, unit: result.unit, converged: result.converged, stopReason: result.stopReason,
@@ -45,15 +45,14 @@ function optimizationSummary(result: OptimizationResult) {
   };
 }
 
-/** Optimized SDF and XYZ in source order, plus the step trajectory with per-frame energies when steps exist. */
-async function optimizationArtifacts(input: Snapshot, result: OptimizationResult, suffix: string, context: AgentJobContext) {
-  const { stem, artifact, signal } = context;
+/** The optimized SDF text and XYZ, plus the step trajectory with per-frame energies when steps exist. */
+export async function optimizationArtifacts(sdf: string, result: OptimizationResult, name: string, { artifact }: Pick<AgentJobContext, "artifact">) {
   const artifacts = [
-    await artifact("structure", `${stem}-${suffix}.sdf`, "chemical/x-mdl-sdfile", await structureSdf(input, result.molecule, signal)),
-    await artifact("xyz", `${stem}-${suffix}.xyz`, "chemical/x-xyz", serializeXyz(result.molecule.atoms, `Energy=${result.energy} kcal/mol ${result.forceField} ${result.method}`)),
+    await artifact("structure", `${name}.sdf`, "chemical/x-mdl-sdfile", sdf),
+    await artifact("xyz", `${name}.xyz`, "chemical/x-xyz", serializeXyz(result.molecule.atoms, `Energy=${result.energy} kcal/mol ${result.forceField} ${result.method}`)),
   ];
   if (result.frameSampling === "steps") {
-    artifacts.push(await artifact("trajectory", `${stem}-${suffix}-steps.xyz`, "chemical/x-xyz",
+    artifacts.push(await artifact("trajectory", `${name}-steps.xyz`, "chemical/x-xyz",
       multiFrameXyz(result.frames.map((frame, index) => ({ atoms: frame.atoms, comment: `Step ${index} Energy=${frame.energy} kcal/mol` })))));
   }
   return artifacts;
@@ -164,7 +163,7 @@ export const graphJobs: { [K in "properties" | "energy" | "energy_forces" | "fra
     },
     async run(input, params, context) {
       const result = await runChemistryTask({ action: "optimize", molecule: input.structure!, options: params }, { signal: context.signal, timeoutMs: context.timeoutMs });
-      return { summary: optimizationSummary(result), artifacts: await optimizationArtifacts(input, result, "optimized", context) };
+      return { summary: optimizationSummary(result), artifacts: await optimizationArtifacts(await structureSdf(input, result.molecule, context.signal), result, `${context.stem}-optimized`, context) };
     },
   },
   prepare_3d: {
@@ -172,7 +171,7 @@ export const graphJobs: { [K in "properties" | "energy" | "energy_forces" | "fra
     paramsUnavailable: (snapshot, { forceField, method }) => optimizationUnavailable(snapshot.structure!.atoms.length, forceField, method, 0),
     async run(input, params, context) {
       const result = await runChemistryTask({ action: "prepare-3d", molecule: input.structure!, options: params }, { signal: context.signal, timeoutMs: context.timeoutMs });
-      return { summary: { ...optimizationSummary(result), preparation: result.preparation, atomCount: result.molecule.atoms.length }, artifacts: await optimizationArtifacts(input, result, "3d", context) };
+      return { summary: { ...optimizationSummary(result), preparation: result.preparation, atomCount: result.molecule.atoms.length }, artifacts: await optimizationArtifacts(await structureSdf(input, result.molecule, context.signal), result, `${context.stem}-3d`, context) };
     },
   },
   conformers: {

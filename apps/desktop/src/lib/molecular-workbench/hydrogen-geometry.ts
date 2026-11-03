@@ -32,7 +32,7 @@ export async function appendHydrogens(mol: Molecule): Promise<void> {
   if (neighbours.some((list, atom) => list.some(i => Math.hypot(...subtract(positions[i], positions[atom])) < 1e-8))) throw new Error('Cannot place hydrogens on coincident bonded atoms.');
   mol.ensureHelperArrays(Molecule.cHelperParities);
   for (let atom = 0; atom < count; atom++) if (mol.getAtomParity(atom) === Molecule.cAtomParityUnknown) mol.setAtomConfigurationUnknown(atom, true);
-  const local = new Map<number, Vec3[]>();
+  const local = new Map<number, Vec3[]>(), symmetric = new Map<number, Vec3[]>();
   for (let atom = 0; atom < count; atom++) {
     if (!implicit[atom]) continue;
     const directions = neighbours[atom].map(i => subtract(positions[i], positions[atom]));
@@ -40,7 +40,20 @@ export async function appendHydrogens(mol: Molecule): Promise<void> {
     // 2D hydrogen handler divides by zero. Classify from source geometry first.
     if (directions.length !== 2 || implicit[atom] > 2) continue;
     const axis = unit(directions[0]), other = unit(directions[1]);
-    if (Math.hypot(...axis.map((v, i) => v + other[i])) >= 1e-8) continue;
+    if (Math.hypot(...axis.map((v, i) => v + other[i])) >= 1e-8) {
+      // RDKit places the second H of an sp3 XH2 opposite the first H and both bonds,
+      // which is only tetrahedral for a ~109.5° Y–X–Y angle: a cyclopropane CH2 gets
+      // H–C–H 90° with H–C–C 120° for one H and 135° for the other. Place the pair
+      // mirror-symmetric about the Y–X–Y plane with H–X–H equal to both H–X–Y, the
+      // most even spread for that fixed angle (tetrahedral at 109.47°; 116.9° in
+      // cyclopropane, measured 114.5–116°): cos(HXH) = −cos(HXH/2)·cos(YXY/2).
+      if (implicit[atom] === 2 && !mol.isAromaticAtom(atom) && mol.getAtomPi(atom) === 0) {
+        const k = Math.hypot(...axis.map((v, i) => v + other[i])) / 2, c = (Math.sqrt(k * k + 8) - k) / 4;
+        const bisector = scale(unit(axis.map((v, i) => v + other[i]) as Vec3), -c), normal = scale(unit(cross(axis, other)), Math.sqrt(1 - c * c));
+        symmetric.set(atom, [[0, 1, 2].map(i => bisector[i] + normal[i]) as Vec3, [0, 1, 2].map(i => bisector[i] - normal[i]) as Vec3]);
+      }
+      continue;
+    }
     if (mol.getAtomParity(atom) !== Molecule.cAtomParityNone || neighbours[atom].some((_, j) => mol.getBondParity(mol.getConnBond(atom, j)) !== Molecule.cBondParityNone)) {
       throw new Error('Cannot place hydrogens in degenerate specified stereochemistry.');
     }
@@ -95,7 +108,8 @@ export async function appendHydrogens(mol: Molecule): Promise<void> {
       const parent = connections[0]?.atoms.find(a => a !== i) ?? -1;
       if ((expanded.atoms[i].z ?? data.defaults.atom.z) !== 1 || connections.length !== 1 || (connections[0].bo ?? 1) !== 1 || parent < 0 || parent >= count) throw new Error('Hydrogen placement changed the molecular graph.');
       const ordinal = ordinals[parent]++;
-      const position = local.get(parent)?.[ordinal] ?? coordinates[i];
+      const direction = symmetric.get(parent)?.[ordinal], length = Math.hypot(...subtract(coordinates[i], positions[parent]));
+      const position = local.get(parent)?.[ordinal] ?? (direction ? positions[parent].map((v, k) => v + length * direction[k]) as Vec3 : coordinates[i]);
       if (!position.every(Number.isFinite) || Math.hypot(...subtract(position, positions[parent])) < .1) throw new Error('Could not determine a nonzero hydrogen bond direction.');
       additions.push({ parent, position });
     }
@@ -122,7 +136,8 @@ export async function appendHydrogens(mol: Molecule): Promise<void> {
         if (links.length !== 1 || parent < 0 || parent >= count) throw new Error('Hydrogen validation changed the molecular graph.');
         const list = choices.get(parent) ?? []; list.push(subtract(points[i], shift)); choices.set(parent, list);
       }
-      for (const { parent, position } of additions) if (!local.has(parent)) {
+      // Locally placed directions do not depend on RDKit's frame (only its X–H length).
+      for (const { parent, position } of additions) if (!local.has(parent) && !symmetric.has(parent)) {
         const list = choices.get(parent) ?? [];
         // Input MOL coordinates retain 10 decimal places. A 1e-5 Å tolerance
         // admits roundoff while rejecting numerically unstable local directions.

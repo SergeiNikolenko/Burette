@@ -10,7 +10,11 @@ export type GraphEdit =
   | { kind: 'update-atom'; index: number; element?: string; charge?: number; isotope?: number; position?: Vec3 }
   | { kind: 'delete-atoms'; indices: number[] }
   | { kind: 'set-bond'; a: number; b: number; order: 0 | 1 | 2 | 3 }
-  | { kind: 'reorder-atoms'; order: number[] };
+  | { kind: 'reorder-atoms'; order: number[] }
+  | FragmentGraphEdit;
+/** New atoms are numbered after the existing ones (n, n + 1, ...); each bond joins at least one new atom.
+ * `replace` is an existing atom, such as the hydrogen an attached group substitutes, deleted in the same edit. */
+export type FragmentGraphEdit = { kind: 'add-fragment'; atoms: { element: string; position: Vec3; charge?: number }[]; bonds: { a: number; b: number; order: 1 | 2 | 3 }[]; replace?: number };
 export type GraphEditResult = MolecularStructure & { sourceAtomIndices: number[] };
 
 /** Edits a private graph copy. A rejected edit never mutates the input. */
@@ -79,6 +83,31 @@ export function editGraph(structure: MolecularStructure, edit: GraphEdit): Graph
       }
       break;
     }
+    case 'add-fragment': {
+      const count = edit.atoms.length, removed = edit.replace === undefined ? 0 : 1;
+      if (!count || n + count - removed > 256) throw new Error('Graph editing supports at most 256 atoms.');
+      const added = edit.atoms.map((atom, i) => {
+        if (atom.charge !== undefined && (!Number.isInteger(atom.charge) || Math.abs(atom.charge) > 8)) throw new Error('Formal charge must be an integer from −8 to 8.');
+        const j = mol.addAtom(atomicNumber(atom.element)); position(j, atom.position);
+        if (atom.charge) mol.setAtomCharge(j, atom.charge);
+        mol.setAtomMapNo(j, n + 1 + i); originalMap.set(n + 1 + i, 0); wanted.push(n + 1 + i);
+        return j;
+      });
+      const resolve = (i: number) => i < n ? index(i) : Number.isInteger(i) && i < n + count ? added[i - n] : index(i);
+      const pairs = new Set<string>();
+      for (const bond of edit.bonds) {
+        const a = resolve(bond.a), b = resolve(bond.b), key = [a, b].sort((x, y) => x - y).join(':');
+        if (a === b || (bond.a < n && bond.b < n) || bond.a === edit.replace || bond.b === edit.replace || pairs.has(key) || ![1, 2, 3].includes(bond.order)) throw new Error('The fragment has an invalid bond graph.');
+        pairs.add(key);
+        mol.setBondType(mol.addBond(a, b), [0, Molecule.cBondTypeSingle, Molecule.cBondTypeDouble, Molecule.cBondTypeTriple][bond.order]);
+      }
+      if (edit.replace !== undefined) {
+        const j = index(edit.replace);
+        wanted = wanted.filter(tag => tag !== edit.replace! + 1);
+        mol.deleteAtoms([j]);
+      }
+      break;
+    }
     case 'reorder-atoms':
       if (edit.order.length !== n || new Set(edit.order).size !== n) throw new Error('Atom order must be a permutation.');
       edit.order.forEach(index); wanted = edit.order.map(i => i + 1);
@@ -111,14 +140,22 @@ function orderedMolfile(text: string, order: number[]): string {
   if (end - begin - 1 !== order.length || rows.slice(begin + 1, end).some(row => row.endsWith('-'))) throw new Error('This atom record cannot be reordered safely.');
   const atoms = rows.slice(begin + 1, end), reverse = new Map(order.map((old, i) => [old + 1, i + 1]));
   rows.splice(begin + 1, order.length, ...order.map((old, i) => atoms[old].replace(/^M  V30 \d+ /, `M  V30 ${i + 1} `)));
-  let inBonds = false;
+  let inBonds = false, inCollection = false;
+  const reordered = order.some((old, i) => old !== i);
   return rows.map(row => {
     if (row === 'M  V30 BEGIN BOND') inBonds = true;
     else if (row === 'M  V30 END BOND') inBonds = false;
     else if (inBonds) return row.replace(/^(M  V30 \d+ \d+ )([0-9]+) ([0-9]+)/, (_, prefix, a, b) => `${prefix}${reverse.get(Number(a))} ${reverse.get(Number(b))}`);
-    // Sgroups/collections reference atom IDs too. Until those are remapped,
+    if (row === 'M  V30 BEGIN COLLECTION') inCollection = true;
+    else if (row === 'M  V30 END COLLECTION') inCollection = false;
+    // Stereo collections (MDLV30/STEABS, STERAC, STEREL) list atom IDs only, on one line each.
+    else if (inCollection && reordered) {
+      if (row.endsWith('-') || !/^M {2}V30 MDLV30\/STE(?:ABS|RAC\d+|REL\d+) ATOMS=\(\d+(?: \d+)*\)$/u.test(row)) throw new Error('This atom collection cannot be reordered safely.');
+      return row.replace(/ATOMS=\((\d+)((?: \d+)*)\)/u, (_, count, ids: string) => `ATOMS=(${count}${ids.trim().split(' ').map(id => ` ${reverse.get(Number(id))}`).join('')})`);
+    }
+    // Sgroups reference atoms and bonds in many fields. Until those are remapped,
     // reject instead of silently changing annotated chemical identities.
-    if (/^M  V30 BEGIN (?:SGROUP|COLLECTION)/.test(row) && order.some((old, i) => old !== i)) throw new Error('Reordering annotated atom groups is not supported.');
+    if (row.startsWith('M  V30 BEGIN SGROUP') && reordered) throw new Error('Reordering annotated atom groups is not supported.');
     return row;
   }).join('\n');
 }

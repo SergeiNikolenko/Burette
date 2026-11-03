@@ -1,0 +1,125 @@
+{
+ "rdkit": "2026.09.1",
+ "cases": [
+  {
+   "type": "DNA",
+   "fivePrime": "hydroxyl",
+   "strands": "single",
+   "sequence": "GATTACA",
+   "formula": "C69H81N27O39P6-6",
+   "charge": -6,
+   "atoms": 222,
+   "smiles": "Cc1cn([C@H]2C[C@H](OP(=O)([O-])OC[C@H]3O[C@@H](n4cnc5c(N)ncnc54)C[C@@H]3OP(=O)([O-])OC[C@H]3O[C@@H](n4ccc(N)nc4=O)C[C@@H]3OP(=O)([O-])OC[C@H]3O[C@@H](n4cnc5c(N)ncnc54)C[C@@H]3O)[C@@H](COP(=O)([O-])O[C@H]3C[C@H](n4cc(C)c(=O)[nH]c4=O)O[C@@H]3COP(=O)([O-])O[C@H]3C[C@H](n4cnc5c(N)ncnc54)O[C@@H]3COP(=O)([O-])O[C@H]3C[C@H](n4cnc5c(=O)[nH]c(N)nc54)O[C@@H]3CO)O2)c(=O)[nH]c1=O"
+  },
+  {
+   "type": "DNA",
+   "fivePrime": "hydroxyl",
+   "strands": "double",
+   "sequence": "GATTACA",
+   "formula": "C138H163N51O80P12-12",
+   "charge": -12,
+   "atoms": 444,
+   "smiles": "Cc1cn([C@H]2C[C@H](OP(=O)([O-])OC[C@H]3O[C@@H](n4cnc5c(=O)[nH]c(N)nc54)C[C@@H]3OP(=O)([O-])OC[C@H]3O[C@@H](n4cc(C)c(=O)[nH]c4=O)C[C@@H]3OP(=O)([O-])OC[C@H]3O[C@@H](n4cnc5c(N)ncnc54)C[C@@H]3OP(=O)([O-])OC[C@H]3O[C@@H](n4cnc5c(N)ncnc54)C[C@@H]3OP(=O)([O-])OC[C@H]3O[C@@H](n4cc(C)c(=O)[nH]c4=O)C[C@@H]3OP(=O)([O-])OC[C@H]3O[C@@H](n4ccc(N)nc4=O)C[C@@H]3O)[C@@H](CO)O2)c(=O)[nH]c1=O.Cc1cn([C@H]2C[C@H](OP(=O)([O-])OC[C@H]3O[C@@H](n4cnc5c(N)ncnc54)C[C@@H]3OP(=O)([O-])OC[C@H]3O[C@@H](n4ccc(N)nc4=O)C[C@@H]3OP(=O)([O-])OC[C@H]3O[C@@H](n4cnc5c(N)ncnc54)C[C@@H]3O)[C@@H](COP(=O)([O-])O[C@H]3C[C@H](n4cc(C)c(=O)[nH]c4=O)O[C@@H]3COP(=O)([O-])O[C@H]3C[C@H](n4cnc5c(N)ncnc54)O[C@@H]3COP(=O)([O-])O[C@H]3C[C@H](n4cnc5c(=O)[nH]c(N)nc54)O[C@@H]3CO)O2)c(=O)[nH]c1=O"
+  },
+  {
+   "type": "DNA",
+   "fivePrime": "phosphate",
+   "strands": "single",
+   "sequence": "GATTACA",
+   "formula": "C69H80N27O42P7-8",
+   "charge": -8,
+   "atoms": 225,
+   "smiles": "Cc1cn([C@H]2C[C@H](OP(=O)([O-])OC[C@H]3O[C@@H](n4cnc5c(N)ncnc54)C[C@@H]3OP(=O)([O-])OC[C@H]3O[C@@H](n4ccc(N)nc4=O)C[C@@H]3OP(=O)([O-])OC[C@H]3O[C@@H](n4cnc5c(N)ncnc54)C[C@@H]3O)[C@@H](COP(=O)([O-])O[C@H]3C[C@H](n4cc(C)c(=O)[nH]c4=O)O[C@@H]3COP(=O)([O-])O[C@H]3C[C@H](n4cnc5c(N)ncnc54)O[C@@H]3COP(=O)([O-])O[C@H]3C[C@H](n4cnc5c(=O)[nH]c(N)nc54)O[C@@H]3COP(=O)([O-])[O-])O2)c(=O)[nH]c1=O"
+  },
+  {
+   "type": "DNA",
+   "fivePrime": "phosphate",
+   "strands": "double",
+   "sequence": "GATTACA",
+   "formula": "C138H161N51O86P14-16",
+   "charge": -16,
+   "atoms": 450,
+   "smiles": "Cc1cn([C@H]2C[C@H](OP(=O)([O-])OC[C@H]3O[C@@H](n4cnc5c(=O)[nH]c(N)nc54)C[C@@H]3OP(=O)([O-])OC[C@H]3O[C@@H](n4cc(C)c(=O)[nH]c4=O)C[C@@H]3OP(=O)([O-])OC[C@H]3O[C@@H](n4cnc5c(N)ncnc54)C[C@@H]3OP(=O)([O-])OC[C@H]3O[C@@H](n4cnc5c(N)ncnc54)C[C@@H]3OP(=O)([O-])OC[C@H]3O[C@@H](n4cc(C)c(=O)[nH]c4=O)C[C@@H]3OP(=O)([O-])OC[C@H]3O[C@@H](n4ccc(N)nc4=O)C[C@@H]3O)[C@@H](COP(=O)([O-])[O-])O2)c(=O)[nH]c1=O.Cc1cn([C@H]2C[C@H](OP(=O)([O-])OC[C@H]3O[C@@H](n4cnc5c(N)ncnc54)C[C@@H]3OP(=O)([O-])OC[C@H]3O[C@@H](n4ccc(N)nc4=O)C[C@@H]3OP(=O)([O-])OC[C@H]3O[C@@H](n4cnc5c(N)ncnc54)C[C@@H]3O)[C@@H](COP(=O)([O-])O[C@H]3C[C@H](n4cc(C)c(=O)[nH]c4=O)O[C@@H]3COP(=O)([O-])O[C@H]3C[C@H](n4cnc5c(N)ncnc54)O[C@@H]3COP(=O)([O-])O[C@H]3C[C@H](n4cnc5c(=O)[nH]c(N)nc54)O[C@@H]3COP(=O)([O-])[O-])O2)c(=O)[nH]c1=O"
+  },
+  {
+   "type": "DNA",
+   "fivePrime": "hydroxyl",
+   "strands": "single",
+   "sequence": "CACGTG",
+   "formula": "C58H69N23O34P5-5",
+   "charge": -5,
+   "atoms": 189,
+   "smiles": "Cc1cn([C@H]2C[C@H](OP(=O)([O-])OC[C@H]3O[C@@H](n4cnc5c(=O)[nH]c(N)nc54)C[C@@H]3O)[C@@H](COP(=O)([O-])O[C@H]3C[C@H](n4cnc5c(=O)[nH]c(N)nc54)O[C@@H]3COP(=O)([O-])O[C@H]3C[C@H](n4ccc(N)nc4=O)O[C@@H]3COP(=O)([O-])O[C@H]3C[C@H](n4cnc5c(N)ncnc54)O[C@@H]3COP(=O)([O-])O[C@H]3C[C@H](n4ccc(N)nc4=O)O[C@@H]3CO)O2)c(=O)[nH]c1=O"
+  },
+  {
+   "type": "DNA",
+   "fivePrime": "hydroxyl",
+   "strands": "double",
+   "sequence": "CACGTG",
+   "formula": "C116H138N46O68P10-10",
+   "charge": -10,
+   "atoms": 378,
+   "smiles": "Cc1cn([C@H]2C[C@H](OP(=O)([O-])OC[C@H]3O[C@@H](n4cnc5c(=O)[nH]c(N)nc54)C[C@@H]3O)[C@@H](COP(=O)([O-])O[C@H]3C[C@H](n4cnc5c(=O)[nH]c(N)nc54)O[C@@H]3COP(=O)([O-])O[C@H]3C[C@H](n4ccc(N)nc4=O)O[C@@H]3COP(=O)([O-])O[C@H]3C[C@H](n4cnc5c(N)ncnc54)O[C@@H]3COP(=O)([O-])O[C@H]3C[C@H](n4ccc(N)nc4=O)O[C@@H]3CO)O2)c(=O)[nH]c1=O.Cc1cn([C@H]2C[C@H](OP(=O)([O-])OC[C@H]3O[C@@H](n4cnc5c(=O)[nH]c(N)nc54)C[C@@H]3O)[C@@H](COP(=O)([O-])O[C@H]3C[C@H](n4cnc5c(=O)[nH]c(N)nc54)O[C@@H]3COP(=O)([O-])O[C@H]3C[C@H](n4ccc(N)nc4=O)O[C@@H]3COP(=O)([O-])O[C@H]3C[C@H](n4cnc5c(N)ncnc54)O[C@@H]3COP(=O)([O-])O[C@H]3C[C@H](n4ccc(N)nc4=O)O[C@@H]3CO)O2)c(=O)[nH]c1=O"
+  },
+  {
+   "type": "DNA",
+   "fivePrime": "phosphate",
+   "strands": "single",
+   "sequence": "CACGTG",
+   "formula": "C58H68N23O37P6-7",
+   "charge": -7,
+   "atoms": 192,
+   "smiles": "Cc1cn([C@H]2C[C@H](OP(=O)([O-])OC[C@H]3O[C@@H](n4cnc5c(=O)[nH]c(N)nc54)C[C@@H]3O)[C@@H](COP(=O)([O-])O[C@H]3C[C@H](n4cnc5c(=O)[nH]c(N)nc54)O[C@@H]3COP(=O)([O-])O[C@H]3C[C@H](n4ccc(N)nc4=O)O[C@@H]3COP(=O)([O-])O[C@H]3C[C@H](n4cnc5c(N)ncnc54)O[C@@H]3COP(=O)([O-])O[C@H]3C[C@H](n4ccc(N)nc4=O)O[C@@H]3COP(=O)([O-])[O-])O2)c(=O)[nH]c1=O"
+  },
+  {
+   "type": "DNA",
+   "fivePrime": "phosphate",
+   "strands": "double",
+   "sequence": "CACGTG",
+   "formula": "C116H136N46O74P12-14",
+   "charge": -14,
+   "atoms": 384,
+   "smiles": "Cc1cn([C@H]2C[C@H](OP(=O)([O-])OC[C@H]3O[C@@H](n4cnc5c(=O)[nH]c(N)nc54)C[C@@H]3O)[C@@H](COP(=O)([O-])O[C@H]3C[C@H](n4cnc5c(=O)[nH]c(N)nc54)O[C@@H]3COP(=O)([O-])O[C@H]3C[C@H](n4ccc(N)nc4=O)O[C@@H]3COP(=O)([O-])O[C@H]3C[C@H](n4cnc5c(N)ncnc54)O[C@@H]3COP(=O)([O-])O[C@H]3C[C@H](n4ccc(N)nc4=O)O[C@@H]3COP(=O)([O-])[O-])O2)c(=O)[nH]c1=O.Cc1cn([C@H]2C[C@H](OP(=O)([O-])OC[C@H]3O[C@@H](n4cnc5c(=O)[nH]c(N)nc54)C[C@@H]3O)[C@@H](COP(=O)([O-])O[C@H]3C[C@H](n4cnc5c(=O)[nH]c(N)nc54)O[C@@H]3COP(=O)([O-])O[C@H]3C[C@H](n4ccc(N)nc4=O)O[C@@H]3COP(=O)([O-])O[C@H]3C[C@H](n4cnc5c(N)ncnc54)O[C@@H]3COP(=O)([O-])O[C@H]3C[C@H](n4ccc(N)nc4=O)O[C@@H]3COP(=O)([O-])[O-])O2)c(=O)[nH]c1=O"
+  },
+  {
+   "type": "RNA",
+   "fivePrime": "hydroxyl",
+   "strands": "single",
+   "sequence": "GAUUACA",
+   "formula": "C67H77N27O46P6-6",
+   "charge": -6,
+   "atoms": 223,
+   "smiles": "Nc1ccn([C@@H]2O[C@H](COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4cnc5c(N)ncnc54)O[C@@H]3COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4ccc(=O)[nH]c4=O)O[C@@H]3COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4ccc(=O)[nH]c4=O)O[C@@H]3COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4cnc5c(N)ncnc54)O[C@@H]3COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4cnc5c(=O)[nH]c(N)nc54)O[C@@H]3CO)[C@@H](OP(=O)([O-])OC[C@H]3O[C@@H](n4cnc5c(N)ncnc54)[C@H](O)[C@@H]3O)[C@H]2O)c(=O)n1"
+  },
+  {
+   "type": "RNA",
+   "fivePrime": "hydroxyl",
+   "strands": "double",
+   "sequence": "GAUUACA",
+   "formula": "C133H153N51O94P12-12",
+   "charge": -12,
+   "atoms": 443,
+   "smiles": "Nc1ccn([C@@H]2O[C@H](COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4ccc(=O)[nH]c4=O)O[C@@H]3COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4cnc5c(N)ncnc54)O[C@@H]3COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4cnc5c(N)ncnc54)O[C@@H]3COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4ccc(=O)[nH]c4=O)O[C@@H]3COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4cnc5c(=O)[nH]c(N)nc54)O[C@@H]3COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4ccc(=O)[nH]c4=O)O[C@@H]3CO)[C@@H](O)[C@H]2O)c(=O)n1.Nc1ccn([C@@H]2O[C@H](COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4cnc5c(N)ncnc54)O[C@@H]3COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4ccc(=O)[nH]c4=O)O[C@@H]3COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4ccc(=O)[nH]c4=O)O[C@@H]3COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4cnc5c(N)ncnc54)O[C@@H]3COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4cnc5c(=O)[nH]c(N)nc54)O[C@@H]3CO)[C@@H](OP(=O)([O-])OC[C@H]3O[C@@H](n4cnc5c(N)ncnc54)[C@H](O)[C@@H]3O)[C@H]2O)c(=O)n1"
+  },
+  {
+   "type": "RNA",
+   "fivePrime": "phosphate",
+   "strands": "single",
+   "sequence": "GAUUACA",
+   "formula": "C67H76N27O49P7-8",
+   "charge": -8,
+   "atoms": 226,
+   "smiles": "Nc1ccn([C@@H]2O[C@H](COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4cnc5c(N)ncnc54)O[C@@H]3COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4ccc(=O)[nH]c4=O)O[C@@H]3COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4ccc(=O)[nH]c4=O)O[C@@H]3COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4cnc5c(N)ncnc54)O[C@@H]3COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4cnc5c(=O)[nH]c(N)nc54)O[C@@H]3COP(=O)([O-])[O-])[C@@H](OP(=O)([O-])OC[C@H]3O[C@@H](n4cnc5c(N)ncnc54)[C@H](O)[C@@H]3O)[C@H]2O)c(=O)n1"
+  },
+  {
+   "type": "RNA",
+   "fivePrime": "phosphate",
+   "strands": "double",
+   "sequence": "GAUUACA",
+   "formula": "C133H151N51O100P14-16",
+   "charge": -16,
+   "atoms": 449,
+   "smiles": "Nc1ccn([C@@H]2O[C@H](COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4ccc(=O)[nH]c4=O)O[C@@H]3COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4cnc5c(N)ncnc54)O[C@@H]3COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4cnc5c(N)ncnc54)O[C@@H]3COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4ccc(=O)[nH]c4=O)O[C@@H]3COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4cnc5c(=O)[nH]c(N)nc54)O[C@@H]3COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4ccc(=O)[nH]c4=O)O[C@@H]3COP(=O)([O-])[O-])[C@@H](O)[C@H]2O)c(=O)n1.Nc1ccn([C@@H]2O[C@H](COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4cnc5c(N)ncnc54)O[C@@H]3COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4ccc(=O)[nH]c4=O)O[C@@H]3COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4ccc(=O)[nH]c4=O)O[C@@H]3COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4cnc5c(N)ncnc54)O[C@@H]3COP(=O)([O-])O[C@H]3[C@@H](O)[C@H](n4cnc5c(=O)[nH]c(N)nc54)O[C@@H]3COP(=O)([O-])[O-])[C@@H](OP(=O)([O-])OC[C@H]3O[C@@H](n4cnc5c(N)ncnc54)[C@H](O)[C@@H]3O)[C@H]2O)c(=O)n1"
+  }
+ ]
+}

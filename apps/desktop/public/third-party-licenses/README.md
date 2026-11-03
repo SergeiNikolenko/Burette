@@ -16,6 +16,7 @@ shell builds.
 | @hpcc-js/wasm-zstd 1.17.0 | hpcc-wasm-zstd-LICENSE |
 | Zstandard 1.5.7, included in @hpcc-js/wasm-zstd | zstd-LICENSE |
 | fzstd 0.1.1, included in @hpcc-js/wasm-zstd | fzstd-LICENSE |
+| Open-Source PyMOL 3.1 nucleotide fragments, in the DNA/RNA builder templates | pymol-LICENSE |
 
 XZ Embedded by Lasse Collin and Igor Pavlov is in the public domain and is
 included in xz-decompress; its attribution is in xz-decompress-NOTICE.

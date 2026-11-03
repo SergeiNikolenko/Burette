@@ -20,21 +20,29 @@ export function fileStem(name: string) {
 
 /**
  * MOL/SDF text with explicit bonds. V2000 holds 999 atoms; larger graphs use V3000.
- * Metal–ligand edges are written as V3000 coordination bonds (type 9), never as covalent bonds.
+ * Metal–ligand edges are coordination bonds (type 9, `a` donor → `b` metal), never covalent bonds.
+ * V2000 lists type 9 only for V3000, but RDKit, Open Babel, OpenChemLib and Mol* read it there,
+ * and Mol* ignores V3000 `CHG=`: V2000 `M  CHG` keeps charges through Mol* exports.
  */
-export function sdfFromGraph(atoms: MolecularAtom[], bonds: MolecularBond[], title: string, coordination: { a: number; b: number }[] = []) {
+export function sdfFromGraph(atoms: MolecularAtom[], bonds: MolecularBond[], title: string, coordination: { a: number; b: number }[] = [], charges: readonly number[] = []) {
   const name = title.replace(/[\r\n]/gu, " ").slice(0, 80);
   const order = (bond: MolecularBond) => bond.order === 1.5 ? 4 : bond.order;
   const coordinate = (value: number) => value.toFixed(4);
-  if (atoms.length <= 999 && bonds.length <= 999 && coordination.length === 0) {
+  const charged = charges.flatMap((charge, index) => charge ? [[index + 1, charge]] : []);
+  if (atoms.length <= 999 && bonds.length + coordination.length <= 999) {
     const pad = (value: string | number, width: number) => String(value).padStart(width);
-    const lines = [name, "  Burette           3D", "", `${pad(atoms.length, 3)}${pad(bonds.length, 3)}  0  0  0  0  0  0  0  0999 V2000`];
+    const lines = [name, "  Burette           3D", "", `${pad(atoms.length, 3)}${pad(bonds.length + coordination.length, 3)}  0  0  0  0  0  0  0  0999 V2000`];
     for (const atom of atoms) lines.push(`${pad(coordinate(atom.x), 10)}${pad(coordinate(atom.y), 10)}${pad(coordinate(atom.z), 10)} ${atom.element.padEnd(3)} 0  0  0  0  0  0  0  0  0  0  0  0`);
     for (const bond of bonds) lines.push(`${pad(bond.a + 1, 3)}${pad(bond.b + 1, 3)}${pad(order(bond), 3)}  0  0  0  0`);
+    for (const bond of coordination) lines.push(`${pad(bond.a + 1, 3)}${pad(bond.b + 1, 3)}  9  0  0  0  0`);
+    for (let start = 0; start < charged.length; start += 8) {
+      const chunk = charged.slice(start, start + 8);
+      lines.push(`M  CHG${pad(chunk.length, 3)}${chunk.map(([atom, charge]) => `${pad(atom, 4)}${pad(charge, 4)}`).join("")}`);
+    }
     return `${lines.join("\n")}\nM  END\n$$$$\n`;
   }
   const lines = [name, "  Burette           3D", "", "  0  0  0     0  0            999 V3000", "M  V30 BEGIN CTAB", `M  V30 COUNTS ${atoms.length} ${bonds.length + coordination.length} 0 0 0`, "M  V30 BEGIN ATOM"];
-  atoms.forEach((atom, index) => lines.push(`M  V30 ${index + 1} ${atom.element} ${coordinate(atom.x)} ${coordinate(atom.y)} ${coordinate(atom.z)} 0`));
+  atoms.forEach((atom, index) => lines.push(`M  V30 ${index + 1} ${atom.element} ${coordinate(atom.x)} ${coordinate(atom.y)} ${coordinate(atom.z)} 0${charges[index] ? ` CHG=${charges[index]}` : ""}`));
   lines.push("M  V30 END ATOM", "M  V30 BEGIN BOND");
   bonds.forEach((bond, index) => lines.push(`M  V30 ${index + 1} ${order(bond)} ${bond.a + 1} ${bond.b + 1}`));
   coordination.forEach((bond, index) => lines.push(`M  V30 ${bonds.length + index + 1} 9 ${bond.a + 1} ${bond.b + 1}`));

@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import React, { act } from "react";
 import { Window } from "happy-dom";
 import type { ViewerDocument } from "../apps/desktop/src/types";
+import { buildBrowserWorker } from "./support/browser-worker-build";
 plugin({ name: "source-generation-compiler", setup(build) { build.onLoad({ filter: /(?:hooks\/use-(?:source-(?:editing|draft-recovery)|app-file-open)|workbench\/(?:polymer-source|owned-source-text))\.ts$/u }, ({ path }) => ({
   contents: transformSync(readFileSync(path, "utf8"), { filename: path, babelrc: false, configFile: false, parserOpts: { plugins: ["typescript"] }, plugins: [["babel-plugin-react-compiler", {}]] })!.code!, loader: "ts",
 })); } });
@@ -77,8 +78,7 @@ function adopt(doc: ViewerDocument, text = sample) { adoptLogicalSource({ docume
 
 
 
-const built = await Bun.build({ entrypoints: [new URL("../apps/desktop/src/lib/workbench/polymer-worker.ts", import.meta.url).pathname], target: "browser", format: "esm" });
-if (!built.success) throw new AggregateError(built.logs, "Worker build failed");
+const built = await buildBrowserWorker(new URL("../apps/desktop/src/lib/workbench/polymer-worker.ts", import.meta.url));
 const workerPath = `${import.meta.dir}/.polymer-worker-${crypto.randomUUID()}.js`; await Bun.write(workerPath, built.outputs[0]);
 const NativeWorker = Worker; let hold = false, held: (() => void) | null = null, terminated = 0, workers = 0;
 class CompiledWorker extends NativeWorker {

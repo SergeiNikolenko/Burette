@@ -49,7 +49,10 @@ TERMINAL_STATUSES = frozenset({"succeeded", "stale", "failed", "cancelled", "sou
 JobKind = Literal[
     "properties", "energy", "energy_forces", "frame_energy_forces", "optimize",
     "prepare_3d", "conformers", "metadata_edit", "pair_distribution", "orbital_cube",
+    "insert_fragment", "hydrogens", "polymer",
 ]
+# Kinds that build a new structure without a source document (operation ``build``).
+BuildKind = Literal["smiles", "peptide", "metal_complex", "nucleic_acid"]
 
 
 class WorkbenchError(RuntimeError):
@@ -71,8 +74,8 @@ class Job:
     kind: str
     status: str
     binding: str
-    source_revision: str
-    document_id: str
+    source_revision: Optional[str]
+    document_id: Optional[str]
     params: Dict[str, Any]
     summary: Optional[Dict[str, Any]]
     artifacts: List[Dict[str, Any]]
@@ -226,6 +229,19 @@ class Workbench:
         """
         revision = expected_source_revision or self.observe(document_id)["sourceRevision"]
         job = self.wait(self.submit(kind, params, expected_source_revision=revision, operation_id=operation_id, document_id=document_id).job_id, timeout=timeout)
+        if job.status != "succeeded":
+            error = job.error or {}
+            raise WorkbenchError(error.get("code") or f"JOB_{job.status.upper()}", error.get("message") or f"Job {job.job_id} is {job.status}.", job.raw)
+        return job
+
+    def build(self, kind: BuildKind, params: Optional[Mapping[str, Any]] = None, *, operation_id: Optional[str] = None, timeout: float = 300.0) -> Job:
+        """Builds a new structure that needs no open document and waits for it.
+
+        The job has no source revision (``binding`` is ``none``); export its
+        ``structure`` artifact and open the file explicitly.
+        """
+        result = self.request("build", operationId=operation_id or f"py-{uuid.uuid4().hex}", job={"kind": kind, "params": dict(params or {})})
+        job = self.wait(result["job"]["jobId"], timeout=timeout)
         if job.status != "succeeded":
             error = job.error or {}
             raise WorkbenchError(error.get("code") or f"JOB_{job.status.upper()}", error.get("message") or f"Job {job.job_id} is {job.status}.", job.raw)

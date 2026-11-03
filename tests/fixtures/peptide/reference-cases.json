@@ -1,0 +1,30 @@
+{
+  "presets": {
+    "extended": { "phi": 180, "psi": 180 },
+    "alpha": { "phi": -60, "psi": -40 },
+    "beta": { "phi": -135, "psi": 135 },
+    "helix310": { "phi": -74, "psi": -4 },
+    "pi": { "phi": -57, "psi": -70 },
+    "custom": { "phi": -80, "psi": 150 }
+  },
+  "sequences": {
+    "ala": "AAAAAAAAAAAAAAAA",
+    "side1": "ACDEFGHIKL",
+    "side2": "MNPQRSTVWY"
+  },
+  "matrix": [
+    { "sequence": "ala", "chirality": ["L", "D"] },
+    { "sequence": "side1", "chirality": ["L"] },
+    { "sequence": "side2", "chirality": ["L"] }
+  ],
+  "matrixTermini": { "nTerminus": "ammonium", "cTerminus": "carboxylate" },
+  "mirroredSideChains": { "preset": "alpha", "sequences": ["side1", "side2"] },
+  "extra": [
+    { "id": "mixed-AITC", "sequence": "AITC", "options": { "chirality": ["L", "D", "L", "D"], "chain": "Z" } },
+    { "id": "termini-PGK-amine-acid", "sequence": "PGK", "options": { "nTerminus": "amine", "cTerminus": "acid" } },
+    { "id": "termini-PGK-amine-carboxylate", "sequence": "PGK", "options": { "nTerminus": "amine", "cTerminus": "carboxylate" } },
+    { "id": "termini-PGK-ammonium-acid", "sequence": "PGK", "options": { "nTerminus": "ammonium", "cTerminus": "acid" } },
+    { "id": "termini-AGP-ammonium-carboxylate", "sequence": "AGP", "options": { "nTerminus": "ammonium", "cTerminus": "carboxylate" } }
+  ],
+  "molstarReexport": ["alpha-side2-L", "mixed-AITC"]
+}

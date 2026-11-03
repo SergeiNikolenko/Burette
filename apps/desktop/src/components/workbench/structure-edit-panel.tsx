@@ -23,6 +23,9 @@ import { SelectionEditor } from "./structure-edit/selection-editor";
 import { AtomTable } from "./structure-edit/atom-table";
 import { BondTable } from "./structure-edit/bond-table";
 import { label, normalizeElement } from "./structure-edit/values";
+import { InsertFragmentDialog } from "./structure-edit/insert-fragment-dialog";
+import { AdjustPhDialog } from "./structure-edit/adjust-ph-dialog";
+import type { FragmentSource } from "../../lib/molecular-workbench/fragment-source";
 import "./workbench-layout.css";
 import "./structure-edit/structure-edit.css";
 
@@ -85,6 +88,7 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
   const [view, setView] = useState<"atoms" | "bonds">("atoms");
   const [addElement, setAddElement] = useState("C");
   const [inputError, setInputError] = useState<string | null>(null);
+  const [inserting, setInserting] = useState(false), [adjustingPh, setAdjustingPh] = useState(false);
   const viewerSelection = useViewerAtomSelection(document.id);
   const send = useRef(actions.runStructureViewerAction);
   send.current = actions.runStructureViewerAction;
@@ -131,9 +135,16 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
     }));
   };
   // Adding or removing hydrogens (also when generating 3D coordinates) renumbers atoms, so the selection does not carry over.
-  const renumbering = async (kind: "add-hydrogens" | "remove-hydrogens" | "prepare-3d") => {
+  const renumbering = async (operation: { kind: "add-hydrogens" | "remove-hydrogens" | "prepare-3d" } | { kind: "protonate"; pH: number }) => {
     setInputError(null);
-    if (await draft.apply({ kind })) setSelection(NO_SELECTION);
+    if (await draft.apply(operation)) setSelection(NO_SELECTION);
+  };
+
+  // One fragment per Undo step; the inserted atoms become the selection.
+  const insertFragment = async (fragment: FragmentSource) => {
+    setInputError(null);
+    const result = await draft.apply({ kind: "insert-fragment", fragment, target: atoms.length === 1 ? atoms[0] : null });
+    if (result) setSelection({ atoms: result.sourceAtomIndices.flatMap((source, index) => source < 0 ? [index] : []), from: "panel", structure: result });
   };
 
   const addAtom = () => {
@@ -210,10 +221,12 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
             </DropdownMenuTrigger>
           </ShortcutTooltip>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onSelect={() => void renumbering("add-hydrogens")}>Add hydrogens</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => void renumbering("remove-hydrogens")}>Remove hydrogens</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setInserting(true)}>Insert fragment…</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void renumbering({ kind: "add-hydrogens" })}>Add hydrogens</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void renumbering({ kind: "remove-hydrogens" })}>Remove hydrogens</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setAdjustingPh(true)}>Adjust hydrogens for pH…</DropdownMenuItem>
             {flatDepiction(structure)
-              ? <DropdownMenuItem onSelect={() => void renumbering("prepare-3d")}>Generate 3D coordinates</DropdownMenuItem> : null}
+              ? <DropdownMenuItem onSelect={() => void renumbering({ kind: "prepare-3d" })}>Generate 3D coordinates</DropdownMenuItem> : null}
           </DropdownMenuContent>
         </DropdownMenu>
         {busy ? (
@@ -230,7 +243,10 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
           </ShortcutTooltip>
         ) : null}
       </div>
-      {error ? <p role="alert" className="workbench-error">{error}</p> : null}
+      {error && !inserting ? <p role="alert" className="workbench-error">{error}</p> : null}
+      <InsertFragmentDialog open={inserting} onOpenChange={setInserting} target={atoms.length === 1 ? label(structure, atoms[0]) : null}
+        busy={busy} error={error} onInsert={fragment => void insertFragment(fragment)} />
+      <AdjustPhDialog open={adjustingPh} onOpenChange={setAdjustingPh} onApply={pH => void renumbering({ kind: "protonate", pH })} />
       {outcome ? <OptimizationOutcome outcome={outcome} onOpenSteps={() => openSteps(actions, document, outcome)} /> : null}
       {truncated ? <p className="workbench-value">Select at most {VIEWER_SELECTION_LIMIT} atoms to edit them.</p> : null}
       <SelectionEditor key={`${snapshotId(editor.current)}:${atoms.join(",")}`} structure={structure} annotations={annotations}

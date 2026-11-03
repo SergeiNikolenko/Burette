@@ -2,6 +2,7 @@ import { ConformerGenerator, Molecule, MoleculeProperties, Resources } from 'ope
 import resources from '../../../../../node_modules/openchemlib/dist/resources.json';
 import type { MolecularAtom } from './types';
 import { appendHydrogens } from './hydrogen-geometry';
+import { assignProtonationStates, type ProtonationChange } from './protonation';
 import { serializePhysicalMolfile } from './molecule-serialization';
 import { readUnspecifiedMolfileStereo, retainUnknownStereo } from './molecule-stereochemistry';
 import { optimizeCartesian, defaultOptimizationMethod, optimizationUnavailable, OPTIMIZATION_LIMITS, CONFORMER_LIMITS, flatDepiction, type EnergyEvaluator, type OptimizeOptions, type OptimizationResult } from './optimization';
@@ -130,6 +131,32 @@ export async function addHydrogens(structure: MolecularStructure): Promise<Molec
   checkHydrogenExpansion(mol);
   await appendHydrogens(mol);
   return snapshot(mol, structure.title, structure.graphSource, structure.graphComplete, expandedAtomMap(structure, mol.getAllAtoms()));
+}
+
+export type ProtonationResult = {
+  /** All H explicit; `sourceAtomIndices[i]` is the input index of output atom i, or -1 for a new H. */
+  structure: MolecularStructure & { sourceAtomIndices: number[] };
+  pH: number;
+  /** At most 64 changes, in output atom indices; `omittedChanges` counts the rest. */
+  changes: ProtonationChange[]; omittedChanges: number;
+};
+/** Protonation states for `pH`, then every H explicit. Existing atoms keep their coordinates. */
+export async function adjustHydrogensForPh(structure: MolecularStructure, pH: number): Promise<ProtonationResult> {
+  if (!Number.isFinite(pH) || pH < 0 || pH > 14) throw new Error('Choose a pH from 0 to 14.');
+  const mol = toOcl(structure), mapping = structure.atomMap ?? structure.atoms.map((_, i) => i);
+  // Temporary map numbers follow atom identities through H deletion and appending.
+  const original = mapping.map(i => mol.getAtomMapNo(i));
+  mapping.forEach((j, i) => mol.setAtomMapNo(j, i + 1));
+  const assigned = assignProtonationStates(mol, pH), tags = assigned.map(c => mol.getAtomMapNo(c.atom));
+  checkHydrogenExpansion(mol);
+  await appendHydrogens(mol);
+  const all = Array.from({ length: mol.getAllAtoms() }, (_, i) => i), byTag = new Map(all.map(i => [mol.getAtomMapNo(i), i]));
+  const sourceAtomIndices = [...structure.atoms.flatMap((_, i) => byTag.has(i + 1) ? [i] : []), ...all.filter(i => !mol.getAtomMapNo(i)).map(() => -1)];
+  const order = [...sourceAtomIndices.filter(i => i >= 0).map(i => byTag.get(i + 1)!), ...all.filter(i => !mol.getAtomMapNo(i))];
+  const changes = assigned.slice(0, 64).map((c, k) => ({ ...c, atom: sourceAtomIndices.indexOf(tags[k] - 1) }));
+  all.forEach(i => mol.setAtomMapNo(i, mol.getAtomMapNo(i) ? original[mol.getAtomMapNo(i) - 1] : 0));
+  const next = snapshot(mol, structure.title, structure.graphSource, structure.graphComplete, order);
+  return { structure: { ...next, sourceAtomIndices }, pH, changes, omittedChanges: assigned.length - changes.length };
 }
 
 /**

@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 import { preparePolymerRequest, runPolymerTask } from "../apps/desktop/src/lib/workbench/polymer-task";
 import { sdfFromGraph } from "../apps/desktop/src/lib/workbench/formats";
 import fixture from "./fixtures/polymer/propylene-reference.json";
+import { buildBrowserWorker } from "./support/browser-worker-build";
 const require = createRequire(import.meta.url);
 const { parseMol } = require("@molstar/io/reader/mol/parser");
 const { trajectoryFromMol } = require("@molstar/model/formats/structure/mol");
@@ -17,8 +18,7 @@ async function native(text: string) {
 }
 const text = sdfFromGraph(fixture.atoms, fixture.bonds, "Propylene");
 const settings = { head: 0, tail: 1, headLeaving: 5, tailLeaving: 4, count: 6, bondLength: 3, tacticity: "atactic" as const };
-const built = await Bun.build({ entrypoints: [new URL("../apps/desktop/src/lib/workbench/polymer-worker.ts", import.meta.url).pathname], target: "browser", format: "esm" });
-if (!built.success) throw new AggregateError(built.logs, "Polymer worker build failed");
+const built = await buildBrowserWorker(new URL("../apps/desktop/src/lib/workbench/polymer-worker.ts", import.meta.url));
 const directory = mkdtempSync(join(tmpdir(), "polymer-worker-")), file = join(directory, "worker.js");
 await Bun.write(file, built.outputs[0]);
 const NativeWorker = Worker;

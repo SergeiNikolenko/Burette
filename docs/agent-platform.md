@@ -834,6 +834,66 @@ The `atoms` operation pages source-order atoms (`offset`, `limit` ≤ 100,
 optional `frameIndex`) with element and Å positions, pinned with
 `expectedSourceRevision` like `orbitals`.
 
+### Structure editing and builder jobs
+
+`insert_fragment`, `hydrogens` and `polymer` are `submit` jobs on an open
+explicit MOL/SDF source; they share the revision pinning, queue, cancellation,
+stale/closed handling and export rules above. Each succeeded job has one
+`structure` artifact: a new V3000 record under the source title, as SDF (with
+`$$$$`) for SDF sources and bare MOL for MOL sources. Results never edit the open
+document or its Undo history; open the exported file explicitly.
+
+- `insert_fragment`: exactly one of `library` (an id such as `alkanes/ethyl`
+  from the Edit-tab library) or `smiles` (one `*` marks the attachment point),
+  and an optional zero-based `atomIndex` to attach to. Without `atomIndex` the
+  fragment is added as a separate molecule. The summary reports formula, net
+  formal charge, counts, `addedAtoms`, `anchorAtom`, `replacedAtom`,
+  `bondLengthAngstrom` and `sourceAtomIndices` (`-1` for new atoms).
+- `hydrogens`: `mode` `add`, `remove` or `ph` (with `pH` 0–14), the same
+  operations as the Edit tab. `ph` also reports `pH`, the per-site `changes`
+  (output atom, group, pKa, protonated/deprotonated) and `omittedChanges`; see
+  [hydrogen-protonation.md](hydrogen-protonation.md).
+- `polymer`: zero-based `head`, `tail`, `headLeaving`, `tailLeaving`, `count`
+  1–500, `bondLengthAngstrom` (default 1.54), optional `tacticity`, `headEnd` and
+  `tailEnd` (`hydrogen`, `methyl`, `hydroxyl`, `phenyl`, `tert-butyl`) and
+  `relax`. Atactic choices are sampled once per job; the summary returns
+  `repeatAlternatives` and, when requested, the `relaxation` energies of the
+  `optimize` engine (MMFF94, `bfgs`).
+
+`build` is a separate operation for new structures without a source document:
+`{"operation":"build","operationId":"pep-1","job":{"kind":"peptide","params":{"sequence":"AGS"}}}`.
+It accepts `operationId` and `job` only; `expectedSourceRevision` is refused.
+Build jobs report `documentId`, `sourceRevision` and `sourceTextSha256` as null
+and `binding: "none"`; closing documents does not release them. `peptide`
+accepts `sequence`, `codes` (`one`/`three`), `chirality` (`L`/`D`), `phiDegrees`,
+`psiDegrees`, `nTerminus` (`amine`/`ammonium`), `cTerminus` (`acid`/`carboxylate`)
+and `chain`, and exports the same mmCIF as the Build peptide dialog. `smiles` accepts one
+`smiles` string plus `forceField`, `method`, `seed` and `maxIterations`: the
+OpenChemLib conformer used when a SMILES is opened (embedding `seed`) is relaxed by
+the `optimize` engine, with the optimize summary and `structure`/`xyz`/`trajectory`
+artifacts. `metal_complex` accepts `metal` (element symbol), `oxidationState`
+(−2–8), `geometry` (`linear`, `trigonal-planar`, `tetrahedral`, `square-planar`,
+`trigonal-bipyramidal`, `square-pyramidal`, `octahedral`), up to 8 `ligands`
+(`{ ligand, sites, distanceAngstrom? }`, one site per monodentate and two for a
+bidentate ligand, zero-based in the polyhedron's site order) and `format`
+(`sdf`/`mol`). It exports the same file as the Build metal complex dialog
+(coordination bonds as V2000 type 9 with `M  CHG`); invalid site assignments
+and overlapping ligands fail the job. See
+[metal-complex-builder.md](metal-complex-builder.md). `nucleic_acid` accepts
+`sequence`, `type` (`DNA`/`RNA`), `form` (`B`, `A`, `Z`; RNA is A only),
+`strands` (`double`/`single`) and `fivePrime` (`hydroxyl`/`phosphate`) and
+exports the Build DNA/RNA dialog's mmCIF; the summary reports `strands`,
+`residueCount`, `atomCount`, Hill `formula` and `formalCharge`.
+
+`bun run test:builder-agent` drives the actual controller and workers: RDKit
+reads each exported structure as the independent product (diethyl ether,
+ethanol/water, ethanol with and without hydrogens, the frozen isotactic
+polypropylene hexamer, the glycine zwitterion), the Ala-Gly-Ser mmCIF has
+C8H15N3O5, `smiles` builds keep their stereo, every `metal_complex` sample
+equals the file RDKit and Open Babel checked, every `nucleic_acid` reference
+case has RDKit's formula, charge and atom count, and invalid parameters, XYZ
+sources, out-of-range atoms and failed placements are refused.
+
 ### Python and Jupyter client
 
 `plugins/burette-agent/python/burette_workbench.py` is a standard-library client
@@ -849,7 +909,8 @@ wb.export(job.job_id, "trajectory", "steps.xyz")
 energies = [frame["energy"] for frame in wb.iter_frame_energy_forces("UFF", batch_size=16, operation_prefix="run-1")]
 ```
 
-`iter_atoms`/`iter_orbitals` page with the first page's revision pinned.
+`build(kind, params)` runs a documentless `build` job (`smiles`, `peptide`) and
+waits for it. `iter_atoms`/`iter_orbitals` page with the first page's revision pinned.
 `iter_frame_energy_forces` pins the revision once and submits one job per page
 with operation ids `<operation_prefix>-<offset>`, so rerunning an interrupted
 loop reuses finished pages and an edited source raises `REVISION_CONFLICT`.
@@ -870,7 +931,9 @@ Every failure raises `WorkbenchError` with the protocol code.
    `run(snapshot, params, context)` returning a bounded summary and artifacts built
    with `context.artifact`. Run work in a worker with `context.signal` and
    `context.timeoutMs`; the controller owns queueing, deduplication, cancellation,
-   stale/closed binding and export.
+   stale/closed binding and export. A kind that needs no source document sets
+   `build: true` in its definition, is requested with operation `build`, and has
+   an `AgentBuildRunner` (`run(params, context)`) in `AGENT_BUILDS` instead.
 3. Keep summaries under the 64 KiB response limit; bulk data belongs in artifacts.
 
 Validation: `vp run test:workbench-automation-jobs` runs the controller with real

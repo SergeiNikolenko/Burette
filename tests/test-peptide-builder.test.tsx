@@ -31,6 +31,8 @@ test("native controls → real worker preview → exact new document → actual 
     expect(button("Create").disabled).toBe(true);
     await input("Sequence", "Pro-Gly-Ile"); await click("Three letters"); await click("D");
     await select("Backbone", "alpha");
+    // A D chain takes the mirrored (left-handed) helix and still reads as the preset.
+    expect(dialog()!.querySelector<HTMLSelectElement>('select[aria-label="Backbone"]')!.value).toBe("alpha");
     await act(async () => dialog()!.querySelector('[aria-label="Phi, degrees"]')!.dispatchEvent(new browser.KeyboardEvent("keydown", { key: "Enter", bubbles: true }) as unknown as Event));
     await input("Phi, degrees", "-87");
     expect(dialog()!.querySelector<HTMLSelectElement>('select[aria-label="Backbone"]')!.value).toBe("custom");
@@ -39,7 +41,7 @@ test("native controls → real worker preview → exact new document → actual 
     const frame = dialog()!.querySelector("iframe")!;
     const encoded = JSON.parse(frame.srcdoc.match(/id="burette-inspector-input">([^]*?)<\/script>/)![1]);
     const preview = Buffer.from(encoded.data, "base64").toString();
-    const model = buildPeptideGeometry("PGI", { phi: -87, psi: -40, chirality: "D", nTerminus: "ammonium", cTerminus: "carboxylate", chain: "7" });
+    const model = buildPeptideGeometry("PGI", { phi: -87, psi: 40, chirality: "D", nTerminus: "ammonium", cTerminus: "carboxylate", chain: "7" });
     expect(preview).toBe(peptideMmcif(model)); expect(encoded.config.molstarFormat).toBe("mmcif");
     await click("Create"); await wait(() => !dialog(), "new document opened");
     expect(workers).toHaveLength(1); expect(f.opened).toHaveLength(1);

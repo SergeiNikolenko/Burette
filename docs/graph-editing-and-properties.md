@@ -50,6 +50,8 @@ receive H without moving C–C–O; its four-atom MMFF torsions remain undefined
 The actual MMFF evaluator returns a nonfinite energy for that geometry, so the
 operation is rejected without changing the document. Automatic preparation of
 a different 3D starting geometry is a separate, still-unaccepted workflow.
+[Hydrogens and pH protonation](hydrogen-protonation.md) describes the H
+placement rules, Remove Hydrogens and the pH protonation model.
 
 ## Focused validation
 
@@ -87,3 +89,51 @@ but settled repeats displayed all digits correctly; no renderer workaround was
 accepted on those transient images. Full Avogadro parity and packaged macOS,
 Quick Look and iPhone acceptance remain open; browser results cover their own
 runtime only.
+
+## Fragment insertion
+
+Edit → More actions → **Insert fragment…** opens a modeless dialog, so atoms can
+still be picked in the 3D view. Library lists the 166 functional groups of
+OpenChemistry/fragments `7d842f435aec4729a308b23ad7f9501bdd44aa02` (BSD-3-Clause,
+see `THIRD_PARTY_NOTICES.md`), extracted by `scripts/generate-fragment-library.mjs`
+with per-file hashes in `config/fragment-library-sources.json`. SMILES accepts one
+string; a single `*` marks its attachment point, otherwise the first atom attaches
+through one of its hydrogens (the upstream `groups.smi` convention).
+
+With exactly one selected atom the fragment attaches there; otherwise it becomes a
+separate molecule placed 3 Å beyond the structure's +x extent with its dummy
+capped by hydrogen. A selected hydrogen is replaced; a selected heavy atom
+replaces whichever of its explicit hydrogens gives the least steric repulsion, or,
+without explicit hydrogens, uses the positions Add Hydrogens would give its free
+valences. The fragment is rigid: its atom bonded to the attachment point bonds to
+the anchor along the replaced hydrogen's direction at the summed single-bond
+covalent radii (Cordero 2008, hybridization-specific for carbon), rotated about
+that bond in 5° steps to minimize an r⁻¹² repulsion over Bondi radii. No existing
+atom moves. Any new nonbonded contact closer than half the summed Bondi radii,
+two attachment points, an unreadable SMILES or a missing hydrogen is refused
+with a named error and leaves the draft unchanged.
+
+The merge is the `add-fragment` graph edit: new atoms, formal charges and Kekulé
+bonds plus the deleted hydrogen in one validated OpenChemLib edit within the
+256-atom budget, so it is one Undo step with exact provenance (`-1` for new
+atoms) for SDF data items and MOL atom identities. The inserted atoms become the
+selection; the dialog stays open for the next insertion.
+
+Builders insert the same way. When the active document is an editable MOL/SDF,
+the peptide builder (and the other builders that return a graph) shows
+**Insert** beside Preview: it builds or reuses the preview and adds it to that
+document as a separate molecule through `insert-fragment` with a `graph` source,
+one Undo step in the document's Edit history. The built geometry is kept and
+translated beside the structure like any separate molecule, stereo collections
+are remapped with the atom order, and the 256-atom budget counts the result. Opening from the
+command palette passes the active document; without one the button is absent.
+`test:insert-built-structure` inserts the real Ala-Gly worker output into an
+ethanol SDF and has RDKit read the draft (ethanol plus L-Ala-Gly zwitterion),
+then checks Undo and a builder failure.
+
+`test:fragment-insertion` checks all 166 library groups against the upstream
+SMILES including the attachment atom (RDKit constitution with a francium marker),
+insertion products against independent RDKit SMILES (ethylbenzene, 2-propanol,
+biphenyl, benzoate, anilinium, lysyl and tert-butyl chloride), Allen et al. (1987)
+bond lengths, unchanged source coordinates and angles, rigid fragment distances,
+refusals, the real-worker Undo/Redo/SDF data path and the dialog controls.

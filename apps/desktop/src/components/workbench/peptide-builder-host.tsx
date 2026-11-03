@@ -18,7 +18,7 @@ export function PeptideBuilderDialogHost({ actions }: { actions: ShellActions })
   return <Dialog open={Boolean(peptide)} onOpenChange={open => { if (!open) close(); }}>
     {peptide ? <DialogContent aria-describedby={undefined} variant="form" size="wide" className="flex max-h-[88vh] flex-col gap-4 overflow-y-auto overscroll-contain">
       <Suspense fallback={<Spinner aria-label="Opening peptide builder" />}>
-        <Body key={lifetime.revision} actions={actions} isCurrent={current} onDone={close} />
+        <Body key={lifetime.revision} actions={actions} document={peptide.document} isCurrent={current} onDone={close} />
       </Suspense>
     </DialogContent> : null}
   </Dialog>;

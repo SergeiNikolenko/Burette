@@ -36,6 +36,7 @@ const OPERATION_FIELDS = Object.freeze({
   atoms: [...DOCUMENT_FIELDS, ...PAGE_FIELDS, 'frameIndex'],
   orbitals: [...DOCUMENT_FIELDS, ...PAGE_FIELDS],
   submit: [...DOCUMENT_FIELDS, 'operationId', 'job'],
+  build: ['operationId', 'job'],
   status: ['jobId', 'operationId'],
   jobs: PAGE_FIELDS,
   cancel: ['jobId'],
@@ -127,6 +128,32 @@ function params(value, allowed, label) {
   return result;
 }
 
+function text(value, field, max, pattern) {
+  if (typeof value !== 'string' || !value.length || value.length > max || (pattern && !pattern.test(value))) invalid(`${field} must be a string of 1–${max} characters${pattern ? ' in the documented form' : ''}.`);
+  return value;
+}
+
+function bool(value, field) {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'boolean') invalid(`${field} must be a boolean.`);
+  return value;
+}
+
+/** Copies the defined entries; optional parameters that were omitted stay absent. */
+function defined(entries) {
+  return Object.fromEntries(Object.entries(entries).filter(([, value]) => value !== undefined));
+}
+
+const POLYMER_END_GROUPS = ['hydrogen', 'methyl', 'hydroxyl', 'phenyl', 'tert-butyl'];
+const TACTICITIES = ['isotactic', 'syndiotactic', 'atactic'];
+const PEPTIDE_TERMINI = { nTerminus: ['amine', 'ammonium'], cTerminus: ['acid', 'carboxylate'] };
+const METAL_GEOMETRIES = ['linear', 'trigonal-planar', 'tetrahedral', 'square-planar', 'trigonal-bipyramidal', 'square-pyramidal', 'octahedral'];
+// Ids of apps/desktop/src/lib/molecular-workbench/metal-ligands.json (kept equal by test:builder-agent).
+const METAL_LIGANDS = ['aqua', 'hydroxido', 'ammine', 'fluorido', 'chlorido', 'bromido', 'iodido', 'cyanido', 'carbonyl', 'phosphane', 'trimethylphosphane',
+  'pyridine', 'ethylenediamine', 'bipyridine', 'phenanthroline', 'oxalato', 'acetylacetonato'];
+const LIBRARY_ID = /^[a-z_]{1,32}\/[A-Za-z0-9 ,_+()-]{1,64}$/u;
+const SMILES = /^\S+$/u;
+
 const forceField = value => oneOf(value, 'job.params.forceField', new Set(FORCE_FIELDS), 'MMFF94');
 const seed = value => integer(value, 'job.params.seed', 0, SEED_MAX, 1);
 
@@ -192,6 +219,9 @@ function metadataAtom(value, position, seen) {
  * Every job kind the browser workbench can run: `describe` is what `capabilities`
  * advertises (engine, source requirements, parameters, exportable artifacts) and
  * `params` validates and normalizes `job.params` before anything is queued.
+ * Kinds marked `build: true` create a new structure without a source document and
+ * are requested with operation `build`; every other kind is a `submit` on an open
+ * document. Structure artifacts are new files, never applied to the document.
  * A new typed operation adds one entry here and one runner in the shell's
  * agent job registry (apps/desktop/src/lib/workbench/agent-jobs.ts).
  */
@@ -332,13 +362,147 @@ const JOB_DEFINITIONS = {
       return result;
     },
   },
+  insert_fragment: {
+    describe: {
+      engine: 'Rigid fragment placement: OpenChemistry/fragments groups or an OpenChemLib SMILES conformer',
+      requires: 'An explicit MOL/SDF graph; at most 256 atoms after insertion.',
+      params: { library: 'group id such as alkanes/ethyl (exactly one of library or smiles)', smiles: 'one SMILES; a single * marks the attachment point', atomIndex: 'zero-based source atom to attach to; omit for a separate molecule' },
+      artifacts: ['structure'],
+    },
+    params(value) {
+      const p = params(value, ['library', 'smiles', 'atomIndex'], 'insert_fragment job.params');
+      if ((p.library === undefined) === (p.smiles === undefined)) invalid('insert_fragment requires exactly one of job.params.library or job.params.smiles.');
+      return defined({
+        library: p.library === undefined ? undefined : text(p.library, 'job.params.library', 97, LIBRARY_ID),
+        smiles: p.smiles === undefined ? undefined : text(p.smiles, 'job.params.smiles', 1024, SMILES),
+        atomIndex: p.atomIndex === undefined ? undefined : integer(p.atomIndex, 'job.params.atomIndex', 0, 255),
+      });
+    },
+  },
+  hydrogens: {
+    describe: {
+      engine: 'OpenChemLib graph with Burette hydrogen placement; ph uses a cited per-group pKa table',
+      requires: 'An explicit MOL/SDF graph, 1–256 atoms after the change.',
+      params: { mode: ['add', 'remove', 'ph'], pH: '0–14, required for ph' },
+      artifacts: ['structure'],
+    },
+    params(value) {
+      const p = params(value, ['mode', 'pH'], 'hydrogens job.params');
+      const mode = oneOf(p.mode, 'job.params.mode', new Set(['add', 'remove', 'ph']), undefined);
+      if (!mode) invalid('job.params.mode is required for hydrogens.');
+      if ((mode === 'ph') !== (p.pH !== undefined)) invalid('job.params.pH is required for mode ph and unused otherwise.');
+      return mode === 'ph' ? { mode, pH: finite(p.pH, 'job.params.pH', 0, 14) } : { mode };
+    },
+  },
+  polymer: {
+    describe: {
+      engine: 'Rigid repeat-unit assembly with optional relaxation by the optimize engine (MMFF94, bfgs)',
+      requires: 'One explicit MOL/SDF repeat unit with explicit leaving hydrogens; relaxation within 256 atoms.',
+      params: { head: 'zero-based atom', tail: 'zero-based atom', headLeaving: 'H bonded to head', tailLeaving: 'H bonded to tail', count: '1–500',
+        bondLengthAngstrom: '0.5–3, default 1.54', tacticity: TACTICITIES, headEnd: POLYMER_END_GROUPS, tailEnd: POLYMER_END_GROUPS, relax: 'boolean (default false)' },
+      artifacts: ['structure'],
+    },
+    params(value) {
+      const p = params(value, ['head', 'tail', 'headLeaving', 'tailLeaving', 'count', 'bondLengthAngstrom', 'tacticity', 'headEnd', 'tailEnd', 'relax'], 'polymer job.params');
+      const ends = new Set(POLYMER_END_GROUPS), atom = key => integer(p[key], `job.params.${key}`, 0, 99_999);
+      return defined({
+        head: atom('head'), tail: atom('tail'), headLeaving: atom('headLeaving'), tailLeaving: atom('tailLeaving'),
+        count: integer(p.count, 'job.params.count', 1, 500),
+        bondLengthAngstrom: finite(p.bondLengthAngstrom, 'job.params.bondLengthAngstrom', 0.5, 3) ?? 1.54,
+        tacticity: oneOf(p.tacticity, 'job.params.tacticity', new Set(TACTICITIES), undefined),
+        headEnd: oneOf(p.headEnd, 'job.params.headEnd', ends, 'hydrogen'), tailEnd: oneOf(p.tailEnd, 'job.params.tailEnd', ends, 'hydrogen'),
+        relax: bool(p.relax, 'job.params.relax') ?? false,
+      });
+    },
+  },
+  smiles: {
+    build: true,
+    describe: {
+      engine: 'OpenChemLib SMILES conformer (as when opening a SMILES), relaxed by the optimize engines',
+      requires: 'No source document; 1–256 atoms with explicit hydrogens; methods other than bfgs and UFF need at most 64.',
+      params: { smiles: 'one SMILES string', forceField: FORCE_FIELDS, method: OPTIMIZE_METHODS, seed: '0–2147483639 (default 1)', maxIterations: '1–1000 (default 250)' },
+      artifacts: ['structure', 'xyz', 'trajectory'],
+    },
+    params(value) {
+      const p = params(value, ['smiles', 'forceField', 'method', 'seed', 'maxIterations'], 'smiles job.params');
+      const field = forceField(p.forceField);
+      return { smiles: text(p.smiles, 'job.params.smiles', 1024, SMILES), forceField: field, method: optimizer(p.method, field, false), seed: seed(p.seed),
+        maxIterations: integer(p.maxIterations, 'job.params.maxIterations', 1, WORKBENCH_LIMITS.optimizationIterations, 250) };
+    },
+  },
+  nucleic_acid: {
+    build: true,
+    describe: {
+      engine: 'Ideal-helix nucleotide templates: Open-Source PyMOL fnab fragments (3DNA fiber models) for A/B DNA and A-RNA, PDB 4OCB for Z-DNA',
+      requires: 'No source document; 1–500 nucleotides per strand.',
+      params: { sequence: 'one-letter bases (ACGT for DNA, ACGU for RNA)', type: ['DNA', 'RNA'], form: ['B', 'A', 'Z'], strands: ['double', 'single'], fivePrime: ['hydroxyl', 'phosphate'] },
+      artifacts: ['structure'],
+    },
+    params(value) {
+      const p = params(value, ['sequence', 'type', 'form', 'strands', 'fivePrime'], 'nucleic_acid job.params');
+      const type = oneOf(p.type, 'job.params.type', new Set(['DNA', 'RNA']), 'DNA'), form = oneOf(p.form, 'job.params.form', new Set(['B', 'A', 'Z']), type === 'RNA' ? 'A' : 'B');
+      if (type === 'RNA' && form !== 'A') invalid('RNA is built as an A-form helix; use form A.');
+      return { sequence: text(p.sequence, 'job.params.sequence', 4000), type, form, strands: oneOf(p.strands, 'job.params.strands', new Set(['double', 'single']), 'double'),
+        fivePrime: oneOf(p.fivePrime, 'job.params.fivePrime', new Set(['hydroxyl', 'phosphate']), 'hydroxyl') };
+    },
+  },
+  metal_complex: {
+    build: true,
+    describe: {
+      engine: 'Rigid ligand placement on ideal coordination polyhedra (OpenChemistry/fragments ligand templates)',
+      requires: 'No source document; one metal, 1–8 ligands filling every site of the geometry exactly once.',
+      params: { metal: 'element symbol', oxidationState: '-2–8', geometry: METAL_GEOMETRIES,
+        ligands: 'array of { ligand, sites (zero-based polyhedron sites, two for bidentate ligands), distanceAngstrom 1.4–3.5 (default: covalent radii) }',
+        ligand: METAL_LIGANDS, format: ['sdf', 'mol'] },
+      artifacts: ['structure'],
+    },
+    params(value) {
+      const p = params(value, ['metal', 'oxidationState', 'geometry', 'ligands', 'format'], 'metal_complex job.params');
+      const geometry = oneOf(p.geometry, 'job.params.geometry', new Set(METAL_GEOMETRIES), undefined);
+      if (!geometry) invalid('job.params.geometry is required for metal_complex.');
+      if (!Array.isArray(p.ligands) || !p.ligands.length || p.ligands.length > 8) invalid('job.params.ligands must be an array of 1–8 ligand assignments.');
+      const ligands = p.ligands.map((item, index) => {
+        const label = `job.params.ligands[${index}]`;
+        if (!plainObject(item)) invalid(`${label} must be an object.`);
+        rejectUnknownFields(item, ['ligand', 'sites', 'distanceAngstrom'], label);
+        const ligand = oneOf(item.ligand, `${label}.ligand`, new Set(METAL_LIGANDS), undefined);
+        if (!ligand) invalid(`${label}.ligand is required.`);
+        if (!Array.isArray(item.sites) || item.sites.length < 1 || item.sites.length > 2) invalid(`${label}.sites must hold one or two site indices.`);
+        return defined({ ligand, sites: item.sites.map((site, i) => integer(site, `${label}.sites[${i}]`, 0, 5)), distanceAngstrom: finite(item.distanceAngstrom, `${label}.distanceAngstrom`, 1.4, 3.5) });
+      });
+      return { metal: text(p.metal, 'job.params.metal', 2, /^[A-Z][a-z]?$/u), oxidationState: integer(p.oxidationState, 'job.params.oxidationState', -2, 8, 0),
+        geometry, ligands, format: oneOf(p.format, 'job.params.format', new Set(['sdf', 'mol']), 'sdf') };
+    },
+  },
+  peptide: {
+    build: true,
+    describe: {
+      engine: 'Template peptide geometry from OpenChemistry residue internal coordinates',
+      requires: 'No source document.',
+      params: { sequence: '1–64 standard residues', codes: ['one', 'three'], chirality: ['L', 'D'], phiDegrees: '-180–180', psiDegrees: '-180–180', ...PEPTIDE_TERMINI, chain: 'one letter or digit' },
+      artifacts: ['structure'],
+    },
+    params(value) {
+      const p = params(value, ['sequence', 'codes', 'chirality', 'phiDegrees', 'psiDegrees', 'nTerminus', 'cTerminus', 'chain'], 'peptide job.params');
+      return {
+        sequence: text(p.sequence, 'job.params.sequence', 1024),
+        codes: oneOf(p.codes, 'job.params.codes', new Set(['one', 'three']), 'one'),
+        chirality: oneOf(p.chirality, 'job.params.chirality', new Set(['L', 'D']), 'L'),
+        phiDegrees: finite(p.phiDegrees, 'job.params.phiDegrees', -180, 180) ?? 180,
+        psiDegrees: finite(p.psiDegrees, 'job.params.psiDegrees', -180, 180) ?? 180,
+        nTerminus: oneOf(p.nTerminus, 'job.params.nTerminus', new Set(PEPTIDE_TERMINI.nTerminus), 'amine'),
+        cTerminus: oneOf(p.cTerminus, 'job.params.cTerminus', new Set(PEPTIDE_TERMINI.cTerminus), 'acid'),
+        chain: p.chain === undefined ? 'A' : text(p.chain, 'job.params.chain', 1, /^[A-Za-z0-9]$/u),
+      };
+    },
+  },
 };
 
-/** What `capabilities` advertises for each job kind. */
-export const WORKBENCH_JOB_KINDS = Object.freeze(Object.fromEntries(Object.entries(JOB_DEFINITIONS).map(([kind, definition]) => [kind, definition.describe])));
+/** What `capabilities` advertises for each job kind, including the operation that requests it. */
+export const WORKBENCH_JOB_KINDS = Object.freeze(Object.fromEntries(Object.entries(JOB_DEFINITIONS).map(([kind, definition]) => [kind, { operation: definition.build ? 'build' : 'submit', ...definition.describe }])));
 
-function job(value) {
-  if (!plainObject(value)) invalid('submit requires job: { kind, params }.');
+function job(value, operation) {
+  if (!plainObject(value)) invalid(`${operation} requires job: { kind, params }.`);
   rejectUnknownFields(value, ['kind', 'params'], 'job');
   if (typeof value.kind !== 'string' || !Object.hasOwn(WORKBENCH_JOB_KINDS, value.kind)) {
     throw new WorkbenchRequestError(
@@ -346,6 +510,9 @@ function job(value) {
       'Unsupported workbench job kind. It was rejected before queueing; see details.supportedJobs.',
       { kind: typeof value.kind === 'string' ? value.kind.slice(0, 64) : null, supportedJobs: Object.keys(WORKBENCH_JOB_KINDS) },
     );
+  }
+  if (WORKBENCH_JOB_KINDS[value.kind].operation !== operation) {
+    invalid(`${value.kind} jobs use operation ${operation === 'build' ? 'submit with an open source document' : 'build; they need no source document'}.`);
   }
   return { kind: value.kind, params: JOB_DEFINITIONS[value.kind].params(value.params) };
 }
@@ -392,9 +559,9 @@ export function validateWorkbenchRequest(action) {
     }
     if (OPERATION_FIELDS[operation].includes('offset')) Object.assign(request, page(action));
     if (OPERATION_FIELDS[operation].includes('frameIndex') && action.frameIndex !== undefined) request.frameIndex = integer(action.frameIndex, 'frameIndex', 0, MAX_INDEX);
-    if (operation === 'submit') {
+    if (operation === 'submit' || operation === 'build') {
       request.operationId = identifier(action.operationId, 'operationId', true);
-      request.job = job(action.job);
+      request.job = job(action.job, operation);
     }
     if (operation === 'status') {
       if ((action.jobId === undefined) === (action.operationId === undefined)) invalid('status requires exactly one of jobId or operationId.');
