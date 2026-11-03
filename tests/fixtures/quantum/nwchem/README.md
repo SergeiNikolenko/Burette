@@ -1,0 +1,30 @@
+# NWChem output fixtures
+
+Burette fixtures generated for this reader with NWChem 7.3.0 (conda-forge build
+`b60f1e7`, an ECL-2.0 program; the outputs are Burette test data). Each
+`.out` is the unmodified standard output of the `.nw` input beside it:
+
+| File | Calculation | Covers |
+| --- | --- | --- |
+| `water-opt-freq.out` | RHF/6-31G* optimization, then frequencies | geometry history with line-search SCFs, convergence, eigenvalues, Mulliken charges, dipole, mass-weighted Hessian, projected normal modes and IR (km/mol) |
+| `oh-uhf.out` | UHF/6-31G* doublet single point | alpha/beta eigenvalues and occupations |
+| `water-scf-fail.out` | RHF/6-31G* with `maxiter 2` | SCF failure (`converged: false`) |
+| `methanol-dft-freq.out` | B3LYP/6-31G frequencies at a non-stationary geometry | DFT vector table, imaginary modes, 18 × 18 Hessian |
+
+`cclib-water-mp2.out` is `data/NWChem/basicNWChem7.0/water_mp2.out` from
+[cclib](https://github.com/cclib/cclib/tree/0c6e08e0a0d04b308201666793030ef3b77b2973/data/NWChem/basicNWChem7.0),
+BSD-3-Clause (`../cclib-LICENSE.txt`), byte-identical (MP2 total energy supersedes SCF).
+
+SHA-256:
+
+    b33d8698d05fabd895e06705dcdf543737fde1ab9c97b9b59c3aaf58a9771b0c  cclib-water-mp2.out
+    6451acc1e9ba0d76791528daa4a64b98240eed837a88e6b91a3387104f47521a  methanol-dft-freq.out
+    a93fcd8c028d30090e16775432d704604e924f6ec4705f3b796ea051bc95bd1e  oh-uhf.out
+    43d38e039b7ff9b1ef2c9f48536e9e8800e7520936f1159ef0731a03a78b8a0a  water-opt-freq.out
+    19826f276956cca03b99da494083cded2d2d02eda080ba06fcd2fec7f54f4995  water-scf-fail.out
+
+`cclib-reference.json` is the independent oracle: `python ../cclib-reference.py *.out`
+with cclib `1.8.1.post1298+0c6e08e0` (commit `0c6e08e0a0d04b308201666793030ef3b77b2973`).
+Units: angstrom, Hartree (cclib's eV converted with cclib's own convertor), cm⁻¹, km/mol;
+cclib keeps NWChem's mass-weighted Hessian (Hartree/bohr²/kamu) and lists every printed
+geometry, including reprints of the same step.

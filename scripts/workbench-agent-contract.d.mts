@@ -48,7 +48,8 @@ export type WorkbenchJobRequest =
   | { kind: 'metadata_edit'; params: WorkbenchMetadataEdit }
   | { kind: 'pair_distribution'; params: { rMax: number; binWidth: number; centre: string | null; neighbour: string | null } }
   | { kind: 'properties'; params: { chargeModel?: 'Gasteiger' } }
-  | { kind: 'orbital_cube'; params: { field: 'orbital' | 'density' | 'spin-density'; orbitalIndex?: number; spacingAngstrom?: number; paddingAngstrom?: number } }
+  | { kind: 'orbital_cube'; params: { field: 'orbital' | 'density' | 'spin-density'; orbitalIndex?: number; spacingAngstrom?: number; paddingAngstrom?: number;
+    grid?: { origin: [number, number, number]; axes: [[number, number, number], [number, number, number], [number, number, number]]; dimensions: [number, number, number] } } }
   | { kind: 'insert_fragment'; params: { library?: string; smiles?: string; atomIndex?: number } }
   | { kind: 'hydrogens'; params: { mode: 'add' | 'remove' } | { mode: 'ph'; pH: number } }
   | { kind: 'polymer'; params: { head: number; tail: number; headLeaving: number; tailLeaving: number; count: number; bondLengthAngstrom: number;

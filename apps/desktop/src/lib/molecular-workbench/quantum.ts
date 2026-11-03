@@ -5,6 +5,14 @@ import { atomicNumber, elementSymbol } from "./elements";
 import { parseXyz, serializeXyz } from "./xyz";
 import { parseExtendedFrame, trajectoryMetadata } from "./trajectory-metadata";
 import { parseGaussianLog } from "./quantum/gaussian-log";
+import { parseGamessLog } from "./quantum/gamess-log";
+import { parseMolproLog } from "./quantum/molpro-log";
+import { parseNwchemLog } from "./quantum/nwchem-log";
+import { parseQchemLog } from "./quantum/qchem-log";
+import { parsePsi4Log } from "./quantum/psi4-log";
+import { parseXtbOutput, parseXtbTrajectory } from "./quantum/xtb";
+import { GAMESS_SIGNATURE, MOLPRO_SIGNATURE, NWCHEM_SIGNATURE, ORCA_BANNER, ORCA_PROPERTY_SIGNATURE, PSI4_SIGNATURE, QCHEM_SIGNATURE, XTB_SIGNATURE, XTB_TRAJECTORY_SIGNATURE } from "./quantum/signatures";
+import { parseOrcaProperty } from "./quantum/orca-property";
 import { readOrcaVcdTables } from "./orca-circular-spectra";
 import { withOrcaSourceSpectra, type OrcaSourceSpectrum } from "./orca-source-spectra";
 import { validateParsedSpectra } from "./parsed-spectral-document";
@@ -78,11 +86,22 @@ export function parseScientificFile(name: string, text: string): ScientificDocum
   if (/\.(?:molden|molf)$|(?:^|[._-])molden\.input$/i.test(name)) return parseMolden(text);
   if (/\.hess$/i.test(name)) return parseHessian(text);
   if (/^\s*\{/.test(text)) return parseQcschema(text, name);
+  // Program banners are definitive; they precede the looser Gaussian/ORCA table markers.
+  const head = text.slice(0, 64 * 1024);
+  if (/[._]property\.txt$/i.test(name) || ORCA_PROPERTY_SIGNATURE.test(head)) return parseOrcaProperty(text);
+  if (NWCHEM_SIGNATURE.test(head)) return parseNwchemLog(text);
+  if (PSI4_SIGNATURE.test(head)) return parsePsi4Log(text);
+  if (GAMESS_SIGNATURE.test(head)) return parseGamessLog(text);
+  if (QCHEM_SIGNATURE.test(head)) return parseQchemLog(text);
+  if (MOLPRO_SIGNATURE.test(head)) return parseMolproLog(text);
+  if (XTB_TRAJECTORY_SIGNATURE.test(head)) return parseXtbTrajectory(text);
+  // ORCA's xtb interface can echo the xtb banner inside an ORCA output.
+  if (XTB_SIGNATURE.test(head) && !ORCA_BANNER.test(head)) return parseXtbOutput(text);
   if (/Entering Gaussian System|Gaussian, Inc\.|Gaussian \d+:|^\s*(?:Standard|Input|Z-Matrix) orientation:/m.test(text)) return parseGaussianLog(text);
   if (/\[Molden Format\]/i.test(text)) return parseMolden(text);
   if (/\$vibrational_frequencies\b/.test(text)) return parseHessian(text);
   if (/CARTESIAN COORDINATES \(ANGSTROEM\)/.test(text)) return parseOrca(name, text);
-  throw new Error("Supported scientific inputs are ORCA output/Hessian, Molden, Gaussian log/FCHK/cube, QCSchema, Chemical JSON and XYZ trajectories.");
+  throw new Error("Supported scientific inputs are ORCA output/Hessian/property files, Gaussian log/FCHK/cube, GAMESS, NWChem, Psi4, Q-Chem, Molpro and xtb outputs, Molden, QCSchema, Chemical JSON and XYZ trajectories.");
 }
 
 function parseXyzTrajectory(text: string): ScientificDocument {
@@ -309,6 +328,8 @@ function parseHessian(text: string): ScientificDocument {
   // IR table is wavenumber, T**2, TX, TY, TZ (atomic units), not km/mol.
   // Reference: opan/test/resource/orca/test_orca_v3.0.3.hess and
   // opan/test/orca_hess.py in https://github.com/bskinn/opan.
+  // ORCA 5's six columns are wavenumber, eps (L/(mol·cm)), Int (km/mol), TX, TY, TZ, as the
+  // IR SPECTRUM table of the same run prints them (tests/fixtures/quantum/orca-property).
   for (const name of ["ir_spectrum", "raman_spectrum"] as const) {
     const rows = sections.get(name);
     if (!rows) continue;
@@ -317,15 +338,17 @@ function parseHessian(text: string): ScientificDocument {
     }
     rows.slice(1).forEach((line, index) => {
       const p = fields(line);
-      const expected = name === "ir_spectrum" ? 5 : 3;
-      if (p.length !== expected) throw new Error(`Unsupported ORCA Hessian ${name} row layout.`);
+      // One layout per table: a row of the other width is not a row of this table.
+      const layouts = name === "ir_spectrum" ? [5, 6] : [3];
+      if (!layouts.includes(p.length) || p.length !== fields(rows[1]).length) throw new Error(`Unsupported ORCA Hessian ${name} row layout.`);
       const values = p.map(number);
       const mode = modes.get(index)!;
-      if (Math.abs(values[0] - mode.frequencyCm1) > 0.02 || values[1] < 0) {
+      if (Math.abs(values[0] - mode.frequencyCm1) > 0.02 || values[1] < 0 || (p.length === 6 && values[2] < 0)) {
         throw new Error(`Invalid ORCA Hessian ${name} values or mismatched frequency.`);
       }
       if (name === "ir_spectrum") {
-        mode.transitionDipoleSquared = values[1];
+        if (p.length === 6) mode.intensityKmMol = values[2];
+        else mode.transitionDipoleSquared = values[1];
       } else {
         if (values[2] < 0 || values[2] > 1) throw new Error("Invalid ORCA Hessian Raman depolarization ratio.");
         mode.ramanActivityAngstrom4Amu = values[1];
@@ -338,13 +361,19 @@ function parseHessian(text: string): ScientificDocument {
   return result;
 }
 
+/**
+ * Gaussian Cube. A negative atom count announces a line of dataset (orbital) numbers after the
+ * atoms; a positive one may state NVAL fields per point after the origin. Several fields are
+ * interleaved point by point and share one grid; together they stay within one million values.
+ */
 function parseCube(text: string): ScientificDocument {
   const lines = text.replace(/\r/g, "").split("\n");
   const header = fields(lines[2] ?? "");
   const signedAtoms = number(header[0]);
-  if (!Number.isInteger(signedAtoms) || signedAtoms < 1) throw new Error("Multi-orbital and atom-free cube files are not supported; export one scalar field.");
-  const count = integer(header[0], MAX_ATOMS);
-  if (header[4] && number(header[4]) !== 1) throw new Error("Multi-field cube files are not supported.");
+  if (!Number.isInteger(signedAtoms) || signedAtoms === 0) throw new Error("Atom-free cube files are not supported.");
+  const count = integer(String(Math.abs(signedAtoms)), MAX_ATOMS);
+  const nval = header[4] === undefined ? 1 : integer(header[4], MAX_GRID);
+  if (signedAtoms < 0 && nval !== 1) throw new Error("Cube files with both orbital datasets and several values per point are not supported.");
   const axisLines = lines.slice(3, 6).map(fields);
   if (axisLines.length !== 3) throw new Error("Cube grid header is incomplete.");
   const signs = axisLines.map(parts => Math.sign(number(parts[0])));
@@ -357,11 +386,30 @@ function parseCube(text: string): ScientificDocument {
   const axes = axisLines.map(p => p.slice(1, 4).map(v => number(v) * scale)) as ScalarGrid["axes"];
   validateGridGeometry(dimensions, origin, axes);
   const atoms = lines.slice(6, 6 + count).map(line => { const p = fields(line); return atom(elementSymbol(integer(p[0], 118)), p.slice(2), scale); });
-  const tokens = lines.slice(6 + count).join(" ").trim().split(/\s+/);
-  if (tokens.length !== size) throw new Error("Cube data length does not match its dimensions.");
-  const values = new Float32Array(tokens.map(number));
-  if (values.some(value => !Number.isFinite(value))) throw new Error("Cube values exceed float range.");
-  return { ...empty("cube", atoms), grid: { dimensions, origin, axes, values } };
+  let dataStart = 6 + count;
+  let orbitalNumbers: number[] | undefined;
+  if (signedAtoms < 0) {
+    const ids = fields(lines.slice(dataStart).join(" "));
+    const datasets = integer(ids[0], MAX_GRID);
+    orbitalNumbers = ids.slice(1, 1 + datasets).map(id => integer(id, MAX_GRID));
+    if (orbitalNumbers.length !== datasets) throw new Error("Cube dataset numbers are incomplete.");
+    // The numbers may wrap over several lines.
+    let consumed = 0;
+    while (consumed < datasets + 1 && dataStart < lines.length) consumed += fields(lines[dataStart++]).length;
+    if (consumed !== datasets + 1) throw new Error("Cube dataset numbers share a line with grid values.");
+  }
+  const fieldCount = orbitalNumbers?.length ?? nval;
+  if (size * fieldCount > MAX_GRID) throw new Error("Cube fields exceed one million values together.");
+  const tokens = lines.slice(dataStart).join(" ").trim().split(/\s+/);
+  if (tokens.length !== size * fieldCount) throw new Error("Cube data length does not match its dimensions.");
+  const datasets = Array.from({ length: fieldCount }, (_, k) => {
+    const values = new Float32Array(size);
+    for (let point = 0; point < size; point++) values[point] = number(tokens[point * fieldCount + k]);
+    if (values.some(value => !Number.isFinite(value))) throw new Error("Cube values exceed float range.");
+    const grid: ScalarGrid = { dimensions, origin, axes, values };
+    return orbitalNumbers ? { label: `Orbital ${orbitalNumbers[k]}`, orbitalNumber: orbitalNumbers[k], grid } : { label: `Field ${k + 1}`, grid };
+  });
+  return { ...empty("cube", atoms), grid: datasets[0].grid, ...(fieldCount > 1 ? { gridDatasets: datasets } : {}) };
 }
 
 function validateGridGeometry(dimensions: ScalarGrid["dimensions"], origin: Vec3, axes: ScalarGrid["axes"]) {

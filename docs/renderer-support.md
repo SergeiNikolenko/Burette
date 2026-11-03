@@ -62,7 +62,9 @@ scientific reader. The native Cube dataset selector deinterleaves each voxel's v
 selected index as the offset and the number of datasets as the stride. Out-of-range
 and nonintegral indices fail before a volume is produced. `test:molstar-cube-datasets`
 covers all three fields, native state selection/Undo and unchanged single-field
-output. The scientific single-field import still rejects multi-field files. These checks and generated
+output. The scientific import reads the same fields, in file order, into `gridDatasets` (orbital
+datasets keep their MO numbers); its first field stays the document's scalar grid, and all
+fields together stay within one million values. These checks and generated
 bundle builds do not establish packaged, Quick Look or browser UI acceptance.
 
 The interactive Mol* build adapts the native Cube editor's Update action through
@@ -79,13 +81,20 @@ uses the real native React editor, original viewer history functions and existin
 Apply controls; independent omissions of either half fail the same UI assertions.
 Actual Browser/WebGL and packaged acceptance remain separate from these tests.
 
+ORCA's Molden files (`created by orca_2mkl` in their title) give the coefficient of each
+unnormalized primitive and the m = ±3 (f, g) and ±4 (g) real harmonics with the opposite sign;
+the Molden reader undoes both for those files only, which makes their orbitals orthonormal.
+
 ### Scientific files in the browser
 
 Ordinary Open, project-folder selection and file drop classify scientific files
 through `lib/workbench/scientific-files.ts`. FCHK/FCH, Molden (`.molden`, `.molf`,
 `molden.input`), ORCA `.hess`, Cube/CUB, Z-matrix and `.qcschema` use their declared
-names. `.out`/`.log` require ORCA or Gaussian evidence in the first 64 KiB;
-`.json` requires a recognised QCSchema `schema_name` at the root. A nested schema
+names. `.out`/`.log`/`.dat` require ORCA, Gaussian, GAMESS/Firefly, NWChem, Psi4,
+Q-Chem, Molpro or xtb evidence (program banner, or the `energy: … gnorm: … xtb:` comment of an
+`xtbopt.log` trajectory) in the first 64 KiB;
+`*.property.txt`/`*_property.txt` require the ORCA 6 property banner or ORCA 5's
+`!PROPERTIES!` banner; `.json` requires a recognised QCSchema `schema_name` at the root. A nested schema
 field does not reroute unrelated JSON. Ordinary XYZ retains its normal structure
 route; the explicit scientific import function also accepts XYZ.
 
@@ -168,7 +177,11 @@ and iPhone acceptance remain separate; their file registration is unchanged by
 this browser import path.
 
 Vibrations is available through Compute and the command palette when the current
-scientific source has normal modes. IR and Raman use separate physical units;
+scientific source has normal modes, or a Hessian with the masses its source states. A
+geometry with only such a Hessian offers Compute modes: a worker projects translations and
+rotations out of the mass-weighted Hessian and diagonalizes it (`normal-modes.ts`; 3N − 6, or
+3N − 5 for a linear geometry). Modes as JSON saves each mode's columns with its Cartesian
+displacement vectors and the atoms they displace. IR and Raman use separate physical units;
 older ORCA output carrying only squared transition dipoles keeps its T² atomic
 units. Peak-height Gaussian curves and the supplemental sticks/area-normalized
 view remain distinct. Mode selection, live Mol* animation, frame-specific data,

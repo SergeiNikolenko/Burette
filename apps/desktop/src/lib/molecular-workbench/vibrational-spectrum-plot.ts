@@ -9,6 +9,24 @@ export const VIBRATIONAL_PLOT_DEFAULTS: Readonly<Record<VibrationalPlotKind, Rea
   raman: { scale: 1, offsetCm1: 0, fwhmCm1: 30, axisStartCm1: 0, axisEndCm1: 4000 },
 };
 
+/**
+ * The automatic axis: the conventional window (IR 4000→400, Raman 0→4000 cm^-1) widened in
+ * 100 cm^-1 steps so every positive displayed band, plus three widths or 100 cm^-1, stays
+ * visible. The IR axis keeps its decreasing direction. A manual range replaces this.
+ */
+export function vibrationalAxisRange(modes: readonly VibrationalMode[], kind: VibrationalPlotKind, options: Pick<VibrationalPlotOptions, "scale" | "offsetCm1" | "fwhmCm1">) {
+  const conventional = VIBRATIONAL_PLOT_DEFAULTS[kind];
+  let low = Math.min(conventional.axisStartCm1, conventional.axisEndCm1), high = Math.max(conventional.axisStartCm1, conventional.axisEndCm1);
+  const margin = Math.max(100, 3 * options.fwhmCm1);
+  for (const mode of modes) {
+    const center = (mode.frequencyCm1 - options.offsetCm1) / options.scale;
+    if (!Number.isFinite(center) || center <= 0) continue;
+    low = Math.min(low, Math.max(0, Math.floor((center - margin) / 100) * 100));
+    high = Math.max(high, Math.ceil((center + margin) / 100) * 100);
+  }
+  return kind === "ir" ? { axisStartCm1: high, axisEndCm1: low } : { axisStartCm1: low, axisEndCm1: high };
+}
+
 // Bounds are checked before allocation; do not silently coarsen the 1 cm^-1 grid.
 const MAX_POINTS = 20_000;
 const MAX_EVALUATIONS = 20_000_000;

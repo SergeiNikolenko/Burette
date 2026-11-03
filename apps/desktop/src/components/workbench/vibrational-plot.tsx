@@ -1,21 +1,30 @@
 import { useState, type KeyboardEvent } from "react";
 import type { VibrationalMode } from "../../lib/molecular-workbench/scientific-types";
-import { plotVibrationalSpectrum, VIBRATIONAL_PLOT_DEFAULTS, type VibrationalPlotKind, type VibrationalPlotOptions } from "../../lib/molecular-workbench/vibrational-spectrum-plot";
+import { plotVibrationalSpectrum, vibrationalAxisRange, VIBRATIONAL_PLOT_DEFAULTS, type VibrationalPlotKind, type VibrationalPlotOptions } from "../../lib/molecular-workbench/vibrational-spectrum-plot";
 import { formatFrequency } from "../../lib/workbench/vibrational-modes";
 import { Checkbox } from "../ui/checkbox";
 import { ScrubNumberField } from "../ui/scrub-number-input";
 
 const remembered: Partial<Record<VibrationalPlotKind, VibrationalPlotOptions>> = {};
+// The axis follows each mode set until the user sets either end of it for that set.
+const manualAxes = new WeakMap<readonly VibrationalMode[], Partial<Record<VibrationalPlotKind, Pick<VibrationalPlotOptions, "axisStartCm1" | "axisEndCm1">>>>();
 const WIDTH = 320, HEIGHT = 120, LEFT = 38, RIGHT = 8, TOP = 8, BOTTOM = 22;
 
 /** Peak-height curves and their raw sticks share one physical x axis and one display y scale. */
 export function VibrationalPlot({ modes, sourceModes = modes, kind, selected, onSelect }: { modes: VibrationalMode[]; sourceModes?: VibrationalMode[]; kind: VibrationalPlotKind; selected: number | null; onSelect: (index: number) => void }) {
-  const [options, setOptions] = useState(() => remembered[kind] ?? { ...VIBRATIONAL_PLOT_DEFAULTS[kind] });
+  const [display, setDisplay] = useState(() => remembered[kind] ?? { ...VIBRATIONAL_PLOT_DEFAULTS[kind] });
+  const [, setAxisVersion] = useState(0);
   const [showRaw, setShowRaw] = useState(true);
+  const options = { ...display, ...(manualAxes.get(sourceModes)?.[kind] ?? vibrationalAxisRange(sourceModes, kind, display)) };
   const update = (key: keyof VibrationalPlotOptions, value: number) => {
-    const next = { ...options, [key]: value };
+    if (key === "axisStartCm1" || key === "axisEndCm1") {
+      manualAxes.set(sourceModes, { ...manualAxes.get(sourceModes), [kind]: { axisStartCm1: options.axisStartCm1, axisEndCm1: options.axisEndCm1, [key]: value } });
+      setAxisVersion(version => version + 1);
+      return;
+    }
+    const next = { ...display, [key]: value };
     remembered[kind] = next;
-    setOptions(next);
+    setDisplay(next);
   };
   const quantity = (mode: VibrationalMode) => kind === "ir" ? mode.intensityKmMol : mode.ramanActivityAngstrom4Amu;
   const center = (mode: VibrationalMode) => (mode.frequencyCm1 - options.offsetCm1) / options.scale;
@@ -35,17 +44,19 @@ export function VibrationalPlot({ modes, sourceModes = modes, kind, selected, on
   try { data = plotVibrationalSpectrum(sourceModes, kind, options); }
   catch (caught) { error = caught instanceof Error ? caught.message : String(caught); }
   const x = (frequency: number) => LEFT + (frequency - options.axisStartCm1) / (options.axisEndCm1 - options.axisStartCm1) * (WIDTH - LEFT - RIGHT);
-  let yMin = 0, yMax = kind === "ir" ? 102 : 1;
+  let yMin = 0, yMax = kind === "ir" ? 100 : 1;
   if (data) for (let i = 0; i < data.smoothed.length; i++) {
     yMin = Math.min(yMin, data.smoothed[i], showRaw ? data.raw[i] : 0);
     yMax = Math.max(yMax, data.smoothed[i], showRaw ? data.raw[i] : 0);
   }
-  const y = (value: number) => TOP + (yMax - value) / (yMax - yMin) * (HEIGHT - TOP - BOTTOM);
+  // Ticks label the data range; 2 % headroom keeps a 100 % baseline off the frame.
+  const pad = (yMax - yMin) * 0.02;
+  const y = (value: number) => TOP + (yMax + pad - value) / (yMax - yMin + 2 * pad) * (HEIGHT - TOP - BOTTOM);
   const path = data ? Array.from(data.smoothed, (value, i) => `${i ? "L" : "M"}${x(data.wavenumbers[i]).toFixed(2)} ${y(value).toFixed(2)}`).join(" ") : null;
   const baseline = kind === "ir" ? 100 : 0;
   const rawPath = data && showRaw ? Array.from(data.raw, (value, i) => value === baseline ? "" : `M${x(data.wavenumbers[i]).toFixed(2)} ${y(baseline).toFixed(2)} L${x(data.wavenumbers[i]).toFixed(2)} ${y(value).toFixed(2)}`).join(" ") : null;
   const sourceUnit = kind === "ir" ? "km/mol" : "Å⁴/amu";
-  const label = kind === "ir" ? "Relative transmission (%)" : "Raman activity (Å⁴/amu)";
+  const label = kind === "ir" ? "Transmission, %" : "Raman activity, Å⁴/amu";
   const fields: { key: keyof VibrationalPlotOptions; label: string; min: number; max: number; step: number; title?: string }[] = [
     { key: "fwhmCm1", label: "FWHM, cm⁻¹", min: .01, max: 500, step: 1 },
     { key: "scale", label: "Scale factor", min: .01, max: 100, step: .001, title: "Displayed frequency = (source frequency − offset) / scale factor" },
@@ -76,7 +87,9 @@ export function VibrationalPlot({ modes, sourceModes = modes, kind, selected, on
           <rect x={x(center(mode)) - 3} y={TOP} width={6} height={HEIGHT - TOP - BOTTOM}><title>{`${formatFrequency(mode)} cm⁻¹ · ${quantity(mode)} ${sourceUnit}`}</title></rect>
         </g>)}
       </svg> : null}
-      <figcaption className="workbench-axis-label" title={kind === "ir" ? "Display transform: 100 × (1 − summed Gaussian intensity / 125). This is not a physical transmittance calculation." : "Gaussian peak height equals the source Raman activity."}>{label} · cm⁻¹</figcaption>
+      <figcaption className="workbench-axis-label" title={kind === "ir" ? "Display transform: 100 × (1 − summed Gaussian intensity / 125). This is not a physical transmittance calculation." : "Gaussian peak height equals the source Raman activity."}>
+        <span>{label}</span><span>Wavenumber, cm⁻¹</span>
+      </figcaption>
     </figure>
   </>;
 }

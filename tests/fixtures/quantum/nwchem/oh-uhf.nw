@@ -1,0 +1,14 @@
+start oh
+title "OH radical UHF/6-31G* energy"
+geometry units angstrom
+  O 0.0 0.0 0.0
+  H 0.0 0.0 0.97
+end
+basis
+  * library 6-31g*
+end
+scf
+  doublet
+  uhf
+end
+task scf energy

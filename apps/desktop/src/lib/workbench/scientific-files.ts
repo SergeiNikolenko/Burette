@@ -1,21 +1,22 @@
 import { compressedName } from "../compressed-files/formats";
 import { decodeCompressedFile } from "../compressed-files/task";
+import { GAMESS_SIGNATURE, MOLPRO_SIGNATURE, NWCHEM_SIGNATURE, ORCA_PROPERTY_SIGNATURE, PSI4_SIGNATURE, QCHEM_SIGNATURE, XTB_SIGNATURE, XTB_TRAJECTORY_SIGNATURE } from "../molecular-workbench/quantum/signatures";
 /**
  * Which files an ordinary browser Open or drop hands to the scientific import,
  * the same parse and open path as "Open quantum output…". Formats only that
- * import reads are recognised by name; ORCA/Gaussian logs and QCSchema JSON by their own
- * start, so other logs and text files keep opening as before. XYZ stays an
+ * import reads are recognised by name; ORCA (including `*.property.txt`), Gaussian, GAMESS, NWChem, Psi4, Q-Chem, Molpro and xtb logs and QCSchema
+ * JSON by their own start, so other logs and text files keep opening as before. XYZ stays an
  * ordinary structure unless it explicitly carries the reserved coordinate marker.
  */
 const BY_NAME = /\.(?:fchk|fch|molden|molf|hess|cube|cub|zmat|zmatrix|qcschema|cjson)$|(?:^|[._-])molden\.input$/iu;
-const OUTPUT = /\.(?:out|log|json)$/iu;
+const OUTPUT = /\.(?:out|log|dat|json)$|[._]property\.txt$/iu;
 const XYZ = /\.xyz$/iu;
 // ORCA's banner, or the coordinate block the ORCA parser reads.
 const ORCA = /O {3}R {3}C {3}A|CARTESIAN COORDINATES \(ANGSTROEM\)/u;
 const GAUSSIAN = /Entering Gaussian System|Gaussian, Inc\.|Gaussian \d+:|^\s*(?:Standard|Input|Z-Matrix) orientation:/mu;
 const QCSCHEMA = /"schema_name"\s*:\s*"(?:qcschema_(?:molecule|output|optimization_output)|qc_schema_output)"/u;
 function recognized(name: string, text: string) {
-  if (!/\.json$/iu.test(name)) return ORCA.test(text) || GAUSSIAN.test(text);
+  if (!/\.json$/iu.test(name)) return [ORCA, ORCA_PROPERTY_SIGNATURE, GAUSSIAN, GAMESS_SIGNATURE, NWCHEM_SIGNATURE, PSI4_SIGNATURE, QCHEM_SIGNATURE, MOLPRO_SIGNATURE, XTB_SIGNATURE, XTB_TRAJECTORY_SIGNATURE].some(signature => signature.test(text));
   // Inspect only the root schema field, including when the 64 KiB prefix
   // ends before the JSON document does. Nested molecule metadata is not a file schema.
   let depth = 0;
@@ -30,7 +31,7 @@ function recognized(name: string, text: string) {
 }
 const SNIFF_BYTES = 64 * 1024;
 
-export const SCIENTIFIC_FILE_ACCEPT = ".fchk,.fch,.molden,.molf,.input,.hess,.cube,.cub,.zmat,.zmatrix,.out,.log,.qcschema,.cjson,.json";
+export const SCIENTIFIC_FILE_ACCEPT = ".fchk,.fch,.molden,.molf,.input,.hess,.cube,.cub,.zmat,.zmatrix,.out,.log,.dat,.txt,.qcschema,.cjson,.json";
 /** The scientific parser reads at most 16 MiB of text. */
 export const SCIENTIFIC_FILE_LIMIT = 16 * 1024 * 1024;
 

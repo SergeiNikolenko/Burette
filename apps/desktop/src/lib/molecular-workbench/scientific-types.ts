@@ -16,7 +16,13 @@ export interface ScientificFrame {
   hessian?: CartesianHessian;
   timePs?: number; temperatureKelvin?: number;
   velocitiesAngstromPerPs?: Vec3[]; forcesKcalMolAngstrom?: Vec3[];
+  /** Producer-printed partial charges of this geometry, in elementary charges and source atom order. */
+  charges?: AtomicChargeSet[];
+  /** Producer-printed total dipole moment of this geometry, in debye, in the frame's Cartesian axes. */
+  dipoleDebye?: Vec3;
 }
+export const ATOMIC_CHARGE_MODELS = ["mulliken", "lowdin", "hirshfeld", "cm5", "npa", "esp", "chelpg", "eeq", "gasteiger"] as const;
+export interface AtomicChargeSet { model: typeof ATOMIC_CHARGE_MODELS[number]; values: number[] }
 export interface VibrationalMode {
   index: number;
   frequencyCm1: number;
@@ -58,8 +64,11 @@ export interface ScalarGrid {
   axes: [Vec3, Vec3, Vec3];
   values: Float32Array;
 }
+/** One Cube dataset; `orbitalNumber` is the producer's 1-based MO number when the header lists orbitals. */
+export interface ScalarDataset { label: string; orbitalNumber?: number; grid: ScalarGrid }
 export interface ScientificDocument {
-  format: "gaussian-log" | "qcschema" | "fchk" | "orca" | "orca-hessian" | "molden" | "cube" | "xyz" | "zmat" | "cjson";
+  format: "gaussian-log" | "qcschema" | "fchk" | "orca" | "orca-hessian" | "orca-property" | "molden" | "cube" | "xyz" | "zmat" | "cjson"
+    | "nwchem-log" | "gamess-log" | "psi4-log" | "molpro-log" | "qchem-log" | "xtb";
   atoms: MolecularAtom[];
   /** Producer-declared history frame of atoms; absent means the reference index is unknown. */
   referenceFrameIndex?: number;
@@ -72,6 +81,8 @@ export interface ScientificDocument {
   spectra?: ScientificSpectra;
   basis?: GaussianShell[];
   grid?: ScalarGrid;
+  /** Every dataset of a multi-field Cube in file order (`grid` is the first), on one shared grid and geometry. */
+  gridDatasets?: ScalarDataset[];
   converged?: boolean;
   /** Named coordinates and dummy reference points; atoms contain only real atoms. */
   internalCoordinates?: ZmatrixDocument;

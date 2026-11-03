@@ -9,7 +9,9 @@ const MAX_COEFFICIENTS = 2_000_000;
 const MAX_COMPILED_PRIMITIVES = 250_000;
 
 export type QuantumField = { kind: "orbital"; orbitalIndex: number } | { kind: "density" } | { kind: "spin-density" };
-export type QuantumGridOptions = { spacingAngstrom?: number; paddingAngstrom?: number };
+/** An explicit grid (Å), for example a producer Cube's oblique one; otherwise an axis-aligned box around the atoms. */
+export type QuantumGridGeometry = Pick<ScalarGrid, "dimensions" | "origin" | "axes">;
+export type QuantumGridOptions = { spacingAngstrom?: number; paddingAngstrom?: number; grid?: QuantumGridGeometry };
 
 function numeric(value: string | undefined) {
   if (!value || !/^[+-]?(?:\d+\.?\d*|\.\d+)(?:[EeDd][+-]?\d+)?$/.test(value)) throw new Error("Invalid Molden numeric value.");
@@ -52,6 +54,18 @@ export function parseMolden(text: string): ScientificDocument {
       if (/9g|15g/.test(key)) spherical.g = key.includes("9g");
     }
   }
+  // ORCA's orca_2mkl writes the coefficient of each unnormalized primitive, and the m = ±3 (f, g)
+  // and ±4 (g) real harmonics with the opposite sign; its orbitals are orthonormal only with both
+  // undone (tests/fixtures/quantum/molden/molden-reference.py).
+  const orca = /created by orca_2mkl/i.test(sections.get("title")?.lines.join(" ") ?? "");
+  const fromOrca = (kind: GaussianShell["kind"], exponents: number[], coefficients: number[]) => {
+    const l = "spdfg".indexOf(kind);
+    const normalized = coefficients.map((c, p) => c / primitiveNormalization(exponents[p], l, 0, 0));
+    let norm = 0;
+    exponents.forEach((a, p) => exponents.forEach((b, q) => { norm += normalized[p] * normalized[q] * (2 * Math.sqrt(a * b) / (a + b)) ** (l + 1.5); }));
+    if (!(norm > 0)) throw new Error("ORCA Molden shell has no normalizable contraction.");
+    return normalized.map(c => c / Math.sqrt(norm));
+  };
   const basis: GaussianShell[] = [];
   const gto = sections.get("gto");
   if (!gto) throw new Error("Molden [GTO] Gaussian basis is missing.");
@@ -76,8 +90,9 @@ export function parseMolden(text: string): ScientificDocument {
       exponents.push(exponent); coefficients.push(numeric(parts[1]));
       if (label === "sp") pCoefficients.push(numeric(parts[2]));
     }
-    basis.push({ atomIndex, kind: label === "sp" ? "s" : label as GaussianShell["kind"], spherical: spherical[label as keyof typeof spherical] ?? false, exponents, coefficients });
-    if (label === "sp") basis.push({ atomIndex, kind: "p", spherical: false, exponents: [...exponents], coefficients: pCoefficients });
+    const kind = label === "sp" ? "s" : label as GaussianShell["kind"];
+    basis.push({ atomIndex, kind, spherical: spherical[label as keyof typeof spherical] ?? false, exponents, coefficients: orca ? fromOrca(kind, exponents, coefficients) : coefficients });
+    if (label === "sp") basis.push({ atomIndex, kind: "p", spherical: false, exponents: [...exponents], coefficients: orca ? fromOrca("p", exponents, pCoefficients) : pCoefficients });
     if (basis.reduce((sum, shell) => sum + shellSize(shell), 0) > MAX_BASIS) throw new Error("Gaussian basis exceeds 2000 functions.");
   }
   const basisCount = basis.reduce((sum, shell) => sum + shellSize(shell), 0);
@@ -113,6 +128,16 @@ export function parseMolden(text: string): ScientificDocument {
   }
   finish();
   if (!orbitals.length) throw new Error("Molden contains no orbitals.");
+  if (orca) {
+    // Pure components run m = 0, +1, -1, +2, -2, +3, -3, +4, -4: positions 5–8 are |m| = 3 and 4.
+    const flipped: number[] = [];
+    let offset = 0;
+    for (const shell of basis) {
+      if (shell.spherical && (shell.kind === "f" || shell.kind === "g")) flipped.push(...(shell.kind === "f" ? [5, 6] : [5, 6, 7, 8]).map(k => offset + k));
+      offset += shellSize(shell);
+    }
+    for (const orbital of orbitals) for (const index of flipped) orbital.coefficients[index] = -orbital.coefficients[index];
+  }
   return { format: "molden", atoms, referenceFrameIndex: 0, frames: [{ atoms }], modes: [], orbitals, basis };
 }
 
@@ -206,13 +231,8 @@ export function evaluateSpinDensity(document: ScientificDocument, point: Vec3): 
 
 /** Density and spin-density units are electrons/bohr³; orbital amplitudes are bohr^(-3/2). */
 export function evaluateQuantumGrid(document: ScientificDocument, field: QuantumField, options: QuantumGridOptions = {}): ScalarGrid {
-  const spacing = options.spacingAngstrom ?? 0.3;
-  const padding = options.paddingAngstrom ?? 3;
-  if (!Number.isFinite(spacing) || spacing < 0.1 || spacing > 2 || !Number.isFinite(padding) || padding < 0 || padding > 10) throw new Error("Unsupported orbital grid spacing or padding.");
   if (!document.atoms.length || !document.basis) throw new Error("Gaussian atoms and basis are required.");
-  const origin: Vec3 = [Infinity, Infinity, Infinity], maximum: Vec3 = [-Infinity, -Infinity, -Infinity];
-  for (const atom of document.atoms) [atom.x, atom.y, atom.z].forEach((value, i) => { origin[i] = Math.min(origin[i], value - padding); maximum[i] = Math.max(maximum[i], value + padding); });
-  const dimensions = maximum.map((value, i) => Math.max(2, Math.ceil((value - origin[i]) / spacing) + 1)) as ScalarGrid["dimensions"];
+  const { dimensions, origin, axes } = options.grid ? explicitGrid(options.grid) : boxAround(document.atoms, options);
   const size = dimensions.reduce((a, b) => a * b, 1);
   if (size > 1_000_000) throw new Error("Quantum grid exceeds the browser limit of one million values. Increase the grid spacing.");
   const compiled = compileField(document, field);
@@ -220,10 +240,30 @@ export function evaluateQuantumGrid(document: ScientificDocument, field: Quantum
   const values = new Float32Array(size);
   let index = 0;
   for (let x = 0; x < dimensions[0]; x++) for (let y = 0; y < dimensions[1]; y++) for (let z = 0; z < dimensions[2]; z++) {
-    values[index++] = fieldAt(compiled, [origin[0] + x * spacing, origin[1] + y * spacing, origin[2] + z * spacing]);
+    values[index++] = fieldAt(compiled, [0, 1, 2].map(k => origin[k] + x * axes[0][k] + y * axes[1][k] + z * axes[2][k]) as Vec3);
   }
   if (values.some(value => !Number.isFinite(value))) throw new Error("Orbital field exceeds float range.");
-  return { dimensions, origin, axes: [[spacing, 0, 0], [0, spacing, 0], [0, 0, spacing]], values };
+  return { dimensions, origin, axes, values };
+}
+
+function boxAround(atoms: readonly MolecularAtom[], options: QuantumGridOptions): QuantumGridGeometry {
+  const spacing = options.spacingAngstrom ?? 0.3;
+  const padding = options.paddingAngstrom ?? 3;
+  if (!Number.isFinite(spacing) || spacing < 0.1 || spacing > 2 || !Number.isFinite(padding) || padding < 0 || padding > 10) throw new Error("Unsupported orbital grid spacing or padding.");
+  const origin: Vec3 = [Infinity, Infinity, Infinity], maximum: Vec3 = [-Infinity, -Infinity, -Infinity];
+  for (const atom of atoms) [atom.x, atom.y, atom.z].forEach((value, i) => { origin[i] = Math.min(origin[i], value - padding); maximum[i] = Math.max(maximum[i], value + padding); });
+  const dimensions = maximum.map((value, i) => Math.max(2, Math.ceil((value - origin[i]) / spacing) + 1)) as ScalarGrid["dimensions"];
+  return { dimensions, origin, axes: [[spacing, 0, 0], [0, spacing, 0], [0, 0, spacing]] };
+}
+
+function explicitGrid({ dimensions, origin, axes }: QuantumGridGeometry): QuantumGridGeometry {
+  if (dimensions.length !== 3 || dimensions.some(size => !Number.isInteger(size) || size < 1) || origin.length !== 3 || axes.length !== 3 || axes.some(axis => axis.length !== 3)
+    || [...origin, ...axes.flat()].some(value => !Number.isFinite(value) || Math.abs(value) > 1e6)) throw new Error("Invalid quantum grid geometry.");
+  const [a, b, c] = axes;
+  const volume = a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0]);
+  // The same floor as the axis-aligned box: no voxel smaller than 0.1 Å on a side.
+  if (!(Math.abs(volume) >= 1e-3)) throw new Error("Quantum grid axes must span at least 0.001 Å³ per voxel.");
+  return { dimensions: [...dimensions] as ScalarGrid["dimensions"], origin: [...origin] as Vec3, axes: axes.map(axis => [...axis]) as ScalarGrid["axes"] };
 }
 
 export function evaluateOrbitalGrid(document: ScientificDocument, orbitalIndex: number, options: QuantumGridOptions = {}): ScalarGrid {

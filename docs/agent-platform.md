@@ -641,6 +641,12 @@ node scripts/burette-agent.mjs workbench --session-dir "$SESSION" '{"operation":
 ```
 
 `field` also accepts `density` and `spin-density`, without `orbitalIndex`.
+`spacingAngstrom` is 0.1–1 Å and `paddingAngstrom` 0–10 Å around the atoms.
+Instead of both, `grid` takes an explicit, possibly rotated or sheared lattice
+in Å, `{"origin":[x,y,z],"axes":[a,b,c],"dimensions":[na,nb,nc]}`, evaluated at
+`origin + i·a + j·b + k·c` in Cube order (the last axis fastest); it holds at most
+one million points and each voxel encloses at least 0.001 Å³. The job summary
+reports the grid's `dimensions`, `origin` and `axes`.
 `sourceRevision` hashes the source text digest, the full immutable scientific
 payload and the bounded chemical graph, including its source atom order. The
 quantum worker separately projects only its calculation input. `sourceTextSha256` separately

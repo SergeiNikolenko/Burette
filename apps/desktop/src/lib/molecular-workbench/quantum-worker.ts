@@ -1,9 +1,15 @@
 import { evaluateQuantumGrid } from "./gaussian";
+import { harmonicModes } from "./normal-modes";
 import type { QuantumWorkerRequest, QuantumWorkerResponse } from "./quantum-client";
 
 self.addEventListener("message", (event: MessageEvent<QuantumWorkerRequest>) => {
   const request = event.data;
   try {
+    if (request?.type === "harmonic-modes") {
+      const response: QuantumWorkerResponse = { type: "modes-result", modes: harmonicModes(request.atoms, request.hessian) };
+      self.postMessage(response);
+      return;
+    }
     if (request?.type !== "evaluate-field") throw new Error("Unsupported quantum worker request.");
     const grid = evaluateQuantumGrid(request.document, request.field, request.options);
     const response: QuantumWorkerResponse = { type: "field-result", grid };

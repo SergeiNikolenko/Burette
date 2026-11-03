@@ -121,6 +121,22 @@ function oneOf(value, field, allowed, fallback) {
 const CONSTRAINT_ATOMS = { freeze: 1, distance: 2, angle: 3, dihedral: 4 };
 const ORBITAL_FIELDS = ['orbital', 'density', 'spin-density'];
 
+function vector(value, field) {
+  if (!Array.isArray(value) || value.length !== 3) invalid(`${field} must be three numbers.`);
+  return value.map((item, i) => finite(item, `${field}[${i}]`, -1e6, 1e6) ?? invalid(`${field}[${i}] is required.`));
+}
+
+/** An explicit field grid; the evaluator checks its volume and its point and work budgets. */
+function grid(value) {
+  if (!plainObject(value)) invalid('job.params.grid must be { origin, axes, dimensions }.');
+  rejectUnknownFields(value, ['origin', 'axes', 'dimensions'], 'job.params.grid');
+  if (!Array.isArray(value.axes) || value.axes.length !== 3) invalid('job.params.grid.axes must be three vectors.');
+  if (!Array.isArray(value.dimensions) || value.dimensions.length !== 3) invalid('job.params.grid.dimensions must be three integers.');
+  const dimensions = value.dimensions.map((item, i) => integer(item, `job.params.grid.dimensions[${i}]`, 1, 1_000_000));
+  if (dimensions[0] * dimensions[1] * dimensions[2] > 1_000_000) invalid('job.params.grid has more than one million points.');
+  return { origin: vector(value.origin, 'job.params.grid.origin'), axes: value.axes.map((axis, i) => vector(axis, `job.params.grid.axes[${i}]`)), dimensions };
+}
+
 function params(value, allowed, label) {
   const result = value ?? {};
   if (!plainObject(result)) invalid('job.params must be a JSON object.');
@@ -345,18 +361,23 @@ const JOB_DEFINITIONS = {
     describe: {
       engine: 'Workbench Gaussian-basis evaluator',
       requires: 'A document parsed with a Gaussian basis and orbitals (FCHK or Molden source).',
-      params: { field: ORBITAL_FIELDS, orbitalIndex: 'required for orbital', spacingAngstrom: '0.05–1', paddingAngstrom: '0–10' },
+      params: { field: ORBITAL_FIELDS, orbitalIndex: 'required for orbital', spacingAngstrom: '0.1–1', paddingAngstrom: '0–10', grid: '{ origin, axes, dimensions } in Å, Cube order (last axis fastest), at most one million points; replaces spacing and padding' },
       artifacts: ['cube'],
     },
     params(value) {
-      const p = params(value, ['field', 'orbitalIndex', 'spacingAngstrom', 'paddingAngstrom'], 'orbital_cube job.params');
+      const p = params(value, ['field', 'orbitalIndex', 'spacingAngstrom', 'paddingAngstrom', 'grid'], 'orbital_cube job.params');
       const field = oneOf(p.field, 'job.params.field', new Set(ORBITAL_FIELDS), undefined);
       if (!field) invalid('job.params.field is required for orbital_cube.');
       if (field !== 'orbital' && p.orbitalIndex !== undefined) invalid('job.params.orbitalIndex is only used by the orbital field.');
       const result = { field };
       if (field === 'orbital') result.orbitalIndex = integer(p.orbitalIndex, 'job.params.orbitalIndex', 0, MAX_INDEX);
-      const spacing = finite(p.spacingAngstrom, 'job.params.spacingAngstrom', 0.05, 1);
+      // The evaluator's floor: an axis-aligned voxel is at least 0.1 Å on a side.
+      const spacing = finite(p.spacingAngstrom, 'job.params.spacingAngstrom', 0.1, 1);
       const padding = finite(p.paddingAngstrom, 'job.params.paddingAngstrom', 0, 10);
+      if (p.grid !== undefined) {
+        if (spacing !== undefined || padding !== undefined) invalid('job.params.grid replaces spacingAngstrom and paddingAngstrom.');
+        result.grid = grid(p.grid);
+      }
       if (spacing !== undefined) result.spacingAngstrom = spacing;
       if (padding !== undefined) result.paddingAngstrom = padding;
       return result;

@@ -272,3 +272,35 @@ wwPDB data under CC0 1.0. Atom names and bonds follow the wwPDB Chemical Compone
 Dictionary (CC0). Test-only references in `tests/fixtures/nucleic/` (wwPDB entries
 1BNA, 1RNA, 1DCG, 2F8W and CCD components, CC0; PyMOL `fnab` outputs; MDAnalysis and
 RDKit results) are described in that directory's README.
+
+## cclib quantum-chemistry test outputs
+
+Files named `cclib-*` under `tests/fixtures/quantum/{nwchem,psi4,xtb,gamess,qchem,molpro,gaussian}/` are
+byte-identical copies of program outputs from the `data/` directory of
+[cclib](https://github.com/cclib/cclib) commit
+`0c6e08e0a0d04b308201666793030ef3b77b2973`, under cclib's BSD-3-Clause license
+(Copyright the cclib development team); the two `cclib-C_bigbasis-trimmed.out` files drop
+printed integral, density and population matrices as documented beside them. The license is retained as
+`tests/fixtures/quantum/cclib-LICENSE.txt`. cclib itself is used only as an
+external test oracle (`tests/fixtures/quantum/cclib-reference.py`); no cclib code
+is bundled; PySCF (Apache-2.0) is likewise only an external oracle. The other outputs in those directories were generated for Burette with
+NWChem 7.3.0, Psi4 1.11 and xtb 6.7.1; the programs are not bundled. The QCSchema
+files under `tests/fixtures/quantum/qcschema/` were generated for Burette with QCEngine,
+QCElemental, Psi4 and optking (BSD-3-Clause), none of which is bundled.
+
+## ORCA property-file test inputs
+
+The ORCA property files under `tests/fixtures/quantum/orca-property/` are byte-identical copies
+from MIT-licensed repositories: kmilozeta27/MAA-quantum-chemical-protocol (Copyright (c) 2026
+kmilozeta), Spin-Chemistry-Labs/radicalpy (Copyright (c) 2022 Lewis Antill),
+arpank-2380/PyEPFD (Copyright (c) 2023 Arpan Kundu) and
+shabab-kabir/Density_Functional_Theory_Research (Copyright (c) 2023 Shabab Kabir). Their
+licenses and source commits are retained beside the files. They are test inputs only. The ORCA
+Molden files under `tests/fixtures/quantum/molden/` come from the last repository under the same
+license, retained there.
+
+## JAMA eigenvalue routines
+
+`apps/desktop/src/lib/molecular-workbench/normal-modes.ts` follows the Householder `tred2` and
+implicit-QL `tql2` routines of EISPACK as published in JAMA (A Java Matrix Package, MathWorks
+and NIST), which its authors released into the public domain.

@@ -1,0 +1,17 @@
+start methanol
+title "Methanol B3LYP/6-31G frequencies at a fixed geometry"
+geometry units angstrom noautosym
+  C  -0.046520   0.662920   0.000000
+  O  -0.046520  -0.754080   0.000000
+  H  -1.086520   0.976920   0.000000
+  H   0.437480   1.070920   0.889000
+  H   0.437480   1.070920  -0.889000
+  H   0.856480  -1.080080   0.000000
+end
+basis
+  * library 6-31g
+end
+dft
+  xc b3lyp
+end
+task dft freq

@@ -1,0 +1,12 @@
+start water
+title "Water HF/6-31G* optimization and frequencies"
+geometry units angstrom
+  O   0.000000   0.000000   0.130000
+  H   0.000000   0.790000  -0.470000
+  H   0.000000  -0.790000  -0.470000
+end
+basis
+  * library 6-31g*
+end
+task scf optimize
+task scf freq

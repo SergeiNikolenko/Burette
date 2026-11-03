@@ -33,6 +33,18 @@ test('content fallback still accepts scientific data under generic or unknown na
     ['result.dat', await fixture('dispatcher/hydrogen.molden'), 'molden'],
     ['result.bin', await fixture('dispatcher/normal-modes.hess'), 'orca-hessian'],
     ['result.log', await fixture('dispatcher/two-step-orca.out'), 'orca'],
+    ['result.log', await fixture('nwchem/water-opt-freq.out'), 'nwchem-log'],
+    ['result.out', await fixture('nwchem/cclib-water-mp2.out'), 'nwchem-log'],
+    ['output.dat', await fixture('psi4/water-opt-freq.out'), 'psi4-log'],
+    ['result.log', await fixture('psi4/cclib-water-ccsd.out'), 'psi4-log'],
+    ['result.out', await fixture('xtb/water-opt.out'), 'xtb'],
+    ['result.log', await fixture('xtb/water-opt-xtbopt.log'), 'xtb'],
+    ['result.out', await fixture('xtb/water-ohess-g98.out'), 'xtb'],
+    ['result.out', await fixture('xtb/water-gfnff-opt.out'), 'xtb'],
+    ['result.log', await fixture('gamess/cclib-dvb_sp.out'), 'gamess-log'],
+    ['result.out', await fixture('gamess/cclib-firefly-dvb_raman.out'), 'gamess-log'],
+    ['result.out', await fixture('qchem/cclib-dvb_ir.out'), 'qchem-log'],
+    ['result.log', await fixture('molpro/cclib-dvb_ir.out'), 'molpro-log'],
   ] as const;
   for (const [name, text, format] of cases) expect(parseScientificFile(name, text).format).toBe(format);
 });

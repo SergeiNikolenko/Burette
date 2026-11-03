@@ -60,6 +60,17 @@ export function spectrumJson(modes: readonly VibrationalMode[], provenance: Spec
   }, null, 2)}\n`;
 }
 
+/** The spectrum columns of every mode with displacements, plus its per-atom Cartesian displacement vectors. */
+export function modesJson(modes: readonly VibrationalMode[], atoms: readonly MolecularAtom[], provenance: SpectrumProvenance) {
+  return `${JSON.stringify({
+    kind: "normal-modes",
+    source: { name: provenance.sourceName, format: provenance.format, frame: provenance.frame, frameCount: provenance.frameCount },
+    units: { ...Object.fromEntries(COLUMNS.map((column) => [column.json, column.unit])), displacements: "relative Cartesian x, y, z per atom, as the source gives them" },
+    atoms: atoms.map(({ element, x, y, z }) => ({ element, xAngstrom: x, yAngstrom: y, zAngstrom: z })),
+    modes: modes.filter((mode) => mode.displacements).map((mode) => ({ ...Object.fromEntries(COLUMNS.map((column) => [column.json, column.value(mode) ?? null])), displacements: mode.displacements })),
+  }, null, 2)}\n`;
+}
+
 /** The full matrix, row by row, with the atoms (Å) and masses (amu) its rows and columns refer to. */
 export function hessianJson(hessian: CartesianHessian, atoms: readonly MolecularAtom[], provenance: SpectrumProvenance) {
   const rows = Array.from({ length: hessian.dimension }, (_, row) => Array.from(hessian.values.subarray(row * hessian.dimension, (row + 1) * hessian.dimension)));

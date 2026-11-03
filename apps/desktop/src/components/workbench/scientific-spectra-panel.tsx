@@ -141,7 +141,7 @@ function SpectrumView({ data, selection, actions, onSelectAtom, memory }: { data
           const nearest = peaks.reduce<typeof peaks[number] | null>((best, peak) => !best || Math.abs(peak.center - position) < Math.abs(best.center - position) ? peak : best, null);
           if (nearest) choose(nearest.row);
         }} />
-        <figcaption className="workbench-axis-label">{unit}{spectrum.kind !== "nmr" && spectrum.valueUnit ? ` · ${spectrum.valueUnit}` : ""}</figcaption>
+        <figcaption className="workbench-axis-label"><span>{spectrum.kind !== "nmr" ? spectrum.valueUnit : null}</span><span>{unit}</span></figcaption>
       </figure>
       <div className="overflow-x-auto"><table className="workbench-table" aria-label={`${LABELS[selection.kind]} source values`}><thead><tr><th scope="col">{spectrum.kind === "nmr" ? "Atom" : "Row"}</th>
         <th scope="col">{spectrum.kind === "nmr" ? `Source ${spectrum.quantity === "isotropic-shielding" ? "shielding" : "value"}, ppm` : `Position, ${spectrum.xUnit}`}</th>

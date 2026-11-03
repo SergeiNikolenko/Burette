@@ -1,0 +1,193 @@
+
+    -----------------------------------------------------------------------
+          Psi4: An Open-Source Ab Initio Electronic Structure Package
+                               Psi4 1.11 release
+
+                         Git: Rev {} zzzzzzz 
+
+
+    D. G. A. Smith, L. A. Burns, A. C. Simmonett, R. M. Parrish,
+    M. C. Schieber, R. Galvelis, P. Kraus, H. Kruse, R. Di Remigio,
+    A. Alenaizan, A. M. James, S. Lehtola, J. P. Misiewicz, M. Scheurer,
+    R. A. Shaw, J. B. Schriber, Y. Xie, Z. L. Glick, D. A. Sirianni,
+    J. S. O'Brien, J. M. Waldrop, A. Kumar, E. G. Hohenstein,
+    B. P. Pritchard, B. R. Brooks, H. F. Schaefer III, A. Yu. Sokolov,
+    K. Patkowski, A. E. DePrince III, U. Bozkaya, R. A. King,
+    F. A. Evangelista, J. M. Turney, T. D. Crawford, C. D. Sherrill,
+    J. Chem. Phys. 152(18) 184108 (2020). https://doi.org/10.1063/5.0006002
+
+                            Additional Code Authors
+    E. T. Seidl, C. L. Janssen, E. F. Valeev, M. L. Leininger,
+    J. F. Gonthier, R. M. Richard, H. R. McAlexander, M. Saitow, X. Wang,
+    P. Verma, M. H. Lechner, A. Jiang, S. Behnle, A. G. Heide,
+    M. F. Herbst, D. L. Poole, T. Győri, E. C. Mitchell, J. P. Pederson,
+    and A. M. Wallace
+
+             Previous Authors, Complete List of Code Contributors,
+                       and Citations for Specific Modules
+    https://github.com/psi4/psi4/blob/master/codemeta.json
+    https://github.com/psi4/psi4/graphs/contributors
+    https://psicode.org/psi4manual/master/introduction.html#citing-psifour
+
+    -----------------------------------------------------------------------
+
+
+    Psi4 started on: Sunday, 01 November 2026 11:45PM
+
+    Process ID: 1787526
+    Host:       Gauss
+    PSIDATADIR: /home/nikolenko/work/Projects/burette-qref/qcenv/share/psi4
+    Memory:     953.7 MiB
+    Threads:    2
+    Addons:     a̶d̶c̶c̶, a̶m̶b̶i̶t̶, b̶s̶e̶, c̶c̶t̶3̶, c̶f̶o̶u̶r̶, c̶h̶e̶m̶p̶s̶2̶, c̶p̶p̶e̶, d̶d̶x̶,
+                d̶f̶t̶d̶3̶, d̶f̶t̶d̶4̶, dkh, ecpint, einsums, f̶o̶r̶t̶e̶, gauxc, g̶c̶p̶,
+                g̶d̶m̶a̶, g̶e̶o̶m̶e̶t̶r̶i̶c̶, g̶p̶u̶_̶d̶f̶c̶c̶, i̶n̶t̶e̶g̶r̶a̶t̶o̶r̶x̶x̶,
+                i̶p̶i̶, l̶i̶b̶e̶f̶p̶, m̶d̶i̶, m̶p̶2̶d̶, m̶r̶c̶c̶, ooo,
+                o̶p̶e̶n̶f̶e̶r̶m̶i̶o̶n̶p̶s̶i̶4̶, pcmsolver, p̶s̶i̶4̶f̶o̶c̶k̶c̶i̶, p̶s̶i̶x̶a̶s̶,
+                p̶y̶e̶i̶n̶s̶u̶m̶s̶, r̶e̶s̶p̶, s̶i̶m̶i̶n̶t̶, s̶n̶s̶m̶p̶2̶,
+                v̶2̶r̶d̶m̶_̶c̶a̶s̶s̶c̶f̶
+  Threads set to 2 by Python driver.
+
+  Memory set to 953.674 MiB by Python driver.
+
+Scratch directory: /tmp/
+   => Libint2 <=
+
+    Primary   basis highest AM E, G, H:  7, 6, 4
+    Auxiliary basis highest AM E, G, H:  7, 7, 6
+    Onebody   basis highest AM E, G, H:  -, -, -
+    Solid Harmonics ordering:            Gaussian
+
+*** tstart() called on Gauss
+*** at Sun Nov  1 23:45:13 2026
+
+   => Loading Basis Set <=
+
+    Name: 6-31G*
+    Role: ORBITAL
+    Keyword: BASIS
+    atoms 1   entry O          line   145 file /home/nikolenko/work/Projects/burette-qref/qcenv/share/psi4/basis/6-31gs.gbs 
+    atoms 2-3 entry H          line    44 file /home/nikolenko/work/Projects/burette-qref/qcenv/share/psi4/basis/6-31gs.gbs 
+
+
+         ---------------------------------------------------------
+                                   SCF
+               by Justin Turney, Rob Parrish, Andy Simmonett
+                          and Daniel G. A. Smith
+                              RHF Reference
+                        2 Threads,    953 MiB Core
+         ---------------------------------------------------------
+
+  ==> Geometry <==
+
+    Molecular point group: c2v
+    Full point group: C2v
+
+    Geometry (in Angstrom), charge = 0, multiplicity = 1:
+
+       Center              X                  Y                   Z               Mass       
+    ------------   -----------------  -----------------  -----------------  -----------------
+         O            0.000000000000     0.000000000000     0.067148923973    15.994914619570
+         H           -0.000000000000     0.790000000000    -0.532851076027     1.007825032230
+         H            0.000000000000    -0.790000000000    -0.532851076027     1.007825032230
+
+  Running in c2v symmetry.
+
+  Rotational constants: A =     26.15919  B =     13.40069  C =      8.86128 [cm^-1]
+  Rotational constants: A = 784232.73255  B = 401742.59452  C = 265654.50856 [MHz]
+  Nuclear repulsion =    8.869882470624489
+
+  Charge       = 0
+  Multiplicity = 1
+  Electrons    = 10
+  Nalpha       = 5
+  Nbeta        = 5
+
+  ==> Algorithm <==
+
+  SCF Algorithm Type is DF.
+  DIIS enabled.
+  MOM disabled.
+  Fractional occupation disabled.
+  Guess Type is SAD.
+  Energy threshold   = 1.00e-06
+  Density threshold  = 1.00e-06
+  Integral threshold = 1.00e-12
+
+  ==> Primary Basis <==
+
+  Basis Set: 6-31G*
+    Blend: 6-31G*
+    Number of shells: 10
+    Number of basis functions: 19
+    Number of Cartesian functions: 19
+    Spherical Harmonics?: false
+    Max angular momentum: 2
+
+   => Loading Basis Set <=
+
+    Name: (6-31G* AUX)
+    Role: JKFIT
+    Keyword: DF_BASIS_SCF
+    atoms 1   entry O          line   221 file /home/nikolenko/work/Projects/burette-qref/qcenv/share/psi4/basis/cc-pvdz-jkfit.gbs 
+    atoms 2-3 entry H          line    51 file /home/nikolenko/work/Projects/burette-qref/qcenv/share/psi4/basis/cc-pvdz-jkfit.gbs 
+
+  ==> Integral Setup <==
+
+  DFHelper Memory: AOs need 0.001 GiB; user supplied 0.698 GiB. 
+  SCF_SUBTYPE=INCORE selected. In-core MEM_DF algorithm will be used.
+  Using in-core AOs.
+
+  ==> MemDFJK: Density-Fitted J/K Matrices <==
+
+    J tasked:                   Yes
+    K tasked:                   Yes
+    wK tasked:                   No
+    OpenMP threads:               2
+    Memory [MiB]:               715
+    Algorithm:                 Core
+    Schwarz Cutoff:           1E-12
+    Mask sparsity (%):       0.0000
+    Fitting Condition:        1E-10
+
+   => Auxiliary Basis Set <=
+
+  Basis Set: (6-31G* AUX)
+    Blend: CC-PVDZ-JKFIT
+    Number of shells: 42
+    Number of basis functions: 131
+    Number of Cartesian functions: 131
+    Spherical Harmonics?: false
+    Max angular momentum: 3
+
+  Minimum eigenvalue in the overlap matrix is 2.2839210790E-02.
+  Reciprocal condition number of the overlap matrix is 5.4047735021E-03.
+    Using symmetric orthogonalization.
+
+  ==> Pre-Iterations <==
+
+  SCF Guess: Superposition of Atomic Densities via on-the-fly atomic UHF (no occupation information).
+
+   -------------------------
+    Irrep   Nso     Nmo    
+   -------------------------
+     A1        10      10 
+     A2         1       1 
+     B1         3       3 
+     B2         5       5 
+   -------------------------
+    Total      19      19
+   -------------------------
+
+  ==> Iterations <==
+
+                           Total Energy        Delta E     RMS |[F,P]|
+
+   @DF-RHF iter SAD:   -75.47050544727441   -7.54705e+01   0.00000e+00 
+   @DF-RHF iter   1:   -75.93428184398459   -4.63776e-01   3.50776e-02 ADIIS/DIIS
+   @DF-RHF iter   2:   -75.98632325729784   -5.20414e-02   2.12246e-02 ADIIS/DIIS
+   @DF-RHF iter   3:   -76.00606467351892   -1.97414e-02   3.15827e-03 ADIIS/DIIS
+
+PsiException: Could not converge SCF iterations in 3 iterations.
+
+  Failed to converge.
