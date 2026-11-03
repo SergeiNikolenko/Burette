@@ -1,6 +1,6 @@
 import type { CrystalEdit } from "../molecular-workbench/crystal-edit";
 import { periodicCrystalFormat, type CrystalDocument, type CrystalFormat } from "../molecular-workbench/crystal-io";
-import { SOURCE_EDIT_MAX_BYTES } from "../source-editing/policy";
+import { SOURCE_EDIT_MAX_BYTES, utf8ByteCount } from "../source-editing/policy";
 import { useStructureSourceText } from "../source-editing/use-structure-source-text";
 import { sourceExtension } from "../science-session/state";
 import { runCrystalTask } from "./crystal-task";
@@ -41,7 +41,14 @@ export function useCrystalDraft(document: ViewerDocument | null, openCif: (name:
   } : null, "crystal");
   const apply = (edit: CrystalEdit) => draft.apply(edit.kind, async (current, signal) => {
     const result = await runCrystalTask({ action: "edit", source: { format: formatOf(current.text)!, text: current.text }, edit }, { signal });
-    if (!result.newDocument) return result.text;
+    if (!result.newDocument) {
+      if (utf8ByteCount(result.text) > SOURCE_EDIT_MAX_BYTES) {
+        throw new Error(edit.kind === "supercell"
+          ? "The supercell exceeds the 3 MB source editing limit. Use fewer repeats."
+          : "The edited crystal exceeds the 3 MB source editing limit.");
+      }
+      return result.text;
+    }
     await openCif(`${candidate!.title.replace(/\.[^.]+$/u, "")}-asymmetric-unit`, result.text);
     return null;
   });

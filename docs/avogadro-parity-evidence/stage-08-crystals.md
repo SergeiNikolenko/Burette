@@ -148,6 +148,18 @@ Redo reapplied the cell change. With Vectors and Cartesian selected, Wrap atoms
 created its own Undo step and retained both settings. The saved copy was not
 reopened in this run.
 
+On the same integration branch, the browser built the 2 × 2 × 1 urea
+supercell (64 atoms, 580.24 Å³). Undo restored 16 atoms and Redo restored 64.
+With Keep Cartesian, adding 0.5 Å to c z gave 642.18 Å³ and space group 113.
+The independent cell-edit check compares positions and periodic bonds before
+and after this vector change.
+
+For B8, Cancel during the 20 × 20 × 15 edit preserved 16 atoms, 145.06 Å³ and
+the empty Undo history. A second run completed the calculation and reported
+that the result exceeds the 3 MB source editing limit. The crystal worker's
+readback held 96,000 atoms in 5,469,044 bytes. The smaller supercell above
+succeeded after the refusal.
+
 Start: `BURETTE_AGENT_SHELL_FORCE_VP=1 bun scripts/burette-agent.mjs open --mode browser-agent-shell --no-launch <fixture>`
 and open the returned `url`. Fixtures are in `tests/fixtures/crystals/` (CC0, see its
 README); `tests/fixtures/crystal-symmetry/` and `tests/fixtures/assemblies/` are

@@ -56,7 +56,8 @@ export function perceivePeriodicBonds(atoms: readonly MolecularAtom[], cell: Uni
   if (atoms.length > PERIODIC_BOND_ATOM_LIMIT) throw new Error(`Periodic bonding supports at most ${PERIODIC_BOND_ATOM_LIMIT.toLocaleString("en-US")} atoms.`);
   if (!atoms.length) return [];
   const radii = atoms.map(atom => radius(atom.element));
-  const reach = 2 * Math.max(...radii) + BOND_TOLERANCE;
+  const maxRadius = radii.reduce((largest, value) => Math.max(largest, value), 0);
+  const reach = 2 * maxRadius + BOND_TOLERANCE;
   const { fractional, spacings } = fractionalOf(atoms, cell);
   if (!fractional.flat().every(value => Number.isFinite(value) && Math.abs(value) < 1e9)) throw new Error("Atom coordinates must be finite.");
   const shift = fractional.map(point => point.map(Math.floor) as Vec3);
