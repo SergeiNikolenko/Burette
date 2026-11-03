@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { createServer } from 'node:http';
+import { installAgentServerIdleTimeout } from './agent-server-idle.mjs';
 import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
@@ -1751,6 +1752,7 @@ async function main() {
     }
   });
 
+  installAgentServerIdleTimeout(server);
   server.listen(args.port, args.host, () => {
     const url = `http://${args.host}:${args.port}/index.html?token=${encodeURIComponent(token)}`;
     console.log(JSON.stringify({ ok: true, url, token, structurePath, config }, null, 2));

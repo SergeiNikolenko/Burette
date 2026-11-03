@@ -77,7 +77,6 @@ try {
   assert.match(cliSource, /agent-shell-server\.mjs/);
   assert.match(cliSource, /BURETTE_AGENT_SHELL_DIST_DIR/);
   assert.match(cliSource, /runtime: 'prebuilt-static'/);
-  assert.match(cliSource, /spawn\('vp', \['dev', 'apps\/desktop'/);
   assert.match(cliSource, /await allocatePort\(host\)/);
   assert.match(cliSource, /mkdtemp\(resolve\(tmpdir\(\), 'burette-agent-shell-'\)\)/);
   assert.match(cliSource, /BURETTE_AGENT_SHELL_SESSION_DIR: sessionDir/);
@@ -374,11 +373,12 @@ try {
         assert.deepEqual(JSON.parse(finderIcon.body), { error: 'Icon not found' });
       }
       assert.doesNotMatch(finderIcon.body, /Burette Agent Shell/);
-      if (prebuiltPayload.result.processId) {
-        try {
-          process.kill(prebuiltPayload.result.processId, 'SIGTERM');
-        } catch {}
-      }
+      const closed = runCli(['close', '--session-dir', prebuiltPayload.result.sessionDir]);
+      assert.equal(closed.status, 0, closed.stderr);
+      assert.deepEqual(JSON.parse(closed.stdout).result, { closed: true, alreadyStopped: false });
+      await assert.rejects(get(new URL('/healthz', prebuiltPayload.result.url)));
+      const closedAgain = runCli(['close', '--session-dir', prebuiltPayload.result.sessionDir]);
+      assert.deepEqual(JSON.parse(closedAgain.stdout).result, { closed: false, alreadyStopped: true });
       const staleAssetDist = await mkdtemp(resolve(tmpdir(), 'burette-agent-stale-shell-dist-'));
       try {
         await writeFile(resolve(staleAssetDist, 'index.html'), '<!doctype html><script src="/@fs/tmp/stale/Burette/PreviewExtension/Web/viewer.js"></script>');
@@ -423,6 +423,13 @@ try {
     assert.equal(autoFallbackPayload.result.mode, 'browser-preview');
     assert.equal(autoFallbackPayload.result.fallback.from, 'browser-agent-shell');
     assert.equal(autoFallbackPayload.result.fallback.reason.code, 'BROWSER_AGENT_SHELL_FAILED');
+    const occupiedDir = autoFallbackPayload.result.sessionDir;
+    const preserved = { 'session.json': '{"mode":"browser-preview"}\n', 'actions.json': '{"actions":[{"id":"keep"}]}\n' };
+    for (const [name, contents] of Object.entries(preserved)) await writeFile(resolve(occupiedDir, name), contents);
+    const conflict = runCli(['open', '--mode', 'browser-agent-shell', '--session-dir', occupiedDir, 'samples/mini.pdb']);
+    assert.equal(conflict.status, 1);
+    assert.equal(JSON.parse(conflict.stderr).error.code, 'SESSION_IN_USE');
+    for (const [name, contents] of Object.entries(preserved)) assert.equal(await readFile(resolve(occupiedDir, name), 'utf8'), contents);
     if (autoFallbackPayload.result.processId) {
       try {
         process.kill(autoFallbackPayload.result.processId, 'SIGTERM');

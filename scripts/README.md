@@ -8,6 +8,10 @@ Use `docs/tools/testing-surfaces.md` before starting a dev server, browser
 Quick Look URL, tokenized preview server, native Quick Look smoke, or broad
 contract run.
 
+After changing only agent server scripts, refresh their packaged copies with
+`node scripts/build-agent-shell-plugin.mjs --scripts-only`; this does not rebuild
+or replace frontend assets. Run `node tests/test-packaged-plugin-mirror.mjs`.
+
 ## Public App Commands
 
 | Command | Use When | Notes |

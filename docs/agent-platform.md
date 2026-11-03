@@ -76,6 +76,7 @@ result back to the user.
 | --- | --- | --- |
 | Workspace opener | `bun scripts/burette-agent.mjs open` | Opens browser preview, browser agent shell, or desktop app sessions. |
 | Workspace observer | `bun scripts/burette-agent.mjs observe` | Reads typed state from a session directory. |
+| Browser server shutdown | `bun scripts/burette-agent.mjs close --session-dir <session>` | Stops the CLI-owned server and its descendants; repeated close is safe. |
 | Workspace action | `bun scripts/burette-agent.mjs act` | Sends typed shell or Mol* actions and waits for completion. |
 | Viewer capture | `bun scripts/burette-agent.mjs capture` | Renders the active Mol* view to a PNG/JPEG/WebP file and prints its path, MIME type, size, and dimensions. |
 | Workspace facade tools | `burette.get_context` / `burette.open_workspace` / `burette.observe_workspace` / `burette.control_viewer` / `burette.capture_view` / `burette.render_panel` | Short MCP facade over the CLI for external agents, routed by the `external-agent-contract` skill. |
@@ -113,6 +114,26 @@ do not invent a second local session protocol.
 Browser means the in-app Browser plugin unless the user explicitly asks for an
 external browser. Computer/native UI control is a QA fallback, not the primary
 state channel.
+
+## Browser Server Lifetime
+
+CLI browser launches return a supervisor `processId`, `sessionDir`, `close`
+command, and `idleTimeoutMs`. Use `close --session-dir` after a check; SIGTERM
+to the returned supervisor also stops its Vite/Node descendants. Failed or
+cancelled startup is cleaned up before fallback or exit. Session files remain
+available for inspection. Control uses a private authenticated Unix socket
+recorded in `server.json`, never a saved PID that could belong to another process.
+
+Managed servers stop after ten minutes without client activity. An open SSE
+response, WebSocket, or unfinished request prevents idle shutdown; `/healthz`
+probes do not renew the timeout. `open --idle-timeout-ms <positive-integer>`
+changes the grace period. Manual foreground servers and desktop-app sessions
+are unaffected. Existing servers launched before this lifecycle need their
+original manual cleanup. Separate session directories remain isolated; a live
+session cannot be overwritten by another `open`.
+
+Run `node tests/test-agent-server-lifecycle.mjs` for real process-tree and idle
+shutdown coverage, plus `node tests/test-burette-agent-cli.mjs` for CLI coverage.
 
 ## Static Browser Shell Authorization
 

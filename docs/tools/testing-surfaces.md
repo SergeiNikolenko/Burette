@@ -68,7 +68,15 @@ bun scripts/burette-agent.mjs act --session-dir <sessionDir> '{"type":"story_con
 Typed readiness and a successful transition are necessary but not sufficient:
 use Browser to verify a nonblank first step and one transitioned step.
 
-Stop the returned `processId` when the Browser check is complete.
+Stop the server and its descendants when the Browser check is complete:
+
+```bash
+bun scripts/burette-agent.mjs close --session-dir <sessionDir>
+```
+
+Closing is idempotent and preserves the session files. Managed servers also
+expire after ten minutes without clients; SSE/WebSocket connections keep live
+workspaces running. Override the grace period with `open --idle-timeout-ms`.
 
 Use this surface for normal app UI work: sidebar, tabs, docks, command palette,
 agent session actions, file opening, and browser-dev endpoint behavior.

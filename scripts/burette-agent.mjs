@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 import { browserGeneratedFilesRoot } from './generated-files-root.mjs';
 import { navigationLink, registerSessionLink } from './burette-deep-links.mjs';
+import { startAgentServer, stopAgentServer, closeAgentServer, assertAgentServerAvailable } from './agent-server-process.mjs';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, open as openFile, readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { homedir, tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -40,6 +41,7 @@ function usage() {
   node scripts/burette-agent.mjs observe --url <tokenized-preview-url>
   node scripts/burette-agent.mjs observe --session-dir <desktop-agent-session>
   node scripts/burette-agent.mjs status --session-dir <session>
+  node scripts/burette-agent.mjs close --session-dir <browser-session>
   node scripts/burette-agent.mjs act --url <tokenized-preview-url> '<json-action>' [--wait-ms 5000]
   node scripts/burette-agent.mjs act --session-dir <desktop-agent-session> '<json-action>' [--action-file action.json] [--stdin] [--wait-ms 5000]
   node scripts/burette-agent.mjs scene <reset-camera|hide-waters|show-waters|show-surface|color-by-chain|focus-ligand|contacts> --session-dir <session> [--wait-ms 5000]
@@ -57,6 +59,8 @@ The CLI is the readable Burette agent contract. Auto mode starts the full
 browser-agent-shell when available and falls back to browser-preview when the
 shell cannot start. Browser-preview mode uses a tokenized localhost server.
 Browser-agent-shell mode starts an agent-owned full Browser workspace shell.
+Browser servers stop after 10 minutes without clients. Set --idle-timeout-ms
+on open to change this positive timeout; close stops the entire server tree.
 Desktop app mode uses an explicit file-backed local session directory passed to
 the app at launch.`);
 }
@@ -177,6 +181,11 @@ function parseOptions(args) {
       index += 1;
       continue;
     }
+    if (arg === '--idle-timeout-ms') {
+      out.idleTimeoutMs = Number(requireValue(args, index, arg));
+      index += 1;
+      continue;
+    }
     if (arg === '--action-file') {
       out.actionFile = requireValue(args, index, arg);
       index += 1;
@@ -229,7 +238,17 @@ async function main() {
     return;
   }
   if (command === 'open') {
+    options.idleTimeoutMs ??= 10 * 60 * 1000;
+    if (!Number.isSafeInteger(options.idleTimeoutMs) || options.idleTimeoutMs <= 0) {
+      fail('INVALID_ARGS', '--idle-timeout-ms must be a positive integer.', 2);
+    }
     await open(options);
+    return;
+  }
+  if (command === 'close') {
+    if (!options.sessionDir) fail('INVALID_ARGS', 'close requires --session-dir.', 2);
+    const result = await closeAgentServer(resolve(options.sessionDir));
+    console.log(JSON.stringify({ ok: true, apiVersion, result }, null, 2));
     return;
   }
   if (command === 'observe' || command === 'status') {
@@ -442,17 +461,14 @@ async function openBrowserPreview(file, options, fallback = null) {
   const token = randomUUID();
   const url = `http://${hostForUrl(host)}:${port}/index.html?token=${encodeURIComponent(token)}`;
   const sessionDir = options.sessionDir ? resolve(options.sessionDir) : await mkdtemp(resolve(tmpdir(), 'burette-agent-preview-'));
+  await assertBrowserSessionDirectoryAvailable(sessionDir);
   await mkdir(sessionDir, { recursive: true });
   const logPath = resolve(sessionDir, 'server.log');
-  const logHandle = await openFile(logPath, 'a');
   let childExit = null;
   const childArgs = [agentPreviewScript, initialFile, '--host', host, '--port', String(port), '--token', token];
-  const child = spawn(process.execPath, childArgs, {
-    cwd: repoRoot,
-    detached: true,
-    stdio: ['ignore', logHandle.fd, logHandle.fd]
+  const child = await startAgentServer(process.execPath, childArgs, {
+    cwd: repoRoot, logPath, sessionDir, idleTimeoutMs: options.idleTimeoutMs,
   });
-  await logHandle.close();
   child.once('error', (error) => {
     childExit = { error };
   });
@@ -468,9 +484,11 @@ async function openBrowserPreview(file, options, fallback = null) {
       label: 'Browser preview',
     });
   } catch (error) {
+    await stopAgentServer(child);
     if (error?.buretteAgentError) fail(error.code, error.message, 1, error.details);
     throw error;
   }
+  child.release();
   child.unref();
   console.log(JSON.stringify({
     ok: true,
@@ -487,6 +505,8 @@ async function openBrowserPreview(file, options, fallback = null) {
       logPath,
       initialPaths: [initialFile],
       processId: child.pid,
+      idleTimeoutMs: options.idleTimeoutMs,
+      close: `node scripts/burette-agent.mjs close --session-dir ${JSON.stringify(sessionDir)}`,
       fallback,
     },
   }, null, 2));
@@ -539,7 +559,7 @@ async function openBrowserAgentShell(file, options) {
   // The shell server only reads files under these roots (HTTP 403 otherwise);
   // act checks queued action paths against them before the shell sees them.
   const allowedRoots = [...browserDevFsAllowRoots(initialFile, sceneFiles ?? []), sessionDir];
-  if (options.sessionDir) await assertBrowserSessionDirectoryAvailable(sessionDir);
+  await assertBrowserSessionDirectoryAvailable(sessionDir);
   await mkdir(sessionDir, { recursive: true });
   await writeJsonFile(resolve(sessionDir, 'session.json'), {
     apiVersion,
@@ -601,15 +621,11 @@ async function openBrowserAgentShell(file, options) {
     });
     return;
   }
-  const logHandle = await openFile(logPath, 'a');
   let childExit = null;
-  const child = spawn('vp', ['dev', 'apps/desktop', '--host', host, '--port', String(port), '--strictPort', '--config', 'apps/desktop/vite.config.ts'], {
+  const child = await startAgentServer('vp', ['dev', 'apps/desktop', '--host', host, '--port', String(port), '--strictPort', '--config', 'apps/desktop/vite.config.ts'], {
     cwd: repoRoot,
-    env,
-    detached: true,
-    stdio: ['ignore', logHandle.fd, logHandle.fd],
+    env, logPath, sessionDir, idleTimeoutMs: options.idleTimeoutMs,
   });
-  await logHandle.close();
   child.once('error', (error) => {
     childExit = { error };
   });
@@ -625,10 +641,12 @@ async function openBrowserAgentShell(file, options) {
       label: 'Browser agent shell',
     });
   } catch (error) {
+    await stopAgentServer(child);
     if (options.recover && error?.buretteAgentError) throw error;
     if (error?.buretteAgentError) fail(error.code, error.message, 1, error.details);
     throw error;
   }
+  child.release();
   child.unref();
   console.log(JSON.stringify({
     ok: true,
@@ -645,6 +663,8 @@ async function openBrowserAgentShell(file, options) {
       logPath,
       initialPaths: [initialFile],
       processId: child.pid,
+      idleTimeoutMs: options.idleTimeoutMs,
+      close: `node scripts/burette-agent.mjs close --session-dir ${JSON.stringify(sessionDir)}`,
       browser: 'Codex in-app Browser',
       observe: `node scripts/burette-agent.mjs observe --session-dir ${JSON.stringify(sessionDir)}`,
       act: `node scripts/burette-agent.mjs act --session-dir ${JSON.stringify(sessionDir)} '<json-action>'`,
@@ -663,9 +683,8 @@ function defaultAgentShellDistDir() {
 }
 
 async function openPrebuiltBrowserAgentShell({ initialFile, sceneFiles, sessionDir, host, port, url, logPath, options }) {
-  const logHandle = await openFile(logPath, 'a');
   let childExit = null;
-  const child = spawn(process.execPath, [
+  const child = await startAgentServer(process.execPath, [
     agentShellServerScript,
     '--dist', agentShellDistDir,
     '--session-dir', sessionDir,
@@ -673,11 +692,8 @@ async function openPrebuiltBrowserAgentShell({ initialFile, sceneFiles, sessionD
     '--host', host,
     '--port', String(port),
   ], {
-    cwd: repoRoot,
-    detached: true,
-    stdio: ['ignore', logHandle.fd, logHandle.fd],
+    cwd: repoRoot, logPath, sessionDir, idleTimeoutMs: options.idleTimeoutMs,
   });
-  await logHandle.close();
   child.once('error', (error) => {
     childExit = { error };
   });
@@ -693,10 +709,12 @@ async function openPrebuiltBrowserAgentShell({ initialFile, sceneFiles, sessionD
       label: 'Browser agent shell',
     });
   } catch (error) {
+    await stopAgentServer(child);
     if (options.recover && error?.buretteAgentError) throw error;
     if (error?.buretteAgentError) fail(error.code, error.message, 1, error.details);
     throw error;
   }
+  child.release();
   child.unref();
   console.log(JSON.stringify({
     ok: true,
@@ -713,6 +731,8 @@ async function openPrebuiltBrowserAgentShell({ initialFile, sceneFiles, sessionD
       logPath,
       initialPaths: [initialFile],
       processId: child.pid,
+      idleTimeoutMs: options.idleTimeoutMs,
+      close: `node scripts/burette-agent.mjs close --session-dir ${JSON.stringify(sessionDir)}`,
       browser: 'Codex in-app Browser',
       observe: `node scripts/burette-agent.mjs observe --session-dir ${JSON.stringify(sessionDir)}`,
       act: `node scripts/burette-agent.mjs act --session-dir ${JSON.stringify(sessionDir)} '<json-action>'`,
@@ -756,7 +776,8 @@ async function waitForHttpReady(url, timeoutMs, options = {}) {
       );
     }
     try {
-      const response = await fetch(url);
+      const response = await fetchWithTimeout(url, Math.max(1, Math.min(1000, deadline - Date.now())));
+      await response.body?.cancel();
       if (response.ok) return;
     } catch (_) {
       // Vite is still booting.
@@ -1246,6 +1267,12 @@ async function assertSessionResponsive(sessionDir) {
 }
 
 async function assertBrowserSessionDirectoryAvailable(sessionDir) {
+  try {
+    await assertAgentServerAvailable(sessionDir);
+  } catch (error) {
+    if (error.code === 'SESSION_IN_USE') fail(error.code, error.message, 1, { sessionDir });
+    throw error;
+  }
   const session = await readJsonFile(resolve(sessionDir, 'session.json'), null);
   if (!session || session.mode !== 'browser-dev-shell' || typeof session.url !== 'string') return;
   const sessionUrl = requireLocalAgentUrl(session.url, 'INVALID_SESSION_URL', { sessionDir });

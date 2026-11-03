@@ -14,6 +14,8 @@ const runtimeScripts = [
   'amber_nc_preview_extract.py',
   'agent-preview.mjs',
   'agent-shell-server.mjs',
+  'agent-server-process.mjs',
+  'agent-server-idle.mjs',
   'model-runtime-path.mjs',
   'generated-files-root.mjs',
   'burette-agent.mjs',
@@ -52,13 +54,14 @@ const requiredPreviewAssets = [
   'rdkit/RDKit_minimal.wasm',
 ];
 
-await rm(shellDist, { recursive: true, force: true });
-await rm(previewWeb, { recursive: true, force: true });
 await mkdir(resolve(pluginRoot, 'scripts'), { recursive: true });
 
 for (const script of runtimeScripts) {
   await cp(resolve(repoRoot, 'scripts', script), resolve(pluginRoot, 'scripts', script));
 }
+if (process.argv.includes('--scripts-only')) process.exit(0);
+await rm(shellDist, { recursive: true, force: true });
+await rm(previewWeb, { recursive: true, force: true });
 const storyTemplateAssets = resolve(pluginRoot, 'assets', 'mvs-story-templates');
 await rm(storyTemplateAssets, { recursive: true, force: true });
 await cp(resolve(repoRoot, 'templates', 'mvs-story'), storyTemplateAssets, { recursive: true });
