@@ -124,7 +124,7 @@ function Fixture({ document }: { document: ViewerDocument }) {
 }
 const wait = async (predicate: () => boolean, label: string) => {
   for (let i = 0; i < 150 && !predicate(); i++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
-  assert.ok(predicate(), label);
+  assert.ok(predicate(), `${label}: ${(page.body.textContent ?? "").slice(0, 2000)}`);
 };
 const ready = (frame: HTMLIFrameElement, document: ViewerDocument) => dom.dispatchEvent(new dom.MessageEvent("message", {
   source: frame.contentWindow as unknown as typeof dom, data: { source: "burette-viewer", body: { type: "ready", renderer: "molstar", documentId: document.id, molstarStructureCount: 1 } },

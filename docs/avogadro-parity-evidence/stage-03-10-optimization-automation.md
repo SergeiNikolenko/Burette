@@ -296,6 +296,8 @@ ethanol export from the hydrogen scenario, with source SHA-256
   Final observation retained the source revision and text hash. MCP exports
   returned artifact paths and hashes without inline molecular content.
 - RDKit parsed both artifacts as nine atoms and eight bonds, retaining isomeric
-  SMILES, `SOURCE_NOTE` and `BURETTE_METADATA_V1_extra`. Picker reopen of these
-  specific MCP artifacts and live MCP cancellation/stale-source cases remain
-  untested. The earlier CLI artifact reopen evidence applies to its own files.
+  SMILES, `SOURCE_NOTE` and `BURETTE_METADATA_V1_extra`. Both exact MCP artifacts
+  subsequently reopened through New tab → Open file in the same packaged
+  browser. Each displayed a 3D view and Info reported nine atoms, eight bonds,
+  and both user property names, with the reserved identity field hidden.
+  Live MCP cancellation/stale-source cases remain untested.
