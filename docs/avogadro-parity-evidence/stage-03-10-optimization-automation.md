@@ -303,7 +303,28 @@ ethanol export from the hydrogen scenario, with source SHA-256
   Closing the original source tab changed both jobs from `succeeded/current` to
   `source_closed/source_closed`, removed their artifacts, and refused export
   with `SOURCE_CLOSED` for both default and `allowStale: true` requests.
-  Live MCP cancellation and changed-source cases remain untested.
+  Live MCP cancellation remains untested.
+
+### Coordinate artifacts after editing their open source
+
+The same packaged stdio MCP and prebuilt browser were tested against a
+picker-reopened edited gzip SDF on 2026-11-03. Its decompressed text SHA-256 was
+`d6dac03af4e57ee6d74c098460ccf75663bcdf19ec1628a8926acf91e89af472`.
+Both distance [0, 1] = 1.7 Å and origin 1 / axis atom 2 on +z completed and
+exported successfully. Edit → More actions → Remove hydrogens then changed
+the still-open source from nine atoms/eight bonds to three atoms/two bonds.
+Observation retained the document ID and reported a new source revision.
+
+For both jobs, actual MCP status returned `stale/stale`, default export returned
+`STALE_RESULT`, and `allowStale: true` exported the original artifact with its
+original source revision. Byte comparison against the exports saved before
+the edit matched exactly. The distance SHA-256 was
+`9b16a8ed821f9888538ba065a8dd6b861c85a3c4db4898b7ae21b1b57e788035`
+and the alignment SHA-256 was
+`6044616be00274774bbcafe442b041b6912175e26831d14110a73121c9eca55b`.
+The first repeated export correctly refused the occupied default output path
+with `OUTPUT_EXISTS`; moving the verified test exports aside allowed the
+retained-artifact comparison without overwriting them.
 
 ### Coordinate notebook against the live packaged browser
 

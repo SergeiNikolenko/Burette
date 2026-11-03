@@ -101,9 +101,21 @@ attempt, so the visible draft was not evidence of recovery.
   disk reads, decoder and storage failures, stale reads, and the download
   adapter. Independent gzip, XZ and Zstandard tools decode its written copies
   to the edited text, and a copy reopens in the harness.
-- Remaining browser scenarios include reopening a downloaded edited copy through
-  the real picker and browser reload of an IndexedDB import. Packaged and
-  native acceptance are separate.
+- In the prebuilt-static browser shell on 2026-11-03, ordinary picker import
+  of a 249-byte gzip ethanol SDF showed three atoms/two bonds. Edit → More
+  actions → Add hydrogens produced nine atoms/eight bonds. Download → Compressed
+  wrote a 778-byte gzip, decompressing to 1,404 bytes with SHA-256
+  `d6dac03af4e57ee6d74c098460ccf75663bcdf19ec1628a8926acf91e89af472`.
+  Opening that exact downloaded file through New tab → Open file produced a
+  separate document with a 3D view, nine atoms/eight bonds, `SOURCE_NOTE` and
+  `BURETTE_METADATA_V1_extra`. Independent Python gzip/RDKit checks confirmed
+  those atom/bond counts and zero displacement of all three heavy atoms.
+  Download → Original after editing retained the exact original gzip bytes,
+  SHA-256 `47794e604a5cfda4e3548f52fa30729a963129fdbc017cb8a49eba462f79290d`.
+- Remaining browser scenarios include drop, XZ/Zstandard edited-copy reopening
+  and reload of an IndexedDB import. The dirty-document reload attempt retained
+  the same top-level loader ID, so it provides no recovery evidence. Native
+  acceptance remains separate.
 
 ### Hydrogen source-pose preservation, 2026-11-03
 
