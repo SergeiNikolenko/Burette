@@ -110,6 +110,36 @@ Logs are `/tmp/burette-parity-polymer-package-build.log` and
 `/tmp/burette-parity-ci-js-packaged-polymer.log`. This validates the rebuilt
 package's contracts; the UI evidence above used the separately compiled shell.
 
+### Polymer refusal and recovery in the browser (2026-11-03)
+
+Continued the same localhost browser session on `4b220e685` (the served
+frontend remains the earlier `8c1ddefad` build, not the refreshed packaged
+bundle). Selected the original propylene tab and assigned C1/H6/C2/H5 through
+the four role buttons and visible atom clicks. With Selection mode already
+enabled and Picking level set to Residue, clicking C1 left Head armed. Changing
+Picking level to Atom made the same click assign C1. Automatic atom-level
+picking or an explanatory prompt remains a UX gap.
+
+With hydrogen ends, the default picked-H tacticity, 30 repeats and Relax
+geometry on, Preview displayed `Relaxation supports polymers of up to 256
+atoms.` Turning Relax geometry off and pressing Preview cleared the error and
+rendered a preview with `272 atoms`. With six isotactic repeats, hydrogen tail,
+relaxation off and tert-Butyl head, Preview displayed `The fragment overlaps
+the structure at this atom. Choose another attachment atom.` Changing the head
+to Methyl and pressing Preview cleared the error and rendered `59 atoms`.
+These were preview recovery checks; neither output was created or exported.
+
+The successful Methyl/Hydrogen preview was inspected in dark mode at 1280×720
+and 760×720. The dialog has vertical scrolling; focusing Create scrolls the
+footer into view. Shift+Tab from Close dialog focused Create with a visible
+focus ring at 760×720 (`/tmp/burette-polymer-recovery-760-dark.png`). After
+closing the dialog, switching to light mode and reopening it, the initial
+760×720 form was visible (`/tmp/burette-polymer-dialog-760-light.png`). The
+right-side dialog overlaps part of the source molecule at that width, so
+compact atom picking, the full light-mode build/recovery sequence, and the
+remaining keyboard/accessibility checks are still pending. The viewport
+override was reset after inspection.
+
 ## Live preparation automation with mixed stereochemistry (2026-11-03)
 
 The packaged Python Workbench client exercised `prepare_3d` through the live
