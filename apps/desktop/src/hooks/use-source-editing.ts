@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm as confirmDialog, message as messageDialog } from "@tauri-apps/plugin-dialog";
-import type { SourceEditingContextValue, SourceEditingView } from "../lib/source-editing/context";
+import type { SourceEditingContextValue, SourceEditingView, SourceEditingTransfer } from "../lib/source-editing/context";
+import { captureSourceEditorView } from "../lib/source-editing/view-state";
+import { useMoleculeStore } from "../stores/molecule-store";
 import { SourcePreviewAdapter } from "../lib/source-preview/adapter";
 import type { SourcePreviewCandidate, SourcePreviewIdentity } from "../lib/source-preview/types";
 import { openBrowserDevTextDocument } from "../lib/browser-dev-documents";
@@ -384,6 +386,12 @@ export function useSourceEditingController({
         },
       });
       const applySavedRevision = (revision: FileRevision) => {
+        const store = useMoleculeStore.getState();
+        const saved = store.documents.find(candidate => candidate.id === document.id);
+        if (saved?.recoveryPath) {
+          const { recoveryPath: _recoveryPath, ...currentSource } = saved;
+          store.replaceDocument(saved.id, currentSource);
+        }
         updateSession(document.path, (current) => ({
           ...current,
           expectedRevision: revision,
@@ -518,7 +526,7 @@ export function useSourceEditingController({
     for (const adapter of adaptersRef.current.values()) adapter.dispose();
   }, []);
 
-  const closeDocuments = useCallback(async (documentIds: string[]) => {
+  const closeDocuments = useCallback(async (documentIds: string[], transferred = false) => {
     const wanted = new Set(documentIds);
     if (!wanted.size) return true;
     if (documentIds.some(id => closingDocumentIdsRef.current.has(id))) return false;
@@ -538,7 +546,7 @@ export function useSourceEditingController({
     for (const id of wanted) closingDocumentIdsRef.current.add(id);
     try {
       const dirtyCount = targets.filter((session) => session.dirty).length;
-      if (dirtyCount > 0) {
+      if (dirtyCount > 0 && !transferred) {
         const text = dirtyCount === 1
           ? "Discard the unsaved source edit and close this document?"
           : `Discard unsaved source edits in ${dirtyCount} documents and close them?`;
@@ -574,6 +582,34 @@ export function useSourceEditingController({
     }
   }, [clearStagingWindows, commitSessions, pushErrorStatus]);
 
+  const beginTransfer = useCallback((document: ViewerDocument): SourceEditingTransfer | null => {
+    const session = sessionsRef.current[document.path];
+    if (closingDocumentIdsRef.current.has(document.id) || openingSourceTokensRef.current.has(document.id)
+      || session?.saving || savingPathsRef.current.has(document.path)) throw new Error("Wait for source editing to finish before moving this tab.");
+    closingDocumentIdsRef.current.add(document.id);
+    if (!session) return null;
+    return { path: session.path, content: session.content, baseContent: session.baseContent,
+      viewState: captureSourceEditorView(session.path),
+      expectedRevision: session.expectedRevision ? { ...session.expectedRevision } : null };
+  }, []);
+
+  const finishTransfer = useCallback(async (document: ViewerDocument, committed: boolean) => {
+    if (!closingDocumentIdsRef.current.delete(document.id)) return false;
+    return committed ? closeDocuments([document.id], true) : true;
+  }, [closeDocuments]);
+
+  const receiveTransfer = useCallback(async (document: ViewerDocument, snapshot: SourceEditingTransfer) => {
+    if (snapshot.path !== document.path || sessionsRef.current[document.path]) throw new Error("This source is already being edited in the receiving window.");
+    await beginEditing(document);
+    const session = sessionsRef.current[document.path];
+    if (!session) throw new Error("The receiving window could not open source editing.");
+    updateSession(document.path, current => ({ ...current, content: snapshot.content,
+      viewState: snapshot.viewState,
+      baseContent: snapshot.baseContent, expectedRevision: snapshot.expectedRevision,
+      dirty: snapshot.content !== snapshot.baseContent, revision: current.revision + 1,
+      previewState: "manual", diagnostic: null }));
+  }, [beginEditing, updateSession]);
+
   return useMemo(() => ({
     sessionForDocument: (document: ViewerDocument | null) => document ? sessions[document.path] ?? null : null,
     beginEditing,
@@ -585,5 +621,6 @@ export function useSourceEditingController({
     confirmCloseWindow,
     getWindowDirtySnapshot,
     hasUnsavedOrSavingSessions,
-  }), [beginEditing, closeDocuments, confirmCloseWindow, getWindowDirtySnapshot, hasUnsavedOrSavingSessions, preparePreview, save, sessions, stagingLoaded, updateDraft]);
+    beginTransfer, finishTransfer, receiveTransfer,
+  }), [beginEditing, closeDocuments, confirmCloseWindow, getWindowDirtySnapshot, hasUnsavedOrSavingSessions, preparePreview, save, sessions, stagingLoaded, updateDraft, beginTransfer, finishTransfer, receiveTransfer]);
 }

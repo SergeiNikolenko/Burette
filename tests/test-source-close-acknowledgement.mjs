@@ -178,4 +178,62 @@ completeOpen({ handleId: "late-handle", content: "ATOM late\n", previewMode: "li
 await opening;
 assert.deepEqual(sessions, {});
 assert.deepEqual(calls.at(-1), ["close_source_edit_session", { request: { handleId: "late-handle" } }]);
+// Transferring a source draft freezes edits/save until the destination accepts,
+// preserves the original disk revision, and never asks to discard on commit.
+openSource = async () => ({ handleId: "transfer-handle", content: "ATOM original\n", previewMode: "live",
+  revision: { modifiedAt: 0, byteCount: 14, contentHash: "original" } });
+await controller.beginEditing(document);
+controller.updateDraft(document, "ATOM transferred draft\n");
+const transfer = controller.beginTransfer(document);
+assert.equal(controller.getWindowDirtySnapshot().closeTransitionActive, true);
+const beforeTransferCalls = calls.length;
+controller.updateDraft(document, "must not change during transfer");
+await controller.save(document);
+assert.equal(calls.length, beforeTransferCalls);
+assert.throws(() => controller.beginTransfer(document), /Wait for source editing/);
+assert.equal(await controller.closeDocuments(["unrelated-document"]), true,
+  "moving one source does not block closing unrelated documents");
+assert.equal(controller.getWindowDirtySnapshot().closeTransitionActive, true);
+assert.equal(await controller.finishTransfer(document, false), true);
+assert.equal(sessions[document.path].content, transfer.content);
+assert.equal(sessions[document.path].dirty, true);
+
+const receiver = useSourceEditingController({ activeDocument: document, preferences: {},
+  pushErrorStatus: error => errors.push(error), setDockOpen() {}, setDockActiveTab() {},
+});
+openSource = async () => ({ handleId: "receiver-handle", content: "ATOM externally changed\n", previewMode: "live",
+  revision: { modifiedAt: 10, byteCount: 24, contentHash: "external" } });
+await receiver.receiveTransfer(document, transfer);
+assert.equal(sessions[document.path].dirty, true);
+assert.equal(sessions[document.path].content, transfer.content);
+assert.equal(sessions[document.path].baseContent, transfer.baseContent);
+assert.deepEqual(sessions[document.path].expectedRevision, transfer.expectedRevision,
+  "external disk changes remain a conflict, not an implicitly accepted revision");
+await assert.rejects(receiver.receiveTransfer(document, transfer), /already being edited/);
+assert.deepEqual(receiver.beginTransfer(document), transfer);
+await receiver.finishTransfer(document, false);
+
+controller.beginTransfer(document);
+confirm = async () => { throw new Error("a transfer must not ask to discard"); };
+const dialogCount = dialogs.length;
+assert.equal(await controller.finishTransfer(document, true), true);
+assert.equal(dialogs.length, dialogCount);
+assert.deepEqual(sessions, {});
+assert.equal(await controller.finishTransfer(document, true), false, "a consumed transfer cannot release twice");
+
+const recoveryPath = "/private/popout-scenes/11111111-1111-1111-1111-111111111111.molx";
+useMoleculeStore.getState().setDocuments([{ ...document, recoveryPath }]);
+useMoleculeStore.setState(state => ({ tabs: state.tabs.map(tab => ({ ...tab, back: [tab.location], forward: [tab.location] })) }));
+await controller.beginEditing(document);
+controller.updateDraft(document, "ATOM save transferred source\n");
+confirm = async () => true;
+saveSource = async () => { throw new Error("disk full"); };
+await controller.save(document);
+assert.equal(useMoleculeStore.getState().documents[0].recoveryPath, recoveryPath, "failed save keeps recovery");
+saveSource = async () => ({ revision: { modifiedAt: 20, byteCount: 29, contentHash: "saved" } });
+await controller.save(document);
+assert.equal(useMoleculeStore.getState().documents[0].recoveryPath, undefined);
+for (const tab of useMoleculeStore.getState().tabs) {
+  for (const location of [tab.location, ...tab.back, ...tab.forward]) assert.equal(location.recoveryPath, undefined);
+}
 console.log("source close acknowledgement tests passed");
