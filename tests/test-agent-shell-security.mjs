@@ -54,7 +54,7 @@ assert.throws(
   /Could not parse XYZ coordinates\.; viewer readiness was withheld/,
 );
 assert.equal(readinessContext.assertMolstarLoadReady({ structureCount: 0 }, { kind: 'volume' }), undefined);
-assert.match(viewerSource, /await withTimeout\(\s*loadPreparedStructure\(viewer, prepared\)[\s\S]*?assertMolstarLoadReady\(viewer, prepared\);\s*if \(config\.demoSnapshotUrl\)/);
+assert.match(viewerSource, /await withTimeout\(\s*loadPreparedStructure\(viewer, prepared\)[\s\S]*?assertMolstarLoadReady\(viewer, prepared\);\s*applyDefaultUnitCellVisibility\(viewer, prepared\);\s*if \(config\.demoSnapshotUrl\)/);
 const readinessCall = viewerSource.indexOf('    assertMolstarLoadReady(viewer, prepared);', viewerSource.indexOf('async function startMolstar'));
 const agentReady = viewerSource.indexOf("postHostMessage({ type: 'agentReady'", readinessCall);
 const sceneReady = viewerSource.indexOf('window.BuretteNativeSceneReady();', readinessCall);
