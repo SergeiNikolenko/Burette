@@ -51,8 +51,9 @@
   // Keep the user's zoom and sheet geometry when docks resize the viewport.
   // Pin responsive item sizes once; move layout centers by the viewport delta.
   function observeSheetViewport(root, initialViewport) {
-    let width = initialViewport?.width || root.clientWidth;
-    let height = initialViewport?.height || root.clientHeight;
+    const initial = viewport(initialViewport);
+    let width = initial?.width || root.clientWidth;
+    let height = initial?.height || root.clientHeight;
     const pinned = new WeakSet();
     const resize = () => {
       const nextWidth = root.clientWidth, nextHeight = root.clientHeight;

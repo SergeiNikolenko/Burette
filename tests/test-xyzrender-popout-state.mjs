@@ -34,3 +34,44 @@ assert.deepEqual([...sheet.children].map(node => ({
   angles: JSON.parse(node.dataset.buretXyzrenderOrientationAngles), svg: node.innerHTML,
 })), snapshot.items.map(item => ({ source: item, geometry: ['left', 'top', 'width', 'height'].map(key => `${item.geometry[key]}px`), rotation: `${item.geometry.rotation}`, selected: item.selected, zIndex: item.zIndex, preset: item.preset, controls: item.controls, regions: item.controls.regions, vdwAtoms: item.controls.vdwAtoms, orientation: item.orientationRef, base: item.orientationBaseRef, angles: item.angles, svg: item.svg })));
 console.log('Composed sheet restores sources, exact SVG appearance, item transforms/styles/orientation/selection and viewport.');
+
+// A transferred sheet's geometry belongs to its own viewport, not an older
+// renderer checkpoint. Reopening it must not apply the old resize delta again.
+const viewSource = readFileSync(new URL('../PreviewExtension/Web/renderer-view-state.js', import.meta.url), 'utf8');
+new Function('window', viewSource)(window);
+const initStart = source.indexOf('    const viewportCleanup =', start);
+const initEnd = source.indexOf('    externalArtifactViewSnapshot =', initStart);
+const initializeViewport = new Function('window', 'root', 'savedView', 'restoredSheet', 'sheetCheckpointApplied', source.slice(initStart, initEnd));
+const placed = { style: { left: '358px', top: '114px', width: '860px', height: '490px' } };
+for (const [key, style] of Object.entries({ offsetLeft: 'left', offsetTop: 'top', offsetWidth: 'width', offsetHeight: 'height' })) {
+  Object.defineProperty(placed, key, { get: () => parseFloat(placed.style[style]) });
+}
+const surface = { clientWidth: 947, clientHeight: 473, querySelectorAll: () => [placed] };
+const oldView = { viewport: { width: 1179, height: 719 } };
+const transferred = { view: { viewport: { width: 947, height: 473 } } };
+for (let reopen = 0; reopen < 3; reopen++) {
+  initializeViewport(window, surface, oldView, transferred, true);
+  assert.equal(placed.style.left, '358px', 'reopening does not accumulate horizontal displacement');
+  assert.equal(placed.style.top, '114px', 'reopening does not accumulate vertical displacement');
+}
+surface.clientWidth = 1179; surface.clientHeight = 719;
+initializeViewport(window, surface, oldView, transferred, true);
+assert.equal(placed.style.left, '474px', 'a destination size change applies exactly once');
+assert.equal(placed.style.top, '237px');
+surface.clientWidth = 947; surface.clientHeight = 473;
+initializeViewport(window, surface, oldView, null, false);
+assert.equal(placed.style.left, '358px', 'ordinary renderer restores retain their viewport baseline');
+assert.equal(placed.style.top, '114px');
+initializeViewport(window, surface, oldView, { view: {} }, true);
+assert.equal(placed.style.left, '358px', 'legacy sheets do not borrow unrelated viewport history');
+console.log('Sheet restore uses the viewport paired with its item geometry, without repeated resize drift.');
+for (const invalidViewport of [{ width: '1179', height: 719 }, { width: Infinity, height: 719 }, { width: -1, height: 719 }, { width: 1000000, height: 719 }]) {
+  initializeViewport(window, surface, oldView, { view: { viewport: invalidViewport } }, true);
+  assert.equal(placed.style.left, '358px', 'invalid checkpoint dimensions cannot displace the sheet');
+  assert.equal(placed.style.top, '114px');
+}
+const snapshotEnd = source.indexOf('\n\n    // Camera motion', initEnd);
+const captureView = new Function('root', 'baseItem', `let scale=1,translateX=0,translateY=0,externalArtifactViewSnapshot;\n${source.slice(initEnd, snapshotEnd)}\nreturn externalArtifactViewSnapshot();`);
+assert.equal(captureView(surface, { isConnected: false }).item, null, 'removed base item cannot contribute zero geometry');
+assert.deepEqual(captureView(surface, { ...placed, isConnected: true, offsetLeft: 358, offsetTop: 114, offsetWidth: 860, offsetHeight: 490, dataset: { rotation: '25' } }).item,
+  { left: 358, top: 114, width: 860, height: 490, rotation: 25 }, 'live base item geometry still persists');
