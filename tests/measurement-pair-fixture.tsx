@@ -69,6 +69,7 @@ export async function fixture(format: "sdf" | "mol" = "sdf", useAdapter: typeof 
   let writeMode: "normal" | "throw" | "noop" = "normal";
   let afterWrite: (() => void) | undefined;
   const dockTabs: string[] = [];
+  const draftOptions: unknown[] = [];
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   function Probe() { graph = useAdapter(doc); focused = useFocusedGraphDraft(doc); return null; }
   function Fixture() {
@@ -77,6 +78,7 @@ export async function fixture(format: "sdf" | "mol" = "sdf", useAdapter: typeof 
     return <SourceEditingProvider value={{ ...controller, updateDraft(document, content, options) {
       if (writeMode === "throw") throw new Error("Draft write rejected.");
       if (writeMode === "noop") return;
+      draftOptions.push(options);
       controller.updateDraft(document, content, options); if (afterWrite) queueMicrotask(afterWrite);
     } }}><Probe />{render?.(doc)}</SourceEditingProvider>;
   }
@@ -87,7 +89,7 @@ export async function fixture(format: "sdf" | "mol" = "sdf", useAdapter: typeof 
   await act(async () => root.render(<Fixture />)); await settle(() => !graph.loading);
   expect(graph.error).toBeNull(); expect(graph.history).not.toBeNull();
   expect(focused.history).toBe(graph.history);
-  return { doc, host, dockTabs, get controller() { return controller; }, get graph() { return graph; }, get focused() { return focused; }, settle,
+  return { doc, host, dockTabs, draftOptions, get controller() { return controller; }, get graph() { return graph; }, get focused() { return focused; }, settle,
     setWriteMode(mode: typeof writeMode) { writeMode = mode; }, afterWrite(probe: () => void) { afterWrite = probe; },
     edit(label: string) {
       const from = graph.history!.current, patch = { conformerLabel: label };

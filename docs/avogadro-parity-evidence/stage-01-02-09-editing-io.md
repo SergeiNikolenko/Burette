@@ -246,3 +246,42 @@ panel suites (13 tests both uncompiled and React-compiled), and
 `test:science-sdf-molx-flow` (6 codec/export tests and one compiled scene flow).
 This establishes the Edit-panel save route for this restored molecule. Full
 accessibility, topology-edit acceptance and native scene saving remain open.
+
+### Generate 3D camera framing and scene round trip (2026-11-03)
+
+The preceding offscreen-molecule observation originated before scene restoration.
+The old MOLX already stored a camera target of
+`[1.483960696, -0.310107396, -0.089953089]` for the original 2D depiction,
+while its generated 3D molecule occupied a different coordinate frame.
+Graph edits always requested camera retention, including Generate 3D.
+
+Generate 3D now requests a fitted preview. Its history snapshot records that
+transition policy, so Undo and Redo fit the destination geometry too. Subsequent
+coordinate edits and their Undo/Redo retain the current camera. The existing
+source lifetime, revision, topology and publication guards still govern writes.
+
+In a freshly launched `prebuilt-static` browser shell, the same unspecified
+alanine MOL generated 13 atoms and 12 bonds, with MMFF94/BFGS converging from
+39.08 to 22.46 kcal/mol in 136 steps. The molecule remained fully visible after
+generation, Undo to six atoms, and keyboard Redo. Scene save through the tab
+menu, picker reopening, and keyboard scene resave passed. Visual checks covered
+dark 1280×720, light 760×720 and the restored scene at dark 320×720. Browser
+error logs were empty. Theme and viewport emulation were reset.
+
+Independent RDKit parsing and SHA-256 comparison found the exact same MOL bytes
+in the old archive, new archive and reopened/resaved archive:
+`0afe706f2c15ecbf0693f7af5925b7cd4f209155645033f8f43da29050e20f1d`.
+The unspecified tetrahedral center remained `[(1, '?')]`. The new camera target
+was `[-2.951804623, -2.480567615, -0.876522918]`; reopening and resaving retained
+its target and up vector. Local evidence is in
+`/tmp/burette-3d-camera-oracle.json`, `/tmp/burette-3d-camera-generated.png`,
+`/tmp/burette-3d-camera-undo.png`, `/tmp/burette-3d-camera-reopened-light.png`,
+and `/tmp/burette-3d-camera-dark-320.png`.
+
+Typecheck, agent-shell build, plugin checks, structure-edit panel tests
+(13 ordinary and 13 React-compiled), and the compiled graph adapter tests
+(3 passed, 59 assertions), and `test:science-sdf-molx-flow` (6 codec/export
+tests and one compiled scene flow with 85 assertions) passed. The new adapter regression covers the
+generation transition and subsequent coordinate-edit Undo/Redo camera policies.
+Existing archives retain their saved camera, including old offscreen views.
+Full accessibility, native runtime and the broader editing matrix remain open.

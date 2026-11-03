@@ -3,6 +3,30 @@ import { act } from "react";
 import { fixture } from "./measurement-pair-fixture";
 const { useGraphDraft } = await import("../apps/desktop/src/components/workbench/use-graph-draft");
 
+test("Generate 3D refits its pose through Undo and Redo while coordinate edits retain the camera", async () => {
+  const view = await fixture("sdf", useGraphDraft);
+  try {
+    const original = view.graph.history!.current;
+    expect(await view.apply({ kind: "prepare-3d" })).not.toBeNull();
+    const generated = view.graph.history!.current;
+    expect(view.draftOptions.at(-1)).toEqual({ view: "fit" });
+    await act(async () => view.graph.undo());
+    expect(view.graph.history!.current).toBe(original);
+    expect(view.draftOptions.at(-1)).toEqual({ view: "fit" });
+    await act(async () => view.graph.redo());
+    expect(view.graph.history!.current).toBe(generated);
+    expect(view.draftOptions.at(-1)).toEqual({ view: "fit" });
+    expect(await view.apply({ kind: "positions", from: generated,
+      coordinates: generated.structure.atoms.map(atom => [atom.x + 0.01, atom.y, atom.z]) })).not.toBeNull();
+    expect(view.draftOptions.at(-1)).toEqual({ view: "keep" });
+    await act(async () => view.graph.undo());
+    expect(view.graph.history!.current).toBe(generated);
+    expect(view.draftOptions.at(-1)).toEqual({ view: "keep" });
+    await act(async () => view.graph.redo());
+    expect(view.draftOptions.at(-1)).toEqual({ view: "keep" });
+  } finally { await view.close(); }
+});
+
 for (const [method, label] of [["bfgs", "BFGS"], ["lbfgs", "L-BFGS"]] as const) test(`the full adapter keeps add-H and ${label} optimization in the same published source history`, async () => {
   const view = await fixture("sdf", useGraphDraft);
   try {

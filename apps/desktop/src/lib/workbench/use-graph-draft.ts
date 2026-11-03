@@ -21,7 +21,10 @@ export type GraphOutcome = {
   /** Step geometries with physical energies; absent or two endpoint frames when the minimizer exposes no steps. */
   frames?: { atoms: MolecularAtom[]; energy: number }[]; frameSampling?: "steps" | "endpoints";
 };
-export type GraphSnapshot = { structure: GraphEditResult; annotations: AtomAnnotation[]; text: string; outcome: GraphOutcome | null; metadata: GraphMetadata | null; atomIds: readonly string[] | null };
+export type GraphSnapshot = { structure: GraphEditResult; annotations: AtomAnnotation[]; text: string; outcome: GraphOutcome | null; metadata: GraphMetadata | null; atomIds: readonly string[] | null;
+  /** Camera policy for the transition into this snapshot, also used when undoing it. */
+  view?: "fit";
+};
 // `origin` is the source the history started from; its title and SDF data items
 // carry into every draft. `current.text` is what the draft holds for this snapshot.
 export type GraphHistory = { origin: string; current: GraphSnapshot; undo: GraphSnapshot[]; redo: GraphSnapshot[] };
@@ -111,7 +114,7 @@ async function compute(operation: Exclude<GraphOperation, { kind: "metadata" }>,
 /**
  * The undoable graph draft of an SDF/MOL document. Every operation computes the
  * next structure in a worker, writes it into the document's own draft at the
- * current camera, and becomes one Undo step; a rejected operation leaves the
+ * current camera (refitting generated 3D poses), and becomes one Undo step; a rejected operation leaves the
  * draft untouched. Changes to the source made elsewhere start a new history.
  */
 export function useGraphDraft(document: ViewerDocument | null, computeAdvanced?: GraphAdvancedCompute, startEditing?: (document: ViewerDocument) => void | Promise<void>) {
@@ -132,7 +135,7 @@ export function useGraphDraft(document: ViewerDocument | null, computeAdvanced?:
     void load(key, document, sourceText);
   }, [key, sourceText, entry.history?.current.text, entry.busy, entry.owner, logical]);
 
-  const writeDraft = async (text: string, previous: GraphSnapshot, lifetime: SourceEditingOperation, signal?: AbortSignal, validateBeforeWrite?: () => Promise<void>, publishPair?: () => void) => {
+  const writeDraft = async (text: string, previous: GraphSnapshot, lifetime: SourceEditingOperation, signal?: AbortSignal, validateBeforeWrite?: () => Promise<void>, publishPair?: () => void, view: "keep" | "fit" = "keep") => {
     signal?.throwIfAborted();
     if (!lifetime.isCurrent()) throw new DOMException("The document closed while editing.", "AbortError");
     if (!sourceEditing || !document) throw new Error("This file can’t be edited here.");
@@ -150,7 +153,7 @@ export function useGraphDraft(document: ViewerDocument | null, computeAdvanced?:
     if (!latest || latest.documentId !== document.id || latest.content !== previous.text) throw new Error("The source changed while editing. Try again.");
     if (!latest.editable) throw new Error("This source is read-only.");
     if (sourceExtension(document) === "mol" && graphAtomIds(document.id, previous.text, previous.structure.atoms.length) !== previous.atomIds) throw new Error("The source identity changed while editing. Try again.");
-    sourceEditing.updateDraft(document, text, { view: "keep" });
+    sourceEditing.updateDraft(document, text, { view });
     // The controller commits synchronously by replacing its live session object.
     // A thrown or ignored write cannot authorize an uncommitted source, including
     // a byte-identical edit. Do not await between this acknowledgement and publish.
@@ -191,6 +194,7 @@ export function useGraphDraft(document: ViewerDocument | null, computeAdvanced?:
       const atomIds = previous.metadata ? null : operation.kind === "positions" || operation.kind === "optimize" ? previous.atomIds : remapAtomIds(previous.atomIds, result.structure.sourceAtomIndices, previous.structure.atoms.length, result.structure.atoms.length);
       if (atomIds && atomIds.length !== result.structure.atoms.length) throw new Error("The graph edit has incomplete atom provenance.");
       const next = snapshot(result.structure, graphDraftText(history.origin, sourceExtension(document!), result.structure.molfile, metadata), result.outcome, metadata, atomIds);
+      if (operation.kind === "prepare-3d") next.view = "fit";
       // An atom reorder keeps the graph; measurements follow their atoms to the new rows.
       const reorder = operation.kind === "edits" && operation.edits.every(edit => edit.kind === "reorder-atoms");
       const pair = (operation.kind === "positions" || operation.kind === "metadata" || reorder) && ["sdf", "sd", "mol"].includes(sourceExtension(document))
@@ -199,7 +203,7 @@ export function useGraphDraft(document: ViewerDocument | null, computeAdvanced?:
         () => {
           if (pair) publishMeasurementSourcePair(document.id, pair);
           if (sourceExtension(document) === "mol") rememberGraphAtomIds(document.id, next.text, next.atomIds);
-        });
+        }, next.view);
       if (!lifetime.isCurrent()) throw new DOMException("The source lifetime changed while editing.", "AbortError");
       update(key, { history: { origin: history.origin, current: next, undo: [...history.undo, history.current].slice(-HISTORY_LIMIT), redo: [] }, busy: false, controller: null });
       // Publish the new snapshot before clearing indices of the previous scene.
@@ -228,7 +232,7 @@ export function useGraphDraft(document: ViewerDocument | null, computeAdvanced?:
     try {
       await writeDraft(target.text, history.current, lifetime, undefined, undefined, () => {
         if (sourceExtension(document) === "mol") rememberGraphAtomIds(document.id, target.text, target.atomIds);
-      });
+      }, (direction === "undo" ? history.current : target).view);
       if (!lifetime.isCurrent()) throw new DOMException("The source lifetime changed while editing.", "AbortError");
       update(key, { busy: false, history: direction === "undo"
         ? { origin: history.origin, current: target, undo: history.undo.slice(0, -1), redo: [history.current, ...history.redo] }

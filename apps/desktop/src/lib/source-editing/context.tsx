@@ -49,7 +49,7 @@ export type PreparedGeometryTopology = Readonly<{
 }>;
 
 /** Acknowledged geometry edits avoid staging; graph edits may retain the current camera. */
-export type DraftUpdateOptions = { previewApplied: true; geometryBinding?: GeometryBinding } | { view: "keep"; geometryBinding?: GeometryBinding; topology?: PreparedGeometryTopology };
+export type DraftUpdateOptions = { previewApplied: true; geometryBinding?: GeometryBinding } | { view: "keep" | "fit"; geometryBinding?: GeometryBinding; topology?: PreparedGeometryTopology };
 
 /** A pending edit retains its document/source lifetime until release or successful close. */
 /** Reuse the editor baseline captured before its transient Geometry preview. */

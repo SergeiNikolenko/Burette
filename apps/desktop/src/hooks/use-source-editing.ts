@@ -482,7 +482,7 @@ export function useSourceEditingController({
     return topologyTransfer.prepare(document, target, { ...binding, target: frameTarget }, current);
   }, [topologyTransfer]);
 
-  const preparePreview = useCallback(async (document: ViewerDocument, content?: string, revision?: number, view?: "keep") => {
+  const preparePreview = useCallback(async (document: ViewerDocument, content?: string, revision?: number, view?: "keep" | "fit") => {
     const session = sessionsRef.current[document.path];
     const adapter = adaptersRef.current.get(document.path);
     if (!session || session.documentId !== document.id || !ownsSource(session) || !adapter) return;
@@ -544,7 +544,7 @@ export function useSourceEditingController({
           lease: session.geometryBinding.lease, notify: false }, 15_000, topologyRequest.controller.signal, { target: session.geometryBinding.target });
         if (!matchesTarget() || topologyRequest.controller.signal.aborted) return;
       }
-      let reloadOptions: { rendererViewState: string | null } | undefined;
+      let reloadOptions: { rendererViewState: string | null } | undefined = view === "fit" ? { rendererViewState: null } : undefined;
       if (topologyRequest) {
         if (!session.topology || !topologyTransfer.owns(session.topology)) throw new Error("Prepare the current scene before changing atoms.");
         await session.topology.validate(matchesTarget, topologyRequest.controller.signal);
