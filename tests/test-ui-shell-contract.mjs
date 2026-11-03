@@ -8428,7 +8428,7 @@ assert.match(gridViewer, /\.buret-card\[data-index\], \.buret-grid-table-row\[da
 assert.match(gridViewer, /postGridRowHover\(index, cfg\);\s*postChemicalSpaceHover\(index\);/);
 assert.match(gridViewer, /buildUI\(cfg\);\s*post\('gridViewModeReady', '', \{\}\);\s*installGridTextFocusListeners\(\);\s*installRowHoverPreview\(cfg\);/);
 assert.match(gridViewer, /function updateGridToolbarCondensed\(\) \{[\s\S]*classList\.toggle\('buret-grid-controls-condensed', scrollTop\(\) > 24\);/);
-assert.match(gridViewer, /function handleGridScroll\(cfg\) \{\s*updateGridToolbarCondensed\(\);/);
+assert.match(gridViewer, /function handleGridScroll\(cfg\) \{\s*scheduleGridPresentation\(\);\s*updateGridToolbarCondensed\(\);/);
 assert.match(gridCss, /#grid-controls\.buret-grid-controls-condensed \.buret-grid-toolbar \{[^}]*padding: 8px;/s);
 assert.match(gridCss, /#grid-controls\.buret-grid-controls-condensed \.buret-load-status \{[^}]*display: none;/s);
 assert.match(gridCss, /#grid-controls\.buret-grid-controls-condensed \.buret-toolbar-row-main \{[^}]*display: none;/s);

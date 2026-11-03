@@ -32,6 +32,68 @@ function state() {
   };
 }
 const original = state();
+
+// Run the actual restart codec and coordinator against an asynchronous paged
+// collection. Unlike a window transfer, it must fetch source rows anew.
+function presentationRuntime(target, hooks = {}) {
+  const events = [];
+  const api = new Function('state', 'events', 'hooks', `
+    const document = { getElementById: () => null };
+    const window = { scrollTo: value => events.push(['scroll', value.top]) };
+    const config = () => ({}), effectiveMolecularGrid = () => true;
+    const scrollTop = () => 12340;
+    const refreshGridControls = () => {}, applyGridPreferences = () => {};
+    const setStatus = message => { throw new Error(message); };
+    const post = (_type, _text, payload) => events.push(['publish', payload]);
+    const refresh = async () => { state.dataToken = 1; state.visibleCount = 240; state.rows = Array.from({length: 240}); };
+    const hasMoreRows = () => state.rows.length < 1800;
+    const loadMoreRemote = async () => {
+      events.push(['load']); state.rows.push(...Array.from({length: 240})); state.visibleCount += 240;
+      await hooks.onLoad?.(state);
+    };
+    const render = async (_cfg, value) => { state.visibleCount = Math.min(state.rows.length, value.visibleCount); events.push(['render', state.visibleCount]); };
+    const renderVirtualWindow = async () => events.push(['visible']);
+    ${['gridWindowViewKeys', 'gridPresentationKeys', 'captureGridPresentation', 'readGridPresentation', 'publishGridPresentation', 'restoreGridPresentation'].map(body).join('\n')}
+    return { capture: captureGridPresentation, read: readGridPresentation, restore: restoreGridPresentation };
+  `)(target, events, hooks);
+  return { ...api, events };
+}
+const presentation = { ...state(), visibleCount: 960, selected: new Set([768]),
+  tableColumnWidths: new Map([['name', 180]]),
+  showProperties: true, tableScrollLeft: 140, xyzrenderPreset: null,
+  xyzrenderUse3DCoords: true, rdkitUseInputCoords: false, hydrogenDisplay: 'none',
+  cardRenderer: 'rdkit', cardMin: null, chemicalSpaceFilterActive: false, selectionAnchorIndex: 768,
+  gridPresentationReady: true, hostViewModeSession: true, remoteMode: true };
+const savedPresentation = presentationRuntime(presentation).capture();
+assert.ok(!savedPresentation.includes('rowPatches') && !savedPresentation.includes('undoStack'));
+const restoredPresentation = { ...presentation, query: '', selected: new Set(), tableHiddenColumns: new Set() };
+const restart = presentationRuntime(restoredPresentation);
+await restart.restore(savedPresentation);
+assert.equal(restoredPresentation.visibleCount, 960);
+assert.deepEqual([...restoredPresentation.selected], [768]);
+assert.equal(restoredPresentation.query, 'Edited');
+assert.deepEqual([...restoredPresentation.tableHiddenColumns], ['index']);
+assert.deepEqual([...restoredPresentation.tableColumnWidths], [['name', 180]]);
+assert.deepEqual(restart.events.map(event => event[0]), ['load', 'load', 'load', 'render', 'scroll', 'visible', 'publish']);
+assert.equal(restoredPresentation.restoringGridPresentation, false);
+for (const invalid of ['{', 'x'.repeat(32769), JSON.stringify({ ...JSON.parse(savedPresentation), scrollY: -1 }),
+  JSON.stringify({ ...JSON.parse(savedPresentation), selected: ['768'] })]) {
+  assert.equal(restart.read(invalid), null);
+}
+const interrupted = presentationRuntime({ ...presentation }, { onLoad: target => { target.gridPresentationGeneration = 1; } });
+await interrupted.restore(savedPresentation);
+assert.ok(!interrupted.events.some(event => event[0] === 'scroll'), 'user input cancels delayed scrolling');
+let initialize;
+const pending = { ...presentation, gridPresentationInitialization: new Promise(resolve => { initialize = resolve; }) };
+const delayed = presentationRuntime(pending);
+const restoring = delayed.restore(savedPresentation);
+assert.deepEqual(delayed.events, [], 'no fetching before initialization settles');
+pending.gridPresentationGeneration = 1;
+initialize();
+await restoring;
+assert.deepEqual(delayed.events.map(event => event[0]), ['publish'], 'input before initialization prevents stale restoration');
+console.log('Grid restart presentation: paging, selection, scroll, bounds and cancellation passed.');
+
 const from = runtime(original);
 original.undoStack.push({ label: "Edit score", snapshot: from.snapshot() });
 original.redoStack.push({ label: "Remove row", snapshot: from.snapshot() });
