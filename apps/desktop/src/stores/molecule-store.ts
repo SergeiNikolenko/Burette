@@ -190,7 +190,10 @@ function replaceFileLocation(
     || (location.documentId !== documentId && location.path !== previousPath)) {
     return location;
   }
-  return { ...fileLocation(replacement), ...(replacement.renderer === "grid2d" && location.gridViewMode ? { gridViewMode: location.gridViewMode } : {}) };
+  return { ...fileLocation(replacement), ...(replacement.renderer === "grid2d" ? {
+    ...(location.gridViewMode ? { gridViewMode: location.gridViewMode } : {}),
+    ...(location.gridViewState !== undefined ? { gridViewState: location.gridViewState } : {}),
+  } : {}) };
 }
 
 export function createTextFileTab(document: TextFileDocument, id = createTabId()): MoleculeTab {

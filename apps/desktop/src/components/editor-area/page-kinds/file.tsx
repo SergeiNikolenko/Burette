@@ -19,7 +19,7 @@ import { MesoscaleSceneOverlay, MesoscaleSceneToggle } from "../../mesoscale/mes
 import { MesoscaleCanvasContextMenu } from "../../mesoscale/mesoscale-canvas-context-menu";
 import { MesoscaleSelectionBar } from "../../mesoscale/mesoscale-selection-bar";
 
-export type FileLocation = { kind: "file"; documentId?: string; path: string; recoveryPath?: string; gridViewMode?: "cards" | "table" };
+export type FileLocation = { kind: "file"; documentId?: string; path: string; recoveryPath?: string; gridViewMode?: "cards" | "table"; gridViewState?: string };
 
 export const fileKind = definePageKind<"file", FileLocation>({
   kind: "file",
@@ -33,8 +33,8 @@ export const fileKind = definePageKind<"file", FileLocation>({
     return document ? <ViewerSurface tabId={tabId} document={document} actions={actions} preferences={state.preferences} isActive={isActive} /> : null;
   },
   keepAlive: true,
-  fromPayload: (data) => (typeof data.path === "string" ? { kind: "file", documentId: typeof data.documentId === "string" ? data.documentId : undefined, path: data.path, ...(data.gridViewMode === "cards" || data.gridViewMode === "table" ? { gridViewMode: data.gridViewMode } : {}), ...(typeof data.recoveryPath === "string" ? { recoveryPath: data.recoveryPath } : {}) } : null),
-  serialize: (location) => ({ documentId: location.documentId, path: location.path, ...(location.gridViewMode ? { gridViewMode: location.gridViewMode } : {}), ...(location.recoveryPath ? { recoveryPath: location.recoveryPath } : {}) }),
+  fromPayload: (data) => (typeof data.path === "string" ? { kind: "file", documentId: typeof data.documentId === "string" ? data.documentId : undefined, path: data.path, ...(data.gridViewMode === "cards" || data.gridViewMode === "table" ? { gridViewMode: data.gridViewMode } : {}), ...(typeof data.gridViewState === "string" && data.gridViewState.length <= 32768 ? { gridViewState: data.gridViewState } : {}), ...(typeof data.recoveryPath === "string" ? { recoveryPath: data.recoveryPath } : {}) } : null),
+  serialize: (location) => ({ documentId: location.documentId, path: location.path, ...(location.gridViewMode ? { gridViewMode: location.gridViewMode } : {}), ...(typeof location.gridViewState === "string" && location.gridViewState.length <= 32768 ? { gridViewState: location.gridViewState } : {}), ...(location.recoveryPath ? { recoveryPath: location.recoveryPath } : {}) }),
 });
 
 function ViewerSurface({

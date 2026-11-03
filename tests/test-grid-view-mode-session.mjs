@@ -9,11 +9,13 @@ const js = ts.transpileModule(hookSource.replace(/^import .*;$/gm, '').replace('
 const listeners = new Set();
 const effects = [];
 const sent = [];
+let writes = 0;
 const frame = { contentWindow: { postMessage: message => sent.push(message) } };
 let store = { tabs: [
   { id: 'a', location: { kind: 'file', path: '/a.csv', gridViewMode: 'table' }, back: ['keep-history'] },
   { id: 'b', location: { kind: 'file', path: '/b.csv', gridViewMode: 'cards' } },
 ], navigateTabLocation(id, location, mode) {
+  writes++;
   assert.equal(mode, 'replace');
   store.tabs = store.tabs.map(tab => tab.id === id ? { ...tab, location } : tab);
 } };
@@ -23,8 +25,8 @@ const hook = new Function('useCallback', 'useEffect', 'useMoleculeStore', 'windo
   },
 );
 const restore = hook('a', '/a.csv', true, { current: frame });
-const receive = (type, value, source = frame.contentWindow) => {
-  for (const listener of listeners) listener({ source, data: { source: 'burette-grid', body: { type, value } } });
+const receive = (type, value, source = frame.contentWindow, snapshot) => {
+  for (const listener of listeners) listener({ source, data: { source: 'burette-grid', body: { type, value, snapshot } } });
 };
 restore(frame, false);
 assert.equal(sent.length, 0, 'staging frames do not restore or persist');
@@ -39,17 +41,36 @@ assert.equal(store.tabs[0].location.gridViewMode, 'cards');
 assert.deepEqual(store.tabs[0].back, ['keep-history']);
 receive('gridViewModeChanged', 'table');
 assert.equal(store.tabs[1].location.gridViewMode, 'cards', 'other tab retains its own choice');
+const checkpoint = JSON.stringify({ version: 1, scrollY: 12340, visibleCount: 960, selected: [768] });
+receive('gridViewModeChanged', 'table', frame.contentWindow, checkpoint);
+assert.equal(store.tabs[0].location.gridViewState, checkpoint, 'unchanged mode still records presentation changes');
+receive('gridViewModeChanged', 'table', {}, '{}');
+for (const invalid of [{}, null, 10, 'x'.repeat(32769)]) {
+  receive('gridViewModeChanged', 'cards', frame.contentWindow, invalid);
+  assert.equal(store.tabs[0].location.gridViewState, checkpoint, 'foreign or invalid checkpoint cannot replace valid state');
+  assert.equal(store.tabs[0].location.gridViewMode, 'table', 'invalid message is rejected atomically');
+}
+receive('gridViewModeChanged', 'table');
+assert.equal(store.tabs[0].location.gridViewState, checkpoint, 'older viewer notifications retain the checkpoint');
+const writesBeforeRepeat = writes;
+receive('gridViewModeChanged', 'table', frame.contentWindow, checkpoint);
+assert.equal(writes, writesBeforeRepeat, 'identical checkpoint avoids a persistence write');
+assert.deepEqual(store.tabs[0].back, ['keep-history']);
 const page = fs.readFileSync('apps/desktop/src/components/editor-area/page-kinds/file.tsx', 'utf8');
 const codecLines = page.split('\n').filter(line => /^  (fromPayload|serialize):/.test(line)).join('\n');
 const codec = new Function(`return { ${codecLines} };`)();
 store.tabs = store.tabs.map(tab => ({ ...tab, location: codec.fromPayload(JSON.parse(JSON.stringify(codec.serialize(tab.location)))) }));
 assert.equal(codec.fromPayload({ path: '/a.csv', gridViewMode: 'invalid' }).gridViewMode, undefined);
 assert.equal(codec.fromPayload({ path: '/a.csv' }).gridViewMode, undefined, 'old sessions retain app default');
+assert.equal(codec.fromPayload({ path: '/a.csv', gridViewState: 'x'.repeat(32769) }).gridViewState, undefined);
+assert.equal(codec.serialize({ path: '/a.csv', gridViewState: 'x'.repeat(32769) }).gridViewState, undefined);
+assert.equal(codec.fromPayload({ path: '/a.csv', gridViewState: 'x'.repeat(32768) }).gridViewState.length, 32768);
 restore(frame, true);
-assert.equal(sent.pop().body.value, 'table', 'serialized session restores chosen mode');
+assert.deepEqual(sent.pop().body, { type: 'gridRestoreViewMode', value: 'table', snapshot: checkpoint }, 'serialized session restores the presentation checkpoint');
 store.tabs[0].location = { kind: 'file', path: '/new.csv' };
-receive('gridViewModeChanged', 'table');
+receive('gridViewModeChanged', 'table', frame.contentWindow, checkpoint);
 assert.equal(store.tabs[0].location.gridViewMode, undefined, 'late message cannot change a new location');
+assert.equal(store.tabs[0].location.gridViewState, undefined);
 for (const cleanup of effects) cleanup?.();
 assert.equal(listeners.size, 0);
 
@@ -83,11 +104,15 @@ globalThis.localStorage = globalThis.window.localStorage;
 globalThis.document = globalThis.window.document;
 globalThis.navigator = globalThis.window.navigator;
 const { useMoleculeStore } = await import('../apps/desktop/src/stores/molecule-store.ts');
-const recovered = codec.fromPayload({ path: '/a.csv', documentId: 'old-runtime', gridViewMode: 'table' });
+const recovered = codec.fromPayload({ path: '/a.csv', documentId: 'old-runtime', gridViewMode: 'table', gridViewState: checkpoint });
 useMoleculeStore.setState({ documents: [], tabs: [{ id: 'restored', location: recovered, back: [], forward: [] }], activeTabId: 'restored' });
 useMoleculeStore.getState().addDocuments([{ id: 'new-runtime', path: '/a.csv', title: 'a.csv', renderer: 'grid2d' }]);
 assert.equal(useMoleculeStore.getState().tabs[0].location.gridViewMode, 'table', 'reopening a persisted tab preserves its view metadata');
 assert.equal(useMoleculeStore.getState().tabs[0].location.documentId, 'new-runtime');
+assert.equal(useMoleculeStore.getState().tabs[0].location.gridViewState, checkpoint);
 useMoleculeStore.getState().replaceDocument('new-runtime', { id: 'saved-runtime', path: '/saved.csv', title: 'saved.csv', renderer: 'grid2d' });
 assert.equal(useMoleculeStore.getState().tabs[0].location.gridViewMode, 'table', 'Save As retains the tab choice');
+assert.equal(useMoleculeStore.getState().tabs[0].location.gridViewState, checkpoint, 'Save As retains the presentation checkpoint');
+useMoleculeStore.getState().replaceDocument('saved-runtime', { id: 'scene-runtime', path: '/saved.pdb', title: 'saved.pdb', renderer: 'molstar' });
+assert.equal(useMoleculeStore.getState().tabs[0].location.gridViewState, undefined, 'a non-grid replacement drops grid presentation state');
 console.log('Production store: reopen and document replacement retain grid view mode.');
