@@ -73,7 +73,10 @@ export async function prepareSceneScienceExport(document: ViewerDocument, option
   }
   let report: SceneScienceBindingReport;
   try {
-    report = checkBindingReport(await request(document.id, { type: "scene_science_binding", ...(graph ? { sourceExtension: extension } : {}) }));
+    const value = await request(document.id, { type: "scene_science_binding", ...(graph ? { sourceExtension: extension } : {}) });
+    if (value.unavailable === "SCIENCE_SOURCE_REMOVED") return carriesScience
+      ? { kind: "unsupported", reason: "The original scientific structure was removed from this scene." } : null;
+    report = checkBindingReport(value);
   } catch (error) {
     if (!carriesScience) return null;
     // The hierarchy may change after the live count was read.

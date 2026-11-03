@@ -139,7 +139,7 @@
     const roots = plugin?.managers?.structure?.hierarchy?.current?.structures;
     if (!Array.isArray(roots) || roots.length !== 1) throw new Error('Scientific data is saved with scenes of exactly one structure.');
     const structureCell = roots[0].cell;
-    if (appendedStructureRefs.get(plugin)?.has(structureCell?.transform.ref)) throw new Error('The original scientific structure was removed from this scene.');
+    if (appendedStructureRefs.get(plugin)?.has(structureCell?.transform.ref)) throw Object.assign(new Error('The original scientific structure was removed from this scene.'), { code: 'SCIENCE_SOURCE_REMOVED' });
     const structure = structureCell?.obj?.data;
     if (!structure) throw new Error('Wait for the scene to load.');
     const cells = plugin.state.data.cells;
@@ -355,6 +355,18 @@
     }
   }
 
+  // An absent owner is an expected result when inspecting an edited scene. Strict
+  // binding/serialization still throw; unrelated failures must reach the caller.
+  async function scienceBindingReport(viewer, extension) {
+    try {
+      return extension === 'sdf' ? await sdfSourceBinding(viewer) : ['mol', 'xyz'].includes(extension)
+        ? await graphSourceBinding(viewer, extension) : scienceBinding(viewer);
+    } catch (error) {
+      if (error?.code !== 'SCIENCE_SOURCE_REMOVED') throw error;
+      return { unavailable: 'SCIENCE_SOURCE_REMOVED', reason: error.message };
+    }
+  }
+
   window.BuretteSceneFiles = {
     loadModels,
     checkTrajectoryCount,
@@ -362,6 +374,7 @@
     science: {
       prefix: SCIENCE_PREFIX,
       binding: scienceBinding,
+      bindingReport: scienceBindingReport,
       sdfBinding: sdfSourceBinding,
       graphBinding: graphSourceBinding,
       serialize: serializeScience,

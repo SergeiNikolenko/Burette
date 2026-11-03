@@ -743,7 +743,7 @@
     }
     if (type === 'scene_science_binding') {
       if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
-      return { ok: true, result: action.sourceExtension === 'sdf' ? await window.BuretteSceneFiles.science.sdfBinding(activeMolstarViewer()) : ['mol', 'xyz'].includes(action.sourceExtension) ? await window.BuretteSceneFiles.science.graphBinding(activeMolstarViewer(), action.sourceExtension) : window.BuretteSceneFiles.science.binding(activeMolstarViewer()) };
+      return { ok: true, result: await window.BuretteSceneFiles.science.bindingReport(activeMolstarViewer(), action.sourceExtension) };
     }
     if (type === 'scene_science_restore_ack') {
       if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);

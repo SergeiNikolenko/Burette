@@ -219,6 +219,11 @@ test("an appended identical structure cannot inherit the removed source's scient
     },
   });
   roots.shift();
+  expect(await science.bindingReport(viewer.viewer)).toEqual({
+    unavailable: "SCIENCE_SOURCE_REMOVED", reason: "The original scientific structure was removed from this scene.",
+  });
+  // Inspection returns a successful absence report, but strict serialization guards still throw.
+  expect(() => science.binding(viewer.viewer)).toThrow(/original scientific structure was removed/);
   // Coordinates and element order are identical, but this is the appended object.
   const prepared = await prepareSceneScienceExport(document as never, options(viewer, { sceneFileCount: 2 }) as never);
   expect(prepared?.kind).toBe("unsupported");
@@ -227,4 +232,10 @@ test("an appended identical structure cannot inherit the removed source's scient
   // Undo restores the same appended state ref; provenance must survive removal.
   roots.splice(0, 1, duplicate);
   expect(() => science.binding(viewer.viewer)).toThrow(/original scientific structure was removed/);
+});
+
+test("science binding inspection preserves loading failures", async () => {
+  const viewer = fakeViewer(XYZ);
+  science.beginImport(viewer.viewer.plugin);
+  await expect(science.bindingReport(viewer.viewer)).rejects.toThrow(/finish opening/);
 });

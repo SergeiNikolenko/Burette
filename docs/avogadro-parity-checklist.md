@@ -89,3 +89,6 @@ Update this ledger when a new stage is adopted or a target-surface proof changes
 its scope. Durable feature contracts belong in their owning documents; chronological
 handoffs, private session descriptors, worktree paths and temporary build URLs do
 not belong in this active graph.
+
+Recent focused regression: [expected absent science owner notification](avogadro-parity-evidence/stage-01-02-09-editing-io.md#expected-absent-science-owner-notification-2026-11-04)
+removes the duplicate failure toast for an appended copy without transferring science ownership.

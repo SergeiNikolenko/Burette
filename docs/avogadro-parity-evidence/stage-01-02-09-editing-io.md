@@ -581,3 +581,34 @@ The omission path also shows a redundant Structure action failed toast; this
 notification behavior remains open. The tested viewport was dark, 1280 × 720.
 Reopen of these particular exports, light/compact interactions, and packaged or
 native UI remain unverified. No whole-scene or whole-stage completion is claimed.
+
+## Expected absent science owner notification (2026-11-04)
+
+The identical appended-copy scenario above previously showed both the expected
+omission warning and an unrelated `Structure action failed` toast. Inspection now
+returns `{ unavailable: "SCIENCE_SOURCE_REMOVED", reason }` as a successful
+`scene_science_binding` result for precisely the tracked appended-root case.
+The export owner converts it to `unsupported`; strict binding and serialization
+still reject that root. Loading, graph identity and other runtime errors still
+throw. Existing SDF binding response fields are unchanged. Restore still rejects
+an unavailable report via its required binding validator.
+
+Browser-dev verification on parent `732ad763d` plus this patch, IAB 1280 × 720:
+open `topology-real-browser-water.molx`, open the identical `duplicate.xyz` using
+the ordinary picker, Add to scene, remove `water-owned.xyz`, Save scene. The only
+save notification was `Scene saved without scientific data` with the precise
+reason `The original scientific structure was removed from this scene.` No
+`Structure action failed` appeared. Repeated save with the viewer's light theme
+had the same notification (the outer shell remained dark). Screenshots:
+`/tmp/burette-binding-report-browser.png` and `/tmp/burette-binding-report-light.png`.
+
+The download-event path was `/Users/nikolenko/Desktop/topology-real-browser-water (5).molx`.
+Independent Python ZIP inspection found exactly `state.json`, no science assets;
+`/tmp/burette-binding-report-oracle.json`. An initial search selected an older
+`(4).molx` and was not evidence for this run. Reopen of the newly downloaded file,
+compact/keyboard flows, the fully light host shell and native acceptance remain open.
+
+Focused checks: science-host 16 tests / 81 assertions; science-runtime 20 / 155;
+typecheck and rebuilt agent shell passed. Host tests exercise both the explicit
+absence report and continued strict rejection, including import-loading failures.
+Runtime tests exercise the real viewer action route and unchanged SDF response.
