@@ -920,7 +920,8 @@ remain open. The existing capped structure still has Not converged status.
 A follow-up keyboard check on the reopened `Polymer.sdf` found that Shift+F10
 focuses the workspace tab but does not open its context menu. The tab currently
 opens this menu through `onContextMenu`; keyboard invocation needs a follow-up.
-Export also appends `.sdf` when the user has renamed a tab without an extension.
+Export also appends `.sdf` when the source document title has no extension.
+The workspace tab's display-name override is separate from that source title.
 
 Final focused validation passed `bun tests/test-scene-save-sidebar.mjs` and
 `vp run test:science-sdf-molx-flow` (the logical flow has 85 assertions).
@@ -929,3 +930,43 @@ The final packaged build passed after the filename correction. Logs are
 `/tmp/burette-sdf-source-export-build-final.log`. The broader JS gate is tracked
 separately in `/tmp/burette-sdf-source-export-ci.log`; it was started before the
 final submenu and filename corrections, and is not evidence for those changes.
+
+### Keyboard access to the export menu (2026-11-03)
+
+Workspace tabs now invoke their existing context menu on Shift+F10 and the
+ContextMenu key. Keyboard invocation anchors the menu below the focused tab.
+The anchor is captured before asynchronous menu preparation. Read-only tabs
+retain their existing navigation-only keyboard behavior.
+
+After rebuilding and reloading the packaged browser shell on port 65427,
+Shift+F10 opened the capped SDF's menu. Typing `ex` selected Export; two
+ArrowRight presses reached Structure → SDF. Enter downloaded
+`burette-ui-capped-polymer (3).sdf` and returned focus to the originating tab.
+At 320 × 720 in dark mode, the same keyboard path reached SDF within the
+viewport (x=118–290); Escape closed all menus and returned focus to the tab.
+In light mode at 320 × 720, the ContextMenu key opened the menu and the same
+typeahead/arrow/Enter sequence downloaded `(4).sdf`, again restoring tab focus.
+Both files exactly match the source hash recorded above.
+
+At 760 × 720 in light mode, keyboard invocation and typeahead opened Rename
+tab. Enter accepted the display name `Keyboard polymer`. Its export submenu
+remained keyboard-accessible. ArrowLeft from SDF returned focus to Structure,
+and Escape returned focus to the renamed tab with no menus remaining.
+The temporary viewport override was reset. Screenshots are
+`/tmp/burette-tab-keyboard-320-dark.png`,
+`/tmp/burette-tab-keyboard-320-light.png` and
+`/tmp/burette-tab-keyboard-760-light.png`.
+
+`bun test tests/test-editor-tabs-window.test.tsx` passed both existing tests
+(1,020 assertions covering document indexing, 1,000-tab keyboard navigation,
+focus, range dragging and pinned close behavior). `vp run typecheck` and
+`vp run build:agent-shell` passed. Logs are `/tmp/burette-tab-keyboard-test.log`,
+`/tmp/burette-tab-keyboard-typecheck.log` and
+`/tmp/burette-tab-keyboard-build.log`. The new shortcut's acceptance evidence
+is the actual browser sequence above. Native popup acceptance remains open.
+
+The earlier `vp run ci:fast js` invocation completed with exit code 0 (session
+36611, `/tmp/burette-sdf-source-export-ci.log`). It began before the later UI
+corrections, so final keyboard behavior is supported by the focused checks and
+browser runs here. Full stage-7 acceptance, including capped B3 relaxation and
+a fresh Create → export → reopen sequence, remains open.

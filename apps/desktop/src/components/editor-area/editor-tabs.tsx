@@ -592,9 +592,11 @@ export function EditorTabs({
                 dockingRequest: tabDocument?.dockingRequest ?? null,
               }
             : null;
-          const showTabMenu = async (event: React.MouseEvent<HTMLButtonElement>) => {
+          const showTabMenu = async (event: React.MouseEvent<HTMLButtonElement> | React.KeyboardEvent<HTMLButtonElement>) => {
             event.preventDefault();
             event.stopPropagation();
+            const rect = event.currentTarget.getBoundingClientRect();
+            const at = "key" in event ? { x: rect.left, y: rect.bottom } : { x: event.clientX, y: event.clientY };
             const canSaveAs = tabDocument && isMoleculeCollectionPath(tabDocument.path);
             const tabsToRight = visibleTabs.slice(index + 1).filter(tab => !tab.pinned);
             const items: MenuItemSpec[] = [
@@ -663,7 +665,7 @@ export function EditorTabs({
             const close: MenuItemSpec[] = only ? [{ ...only, id: "close-tabs", text: `Close ${only.text}` }] : submenu("close-tabs", "Close", closing, "xmark");
             const bare = !compact.length && !sceneMenu.length && !reveal.length;
             void showNativeContextMenu(menuSections(opening, [pin, ...rename, ...sceneMenu, ...(bare ? close : [])],
-              [...compact.filter(entry => !opening.includes(entry)), ...reveal], window.BuretteMcpWorkspace ? [] : paneMoveItems(tab, state, actions), bare ? [] : close), { x: event.clientX, y: event.clientY });
+              [...compact.filter(entry => !opening.includes(entry)), ...reveal], window.BuretteMcpWorkspace ? [] : paneMoveItems(tab, state, actions), bare ? [] : close), at);
           };
           return (
             <div
@@ -765,6 +767,10 @@ export function EditorTabs({
                   runShellDropActionChoices(actions, payload, choices, { x: event.clientX, y: event.clientY });
                 }}
                 onKeyDown={(event) => {
+                  if (!readOnly && (event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey))) {
+                    void showTabMenu(event);
+                    return;
+                  }
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
                     actions.selectTab(tab.id);
