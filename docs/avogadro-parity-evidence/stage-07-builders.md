@@ -970,3 +970,78 @@ The earlier `vp run ci:fast js` invocation completed with exit code 0 (session
 corrections, so final keyboard behavior is supported by the focused checks and
 browser runs here. Full stage-7 acceptance, including capped B3 relaxation and
 a fresh Create → export → reopen sequence, remains open.
+
+### Capped B3 relaxation and standalone roundtrip (2026-11-03)
+
+The subsequent packaged browser run closes the capped B3 sequence above for
+`tests/fixtures/polymer/propylene-repeat.sdf`: C1/C2/H6/H5, six isotactic
+repeats, Methyl/Phenyl ends, 1.54 Å and Relax geometry. The polymer worker now
+uses the existing FIRE → L-BFGS hybrid within its 1,000-step MMFF94 budget.
+Relaxed output uses ten-decimal V3000 coordinates in source atom order.
+The shared writer retains its four-decimal default for other callers.
+
+The diagnostic run reached convergence in 952 iterations, with energy
+4,290.95116677786 → 68.79048237267045 kcal/mol and maximum absolute gradient
+component 0.0009237022062106512 kcal/(mol·Å), below the existing 0.001 threshold.
+L-BFGS alone exhausted the same budget at 0.012467075448077328. This establishes
+a stationary geometry, not a global minimum. Four-decimal serialization of the
+hybrid result raised the independent RDKit gradient to 0.08558796084361014,
+which motivated retaining precision through the file boundary.
+
+In the rebuilt prebuilt-static browser shell, actual canvas picks selected all
+four roles. Preview produced a visible 69-atom molecule and `Relaxed`; Create
+opened `Polymer.sdf`. The tab's Shift+F10 → Export → Structure → SDF action
+downloaded `Polymer (1).sdf`; Cmd+O reopened that download. The live Mol* hierarchy
+contained the original 11-atom source and both 69-atom products. Observe reported
+the reopened document ready, renderer `molstar`, 5,243 bytes and no viewer error.
+
+Independent Python RDKit 2026.09.1 read the downloaded V3000 and found 69 atoms,
+69 bonds, formula C25H44, MMFF94 energy 68.79049059310083 kcal/mol and maximum
+absolute gradient component 0.0006789266771734265 kcal/(mol·Å). Assigning stereo
+from the exported 3D coordinates matched the frozen isotactic reference with
+the requested caps:
+
+```text
+CC[C@@H](C)C[C@@H](C)C[C@@H](C)C[C@@H](C)C[C@@H](C)C[C@@H](C)c1ccccc1
+```
+
+Exporting the reopened document again produced identical 5,243-byte content,
+SHA-256 `46a31bf1d2b17e8ff1762ed623910cc19309fe650a66e21550d7b531b4d71f63`.
+The separate Bun-worker output also passed the independent gradient/stereo check
+(gradient 0.0009085525608635899); its bytes differ from the browser output.
+The downloaded-file equality does not establish a direct comparison with the
+virtual document's backing bytes.
+
+Two live retries passed in the same build. tert-Butyl/Phenyl preview refused an
+overlap; changing only the head to Methyl produced `Relaxed`. Thirty repeats
+with relaxation refused the 256-atom limit; disabling relaxation produced a
+285-atom preview. The larger product was cancelled without publication.
+
+The completed preview was also inspected at 320 × 720 and 760 × 720 with light
+and dark media emulation. Keyboard Tab from Cancel through Preview reached
+Create and scrolled the compact dialog footer into view. These observations
+are narrower than full runs in each theme or compact canvas picking. Review of
+the saved screenshots exposes a light dialog on a dark shell, low-contrast
+controls in light mode, and a blank preview during a theme transition. They do
+not close visual acceptance. Full Atlas, keyboard/iframe traversal, accessibility,
+theme-transition rendering and native acceptance remain open.
+
+Local evidence includes `/tmp/burette-capped-live-oracle.json`,
+`/tmp/burette-capped-final-oracle.json`,
+`/tmp/burette-capped-live-reopened-observe.json`,
+`/tmp/burette-capped-live-reopened.png`,
+`/tmp/burette-capped-relaxed-320-dark.png`,
+`/tmp/burette-capped-relaxed-760-light.png` and
+`/tmp/burette-capped-limit-retry.png`. These are local run artifacts, not committed
+fixtures. The worker regression suite covers hydrogen and Methyl/Phenyl ends,
+graph/stereo retention and gradients reevaluated from serialized output.
+That in-process gradient assertion uses Burette's evaluator; the Python results
+above provide the independent check. Focused polymer-worker, metal-complex,
+builder-agent, typecheck and packaged shell build commands passed before this
+evidence update. All twelve parity stages retain their remaining obligations.
+
+After the evidence update, `vp run test:polymer-ends` passed 6 tests with 97
+assertions, `bun tests/test-burette-agent-plugin.mjs` passed, and
+`git diff --check` passed. The independent RDKit downloaded-file check and
+re-export byte equality were rerun successfully. Logs are
+`/tmp/burette-polymer-final-test.log` and `/tmp/burette-polymer-final-plugin.log`.

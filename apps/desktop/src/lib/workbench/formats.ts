@@ -24,12 +24,13 @@ export function fileStem(name: string) {
  * V2000 lists type 9 only for V3000, but RDKit, Open Babel, OpenChemLib and Mol* read it there,
  * and Mol* ignores V3000 `CHG=`: V2000 `M  CHG` keeps charges through Mol* exports.
  */
-export function sdfFromGraph(atoms: MolecularAtom[], bonds: MolecularBond[], title: string, coordination: { a: number; b: number }[] = [], charges: readonly number[] = []) {
+export function sdfFromGraph(atoms: MolecularAtom[], bonds: MolecularBond[], title: string, coordination: { a: number; b: number }[] = [], charges: readonly number[] = [], options: { coordinateDecimals?: 4 | 10 } = {}) {
   const name = title.replace(/[\r\n]/gu, " ").slice(0, 80);
   const order = (bond: MolecularBond) => bond.order === 1.5 ? 4 : bond.order;
-  const coordinate = (value: number) => value.toFixed(4);
+  const decimals = options.coordinateDecimals ?? 4;
+  const coordinate = (value: number) => value.toFixed(decimals);
   const charged = charges.flatMap((charge, index) => charge ? [[index + 1, charge]] : []);
-  if (atoms.length <= 999 && bonds.length + coordination.length <= 999) {
+  if (decimals === 4 && atoms.length <= 999 && bonds.length + coordination.length <= 999) {
     const pad = (value: string | number, width: number) => String(value).padStart(width);
     const lines = [name, "  Burette           3D", "", `${pad(atoms.length, 3)}${pad(bonds.length + coordination.length, 3)}  0  0  0  0  0  0  0  0999 V2000`];
     for (const atom of atoms) lines.push(`${pad(coordinate(atom.x), 10)}${pad(coordinate(atom.y), 10)}${pad(coordinate(atom.z), 10)} ${atom.element.padEnd(3)} 0  0  0  0  0  0  0  0  0  0  0  0`);

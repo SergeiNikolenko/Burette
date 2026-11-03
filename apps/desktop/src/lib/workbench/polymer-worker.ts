@@ -29,10 +29,11 @@ async function build(data: PolymerRequest, source: ReturnType<typeof parseMolecu
     if (atoms.length > POLYMER_RELAXATION_ATOMS) throw new Error(`Relaxation supports polymers of up to ${POLYMER_RELAXATION_ATOMS} atoms.`);
     // MMFF analytic gradients use RDKit terms, as in the molecular compute worker.
     await prepareUffWasm();
-    // Use limited-memory relaxation for flexible chains within the same step budget.
-    const structure = parseMolecule(sdf, "sdf"), result = optimize(structure, { forceField: "MMFF94", method: "lbfgs", maxIterations: 1000 });
+    // Dissipate the initial placement strain with FIRE, then refine with L-BFGS.
+    const structure = parseMolecule(sdf, "sdf"), result = optimize(structure, { forceField: "MMFF94", method: "hybrid", maxIterations: 1000 });
     if (result.molecule.atoms.some((atom, i) => atom.element !== atoms[i].element)) throw new Error("Relaxation changed the atom order.");
-    sdf = sdfFromGraph(result.molecule.atoms, bonds, "Polymer");
+    // Four-decimal V2000 rounding can move a stationary result above the force tolerance.
+    sdf = sdfFromGraph(result.molecule.atoms, bonds, "Polymer", [], [], { coordinateDecimals: 10 });
     relaxation = { forceField: "MMFF94", initialEnergy: result.initialEnergy, energy: result.energy, unit: "kcal/mol", converged: result.converged };
   }
   return { sdf, atomCount: atoms.length, bondCount: bonds.length, sourceAtomIndices, repeatIndices, repeatAlternatives: graph.repeatAlternatives, ...(relaxation ? { relaxation } : {}) };
