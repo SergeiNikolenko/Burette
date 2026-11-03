@@ -75,12 +75,17 @@ test('shared dispatcher preserves XYZ parse and rejects unsupported or oversized
   expect(() => runGraphOperation({ action: 'edit-graph', molecule: water, edits: Array.from({ length: 17 }, () => ({ kind: 'delete-atoms', indices: [0] })) })).toThrow('1–16');
 });
 
-test('the worker keeps the explicit rejection of annotated chiral groups with interleaved hydrogen', async () => {
+test('the worker remaps the stereo group of a chiral centre with interleaved hydrogen', async () => {
   const source = interleaved.replace('MASS=13', 'MASS=13 CFG=2').replace('M  V30 6 F', 'M  V30 6 Cl');
   const parsed = await runGraphTask({ action: 'parse', source, format: 'mol' });
-  await expect(runGraphTask({ action: 'edit-graph', molecule: parsed, edits: [
+  const normalized = await runGraphTask({ action: 'edit-graph', molecule: parsed, edits: [
     { kind: 'reorder-atoms', order: identity(parsed.atoms.length) },
-  ] })).rejects.toThrow('Reordering annotated atom groups');
+  ] });
+  expect(normalized.atoms.map(atom => atom.element)).toEqual(['C', 'H', 'N', 'O', 'F', 'Cl']);
+  expect(normalized.molfile).toMatch(/MDLV30\/STE\w+ ATOMS=\(1 1\)/u);
+  const cip = (molfile: string) => { const m = Molecule.fromMolfile(molfile); m.ensureHelperArrays(Molecule.cHelperCIP); return m.getAtomCIPParity(0); };
+  expect(cip(normalized.molfile)).toBe(cip(source));
+  expect(cip(normalized.molfile)).not.toBe(0);
 });
 
 test('real private workers terminate on completion, cancellation, timeout and serialization failure', async () => {

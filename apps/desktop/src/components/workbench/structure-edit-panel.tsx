@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import type { GraphEdit, GraphEditResult } from "../../lib/molecular-workbench/graph-edit";
+import { moveAtomOrder } from "../../lib/molecular-workbench/atom-order";
 import type { Vec3 } from "../../lib/molecular-workbench/types";
 import { HARTREE_KCAL_MOL, fileStem } from "../../lib/workbench/formats";
 import { openScientificDocument } from "../../lib/workbench/generated-document-open";
@@ -160,13 +161,14 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
   const deleteSelected = () => {
     if (atoms.length) void apply([{ kind: "delete-atoms", indices: atoms }], () => []);
   };
+  const reorder = (atom: number, insertion: number) => {
+    if (insertion === atom || insertion === atom + 1) return;
+    const order = moveAtomOrder(structure.atoms.length, atom, insertion);
+    void apply([{ kind: "reorder-atoms", order }], () => [order.indexOf(atom)]);
+  };
   const move = (atom: number, offset: -1 | 1) => {
     const target = atom + offset;
-    if (target < 0 || target >= structure.atoms.length) return;
-    const order = structure.atoms.map((_, index) => index);
-    order[atom] = target;
-    order[target] = atom;
-    void apply([{ kind: "reorder-atoms", order }], () => [target]);
+    if (target >= 0 && target < structure.atoms.length) reorder(atom, offset < 0 ? target : target + 1);
   };
 
   const pick = (atom: number, event: Pick<MouseEvent, "metaKey" | "ctrlKey" | "shiftKey">) => {
@@ -267,7 +269,7 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
         <SegmentedControlItem value="cartesian">Cartesian</SegmentedControlItem>
       </SegmentedControl>
       {view === "atoms"
-        ? <AtomTable structure={structure} annotations={annotations} selected={atoms} disabled={busy} onPick={pick} onDelete={deleteSelected} onMove={move} />
+        ? <AtomTable structure={structure} annotations={annotations} selected={atoms} disabled={busy} onPick={pick} onDelete={deleteSelected} onMove={move} onReorder={reorder} />
         : view === "bonds" ? <BondTable structure={structure} selected={atoms} onPick={(pair) => setSelection({ atoms: pair, from: "panel", structure })} />
         // Positions of the same atoms only: one Undo step that keeps bonds, stereo, metadata and atom IDs.
         : <CoordinateEditor atoms={structure.atoms} revision={snapshotId(editor.current)} disabled={busy}

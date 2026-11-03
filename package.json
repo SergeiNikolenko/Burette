@@ -414,7 +414,7 @@
     "test:energy-agent": "bun test tests/test-energy-agent.test.ts && bun test tests/test-orbital-cli-compiled.test.tsx",
     "check:energy-agent": "tsc --noEmit -p tests/tsconfig.energy-agent.json && tsc --noEmit -p tests/tsconfig.orbital-cli.json",
     "test:built-xyz-lattice": "bun tests/test-built-molstar-xyz-lattice.mjs",
-    "test:graph-normalization-stereo": "bun test tests/test-graph-normalization-stereo.test.ts",
+    "test:graph-normalization-stereo": "bun test tests/test-graph-normalization-stereo.test.ts tests/test-atom-reorder.test.ts",
     "test:crystal-symmetry": "bun test tests/test-crystal-symmetry.test.ts",
     "test:point-group": "bun test tests/test-point-group.test.ts",
     "test:powder-xrd": "bun test tests/test-powder-xrd.test.ts",

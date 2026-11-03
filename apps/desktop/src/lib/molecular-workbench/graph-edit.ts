@@ -139,9 +139,39 @@ function orderedMolfile(text: string, order: number[]): string {
   const rows = text.split('\n'), begin = rows.indexOf('M  V30 BEGIN ATOM'), end = rows.indexOf('M  V30 END ATOM');
   if (end - begin - 1 !== order.length || rows.slice(begin + 1, end).some(row => row.endsWith('-'))) throw new Error('This atom record cannot be reordered safely.');
   const atoms = rows.slice(begin + 1, end), reverse = new Map(order.map((old, i) => [old + 1, i + 1]));
-  rows.splice(begin + 1, order.length, ...order.map((old, i) => atoms[old].replace(/^M  V30 \d+ /, `M  V30 ${i + 1} `)));
-  let inBonds = false, inCollection = false;
   const reordered = order.some((old, i) => old !== i);
+  if (!reordered) return text;
+
+  // MDL atom parity follows ascending neighbour IDs. Renumbering an odd
+  // permutation of those neighbours reverses the written parity.
+  const neighbours = atoms.map(() => [] as number[]);
+  const bondBegin = rows.indexOf('M  V30 BEGIN BOND');
+  if (bondBegin >= 0) {
+    const bondEnd = rows.indexOf('M  V30 END BOND');
+    if (bondEnd <= bondBegin) throw new Error('This bond record cannot be reordered safely.');
+    for (const row of rows.slice(bondBegin + 1, bondEnd)) {
+      const bond = /^M {2}V30 \d+ \d+ (\d+) (\d+)(?: |$)/u.exec(row);
+      if (!bond || row.endsWith('-')) throw new Error('This bond record cannot be reordered safely.');
+      const a = Number(bond[1]), b = Number(bond[2]);
+      if (!reverse.has(a) || !reverse.has(b)) throw new Error('This bond record cannot be reordered safely.');
+      neighbours[a - 1].push(b);
+      neighbours[b - 1].push(a);
+    }
+  }
+  const reversedParity = (atom: number) => {
+    const ranks = neighbours[atom].sort((a, b) => a - b).map(id => reverse.get(id)!);
+    let inversions = 0;
+    for (let i = 0; i < ranks.length; i++) {
+      for (let j = i + 1; j < ranks.length; j++) {
+        if (ranks[i] > ranks[j]) inversions++;
+      }
+    }
+    return inversions % 2 === 1;
+  };
+  rows.splice(begin + 1, order.length, ...order.map((old, i) => atoms[old]
+    .replace(/^M  V30 \d+ /, `M  V30 ${i + 1} `)
+    .replace(/ CFG=([12])(?= |$)/u, (match, parity) => reversedParity(old) ? ` CFG=${3 - Number(parity)}` : match)));
+  let inBonds = false, inCollection = false;
   return rows.map(row => {
     if (row === 'M  V30 BEGIN BOND') inBonds = true;
     else if (row === 'M  V30 END BOND') inBonds = false;
@@ -149,13 +179,18 @@ function orderedMolfile(text: string, order: number[]): string {
     if (row === 'M  V30 BEGIN COLLECTION') inCollection = true;
     else if (row === 'M  V30 END COLLECTION') inCollection = false;
     // Stereo collections (MDLV30/STEABS, STERAC, STEREL) list atom IDs only, on one line each.
-    else if (inCollection && reordered) {
+    else if (inCollection) {
       if (row.endsWith('-') || !/^M {2}V30 MDLV30\/STE(?:ABS|RAC\d+|REL\d+) ATOMS=\(\d+(?: \d+)*\)$/u.test(row)) throw new Error('This atom collection cannot be reordered safely.');
-      return row.replace(/ATOMS=\((\d+)((?: \d+)*)\)/u, (_, count, ids: string) => `ATOMS=(${count}${ids.trim().split(' ').map(id => ` ${reverse.get(Number(id))}`).join('')})`);
+      return row.replace(/ATOMS=\((\d+)((?: \d+)*)\)/u, (_, count, list: string) => {
+        const ids = list.trim().split(' ').map(Number);
+        if (ids.length !== Number(count) || new Set(ids).size !== ids.length || ids.some(id => !reverse.has(id))) throw new Error('This atom collection cannot be reordered safely.');
+        const remapped = ids.map(id => reverse.get(id)!).sort((a, b) => a - b);
+        return `ATOMS=(${count} ${remapped.join(' ')})`;
+      });
     }
     // Sgroups reference atoms and bonds in many fields. Until those are remapped,
     // reject instead of silently changing annotated chemical identities.
-    if (row.startsWith('M  V30 BEGIN SGROUP') && reordered) throw new Error('Reordering annotated atom groups is not supported.');
+    if (row.startsWith('M  V30 BEGIN SGROUP')) throw new Error('Reordering annotated atom groups is not supported.');
     return row;
   }).join('\n');
 }

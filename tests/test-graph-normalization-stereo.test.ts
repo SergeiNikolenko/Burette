@@ -34,4 +34,12 @@ test('identity normalization preserves actual reflected 3D bodies; reordering re
   expect(result.molfile).toContain('M  V30 MDLV30/STEABS ATOMS=(1 11)');
   const smiles = (molfile: string) => Molecule.fromMolfile(molfile).toIsomericSmiles();
   expect(smiles(result.molfile)).toBe(smiles(original.molfile));
+  const cip = (molfile: string, row: number) => {
+    const { molecule, map } = Molecule.fromMolfileWithAtomMap(molfile);
+    molecule.ensureHelperArrays(Molecule.cHelperCIP);
+    return molecule.getAtomCIPParity(map[row]);
+  };
+  const originalCip = cip(original.molfile, 1);
+  expect(originalCip).not.toBe(0);
+  expect(cip(result.molfile, 10)).toBe(originalCip);
 });
