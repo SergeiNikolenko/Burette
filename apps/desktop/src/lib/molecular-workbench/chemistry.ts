@@ -28,7 +28,7 @@ function expandedAtomMap(structure: MolecularStructure, count: number): number[]
   const existing = structure.atomMap ?? structure.atoms.map((_, i) => i);
   return [...existing, ...Array.from({ length: count - existing.length }, (_, i) => existing.length + i)];
 }
-function toOcl(structure: MolecularStructure, requireComplete = true): Molecule {
+function readOclGraph(structure: MolecularStructure, requireComplete: boolean) {
   checkSize(structure.atoms.length);
   if (requireComplete && !structure.graphComplete) throw new Error('XYZ does not specify bond orders or charges. Provide SMILES or SDF before this calculation.');
   const { molecule: mol, map: sourceMap } = Molecule.fromMolfileWithAtomMap(structure.molfile);
@@ -53,9 +53,12 @@ function toOcl(structure: MolecularStructure, requireComplete = true): Molecule 
     if (!diagram) mol.ensureHelperArrays(Molecule.cHelperCIP);
     retainUnknownStereo(mol, unspecified.atoms, unspecified.bonds);
   }
-  return mol;
+  return { mol, sourceMap };
 }
 
+function toOcl(structure: MolecularStructure, requireComplete = true): Molecule {
+  return readOclGraph(structure, requireComplete).mol;
+}
 
 export function generateFromSmiles(smiles: string, seed = 1): MolecularStructure {
   if (!smiles.trim() || smiles.length > 16_384) throw new Error('Provide a valid SMILES string.');
@@ -127,12 +130,15 @@ const MMFF_SURFACE_AGREEMENT = 1e-3;
  * interactions between separate fragments, which OpenChemLib includes. Use central
  * differences for such graphs and when analytic extraction or the energy check fails. */
 export function createOptimizationEvaluator(structure: MolecularStructure, forceField: MolecularForceField = 'MMFF94'): EnergyEvaluator {
-  const mol = toOcl(structure);
+  const { mol, sourceMap } = readOclGraph(structure, true);
   const reference = energyEvaluatorForGraph(structure, forceField, mol);
   const n = structure.atoms.length;
   if (forceField === 'UFF' || mol.getFragmentAtoms(0, false).length !== n) return reference;
-  // The canonical molfile is already in atomMap order. Extract terms from it
-  // directly so another OCL serialization cannot permute the atom indices.
+  // RDKit indexes terms by the input molfile rows. Graph edits can serialize
+  // those rows in a different order than OpenChemLib's internal atom indices.
+  const rowForAtom = new Int32Array(n);
+  sourceMap.forEach((atom, row) => { rowForAtom[atom] = row; });
+  const coordinateOffsets = structure.atoms.map((_, i) => 3 * rowForAtom[structure.atomMap?.[i] ?? i]);
   let terms: ReturnType<typeof decodeMmffTerms>;
   try { terms = decodeMmffTerms(extractMmffParametersWasm(structure.molfile, forceField)); } catch { return reference; }
   const positions = new Float64Array(3 * n), gradient = new Float64Array(3 * n);
@@ -142,7 +148,7 @@ export function createOptimizationEvaluator(structure: MolecularStructure, force
     if (atoms.length !== n || atoms.some((atom, i) => atom.element !== structure.atoms[i].element)) throw new Error('Energy coordinates must preserve molecular atom identities.');
     let same = current;
     atoms.forEach((atom, i) => {
-      const index = 3 * (structure.atomMap?.[i] ?? i);
+      const index = coordinateOffsets[i];
       if (positions[index] !== atom.x || positions[index + 1] !== atom.y || positions[index + 2] !== atom.z) same = false;
       positions[index] = atom.x; positions[index + 1] = atom.y; positions[index + 2] = atom.z;
     });
@@ -154,7 +160,7 @@ export function createOptimizationEvaluator(structure: MolecularStructure, force
     energy: evaluate,
     gradient(atoms) {
       evaluate(atoms);
-      return atoms.map((_, i) => { const index = 3 * (structure.atomMap?.[i] ?? i); return [gradient[index], gradient[index + 1], gradient[index + 2]]; });
+      return coordinateOffsets.map(index => [gradient[index], gradient[index + 1], gradient[index + 2]]);
     },
     dispose() { reference.dispose(); },
   };

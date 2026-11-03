@@ -3,6 +3,7 @@ import initRDKitModule, { type MainModule as RDKitModule } from '@rdkit/rdkit';
 import inputs from './fixtures/forcefield/rdkit-reference.json';
 import reference from './fixtures/optimization/rdkit-optimization-reference.json';
 import { createEnergyEvaluator, createOptimizationEvaluator, generateFromSmiles, getEnergy, optimize, parseMolecule, prepare3d, searchConformers, type GeometryConstraint, type OptimizationMethod } from '../apps/desktop/src/lib/molecular-workbench/chemistry';
+import { runGraphOperation } from '../apps/desktop/src/lib/molecular-workbench/graph-operations';
 import { evaluateEnergyForces } from '../apps/desktop/src/lib/molecular-workbench/energy-forces';
 import { optimizeCartesian } from '../apps/desktop/src/lib/molecular-workbench/optimization';
 import { runChemistryTask } from '../apps/desktop/src/lib/molecular-workbench/compute-client';
@@ -36,6 +37,22 @@ describe('optimization against independent RDKit references', () => {
       try {
         expect(Math.abs(evaluator.energy(input.atoms) - expected.models[model].energy)).toBeLessThan(1e-4);
         evaluator.gradient!(input.atoms).flat().forEach((value, i) => expect(Math.abs(value - expected.models[model].gradient[i])).toBeLessThan(2e-4));
+      } finally { evaluator.dispose(); }
+    }
+  });
+
+  test('analytic force fields preserve the external atom order after a graph reorder', () => {
+    const { input, expected } = record('CC(=O)NC');
+    const order = input.atoms.map((_, i) => input.atoms.length - i - 1);
+    const reordered = runGraphOperation({ action: 'edit-graph', molecule: input, edits: [{ kind: 'reorder-atoms', order }] });
+    for (const model of ['MMFF94', 'MMFF94s', 'UFF'] as const) {
+      const evaluator = createOptimizationEvaluator(reordered, model);
+      try {
+        expect(Math.abs(evaluator.energy(reordered.atoms) - expected.models[model].energy)).toBeLessThan(1e-4);
+        expect(evaluator.gradient).toBeDefined();
+        evaluator.gradient!(reordered.atoms).forEach((gradient, i) => gradient.forEach((value, axis) => {
+          expect(Math.abs(value - expected.models[model].gradient[3 * order[i] + axis])).toBeLessThan(2e-4);
+        }));
       } finally { evaluator.dispose(); }
     }
   });

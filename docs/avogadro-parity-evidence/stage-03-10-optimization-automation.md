@@ -116,9 +116,12 @@ below records the observed UI output separately.
   61 frames. Back on the SDF, Undo restored C1 from (−0.327, 2.800, −1.706) to
   (−0.317, 2.796, −1.713) Å at display precision. Redo restored the optimized
   coordinates.
-- The 10 RDKit reference tests cover energies, gradients, minima, constraints,
-  conformers and shared Z-matrix variables. The Python client exercised a
-  completed UFF/BFGS job with an analytic gradient and step sampling.
+- The 11 RDKit reference tests cover energies, gradients, minima, constraints,
+  conformers and shared Z-matrix variables. Reversing the N-methylacetamide atom
+  order preserves analytic MMFF94, MMFF94s and UFF gradients in displayed order
+  (component error below 2e-4 kcal/mol/Å, energy error below 1e-4 kcal/mol).
+  The Python client exercised a completed UFF/BFGS job with an analytic gradient
+  and step sampling.
 
 ## Remaining gaps
 
@@ -213,7 +216,7 @@ stays at 0:
 ### D. Optimizer menu (any SDF; `n-methylacetamide.sdf` for steps)
 
 1. In Edit, open the Optimize menu.
-   - Select UFF: BFGS is disabled, its tooltip gives the reason, and L-BFGS is checked.
+   - Select UFF: L-BFGS is checked by default. BFGS remains available for an explicit choice.
    - In Geometry, freeze an atom: BFGS is disabled with "cannot hold frozen atoms".
    - Lock the linear angle on acetonitrile: Optimize is disabled with the linear-angle reason.
 2. Run FIRE: the result line shows the method and step count, and Open steps
