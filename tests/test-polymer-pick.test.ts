@@ -69,8 +69,11 @@ test("real native atom clicks preserve interleaved source rows, camera-free scen
     try {
       const owner = await f.bind(), before = f.plugin.state.data.getSnapshot(); f.plugin.managers.interactivity.setProps({ granularity: "chain" });
       for (const sourceIndex of [0, 3, 7, 8]) {
-        const pending = owner.pick(new AbortController().signal); await Promise.resolve(); f.click(f.loci(sourceIndex));
+        const pending = owner.pick(new AbortController().signal); await Promise.resolve();
+        expect(f.plugin.managers.interactivity.props.granularity).toBe("element");
+        f.click(f.loci(sourceIndex));
         expect(await pending).toBe(sourceIndex);
+        expect(f.plugin.managers.interactivity.props.granularity).toBe("chain");
       }
       const subset = StructureElement.Loci.toStructure(f.loci(7)), subsetLoci = StructureElement.Loci.all(subset);
       expect(subsetLoci.elements[0].unit.elements).toHaveLength(1);
@@ -79,6 +82,24 @@ test("real native atom clicks preserve interleaved source rows, camera-free scen
       expect(f.plugin.managers.interactivity.props.granularity).toBe("chain"); expect(owner.isCurrent()).toBe(true); owner.release();
     } finally { f.close(); }
   }
+});
+
+test("cancelling atom picking restores the previous level without overwriting a user change", async () => {
+  const f = await fixture();
+  try {
+    const owner = await f.bind();
+    f.plugin.managers.interactivity.setProps({ granularity: "residue" });
+    for (const changed of [false, true]) {
+      const controller = new AbortController(), pending = owner.pick(controller.signal).catch(error => error.name);
+      await Promise.resolve();
+      expect(f.plugin.managers.interactivity.props.granularity).toBe("element");
+      if (changed) f.plugin.managers.interactivity.setProps({ granularity: "chain" });
+      controller.abort(); expect(await pending).toBe("AbortError");
+      await new Promise(resolve => setTimeout(resolve, 5));
+      expect(f.plugin.managers.interactivity.props.granularity).toBe(changed ? "chain" : "residue");
+    }
+    owner.release();
+  } finally { f.close(); }
 });
 
 test("foreign equivalent native model, multi-atom and non-primary clicks never assign a guessed row", async () => {

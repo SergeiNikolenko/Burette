@@ -55,12 +55,21 @@ if (!window.BurettePolymerPick) {
   function pick(viewer, lease, signal) {
     const owner = owned(viewer, lease); owner.cancelPick?.();
     return new Promise((resolve, reject) => {
-      let subscription;
-      const cleanup = () => { subscription?.unsubscribe(); signal.removeEventListener('abort', abort); owner.signal.removeEventListener('abort', abort); if (owner.cancelPick === abort) owner.cancelPick = null; };
+      let subscription, restoreGranularity;
+      const cleanup = () => {
+        subscription?.unsubscribe(); signal.removeEventListener('abort', abort); owner.signal.removeEventListener('abort', abort);
+        if (owner.cancelPick === abort) owner.cancelPick = null;
+        restoreGranularity?.(); restoreGranularity = undefined;
+      };
       const abort = () => { cleanup(); reject(stale()); };
       owner.cancelPick = abort;
       signal.addEventListener('abort', abort, { once: true }); owner.signal.addEventListener('abort', abort, { once: true });
       if (signal.aborted || owner.signal.aborted) { abort(); return; }
+      const interactivity = viewer.plugin.managers.interactivity, previousGranularity = interactivity.props.granularity;
+      interactivity.setProps({ granularity: 'element' });
+      restoreGranularity = () => {
+        if (!viewer.plugin.disposed && interactivity.props.granularity === 'element') interactivity.setProps({ granularity: previousGranularity });
+      };
       // MolStar uses a BehaviorSubject: its replayed last click predates this role.
       let armed = false;
       subscription = viewer.plugin.behaviors.interaction.click.subscribe(event => {

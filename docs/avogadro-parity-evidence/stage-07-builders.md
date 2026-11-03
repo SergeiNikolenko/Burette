@@ -117,8 +117,8 @@ frontend remains the earlier `8c1ddefad` build, not the refreshed packaged
 bundle). Selected the original propylene tab and assigned C1/H6/C2/H5 through
 the four role buttons and visible atom clicks. With Selection mode already
 enabled and Picking level set to Residue, clicking C1 left Head armed. Changing
-Picking level to Atom made the same click assign C1. Automatic atom-level
-picking or an explanatory prompt remains a UX gap.
+Picking level to Atom made the same click assign C1. The follow-up below
+addresses this dependency on the previous picking level.
 
 With hydrogen ends, the default picked-H tacticity, 30 repeats and Relax
 geometry on, Preview displayed `Relaxation supports polymers of up to 256
@@ -139,6 +139,44 @@ right-side dialog overlaps part of the source molecule at that width, so
 compact atom picking, the full light-mode build/recovery sequence, and the
 remaining keyboard/accessibility checks are still pending. The viewport
 override was reset after inspection.
+
+### Temporary atom picking and level restoration (2026-11-03)
+
+Polymer role picking now temporarily requests Mol*'s `element` granularity,
+displayed as Atom, and restores the previous level on completion or cancellation.
+If the current level was changed away from Atom while the role was armed,
+cleanup preserves that change. Source ownership, single-atom admission and
+source-row mapping retain their existing guards.
+
+The final `build:agent-shell` output was opened through a fresh prebuilt-static
+server on port 51943. With Selection mode enabled and Residue selected, the
+four role buttons switched the visible level to Atom. Real clicks assigned
+C1/H6/C2/H5, restored Residue, and Preview produced `38 atoms` for four repeats
+with hydrogen ends and relaxation off. Cancelling a newly armed Head also
+restored Residue. In light mode, starting from Chain, Head accepted C1 and
+restored Chain. Screenshots are `/tmp/burette-polymer-residue-pick-dark.png`
+and `/tmp/burette-polymer-chain-pick-light.png`.
+
+The first C1 click in the dark run left the role armed and a second click at
+the same position succeeded. Its timing/click-admission cause remains open.
+The light run accepted the first click after observing the armed state.
+This check covers level switching and restoration at 1280×720, not compact
+picking, full keyboard operation or the capped-polymer relaxation scenario.
+
+`vp run test:polymer-pick` passed seven tests with 71 assertions, including
+temporary element-level picking, restoration after accepted source rows,
+cancellation and preservation of a changed user level. The browser package
+was regenerated with `vp run build:agent-shell`.
+
+The broad `ci:fast js` attempt exited 1 at the Geometry kinetic test's decimal
+comma input assertion (`tests/test-geometry-kinetic.test.tsx:136`). The same
+test had passed earlier in that run. Re-running from
+`test:geometry-source-lifecycle` through the remaining UI checks and the JS
+scope's final workspace, responsiveness, compute and plist checks exited 0
+without Geometry changes. Logs are `/tmp/burette-polymer-mode-ci.log` and
+`/tmp/burette-polymer-mode-ci-resume.log`. This split run does not establish
+a clean uninterrupted JS gate; the intermittent Geometry failure remains
+unexplained.
 
 ## Live preparation automation with mixed stereochemistry (2026-11-03)
 
