@@ -17,7 +17,7 @@ async function waitForSceneDocument(document: ViewerDocument, signal?: AbortSign
   for (let attempt = 0; attempt < 50; attempt++) {
     signal?.throwIfAborted();
     if (activeViewerIframeForDocument(document.id, document.renderer)?.contentWindow) {
-      if (document.renderer !== "molstar") return;
+      if (document.renderer !== "molstar" && document.renderer !== "xyzrender-external") return;
       try {
         const state = await requestViewerAction(document.id, { type: "workspace_scene_state" }, 1200);
         if (state.ready) return;
