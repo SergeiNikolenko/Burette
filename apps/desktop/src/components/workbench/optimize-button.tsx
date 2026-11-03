@@ -1,85 +1,80 @@
 import { useState } from "react";
 import type { MolecularForceField } from "../../lib/molecular-workbench/forcefield";
-import type { MinimizerMethod } from "../../lib/molecular-workbench/minimizer";
+import { OPTIMIZATION_METHODS, defaultOptimizationMethod, optimizationUnavailable, type OptimizationMethod } from "../../lib/molecular-workbench/optimization";
 import { ChevronDown } from "../ui/app-icons";
 import { Button } from "../ui/button";
 import { ButtonGroup } from "../ui/button-group";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
 
-/** `default` is the force field's own minimizer; the others integrate the same MMFF94 energy numerically. */
-export type OptimizerChoice = "default" | MinimizerMethod;
-const CHOICES: { value: OptimizerChoice; label: string }[] = [
-  { value: "default", label: "L-BFGS" },
-  { value: "fire", label: "FIRE" },
-  { value: "abc-fire", label: "ABC-FIRE" },
-  { value: "hybrid", label: "FIRE, then L-BFGS" },
-];
-const NUMERICAL_ATOM_LIMIT = 64;
-const STORAGE_KEY = "burette.workbench.optimizer";
+const LABELS: Record<OptimizationMethod, string> = { bfgs: "BFGS", lbfgs: "L-BFGS", fire: "FIRE", "abc-fire": "ABC-FIRE", hybrid: "FIRE, then L-BFGS" };
+const FORCE_FIELDS: MolecularForceField[] = ["MMFF94", "MMFF94s", "UFF"];
+const METHOD_KEY = "burette.workbench.optimizer";
+const FIELD_KEY = "burette.workbench.force-field";
+const COUPLED_REASON = "BFGS cannot keep Z-matrix variables coupled. Choose L-BFGS, FIRE, ABC-FIRE or hybrid.";
 
-function storedChoice(): OptimizerChoice {
-  try {
-    const value = localStorage.getItem(STORAGE_KEY);
-    return CHOICES.some((choice) => choice.value === value) ? value as OptimizerChoice : "default";
-  } catch { return "default"; }
+function stored<T extends string>(key: string, values: readonly T[]): T | null {
+  try { const value = localStorage.getItem(key); return values.includes(value as T) ? value as T : null; } catch { return null; }
+}
+function remember(key: string, value: string) {
+  try { localStorage.setItem(key, value); } catch { /* storage unavailable: keep the choice for this view */ }
 }
 
-/** The method for an optimization request; numerical methods apply only up to their atom limit. */
-export function optimizerMethod(choice: OptimizerChoice, atomCount: number): MinimizerMethod | undefined {
-  return choice === "default" || atomCount > NUMERICAL_ATOM_LIMIT ? undefined : choice;
+export function optimizerLabel(method: OptimizationMethod) { return LABELS[method]; }
+
+/** Why `method` cannot run here, or null. `coupled` optimizations move shared Z-matrix variables. */
+function methodUnavailable(method: OptimizationMethod, atomCount: number, forceField: MolecularForceField, constraintCount: number, coupled: boolean) {
+  return optimizationUnavailable(atomCount, forceField, method, constraintCount) ?? (coupled && method === "bfgs" ? COUPLED_REASON : null);
 }
 
-export function optimizerLabel(method: MinimizerMethod | undefined) {
-  return CHOICES.find((choice) => choice.value === (method === "lbfgs" ? "default" : method ?? "default"))!.label;
-}
-
-/** Optimize with the chosen method; the menu beside it picks the method and remembers it. */
-export function OptimizeButton({ atomCount, disabled, size = "default", variant = "default", onOptimize }: {
-  atomCount: number; disabled?: boolean; size?: "default" | "xs"; variant?: "default" | "secondary";
-  onOptimize: (method: MinimizerMethod | undefined, forceField: MolecularForceField) => void;
+/**
+ * Optimize with an explicit method; the menu beside it picks the force field and method.
+ * A remembered method that cannot run here is shown disabled with its reason, and the
+ * checked method is the one that runs, so nothing is substituted unseen.
+ */
+export function OptimizeButton({ atomCount, constraintCount = 0, coupled = false, unavailableReason, disabled, size = "default", variant = "default", onOptimize }: {
+  atomCount: number; constraintCount?: number; coupled?: boolean; unavailableReason?: string | null;
+  disabled?: boolean; size?: "default" | "xs"; variant?: "default" | "secondary";
+  onOptimize: (method: OptimizationMethod, forceField: MolecularForceField) => void;
 }) {
-  const [choice, setChoice] = useState<OptimizerChoice>(storedChoice);
-  const [forceField, setForceField] = useState<MolecularForceField>(() => {
-    try { const value = localStorage.getItem("burette.workbench.force-field"); return value === "MMFF94s" || value === "UFF" ? value : "MMFF94"; } catch { return "MMFF94"; }
-  });
-  const chooseField = (value: string) => {
-    if (value !== "MMFF94" && value !== "MMFF94s" && value !== "UFF") return;
-    setForceField(value);
-    try { localStorage.setItem("burette.workbench.force-field", value); } catch { /* storage unavailable */ }
-  };
-  const fieldUnavailable = forceField === "UFF" && atomCount > NUMERICAL_ATOM_LIMIT;
-  const numericalAllowed = atomCount <= NUMERICAL_ATOM_LIMIT;
-  const method = optimizerMethod(choice, atomCount);
-  const choose = (value: string) => {
-    setChoice(value as OptimizerChoice);
-    try { localStorage.setItem(STORAGE_KEY, value); } catch { /* storage unavailable: keep the choice for this view */ }
-  };
+  const [preferred, setPreferred] = useState(() => stored(METHOD_KEY, OPTIMIZATION_METHODS));
+  const [forceField, setForceField] = useState<MolecularForceField>(() => stored(FIELD_KEY, FORCE_FIELDS) ?? "MMFF94");
+  const reason = (method: OptimizationMethod) => methodUnavailable(method, atomCount, forceField, constraintCount, coupled);
+  const fallback = defaultOptimizationMethod(forceField, constraintCount > 0 || coupled);
+  const method = preferred && !reason(preferred) ? preferred : fallback;
+  const blocked = unavailableReason ?? reason(method);
+  // A force field is unavailable when no method can run it; L-BFGS carries the general reason.
+  const fieldReason = (field: MolecularForceField) => OPTIMIZATION_METHODS.every(item => methodUnavailable(item, atomCount, field, constraintCount, coupled))
+    ? methodUnavailable("lbfgs", atomCount, field, constraintCount, coupled) : null;
   return (
     <ButtonGroup>
-      <Button type="button" variant={variant} size={size} disabled={disabled || fieldUnavailable} title={fieldUnavailable ? "UFF optimization supports up to 64 atoms" : undefined} onClick={() => onOptimize(method, forceField)}>Optimize</Button>
+      <Button type="button" variant={variant} size={size} disabled={disabled || Boolean(blocked)} title={blocked ?? `${forceField}, ${LABELS[method]}`}
+        onClick={() => onOptimize(method, forceField)}>Optimize</Button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button type="button" variant={variant} size={size === "xs" ? "icon-xs" : "icon"} disabled={disabled} aria-label={`Optimization method: ${optimizerLabel(method)}, ${forceField}`}>
+          <Button type="button" variant={variant} size={size === "xs" ? "icon-xs" : "icon"} disabled={disabled} aria-label={`Optimization method: ${LABELS[method]}, ${forceField}`}>
             <ChevronDown aria-hidden />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuLabel>Force field</DropdownMenuLabel>
-          <DropdownMenuRadioGroup value={forceField} onValueChange={chooseField}>
-            <DropdownMenuRadioItem value="MMFF94">MMFF94</DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="MMFF94s">MMFF94s</DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="UFF" disabled={!numericalAllowed} title={!numericalAllowed ? "Up to 64 atoms" : undefined}>UFF</DropdownMenuRadioItem>
+          <DropdownMenuRadioGroup value={forceField} onValueChange={(value) => {
+            if (!FORCE_FIELDS.includes(value as MolecularForceField)) return;
+            setForceField(value as MolecularForceField); remember(FIELD_KEY, value);
+          }}>
+            {FORCE_FIELDS.map((field) => {
+              const unavailable = fieldReason(field);
+              return <DropdownMenuRadioItem key={field} value={field} disabled={Boolean(unavailable)} title={unavailable ?? undefined}>{field}</DropdownMenuRadioItem>;
+            })}
           </DropdownMenuRadioGroup>
           <DropdownMenuSeparator />
           <DropdownMenuLabel>Minimizer</DropdownMenuLabel>
-          <DropdownMenuRadioGroup value={method ?? "default"} onValueChange={choose}>
-            {CHOICES.map((item) => {
-              const unavailable = item.value !== "default" && !numericalAllowed;
-              return (
-                <DropdownMenuRadioItem key={item.value} value={item.value} disabled={unavailable} title={unavailable ? `Up to ${NUMERICAL_ATOM_LIMIT} atoms` : undefined}>
-                  {item.label}
-                </DropdownMenuRadioItem>
-              );
+          <DropdownMenuRadioGroup value={method} onValueChange={(value) => {
+            if (!OPTIMIZATION_METHODS.includes(value as OptimizationMethod)) return;
+            setPreferred(value as OptimizationMethod); remember(METHOD_KEY, value);
+          }}>
+            {OPTIMIZATION_METHODS.map((item) => {
+              const unavailable = reason(item);
+              return <DropdownMenuRadioItem key={item} value={item} disabled={Boolean(unavailable)} title={unavailable ?? undefined}>{LABELS[item]}</DropdownMenuRadioItem>;
             })}
           </DropdownMenuRadioGroup>
         </DropdownMenuContent>

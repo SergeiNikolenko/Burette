@@ -12,7 +12,7 @@ import { downloadTextFile } from "../../lib/file-export";
 import { INTERNAL_COORDINATE_KINDS, formatInternalCoordinate, internalCoordinateUnit, type InternalCoordinateKind } from "../../lib/geometry-editing";
 import type { MolecularForceField } from "../../lib/molecular-workbench/chemistry";
 import { runChemistryTask, type ChemistryResults } from "../../lib/molecular-workbench/compute-client";
-import type { MinimizerMethod } from "../../lib/molecular-workbench/minimizer";
+import type { OptimizationMethod } from "../../lib/molecular-workbench/optimization";
 import type { ScientificDocument } from "../../lib/molecular-workbench/quantum";
 import { serializeXyz } from "../../lib/molecular-workbench/xyz";
 import { useSourceEditing } from "../../lib/source-editing/context";
@@ -356,7 +356,7 @@ export function ZmatrixPanel({ document, actions, science, text }: {
   // MMFF94 minimization of the real atoms, frozen rows and fixed coordinates held. The
   // optimized atoms are written back through the same rows; the result is one revision,
   // applied only to the source text it started from.
-  const optimize = async (method: MinimizerMethod | undefined, forceField: MolecularForceField) => {
+  const optimize = async (method: OptimizationMethod, forceField: MolecularForceField) => {
     if (!binding) return;
     if (applying || optimizeJob.current || applyingDocuments.has(document.id)) return;
     const controller = new AbortController();
@@ -369,7 +369,7 @@ export function ZmatrixPanel({ document, actions, science, text }: {
     let result: ChemistryResults["optimize-zmatrix"];
     try {
       const molecule = await runChemistryTask({ action: "parse", source: serializeXyz(science.atoms, "Z-matrix"), format: "xyz" }, { signal: controller.signal });
-      result = await runChemistryTask({ action: "optimize-zmatrix", molecule, definition, options: { frozenRows: [...constraints.frozen], lockedCoordinates: [...constraints.locked], forceField, ...(method ? { method } : {}) } }, { signal: controller.signal, timeoutMs: 300_000 });
+      result = await runChemistryTask({ action: "optimize-zmatrix", molecule, definition, options: { frozenRows: [...constraints.frozen], lockedCoordinates: [...constraints.locked], forceField, method } }, { signal: controller.signal, timeoutMs: 300_000 });
     } catch (caught) {
       if (started === lifetime.current) {
         if (latestText.current !== fromText) setError(CHANGED);
@@ -449,7 +449,7 @@ export function ZmatrixPanel({ document, actions, science, text }: {
           </>
         ) : (
           <TooltipProvider><Tooltip><TooltipTrigger asChild>
-            <span><OptimizeButton atomCount={science.atoms.length} size="xs" variant="secondary" disabled={busy} onOptimize={(method, forceField) => void optimize(method, forceField)} /></span>
+            <span><OptimizeButton atomCount={science.atoms.length} constraintCount={constraintCount} coupled size="xs" variant="secondary" disabled={busy} onOptimize={(method, forceField) => void optimize(method, forceField)} /></span>
           </TooltipTrigger><TooltipContent>{constraintCount ? `Optimize with ${constraintCount} constraint${constraintCount === 1 ? "" : "s"}` : "Optimize geometry"}</TooltipContent></Tooltip></TooltipProvider>
         )}
       </div>

@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
-import type { MolecularAtom, Vec3, MolecularForceField, MinimizerMethod } from "../molecular-workbench/types";
+import type { MolecularAtom, Vec3, MolecularForceField } from "../molecular-workbench/types";
+import type { OptimizationMethod } from "../molecular-workbench/optimization";
 import { runGraphTask } from "../molecular-workbench/graph-compute-client";
 import type { MolecularStructure } from "../molecular-workbench/molecular-graph";
 import type { GraphEdit, GraphEditResult } from "../molecular-workbench/graph-edit";
@@ -16,8 +17,9 @@ import { prepareMeasurementSourcePair, publishMeasurementSourcePair } from "./me
 
 /** What an optimization did, kept with the snapshot it produced. Energies in kcal/mol. */
 export type GraphOutcome = {
-  forceField?: MolecularForceField; method: string; initialEnergy: number; energy: number; converged: boolean; iterations?: number;
-  frames?: { atoms: MolecularAtom[]; energy: number }[];
+  forceField?: MolecularForceField; method: string; initialEnergy: number; energy: number; converged: boolean; iterations?: number | null;
+  /** Step geometries with physical energies; absent or two endpoint frames when the minimizer exposes no steps. */
+  frames?: { atoms: MolecularAtom[]; energy: number }[]; frameSampling?: "steps" | "endpoints";
 };
 export type GraphSnapshot = { structure: GraphEditResult; annotations: AtomAnnotation[]; text: string; outcome: GraphOutcome | null; metadata: GraphMetadata | null; atomIds: readonly string[] | null };
 // `origin` is the source the history started from; its title and SDF data items
@@ -31,7 +33,8 @@ export type GraphOperation =
   // New coordinates for every atom, in order, of exactly the snapshot `from` (symmetrize).
   | { kind: "positions"; coordinates: Vec3[]; from: GraphSnapshot };
 
-export type GraphAdvancedOperation = { kind: "add-hydrogens" } | { kind: "optimize"; method?: MinimizerMethod; forceField?: MolecularForceField };
+// `prepare-3d` embeds a flat depiction with hydrogens and relaxes it; source atoms keep their indices.
+export type GraphAdvancedOperation = { kind: "add-hydrogens" } | { kind: "prepare-3d" } | { kind: "optimize"; method: OptimizationMethod; forceField: MolecularForceField };
 export type GraphComputeResult = { structure: GraphEditResult; outcome: GraphOutcome | null };
 export type GraphAdvancedCompute = (operation: GraphAdvancedOperation, structure: GraphEditResult, signal: AbortSignal) => Promise<GraphComputeResult>;
 
