@@ -193,6 +193,33 @@ Local evidence includes `/tmp/burette-edit-layout-before.png`,
 case above. The previously observed molecular camera crop after resizing,
 native acceptance and the other stage requirements remain open.
 
+### Camera framing after resize, 2026-11-03
+
+On `8e2eb7f38`, a fresh prebuilt browser opened caffeine SDF/XZ at
+1280 × 720 with Edit visible. Resizing to 760 × 720 leaves a 399 × 680
+viewer iframe. The molecule remains clipped on the right after the resize has
+settled. The screenshot therefore represents a persistent framing issue,
+rather than only an intermediate compositor frame.
+
+The current resize contract in `docs/performance.md` explicitly retains camera
+and projection scale. `scheduleViewerResize` and `deferViewerResize` resize and
+redraw the canvas without requesting a camera reset. Automatic refitting would
+change that contract and must account for deliberate user zoom and pan.
+
+At the narrow size, Camera → Reset zoom activated with Enter restores the full
+molecule. In light mode, Enter opens the Camera menu with Reset zoom focused,
+and a second Enter executes it. The selected projection remains Perspective,
+and Edit still shows 24 atoms, 25 bonds and O1 (0.470, 2.569, 0.001) Å.
+Browser errors are empty. This proves the explicit framing route in both
+themes. Adaptive automatic framing and the wider camera/scene matrix remain
+open; no camera policy was changed by this investigation.
+
+Local screenshots are `/tmp/burette-resize-before-wide.png`,
+`/tmp/burette-resize-settled-760.png`,
+`/tmp/burette-resize-reset-zoom-760.png` and
+`/tmp/burette-resize-reset-zoom-light-760.png`. The typed observe response is
+`/tmp/burette-resize-narrow-observe.json`.
+
 ### Hydrogen source-pose preservation, 2026-11-03
 
 - OCL parsing and `toMolfileV3()` can invent a diagram when bonded atoms
