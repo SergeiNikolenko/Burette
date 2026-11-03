@@ -27,7 +27,8 @@ Quick Look, iPhone or hosted acceptance from either.
 ## Stage ledger
 
 Latest focused evidence includes [Generate 3D camera fitting, Undo/Redo and
-MOLX round trip](avogadro-parity-evidence/stage-01-02-09-editing-io.md#generate-3d-camera-framing-and-scene-round-trip-2026-11-03).
+MOLX round trip](avogadro-parity-evidence/stage-01-02-09-editing-io.md#generate-3d-camera-framing-and-scene-round-trip-2026-11-03)
+and [manual Undo/Apply with a clean saved source](avogadro-parity-evidence/stage-01-02-09-editing-io.md#manual-undo-keeps-apply-available-2026-11-03).
 
 All rows remain **partial**, with the listed acceptance gates **untested as a
 complete matrix**. The source column names implemented foundations, not full-stage

@@ -1243,7 +1243,8 @@ function SingleDocumentTextPanel({
           diagnostic: sourceSession.diagnostic,
           saveDisabledReason: sourceSession.saveDisabledReason,
           saveLabel: sourceSession.saveLabel,
-          showApplyPreview: sourceSession.previewMode === "manual" && sourceSession.dirty,
+          showApplyPreview: sourceSession.previewMode === "manual"
+            && (sourceSession.dirty || (sourceSession.previewState ?? "current") !== "current"),
           onChange: (content: string) => sourceEditing.updateDraft(activeDocument, content),
           onSave: () => sourceEditing.save(activeDocument),
           onApplyPreview: () => sourceEditing.applyPreview(activeDocument),

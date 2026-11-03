@@ -19,12 +19,13 @@ for (const key of ["document", "navigator", "HTMLElement", "HTMLIFrameElement", 
 }
 Object.assign(globalThis, { window: browser, IS_REACT_ACT_ENVIRONMENT: true });
 const source = "ATOM      1  C   MOL A   1       0.000   0.000   0.000\n";
+const sourceContents = new Map<string, string>();
 let waitForRead: Promise<void> | null = null;
 mock.module("../apps/desktop/src/lib/tauri", () => ({ isTauriRuntime: () => false, trackTauriListener: () => () => {} }));
 const structureText = await import("../apps/desktop/src/lib/structure-text");
 mock.module("../apps/desktop/src/lib/structure-text", () => ({
   ...structureText,
-  readStructureTextDocument: async () => { await waitForRead; return { content: source, truncated: false }; },
+  readStructureTextDocument: async (path: string) => { await waitForRead; return { content: sourceContents.get(path) ?? source, truncated: false }; },
 }));
 const browserDocuments = await import("../apps/desktop/src/lib/browser-dev-documents");
 const previewOptions: unknown[] = [];
@@ -37,8 +38,9 @@ const { useSourceEditingController } = await import("../apps/desktop/src/hooks/u
 const { requestViewerAction } = await import("../apps/desktop/src/lib/viewer-bridge");
 const { useMoleculeStore } = await import("../apps/desktop/src/stores/molecule-store");
 let serial = 0;
-async function fixture() {
+async function fixture(initialContent = source) {
   const doc = { id: `prerequisite-${++serial}`, path: `/prerequisite-${serial}.pdb`, title: "source.pdb", extension: "pdb", renderer: "molstar", runtimePath: "<html/>" } as ViewerDocument;
+  sourceContents.set(doc.path, initialContent);
   let controller!: ReturnType<typeof useSourceEditingController>, setShown!: (shown: boolean) => void, setCurrent!: (doc: ViewerDocument) => void;
   const errors: unknown[] = [], host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
@@ -53,7 +55,7 @@ async function fixture() {
   return { doc, errors, get controller() { return controller; },
     hide: async () => { await act(async () => setShown(false)); },
     replace: async (replacement: ViewerDocument) => { await act(async () => setCurrent(replacement)); },
-    close: async () => { await act(async () => root.unmount()); host.remove(); },
+    close: async () => { await act(async () => root.unmount()); host.remove(); sourceContents.delete(doc.path); },
   };
 }
 test("compiled source accessor sees an awaited session and same-turn draft updates", async () => {
@@ -87,6 +89,24 @@ test.each([false, true])("explicit Apply and retry retain draft camera policy (m
       await view.controller.applyPreview(view.doc);
     });
     expect(previewOptions.at(-1)).toBeUndefined();
+  } finally { await view.close(); }
+});
+test("returning to saved manual-sized text still reports a pending preview and permits retry", async () => {
+  const saved = source + "REMARK padding\n".repeat(80_000);
+  const view = await fixture(saved);
+  previewOptions.length = 0;
+  try {
+    await act(async () => view.controller.beginEditing(view.doc));
+    expect(view.controller.sessionForDocument(view.doc)?.status).toBe("Saved");
+    await act(async () => view.controller.updateDraft(view.doc, saved + "REMARK edit\n"));
+    await act(async () => view.controller.updateDraft(view.doc, saved, { view: "fit" }));
+    const reverted = view.controller.sessionForDocument(view.doc)!;
+    expect({ dirty: reverted.dirty, previewState: reverted.previewState, status: reverted.status })
+      .toEqual({ dirty: false, previewState: "manual", status: "Saved — Preview Not Applied" });
+    await act(async () => view.controller.applyPreview(view.doc));
+    expect(view.controller.sessionForDocument(view.doc)?.status).toBe("Saved — Preview Paused");
+    await act(async () => view.controller.applyPreview(view.doc));
+    expect(previewOptions).toEqual([{ rendererViewState: null }, { rendererViewState: null }]);
   } finally { await view.close(); }
 });
 test("independent operations survive hiding and release, but expire on close without a session", async () => {

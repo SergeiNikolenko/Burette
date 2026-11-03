@@ -115,14 +115,13 @@ function randomId() {
 
 function statusFor(session: Pick<InternalSourceSession, "dirty" | "previewState" | "saving">) {
   if (session.saving) return "Saving…";
-  if (!session.dirty) return session.previewState === "paused" ? "Saved — Preview Paused" : "Saved";
   switch (session.previewState) {
-    case "queued": return "Edited — Updating Preview…";
+    case "queued": return session.dirty ? "Edited — Updating Preview…" : "Saved — Updating Preview…";
     case "staging": return "Updating Preview…";
-    case "manual": return "Preview Not Applied";
-    case "paused": return "Preview Paused";
+    case "manual": return session.dirty ? "Preview Not Applied" : "Saved — Preview Not Applied";
+    case "paused": return session.dirty ? "Preview Paused" : "Saved — Preview Paused";
     case "unsupported": return "Read Only";
-    default: return "Edited";
+    default: return session.dirty ? "Edited" : "Saved";
   }
 }
 

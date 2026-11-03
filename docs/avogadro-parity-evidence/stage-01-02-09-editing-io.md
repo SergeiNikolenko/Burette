@@ -427,12 +427,50 @@ Local evidence includes `/tmp/burette-apply-manual-oracle.json`,
 The typed browser observation reported the viewer ready. Test tabs and owned
 servers were closed, and theme emulation was reset.
 
-An additional gap remains: Undo to the original text of a manual-sized draft
-displayed `Saved` and removed Apply Preview. The Text dock currently gates that
-button on `dirty`, although the pending preview can differ from saved text.
-The full manual Undo/rendering sequence, recovery of camera policy after a new
-top-level loader, and native acceptance remain open. Initial external `/tmp`
+This run exposed another gap: Undo to the original text of a manual-sized draft
+displayed `Saved` and removed Apply Preview. The follow-up below fixes the
+dirty-only gate. Recovery of camera policy after a new top-level loader and
+native acceptance remain open. Initial external `/tmp`
 fixture attempts returned HTTP 403 even with an explicit filesystem allow root;
 the successful run used the worktree's ignored test directory. A fixture setup
 mistake initially appended a second SDF record and was corrected before the
 single-record editing scenario above.
+
+### Manual Undo keeps Apply available (2026-11-03)
+
+The Text dock now keeps Apply Preview available for a manual-sized source whose
+preview is pending, including when Undo restored the exact saved bytes. Source
+status reports `Saved — Preview Not Applied`, then `Updating Preview…` while the
+candidate is prepared, and `Saved` after promotion. Save copy stays disabled for
+the clean source. A failed preparation reports `Saved — Preview Paused` and can
+be retried. Dirty manual sources retain the existing Apply behavior.
+
+A fresh source-backed `vite-dev` session used the same single-record 1,101,212-byte
+SDF above. Generate 3D and Enter on Apply produced nine atoms/eight bonds.
+Pointer Undo restored the original draft, with Apply still enabled and Save copy
+disabled. Enter on Apply restored the visible flat molecule and all four source
+coordinates: C1 (0,0,0), C2 (1.299038,0.75,0), O3 (2.598076,0,0), and
+F4 (1.299038,2.25,0) Å (the Edit table rounds to three decimals).
+Keyboard Redo followed by pointer Apply restored the generated scene. A second
+Undo/Apply cycle succeeded in light mode at 760×720. Dark mode used 1280×720.
+The Mol* agent's completed `summary` responses independently reported nine atoms
+after Redo and four after the second Undo/Apply. This checks the renderer model
+as well as the draft-backed Edit table. The previous RDKit export check remains
+separate evidence; this follow-up did not repeat export/reopen or measure the
+renderer coordinates numerically.
+
+Local evidence: `/tmp/burette-redo-actions.json`, `/tmp/burette-undo-summary.json`,
+`/tmp/burette-undo-before-apply.png`, `/tmp/burette-undo-applied-dark.png`,
+`/tmp/burette-undo-manual-light-760.png`, and `/tmp/burette-undo-applied-light.png`.
+The controller regression passed all 11 tests / 53 assertions, including clean
+pending state, failure and retry with the retained camera policy. Typecheck,
+agent-shell rebuild and plugin checks passed. The controller harness stops at
+runtime creation; the Browser run above supplies the rendering evidence.
+The full `vp run test:ui` completed with exit 0 (492 top-level commands,
+0/500 cache hits). Its log is `/tmp/burette-undo-ui.log`. The Browser tab and
+owned server were closed, and temporary viewport/theme overrides were reset.
+
+Accessibility remains partial: Enter works on Apply and Redo, but after a clean
+Apply succeeds the disappearing button returns focus to the page. Full focus
+continuity, 320px acceptance, loader recovery, packaged/native acceptance and
+the complete scene/history matrix remain open.
