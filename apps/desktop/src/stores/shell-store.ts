@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { observeSharedStore, refreshSharedActions } from "./shared-store";
 import { isTemporaryDocumentPath } from "../lib/temporary-documents";
-import { isNativePreviewWindow, workspaceStorageKey } from "../lib/window-scope";
+import { workspaceStorageKey } from "../lib/window-scope";
 
 type ShellState = {
   sidebarOpen: boolean;
@@ -111,7 +111,7 @@ export function getShellStoreSnapshot(): ShellStoreSnapshot {
 export const useShellStore = create<ShellState>()(
   persist<ShellState, [], [], PersistedShellState>(
     refreshSharedActions<ShellState>((set) => ({
-      sidebarOpen: !isNativePreviewWindow(),
+      sidebarOpen: true,
       sidebarWidth: 340,
       projectsOpen: true,
       projectRoots: [],
@@ -271,7 +271,7 @@ export const useShellStore = create<ShellState>()(
           .filter((root) => !projectRoots.includes(root));
         return {
           ...current,
-          sidebarOpen: isNativePreviewWindow() ? false : stored?.sidebarOpen ?? current.sidebarOpen,
+          sidebarOpen: stored?.sidebarOpen ?? current.sidebarOpen,
           sidebarWidth: normalizeSidebarWidth(stored?.sidebarWidth ?? current.sidebarWidth),
           projectsOpen: stored?.projectsOpen ?? current.projectsOpen,
           projectRoots,

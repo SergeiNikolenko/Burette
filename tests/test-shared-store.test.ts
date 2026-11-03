@@ -37,6 +37,10 @@ test("production settings and shell actions merge external writes before mutatio
       projectRoots: ["/first", "/second"], pinnedProjectRoots: ["/second"],
       projectNameOverrides: { "/second": "Second" },
     });
+    browser.location.href = "http://localhost/?buretteWindow=workspace-preview-test";
+    useShellStore.getState().addProjectRoot("/from-preview");
+    expect(JSON.parse(browser.localStorage.getItem("burette.shell.ui")!).state.sidebarOpen).toBe(true);
+    browser.location.href = "http://localhost/";
     browser.localStorage.setItem("burette.shell", JSON.stringify(settings));
     browser.dispatchEvent(new browser.StorageEvent("storage", {
       key: "burette.shell", storageArea: browser.localStorage,
