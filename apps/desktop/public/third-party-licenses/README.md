@@ -1,6 +1,6 @@
 # Third-party licenses
 
-These files accompany the browser optimizer, compression, symmetry and
+These files accompany the browser optimizer, coordinate editor, compression, symmetry and
 diffraction workers in Burette.
 The desktop app also includes this directory as the `third-party-licenses`
 resource. Vite copies the same directory into desktop, agent-shell and hosted
@@ -9,6 +9,8 @@ shell builds.
 | Component | License and notice files |
 | --- | --- |
 | Avogadro FIRE2 / ABC-FIRE adaptation, revision f5aea255b15d24f658a18d258e56357fa2719646 | avogadro-LICENSE |
+| Avogadro coordinate block and Cartesian coordinate editor adaptation, revision 064eeb4706877ffed8ddc4b037489ed3748b0547 | avogadro-LICENSE |
+| Avogadro input generator coordinate formats, avogenerators revision 965ea6302b930cfc34b0b2deefdab5737bfe15c0 | avogenerators-LICENSE |
 | fflate 0.8.3 | fflate-LICENSE |
 | xz-decompress 0.2.3 / xzwasm | xz-decompress-NOTICE |
 | walloc, revision a93409f5ebd49c875514c5fee30d3b151f7b0882, included in xz-decompress | walloc-LICENSE.md |

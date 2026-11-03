@@ -36,6 +36,15 @@ definition rows including dummies, 1536 variables, finite coordinates within
 are checked before any caller mutates a file. This codec accepts one plain frame;
 extended per-atom property columns and multi-frame input are separate formats.
 
+Unmarked ZMAT bodies may also use the Gaussian conventions that Gaussian and
+Open Babel write: a `Variables:` label, `name value` assignments after the rows
+and dihedrals within ±360°. A dihedral outside ±180°, literal or bound to a
+variable used only as dihedrals, is stored as its exactly equivalent signed angle;
+values within ±180° are kept as written. A `Constants:` section is refused because
+reading frozen values as ordinary variables would drop their meaning. Element
+labels such as `C1`, label references and comma-separated fields remain
+unsupported. A coordinate written as `-0` reads back as `0`.
+
 Run `vp run test:coordinate-interchange` and
 `vp run typecheck:coordinate-interchange`. Tests compare unaligned absolute
 coordinates at 1e-12 Å, retain full symbolic definitions, test legacy migration
@@ -112,3 +121,22 @@ token in the single transport marker format. Validation finishes before the
 clipboard write or download starts; neither action changes the source or its
 original file. Reopening the result through the ordinary scientific reader
 preserves absolute pose and the complete definition.
+
+## Independent oracle
+
+`vp run test:zmatrix-reference` runs the real CLI on ten RDKit conformers in
+`tests/fixtures/zmatrix-reference/`: chiral centres, a ring, an E alkene, an
+allene, a disconnected dimer, near-linear and exactly linear molecules. XYZ →
+ZMAT → XYZ must be exact and its ZMAT must open in the compiled browser reader as
+the same atoms. Open Babel's own Gaussian and MOPAC internal coordinates for the
+same inputs must rebuild every pairwise distance (within Open Babel's printed
+precision) and every RDKit stereocentre and E/Z bond; mirrored dihedrals must
+invert each centre. Open Babel's Z-matrices that leave a placement undefined,
+such as torsions about its exactly linear N≡C–C or rounded C=C=C chains, are
+refused rather than rebuilt.
+
+`uv run --with rdkit python tests/support/regenerate-zmatrix-oracles.py` rewrites
+these fixtures with Open Babel and RDKit; `--check` additionally measures every
+emitted bond, angle and dihedral with RDKit, rebuilds every emitted Z-matrix with
+Open Babel and re-perceives CIP/E-Z labels. Open Babel is only an external test
+tool and is not distributed with Burette.

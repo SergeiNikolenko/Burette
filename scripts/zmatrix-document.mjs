@@ -2,6 +2,9 @@
 // assignment syntax documented by Psi4; expressions and mixed Cartesian rows
 // are deliberately not evaluated. X rows are reference points, never atoms.
 // https://psicode.org/psi4manual/master/psithonmol.html
+// Gaussian-style bodies, as written by Gaussian and Open Babel, are also read:
+// a `Variables:` label, `name value` assignments and dihedrals within ±360°.
+// https://gaussian.com/zmat/
 import { MAX_INTERNAL_COORDINATE_ATOMS, atomsFromZmatrixRows, formatZmatrix, parseZmatrixRows } from './internal-coordinates.mjs';
 
 const NAME = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
@@ -24,18 +27,25 @@ function finiteNumber(text) {
 export function parseZmatrixDocument(text) {
   if (new TextEncoder().encode(text).length > MAX_BYTES) invalid('Z-matrix exceeds 1 MiB.', 'COORDINATE_LIMIT');
   const rows = [], variables = [];
+  // A blank line or `Variables:` label after the rows opens Gaussian's variable section.
+  let variableSection = false;
   for (const raw of text.replace(/^\uFEFF/, '').split(/\r\n?|\n/)) {
+    if (!raw.trim()) variableSection ||= rows.length > 0;
     const line = raw.split('#')[0].trim();
     if (!line) continue;
-    if (line.includes('=')) {
-      const parts = line.split('=').map(part => part.trim());
+    if (/^variables\s*:?$/iu.test(line)) { variableSection = true; continue; }
+    // Gaussian freezes Constants during optimization; reading them as variables would drop that.
+    if (/^constants\s*:?$/iu.test(line)) invalid('Gaussian Constants sections are unsupported; list every value under Variables.');
+    const fields = line.split(/\s+/);
+    // Rows never have two fields, so there `name value` is an assignment, not a truncated row.
+    if (line.includes('=') || (variableSection && fields.length === 2)) {
+      const parts = line.includes('=') ? line.split('=').map(part => part.trim()) : fields;
       if (parts.length !== 2 || !NAME.test(parts[0])) invalid('Variable definitions require name = number.');
       if (variables.some(variable => variable.name === parts[0])) invalid(`Duplicate variable ${parts[0]}.`);
       variables.push({ name: parts[0], value: finiteNumber(parts[1]) });
       if (variables.length > MAX_VARIABLES) invalid('Too many Z-matrix variables.', 'COORDINATE_LIMIT');
       continue;
     }
-    const fields = line.split(/\s+/);
     const i = rows.length;
     if (i >= MAX_INTERNAL_COORDINATE_ATOMS) invalid('Z-matrix allows at most 512 rows, including dummy points.', 'COORDINATE_LIMIT');
     if (fields.length !== 1 + 2 * Math.min(i, 3)) invalid('Z-matrix rows require an element and reference/value pairs.');
@@ -52,9 +62,28 @@ export function parseZmatrixDocument(text) {
     }
     rows.push({ element: fields[0], refs, values });
   }
-  const document = { rows, variables };
+  const document = { rows, variables: normalizedDihedralVariables(rows, variables) };
+  for (const row of rows) if (row.values.length === 3 && typeof row.values[2] === 'number') row.values[2] = signedDihedral(row.values[2]);
   resolveZmatrixDocument(document);
   return document;
+}
+
+// Gaussian and Open Babel write dihedrals in [0, 360). The equivalent signed
+// angle is exact (Sterbenz), and values already within ±180° are kept as written.
+function signedDihedral(value) {
+  if (Math.abs(value) > 360) invalid('Dihedral values must lie within ±360 degrees.');
+  return value > 180 ? value - 360 : value < -180 ? value + 360 : value;
+}
+
+/** A variable used only as dihedrals is wrapped once, which keeps every signed use equivalent. */
+function normalizedDihedralVariables(rows, variables) {
+  const uses = new Map();
+  for (const row of rows) row.values.forEach((value, k) => {
+    if (typeof value !== 'string') return;
+    const name = value.replace(/^[+-]/, '');
+    uses.set(name, (uses.get(name) ?? true) && k === 2);
+  });
+  return variables.map(variable => uses.get(variable.name) ? { ...variable, value: signedDihedral(variable.value) } : variable);
 }
 
 /** Resolves bindings and validates element symbols, arity and earlier references. */

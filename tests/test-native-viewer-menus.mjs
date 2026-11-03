@@ -86,6 +86,63 @@ const events = [];
   assert.deepEqual(exports, [{ type: 'exportData', name: 'structure.png', mimeType: 'image/png', base64: 'aW1hZ2U=' }]);
   menu.remove();
 }
+// Export 3D model lists one action per format below the image settings; the chosen
+// format reaches the scene exporter, and its outcome becomes a download or a status.
+{
+  const helper = { values: { resolution: { name: 'viewport' }, format: { name: 'png' } }, cropParams: {} };
+  const formats = { ply: { extension: 'ply' }, glb: { extension: 'glb' }, obj: { extension: 'obj' }, x3d: { extension: 'x3d' }, wrl: { extension: 'wrl' }, pov: { extension: 'pov' } };
+  const calls = [], downloads = [], statuses = [];
+  let outcome;
+  const exporter = { formats, exportScene: (plugin, format) => { calls.push(format); return outcome(); } };
+  const bindings = { window: { BuretteNativeViewerMenus: window.BuretteNativeViewerMenus, molstar: { BuretteSceneExport: exporter } },
+    document, navigator: {}, activeConfig: { label: 'ethanol.sdf' }, resolveViewerTheme: () => 'light',
+    viewportScreenshotHelper: () => helper, viewportPlugin: () => ({}), positionOpenViewportMenu: () => {},
+    setStatus: (text, kind = 'info') => statuses.push([kind, text]), downloadBlob: (blob, name) => downloads.push(name),
+    sceneTreeIconElement: () => document.createElementNS('http://www.w3.org/2000/svg', 'svg'),
+    APP_ICON_DATA: { Check: [], ChevronDown: [] }, VIEWPORT_ICON: { download: [], clipboard: [] },
+    VIEWPORT_SCREENSHOT_RESOLUTIONS: [['viewport', 'Viewport']], VIEWPORT_SCREENSHOT_FORMATS: [['png', 'PNG']],
+  };
+  const constant = viewer.match(/  const VIEWPORT_MODEL_FORMATS = \[[\s\S]*?\];/)[0];
+  const code = ['viewportMenuItem', 'sceneTreeMenuSection', 'viewportScreenshotChoice', 'viewportScreenshotGroup', 'viewportScreenshotToggle',
+    'viewportScreenshotMenu', 'safeExportBaseName', 'exportViewportModel', 'runViewportScreenshotAction'].map(source).join('\n');
+  const actions = new Function(...Object.keys(bindings), `${constant}\nlet viewportModelExport = null;\n${code}
+    return { build: viewportScreenshotMenu, run: runViewportScreenshotAction, pending: () => viewportModelExport };`)(...Object.values(bindings));
+  const build = () => { const menu = document.createElement('div'); actions.build(menu); return menu; };
+  const items = menu => [...menu.querySelectorAll('[data-buret-viewport-menu="screenshot-model"]')];
+  const menu = build();
+  const group = menu.querySelector('[data-buret-screenshot-group="screenshot-model"]');
+  assert.equal(group.querySelector('summary .buret-tree-menu-label').textContent, 'Export 3D model');
+  assert.equal(group.querySelector('.buret-screenshot-group-value').textContent, '');
+  assert.deepEqual(items(menu).map(item => [item.getAttribute('role'), item.textContent]),
+    ['PLY', 'glTF', 'OBJ', 'X3D', 'VRML', 'POV-Ray'].map(label => ['menuitem', label]));
+  let changed = false;
+  outcome = () => Promise.resolve({ blob: new Blob(['ply']), assertSceneUnchanged: () => { if (changed) throw new Error('The 3D scene changed during the export.'); } });
+  assert.equal(actions.run('model', items(menu)[0]), false, 'starting an export closes the menu');
+  assert.ok(actions.pending(), 'an export is running');
+  assert.ok(items(build()).every(item => item.disabled), 'a second export cannot start while one runs');
+  await actions.pending();
+  assert.deepEqual([calls, downloads, actions.pending()], [['ply'], ['ethanol.ply'], null]);
+  // The scene changed after the file was written: nothing is downloaded.
+  changed = true;
+  actions.run('model', items(build())[4]);
+  await actions.pending();
+  outcome = () => Promise.reject(new DOMException('3D model export cancelled.', 'AbortError'));
+  actions.run('model', items(build())[1]);
+  await actions.pending();
+  outcome = () => Promise.reject(new Error('A 3D model cannot include text labels. Hide them and export again.'));
+  actions.run('model', items(build())[5]);
+  await actions.pending();
+  assert.deepEqual([calls, downloads, statuses], [['ply', 'wrl', 'glb', 'pov'], ['ethanol.ply'], [
+    ['error', '[web] 3D model export failed. The 3D scene changed during the export.'],
+    ['info', '[web] 3D model export cancelled.'],
+    ['error', '[web] 3D model export failed. A 3D model cannot include text labels. Hide them and export again.'],
+  ]]);
+  assert.ok(items(build()).every(item => !item.disabled));
+  // Without the exporter (an older runtime) the group is not offered.
+  const bare = new Function(...Object.keys(bindings), `${constant}\nlet viewportModelExport = null;\n${code}\nreturn viewportScreenshotMenu;`)(...Object.values({ ...bindings, window: { BuretteNativeViewerMenus: window.BuretteNativeViewerMenus } }));
+  const plain = document.createElement('div'); bare(plain);
+  assert.equal(plain.querySelector('[data-buret-screenshot-group="screenshot-model"]'), null);
+}
 // The live compute trigger keeps its label and busy state while consuming the
 // same Button/LoadingIndicator source as the shell, including theme changes.
 {

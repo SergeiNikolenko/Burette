@@ -12,6 +12,7 @@ import { BuretteGeometry } from './molstar-geometry.js';
 import { BuretteTopologyScene } from './molstar-topology-scene.js';
 import { BuretteGeometryMeasurement } from './molstar-geometry-measurement.js';
 import { BuretteVolumeSegmentation } from './molstar-volume-segmentation.js';
+import { BuretteSceneExport } from './molstar-scene-export.js';
 
 globalThis.molstar = Object.assign(
   {},
@@ -20,7 +21,7 @@ globalThis.molstar = Object.assign(
   ViewerExtensions,
   ViewerApp,
   ViewerPresets,
-  { BuretteSuperposition, BuretteStory, BuretteSelection, BuretteTrajectoryPlayback, BuretteIndexedTrajectory, BuretteResizeInteraction, BuretteVolumeSegmentation, BuretteGeometryMeasurement, BuretteGeometry, BuretteTopologyScene },
+  { BuretteSuperposition, BuretteStory, BuretteSelection, BuretteTrajectoryPlayback, BuretteIndexedTrajectory, BuretteResizeInteraction, BuretteVolumeSegmentation, BuretteGeometryMeasurement, BuretteGeometry, BuretteTopologyScene, BuretteSceneExport },
 );
 
 export * from '@molstar/viewer/lib';

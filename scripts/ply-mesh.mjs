@@ -1,15 +1,15 @@
 // Binary PLY 1.0: https://paulbourke.net/dataformats/ply/
 // Scene-space coordinates remain in angstrom, without recentering or scaling.
 // This serializer owns no renderer state; the caller supplies tessellated meshes.
-const MAX_BYTES = 64 * 1024 * 1024;
+export const MESH_EXPORT_LIMIT = 64 * 1024 * 1024;
 const VERTEX_BYTES = 28; // xyz, normal (float32), RGBA (uint8)
 const FACE_BYTES = 13; // count (uint8), three vertex indices (int32)
 const HEADER_RESERVE = 1024;
 
 function sizeCheck(vertices, faces) {
   if (!Number.isSafeInteger(vertices) || !Number.isSafeInteger(faces) || vertices < 0 || faces < 0
-      || vertices * VERTEX_BYTES + faces * FACE_BYTES + HEADER_RESERVE > MAX_BYTES) {
-    throw new Error('PLY mesh exceeds the 64 MiB export limit.');
+      || vertices * VERTEX_BYTES + faces * FACE_BYTES + HEADER_RESERVE > MESH_EXPORT_LIMIT) {
+    throw new Error('The 3D model exceeds the 64 MiB export limit.');
   }
 }
 
@@ -17,15 +17,17 @@ function sizeCheck(vertices, faces) {
  * Incremental, bounded triangle-mesh writer. Each append is atomic and copies
  * its input, so later renderer mutations cannot alter accepted output chunks.
  * Indices are local to a chunk; the writer adjusts them across scene objects.
+ * The accepted chunks (float32 positions, unit float32 normals, RGBA bytes and
+ * scene-wide uint32 triangle indices) are what every scene export format reads.
  */
 export class PlyMeshWriter {
   #vertexCount = 0;
   #faceCount = 0;
-  #vertices = [];
-  #faces = [];
+  #chunks = [];
 
   get vertexCount() { return this.#vertexCount; }
   get faceCount() { return this.#faceCount; }
+  get chunks() { return this.#chunks.slice(); }
 
   /** Check before a caller allocates expanded instance/tessellation arrays. */
   checkCapacity(vertices, faces) {
@@ -61,22 +63,14 @@ export class PlyMeshWriter {
         throw new Error('PLY triangles require three distinct in-range vertex indices.');
       }
     }
-    const vertexBytes = new Uint8Array(vertices * VERTEX_BYTES), vertexView = new DataView(vertexBytes.buffer);
-    for (let i = 0; i < vertices; i++) {
-      const offset = i * VERTEX_BYTES, length = Math.hypot(normals[i * 3], normals[i * 3 + 1], normals[i * 3 + 2]);
-      for (let axis = 0; axis < 3; axis++) {
-        vertexView.setFloat32(offset + axis * 4, positions[i * 3 + axis], true);
-        vertexView.setFloat32(offset + 12 + axis * 4, normals[i * 3 + axis] / length, true);
-      }
-      for (let channel = 0; channel < 4; channel++) vertexBytes[offset + 24 + channel] = colors[i * 4 + channel];
+    const chunkPositions = Float32Array.from(positions), chunkNormals = new Float32Array(positions.length);
+    for (let i = 0; i < normals.length; i += 3) {
+      const length = Math.hypot(normals[i], normals[i + 1], normals[i + 2]);
+      for (let axis = 0; axis < 3; axis++) chunkNormals[i + axis] = normals[i + axis] / length;
     }
-    const faceBytes = new Uint8Array(faces * FACE_BYTES), faceView = new DataView(faceBytes.buffer);
-    for (let i = 0; i < faces; i++) {
-      faceView.setUint8(i * FACE_BYTES, 3);
-      for (let corner = 0; corner < 3; corner++) faceView.setInt32(i * FACE_BYTES + 1 + corner * 4, this.#vertexCount + indices[i * 3 + corner], true);
-    }
-    this.#vertices.push(vertexBytes);
-    this.#faces.push(faceBytes);
+    const chunkIndices = new Uint32Array(indices.length);
+    for (let i = 0; i < indices.length; i++) chunkIndices[i] = this.#vertexCount + indices[i];
+    this.#chunks.push({ positions: chunkPositions, normals: chunkNormals, colors: Uint8Array.from(colors), indices: chunkIndices });
     this.#vertexCount += vertices;
     this.#faceCount += faces;
   }
@@ -91,6 +85,26 @@ export class PlyMeshWriter {
       ...['red', 'green', 'blue', 'alpha'].map(name => `property uchar ${name}`),
       `element face ${this.#faceCount}`, 'property list uchar int vertex_indices', 'end_header', '',
     ].join('\n');
-    return new Blob([header, ...this.#vertices, ...this.#faces], { type: 'application/octet-stream' });
+    const vertexParts = this.#chunks.map(({ positions, normals, colors }) => {
+      const bytes = new Uint8Array(positions.length / 3 * VERTEX_BYTES), view = new DataView(bytes.buffer);
+      for (let i = 0; i < positions.length / 3; i++) {
+        const offset = i * VERTEX_BYTES;
+        for (let axis = 0; axis < 3; axis++) {
+          view.setFloat32(offset + axis * 4, positions[i * 3 + axis], true);
+          view.setFloat32(offset + 12 + axis * 4, normals[i * 3 + axis], true);
+        }
+        bytes.set(colors.subarray(i * 4, i * 4 + 4), offset + 24);
+      }
+      return bytes;
+    });
+    const faceParts = this.#chunks.map(({ indices }) => {
+      const bytes = new Uint8Array(indices.length / 3 * FACE_BYTES), view = new DataView(bytes.buffer);
+      for (let i = 0; i < indices.length / 3; i++) {
+        view.setUint8(i * FACE_BYTES, 3);
+        for (let corner = 0; corner < 3; corner++) view.setInt32(i * FACE_BYTES + 1 + corner * 4, indices[i * 3 + corner], true);
+      }
+      return bytes;
+    });
+    return new Blob([header, ...vertexParts, ...faceParts], { type: 'application/octet-stream' });
   }
 }

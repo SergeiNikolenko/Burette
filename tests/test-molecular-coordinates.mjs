@@ -86,10 +86,15 @@ try {
   const known = parse(await convert('C\nH 1 1\nH 1 1 2 90\nH 1 1 2 90 3 90\n', 'zmat'));
   assert.ok(Math.abs(known[3][1]) < 1e-12 && Math.abs(known[3][2] + 1) < 1e-12 && Math.abs(known[3][3]) < 1e-12);
   assert.equal((await convert('O\nH 1 1\nH 1 1 2 180\nH 2 1 1 180 3 0\n', 'zmat')).split('\n')[0], '4');
+  // Gaussian/Open Babel bodies: a Variables label, `name value` lines and [0, 360) dihedrals.
+  const gaussian = parse(await convert('C\nH 1 r2\nH 1 r2 2 a3\nF 1 r4 2 a3 3 d4\n\nVariables:\nr2 1.09\na3= 109.5\nr4=1.35\nd4 300\n', 'zmat'));
+  const signed = parse(await convert('C\nH 1 1.09\nH 1 1.09 2 109.5\nF 1 1.35 2 109.5 3 -60\n', 'zmat'));
+  assert.deepEqual(gaussian, signed, 'A dihedral of 300 degrees is the same placement as -60.');
   for (const text of [
     'H\nH 2 1\n', 'H\nH 1 1\nO 1 1 1 90\n', 'H\nH 1 NaN\n', 'H\nH 1 1e999\n',
     'H\nH 1 R\nS=1\n', 'X\n', 'H\nH 1 0\n', 'H\nH 1 1\nO 1 1 2 181\n',
-    'H\nH 1 1\nO 1 1 2 90\nC 1 1 2 90 3 181\n',
+    'H\nH 1 1\nO 1 1 2 90\nC 1 1 2 90 3 361\n', 'H\nH 1 1\nO 1 1 2 90\nC 1 1 2 90 3 T\nT=-360.5\n',
+    'H\nH 1 1\nO 1 1 2 90\nC 1 T 2 90 3 T\n\nT 200\n', 'H\nH 1\nO 1 1 2 90\n', 'H\nH 1 1\nConstants:\nR 1\n',
     'C\nC 1 1\nC 2 1 1 180\nH 1 1 2 90 3 0\n',
   ]) assert.equal((await convert(text, 'zmat', false)).code, 'INVALID_COORDINATES');
   for (const text of ['1\ncomment\nH NaN 0 0\n', '1\ncomment\nX 0 0 0\n', '1\ncomment\nH 0 0 0 extra\n', '2\ncomment\nH 0 0 0\n', '1\ncomment\nH 0 0 0\n1\ncomment\nH 1 0 0\n', xyz([['H', 0, 0, 0], ['H', 0, 0, 0]])]) {

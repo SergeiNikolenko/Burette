@@ -1,0 +1,10 @@
+{
+ "openBabel": "Open Babel 3.2.1 -- Jul 11 2026 -- 19:21:27",
+ "gemmi": "0.7.5",
+ "cases": [
+  "bromochlorofluoromethane",
+  "l-alanine",
+  "s-1-phenylethanol",
+  "water-dimer"
+ ]
+}

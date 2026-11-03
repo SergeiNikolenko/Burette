@@ -18,6 +18,9 @@ import { OptimizeButton, optimizerLabel } from "./workbench/optimize-button";
 import { RESIDUAL_TOLERANCE, resolveConstraints, type ConstraintResidual, type OptimizationMethod, type OptimizationResult } from "../lib/molecular-workbench/optimization";
 import { HARTREE_KCAL_MOL, fileStem } from "../lib/workbench/formats";
 import { openScientificDocument } from "../lib/workbench/generated-document-open";
+import { CoordinateEditor } from "./workbench/coordinate-editor";
+import { SegmentedControl, SegmentedControlItem } from "./ui/segmented-control";
+import type { Vec3 } from "../lib/molecular-workbench/types";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { useSourceEditing } from "../lib/source-editing/context";
 import { captureLogicalSourceOwner } from "../lib/science-session/state";
@@ -148,6 +151,7 @@ function CartesianGeometryPanel({ document, actions, convert }: {
   const [locked, setLocked] = useState<ReadonlySet<string>>(() => new Set());
   const [optimizing, setOptimizing] = useState(false);
   const [steps, setSteps] = useState<OptimizationSteps | null>(null);
+  const [view, setView] = useState<"internal" | "cartesian">("internal");
   const optimizeJob = useRef<AbortController | null>(null);
   useEffect(() => () => optimizeJob.current?.abort(), [document.id, document.path]);
   const lifetime = useRef(0);
@@ -348,6 +352,26 @@ function CartesianGeometryPanel({ document, actions, convert }: {
     }
   };
   const cancelOptimize = () => { optimizeJob.current?.abort(); optimizeJob.current = null; setOptimizing(false); };
+  // New positions for the same atoms from the coordinate editor: one undoable edit that keeps
+  // unmoved atom lines verbatim. Its rows are measured afresh, as when the text is opened.
+  const applyCoordinates = async (positions: Vec3[]) => {
+    // The managed marker would keep describing the previous geometry.
+    if (editor.sourceText.includes("BURETTE_INTERNAL_COORDINATES_V")) {
+      setEditError("This structure keeps a Z-matrix definition. Edit its rows instead.");
+      return false;
+    }
+    let body: string;
+    let frame: GeometryBase;
+    try {
+      body = textAt(geometryBase(editor.binding.text), positions);
+      frame = geometryBase(body);
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : String(error));
+      return false;
+    }
+    const text = (!logical && editor.sourceText.startsWith("\uFEFF") ? "\uFEFF" : "") + body;
+    return apply(frame.rows, [...editor.history, snapshot()].slice(-HISTORY_LIMIT), frame, undefined, text);
+  };
   const exportInput = () => {
     try {
       const { atoms } = parseXyz(geometryText(editor.frame, editor.rows));
@@ -460,7 +484,13 @@ function CartesianGeometryPanel({ document, actions, convert }: {
           ) : null}
         </div>
       ) : null}
-      <table className="geometry-table"
+      <SegmentedControl aria-label="Geometry view" value={view} onValueChange={(value) => setView(value as "internal" | "cartesian")}>
+        <SegmentedControlItem value="internal">Internal</SegmentedControlItem>
+        <SegmentedControlItem value="cartesian">Cartesian</SegmentedControlItem>
+      </SegmentedControl>
+      {view === "cartesian" ? (
+        <CoordinateEditor atoms={parseXyz(editor.binding.text).atoms} revision={editor.binding.text} disabled={applying || optimizing} onApply={applyCoordinates} />
+      ) : <table className="geometry-table"
         onPointerDownCapture={clearSelection}
         onPointerOver={(event) => preview(event.target)} onPointerLeave={clearPreview}
         onFocusCapture={(event) => preview(event.target)}
@@ -505,7 +535,7 @@ function CartesianGeometryPanel({ document, actions, convert }: {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table>}
     </div>
   );
 }

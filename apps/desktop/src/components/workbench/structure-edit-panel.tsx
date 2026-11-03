@@ -16,6 +16,7 @@ import { Input } from "../ui/input";
 import { PanelEmptyState } from "../ui/panel-empty-state";
 import { SegmentedControl, SegmentedControlItem } from "../ui/segmented-control";
 import { Spinner } from "../ui/spinner";
+import { CoordinateEditor } from "./coordinate-editor";
 import { GraphMetadataFields } from "./graph-metadata-fields";
 import { OptimizeButton } from "./optimize-button";
 import { useGraphDraft, type GraphOutcome, type GraphSnapshot } from "./use-graph-draft";
@@ -85,7 +86,7 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
   const session = draft.session;
   const editor = draft.history;
   const [selection, setSelection] = useState<Selection>(NO_SELECTION);
-  const [view, setView] = useState<"atoms" | "bonds">("atoms");
+  const [view, setView] = useState<"atoms" | "bonds" | "cartesian">("atoms");
   const [addElement, setAddElement] = useState("C");
   const [inputError, setInputError] = useState<string | null>(null);
   const [inserting, setInserting] = useState(false), [adjustingPh, setAdjustingPh] = useState(false);
@@ -250,17 +251,27 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
       {outcome ? <OptimizationOutcome outcome={outcome} onOpenSteps={() => openSteps(actions, document, outcome)} /> : null}
       {truncated ? <p className="workbench-value">Select at most {VIEWER_SELECTION_LIMIT} atoms to edit them.</p> : null}
       <SelectionEditor key={`${snapshotId(editor.current)}:${atoms.join(",")}`} structure={structure} annotations={annotations}
-        atoms={atoms} disabled={busy} onApply={(edits) => void apply(edits)} onDelete={deleteSelected} onMove={move} onError={setInputError} />
+        atoms={atoms} disabled={busy} onApply={(edits) => void apply(edits)} onDelete={deleteSelected} onMove={move} onError={setInputError}
+        onPositions={async (coordinates) => {
+          // A rigid motion keeps every atom, so the panel selection survives the new snapshot.
+          setInputError(null);
+          const result = await draft.apply({ kind: "positions", coordinates, from: editor.current });
+          if (result) setSelection((current) => ({ atoms: mapSelection(selectedAtoms(current, structure), result), from: "panel", structure: result }));
+        }} />
       {editor.current.metadata ? <GraphMetadataFields key={`metadata:${snapshotId(editor.current)}:${atoms.join(",")}`}
         snapshot={editor.current} atomIndex={atoms.length === 1 ? atoms[0] : null} disabled={busy}
         onApply={patch => { setInputError(null); void draft.apply({ kind: "metadata", from: editor.current, patch }); }} /> : null}
-      <SegmentedControl aria-label="List" value={view} onValueChange={(value) => { if (value) setView(value as "atoms" | "bonds"); }}>
+      <SegmentedControl aria-label="List" value={view} onValueChange={(value) => { if (value) setView(value as "atoms" | "bonds" | "cartesian"); }}>
         <SegmentedControlItem value="atoms">Atoms {structure.atoms.length}</SegmentedControlItem>
         <SegmentedControlItem value="bonds">Bonds {structure.bonds.length}</SegmentedControlItem>
+        <SegmentedControlItem value="cartesian">Cartesian</SegmentedControlItem>
       </SegmentedControl>
       {view === "atoms"
         ? <AtomTable structure={structure} annotations={annotations} selected={atoms} disabled={busy} onPick={pick} onDelete={deleteSelected} onMove={move} />
-        : <BondTable structure={structure} selected={atoms} onPick={(pair) => setSelection({ atoms: pair, from: "panel", structure })} />}
+        : view === "bonds" ? <BondTable structure={structure} selected={atoms} onPick={(pair) => setSelection({ atoms: pair, from: "panel", structure })} />
+        // Positions of the same atoms only: one Undo step that keeps bonds, stereo, metadata and atom IDs.
+        : <CoordinateEditor atoms={structure.atoms} revision={snapshotId(editor.current)} disabled={busy}
+          onApply={async (coordinates) => Boolean(await draft.apply({ kind: "positions", coordinates, from: editor.current }))} />}
     </div>
   );
 }

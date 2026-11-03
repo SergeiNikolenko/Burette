@@ -1,0 +1,39 @@
+title
+l-alanine RDKit ETKDGv3 MMFF94
+
+#
+# NB: Class I directives (e.g. memory, multiplicity, charge etc) go here
+#
+# For more information see: http://www.cfs.dl.ac.uk/docs/index.shtml
+#
+
+geometry angstrom
+    -0.91118808     -1.09163746      0.07610278   6   C
+    -0.23817777      0.26213638      0.26016599   6   C
+    -0.93226979      1.25123535     -0.58909112   7   N
+     1.25607733      0.23295235     -0.08960831   6   C
+     1.89905189      1.14942227     -0.58273462   8   O
+     1.88544609     -0.89820506      0.28554314   8   O
+    -0.78479834     -1.46606804     -0.94624768   1   H
+    -0.48324327     -1.83789698      0.75429992   1   H
+    -1.98425953     -1.03352500      0.28991117   1   H
+    -0.31350757      0.57950697      1.30633014   1   H
+    -1.82991138      1.48783071     -0.17135571   1   H
+    -0.37730134      2.11026520     -0.60421499   1   H
+     2.81408176     -0.74601671      0.01089929   1   H
+end
+
+
+basis 6-31G
+
+#
+# NB: Class II directives go here
+#
+# To perform a dft calculation with b3lyp and medium quadrature uncomment the below
+# dft b3lyp
+# dft quadrature medium
+#
+
+runtype scf
+
+enter
