@@ -1,0 +1,38 @@
+# generated using pymatgen
+data_H4CN2O
+_symmetry_space_group_name_H-M   P-42_1m
+_cell_length_a   5.56500000
+_cell_length_b   5.56500000
+_cell_length_c   4.68400000
+_cell_angle_alpha   90.00000000
+_cell_angle_beta   90.00000000
+_cell_angle_gamma   90.00000000
+_symmetry_Int_Tables_number   113
+_chemical_formula_structural   H4CN2O
+_chemical_formula_sum   'H8 C2 N4 O2'
+_cell_volume   145.05984990
+_cell_formula_units_Z   2
+loop_
+ _symmetry_equiv_pos_site_id
+ _symmetry_equiv_pos_as_xyz
+  1  'x, y, z'
+  2  'y, -x, -z'
+  3  '-x, -y, z'
+  4  '-y, x, -z'
+  5  'x+1/2, -y+1/2, -z'
+  6  'y+1/2, x+1/2, z'
+  7  '-x+1/2, y+1/2, -z'
+  8  '-y+1/2, -x+1/2, z'
+loop_
+ _atom_site_type_symbol
+ _atom_site_label
+ _atom_site_symmetry_multiplicity
+ _atom_site_fract_x
+ _atom_site_fract_y
+ _atom_site_fract_z
+ _atom_site_occupancy
+  H  H0  4  0.14410000  0.64410000  0.96200000  1
+  H  H1  4  0.24250000  0.25750000  0.71730000  1
+  C  C2  2  0.00000000  0.50000000  0.32600000  1
+  N  N3  4  0.14590000  0.64590000  0.17660000  1
+  O  O4  2  0.00000000  0.50000000  0.59530000  1

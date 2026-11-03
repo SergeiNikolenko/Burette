@@ -32,6 +32,13 @@ export type WorkbenchMetadataEdit = {
   atoms: { index: number; atomName?: string | null; residue?: { name: string; sequence: number; chain: string; insertionCode: string } | null }[];
   conformerLabel?: string | null;
 };
+export type WorkbenchCrystalTransform =
+  | { operation: 'set_cell'; cell: [number, number, number][]; keep: 'fractional' | 'cartesian' }
+  | { operation: 'wrap' | 'standard_orientation' | 'niggli' }
+  | { operation: 'scale_volume'; volumeCubicAngstrom: number }
+  | { operation: 'supercell'; repeats: [number, number, number] }
+  | { operation: 'primitive' | 'conventional' | 'symmetrize' | 'asymmetric_unit'; toleranceAngstrom: number }
+  | { operation: 'fill'; hallNumber: number };
 /** The normalized `params` of one job kind. */
 export type WorkbenchJobParams<K extends WorkbenchJobKind> = Extract<WorkbenchJobRequest, { kind: K }>['params'];
 export type WorkbenchJobKindDescription = { operation: 'submit' | 'build'; engine: string; requires: string; params: Record<string, unknown>; artifacts: string[] };
@@ -47,6 +54,10 @@ export type WorkbenchJobRequest =
   | { kind: 'conformers'; params: { forceField: WorkbenchForceField; count: number; seed: number } }
   | { kind: 'metadata_edit'; params: WorkbenchMetadataEdit }
   | { kind: 'pair_distribution'; params: { rMax: number; binWidth: number; centre: string | null; neighbour: string | null } }
+  | { kind: 'point_group'; params: { tolerance: 'tight' | 'normal' | 'loose' | 'very-loose' } }
+  | { kind: 'space_group'; params: { toleranceAngstrom: number } }
+  | { kind: 'powder_xrd'; params: { wavelengthAngstrom: number; twoThetaMinDegrees: number; twoThetaMaxDegrees: number } }
+  | { kind: 'crystal_transform'; params: WorkbenchCrystalTransform }
   | { kind: 'properties'; params: { chargeModel?: 'Gasteiger' } }
   | { kind: 'orbital_cube'; params: { field: 'orbital' | 'density' | 'spin-density'; orbitalIndex?: number; spacingAngstrom?: number; paddingAngstrom?: number;
     grid?: { origin: [number, number, number]; axes: [[number, number, number], [number, number, number], [number, number, number]]; dimensions: [number, number, number] } } }

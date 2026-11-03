@@ -204,16 +204,18 @@ uses the same primitives as the desktop docks with preview theme tokens.
 
 
 Typed workbench jobs (properties, energies and forces, optimization, 3D
-preparation, conformers, frame batches, metadata, pair distribution and orbital
-Cubes) use `burette-agent.mjs workbench` in a browser-agent-shell session. The
-shared request contract is `workbench-agent-contract.mjs`, whose `JOB_DEFINITIONS`
+preparation, conformers, frame batches, metadata, pair distribution, point and
+space groups, powder patterns, crystal transforms and orbital Cubes) use
+`burette-agent.mjs workbench` in a browser-agent-shell session. The shared request contract is `workbench-agent-contract.mjs`, whose `JOB_DEFINITIONS`
 lists every kind; the CLI and shell consume it at their transport boundaries.
 `workbench-artifact.mjs` publishes verified exports and session JSON atomically. See
 [Orbital Cube jobs](../docs/agent-platform.md#orbital-cube-jobs-through-the-browser-shell)
 and [Optimization, conformers and frame batches](../docs/agent-platform.md#optimization-conformers-and-frame-batches)
 for requests, limits, the Python client and how to add a job kind. Run
 `vp run test:orbital-agent` and `vp run test:workbench-automation-jobs` for the
-focused controller and compiled host/HTTP/CLI proofs.
+focused controller and compiled host/HTTP/CLI proofs. Crystal and point-group jobs
+are described in
+[Crystal and molecular symmetry jobs](../docs/agent-platform.md#crystal-and-molecular-symmetry-jobs).
 
 
 `test:indexed-trajectory-runtime` covers the source-owned indexed Mol* adapter

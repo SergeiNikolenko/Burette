@@ -208,6 +208,53 @@ liblzma, Zstandard and fzstd components. Vite copies this directory into the
 desktop, agent-shell plugin and hosted shell outputs; the native bundle also
 copies it as the `third-party-licenses` resource.
 
+## libmsym and spglib symmetry engines
+
+The browser symmetry engines in
+`apps/desktop/src/lib/molecular-workbench/symmetry/` are standalone WebAssembly
+builds produced by `compute/symmetry-wasm/build-wasm.sh` from pinned sources:
+
+- `burette-msym.wasm`: libmsym (mcodev31/libmsym), commit
+  `85e47232376a8e735c2a7b5283f40b59b3953db1`, MIT, Copyright (c) 2015 Marcus
+  Johansson. License text: `compute/symmetry-wasm/LIBMSYM_LICENSE.txt`.
+- `burette-niggli.wasm`: `src/niggli.c` from spglib v2.8.0, commit
+  `3ebd8ac3318793932baeee90b44f453a7c35b5b4`, BSD-3-Clause, Copyright (c) 2024,
+  Spglib team. License text: `compute/symmetry-wasm/SPGLIB_LICENSE.txt`.
+
+The optional normal, loose and very-loose point-group tolerance presets copy
+the libmsym threshold values from OpenChemistry/avogadrolibs
+`avogadro/qtplugins/symmetry/symmetrywidget.cpp`, revision
+`f5aea255b15d24f658a18d258e56357fa2719646`, BSD-3-Clause; the notice is in
+`docs/third-party/avogadro-LICENSE`.
+
+## moyo crystal symmetry
+
+Space-group analysis and conventional/primitive standardization of crystal cells
+in the browser use `@spglib/moyo-wasm` 0.21.0 (spglib/moyo, tag `v0.21.0`),
+MIT OR Apache-2.0 (used under MIT), Copyright (c) 2023 Kohei Shinohara. The
+published WebAssembly module runs only in the crystal worker
+(`apps/desktop/src/lib/workbench/crystal-worker.ts`); the MIT text is
+`apps/desktop/public/third-party-licenses/moyo-LICENSE-MIT`.
+
+## Gemmi powder-diffraction engine
+
+`apps/desktop/src/lib/molecular-workbench/xrd/burette-xrd.wasm` is a standalone
+WebAssembly build produced by `compute/xrd-wasm/build-wasm.sh` from Gemmi
+(project-gemmi/gemmi) v0.7.5, commit `5cc1c23c6007e0e6cbd69289c6f7c0bff50e943e`,
+Mozilla Public License 2.0, Copyright Global Phasing Ltd. It is a separate
+module loaded only by the diffraction worker. The unmodified Gemmi headers and
+`src/symmetry.cpp` listed in `compute/xrd-wasm/sources.sha256` are compiled with
+the adapter `compute/xrd-wasm/burette_xrd.cpp`; their source is available at
+https://github.com/project-gemmi/gemmi at that commit. License text:
+`compute/xrd-wasm/GEMMI_LICENSE.txt` (also shipped as
+`third-party-licenses/gemmi-LICENSE`). The X-ray form-factor coefficients come
+from International Tables for Crystallography Vol. C (1992) as tabulated in
+Gemmi's `it92.hpp`.
+
+The test-only reference `tests/fixtures/xrd/pymatgen-reference.json` and the
+symmetrized CIFs beside it were generated with pymatgen 2026.10.24 (MIT) by
+`tests/fixtures/xrd/generate-reference.py`; no pymatgen code is bundled.
+
 ## OpenChemistry peptide geometry and residue templates
 
 `peptide-geometry.ts` adapts peptide assembly from OpenChemistry/avogadrolibs

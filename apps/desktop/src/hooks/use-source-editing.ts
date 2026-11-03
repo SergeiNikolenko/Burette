@@ -33,7 +33,7 @@ const LIVE_PREVIEW_LIMIT = 1_000_000;
 const SOURCE_EDIT_LIMIT = 3_000_000;
 const LIVE_PREVIEW_DELAY_MS = 450;
 const SOURCE_REPLACED_MESSAGE = "Recover or discard the previous source draft before editing the restored scene.";
-const EDITABLE_EXTENSIONS = new Set(["pdb", "ent", "pdbqt", "pqr", "xpdb", "cif", "mmcif", "mcif", "mol", "mol2", "sdf", "sd", "xyz", "gro"]);
+const EDITABLE_EXTENSIONS = new Set(["pdb", "ent", "pdbqt", "pqr", "xpdb", "cif", "mmcif", "mcif", "mol", "mol2", "sdf", "sd", "xyz", "gro", "vasp"]);
 
 type FileRevision = {
   modifiedAt: number;
@@ -294,6 +294,10 @@ export function useSourceEditingController({
     const xyzGeometry = revealTab === "geometry" && (restored?.extension ?? document.extension.replace(/^\./u, "").toLowerCase()) === "xyz";
     const browserXyzSource = !restored && document.extension.replace(/^\./u, "").toLowerCase() === "xyz"
       && (revealTab === "text" || (xyzGeometry && Boolean(suppliedBinding))) && isBrowserDraftSource(document);
+    // A generated crystal or XYZ molecule takes Crystal and Symmetry edits in its own draft.
+    const browserCrystalSource = !restored && (revealTab === "crystal" || revealTab === "symmetry")
+      && ["cif", "xyz", "vasp"].includes(document.extension.replace(/^\./u, "").toLowerCase()) && isBrowserDraftSource(document);
+    const browserDraftSource = browserXyzSource || browserCrystalSource;
     // The editor's model key may end after its accepted edit; the session keeps
     // the same physical renderer and source generation, without minting a new lease.
     const geometryTarget = suppliedBinding || logicalXyzGeometry ? captureViewerActionTarget(document.id, isSourceCurrent) : null;
@@ -324,7 +328,7 @@ export function useSourceEditingController({
     // Logical XYZ is admitted only by Geometry; graph sources keep their real-format preview lane.
     const logical = restored?.extension === "sdf" || restored?.extension === "mol" || logicalXyzGeometry ? restored : null;
     const extension = logical?.extension ?? document.extension.toLowerCase().replace(/^\./u, "");
-    if ((document.virtual && !logicalXyzGeometry && !structureEditAvailable(document) && !(browserXyzSource && isBrowserDraftSource(document))) || document.dockingRequest || document.mergedCollection || !EDITABLE_EXTENSIONS.has(extension)) {
+    if ((document.virtual && !logicalXyzGeometry && !structureEditAvailable(document) && !(browserDraftSource && isBrowserDraftSource(document))) || document.dockingRequest || document.mergedCollection || !EDITABLE_EXTENSIONS.has(extension)) {
       pushErrorStatus(new Error("This structure source is read-only in the first live-editing release."), "Edit source");
       return;
     }
@@ -334,12 +338,12 @@ export function useSourceEditingController({
     openingSourceTokensRef.current.set(document.id, token);
     const isOpeningCurrent = () => openingSourceTokensRef.current.get(document.id) === token && !closingDocumentIdsRef.current.has(document.id) && isSourceCurrent()
       && (!geometryTarget || geometryTarget.isCurrent()) && (!suppliedBinding || suppliedBinding.target.isCurrent())
-      && (!browserXyzSource || isBrowserDraftSource(document));
+      && (!browserDraftSource || isBrowserDraftSource(document));
     let unusedHandleId: string | null = null;
     try {
       document = await prepareDeferredViewerRuntime(document, preferences);
       if (!isOpeningCurrent()
-        || (document.virtual && !logicalXyzGeometry && !structureEditAvailable(document) && !(browserXyzSource && isBrowserDraftSource(document)))) return;
+        || (document.virtual && !logicalXyzGeometry && !structureEditAvailable(document) && !(browserDraftSource && isBrowserDraftSource(document)))) return;
       const sessionId = randomId();
       let content: string;
       let handleId: string | null = null;
@@ -380,7 +384,7 @@ export function useSourceEditingController({
 
       // Reading the source also yields: ownership must survive until publication.
       if (!isOpeningCurrent()
-        || (document.virtual && !logicalXyzGeometry && !structureEditAvailable(document) && !(browserXyzSource && isBrowserDraftSource(document)))) return;
+        || (document.virtual && !logicalXyzGeometry && !structureEditAvailable(document) && !(browserDraftSource && isBrowserDraftSource(document)))) return;
       let geometryBinding: GeometryBinding | null = null;
       if (suppliedBinding) {
         if (suppliedBinding.text !== geometryBaselineText(content)) throw new Error("The scene no longer shows this source. Reopen Geometry for the current scene.");

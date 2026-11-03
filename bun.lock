@@ -121,6 +121,7 @@
         "@kenjiuno/msgreader": "^1.28.0",
         "@radix-ui/react-roving-focus": "1.1.19",
         "@radix-ui/react-slot": "^1.3.3",
+        "@spglib/moyo-wasm": "0.21.0",
         "@vercel/analytics": "2.0.1",
         "@vercel/speed-insights": "2.0.0",
         "calligraph": "^1.4.1",
@@ -946,6 +947,8 @@
     "@sindresorhus/is": ["@sindresorhus/is@4.6.0", "", {}, "sha512-t09vSN3MdfsyCHoFcTRCH/iUtG7OJ0CsjzB8cjAmKc/va/kIgeDI/TxsigdncE/4be734m0cvIYwNaV4i2XqAw=="],
 
     "@sindresorhus/merge-streams": ["@sindresorhus/merge-streams@4.0.0", "", {}, "sha512-tlqY9xq5ukxTUZBmoOp+m61cqwQD5pHJtFY3Mn8CA8ps6yghLH/Hw8UPdqg4OLmFW3IFlcXnQNmo/dh8HzXYIQ=="],
+
+    "@spglib/moyo-wasm": ["@spglib/moyo-wasm@0.21.0", "", {}, "sha512-VP9B0VbzzdP5ZSUkMzSQj3T7SmhGxFHWZm0GyNidTesfuX+wIvu15l4EcwSlLPYkFyGXC6S6kAd2nObCvASk2w=="],
 
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
 

@@ -4,10 +4,13 @@ import {
 } from "../molecular-workbench/pair-distribution/pair-distribution";
 import { runPairDistributionTask } from "../molecular-workbench/pair-distribution/pair-distribution-client";
 import type { AgentJobRunner } from "./agent-jobs";
-import type { WorkbenchSource } from "./structure";
+import type { Snapshot } from "./agent-source";
+
+/** The full periodic cell: CIF symmetry expanded and POSCAR read, else the declared XYZ lattice. */
+const periodicCell = (snapshot: Snapshot) => snapshot.crystal ?? snapshot.source;
 
 /** Same periodic-source requirement as the interactive g(r) panel. */
-function unavailable(source: WorkbenchSource | null, params?: WorkbenchJobParams<"pair_distribution">): string | null {
+function unavailable(source: ReturnType<typeof periodicCell>, params?: WorkbenchJobParams<"pair_distribution">): string | null {
   if (!source?.cell) return "Open a structure with a unit cell to calculate g(r).";
   if (!source.atoms.length || source.atoms.length > PAIR_DISTRIBUTION_LIMITS.atoms) return `Pair distribution supports 1–${PAIR_DISTRIBUTION_LIMITS.atoms} atoms.`;
   const species = new Set(source.atoms.map((atom) => atom.element));
@@ -23,10 +26,10 @@ function unavailable(source: WorkbenchSource | null, params?: WorkbenchJobParams
 
 /** Histograms leave through bounded artifacts; status carries scalar results only. */
 export const pairDistributionJob: AgentJobRunner<"pair_distribution"> = {
-  unavailable: snapshot => unavailable(snapshot.source),
-  paramsUnavailable: (snapshot, params) => unavailable(snapshot.source, params),
+  unavailable: snapshot => unavailable(periodicCell(snapshot)),
+  paramsUnavailable: (snapshot, params) => unavailable(periodicCell(snapshot), params),
   async run(input, params, { signal, timeoutMs, stem, artifact }) {
-    const source = input.source!, result = await runPairDistributionTask({ atoms: source.atoms, cell: source.cell!, ...params }, { signal, timeoutMs });
+    const source = periodicCell(input)!, result = await runPairDistributionTask({ atoms: source.atoms, cell: source.cell!, ...params }, { signal, timeoutMs });
     const selection = selectPairs(result, params.centre, params.neighbour);
     const context = { title: input.document.title, engine: "Burette periodic radial distribution 1" };
     return {

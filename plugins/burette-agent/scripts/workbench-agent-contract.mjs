@@ -120,6 +120,37 @@ function oneOf(value, field, allowed, fallback) {
 
 const CONSTRAINT_ATOMS = { freeze: 1, distance: 2, angle: 3, dihedral: 4 };
 const ORBITAL_FIELDS = ['orbital', 'density', 'spin-density'];
+const POINT_GROUP_TOLERANCES = ['tight', 'normal', 'loose', 'very-loose'];
+const symmetryTolerance = value => finite(value, 'job.params.toleranceAngstrom', 1e-4, 0.5) ?? 0.01;
+
+const TRANSFORM_FIELDS = Object.freeze({
+  set_cell: ['cell', 'keep'], wrap: [], standard_orientation: [], scale_volume: ['volumeCubicAngstrom'], supercell: ['repeats'], niggli: [],
+  primitive: ['toleranceAngstrom'], conventional: ['toleranceAngstrom'], symmetrize: ['toleranceAngstrom'], asymmetric_unit: ['toleranceAngstrom'], fill: ['hallNumber'],
+});
+
+function crystalTransformParams(p) {
+  const operation = oneOf(p.operation, 'job.params.operation', new Set(Object.keys(TRANSFORM_FIELDS)), undefined);
+  if (!operation) invalid('job.params.operation is required for crystal_transform.');
+  rejectUnknownFields(p, ['operation', ...TRANSFORM_FIELDS[operation]], `crystal_transform ${operation} job.params`);
+  if (operation === 'set_cell') {
+    const cell = p.cell;
+    if (!Array.isArray(cell) || cell.length !== 3 || cell.some(row => !Array.isArray(row) || row.length !== 3 || row.some(value => typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) > 1e4))) {
+      invalid('job.params.cell must be three lattice vectors of three numbers, in angstrom.');
+    }
+    return { operation, cell: cell.map(row => [...row]), keep: oneOf(p.keep, 'job.params.keep', new Set(['fractional', 'cartesian']), 'fractional') };
+  }
+  if (operation === 'scale_volume') {
+    const volume = finite(p.volumeCubicAngstrom, 'job.params.volumeCubicAngstrom', 1e-3, 1e9);
+    if (volume === undefined) invalid('job.params.volumeCubicAngstrom is required for scale_volume.');
+    return { operation, volumeCubicAngstrom: volume };
+  }
+  if (operation === 'supercell') {
+    if (!Array.isArray(p.repeats) || p.repeats.length !== 3) invalid('job.params.repeats must be three integers from 1 to 20.');
+    return { operation, repeats: p.repeats.map((value, axis) => integer(value, `job.params.repeats[${axis}]`, 1, 20)) };
+  }
+  if (operation === 'fill') return { operation, hallNumber: integer(p.hallNumber, 'job.params.hallNumber', 1, 530) };
+  return TRANSFORM_FIELDS[operation].includes('toleranceAngstrom') ? { operation, toleranceAngstrom: symmetryTolerance(p.toleranceAngstrom) } : { operation };
+}
 
 function vector(value, field) {
   if (!Array.isArray(value) || value.length !== 3) invalid(`${field} must be three numbers.`);
@@ -343,7 +374,7 @@ const JOB_DEFINITIONS = {
   pair_distribution: {
     describe: {
       engine: 'Burette periodic radial distribution',
-      requires: 'An explicit periodic unit cell, 1–5000 atoms and at most 12 elements; isolated structures are unsupported.',
+      requires: 'An explicit periodic unit cell (small-molecule CIF, POSCAR/CONTCAR or extended XYZ with a Lattice), 1–5000 atoms and at most 12 elements; isolated structures are unsupported.',
       params: { rMax: '1–100 Å (default 10)', binWidth: '0.001–1 Å (default 0.1), at most 20000 bins', centre: 'element symbol or null for all', neighbour: 'element symbol or null for all' },
       artifacts: ['distribution', 'csv'],
     },
@@ -356,6 +387,55 @@ const JOB_DEFINITIONS = {
       }
       return { rMax, binWidth, centre: p.centre ?? null, neighbour: p.neighbour ?? null };
     },
+  },
+  point_group: {
+    describe: {
+      engine: 'libmsym point groups and symmetrization',
+      requires: 'A molecule without a unit cell, 1–256 atoms (SDF, MOL or XYZ).',
+      params: { tolerance: POINT_GROUP_TOLERANCES },
+      artifacts: ['symmetrized'],
+    },
+    params: value => ({ tolerance: oneOf(params(value, ['tolerance'], 'point_group job.params').tolerance, 'job.params.tolerance', new Set(POINT_GROUP_TOLERANCES), 'normal') }),
+  },
+  space_group: {
+    describe: {
+      engine: 'moyo space-group search',
+      requires: 'A crystal with its own cell (small-molecule CIF, POSCAR/CONTCAR or extended XYZ with a Lattice), 1–5000 atoms.',
+      params: { toleranceAngstrom: '0.0001–0.5 (default 0.01)' },
+      artifacts: [],
+    },
+    params: value => ({ toleranceAngstrom: symmetryTolerance(params(value, ['toleranceAngstrom'], 'space_group job.params').toleranceAngstrom) }),
+  },
+  powder_xrd: {
+    describe: {
+      engine: 'Gemmi structure factors (IT92 form factors), Lorentz-polarization, no Debye-Waller factor',
+      requires: 'A crystal with its own cell, 1–2000 atoms.',
+      params: { wavelengthAngstrom: '0.1–5 (default 1.5405929, Cu Kα1)', twoThetaMinDegrees: '0–170 (default 10)', twoThetaMaxDegrees: '0–170 (default 90)' },
+      artifacts: ['peaks', 'pattern'],
+    },
+    params(value) {
+      const p = params(value, ['wavelengthAngstrom', 'twoThetaMinDegrees', 'twoThetaMaxDegrees'], 'powder_xrd job.params');
+      const result = {
+        wavelengthAngstrom: finite(p.wavelengthAngstrom, 'job.params.wavelengthAngstrom', 0.1, 5) ?? 1.5405929,
+        twoThetaMinDegrees: finite(p.twoThetaMinDegrees, 'job.params.twoThetaMinDegrees', 0, 170) ?? 10,
+        twoThetaMaxDegrees: finite(p.twoThetaMaxDegrees, 'job.params.twoThetaMaxDegrees', 0, 170) ?? 90,
+      };
+      if (!(result.twoThetaMaxDegrees > result.twoThetaMinDegrees)) invalid('job.params.twoThetaMaxDegrees must exceed twoThetaMinDegrees.');
+      return result;
+    },
+  },
+  crystal_transform: {
+    describe: {
+      engine: 'Burette cell operations; moyo standardization; spglib Niggli reduction',
+      requires: 'A crystal with its own cell. The result is exported, never applied to the document.',
+      params: {
+        operation: Object.keys(TRANSFORM_FIELDS),
+        cell: 'set_cell: three lattice vectors in angstrom', keep: ['fractional', 'cartesian'], volumeCubicAngstrom: 'scale_volume', repeats: 'supercell: three integers 1–20',
+        toleranceAngstrom: 'primitive, conventional, symmetrize, asymmetric_unit: 0.0001–0.5 (default 0.01)', hallNumber: 'fill: 1–530',
+      },
+      artifacts: ['structure'],
+    },
+    params: value => crystalTransformParams(params(value, ['operation', 'cell', 'keep', 'volumeCubicAngstrom', 'repeats', 'toleranceAngstrom', 'hallNumber'], 'crystal_transform job.params')),
   },
   orbital_cube: {
     describe: {

@@ -6,6 +6,8 @@ import { sourceExtension, useLogicalSource } from "../../lib/science-session/sta
 import { openScientificSpectra, useScientificSpectraAvailable, SCIENTIFIC_SPECTRA_COMMAND } from "../../lib/workbench/scientific-spectra-tool";
 import { openOrbitals, useOrbitalsAvailable, ORBITALS_COMMAND } from "../../lib/workbench/orbitals-tool";
 import { openVibrations, useVibrationsAvailable, VIBRATIONS_COMMAND } from "../../lib/workbench/vibrations-tool";
+import { CRYSTAL_COMMAND, openSymmetryTool, SYMMETRY_COMMAND, useSymmetryAvailable } from "../../lib/workbench/symmetry-tools";
+import { useCrystalAvailable } from "../../lib/workbench/use-crystal-draft";
 import { useState } from "react";
 
 import type { ConformerOperation, ViewerDocument, XtbOperation } from "../../types";
@@ -41,6 +43,8 @@ export function SceneComputeMenu({ document, actions }: { document: ViewerDocume
   const hasPlots = usePlotsAvailable(document);
   const hasScientificSpectra = useScientificSpectraAvailable(document);
   const hasVibrations = useVibrationsAvailable(document);
+  const hasCrystal = useCrystalAvailable(document);
+  const hasSymmetry = useSymmetryAvailable(document);
   const host = useComputeHost();
   const connections = useSshConnections().filter(connection => connection.enabled);
   if (window.BuretteMcpWorkspace || !["molstar", "xyzrender-external"].includes(document.renderer)) return null;
@@ -79,8 +83,10 @@ export function SceneComputeMenu({ document, actions }: { document: ViewerDocume
     ];
   if (!embeddedGraph && !combined && hasOrbitals) items.push({ kind: "separator" }, { kind: "item", id: "workbench-tool-orbitals", text: ORBITALS_COMMAND.label, action: () => openOrbitals(actions, document.id) });
   if (!embeddedGraph && !combined && hasVibrations) items.push(...(hasOrbitals ? [] : [{ kind: "separator" as const }]), { kind: "item", id: "workbench-tool-vibrations", text: VIBRATIONS_COMMAND.label, action: () => openVibrations(actions, document.id) });
-  if (!combined && hasScientificSpectra) items.push(...(embeddedGraph || hasOrbitals || hasVibrations ? [] : [{ kind: "separator" as const }]), { kind: "item", id: "workbench-tool-scientific-spectra", text: SCIENTIFIC_SPECTRA_COMMAND.label, action: () => openScientificSpectra(actions, document.id) });
-  if (!combined && hasPlots) items.push(...(embeddedGraph || hasOrbitals || hasVibrations || hasScientificSpectra ? [] : [{ kind: "separator" as const }]), { kind: "item", id: "workbench-tool-plots", text: PLOTS_COMMAND.label, action: () => openPlots(actions, document.id) });
+  if (!embeddedGraph && !combined && hasCrystal) items.push(...(hasOrbitals || hasVibrations ? [] : [{ kind: "separator" as const }]), { kind: "item", id: "workbench-tool-crystal", text: CRYSTAL_COMMAND.label, action: () => openSymmetryTool(actions, document.id, "crystal") });
+  if (!embeddedGraph && !combined && hasSymmetry) items.push(...(hasOrbitals || hasVibrations || hasCrystal ? [] : [{ kind: "separator" as const }]), { kind: "item", id: "workbench-tool-symmetry", text: SYMMETRY_COMMAND.label, action: () => openSymmetryTool(actions, document.id, "symmetry") });
+  if (!combined && hasScientificSpectra) items.push(...(embeddedGraph || hasOrbitals || hasVibrations || hasCrystal || hasSymmetry ? [] : [{ kind: "separator" as const }]), { kind: "item", id: "workbench-tool-scientific-spectra", text: SCIENTIFIC_SPECTRA_COMMAND.label, action: () => openScientificSpectra(actions, document.id) });
+  if (!combined && hasPlots) items.push(...(embeddedGraph || hasOrbitals || hasVibrations || hasCrystal || hasSymmetry || hasScientificSpectra ? [] : [{ kind: "separator" as const }]), { kind: "item", id: "workbench-tool-plots", text: PLOTS_COMMAND.label, action: () => openPlots(actions, document.id) });
   if (!combined && assemblySourceFormat(document)) items.push({ kind: "separator" }, { kind: "item", id: "workbench-assembly", text: "Build biological assembly…", action: () => openWorkbenchDialog({ kind: "assembly", document }) });
   if (!combined && hasPolymer) items.push({ kind: "item", id: "workbench-polymer", text: "Build polymer…", action: () => openWorkbenchDialog({ kind: "builder", builder: "polymer", document }) });
   // Every calculation here, and xTB/CREST started elsewhere, runs where this points.

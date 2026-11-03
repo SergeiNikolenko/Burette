@@ -48,7 +48,8 @@ TERMINAL_STATUSES = frozenset({"succeeded", "stale", "failed", "cancelled", "sou
 
 JobKind = Literal[
     "properties", "energy", "energy_forces", "frame_energy_forces", "optimize",
-    "prepare_3d", "conformers", "metadata_edit", "pair_distribution", "orbital_cube",
+    "prepare_3d", "conformers", "metadata_edit", "pair_distribution", "point_group",
+    "space_group", "powder_xrd", "crystal_transform", "orbital_cube",
     "insert_fragment", "hydrogens", "polymer",
 ]
 # Kinds that build a new structure without a source document (operation ``build``).

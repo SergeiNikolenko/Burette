@@ -9,6 +9,7 @@ import type { MolecularStructure } from "../molecular-workbench/molecular-graph"
 import { scientificStateFor } from "./scientific-source-state";
 import { runReaderTask } from "./reader-task";
 import type { WorkbenchAgentEnvironment, WorkbenchSourceRead } from "./agent-controller";
+import { periodicCrystalFormat, type CrystalDocument, type CrystalSource } from "../molecular-workbench/crystal-io";
 
 export class WorkbenchError extends Error {
   constructor(readonly code: string, message: string, readonly details?: unknown) { super(message); }
@@ -38,10 +39,13 @@ export type Snapshot = {
   source: WorkbenchSource | null;
   /** Records of a multi-record SDF; their shared graph is checked by the job that reads them. */
   sdfRecords: number;
+  /** The full cell of a periodic source, and the source text the crystal jobs edit. */
+  crystal: CrystalDocument | null; crystalSource: CrystalSource | null; crystalError: string | null;
 };
 
 type ParsedSource = { scientific: ScientificDocument | null; sourceError: string | null;
-  structure: MolecularStructure | null; structureError: string | null; source: WorkbenchSource | null };
+  structure: MolecularStructure | null; structureError: string | null; source: WorkbenchSource | null;
+  crystal: CrystalDocument | null; crystalError: string | null };
 /** Non-empty records of an SDF text, each without its `$$$$` terminator. */
 export function sdfRecords(text: string) {
   // Every record after the first starts with the newline that ended the previous terminator.
@@ -94,6 +98,12 @@ export function createAgentSourceOwner(environment: WorkbenchAgentEnvironment, l
       const pending = (async (): Promise<ParsedSource> => {
         let scientific: ScientificDocument | null = null, sourceError: string | null = null;
         let structure: MolecularStructure | null = null, structureError: string | null = null, source: WorkbenchSource | null = null;
+        let crystal: CrystalDocument | null = null, crystalError: string | null = null;
+        const crystalFormat = periodicCrystalFormat(extension, read.text);
+        if (crystalFormat && workbenchSupportsDocument(document)) {
+          try { crystal = await runReaderTask({ action: "crystal", format: crystalFormat, text: read.text }, { signal }); }
+          catch (error) { crystalError = diagnostic(error); }
+        }
         if (!attached) {
           try { scientific = await runReaderTask({ action: "parse", name: `source.${extension}`, text: read.text }, { signal }); }
           catch (error) { sourceError = diagnostic(error); }
@@ -107,7 +117,7 @@ export function createAgentSourceOwner(environment: WorkbenchAgentEnvironment, l
             sourceError = null;
           } catch (error) { structureError = diagnostic(error); }
         }
-        return { scientific, sourceError, structure, structureError, source };
+        return { scientific, sourceError, structure, structureError, source, crystal, crystalError };
       })();
       cached = { lifetime: opened, pending }; snapshots.set(key, cached);
       pending.catch(() => { if (snapshots.get(key)?.pending === pending) snapshots.delete(key); });
@@ -130,7 +140,9 @@ export function createAgentSourceOwner(environment: WorkbenchAgentEnvironment, l
     return { lifetime: opened, document: { ...document }, revision, sourceTextSha256, origin: read.origin, byteCount,
       scientific, scientificOrigin: scientific ? attached ? "attached" : "parsed" : null, sourceError: parsed.sourceError,
       structure: parsed.structure, structureError: parsed.structureError, text: read.text, extension, source: parsed.source,
-      sdfRecords: extension === "sdf" || extension === "sd" ? sdfRecords(read.text).length : 0 };
+      sdfRecords: extension === "sdf" || extension === "sd" ? sdfRecords(read.text).length : 0,
+      crystal: parsed.crystal, crystalError: parsed.crystalError,
+      crystalSource: parsed.crystal ? { format: periodicCrystalFormat(extension, read.text)!, text: read.text } : null };
   }
   return { snapshotOf, assertOpen,
     documentsChanged(openIds: ReadonlySet<string>) {

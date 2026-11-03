@@ -5,7 +5,7 @@ test("one shared bounded request schema rejects unsupported jobs, ambiguous IDs 
   const revision = `sha256-${"a".repeat(64)}`;
   const square = { origin: [0, 0, 0], axes: [[0.2, 0, 0], [0, 0.2, 0], [0, 0, 0.2]], dimensions: [100, 100, 100] };
   for (const request of [
-    { operation: "submit", operationId: "a", expectedSourceRevision: revision, job: { kind: "point_group" } },
+    { operation: "submit", operationId: "a", expectedSourceRevision: revision, job: { kind: "molecular_dynamics" } },
     { operation: "frames" }, { operation: "status", jobId: "one", operationId: "two" },
     { operation: "submit", operationId: "a", job: { kind: "orbital_cube", params: { field: "orbital", orbitalIndex: 0 } } },
     { operation: "orbitals", limit: 101 }, { operation: "observe", unknown: "x" },

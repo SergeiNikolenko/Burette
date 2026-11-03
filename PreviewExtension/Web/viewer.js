@@ -8185,7 +8185,7 @@ SOFTWARE.
             note: measurementName && measurementEditable
               ? ([typeof customText === 'string' ? customText.trim() : '', measurementSource]
                 .filter(Boolean).join(' · '))
-              : String(cell.obj.description || display.note || display.format || ''),
+              : sceneTreeCellNote(cell, display),
             sourceLabel: rawLabel === label ? '' : rawLabel,
             group: String(cell.obj.type?.name || '') === 'Primitive Data' ? 'annotations' : 'structures',
             typeClass: String(cell.obj.type?.typeClass || 'Object'),
@@ -8554,7 +8554,38 @@ SOFTWARE.
     for (const target of sceneTreeSubtreeRefs(state, ref)) {
       state.updateCellState(target, { isHidden: hidden });
     }
+    if (isUnitCellCell(state.cells?.get(ref))) writeSceneContextPreference(unitCellPreferenceKey, String(!hidden));
     scheduleSceneTreeRender();
+  }
+
+  // Like Avogadro, a crystal opens with its unit cell shown. Crystals reach Mol* as
+  // XYZ with a Lattice (CIF and POSCAR are converted to it), so only XYZ cells are
+  // shown by default; PDB and mmCIF macromolecules keep theirs hidden. An explicit
+  // toggle is remembered for later documents of the same kind.
+  let unitCellPreferenceKey = 'burette.unit-cell-visible.crystal';
+  function isUnitCellCell(cell) {
+    return cell?.transform?.transformer?.definition?.name === 'model-unitcell-3d';
+  }
+
+  // Mol* names a cell by its model's space group. A crystal shown from its expanded
+  // P1 cell (every CIF, POSCAR and XYZ lattice) would read "P 1" whatever its real
+  // group, so that cell carries no group; the Crystal panel reports the real one.
+  function sceneTreeCellNote(cell, display) {
+    if (isUnitCellCell(cell) && cell.obj?.data?.sourceData?.sourceData?.kind === 'xyz') return '';
+    return String(cell.obj.description || display.note || display.format || '');
+  }
+
+  function applyDefaultUnitCellVisibility(viewer, prepared) {
+    const state = viewer?.plugin?.state?.data;
+    if (typeof state?.updateCellState !== 'function' || !state.cells) return;
+    const crystal = prepared?.format === 'xyz';
+    unitCellPreferenceKey = `burette.unit-cell-visible.${crystal ? 'crystal' : 'macromolecule'}`;
+    const stored = readSceneContextPreference(unitCellPreferenceKey);
+    const visible = stored === 'true' || stored === 'false' ? stored === 'true' : crystal;
+    for (const [ref, cell] of state.cells) {
+      if (!isUnitCellCell(cell) || sceneTreeCellHidden(state, ref) === !visible) continue;
+      for (const target of sceneTreeSubtreeRefs(state, ref)) state.updateCellState(target, { isHidden: !visible });
+    }
   }
 
   async function removeSceneTreeNode(ref) {
@@ -30822,6 +30853,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       `Mol* timed out while parsing/rendering ${prepared.label} as ${prepared.format}.`
     );
     assertMolstarLoadReady(viewer, prepared);
+    applyDefaultUnitCellVisibility(viewer, prepared);
     if (config.demoSnapshotUrl) {
       const response = await fetch(config.demoSnapshotUrl);
       if (!response.ok) throw new Error('Could not load the saved demo scene.');

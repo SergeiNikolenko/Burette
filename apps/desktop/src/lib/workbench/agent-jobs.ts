@@ -5,6 +5,7 @@ import { graphJobs } from "./agent-graph-jobs";
 import { metadataJob } from "./agent-metadata";
 import { orbitalCubeJob } from "./agent-orbital-job";
 import { pairDistributionJob } from "./agent-pair-distribution";
+import { crystalTransformJob, pointGroupJob, powderXrdJob, spaceGroupJob } from "./agent-crystal-jobs";
 
 export type AgentArtifact = { name: string; fileName: string; mimeType: string; content: string; byteCount: number; sha256: string };
 export type AgentJobOutput = { summary: Record<string, unknown>; artifacts: AgentArtifact[] };
@@ -44,6 +45,10 @@ export const AGENT_JOBS: { [K in WorkbenchSubmitJobKind]: AgentJobRunner<K> } = 
   ...builderJobs,
   metadata_edit: metadataJob,
   pair_distribution: pairDistributionJob,
+  point_group: pointGroupJob,
+  space_group: spaceGroupJob,
+  powder_xrd: powderXrdJob,
+  crystal_transform: crystalTransformJob,
   orbital_cube: orbitalCubeJob,
 };
 

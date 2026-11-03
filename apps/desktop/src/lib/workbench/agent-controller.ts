@@ -113,7 +113,7 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
     const notes = [
       "Results are never applied to an open document. Export an artifact and open it explicitly.",
       "Structure jobs (insert_fragment, hydrogens, polymer and the build kinds) write new structure artifacts; they never edit the open document or its Undo history.",
-      "Workbench UI commands that are not listed under jobs (atom and bond editing, input-deck export, Z-matrix editing, crystal symmetry and point groups, spectra and plots) are not automated yet.",
+      "Workbench UI commands that are not listed under jobs (atom and bond editing, input-deck export, Z-matrix editing, spectra and plots) are not automated yet.",
     ];
     if (!environment.draftsVisible) notes.unshift("Unsaved editor drafts are not visible to this session; reads and jobs use the saved source.");
     if (!enabled) notes.unshift(`Workbench reads and jobs run only in ${WORKBENCH_RUNTIMES.join(", ")} sessions; this session is ${environment.runtime}.`);
@@ -149,6 +149,7 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
           atomCount: snapshot.scientific.atoms.length, orbitalCount: snapshot.scientific.orbitals.length,
           basisShellCount: snapshot.scientific.basis?.length ?? 0 } : null,
         sourceError: snapshot.sourceError,
+        crystal: snapshot.crystal ? { format: snapshot.crystalSource!.format, atomCount: snapshot.crystal.atoms.length, cell: snapshot.crystal.cell } : null,
         jobs };
     }
     if (request.operation === "atoms") {

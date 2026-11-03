@@ -28,6 +28,7 @@ const STRUCTURE_EXTENSIONS = new Set([
   'mol', 'mol2', 'xyz', 'gro', 'mae', 'maegz', 'cms', 'dtr',
   'xtc', 'trr', 'dcd', 'nctraj', 'nc', 'ncdf', 'netcdf', 'ncrst', 'lammpstrj',
   'top', 'psf', 'prmtop', 'tpr',
+  'vasp', 'poscar',
 ]);
 const AMBER_NC_EXTENSIONS = new Set(['nc', 'ncdf', 'netcdf', 'ncrst']);
 const TOPOLOGY_PREVIEW_EXTENSIONS = new Set(['pdb', 'ent', 'pdbqt', 'pqr', 'xpdb']);
@@ -1165,6 +1166,8 @@ function isWithin(path, root) {
 function fileExtension(path) {
   const lower = path.toLowerCase();
   if (lower.endsWith('.mae.gz')) return 'maegz';
+  // Extensionless VASP structures are named by convention.
+  if (/^(?:POSCAR|CONTCAR)(?:[_-][^.]*)?$/u.test(basename(path))) return 'vasp';
   const extension = extname(lower).replace(/^\./u, '');
   return extension;
 }

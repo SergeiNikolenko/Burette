@@ -9,7 +9,7 @@ import { sourceExtension } from "../science-session/state";
 
 const GRAPH_FORMATS = new Set(["sdf", "sd", "mol"]);
 const COORDINATE_FORMATS = new Set(["xyz", "out", "log", "cube", "cub", "molden", "hess", "fchk", "fch"]);
-const CRYSTAL_FORMATS = new Set(["cif", "mmcif", "mcif"]);
+const CRYSTAL_FORMATS = new Set(["cif", "mmcif", "mcif", "vasp"]);
 
 /** Documents whose atoms the workbench can read directly from their source text. */
 export function workbenchSupportsDocument(document: ViewerDocument | null): document is ViewerDocument {
@@ -34,7 +34,8 @@ export async function readWorkbenchSource(document: ViewerDocument, text: string
     return { atoms: structure.atoms, cell: null, title, graphText: text, graphFormat: "sdf" };
   }
   if (CRYSTAL_FORMATS.has(extension)) {
-    const crystal = await runReaderTask({ action: "cif", text }, { signal });
+    // The full cell with whole molecules, exactly as the viewer shows it.
+    const crystal = await runReaderTask({ action: "crystal", format: extension === "vasp" ? "vasp" : "cif", text }, { signal });
     return { atoms: crystal.atoms, cell: crystal.cell, title, graphText: serializeXyz(crystal.atoms, title), graphFormat: "xyz" };
   }
   if (extension === "xyz") {

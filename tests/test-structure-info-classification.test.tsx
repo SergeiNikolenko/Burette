@@ -97,3 +97,15 @@ test("a source-editing draft replaces the classification on the same document wi
     expect(f.reads).toEqual([document.path]);
   } finally { await f.close(); }
 });
+
+test("Info counts a CIF crystal by the unit cell the viewer shows, keeping its asymmetric-unit sites", async () => {
+  const f = await fixture(), document = doc("urea");
+  try {
+    await f.render(document);
+    await f.resolve(document, readFileSync(new URL("fixtures/crystals/urea.cif", import.meta.url), "utf8"));
+    const stats = () => [...f.host.querySelectorAll(".structure-inspector-header-stats > div")].map(node => node.textContent);
+    for (let i = 0; i < 100 && !stats().includes("Atoms16"); i++) await act(async () => new Promise(resolve => setTimeout(resolve, 20)));
+    expect(stats()).toContain("Atoms16");
+    expect(f.host.textContent).toContain("Atom sites5");
+  } finally { await f.close(); }
+});

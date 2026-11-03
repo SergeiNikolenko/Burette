@@ -15,7 +15,7 @@ const dependencies = {
   sceneTreeRowLabel: (_cell, label) => ({ label }),
 };
 const read = new Function(...Object.keys(dependencies),
-  ['sceneTreeChildRefs', 'isSceneTreeDecorator', 'sceneTreeCellHidden', 'sceneTreeNodes'].map(fn).join('\n') + '\nreturn sceneTreeNodes;')(...Object.values(dependencies));
+  ['sceneTreeChildRefs', 'isSceneTreeDecorator', 'sceneTreeCellHidden', 'isUnitCellCell', 'sceneTreeCellNote', 'sceneTreeNodes'].map(fn).join('\n') + '\nreturn sceneTreeNodes;')(...Object.values(dependencies));
 const cells = new Map();
 const add = (ref, parent, name, label, data = {}, transformer = '', decorator = false) => cells.set(ref, {
   transform: { ref, parent, transformer: { id: transformer, definition: { isDecorator: decorator } } },
@@ -57,6 +57,20 @@ assert.deepEqual(shape(read(viewer))[0][1][0][1][1], ['model2', [
 ]]);
 add('named-null', 'file', 'Group', 'Null');
 assert.ok(read(viewer)[0].children.some(node => node.ref === 'named-null'), 'a user label is not an empty state object');
+// A crystal reaches Mol* as its expanded P1 cell (XYZ with a Lattice); its cell row must
+// not claim P 1. A macromolecular cell keeps the space group its model declares.
+const unitCell = (ref, kind, group) => {
+  add(ref, 'model2', 'Representation', 'Unit Cell', { sourceData: { sourceData: { kind } } });
+  cells.get(ref).transform.transformer.definition.name = 'model-unitcell-3d';
+  cells.get(ref).obj.description = group;
+};
+unitCell('xyz-cell', 'xyz', 'P 1');
+unitCell('mmcif-cell', 'mmCIF', 'P 21 21 21');
+const notes = new Map();
+const collect = nodes => nodes.forEach(node => { notes.set(node.ref, node.note); collect(node.children); });
+collect(read(viewer));
+assert.deepEqual([notes.get('xyz-cell'), notes.get('mmcif-cell')], ['', 'P 21 21 21']);
+cells.delete('xyz-cell'); cells.delete('mmcif-cell');
 
 // The visible file row holds raw data, while its geometry lives several cells
 // below it. Focus must stay inside that file, even beside a much larger receptor.

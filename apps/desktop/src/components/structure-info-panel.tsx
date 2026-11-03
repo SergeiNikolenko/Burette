@@ -19,7 +19,10 @@ import { classifyCifStructure, type CifStructureClassification } from "../lib/ci
 import { useLogicalSource } from "../lib/science-session/state";
 import { useSourceEditing } from "../lib/source-editing/context";
 import { structureBriefForDocument, type StructureBriefRow as BriefRow } from "../lib/structure-brief";
-import { parseStructureComposition, type StructureCompositionSummary, type StructureSummaryRow } from "../lib/structure-composition";
+import { parseStructureComposition, unitCellComposition, type StructureCompositionSummary, type StructureSummaryRow } from "../lib/structure-composition";
+import { periodicCrystalFormat } from "../lib/molecular-workbench/crystal-io";
+import { SOURCE_EDIT_MAX_BYTES } from "../lib/source-editing/policy";
+import { runReaderTask } from "../lib/workbench/reader-task";
 import { activeViewerIframeForDocument, isKnownViewerMessageSource, requestViewerAction } from "../lib/viewer-bridge";
 import { compositionSceneAction } from "../lib/composition-scene-actions";
 import { compositionRowFromScene, type CompositionSceneState } from "../lib/composition-scene-state";
@@ -322,6 +325,7 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
   // mislabel atom count as residues/ligands and must stay hidden until the user
   // attaches the matching topology.
   const compositionSummary = !derivedTopology && composition.documentId === document.id ? composition.summary : null;
+  const periodicCrystal = composition.documentId === document.id && composition.periodic;
   const compositionPending = !derivedTopology && composition.documentId === document.id && composition.loading;
   const rawCompositionError = !derivedTopology && composition.documentId === document.id ? composition.error : null;
   const virtualScene = isVirtualMolstarScene(document);
@@ -506,7 +510,8 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
         >
           <ItemGroup className="gap-1">
             <PropertiesToolRow document={document} actions={actions} />
-            <InspectorToolRow
+            {/* xTB and CREST treat the input as an isolated molecule; a periodic cell is not one. */}
+            {periodicCrystal ? null : <InspectorToolRow
               name="Molecular calculations"
               detail={xtbMissing ? "Not installed" : oversizedForDirectJob ? oversizedNotice[0].hint : runningXtbJob ? `${operationTitle(runningXtbJob.operation)} · ${runningXtbJob.inputLabel}` : xtbSettingsShort(xtbSettings)}
               detailTitle={runningXtbJob || xtbBlocked ? undefined : xtbSettingsSummary(xtbSettings)}
@@ -537,9 +542,9 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
                 </Field>
               </FieldGroup>
               <XtbInlineSettings settings={xtbSettings} xtbStatus={xtbStatus} actions={actions} />
-            </InspectorToolRow>
+            </InspectorToolRow>}
           </ItemGroup>
-          <ConformerToolRows
+          {periodicCrystal ? null : <ConformerToolRows
             document={document}
             selectedEntity={selectedEntity}
             viewerLigandSelection={viewerLigandSelection}
@@ -547,7 +552,7 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
             settings={conformerSettings}
             oversizedNotice={oversizedNotice}
             actions={actions}
-          />
+          />}
           {document.renderer === "grid2d" ? (
             <ItemGroup>
               <GridDescriptorStatus documentId={document.id} />
@@ -2150,20 +2155,22 @@ function useStructureComposition(document: ViewerDocument | null) {
     documentId: string | null;
     sourceIdentity: object | null;
     cifKind: CifStructureClassification["kind"];
+    /** A periodic crystal (CIF with fractional sites, POSCAR, XYZ with a Lattice). */
+    periodic: boolean;
     loading: boolean;
     summary: StructureCompositionSummary | null;
     error: string | null;
-  }>({ documentId: null, sourceIdentity: null, cifKind: null, loading: false, summary: null, error: null });
+  }>({ documentId: null, sourceIdentity: null, cifKind: null, periodic: false, loading: false, summary: null, error: null });
 
   useEffect(() => {
     // A MOLX is an archive, not coordinate text. Its validated logical source
     // arrives asynchronously; foreign scenes have no text composition to parse.
     if (!document || (document.extension.replace(/^\./u, "").toLowerCase() === "molx" && !logical)) {
-      setState({ documentId: document?.id ?? null, sourceIdentity, cifKind: null, loading: false, summary: null, error: null });
+      setState({ documentId: document?.id ?? null, sourceIdentity, cifKind: null, periodic: false, loading: false, summary: null, error: null });
       return undefined;
     }
     let cancelled = false;
-    setState({ documentId: document.id, sourceIdentity, cifKind: null, loading: true, summary: null, error: null });
+    setState({ documentId: document.id, sourceIdentity, cifKind: null, periodic: false, loading: true, summary: null, error: null });
     const source = document.dockingRequest ? structureCompositionSourceForDocument(document)
       : { ...structureCompositionSourceForDocument(document), extension: logical?.extension ?? document.extension,
           text: draft ?? logical?.text };
@@ -2173,20 +2180,26 @@ function useStructureComposition(document: ViewerDocument | null) {
         // Reuse this source read; publish its classification only for this exact revision.
         const cifKind = ["cif", "mmcif"].includes(source.extension.replace(/^\./u, "").toLowerCase())
           ? (await classifyCifStructure(text)).kind : null;
-        if (cancelled) return;
+        const format = text.length <= SOURCE_EDIT_MAX_BYTES ? periodicCrystalFormat(source.extension.replace(/^\./u, "").toLowerCase(), text) : null;
+        const summary = parseStructureComposition(text, source.extension);
         setState({
           documentId: document.id,
-          sourceIdentity, cifKind,
+          sourceIdentity, cifKind, periodic: format !== null,
           loading: false,
-          summary: parseStructureComposition(text, source.extension),
+          summary,
           error: null,
         });
+        // A crystal is shown as its full unit cell, so it is counted that way once it is read.
+        if (!format || format === "xyz") return;
+        const cell = await runReaderTask({ action: "crystal", format, text }).catch(() => null);
+        if (cancelled || !cell) return;
+        setState((current) => current.sourceIdentity === sourceIdentity ? { ...current, summary: unitCellComposition(summary, cell.atoms) } : current);
       })
       .catch((error) => {
         if (cancelled) return;
         setState({
           documentId: document.id,
-          sourceIdentity, cifKind: null,
+          sourceIdentity, cifKind: null, periodic: false,
           loading: false,
           summary: null,
           error: error instanceof Error ? error.message : String(error),
