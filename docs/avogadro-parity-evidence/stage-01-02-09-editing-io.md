@@ -496,3 +496,27 @@ Recovery inspection found no running UI test process and no terminal summary in
 The prior successful Undo suite remains separate evidence. The original browser
 tab was no longer available after reconnect. No new build was needed to recover
 the already generated shell assets.
+
+
+### SDF export confirms after destination selection (2026-11-04)
+
+Validated SDF export now passes the captured source confirmation to the shared
+text writer. The writer confirms after the native destination dialog and before
+`save_text_as`; browser downloads confirm before creating their copy. Changing
+or closing the source while choosing a destination therefore rejects the export
+instead of writing the earlier coordinates. Cancelling skips both the check and
+write. Other exports may omit the optional callback.
+
+`tests/test-scene-save-sidebar.mjs` executes the transpiled production export and
+writer bodies, with the native picker and filesystem invocation replaced at the
+platform boundary. It verifies exact saved bytes, a changed source while the
+picker is pending (no write), and cancellation (no check or write). The focused
+check and TypeScript check passed. This is handler-level evidence; a packaged
+macOS dialog run is still pending and is not inferred from it.
+
+Next scene-save acceptance: open a scientific MOLX, add another molecule, remove
+that molecule from the scene tree, then save and inspect Original, UUID and the
+scientific attachments. The recorded source-path list can retain deleted items;
+the early multi-file omission condition currently uses that list. This remains a
+code-review finding requiring a real browser reproduction before changing the
+binding rules. Do not substitute basename-matched live paths for source identity.

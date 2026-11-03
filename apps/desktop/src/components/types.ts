@@ -186,6 +186,7 @@ export type ShellActions = {
     title: string;
     extension: string;
     text: string;
+    beforeWrite?: () => Promise<void>;
   }) => Promise<TextFileSaveOutcome>;
   openFepNetworkPreview: (request?: { title?: string; graphmlText?: string }) => void;
   applyKetcherToGridRow: (request: {

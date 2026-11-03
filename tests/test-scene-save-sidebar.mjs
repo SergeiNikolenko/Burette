@@ -50,19 +50,48 @@ for (const outcome of ["saved", "missing", "changed", "capture-failed"]) {
       assert.equal(options.scientificData, "require");
       assert.equal(options.sceneFileCount, 1);
       if (outcome === "capture-failed") throw new Error("binding changed");
-      return { source: outcome === "missing" ? null : { extension: "sdf", text }, confirm: async () => {
+      return { source: outcome === "missing" ? null : { extension: "sdf", text, beforeWrite: undefined }, confirm: async () => {
         if (outcome === "changed") throw new Error("source changed");
       } };
-    }, null, () => ["polymer"], { saveKetcherExportFile: async value => downloads.push(value) });
+    }, null, () => ["polymer"], { saveKetcherExportFile: async value => { assert.equal(typeof value.beforeWrite, "function"); await value.beforeWrite(); downloads.push({ ...value, beforeWrite: undefined }); } });
   const document = { id: "polymer", title: "Polymer.molx" };
   if (outcome === "saved") {
     await exportStructure(document, "sdf");
-    assert.deepEqual(downloads, [{ title: "Polymer.sdf", extension: "sdf", text }]);
+    assert.deepEqual(downloads, [{ title: "Polymer.sdf", extension: "sdf", text, beforeWrite: undefined }]);
     await exportStructure({ ...document, title: "Renamed polymer" }, "sdf");
-    assert.deepEqual(downloads[1], { title: "Renamed polymer.sdf", extension: "sdf", text });
+    assert.deepEqual(downloads[1], { title: "Renamed polymer.sdf", extension: "sdf", text, beforeWrite: undefined });
   } else {
     await assert.rejects(exportStructure(document, "sdf"), /changed|validated SDF/);
     assert.deepEqual(downloads, []);
   }
 }
 console.log("SDF export preserves the validated source and refuses absent or changed bindings before download");
+
+
+const writerSource = readFileSync("apps/desktop/src/hooks/use-app-ketcher-actions.ts", "utf8");
+const writerFragment = writerSource.slice(writerSource.indexOf("  const saveKetcherExportFile ="), writerSource.indexOf("  const openKetcherWithFragment ="));
+const writerJs = ts.transpileModule(writerFragment, { compilerOptions: { target: ts.ScriptTarget.ESNext } }).outputText;
+for (const outcome of ["saved", "changed", "cancelled"]) {
+  let resolvePicker;
+  const picker = new Promise(resolve => { resolvePicker = resolve; });
+  const writes = [];
+  let current = true;
+  let confirmations = 0;
+  const writer = new Function("useCallback", "safeExportFileName", "isTauriRuntime", "save", "exportDialogFilters", "invoke", "pushStatus", "pushErrorStatus", "basename", `${writerJs}; return saveKetcherExportFile;`)(
+    fn => fn, name => name, () => true, () => picker, () => [],
+    async (command, request) => { writes.push([command, request]); return request.outputPath; },
+    () => {}, () => {}, path => path);
+  const text = "validated SDF coordinates\n$$$$\n";
+  const pending = writer({ title: "structure.sdf", extension: "sdf", text, beforeWrite: async () => {
+    confirmations++;
+    if (!current) throw new Error("source changed");
+  } });
+  assert.deepEqual(writes, []);
+  if (outcome === "changed") current = false;
+  resolvePicker(outcome === "cancelled" ? null : "/saved/structure.sdf");
+  const result = await pending;
+  assert.equal(result.status, outcome === "changed" ? "failed" : outcome);
+  assert.equal(confirmations, outcome === "cancelled" ? 0 : 1);
+  assert.deepEqual(writes, outcome === "saved" ? [["save_text_as", { text, outputPath: "/saved/structure.sdf", sourcePath: null }]] : []);
+}
+console.log("Native SDF writer rechecks the source after the picker and preserves cancellation and exact bytes");

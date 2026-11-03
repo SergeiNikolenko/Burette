@@ -138,7 +138,7 @@ export function useWorkspaceFileActions(state: ShellViewState, actions: ShellAct
       const snapshot = await captureWorkspaceSceneSnapshot(document, { sourceEditing, sceneFileCount: scenePaths(document).length, scientificData: "require" });
       if (snapshot.source?.extension !== "sdf") throw new Error("This scene has no validated SDF source to export.");
       await snapshot.confirm();
-      await actions.saveKetcherExportFile({ title: document.title.replace(/\.[^.]+$/, "") + ".sdf", extension: "sdf", text: snapshot.source.text });
+      await actions.saveKetcherExportFile({ title: document.title.replace(/\.[^.]+$/, "") + ".sdf", extension: "sdf", text: snapshot.source.text, beforeWrite: snapshot.confirm });
       return;
     }
     await focusViewer(document);
