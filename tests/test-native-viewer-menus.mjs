@@ -214,7 +214,7 @@ const events = [];
 // Camera actions reach Mol*: projection through the canvas props, axis views and
 // later framing through one focus request that keeps the chosen projection.
 {
-  const { Vec3, Mat4 } = await import('molstar/lib/mol-math/linear-algebra.js');
+  const { Vec3, Mat4 } = await import('@molstar/core/math/linear-algebra');
   const resets = [], props = [];
   const state = { mode: 'orthographic', target: [1, 2, 3], radius: 5 };
   // Like Mol*, getFocus keeps the camera on its current side (+Z here) whatever the direction's sign.

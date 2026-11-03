@@ -9,12 +9,12 @@ import { sdfFromGraph } from "../apps/desktop/src/lib/workbench/formats";
 import complexes from "./fixtures/metal-complex/complexes.json";
 import reference from "./fixtures/metal-complex/reference.json";
 const require = createRequire(import.meta.url);
-const { parseSdf } = require("molstar/lib/commonjs/mol-io/reader/sdf/parser.js");
-const { trajectoryFromSdf } = require("molstar/lib/commonjs/mol-model-formats/structure/sdf.js");
-const { Structure, StructureProperties: P, StructureElement } = require("molstar/lib/commonjs/mol-model/structure.js");
-const { CIF } = require("molstar/lib/commonjs/mol-io/reader/cif.js");
-const { trajectoryFromMmCIF } = require("molstar/lib/commonjs/mol-model-formats/structure/mmcif.js");
-const { to_mmCIF } = require("molstar/lib/commonjs/mol-model/structure/export/mmcif.js");
+const { parseSdf } = require("@molstar/io/reader/sdf/parser");
+const { trajectoryFromSdf } = require("@molstar/model/formats/structure/sdf");
+const { Structure, StructureProperties: P, StructureElement } = require("@molstar/model/model/structure");
+const { CIF } = require("@molstar/io/reader/cif");
+const { trajectoryFromMmCIF } = require("@molstar/model/formats/structure/mmcif");
+const { to_mmCIF } = require("@molstar/model/model/structure/export/mmcif");
 
 type Crystal = { angleTolerance: number; biteTolerance?: number; jahnTellerApical?: string };
 type Reference = { rdkit: { formula: string; charge: number; atoms: number; bonds: number; dative: number; donorToMetal: number; metal: string; metalCharge: number; ligandSmiles: string[] };

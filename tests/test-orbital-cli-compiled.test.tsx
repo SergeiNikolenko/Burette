@@ -361,7 +361,7 @@ test("CLI errors, cancellation and permanent page close use the real compiled co
     expect((await cli({ operation: "export", jobId: job.jobId, artifact: "cube" })).body.error.code).toBe("JOB_NOT_SUCCEEDED");
   } finally { Worker.prototype.postMessage = nativePost; Worker.prototype.terminate = nativeTerminate; }
   const { job } = await ok({ operation: "submit", operationId: "cli-limits", expectedSourceRevision: observed.sourceRevision,
-    job: { kind: "orbital_cube", params: { field: "density", spacingAngstrom: 0.05, paddingAngstrom: 10 } } });
+    job: { kind: "orbital_cube", params: { field: "density", spacingAngstrom: 0.1, paddingAngstrom: 10 } } });
   expect(await finished(job.jobId)).toMatchObject({ status: "failed", error: { code: "JOB_FAILED" }, artifacts: [] });
   browser.dispatchEvent(Object.assign(new browser.Event("pagehide"), { persisted: false }));
   expect((await cli({ operation: "observe" })).body.error.code).toBe("WORKBENCH_CLOSED");

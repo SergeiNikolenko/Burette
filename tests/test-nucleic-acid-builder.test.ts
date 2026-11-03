@@ -13,9 +13,9 @@ import {
 // the A and B forms; PDB 1BNA, 1RNA, 1DCG and 2F8W for crystal geometry; MDAnalysis numbers
 // for torsions and puckers; Mol* and OpenChemLib for reading the result back.
 const require = createRequire(import.meta.url);
-const { CIF } = require("molstar/lib/commonjs/mol-io/reader/cif.js");
-const { trajectoryFromMmCIF } = require("molstar/lib/commonjs/mol-model-formats/structure/mmcif.js");
-const { Structure, StructureProperties, StructureElement } = require("molstar/lib/commonjs/mol-model/structure.js");
+const { CIF } = require("@molstar/io/reader/cif");
+const { trajectoryFromMmCIF } = require("@molstar/model/formats/structure/mmcif");
+const { Structure, StructureProperties, StructureElement } = require("@molstar/model/model/structure");
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/nucleic/${name}`, import.meta.url), "utf8");
 type Vec = [number, number, number];

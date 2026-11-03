@@ -1,4 +1,4 @@
-import { parseCifText } from "molstar/lib/mol-io/reader/cif/text/parser.js";
+import { parseCifText } from "@molstar/io/reader/cif/text/parser";
 import { readCifCrystal } from "./cif-crystal";
 import { cartesianToFractional, readUnitCell } from "./crystal";
 import { symmetryOperationXyz, type CrystalSites, type SymmetryOperation } from "./crystal-symmetry";
