@@ -141,3 +141,8 @@ attempt, so the visible draft was not evidence of recovery.
   zero coordinate difference for the original three atoms. Both `SOURCE_NOTE`
   and `BURETTE_METADATA_V1_extra` retain their source values. The exact reserved
   `BURETTE_METADATA_V1` field adds atom/conformer identity metadata.
+- The same rebuilt packaged runtime rejects the coincident fixture through
+  Edit → Add hydrogens with the expected alert, Undo disabled, and the original
+  rounded C1/C2 coordinates retained. Reopening the exported positive SDF
+  through the picker creates a separate document with nine atoms and both
+  user properties visible; the exact reserved identity field stays hidden.

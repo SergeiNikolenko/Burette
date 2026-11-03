@@ -273,5 +273,29 @@ each displayed a 3D view.
 Both copies retained the isomeric SMILES and the source's `SOURCE_NOTE` data item.
 The focused automation suite also exercised a MOL V2000 input, a MOL V3000
 input, rejection before queueing, cancellation, a changed source revision and
-a closed document. Execution of these two job kinds from MCP and a live Jupyter
-notebook remains open.
+a closed document. Live Jupyter acceptance remains open.
+
+### Packaged browser coordinate jobs through stdio MCP
+
+On 2026-11-03, source `4eb88252d` and the prebuilt browser shell from
+`ed47115e4` executed both jobs through the plugin's actual stdio server and
+`burette.control_viewer`. The active document was the picker-reopened nine-atom
+ethanol export from the hydrogen scenario, with source SHA-256
+`10704ce84c25b7772331e46a2c881da4da47f822e3e6b14cc174bc04d071080f`.
+
+- `measurement_set` changed distance [0, 1] to 1.7 Å, moving rows [0, 3, 4, 5].
+  RDKit measured the exported distance within 1.91 × 10⁻¹¹ Å of the request.
+  The other five rows retained their exact source coordinates. Export SHA-256
+  was `d598fb43b460f3b3f18df5cf42617dc3e22c2bec97bd4da551b24bfefd8c04d8`.
+- `coordinate_align` placed atom 1 at the origin and atom 2 on +z. An independent
+  SciPy axis-angle rotation matched every exported coordinate component within
+  4.86 × 10⁻¹¹ Å. Export SHA-256 was
+  `edcb200a644999677c322c7567060ab609953f06e5a22e89f10826ca3e31216f`.
+- Both jobs succeeded, exact request replay retained the job ID, and a changed
+  parameter with the same operation ID returned `OPERATION_ID_CONFLICT`.
+  Final observation retained the source revision and text hash. MCP exports
+  returned artifact paths and hashes without inline molecular content.
+- RDKit parsed both artifacts as nine atoms and eight bonds, retaining isomeric
+  SMILES, `SOURCE_NOTE` and `BURETTE_METADATA_V1_extra`. Picker reopen of these
+  specific MCP artifacts and live MCP cancellation/stale-source cases remain
+  untested. The earlier CLI artifact reopen evidence applies to its own files.
