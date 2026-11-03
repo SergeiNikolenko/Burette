@@ -254,13 +254,18 @@ export function useSourceEditingController({
     }
     updateSession(document.path, (current) => targetRevision === current.revision ? { ...current, previewState: "staging", diagnostic: null } : current);
     try {
+      // Restored and transferred documents can differ from the global default.
+      // Keep the staged runtime compatible with this document's scene owner.
+      const rendererMode = document.renderer === "molstar" || document.renderer === "grid2d" || document.renderer === "xyzrender-external"
+        ? document.renderer : preferences.rendererMode;
+      const previewPreferences = { ...preferences, rendererMode };
       const candidateDocument = isTauriRuntime()
         ? await invoke<ViewerDocument>("open_text_structure", {
           request: { title: session.title, extension: session.extension, text: targetContent },
-          preferences,
+          preferences: previewPreferences,
           reloadOptions: undefined,
         })
-        : await openBrowserDevTextDocument(session.title, session.extension, targetContent, preferences, undefined, document.id);
+        : await openBrowserDevTextDocument(session.title, session.extension, targetContent, previewPreferences, undefined, document.id);
       if (sessionsRef.current[document.path]?.revision !== targetRevision) return;
       const identity: SourcePreviewIdentity = {
         documentId: document.id,

@@ -28,6 +28,7 @@ mock.module("@tauri-apps/api/core", () => ({ ...core, invoke: async (command, ar
   if (command === "open_source_edit_session") return openSource();
   if (command === "close_opened_source_documents") return close();
   if (command === "save_source_document") return saveSource();
+  if (command === "open_text_structure") return { runtimePath: "/tmp/source-candidate.html" };
 } }));
 mock.module("@tauri-apps/plugin-dialog", () => ({
   confirm: async (text, options) => { dialogs.push(["confirm", text, options]); return confirm(); },
@@ -236,5 +237,20 @@ await controller.save(document);
 assert.equal(useMoleculeStore.getState().documents[0].recoveryPath, undefined);
 for (const tab of useMoleculeStore.getState().tabs) {
   for (const location of [tab.location, ...tab.back, ...tab.forward]) assert.equal(location.recoveryPath, undefined);
+}
+// A restored/transferred tab can use a different renderer from the global
+// default. Editing its source must keep the runtime compatible with its owner.
+for (const renderer of ["molstar", "xyzrender-external", "grid2d"]) {
+  const previewDocument = { ...document, id: `preview-${renderer}`, renderer };
+  const previewController = useSourceEditingController({ activeDocument: previewDocument,
+    preferences: { rendererMode: renderer === "molstar" ? "xyzrender-external" : "molstar", theme: "dark" },
+    pushErrorStatus: error => errors.push(error), setDockOpen() {}, setDockActiveTab() {},
+  });
+  await previewController.beginEditing(previewDocument);
+  previewController.updateDraft(previewDocument, "ATOM      1  N   GLY A   1      -1.204   0.176   0.000  1.00 20.00           N\nEND\n");
+  await previewController.applyPreview(previewDocument);
+  const previewCall = calls.filter(([command]) => command === "open_text_structure").at(-1);
+  assert.ok(previewCall, "valid draft must request a preview");
+  assert.deepEqual(previewCall[1].preferences, { rendererMode: renderer, theme: "dark" });
 }
 console.log("source close acknowledgement tests passed");
