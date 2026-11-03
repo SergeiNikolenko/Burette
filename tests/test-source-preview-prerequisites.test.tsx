@@ -27,7 +27,11 @@ mock.module("../apps/desktop/src/lib/structure-text", () => ({
   readStructureTextDocument: async () => { await waitForRead; return { content: source, truncated: false }; },
 }));
 const browserDocuments = await import("../apps/desktop/src/lib/browser-dev-documents");
-mock.module("../apps/desktop/src/lib/browser-dev-documents", () => ({ ...browserDocuments, openBrowserDevTextDocument: async () => { throw new Error("Unexpected preview in a lifetime test."); } }));
+const previewOptions: unknown[] = [];
+mock.module("../apps/desktop/src/lib/browser-dev-documents", () => ({ ...browserDocuments, openBrowserDevTextDocument: async (_title, _extension, _text, _preferences, options) => {
+  previewOptions.push(options);
+  throw new Error("Preview creation stopped at the runtime boundary.");
+} }));
 mock.module("../apps/desktop/src/hooks/use-deferred-viewer-runtime", () => ({ prepareDeferredViewerRuntime: async document => document, useDeferredViewerRuntime: document => document }));
 const { useSourceEditingController } = await import("../apps/desktop/src/hooks/use-source-editing");
 const { requestViewerAction } = await import("../apps/desktop/src/lib/viewer-bridge");
@@ -62,6 +66,27 @@ test("compiled source accessor sees an awaited session and same-turn draft updat
     expect(retained.sessionForDocument(view.doc)?.content).toBe(source + "REMARK draft\n");
     expect(retained.sessionForDocument(view.doc)?.previewState).toBe("queued");
     expect(view.errors).toEqual([]);
+  } finally { await view.close(); }
+});
+test.each([false, true])("explicit Apply and retry retain draft camera policy (manual-sized=%s)", async manual => {
+  const view = await fixture();
+  previewOptions.length = 0;
+  try {
+    await act(async () => view.controller.beginEditing(view.doc));
+    const draft = source + "REMARK generated pose\n" + (manual ? "REMARK padding\n".repeat(80_000) : "");
+    await act(async () => {
+      view.controller.updateDraft(view.doc, draft, { view: "fit" });
+      expect(view.controller.sessionForDocument(view.doc)?.previewState).toBe(manual ? "manual" : "queued");
+      await view.controller.applyPreview(view.doc);
+    });
+    expect(previewOptions).toEqual([{ rendererViewState: null }]);
+    await act(async () => view.controller.applyPreview(view.doc));
+    expect(previewOptions).toEqual([{ rendererViewState: null }, { rendererViewState: null }]);
+    await act(async () => {
+      view.controller.updateDraft(view.doc, source + "REMARK next edit\n");
+      await view.controller.applyPreview(view.doc);
+    });
+    expect(previewOptions.at(-1)).toBeUndefined();
   } finally { await view.close(); }
 });
 test("independent operations survive hiding and release, but expire on close without a session", async () => {

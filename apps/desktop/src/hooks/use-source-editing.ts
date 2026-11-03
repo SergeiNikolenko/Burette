@@ -48,6 +48,8 @@ type InternalSourceSession = SourceEditingView & {
   geometryBinding: GeometryBinding | null;
   geometryFrame: { frame: HTMLIFrameElement; source: Window; identity: SourcePreviewIdentity; src: string | null; srcdoc: string | null; promoted: boolean } | null;
   geometryReload: boolean;
+  /** Camera policy belongs to the draft revision, including manual Apply and retries. */
+  previewView?: "keep" | "fit";
   topology: PreparedGeometryTopology | null;
   geometryReceiptRevoked: boolean;
   lastValidContent: string;
@@ -482,7 +484,7 @@ export function useSourceEditingController({
     return topologyTransfer.prepare(document, target, { ...binding, target: frameTarget }, current);
   }, [topologyTransfer]);
 
-  const preparePreview = useCallback(async (document: ViewerDocument, content?: string, revision?: number, view?: "keep" | "fit") => {
+  const preparePreview = useCallback(async (document: ViewerDocument, content?: string, revision?: number) => {
     const session = sessionsRef.current[document.path];
     const adapter = adaptersRef.current.get(document.path);
     if (!session || session.documentId !== document.id || !ownsSource(session) || !adapter) return;
@@ -497,6 +499,7 @@ export function useSourceEditingController({
     }
     const targetContent = content ?? session.content;
     const targetRevision = revision ?? session.revision;
+    const view = session.previewView;
     const matchesTarget = (current = sessionsRef.current[document.path]) => current?.documentId === document.id
       && current.sessionId === session.sessionId && current.revision === targetRevision
       && ownsSource(current) && adaptersRef.current.get(document.path) === adapter;
@@ -632,6 +635,7 @@ export function useSourceEditingController({
       content,
       revision,
       geometryReload,
+      previewView: options && "view" in options ? options.view : undefined,
       topology: geometryReload ? topology ?? null : null,
       geometryBinding: current.geometryBinding && supplied ? { ...supplied, text: previewApplied ? content : supplied.text, target: geometryTarget! } : current.geometryBinding,
       lastValidContent: previewApplied ? content : current.lastValidContent,
@@ -646,7 +650,7 @@ export function useSourceEditingController({
     if (previewState === "queued") {
       const timer = window.setTimeout(() => {
         timersRef.current.delete(document.path);
-        if (sessionsRef.current[document.path]?.sessionId === session.sessionId) void preparePreview(document, content, revision, options && "view" in options ? options.view : undefined);
+        if (sessionsRef.current[document.path]?.sessionId === session.sessionId) void preparePreview(document, content, revision);
       }, LIVE_PREVIEW_DELAY_MS);
       timersRef.current.set(document.path, timer);
     }

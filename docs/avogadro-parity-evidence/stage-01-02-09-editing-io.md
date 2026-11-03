@@ -388,3 +388,51 @@ tests and one compiled scene flow with 85 assertions) passed. The new adapter re
 generation transition and subsequent coordinate-edit Undo/Redo camera policies.
 Existing archives retain their saved camera, including old offscreen views.
 Full accessibility, native runtime and the broader editing matrix remain open.
+
+### Manual Apply retains the draft camera policy (2026-11-03)
+
+The live-preview timer passed the graph edit's `keep`/`fit` policy directly to
+preview preparation. Explicit Apply and retries omitted it. The policy now
+belongs to the internal draft revision and is replaced on each accepted edit.
+Both entry points read that policy. Topology ownership and camera-transfer
+precedence remain in the existing preview preparation path.
+
+The compiled-controller regression exercises immediate Apply before the live
+timer, manual-sized drafts, retry after runtime creation fails, and a subsequent
+ordinary edit that clears `fit`. All 10 prerequisite tests passed (49 assertions).
+The test stops at the preview-runtime boundary and does not prove rendering.
+
+Typecheck, the agent-shell rebuild, plugin checks, and the full `test:ui` sweep
+also passed (492 top-level commands, 0/500 cache hits, exit 0). The rebuilt
+browser bundle contains the policy change. Browser acceptance below used the
+source-backed Vite runtime, not a new packaged/native installation.
+
+A fresh `vite-dev` browser checked the manual path with an SDF containing one
+`unspecified-center.mol` record and a 1,100,000-character `PADDING` property
+(1,101,212 input bytes). Generate 3D changed four atoms/three bonds to nine/eight,
+with MMFF94/BFGS reporting 21.92 to -14.81 kcal/mol, 81 steps, Converged.
+Text displayed `Preview Not Applied`. Apply Preview via Enter promoted the
+candidate and displayed `Edited`; the generated molecule was fully visible.
+Redo followed by pointer Apply was also checked in light mode. These checks used
+1280×720; responsive acceptance of this manual workflow remains open.
+
+RDKit independently parsed the Save copy download. The heavy-atom mapped SMILES
+remained `[CH3:101][CH:102]([OH:103])[F:104]`, the unspecified center remained
+`[(1, '?')]`, and `PADDING` and `FOREIGN_MULTILINE` were retained exactly.
+The output SHA-256 was
+`ce6d78946520273c8b097c450e92a3d68b47272b0153bacc8f74c73ddc958d4f`.
+Local evidence includes `/tmp/burette-apply-manual-oracle.json`,
+`/tmp/burette-apply-manual-observe.json`, and screenshots
+`/tmp/burette-apply-manual-after.png` and `/tmp/burette-apply-manual-light.png`.
+The typed browser observation reported the viewer ready. Test tabs and owned
+servers were closed, and theme emulation was reset.
+
+An additional gap remains: Undo to the original text of a manual-sized draft
+displayed `Saved` and removed Apply Preview. The Text dock currently gates that
+button on `dirty`, although the pending preview can differ from saved text.
+The full manual Undo/rendering sequence, recovery of camera policy after a new
+top-level loader, and native acceptance remain open. Initial external `/tmp`
+fixture attempts returned HTTP 403 even with an explicit filesystem allow root;
+the successful run used the worktree's ignored test directory. A fixture setup
+mistake initially appended a second SDF record and was corrected before the
+single-record editing scenario above.
