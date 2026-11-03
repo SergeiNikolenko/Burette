@@ -6,7 +6,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { confirm as confirmDialog, message as messageDialog } from "@tauri-apps/plugin-dialog";
 import type { ShellActions, ShellViewState, StructureViewerAction } from "../components/types";
 import { reopenClosedTab } from "../components/workspace-panes/pane-actions";
-import { checkpointNativePopoutForExit, nativePopoutBusy, returnNativePopout } from "../components/workspace-panes/native-scene-window";
+import { checkpointNativePopoutForExit, returnNativePopout } from "../components/workspace-panes/native-scene-window";
+import { nativeWindowTransferBusy } from "../lib/window-transfer";
 import { canInspectConformerEnsemble } from "../lib/conformer-ensemble";
 import { isMolstarViewerExtension } from "../lib/docking-documents";
 import { isKetcherImportExtension } from "../lib/drop-actions";
@@ -280,7 +281,7 @@ export function useAppNativeMenu({
     if (closingWindowRef.current || closeRequestInFlightRef.current) return;
     closeRequestInFlightRef.current = true;
     try {
-      if (nativePopoutBusy()) return;
+      if (nativeWindowTransferBusy()) return;
       if (await returnNativePopout()) return;
       const barrier = sealWindowMutations();
       const snapshot = getWindowDocumentDirtySnapshotRef.current();
@@ -304,7 +305,7 @@ export function useAppNativeMenu({
           );
         },
       });
-      if (decision === "abort" || nativePopoutBusy()) {
+      if (decision === "abort" || nativeWindowTransferBusy()) {
         resumeWindowMutations();
         return;
       }
@@ -331,7 +332,7 @@ export function useAppNativeMenu({
   useEffect(() => {
     if (isTauriRuntime()) return;
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (!getWindowDocumentDirtySnapshotRef.current().dirty && !nativePopoutBusy()) return;
+      if (!getWindowDocumentDirtySnapshotRef.current().dirty && !nativeWindowTransferBusy()) return;
       event.preventDefault();
       event.returnValue = "";
     };
@@ -377,10 +378,7 @@ export function useAppNativeMenu({
   useEffect(() => {
     if (!isTauriRuntime()) return undefined;
     return trackTauriListener(getCurrentWindow().onCloseRequested((event) => {
-      // Preventing the plain window close is deliberate: the coordinator runs
-      // the unsaved-changes checks first, and for the last window a plain
-      // close left a windowless process alive (macOS default) that then
-      // recreated a window, so the button looked like it did nothing.
+      // The coordinator checks unsaved edits before the native window closes.
       event.preventDefault();
       void closeCurrentWindow();
     }), "native window close guard");
@@ -393,9 +391,11 @@ export function useAppNativeMenu({
     const listener = listen<ExitPreflightRequest>(EXIT_PREFLIGHT_EVENT, ({ payload }) => {
       const barrier = sealWindowMutations();
       const snapshot = getWindowDocumentDirtySnapshotRef.current();
+      const transferBusy = nativeWindowTransferBusy();
       void checkpointNativePopoutForExit().then(() => false, () => true).then(checkpointFailed => invoke("respond_to_exit_preflight", {
         requestId: payload.requestId,
         closeTransitionActive: snapshot.closeTransitionActive
+          || transferBusy
           || checkpointFailed
           || barrier.closeTransitionActive
           || barrier.pendingCount > 0,

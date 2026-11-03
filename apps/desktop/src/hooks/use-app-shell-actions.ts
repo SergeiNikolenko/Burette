@@ -1,4 +1,5 @@
-import { isNativePopoutTab, nativePopoutBusy, returnNativePopout } from "../components/workspace-panes/native-scene-window";
+import { isNativePopoutTab, returnNativePopout } from "../components/workspace-panes/native-scene-window";
+import { nativeWindowTransferBusy } from "../lib/window-transfer";
 import { confirmUnsavedSceneClose } from "./file-batch-scene";
 import { rendererViewReloadOptions } from "../lib/renderer-view-state";
 import { useEffect, useMemo, useState } from "react";
@@ -1208,9 +1209,7 @@ export function createDockDropShellActions({
 
 export function createDocumentCloseShellActions({
   activeDocument,
-  clearDirtyGridDocuments,
   closeActiveDocument,
-  closeAllDocuments,
   closeDocument,
   closeGridRuntime,
   closeTab,
@@ -1251,7 +1250,7 @@ export function createDocumentCloseShellActions({
   // for good and blocked every later close.
   const completeClose = (permit: WindowCloseMutationPermit, close: () => void) => {
     try {
-      if (!nativePopoutBusy()) close();
+      if (!nativeWindowTransferBusy()) close();
     } finally {
       permit.release();
     }
@@ -1287,7 +1286,7 @@ export function createDocumentCloseShellActions({
     try {
       // Source disposal is the final acknowledgement: a cancelled Grid prompt
       // must leave the source draft and its recovery handle intact.
-      if (nativePopoutBusy() || !await confirmCloseSourceDocuments(documentIds)) {
+      if (nativeWindowTransferBusy() || !await confirmCloseSourceDocuments(documentIds)) {
         permit.release();
         return null;
       }
@@ -1298,14 +1297,14 @@ export function createDocumentCloseShellActions({
     }
   };
   const returnOwner = async (targets: MoleculeTab[]) => {
-    if (nativePopoutBusy()) return false;
+    if (nativeWindowTransferBusy()) return false;
     if (!targets.some(tab => isNativePopoutTab(tab.id))) return true;
     // The handoff owns closing its tab. A failed handoff leaves all targets intact.
     await returnNativePopout();
     return false;
   };
 
-  return {
+  const closeActions: Pick<ShellActions, "closeDocument" | "closeTab" | "closeOtherTabs" | "closeTabs" | "closeActiveDocument" | "clearAllDocuments"> = {
     closeDocument: async (id: string) => {
       const targets = tabs.filter(tab => tab.location.kind === "file" && (tab.location.documentId === id || tab.location.path === documents.find(doc => doc.id === id)?.path));
       if (!await returnOwner(targets)) return;
@@ -1333,7 +1332,7 @@ export function createDocumentCloseShellActions({
     closeTabs: async (ids: string[]) => {
       const wanted = new Set(ids);
       let targets = tabs.filter(tab => wanted.has(tab.id));
-      if (!targets.length || nativePopoutBusy()) return;
+      if (!targets.length || nativeWindowTransferBusy()) return;
       if (targets.some(tab => isNativePopoutTab(tab.id))) {
         const owners = new Set(targets.filter(tab => isNativePopoutTab(tab.id)).map(tab => tab.id));
         await returnNativePopout();
@@ -1353,7 +1352,7 @@ export function createDocumentCloseShellActions({
     closeOtherTabs: async (id: string) => {
       const pane = tabs.find(tab => tab.id === id)?.pane ?? null;
       let otherTabs = tabs.filter((tab) => tab.id !== id && !tab.pinned && (tab.pane ?? null) === pane);
-      if (otherTabs.length === 0 || nativePopoutBusy()) return;
+      if (otherTabs.length === 0 || nativeWindowTransferBusy()) return;
       if (otherTabs.some(tab => isNativePopoutTab(tab.id))) {
         const owners = new Set(otherTabs.filter(tab => isNativePopoutTab(tab.id)).map(tab => tab.id));
         await returnNativePopout();
@@ -1386,18 +1385,10 @@ export function createDocumentCloseShellActions({
       });
     },
     clearAllDocuments: async () => {
-      if (!await returnOwner(tabs)) return;
-      const documentIds = documents.map((document) => document.id);
-      const permit = await confirmClose(documentIds);
-      if (!permit) return;
-      completeClose(permit, () => {
-        for (const document of documents) closeGridRuntime(document.id);
-        clearDirtyGridDocuments();
-        closeAllDocuments();
-        pushStatus("Closed all tabs");
-      });
+      await closeActions.closeTabs(tabs.filter(tab => !tab.pinned && tab.location.kind !== "launcher").map(tab => tab.id));
     },
   };
+  return closeActions;
 }
 
 export function createRecentShellActions({

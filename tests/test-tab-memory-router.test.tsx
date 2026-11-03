@@ -111,3 +111,88 @@ test("reopening named screens and files preserves their labels without renaming 
   expect(store.getState().tabs.find(tab => tab.location.kind === "chemical-space")?.title).toBeUndefined();
   expect(store.getState().documents[0].title).toBe("example.pdb");
 });
+
+test("reopen restores order, pinned placement, history, and renderer without changing a concurrent tab", async () => {
+  const { reopenClosedTab } = await import("../apps/desktop/src/components/workspace-panes/pane-actions");
+  const { takeClosedTab } = await import("../apps/desktop/src/stores/closed-tabs");
+  while (takeClosedTab()) { /* Isolate user close history. */ }
+  const document = { id: "reopen-original", path: "/reopen.xyz", title: "reopen.xyz", extension: "xyz", renderer: "xyzrender-external" as const, runtimePath: "", byteCount: 1 };
+  const tab = {
+    id: "reopen-view", title: "My pose", pinned: true, pane: "bottom" as const,
+    location: { kind: "file" as const, documentId: document.id, path: document.path },
+    back: [{ kind: "jobs" as const }], forward: [{ kind: "chemical-space" as const }],
+  };
+  const retained = { id: "retained", location: { kind: "jobs" as const }, back: [], forward: [] };
+  useMoleculeStore.setState({ documents: [document], tabs: [tab, retained], activeTabId: tab.id });
+  useMoleculeStore.getState().closeTab(tab.id);
+  const requests: unknown[] = [];
+  await reopenClosedTab({ openTextPaths: () => {}, openStructurePaths: async (paths, options) => {
+    requests.push([paths, options]);
+    useMoleculeStore.getState().openScreenTab({ kind: "chemical-space" }, null, { newTab: true });
+    useMoleculeStore.getState().addDocuments([{ ...document, id: "reloaded-id" }]);
+  } });
+  const restored = useMoleculeStore.getState().tabs[0];
+  expect({ ...restored, id: tab.id, location: { ...restored.location, documentId: document.id } }).toEqual(tab);
+  expect(requests).toEqual([[[document.path], { rendererMode: "xyzrender-external" }]]);
+  expect(useMoleculeStore.getState().tabs.find(current => current.id === retained.id)).toEqual(retained);
+  useMoleculeStore.getState().navigateTabHistory(restored.id, -1);
+  expect(useMoleculeStore.getState().tabs[0].location).toEqual({ kind: "jobs" });
+});
+
+test("failed reopen remains retryable and rapid reopen requests are serialized", async () => {
+  const { reopenClosedTab } = await import("../apps/desktop/src/components/workspace-panes/pane-actions");
+  const { takeClosedTab } = await import("../apps/desktop/src/stores/closed-tabs");
+  while (takeClosedTab()) { /* Isolate user close history. */ }
+  useMoleculeStore.getState().closeAllDocuments();
+  const document = { id: "retry", path: "/retry.pdb", title: "retry.pdb", extension: "pdb", renderer: "molstar" as const, runtimePath: "", byteCount: 1 };
+  useMoleculeStore.getState().addDocuments([document]);
+  useMoleculeStore.getState().closeActiveDocument();
+  await reopenClosedTab({ openTextPaths: () => {}, openStructurePaths: async () => { throw new Error("unavailable"); } });
+  let release!: () => void;
+  const wait = new Promise<void>(resolve => { release = resolve; });
+  const opened: string[] = [];
+  const actions = { openTextPaths: () => {}, openStructurePaths: async () => {
+    opened.push(document.path);
+    await wait;
+    useMoleculeStore.getState().addDocuments([document]);
+  } };
+  const first = reopenClosedTab(actions);
+  const second = reopenClosedTab(actions);
+  await Promise.resolve();
+  expect(opened).toEqual([document.path]);
+  release();
+  await Promise.all([first, second]);
+  expect(useMoleculeStore.getState().tabs.filter(tab => tab.location.kind === "file")).toHaveLength(1);
+  expect(takeClosedTab()).toBeUndefined();
+});
+
+test("sidebar previews replace clean views per pane, promote dirty/explicit views, and stay out of persisted sessions", async () => {
+  browser.happyDOM.setURL("https://burette.test/");
+  const { openSidebarFile } = await import("../apps/desktop/src/lib/sidebar-file-preview");
+  const { getMoleculeSessionSnapshot } = await import("../apps/desktop/src/stores/molecule-store");
+  const { takeClosedTab } = await import("../apps/desktop/src/stores/closed-tabs");
+  while (takeClosedTab()) { /* Isolate close history. */ }
+  useMoleculeStore.getState().closeAllDocuments();
+  const actions = {
+    openPaths: async (paths: string[]) => { useMoleculeStore.getState().addDocuments(paths.map(path => ({ id: path, path, title: path, extension: "pdb", renderer: "molstar" as const, runtimePath: "", byteCount: 1 }))); },
+    closeTab: (id: string) => useMoleculeStore.getState().closeTab(id),
+    selectTab: (id: string) => useMoleculeStore.getState().setActiveTab(id),
+  };
+  await openSidebarFile("/preview-a.pdb", false, () => actions, () => false, () => true);
+  expect(useMoleculeStore.getState().tabs.filter(tab => tab.preview)).toHaveLength(1);
+  expect(getMoleculeSessionSnapshot(useMoleculeStore.getState()).tabs).toHaveLength(0);
+  expect(JSON.parse(localStorage.getItem(useMoleculeStore.persist.getOptions().name)!).state.tabs).toHaveLength(0);
+  await openSidebarFile("/preview-b.pdb", false, () => actions, () => false, () => true);
+  expect(useMoleculeStore.getState().tabs.filter(tab => tab.preview).map(tab => tab.location)).toEqual([{ kind: "file", path: "/preview-b.pdb", documentId: "/preview-b.pdb" }]);
+  expect(takeClosedTab()).toBeUndefined();
+  await openSidebarFile("/preview-c.pdb", false, () => actions, () => true, () => true);
+  expect(useMoleculeStore.getState().tabs.map(tab => ["path" in tab.location && tab.location.path, Boolean(tab.preview)])).toEqual([["/preview-b.pdb", false], ["/preview-c.pdb", true]]);
+  await openSidebarFile("/preview-c.pdb", true, () => actions, () => false, () => true);
+  expect(useMoleculeStore.getState().tabs.some(tab => tab.preview)).toBe(false);
+  expect(getMoleculeSessionSnapshot(useMoleculeStore.getState()).tabs).toHaveLength(2);
+  useMoleculeStore.getState().placeTab(useMoleculeStore.getState().activeTabId!, "right");
+  await openSidebarFile("/preview-right.pdb", false, () => actions, () => false, () => true);
+  useMoleculeStore.getState().setActiveTab(useMoleculeStore.getState().tabs.find(tab => tab.location.kind === "file" && tab.location.path === "/preview-b.pdb")!.id);
+  await openSidebarFile("/preview-main.pdb", false, () => actions, () => false, () => true);
+  expect(useMoleculeStore.getState().tabs.filter(tab => tab.preview).map(tab => tab.pane ?? "main").sort()).toEqual(["main", "right"]);
+});
