@@ -296,13 +296,24 @@ mod tests {
         let root = app.path().app_data_dir().unwrap().join("popout-scenes");
         fs::create_dir_all(&root).unwrap();
         let original = root.join(format!("missing-{}.pdb", uuid::Uuid::new_v4()));
-        let recovery = root.join(format!("{}.pdb", uuid::Uuid::new_v4()));
-        fs::write(&recovery, b"ATOM recovery").unwrap();
+        fs::write(&original, b"ATOM recovery").unwrap();
         let sheet = serde_json::json!({ "version": 1, "items": [{
             "svg": "<svg></svg>",
             "inputDataBase64": "QVRPTQ==", "inputExtension": "pdb",
             "geometry": { "left": 0, "top": 0, "width": 200, "height": 180, "rotation": 0 }
         }] });
+        let recovery = std::path::PathBuf::from(
+            save_popout_sheet(
+                app.handle().clone(),
+                original.to_string_lossy().into_owned(),
+                None,
+                sheet.clone(),
+                Some(true),
+                None,
+            )
+            .unwrap(),
+        );
+        fs::remove_file(&original).unwrap();
         let checkpoint = save_popout_sheet(
             app.handle().clone(),
             original.to_string_lossy().into_owned(),
@@ -323,8 +334,86 @@ mod tests {
         assert!(descriptor.scene_unsaved);
         assert!(!original.exists());
         for file in [
+            recovery.with_extension("sheet.json"),
+            recovery.with_extension("source.json"),
             recovery,
             checkpoint.with_extension("sheet.json"),
+            checkpoint.with_extension("source.json"),
+            checkpoint,
+        ] {
+            fs::remove_file(file).unwrap();
+        }
+    }
+
+    #[test]
+    fn sheet_recheckpoint_rejects_unrelated_recovery_sources() {
+        use tauri::test::{mock_builder, mock_context, noop_assets};
+        let app = mock_builder().build(mock_context(noop_assets())).unwrap();
+        let root = app.path().app_data_dir().unwrap().join("popout-scenes");
+        fs::create_dir_all(&root).unwrap();
+        let original = root.join(format!("original-{}.pdb", uuid::Uuid::new_v4()));
+        let recovery = root.join(format!("{}.pdb", uuid::Uuid::new_v4()));
+        let sheet = serde_json::json!({ "version": 1, "items": [{
+            "svg": "<svg></svg>", "inputDataBase64": "QVRPTQ==", "inputExtension": "pdb",
+            "geometry": { "left": 0, "top": 0, "width": 200, "height": 180, "rotation": 0 }
+        }] });
+        fs::write(&original, b"ATOM original").unwrap();
+        // Use the production writer to create a complete checkpoint.
+        let checkpoint = std::path::PathBuf::from(
+            save_popout_sheet(
+                app.handle().clone(),
+                original.to_string_lossy().into_owned(),
+                None,
+                sheet.clone(),
+                Some(true),
+                None,
+            )
+            .unwrap(),
+        );
+        let attempt = |source: &std::path::Path, candidate: &std::path::Path| {
+            save_popout_sheet(
+                app.handle().clone(),
+                source.to_string_lossy().into_owned(),
+                Some(candidate.to_string_lossy().into_owned()),
+                sheet.clone(),
+                Some(true),
+                None,
+            )
+        };
+        assert!(
+            attempt(&recovery, &checkpoint).is_err(),
+            "mismatched document identity"
+        );
+        assert!(
+            attempt(&original, &original).is_err(),
+            "ordinary source is not a checkpoint"
+        );
+        let outside = root
+            .parent()
+            .unwrap()
+            .join(format!("{}.pdb", uuid::Uuid::new_v4()));
+        fs::write(&outside, b"ATOM outside").unwrap();
+        assert!(
+            attempt(&original, &outside).is_err(),
+            "outside recovery directory"
+        );
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&outside, &recovery).unwrap();
+            assert!(
+                attempt(&original, &recovery).is_err(),
+                "symlink escapes recovery directory"
+            );
+            fs::remove_file(&recovery).unwrap();
+        }
+        fs::remove_file(checkpoint.with_extension("sheet.json")).unwrap();
+        assert!(
+            attempt(&original, &checkpoint).is_err(),
+            "missing sheet sidecar"
+        );
+        for file in [
+            original,
+            outside,
             checkpoint.with_extension("source.json"),
             checkpoint,
         ] {
@@ -452,6 +541,34 @@ pub(crate) fn save_popout_sheet<R: tauri::Runtime>(
     // The original name remains the document identity even when its volume is
     // unavailable. A moved sheet already has a self-contained recovery source.
     let source = std::path::Path::new(recovery_path.as_deref().unwrap_or(&source_path));
+    if recovery_path.is_some() {
+        let root = app
+            .path()
+            .app_data_dir()
+            .map_err(|e| e.to_string())?
+            .join("popout-scenes");
+        let canonical_root = root.canonicalize().map_err(|e| e.to_string())?;
+        // Check every file before reading descriptors: symlinks must not turn
+        // an application checkpoint into an unrelated local file.
+        for file in [
+            source.to_path_buf(),
+            source.with_extension("source.json"),
+            source.with_extension("sheet.json"),
+        ] {
+            if file.canonicalize().map_err(|e| e.to_string())?.parent()
+                != Some(canonical_root.as_path())
+            {
+                return Err("Invalid sheet recovery source.".into());
+            }
+        }
+        let descriptor =
+            recovery_source(&app, source)?.ok_or("Missing sheet recovery identity.")?;
+        if descriptor.source_path != std::path::Path::new(&source_path)
+            || sheet_checkpoint(&app, source)?.is_none()
+        {
+            return Err("The sheet recovery source does not match this document.".into());
+        }
+    }
     let extension = source
         .extension()
         .and_then(|s| s.to_str())
