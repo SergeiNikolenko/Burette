@@ -812,6 +812,16 @@ pick timeout. Neither missed-first-click behavior nor all camera interactions
 are claimed fixed. 320 px acceptance, capped relaxation and standalone SDF
 export/reopen remain open.
 
+A follow-up on the same packaged runtime recorded both `canvas3d.input.click`
+and `plugin.behaviors.interaction.click`. Two actual screen clicks at (650, 342)
+both emitted canvas input coordinates (649, 302). The first emitted `empty-loci`
+and left Head armed; the second emitted `element-loci` and assigned Head C1.
+The initial subscription replay was excluded from this comparison. The trace is
+`/tmp/burette-polymer-first-click-trace.json`. This reproduces the failure with
+identical canvas input coordinates, narrowing the next investigation to hit
+identification rather than different click locations. The form was cancelled
+and diagnostic subscriptions removed afterward. No hit-testing fix is claimed.
+
 At 320 × 720 in light mode, the expanded dialog measured x=9.60 to 304 px,
 width=294.40 px, and document scroll width equalled the 320 px viewport. Arming
 Head produced the compact panel above the molecule; the screenshot is
