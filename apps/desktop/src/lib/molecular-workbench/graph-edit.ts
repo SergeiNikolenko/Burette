@@ -25,7 +25,9 @@ export function editGraph(structure: MolecularStructure, edit: GraphEdit): Graph
   mol.ensureHelperArrays(Molecule.cHelperNeighbours);
   const n = structure.atoms.length, mapping = structure.atomMap ?? structure.atoms.map((_, i) => i);
   if (mol.getAllAtoms() !== n || mapping.length !== n || new Set(mapping).size !== n || mapping.some(i => !Number.isInteger(i) || i < 0 || i >= n)) throw new Error('Invalid atom mapping.');
-  const unspecified = edit.kind === 'reorder-atoms' ? readUnspecifiedMolfileStereo(mol, structure.molfile, sourceMap) : null;
+  const preservesStereoConstraints = edit.kind === 'reorder-atoms' || (edit.kind === 'update-atom'
+    && edit.element === undefined && edit.charge === undefined && edit.isotope === undefined);
+  const unspecified = preservesStereoConstraints ? readUnspecifiedMolfileStereo(mol, structure.molfile, sourceMap) : null;
   const originalMap = new Map<number, number>();
   const index = (i: number) => {
     if (!Number.isInteger(i) || i < 0 || i >= n) throw new Error('Invalid atom index.');
@@ -126,7 +128,8 @@ export function editGraph(structure: MolecularStructure, edit: GraphEdit): Graph
   });
   for (let i = 0; i < mol.getAllAtoms(); i++) mol.setAtomMapNo(i, originalMap.get(mol.getAtomMapNo(i)) ?? 0);
   if (unspecified && (unspecified.atoms.length || unspecified.bonds.length)) {
-    // Reordering changes no source constraints; known stereo belongs to the actual coordinates.
+    // Reordering and coordinate edits preserve unknown source constraints.
+    // Known stereo belongs to the actual coordinates.
     mol.ensureHelperArrays(Molecule.cHelperCIP);
     retainUnknownStereo(mol, unspecified.atoms, unspecified.bonds);
   }

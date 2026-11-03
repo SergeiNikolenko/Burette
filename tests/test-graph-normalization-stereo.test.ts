@@ -43,3 +43,23 @@ test('identity normalization preserves actual reflected 3D bodies; reordering re
   expect(originalCip).not.toBe(0);
   expect(cip(result.molfile, 10)).toBe(originalCip);
 });
+
+// Captured from the browser's restored MOLX logical source before a C1 coordinate edit.
+test('editing a coordinate in restored 3D alanine retains unspecified stereo after reopening', async () => {
+  const source = await input('unknown-alanine-3d');
+  const result = await task({ action: 'edit-graph', molecule: source, edits: [
+    { kind: 'update-atom', index: 0, position: [-2.5, source.atoms[0].y, source.atoms[0].z] },
+  ] });
+  const reopened = await task({ action: 'parse', source: result.molfile, format: 'mol' });
+  const { molecule, map } = Molecule.fromMolfileWithAtomMap(reopened.molfile);
+  const unknown = readUnspecifiedMolfileStereo(molecule, reopened.molfile, map);
+  expect(unknown.atoms.map(i => Array.from(map).indexOf(i))).toContain(1);
+  expect(result.molfile).not.toContain('STERAC');
+  expect(result.sourceAtomIndices).toEqual(source.atoms.map((_, i) => i));
+  expect(reopened.atoms[0].x).toBe(-2.5);
+  for (let i = 0; i < source.atoms.length; i++) {
+    for (const axis of ['x', 'y', 'z'] as const) {
+      if (i !== 0 || axis !== 'x') expect(reopened.atoms[i][axis]).toBeCloseTo(source.atoms[i][axis], 8);
+    }
+  }
+}, 30_000);

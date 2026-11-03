@@ -179,3 +179,35 @@ unsupported metadata. Failure messages now include the rendered diagnostic.
 `test:geometry-topology-binding` pass. These are compiled integration checks.
 Live browser acceptance of this timer interaction and a completed full JS run
 on the fix remain pending.
+
+### Coordinate editing after MOLX restoration (2026-11-03)
+
+The packaged browser shell reopened the previously exported unspecified-alanine
+MOLX with 13 atoms and 12 bonds. Edit → Atoms → C1 → X changed
+−2.6904938582 Å to −2.5 Å. Undo restored the original displayed coordinate and
+Redo restored −2.5 Å. Save scene downloaded a MOLX, and the ordinary picker
+reopened that file in a separate document whose Edit table showed −2.500 Å.
+
+The first run exposed a scientific regression: coordinate-only `update-atom`
+reparsed the wavy stereo bond as AND stereo and exported C2 with CFG=1 and a
+STERAC group. `editGraph` now retains the source's unknown atom/bond stereo
+constraints for coordinate-only updates, using the same mechanism as atom
+reordering. The captured pre-edit logical source is the regression fixture
+`tests/fixtures/graph-normalization/unknown-alanine-3d.mol`.
+
+The complete gesture, Undo/Redo, scene download and picker reopen were repeated
+on the rebuilt packaged shell. Independent RDKit 2026.09.1 inspection of the
+downloaded ZIP confirmed exactly one changed coordinate component, C1 X, and
+the same isomeric SMILES with C2 unspecified (`?`). Document UUID
+`7f33ed51-62a6-48e9-a61f-7b2cd67067ae` and all 13 atom UUIDs matched the original.
+The embedded Mol* raw source matched the science attachment, whose SHA-256 was
+`259bad2e92561ccf5ad49647c54be13ff8effe261059ba5d9985ff28473ed159`.
+No browser console errors were recorded on the corrected replay. Local evidence
+is `/tmp/burette-restored-molx-coordinate-oracle.json` and
+`/tmp/burette-restored-molx-coordinate-fixed.png`.
+
+The graph-normalization and graph-worker suites pass (9 tests, 160 assertions).
+This run covers a coordinate-only edit in one restored molecule. Chemical
+identity/topology edits, the theme/viewport accessibility matrix, and native
+editing acceptance remain open. The Edit panel's Save copy stayed disabled for
+the restored source; scene saving used the workspace tab's Save scene action.
