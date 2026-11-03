@@ -13,7 +13,7 @@ pub(crate) fn relay_popout_handoff<R: tauri::Runtime>(
     target: String,
     mut message: serde_json::Value,
 ) -> Result<(), String> {
-    if message.to_string().len() > 8192 || !message.is_object() {
+    if message.to_string().len() > 8 * 1024 * 1024 || !message.is_object() {
         return Err("Invalid scene handoff.".into());
     }
     let kind = message.get("kind").and_then(|v| v.as_str()).unwrap_or("");
@@ -39,7 +39,7 @@ pub(crate) fn relay_popout_handoff<R: tauri::Runtime>(
                 return Err("Only a saved popout scene can be handed off.".into());
             }
         }
-        "ready" | "failed" => {}
+        "ready" | "failed" | "cancel" => {}
         _ => return Err("Unknown scene handoff.".into()),
     }
     let target_window = app
@@ -72,6 +72,9 @@ fn scene_bytes(encoded: &str) -> Result<Vec<u8>, String> {
 pub(crate) fn save_popout_scene<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     data_base64: String,
+    source_path: Option<String>,
+    scene_unsaved: Option<bool>,
+    scene_source_paths: Option<Vec<String>>,
 ) -> Result<String, String> {
     let bytes = scene_bytes(&data_base64)?;
     let root = app
@@ -93,12 +96,125 @@ pub(crate) fn save_popout_scene<R: tauri::Runtime>(
         let _ = fs::remove_file(&path);
         return Err(error.to_string());
     }
+    if let Err(error) = write_source_descriptor(
+        &path,
+        source_path.as_deref(),
+        scene_unsaved,
+        scene_source_paths,
+    ) {
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(path.with_extension("source.json"));
+        return Err(error);
+    }
     Ok(path.to_string_lossy().into_owned())
+}
+
+fn write_source_descriptor(
+    path: &std::path::Path,
+    source: Option<&str>,
+    scene_unsaved: Option<bool>,
+    scene_source_paths: Option<Vec<String>>,
+) -> Result<(), String> {
+    let Some(source) = source
+        .map(std::path::PathBuf::from)
+        .filter(|path| path.is_absolute())
+    else {
+        return Ok(());
+    };
+    let source = source.canonicalize().unwrap_or(source);
+    let paths = scene_source_paths.unwrap_or_default();
+    if paths.len() > 200 {
+        return Err("Too many scene source paths.".into());
+    }
+    let bytes = serde_json::to_vec(&serde_json::json!({ "sourcePath": source, "sceneUnsaved": scene_unsaved.unwrap_or(false), "sceneSourcePaths": paths }))
+        .map_err(|e| e.to_string())?;
+    if bytes.len() > 8192 {
+        return Err("Source path is too long.".into());
+    }
+    fs::write(path.with_extension("source.json"), bytes).map_err(|e| e.to_string())
+}
+
+/// Only application-owned UUID checkpoints may carry a source identity.
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RecoverySource {
+    #[serde(skip_serializing)]
+    pub(crate) source_path: std::path::PathBuf,
+    #[serde(default)]
+    scene_unsaved: bool,
+    #[serde(default)]
+    scene_source_paths: Vec<String>,
+}
+
+pub(crate) fn recovery_source<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    path: &std::path::Path,
+) -> Result<Option<RecoverySource>, String> {
+    let root = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("popout-scenes");
+    if path.parent() != Some(root.as_path())
+        || path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .and_then(|s| uuid::Uuid::parse_str(s).ok())
+            .is_none()
+    {
+        return Ok(None);
+    }
+    let sidecar = path.with_extension("source.json");
+    if !sidecar.exists() {
+        return Ok(None);
+    }
+    if fs::metadata(&sidecar).map_err(|e| e.to_string())?.len() > 8192 {
+        return Err("Invalid recovery source.".into());
+    }
+    let descriptor: RecoverySource =
+        serde_json::from_slice(&fs::read(sidecar).map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?;
+    if !descriptor.source_path.is_absolute() || descriptor.scene_source_paths.len() > 200 {
+        return Err("Invalid recovery source.".into());
+    }
+    Ok(Some(descriptor))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recovery_descriptor_preserves_original_identity_and_dirty_state() {
+        use tauri::test::{mock_builder, mock_context, noop_assets};
+        let app = mock_builder().build(mock_context(noop_assets())).unwrap();
+        let root = app.path().app_data_dir().unwrap().join("popout-scenes");
+        fs::create_dir_all(&root).unwrap();
+        let source = root.join(format!("original-{}.pdb", uuid::Uuid::new_v4()));
+        fs::write(&source, b"ATOM").unwrap();
+        let checkpoint = root.join(format!("{}.molx", uuid::Uuid::new_v4()));
+        fs::write(&checkpoint, b"PK\x03\x04scene").unwrap();
+        write_source_descriptor(
+            &checkpoint,
+            source.to_str(),
+            Some(true),
+            Some(vec![source.to_string_lossy().into_owned()]),
+        )
+        .unwrap();
+        let descriptor = recovery_source(app.handle(), &checkpoint).unwrap().unwrap();
+        assert_eq!(descriptor.source_path, source.canonicalize().unwrap());
+        assert_eq!(
+            serde_json::to_value(descriptor).unwrap(),
+            serde_json::json!({
+                "sceneUnsaved": true, "sceneSourcePaths": [source.to_string_lossy()]
+            })
+        );
+        // An ordinary user filename cannot opt into the private recovery protocol.
+        assert!(recovery_source(app.handle(), &source).unwrap().is_none());
+        fs::remove_file(checkpoint.with_extension("source.json")).unwrap();
+        fs::remove_file(checkpoint).unwrap();
+        fs::remove_file(source).unwrap();
+    }
 
     #[test]
     fn sheet_checkpoints_require_complete_geometry_and_local_gif_assets() {
@@ -224,6 +340,8 @@ pub(crate) fn save_popout_sheet<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     source_path: String,
     mut sheet: serde_json::Value,
+    scene_unsaved: Option<bool>,
+    scene_source_paths: Option<Vec<String>>,
 ) -> Result<String, String> {
     if sheet.to_string().len() > MAX_SCENE_BYTES {
         return Err("The sheet is too large to move.".into());
@@ -294,6 +412,14 @@ pub(crate) fn save_popout_sheet<R: tauri::Runtime>(
         file.write_all(&bytes)
             .and_then(|_| file.sync_all())
             .map_err(|e| e.to_string())?;
+    }
+    if let Err(error) =
+        write_source_descriptor(&path, Some(&source_path), scene_unsaved, scene_source_paths)
+    {
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(path.with_extension("sheet.json"));
+        let _ = fs::remove_file(path.with_extension("source.json"));
+        return Err(error);
     }
     Ok(path.to_string_lossy().into_owned())
 }

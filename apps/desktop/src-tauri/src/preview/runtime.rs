@@ -585,6 +585,10 @@ pub(crate) struct ViewerDocument {
     docking_request: Option<DockingDocumentRequest>,
     #[serde(skip_serializing_if = "Option::is_none")]
     open_claim_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recovery_path: Option<String>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    recovery_state: Option<crate::commands::popout_scene::RecoverySource>,
 }
 
 impl ViewerDocument {
@@ -621,6 +625,8 @@ impl ViewerDocument {
             is_virtual: false,
             docking_request: None,
             open_claim_id: None,
+            recovery_path: None,
+            recovery_state: None,
         })
     }
 
@@ -662,6 +668,8 @@ impl ViewerDocument {
             is_virtual: true,
             docking_request: None,
             open_claim_id: None,
+            recovery_path: None,
+            recovery_state: None,
         }
     }
 }
@@ -770,6 +778,8 @@ fn open_document_with_grid_options_guarded<R: Runtime>(
         },
     );
 
+    let recovery_source = crate::commands::popout_scene::recovery_source(app, &path)?;
+    let recovery_path = path.to_string_lossy().into_owned();
     let result = open_document_with_grid_options_inner(
         app,
         window_label,
@@ -778,7 +788,18 @@ fn open_document_with_grid_options_guarded<R: Runtime>(
         reload_options,
         grid_options,
         source_epoch,
-    );
+    )
+    .map(|mut document| {
+        if let Some(source) = recovery_source {
+            document.id = stable_id(&source.source_path);
+            document.path = source.source_path.to_string_lossy().into_owned();
+            document.title = file_title(&source.source_path);
+            document.extension = structure_path_extension(&source.source_path);
+            document.recovery_path = Some(recovery_path);
+            document.recovery_state = Some(source);
+        }
+        document
+    });
     match &result {
         Ok(document) => {
             let _ = lifecycle.transition(PreviewLifecycleState::Completed);
@@ -850,9 +871,11 @@ fn open_document_with_grid_options_inner<R: Runtime>(
         extension.as_str(),
         "csv" | "tsv" | "smi" | "smiles" | "dwar"
     );
-    let should_use_viewer_for_sdf = is_sdf
-        && reload_options.is_some()
-        && (requested_renderer == "molstar" || requested_renderer == "xyzrender-external");
+    let should_use_viewer_for_sdf =
+        crate::commands::popout_scene::sheet_checkpoint(app, &canonical)?.is_some()
+            || (is_sdf
+                && reload_options.is_some()
+                && (requested_renderer == "molstar" || requested_renderer == "xyzrender-external"));
     let desktop_limit = preferences.desktop_preview_limit_bytes();
     let indexed_coordinates = matches!(extension.as_str(), "dcd" | "xtc" | "trr");
     if metadata.len() > desktop_limit
@@ -921,6 +944,8 @@ fn open_document_with_grid_options_inner<R: Runtime>(
                 is_virtual: false,
                 docking_request: None,
                 open_claim_id: None,
+                recovery_path: None,
+                recovery_state: None,
             });
         }
         // A single SDF is intentionally a Mol* document unless Grid was
@@ -1008,6 +1033,8 @@ fn open_document_with_grid_options_inner<R: Runtime>(
                 is_virtual: false,
                 docking_request: None,
                 open_claim_id: None,
+                recovery_path: None,
+                recovery_state: None,
             });
         }
     }
@@ -1091,6 +1118,8 @@ fn open_document_with_grid_options_inner<R: Runtime>(
         is_virtual: false,
         docking_request: None,
         open_claim_id: None,
+        recovery_path: None,
+        recovery_state: None,
     })
 }
 
@@ -1480,6 +1509,8 @@ fn open_md_trajectory_with_source<R: Runtime>(
         is_virtual: false,
         docking_request: Some(docking_request),
         open_claim_id: None,
+        recovery_path: None,
+        recovery_state: None,
     })
 }
 
@@ -1629,6 +1660,8 @@ pub(crate) fn open_docking_document<R: Runtime>(
         is_virtual: true,
         docking_request: Some(docking_request),
         open_claim_id: None,
+        recovery_path: None,
+        recovery_state: None,
     })
 }
 
