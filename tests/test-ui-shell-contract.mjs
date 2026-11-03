@@ -2951,7 +2951,7 @@ assert.match(structureInfoPanel, /<InspectorSection className="structure-inspect
 assert.match(structureInfoPanel, /actions: Array<StructureViewerAction & \{ type: "set_structure_pose" \}>/);
 assert.match(structureInfoPanel, /type: "set_structure_pose"/);
 assert.doesNotMatch(structureInfoPanel, /if \(document\.dockingRequest\) \{\s*setState\(\{ documentId: document\.id, loading: false, summary: null, error: null \}\);\s*return undefined;\s*\}/);
-assert.match(structureInfoPanel, /summary: parseStructureComposition\(text, source\.extension\)/);
+assert.match(structureInfoPanel, /const summary = parseStructureComposition\(text, source\.extension\);\s*setState\(\{[^}]*\bsummary,/);
 assert.doesNotMatch(structureInfoPanel, /function inspectorCompositionPath\(document: ViewerDocument\)/);
 assert.doesNotMatch(structureInfoPanel, /function inspectorCompositionExtension\(document: ViewerDocument\)/);
 assert.match(structureInfoPanel, /type: "set_sdf_context_style"/);
@@ -4748,7 +4748,7 @@ assert.match(browserDevDocuments, /sdfPosePager: renderer === "molstar" && forma
 assert.match(browserDevDocuments, /const sdfGridPath = ligands\.find/);
 assert.match(browserDevDocuments, /sdfGridPath,/);
 assert.match(browserDevDocuments, /const response = await fetch\(browserDevReadUrl\(path, extension\)\)/);
-assert.match(browserDevDocuments, /const text = await decodeStructureText\(originalBytes, extension\)/);
+assert.match(browserDevDocuments, /const text = await decodeStructureText\(path, originalBytes, extension\)/);
 assert.match(previewRuntimeViewer, /let sdf_grid_path = ligands/);
 assert.match(previewRuntimeViewer, /"sdfGridPath": sdf_grid_path/);
 assert.match(previewRuntimeViewer, /fn sdf_record_count\(data: &\[u8\]\) -> usize/);
@@ -4947,7 +4947,7 @@ assert.match(browserDevDocuments, /failed to fetch collection data from \$\{url\
 assert.match(browserDevDocuments, /hasImplicitAtomIndex \|\|= headerLine\.toLowerCase\(\)\.includes\("first column is atom index"\)/);
 assert.match(browserDevDocuments, /const rowOffset = hasImplicitAtomIndex \? 1 : 0/);
 assert.match(browserDevDocuments, /\/__burette\/read-file\?path=\$\{encodeURIComponent\(path\)\}/);
-assert.match(browserDevDocuments, /inflateStructureBytes\(bytes, 64 \* 1024 \* 1024\)/);
+assert.match(browserDevDocuments, /decodeCompressedFile\(fileTitle\(path\), new Blob\(\[bytes as BlobPart\]\), \{ maxBytes: MAESTRO_PREVIEW_READ_LIMIT \}\)/);
 assert.match(browserDevDocuments, /sourceExtension: extension/);
 assert.match(browserDevDocuments, /molstarAvailable: !format\.externalOnly \|\| externalMolstarAvailable/);
 assert.match(browserDevDocuments, /\{ value: "flat", label: "Flat" \}/);
@@ -6082,7 +6082,8 @@ assert.match(previewViewer, /if \(\/\^reflig\$\/i\.test\(words\)\) label = 'Refe
 assert.match(previewViewer, /if \(ligand\) label = `Ligand \$\{ligand\[1\]\}`/);
 // Measurement rows caption themselves with custom text and source; every other
 // row keeps the Mol* description.
-assert.match(previewViewer, /note: measurementName && measurementEditable\s*\?[\s\S]{0,200}?: String\(cell\.obj\.description \|\| display\.note \|\| display\.format \|\| ''\)/);
+assert.match(previewViewer, /note: measurementName && measurementEditable\s*\?[\s\S]{0,200}?: sceneTreeCellNote\(cell, display\)/);
+assert.match(previewViewer, /function sceneTreeCellNote\(cell, display\) \{[\s\S]{0,240}?return String\(cell\.obj\.description \|\| display\.note \|\| display\.format \|\| ''\)/);
 // MolViewSpec internals do not belong in the tree: primitives are named after
 // what they draw, a residue query becomes a count, and the two halves of a scene
 // are separated.
