@@ -151,7 +151,10 @@ class Workbench:
             raise WorkbenchError("CLI_TIMEOUT", f"The Burette CLI did not answer within {self.timeout} s.") from error
         if completed.returncode != 0:
             try:
-                error = json.loads(completed.stderr)["error"]
+                # Node may print startup warnings before the CLI's final JSON
+                # envelope. Its top-level opening brace starts an unindented line.
+                envelope_start = completed.stderr.rfind("\n{") + 1
+                error = json.loads(completed.stderr[envelope_start:])["error"]
             except (ValueError, KeyError, TypeError):
                 raise WorkbenchError("CLI_FAILED", (completed.stderr or completed.stdout).strip()[:2000] or f"exit status {completed.returncode}") from None
             raise WorkbenchError(error.get("code", "CLI_FAILED"), error.get("message", ""), error.get("details"))

@@ -71,7 +71,9 @@ async function open(name: string) {
 function python(body: string) {
   const script = `import json, sys\nfrom burette_workbench import Workbench, WorkbenchError\nwb = Workbench(sys.argv[1], wait_ms=10000)\ndef code(call):\n    try:\n        call()\n    except WorkbenchError as error:\n        return error.code\n    return None\n${body}`;
   return new Promise<any>((done, reject) => {
-    const child = spawn("python3", ["-", session], { cwd: root, env: { ...process.env, PYTHONPATH: join(repo, "plugins/burette-agent/python"), BURETTE_NODE: node, PYTHONDONTWRITEBYTECODE: "1" } });
+    // Notebook kernels can inherit both flags. Node then prefixes stderr with a
+    // warning, which must not erase the CLI's structured failure code.
+    const child = spawn("python3", ["-", session], { cwd: root, env: { ...process.env, PYTHONPATH: join(repo, "plugins/burette-agent/python"), BURETTE_NODE: node, PYTHONDONTWRITEBYTECODE: "1", NO_COLOR: "1", FORCE_COLOR: "1" } });
     let stdout = "", stderr = "";
     child.stdout.on("data", chunk => stdout += chunk); child.stderr.on("data", chunk => stderr += chunk);
     child.on("error", reject); child.on("close", status => status === 0 ? done(JSON.parse(stdout.trim().split("\n").at(-1)!)) : reject(new Error(stderr || stdout)));

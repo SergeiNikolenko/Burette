@@ -273,7 +273,7 @@ each displayed a 3D view.
 Both copies retained the isomeric SMILES and the source's `SOURCE_NOTE` data item.
 The focused automation suite also exercised a MOL V2000 input, a MOL V3000
 input, rejection before queueing, cancellation, a changed source revision and
-a closed document. Live Jupyter acceptance remains open.
+a closed document. The broader live Jupyter batch workflow matrix remains open.
 
 ### Packaged browser coordinate jobs through stdio MCP
 
@@ -300,4 +300,32 @@ ethanol export from the hydrogen scenario, with source SHA-256
   subsequently reopened through New tab → Open file in the same packaged
   browser. Each displayed a 3D view and Info reported nine atoms, eight bonds,
   and both user property names, with the reserved identity field hidden.
-  Live MCP cancellation/stale-source cases remain untested.
+  Closing the original source tab changed both jobs from `succeeded/current` to
+  `source_closed/source_closed`, removed their artifacts, and refused export
+  with `SOURCE_CLOSED` for both default and `allowStale: true` requests.
+  Live MCP cancellation and changed-source cases remain untested.
+
+### Coordinate notebook against the live packaged browser
+
+An executed two-cell notebook used an actual Python ipykernel through nbclient
+and the plugin Python client against the same open prebuilt browser shell.
+Its source was the picker-reopened distance MCP artifact above (SHA-256
+`d598fb43b460f3b3f18df5cf42617dc3e22c2bec97bd4da551b24bfefd8c04d8`).
+It paged all nine atoms, ran distance [0, 1] = 1.6 Å and origin 1 / axis atom 2
+on +z, replayed each operation ID, and exported both SDF artifacts. RDKit
+confirmed nine atoms/eight bonds, the requested distance within 10⁻⁸ Å,
+an exact zero origin, and axis x/y within 10⁻⁸ Å with positive z. Artifact
+hashes matched the exported bytes; the source revision stayed unchanged.
+
+The first execution exposed a Python transport error: inherited `NO_COLOR`
+and `FORCE_COLOR` caused Node to prefix stderr with a warning, masking
+`REVISION_CONFLICT` as `CLI_FAILED`. The client now reads the final CLI JSON
+envelope after startup diagnostics. The existing Python integration suite
+reproduced two failures with both flags before the fix and passed all three
+tests (80 assertions) afterward. Re-executing the notebook also passed its
+stale-revision refusal. Repeated exports use fresh output paths to preserve
+the CLI's no-overwrite contract.
+
+This verifies kernel execution and live browser transport for these two jobs.
+Notebook frontend interaction, the remaining job/batch matrix and native
+application acceptance remain open.
