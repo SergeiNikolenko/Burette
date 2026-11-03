@@ -55,6 +55,10 @@ export function buildShellCommands(
       run: () => openWorkbenchDialog({ kind: "builder", builder: "metal", document: null }),
     },
     {
+      id: "workbench-nucleic", group: "Suggested", label: "Build DNA or RNA…", description: "Create a DNA or RNA helix",
+      run: () => openWorkbenchDialog({ kind: "builder", builder: "nucleic", document: state.activeDocument }),
+    },
+    {
       id: "workbench-assembly", group: "Suggested", label: "Build biological assembly…", description: "",
       run: () => openWorkbenchDialog({ kind: "assembly", document: state.activeDocument }),
     },

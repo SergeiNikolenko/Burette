@@ -3,6 +3,7 @@ import { AssemblyDialogHost } from "./components/workbench/assembly-dialog-host"
 import { AvogadroCommandHost } from "./components/workbench/avogadro-command-host";
 import { PeptideBuilderDialogHost } from "./components/workbench/peptide-builder-host";
 import { MetalComplexBuilderDialogHost } from "./components/workbench/metal-complex-builder-host";
+import { NucleicBuilderDialogHost } from "./components/workbench/nucleic-builder-host";
 import { InputExportDialogHost } from "./components/workbench/input-export-host";
 import { useMoleculeStore } from "./stores/molecule-store";
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
@@ -1375,6 +1376,7 @@ export default function App() {
       <InputExportDialogHost actions={actions} />
       <PeptideBuilderDialogHost actions={actions} />
       <MetalComplexBuilderDialogHost actions={actions} />
+      <NucleicBuilderDialogHost actions={actions} />
       <PolymerBuilderDialogHost actions={actions} />
       <AssemblyDialogHost actions={actions} />
       <AvogadroCommandHost actions={actions} />
