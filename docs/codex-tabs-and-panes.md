@@ -126,8 +126,12 @@ handoff carries the tab label, pin state and original order for return.
   neighboring sidecars. Applied GIFs preserve their encoded frames, timing and
   transparency, but start playback from the beginning in the new window. An
   active animation preview must be applied or cancelled before transfer.
-- Unsaved or saving source drafts must be saved before transfer. Trajectory
-  formats, MVS stories and non-scene docking views are not eligible. A live
+- Source editing sessions move with their current text, base revision and editor
+  selection/scroll state, including unsaved drafts. Editing and saving are locked
+  during handoff; an in-progress save must finish before transfer. The receiver
+  retains the draft without writing the source file and marks its preview as
+  not applied. A source already being edited in the destination rejects the move.
+- Trajectory formats, MVS stories and non-scene docking views are not eligible. A live
   Mol* Story with multiple snapshots is also rejected rather than silently
   discarding current changes. Mol* and illustration undo stacks are not
   transferred to the destination runtime.
