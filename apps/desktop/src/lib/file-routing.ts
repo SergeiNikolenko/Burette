@@ -1,6 +1,8 @@
 import previewFormatRegistry from "../../../../config/preview-formats.json";
 import { isPoscarFileName } from "./molecular-workbench/poscar";
+import { supportedInnerExtension } from "./compressed-files/formats";
 import { basename } from "./sidebar-projects";
+import { isTauriRuntime } from "./tauri";
 
 export const NOT_RENDERABLE_RENDERER = "not-renderable";
 
@@ -253,4 +255,15 @@ export function pathExtension(path: string) {
   const index = fileName.lastIndexOf(".");
   if (index <= 0 || index === fileName.length - 1) return "";
   return fileName.slice(index + 1).toLowerCase();
+}
+
+/**
+ * Extension that decides how an opened path is routed. The browser opens gzip,
+ * BGZF, XZ and Zstandard copies as the file inside (`1abc.pdb.gz` routes as pdb);
+ * the desktop app reads them under their own extension.
+ */
+export function openRoutingExtension(path: string) {
+  const extension = pathExtension(path);
+  if (extension === "maegz" || isTauriRuntime()) return extension;
+  return supportedInnerExtension(basename(path)) ?? extension;
 }

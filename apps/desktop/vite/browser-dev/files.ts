@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import type { ViteDevServer } from "vite";
+import { supportedInnerExtension } from "../../src/lib/compressed-files/formats";
 import { registerBrowserSidebarFileOperations } from "./sidebar-file-operations";
 
 import type { BrowserDevFileScan, BrowserDevFileScanLimits } from "./file-discovery";
@@ -121,7 +122,9 @@ export function registerBrowserDevFileContentRoutes(server: ViteDevServer, optio
       }
       const info = await stat(filePath);
       const sizeLimit = options.devFileSizeLimitForPath?.(filePath) ?? options.devFileSizeLimit;
-      if (!info.isFile() || info.size > sizeLimit || !options.devFileExtensions.has(options.fileExtension(filePath))) {
+      const rawGzip = url.searchParams.get("rawGzip") === "1"
+        && /\.gz$/iu.test(filePath) && supportedInnerExtension(filePath) !== null;
+      if (!info.isFile() || info.size > sizeLimit || (!rawGzip && !options.devFileExtensions.has(options.fileExtension(filePath)))) {
         sendJson(res, 400, { error: "Unsupported file" });
         return;
       }

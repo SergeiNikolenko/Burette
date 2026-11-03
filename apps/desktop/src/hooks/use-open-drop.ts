@@ -15,11 +15,13 @@ import { describeDropTargetElement } from "../lib/drop-target";
 import { requestMoveIntoFolder } from "../lib/move-into-folder";
 import { nativeFileDragPayload, nativeFileDragTabId } from "../lib/native-file-drag";
 import { parentDirectory } from "../lib/sidebar-projects";
-import { TAB_DRAG_MIME, hasStructureDrag, readStructureDragPayload, structureDragPayloadFromBrowserFiles, structureDragPayloadFromText, structureDragRecordsToFragments } from "../lib/structure-drag";
+import { BROWSER_DROP_MAX_TEXT_BYTES, TAB_DRAG_MIME, hasStructureDrag, readStructureDragPayload, structureDragPayloadFromBrowserFiles, structureDragPayloadFromText, structureDragRecordsToFragments } from "../lib/structure-drag";
 import type { StructureDragPayload, StructureDragRecord } from "../lib/structure-drag";
 import { openScientificFiles } from "../lib/workbench/open";
 import { partitionScientificFiles } from "../lib/workbench/scientific-files";
 import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
+import { isCompressedName } from "../lib/compressed-files/formats";
+import { registerDroppedBrowserFiles } from "../lib/web-demo-workspace";
 
 type OpenDocuments = (
   paths: string[],
@@ -671,12 +673,17 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
             pushStatus("Browser file drop failed: " + (error instanceof Error ? error.message : String(error)), "error");
           });
           if (!other.length) return;
-          const result = await structureDragPayloadFromBrowserFiles(other);
-          const nextPayload: StructureDragPayload = { ...result.payload, point };
-          if (nextPayload.records.length > 0) {
+          // Compressed files take the picker's admission, so they open at their own
+          // names with their exact bytes kept as the Original.
+          const compressed = other.filter((file) => isCompressedName(file.name));
+          const originals = compressed.length ? await registerDroppedBrowserFiles(compressed, BROWSER_DROP_MAX_TEXT_BYTES) : { paths: [], errors: [] };
+          const result = await structureDragPayloadFromBrowserFiles(other.filter((file) => !compressed.includes(file)));
+          const nextPayload: StructureDragPayload = { ...result.payload, paths: originals.paths, point };
+          if (nextPayload.records.length > 0 || nextPayload.paths.length > 0) {
             runDropAction(nextPayload, dropTarget, { kind: "finder" });
           }
-          if (result.errors.length > 0) pushStatus(result.errors.join("; "), "error");
+          const errors = [...originals.errors, ...result.errors];
+          if (errors.length > 0) pushStatus(errors.join("; "), "error");
         }).catch((error) => {
           pushStatus("Browser file drop failed: " + (error instanceof Error ? error.message : String(error)), "error");
         });

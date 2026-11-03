@@ -21,6 +21,7 @@ import {
   isFepGraphmlPath,
   isPreferredTextPath,
   NOT_RENDERABLE_RENDERER,
+  openRoutingExtension,
   pathExtension,
   structureAndTextExtensions,
   structureExtensionFromPath,
@@ -500,7 +501,7 @@ export function useAppFileOpen({
           continue;
         }
       }
-      const extension = pathExtension(path);
+      const extension = openRoutingExtension(path);
       if (isSpectrumPath(path, extension) || contentSpectrumPaths.has(path)) {
         spectrumPaths.push(path);
       } else if (isDocumentViewerPath(path, extension)) {
@@ -581,11 +582,11 @@ export function useAppFileOpen({
     }
 
     const unopenedStructureAndTextPaths = structureAndTextPaths.filter((path) => !openedStructureAndTextPaths.has(path));
-    const fallbackDocumentPaths = unopenedStructureAndTextPaths.filter((path) => documentFallbackExtensions.has(pathExtension(path)));
+    const fallbackDocumentPaths = unopenedStructureAndTextPaths.filter((path) => documentFallbackExtensions.has(openRoutingExtension(path)));
     for (const path of fallbackDocumentPaths) {
       openDocumentTab(path); openedAny = true;
     }
-    const fallbackTextPaths = unopenedStructureAndTextPaths.filter((path) => !documentFallbackExtensions.has(pathExtension(path)));
+    const fallbackTextPaths = unopenedStructureAndTextPaths.filter((path) => !documentFallbackExtensions.has(openRoutingExtension(path)));
     if (fallbackTextPaths.length > 0) {
       const result = await openTextDocuments(fallbackTextPaths, options);
       if (!mayApply()) return;

@@ -40,7 +40,7 @@ export function structureDragMovementExceedsThreshold(
   return Math.hypot(point.x - start.x, point.y - start.y) >= threshold;
 }
 
-const BROWSER_DROP_MAX_TEXT_BYTES = 25 * 1024 * 1024;
+export const BROWSER_DROP_MAX_TEXT_BYTES = 25 * 1024 * 1024;
 const BROWSER_DROP_TEXT_EXTENSIONS = new Set([
   "arc", "cfg", "cif", "cms", "com", "cub", "cube", "csv", "data", "dump", "dwar", "ent",
   "fasta", "fdf", "gro", "in", "inp", "lammpstrj", "lammps", "lmp", "log", "mae",

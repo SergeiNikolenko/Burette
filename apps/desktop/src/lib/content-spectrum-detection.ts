@@ -1,11 +1,11 @@
-import { pathExtension } from "./file-routing";
+import { openRoutingExtension } from "./file-routing";
 import { isSubformulaSpectrumJsonText, isTabularSpectrumExtension, isTabularSpectrumText } from "./spectrum";
 import { readStructureText } from "./structure-text";
 
 export async function detectContentSpectrumPaths(paths: string[]) {
   const matches = new Set<string>();
   await Promise.all(paths.map(async (path) => {
-    const extension = pathExtension(path);
+    const extension = openRoutingExtension(path);
     const canDetectByContent = isTabularSpectrumExtension(extension) || extension === "json";
     if (!canDetectByContent) return;
     try {

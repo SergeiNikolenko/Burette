@@ -2,7 +2,10 @@ import { unzipSync } from "fflate";
 import { readBrowserImport } from "./browser-import-storage";
 import { isExplicitBrowserDevServerPath } from "./browser-dev-paths";
 import { isTauriRuntime } from "./tauri";
-import { inflateStructureBytes } from "./structure-inflate";
+import { compressedName, compressionFromSignature, supportedCompressedName, supportedInnerExtension } from "./compressed-files/formats";
+import { assertCompressedSourceCurrent, compressedSourceFor, decodeCompressedSource, registerCompressedSource } from "./compressed-files/sources";
+import { loadBrowserCompressedSource } from "./compressed-files/browser-source";
+import { decodeCompressedFile } from "./compressed-files/task";
 import { demoLibraryUrl } from "./web-demo-library";
 import { standaloneDemoSnapshot } from "./web-demo-scenes";
 import { crystalPreviewData } from "./crystal-preview";
@@ -689,19 +692,50 @@ export function isBrowserDraftSource(document: Pick<ViewerDocument, "path">) {
   return !isTauriRuntime() && browserDevVirtualTextDocuments.has(document.path);
 }
 
-/** Restore immutable original text only when no current draft exists. */
+/**
+ * Restore immutable original text only when no current draft exists. A compressed
+ * file (a browser import or an explicitly selected server file) is decoded once by
+ * the shared bounded decoder; from then on its text is an ordinary draft. Scientific
+ * compressed imports stay with their scientific owner.
+ */
 export async function readBrowserVirtualText(path: string) {
-  if (!isTauriRuntime() && !isExplicitBrowserDevServerPath(path) && !browserDevVirtualTextDocuments.has(path) && !browserDevPickedBinaries.has(path)) {
+  const unread = () => !browserDevVirtualTextDocuments.has(path) && !browserDevPickedBinaries.has(path) && !compressedSourceFor(path);
+  let imported = false;
+  if (!isTauriRuntime() && !isExplicitBrowserDevServerPath(path) && unread()) {
     const record = await readBrowserImport(path);
-    if (record && !browserDevVirtualTextDocuments.has(path) && !browserDevPickedBinaries.has(path)
-      && (record.kind === "binary" || (record.kind === "text" && /\.molx$/iu.test(record.name)))) {
-      writeBrowserDevPickedBinary(path, record.file);
-    } else if (record?.kind === "text" && !browserDevVirtualTextDocuments.has(path)) {
-      const restored = await record.file.text();
-      if (!browserDevVirtualTextDocuments.has(path)) browserDevVirtualTextDocuments.set(path, restored);
+    imported = record !== null;
+    if (record && unread()) {
+      if (record.kind === "binary" || (record.kind === "text" && /\.molx$/iu.test(record.name))) {
+        writeBrowserDevPickedBinary(path, record.file);
+      } else if (record.kind === "text") {
+        const restored = await record.file.text();
+        if (!browserDevVirtualTextDocuments.has(path)) browserDevVirtualTextDocuments.set(path, restored);
+      } else if (record.kind === "compressed" && !record.scientific) {
+        registerCompressedSource(path, record.name, record.file, supportedCompressedName(record.name));
+      }
     }
   }
-  return browserDevVirtualTextDocuments.get(path);
+  // The native Codex workspace host serves compressed files already inflated.
+  if (!isTauriRuntime() && !imported && unread() && compressedName(fileTitle(path)) && !(typeof window !== "undefined" && window.BuretteMcpWorkspace)) {
+    supportedCompressedName(fileTitle(path));
+    // Vite serves .gz from /@fs with Content-Encoding: gzip. Fetch would
+    // decompress it before validation or preservation of the original bytes.
+    const url = import.meta.env.DEV && /\.gz$/iu.test(path)
+      ? `/__burette/read-file?rawGzip=1&path=${encodeURIComponent(path)}`
+      : fsUrl(path);
+    await loadBrowserCompressedSource(path, url);
+  }
+  const text = browserDevVirtualTextDocuments.get(path);
+  const source = compressedSourceFor(path);
+  if (text !== undefined || !source) return text;
+  const decoded = await decodeCompressedSource(path);
+  // Other reactions to the same decode run first: only the file still registered
+  // here fills the cache, and text written meanwhile is kept.
+  assertCompressedSourceCurrent(path, source);
+  const current = browserDevVirtualTextDocuments.get(path);
+  if (current !== undefined) return current;
+  browserDevVirtualTextDocuments.set(path, decoded);
+  return decoded;
 }
 
 export function deleteBrowserDevVirtualTextDocument(path: string) {
@@ -740,7 +774,8 @@ async function openBrowserDevDocument(
     if (bytes.length === 0) throw new Error(`${path} is empty`);
     return openBrowserDevDocumentFromBytes(
       path,
-      extension,
+      // Browser text is decoded already, a Maestro gzip file included.
+      extension === "maegz" ? "mae" : extension,
       bytes,
       bytes.length,
       preferences,
@@ -930,7 +965,7 @@ async function openBrowserDevDocumentFromBytes(
     );
     return browserDocument(path, extension, "molstar", html, sourceByteCount, documentId, undefined, "mesoscale");
   }
-  const text = await decodeStructureText(bytes, extension);
+  const text = await decodeStructureText(path, bytes, extension);
   const grid = gridPayload(path, extension, text);
   const sdfRecordCount = isSdfExtension(extension) ? parseSdfCollectionRecords(text).length : 0;
   const initialRenderer = typeof window !== "undefined" && !reloadOptions
@@ -1102,7 +1137,7 @@ async function readBrowserDevDockingPayload(path: string): Promise<BrowserDevDoc
   const virtualText = await readBrowserVirtualText(path);
   if (virtualText !== undefined) {
     const bytes = new TextEncoder().encode(virtualText);
-    return browserDevDockingPayloadFromBytes(path, extension, bytes, bytes.length);
+    return browserDevDockingPayloadFromBytes(path, extension === "maegz" ? "mae" : extension, bytes, bytes.length);
   }
   const response = await fetch(browserDevReadUrl(path, extension));
   assertBrowserDevFileResponse(path, extension, response);
@@ -1121,7 +1156,7 @@ async function browserDevDockingPayloadFromBytes(
   byteCount: number,
 ): Promise<BrowserDevDockingPayload> {
   const title = fileTitle(path);
-  const text = await decodeStructureText(originalBytes, extension);
+  const text = await decodeStructureText(path, originalBytes, extension);
   const sourceXyzFrameCount = countXyzFrames(text);
   const format = sourceXyzFrameCount > 0 && shouldTreatTextAsXyzFrames(extension)
     ? { molstarFormat: "xyz", binary: false, externalOnly: false, canOpenInVesta: false }
@@ -2226,17 +2261,14 @@ function gridRequiresPreview(extension: string) {
   );
 }
 
-// gzip and BGZF copies of coordinate files keep the inner format: 1abc.pdb.gz
-// opens as pdb.
-const COMPRESSED_STRUCTURE_NAME = /\.(pdb|ent|cif|mmcif)\.(?:gz|bgz|bgzf)$/iu;
-
 function fileExtension(path: string) {
   const name = fileTitle(path);
   // VASP names its structures POSCAR and CONTCAR, usually without a suffix.
   if (isPoscarFileName(name)) return "vasp";
   if (name.toLowerCase().endsWith(".mae.gz")) return "maegz";
-  const compressed = COMPRESSED_STRUCTURE_NAME.exec(name);
-  if (compressed) return compressed[1].toLowerCase();
+  // gzip, BGZF, XZ and Zstandard copies keep the format inside: 1abc.pdb.gz opens as pdb.
+  const inner = /\.maegz$/iu.test(name) ? null : supportedInnerExtension(name);
+  if (inner) return inner;
   const index = name.lastIndexOf(".");
   if (index >= 0) return name.slice(index + 1).toLowerCase();
   return /^in(?:_|$)/iu.test(name) ? "in" : "";
@@ -2284,20 +2316,18 @@ function decodeUtf8(bytes: Uint8Array) {
   return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
 }
 
-// The native Codex workspace serves these files already inflated (its server
-// also reads multi-member BGZF). Other surfaces get the gzip bytes; the
-// browser's DecompressionStream reads single-member gzip only.
+// Only the native Codex workspace reaches this read with a compressed name; its
+// host serves those files already inflated (multi-member BGZF included). Bytes
+// that still carry a compression signature use the shared bounded decoder.
 async function inflateCompressedStructure(path: string, bytes: Uint8Array) {
-  if (!COMPRESSED_STRUCTURE_NAME.test(fileTitle(path)) || bytes[0] !== 0x1f || bytes[1] !== 0x8b) return bytes;
-  return inflateStructureBytes(bytes, MAX_STRUCTURE_FILE_SIZE);
+  const name = fileTitle(path);
+  if (!compressedName(name) || fileExtension(path) === "maegz" || !compressionFromSignature(bytes)) return bytes;
+  return new TextEncoder().encode((await decodeCompressedFile(name, new Blob([bytes as BlobPart]))).text);
 }
 
-async function decodeStructureText(bytes: Uint8Array, extension: string) {
+async function decodeStructureText(path: string, bytes: Uint8Array, extension: string) {
   if (extension !== "maegz") return decodeUtf8(bytes);
-  if (typeof DecompressionStream !== "function") {
-    throw new Error("This browser cannot decompress Maestro gzip files");
-  }
-  return decodeUtf8(await inflateStructureBytes(bytes, 64 * 1024 * 1024));
+  return (await decodeCompressedFile(fileTitle(path), new Blob([bytes as BlobPart]), { maxBytes: MAESTRO_PREVIEW_READ_LIMIT })).text;
 }
 
 function browserDevSourceByteCount(response: Response, fallback: number) {

@@ -1,6 +1,8 @@
 import { BROWSER_IMPORT_MAX_FILE_BYTES, listBrowserImports, saveBrowserImport, type BrowserImport } from "./browser-import-storage";
 import { isDocumentMediaPath, documentViewerExtensions } from "./file-routing";
-import { COMPRESSED_FILE_ACCEPT, compressedName } from "./compressed-files/formats";
+import { COMPRESSED_FILE_ACCEPT, isCompressedName, supportedCompressedName, supportedInnerExtension } from "./compressed-files/formats";
+import { checkCompressedFile, compressedSourceFor, registerCompressedSource } from "./compressed-files/sources";
+import { decodeCompressedFile } from "./compressed-files/task";
 import { pickBrowserFiles } from "./browser-file-picker";
 import { isScientificFile, SCIENTIFIC_FILE_ACCEPT, SCIENTIFIC_FILE_LIMIT } from "./workbench/scientific-files";
 import { demoLibraryFiles } from "./web-demo-library";
@@ -48,7 +50,6 @@ let importsInitialized: Promise<void> | undefined;
 
 export function initializeBrowserImportedFiles() {
   importsInitialized ??= listBrowserImports().then(async (imports) => {
-    if (imports.some(record => record.kind !== "text" && record.kind !== "media" && record.kind !== "binary" && !(record.kind === "compressed" && record.scientific))) throw new Error("Saved browser files require a newer file reader.");
     for (const record of imports) await registerImportedFile(record);
     if (imports.length) emitChange();
   }).catch(error => { importsInitialized = undefined; throw error; });
@@ -170,17 +171,31 @@ export async function pickWebDemoFiles(options: { directory?: boolean } = {}) {
       const path = `${root}/${relativePath.split("/").slice(options.directory ? 1 : 0).map(cleanSegment).join("/")}`;
       if (!path || path.endsWith("/")) continue;
       (isScientific && !options.directory ? scientific : paths).push(await importFile(path, file, maxBytes, isScientific));
-    } catch (error) { errors.push(`${relativePath || file.name}: ${error instanceof Error ? error.message : String(error)}`); }
+    } catch (error) { errors.push(fileError(relativePath || file.name, error)); }
   }
   emitChange();
   return { root, paths, scientific, errors };
 }
 
+/** Decoder messages already start with the file name. */
+function fileError(name: string, error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.startsWith(name.split("/").pop() || name) ? message : `${name}: ${message}`;
+}
+
+/**
+ * The one admission of picked and dropped files. A compressed file keeps its
+ * compressed name and exact bytes as the Original; unless a scientific import
+ * owns it, it is decoded completely here, so a corrupt, truncated, mislabelled or
+ * oversized file is refused by name before anything is stored or published.
+ */
 async function importFile(path: string, file: File, maxInputBytes: number, scientific = false) {
-  const kind = scientific && compressedName(file.name) ? "compressed" : /\.molx$/iu.test(file.name) ? "binary" : isDocumentMediaPath(path) ? "media" : "text";
+  const kind = isCompressedName(file.name) ? "compressed" : /\.molx$/iu.test(file.name) ? "binary" : isDocumentMediaPath(path) ? "media" : "text";
+  if (kind === "compressed") await checkCompressedFile(file.name, file, maxInputBytes);
   if (file.size > maxInputBytes) throw new Error("File exceeds the browser import limit");
   if (kind === "media" && binaryFiles.size >= 32) throw new Error("Too many open documents");
-  const text = kind === "text" ? await file.text() : undefined;
+  const text = kind === "text" ? await file.text()
+    : kind === "compressed" && !scientific ? (await decodeCompressedFile(file.name, file)).text : undefined;
   const record = await saveBrowserImport({ path, name: file.name, file, kind, ...(scientific ? { scientific: true } : {}) }, files.keys());
   await registerImportedFile(record, text);
   return record.path;
@@ -191,8 +206,12 @@ async function registerImportedFile(record: BrowserImport, text?: string) {
   if (files.has(path)) return;
   // Scientific compressed originals are decoded by their import owner, not published as text.
   if (kind === "compressed" && record.scientific) { registerFile(path, file.size); return; }
-  // Older imports retained exact MOLX Blobs but labelled them as text.
-  if (kind === "binary" || (kind === "text" && /\.molx$/iu.test(record.name))) {
+  if (kind === "compressed") {
+    // A restored file decodes on its first read; a fresh import has its text already.
+    if (!compressedSourceFor(path)) registerCompressedSource(path, record.name, file, supportedCompressedName(record.name));
+    if (text !== undefined && readBrowserDevVirtualTextDocument(path) === null) writeBrowserDevVirtualTextDocument(path, text);
+  } else if (kind === "binary" || (kind === "text" && /\.molx$/iu.test(record.name))) {
+    // Older imports retained exact MOLX Blobs but labelled them as text.
     if (!readBrowserDevPickedBinary(path)) writeBrowserDevPickedBinary(path, file);
   } else if (kind === "media") binaryFiles.set(path, file);
   else {
@@ -207,7 +226,7 @@ export async function registerDroppedBrowserFiles(selected: File[], maxInputByte
   for (const file of selected) {
     try {
       paths.push(await importFile(`/OpenedFiles/${cleanSegment(file.name)}`, file, Math.min(maxInputBytes, BROWSER_IMPORT_MAX_FILE_BYTES), options.scientific));
-    } catch (error) { errors.push(`${file.name}: ${error instanceof Error ? error.message : String(error)}`); }
+    } catch (error) { errors.push(fileError(file.name, error)); }
   }
   if (paths.length) emitChange();
   return { paths, errors };
@@ -221,7 +240,8 @@ function registerText(path: string, text: string, byteCount = new TextEncoder().
 
 function registerFile(path: string, byteCount: number) {
   const title = path.split("/").filter(Boolean).pop() || path;
-  const extension = title.includes(".") ? title.split(".").pop()?.toLowerCase() || "" : "";
+  // A compressed copy is listed as the format inside it.
+  const extension = supportedInnerExtension(title) ?? (title.includes(".") ? title.split(".").pop()?.toLowerCase() || "" : "");
   files.set(path, {
     path,
     title,

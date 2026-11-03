@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { isTauriRuntime } from "./tauri";
-import { readBrowserDevVirtualTextDocument } from "./browser-dev-documents";
+import { readBrowserVirtualText } from "./browser-dev-documents";
+import { supportedInnerExtension } from "./compressed-files/formats";
 
 type TextFileReadResult = {
   id?: string;
@@ -27,8 +28,9 @@ type StructureTextDocumentSeed = {
 };
 
 export async function readStructureText(path: string, options: StructureTextReadOptions = {}) {
-  const virtualText = readBrowserDevVirtualTextDocument(path);
-  if (virtualText !== null) {
+  // Also restores a browser import and decodes a compressed file on its first read.
+  const virtualText = await readBrowserVirtualText(path);
+  if (virtualText !== undefined) {
     return options.maxBytes === undefined ? virtualText : virtualText.slice(0, options.maxBytes);
   }
   if (options.maxBytes !== undefined || isCompressedMaestroPath(path)) {
@@ -55,11 +57,13 @@ export async function readStructureTextDocument(
 }
 
 async function readTextFileDocument(path: string, maxBytes?: number) {
-  const virtualText = readBrowserDevVirtualTextDocument(path);
-  if (virtualText !== null) {
+  // Also restores a browser import and decodes a compressed file on its first read.
+  const virtualText = await readBrowserVirtualText(path);
+  if (virtualText !== undefined) {
     const content = maxBytes === undefined ? virtualText : virtualText.slice(0, maxBytes);
     const title = path.split("/").filter(Boolean).pop() || path;
-    const extension = title.includes(".") ? title.split(".").pop()?.toLowerCase() || "" : "";
+    // A decompressed file is text in the format inside it.
+    const extension = supportedInnerExtension(title) ?? (title.includes(".") ? title.split(".").pop()?.toLowerCase() || "" : "");
     return {
       path,
       title,

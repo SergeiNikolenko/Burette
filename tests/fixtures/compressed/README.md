@@ -17,6 +17,8 @@ zstd -q -19 -c $P/mini.cif > mini.cif.zst
 head -c 400 $P/mini.pdb | zstd -q -c > mini-frames.pdb.zst        # two Zstandard frames
 tail -c +401 $P/mini.pdb | zstd -q -c >> mini-frames.pdb.zst
 gzip -9n -c ../quantum/gaussian16-water-raman.fchk > water-raman.fchk.gz
+# BGZF: one data block and the empty end-of-file block (Biopython 1.88 Bio.bgzf).
+uv run --with biopython python -c 'from Bio import bgzf; w = bgzf.BgzfWriter("mini.pdb.bgz", "wb"); w.write(open("../../../samples/mini.pdb", "rb").read()); w.close()'
 ```
 
 Truncated, corrupt, mislabelled and gzip/Zstandard oversized inputs are derived from these in
@@ -28,4 +30,6 @@ Inputs the reader must refuse, from XZ Utils:
 xz -c --check=sha256 $P/mini.xyz > sha256-check.xyz.xz       # integrity check xz-embedded lacks
 xz -c --lzma2=dict=128MiB $P/mini.xyz > dict-128mib.xyz.xz   # dictionary over the 64 MiB limit
 head -c 68157440 /dev/zero | tr '\0' ' ' | xz -9 -c > spaces-65mib.xyz.xz  # 65 MiB once decoded
+cat $P/mini.pdb | zstd -q --long=27 -c > window-128mib.pdb.zst   # 128 MiB window, no declared size
+head -c 100 mini.pdb.gz > truncated.pdb.gz                        # gzip -t: unexpected end of file
 ```

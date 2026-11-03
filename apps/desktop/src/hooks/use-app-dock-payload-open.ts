@@ -14,7 +14,7 @@ import {
   isDocumentMediaPath,
   isPreferredTextPath,
   NOT_RENDERABLE_RENDERER,
-  pathExtension,
+  openRoutingExtension,
   structureAndTextExtensions,
   structureExtensions,
   summarizeErrors,
@@ -119,7 +119,7 @@ export function useAppDockPayloadOpen({
       const structureAndTextPaths: string[] = [];
       const contentSpectrumPaths = await detectContentSpectrumPaths(dockOpenPaths);
       for (const path of dockOpenPaths) {
-        const extension = pathExtension(path);
+        const extension = openRoutingExtension(path);
         if (isSpectrumPath(path, extension) || contentSpectrumPaths.has(path)) {
           spectrumPaths.push(path);
         } else if (isDocumentMediaPath(path, extension)) {
@@ -221,7 +221,7 @@ export function useAppDockPayloadOpen({
         ...structurePathResult.errors,
         ...structureAndTextResults.flatMap((result) => (
           result.documents.length === 0
-            && documentFallbackExtensions.has(pathExtension(result.path))
+            && documentFallbackExtensions.has(openRoutingExtension(result.path))
             && openedTextPaths.has(result.path)
             ? []
             : result.errors

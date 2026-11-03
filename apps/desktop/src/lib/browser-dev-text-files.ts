@@ -1,5 +1,6 @@
 import type { OpenTextFilesResult, TextFileDocument } from "../types";
-import { readBrowserDevVirtualTextDocument } from "./browser-dev-documents";
+import { readBrowserVirtualText } from "./browser-dev-documents";
+import { supportedInnerExtension } from "./compressed-files/formats";
 
 const INLINE_IMAGE_BATCH_LIMIT = 48 * 1024 * 1024;
 
@@ -30,14 +31,15 @@ export async function openBrowserDevTextFiles(paths: string[]): Promise<OpenText
 }
 
 async function readBrowserDevTextFile(path: string, maxImageBytes: number): Promise<TextFileDocument> {
-  const virtualText = readBrowserDevVirtualTextDocument(path);
-  if (virtualText !== null) {
+  // A compressed file is decoded here on its first read.
+  const virtualText = await readBrowserVirtualText(path);
+  if (virtualText !== undefined) {
     const title = path.split("/").filter(Boolean).pop() || path;
     return {
       id: `web-demo-text-${path}`,
       path,
       title,
-      extension: title.includes(".") ? title.split(".").pop()?.toLowerCase() || "txt" : "txt",
+      extension: supportedInnerExtension(title) ?? (title.includes(".") ? title.split(".").pop()?.toLowerCase() || "txt" : "txt"),
       language: "text",
       content: virtualText,
       byteCount: new TextEncoder().encode(virtualText).length,
