@@ -22,8 +22,8 @@ rendered molecular view and Info confirmed 19 atoms / 18 bonds in the light
 1280×720 surface. Evidence is in `/tmp/burette-live-prepare-stereo-report.json`
 and `/tmp/burette-mixed-stereo-reopened-light-view.png`. These results cover
 live Python/CLI automation and the exported final structures. In-place UI
-preparation of these two inputs, MOLX persistence and compact/keyboard
-acceptance remain unverified.
+preparation of these two inputs and compact/keyboard acceptance remain
+unverified. The tetrahedral SDF's MOLX persistence is checked below.
 
 The live jobs' XYZ step trajectories were also exported and independently
 checked with Python RDKit. Each frame was assigned the final SDF's bond graph,
@@ -44,6 +44,34 @@ stereochemistry in the trajectory geometry using the accompanying SDF graph.
 The plain XYZ artifacts themselves carry elements, coordinates and step
 energies, without bond or unspecified-stereo annotations. Standalone XYZ
 round-trip preservation of those annotations is therefore unproven.
+
+### Mixed tetrahedral scene save and reopen
+
+In the same prebuilt browser, the prepared tetrahedral SDF's workspace-tab
+menu → Save scene… (activated with Enter) downloaded
+`/Users/nikolenko/Desktop/mixed-tetrahedral-prepared.molx`. The ordinary file
+picker opened that archive as a separate document and rendered its molecular
+scene in the light 1280×720 view. Save scene… on the reopened document then
+downloaded `mixed-tetrahedral-prepared (1).molx`.
+
+Independent Python ZIP/hash checks and RDKit parsing confirmed both archives
+contain the exact 1,619-byte prepared SDF as source and Original, with SHA-256
+`29a63ac91f482336a381b8b2ac8dce3a24615cddeebe5c4a8fa64180fc391dbc`.
+Every attachment length/hash passed. The complete scientific manifest,
+including document UUID and structure/model/trajectory binding, was identical
+after reopen and save. Both sources parsed as 19 atoms / 18 bonds with a 3D
+conformer and canonical isomeric SMILES `CC(O)C[C@H](C)O`; RDKit returned
+`[(1, 'S'), (4, '?')]`. Atom IDs in this source are null, so this case leaves
+per-atom UUID persistence unverified.
+
+Archive hashes are
+`8f521f527989ef876cfdc71d0eaa2851919bc05355f1871847b000ac197904ef`
+and `5c283d762e839410a5bff22b2d5b6f3dde253dd7710dc4e22623a4c2a0a7e4da`.
+Local evidence is `/tmp/burette-mixed-stereo-molx-oracle.json` and
+`/tmp/burette-mixed-stereo-molx-reopened.png`. This covers an unedited imported
+prepared SDF and one scene; in-place edited scenes, mixed E/Z scenes, ESR
+groups, per-atom identities, compact layouts and the full theme/accessibility
+matrix remain open.
 
 ## Live unspecified-stereo 3D preparation (2026-11-03)
 
@@ -475,8 +503,10 @@ browser acceptance cases.
   reads outputs with RDKit for all three examples plus mixed specified/unknown
   tetrahedral and double-bond cases, each from RDKit and OCL MOL depictions.
   It also checks source immutability and atom CIP/ESR after serialization.
-  This resolves the reproduced engine refusal; fresh browser acceptance for
-  these unspecified-stereo inputs remains pending.
+  This resolves the reproduced engine refusal. The live acceptance sections
+  above cover UI preparation of alanine, automation of the two mixed-stereo
+  cases and a tetrahedral MOLX round trip; the remaining input/UI matrix is
+  pending.
 - pH adjustment treats each site independently with one pKa (no coupled
   centres, microstates, tautomers or substituent corrections); piperazine at
   pH 7.4 becomes a dication. Sulfonamides, imides, pyridones, aminopyridines
