@@ -204,7 +204,8 @@ uses the same primitives as the desktop docks with preview theme tokens.
 
 
 Typed workbench jobs (properties, energies and forces, optimization, 3D
-preparation, conformers, frame batches, metadata, pair distribution, point and
+preparation, conformers, frame batches, metadata, measurement edits, coordinate
+alignment, pair distribution, point and
 space groups, powder patterns, crystal transforms and orbital Cubes) use
 `burette-agent.mjs workbench` in a browser-agent-shell session. The shared request contract is `workbench-agent-contract.mjs`, whose `JOB_DEFINITIONS`
 lists every kind; the CLI and shell consume it at their transport boundaries.

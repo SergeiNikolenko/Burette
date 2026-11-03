@@ -128,3 +128,16 @@ attempt, so the visible draft was not evidence of recovery.
 - Positive live acceptance on the patched runtime, packaged browser acceptance,
   and full JS CI on the final patch remain pending. Browser control returned
   `browser.user is unavailable` during the positive-scenario continuation.
+- After restoring browser control, the rebuilt prebuilt-static runtime at
+  `127.0.0.1:51272` passed the positive picker → Edit → Add hydrogens scenario
+  for `burette-parity-ethanol-hydrogens.sdf`: 3 → 9 atoms, Undo → 3, Redo → 9.
+  The displayed C1/C2/O3 coordinates retained their original rounded values.
+  Exact exported coordinates, packaged coincident-input rejection, and full CI
+  on the final patch still require verification.
+- Save copy from that patched packaged session produced
+  `burette-parity-ethanol-hydrogens (3).sdf`, SHA-256
+  `10704ce84c25b7772331e46a2c881da4da47f822e3e6b14cc174bc04d071080f`.
+  Independent RDKit parsing confirms nine atoms, eight bonds, and exactly
+  zero coordinate difference for the original three atoms. Both `SOURCE_NOTE`
+  and `BURETTE_METADATA_V1_extra` retain their source values. The exact reserved
+  `BURETTE_METADATA_V1` field adds atom/conformer identity metadata.

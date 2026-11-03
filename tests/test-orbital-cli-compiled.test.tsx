@@ -119,7 +119,7 @@ afterAll(async () => {
 
 test("compiled host and CLI produce signed orbital, total density and spin density Cube files with exact hashes and analytic values", async () => {
   const capabilities = await ok({ operation: "capabilities" });
-  expect([capabilities.available, capabilities.draftsVisible, Object.keys(capabilities.jobs)]).toEqual([true, true, ["properties", "energy", "energy_forces", "frame_energy_forces", "optimize", "prepare_3d", "conformers", "metadata_edit", "pair_distribution", "point_group", "space_group", "powder_xrd", "crystal_transform", "orbital_cube", "insert_fragment", "hydrogens", "polymer", "smiles", "nucleic_acid", "metal_complex", "peptide"]]);
+  expect([capabilities.available, capabilities.draftsVisible, Object.keys(capabilities.jobs)]).toEqual([true, true, ["properties", "energy", "energy_forces", "frame_energy_forces", "optimize", "prepare_3d", "conformers", "metadata_edit", "measurement_set", "coordinate_align", "pair_distribution", "point_group", "space_group", "powder_xrd", "crystal_transform", "orbital_cube", "insert_fragment", "hydrogens", "polymer", "smiles", "nucleic_acid", "metal_complex", "peptide"]]);
   const observed = await ok({ operation: "observe" });
   expect(observed.sourceTextSha256).toBe(`sha256-${createHash("sha256").update(sourceText).digest("hex")}`);
   const orbitals = await ok({ operation: "orbitals", limit: 1, offset: 1 });
