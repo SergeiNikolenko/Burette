@@ -89,7 +89,10 @@ test("1000 logical tabs keep bounded controls, keyboard wrap/focus, range drag a
     const payload = JSON.parse(payloads.get("application/x-burette-structure-paths")!);
     expect(payload.paths).toEqual(documents.slice(500, 701).map(document => document.path));
     expect(container.querySelectorAll('[role="tab"]').length).toBeLessThan(25);
-    await act(async () => window.dispatchEvent(new browser.CustomEvent("burette-native-tab-drop", { detail: { tabId: "tab-700", x: 100 } })));
+    const point = document.elementFromPoint;
+    document.elementFromPoint = () => container.querySelector(".tab-strip");
+    await act(async () => window.dispatchEvent(new browser.CustomEvent("burette-native-tab-drop", { detail: { tabId: "tab-700", x: 100, y: 10 } })));
+    document.elementFromPoint = point;
     expect(moves.length).toBe(1);
     expect((moves[0] as [string, number])[1]).toBeGreaterThan(600);
   } finally {
@@ -98,4 +101,131 @@ test("1000 logical tabs keep bounded controls, keyboard wrap/focus, range drag a
     if (previousWidth) Object.defineProperty(browser.HTMLElement.prototype, "clientWidth", previousWidth);
     else delete (browser.HTMLElement.prototype as any).clientWidth;
   }
+});
+
+test("pointer reorder survives action replacement and Escape restores the original order", async () => {
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  const previousPoint = document.elementFromPoint;
+  const previousRect = browser.HTMLElement.prototype.getBoundingClientRect;
+  const tabs = ["a", "b", "c"].map(id => ({ id, location: { kind: "jobs" }, back: [], forward: [] }));
+  let state: any = { documents: [], textDocuments: [], sidebarProjects: [], activeTabId: "a", dirtyGridDocuments: new Set(), tabs };
+  let captured = false;
+  const render = () => {
+    // Shell actions are recreated when tab state changes in the real app.
+    const actions = new Proxy({}, { get: (_, key) => key === "moveTab" ? (id: string, index: number) => {
+      const moved = state.tabs.find((tab: any) => tab.id === id);
+      const next = state.tabs.filter((tab: any) => tab.id !== id);
+      next.splice(index, 0, moved);
+      state = { ...state, tabs: next }; render();
+    } : () => {} });
+    root.render(<EditorTabs state={state} actions={actions as any} />);
+  };
+  browser.HTMLElement.prototype.getBoundingClientRect = function () {
+    const index = state.tabs.findIndex((tab: any) => tab.id === this.dataset.tabId);
+    return new browser.DOMRect(index >= 0 ? index * 100 : 0, 0, index >= 0 ? 100 : 400, 28);
+  };
+  document.elementFromPoint = () => container.querySelector(".tab-strip");
+  const move = async (x: number) => act(async () => window.dispatchEvent(new browser.PointerEvent("pointermove", { pointerId: 1, buttons: 1, clientX: x, clientY: 10 })));
+  try {
+    await act(async () => render());
+    const button = container.querySelector<HTMLButtonElement>('[data-tab-id="a"] [role="tab"]')!;
+    button.setPointerCapture = () => { captured = true; };
+    button.hasPointerCapture = () => captured;
+    button.releasePointerCapture = () => { captured = false; };
+    await act(async () => button.dispatchEvent(new browser.PointerEvent("pointerdown", { bubbles: true, pointerId: 1, button: 0, buttons: 1, clientX: 10, clientY: 10 })));
+    await move(280);
+    expect(state.tabs.map((tab: any) => tab.id)).toEqual(["b", "c", "a"]);
+    await move(110);
+    expect(state.tabs.map((tab: any) => tab.id)).toEqual(["b", "a", "c"]);
+    await act(async () => window.dispatchEvent(new browser.KeyboardEvent("keydown", { key: "Escape" })));
+    expect(state.tabs.map((tab: any) => tab.id)).toEqual(["a", "b", "c"]);
+    expect(captured).toBe(false);
+  } finally {
+    await act(async () => root.unmount()); container.remove();
+    document.elementFromPoint = previousPoint;
+    browser.HTMLElement.prototype.getBoundingClientRect = previousRect;
+  }
+});
+
+test("a drop belongs only to its target pane and retains the same tab", async () => {
+  const { useMoleculeStore } = await import("../apps/desktop/src/stores/molecule-store");
+  const original = useMoleculeStore.getState();
+  const tabs: any[] = [
+    { id: "a", location: { kind: "jobs" }, back: [], forward: [], title: "Calculation", pinned: true },
+    { id: "d", location: { kind: "ketcher" }, back: [], forward: [] },
+    { id: "b", location: { kind: "jobs" }, back: [], forward: [], pane: "right" },
+    { id: "c", location: { kind: "jobs" }, back: [], forward: [], pane: "right" },
+  ];
+  useMoleculeStore.setState({ tabs, activeTabId: "a", documents: [], textDocuments: [] });
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  const previousPoint = document.elementFromPoint;
+  let moves = 0;
+  function Fixture() {
+    const store = useMoleculeStore();
+    const state: any = { ...store, sidebarProjects: [], dirtyGridDocuments: new Set() };
+    const actions = new Proxy({}, { get: (_, key) => key === "moveTab" ? (id: string, index: number) => {
+      moves++; useMoleculeStore.getState().moveTab(id, index);
+    } : () => {} });
+    return <><EditorTabs state={state} actions={actions as any} group="main" /><EditorTabs state={state} actions={actions as any} group="right" /></>;
+  }
+  try {
+    await act(async () => root.render(<Fixture />));
+    document.elementFromPoint = () => container.querySelector('[data-workspace-group="right"]');
+    const source = container.querySelector<HTMLButtonElement>('[data-tab-id="d"] [role="tab"]')!;
+    let captured = false;
+    source.setPointerCapture = () => { captured = true; };
+    source.hasPointerCapture = () => captured;
+    source.releasePointerCapture = () => { captured = false; };
+    const beforeDrag = { tabs: useMoleculeStore.getState().tabs, activeTabId: useMoleculeStore.getState().activeTabId };
+    await act(async () => source.dispatchEvent(new browser.PointerEvent("pointerdown", { bubbles: true, pointerId: 3, button: 0, buttons: 1, clientX: 10, clientY: 10 })));
+    await act(async () => window.dispatchEvent(new browser.PointerEvent("pointermove", { pointerId: 3, buttons: 1, clientX: 100, clientY: 10 })));
+    // Hovering another pane previews a destination, but does not commit ownership.
+    expect({ tabs: useMoleculeStore.getState().tabs, activeTabId: useMoleculeStore.getState().activeTabId }).toEqual(beforeDrag);
+    await act(async () => window.dispatchEvent(new browser.KeyboardEvent("keydown", { key: "Escape" })));
+    expect({ tabs: useMoleculeStore.getState().tabs, activeTabId: useMoleculeStore.getState().activeTabId }).toEqual(beforeDrag);
+    expect(captured).toBe(false);
+    moves = 0;
+    await act(async () => window.dispatchEvent(new browser.CustomEvent("burette-native-tab-drop", { detail: { tabId: "a", x: -10, y: 10 } })));
+    expect(moves).toBe(1);
+    expect({ main: useMoleculeStore.getState().tabs.filter(tab => !tab.pane).map(tab => tab.id), right: useMoleculeStore.getState().tabs.filter(tab => tab.pane === "right").map(tab => tab.id) }).toEqual({ main: ["d"], right: ["a", "b", "c"] });
+    expect(useMoleculeStore.getState().tabs.find(tab => tab.id === "a")).toEqual({ ...tabs[0], pane: "right" });
+  } finally {
+    await act(async () => root.unmount()); container.remove();
+    document.elementFromPoint = previousPoint;
+    useMoleculeStore.setState(original);
+  }
+});
+
+test("preview title promotes on double click and on every editable dirty surface", async () => {
+  const { useMoleculeStore } = await import("../apps/desktop/src/stores/molecule-store");
+  const { SourceEditingProvider } = await import("../apps/desktop/src/lib/source-editing/context");
+  const original = useMoleculeStore.getState();
+  const tab: any = { id: "preview", location: { kind: "file", documentId: "doc", path: "/sample.pdb" }, back: [], forward: [], preview: true };
+  const file: any = { id: "doc", path: "/sample.pdb", title: "sample.pdb", renderer: "molstar", extension: "pdb" };
+  let mode = "clean";
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  function Fixture() {
+    const store = useMoleculeStore();
+    const state: any = { ...store, sidebarProjects: [], dirtyGridDocuments: new Set(mode === "grid" ? ["doc"] : []) };
+    const source: any = { sessionForDocument: () => ({ dirty: mode === "source", saving: mode === "saving" }) };
+    return <SourceEditingProvider value={source}><EditorTabs state={state} actions={new Proxy({}, { get: () => () => {} }) as any} /></SourceEditingProvider>;
+  }
+  try {
+    useMoleculeStore.setState({ tabs: [tab], activeTabId: tab.id, documents: [file], textDocuments: [] });
+    await act(async () => root.render(<Fixture />));
+    expect(container.querySelector(".tab-title")?.classList.contains("italic")).toBe(true);
+    await act(async () => container.querySelector('[role="tab"]')!.dispatchEvent(new browser.MouseEvent("dblclick", { bubbles: true })));
+    expect(useMoleculeStore.getState().tabs[0].preview).toBe(false);
+    expect(container.querySelector(".tab-title")?.classList.contains("italic")).toBe(false);
+    for (mode of ["grid", "scene", "source", "saving"]) {
+      await act(async () => {
+        useMoleculeStore.setState({ tabs: [{ ...tab }], documents: [{ ...file, sceneUnsaved: mode === "scene" }] });
+        root.render(<Fixture />);
+      });
+      expect(useMoleculeStore.getState().tabs[0].preview).toBe(false);
+    }
+  } finally { await act(async () => root.unmount()); container.remove(); useMoleculeStore.setState(original); }
 });

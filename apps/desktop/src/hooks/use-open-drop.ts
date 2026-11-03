@@ -485,7 +485,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
           nativeDragPayloadRef.current = null;
           browserDragPayloadRef.current = null;
           hideDropFeedback();
-          window.dispatchEvent(new CustomEvent("burette-native-tab-drop", { detail: { tabId, x: point?.x } }));
+          window.dispatchEvent(new CustomEvent("burette-native-tab-drop", { detail: { tabId, x: point?.x, y: point?.y } }));
           return;
         }
         // WKWebView's native handler consumes internal HTML drops too. Such

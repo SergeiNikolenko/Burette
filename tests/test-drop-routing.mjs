@@ -179,7 +179,7 @@ window.dispatchEvent(tabStart);
 nativeDrop({ payload: { type: 'enter', paths: [], position: { x: 90, y: 198 } } });
 window.dispatchEvent(new window.DragEvent('dragend'));
 nativeDrop({ payload: { type: 'drop', paths: [], position: { x: 90, y: 198 } } });
-assert.deepEqual(reordered, [{ tabId: 'source-tab', x: 90 }]);
+assert.deepEqual(reordered, [{ tabId: 'source-tab', x: 90, y: 198 }]);
 assert.deepEqual(hovered, [{ tabId: 'target-tab', sourceTabId: 'source-tab', x: 90 }]);
 assert.equal(ended, 1);
 message('structureDragStart');
@@ -204,7 +204,7 @@ nativeDrop({ payload: { type: 'enter', paths: ['/data/tab.sdf'], position: { x: 
 nativeDrop({ payload: { type: 'leave' } });
 nativeDrop({ payload: { type: 'enter', paths: ['/data/tab.sdf'], position: { x: 90, y: 198 } } });
 nativeDrop({ payload: { type: 'drop', paths: ['/data/tab.sdf'], position: { x: 90, y: 198 } } });
-assert.deepEqual(reordered.at(-1), { tabId: 'native-file-tab', x: 90 });
+assert.deepEqual(reordered.at(-1), { tabId: 'native-file-tab', x: 90, y: 198 });
 assert.equal(nativeFileTab, null, 'Tab reorder consumes the native payload');
 assert.equal(nativeSaved.length, 2, 'Native file tab reorder never imports a duplicate');
 

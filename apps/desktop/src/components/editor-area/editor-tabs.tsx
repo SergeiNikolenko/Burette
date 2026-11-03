@@ -18,13 +18,15 @@ import { MarqueeName } from "../marquee-name";
 import { Badge } from "../ui/badge";
 import type { DropTargetContext } from "../../lib/drop-actions";
 import { describeDropTargetElement } from "../../lib/drop-target";
+import { canTransferNativeTab, transferNativeTab } from "./native-tab-transfer";
+import { TabDragPreview } from "./tab-drag-preview";
 import { TabHoverPreview, type TabPreviewInfo } from "./tab-hover-preview";
 import { captureTabThumbnail, pruneTabThumbnails } from "./tab-thumbnails";
 import { ShortcutTooltip } from "../shortcut-tooltip";
 import { ToolbarButton } from "../ui/toolbar-button";
 import { Plus } from "../ui/app-icons";
-import { isMainTab } from "../../stores/molecule-store";
-import { SCREEN_ENTRIES, openScreen, paneMoveItems } from "../workspace-panes/pane-actions";
+import { isMainTab, useMoleculeStore } from "../../stores/molecule-store";
+import { SCREEN_ENTRIES, openScreen, paneMoveItems, placeScreen } from "../workspace-panes/pane-actions";
 import { TabKindIcon } from "./tab-kind-icon";
 import { TabNameDialog } from "../scene-name-dialog";
 import { canStartNativeFileDrag, startNativeFileDrag } from "../../lib/native-file-drag";
@@ -52,6 +54,8 @@ export function EditorTabs({
   group?: WorkspaceGroup;
 }) {
   const workspaceMenus = useWorkspaceMenus();
+  const actionsRef = useRef(actions);
+  actionsRef.current = actions;
   const sourceEditing = useSourceEditing();
   const nativeDragPendingRef = useRef(false);
   const nativeDragGenerationRef = useRef(0);
@@ -67,6 +71,7 @@ export function EditorTabs({
   const [selectionAnchorTabId, setSelectionAnchorTabId] = useState<string | null>(null);
   const draggingTabIdRef = useRef<string | null>(null);
   const selectedTabIdsRef = useRef<Set<string>>(new Set());
+  const reorderSnapshotRef = useRef<string[] | null>(null);
   const mouseDragRef = useRef<{ tabId: string; startX: number; startY: number; active: boolean } | null>(null);
   const removeMouseDragListenersRef = useRef<(() => void) | null>(null);
   const dragActivationRef = useRef<{ tabId: string; timeout: number } | null>(null);
@@ -86,6 +91,17 @@ export function EditorTabs({
     const timers = TAB_THUMBNAIL_SETTLE_MS.map((delay) => window.setTimeout(() => void captureTabThumbnail(activeTabId), delay));
     return () => timers.forEach((timer) => window.clearTimeout(timer));
   }, [activeTabId]);
+
+  useEffect(() => {
+    for (const tab of state.tabs) {
+      if (!tab.preview || tab.location.kind !== "file") continue;
+      const document = findIndexedDocument(state.documents, tab.location, "first");
+      const source = sourceEditing?.sessionForDocument(document);
+      if (document && (state.dirtyGridDocuments?.has(document.id) || document.sceneUnsaved || source?.dirty || source?.saving)) {
+        useMoleculeStore.getState().promotePreviewTab(tab.id);
+      }
+    }
+  }, [state.tabs, state.documents, state.dirtyGridDocuments, sourceEditing]);
 
   useEffect(() => {
     pruneTabThumbnails(new Set(state.tabs.map((tab) => tab.id)));
@@ -312,7 +328,7 @@ export function EditorTabs({
 
   const moveDraggedTab = useCallback((tabId: string, pointerX: number) => {
     const orderedTabs = latestTabsRef.current;
-    if (orderedTabs.length < 2) return;
+    if (!state.tabs.some(tab => tab.id === tabId)) return;
     const otherTabs = orderedTabs.filter((tab) => tab.id !== tabId);
     let targetIndex = tabWindow.reorderIndex(tabId, pointerX) ?? otherTabs.length;
     for (let index = 0; !tabWindow.windowed && index < otherTabs.length; index += 1) {
@@ -325,7 +341,9 @@ export function EditorTabs({
       }
     }
     const currentIndex = orderedTabs.findIndex((tab) => tab.id === tabId);
-    if (currentIndex === targetIndex) return;
+    const movingBetweenGroups = currentIndex < 0;
+    if (!movingBetweenGroups && currentIndex === targetIndex) return;
+    if (movingBetweenGroups) placeScreen(tabId, group === "main" ? null : group);
     const stateTabsWithoutDragged = state.tabs.filter((tab) => tab.id !== tabId);
     const targetTabId = otherTabs[targetIndex]?.id ?? null;
     const stateTargetIndex = targetTabId
@@ -333,7 +351,10 @@ export function EditorTabs({
       : stateTabsWithoutDragged.length;
     previousTabRectsRef.current = measureTabRects();
     actions.moveTab(tabId, stateTargetIndex);
-  }, [actions, measureTabRects, state.tabs, tabWindow.reorderIndex, tabWindow.windowed]);
+  }, [actions, group, measureTabRects, state.tabs, tabWindow.reorderIndex, tabWindow.windowed]);
+
+  const moveDraggedTabRef = useRef(moveDraggedTab);
+  moveDraggedTabRef.current = moveDraggedTab;
 
   const clearDragActivation = useCallback(() => {
     const activation = dragActivationRef.current;
@@ -382,12 +403,16 @@ export function EditorTabs({
 
   const stopTabDrag = useCallback(() => {
     nativeDragGenerationRef.current += 1;
+    const originalOrder = reorderSnapshotRef.current;
+    reorderSnapshotRef.current = null;
+    originalOrder?.forEach((id, index) => actionsRef.current.moveTab(id, index));
     removeMouseDragListeners();
     clearDragActivation();
-    if (draggingTabIdRef.current) actions.setStructureDragActive(false);
+    if (draggingTabIdRef.current) actionsRef.current.setStructureDragActive(false);
     draggingTabIdRef.current = null;
     setDraggingTabId(null);
-  }, [actions, clearDragActivation, removeMouseDragListeners]);
+    window.setTimeout(() => { suppressDragClickRef.current = false; }, 0);
+  }, [clearDragActivation, removeMouseDragListeners]);
 
   const startNativeTabDrag = (tabId: string) => {
     removeMouseDragListeners();
@@ -403,7 +428,7 @@ export function EditorTabs({
       if (generation !== nativeDragGenerationRef.current) return;
       const { inAppDrop } = await startNativeFileDrag(payload, tabId);
       if (!inAppDrop || generation !== nativeDragGenerationRef.current) return;
-      if (document.elementFromPoint(inAppDrop.x, inAppDrop.y)?.closest(".tab-strip")) moveDraggedTab(tabId, inAppDrop.x);
+      if (document.elementFromPoint(inAppDrop.x, inAppDrop.y)?.closest(".tab-strip")) window.dispatchEvent(new CustomEvent("burette-native-tab-drop", { detail: { tabId, x: inAppDrop.x, y: inAppDrop.y } }));
       else runTabDropAtPoint(tabId, inAppDrop.x, inAppDrop.y);
     }).catch(() => {
       toast.add({ title: "Could not drag this tab. Save the file and try again.", type: "error" });
@@ -414,14 +439,27 @@ export function EditorTabs({
     });
   };
 
-  const startMouseTabReorder = useCallback((tabId: string, tabHasDockPayload: boolean, event: React.MouseEvent<HTMLButtonElement>) => {
-    if (event.button !== 0) return;
+  const startMouseTabReorder = useCallback((tabId: string, tabHasDockPayload: boolean, event: React.PointerEvent<HTMLButtonElement>) => {
+    if (event.button !== 0 || event.altKey) return;
+    const button = event.currentTarget;
+    button.setPointerCapture(event.pointerId);
     removeMouseDragListeners();
     mouseDragRef.current = { tabId, startX: event.clientX, startY: event.clientY, active: false };
+    let frame = 0;
+    let pointer = { x: event.clientX, y: event.clientY };
+    const scrollAtEdge = () => {
+      frame = 0;
+      if (!mouseDragRef.current?.active) return;
+      if (document.elementFromPoint(pointer.x, pointer.y)?.closest(".tab-strip") === stripRef.current) {
+        moveDraggedTabRef.current(tabId, pointer.x);
+      }
+      frame = window.requestAnimationFrame(scrollAtEdge);
+    };
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
       const drag = mouseDragRef.current;
       if (!drag || drag.tabId !== tabId) return;
+      pointer = { x: moveEvent.clientX, y: moveEvent.clientY };
       if ((moveEvent.buttons & 1) !== 1) {
         stopTabDrag();
         return;
@@ -429,37 +467,69 @@ export function EditorTabs({
       if (!drag.active) {
         if (Math.hypot(moveEvent.clientX - drag.startX, moveEvent.clientY - drag.startY) < TAB_MOUSE_REORDER_THRESHOLD_PX) return;
         drag.active = true;
+        if (state.tabs.find(tab => tab.id === tabId)?.preview) useMoleculeStore.getState().promotePreviewTab(tabId);
+        reorderSnapshotRef.current = state.tabs.map(tab => tab.id);
+        suppressDragClickRef.current = true;
         draggingTabIdRef.current = tabId;
         setDraggingTabId(tabId);
         if (tabHasDockPayload) actions.setStructureDragActive(true);
+        frame = window.requestAnimationFrame(scrollAtEdge);
       }
-      if (document.elementFromPoint(moveEvent.clientX, moveEvent.clientY)?.closest(".tab-strip")) {
-        moveDraggedTab(tabId, moveEvent.clientX);
+      const outsideWindow = moveEvent.clientX < 0 || moveEvent.clientY < 0 || moveEvent.clientX >= window.innerWidth || moveEvent.clientY >= window.innerHeight;
+      if (outsideWindow && canTransferNativeTab(tabId)) {
+        nativeDragPendingRef.current = true;
+        setDraggingTabId(null);
+        removeMouseDragListeners();
+        const generation = ++nativeDragGenerationRef.current;
+        void transferNativeTab(tabId, () => generation !== nativeDragGenerationRef.current).then(moved => {
+          if (moved) reorderSnapshotRef.current = null;
+        }).catch(() => {
+          toast.add({ title: "Could not move tab", type: "error" });
+        }).finally(() => {
+          nativeDragPendingRef.current = false;
+          stopTabDrag();
+        });
+        return;
+      }
+      if (document.elementFromPoint(moveEvent.clientX, moveEvent.clientY)?.closest(".tab-strip") === stripRef.current) {
+        moveDraggedTabRef.current(tabId, moveEvent.clientX);
       }
     };
     const handleMouseUp = (upEvent: MouseEvent) => {
       const drag = mouseDragRef.current;
-      if (drag?.tabId === tabId && drag.active && tabHasDockPayload) {
-        runTabDropAtPoint(tabId, upEvent.clientX, upEvent.clientY);
+      if (drag?.tabId === tabId && drag.active) {
+        const strip = document.elementFromPoint(upEvent.clientX, upEvent.clientY)?.closest(".tab-strip");
+        if (strip) {
+          reorderSnapshotRef.current = null;
+          window.dispatchEvent(new CustomEvent("burette-native-tab-drop", { detail: { tabId, x: upEvent.clientX, y: upEvent.clientY } }));
+        } else if (tabHasDockPayload && runTabDropAtPoint(tabId, upEvent.clientX, upEvent.clientY)) {
+          reorderSnapshotRef.current = null;
+        }
       }
       stopTabDrag();
+      window.setTimeout(() => { suppressDragClickRef.current = false; }, 0);
     };
 
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp, { once: true });
+    window.addEventListener("pointermove", handleMouseMove);
+    window.addEventListener("pointerup", handleMouseUp, { once: true });
+    window.addEventListener("pointercancel", stopTabDrag, { once: true });
     removeMouseDragListenersRef.current = () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("pointermove", handleMouseMove);
+      window.removeEventListener("pointerup", handleMouseUp);
+      window.removeEventListener("pointercancel", stopTabDrag);
+      if (button.hasPointerCapture(event.pointerId)) button.releasePointerCapture(event.pointerId);
     };
-  }, [actions, moveDraggedTab, removeMouseDragListeners, runTabDropAtPoint, stopTabDrag]);
+  }, [actions, state.tabs, moveDraggedTab, removeMouseDragListeners, runTabDropAtPoint, stopTabDrag]);
 
   useEffect(() => {
     const escape = (event: KeyboardEvent) => { if (event.key === "Escape") stopTabDrag(); };
-    window.addEventListener("blur", stopTabDrag);
+    const blur = () => { if (!nativeDragPendingRef.current) stopTabDrag(); };
+    window.addEventListener("blur", blur);
     window.addEventListener("burette-structure-drag-cancel", stopTabDrag);
     window.addEventListener("keydown", escape, true);
     return () => {
-      window.removeEventListener("blur", stopTabDrag);
+      window.removeEventListener("blur", blur);
       window.removeEventListener("burette-structure-drag-cancel", stopTabDrag);
       window.removeEventListener("keydown", escape, true);
       removeMouseDragListeners();
@@ -469,15 +539,20 @@ export function EditorTabs({
   useEffect(() => {
     if (readOnly) return;
     const drop = (event: Event) => {
-      const { tabId, x } = (event as CustomEvent<{ tabId: string; x?: number }>).detail;
-      if (Number.isFinite(x) && state.tabs.some(tab => tab.id === tabId)) moveDraggedTab(tabId, x!);
+      const { tabId, x, y } = (event as CustomEvent<{ tabId: string; x?: number; y?: number }>).detail;
+      if (x === undefined || y === undefined || document.elementFromPoint(x, y)?.closest(".tab-strip") !== stripRef.current) return;
+      reorderSnapshotRef.current = null;
+      if (Number.isFinite(x) && state.tabs.some(tab => tab.id === tabId)) {
+        moveDraggedTab(tabId, x!);
+        selectAndFocusTab(tabId);
+      }
       stopTabDrag();
     };
     const hover = (event: Event) => {
       const { tabId, sourceTabId, x } = (event as CustomEvent<{ tabId: string | null; sourceTabId: string | null; x?: number }>).detail;
       if (sourceTabId) {
         clearDragActivation();
-        if (tabId && Number.isFinite(x)) moveDraggedTab(sourceTabId, x!);
+        if (tabId && latestTabsRef.current.some(tab => tab.id === tabId) && latestTabsRef.current.some(tab => tab.id === sourceTabId) && Number.isFinite(x)) moveDraggedTab(sourceTabId, x!);
       } else if (tabId) scheduleDragActivation(tabId);
       else clearDragActivation();
     };
@@ -489,7 +564,7 @@ export function EditorTabs({
       window.removeEventListener("burette-native-drag-hover", hover);
       window.removeEventListener("burette-native-drag-end", clearDragActivation);
     };
-  }, [readOnly, state.tabs, moveDraggedTab, stopTabDrag, scheduleDragActivation, clearDragActivation]);
+  }, [readOnly, state.tabs, moveDraggedTab, stopTabDrag, scheduleDragActivation, clearDragActivation, selectAndFocusTab]);
 
   const updateNativeTabDrag = useCallback((event: React.DragEvent<HTMLElement>) => {
     const tabId = draggingTabIdRef.current;
@@ -543,7 +618,8 @@ export function EditorTabs({
 
   return (
     // Entering the strip usually precedes a switch, so the page is still visible here.
-    <div ref={stripRef} className="tab-strip" onPointerEnter={() => { if (activeTabId) void captureTabThumbnail(activeTabId); }}>
+    <div ref={stripRef} className="tab-strip" data-workspace-group={group} onPointerEnter={() => { if (activeTabId) void captureTabThumbnail(activeTabId); }}>
+      {draggingTabId && !nativeDragPendingRef.current ? <TabDragPreview tabId={draggingTabId} title={describeTabPreview(draggingTabId)?.title ?? ""} /> : null}
       <TabHoverPreview stripRef={stripRef} describe={describeTabPreview} />
       <TabNameDialog tab={renamingTab} defaultName={renamingTab ? pageKind(renamingTab.location).title(renamingTab.location, state) : ""} onClose={() => setRenamingTabId(null)} />
       <ScrollFade
@@ -696,7 +772,7 @@ export function EditorTabs({
               <button
                 type="button"
                 role="tab"
-                draggable={!readOnly}
+                draggable={false}
                 tabIndex={active ? 0 : -1}
                 aria-selected={active}
                 aria-posinset={index + 1}
@@ -704,14 +780,17 @@ export function EditorTabs({
                 aria-label={dirty ? `${title}, Unsaved changes` : title}
                 className={active ? "tab active" : "tab"}
                 aria-grabbed={isDragging || undefined}
-                onMouseDown={readOnly ? undefined : (event) => {
+                title="Drag to move tab; Option-drag to export file"
+                onPointerDown={readOnly ? undefined : (event) => {
                   if (event.button !== 0) return;
+                  event.currentTarget.draggable = event.altKey;
                   startMouseTabReorder(tab.id, true, event);
                 }}
                 onClick={(event) => {
                   if (suppressDragClickRef.current) { event.preventDefault(); event.stopPropagation(); return; }
                   handleTabClick(tab.id, event);
                 }}
+                onDoubleClick={readOnly ? undefined : () => useMoleculeStore.getState().promotePreviewTab(tab.id)}
                 onContextMenu={readOnly ? undefined : showTabMenu}
                 onDragStart={readOnly ? undefined : (event) => {
                   if (canStartNativeFileDrag() && isFileDragTab(tab)) {
@@ -796,7 +875,7 @@ export function EditorTabs({
                 }}
               >
                 <span className="tab-kind-icon" aria-hidden><TabKindIcon location={tab.location} state={state} /></span>
-                <MarqueeName className="tab-title">{`${tab.pinned ? "⌖ " : ""}${title}`}</MarqueeName>
+                <MarqueeName className={tab.preview ? "tab-title italic" : "tab-title"}>{`${tab.pinned ? "⌖ " : ""}${title}`}</MarqueeName>
                 {dirty ? <Badge className="ml-1.5 size-2 p-0" aria-hidden="true" /> : null}
               </button>
               {!readOnly && !tab.pinned ? <button
