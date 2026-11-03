@@ -5,6 +5,10 @@ import type { ViewerDocument, ViewerPreferences } from "../types";
 import type { DockTabKind } from "../lib/dock";
 import { updateHostedMcpSelectionContext } from "../lib/hosted-mcp-widget";
 import { rememberViewerAtomSelection } from "../lib/workbench/selection";
+import { openWorkbenchDialog } from "../lib/workbench/dialog-store";
+import { readMeasurementRequest } from "../lib/workbench/measurement-request";
+import { structureEditAvailable } from "../lib/workbench/graph-draft";
+import { sourceExtension } from "../lib/science-session/state";
 import { isViewerFrameVisible } from "../lib/viewer-frame-visibility";
 import { structureStoryFromViewerMessage, type StructureStory } from "../lib/structure-story";
 import { rendererViewReloadOptions } from "../lib/renderer-view-state";
@@ -82,6 +86,22 @@ export function useAppViewerStateMessages({
   toggleDock,
 }: UseAppViewerStateMessagesOptions) {
   const handleViewerStateMessage = useCallback((sourceName: unknown, body: ViewerStateMessageBody, eventSource: MessageEventSource | null) => {
+    if (sourceName === "burette-viewer" && body?.type === "editMeasurementCoordinate") {
+      // Only the active, editable frame of the active graph document can open its own measurement.
+      const request = readMeasurementRequest(body.measurement);
+      const frame = activeDocument ? activeViewerIframeForDocument(activeDocument.id, "molstar") : null;
+      const extension = activeDocument ? sourceExtension(activeDocument) : null;
+      if (request && eventSource && activeDocument && frame && activeDocument.id === body.documentId && structureEditAvailable(activeDocument)
+        && (extension === "sd" ? "sdf" : extension) === request.sourceFormat
+        && frame.contentWindow === eventSource && !isReadOnlyViewerMessageSource(eventSource) && ownsCurrentSourceFrame(activeDocument, frame)) {
+        openWorkbenchDialog({
+          kind: "measurement",
+          document: activeDocument,
+          measurement: { ...request, frameSource: eventSource, requestId: crypto.randomUUID() },
+        });
+      }
+      return true;
+    }
     if (sourceName === "burette-viewer" && body?.type === "rendererViewStateRequest") {
       const document = documents.find(document => document.id === body.documentId);
       if (document && typeof body.requestId === "string" && body.requestId.length <= 128) {

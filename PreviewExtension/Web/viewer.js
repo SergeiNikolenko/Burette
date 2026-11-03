@@ -9247,7 +9247,29 @@ SOFTWARE.
     return state.topologyScene?.camera || null;
   }
 
+  function canEditMeasurementCoordinates(targets) {
+    const config = activeConfig || window.BuretteConfig;
+    return config?.appViewer === true && canGenerate3DConformerFromConfig(config, 'molstar')
+      && !config.docking && !isSdfPoseConformerSet(config) && targets.length === 1
+      && ['Distance', 'Angle', 'Dihedral'].includes(targets[0].obj?.label);
+  }
+
+  // The host owns the source edit; the viewer only names the measurement's ordered source atoms.
+  async function requestMeasurementCoordinate(ref) {
+    try {
+      const viewer = activeMolstarViewer();
+      const targets = sceneTreeMeasurementTargets(viewer, ref);
+      if (!canEditMeasurementCoordinates(targets)) return;
+      const runtime = await measurementCoordinateRuntime();
+      const measurement = await runtime.describe(viewer, targets, window.BuretteSceneFiles.science);
+      if (activeMolstarViewer() === viewer) postHostMessage({ type: 'editMeasurementCoordinate', measurement });
+    } catch (error) { setStatus(error?.message || 'This measurement cannot change coordinates.', 'error'); }
+  }
+
   function sceneTreeMeasurementMenu(menu, targets) {
+    if (canEditMeasurementCoordinates(targets)) {
+      menu.appendChild(sceneTreeMenuItem(`Set ${targets[0].obj.label.toLowerCase()}…`, 'measurement-coordinate'));
+    }
     const geometryFields = ['geometry-color', 'line-size', 'dash-length', 'arc-scale', 'sector-opacity']
       .filter(field => targets.some(target => sceneTreeMeasurementParam(target, field)));
     if (geometryFields.length) {
@@ -9969,6 +9991,9 @@ SOFTWARE.
       item('visibility', node.hidden ? 'Show' : 'Hide', () =>
         runMolstarSceneEdit(`visibility of ${node.label}`, () => toggleSceneTreeVisibility(ref)))
     ];
+    if (canEditMeasurementCoordinates(measurementTargets)) {
+      items.push(item('measurement-coordinate', `Set ${measurementTargets[0].obj.label.toLowerCase()}…`, () => requestMeasurementCoordinate(ref)));
+    }
     const addField = (field, kind) => {
       if (!measurementTargets.some(target => sceneTreeMeasurementParam(target, field))) return;
       const definition = SCENE_TREE_MEASUREMENT_FIELDS[field];
@@ -10058,6 +10083,7 @@ SOFTWARE.
     else if (action === 'select') selectSceneTreeNode(ref);
     else if (action === 'visibility') toggleSceneTreeVisibility(ref);
     else if (action === 'focus') focusSceneTreeNode(ref);
+    else if (action === 'measurement-coordinate') await requestMeasurementCoordinate(ref);
     else if (action === 'isolate') isolateSceneTreeNode(ref);
     else if (action === 'show-all') showAllSceneTreeNodes(ref);
     else if (action === 'save-focus') await saveSceneTreeFocusNode(ref);

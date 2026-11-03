@@ -25,6 +25,30 @@
   successful source write. A live scene measurement through reorder,
   Undo and Redo still needs browser acceptance.
 
+## Stage 1: editing a distance from a 3D measurement
+
+- Codex in-app browser, fresh `vite-dev` shell, 1280 × 720, light theme,
+  2026-11-03. Opened the 15-atom RDKit butan-2-ol SDF. Ball & Stick →
+  atom context menu → Picking level: Atom → Analyze → Measure distance.
+  Picked C4 then C2 and opened Scene → Distance settings → Set distance.
+- The dialog reported 1.49427533273 Å and identified the C4 fragment as
+  the smaller side. Applied 1.7 Å. The measurement survived the scene
+  rebuild and reopened at 1.69999999999 Å. Edit → Undo restored C4 to
+  (0.592, 0.630, −0.608) Å as displayed. Redo returned it to
+  (0.777, 0.665, −0.691) Å. The stationary C2 stayed in place.
+- Save copy downloaded an SDF with SHA-256
+  `034ad75f8e2e0451f43bc73a2d7d5f105769d42690d6fe5e7017ff78197c9017`.
+  RDKit 2026.09.1 read 1.699999999990 Å. All coordinate components were
+  within 2.62e−11 Å of its independently transformed conformer. The
+  isomeric SMILES and `SOURCE_NOTE` matched the original. The ordinary
+  file picker reopened the downloaded SDF in a second 3D workspace tab.
+- The React Compiler and Mol* harness exercises distance, angle and
+  dihedral edits on MOL V2000, MOL V3000 and SDF. It checks byte-level
+  Undo, source properties, wrong frame and source rejection, ring and
+  XYZ refusal, and cancellation while a capture is pending. Angle and
+  dihedral still need browser gestures. This run did not test package
+  surfaces or a live reorder of measured atoms.
+
 ## Stage 9: browser routes for compressed files
 
 - In a fresh `vite-dev` shell in the Codex in-app browser on 2026-11-03,

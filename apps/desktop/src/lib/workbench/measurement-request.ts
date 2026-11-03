@@ -9,7 +9,7 @@ export type MeasurementRequest = Pick<MeasurementCoordinateEdit, "kind" | "atoms
   frameIndex: number; frameCount: number; atomCount: number; sourceSha256: string;
   sourceFormat: "sdf" | "mol";
 };
-export type MeasurementDialogRequest = MeasurementRequest & { frameSource: MessageEventSource | null };
+export type MeasurementDialogRequest = MeasurementRequest & { frameSource: MessageEventSource; requestId: string };
 const refs = ["structureRef", "modelRef", "trajectoryRef"] as const;
 
 /** Ordered, bounded identities; selectionChanged deliberately sorts its atoms and cannot serve this contract. */

@@ -122,7 +122,7 @@
     "test:structure-source-text": "bun test tests/test-structure-source-text.test.tsx",
     "test:source-preview-prerequisites": "bun test tests/test-source-preview-prerequisites.test.tsx",
     "test:graph-draft-foundation": "bun test tests/test-graph-draft-foundation.test.tsx",
-    "test:measurement-source-preview": "bun test tests/test-measurement-source-preview.test.tsx",
+    "test:measurement-source-preview": "bun test tests/test-measurement-source-preview.test.tsx && bun test --preload ./tests/measurement-dialog-compiled-preload.ts tests/test-measurement-coordinate-dialog.test.tsx",
     "test:graph-draft-transactions": "bun test tests/test-measurement-pair-publication.test.tsx",
     "test:scientific-helpers": "bun test tests/test-scientific-helpers.test.ts && bun test tests/test-fchk-readers.test.ts && bun test tests/test-workbench-gaussian-conventions.test.ts tests/test-molden-fields.test.ts && bun test tests/test-direct-quantum-readers.test.ts && bun test tests/test-reader-worker.test.ts && bun test tests/test-workbench-source-reader.test.tsx",
     "test:scientific-schema": "bun test tests/test-scientific-data-validation.test.ts tests/test-scientific-helper-schema.test.ts tests/test-science-hessian-validation.test.ts",
