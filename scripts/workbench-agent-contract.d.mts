@@ -60,6 +60,7 @@ export type WorkbenchJobRequest =
   | { kind: 'metadata_edit'; params: WorkbenchMetadataEdit }
   | { kind: 'measurement_set'; params: WorkbenchMeasurementSet }
   | { kind: 'coordinate_align'; params: WorkbenchCoordinateAlign }
+  | { kind: 'spectrum'; params: { kind: 'vcd' | 'mcd' | 'nmr' | 'electronic' | 'ecd' | 'dos'; source: 'file' | 'frame' | 'companion'; frameIndex?: number; atomicNumber?: number; scale?: number; offset?: number; fwhm?: number; axisStart?: number; axisEnd?: number } }
   | { kind: 'pair_distribution'; params: { rMax: number; binWidth: number; centre: string | null; neighbour: string | null } }
   | { kind: 'point_group'; params: { tolerance: 'tight' | 'normal' | 'loose' | 'very-loose' } }
   | { kind: 'space_group'; params: { toleranceAngstrom: number } }

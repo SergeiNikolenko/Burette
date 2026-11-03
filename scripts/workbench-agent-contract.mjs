@@ -417,6 +417,30 @@ const JOB_DEFINITIONS = {
       return { originAtom, axisAtom, axis: oneOf(p.axis, 'job.params.axis', new Set(AXES), 'x') };
     },
   },
+  spectrum: {
+    describe: {
+      engine: 'Burette scientific spectrum worker (same float32 display kernel as Spectra)',
+      requires: 'An attached or parsed scientific spectrum. File, frame and companion sources are selected explicitly; no current-frame inference.',
+      params: { kind: ['vcd', 'mcd', 'nmr', 'electronic', 'ecd', 'dos'], source: ['file', 'frame', 'companion'], frameIndex: 'required zero-based frame for frame/companion', atomicNumber: 'required for NMR, 1–118', scale: 'positive, default from Spectra', offset: 'finite, default from Spectra', fwhm: 'at least 0.01', axisStart: 'finite', axisEnd: 'finite; at most 200000 points and 100000000 evaluations' },
+      artifacts: ['source', 'source_csv', 'display', 'settings'],
+    },
+    params(value) {
+      const p = params(value, ['kind', 'source', 'frameIndex', 'atomicNumber', 'scale', 'offset', 'fwhm', 'axisStart', 'axisEnd'], 'spectrum job.params');
+      if (p.kind === undefined) invalid('job.params.kind is required.');
+      const kind = oneOf(p.kind, 'job.params.kind', new Set(['vcd', 'mcd', 'nmr', 'electronic', 'ecd', 'dos']));
+      const source = oneOf(p.source, 'job.params.source', new Set(['file', 'frame', 'companion']), 'file');
+      const result = { kind, source };
+      if (source !== 'file') result.frameIndex = integer(p.frameIndex, 'job.params.frameIndex', 0, 999999);
+      else if (p.frameIndex !== undefined) invalid('File spectra do not take frameIndex.');
+      if (kind === 'nmr') result.atomicNumber = integer(p.atomicNumber, 'job.params.atomicNumber', 1, 118);
+      else if (p.atomicNumber !== undefined) invalid('Only NMR takes atomicNumber.');
+      for (const key of ['scale', 'offset', 'fwhm', 'axisStart', 'axisEnd']) {
+        const value = finite(p[key], `job.params.${key}`, key === 'scale' ? Number.MIN_VALUE : key === 'fwhm' ? 0.01 : -1e12, 1e12);
+        if (value !== undefined) result[key] = value;
+      }
+      return result;
+    },
+  },
   pair_distribution: {
     describe: {
       engine: 'Burette periodic radial distribution',

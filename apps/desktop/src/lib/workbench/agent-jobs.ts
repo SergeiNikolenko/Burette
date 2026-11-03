@@ -5,6 +5,7 @@ import { graphJobs } from "./agent-graph-jobs";
 import { coordinateAlignJob, measurementSetJob } from "./agent-coordinate-jobs";
 import { metadataJob } from "./agent-metadata";
 import { orbitalCubeJob } from "./agent-orbital-job";
+import { spectrumJob } from "./agent-spectrum-job";
 import { pairDistributionJob } from "./agent-pair-distribution";
 import { crystalTransformJob, pointGroupJob, powderXrdJob, spaceGroupJob } from "./agent-crystal-jobs";
 
@@ -47,6 +48,7 @@ export const AGENT_JOBS: { [K in WorkbenchSubmitJobKind]: AgentJobRunner<K> } = 
   metadata_edit: metadataJob,
   measurement_set: measurementSetJob,
   coordinate_align: coordinateAlignJob,
+  spectrum: spectrumJob,
   pair_distribution: pairDistributionJob,
   point_group: pointGroupJob,
   space_group: spaceGroupJob,

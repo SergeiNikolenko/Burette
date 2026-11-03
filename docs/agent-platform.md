@@ -689,6 +689,7 @@ with a `Lattice`, and the availability of each job:
 | `point_group` | `tolerance`: `tight`, `normal`, `loose`, `very-loose` (`normal`) | `symmetrized` (XYZ in chemical-graph atom order) |
 | `space_group` | `toleranceAngstrom` 0.0001–0.5 (0.01) | none; the summary carries the group, Hall number, sites and standard cells |
 | `powder_xrd` | `wavelengthAngstrom` 0.1–5 (Cu Kα1), `twoThetaMinDegrees`/`twoThetaMaxDegrees` 0–170 (10, 90) | `peaks` (CSV), `pattern` (JSON) |
+| `spectrum` | `kind` (`vcd`, `mcd`, `nmr`, `electronic`, `ecd`, `dos`), `source` (`file`, `frame`, `companion`), explicit `frameIndex` for frame/companion; NMR `atomicNumber`; optional `scale`, `offset`, `fwhm`, `axisStart`, `axisEnd` | `source` (JSON), `source_csv`, `display` (CSV), `settings` (JSON) |
 | `pair_distribution` | `rMax` 1–100 Å (10), `binWidth` 0.001–1 Å (0.1), `centre`, `neighbour` element or `null` | `distribution` (JSON), `csv`; runs on the full cell (CIF symmetry expanded) |
 | `crystal_transform` | `operation` and its fields, below | `structure` |
 
@@ -834,6 +835,7 @@ forces kcal/(mol·Å). No job modifies the open document.
 | `conformers` | `forceField`, `count` 1–32 samples (8), `seed` | `conformers` (multi-record SDF) |
 | `frame_energy_forces` | `forceField`, `offset` (0), `count` 1–64 | `forces` (JSON), `extxyz` |
 | `metadata_edit` | `atoms` (index, `atomName`, `residue`), `conformerLabel` | `structure` |
+| `spectrum` | `kind` (`vcd`, `mcd`, `nmr`, `electronic`, `ecd`, `dos`), `source` (`file`, `frame`, `companion`), explicit `frameIndex` for frame/companion; NMR `atomicNumber`; optional `scale`, `offset`, `fwhm`, `axisStart`, `axisEnd` | `source` (JSON), `source_csv`, `display` (CSV), `settings` (JSON) |
 | `pair_distribution` | `rMax` 1–100 Å (10), `binWidth` 0.001–1 Å (0.1), `centre`, `neighbour` | `distribution` (JSON), `csv` |
 
 `optimize` defaults to `bfgs` for unconstrained MMFF and to `lbfgs` for UFF or
@@ -1009,3 +1011,29 @@ workers against Python RDKit references; `vp run test:workbench-python-client`
 drives the Python client through the packaged CLI, the HTTP session server, the
 production host hook and the stdio MCP tool. Packaged-plugin rebuilds, a live
 Browser session and the native app remain separate acceptance lanes.
+
+### Typed scientific spectrum export
+
+`spectrum` uses the same cancellable worker and defaults as the Spectra panel.
+It binds to the submitted source revision and does not apply results to the live
+panel. `source` defaults to `file`; `frame` and `companion` require a zero-based
+`frameIndex`, never implicitly using the current animation frame. IR/Raman and
+mode-displacement automation are separate operations and are not advertised by
+this job. NMR references are approximate starting values, as in the UI.
+
+```python
+job = wb.run("spectrum", {"kind": "nmr", "atomicNumber": 6})
+wb.export(job.job_id, "display", output="carbon-nmr.csv")
+wb.export(job.job_id, "settings", output="carbon-nmr-settings.json")
+```
+
+`source`/`source_csv` retain the complete selected spectrum in original producer
+units and source row/atom order (including other NMR elements). `display` contains
+`position_<unit>,smoothed,stick` for every numeric grid point of the selected
+spectrum/element; `settings` records reference, axis direction, conversions and
+float32 peak-height arithmetic. The grid is stored in increasing coordinate order;
+axis direction is retained separately in settings, as in the interactive panel.
+The worker enforces at most 200000 points and 100000000 evaluations; the common
+artifact byte limit also applies. Unsupported source selections fail before
+queueing. Invalid grids fail in the worker without artifacts. Cancellation,
+replay, stale-result export and source closure use the shared job owner.

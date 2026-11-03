@@ -405,3 +405,47 @@ It does not close 10.01 or 10.03: Jupyter execution of this peptide workflow, th
 remaining operation-specific Python/batch matrix, light/compact/keyboard acceptance, and packaged prebuilt
 runtime acceptance remain open. This run did not exercise peptide cancellation,
 stale bound-input handling, optimization, or widget compute behavior.
+
+## Typed spectra automation (2026-11-04)
+
+Parent `08e9731a6` lacked a typed counterpart to the six additional spectra in the
+interactive panel. The `spectrum` job now shares `computeScientificSpectrum` with
+the panel, exposes explicit file/frame/companion selection and produces original
+source JSON/CSV, full numeric display CSV and display-settings JSON. It uses the
+existing immutable scientific snapshot, job/cancellation owner and artifact bounds.
+Python's `JobKind`, introspection and the packaged CLI contract include the job.
+No compute widget capabilities were added. IR/Raman and mode exports remain open.
+
+Focused agent tests: all six full display grids agree with the pinned independent
+C++ golden values (relative tolerance 2e-6); raw source JSON is retained exactly.
+Contract tests reject missing kinds/elements/frames, unsupported fields and invalid
+basic numeric parameters. Frame/companion availability never falls back to another
+source. Real workers reject pre-cancelled jobs; a real controller parses CJSON,
+replays one job ID and refuses stale export. 9 tests / 799 assertions passed.
+The existing spectrum-worker suite passed 9 tests / 45 assertions, including signed
+ranges and NMR atom identities. Compiled CLI/MCP compatibility passed 7 / 990.
+
+Live IAB **vite-dev**, dark 1280 × 720: normal CJSON open materialized
+`spectra-native-nmr.mol` with retained science. The shipped Python client ran
+`wb.run("spectrum", {"kind": "nmr", "atomicNumber": 6})` against this actual host
+and exported all four artifacts. The job succeeded with 20000 grid points and one
+carbon source row. Spectra → C showed C1 = 8.35600 ppm and reference 192.038 ppm,
+matching the source and settings artifacts; `/tmp/burette-spectrum-live.png`.
+Independent standard-library Python read the exported CSV and checked every point
+against the double-precision peak-height Gaussian, absolute error <0.001. Expected
+peak 183.682 ppm, nearest exported peak 183.67999267578125 ppm (0.01 ppm grid).
+The compact retained [oracle](spectrum-live-oracle.json) records those values.
+Full local request/artifact paths: `/tmp/burette-spectrum-live.json`.
+
+This does not establish the full operation matrix: live execution of the other
+five spectra, actual running cancellation, frame/companion publication, Jupyter,
+light/compact/keyboard acceptance and prebuilt/native runtime scenarios remain open.
+
+The exported `nmr-display.csv` also reopened through New tab → Open file in the
+same browser. The table reported **20,000 rows / 3 columns**, with headers
+`position_ppm`, `smoothed`, `stick`; `/tmp/burette-spectrum-csv-reopened.png`.
+Typecheck and the completed browser-shell build passed; plugin verification is
+recorded separately from this vite-dev run.
+
+The plugin check passed after the completed build, and the packaged contract
+matched the root contract byte-for-byte. Logs: `/tmp/burette-spectrum-{tests-final,worker,cli,types-final,build,plugin}.log`.
