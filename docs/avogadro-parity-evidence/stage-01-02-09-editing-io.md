@@ -155,6 +155,14 @@ This covers compressed SDF coordinate edits and picker reopening. Drop,
 crash/reload recovery, broader format coverage and native counterparts remain
 open.
 
+The complete `vp run test:ui` command at the same source baseline exited 0,
+including `test-logical-xyz-topology.test.tsx` and
+`test-logical-xyz-topology-metadata.test.tsx`, and continued through the final
+metal-complex dialog suite. Vite+ reported 0/500 cache hits. `vp run check:js`
+also exited 0. The local UI log is `burette-parity-test-ui-767cb673c.log`.
+The harness still emits React `act` and animation warnings. This regression
+result does not close the browser layout or unexecuted acceptance cases above.
+
 ### Hydrogen source-pose preservation, 2026-11-03
 
 - OCL parsing and `toMolfileV3()` can invent a diagram when bonded atoms
