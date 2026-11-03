@@ -540,6 +540,10 @@ body .msp-plugin .msp-highlight-info {
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
 }
+/* Clear the app shell's Compute button (12px inset, 28px tall) in the same corner. */
+body.buret-app-viewer:not(.burette-mobile-host) .msp-plugin .msp-highlight-toast-wrapper {
+  bottom: 52px;
+}
 body .msp-plugin .msp-snapshot-description-wrapper *,
 body .msp-plugin .msp-highlight-info * {
   background: transparent !important;

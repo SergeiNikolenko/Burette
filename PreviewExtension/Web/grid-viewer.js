@@ -4881,6 +4881,7 @@
     if (caps.selection) {
       el.tabIndex = 0;
       el.role = 'button';
+      el.setAttribute('aria-label', row.name || `Molecule ${index + 1}`);
       el.addEventListener('click', event => handleCardSelection(event, row, cfg, el));
       el.addEventListener('keydown', event => {
         if (event.key === ' ' || event.key === 'Enter') {
