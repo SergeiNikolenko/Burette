@@ -8,7 +8,8 @@ export function refreshSharedActions<T>(
 ): StateCreator<T, [["zustand/persist", unknown]], []> {
   return (set, get, api) => {
     const update: typeof set = (partial, replace) => {
-      void api.persist.rehydrate();
+      // Zustand omits the persist API when browser storage is unavailable.
+      void api.persist?.rehydrate();
       if (replace) set(partial as T, true);
       else set(partial, false);
     };
@@ -24,7 +25,7 @@ type SharedStore = {
 };
 
 export function observeSharedStore(store: SharedStore) {
-  if (typeof window === "undefined" || !window.addEventListener) return () => {};
+  if (typeof window === "undefined" || !window.addEventListener || !store.persist) return () => {};
   const refresh = () => { void store.persist.rehydrate(); };
   const storage = (event: StorageEvent) => {
     if (event.storageArea === window.localStorage &&

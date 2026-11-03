@@ -100,3 +100,16 @@ test("shared actions preserve other window edits before storage events arrive", 
     else Reflect.deleteProperty(globalThis, "window");
   }
 });
+
+test("shared actions remain usable when persistence storage is unavailable", () => {
+  const store = createStore<State>()(persist(refreshSharedActions((set) => ({
+    theme: "auto", roots: [],
+    setTheme: (theme) => set({ theme }),
+    addRoot: (root) => set((state) => ({ roots: [...state.roots, root] })),
+  })), { name: "unavailable", storage: createJSONStorage(() => { throw new Error("Storage unavailable"); }) }));
+  store.getState().setTheme("dark");
+  store.getState().addRoot("/local");
+  expect(store.getState().theme).toBe("dark");
+  expect(store.getState().roots).toEqual(["/local"]);
+  expect(() => observeSharedStore(store)()).not.toThrow();
+});
