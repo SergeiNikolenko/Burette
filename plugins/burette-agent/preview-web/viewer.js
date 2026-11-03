@@ -15730,7 +15730,8 @@ SOFTWARE.
       setSheetItemRotation(baseItem, savedView.item.rotation);
     }
     const restoredSheet = activeConfig?.popoutSheet;
-    if (restoredSheet?.version === 1 && Array.isArray(restoredSheet.items)) {
+    const sheetCheckpointApplied = restoredSheet?.version === 1 && Array.isArray(restoredSheet.items);
+    if (sheetCheckpointApplied) {
       const sheet = ensureXyzrenderSheet(stage);
       root.querySelectorAll('.buret-xyzrender-sheet-item').forEach(item => item.remove());
       for (const saved of restoredSheet.items) {
@@ -15754,11 +15755,13 @@ SOFTWARE.
       // A checkpoint is applied once; changing styles must not replay old items.
       delete activeConfig.popoutSheet;
     }
-    const viewportCleanup = window.BuretteRendererViewState?.observeSheetViewport(root, savedView?.viewport);
+    // Item geometry and its reference viewport must come from the same snapshot.
+    const viewportCleanup = window.BuretteRendererViewState?.observeSheetViewport(root,
+      sheetCheckpointApplied ? restoredSheet.view?.viewport : savedView?.viewport);
     externalArtifactViewSnapshot = () => ({
       scale, x: translateX, y: translateY,
       viewport: { width: root.clientWidth, height: root.clientHeight },
-      item: baseItem ? {
+      item: baseItem?.isConnected ? {
         left: baseItem.offsetLeft, top: baseItem.offsetTop,
         width: baseItem.offsetWidth, height: baseItem.offsetHeight,
         rotation: Number(baseItem.dataset.rotation || 0)
