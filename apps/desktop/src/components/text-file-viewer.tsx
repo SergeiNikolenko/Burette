@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { defaultKeymap, history, historyField, historyKeymap } from "@codemirror/commands";
 import { json, jsonLanguage } from "@codemirror/lang-json";
 import { jsonDisplayContent } from "./text-file-viewer/json-display";
@@ -58,6 +58,13 @@ export function TextFileViewer({
 }) {
   const parentRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
+  const applyPreviewRef = useCallback((button: HTMLButtonElement | null) => {
+    if (!button) return;
+    return () => {
+      // Hand focus to the editor before removing the completed action.
+      if (button.ownerDocument.activeElement === button) viewRef.current?.focus();
+    };
+  }, []);
   const selectionTimeoutRef = useRef<number | null>(null);
   const onStructureSelectionRef = useRef(onStructureSelection);
   const onContentChangeRef = useRef(sourceEditing?.onChange);
@@ -363,7 +370,7 @@ export function TextFileViewer({
             )
           )}
           {sourceEditing?.showApplyPreview && sourceEditing.editable && (
-            <Button type="button" variant="secondary" size="xs" onClick={() => void sourceEditing.onApplyPreview?.()}>Apply Preview</Button>
+            <Button ref={applyPreviewRef} type="button" variant="secondary" size="xs" onClick={() => void sourceEditing.onApplyPreview?.()}>Apply Preview</Button>
           )}
           {sourceEditing?.editable && (
             <ShortcutTooltip

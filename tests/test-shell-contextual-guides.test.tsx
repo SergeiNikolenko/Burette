@@ -127,6 +127,20 @@ test("Edit source explains editing after the session opens, never for a restored
   expect(requests).toEqual([{ id: "source-edit", anchor: mount.querySelector(".text-file-toolbar") }]);
 });
 
+test.each([false, true])("completed Apply hands focus to text only while the action owns it (moved=%s)", async moved => {
+  const text = { id: "apply", title: "source.pdb", path: "/source.pdb", extension: "pdb", content: "END\n", byteCount: 4, truncated: false } as TextFileDocument;
+  const editing = { editable: true, content: text.content, status: "Updating Preview…", dirty: false, saving: false, showApplyPreview: true };
+  await render(<TextFileViewer document={text} sourceEditing={editing} />);
+  const button = [...mount.querySelectorAll("button")].find(item => item.textContent === "Apply Preview")!;
+  await act(async () => button.focus());
+  await render(<TextFileViewer document={text} sourceEditing={{ ...editing, status: "Still updating" }} />);
+  expect(document.activeElement).toBe(button);
+  const find = mount.querySelector<HTMLButtonElement>('button[aria-label="Find in text"]')!;
+  if (moved) await act(async () => find.focus());
+  await render(<TextFileViewer document={text} sourceEditing={{ ...editing, status: "Saved", showApplyPreview: false }} />);
+  expect(document.activeElement).toBe(moved ? find : mount.querySelector(".cm-content"));
+});
+
 test("opening a structure's text in a dock points at the Text tab or the file tab", async () => {
   const a = molecule("a");
   const state = {

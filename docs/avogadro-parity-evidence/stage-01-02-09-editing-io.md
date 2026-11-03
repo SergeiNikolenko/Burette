@@ -474,3 +474,25 @@ Accessibility remains partial: Enter works on Apply and Redo, but after a clean
 Apply succeeds the disappearing button returns focus to the page. Full focus
 continuity, 320px acceptance, loader recovery, packaged/native acceptance and
 the complete scene/history matrix remain open.
+
+
+### Apply focus handoff (2026-11-04)
+
+The disappearing Apply Preview action now hands focus to the text editor only
+when the action still owns focus. Moving focus to Find during preview keeps it
+there. The component regression covers both cases and retains button focus
+through intermediate updates: 8 tests, 29 assertions passed. Typecheck, the
+agent-shell rebuild and plugin checks also passed before the connection loss.
+
+The recorded browser-dev run before interruption applied the clean Undo source
+with Enter at 1280px in dark mode; after Saved, focus was on `.cm-content` and
+the editor was contenteditable (`/tmp/burette-focus-dark.png`). The 320px light
+view was opened but Apply was not exercised there. This is not full keyboard,
+native, document-switch or dock-unmount acceptance. The callback runs when the
+button detaches, not exclusively on successful preview completion.
+
+Recovery inspection found no running UI test process and no terminal summary in
+`/tmp/burette-focus-ui.log`; that interrupted broad run is not counted as passed.
+The prior successful Undo suite remains separate evidence. The original browser
+tab was no longer available after reconnect. No new build was needed to recover
+the already generated shell assets.
