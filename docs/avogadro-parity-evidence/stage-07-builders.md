@@ -67,6 +67,49 @@ Tauri structure, compute-metal, compute-reliability and the four plist checks.
 This is a successful partial rerun; a complete JS gate on the latest revision
 is still required.
 
+### Capped polymer UI and scene round trip (2026-11-03)
+
+With server `e998669c5` and the same compiled frontend, enabling Selection
+mode before opening Build polymer kept the camera stable during picking.
+Real viewport clicks assigned Head C1, Head H H6, Tail C2 and Tail H H5.
+The UI then accepted six repeats, Isotactic, Methyl head, Phenyl tail and
+Relax geometry. Preview completed with 69 atoms and **Not converged**.
+Create published a separate `Polymer.sdf` tab. This advances the B3 workflow
+but does not pass its converged-relaxation expectation.
+
+The new tab's Save scene action downloaded `/Users/nikolenko/Desktop/Polymer.molx`.
+Opening it through the ordinary file chooser restored the visible chain.
+Saving the reopened scene as `Polymer (1).molx` preserved all three science
+assets byte-for-byte, including the manifest and both source attachments.
+The source attachment SHA-256 is
+`ee7e3dc7f181210aa407639e51a6b3eaed27f40328d97b2d27d97af07fd1ad09`.
+Both light and dark 1280×720 views were inspected. Compact layout and full
+keyboard acceptance are still pending.
+
+Independent RDKit parsing of the source extracted from the saved scene gave
+C25H44, 69 atoms, 69 bonds, zero radical electrons and MMFF94 energy
+68.07516313919785 kcal/mol. Its canonical isomeric SMILES was
+`CC[C@@H](C)C[C@@H](C)C[C@@H](C)C[C@@H](C)C[C@@H](C)C[C@@H](C)c1ccccc1`.
+Removing stereochemical annotations and assigning them from the 3D
+coordinates produced the same SMILES. Independently adding methyl and phenyl
+caps to the frozen isotactic reference SMILES also gave that canonical graph
+and stereochemistry.
+Evidence is `/tmp/burette-ui-capped-polymer-oracle.json`,
+`/tmp/burette-ui-capped-polymer.sdf`,
+`/tmp/burette-polymer-capped-preview.png` and
+`/tmp/burette-ui-capped-polymer-reopened.png`.
+
+The complete JS gate on `e998669c5` stopped at the packaged-plugin mirror
+check because the packaged `agent-shell-server.mjs` lacked the new picking
+asset allowlist entry. `vp run build:agent-shell` completed successfully and
+propagated that correction together with the current compiled frontend.
+The mirror, plugin and shell-security suites passed. The subsequent complete
+`vp run ci:fast js` finished with exit 0, including polymer ends (4 tests,
+86 assertions), all remaining UI suites and the post-UI checks.
+Logs are `/tmp/burette-parity-polymer-package-build.log` and
+`/tmp/burette-parity-ci-js-packaged-polymer.log`. This validates the rebuilt
+package's contracts; the UI evidence above used the separately compiled shell.
+
 ## Live preparation automation with mixed stereochemistry (2026-11-03)
 
 The packaged Python Workbench client exercised `prepare_3d` through the live
