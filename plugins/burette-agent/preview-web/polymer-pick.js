@@ -65,10 +65,16 @@ if (!window.BurettePolymerPick) {
       owner.cancelPick = abort;
       signal.addEventListener('abort', abort, { once: true }); owner.signal.addEventListener('abort', abort, { once: true });
       if (signal.aborted || owner.signal.aborted) { abort(); return; }
-      const interactivity = viewer.plugin.managers.interactivity, previousGranularity = interactivity.props.granularity;
+      const plugin = viewer.plugin, interactivity = plugin.managers.interactivity;
+      const previousGranularity = interactivity.props.granularity, previousSelectionMode = plugin.selectionMode;
+      // Focus-on-click runs before this subscriber. Select mode keeps the source
+      // camera still while the user assigns an atom to a polymer role.
+      plugin.selectionMode = true;
       interactivity.setProps({ granularity: 'element' });
       restoreGranularity = () => {
-        if (!viewer.plugin.disposed && interactivity.props.granularity === 'element') interactivity.setProps({ granularity: previousGranularity });
+        if (plugin.disposed) return;
+        if (interactivity.props.granularity === 'element') interactivity.setProps({ granularity: previousGranularity });
+        if (plugin.selectionMode === true) plugin.selectionMode = previousSelectionMode;
       };
       // MolStar uses a BehaviorSubject: its replayed last click predates this role.
       let armed = false;

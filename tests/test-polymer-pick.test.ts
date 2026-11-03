@@ -71,9 +71,11 @@ test("real native atom clicks preserve interleaved source rows, camera-free scen
       for (const sourceIndex of [0, 3, 7, 8]) {
         const pending = owner.pick(new AbortController().signal); await Promise.resolve();
         expect(f.plugin.managers.interactivity.props.granularity).toBe("element");
+        expect(f.plugin.selectionMode).toBe(true);
         f.click(f.loci(sourceIndex));
         expect(await pending).toBe(sourceIndex);
         expect(f.plugin.managers.interactivity.props.granularity).toBe("chain");
+        expect(f.plugin.selectionMode).toBe(false);
       }
       const subset = StructureElement.Loci.toStructure(f.loci(7)), subsetLoci = StructureElement.Loci.all(subset);
       expect(subsetLoci.elements[0].unit.elements).toHaveLength(1);
@@ -90,6 +92,7 @@ test("cancelling atom picking restores the previous level without overwriting a 
     const owner = await f.bind();
     f.plugin.managers.interactivity.setProps({ granularity: "residue" });
     for (const changed of [false, true]) {
+      f.plugin.selectionMode = changed;
       const controller = new AbortController(), pending = owner.pick(controller.signal).catch(error => error.name);
       await Promise.resolve();
       expect(f.plugin.managers.interactivity.props.granularity).toBe("element");
@@ -97,6 +100,7 @@ test("cancelling atom picking restores the previous level without overwriting a 
       controller.abort(); expect(await pending).toBe("AbortError");
       await new Promise(resolve => setTimeout(resolve, 5));
       expect(f.plugin.managers.interactivity.props.granularity).toBe(changed ? "chain" : "residue");
+      expect(f.plugin.selectionMode).toBe(changed);
     }
     owner.release();
   } finally { f.close(); }
