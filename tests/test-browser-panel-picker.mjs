@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { isCompressedName, supportedInnerExtension } from '../apps/desktop/src/lib/compressed-files/formats.ts';
 
 const source = readFileSync('apps/desktop/src/lib/web-demo-workspace.ts', 'utf8');
 const functionSource = name => {
@@ -7,7 +8,7 @@ const functionSource = name => {
   assert.ok(match, `missing ${name}`);
   return match[0].replace(/^\nexport /u, '\n');
 };
-const picker = ['pickWebDemoFiles', 'importFile', 'registerImportedFile', 'registerFile', 'selectFiles', 'cleanSegment', 'emitChange']
+const picker = ['pickWebDemoFiles', 'fileError', 'importFile', 'registerImportedFile', 'registerFile', 'selectFiles', 'cleanSegment', 'emitChange']
   .map(functionSource).join('\n');
 const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(picker);
 
@@ -17,7 +18,7 @@ const scope = {
   pickBrowserFiles: async options => { request = options; return selection; },
   trackWebDemoLocalFiles: () => {},
   isScientificFile: async () => false,
-  compressedName: () => false,
+  isCompressedName, supportedInnerExtension,
   saveBrowserImport: async record => record,
   isDocumentMediaPath: path => path.endsWith('.png'),
   readBrowserDevPickedBinary: path => pickedBinaries.get(path) ?? null,

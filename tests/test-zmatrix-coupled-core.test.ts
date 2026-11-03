@@ -102,8 +102,12 @@ test('signed torsions stay coupled through periodic equivalents and are measured
   expect(getEnergy(plus.molecule)).toBeCloseTo(getEnergy(minus.molecule), 10);
   for (const state of [plus, minus]) {
     const periodic = optimizeZmatrix(state.molecule, state.definition, { lockedCoordinates: ['1:0', '2:0', '2:1', '3:0', '3:1'] });
-    expect(periodic.energy).toBeCloseTo(getEnergy(state.molecule), 8);
-    expect(periodic.definition.rows[3].values[2]).toBe('D');
+    expect(periodic.molecule.atoms).toEqual(state.molecule.atoms);
+    expect(periodic.definition).toEqual(state.definition);
+    expect(periodic.energy).toBe(periodic.initialEnergy);
+    // RDKit 2026.09.1 MMFF94, explicit HOOH at the fixture coordinates.
+    // The browser kernel evaluates single-precision force-field parameters.
+    expect(periodic.energy).toBeCloseTo(16.005266226511793, 6);
   }
 });
 

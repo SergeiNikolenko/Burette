@@ -77,8 +77,12 @@ component difference was 1.29 × 10⁻¹⁰ Å. The isomeric SMILES and
 
 The packaged viewer's native compute restriction is separate from graph
 editing. Menu regressions keep the coordinate command hidden on hosted,
-visualization-only, Quick Look, XYZ, docking and multi-pose inputs. Live
-negative cases, draft recovery and compact viewport verification remain open.
+visualization-only, Quick Look, XYZ, docking and multi-pose inputs.
+At 760 × 720 in both themes, Enter opened the dihedral settings and command,
+the dialog focused its numeric input and showed Cancel and Apply, and Escape
+closed it. Live negative cases and dirty draft recovery remain open. The
+in-app browser dismissed the before-unload prompt during the dirty reload
+attempt, so the visible draft was not evidence of recovery.
 
 ## Stage 9: browser routes for compressed files
 
