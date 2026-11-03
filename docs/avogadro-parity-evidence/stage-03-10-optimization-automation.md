@@ -449,3 +449,45 @@ recorded separately from this vite-dev run.
 
 The plugin check passed after the completed build, and the packaged contract
 matched the root contract byte-for-byte. Logs: `/tmp/burette-spectrum-{tests-final,worker,cli,types-final,build,plugin}.log`.
+
+
+## Live Python ORCA optical frame spectra (2026-11-04)
+
+At `f6aefb6e983538435fbc2ee332e60fbda4658adb`, a fresh IAB **vite-dev** host
+opened `tests/fixtures/quantum/spectra-orca-camphor.out` normally, producing the
+27-atom XYZ view and retained frame science. This fixture retains unchanged
+geometry and electric-dipole absorption/CD tables from the pinned upstream ORCA
+output (see its optical reference document); it is not a newly executed ORCA job.
+
+The shipped Python client successfully executed both `electronic` and `ecd` via
+`wb.run("spectrum", {"kind": kind, "source": "frame", "frameIndex": 0,
+"axisStart": 9, "axisEnd": 3})` and exported all four artifacts for each.
+Defaults also succeeded (400 points, 5 to 1 eV), but that interval includes only
+the first of these 15 transitions. The explicit 9 to 3 eV interval (600 points)
+was used for the signed-signal acceptance check. File source, absent frame 1 and
+absent companion frame 0 each returned `JOB_UNAVAILABLE`, without fallback.
+
+Independent standard-library Python split the original ORCA table lines, compared
+all exported raw numeric columns and transition IDs exactly, then summed the
+peak-height Gaussian in double precision from the original energies/strengths
+at every exported grid position, with FWHM 0.1 eV. Maximum absolute errors:
+8.178e-8 (absorption) and 2.740e-5 (ECD). ECD grid extrema were -12.829895 and
++8.380362, retaining both signs. Raw ECD units remain `1e40*cgs`; position units
+remain the producer's eV. No wavenumber conversion was needed for this fixture.
+The [compact oracle](optical-frame-live-oracle.json) retains artifact hashes,
+parameters, row counts, refusal results and numerical errors.
+
+In the dark 1280 × 720 UI, Compute → Show spectra → Circular dichroism showed
+the same transition IDs, signed values and units. Double-click numeric entry
+and Enter set the axes to 9 and 3 eV. Export → Source CSV downloaded
+`spectra-orca-camphor-frame-1-ecd.csv`; its 1224 bytes matched the Python raw CSV
+exactly. Screenshot: `/tmp/burette-optical-ecd.png`. The exported grid itself was
+checked numerically, not reopened in the table viewer during this run.
+Local full job/artifact locator: `/tmp/burette-optical-live.json` (the wide-axis
+artifacts are alongside the default exports in that session directory).
+
+This adds live frame publication for two optical kinds to the preceding live
+file-scoped NMR evidence. It does not establish multi-frame selection, MCD
+companion publication, VCD/MCD/DOS live jobs, running cancellation, Jupyter,
+light/compact/full-keyboard acceptance, or prebuilt/native behavior. All stage
+statuses remain partial. No production implementation changed in this evidence pass.
