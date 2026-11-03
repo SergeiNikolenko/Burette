@@ -24,7 +24,9 @@ function reset() { state = { tabs: [tab], documents: [doc], setActiveDocument() 
 const store = Object.assign(() => {}, { getState: () => state, setState: (fn: any) => { Object.assign(state, fn(state)); } });
 mock.module("../apps/desktop/src/stores/molecule-store", () => ({ useMoleculeStore: store }));
 mock.module("../apps/desktop/src/lib/viewer-bridge", () => ({ activeViewerIframeForDocument: () => frame, requestViewerAction: async (_: string, action: any) => action.type === "observe_story" ? { count: 1 } : action.type === "workspace_scene_state" ? readiness() : sheetArchive ? { sheet: sheetArchive } : { dataBase64: "UEsDBA==" } }));
-mock.module("../apps/desktop/src/hooks/workspace-scene-import", () => ({ focusSceneDocument: async () => {} }));
+mock.module("../apps/desktop/src/hooks/workspace-scene-import", () => ({ focusSceneDocument: async (document: any) => {
+  state.activeTabId = state.tabs.find((item: any) => item.location.documentId === document.id)?.id;
+} }));
 mock.module("../apps/desktop/src/components/editor-area/page-kinds", () => ({ serializeLocation: (location: unknown) => location, deserializeLocation: (location: unknown) => location }));
 mock.module("../apps/desktop/src/lib/tauri", () => ({ isTauriRuntime: () => true, trackTauriListener: () => () => {} }));
 mock.module("../apps/desktop/src/components/ui/toast", () => ({ toast: { add: () => {} } }));
@@ -51,6 +53,30 @@ test("sheet checkpoint separates recovery bytes from original identity", async (
   expect(savedSheet?.sourcePath).toBe(doc.path);
   expect(savedSheet?.recoveryPath).toBe(doc.recoveryPath);
   expect(savedSheet?.sheet).toBe(sheetArchive);
+}));
+test("exit captures a fresh sheet and restores the selected non-scene tab", async () => withListener(async () => {
+  const sheet = { ...doc, renderer: "xyzrender-external", recoveryPath: undefined };
+  const freshTab = { ...tab, location: { ...tab.location, recoveryPath: undefined } };
+  state.documents = [sheet];
+  state.tabs = [freshTab, { id: "notes", location: { kind: "text-file", path: "/data/notes.txt" } }];
+  state.activeTabId = "notes";
+  state.setActiveTab = (id: string) => { state.activeTabId = id; };
+  sheetArchive = { version: 1, items: [{ svg: "<svg/>" }] };
+  await checkpointNativePopoutForExit();
+  expect({ source: savedSheet?.sourcePath, sheet: savedSheet?.sheet,
+    recovery: state.tabs[0].location.recoveryPath, documentRecovery: state.documents[0].recoveryPath,
+    selected: state.activeTabId, busy: nativePopoutBusy() })
+    .toEqual({ source: doc.path, sheet: sheetArchive, recovery: path, documentRecovery: path, selected: "notes", busy: false });
+}));
+test("failed exit checkpoint restores selection without publishing recovery", async () => withListener(async () => {
+  state.tabs.push({ id: "notes", location: { kind: "text-file", path: "/data/notes.txt" } });
+  state.activeTabId = "notes";
+  state.setActiveTab = (id: string) => { state.activeTabId = id; };
+  const before = [...state.tabs];
+  failSave = true;
+  await expect(checkpointNativePopoutForExit()).rejects.toThrow("disk full");
+  expect({ tabs: state.tabs, selected: state.activeTabId, busy: nativePopoutBusy() })
+    .toEqual({ tabs: before, selected: "notes", busy: false });
 }));
 test("receiver rejects an already-open source without modifying its tabs", async () => withListener(async () => {
   let opened = false; openIncoming = async () => { opened = true; };

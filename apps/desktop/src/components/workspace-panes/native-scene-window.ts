@@ -192,16 +192,24 @@ function retainCheckpoint(tabId: string, path: string) {
 
 export async function checkpointNativePopoutForExit() {
   if (nativePopoutBusy()) throw new Error("Wait for the scene to finish moving.");
+  const activeTabId = useMoleculeStore.getState().activeTabId;
   usePopout.setState({ busy: true });
   try {
     const store = useMoleculeStore.getState();
-    const recoveryIds = new Set(store.documents.filter(document => document.recoveryPath).map(document => document.id));
+    // A fresh rendered sheet also needs its SVG and layout, not a source reload.
+    const recoveryIds = new Set(store.documents.filter(document => document.recoveryPath || document.renderer === "xyzrender-external").map(document => document.id));
     for (const tab of store.tabs) {
       if (tab.location.kind !== "file" || (!recoveryIds.has(tab.location.documentId ?? "") && !isNativePopoutTab(tab.id))) continue;
       retainCheckpoint(tab.id, await checkpoint(tab.id));
     }
   }
-  finally { usePopout.setState({ busy: false }); }
+  finally {
+    // Capturing a lazy viewer focuses its tab. Preserve the user's selection
+    // both for restoration and when a failed checkpoint cancels the exit.
+    const store = useMoleculeStore.getState();
+    if (activeTabId && store.tabs.some(tab => tab.id === activeTabId)) store.setActiveTab(activeTabId);
+    usePopout.setState({ busy: false });
+  }
 }
 
 export function useNativePopoutSession(actions: ShellActions) {
