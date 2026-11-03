@@ -44,7 +44,7 @@ function controller() {
   const start = new Function(...Object.keys(values), `${js}; return startMouseTabReorder;`)(...Object.values(values));
   return { start: (id: string, altKey = false) => start(id, true, { button: 0, altKey, pointerId: 1, currentTarget: button, clientX: 0, clientY: 0 }),
     move: (x: number) => listeners.get("pointermove")?.({ buttons: 1, clientX: x, clientY: 0 }),
-    up: () => listeners.get("pointerup")?.({ clientX: 70, clientY: 10 }),
+    up: (x = 70, y = 10) => listeners.get("pointerup")?.({ clientX: x, clientY: y }),
     target: (value: unknown) => { target = value; }, moves, drops, snapshot, suppressed, captures: () => captures };
 }
 
@@ -71,4 +71,20 @@ test("Option-drag leaves the native file export gesture available", () => {
   const drag = controller(); drag.start("dirty-grid", true); drag.move(70);
   expect(drag.moves).toEqual([]);
   expect(drag.captures()).toBe(0);
+});
+
+test("a fast local drag commits its release position without an intermediate move", () => {
+  const drag = controller(); drag.start("dirty-grid"); drag.up();
+  expect(drag.drops).toEqual([{ tabId: "dirty-grid", x: 70, y: 10 }]);
+  expect(drag.snapshot.current).toBeNull();
+  expect(drag.captures()).toBe(0);
+});
+
+test("a short click and an unstarted drag released outside the window do not drop", () => {
+  for (const [x, y] of [[3, 2], [-20, 10], [1000, 10], [70, 700]]) {
+    const drag = controller(); drag.start("dirty-grid"); drag.up(x, y);
+    expect(drag.drops).toEqual([]);
+    expect(drag.moves).toEqual([]);
+    expect(drag.captures()).toBe(0);
+  }
 });

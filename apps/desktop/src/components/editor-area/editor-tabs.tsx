@@ -456,16 +456,11 @@ export function EditorTabs({
       frame = window.requestAnimationFrame(scrollAtEdge);
     };
 
-    const handleMouseMove = (moveEvent: MouseEvent) => {
+    const activateDrag = (x: number, y: number) => {
       const drag = mouseDragRef.current;
-      if (!drag || drag.tabId !== tabId) return;
-      pointer = { x: moveEvent.clientX, y: moveEvent.clientY };
-      if ((moveEvent.buttons & 1) !== 1) {
-        stopTabDrag();
-        return;
-      }
+      if (!drag || drag.tabId !== tabId) return false;
       if (!drag.active) {
-        if (Math.hypot(moveEvent.clientX - drag.startX, moveEvent.clientY - drag.startY) < TAB_MOUSE_REORDER_THRESHOLD_PX) return;
+        if (Math.hypot(x - drag.startX, y - drag.startY) < TAB_MOUSE_REORDER_THRESHOLD_PX) return false;
         drag.active = true;
         if (state.tabs.find(tab => tab.id === tabId)?.preview) useMoleculeStore.getState().promotePreviewTab(tabId);
         reorderSnapshotRef.current = state.tabs.map(tab => tab.id);
@@ -475,6 +470,16 @@ export function EditorTabs({
         if (tabHasDockPayload) actions.setStructureDragActive(true);
         frame = window.requestAnimationFrame(scrollAtEdge);
       }
+      return true;
+    };
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      pointer = { x: moveEvent.clientX, y: moveEvent.clientY };
+      if ((moveEvent.buttons & 1) !== 1) {
+        stopTabDrag();
+        return;
+      }
+      if (!activateDrag(pointer.x, pointer.y)) return;
       const outsideWindow = moveEvent.clientX < 0 || moveEvent.clientY < 0 || moveEvent.clientX >= window.innerWidth || moveEvent.clientY >= window.innerHeight;
       if (outsideWindow && canTransferNativeTab(tabId)) {
         nativeDragPendingRef.current = true;
@@ -496,6 +501,13 @@ export function EditorTabs({
       }
     };
     const handleMouseUp = (upEvent: MouseEvent) => {
+      // Fast gestures can deliver the release before an intermediate move.
+      // Resolve local drops from that final position; native transfers must
+      // still begin while the pointer is held down.
+      if (upEvent.clientX >= 0 && upEvent.clientY >= 0
+        && upEvent.clientX < window.innerWidth && upEvent.clientY < window.innerHeight) {
+        activateDrag(upEvent.clientX, upEvent.clientY);
+      }
       const drag = mouseDragRef.current;
       if (drag?.tabId === tabId && drag.active) {
         const strip = document.elementFromPoint(upEvent.clientX, upEvent.clientY)?.closest(".tab-strip");
