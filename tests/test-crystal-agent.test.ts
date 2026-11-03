@@ -15,8 +15,14 @@ afterEach(() => { for (const controller of controllers.splice(0)) controller.dis
 const revision = `sha256-${"a".repeat(64)}`;
 const submit = (kind: string, params?: unknown) => ({ type: "workbench", operation: "submit", operationId: "crystal", expectedSourceRevision: revision, job: { kind, params } });
 
-test("the contract lists nine job kinds and validates crystal parameters before queueing", () => {
-  expect(Object.keys(workbenchContractSummary().jobs)).toEqual(["properties", "energy", "energy_forces", "frame_energy_forces", "optimize", "prepare_3d", "conformers", "metadata_edit", "pair_distribution", "point_group", "space_group", "powder_xrd", "crystal_transform", "orbital_cube"]);
+test("the contract lists all job kinds and validates crystal parameters before queueing", () => {
+  expect(Object.keys(workbenchContractSummary().jobs)).toEqual([
+    "properties", "energy", "energy_forces", "frame_energy_forces", "optimize",
+    "prepare_3d", "conformers", "metadata_edit", "measurement_set", "coordinate_align",
+    "pair_distribution", "point_group", "space_group", "powder_xrd", "crystal_transform",
+    "orbital_cube", "insert_fragment", "hydrogens", "polymer", "smiles",
+    "nucleic_acid", "metal_complex", "peptide",
+  ]);
   const accepted = (kind: string, params?: unknown) => {
     const result = validateWorkbenchRequest(submit(kind, params));
     if (!result.ok) throw new Error(JSON.stringify(result.error));

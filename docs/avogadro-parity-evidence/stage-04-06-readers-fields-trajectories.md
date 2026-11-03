@@ -1,5 +1,31 @@
 # Stages 4–6 evidence: scientific readers, fields and trajectories
 
+## FCHK scientific scene save and reopen
+
+On 2026-11-03, the prebuilt-static browser imported the MIT-licensed minimized
+Gaussian water Raman FCHK from `tests/fixtures/quantum/gaussian16-water-raman.fchk`
+through New tab → Open file. The workspace tab's Save scene menu item,
+activated with Enter, downloaded `gaussian16-water-raman.molx`. Its SHA-256 was
+`7ac9eb5931f20c48ca5508fdabae54298235b35d23c92b715a75f37ea8a9d1b7`.
+
+An independent Python zipfile/struct reader verified every attachment's byte
+length and hash, exact Original FCHK bytes, all 81 expanded Hessian entries
+against the FCHK lower triangle, atomic masses, all 27 mode displacement
+components, and seven properties for each of the three modes. Those properties
+were frequency, reduced mass, force constant, IR intensity, Raman activity and
+both depolarization ratios. The archive retained three stable atom IDs.
+
+The exact downloaded MOLX reopened through the ordinary picker as a separate
+workspace document with a 3D view. Cmd+P → Show vibrations displayed frequencies
+2169.9, 4141.3 and 4392.4 cm⁻¹ with IR, Raman and depolarization columns.
+Vibrations → Export → Modes as JSON produced the restored atoms, all mode
+values and displacements exactly as stored in the verified scientific payload.
+The displayed values are rounded; exported values preserve source precision.
+
+This scenario covers the unchanged FCHK source and its scientific consumer.
+Edited sources, other producer formats, animation, cancellation, scene merging,
+theme/viewport coverage and native scene acceptance remain open.
+
 ## Indexed trajectory plots
 
 The source owner in `87f71e7aa` retains scientific reader precedence. Indexed
