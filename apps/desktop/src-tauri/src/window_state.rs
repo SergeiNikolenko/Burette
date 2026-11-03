@@ -190,7 +190,8 @@ impl WindowStateRegistry {
         &self,
         app: &tauri::AppHandle<R>,
     ) -> io::Result<()> {
-        let windows = app.webview_windows();
+        let mut windows = app.webview_windows();
+        windows.retain(|label, _| valid_workspace_label(label));
         let live_labels = windows.keys().cloned().collect::<HashSet<_>>();
         let focused = windows
             .values()
@@ -226,6 +227,12 @@ impl WindowStateRegistry {
             }
             if focused.is_some() {
                 manifest.active_label = focused;
+            } else if manifest
+                .active_label
+                .as_ref()
+                .is_some_and(|label| !live_labels.contains(label))
+            {
+                manifest.active_label = None;
             }
             manifest.clone()
         };
@@ -432,6 +439,35 @@ fn intersection_size(
 #[cfg(test)]
 mod tests {
     use super::{intersection_area, intersection_size, merge_geometry, WindowGeometry};
+
+    #[test]
+    fn exit_snapshot_excludes_preview_and_retains_last_workspace() {
+        use tauri::test::{mock_builder, mock_context, noop_assets};
+        let app = mock_builder().build(mock_context(noop_assets())).unwrap();
+        let label = format!("workspace-{}", uuid::Uuid::new_v4());
+        let workspace =
+            tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::default())
+                .build()
+                .unwrap();
+        let preview = tauri::WebviewWindowBuilder::new(
+            &app,
+            "workspace-preview-test",
+            tauri::WebviewUrl::default(),
+        )
+        .build()
+        .unwrap();
+        let registry = super::WindowStateRegistry::unavailable();
+        registry.handle_event(&workspace, &tauri::WindowEvent::Focused(true), false);
+        registry.handle_event(&preview, &tauri::WindowEvent::Focused(true), false);
+        registry.capture_open_windows(app.handle()).unwrap();
+        assert_eq!(
+            registry.restoration_order(),
+            (vec![label.clone()], Some(label.clone()))
+        );
+        registry.set_active(&format!("workspace-{}", uuid::Uuid::new_v4()));
+        registry.capture_open_windows(app.handle()).unwrap();
+        assert_eq!(registry.restoration_order(), (vec![label], None));
+    }
 
     fn geometry(x: i32, y: i32, width: u32, height: u32) -> WindowGeometry {
         WindowGeometry {
