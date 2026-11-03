@@ -45,6 +45,7 @@ import { useSettingsStore } from "./settings-store";
 export type TabPane = "right" | "bottom" | "floating";
 
 export type MoleculeTab = {
+  preview?: boolean;
   title?: string;
   pinned?: boolean;
   pane?: TabPane;
@@ -106,6 +107,8 @@ type MoleculeState = {
   openScreenTab: (location: Location, pane?: TabPane | null, options?: { newTab: boolean }) => void;
   togglePinnedTab: (id: string) => void;
   renameTab: (id: string, title: string) => void;
+  promotePreviewTab: (id: string) => void;
+  markPreviewTab: (id: string) => void;
   closeTab: (id: string) => void;
   closeTabs: (ids: string[]) => void;
   closeDocument: (id: string) => void;
@@ -167,14 +170,14 @@ export function createLauncherTab(id = createTabId()): MoleculeTab {
 export function createFileTab(document: ViewerDocument, id = createTabId()): MoleculeTab {
   return {
     id,
-    location: { kind: "file", documentId: document.id, path: document.path },
+    location: fileLocation(document),
     back: [],
     forward: [],
   };
 }
 
 function fileLocation(document: ViewerDocument): Location {
-  return { kind: "file", documentId: document.id, path: document.path };
+  return { kind: "file", documentId: document.id, path: document.path, ...(document.recoveryPath ? { recoveryPath: document.recoveryPath } : {}) };
 }
 
 function replaceFileLocation(
@@ -333,6 +336,7 @@ function recentStructuresForMigration(
 
 function persistedTabs(tabs: MoleculeTab[]) {
   return tabs.filter((tab) => (
+    !tab.preview &&
     tab.location.kind !== "settings" &&
     tab.location.kind !== "fep-setup" &&
     tab.location.kind !== "fep-network" &&
@@ -522,6 +526,7 @@ function ensureTabs(tabs: MoleculeTab[]) {
 }
 
 function serializeTab(tab: MoleculeTab): SessionTab | null {
+  if (tab.preview) return null;
   const location = serializeLocation(tab.location);
   if (!location) return null;
   return {
@@ -622,7 +627,7 @@ export const useMoleculeStore = create<MoleculeState>()(
           for (const document of incoming) {
             const existing = tabByPath.get(document.path);
             if (existing) {
-              existing.location = { kind: "file", documentId: document.id, path: document.path };
+              existing.location = fileLocation(document);
               openedTabId ??= existing.id;
             } else {
               const tab = createFileTab(document);
@@ -1051,7 +1056,7 @@ export const useMoleculeStore = create<MoleculeState>()(
           return { tabs: [...state.tabs, tab], activeTabId: tab.id, activeDocumentId: document.id };
         }),
       togglePinnedTab: (id) => set(state => ({
-        tabs: state.tabs.map(tab => tab.id === id ? { ...tab, pinned: !tab.pinned } : tab)
+        tabs: state.tabs.map(tab => tab.id === id ? { ...tab, preview: false, pinned: !tab.pinned } : tab)
           .sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned))),
       })),
       moveTab: (id, toIndex) =>
@@ -1091,13 +1096,20 @@ export const useMoleculeStore = create<MoleculeState>()(
         tabs: state.tabs.map((tab) => {
           if (tab.id !== id) return tab;
           const { title: _previous, ...rest } = tab;
-          return { ...rest, ...tabTitle(title) };
+          return { ...rest, preview: false, ...tabTitle(title) };
         }),
       })),
+      promotePreviewTab: (id) => set(state => ({ tabs: state.tabs.map(tab => tab.id === id ? { ...tab, preview: false } : tab) })),
+      markPreviewTab: (id) => set(state => {
+        const target = state.tabs.find(tab => tab.id === id);
+        if (!target || target.pinned) return state;
+        return { tabs: state.tabs.map(tab => (tab.pane ?? null) === (target.pane ?? null)
+          ? { ...tab, preview: tab.id === id } : tab) };
+      }),
       closeTab: (id) =>
         set((state) => {
           const closing = state.tabs.find((tab) => tab.id === id);
-          rememberClosedTab(closing);
+          rememberClosedTab(closing, state.tabs, state.documents);
           return stateAfterClosingTabs(state, new Set([id]));
         }),
       closeDocument: (id) =>
@@ -1105,13 +1117,14 @@ export const useMoleculeStore = create<MoleculeState>()(
           const document = state.documents.find((candidate) => candidate.id === id);
           if (!document) return state;
           const wanted = new Set(state.tabs.filter(tab => tab.location.kind === "file" && tab.location.path === document.path).map(tab => tab.id));
+          for (const tab of state.tabs) if (wanted.has(tab.id)) rememberClosedTab(tab, state.tabs, state.documents);
           return stateAfterClosingTabs(state, wanted, [document.path]);
         }),
       closeTabs: (ids) => set((state) => {
         const wanted = new Set(ids);
         for (const tab of state.tabs) {
           if (!wanted.has(tab.id)) continue;
-          rememberClosedTab(tab);
+          rememberClosedTab(tab, state.tabs, state.documents);
         }
         return stateAfterClosingTabs(state, wanted);
       }),
@@ -1120,7 +1133,7 @@ export const useMoleculeStore = create<MoleculeState>()(
           if (!state.activeTabId) return state;
           const activeTab = state.tabs.find((tab) => tab.id === state.activeTabId);
           if (!activeTab) return state;
-          rememberClosedTab(activeTab);
+          rememberClosedTab(activeTab, state.tabs, state.documents);
           return stateAfterClosingTabs(state, new Set([activeTab.id]));
         }),
       closeAllDocuments: () => {

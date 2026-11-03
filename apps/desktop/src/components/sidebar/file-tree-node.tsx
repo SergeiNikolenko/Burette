@@ -5,7 +5,6 @@ import { SidebarTooltip } from "./sidebar-tooltip";
 import { Pin, PinFilled, DotsHorizontal } from "../ui/app-icons";
 import { SidebarFolderIcon } from "./sidebar-folder-icon";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
-import { documentFallbackExtensions } from "../../lib/file-routing";
 import type { SidebarProject, SidebarProjectItem } from "../../lib/sidebar-projects";
 import { hasStructureDrag, readStructureDragPayload, type StructureDragPayload } from "../../lib/structure-drag";
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
@@ -17,6 +16,8 @@ import type { ShellActions, ShellViewState } from "../types";
 import { FileKindIcon, fileKindForPath } from "./file-kind-icon";
 import { folderHoverCard, structureHoverCard, useSidebarHoverCard } from "./sidebar-hover-card";
 import { useSidebarStructureDrag } from "./use-sidebar-structure-drag";
+import { openSidebarFile } from "../../lib/sidebar-file-preview";
+import { useSourceEditing } from "../../lib/source-editing/context";
 
 const COLLAPSED_PROJECT_ITEM_LIMIT = 5;
 // Collapse only when at least two rows would hide behind "Show more".
@@ -577,30 +578,22 @@ export function ProjectItem({
     state,
   });
   const hoverCard = useSidebarHoverCard(structureHoverCard(item));
-  const openItem = () => {
-    // A CSV/TSV row can be bound to the hidden text copy that the grid and dock
-    // keep for source editing; reopen it instead so it lands in the molecule
-    // grid or the table viewer. Raw text stays an explicit Open As choice.
-    const textCopyOfTable = item.renderer === "text" && documentFallbackExtensions.has(item.extension.toLowerCase());
-    if (item.documentId && !textCopyOfTable) {
-      actions.selectDocument(item.documentId);
-      return;
-    }
-    void actions.openRecentStructure({
-      path: item.path,
-      title: item.title,
-      extension: item.extension,
-      renderer: item.renderer,
-      byteCount: item.byteCount,
-      openedAt: item.openedAt ?? Date.now(),
-    });
+  const sourceEditing = useSourceEditing();
+  const previewState = useRef({ state, actions, sourceEditing });
+  previewState.current = { state, actions, sourceEditing };
+  const openItem = (permanent = false) => {
+    void openSidebarFile(item.path, permanent, () => previewState.current.actions, document => {
+      const current = previewState.current;
+      const source = current.sourceEditing?.sessionForDocument(document);
+      return current.state.dirtyGridDocuments.has(document.id) || Boolean(source?.dirty || source?.saving);
+    }, id => previewState.current.state.tabs.some(tab => tab.id === id)).catch(error => console.warn("Sidebar file open failed", error));
   };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) return;
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      if (!menus.select(item.path, event)) openItem();
+      if (!menus.select(item.path, event)) openItem(true);
     }
   };
 
@@ -654,6 +647,7 @@ export function ProjectItem({
       onMouseDown={sidebarDrag.onMouseDown}
       onClickCapture={sidebarDrag.onClickCapture}
       onClick={event => { if (!menus.select(item.path, event)) openItem(); }}
+      onDoubleClick={event => { event.preventDefault(); openItem(true); }}
       aria-selected={menus.selected.has(item.path)}
       onDragStart={sidebarDrag.onDragStart}
       onDragEnd={sidebarDrag.onDragEnd}
