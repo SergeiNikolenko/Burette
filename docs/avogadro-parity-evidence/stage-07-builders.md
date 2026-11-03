@@ -1,5 +1,30 @@
 # Stage 7 evidence: builders and chemical editing
 
+## Live preparation automation with mixed stereochemistry (2026-11-03)
+
+The packaged Python Workbench client exercised `prepare_3d` through the live
+prebuilt browser shell, using RDKit-generated planar MOL inputs. Both jobs
+completed with MMFF94/BFGS and exported 19-atom / 18-bond SDF structures.
+
+| Input | Independent RDKit export check | Optimization | Export SHA-256 |
+| --- | --- | --- | --- |
+| `C[C@H](O)CC(C)O` | Canonical isomeric SMILES `CC(O)C[C@H](C)O`; center 1 remains S and center 4 remains unspecified | Converged, 121 steps, 5.42497470306387 kcal/mol | `29a63ac91f482336a381b8b2ac8dce3a24615cddeebe5c4a8fa64180fc391dbc` |
+| `C/C=C/CC=CC` | Canonical isomeric SMILES `CC=CC/C=C/C`, preserving specified and unspecified double-bond stereochemistry | Converged, 183 steps, 11.330970080711502 kcal/mol | `e575391d98834957d6404110b8ad171dab64244235dbed03799083d251c56408` |
+
+Both exported conformers are marked 3D. Source revisions stayed unchanged and
+repeating each submission with its original operation ID returned the same
+job ID. One status request timed out while browser control was unavailable;
+querying the existing operation after reconnecting found it succeeded, and
+acceptance continued with that job instead of replacing it.
+
+The first SDF was subsequently opened through the browser file picker. The
+rendered molecular view and Info confirmed 19 atoms / 18 bonds in the light
+1280×720 surface. Evidence is in `/tmp/burette-live-prepare-stereo-report.json`
+and `/tmp/burette-mixed-stereo-reopened-light-view.png`. These results cover
+live Python/CLI automation and the exported final structures. In-place UI
+preparation of these two inputs, every trajectory frame's stereochemistry,
+MOLX persistence and compact/keyboard acceptance remain unverified.
+
 ## Live unspecified-stereo 3D preparation (2026-11-03)
 
 The current integration frontend was rebuilt with `vp build` for the
