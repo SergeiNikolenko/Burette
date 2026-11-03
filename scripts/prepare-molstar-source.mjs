@@ -130,7 +130,10 @@ function compileSource() {
   };
   visit(resolve(molstarSourceRoot, 'packages'));
   visit(resolve(molstarSourceRoot, 'apps'));
-  copyFileSync(resolve(molstarSourceRoot, 'version.json'), resolve(molstarCompiledRoot, 'version.json'));
+  // The copied workspace configs extend this root file when Vite processes the compiled modules.
+  for (const name of ['tsconfig.base.json', 'version.json']) {
+    copyFileSync(resolve(molstarSourceRoot, name), resolve(molstarCompiledRoot, name));
+  }
 }
 
 function normalizeDeclarations() {
