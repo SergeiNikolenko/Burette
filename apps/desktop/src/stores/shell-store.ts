@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { observeSharedStore, refreshSharedActions } from "./shared-store";
 import { isTemporaryDocumentPath } from "../lib/temporary-documents";
 import { isNativePreviewWindow, workspaceStorageKey } from "../lib/window-scope";
 
@@ -109,7 +110,7 @@ export function getShellStoreSnapshot(): ShellStoreSnapshot {
 
 export const useShellStore = create<ShellState>()(
   persist<ShellState, [], [], PersistedShellState>(
-    (set) => ({
+    refreshSharedActions<ShellState>((set) => ({
       sidebarOpen: !isNativePreviewWindow(),
       sidebarWidth: 340,
       projectsOpen: true,
@@ -248,7 +249,7 @@ export const useShellStore = create<ShellState>()(
             pinnedStructurePaths: persistentPinnedPaths(snapshot.pinnedStructurePaths),
           };
         }),
-    }),
+    })),
     {
       name: workspaceStorageKey("burette.shell.ui", { windowScoped: false }),
       partialize: (state) => ({
@@ -283,3 +284,6 @@ export const useShellStore = create<ShellState>()(
     },
   ),
 );
+
+const stopObserving = observeSharedStore(useShellStore);
+if (import.meta.hot) import.meta.hot.dispose(stopObserving);

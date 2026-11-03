@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { observeSharedStore, refreshSharedActions } from "./shared-store";
 import type { ViewerPreferences } from "../types";
 import { normalizeShortcutOverrides } from "../lib/keyboard-shortcuts";
 
@@ -75,11 +76,11 @@ type PersistedSettingsState = Pick<SettingsState, "preferences">;
 
 export const useSettingsStore = create<SettingsState>()(
   persist<SettingsState, [], [], PersistedSettingsState>(
-	    (set) => ({
+	    refreshSharedActions<SettingsState>((set) => ({
 	      preferences: defaultPreferences,
 	      setPreference: (key, value) => set((state) => ({ preferences: { ...state.preferences, [key]: value } })),
 	      restoreSnapshot: (snapshot) => set({ preferences: normalizePreferences(cloneJson(snapshot.preferences)) }),
-	    }),
+	    })),
     {
       name: "burette.shell",
       partialize: (state) => ({
@@ -163,3 +164,6 @@ function normalizePreferences(preferences: ViewerPreferences): ViewerPreferences
   normalizeAppDefaults(normalized);
   return normalized;
 }
+
+const stopObserving = observeSharedStore(useSettingsStore);
+if (import.meta.hot) import.meta.hot.dispose(stopObserving);
