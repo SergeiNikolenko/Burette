@@ -66,7 +66,9 @@ function changedLiveAppliedKeys(previous: ViewerPreferences, next: ViewerPrefere
     if (!(key in LIVE_APPLIED_PREFERENCE_MESSAGES)) return null;
     changed.push(key as LiveAppliedPreferenceKey);
   }
-  return changed.length ? changed : null;
+  // Rehydration on window focus creates an equal object. An empty change list
+  // needs no viewer work; null means a real change requires rebuilding HTML.
+  return changed;
 }
 
 function broadcastLiveAppliedPreferences(keys: LiveAppliedPreferenceKey[], preferences: ViewerPreferences) {
@@ -161,7 +163,8 @@ export function useAppPreferenceEffects({
       preserveActiveTab: true,
       shouldApply: () => {
         const current = currentInputsRef.current;
-        if (current.preferences !== preferences || !current.documents.includes(document)) return false;
+        const preferencesChanged = changedLiveAppliedKeys(preferences, current.preferences)?.length !== 0;
+        if (preferencesChanged || !current.documents.includes(document)) return false;
         deferred = current.isDocumentDirty(document);
         return !deferred;
       },

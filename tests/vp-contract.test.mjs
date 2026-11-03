@@ -6,6 +6,7 @@ import { execPath } from "node:process";
 const isolatedNode = script => promisify(execFile)(execPath, [fileURLToPath(new URL(script, import.meta.url))]);
 
 const contractScripts = {
+  "test-preference-runtime-refresh.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-preference-runtime-refresh.mjs", import.meta.url))]),
   "test-native-page-existing-window.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-native-page-existing-window.test.tsx", import.meta.url))]),
   "test-source-editor-transfer-view.test.ts": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-source-editor-transfer-view.test.ts", import.meta.url))]),
   "test-native-tab-transfer.test.ts": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-native-tab-transfer.test.ts", import.meta.url))]),
