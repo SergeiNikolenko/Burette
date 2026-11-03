@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmdirSync, unlinkSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import initRDKitModule, { type MainModule } from "@rdkit/rdkit";
 import { buildBrowserWorker } from "./support/browser-worker-build";
@@ -14,12 +14,18 @@ const fixture = JSON.parse(readFileSync(new URL("./fixtures/polymer/propylene-re
 const references = JSON.parse(readFileSync(new URL("./fixtures/polymer/tacticity-references.json", import.meta.url), "utf8")).references as { name: string; smiles: string }[];
 const text = sdfFromGraph(fixture.atoms, fixture.bonds, "Propylene");
 const built = await buildBrowserWorker(new URL("../apps/desktop/src/lib/workbench/polymer-worker.ts", import.meta.url));
-const directory = mkdtempSync(join(tmpdir(), "polymer-ends-")), file = join(directory, "worker.js");
+const directory = mkdtempSync(join(tmpdir(), "polymer-ends-"));
+const file = join(directory, "apps/desktop/src/lib/workbench/worker.js");
+const wasm = join(directory, "PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.wasm");
+// Preserve the worker-relative asset layout used by the browser's MMFF evaluator.
+mkdirSync(dirname(file), { recursive: true });
+mkdirSync(dirname(wasm), { recursive: true });
+copyFileSync(new URL("../PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.wasm", import.meta.url), wasm);
 await Bun.write(file, built.outputs[0]);
 const NativeWorker = Worker;
 class CompiledWorker extends NativeWorker { constructor(_url: string | URL, options?: WorkerOptions) { super(pathToFileURL(file), options); } }
 Object.defineProperty(globalThis, "Worker", { configurable: true, value: CompiledWorker });
-afterAll(() => { Object.defineProperty(globalThis, "Worker", { configurable: true, value: NativeWorker }); unlinkSync(file); rmdirSync(directory); });
+afterAll(() => { Object.defineProperty(globalThis, "Worker", { configurable: true, value: NativeWorker }); rmSync(directory, { recursive: true, force: true }); });
 let rdkit: MainModule;
 beforeAll(async () => { rdkit = await initRDKitModule(); });
 const canonical = (input: string) => { const mol = rdkit.get_mol(input, JSON.stringify({ removeHs: true })); if (!mol) throw new Error("RDKit could not read the molecule."); try { return mol.get_smiles(); } finally { mol.delete(); } };

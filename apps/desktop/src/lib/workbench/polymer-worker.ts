@@ -3,6 +3,7 @@ import { buildPolymer } from "../molecular-workbench/polymer";
 import { applyFragmentEdit, placeFragment } from "../molecular-workbench/fragment-insertion";
 import { fragmentTemplate } from "../molecular-workbench/fragment-source";
 import { optimize } from "../molecular-workbench/chemistry";
+import { prepareUffWasm } from "../molecular-workbench/uff-wasm";
 import { sdfFromGraph, unsupportedAtomMetadata } from "./formats";
 import { POLYMER_END_GROUPS, POLYMER_RELAXATION_ATOMS, type PolymerInput, type PolymerRequest, type PolymerResult } from "./polymer-task";
 
@@ -26,7 +27,10 @@ async function build(data: PolymerRequest, source: ReturnType<typeof parseMolecu
   let sdf = sdfFromGraph(atoms, bonds, "Polymer"), relaxation: PolymerResult["relaxation"];
   if (data.relax) {
     if (atoms.length > POLYMER_RELAXATION_ATOMS) throw new Error(`Relaxation supports polymers of up to ${POLYMER_RELAXATION_ATOMS} atoms.`);
-    const structure = parseMolecule(sdf, "sdf"), result = optimize(structure, { forceField: "MMFF94", maxIterations: 1000 });
+    // MMFF analytic gradients use RDKit terms, as in the molecular compute worker.
+    await prepareUffWasm();
+    // Use limited-memory relaxation for flexible chains within the same step budget.
+    const structure = parseMolecule(sdf, "sdf"), result = optimize(structure, { forceField: "MMFF94", method: "lbfgs", maxIterations: 1000 });
     if (result.molecule.atoms.some((atom, i) => atom.element !== atoms[i].element)) throw new Error("Relaxation changed the atom order.");
     sdf = sdfFromGraph(result.molecule.atoms, bonds, "Polymer");
     relaxation = { forceField: "MMFF94", initialEnergy: result.initialEnergy, energy: result.energy, unit: "kcal/mol", converged: result.converged };

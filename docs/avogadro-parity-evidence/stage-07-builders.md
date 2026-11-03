@@ -1,5 +1,27 @@
 # Stage 7 evidence: builders and chemical editing
 
+## Polymer relaxation worker correction (2026-11-03)
+
+The full JS gate stopped at `test:polymer-ends`: relaxation exceeded the
+default five-second test deadline. Isolated runs also exceeded 30 and 120
+seconds. The polymer worker called the synchronous optimizer before preparing
+the RDKit module that supplies MMFF terms, so it fell back to central-difference
+gradients. It now awaits the same module preparation as the compute worker.
+The compiled-worker fixture includes the real WASM asset at its relative path.
+
+With analytic gradients, dense BFGS exhausted the 1,000-step limit on the
+six-repeat isotactic propylene reference (maximum gradient 0.5200643
+kcal/(mol·Å)). Polymer relaxation now explicitly uses L-BFGS within that same
+budget. Diagnostic execution converged in 624 steps, reducing energy from
+4225.5002223 to 37.2677835 kcal/mol with maximum gradient 0.000759019
+kcal/(mol·Å). The existing independent RDKit stereo/graph checks and reference
+C–C/C–H bond-length bounds pass without relaxing their assertions or deadline.
+`vp run test:polymer-ends` passes 4 tests / 86 assertions; polymer worker/source
+and builder UI suites also pass. Logs are `/tmp/burette-polymer-ends-final.log`,
+`/tmp/burette-polymer-worker-final.log`, and
+`/tmp/burette-polymer-builder-final.log`. The full JS gate remains failed at
+the earlier revision; rebuilt live-browser polymer acceptance remains pending.
+
 ## Live preparation automation with mixed stereochemistry (2026-11-03)
 
 The packaged Python Workbench client exercised `prepare_3d` through the live
