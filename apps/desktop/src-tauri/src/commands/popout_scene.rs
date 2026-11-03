@@ -39,7 +39,7 @@ pub(crate) fn relay_popout_handoff<R: tauri::Runtime>(
                 return Err("Only a saved popout scene can be handed off.".into());
             }
         }
-        "ready" | "failed" | "cancel" => {}
+        "ready" | "commit" | "committed" | "failed" | "cancel" => {}
         _ => return Err("Unknown scene handoff.".into()),
     }
     let target_window = app
@@ -183,6 +183,64 @@ pub(crate) fn recovery_source<R: tauri::Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_relay_delivers_scene_commit_and_ack_to_their_peer() {
+        use std::sync::{Arc, Mutex};
+        use tauri::{
+            test::{mock_builder, mock_context, noop_assets},
+            Listener,
+        };
+
+        let app = mock_builder().build(mock_context(noop_assets())).unwrap();
+        let source = tauri::WebviewWindowBuilder::new(&app, "main", tauri::WebviewUrl::default())
+            .build()
+            .unwrap();
+        let destination =
+            tauri::WebviewWindowBuilder::new(&app, "workspace-other", tauri::WebviewUrl::default())
+                .build()
+                .unwrap();
+        let delivered = Arc::new(Mutex::new(Vec::new()));
+        for window in [&source, &destination] {
+            let delivered = Arc::clone(&delivered);
+            let label = window.label().to_owned();
+            window.listen("burette-scene-window-handoff", move |event| {
+                let payload: serde_json::Value = serde_json::from_str(event.payload()).unwrap();
+                delivered.lock().unwrap().push((label.clone(), payload));
+            });
+        }
+        for (kind, sender, receiver) in [
+            ("ready", &destination, &source),
+            ("commit", &source, &destination),
+            ("committed", &destination, &source),
+            ("failed", &destination, &source),
+            ("cancel", &source, &destination),
+        ] {
+            relay_popout_handoff(
+                app.handle().clone(),
+                sender.clone(),
+                receiver.label().into(),
+                serde_json::json!({"kind": kind, "id": "transfer", "from": "spoofed"}),
+            )
+            .unwrap();
+            let messages = delivered.lock().unwrap().drain(..).collect::<Vec<_>>();
+            assert_eq!(
+                messages,
+                vec![(
+                    receiver.label().to_owned(),
+                    serde_json::json!({"kind": kind, "id": "transfer", "from": sender.label()})
+                )]
+            );
+        }
+        assert!(relay_popout_handoff(
+            app.handle().clone(),
+            source,
+            destination.label().into(),
+            serde_json::json!({"kind": "unknown", "id": "transfer"})
+        )
+        .is_err());
+        assert!(delivered.lock().unwrap().is_empty());
+    }
 
     #[test]
     fn recovery_descriptor_preserves_original_identity_and_dirty_state() {
