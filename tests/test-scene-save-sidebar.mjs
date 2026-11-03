@@ -39,3 +39,30 @@ for (const outcome of ["saved", "cancelled", "failed"]) {
   }
 }
 console.log("Scene save preserves snapshot bytes, opens and pins the saved file, and skips cancelled or failed exports");
+
+const exportFragment = source.slice(source.indexOf("  const exportStructure ="), source.indexOf("  const copySequence ="));
+const exportJs = ts.transpileModule(exportFragment, { compilerOptions: { target: ts.ScriptTarget.ESNext } }).outputText;
+for (const outcome of ["saved", "missing", "changed", "capture-failed"]) {
+  const downloads = [];
+  const text = "exact SDF with stereo, coordinates and metadata\n$$$$\n";
+  const exportStructure = new Function("captureWorkspaceSceneSnapshot", "sourceEditing", "scenePaths", "actions", `${exportJs}; return exportStructure;`)(
+    async (document, options) => {
+      assert.equal(options.scientificData, "require");
+      assert.equal(options.sceneFileCount, 1);
+      if (outcome === "capture-failed") throw new Error("binding changed");
+      return { source: outcome === "missing" ? null : { extension: "sdf", text }, confirm: async () => {
+        if (outcome === "changed") throw new Error("source changed");
+      } };
+    }, null, () => ["polymer"], { saveKetcherExportFile: async value => downloads.push(value) });
+  const document = { id: "polymer", title: "Polymer.molx" };
+  if (outcome === "saved") {
+    await exportStructure(document, "sdf");
+    assert.deepEqual(downloads, [{ title: "Polymer.sdf", extension: "sdf", text }]);
+    await exportStructure({ ...document, title: "Renamed polymer" }, "sdf");
+    assert.deepEqual(downloads[1], { title: "Renamed polymer.sdf", extension: "sdf", text });
+  } else {
+    await assert.rejects(exportStructure(document, "sdf"), /changed|validated SDF/);
+    assert.deepEqual(downloads, []);
+  }
+}
+console.log("SDF export preserves the validated source and refuses absent or changed bindings before download");

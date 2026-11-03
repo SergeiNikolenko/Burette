@@ -871,3 +871,61 @@ and `/tmp/burette-pick-readback-created-light.png`.
 This resolves the reproduced first-click sequence in these browser runs. Narrow
 screen picking, existing nonempty selection preservation, capped relaxation and
 standalone SDF export/reopen still need their own acceptance evidence.
+
+### Standalone SDF export and restored scene source (2026-11-03)
+
+The workspace file menu now offers Export → Structure → SDF for a single
+SDF/SD source, including the logical source restored from MOLX. Export reuses
+the scientific scene snapshot checks and writes its validated source text.
+These checks require the displayed graph digest, current source revision and
+single-structure binding to agree. The implementation currently serializes the
+full scene while obtaining that validated source, so scene capture limits and
+failures also apply to this export.
+
+The packaged browser-agent-shell on port 65427 opened the existing capped
+polymer SDF. Export through the workspace tab menu downloaded a standalone
+SDF, which Cmd+O opened through the ordinary file chooser. Mol* reported one
+model and 69 atoms. Export from the restored `Polymer.molx` similarly produced
+`Polymer.sdf`; ordinary reopening reported one model and 69 atoms. Runtime
+metadata is `/tmp/burette-sdf-source-export-session.json`.
+
+All four downloaded files, including the download after the compact-menu
+rebuild, match the 6,432-byte source exactly. Their SHA-256 is
+`ee7e3dc7f181210aa407639e51a6b3eaed27f40328d97b2d27d97af07fd1ad09`.
+Independent RDKit parsing of the initial exports and restored-source export
+reported 69 atoms, 69 bonds, formula C25H44, 3D coordinates and the same
+stereochemical SMILES. Oracle reports are
+`/tmp/burette-sdf-source-export-oracle.json` and
+`/tmp/burette-sdf-restored-export-oracle.json`.
+
+At 320 × 720, the original context submenu extended to x=334. Its minimum
+width now respects Radix's available width and the viewport. After rebuilding,
+the light SDF item occupied x=162–311 and the dark item x=9–164. Enter activated
+the export and focus returned to the workspace tab. Escape dismissed the
+menus, and the viewport was reset before the final ordinary reopen.
+Screenshots are `/tmp/burette-sdf-export-320-light.png`,
+`/tmp/burette-sdf-export-320-dark.png` and
+`/tmp/burette-sdf-export-reopened.png`.
+
+The scene-save regression checks exact source text and refusal on absent,
+changed or failed source capture. The scientific SDF/MOLX flow additionally
+checks the source returned before and after logical restoration.
+`vp run build:agent-shell` passed after the submenu fix.
+
+This run starts from the previously generated capped polymer and its MOLX.
+A fresh builder Create → SDF export → reopen sequence, complete keyboard-only
+menu navigation, native save-dialog acceptance and the exact B3 Relaxed result
+remain open. The existing capped structure still has Not converged status.
+
+A follow-up keyboard check on the reopened `Polymer.sdf` found that Shift+F10
+focuses the workspace tab but does not open its context menu. The tab currently
+opens this menu through `onContextMenu`; keyboard invocation needs a follow-up.
+Export also appends `.sdf` when the user has renamed a tab without an extension.
+
+Final focused validation passed `bun tests/test-scene-save-sidebar.mjs` and
+`vp run test:science-sdf-molx-flow` (the logical flow has 85 assertions).
+The final packaged build passed after the filename correction. Logs are
+`/tmp/burette-sdf-source-export-tests-final.log` and
+`/tmp/burette-sdf-source-export-build-final.log`. The broader JS gate is tracked
+separately in `/tmp/burette-sdf-source-export-ci.log`; it was started before the
+final submenu and filename corrections, and is not evidence for those changes.

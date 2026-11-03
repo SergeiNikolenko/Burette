@@ -19,7 +19,7 @@ import { atomIdsAlong, documentUuidFor, graphAtomIds, logicalSourceFor, plainAto
 
 export type SceneScienceExport =
   /** The scene carries this state: send `action`, then `confirm()` before writing the archive. */
-  | { kind: "science"; action: Record<string, unknown>; confirm: () => void | Promise<void> }
+  | { kind: "science"; source: { extension: string; text: string }; action: Record<string, unknown>; confirm: () => void | Promise<void> }
   /** Scientific state exists but this scene cannot carry it; saved without it and said so. */
   | { kind: "unsupported"; reason: string };
 
@@ -150,5 +150,5 @@ export async function prepareSceneScienceExport(document: ViewerDocument, option
       }
     }
   };
-  return { kind: "science", action, confirm };
+  return { kind: "science", source: { extension, text }, action, confirm };
 }

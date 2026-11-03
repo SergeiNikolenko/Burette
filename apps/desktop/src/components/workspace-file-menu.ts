@@ -6,6 +6,7 @@ import type { useWorkspaceFileActions } from "../hooks/use-workspace-file-action
 import { isTauriRuntime } from "../lib/tauri";
 import { menuItem as item, submenu, menuSections, fileCapabilities } from "./workspace-menu-items";
 import { requestContextualGuide } from "./onboarding/request";
+import { sourceExtension } from "../lib/science-session/state";
 
 type Workflows = ReturnType<typeof useWorkspaceFileActions>;
 export function workspaceFileMenu(paths: string[], state: ShellViewState, actions: ShellActions, workflows: Workflows,
@@ -77,6 +78,8 @@ export function workspaceFileMenu(paths: string[], state: ShellViewState, action
       ...(document?.renderer === "molstar" ? [
         command("save-scene", "Scene…", () => workflows.saveScene(document)),
         ...submenu("export-structure", "Structure", [
+          ...(["sdf", "sd"].includes(sourceExtension(document)) && !workflows.isCombinedScene(document)
+            ? [command("export-sdf", "SDF…", () => workflows.exportStructure(document, "sdf"))] : []),
           command("export-cif", "mmCIF…", () => workflows.exportStructure(document, "mmcif")),
           ...(caps[0].protein ? [command("export-pdb", "PDB…", () => workflows.exportStructure(document, "pdb"))] : []),
         ]),

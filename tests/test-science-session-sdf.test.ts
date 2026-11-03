@@ -80,6 +80,7 @@ test("SDF metadata and exact Original survive scene restore and resave with a lo
   const prepared = await prepareSceneScienceExport(document, options);
   expect(prepared?.kind).toBe("science");
   if (prepared?.kind !== "science") throw new Error("missing graph export");
+  expect(prepared.source).toEqual({ extension: "sdf", text });
   const blob: Blob = await science.serialize(viewer.viewer, prepared.action.science, { type: "molx" });
   await prepared.confirm();
   const bytes = new Uint8Array(await blob.arrayBuffer()), decoded = (await decodeScienceSession(bytes))!;
@@ -94,6 +95,7 @@ test("SDF metadata and exact Original survive scene restore and resave with a lo
   expect(structureEditAvailable(scene)).toBe(true);
   const again = await prepareSceneScienceExport(scene, { sourceEditing: null, sceneFileCount: 1, isOpen: () => true, request: request(viewer) } as never);
   if (again?.kind !== "science") throw new Error("missing restored graph export");
+  expect(again.source).toEqual(prepared.source);
   const saved = (await decodeScienceSession(new Uint8Array(await (await science.serialize(viewer.viewer, again.action.science, { type: "molx" })).arrayBuffer())))!;
   await again.confirm();
   expect([saved.documentUuid, saved.atomIds, saved.source]).toEqual([decoded.documentUuid, decoded.atomIds, decoded.source]);

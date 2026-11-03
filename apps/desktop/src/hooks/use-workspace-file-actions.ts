@@ -133,7 +133,14 @@ export function useWorkspaceFileActions(state: ShellViewState, actions: ShellAct
     await focusViewer(document);
     await requestViewerAction(document.id, { type: "align_scene_files" });
   };
-  const exportStructure = async (document: ViewerDocument, format: "pdb" | "mmcif") => {
+  const exportStructure = async (document: ViewerDocument, format: "pdb" | "mmcif" | "sdf") => {
+    if (format === "sdf") {
+      const snapshot = await captureWorkspaceSceneSnapshot(document, { sourceEditing, sceneFileCount: scenePaths(document).length, scientificData: "require" });
+      if (snapshot.source?.extension !== "sdf") throw new Error("This scene has no validated SDF source to export.");
+      await snapshot.confirm();
+      await actions.saveKetcherExportFile({ title: document.title.replace(/\.[^.]+$/, "") + ".sdf", extension: "sdf", text: snapshot.source.text });
+      return;
+    }
     await focusViewer(document);
     const result = await requestViewerAction(document.id, { type: "export_scene_structure", format });
     if (typeof result.text !== "string") throw new Error("No structure was returned.");

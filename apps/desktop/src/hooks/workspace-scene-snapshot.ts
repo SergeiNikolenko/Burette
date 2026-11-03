@@ -45,5 +45,6 @@ export async function captureWorkspaceSceneSnapshot(document: ViewerDocument, op
     confirmRestore?.();
   };
   await confirm();
-  return { document, result, confirm, omissionReason: science?.kind === "unsupported" ? science.reason : null };
+  return { document, result, confirm, source: science?.kind === "science" ? science.source : null,
+    omissionReason: science?.kind === "unsupported" ? science.reason : null };
 }
