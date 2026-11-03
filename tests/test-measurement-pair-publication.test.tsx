@@ -4,6 +4,53 @@ import { measurementPreviewTarget, measurementPreviewTransfer } from "../apps/de
 import { sha256Hex } from "../apps/desktop/src/lib/source-editing/source-identity";
 import { fixture, holds } from "./measurement-pair-fixture";
 
+test("hydrogen edits validate the loaded connection table before publishing a draft", async () => {
+  const { useGraphDraft } = await import("../apps/desktop/src/components/workbench/use-graph-draft");
+  const carbon = "   -0.4669   -0.3078   -0.4089 C   0  0  0  0  0  0  0  0  0  0  0  0";
+  const v2000 = ["Ethanol", "     RDKit          3D", "", "  3  2  0  0  0  0  0  0  0  0999 V2000",
+    carbon, carbon, "   -1.4301    0.6702   -0.0447 O   0  0  0  0  0  0  0  0  0  0  0  0",
+    "  1  2  1  0", "  2  3  1  0", "M  END", "$$$$", ""].join("\n");
+  const v3000 = ["Ethanol", "     RDKit          3D", "", "  0  0  0     0  0            999 V3000",
+    "M  V30 BEGIN CTAB", "M  V30 COUNTS 3 2 0 0 0", "M  V30 BEGIN ATOM",
+    "M  V30 1 C -0.4669 -0.3078 -0.4089 0", "M  V30 2 C -0.4669 -0.3078 -0.4089 0",
+    "M  V30 3 O -1.4301 0.6702 -0.0447 0", "M  V30 END ATOM", "M  V30 BEGIN BOND",
+    "M  V30 1 1 1 2", "M  V30 2 1 2 3", "M  V30 END BOND", "M  V30 END CTAB", "M  END", "$$$$", ""].join("\r\n");
+  for (const source of [v2000, v3000]) {
+    const view = await fixture("sdf", useGraphDraft, source);
+    try {
+      const before = view.graph.history!;
+      expect(before.current.structure.atoms.map(({ x, y, z }) => [x, y, z])).toEqual([
+        [-0.4669, -0.3078, -0.4089],
+        [-0.4669, -0.3078, -0.4089],
+        [-1.4301, 0.6702, -0.0447],
+      ]);
+      await act(async () => view.controller.beginEditing(view.doc));
+      for (const operation of [{ kind: "add-hydrogens" }, { kind: "protonate", pH: 7 }] as const) {
+        expect(await view.apply(operation)).toBeNull();
+        expect(view.graph.error).toBe("Cannot place hydrogens on coincident bonded atoms.");
+        expect(view.graph.history).toBe(before);
+        expect(view.controller.sessionForDocument(view.doc)?.content).toBe(source);
+        expect(view.controller.sessionForDocument(view.doc)?.dirty).toBe(false);
+      }
+    } finally { await view.close(); }
+  }
+
+  const validV2000 = v2000.replace(carbon, carbon.replace(/^.{30}/u, "    0.8887    0.0663    0.1536"));
+  const validV3000 = v3000.replace("1 C -0.4669 -0.3078 -0.4089 0", "1 C 0.8887 0.0663 0.1536 0");
+  const continuedV3000 = validV3000.replace("1 C 0.8887 0.0663 0.1536 0", "1 C 0.8887 -\r\nM  V30 0.0663 0.1536 0");
+  for (const source of [validV2000, validV3000, continuedV3000]) {
+    const view = await fixture("sdf", useGraphDraft, source);
+    try {
+      const before = view.graph.history!.current;
+      const added = await view.apply({ kind: "add-hydrogens" });
+      expect(view.graph.error).toBeNull();
+      expect(added?.atoms).toHaveLength(9);
+      expect(added?.atoms.slice(0, 3)).toEqual(before.structure.atoms);
+      expect(view.graph.history?.undo).toEqual([before]);
+    } finally { await view.close(); }
+  }
+}, 15_000);
+
 test("failed final validation does not authorize its uncommitted measurement source", async () => {
   const view = await fixture();
   try {

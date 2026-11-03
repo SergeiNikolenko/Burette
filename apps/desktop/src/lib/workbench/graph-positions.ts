@@ -1,8 +1,26 @@
+import { sourceAtomPositions } from "../molecular-workbench/molfile-positions";
 import { runGraphTask } from "../molecular-workbench/graph-compute-client";
 import type { MolecularStructure } from "../molecular-workbench/molecular-graph";
 import type { GraphEditResult } from "../molecular-workbench/graph-edit";
 import type { Vec3 } from "../molecular-workbench/types";
 import { atomAnnotations } from "./graph-annotations";
+
+/** OCL can invent a diagram during parsing. Hydrogen edits require the original pose. */
+export function checkHydrogenSourcePose(source: string, structure: MolecularStructure) {
+  const positions = sourceAtomPositions(source);
+  const tolerance = 1e-8;
+  if (positions.length !== structure.atoms.length || positions.some(xyz => xyz.length !== 3 || xyz.some(value => !Number.isFinite(value)))
+    || structure.bonds.some(({ a, b }) => !positions[a] || !positions[b])) {
+    throw new Error("Could not verify the original coordinates for this hydrogen edit.");
+  }
+  if (structure.bonds.some(({ a, b }) => Math.hypot(...positions[a].map((value, axis) => value - positions[b][axis])) < tolerance)) {
+    throw new Error("Cannot place hydrogens on coincident bonded atoms.");
+  }
+  if (structure.atoms.some(({ x, y, z }, index) => [x, y, z].some((value, axis) => Math.abs(value - positions[index][axis]) > tolerance))) {
+    throw new Error("The original coordinates could not be retained. Use Generate 3D to create a new pose.");
+  }
+}
+
 
 /**
  * The V3000 molfile with new atom coordinates (in its atom-block order) and nothing else

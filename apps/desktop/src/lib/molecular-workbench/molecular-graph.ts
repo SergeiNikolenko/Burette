@@ -1,3 +1,4 @@
+import { sourceAtomPositions } from './molfile-positions';
 import { Molecule } from 'openchemlib';
 import { readUnspecifiedMolfileStereo, retainUnknownStereo } from './molecule-stereochemistry';
 import { atomicNumber } from './elements';
@@ -43,12 +44,17 @@ export function parseMolecule(source: string, format: 'xyz' | 'sdf' | 'mol'): Mo
     const { molecule: mol, map } = parsed;
     checkMoleculeSize(mol.getAllAtoms());
     const unspecified = readUnspecifiedMolfileStereo(mol, records[0], map);
-    // OCL reads MOL coordinates in a frame rotated 180° about x. The public
-    // molecular model shares the source/viewer's physical Cartesian frame.
-    for (let i = 0; i < mol.getAllAtoms(); i++) {
-      mol.setAtomY(i, -mol.getAtomY(i));
-      mol.setAtomZ(i, -mol.getAtomZ(i));
+    // Parsing and stereo helpers may invent a diagram. Restore the physical
+    // source pose using OCL's source-row mapping, including explicit hydrogens.
+    const positions = sourceAtomPositions(records[0]);
+    if (positions.length !== map.length || positions.some(xyz => xyz.length !== 3 || xyz.some(value => !Number.isFinite(value)))) {
+      throw new Error('Could not read the source molecular coordinates.');
     }
+    positions.forEach(([x, y, z], row) => {
+      mol.setAtomX(map[row], x);
+      mol.setAtomY(map[row], y);
+      mol.setAtomZ(map[row], z);
+    });
     if (unspecified.atoms.length || unspecified.bonds.length) {
       mol.setParitiesValid(Molecule.cHelperBitCIP);
       retainUnknownStereo(mol, unspecified.atoms, unspecified.bonds);

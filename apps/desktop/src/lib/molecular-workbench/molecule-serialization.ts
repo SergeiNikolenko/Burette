@@ -4,9 +4,20 @@ import { Molecule } from 'openchemlib';
  * Retain its graph/stereo/charge encoding but write physical Å coordinates.
  * Our molecule coordinates are already in the physical source/viewer frame;
  * bypass the generic writer's y/z rotation as well as its diagram scaling. */
-export function serializePhysicalMolfile(mol: Molecule): string {
+export function serializePhysicalMolfile(input: Molecule): string {
+  const coordinates = Array.from({ length: input.getAllAtoms() }, (_, atom) =>
+    [input.getAtomX(atom), input.getAtomY(atom), input.getAtomZ(atom)]);
+  const mol = input.getCompactCopy();
+  // Compact copies retain parity values but invalidate the helper status.
+  // Preserve authoritative source constraints instead of perceiving them anew.
+  if (input.getHelperArrayStatus() & Molecule.cHelperBitParities) {
+    mol.ensureHelperArrays(Molecule.cHelperRings);
+    mol.setParitiesValid(input.getHelperArrayStatus() & Molecule.cHelperBitCIP);
+  }
   let inAtoms = false, inBonds = false;
   const unknownStereo = new Set<number>();
+  // The writer may invent coordinates for coincident atoms while building its
+  // stereo helpers. Keep those mutations away from the physical input pose.
   const source = mol.toMolfileV3();
   const requiredUnknown = Array.from({ length: mol.getAllAtoms() }, (_, i) => i).filter(i => mol.isAtomConfigurationUnknown(i) || mol.getAtomParity(i) === Molecule.cAtomParityUnknown);
   const output = source.split('\n').map((line, index) => {
@@ -33,7 +44,7 @@ export function serializePhysicalMolfile(mol: Molecule): string {
     else if (line === 'M  V30 END ATOM') inAtoms = false;
     else if (inAtoms) return line.replace(/^(M  V30 )(\d+)( \S+ )\S+ \S+ \S+( .*)$/, (_, prefix, id, element, suffix) => {
       const atom = Number(id) - 1;
-      const xyz = [mol.getAtomX(atom), mol.getAtomY(atom), mol.getAtomZ(atom)];
+      const xyz = coordinates[atom];
       if (xyz.some(v => !Number.isFinite(v) || Math.abs(v) > 1e6)) throw new Error('Invalid molecular coordinates during serialization.');
       return `${prefix}${id}${element}${xyz.map(v => Number(v.toFixed(10))).join(' ')}${suffix}`;
     });

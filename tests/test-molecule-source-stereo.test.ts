@@ -3,7 +3,24 @@ import{readFileSync}from'node:fs';
 import initRDKitModule from'@rdkit/rdkit';
 import{Molecule}from'openchemlib';
 import{parseMolecule}from'../apps/desktop/src/lib/molecular-workbench/chemistry';
+import { serializePhysicalMolfile } from '../apps/desktop/src/lib/molecular-workbench/molecule-serialization';
 const fixture=(id:string)=>readFileSync(new URL(`./fixtures/source-stereo/${id}.mol`,import.meta.url),'utf8');
+
+test('physical serialization preserves coincident coordinates without mutating its input', () => {
+  const molecule = Molecule.fromSmiles('CCO');
+  molecule.ensureHelperArrays(Molecule.cHelperCIP);
+  const coordinates = [[-0.4669, -0.3078, -0.4089], [-0.4669, -0.3078, -0.4089], [-1.4301, 0.6702, -0.0447]];
+  coordinates.forEach(([x, y, z], index) => {
+    molecule.setAtomX(index, x);
+    molecule.setAtomY(index, y);
+    molecule.setAtomZ(index, z);
+  });
+  const output = serializePhysicalMolfile(molecule);
+  expect(coordinates.map((_, index) => [molecule.getAtomX(index), molecule.getAtomY(index), molecule.getAtomZ(index)])).toEqual(coordinates);
+  const rows = output.split('\n');
+  const begin = rows.indexOf('M  V30 BEGIN ATOM');
+  expect(rows.slice(begin + 1, begin + 4).map(row => row.split(/\s+/).slice(4, 7).map(Number))).toEqual(coordinates);
+});
 
 test('oversized MOL is refused before processing its unknown stereo centers',()=>{
  const atoms:string[]=[],bonds:string[]=[];

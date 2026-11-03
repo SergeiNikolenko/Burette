@@ -7,7 +7,7 @@ import type { FragmentSource } from "../molecular-workbench/fragment-source";
 import { useSourceEditing, type SourceEditingOperation } from "../source-editing/context";
 import { graphDraftText, graphSourceMetadata, structureEditAvailable } from "./graph-draft";
 import { atomAnnotations, type AtomAnnotation } from "./graph-annotations";
-import { normalizeGraphOrder, replaceGraphPositions } from "./graph-positions";
+import { checkHydrogenSourcePose, normalizeGraphOrder, replaceGraphPositions } from "./graph-positions";
 import { forgetViewerAtomSelection } from "./selection";
 import { useStructureSourceText } from "../source-editing/use-structure-source-text";
 import type { ViewerDocument } from "../../types";
@@ -181,6 +181,9 @@ export function useGraphDraft(document: ViewerDocument | null, computeAdvanced?:
       if (!lifetime.isCurrent()) throw new DOMException("The document closed while editing.", "AbortError");
       const previous = history.current;
       if (operation.kind === "metadata" && !previous.metadata) throw new Error("Metadata editing requires an SDF record.");
+      if (operation.kind === "add-hydrogens" || operation.kind === "protonate") {
+        checkHydrogenSourcePose(previous.text, previous.structure);
+      }
       const result = operation.kind === "metadata" ? { structure: previous.structure, outcome: previous.outcome } : await compute(operation, previous.structure, controller.signal, computeAdvanced);
       controller.signal.throwIfAborted();
       const metadata = !previous.metadata ? null : operation.kind === "metadata" ? patchGraphMetadata(previous.metadata, operation.patch)

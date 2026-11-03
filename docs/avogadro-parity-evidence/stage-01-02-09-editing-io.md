@@ -104,3 +104,27 @@ attempt, so the visible draft was not evidence of recovery.
 - Remaining browser scenarios include reopening a downloaded edited copy through
   the real picker and browser reload of an IndexedDB import. Packaged and
   native acceptance are separate.
+
+### Hydrogen source-pose preservation, 2026-11-03
+
+- OCL parsing and `toMolfileV3()` can invent a diagram when bonded atoms
+  coincide. The reader now restores physical coordinates from source atom
+  records through OCL's atom mapping. The writer uses a private compact copy,
+  retains valid source parity/CIP status, and writes captured physical positions.
+- The real-worker draft suite covers coincident V2000/V3000 inputs, unchanged
+  draft/history on refused AddH and protonation, and valid V2000, V3000 CRLF,
+  and continued V3000 records adding six hydrogens with original coordinates
+  retained and one Undo entry.
+- Source-stereo, normalization/reorder, and draft suites pass with 18 tests
+  and 1,077 assertions. RDKit checks include unknown tetrahedral, axial and
+  E/Z constraints. The hydrogen geometry suites also pass nine tests with
+  536 assertions, including near-linear geometry and rigid-motion covariance.
+- Live Vite runtime on port 61441, opened through the in-app browser's ordinary
+  picker with `burette-parity-coincident-ethanol.sdf`, displays C1 and C2 both
+  at (-0.467, -0.308, -0.409) in the rounded Edit atom table.
+  Edit → More actions → Add hydrogens displays
+  `Cannot place hydrogens on coincident bonded atoms.` Three atoms and two
+  bonds remain, with Undo disabled and displayed coordinates unchanged.
+- Positive live acceptance on the patched runtime, packaged browser acceptance,
+  and full JS CI on the final patch remain pending. Browser control returned
+  `browser.user is unavailable` during the positive-scenario continuation.
