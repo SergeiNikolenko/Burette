@@ -1037,3 +1037,33 @@ The worker enforces at most 200000 points and 100000000 evaluations; the common
 artifact byte limit also applies. Unsupported source selections fail before
 queueing. Invalid grids fail in the worker without artifacts. Cancellation,
 replay, stale-result export and source closure use the shared job owner.
+
+
+### Typed IR and Raman export
+
+`vibrational_spectrum` selects `kind: "ir" | "raman"` and `source: "file" | "frame"`
+(default `file`, the document-level final-geometry modes). Frame source requires
+an explicit zero-based `frameIndex`; no current-frame fallback or companion is
+accepted. This exports existing source modes, not a Hessian calculation or a
+normal-mode displacement trajectory. Every mode must contain the requested IR
+intensity or Raman activity; absent quantities are never synthesized as zero.
+
+```python
+job = wb.run("vibrational_spectrum", {"kind": "raman", "source": "frame", "frameIndex": 0})
+wb.export(job.job_id, "display", output="raman.csv")
+wb.export(job.job_id, "settings", output="raman-settings.json")
+```
+
+The cancellable worker shares the Vibrations panel's float32 peak-height kernel.
+Optional `scale`, `offsetCm1`, `fwhmCm1`, `axisStartCm1`, `axisEndCm1` override the
+panel's initial defaults. Automatic axes expand to cover source bands; an explicit
+endpoint replaces that endpoint. Unlike UI preferences, agent defaults are stable
+across runs. Source CSV/JSON retain all scalar mode columns and source numbering;
+missing unrelated values remain empty/null. Displacements are not included.
+`display` is the full ascending `wavenumber_cm-1,smoothed,stick` grid. `settings`
+records axis direction, provenance, parameters and IR's conventional transforms
+`100*(1-sum/125)` (Gaussian) and `100*(1-sum/100)` (sticks), which are not physical
+transmittance predictions. Raman retains activity units (angstrom^4/amu).
+Bounds: 10000 modes, 20000 grid points, 20000000 evaluations and the shared artifact
+byte limit. Only scalar quantities are cloned to the worker. Common job ownership
+provides source revision pinning, replay, cancellation and stale export checks.

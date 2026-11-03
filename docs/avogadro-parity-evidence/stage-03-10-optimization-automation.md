@@ -491,3 +491,37 @@ file-scoped NMR evidence. It does not establish multi-frame selection, MCD
 companion publication, VCD/MCD/DOS live jobs, running cancellation, Jupyter,
 light/compact/full-keyboard acceptance, or prebuilt/native behavior. All stage
 statuses remain partial. No production implementation changed in this evidence pass.
+
+
+## Typed IR and Raman automation (2026-11-04)
+
+Added `vibrational_spectrum` through the shared CLI/MCP contract, job owner and
+Python JobKind. File/final-geometry or explicit frame modes feed a cancellable
+worker using the existing Vibrations formula; source CSV/JSON, full display CSV
+and settings are bounded artifacts. Missing intensities/activities refuse the job.
+No Hessian-derived intensities, mode displacements or companion inference is added.
+
+Five focused tests / 28 assertions cover contract rejection, real FCHK IR and
+Raman grids against independent double-precision Gaussians, widened axes, absent
+versus zero activity, pre-abort, controller replay and stale export. Live IAB
+**vite-dev**, dark 1280 × 720, opened the real `gaussian16-water-raman.fchk` fixture.
+Shipped Python ran both frame-0 jobs to `succeeded` and exported all four artifacts.
+An independent Python parser read the FCHK Vib-E2 blocks and confirmed exact raw
+frequencies, IR intensities and Raman activities. All 4100 IR and 4500 Raman points
+were checked against double-precision Gaussians (max absolute errors 0.000377 and
+0.000507). See [numeric oracle](vibrational-agent-live-oracle.json).
+
+Compute → Show vibrations displayed the same three modes (2169.9, 4141.3,
+4392.4 cm^-1) and automatic IR axis 4500 to 400. The unchanged exported Raman
+CSV bytes, given a `.csv` extension, reopened via New tab → Open file and reported
+4500 rows / 3 columns. Screenshots: `/tmp/burette-vibration-ir.png` and
+`/tmp/burette-vibration-reopened.png`. Typecheck, build:agent-shell and packaged
+plugin checks passed. This live run is vite-dev, not the rebuilt prebuilt shell.
+
+Running cancellation, multi-frame selection, Jupyter, both-theme/compact/keyboard
+matrix and prebuilt/native runtime remain open. The source-only operation does
+not close Hessian or displaced-geometry automation. All stage statuses stay partial.
+
+Compiled CLI/MCP compatibility passed 7 tests / 990 assertions, including the
+expanded capability list; this does not claim IR/Raman execution over MCP. The
+packaged/root contracts matched byte-for-byte. Logs: `/tmp/burette-vibration-*.log`.

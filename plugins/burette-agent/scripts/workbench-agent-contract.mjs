@@ -441,6 +441,29 @@ const JOB_DEFINITIONS = {
       return result;
     },
   },
+  vibrational_spectrum: {
+    describe: {
+      engine: 'Burette vibrational spectrum worker (same float32 kernel as Vibrations)',
+      requires: 'Explicit file or zero-based frame modes with complete IR intensities or Raman activities; no inferred intensities or Hessian calculation.',
+      params: { kind: ['ir', 'raman'], source: ['file', 'frame'], frameIndex: 'required for frame', scale: 'positive, default 1', offsetCm1: 'finite, default 0', fwhmCm1: 'at least 0.01, default 30', axisStartCm1: 'nonnegative; automatic by default', axisEndCm1: 'nonnegative; at most 20000 points and 20000000 evaluations' },
+      artifacts: ['source', 'source_csv', 'display', 'settings'],
+    },
+    params(value) {
+      const p = params(value, ['kind', 'source', 'frameIndex', 'scale', 'offsetCm1', 'fwhmCm1', 'axisStartCm1', 'axisEndCm1'], 'vibrational_spectrum job.params');
+      if (p.kind === undefined) invalid('job.params.kind is required.');
+      const kind = oneOf(p.kind, 'job.params.kind', new Set(['ir', 'raman']));
+      const source = oneOf(p.source, 'job.params.source', new Set(['file', 'frame']), 'file');
+      const result = { kind, source };
+      if (source === 'frame') result.frameIndex = integer(p.frameIndex, 'job.params.frameIndex', 0, 999999);
+      else if (p.frameIndex !== undefined) invalid('File spectra do not take frameIndex.');
+      for (const key of ['scale', 'offsetCm1', 'fwhmCm1', 'axisStartCm1', 'axisEndCm1']) {
+        const minimum = key === 'scale' ? Number.MIN_VALUE : key === 'fwhmCm1' ? 0.01 : key === 'offsetCm1' ? -1e12 : 0;
+        const value = finite(p[key], `job.params.${key}`, minimum, 1e12);
+        if (value !== undefined) result[key] = value;
+      }
+      return result;
+    },
+  },
   pair_distribution: {
     describe: {
       engine: 'Burette periodic radial distribution',

@@ -1,0 +1,143 @@
+{
+  "runtime": "vite-dev",
+  "results": {
+    "ir": {
+      "status": "succeeded",
+      "summary": {
+        "kind": "ir",
+        "source": "frame",
+        "frameIndex": 0,
+        "sourceRows": 3,
+        "points": 4100,
+        "settings": {
+          "kind": "vibrational-spectrum-display-settings",
+          "version": 1,
+          "spectrum": "ir",
+          "source": {
+            "sourceName": "gaussian16-water-raman.xyz",
+            "format": "fchk",
+            "frame": 1,
+            "frameCount": 1,
+            "scope": "frame",
+            "frameIndex": 0
+          },
+          "parameters": {
+            "scale": 1,
+            "offsetCm1": 0,
+            "fwhmCm1": 30,
+            "axisStartCm1": 4500,
+            "axisEndCm1": 400
+          },
+          "arithmetic": "float32-peak-height",
+          "xUnit": "cm^-1",
+          "yUnit": "conventional display (not physical transmittance)",
+          "smoothedTransform": "100*(1-sum/125)",
+          "stickTransform": "100*(1-sum/100)"
+        }
+      },
+      "maxAbsoluteGaussianError": 0.0003762482387230648,
+      "artifacts": [
+        {
+          "name": "source",
+          "fileName": "gaussian16-water-raman-frame-1-ir-source.json",
+          "mimeType": "application/json",
+          "byteCount": 1876,
+          "sha256": "sha256-e092fe6201097cd9768d57085b34d470df93d8724c0e91fd7fe3320432721dea"
+        },
+        {
+          "name": "source_csv",
+          "fileName": "gaussian16-water-raman-frame-1-ir-source.csv",
+          "mimeType": "text/csv",
+          "byteCount": 969,
+          "sha256": "sha256-fea19f2e65d7ae17e12109cbc06fa6ecc1489b928c741e111f814cccf74d6dc7"
+        },
+        {
+          "name": "display",
+          "fileName": "gaussian16-water-raman-frame-1-ir-display.csv",
+          "mimeType": "text/csv",
+          "byteCount": 58666,
+          "sha256": "sha256-98b40575c9d8ba5524179ce20d130400210affa98999a5223a11a720aea643a3"
+        },
+        {
+          "name": "settings",
+          "fileName": "gaussian16-water-raman-frame-1-ir-settings.json",
+          "mimeType": "application/json",
+          "byteCount": 588,
+          "sha256": "sha256-c300581ebd371ba45364342f73d3432a4a3ad538be9917fd17c1b2ea89a95e1d"
+        }
+      ]
+    },
+    "raman": {
+      "status": "succeeded",
+      "summary": {
+        "kind": "raman",
+        "source": "frame",
+        "frameIndex": 0,
+        "sourceRows": 3,
+        "points": 4500,
+        "settings": {
+          "kind": "vibrational-spectrum-display-settings",
+          "version": 1,
+          "spectrum": "raman",
+          "source": {
+            "sourceName": "gaussian16-water-raman.xyz",
+            "format": "fchk",
+            "frame": 1,
+            "frameCount": 1,
+            "scope": "frame",
+            "frameIndex": 0
+          },
+          "parameters": {
+            "scale": 1,
+            "offsetCm1": 0,
+            "fwhmCm1": 30,
+            "axisStartCm1": 0,
+            "axisEndCm1": 4500
+          },
+          "arithmetic": "float32-peak-height",
+          "xUnit": "cm^-1",
+          "yUnit": "angstrom^4/amu",
+          "smoothedTransform": "sum",
+          "stickTransform": "sum"
+        }
+      },
+      "maxAbsoluteGaussianError": 0.0005067825125770753,
+      "artifacts": [
+        {
+          "name": "source",
+          "fileName": "gaussian16-water-raman-frame-1-raman-source.json",
+          "mimeType": "application/json",
+          "byteCount": 1876,
+          "sha256": "sha256-e092fe6201097cd9768d57085b34d470df93d8724c0e91fd7fe3320432721dea"
+        },
+        {
+          "name": "source_csv",
+          "fileName": "gaussian16-water-raman-frame-1-raman-source.csv",
+          "mimeType": "text/csv",
+          "byteCount": 969,
+          "sha256": "sha256-fea19f2e65d7ae17e12109cbc06fa6ecc1489b928c741e111f814cccf74d6dc7"
+        },
+        {
+          "name": "display",
+          "fileName": "gaussian16-water-raman-frame-1-raman-display.csv",
+          "mimeType": "text/csv",
+          "byteCount": 56921,
+          "sha256": "sha256-1cbf0703f042ce5a701945568c56652822a661f84be6bfe0545a96b9a37fe5cf"
+        },
+        {
+          "name": "settings",
+          "fileName": "gaussian16-water-raman-frame-1-raman-settings.json",
+          "mimeType": "application/json",
+          "byteCount": 530,
+          "sha256": "sha256-07e7c86635f24fe77a4f0ff1f4ce51970b2330d83526389b49f882c47d2fe4c7"
+        }
+      ]
+    }
+  },
+  "rawFrequencyIntensityActivityExact": true,
+  "ramanCsvReopened": {
+    "rows": 4500,
+    "columns": 3
+  },
+  "fixture": "tests/fixtures/quantum/gaussian16-water-raman.fchk"
+}
