@@ -257,8 +257,9 @@ impl ExitPreflightCoordinator {
             return Ok((request_id, receiver));
         }
 
-        for (label, window) in windows {
-            if let Err(error) = window.emit(
+        for label in windows.into_keys() {
+            if let Err(error) = app.emit_to(
+                label.as_str(),
                 EXIT_PREFLIGHT_EVENT,
                 ExitPreflightRequest {
                     request_id: request_id.clone(),
@@ -319,8 +320,9 @@ impl ExitPreflightCoordinator {
             self.complete_if_ready(request_id)?;
             return Ok(receiver);
         }
-        for (label, window) in windows {
-            if let Err(error) = window.emit(
+        for label in windows.into_keys() {
+            if let Err(error) = app.emit_to(
+                label.as_str(),
                 EXIT_PREFLIGHT_EVENT,
                 ExitPreflightRequest {
                     request_id: request_id.to_string(),
@@ -1008,6 +1010,48 @@ mod tests {
     use crate::menu::state::{QuitGuard, QuitRequestStart};
     use std::collections::{HashMap, HashSet};
     use std::sync::mpsc::sync_channel;
+
+    #[test]
+    fn each_window_receives_one_checkpoint_per_exit_phase() {
+        use std::sync::{Arc, Mutex};
+        use tauri::{
+            test::{mock_builder, mock_context, noop_assets},
+            Listener,
+        };
+        let app = mock_builder().build(mock_context(noop_assets())).unwrap();
+        let coordinator = ExitPreflightCoordinator::default();
+        let counts = Arc::new(Mutex::new([0usize; 2]));
+        let labels = ["main", "workspace-other"];
+        for (index, label) in labels.iter().enumerate() {
+            let window =
+                tauri::WebviewWindowBuilder::new(&app, *label, tauri::WebviewUrl::default())
+                    .build()
+                    .unwrap();
+            coordinator.register(label).unwrap();
+            let counts = Arc::clone(&counts);
+            window.listen(super::EXIT_PREFLIGHT_EVENT, move |_| {
+                counts.lock().unwrap()[index] += 1;
+            });
+        }
+        let (request, receiver) = coordinator.begin(app.handle()).unwrap();
+        assert_eq!(*counts.lock().unwrap(), [1, 1]);
+        for label in labels {
+            coordinator
+                .respond(&request, label, false, false, 1)
+                .unwrap();
+        }
+        assert!(ready(receiver, "preflight").is_empty());
+        let receiver = coordinator
+            .begin_validation(app.handle(), &request)
+            .unwrap();
+        assert_eq!(*counts.lock().unwrap(), [2, 2]);
+        for label in labels {
+            coordinator
+                .respond(&request, label, false, false, 1)
+                .unwrap();
+        }
+        assert!(ready(receiver, "validation").is_empty());
+    }
 
     #[test]
     fn quit_prompt_claim_blocks_a_competing_update_transition() {
