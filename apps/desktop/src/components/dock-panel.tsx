@@ -1168,6 +1168,7 @@ function SingleDocumentTextPanel({
           editable: sourceSession.editable,
           content: sourceSession.content,
           status: sourceSession.status,
+          viewState: sourceSession.viewState,
           dirty: sourceSession.dirty,
           saving: sourceSession.saving,
           diagnostic: sourceSession.diagnostic,

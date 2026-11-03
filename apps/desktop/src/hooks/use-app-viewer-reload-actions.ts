@@ -6,7 +6,7 @@ type OpenDocuments = (
   paths: string[],
   reloadOptions?: ViewerReloadOptions,
   preferencesOverride?: Partial<ViewerPreferences>,
-  options?: { inActiveTab?: boolean },
+  options?: { inActiveTab?: boolean; fromSource?: boolean },
 ) => Promise<OpenDocumentsResult | null | undefined>;
 
 type UseAppViewerReloadActionsOptions = {
@@ -37,7 +37,7 @@ export function useAppViewerReloadActions({
     const preferences = reloadOptions?.xyzrenderControls || reloadOptions?.xyzrenderPreset
       ? { rendererMode: "xyzrender-external" as const }
       : undefined;
-    await openDocuments([targetDocument.path], reloadOptions, preferences, { inActiveTab: true });
+    await openDocuments([targetDocument.path], reloadOptions, preferences, { inActiveTab: true, fromSource: !reloadOptions });
   }, [activeDocument, documents, openDocuments, pendingViewerReloadDocumentIdRef, pendingViewerReloadOptionsRef]);
 
   const reloadXyzrenderDocument = useCallback(async (document: ViewerDocument, reloadOptions: ViewerReloadOptions) => {

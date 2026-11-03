@@ -26,7 +26,7 @@ async function fixture(run: (hook: ReturnType<typeof useAppFileOpen>, add: Retur
   const options = { preferences: {}, addProjectRoot: noop, addBackgroundDocuments: add, addBackgroundTextDocuments: add, addDocuments: add, addTextDocuments: add, closeDocument: noop,
     detectContentSpectrumPaths: async () => new Set(), expandStructureBundles: async (paths: string[]) => paths,
     openDockTab: noop, openDocumentsInActiveTab: add, openDocumentTab: add, openFepNetworkTab: add, openTextDocumentsInActiveTab: add,
-    pushErrorStatus: noop, pushStatus: noop, rememberRecentStructures: noop, replaceDocument: noop, setActiveDocument: noop,
+    pushErrorStatus: noop, pushStatus: noop, rememberRecentStructures: noop, replaceDocument: useMoleculeStore.getState().replaceDocument, setActiveDocument: noop,
     setDockActiveTab: noop, setDockDocument: noop, setDockOpen: noop, setDocuments: add };
   function Hook() { hook = useAppFileOpen(options as never); return null; }
   const node = document.createElement("div"); document.body.append(node); const root = createRoot(node);
@@ -37,6 +37,40 @@ async function fixture(run: (hook: ReturnType<typeof useAppFileOpen>, add: Retur
 test("batch strict open reports an unreadable file instead of counting the swallowed backend failure as opened", async () => {
   backend = async () => { throw new Error("invalid PDB"); };
   await fixture(async (hook, add) => { await expect(hook.openPaths(["/bad.pdb"], { requireSuccess: true })).rejects.toThrow("could not be opened"); expect(add).not.toHaveBeenCalled(); });
+});
+
+test("explicit source reload bypasses recovery and retires it only after a successful read", async () => {
+  await fixture(async hook => {
+    const recoveryPath = "/private/popout-scenes/11111111-1111-1111-1111-111111111111.molx";
+    useMoleculeStore.getState().addDocuments([{ id: "source", path: "/source.pdb", title: "source.pdb", renderer: "molstar", extension: "pdb", runtimePath: "", byteCount: 20, recoveryPath }]);
+    const paths: string[][] = [];
+    backend = async request => { paths.push(request.paths!); throw new Error("source missing"); };
+    await hook.openDocuments(["/source.pdb"], undefined, undefined, { inActiveTab: true, fromSource: true });
+    expect(paths).toEqual([["/source.pdb"]]);
+    expect(useMoleculeStore.getState().documents[0].recoveryPath).toBe(recoveryPath);
+    backend = async request => ({ documents: [{ id: "fresh", path: request.paths![0], renderer: "molstar", title: "source.pdb" }], errors: [] });
+    await hook.openDocuments(["/source.pdb"], undefined, undefined, { inActiveTab: true, fromSource: true });
+    expect(useMoleculeStore.getState().documents.map(document => [document.path, document.recoveryPath])).toEqual([["/source.pdb", undefined]]);
+    expect(useMoleculeStore.getState().tabs.find(tab => tab.location.kind === "file")?.location).toEqual({ kind: "file", documentId: "fresh", path: "/source.pdb" });
+  });
+});
+
+test("opening a recovery snapshot beside existing documents adopts its logical source identity", async () => {
+  const recoveryPath = "/private/popout-scenes/00000000-0000-0000-0000-000000000001.molx";
+  const restored = { id: "protein", path: "/data/protein.pdb", recoveryPath, title: "protein.pdb", renderer: "molstar", openClaimId: "recovery-claim" };
+  backend = async request => {
+    expect(request.paths).toEqual([recoveryPath]);
+    return { documents: [restored], errors: [] };
+  };
+  await fixture(async (hook) => {
+    const unrelated = { id: "unrelated", path: "/other.pdb", renderer: "molstar" };
+    useMoleculeStore.getState().addDocuments([unrelated] as never);
+    await hook.openPaths([recoveryPath], { requireSuccess: true });
+    expect(useMoleculeStore.getState().documents).toEqual([unrelated, restored]);
+    expect(useMoleculeStore.getState().tabs.find(tab => tab.location.kind === "file" && tab.location.path === restored.path)?.location)
+      .toEqual({ kind: "file", documentId: "protein", path: restored.path, recoveryPath });
+    expect(abortClaims).not.toHaveBeenCalled();
+  });
 });
 
 test("bulk opening publishes first file before the tail, bounds calls, and defers unseen runtimes", async () => {

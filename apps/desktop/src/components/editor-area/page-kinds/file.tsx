@@ -18,7 +18,7 @@ import { MesoscaleSceneOverlay, MesoscaleSceneToggle } from "../../mesoscale/mes
 import { MesoscaleCanvasContextMenu } from "../../mesoscale/mesoscale-canvas-context-menu";
 import { MesoscaleSelectionBar } from "../../mesoscale/mesoscale-selection-bar";
 
-export type FileLocation = { kind: "file"; documentId?: string; path: string };
+export type FileLocation = { kind: "file"; documentId?: string; path: string; recoveryPath?: string };
 
 export const fileKind = definePageKind<"file", FileLocation>({
   kind: "file",
@@ -32,8 +32,8 @@ export const fileKind = definePageKind<"file", FileLocation>({
     return document ? <ViewerSurface document={document} actions={actions} preferences={state.preferences} isActive={isActive} /> : null;
   },
   keepAlive: true,
-  fromPayload: (data) => (typeof data.path === "string" ? { kind: "file", documentId: typeof data.documentId === "string" ? data.documentId : undefined, path: data.path } : null),
-  serialize: (location) => ({ documentId: location.documentId, path: location.path }),
+  fromPayload: (data) => (typeof data.path === "string" ? { kind: "file", documentId: typeof data.documentId === "string" ? data.documentId : undefined, path: data.path, ...(typeof data.recoveryPath === "string" ? { recoveryPath: data.recoveryPath } : {}) } : null),
+  serialize: (location) => ({ documentId: location.documentId, path: location.path, ...(location.recoveryPath ? { recoveryPath: location.recoveryPath } : {}) }),
 });
 
 function ViewerSurface({

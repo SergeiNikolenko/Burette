@@ -131,8 +131,10 @@ export function useAppStartupEffects({
   useEffect(() => {
     if (openedPersistedTabsRef.current) return;
     if ((!isTauriRuntime() && !window.BuretteMcpWorkspace?.restore) || documents.length > 0) return;
+    const recoverySources = new Map(tabs.flatMap(({ location }) => location.kind === "file" && location.recoveryPath
+      ? [[location.path, location.recoveryPath] as const] : []));
     const paths = Array.from(new Set(tabs
-      .map((tab) => tab.location.kind === "file" || tab.location.kind === "text-file" ? tab.location.path : null)
+      .map((tab) => tab.location.kind === "file" || tab.location.kind === "text-file" ? recoverySources.get(tab.location.path) ?? tab.location.path : null)
       .filter((path): path is string => typeof path === "string" && !isTemporaryDocumentPath(path))));
     if (paths.length === 0) return;
     openedPersistedTabsRef.current = true;
@@ -144,7 +146,8 @@ export function useAppStartupEffects({
       ? Promise.resolve(paths.filter(path => window.BuretteMcpWorkspace?.authorizedPaths?.includes(path)))
       : invoke<string[]>("existing_paths", { paths });
     void existing.then(async (existingPaths) => {
-      useMoleculeStore.getState().pruneMissingFileTabs(paths, existingPaths);
+      const logicalPath = (path: string) => [...recoverySources].find(([, recovery]) => recovery === path)?.[0] ?? path;
+      useMoleculeStore.getState().pruneMissingFileTabs(paths.map(logicalPath), existingPaths.map(logicalPath));
       if (existingPaths.length === 0) return;
       await openPaths(existingPaths, { preferredPath, preserveActiveTab: true });
     }).catch((error) => pushErrorStatus(error, "Restore saved tabs failed"));

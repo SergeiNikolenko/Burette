@@ -177,7 +177,7 @@ export function useAppFileOpen({
       paths: string[],
       reloadOptions?: ViewerReloadOptions,
       preferencesOverride?: Partial<ViewerPreferences>,
-      options: { replace?: boolean; inActiveTab?: boolean; mode?: OpenDocumentsMode; deferErrorStatus?: boolean; preserveActiveTab?: boolean; reuseExisting?: boolean; shouldApply?: () => boolean } = {},
+      options: { replace?: boolean; inActiveTab?: boolean; fromSource?: boolean; mode?: OpenDocumentsMode; deferErrorStatus?: boolean; preserveActiveTab?: boolean; reuseExisting?: boolean; shouldApply?: () => boolean } = {},
     ) => {
       const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
       if (!cleanPaths.length) return;
@@ -224,11 +224,13 @@ export function useAppFileOpen({
             ? useMoleculeStore.getState().documents.map((document) => [document.path, document] as const)
             : []);
           const pathsToOpen = batchPaths.filter((path) => !retainedByPath.has(path));
+          const recoveryPaths = new Map(useMoleculeStore.getState().documents.flatMap(document => !options.fromSource && document.recoveryPath
+            ? [[document.path, document.recoveryPath] as const] : []));
           let batch: OpenDocumentsResult;
           try {
             batch = pathsToOpen.length === 0 ? { documents: [], errors: [] } : isTauriRuntime()
               ? await invoke<OpenDocumentsResult>("open_documents", {
-                  paths: pathsToOpen,
+                  paths: pathsToOpen.map(path => recoveryPaths.get(path) ?? path),
                   preferences: effectivePreferences,
                   reloadOptions,
                   mode: options.mode,
@@ -240,7 +242,10 @@ export function useAppFileOpen({
               ? { ...document, runtimeDeferredPreferences: { ...preferencesOverride, rendererMode: effectivePreferences.rendererMode } }
               : document);
             if (retainedByPath.size > 0) {
-              const openedByPath = new Map(batch.documents.map((document) => [document.path, document]));
+              const openedByPath = new Map(batch.documents.flatMap((document) => [
+                [document.path, document] as const,
+                ...(document.recoveryPath ? [[document.recoveryPath, document] as const] : []),
+              ]));
               batch.documents = batchPaths.flatMap((path) => {
                 const document = retainedByPath.get(path) ?? openedByPath.get(path);
                 return document ? [document] : [];
@@ -256,6 +261,12 @@ export function useAppFileOpen({
           if (!mayContinue()) {
             await abortOpenDocumentClaims(batch.documents);
             return null;
+          }
+          if (options.fromSource) {
+            for (const opened of batch.documents) {
+              const previous = useMoleculeStore.getState().documents.find(document => document.path === opened.path && document.recoveryPath);
+              if (previous) replaceDocument(previous.id, opened);
+            }
           }
           result.errors.push(...batch.errors);
           if (batch.documents.length === 0) continue;
