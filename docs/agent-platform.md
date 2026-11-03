@@ -18,6 +18,16 @@ the same typography when they occupy one header band.
 
 ## Layers
 
+Desktop process launches route files and their agent session to the same normal
+workspace window: the focused workspace, then the last active workspace, then
+the main or another existing workspace. Preview windows are not implicit launch
+destinations. This also applies when startup restores a workspace without a
+`main` window. Agent attachments are queued by window label; a targeted
+`agent-session` notification tells the registered listener to drain
+`startup_agent_session`. The command consumes the pending attachment once,
+so another window cannot claim it and a listener that mounts late can still
+receive it.
+
 | Layer | Path | Responsibility |
 | --- | --- | --- |
 | Hosted public plugin | `apps/burette-public-plugin` | Public HTTPS MCP tools for one authorized attachment or public PDB entry, plus the sandboxed Burette workspace. |

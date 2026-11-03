@@ -7,9 +7,14 @@ use url::Url;
 #[derive(Default)]
 pub(crate) struct PendingOpenDocuments {
     paths_by_window: Mutex<HashMap<String, Vec<String>>>,
+    sessions_by_window: Mutex<HashMap<String, String>>,
 }
 
 impl PendingOpenDocuments {
+    pub(crate) fn take_session(&self, window_label: &str) -> Option<String> {
+        self.sessions_by_window.lock().unwrap().remove(window_label)
+    }
+
     pub(crate) fn push_for_window(&self, window_label: &str, paths: Vec<String>) {
         if paths.is_empty() {
             return;
@@ -146,17 +151,23 @@ pub(crate) fn signal_open_documents_for_window<R: Runtime>(
         app.state::<PendingOpenDocuments>()
             .push_for_window(window_label, paths);
         if let Some(window) = app.get_webview_window(window_label) {
-            let _ = window.emit("open-documents", ());
+            let _ = app.emit_to(window.label(), "open-documents", ());
         }
     }
 }
 
 pub(crate) fn emit_agent_session<R: Runtime>(
     app: &tauri::AppHandle<R>,
+    window_label: &str,
     session_dir: Option<String>,
 ) {
     if let Some(session_dir) = session_dir {
-        let _ = app.emit("agent-session", session_dir);
+        app.state::<PendingOpenDocuments>()
+            .sessions_by_window
+            .lock()
+            .unwrap()
+            .insert(window_label.to_string(), session_dir);
+        let _ = app.emit_to(window_label, "agent-session", ());
     }
 }
 
@@ -164,6 +175,46 @@ pub(crate) fn emit_agent_session<R: Runtime>(
 mod tests {
     use super::{agent_session_from_argv, file_args_from_argv, LaunchMode};
     use std::fs;
+
+    #[test]
+    fn routes_files_and_session_only_to_the_selected_restored_window() {
+        use tauri::{
+            test::{mock_builder, mock_context, noop_assets},
+            Manager,
+        };
+        let app = mock_builder()
+            .manage(super::PendingOpenDocuments::default())
+            .build(mock_context(noop_assets()))
+            .unwrap();
+        super::signal_open_documents_for_window(
+            app.handle(),
+            "workspace-restored",
+            vec!["/tmp/test.pdb".into()],
+        );
+        super::emit_agent_session(
+            app.handle(),
+            "workspace-restored",
+            Some("/tmp/session".into()),
+        );
+        let pending = app.state::<super::PendingOpenDocuments>();
+        for label in ["main", "workspace-other", "workspace-preview-test"] {
+            assert_eq!(
+                (pending.drain_for_window(label), pending.take_session(label)),
+                (vec![], None)
+            );
+        }
+        assert_eq!(
+            (
+                pending.drain_for_window("workspace-restored"),
+                pending.take_session("workspace-restored")
+            ),
+            (
+                vec!["/tmp/test.pdb".to_string()],
+                Some("/tmp/session".to_string())
+            )
+        );
+        assert_eq!(pending.take_session("workspace-restored"), None);
+    }
 
     #[test]
     fn accepts_file_url_arguments() {

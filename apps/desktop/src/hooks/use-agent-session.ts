@@ -206,14 +206,17 @@ export function useAgentSession({
   useEffect(() => {
     if (!isTauriRuntime()) return undefined;
     let cancelled = false;
-    void invoke<string | null>("startup_agent_session")
+    const drainSession = () => invoke<string | null>("startup_agent_session")
       .then((sessionDir) => {
-        if (!cancelled && !sessionDirRef.current) void activateSession(sessionDir);
+        if (!cancelled) void activateSession(sessionDir);
       })
       .catch((error) => pushErrorStatusRef.current(error, "Agent session startup failed"));
 
-    const cleanup = trackTauriListener(listen<string>("agent-session", (event) => {
-      activateSession(event.payload);
+    const cleanup = trackTauriListener(listen("agent-session", () => {
+      void drainSession();
+    }).then((unlisten) => {
+      void drainSession();
+      return unlisten;
     }), "agent-session");
 
     return () => {

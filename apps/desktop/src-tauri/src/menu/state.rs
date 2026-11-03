@@ -657,7 +657,8 @@ pub(super) fn sync_native_menu<R: Runtime>(
         "file.export-preview-svg",
         state.can_export_external_preview,
     )?;
-    set_enabled(&app, "file.close-tab", state.active_tab_closable)?;
+    // Close falls back to closing the window when no document tab is active.
+    set_enabled(&app, "file.close-tab", true)?;
     set_enabled(
         &app,
         "file.close-other-tabs",

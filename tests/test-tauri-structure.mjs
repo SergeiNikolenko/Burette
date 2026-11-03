@@ -432,10 +432,10 @@ assert.match(startupSource, /paths_by_window: Mutex<HashMap<String, Vec<String>>
 assert.match(startupSource, /push_for_window/);
 assert.match(startupSource, /drain_for_window/);
 assert.match(startupCommand, /window: tauri::WebviewWindow<R>/);
-assert.match(lib, /startup::emit_agent_session\(app, session_dir\)/);
+assert.match(lib, /startup::emit_agent_session\(app, window.label\(\), session_dir\)/);
 assert.match(agentSessionHook, /invoke<string \| null>\("startup_agent_session"\)/);
-assert.match(agentSessionHook, /listen<string>\("agent-session"/);
-assert.match(agentSessionHook, /trackTauriListener\(listen<string>\("agent-session"/);
+assert.match(agentSessionHook, /listen\("agent-session"/);
+assert.match(agentSessionHook, /trackTauriListener\(listen\("agent-session"/);
 assert.match(agentSessionHook, /VITE_BURETTE_AGENT_SHELL/);
 assert.match(agentSessionHook, /BROWSER_AGENT_SESSION_DIR/);
 assert.match(agentSessionHook, /activateSession\(BROWSER_AGENT_SESSION_DIR\)/);

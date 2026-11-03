@@ -172,7 +172,7 @@ impl WindowStateRegistry {
             }
             WindowEvent::Focused(focused) => {
                 self.capture(window, true);
-                if *focused {
+                if *focused && valid_workspace_label(window.label()) {
                     self.set_active(window.label());
                 }
             }

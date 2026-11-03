@@ -2,7 +2,7 @@ import { adjacentMainTabId } from "../stores/molecule-store";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { getAllWindows, getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { confirm as confirmDialog, message as messageDialog } from "@tauri-apps/plugin-dialog";
 import type { ShellActions, ShellViewState, StructureViewerAction } from "../components/types";
 import { reopenClosedTab } from "../components/workspace-panes/pane-actions";
@@ -272,10 +272,8 @@ export function useAppNativeMenu({
   confirmSourceCloseWindowRef.current = confirmSourceCloseWindow;
 
   // The single close coordinator for this window: the title-bar close button
-  // and File > Close Window both land here. With other windows open the window
-  // closes on its own after the unsaved-changes checks; the last window keeps
-  // quitting the app through request_app_quit (whose Rust flow runs the
-  // unsaved-changes preflight) so a windowless process never lingers.
+  // and File > Close Window both land here. Every window, including the last,
+  // runs its own unsaved-changes checks. Cmd+Q owns the separate app quit flow.
   const closeCurrentWindow = useCallback(async () => {
     // A close request that is already waiting on a confirm dialog must not be
     // re-entered by a second click or shortcut.
@@ -284,15 +282,6 @@ export function useAppNativeMenu({
     try {
       if (nativePopoutBusy()) return;
       if (await returnNativePopout()) return;
-      const windowCount = await getAllWindows()
-        .then((windows) => windows.length)
-        .catch(() => 1);
-      if (windowCount <= 1) {
-        void invoke("request_app_quit").catch((error) => {
-          console.warn("App quit request failed", error);
-        });
-        return;
-      }
       const barrier = sealWindowMutations();
       const snapshot = getWindowDocumentDirtySnapshotRef.current();
       const decision = await decideWindowClose({
@@ -646,7 +635,8 @@ export function useAppNativeMenu({
         if (activeDocument && isGrid) actions.openCorrelationMatrix(activeDocument.id);
         return;
       case "file.close-tab":
-        await actions.closeActiveDocument();
+        if (activeTabClosable || (state.activeTabId && state.tabs.length > 1)) await actions.closeActiveDocument();
+        else await closeCurrentWindow();
         return;
       case "file.close-other-tabs":
         if (!state.activeTabId) return;
@@ -730,7 +720,7 @@ export function useAppNativeMenu({
       default:
         console.warn(`Unknown native menu command: ${command}`);
     }
-  }, [actions, activeDocument, canOpenCollectionAnalysis, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, closeCurrentWindow, conformerSelection, isGrid, openDocuments, saveActiveSource, sourceSaveEnabled, state.activeTabId, state.activeTab?.pinned, state.tabs]);
+  }, [actions, activeDocument, activeTabClosable, canOpenCollectionAnalysis, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, closeCurrentWindow, conformerSelection, isGrid, openDocuments, saveActiveSource, sourceSaveEnabled, state.activeTabId, state.activeTab?.pinned, state.tabs]);
 
   // Grid commands need the mounted grid and its records, not just a new document.
   // Cancel if the user leaves the target tab while it is opening.

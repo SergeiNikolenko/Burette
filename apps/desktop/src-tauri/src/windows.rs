@@ -10,6 +10,72 @@ use crate::window_state::WindowStateRegistry;
 pub(crate) const MAIN_WINDOW_LABEL: &str = "main";
 pub(crate) const WORKSPACE_WINDOW_PREFIX: &str = "workspace-";
 
+/// AppKit global screen points, with the origin at the primary screen's bottom-left.
+#[derive(serde::Deserialize)]
+pub(crate) struct NativeScreenPosition {
+    pub(crate) x: f64,
+    pub(crate) y: f64,
+}
+
+pub(crate) fn place_workspace_window<R: Runtime>(
+    window: &WebviewWindow<R>,
+    position: NativeScreenPosition,
+) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let target = window.clone();
+        window
+            .run_on_main_thread(move || unsafe {
+                use cocoa::base::{id, nil, YES};
+                use cocoa::foundation::{NSPoint, NSRect, NSSize};
+                use objc::{class, msg_send, sel, sel_impl};
+                let Ok(native) = target.ns_window() else {
+                    return;
+                };
+                let native = native as id;
+                let screens: id = msg_send![class!(NSScreen), screens];
+                let count: usize = msg_send![screens, count];
+                let mut screen: id = msg_send![native, screen];
+                for index in 0..count {
+                    let candidate: id = msg_send![screens, objectAtIndex: index];
+                    let frame: NSRect = msg_send![candidate, frame];
+                    if position.x >= frame.origin.x
+                        && position.x <= frame.origin.x + frame.size.width
+                        && position.y >= frame.origin.y
+                        && position.y <= frame.origin.y + frame.size.height
+                    {
+                        screen = candidate;
+                        break;
+                    }
+                }
+                if screen == nil {
+                    return;
+                }
+                let visible: NSRect = msg_send![screen, visibleFrame];
+                let frame: NSRect = msg_send![native, frame];
+                let size = NSSize::new(
+                    frame.size.width.min(visible.size.width),
+                    frame.size.height.min(visible.size.height),
+                );
+                // Keep the title bar under the dragged card, within the destination display.
+                let x = (position.x - 120.0).clamp(
+                    visible.origin.x,
+                    (visible.origin.x + visible.size.width - size.width).max(visible.origin.x),
+                );
+                let y = (position.y + 20.0 - size.height).clamp(
+                    visible.origin.y,
+                    (visible.origin.y + visible.size.height - size.height).max(visible.origin.y),
+                );
+                let _: () =
+                    msg_send![native, setFrame: NSRect::new(NSPoint::new(x, y), size) display: YES];
+            })
+            .map_err(|error| error.to_string())?;
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = (window, position);
+    Ok(())
+}
+
 /// How a workspace window first appears.
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum WindowEntrance {
@@ -42,18 +108,36 @@ pub(crate) fn runtime_document_prefix(window_label: &str) -> String {
     format!("{window_label}:")
 }
 
+pub(crate) fn is_workspace_window_label(label: &str) -> bool {
+    label == MAIN_WINDOW_LABEL
+        || (label.starts_with(WORKSPACE_WINDOW_PREFIX) && !label.starts_with("workspace-preview-"))
+}
+
 pub(crate) fn focused_window_label<R: Runtime>(app: &tauri::AppHandle<R>) -> Option<String> {
     let windows = app.webview_windows();
     windows
         .values()
-        .find(|window| window.is_focused().unwrap_or(false))
+        .find(|window| {
+            is_workspace_window_label(window.label()) && window.is_focused().unwrap_or(false)
+        })
         .map(|window| window.label().to_string())
+        .or_else(|| {
+            app.try_state::<WindowStateRegistry>()
+                .and_then(|registry| registry.restoration_order().1)
+                .filter(|label| is_workspace_window_label(label) && windows.contains_key(label))
+        })
         .or_else(|| {
             windows
                 .contains_key(MAIN_WINDOW_LABEL)
                 .then(|| MAIN_WINDOW_LABEL.to_string())
         })
-        .or_else(|| windows.keys().next().cloned())
+        .or_else(|| {
+            windows
+                .keys()
+                .filter(|label| is_workspace_window_label(label))
+                .min()
+                .cloned()
+        })
 }
 
 pub(crate) fn focus_or_create_workspace_window<R: Runtime>(
@@ -67,14 +151,7 @@ pub(crate) fn focus_or_create_workspace_window<R: Runtime>(
     let windows = app.webview_windows();
     let existing_window = preferred_label
         .and_then(|label| windows.get(label).cloned())
-        .or_else(|| {
-            windows
-                .values()
-                .find(|window| window.is_focused().unwrap_or(false))
-                .cloned()
-        })
-        .or_else(|| windows.get(MAIN_WINDOW_LABEL).cloned())
-        .or_else(|| windows.values().next().cloned());
+        .or_else(|| focused_window_label(app).and_then(|label| windows.get(&label).cloned()));
     let (window, created) = match existing_window {
         Some(window) => (window, false),
         None => (
@@ -224,6 +301,8 @@ fn create_workspace_window<R: Runtime>(
     entrance: WindowEntrance,
 ) -> Result<WebviewWindow<R>, String> {
     let url = WebviewUrl::App(format!("index.html?buretteWindow={label}").into());
+    #[cfg(target_os = "macos")]
+    crate::macos::disable_automatic_window_tabbing();
     let preview = label.starts_with("workspace-preview-");
     let builder = WebviewWindowBuilder::new(app, &label, url)
         .title("Burette")
@@ -365,5 +444,45 @@ fn next_workspace_label<R: Runtime>(app: &tauri::AppHandle<R>) -> String {
         if app.get_webview_window(&label).is_none() {
             return label;
         }
+    }
+}
+
+#[cfg(test)]
+mod routing_tests {
+    use super::*;
+
+    #[test]
+    fn routes_to_last_workspace_even_after_preview_focus() {
+        use tauri::test::{mock_builder, mock_context, noop_assets};
+        let app = mock_builder()
+            .manage(WindowStateRegistry::unavailable())
+            .build(mock_context(noop_assets()))
+            .unwrap();
+        let workspace_label = format!("workspace-{}", uuid::Uuid::new_v4());
+        let workspace = WebviewWindowBuilder::new(&app, &workspace_label, WebviewUrl::default())
+            .build()
+            .unwrap();
+        let preview =
+            WebviewWindowBuilder::new(&app, "workspace-preview-test", WebviewUrl::default())
+                .build()
+                .unwrap();
+        let registry = app.state::<WindowStateRegistry>();
+        registry.handle_event(&workspace, &tauri::WindowEvent::Focused(true), false);
+        registry.handle_event(&preview, &tauri::WindowEvent::Focused(true), false);
+        assert_eq!(
+            registry.restoration_order().1,
+            Some(workspace_label.clone())
+        );
+        assert_eq!(focused_window_label(app.handle()), Some(workspace_label));
+    }
+
+    #[test]
+    fn preview_only_is_not_an_open_document_destination() {
+        use tauri::test::{mock_builder, mock_context, noop_assets};
+        let app = mock_builder().build(mock_context(noop_assets())).unwrap();
+        WebviewWindowBuilder::new(&app, "workspace-preview-test", WebviewUrl::default())
+            .build()
+            .unwrap();
+        assert_eq!(focused_window_label(app.handle()), None);
     }
 }
