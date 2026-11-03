@@ -2,8 +2,9 @@ import { beforeAll, describe, expect, test } from 'bun:test';
 import initRDKitModule, { type MainModule as RDKitModule } from '@rdkit/rdkit';
 import inputs from './fixtures/forcefield/rdkit-reference.json';
 import reference from './fixtures/optimization/rdkit-optimization-reference.json';
-import { generateFromSmiles, getEnergy, optimize, parseMolecule, prepare3d, searchConformers, type GeometryConstraint, type OptimizationMethod } from '../apps/desktop/src/lib/molecular-workbench/chemistry';
+import { createEnergyEvaluator, createOptimizationEvaluator, generateFromSmiles, getEnergy, optimize, parseMolecule, prepare3d, searchConformers, type GeometryConstraint, type OptimizationMethod } from '../apps/desktop/src/lib/molecular-workbench/chemistry';
 import { evaluateEnergyForces } from '../apps/desktop/src/lib/molecular-workbench/energy-forces';
+import { optimizeCartesian } from '../apps/desktop/src/lib/molecular-workbench/optimization';
 import { runChemistryTask } from '../apps/desktop/src/lib/molecular-workbench/compute-client';
 import { prepareUffWasm } from '../apps/desktop/src/lib/molecular-workbench/uff-wasm';
 import { atomsFromZmatrixDocument, parseZmatrixDocument } from '../scripts/zmatrix-document.mjs';
@@ -29,37 +30,58 @@ describe('optimization against independent RDKit references', () => {
     }
   });
 
-  test('toolkit BFGS reaches the RDKit MMFF94 and MMFF94s minima, including a linear nitrile', () => {
+  test('the analytic MMFF surface used for optimization matches RDKit energies and analytic gradients', () => {
     for (const { smiles } of reference.records) for (const model of ['MMFF94', 'MMFF94s'] as const) {
-      const result = optimize(record(smiles).input, { forceField: model, method: 'bfgs', maxIterations: 1000 });
-      expect([result.method, result.gradient, result.frameSampling, result.converged, result.iterations]).toEqual(['bfgs', 'toolkit', 'endpoints', true, null]);
+      const { input, expected } = record(smiles), evaluator = createOptimizationEvaluator(input, model);
+      try {
+        expect(Math.abs(evaluator.energy(input.atoms) - expected.models[model].energy)).toBeLessThan(1e-4);
+        evaluator.gradient!(input.atoms).flat().forEach((value, i) => expect(Math.abs(value - expected.models[model].gradient[i])).toBeLessThan(2e-4));
+      } finally { evaluator.dispose(); }
+    }
+  });
+
+  test('BFGS reaches the RDKit MMFF94, MMFF94s and UFF minima on the analytic surface, including a linear nitrile, and records every step', () => {
+    for (const { smiles } of reference.records) for (const model of ['MMFF94', 'MMFF94s', 'UFF'] as const) {
+      const { input } = record(smiles), result = optimize(input, { forceField: model, method: 'bfgs', maxIterations: 1000 });
+      expect([result.method, result.gradient, result.frameSampling, result.converged, result.stopReason]).toEqual(['bfgs', 'analytic', 'steps', true, 'converged']);
       expect(Math.abs(result.energy - minimum(smiles, model))).toBeLessThan(1e-4);
-      expect(result.frames.map(frame => frame.energy)).toEqual([result.initialEnergy, result.energy]);
+      expect(result.frames[0].atoms).toEqual(input.atoms);
+      expect(result.frames.at(-1)!.atoms).toEqual(result.molecule.atoms);
+      expect(result.frames.length).toBeGreaterThanOrEqual(result.iterations + 1);
+      result.frames.slice(1).forEach((frame, i) => expect(frame.energy).toBeLessThanOrEqual(result.frames[i].energy + 1e-9));
     }
   });
 
   test('every UFF method reaches the RDKit UFF minimum or reports that it stopped short', () => {
-    for (const { smiles } of reference.records) for (const method of ['lbfgs', 'fire', 'abc-fire', 'hybrid'] as const) {
+    for (const { smiles } of reference.records) for (const method of ['bfgs', 'lbfgs', 'fire', 'abc-fire', 'hybrid'] as const) {
       const result = optimize(record(smiles).input, { forceField: 'UFF', method, maxIterations: 1000 });
       expect([result.method, result.gradient, result.frameSampling]).toEqual([method, 'analytic', 'steps']);
-      if (method === 'lbfgs' || method === 'hybrid') expect(result.converged).toBe(true);
+      if (method !== 'fire' && method !== 'abc-fire') expect(result.converged).toBe(true);
       if (result.converged) expect(Math.abs(result.energy - minimum(smiles, 'UFF'))).toBeLessThan(1e-4);
       else expect([result.stopReason, result.energy >= minimum(smiles, 'UFF') - 1e-6]).toEqual(['iterations', true]);
     }
   });
 
-  test('numerical MMFF methods reach the same minima, survive non-finite linear trial points and record every step', () => {
+  test('MMFF methods reach the same minima on the analytic surface, survive non-finite linear trial points and record every step', () => {
     const cases: [string, Model, OptimizationMethod][] = [['CCO', 'MMFF94', 'lbfgs'], ['CCO', 'MMFF94s', 'fire'], ['CCO', 'MMFF94', 'abc-fire'], ['CCO', 'MMFF94', 'hybrid'], ['O', 'MMFF94', 'fire'], ['CC#N', 'MMFF94', 'lbfgs']];
     for (const [smiles, model, method] of cases) {
       const { input } = record(smiles), result = optimize(input, { forceField: model, method, maxIterations: 1000 });
-      expect([result.method, result.gradient, result.converged, result.stopReason]).toEqual([method, 'central-difference', true, 'converged']);
+      expect([result.method, result.gradient, result.converged, result.stopReason]).toEqual([method, 'analytic', true, 'converged']);
       expect(Math.abs(result.energy - minimum(smiles, model))).toBeLessThan(1e-4);
       expect(result.frames[0].atoms).toEqual(input.atoms);
       expect(result.frames.at(-1)!.atoms).toEqual(result.molecule.atoms);
-      expect(result.frames.length).toBeGreaterThanOrEqual(result.iterations! + 1);
-      for (const frame of [result.frames[1], result.frames.at(-1)!]) expect(frame.energy).toBeCloseTo(getEnergy({ ...input, atoms: frame.atoms }, model), 8);
+      expect(result.frames.length).toBeGreaterThanOrEqual(result.iterations + 1);
+      // The analytic surface uses the extracted f32 parameters; OpenChemLib's energy agrees within 1e-4.
+      for (const frame of [result.frames[0], result.frames[1], result.frames.at(-1)!]) expect(Math.abs(frame.energy - getEnergy({ ...input, atoms: frame.atoms }, model))).toBeLessThan(1e-4);
       if (method === 'lbfgs') result.frames.slice(1).forEach((frame, i) => expect(frame.energy).toBeLessThanOrEqual(result.frames[i].energy + 1e-9));
     }
+    // Without the analytic surface, OpenChemLib's energy is differenced and reaches the same minimum.
+    const { input } = record('CCO'), evaluator = createEnergyEvaluator(input, 'MMFF94');
+    try {
+      const fallback = optimizeCartesian(input, evaluator, 'bfgs', 'MMFF94', { maxIterations: 1000 });
+      expect([fallback.gradient, fallback.converged]).toEqual(['central-difference', true]);
+      expect(Math.abs(fallback.energy - minimum('CCO', 'MMFF94'))).toBeLessThan(1e-4);
+    } finally { evaluator.dispose(); }
   }, 60_000);
 
   test('frozen atoms and harmonic distance, angle and torsion restraints match the RDKit constrained minimum', () => {
@@ -77,7 +99,7 @@ describe('optimization against independent RDKit references', () => {
       // Started at RDKit's constrained minimum, the same objective is already stationary.
       const atRdkit = { ...input, atoms: input.atoms.map((atom, i) => ({ element: atom.element, x: models[model].coordinates[i][0], y: models[model].coordinates[i][1], z: models[model].coordinates[i][2] })) };
       const stationary = optimize(atRdkit, { forceField: model, method: 'lbfgs', maxIterations: 1000, constraints: restraints as GeometryConstraint[] });
-      expect(Math.abs(stationary.initialEnergy - models[model].energy)).toBeLessThan(1e-6);
+      expect(Math.abs(stationary.initialEnergy - models[model].energy)).toBeLessThan(1e-4);
       expect(stationary.initialEnergy - stationary.energy).toBeLessThan(1e-6);
     }
   }, 60_000);
@@ -87,8 +109,6 @@ describe('optimization against independent RDKit references', () => {
     const refusals: [typeof nitrile, Parameters<typeof optimize>[1], RegExp][] = [
       [nitrile, { constraints: [{ kind: 'angle', atoms: [0, 1, 2] }] }, /C1–C2–N3 angle is linear/],
       [nitrile, { constraints: [{ kind: 'dihedral', atoms: [3, 0, 1, 2] }] }, /torsion is undefined because C1–C2–N3 is collinear/],
-      [water, { forceField: 'UFF', method: 'bfgs' }, /BFGS is the MMFF94 toolkit minimizer/],
-      [water, { method: 'bfgs', constraints: [{ kind: 'freeze', atoms: [0] }] }, /BFGS cannot hold frozen atoms/],
       [water, { method: 'lbfgs', maxIterations: 0 }, /1–1000/],
       [water, { constraints: [{ kind: 'distance', atoms: [0, 0] }] }, /invalid atom indices/],
     ];
@@ -97,9 +117,16 @@ describe('optimization against independent RDKit references', () => {
       await expect(runChemistryTask({ action: 'optimize', molecule, options })).rejects.toThrow(message);
     }
     const waters = parseMolecule(`66\nwaters\n${Array.from({ length: 22 }, (_, i) => `O ${i * 6} 0 0\nH ${i * 6 + .95} 0 0\nH ${i * 6 - .23} .93 0`).join('\n')}\n`, 'xyz');
-    for (const method of ['lbfgs', 'fire', 'abc-fire', 'hybrid'] as const) expect(() => optimize(waters, { method })).toThrow(/up to 64 atoms; this structure has 66/);
-    expect(() => optimize(waters, { forceField: 'UFF' })).toThrow(/UFF optimization supports up to 64 atoms/);
-    expect(optimize(waters, { method: 'bfgs', maxIterations: 1000 }).method).toBe('bfgs');
+    // UFF's analytic gradient carries every method past the 64-atom differencing bound. The extracted
+    // MMFF terms omit the water–water interactions OpenChemLib includes, so MMFF would difference and refuses.
+    for (const method of ['bfgs', 'lbfgs', 'fire', 'abc-fire', 'hybrid'] as const) {
+      expect(optimize(waters, { forceField: 'UFF', method, maxIterations: 20 })).toMatchObject({ method, forceField: 'UFF', gradient: 'analytic' });
+      expect(() => optimize(waters, { method })).toThrow(/MMFF94 has no analytic gradient for this structure \(separate fragments interact.*up to 64 atoms and it has 66/);
+    }
+    const pair = parseMolecule('6\ntwo waters\nO 0 0 0\nH .95 0 0\nH -.23 .93 0\nO 3 0 0\nH 3.95 0 0\nH 2.77 .93 0\n', 'xyz');
+    expect(optimize(pair, { method: 'bfgs', maxIterations: 1000 })).toMatchObject({ gradient: 'central-difference', converged: true });
+    // BFGS holds frozen atoms like every other method.
+    expect(optimize(water, { method: 'bfgs', constraints: [{ kind: 'freeze', atoms: [0] }] })).toMatchObject({ method: 'bfgs', converged: true, frozenAtoms: [0] });
     // A constrained request without a method uses the documented L-BFGS default and says so.
     expect(optimize(water, { constraints: [{ kind: 'freeze', atoms: [1] }] }).method).toBe('lbfgs');
   });
@@ -141,7 +168,10 @@ describe('optimization against independent RDKit references', () => {
     const chain = Array.from({ length: 30 }, (_, i) => `${(i * 1.3).toFixed(4).padStart(10)}${(i % 2 * .75).toFixed(4).padStart(10)}    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0`);
     const bonds = Array.from({ length: 29 }, (_, i) => `${String(i + 1).padStart(3)}${String(i + 2).padStart(3)}  1  0`);
     const large = parseMolecule(`\n  flat\n\n 30 29  0  0  0  0  0  0  0  0999 V2000\n${[...chain, ...bonds].join('\n')}\nM  END\n`, 'mol');
-    expect(() => prepare3d(large, { forceField: 'UFF' })).toThrow(/UFF optimization supports up to 64 atoms.*92/);
+    for (const forceField of ['MMFF94', 'UFF'] as const) {
+      const prepared = prepare3d(large, { forceField });
+      expect([prepared.molecule.atoms.length, prepared.method, prepared.gradient, prepared.energy < prepared.initialEnergy]).toEqual([92, forceField === 'UFF' ? 'lbfgs' : 'bfgs', 'analytic', true]);
+    }
   });
 
   test('Z-matrix optimization with both O–H bonds and both angles on shared variables reaches the RDKit water minimum', () => {
@@ -151,7 +181,7 @@ describe('optimization against independent RDKit references', () => {
     const molecule = parseMolecule(`3\nwater\n${atoms.map(a => `${a.element} ${a.x} ${a.y} ${a.z}`).join('\n')}\n`, 'xyz');
     const target = record('O').expected.models.MMFF94.minimum.coordinates as number[][];
     const rdkitBond = Math.hypot(...target[1].map((v, i) => v - target[0][i]));
-    for (const method of ['lbfgs', 'fire', 'abc-fire', 'hybrid'] as const) {
+    for (const method of ['bfgs', 'lbfgs', 'fire', 'abc-fire', 'hybrid'] as const) {
       const result = optimizeZmatrix(molecule, definition, { method, maxIterations: 1000 });
       expect([result.converged, result.method]).toEqual([true, method]);
       expect(Math.abs(result.energy - minimum('O', 'MMFF94'))).toBeLessThan(1e-5);
@@ -159,6 +189,5 @@ describe('optimization against independent RDKit references', () => {
       expect(Math.abs(bond(h1) - rdkitBond)).toBeLessThan(1e-3);
       expect(bond(h1)).toBeCloseTo(bond(h2), 9);
     }
-    expect(() => optimizeZmatrix(molecule, definition, { method: 'bfgs' })).toThrow(/BFGS minimizes Cartesian MMFF94 coordinates/);
   });
 });

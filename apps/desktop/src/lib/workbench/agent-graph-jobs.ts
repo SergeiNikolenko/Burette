@@ -154,9 +154,9 @@ export const graphJobs: { [K in "properties" | "energy" | "energy_forces" | "fra
   },
   optimize: {
     unavailable: graphUnavailable,
-    paramsUnavailable(snapshot, { forceField, method, constraints }) {
+    paramsUnavailable(snapshot, { constraints }) {
       const atoms = snapshot.structure!.atoms;
-      const reason = optimizationUnavailable(atoms.length, forceField, method, constraints.length);
+      const reason = optimizationUnavailable(atoms.length, constraints.length);
       if (reason) return reason;
       try { resolveConstraints(atoms, constraints); } catch (error) { return error instanceof Error ? error.message : String(error); }
       return null;
@@ -168,7 +168,7 @@ export const graphJobs: { [K in "properties" | "energy" | "energy_forces" | "fra
   },
   prepare_3d: {
     unavailable: snapshot => graphUnavailable(snapshot) ?? (flatDepiction(snapshot.structure!) ? null : "This structure already has 3D coordinates; use optimize."),
-    paramsUnavailable: (snapshot, { forceField, method }) => optimizationUnavailable(snapshot.structure!.atoms.length, forceField, method, 0),
+    paramsUnavailable: snapshot => optimizationUnavailable(snapshot.structure!.atoms.length, 0),
     async run(input, params, context) {
       const result = await runChemistryTask({ action: "prepare-3d", molecule: input.structure!, options: params }, { signal: context.signal, timeoutMs: context.timeoutMs });
       return { summary: { ...optimizationSummary(result), preparation: result.preparation, atomCount: result.molecule.atoms.length }, artifacts: await optimizationArtifacts(await structureSdf(input, result.molecule, context.signal), result, `${context.stem}-3d`, context) };

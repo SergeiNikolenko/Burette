@@ -33,7 +33,7 @@ test("Generate 3D turns a flat MOL drawing into one undoable 3D revision with it
     expect(smiles(content)).toBe(expected);
     await f.render(doc, true);
     await until(() => document.querySelector(".structure-edit-outcome"));
-    expect(document.querySelector(".structure-edit-outcome")!.textContent).toMatch(/^MMFF94, BFGS -?\d+\.\d\d → -?\d+\.\d\d kcal\/molConverged$/u);
+    expect(document.querySelector(".structure-edit-outcome")!.textContent).toMatch(/^MMFF94, BFGS -?\d+\.\d\d → -?\d+\.\d\d kcal\/mol, \d+ stepsConvergedOpen steps$/u);
     await click(button("Undo")); await until(() => f.controller().sessionForDocument(doc)?.content === flat);
     await f.render(doc);
     await until(() => row("3D coordinates"));

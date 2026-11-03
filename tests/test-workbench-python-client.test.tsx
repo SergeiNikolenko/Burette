@@ -112,6 +112,7 @@ job = wb.run("optimize", {"forceField": "UFF", "constraints": [{"kind": "freeze"
 exported = wb.export(job.job_id, "structure", "optimized.sdf")
 built = wb.build("peptide", {"sequence": "AG"})
 print(json.dumps({
+  "bfgs": wb.run("optimize", {"forceField": "UFF", "method": "bfgs"}).raw,
   "built": built.raw, "builtExport": wb.export(built.job_id, "structure", "ag.cif"), "misrouted": code(lambda: wb.build("energy", {})),
   "jobs": list(wb.capabilities()["jobs"]), "structure": doc["structure"], "atoms": atoms, "job": job.raw, "exported": exported,
   "replayed": wb.submit("optimize", job.params, expected_source_revision=doc["sourceRevision"], operation_id=job.operation_id).job_id,
@@ -119,7 +120,7 @@ print(json.dumps({
   "exists": code(lambda: wb.export(job.job_id, "structure", "optimized.sdf")),
   "stale": code(lambda: wb.submit("energy", {}, expected_source_revision="sha256-" + "a" * 64)),
   "invalid": code(lambda: wb.submit("optimize", {"method": "steepest"}, expected_source_revision=doc["sourceRevision"])),
-  "unavailable": code(lambda: wb.run("optimize", {"forceField": "UFF", "method": "bfgs"})),
+  "unavailable": code(lambda: wb.run("optimize", {"constraints": [{"kind": "freeze", "atoms": [99]}]})),
   "unknown": code(lambda: wb.submit("molecular_dynamics", {}, expected_source_revision=doc["sourceRevision"])),
 }))`);
   expect(report.jobs).toEqual(["properties", "energy", "energy_forces", "frame_energy_forces", "optimize", "prepare_3d", "conformers", "metadata_edit", "pair_distribution", "point_group", "space_group", "powder_xrd", "crystal_transform", "orbital_cube", "insert_fragment", "hydrogens", "polymer", "smiles", "nucleic_acid", "metal_complex", "peptide"]);
@@ -131,6 +132,7 @@ print(json.dumps({
   expect([bytes.length, sha256(bytes), report.exported.content]).toEqual([report.exported.byteCount, report.exported.sha256, undefined]);
   expect([optimized.bonds, optimized.atoms[0]]).toEqual([source.bonds, source.atoms[0]]);
   expect(report).toMatchObject({ replayed: report.job.jobId, conflict: "OPERATION_ID_CONFLICT", exists: "OUTPUT_EXISTS", stale: "REVISION_CONFLICT", invalid: "INVALID_ARGS", unavailable: "JOB_UNAVAILABLE", unknown: "UNSUPPORTED_WORKBENCH_JOB" });
+  expect(report.bfgs).toMatchObject({ status: "succeeded", summary: { method: "bfgs", gradient: "analytic", frameSampling: "steps", converged: true } });
   expect(report.built).toMatchObject({ kind: "peptide", status: "succeeded", binding: "none", documentId: null, sourceRevision: null, summary: { sequence: "AG", residueCount: 2 } });
   expect([report.misrouted, (await readFile(report.builtExport.path, "utf8")).includes("_atom_site.")]).toEqual(["INVALID_ARGS", true]);
   expect(hookErrors).toEqual([]);

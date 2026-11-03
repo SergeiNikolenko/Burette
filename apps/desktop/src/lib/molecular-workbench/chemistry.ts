@@ -8,7 +8,8 @@ import { readUnspecifiedMolfileStereo, retainUnknownStereo } from './molecule-st
 import { optimizeCartesian, defaultOptimizationMethod, optimizationUnavailable, OPTIMIZATION_LIMITS, CONFORMER_LIMITS, flatDepiction, type EnergyEvaluator, type OptimizeOptions, type OptimizationResult } from './optimization';
 import { createForceField, type MolecularForceField } from './forcefield';
 import { ForceFieldMMFF94 } from 'openchemlib';
-import { calculateGasteigerWasm, createUffWasmEvaluator, prepareUffWasm } from './uff-wasm';
+import { calculateGasteigerWasm, createUffWasmEvaluator, extractMmffParametersWasm, prepareUffWasm } from './uff-wasm';
+import { decodeMmffTerms, mmffEnergy } from './mmff-analytic';
 export type { MolecularForceField } from './forcefield';
 export type { GeometryConstraint, OptimizeOptions, OptimizationResult, OptimizationMethod } from './optimization';
 
@@ -81,7 +82,10 @@ export function getEnergy(structure: MolecularStructure, forceField: MolecularFo
  * initial nonbonded term list). Energies may be non-finite at undefined geometries;
  * callers reject such points. The caller owns disposal, including cancellation. */
 export function createEnergyEvaluator(structure: MolecularStructure, forceField: MolecularForceField = 'MMFF94'): EnergyEvaluator {
-  const mol = toOcl(structure);
+  return energyEvaluatorForGraph(structure, forceField, toOcl(structure));
+}
+
+function energyEvaluatorForGraph(structure: MolecularStructure, forceField: MolecularForceField, mol: Molecule): EnergyEvaluator {
   createForceField(mol, forceField);
   const place = (atoms: MolecularAtom[], set: (index: number, atom: MolecularAtom) => void) => {
     if (atoms.length !== structure.atoms.length || atoms.some((atom, i) => atom.element !== structure.atoms[i].element)) throw new Error('Energy coordinates must preserve molecular atom identities.');
@@ -109,6 +113,50 @@ export function createEnergyEvaluator(structure: MolecularStructure, forceField:
       return atoms.map((_, i) => { const index = structure.atomMap?.[i] ?? i; return [gradient[3 * index], gradient[3 * index + 1], gradient[3 * index + 2]]; });
     },
     dispose: () => field.dispose(),
+  };
+}
+
+/** Largest |E(analytic surface) − E(OpenChemLib)| at the start geometry, kcal/mol, for
+ * which MMFF optimizations run on the analytic surface. Measured agreement on the RDKit
+ * reference set is 3.6e-5 (f32 parameters); a larger gap means the two toolkits typed
+ * the molecule differently. */
+const MMFF_SURFACE_AGREEMENT = 1e-3;
+
+/** UFF and MMFF optimizations use analytic gradients. MMFF evaluates the term list that
+ * the pinned RDKit module extracts (requires `prepareUffWasm()`). That list omits
+ * interactions between separate fragments, which OpenChemLib includes. Use central
+ * differences for such graphs and when analytic extraction or the energy check fails. */
+export function createOptimizationEvaluator(structure: MolecularStructure, forceField: MolecularForceField = 'MMFF94'): EnergyEvaluator {
+  const mol = toOcl(structure);
+  const reference = energyEvaluatorForGraph(structure, forceField, mol);
+  const n = structure.atoms.length;
+  if (forceField === 'UFF' || mol.getFragmentAtoms(0, false).length !== n) return reference;
+  // The canonical molfile is already in atomMap order. Extract terms from it
+  // directly so another OCL serialization cannot permute the atom indices.
+  let terms: ReturnType<typeof decodeMmffTerms>;
+  try { terms = decodeMmffTerms(extractMmffParametersWasm(structure.molfile, forceField)); } catch { return reference; }
+  const positions = new Float64Array(3 * n), gradient = new Float64Array(3 * n);
+  let energy = Number.NaN, current = false;
+  // Energy and gradient come from one evaluation; repeat requests at the same point reuse it.
+  const evaluate = (atoms: MolecularAtom[]) => {
+    if (atoms.length !== n || atoms.some((atom, i) => atom.element !== structure.atoms[i].element)) throw new Error('Energy coordinates must preserve molecular atom identities.');
+    let same = current;
+    atoms.forEach((atom, i) => {
+      const index = 3 * (structure.atomMap?.[i] ?? i);
+      if (positions[index] !== atom.x || positions[index + 1] !== atom.y || positions[index + 2] !== atom.z) same = false;
+      positions[index] = atom.x; positions[index + 1] = atom.y; positions[index + 2] = atom.z;
+    });
+    if (!same) { energy = mmffEnergy(terms, positions, gradient); current = true; }
+    return energy;
+  };
+  if (terms.atomCount !== n || !(Math.abs(evaluate(structure.atoms) - reference.energy(structure.atoms)) <= MMFF_SURFACE_AGREEMENT)) return reference;
+  return {
+    energy: evaluate,
+    gradient(atoms) {
+      evaluate(atoms);
+      return atoms.map((_, i) => { const index = 3 * (structure.atomMap?.[i] ?? i); return [gradient[index], gradient[index + 1], gradient[index + 2]]; });
+    },
+    dispose() { reference.dispose(); },
   };
 }
 
@@ -159,36 +207,19 @@ export async function adjustHydrogensForPh(structure: MolecularStructure, pH: nu
   return { structure: { ...next, sourceAtomIndices }, pH, changes, omittedChanges: assigned.length - changes.length };
 }
 
-/**
- * Optimizes with exactly the requested field and method; an unavailable combination
- * fails instead of running another. `bfgs` runs OpenChemLib's MMFF minimizer, which
- * publishes coordinates only on convergence and exposes no intermediate steps.
- */
+/** Optimizes with exactly the requested field and method and records every step. */
 export function optimize(structure: MolecularStructure, options: OptimizeOptions = {}): OptimizationResult {
   const forceField = options.forceField ?? 'MMFF94', constraints = options.constraints ?? [];
   const method = options.method ?? defaultOptimizationMethod(forceField, constraints.length > 0);
   const maxIterations = options.maxIterations ?? 250;
   if (!Number.isInteger(maxIterations) || maxIterations < 1 || maxIterations > OPTIMIZATION_LIMITS.iterations) throw new Error('Use 1–1000 optimization iterations.');
-  const unavailable = optimizationUnavailable(structure.atoms.length, forceField, method, constraints.length);
+  const unavailable = optimizationUnavailable(structure.atoms.length, constraints.length);
   if (unavailable) throw new Error(unavailable);
-  if (method !== 'bfgs') {
-    const evaluator = createEnergyEvaluator(structure, forceField);
-    try {
-      const { atoms, ...result } = optimizeCartesian(structure, evaluator, method, forceField, { constraints, maxIterations });
-      return { ...result, molecule: snapshot(toOcl({ ...structure, atoms }), structure.title, structure.graphSource, structure.graphComplete, structure.atomMap) };
-    } finally { evaluator.dispose(); }
-  }
-  const mol = toOcl(structure), initialEnergy = createForceField(mol, forceField).getTotalEnergy();
-  const status = createForceField(mol, forceField).minimise({ maxIts: maxIterations });
-  // OCL publishes optimized coordinates to the molecule only on convergence. Its
-  // internal last-iteration energy can otherwise describe a different geometry;
-  // always evaluate the coordinates we are returning.
-  const energy = createForceField(mol, forceField).getTotalEnergy();
-  if (!Number.isFinite(energy) || energy > initialEnergy + 1e-6) throw new Error(`${forceField} optimization did not lower the energy.`);
-  const molecule = snapshot(mol, structure.title, structure.graphSource, structure.graphComplete, structure.atomMap);
-  return { molecule, initialEnergy, energy, unit: 'kcal/mol', forceField, method, iterations: null, converged: status === 0,
-    stopReason: status === 0 ? 'converged' : 'iterations', gradient: 'toolkit', maxGradient: null, frameSampling: 'endpoints',
-    frames: [{ atoms: structure.atoms.map(atom => ({ ...atom })), energy: initialEnergy }, { atoms: molecule.atoms, energy }], constraintResiduals: [], frozenAtoms: [] };
+  const evaluator = createOptimizationEvaluator(structure, forceField);
+  try {
+    const { atoms, ...result } = optimizeCartesian(structure, evaluator, method, forceField, { constraints, maxIterations });
+    return { ...result, molecule: snapshot(toOcl({ ...structure, atoms }), structure.title, structure.graphSource, structure.graphComplete, structure.atomMap) };
+  } finally { evaluator.dispose(); }
 }
 
 // RMS difference of sorted heavy-atom distances, Å, below which two relaxed conformers are the same minimum.
@@ -257,7 +288,7 @@ export function prepare3d(structure: MolecularStructure, options: { forceField?:
   checkHydrogenExpansion(source);
   const addedHydrogens = Array.from({ length: source.getAllAtoms() }, (_, i) => source.getImplicitHydrogens(i)).reduce((a, b) => a + b, 0);
   const method = options.method ?? defaultOptimizationMethod(forceField, false);
-  const unavailable = optimizationUnavailable(source.getAllAtoms() + addedHydrogens, forceField, method, 0);
+  const unavailable = optimizationUnavailable(source.getAllAtoms() + addedHydrogens, 0);
   if (unavailable) throw new Error(unavailable);
   const unknownAtoms = Array.from({ length: source.getAllAtoms() }, (_, i) => i).filter(i => source.isAtomConfigurationUnknown(i));
   const unknownBonds = Array.from({ length: source.getAllBonds() }, (_, b) => b).filter(b => source.getBondParity(b) === Molecule.cBondParityUnknown);

@@ -79,6 +79,14 @@ export function createUffWasmEvaluator(molblock: string): UffWasmEvaluator {
   };
 }
 
+/** MMFF94/MMFF94s term parameters (BMFX v1) from the same pinned RDKit module. */
+export function extractMmffParametersWasm(molblock: string, variant: "MMFF94" | "MMFF94s"): Uint8Array {
+  if (!module) throw new Error("RDKit must be prepared before extracting MMFF parameters.");
+  if (typeof module.mmff_extractor_abi_version !== "function" || module.mmff_extractor_abi_version() !== 1) throw new Error("MMFF extractor differs from the pinned ABI v1.");
+  if (!molblock.trim() || new TextEncoder().encode(molblock).byteLength > MAXIMUM_INPUT_BYTES) throw new Error("MMFF MOL block must contain at most 2 MiB.");
+  return module.extract_mmff_parameters(molblock, 0, variant === "MMFF94" ? 0 : 1);
+}
+
 export function calculateGasteigerWasm(molblock: string): Float64Array {
   if (!module) throw new Error("RDKit must be prepared before calculating Gasteiger charges.");
   if (!molblock.trim() || molblock.length > MAXIMUM_INPUT_BYTES

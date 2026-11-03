@@ -1,10 +1,9 @@
 # Stage 3 and 10 evidence: optimization, constraints and automation
 
-Branch `parity/optimization-automation`, from `a5f7303cd`. Nothing here was run
-in a live browser, the packaged plugin or the native app; those lanes have exact
-acceptance scripts below. Every numeric expectation comes from an independent
-reference (Python RDKit, RDKit's own UFF fixture, or an analytic lattice
-result), never from Burette output.
+Started on `parity/optimization-automation` at `a5f7303cd` and verified
+again on the integration branch. Numeric expectations come from Python RDKit,
+RDKit's UFF fixture or the analytic lattice result. The live browser evidence
+below records the observed UI output separately.
 
 ## References and fixtures
 
@@ -25,14 +24,14 @@ result), never from Burette output.
 
 | Requirement | Status | Evidence |
 | --- | --- | --- |
-| MMFF94/MMFF94s/UFF minimization with L-BFGS, FIRE, ABC-FIRE and hybrid; BFGS and L-BFGS kept | Done | `optimization.ts`, `minimizer.ts`. `test:optimization-reference` reaches the RDKit minima for every model and method. `test:minimizer-core` covers the minimizer stop rules and non-finite trial points. BFGS is the OpenChemLib MMFF minimizer (unconstrained MMFF only); L-BFGS is the shared numerical route. |
+| MMFF94/MMFF94s/UFF with BFGS, L-BFGS, FIRE, ABC-FIRE and hybrid | Done | Every Cartesian method uses the selected field and records steps. BFGS matches the independent RDKit minima across all three fields. The suite checks additional methods against the same references and verifies the stop reason for runs that exhaust their iteration budget. |
 | Frozen atoms; distance/angle/torsion constraints; residual reporting | Done | Frozen atoms are removed from the variables, so they stay exact. Other constraints are harmonic 10⁴·Δ² restraints. Constrained ethanol matches RDKit's constrained minimum, and a stationarity check starts from RDKit's coordinates. Residuals carry kind, atoms, target, value, signed error and unit in every result; `converged` requires every residual within 0.01 Å / 1°. Geometry lists each residual (`test-geometry-optimization-result`); agents read `constraintResiduals` (`test:workbench-automation-jobs`). |
-| Z-matrix shared-variable optimization | Done | `zmatrix-coupled-optimization.ts` refuses BFGS and exposes every numerical method. New RDKit check: water with shared R/A reaches the RDKit MMFF94 minimum with every method (`test:optimization-reference`). Existing invariant tests cover shared-use equality, frozen rows, periodic torsions and the central derivative along a shared variable. |
+| Z-matrix shared-variable optimization | Done | All five methods use central differences over the independent variables. Water with shared R/A reaches the RDKit MMFF94 minimum with each method. Invariant tests cover shared values, frozen rows, periodic torsions and central derivatives. |
 | Conformer search | Done | `searchConformers` relaxes every sample to a converged minimum and drops permutation-equivalent duplicates by sorted heavy-atom distances. Butane and pentane minima match RDKit. UI: Properties → Conformers → Search opens an energy-ordered SDF (`test-workbench-prepare-conformers-ui`). Agent: `conformers` job. |
 | Accepted / failed / cancelled / stale outcomes | Done | UI: a result publishes one draft edit only when the source is unchanged; cancel terminates the worker (`test-workbench-zmatrix-optimize`, `test-workbench-prepare-conformers-ui`). Agent: replay, `OPERATION_ID_CONFLICT`, stale binding, `STALE_RESULT`, `allowStale`, cancel and source close (`test:workbench-automation-jobs`, `test:workbench-python-client`). |
-| One undoable revision plus an inspectable step trajectory | Done | Edit, Properties and Geometry publish one Undo step. Methods other than BFGS keep every accepted step; Open steps opens them as XYZ with per-step energies for Plots. Agents get a `trajectory` artifact (`Step i Energy=E kcal/mol`), which the test parses back. |
+| One undoable revision plus an inspectable step trajectory | Done | Edit, Properties and Geometry publish one Undo step. All methods keep every accepted step; Open steps opens them as XYZ with per-step energies for Plots. Agents get a `trajectory` artifact (`Step i Energy=E kcal/mol`), which the test parses back. |
 | Automatic 3D preparation for flat input, exposed to the user | Done | `prepare3d` adds hydrogens after the source atoms, embeds, checks the stereo identity (up to 8 seeds) and relaxes. Properties → 3D coordinates → Generate and Edit → More actions → Generate 3D coordinates each publish one undoable edit; RDKit reads the stereocentre back (`test-workbench-prepare-conformers-ui`). Agent: `prepare_3d`. |
-| Enforced limits (256 graph, 64 numerical/UFF), no silent substitution | Done | `optimizationUnavailable` produces the refusal messages. The optimizer menu disables an unavailable force field or method and shows the reason; the checked method is the one that runs (`test-optimize-button`). This fixed the old button, which labelled BFGS as L-BFGS and silently dropped numerical methods above 64 atoms. Agents get `JOB_UNAVAILABLE` before queueing. |
+| Enforced limits | Done | Analytic Cartesian optimization supports 256 atoms. Central differences and coupled Z-matrix optimization are capped at 64 atoms. Invalid constraints are refused before queueing. MMFF jobs that require central differences above the cap fail in the worker with the limit in the error. |
 | Known gaps: MMFF94 boron, sodium, allenes | Documented | OpenChemLib MMFF has no boron or covalent Na types and refuses them with its own error; nothing else is substituted. Allene energies match RDKit. OCL MMFF returns NaN only at exactly collinear double-precision geometries: the generic refusal stays (`test-mmff-collinear`), and the minimizer rejects non-finite trial points instead of propagating them. |
 
 ### Stage 10
@@ -107,21 +106,30 @@ result), never from Burette output.
 - `test-zmatrix-coupled-*`, `test-mmff-collinear` and `test-burette-agent-plugin`;
 - `test-packaged-plugin-mirror`.
 
+## Browser acceptance recorded on 2026-11-03
+
+- Fixture: `tests/fixtures/automation/ethanol.sdf`, fresh `vite-dev` shell in the
+  Codex in-app browser. Right dock → Info → Calculate properties → UFF → BFGS →
+  Optimize published a single draft edit. The Edit receipt showed
+  42.44 → 1.07 kcal/mol, 60 steps, Converged.
+- Open steps opened `ethanol-optimization.xyz` in a separate workspace tab with
+  61 frames. Back on the SDF, Undo restored C1 from (−0.327, 2.800, −1.706) to
+  (−0.317, 2.796, −1.713) Å at display precision. Redo restored the optimized
+  coordinates.
+- The 10 RDKit reference tests cover energies, gradients, minima, constraints,
+  conformers and shared Z-matrix variables. The Python client exercised a
+  completed UFF/BFGS job with an analytic gradient and step sampling.
+
 ## Remaining gaps
 
-- **BFGS steps.** OpenChemLib publishes coordinates only on convergence, so BFGS
-  results are endpoints (`frameSampling: "endpoints"`, `iterations: null`) and
-  offer no Open steps. Every other method records each step.
-- **Numerical MMFF speed.** MMFF gradients are central differences (h = 10⁻⁴ Å),
-  about 37 ms per iteration for 12 atoms. FIRE on N-methylacetamide does not
-  converge in 1000 iterations, and that is reported as `stopReason:
-  "iterations"`, `converged: false`. UFF gradients are analytic.
+- **Convergence.** FIRE and ABC-FIRE can exhaust the iteration budget on some
+  fixtures. The result reports `stopReason: "iterations"` and `converged: false`.
 - **Conformer method.** Conformers come from OpenChemLib torsion sampling.
   Avogadro's Open Babel systematic, weighted and genetic search modes are not
   ported, because Open Babel is GPL. Count and seed are exposed.
 - **`point_group`** belongs to stage 8 (see above).
-- **Not yet observed:** the live browser shell, the rebuilt packaged plugin and
-  the native app. Use the scripts below.
+- **Pending acceptance:** the remaining live browser scenarios below, the rebuilt
+  packaged plugin and the native app.
 
 ## Acceptance scripts (live browser shell, packaged plugin)
 
@@ -184,14 +192,13 @@ stays at 0:
 
 - `optimize` with an `angle` over [0,1,2] (linear angle);
 - a `dihedral` over [3,0,1,2] (collinear);
-- `{"forceField":"UFF","method":"bfgs"}`;
 - `freeze` of atom 6.
 
 ### C. Generate 3D in the UI (`butan-2-ol-2d.mol`)
 
 1. Open the file in the shell and choose Properties → 3D coordinates → Generate.
    Expect:
-   - the Edit tab opens with "MMFF94, BFGS … kcal/mol · Converged" and no Open steps;
+   - the Edit tab opens with "MMFF94, BFGS … kcal/mol · Converged" with Open steps;
    - the draft has 15 atoms;
    - RDKit reads `CC[C@@H](C)O` from the saved file.
 2. Undo restores the 2D text byte for byte. Edit → More actions → Generate 3D

@@ -6,6 +6,6 @@ export type MolecularBond = { a: number; b: number; order: number };
 
 export type MolecularForceField = 'MMFF94' | 'MMFF94s' | 'UFF';
 
-export type MinimizerMethod = 'lbfgs' | 'fire' | 'abc-fire' | 'hybrid';
+export type MinimizerMethod = 'bfgs' | 'lbfgs' | 'fire' | 'abc-fire' | 'hybrid';
 
 export type InputConstraint = { kind: "freeze" | "distance" | "angle" | "dihedral"; atoms: number[] };

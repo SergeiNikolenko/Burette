@@ -1,6 +1,6 @@
 import { atomsFromZmatrixDocument, resolveZmatrixDocument, type ZmatrixDocument } from '../../../../../scripts/zmatrix-document.mjs';
 import { placeInReferenceFrame, type CoordinateAtom } from '../../../../../scripts/internal-coordinates.mjs';
-import { getEnergy, type MolecularStructure, type OptimizeOptions, type OptimizationResult } from '../molecular-workbench/chemistry';
+import { createOptimizationEvaluator, type MolecularStructure, type OptimizeOptions, type OptimizationResult } from '../molecular-workbench/chemistry';
 import { MINIMIZER_METHODS, minimize } from '../molecular-workbench/minimizer';
 import { zmatrixAtomIndices, zmatrixLockKey } from './zmatrix-optimization';
 import { placeWithFrozenAtoms, projectFrozenShape } from './zmatrix-frozen-projection';
@@ -21,7 +21,6 @@ const wrap = (value: number) => value > 180 ? value - 360 * Math.ceil((value - 1
  */
 export function optimizeZmatrix(molecule: MolecularStructure, definition: ZmatrixDocument, options: ZmatrixOptimizeOptions = {}): CoupledZmatrixOptimizationResult {
   const method = options.method ?? 'lbfgs', iterations = options.maxIterations ?? 250;
-  if (method === 'bfgs') throw new Error('BFGS minimizes Cartesian MMFF94 coordinates and cannot keep Z-matrix variables coupled. Choose L-BFGS, FIRE, ABC-FIRE or hybrid.');
   if (!MINIMIZER_METHODS.includes(method) || !Number.isInteger(iterations) || iterations < 1 || iterations > 1000) throw new Error('Invalid optimization method or iteration limit.');
   if (molecule.atoms.length > 64 || definition.rows.length > 64) throw new Error('Coupled Z-matrix optimization supports up to 64 atoms and rows.');
   if (options.constraints?.length) throw new Error('Use Z-matrix row freezes and coordinate locks for coupled optimization.');
@@ -91,24 +90,27 @@ export function optimizeZmatrix(molecule: MolecularStructure, definition: Zmatri
     }
     return { document, atoms: placed.map(({ element, position: [x, y, z] }) => ({ element, x, y, z })) };
   };
-  const initialEnergy = getEnergy(molecule, options.forceField);
-  const evaluate = (x: number[]) => getEnergy({ ...molecule, atoms: unpack(x).atoms }, options.forceField);
-  const objective = (x: number[]) => ({ energy: evaluate(x), gradient: x.map((value, i) => {
-    const sample = x.slice(), h = 1e-5;
-    sample[i] = value + h; const plus = evaluate(sample);
-    sample[i] = value - h; const minus = evaluate(sample);
-    return (plus - minus) / (2 * h);
-  }) });
-  const frames: NonNullable<OptimizationResult['frames']> = [{ atoms: molecule.atoms.map(atom => ({ ...atom })), energy: initialEnergy }];
-  const result = initial.length && frozen.length < molecule.atoms.length ? minimize(initial, objective, method, iterations, x => {
-    const atoms = unpack(x).atoms;
-    frames.push({ atoms, energy: getEnergy({ ...molecule, atoms }, options.forceField) });
-  }) : null;
-  const output = unpack(result?.x ?? initial), energy = getEnergy({ ...molecule, atoms: output.atoms }, options.forceField);
-  if (!Number.isFinite(energy) || energy > initialEnergy + 1e-6) throw new Error('Coupled Z-matrix optimization did not lower the energy.');
-  frames.push({ atoms: output.atoms, energy });
-  // Gradients are central differences in the coupled internal coordinates (Å, radians).
-  return { molecule: { ...molecule, atoms: output.atoms }, definition: output.document, initialEnergy, energy, unit: 'kcal/mol',
-    converged: result?.converged ?? true, stopReason: result?.stopReason ?? 'no-variables', gradient: 'central-difference', maxGradient: result?.maxGradient ?? 0,
-    frameSampling: 'steps', constraintResiduals: [], frozenAtoms: frozen, frames, method, iterations: result?.iterations ?? 0, forceField: options.forceField ?? 'MMFF94' };
+  const evaluator = createOptimizationEvaluator(molecule, options.forceField);
+  try {
+    const initialEnergy = evaluator.energy(molecule.atoms);
+    const evaluate = (x: number[]) => evaluator.energy(unpack(x).atoms);
+    const objective = (x: number[]) => ({ energy: evaluate(x), gradient: x.map((value, i) => {
+      const sample = x.slice(), h = 1e-5;
+      sample[i] = value + h; const plus = evaluate(sample);
+      sample[i] = value - h; const minus = evaluate(sample);
+      return (plus - minus) / (2 * h);
+    }) });
+    const frames: NonNullable<OptimizationResult['frames']> = [{ atoms: molecule.atoms.map(atom => ({ ...atom })), energy: initialEnergy }];
+    const result = initial.length && frozen.length < molecule.atoms.length ? minimize(initial, objective, method, iterations, x => {
+      const atoms = unpack(x).atoms;
+      frames.push({ atoms, energy: evaluator.energy(atoms) });
+    }) : null;
+    const output = unpack(result?.x ?? initial), energy = evaluator.energy(output.atoms);
+    if (!Number.isFinite(energy) || energy > initialEnergy + 1e-6) throw new Error('Coupled Z-matrix optimization did not lower the energy.');
+    frames.push({ atoms: output.atoms, energy });
+    // Gradients are central differences in the coupled internal coordinates (Å, radians).
+    return { molecule: { ...molecule, atoms: output.atoms }, definition: output.document, initialEnergy, energy, unit: 'kcal/mol',
+      converged: result?.converged ?? true, stopReason: result?.stopReason ?? 'no-variables', gradient: 'central-difference', maxGradient: result?.maxGradient ?? 0,
+      frameSampling: 'steps', constraintResiduals: [], frozenAtoms: frozen, frames, method, iterations: result?.iterations ?? 0, forceField: options.forceField ?? 'MMFF94' };
+  } finally { evaluator.dispose(); }
 }

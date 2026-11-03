@@ -9,7 +9,8 @@ const scope = globalThis as unknown as { onmessage: (event: MessageEvent<Chemist
 scope.onmessage = async ({ data }) => {
   try {
     const forceField = 'forceField' in data ? data.forceField : 'options' in data ? data.options?.forceField : undefined;
-    if (forceField === 'UFF') await prepareUffWasm();
+    // UFF always needs the RDKit module; optimizations also take MMFF terms from it.
+    if (forceField === 'UFF' || data.action === 'optimize' || data.action === 'optimize-zmatrix' || data.action === 'prepare-3d') await prepareUffWasm();
     let result: unknown;
     switch (data.action) {
       case 'generate': result = generateFromSmiles(data.smiles, data.seed); break;

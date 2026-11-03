@@ -3,13 +3,11 @@ import type { MolecularAtom, MolecularForceField, MinimizerMethod, Vec3 } from '
 import { MINIMIZER_METHODS, minimize, type MinimizerStop } from './minimizer';
 import { measureGeometry } from '../../../../../scripts/molecular-geometry.js';
 
-/**
- * `bfgs` is OpenChemLib's own MMFF94/MMFF94s minimizer with its internal analytic
- * gradient; it holds no constraints and reports only start and end geometries.
- * The other methods integrate the same physical energy here and record every step.
- */
-export type OptimizationMethod = 'bfgs' | MinimizerMethod;
-export const OPTIMIZATION_METHODS: readonly OptimizationMethod[] = ['bfgs', ...MINIMIZER_METHODS];
+/** Every method minimizes the same physical energy here, holds the same constraints and records every step. */
+export type OptimizationMethod = MinimizerMethod;
+export const OPTIMIZATION_METHODS = MINIMIZER_METHODS;
+/** `numericalAtoms` bounds the routes that difference the energy: coupled Z-matrix
+ * coordinates, single-point forces, and MMFF when the analytic surface is unavailable. */
 export const OPTIMIZATION_LIMITS = Object.freeze({ graphAtoms: 256, numericalAtoms: 64, constraints: 64, iterations: 1000 });
 /** A 2D drawing: an explicit SDF/MOL graph with every z at zero. XYZ coordinates are always a geometry. */
 export function flatDepiction(structure: Pick<MolecularStructure, 'atoms' | 'graphSource'>) {
@@ -26,14 +24,14 @@ export type OptimizeOptions = { method?: OptimizationMethod; forceField?: Molecu
 export type OptimizationResult = {
   molecule: MolecularStructure; initialEnergy: number; energy: number; unit: 'kcal/mol';
   forceField: MolecularForceField; method: OptimizationMethod;
-  /** Accepted steps; null when the toolkit does not report its iteration count. */
-  iterations: number | null; converged: boolean; stopReason: OptimizationStop;
+  /** Accepted steps. */
+  iterations: number; converged: boolean; stopReason: OptimizationStop;
   /** How the physical force-field gradient was obtained; restraint gradients are analytic. */
-  gradient: 'analytic' | 'central-difference' | 'toolkit';
-  /** Largest remaining gradient component of the optimized objective, kcal/(mol·Å); null when the toolkit does not report it. */
-  maxGradient: number | null;
-  /** `steps`: start, every accepted step and the result; `endpoints`: start and result only. */
-  frameSampling: 'steps' | 'endpoints'; frames: OptimizationFrame[];
+  gradient: 'analytic' | 'central-difference';
+  /** Largest remaining gradient component of the optimized objective, kcal/(mol·Å). */
+  maxGradient: number;
+  /** The start, every accepted step and the result. */
+  frameSampling: 'steps'; frames: OptimizationFrame[];
   constraintResiduals: ConstraintResidual[]; frozenAtoms: number[];
 };
 export type EnergyEvaluator = { energy: (atoms: MolecularAtom[]) => number; gradient?: (atoms: MolecularAtom[]) => Vec3[]; dispose: () => void };
@@ -63,26 +61,16 @@ function sine(atoms: MolecularAtom[], [a, b, c]: number[]) {
   return length(cross(u, v)) / (length(u) * length(v));
 }
 
-/** The documented default when no method is named: the toolkit BFGS for an
- * unconstrained MMFF run, otherwise L-BFGS. Results always report the method used. */
+/** The documented default when no method is named: BFGS for an unconstrained MMFF
+ * run, otherwise L-BFGS. Results always report the method used. */
 export function defaultOptimizationMethod(forceField: MolecularForceField, constrained: boolean): OptimizationMethod {
   return forceField === 'UFF' || constrained ? 'lbfgs' : 'bfgs';
 }
 
-/** Why this method/field/size combination cannot run, or null. Never substitutes another. */
-export function optimizationUnavailable(atomCount: number, forceField: MolecularForceField, method: OptimizationMethod, constraintCount: number): string | null {
+/** Why an optimization of this size cannot run, or null. Every method and field share these bounds. */
+export function optimizationUnavailable(atomCount: number, constraintCount: number): string | null {
   if (atomCount < 1 || atomCount > OPTIMIZATION_LIMITS.graphAtoms) return `Geometry optimization supports 1–${OPTIMIZATION_LIMITS.graphAtoms} atoms, including added hydrogens.`;
   if (constraintCount > OPTIMIZATION_LIMITS.constraints) return `Optimization supports at most ${OPTIMIZATION_LIMITS.constraints} constraints.`;
-  if (method === 'bfgs') {
-    if (forceField === 'UFF') return 'BFGS is the MMFF94 toolkit minimizer. Choose L-BFGS, FIRE, ABC-FIRE or hybrid for UFF.';
-    if (constraintCount) return 'BFGS cannot hold frozen atoms or constraints. Choose L-BFGS, FIRE, ABC-FIRE or hybrid.';
-    return null;
-  }
-  if (atomCount > OPTIMIZATION_LIMITS.numericalAtoms) {
-    return forceField === 'UFF'
-      ? `UFF optimization supports up to ${OPTIMIZATION_LIMITS.numericalAtoms} atoms; this structure has ${atomCount}.`
-      : `L-BFGS, FIRE, ABC-FIRE and hybrid support up to ${OPTIMIZATION_LIMITS.numericalAtoms} atoms; this structure has ${atomCount}. Choose BFGS without constraints.`;
-  }
   return null;
 }
 
@@ -159,13 +147,15 @@ export function constraintResiduals(atoms: MolecularAtom[], restraints: readonly
 /**
  * Cartesian minimization of force-field energy plus harmonic restraints. Frozen atoms
  * are not variables, so their coordinates are returned exactly. Central differences
- * (h = 1e-4 Å) stand in for a missing analytic force-field gradient.
+ * (h = 1e-4 Å) stand in for a missing analytic force-field gradient, up to
+ * OPTIMIZATION_LIMITS.numericalAtoms atoms.
  */
 export function optimizeCartesian(molecule: MolecularStructure, evaluator: EnergyEvaluator, method: MinimizerMethod, forceField: MolecularForceField, options: Pick<OptimizeOptions, 'constraints' | 'maxIterations'>): Omit<OptimizationResult, 'molecule'> & { atoms: MolecularAtom[] } {
   const n = molecule.atoms.length, maxIterations = options.maxIterations ?? 250;
   if (!Number.isInteger(maxIterations) || maxIterations < 1 || maxIterations > OPTIMIZATION_LIMITS.iterations) throw new Error('Use 1–1000 optimization iterations.');
-  const unavailable = optimizationUnavailable(n, forceField, method, options.constraints?.length ?? 0);
+  const unavailable = optimizationUnavailable(n, options.constraints?.length ?? 0);
   if (unavailable) throw new Error(unavailable);
+  if (!evaluator.gradient && n > OPTIMIZATION_LIMITS.numericalAtoms) throw new Error(`${forceField} has no analytic gradient for this structure (separate fragments interact, or the toolkits type it differently); numerical optimization supports up to ${OPTIMIZATION_LIMITS.numericalAtoms} atoms and it has ${n}.`);
   const { frozen, restraints } = resolveConstraints(molecule.atoms, options.constraints ?? []);
   const fixed = new Set(frozen), movable = molecule.atoms.flatMap((_, i) => fixed.has(i) ? [] : [i]);
   const unpack = (x: number[]) => {

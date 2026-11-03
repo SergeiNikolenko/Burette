@@ -59,9 +59,9 @@ test("the contract resolves explicit optimizer defaults and rejects malformed ty
 test("optimize jobs reach the RDKit minimum, export source-ordered artifacts and an energy-per-step trajectory", async () => {
   const f = workspace(fixture("ethanol.sdf"), "sdf"), source = parseMolecule(fixture("ethanol.sdf"), "sdf");
   const bfgs = await f.finish((await f.submit("optimize", {})).jobId);
-  expect(bfgs).toMatchObject({ status: "succeeded", binding: "current", params: { method: "bfgs" }, summary: { method: "bfgs", gradient: "toolkit", frameSampling: "endpoints", converged: true } });
+  expect(bfgs).toMatchObject({ status: "succeeded", binding: "current", params: { method: "bfgs" }, summary: { method: "bfgs", gradient: "analytic", frameSampling: "steps", converged: true } });
   expect(Math.abs(bfgs.summary.energy - ethanol.models.MMFF94.minimum.energy)).toBeLessThan(1e-4);
-  expect(bfgs.artifacts.map((item: any) => item.name)).toEqual(["structure", "xyz"]);
+  expect(bfgs.artifacts.map((item: any) => item.name)).toEqual(["structure", "xyz", "trajectory"]);
   // A harmonic restraint pulled far from the force-field minimum leaves a residual above tolerance: not converged.
   const strained = await f.finish((await f.submit("optimize", { forceField: "UFF", constraints: [{ kind: "distance", atoms: [1, 2], target: 1.6 }], maxIterations: 1000 })).jobId);
   expect(strained.summary).toMatchObject({ stopReason: "converged", converged: false });
@@ -80,10 +80,10 @@ test("optimize jobs reach the RDKit minimum, export source-ordered artifacts and
   expect(steps.frames).toHaveLength(lbfgs.summary.frameCount);
   expect(steps.frames[0].energyHartree! * 627.5094740631).toBeCloseTo(lbfgs.summary.initialEnergy, 6);
   expect(steps.frames.at(-1)!.energyHartree! * 627.5094740631).toBeCloseTo(lbfgs.summary.energy, 6);
-  expect(await f.exported(bfgs.jobId, "trajectory").catch(error => String(error))).toContain("ARTIFACT_NOT_FOUND");
+  expect(parseScientificFile("bfgs.xyz", (await f.exported(bfgs.jobId, "trajectory")).content).frames).toHaveLength(bfgs.summary.frameCount);
 }, 60_000);
 
-test("undefined constraints, unavailable methods and oversized numerical runs are refused before queueing", async () => {
+test("undefined constraints are refused before queueing and oversized numerical runs fail with their reason", async () => {
   const nitrile = workspace(fixture("acetonitrile.sdf"), "sdf"), observed = await nitrile.ok({ operation: "observe" });
   const refuse = async (params: Record<string, unknown>, message: RegExp) => {
     const result = await nitrile.execute({ operation: "submit", operationId: crypto.randomUUID(), expectedSourceRevision: observed.sourceRevision, job: { kind: "optimize", params } });
@@ -92,13 +92,13 @@ test("undefined constraints, unavailable methods and oversized numerical runs ar
   };
   await refuse({ constraints: [{ kind: "angle", atoms: [0, 1, 2] }] }, /angle is linear/);
   await refuse({ constraints: [{ kind: "dihedral", atoms: [3, 0, 1, 2] }] }, /collinear/);
-  await refuse({ method: "bfgs", forceField: "UFF" }, /BFGS is the MMFF94 toolkit minimizer/);
   await refuse({ constraints: [{ kind: "freeze", atoms: [6] }] }, /invalid atom indices/);
   expect((await nitrile.ok({ operation: "jobs" })).total).toBe(0);
   const waters = workspace(`66\nwaters\n${Array.from({ length: 22 }, (_, i) => `O ${i * 6} 0 0\nH ${i * 6 + .95} 0 0\nH ${i * 6 - .23} .93 0`).join("\n")}\n`, "xyz");
-  const many = await waters.ok({ operation: "observe" });
-  expect(await waters.execute({ operation: "submit", operationId: "lbfgs", expectedSourceRevision: many.sourceRevision, job: { kind: "optimize", params: { method: "lbfgs" } } })).toMatchObject({ ok: false, error: { code: "JOB_UNAVAILABLE" } });
-  expect(await waters.finish((await waters.submit("optimize", { method: "bfgs" })).jobId)).toMatchObject({ status: "succeeded", summary: { method: "bfgs" } });
+  // Separate waters have no analytic MMFF surface; differencing 66 atoms is refused by the worker, and UFF runs analytically.
+  const differenced = await waters.finish((await waters.submit("optimize", { method: "lbfgs" })).jobId);
+  expect([differenced.status, JSON.stringify(differenced)]).toEqual(["failed", expect.stringMatching(/separate fragments interact.*up to 64 atoms and it has 66/)]);
+  expect(await waters.finish((await waters.submit("optimize", { method: "bfgs", forceField: "UFF", maxIterations: 20 })).jobId)).toMatchObject({ status: "succeeded", summary: { method: "bfgs", gradient: "analytic" } });
 });
 
 test("prepare_3d embeds a flat depiction with its stereochemistry and conformer jobs export reopenable energy-ordered records", async () => {

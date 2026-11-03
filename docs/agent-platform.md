@@ -836,24 +836,27 @@ forces kcal/(mol·Å). No job modifies the open document.
 | `metadata_edit` | `atoms` (index, `atomName`, `residue`), `conformerLabel` | `structure` |
 | `pair_distribution` | `rMax` 1–100 Å (10), `binWidth` 0.001–1 Å (0.1), `centre`, `neighbour` | `distribution` (JSON), `csv` |
 
-`optimize` defaults to `bfgs` (the OpenChemLib MMFF minimizer) for unconstrained
-MMFF and to `lbfgs` for UFF or any constraint. Nothing is substituted: `bfgs` with
-UFF or constraints, numerical methods or UFF above 64 atoms, more than 64
-constraints, out-of-range atom indices and constraints that are undefined on the
-input geometry (a linear angle, a dihedral with collinear atoms) are refused with
-`JOB_UNAVAILABLE` before queueing. A constraint is `{"kind":"freeze","atoms":[i]}`
+`optimize` defaults to `bfgs` for unconstrained MMFF and to `lbfgs` for UFF or
+any constraint. All five methods support all three force fields, including
+frozen atoms and restraints. The Cartesian limit is 256 atoms including added
+hydrogens. UFF uses the RDKit kernel. MMFF uses analytic gradients from the
+RDKit term table when available and consistent with the OpenChemLib energy at
+the input geometry. Disconnected MMFF graphs use central differences so that
+interactions between fragments are retained. If the job needs central
+differences, the worker enforces a 64-atom limit. More than 64 constraints,
+out-of-range atom indices and undefined input constraints (a linear angle or a
+dihedral with collinear atoms) return `JOB_UNAVAILABLE` before queueing. A constraint is `{"kind":"freeze","atoms":[i]}`
 or a `distance`/`angle`/`dihedral` over 2/3/4 zero-based source atoms with an
 optional `target` (default: the current value). Frozen atoms are exact; the other
 constraints are harmonic restraints of 10⁴·Δ² kcal/mol (Δ in Å or radians).
 
-The optimize summary reports `method`, `gradient` (`toolkit`, `analytic` or
-`central-difference`), `initialEnergy`, `energy`, `iterations` (null for `bfgs`,
-whose toolkit does not report steps), `stopReason` (`converged`, `iterations`,
-`line-search`, `no-variables`), `maxGradient`, `frameSampling`, `frameCount`,
-`frozenAtoms` and `constraintResiduals` (kind, atoms, target, value, signed error,
-unit). `converged` is true only when the minimizer converged (maximum gradient
-below 10⁻³ kcal/(mol·Å)) and every residual is within 0.01 Å or 1°. The
-`trajectory` artifact exists only when `frameSampling` is `steps`: one XYZ frame
+The optimize summary reports `method`, `gradient` (`analytic` or
+`central-difference`), `initialEnergy`, `energy`, `iterations` (accepted steps),
+`stopReason` (`converged`, `iterations`, `line-search`, `no-variables`),
+`maxGradient`, `frameSampling` (`steps`), `frameCount`, `frozenAtoms` and
+`constraintResiduals` (kind, atoms, target, value, signed error, unit).
+`converged` requires both the solver's gradient threshold and residuals within
+0.01 Å or 1°. The `trajectory` artifact includes the initial frame and one XYZ frame
 per accepted step with `Step <i> Energy=<E> kcal/mol` comments, which Burette's
 trajectory reader and Plots tab parse back. `structure` keeps the source atom
 order; for SDF/MOL sources it also keeps the title, data items and atom identities.
