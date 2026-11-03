@@ -1,0 +1,24 @@
+{
+  "counts": {
+    "N": 3,
+    "C": 8,
+    "O": 5,
+    "H": 15
+  },
+  "peptide_CN_distances_A": [
+    1.3289999999463993,
+    1.3290000000679614
+  ],
+  "same_replayed_job": true,
+  "errors": {
+    "replay_conflict": "OPERATION_ID_CONFLICT",
+    "no_overwrite": "OUTPUT_EXISTS"
+  },
+  "file_sha256": "8c0cb28ab21841aef662ab3d967a6ff030798696f47775844e3660b729c9c5f9",
+  "unchanged_after_refused_overwrite": true,
+  "sourceCommit": "7675d88a90d80c4b8134be3f1d8da73d5e58b2d5",
+  "runtime": "vite-dev",
+  "date": "2026-11-04",
+  "sequence": "AGS",
+  "jobStatus": "succeeded"
+}

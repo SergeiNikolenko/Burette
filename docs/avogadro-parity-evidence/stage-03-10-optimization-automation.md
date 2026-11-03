@@ -85,10 +85,10 @@ The full JavaScript sweep still needs a successful terminal run.
 3. **Shared helpers.** `sdfRecords(text)` (`agent-source.ts`) and
    `conformerSdfRecord` (`formats.ts`), plus the `record-forces`, `frame-forces`
    and `prepare-3d` compute-worker actions.
-4. **`point_group`** is not registered: its engine (`point-group.ts`, libmsym)
-   is not on this branch. The crystals stage registers it through the two steps
-   above. `UNSUPPORTED_WORKBENCH_JOB` is pinned for it in
-   `test-orbital-cli-compiled` and must change together with that registration.
+4. **`point_group`** is now registered in `scripts/workbench-agent-contract.mjs`
+   and `agent-jobs.ts`, backed by `agent-crystal-jobs.ts`. The earlier missing-engine
+   note described the original stage branch, not the integrated runtime. Registration
+   alone does not establish operation-specific live acceptance.
 
 ## Edits to shared or central files
 
@@ -371,3 +371,37 @@ the CLI's no-overwrite contract.
 This verifies kernel execution and live browser transport for these two jobs.
 Notebook frontend interaction, the remaining job/batch matrix and native
 application acceptance remain open.
+
+## Live Python peptide build and picker reopen (2026-11-04)
+
+Source `7675d88a9`, browser-agent-shell **vite-dev**, IAB, dark 1280 × 720.
+The shipped standard-library Python client invoked the packaged CLI against a real
+open browser host; no controller fixture or fake viewer handled these requests.
+After opening `topology-real-browser-water.molx`, Python ran:
+
+```python
+wb = Workbench(session_dir)
+job = wb.build("peptide", {"sequence": "AGS"}, operation_id="live-python-ags-20261104")
+wb.export(job.job_id, "structure", output=output_path)
+```
+
+The source-independent job succeeded with 31 atoms and three residues. The resulting
+[exact CIF](python-ags-live.cif) was opened through New tab → Open file, using the
+ordinary browser file chooser. The rendered molecule and sequence panel showed
+chain A with A–G–S. Screenshot: `/tmp/burette-python-ags-reopened.png`.
+
+An independent Python standard-library parse of the exported atom rows counted
+C8H15N3O5: alanine + glycine + serine minus two waters. Both inter-residue C–N
+coordinate distances were 1.329 Å. These are formula/connectivity sanity checks,
+not an independent stereochemical or optimized-energy assessment. The retained
+[oracle](python-ags-live.json) includes the file hash, both distances and:
+
+- Repeating identical build parameters and operation ID returned the same job ID.
+- Reusing that ID with sequence AG returned `OPERATION_ID_CONFLICT`.
+- Exporting to the occupied path returned `OUTPUT_EXISTS`, leaving bytes unchanged.
+
+This supplies live Python build/export/reopen evidence for the peptide operation.
+It does not close 10.01 or 10.03: Jupyter execution of this peptide workflow, the
+remaining operation-specific Python/batch matrix, light/compact/keyboard acceptance, and packaged prebuilt
+runtime acceptance remain open. This run did not exercise peptide cancellation,
+stale bound-input handling, optimization, or widget compute behavior.
