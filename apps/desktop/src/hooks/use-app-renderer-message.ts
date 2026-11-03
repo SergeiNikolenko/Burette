@@ -47,7 +47,7 @@ export function useAppRendererMessage({
       const document = documents.find((item) => item.id === body.documentId);
       if (document) {
         if (rememberDockCamera(eventSource, document.id, body.viewState)) return true;
-        const persisted = rememberRendererViewState(document.path, body.viewState);
+        const persisted = rememberRendererViewState(document.recoveryPath ?? document.path, body.viewState);
         window.dispatchEvent(new CustomEvent("burette:renderer-view-checkpoint", { detail: { documentId: document.id, persisted } }));
       }
       return true;
@@ -59,8 +59,8 @@ export function useAppRendererMessage({
       const targetDocument = (documentId
         ? documents.find((document) => document.id === documentId)
         : null) ?? activeDocument;
-      if (targetDocument) rememberRendererViewState(targetDocument.path, body.viewState);
-      const viewOptions = targetDocument ? rendererViewReloadOptions(targetDocument.path) : {};
+      if (targetDocument) rememberRendererViewState(targetDocument.recoveryPath ?? targetDocument.path, body.viewState);
+      const viewOptions = targetDocument ? rendererViewReloadOptions(targetDocument.recoveryPath ?? targetDocument.path) : {};
       const orientationRef = bodyString(body.orientationRef);
       const preset = bodyString(body.preset);
       const activeModel = bodyActiveModel(body.activeModel);
