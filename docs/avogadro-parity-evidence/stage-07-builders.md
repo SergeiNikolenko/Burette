@@ -98,6 +98,37 @@ center in the dark 1280×720 browser surface. Specified/mixed stereochemistry,
 E/Z, atom UUID checks, MOLX round trips, light/compact/accessibility acceptance
 and live automation preparation remain separate checks.
 
+### Edited alanine scene and atom identities (2026-11-03)
+
+The original alanine document still displayed the completed preparation edit
+(13 atoms / 12 bonds, Undo enabled, Redo disabled, MMFF94/BFGS summary).
+Its workspace-tab Save scene… action exported
+`/Users/nikolenko/Desktop/burette-parity-unspecified-alanine.molx`. Opening
+that archive through the ordinary picker rendered a separate scene. Saving
+the reopened scene produced `burette-parity-unspecified-alanine (1).molx`.
+
+Both archives carry the same version-2 scientific manifest, including the
+document UUID, all 13 unique ordered atom UUIDs and structure/model/trajectory
+bindings. Independent ZIP and SHA-256 checks verified all attachment lengths
+and hashes. The current 1,106-byte MOL is identical to the earlier Save copy
+output (`0afe706f2c15ecbf0693f7af5925b7cd4f209155645033f8f43da29050e20f1d`),
+while the 602-byte Original remains identical to the imported planar MOL
+(`65fe0c7808020d711bbb8596779a7d6259e5d06ad8c9ad48746a6217a8d6b9d8`).
+RDKit parsed the current source as 13 atoms / 12 bonds in 3D and the Original
+as 6 atoms / 5 bonds in 2D. Both retain `CC(N)C(=O)O`, and the prepared source
+still reports center 1 as unspecified.
+
+Archive hashes are
+`5ce21e2ab15bf7d0e3b00801cd5eb304e3dcc2919e0ccbf3774cbfeac7396baf`
+and `50c3e0b9d51dd2038fe9b3c91176b83df92595def1f1df5316f2597b731a0017`.
+Local oracle results are `/tmp/burette-edited-alanine-molx-oracle.json`.
+The reopened scene rendered in light theme and after switching to dark;
+`/tmp/burette-edited-alanine-molx-reopened.png` records the dark 1280×720 view.
+This establishes persistence through save/reopen/save for this preparation
+edit. Identity tracking across subsequent edits or atom reordering, editing
+history restoration, measurements/layers and compact accessibility remain
+separate acceptance cases.
+
 Branch `parity/builders`, based on `a5f7303cd`. This file records what each
 stage 7 requirement now has, the commands that checked it, the independent
 references used, the browser acceptance scripts still to run, and the limits
