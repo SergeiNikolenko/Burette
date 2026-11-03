@@ -8,6 +8,7 @@ import type { ShellActions, ShellViewState, StructureViewerAction } from "../com
 import { reopenClosedTab } from "../components/workspace-panes/pane-actions";
 import { checkpointNativePopoutForExit, returnNativePopout } from "../components/workspace-panes/native-scene-window";
 import { nativeWindowTransferBusy } from "../lib/window-transfer";
+import { journalAction } from "../lib/action-journal";
 import { canInspectConformerEnsemble } from "../lib/conformer-ensemble";
 import { isMolstarViewerExtension } from "../lib/docking-documents";
 import { isKetcherImportExtension } from "../lib/drop-actions";
@@ -394,16 +395,27 @@ export function useAppNativeMenu({
       const barrier = sealWindowMutations();
       const snapshot = getWindowDocumentDirtySnapshotRef.current();
       const transferBusy = nativeWindowTransferBusy();
-      void checkpointNativePopoutForExit().then(() => false, () => true).then(checkpointFailed => invoke("respond_to_exit_preflight", {
-        requestId: payload.requestId,
-        closeTransitionActive: snapshot.closeTransitionActive
-          || transferBusy
-          || checkpointFailed
-          || barrier.closeTransitionActive
-          || barrier.pendingCount > 0,
-        dirty: snapshot.dirty || barrier.pendingCount > 0,
-        revision: snapshot.revision,
-      })).catch((error) => {
+      void checkpointNativePopoutForExit().then(() => false, (error: unknown) => {
+        console.warn("Native exit scene checkpoint failed", error);
+        return true;
+      }).then(checkpointFailed => {
+        const closeTransitionActive = snapshot.closeTransitionActive || transferBusy || checkpointFailed
+          || barrier.closeTransitionActive || barrier.pendingCount > 0;
+        if (closeTransitionActive) journalAction("status", "exit-preflight-blocked", { detail: {
+          requestId: payload.requestId,
+          documentTransition: snapshot.closeTransitionActive,
+          transferBusy,
+          checkpointFailed,
+          closeTransition: barrier.closeTransitionActive,
+          pendingMutations: barrier.pendingCount,
+        } });
+        return invoke("respond_to_exit_preflight", {
+          requestId: payload.requestId,
+          closeTransitionActive,
+          dirty: snapshot.dirty || barrier.pendingCount > 0,
+          revision: snapshot.revision,
+        });
+      }).catch((error) => {
         console.warn("Native exit preflight response failed", error);
       });
     });

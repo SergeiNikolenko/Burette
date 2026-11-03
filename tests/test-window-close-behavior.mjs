@@ -113,6 +113,10 @@ const commands = [];
 const events = new Map();
 const windowEvents = new Map();
 const preflightResponses = [];
+const journalEntries = [];
+mock.module("../apps/desktop/src/lib/action-journal.ts", () => ({
+  journalAction: (kind, action, fields) => journalEntries.push({ kind, action, ...fields }),
+}));
 mock.module("@tauri-apps/api/core", () => ({
   convertFileSrc: (path) => path,
   invoke: async (command, args) => {
@@ -202,6 +206,7 @@ try {
     assert.equal(commands.includes("request_app_quit"), false, scenario);
   }
   assert.equal(warnings.length, 2, "only injected failures log warnings");
+  journalEntries.length = 0;
   // Tauri's global listeners receive even events addressed to another window.
   // A quit checks each window separately. This hook must capture its scene only
   // for its own request, or the second capture reports the first one as busy.
@@ -218,6 +223,21 @@ try {
   assert.equal(preflightResponses.length, 1, "only the current window's preflight is handled");
   assert.equal(preflightResponses[0].closeTransitionActive, false, "the scene checkpoint must not race itself");
   assert.equal(preflightResponses[0].dirty, true, "the unsaved-change decision remains required");
+  assert.deepEqual(journalEntries, [], "successful preflight does not log a rejection");
+  events.get(EXIT_TRANSITION_RESUMED_EVENT)();
+  let finishMutation;
+  const mutation = runWindowMutation("test", () => new Promise(resolve => { finishMutation = resolve; }));
+  await React.act(async () => {
+    windowEvents.get(EXIT_PREFLIGHT_EVENT)({ payload: { requestId: "busy-quit" } });
+  });
+  assert.equal(preflightResponses.at(-1).closeTransitionActive, true);
+  assert.deepEqual(journalEntries, [{ kind: "status", action: "exit-preflight-blocked", detail: {
+    requestId: "busy-quit", documentTransition: false, transferBusy: false,
+    checkpointFailed: false, closeTransition: false, pendingMutations: 1,
+  } }]);
+  finishMutation();
+  await mutation;
+
 } finally {
   console.warn = previousWarn;
   await React.act(async () => root.unmount());
