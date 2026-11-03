@@ -486,6 +486,11 @@ export function useSourceEditingController({
     const session = sessionsRef.current[document.path];
     const adapter = adaptersRef.current.get(document.path);
     if (!session || session.documentId !== document.id || !ownsSource(session) || !adapter) return;
+    // Explicit Apply consumes the pending live preview. Otherwise its timer can
+    // replace this candidate while the scene is loading or being validated.
+    const timer = timersRef.current.get(document.path);
+    if (timer !== undefined) window.clearTimeout(timer);
+    timersRef.current.delete(document.path);
     if (session.geometryReceiptRevoked) {
       updateSession(document.path, current => ({ ...current, previewState: "paused", diagnostic: "The scene changed. Reopen the scene before applying this draft." }));
       return;

@@ -158,3 +158,24 @@ attempt, so the visible draft was not evidence of recovery.
   rounded C1/C2 coordinates retained. Reopening the exported positive SDF
   through the picker creates a separate document with nine atoms and both
   user properties visible; the exact reserved identity field stays hidden.
+
+### Explicit preview and delayed topology publication (2026-11-03)
+
+The full JS run failed while waiting for a restored MOLX topology candidate to
+be promoted. A separate replay also lost the candidate's `contentWindow` during
+native scene attachment. The controller's explicit Apply left the 450 ms live
+preview timer pending, allowing a second preparation to replace the first
+candidate while its native scene was loading.
+
+`preparePreview` now consumes that pending timer before preparing a candidate.
+The compiled controller/ViewerFrame/native MolStar integration test deliberately
+waits 600 ms after explicit Apply and checks that the same candidate remains.
+The assertion fails on the previous implementation and passes with the fix.
+The existing assertions still verify native layers, measurements, provenance,
+atom UUIDs, topology Undo/Redo, MOLX export/reopen, cancellation, and refusal of
+unsupported metadata. Failure messages now include the rendered diagnostic.
+
+`test:logical-xyz-topology`, `check:logical-xyz-topology`, and
+`test:geometry-topology-binding` pass. These are compiled integration checks.
+Live browser acceptance of this timer interaction and a completed full JS run
+on the fix remain pending.

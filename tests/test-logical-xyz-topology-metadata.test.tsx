@@ -179,7 +179,7 @@ function Fixture({ document }: { document: ViewerDocument }) {
 }
 const wait = async (predicate: () => boolean, label: string) => {
   for (let i = 0; i < 150 && !predicate(); i++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
-  assert.ok(predicate(), label);
+  assert.ok(predicate(), `${label}: ${(page.body.textContent ?? "").slice(0, 2000)}`);
 };
 const ready = (frame: HTMLIFrameElement, document: ViewerDocument, source = frame.contentWindow) => dom.dispatchEvent(new dom.MessageEvent("message", {
   source: source as unknown as typeof dom, data: { source: "burette-viewer", body: { type: "ready", renderer: "molstar", documentId: document.id, molstarStructureCount: 1 } },
@@ -243,11 +243,19 @@ test("restored logical MOLX topology retains native layers and measurements with
     await act(async () => page.querySelector<HTMLFormElement>('form[aria-label="New atom"]')!.requestSubmit());
   };
   let layerOpacity = 0.4;
+  let checkPendingPreviewTimer = true;
   const reload = async (count: number, selected = [1, 2], points: number[][] | null = [[0], [2]]) => {
     await wait(() => controller.sessionForDocument(document)?.previewState === "queued", "topology draft queued");
     await act(async () => controller.applyPreview(document));
     await wait(() => Boolean(mount.querySelector(".source-preview-staging-iframe")), "real ViewerFrame creates candidate");
     const frame = mount.querySelector<HTMLIFrameElement>(".source-preview-staging-iframe")!;
+    if (checkPendingPreviewTimer) {
+      checkPendingPreviewTimer = false;
+      // Explicit Apply must consume the queued automatic preview, even when
+      // loading the native scene takes longer than its 450 ms debounce.
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 600)); });
+      assert.equal(mount.querySelector(".source-preview-staging-iframe") === frame, true, "queued automatic preview must not replace the explicit candidate");
+    }
     const text = htmlText.get(frame.getAttribute("srcdoc")!)!; assert.equal(Number(text.split(/\r?\n/u)[0]), count);
     await attach(frame, text);
     await act(async () => { frame.dispatchEvent(new dom.Event("load") as unknown as Event); ready(frame, document); });
