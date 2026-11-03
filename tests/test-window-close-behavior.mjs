@@ -111,10 +111,13 @@ let previewOpen = false;
 let queuedMenuCommands = [];
 const commands = [];
 const events = new Map();
+const windowEvents = new Map();
+const preflightResponses = [];
 mock.module("@tauri-apps/api/core", () => ({
   convertFileSrc: (path) => path,
-  invoke: async (command) => {
+  invoke: async (command, args) => {
     commands.push(command);
+    if (command === "respond_to_exit_preflight") preflightResponses.push(args);
     if (command === "close_workspace_window") return closeResult();
     if (command === "drain_native_menu_commands") return queuedMenuCommands.splice(0);
     return null;
@@ -127,6 +130,7 @@ mock.module("@tauri-apps/api/window", () => ({
     ...(previewOpen ? [{ label: "workspace-preview-test" }] : []),
   ],
   getCurrentWindow: () => ({
+    listen: async (name, callback) => { windowEvents.set(name, callback); return () => windowEvents.delete(name); },
     onCloseRequested: async (callback) => { onClose = callback; return () => {}; },
     onFocusChanged: async () => () => {},
   }),
@@ -140,7 +144,7 @@ mock.module("@tauri-apps/plugin-dialog", () => ({
 const { createRoot } = await import("react-dom/client");
 const { useAppNativeMenu } = await import("../apps/desktop/src/hooks/use-app-native-menu.ts");
 const { runWindowMutation, resumeWindowMutations } = await import("../apps/desktop/src/lib/window-mutation-barrier.ts");
-const { EXIT_TRANSITION_RESUMED_EVENT } = await import("../apps/desktop/src/lib/native-menu.ts");
+const { EXIT_PREFLIGHT_EVENT, EXIT_TRANSITION_RESUMED_EVENT } = await import("../apps/desktop/src/lib/native-menu.ts");
 const host = document.createElement("div");
 document.body.append(host);
 const root = createRoot(host);
@@ -198,6 +202,22 @@ try {
     assert.equal(commands.includes("request_app_quit"), false, scenario);
   }
   assert.equal(warnings.length, 2, "only injected failures log warnings");
+  // Tauri's global listeners receive even events addressed to another window.
+  // A quit checks each window separately. This hook must capture its scene only
+  // for its own request, or the second capture reports the first one as busy.
+  resumeWindowMutations();
+  dom.happyDOM.setURL("http://localhost/?buretteWindow=workspace-2");
+  await React.act(async () => root.render(React.createElement(Harness, { key: "quit-targeting" })));
+  await React.act(async () => {
+    for (const target of ["main", "workspace-2"]) {
+      const event = { payload: { requestId: "native-quit" } };
+      events.get(EXIT_PREFLIGHT_EVENT)?.(event);
+      if (target === "workspace-2") windowEvents.get(EXIT_PREFLIGHT_EVENT)?.(event);
+    }
+  });
+  assert.equal(preflightResponses.length, 1, "only the current window's preflight is handled");
+  assert.equal(preflightResponses[0].closeTransitionActive, false, "the scene checkpoint must not race itself");
+  assert.equal(preflightResponses[0].dirty, true, "the unsaved-change decision remains required");
 } finally {
   console.warn = previousWarn;
   await React.act(async () => root.unmount());

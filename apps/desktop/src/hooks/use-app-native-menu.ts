@@ -388,7 +388,9 @@ export function useAppNativeMenu({
     if (!isTauriRuntime()) return undefined;
     let active = true;
     let registrationId: string | null = null;
-    const listener = listen<ExitPreflightRequest>(EXIT_PREFLIGHT_EVENT, ({ payload }) => {
+    // Global listeners also receive requests addressed to other windows. Each
+    // window must checkpoint once, otherwise repeated requests race that work.
+    const listener = getCurrentWindow().listen<ExitPreflightRequest>(EXIT_PREFLIGHT_EVENT, ({ payload }) => {
       const barrier = sealWindowMutations();
       const snapshot = getWindowDocumentDirtySnapshotRef.current();
       const transferBusy = nativeWindowTransferBusy();
