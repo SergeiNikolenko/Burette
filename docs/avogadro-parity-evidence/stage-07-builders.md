@@ -352,6 +352,36 @@ MIT) for the shell; the builder needs no input.
 
 ## Known limits (fragment insertion, polymer, automation)
 
+### Browser DNA phosphate-end export and reopen (2026-11-03)
+
+On the existing prebuilt-static browser shell at `http://127.0.0.1:51272/`,
+the command palette opened **Build DNA or RNA…**. Entering `GCG`, selecting
+**Single strand**, retaining **B-form**, and choosing **Phosphate (2−)**
+created `GCG-B-DNA-ideal.cif`. The workspace context menu's
+**Export → Structure → mmCIF…** downloaded
+`GCG-B-DNA-ideal.modified.cif`, SHA-256
+`eb6e4e9d232667501a84914dcfb52dc906f590191d1bd0efad37c55fd03fca88`.
+**New tab → Open file** reopened that download as a separate 3D workspace.
+Browser screenshot: `/tmp/burette-gcg-reopened.png`.
+
+An independent Gemmi/RDKit check of the downloaded file passed. Gemmi read
+the atom-site charges and component bonds. Standard consecutive-residue
+O3′–P polymer links were added explicitly for the RDKit comparison, since
+the writer documents these implicit polymer linkages rather than emitting
+`struct_conn` records. Their measured lengths were 1.600533 and 1.600394 Å.
+The resulting constitution matched RDKit `MolFromSequence("GCG", flavor=7)`
+after ionising its phosphate hydroxyls: 98 explicit atoms, 105 bonds,
+formula `C29H34N13O19P3`, total charge −4. OP3 occurred only in residue A1
+and HO3′ only in residue A3. Component-template bonds were filtered to atoms
+actually present in each residue, including the different terminal groups
+of the repeated DG component. Local numerical result:
+`/tmp/burette-gcg-export-oracle.json`.
+
+This comparison excluded stereochemistry and did not independently inspect
+the reopened viewer's inferred bond graph. RNA, duplexes, other helix forms,
+insertion, cancellation, both themes and compact layouts remain separate
+browser acceptance cases.
+
 - Insertion edits only explicit single-record MOL/SDF graphs within 256 atoms
   (the shared graph-editing budget). PDB/mmCIF/XYZ sources are refused.
 - Fragments are rigid; the torsion about the new bond is chosen by repulsion
