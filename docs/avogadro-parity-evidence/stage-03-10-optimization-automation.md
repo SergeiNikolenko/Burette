@@ -35,6 +35,8 @@ that terminal state through MCP operation replay and subsequent Python status.
 The complete `vp run test:workbench-python-client` passed all three tests and
 83 assertions. This is Python/CLI/HTTP/host-hook/worker/MCP integration evidence
 under happy-dom. Live browser cancellation remains a separate acceptance item.
+The subsequent `vp run test:agent` completed successfully with all 24 tasks
+executed without cache hits, including the three Python tests and 83 assertions.
 The full JavaScript sweep still needs a successful terminal run.
 
 ## Requirements

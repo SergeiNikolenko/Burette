@@ -1,5 +1,30 @@
 # Stage 7 evidence: builders and chemical editing
 
+## Live unspecified-stereo 3D preparation (2026-11-03)
+
+The current integration frontend was rebuilt with `vp build` for the
+`prebuilt-static` browser-agent shell. In the in-app browser, a flat OCL MOL
+generated from `CC(N)C(=O)O` was imported through the file picker. Command Palette
+→ Edit atoms and bonds → More actions → Generate 3D coordinates completed in
+the same document, changing 6 atoms / 5 bonds to 13 atoms / 12 bonds. The panel
+reported MMFF94/BFGS, 39.08 → 22.46 kcal/mol, 136 steps, Converged.
+
+One Undo restored all six displayed planar coordinates and disabled Undo.
+Redo restored the displayed 3D coordinates, atom/bond counts and optimization
+summary, and disabled Redo. Save copy exported a MOL with SHA-256
+`0afe706f2c15ecbf0693f7af5925b7cd4f209155645033f8f43da29050e20f1d`.
+Independent Python RDKit parsed 13 atoms / 12 bonds, a 3D conformer, and the
+same isomeric SMILES `CC(N)C(=O)O` as the input. Its chiral-center query returned
+atom index 1 with `?`, preserving the unspecified center.
+
+Picker reopening the exported copy created a separate document and rendered
+the molecule with 13 atoms / 12 bonds in Info. Local evidence is
+`/tmp/burette-alanine-3d-oracle.json` and
+`/tmp/burette-alanine-3d-reopened.png`. This covers one unspecified tetrahedral
+center in the dark 1280×720 browser surface. Specified/mixed stereochemistry,
+E/Z, atom UUID checks, MOLX round trips, light/compact/accessibility acceptance
+and live automation preparation remain separate checks.
+
 Branch `parity/builders`, based on `a5f7303cd`. This file records what each
 stage 7 requirement now has, the commands that checked it, the independent
 references used, the browser acceptance scripts still to run, and the limits
