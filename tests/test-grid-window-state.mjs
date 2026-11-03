@@ -3,7 +3,7 @@ import fs from "node:fs";
 
 const source = fs.readFileSync("PreviewExtension/Web/grid-viewer.js", "utf8");
 function body(name) {
-  const start = source.indexOf(`\n  function ${name}(`);
+  const start = source.search(new RegExp(`\\n  (?:async )?function ${name}\\(`));
   assert.notEqual(start, -1);
   const rest = source.slice(start + 1);
   return rest.slice(0, rest.search(/\n {2}(?:async )?function [A-Za-z_$]/u));
@@ -52,3 +52,26 @@ assert.equal(to.capture(), before, "invalid snapshot does not partially mutate t
 original.rows[0].name = "x".repeat(1600 * 1024);
 assert.throws(() => from.capture(), /too large/);
 console.log("Grid window state: edits, history, selection, view and bounded validation passed.");
+
+// The receiving toolbar must reflect the restored view before the new table
+// renders; a snapshot changes state without going through its UI setters.
+const steps = [];
+const transferState = {};
+const transfer = new Function("state", "steps", `
+  const config = () => ({});
+  const collectionIndexReady = () => true;
+  const restoreGridWindowState = () => { state.viewMode = 'table'; steps.push('restore'); return 42; };
+  const refreshGridControls = () => { steps.push('controls:' + state.viewMode); };
+  const applyGridPreferences = () => { steps.push('preferences:' + state.viewMode); };
+  const render = async () => { steps.push('render:' + state.viewMode); };
+  const window = { scrollTo: ({ top }) => steps.push('scroll:' + top) };
+  const notifyGridMenuState = () => steps.push('menu');
+  const post = (_type, _id, result) => { if (!result.ok) throw new Error(result.error); steps.push('ack'); };
+  ${body("handleGridWindowTransfer")}
+  return handleGridWindowTransfer;
+`)(transferState, steps);
+await transfer({ type: "gridWindowRestore", requestId: "restore-one", snapshot: "fixture" });
+assert.deepEqual(steps, ['restore', 'controls:table', 'preferences:table', 'render:table', 'scroll:42', 'menu', 'ack']);
+steps.length = 0;
+await transfer({ type: "gridWindowRestore", requestId: "restore-one", snapshot: "fixture" });
+assert.deepEqual(steps, ['menu', 'ack'], 'repeated acknowledgement must not reset user view');

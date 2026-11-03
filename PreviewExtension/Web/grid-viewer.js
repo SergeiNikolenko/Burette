@@ -7390,6 +7390,8 @@
       } else {
         if (state.lastGridWindowRestoreId !== body.requestId) {
           const scrollY = restoreGridWindowState(body.snapshot);
+          refreshGridControls(cfg);
+          applyGridPreferences(cfg);
           await render(cfg);
           window.scrollTo({ top: scrollY, behavior: 'instant' });
           state.lastGridWindowRestoreId = body.requestId;
