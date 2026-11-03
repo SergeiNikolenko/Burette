@@ -432,7 +432,7 @@ fn packaged_compute_service_path() -> Option<PathBuf> {
 }
 
 fn show_and_emit_open_documents<R: tauri::Runtime>(app: &tauri::AppHandle<R>, paths: Vec<String>) {
-    show_and_emit_startup(app, paths, None);
+    startup::route_external_open_documents(app, paths);
 }
 
 fn show_and_emit_startup<R: tauri::Runtime>(
@@ -440,7 +440,11 @@ fn show_and_emit_startup<R: tauri::Runtime>(
     paths: Vec<String>,
     session_dir: Option<String>,
 ) {
-    if (paths.is_empty() && session_dir.is_none()) || menu::exit_transition_is_active(app) {
+    if session_dir.is_none() {
+        show_and_emit_open_documents(app, paths);
+        return;
+    }
+    if menu::exit_transition_is_active(app) {
         return;
     }
     let preferred_label = windows::focused_window_label(app);

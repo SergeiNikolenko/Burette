@@ -114,6 +114,28 @@ enum WritePermitMode {
 }
 
 impl OpenDocumentRegistry {
+    pub(crate) fn owner_for_path(
+        &self,
+        path: &Path,
+        candidates: &[String],
+        preferred: Option<&str>,
+    ) -> Option<String> {
+        let path = normalized_document_path(path);
+        let state = self.state.lock().ok()?;
+        let owns = |label: &str| {
+            crate::windows::is_workspace_window_label(label)
+                && candidates.iter().any(|candidate| candidate == label)
+                && state
+                    .paths_by_window
+                    .get(label)
+                    .is_some_and(|snapshot| snapshot.paths.contains(&path))
+        };
+        preferred
+            .filter(|label| owns(label))
+            .map(str::to_string)
+            .or_else(|| candidates.iter().filter(|label| owns(label)).min().cloned())
+    }
+
     fn replace(&self, window_label: &str, revision: u64, paths: &[String]) -> Result<(), String> {
         let normalized: HashSet<PathBuf> = paths
             .iter()
@@ -1498,6 +1520,44 @@ mod tests {
         contextual_history_title, recent_menu_titles, validate_recent_documents, NativeMenuState,
         OpenDocumentRegistry, RecentMenuDocument, RecentMenuSnapshot, MAX_MENU_TITLE_CHARS,
     };
+
+    #[test]
+    fn external_open_reuses_live_workspace_owner_and_excludes_preview() {
+        let registry = OpenDocumentRegistry::default();
+        let path = "/tmp/burette-owned-structure.pdb";
+        registry
+            .replace("workspace-other", 1, &[path.into()])
+            .unwrap();
+        registry
+            .replace("workspace-preview-test", 1, &[path.into()])
+            .unwrap();
+        let candidates = vec![
+            "main".into(),
+            "workspace-other".into(),
+            "workspace-preview-test".into(),
+        ];
+        assert_eq!(
+            registry.owner_for_path(std::path::Path::new(path), &candidates, Some("main")),
+            Some("workspace-other".into())
+        );
+        assert_eq!(
+            registry.owner_for_path(
+                std::path::Path::new(path),
+                &candidates,
+                Some("workspace-preview-test")
+            ),
+            Some("workspace-other".into())
+        );
+        assert_eq!(
+            registry.owner_for_path(std::path::Path::new(path), &["main".into()], Some("main")),
+            None
+        );
+        registry.replace("main", 1, &[path.into()]).unwrap();
+        assert_eq!(
+            registry.owner_for_path(std::path::Path::new(path), &candidates, Some("main")),
+            Some("main".into())
+        );
+    }
     use serde_json::json;
     use std::path::Path;
 

@@ -156,6 +156,53 @@ pub(crate) fn signal_open_documents_for_window<R: Runtime>(
     }
 }
 
+pub(crate) fn route_external_open_documents<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    paths: Vec<String>,
+) {
+    use crate::{menu, windows};
+    if paths.is_empty() || menu::exit_transition_is_active(app) {
+        return;
+    }
+    let default_label = match windows::focused_window_label(app) {
+        Some(label) => label,
+        None => match windows::focus_or_create_workspace_window(app, None) {
+            Ok(window) => window.label().to_string(),
+            Err(_) => return,
+        },
+    };
+    let candidates: Vec<String> = app
+        .webview_windows()
+        .keys()
+        .filter(|label| windows::is_workspace_window_label(label))
+        .cloned()
+        .collect();
+    let registry = app.try_state::<menu::OpenDocumentRegistry>();
+    let mut batches = std::collections::BTreeMap::<String, Vec<String>>::new();
+    let mut focus_label = None;
+    for path in paths {
+        let path = std::fs::canonicalize(&path)
+            .map(|path| path.to_string_lossy().into_owned())
+            .unwrap_or(path);
+        let owner = registry
+            .as_ref()
+            .and_then(|registry| {
+                registry.owner_for_path(
+                    std::path::Path::new(&path),
+                    &candidates,
+                    Some(&default_label),
+                )
+            })
+            .unwrap_or_else(|| default_label.clone());
+        focus_label.get_or_insert_with(|| owner.clone());
+        batches.entry(owner).or_default().push(path);
+    }
+    for (label, paths) in batches {
+        signal_open_documents_for_window(app, &label, paths);
+    }
+    let _ = windows::focus_or_create_workspace_window(app, focus_label.as_deref());
+}
+
 pub(crate) fn emit_agent_session<R: Runtime>(
     app: &tauri::AppHandle<R>,
     window_label: &str,
