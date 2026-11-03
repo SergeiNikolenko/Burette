@@ -5799,15 +5799,15 @@ body .buret-docking-poses { view-transition-name: buret-pose-controls; }
   object-position: left top;
 }
 
-/* After the first layout, islands glide to the place a resize or a
-   neighbour's new shape gives them; dragging still moves them directly. */
+/* Geometry must follow live viewport bounds without an easing tail. Discrete
+   toolbar changes already use view transitions; interpolating measured left/top
+   also makes dependent rails chase intermediate positions during resizing. */
 html.buret-chrome-settled #buret-toolbar:not(.buret-dragging) {
-  transition: background 180ms ease, box-shadow 180ms ease,
-    left 260ms cubic-bezier(0.32, 0.72, 0, 1), top 260ms cubic-bezier(0.32, 0.72, 0, 1);
+  transition: background 180ms ease, box-shadow 180ms ease;
 }
 html.buret-chrome-settled body .buret-docking-poses:not(.buret-docking-poses-dragging),
 html.buret-chrome-settled #buret-viewport-rail:not(.buret-dragging) {
-  transition: left 260ms cubic-bezier(0.32, 0.72, 0, 1), top 260ms cubic-bezier(0.32, 0.72, 0, 1);
+  transition: none;
 }
 
 /* A pane narrower than the toolbar wraps its buttons onto a second row

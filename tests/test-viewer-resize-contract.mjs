@@ -204,7 +204,10 @@ try {
   live.scheduleViewerResize(fakeViewer); tick();
   for (let i = 0; i < 60; i++) {
     bounds = { width: 500 + i * 2, height: 400 + i };
-    live.scheduleViewerResize(fakeViewer); tick();
+    live.scheduleViewerResize(fakeViewer);
+    assert.equal(fakeViewer.plugin.canvas3dContext.canvas.style.left, '50%',
+      'the retained projection must be centered before an observer-triggered paint');
+    tick();
     fakeViewer.plugin.handleResize();
     assert.equal(applied.length, start + 1, "GL targets stay intact throughout the gesture");
   }

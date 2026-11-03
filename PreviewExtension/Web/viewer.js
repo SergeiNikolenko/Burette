@@ -1947,6 +1947,12 @@
   function scheduleViewerResize(viewer) {
     if (!viewer) return;
     if (!viewerCanvasIsVisible(viewer)) return;
+    // ResizeObserver runs before paint, but its requested animation frame can
+    // land after that paint. Center the retained projection now, otherwise one
+    // frame keeps the old left edge and the next jumps back to the new center.
+    if (resizeState.hasDrawn === viewer && viewerContainerSize(viewer) !== resizeState.appliedSize) {
+      deferViewerResize(viewer);
+    }
     resizeState.viewer = viewer;
     if (resizeState.frame) return;
     resizeState.frame = requestAnimationFrame(() => {
@@ -6969,12 +6975,12 @@
     const width = toolbar.offsetWidth || toolbar.getBoundingClientRect().width || 320;
     // On narrow panes reserve the first row for the scene-tree control.
     const top = Math.max(defaultToolbarTop(), bounds.top + TOOLBAR_MARGIN) + (bounds.width < width + 64 ? 44 : 0);
-    const rightEdge = bounds.right;
-    const left = Math.max(bounds.left + TOOLBAR_MARGIN, Math.round(rightEdge - width - TOOLBAR_MARGIN));
     delete toolbar.dataset.dockCorner;
     toolbar.dataset.defaultPosition = '1';
-    toolbar.style.left = left + 'px';
-    toolbar.style.right = 'auto';
+    // Keep the default anchor in CSS so it follows the frame even before the
+    // observer runs. A pixel left offset lags behind a shrinking host pane.
+    toolbar.style.left = 'auto';
+    toolbar.style.right = Math.max(TOOLBAR_MARGIN, window.innerWidth - bounds.right + TOOLBAR_MARGIN) + 'px';
     toolbar.style.top = top + 'px';
     updateFloatingLayoutOffsets();
   }
@@ -7250,8 +7256,7 @@
     window.addEventListener('resize', scheduleFloatingLayoutRefresh);
     document.addEventListener('click', () => setTimeout(scheduleFloatingLayoutRefresh, 0), true);
     scheduleFloatingLayoutRefresh();
-    // After the first layout the islands glide to new places instead of
-    // jumping when the pane resizes or a neighbour changes shape.
+    // Enable cosmetic feedback after initialization; geometry stays immediate.
     setTimeout(() => document.documentElement.classList.add('buret-chrome-settled'), 800);
   }
 
