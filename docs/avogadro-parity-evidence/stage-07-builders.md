@@ -227,6 +227,11 @@ BURETTE_AGENT_SHELL_FORCE_VP=1 bun scripts/burette-agent.mjs open --mode browser
 
 Run each script in light and dark themes and once at a 760 px window width.
 
+On `d7fb5ce40`, the in-app Browser opened Build DNA or RNA from the command
+palette in a `vite-dev` shell. Preview for the default B-DNA duplex of
+`GATTACA` showed 444 atoms and a 3D view. Create opened
+`GATTACA-B-DNA-duplex-ideal.cif` in a new active tab with a 3D view.
+
 ### B1. Insert a library fragment at a picked hydrogen, Undo/Redo, save and reopen
 
 Fixture `tests/fixtures/fragments/ethanol-cid702.sdf` (PubChem CID 702, public domain).
