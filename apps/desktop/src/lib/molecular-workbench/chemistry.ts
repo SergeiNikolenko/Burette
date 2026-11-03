@@ -1,4 +1,4 @@
-import { ConformerGenerator, Molecule, MoleculeProperties, Resources } from 'openchemlib';
+import { Canonizer, ConformerGenerator, Molecule, MoleculeProperties, Resources } from 'openchemlib';
 import resources from '../../../../../node_modules/openchemlib/dist/resources.json';
 import type { MolecularAtom } from './types';
 import { appendHydrogens } from './hydrogen-geometry';
@@ -298,15 +298,35 @@ export function prepare3d(structure: MolecularStructure, options: { forceField?:
   if (unavailable) throw new Error(unavailable);
   const unknownAtoms = Array.from({ length: source.getAllAtoms() }, (_, i) => i).filter(i => source.isAtomConfigurationUnknown(i));
   const unknownBonds = Array.from({ length: source.getAllBonds() }, (_, b) => b).filter(b => source.getBondParity(b) === Molecule.cBondParityUnknown);
-  const identity = source.getIDCode();
+  source.invalidateHelperArrays(Molecule.cHelperCIP);
+  source.ensureHelperArrays(Molecule.cHelperCIP);
+  if (unknownAtoms.length || unknownBonds.length) retainUnknownStereo(source, unknownAtoms, unknownBonds);
+  const identity = new Canonizer(source.getCompactCopy(), { neglectAnyStereoInformation: true }).getIDCode();
+  const atomStereo = Array.from({ length: source.getAllAtoms() }, (_, i) => i).filter(i => !unknownAtoms.includes(i) && source.getAtomCIPParity(i) !== Molecule.cAtomCIPParityNone);
+  const bondStereo = Array.from({ length: source.getAllBonds() }, (_, i) => i).filter(i => !unknownBonds.includes(i) && source.getBondCIPParity(i) !== Molecule.cBondCIPParityNone);
   let embedded: Molecule | null = null, seed = requestedSeed, attempts = 0;
   for (; attempts < EMBEDDING_ATTEMPTS && !embedded; attempts++) {
     seed = requestedSeed + attempts;
-    const candidate = new ConformerGenerator(seed).getOneConformerAsMolecule(toOcl(structure));
+    const input = toOcl(structure);
+    // Sample the drawn representative of relative groups, then restore their
+    // source ESR semantics. OCL may otherwise flip an entire relative group.
+    atomStereo.forEach(i => input.setAtomESR(i, Molecule.cESRTypeAbs, 0));
+    bondStereo.forEach(i => input.setBondESR(i, Molecule.cESRTypeAbs, 0));
+    const candidate = new ConformerGenerator(seed).getOneConformerAsMolecule(input);
     if (!candidate) continue;
     candidate.ensureHelperArrays(Molecule.cHelperCIP);
+    atomStereo.forEach(i => candidate.setAtomESR(i, source.getAtomESRType(i), source.getAtomESRGroup(i)));
+    bondStereo.forEach(i => candidate.setBondESR(i, source.getBondESRType(i), source.getBondESRGroup(i)));
     if (unknownAtoms.length || unknownBonds.length) retainUnknownStereo(candidate, unknownAtoms, unknownBonds);
-    if (candidate.getIDCode() === identity) embedded = candidate;
+    // Unknown source stereo constrains no handedness. Check the full constitution
+    // and every specified CIP/ESR constraint without comparing OCL's different
+    // encodings of unknown parity in 2D and 3D. Canonization mutates helper state,
+    // so its stereo-free comparison must operate on copies.
+    const atomsMatch = atomStereo.every(i => candidate.getAtomCIPParity(i) === source.getAtomCIPParity(i)
+      && candidate.getAtomESRType(i) === source.getAtomESRType(i) && candidate.getAtomESRGroup(i) === source.getAtomESRGroup(i));
+    const bondsMatch = bondStereo.every(i => candidate.getBondCIPParity(i) === source.getBondCIPParity(i)
+      && candidate.getBondESRType(i) === source.getBondESRType(i) && candidate.getBondESRGroup(i) === source.getBondESRGroup(i));
+    if (new Canonizer(candidate.getCompactCopy(), { neglectAnyStereoInformation: true }).getIDCode() === identity && atomsMatch && bondsMatch) embedded = candidate;
   }
   if (!embedded) throw new Error(`No embedding from seeds ${requestedSeed}–${requestedSeed + EMBEDDING_ATTEMPTS - 1} kept the source stereochemistry; nothing was changed.`);
   const start = snapshot(embedded, structure.title, structure.graphSource, structure.graphComplete, expandedAtomMap(structure, embedded.getAllAtoms()));

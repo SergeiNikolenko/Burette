@@ -107,8 +107,9 @@ The `smiles` build reuses the shared engines: the OpenChemLib conformer of
 `generate` (as when a SMILES is opened) relaxed by the `optimize` action with
 the requested `forceField`/`method`/`maxIterations`, reported through the
 registry's `optimizationSummary`/`optimizationArtifacts`. `prepare_3d` was not
-reused here: it refuses every structure with an unspecified stereocentre or
-double bond (see Known limits). Polymer relaxation also calls the shared
+reused here because it originally refused unspecified stereochemistry. That
+refusal is corrected at the engine boundary (see the 2026-11-03 update below).
+Polymer relaxation also calls the shared
 `optimize`. Results never edit the open document. Documented in
 [agent platform](../agent-platform.md#structure-editing-and-builder-jobs).
 
@@ -397,6 +398,15 @@ browser acceptance cases.
   explicit "unknown" flags, so `CC(N)C(=O)O`, `CC=CC` and `CC(O)CC(C)O` fail on
   all eight seeds (both OpenChemLib- and RDKit-written 2D MOL input). Raised for
   stage 3 in the stage 7 report; the `smiles` build therefore uses `generate` + `optimize`.
+  **2026-11-03 update:** the engine now compares constitution independently
+  from specified CIP/ESR constraints, retaining unknown source constraints.
+  Relative stereo groups use the drawn representative during embedding and
+  regain their source ESR semantics before publication. The regression suite
+  reads outputs with RDKit for all three examples plus mixed specified/unknown
+  tetrahedral and double-bond cases, each from RDKit and OCL MOL depictions.
+  It also checks source immutability and atom CIP/ESR after serialization.
+  This resolves the reproduced engine refusal; fresh browser acceptance for
+  these unspecified-stereo inputs remains pending.
 - pH adjustment treats each site independently with one pKa (no coupled
   centres, microstates, tautomers or substituent corrections); piperazine at
   pH 7.4 becomes a dication. Sulfonamides, imides, pyridones, aminopyridines

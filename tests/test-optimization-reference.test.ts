@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, test } from 'bun:test';
 import initRDKitModule, { type MainModule as RDKitModule } from '@rdkit/rdkit';
+import { Molecule } from 'openchemlib';
 import inputs from './fixtures/forcefield/rdkit-reference.json';
 import reference from './fixtures/optimization/rdkit-optimization-reference.json';
 import { createEnergyEvaluator, createOptimizationEvaluator, generateFromSmiles, getEnergy, optimize, parseMolecule, prepare3d, searchConformers, type GeometryConstraint, type OptimizationMethod } from '../apps/desktop/src/lib/molecular-workbench/chemistry';
@@ -190,6 +191,31 @@ describe('optimization against independent RDKit references', () => {
       expect([prepared.molecule.atoms.length, prepared.method, prepared.gradient, prepared.energy < prepared.initialEnergy]).toEqual([92, forceField === 'UFF' ? 'lbfgs' : 'bfgs', 'analytic', true]);
     }
   });
+
+  for (const producer of ['RDKit', 'OCL']) {
+    test.each(['CC(N)C(=O)O', 'CC=CC', 'CC(O)CC(C)O', 'C[C@H](O)CC(C)O', 'C/C=C/CC=CC'])(`3D preparation preserves ${producer} unspecified stereo for %s`, (smiles) => {
+      const reference = rdkit.get_mol(smiles)!;
+      try {
+        const molfile = producer === 'RDKit' ? reference.get_molblock() : Molecule.fromSmiles(smiles).toMolfile();
+        const input = parseMolecule(molfile, 'mol');
+        const original = JSON.stringify(input);
+        const result = prepare3d(input, { seed: 3 });
+        expect(JSON.stringify(input)).toBe(original);
+        expect(Number.isFinite(result.energy)).toBe(true);
+        expect(result.molecule.atoms.some(atom => Math.abs(atom.z) > 0.1)).toBe(true);
+        const reopened = rdkit.get_mol(result.molecule.molfile, JSON.stringify({ removeHs: true }))!;
+        try { expect(reopened.get_smiles()).toBe(reference.get_smiles()); } finally { reopened.delete(); }
+        const sourceStereo = Molecule.fromMolfile(molfile), resultStereo = Molecule.fromMolfile(result.molecule.molfile);
+        sourceStereo.ensureHelperArrays(Molecule.cHelperCIP);
+        resultStereo.ensureHelperArrays(Molecule.cHelperCIP);
+        for (let i = 0; i < sourceStereo.getAllAtoms(); i++) {
+          if (sourceStereo.getAtomCIPParity(i) === Molecule.cAtomCIPParityNone) continue;
+          expect([resultStereo.getAtomCIPParity(i), resultStereo.getAtomESRType(i), resultStereo.getAtomESRGroup(i)])
+            .toEqual([sourceStereo.getAtomCIPParity(i), sourceStereo.getAtomESRType(i), sourceStereo.getAtomESRGroup(i)]);
+        }
+      } finally { reference.delete(); }
+    });
+  }
 
   test('Z-matrix optimization with both O–H bonds and both angles on shared variables reaches the RDKit water minimum', () => {
     // Water's minimum is symmetric, so two shared variables span it exactly.
