@@ -22,8 +22,28 @@ rendered molecular view and Info confirmed 19 atoms / 18 bonds in the light
 1280×720 surface. Evidence is in `/tmp/burette-live-prepare-stereo-report.json`
 and `/tmp/burette-mixed-stereo-reopened-light-view.png`. These results cover
 live Python/CLI automation and the exported final structures. In-place UI
-preparation of these two inputs, every trajectory frame's stereochemistry,
-MOLX persistence and compact/keyboard acceptance remain unverified.
+preparation of these two inputs, MOLX persistence and compact/keyboard
+acceptance remain unverified.
+
+The live jobs' XYZ step trajectories were also exported and independently
+checked with Python RDKit. Each frame was assigned the final SDF's bond graph,
+all stereo annotations were removed, and `AssignStereochemistryFrom3D` derived
+stereochemistry anew from that frame's coordinates. All 122 tetrahedral-case
+frames retained atom 1 as S; all 184 double-bond-case frames retained bond 1
+as E. Every frame retained the element order and finite coordinates/energy.
+Frame counts equalled the reported iterations plus one, and initial/final
+energies matched the job summaries. Last-frame coordinates matched the SDFs
+within 4.956e-11 and 4.849e-11 Å respectively.
+
+Trajectory SHA-256 values are
+`9e181296ab43f2d31b747c29836192043f9a78a3b95f61b8e7a8604646e104d2`
+and `024d004954b778ab01c69567957563ea8fbecdc65e320102cd018eb7b3d9f9e9`.
+The oracle script and output are `/tmp/burette-prepare-trajectory-oracle.py`
+and `/tmp/burette-prepare-trajectory-oracle.json`. This verifies specified
+stereochemistry in the trajectory geometry using the accompanying SDF graph.
+The plain XYZ artifacts themselves carry elements, coordinates and step
+energies, without bond or unspecified-stereo annotations. Standalone XYZ
+round-trip preservation of those annotations is therefore unproven.
 
 ## Live unspecified-stereo 3D preparation (2026-11-03)
 
