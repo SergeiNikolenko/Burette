@@ -63,7 +63,7 @@ async function checkpoint(tabId: string) {
   }
   const archive = await requestViewerAction(document.id, { type: "workspace_scene_snapshot" });
   const identity = { sourcePath: document.path, sceneUnsaved: document.sceneUnsaved === true, sceneSourcePaths: document.sceneSourcePaths ?? [] };
-  if (archive.sheet) return invoke<string>("save_popout_sheet", { ...identity, sheet: archive.sheet });
+  if (archive.sheet) return invoke<string>("save_popout_sheet", { ...identity, recoveryPath: document.recoveryPath, sheet: archive.sheet });
   if (typeof archive.dataBase64 !== "string") throw new Error("The scene could not be captured.");
   return invoke<string>("save_popout_scene", { ...identity, dataBase64: archive.dataBase64 });
 }

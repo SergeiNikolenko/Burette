@@ -290,6 +290,49 @@ mod tests {
     }
 
     #[test]
+    fn sheet_recheckpoint_reads_recovery_when_original_is_missing() {
+        use tauri::test::{mock_builder, mock_context, noop_assets};
+        let app = mock_builder().build(mock_context(noop_assets())).unwrap();
+        let root = app.path().app_data_dir().unwrap().join("popout-scenes");
+        fs::create_dir_all(&root).unwrap();
+        let original = root.join(format!("missing-{}.pdb", uuid::Uuid::new_v4()));
+        let recovery = root.join(format!("{}.pdb", uuid::Uuid::new_v4()));
+        fs::write(&recovery, b"ATOM recovery").unwrap();
+        let sheet = serde_json::json!({ "version": 1, "items": [{
+            "svg": "<svg></svg>",
+            "inputDataBase64": "QVRPTQ==", "inputExtension": "pdb",
+            "geometry": { "left": 0, "top": 0, "width": 200, "height": 180, "rotation": 0 }
+        }] });
+        let checkpoint = save_popout_sheet(
+            app.handle().clone(),
+            original.to_string_lossy().into_owned(),
+            Some(recovery.to_string_lossy().into_owned()),
+            sheet.clone(),
+            Some(true),
+            None,
+        )
+        .map(std::path::PathBuf::from)
+        .unwrap();
+        assert_eq!(fs::read(&checkpoint).unwrap(), b"ATOM recovery");
+        assert_eq!(
+            sheet_checkpoint(app.handle(), &checkpoint).unwrap(),
+            Some(sheet)
+        );
+        let descriptor = recovery_source(app.handle(), &checkpoint).unwrap().unwrap();
+        assert_eq!(descriptor.source_path, original);
+        assert!(descriptor.scene_unsaved);
+        assert!(!original.exists());
+        for file in [
+            recovery,
+            checkpoint.with_extension("sheet.json"),
+            checkpoint.with_extension("source.json"),
+            checkpoint,
+        ] {
+            fs::remove_file(file).unwrap();
+        }
+    }
+
+    #[test]
     fn checkpoints_require_bounded_zip_bytes() {
         let encode = |bytes: &[u8]| base64::engine::general_purpose::STANDARD.encode(bytes);
         assert_eq!(
@@ -397,6 +440,7 @@ fn validate_sheet(sheet: &serde_json::Value) -> Result<(), String> {
 pub(crate) fn save_popout_sheet<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     source_path: String,
+    recovery_path: Option<String>,
     mut sheet: serde_json::Value,
     scene_unsaved: Option<bool>,
     scene_source_paths: Option<Vec<String>>,
@@ -405,7 +449,9 @@ pub(crate) fn save_popout_sheet<R: tauri::Runtime>(
         return Err("The sheet is too large to move.".into());
     }
     validate_sheet(&sheet)?;
-    let source = std::path::Path::new(&source_path);
+    // The original name remains the document identity even when its volume is
+    // unavailable. A moved sheet already has a self-contained recovery source.
+    let source = std::path::Path::new(recovery_path.as_deref().unwrap_or(&source_path));
     let extension = source
         .extension()
         .and_then(|s| s.to_str())

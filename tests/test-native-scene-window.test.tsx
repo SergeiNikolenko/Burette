@@ -8,6 +8,8 @@ const { createRoot } = await import("react-dom/client");
 let listener: (event: { payload: unknown }) => Promise<void>;
 let latest: Record<string, any>;
 let failSave = false;
+let sheetArchive: object | undefined;
+let savedSheet: Record<string, any> | undefined;
 let closedWindows: string[] = [];
 let openIncoming = async () => {};
 let readiness = async () => ({ ready: true });
@@ -21,7 +23,7 @@ let state: any;
 function reset() { state = { tabs: [tab], documents: [doc], setActiveDocument() {}, renameTab() {}, togglePinnedTab() {}, moveTab() {}, closeTab(id: string) { state.tabs = state.tabs.filter((item: any) => item.id !== id); } }; latest = {}; failSave = false; closedWindows = []; }
 const store = Object.assign(() => {}, { getState: () => state, setState: (fn: any) => { Object.assign(state, fn(state)); } });
 mock.module("../apps/desktop/src/stores/molecule-store", () => ({ useMoleculeStore: store }));
-mock.module("../apps/desktop/src/lib/viewer-bridge", () => ({ activeViewerIframeForDocument: () => frame, requestViewerAction: async (_: string, action: any) => action.type === "observe_story" ? { count: 1 } : action.type === "workspace_scene_state" ? readiness() : { dataBase64: "UEsDBA==" } }));
+mock.module("../apps/desktop/src/lib/viewer-bridge", () => ({ activeViewerIframeForDocument: () => frame, requestViewerAction: async (_: string, action: any) => action.type === "observe_story" ? { count: 1 } : action.type === "workspace_scene_state" ? readiness() : sheetArchive ? { sheet: sheetArchive } : { dataBase64: "UEsDBA==" } }));
 mock.module("../apps/desktop/src/hooks/workspace-scene-import", () => ({ focusSceneDocument: async () => {} }));
 mock.module("../apps/desktop/src/components/editor-area/page-kinds", () => ({ serializeLocation: (location: unknown) => location, deserializeLocation: (location: unknown) => location }));
 mock.module("../apps/desktop/src/lib/tauri", () => ({ isTauriRuntime: () => true, trackTauriListener: () => () => {} }));
@@ -29,6 +31,7 @@ mock.module("../apps/desktop/src/components/ui/toast", () => ({ toast: { add: ()
 mock.module("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ label: "workspace-child", listen: async (_: string, receive: typeof listener) => { listener = receive; return () => {}; } }), Window: { getByLabel: async (label: string) => ({ close: async () => { closedWindows.push(label); } }) } }));
 mock.module("@tauri-apps/api/core", () => ({ convertFileSrc: (path: string) => path, invoke: async (command: string, args: any) => {
   if (command === "save_popout_scene") { if (failSave) throw new Error("disk full"); savedSources.push(args.sourcePath); return path; }
+  if (command === "save_popout_sheet") { savedSheet = args; return path; }
   if (command === "open_new_workspace_window") return "workspace-peer";
   if (command === "relay_popout_handoff") latest = { ...args.message, target: args.target };
 } }));
@@ -36,11 +39,19 @@ const { useNativePopoutSession, popOutNativeScene, returnNativePopout, nativePop
 function Listener() { useNativePopoutSession({ openStructurePaths: async () => openIncoming() } as any); return null; }
 async function withListener(run: () => Promise<void>) {
   reset(); openIncoming = async () => {}; readiness = async () => ({ ready: true }); savedSources.length = 0;
+  sheetArchive = undefined; savedSheet = undefined;
   const mount = document.createElement("div"); document.body.append(mount); const root = createRoot(mount);
   try { await act(async () => root.render(<Listener />)); await run(); }
   finally { await act(async () => root.unmount()); mount.remove(); }
 }
 const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+test("sheet checkpoint separates recovery bytes from original identity", async () => withListener(async () => {
+  sheetArchive = { version: 1, items: [] };
+  await checkpointNativePopoutForExit();
+  expect(savedSheet?.sourcePath).toBe(doc.path);
+  expect(savedSheet?.recoveryPath).toBe(doc.recoveryPath);
+  expect(savedSheet?.sheet).toBe(sheetArchive);
+}));
 test("receiver rejects an already-open source without modifying its tabs", async () => withListener(async () => {
   let opened = false; openIncoming = async () => { opened = true; };
   await listener({ payload: { kind: "offer", id: "collision", from: "workspace-parent", path, sourcePath: doc.path, title: "Protein", index: 0, pinned: false } });
