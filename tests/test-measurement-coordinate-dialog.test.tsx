@@ -203,6 +203,9 @@ test("a changed source, dismissal or replaced frame during the capture await lea
         }
         await act(async () => { v.release!(); await new Promise(resolve => setTimeout(resolve, 20)); });
       }
+      // Capture validation precedes the graph job, so an idle graph alone does
+      // not mean the dialog has received and displayed the source-change refusal.
+      if (change === "raw") await until(() => v.alert() !== null);
       await until(() => !v.graph.busy);
       expect(v.graph.history).toBe(history);
       expect(v.controller.sessionForDocument(v.doc)).toBeNull();
