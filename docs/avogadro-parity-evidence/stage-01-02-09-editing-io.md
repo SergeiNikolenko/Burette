@@ -520,3 +520,34 @@ scientific attachments. The recorded source-path list can retain deleted items;
 the early multi-file omission condition currently uses that list. This remains a
 code-review finding requiring a real browser reproduction before changing the
 binding rules. Do not substitute basename-matched live paths for source identity.
+
+
+### 2026-11-04: scientific export after removing an added structure
+
+Reproduced on integration source 7cef8491b in a fresh vite-dev browser: open
+`tests/fixtures/topology-real-browser-water.molx`, open
+`tests/fixtures/mesoscale/basic/mini.pdb`, use Add to scene, remove mini.pdb in
+the scene tree, then Save scene. Only water remained, but the downloaded MOLX
+contained only state.json. The recorded file history incorrectly triggered the
+multiple-structure scientific export exclusion.
+
+Export now checks the live structure count when the recorded history contains
+multiple files, then still requires the normal source/coordinate binding and
+snapshot confirmation. A final-source browser run verified both cases: two live
+structures save with the explicit omission warning and no redundant action-error
+toast; removing the added PDB saves the scientific MOLX successfully. Opening
+that download through New tab → Open file restores water and the compute menu.
+The observed viewport was 1280 × 720 in the dark theme.
+
+Independent ZIP inspection confirmed identical source and Original bytes,
+document UUID and atom IDs. Scientific JSON differed only by the normalized
+referenceFrameIndex field. Evidence: `/tmp/burette-membership-final-oracle.json`,
+`/tmp/burette-membership-reopened.png`; final single-source download:
+`/Users/nikolenko/Desktop/topology-real-browser-water (4).molx`.
+
+Validation: science-host suites pass (14 tests, 74 assertions), including
+multiple live roots, removal with retained history, and a remaining structure
+whose coordinates do not match the source. Typecheck and agent-shell build pass.
+This fixes the reproduced data-loss path; it does not close the complete scene
+matrix. Both-theme/responsive, identical-geometry replacement identity, native
+picker and packaged runtime interaction acceptance remain separate open gates.

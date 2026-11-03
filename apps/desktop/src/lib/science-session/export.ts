@@ -25,7 +25,7 @@ export type SceneScienceExport =
 
 type ExportOptions = {
   sourceEditing: SourceEditingContextValue | null;
-  /** Files and records in the scene; a scene of several cannot bind one source. */
+  /** Recorded files and records; removed structures can remain in this history. */
   sceneFileCount: number;
   isOpen: (documentId: string) => boolean;
   request?: typeof requestViewerAction;
@@ -59,7 +59,11 @@ export async function prepareSceneScienceExport(document: ViewerDocument, option
   const state = scientificStateFor(document.id, text);
   const carriesScience = Boolean(graph || logical || state.revision || state.original);
   if (options.sceneFileCount > 1) {
-    return carriesScience ? { kind: "unsupported", reason: "Scientific data belongs to one structure, and this scene now has several." } : null;
+    // The recorded list outlives removals from the tree. Check the live count,
+    // then still require the exact source binding below before carrying science.
+    const scene = await request(document.id, { type: "workspace_scene_state" });
+    if (scene.structureCount !== 1) return carriesScience
+      ? { kind: "unsupported", reason: "Scientific data could not be bound to one structure in this scene." } : null;
   }
   // A plain XYZ the scene does not show exactly (an unapplied draft, another structure) is
   // saved as the Mol* scene alone, as before; scientific data is never saved for another scene.
@@ -72,6 +76,8 @@ export async function prepareSceneScienceExport(document: ViewerDocument, option
     report = checkBindingReport(await request(document.id, { type: "scene_science_binding", ...(graph ? { sourceExtension: extension } : {}) }));
   } catch (error) {
     if (!carriesScience) return null;
+    // The hierarchy may change after the live count was read.
+    if (options.sceneFileCount > 1) return { kind: "unsupported", reason: "Scientific data could not be bound to one structure in this scene." };
     if (graph) throw error;
     return { kind: "unsupported", reason: error instanceof Error ? error.message : String(error) };
   }

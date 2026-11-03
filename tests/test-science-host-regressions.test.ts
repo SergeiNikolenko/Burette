@@ -48,8 +48,21 @@ test("an edit, a close or a new revision during the export rejects the archive; 
 
 test("a scene of several files keeps its Mol* scene and says scientific data is not saved", async () => {
   const { document, text } = importedDocument();
-  expect(await prepareSceneScienceExport(document as never, options(fakeViewer(text), { sceneFileCount: 2 }) as never))
-    .toEqual({ kind: "unsupported", reason: "Scientific data belongs to one structure, and this scene now has several." });
+  const viewer = fakeViewer(text);
+  const roots = viewer.viewer.plugin.managers.structure.hierarchy.current.structures;
+  Object.defineProperty(viewer.viewer.plugin.managers.structure.hierarchy.current, "structures", { value: roots });
+  roots.push(roots[0]);
+  expect(await prepareSceneScienceExport(document as never, options(viewer, { sceneFileCount: 2 }) as never))
+    .toEqual({ kind: "unsupported", reason: "Scientific data could not be bound to one structure in this scene." });
+  roots.pop();
+  const restored = (await decodeScienceSession(await exportArchive(document, text, viewer, { sceneFileCount: 2 })))!;
+  expect(restored.source.text).toBe(text);
+  expect(restored.science).not.toBeNull();
+  expect(new Uint8Array(await restored.original!.file.arrayBuffer())).toEqual(ORIGINAL);
+  // A single remaining structure is insufficient when it is not the source.
+  viewer.move(text.replace("0.117300", "0.217300"));
+  await expect(prepareSceneScienceExport(document as never, options(viewer, { sceneFileCount: 2 }) as never))
+    .rejects.toThrow(/does not show the current source/);
   const pdb = { id: "pdb-doc", path: "/a.pdb", extension: "pdb", renderer: "molstar" };
   expect(await prepareSceneScienceExport(pdb as never, options(fakeViewer(text)) as never)).toBeNull();
 });

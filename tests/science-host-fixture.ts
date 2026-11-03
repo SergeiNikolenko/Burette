@@ -26,7 +26,7 @@ export function importedDocument(text = XYZ.replace("water restored", "water imp
 }
 export const sceneDocument = (path: string) => ({ id: `scene-${++opened}`, path, title: path.split("/").pop(), extension: "molx", renderer: "molstar", viewerProfile: "structure", byteCount: 1000 }) as ViewerDocument;
 export const request = (viewer: Viewer) => async (_id: string, action: Record<string, unknown>) => {
-  if (action.type === "workspace_scene_state") return { ready: true };
+  if (action.type === "workspace_scene_state") return { ready: true, structureCount: viewer.viewer.plugin.managers.structure.hierarchy.current.structures.length };
   if (action.type === "scene_science_binding") return science.binding(viewer.viewer);
   if (action.type === "scene_science_restore_ack") return { adopted: await science.adoptValidated(viewer.viewer, action) };
   throw new Error(`unexpected ${String(action.type)}`);

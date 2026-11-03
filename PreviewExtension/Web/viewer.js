@@ -769,7 +769,7 @@
       return { ok: true, result };
     }
     if (type === 'workspace_scene_state') {
-      return { ok: true, result: { ready: Boolean(activeMolstarViewer()?.plugin?.managers?.structure?.hierarchy?.current?.structures?.length || (document.querySelector('.buret-external-artifact-root .buret-xyzrender-sheet-item-body > svg') && !document.querySelector('[data-buret-popout-animation=loading], [data-buret-popout-animation=failed]'))) } };
+      return { ok: true, result: { structureCount: activeMolstarViewer()?.plugin?.managers?.structure?.hierarchy?.current?.structures?.length ?? 0, ready: Boolean(activeMolstarViewer()?.plugin?.managers?.structure?.hierarchy?.current?.structures?.length || (document.querySelector('.buret-external-artifact-root .buret-xyzrender-sheet-item-body > svg') && !document.querySelector('[data-buret-popout-animation=loading], [data-buret-popout-animation=failed]'))) } };
     }
     if (type === 'align_scene_files') {
       if (!activeStructureAlignmentControl) throw new Error('This scene does not support structure alignment.');

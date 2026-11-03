@@ -30,6 +30,8 @@ Latest focused evidence includes [Generate 3D camera fitting, Undo/Redo and
 MOLX round trip](avogadro-parity-evidence/stage-01-02-09-editing-io.md#generate-3d-camera-framing-and-scene-round-trip-2026-11-03)
 and [manual Undo/Apply with a clean saved source](avogadro-parity-evidence/stage-01-02-09-editing-io.md#manual-undo-keeps-apply-available-2026-11-03).
 
+[Scientific MOLX export after removing an added structure](avogadro-parity-evidence/stage-01-02-09-editing-io.md#2026-11-04-scientific-export-after-removing-an-added-structure) now has a reproduced failure, fix, browser save/reopen proof and archive identity checks.
+
 All rows remain **partial**, with the listed acceptance gates **untested as a
 complete matrix**. The source column names implemented foundations, not full-stage
 completion. Requirement IDs refer to the adoption contract and extension inventory.
