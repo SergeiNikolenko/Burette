@@ -163,6 +163,36 @@ also exited 0. The local UI log is `burette-parity-test-ui-767cb673c.log`.
 The harness still emits React `act` and animation warnings. This regression
 result does not close the browser layout or unexecuted acceptance cases above.
 
+### Edit list selector height, 2026-11-03
+
+The original prebuilt browser reproduces a 4 px List track at 320 × 720,
+although its Atoms/Bonds/Cartesian buttons are 24 px tall. The Edit grid's
+automatic tracks shrink the horizontally scrollable control when the atom
+table exceeds the panel height. Edit now uses `grid-auto-rows: max-content`
+so its rows keep their intrinsic height and the panel scrolls vertically.
+
+After rebuilding `build:agent-shell`, the fresh prebuilt browser shows a
+28 px track and 24 px buttons at 320 × 720. Selecting O1 expands coordinate
+and metadata fields without collapsing the track. ArrowRight and Space select
+Bonds and Cartesian; the latter's distance-unit selector also remains 28 px.
+Dark Atoms and light Cartesian screenshots confirm readable controls. The
+ordinary file picker reopens the previously exported XZ in a separate tab,
+with 24 atoms, 25 bonds and O1 X = 0.500 Å. Its list track remains 28 px at
+light 760 × 720, dark 1280 × 720 and dark 320 × 720 with O1 selected.
+Browser errors are empty. `test:structure-edit-panel` passes both 13-test
+suites, and the shell build exits 0. `test-burette-agent-plugin.mjs` also passes.
+Generated JavaScript and HTML changes only replace the rebuilt CSS filename.
+
+Local evidence includes `/tmp/burette-edit-layout-before.png`,
+`/tmp/burette-edit-layout-fixed-dark-320.png`,
+`/tmp/burette-edit-layout-fixed-light-320.png`,
+`/tmp/burette-edit-layout-fixed-light-760.png`,
+`/tmp/burette-edit-layout-fixed-dark-1280.png`,
+`/tmp/burette-edit-layout-reopened-dark-320.png` and
+`/tmp/burette-edit-layout-observe.json`. This closes the list-selector clipping
+case above. The previously observed molecular camera crop after resizing,
+native acceptance and the other stage requirements remain open.
+
 ### Hydrogen source-pose preservation, 2026-11-03
 
 - OCL parsing and `toMolfileV3()` can invent a diagram when bonded atoms

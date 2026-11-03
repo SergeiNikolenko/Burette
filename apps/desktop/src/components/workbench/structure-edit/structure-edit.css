@@ -1,3 +1,6 @@
+.structure-edit-panel {
+  grid-auto-rows: max-content;
+}
 .structure-edit-add {
   display: flex;
   align-items: center;
