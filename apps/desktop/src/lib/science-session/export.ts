@@ -62,6 +62,9 @@ export async function prepareSceneScienceExport(document: ViewerDocument, option
     // The recorded list outlives removals from the tree. Check the live count,
     // then still require the exact source binding below before carrying science.
     const scene = await request(document.id, { type: "workspace_scene_state" });
+    if (!Number.isInteger(scene.structureCount) || (scene.structureCount as number) < 0) {
+      throw new ScienceSessionError("binding", "The scene did not report its structure count.");
+    }
     if (scene.structureCount !== 1) return carriesScience
       ? { kind: "unsupported", reason: "Scientific data could not be bound to one structure in this scene." } : null;
   }
@@ -79,10 +82,9 @@ export async function prepareSceneScienceExport(document: ViewerDocument, option
     report = checkBindingReport(value);
   } catch (error) {
     if (!carriesScience) return null;
-    // The hierarchy may change after the live count was read.
-    if (options.sceneFileCount > 1) return { kind: "unsupported", reason: "Scientific data could not be bound to one structure in this scene." };
-    if (graph) throw error;
-    return { kind: "unsupported", reason: error instanceof Error ? error.message : String(error) };
+    // An explicit unavailable report above is safe to omit. A failed request or
+    // malformed response is not evidence that the scientific source is absent.
+    throw error;
   }
   let frames: ReturnType<typeof checkSceneShowsSource>;
   try {

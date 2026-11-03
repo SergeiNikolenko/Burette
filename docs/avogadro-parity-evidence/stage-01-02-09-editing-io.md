@@ -612,3 +612,37 @@ Focused checks: science-host 16 tests / 81 assertions; science-runtime 20 / 155;
 typecheck and rebuilt agent shell passed. Host tests exercise both the explicit
 absence report and continued strict rejection, including import-loading failures.
 Runtime tests exercise the real viewer action route and unchanged SDF response.
+
+## Unexpected science binding failures stop saving (2026-11-04)
+
+Parent `3b5a44864` still caught arbitrary binding request/validation errors and
+converted them into an `unsupported` result for scientific XYZ, including scenes
+whose recorded source history contained multiple files. That could let the
+allow-omission save path proceed without scientific attachments despite a broken
+bridge or malformed report. The regression test failed before the fix: a request
+throwing `Viewer connection lost` resolved instead of rejecting
+(`/tmp/burette-binding-failure-before.log`). A second pre-fix regression showed
+that a missing live structure count was also accepted as an omission
+(`/tmp/burette-binding-count-before.log`).
+
+Export now propagates unexpected binding failures for scientific sources. Only
+an explicit absent-owner report or a valid non-singleton live inventory can
+establish those expected omission cases. The live count must be a nonnegative
+integer; missing, negative, fractional and string counts fail before capture.
+Plain XYZ's existing non-scientific fallback remains separate. A concurrent
+hierarchy change that throws during binding conservatively stops this save;
+it is not reclassified from an arbitrary error message.
+
+`test:science-host`: 18 tests, 89 assertions pass, including failed requests and
+malformed binding reports for both one-file and multi-file source histories,
+four malformed count cases, and the existing explicit absent-owner omission and
+original-owner recovery tests. The actual snapshot caller awaits preparation
+before sending `workspace_scene_snapshot`, so these errors cannot advance to
+archive capture. This is code/host regression evidence, not a live browser
+transport-failure reproduction. Browser failure/retry UI acceptance remains open.
+The unchanged ordinary omission browser scenario is recorded in the preceding
+section and is not relabelled as fault-injection evidence.
+
+Final validation also passed typecheck, scene-save/sidebar contract checks, the
+agent-shell rebuild and the plugin check against that completed build. Logs:
+`/tmp/burette-binding-failure-{types-final,save,build-final,plugin}.log`.

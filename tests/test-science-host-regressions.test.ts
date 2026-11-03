@@ -239,3 +239,34 @@ test("science binding inspection preserves loading failures", async () => {
   science.beginImport(viewer.viewer.plugin);
   await expect(science.bindingReport(viewer.viewer)).rejects.toThrow(/finish opening/);
 });
+
+test("scientific export does not turn bridge or malformed binding failures into data omission", async () => {
+  const { document, text } = importedDocument();
+  const viewer = fakeViewer(text);
+  for (const sceneFileCount of [1, 2]) {
+    const normal = request(viewer);
+    const failure = new Error("Viewer connection lost");
+    const broken = async (id: string, action: Record<string, unknown>) => {
+      if (action.type === "scene_science_binding") throw failure;
+      return normal(id, action);
+    };
+    await expect(prepareSceneScienceExport(document, options(viewer, { sceneFileCount, request: broken }) as never)).rejects.toBe(failure);
+    const malformed = async (id: string, action: Record<string, unknown>) => {
+      if (action.type === "scene_science_binding") return { unexpected: true };
+      return normal(id, action);
+    };
+    await expect(prepareSceneScienceExport(document, options(viewer, { sceneFileCount, request: malformed }) as never))
+      .rejects.toThrow("The scene did not report its structure.");
+  }
+});
+
+test("a malformed live structure count cannot authorize scientific data omission", async () => {
+  const { document, text } = importedDocument();
+  const viewer = fakeViewer(text);
+  for (const structureCount of [undefined, -1, 1.5, "2"]) {
+    await expect(prepareSceneScienceExport(document, options(viewer, {
+      sceneFileCount: 2,
+      request: async () => ({ ready: true, structureCount }),
+    }) as never)).rejects.toThrow("The scene did not report its structure count.");
+  }
+});
