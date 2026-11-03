@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { unzipSync } from "../apps/desktop/node_modules/fflate/esm/browser.js";
-import { fakeViewer, realXyzViewer, science, waterScience, XYZ } from "./science-session-fixture";
+import { fakeViewer, realXyzViewer, sceneFiles, science, waterScience, XYZ } from "./science-session-fixture";
 import { ORIGINAL, importedDocument, options, exportArchive, restore, request, sceneDocument, openSceneArchive } from "./science-host-fixture";
 import { recordImportedRevision, scientificStateFor } from "../apps/desktop/src/lib/workbench/scientific-source-state";
 import { logicalSourceFor, sourceExtension, releaseClosedScienceSessions } from "../apps/desktop/src/lib/science-session/state";
@@ -197,4 +197,34 @@ test("scene export confirmation rejects replaced virtual and filesystem source b
     release(new Response(text));
     await expect(confirming).rejects.toThrow(/document closed/);
   } finally { globalThis.fetch = previousFetch; }
+});
+
+
+test("an appended identical structure cannot inherit the removed source's scientific data", async () => {
+  const { document, text } = importedDocument();
+  const viewer = fakeViewer(text);
+  const plugin = viewer.viewer.plugin;
+  const roots = plugin.managers.structure.hierarchy.current.structures;
+  Object.defineProperty(plugin.managers.structure.hierarchy.current, "structures", { value: roots });
+  Object.defineProperty(plugin.managers.structure.hierarchy.current, "models", { value: [] });
+  const original = roots[0];
+  const duplicate = { cell: { ...original.cell, transform: { ...original.cell.transform, ref: "duplicate" } } };
+  await sceneFiles.append(viewer.viewer, {
+    sources: [{ path: "/other/water.xyz", format: "xyz", data: text }], existingPaths: [document.path],
+  }, {
+    capture: () => null, restore: () => {},
+    load: async () => {
+      expect(() => science.binding(viewer.viewer)).toThrow(/finish opening/);
+      plugin.state.data.cells.set("duplicate", duplicate.cell); roots.push(duplicate);
+    },
+  });
+  roots.shift();
+  // Coordinates and element order are identical, but this is the appended object.
+  const prepared = await prepareSceneScienceExport(document as never, options(viewer, { sceneFileCount: 2 }) as never);
+  expect(prepared?.kind).toBe("unsupported");
+  roots.splice(0, 1, original);
+  expect((await prepareSceneScienceExport(document as never, options(viewer, { sceneFileCount: 2 }) as never))?.kind).toBe("science");
+  // Undo restores the same appended state ref; provenance must survive removal.
+  roots.splice(0, 1, duplicate);
+  expect(() => science.binding(viewer.viewer)).toThrow(/original scientific structure was removed/);
 });

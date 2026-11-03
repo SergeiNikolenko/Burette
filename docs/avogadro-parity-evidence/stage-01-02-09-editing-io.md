@@ -549,5 +549,35 @@ Validation: science-host suites pass (14 tests, 74 assertions), including
 multiple live roots, removal with retained history, and a remaining structure
 whose coordinates do not match the source. Typecheck and agent-shell build pass.
 This fixes the reproduced data-loss path; it does not close the complete scene
-matrix. Both-theme/responsive, identical-geometry replacement identity, native
+matrix. Both-theme/responsive, other source-replacement paths, native
 picker and packaged runtime interaction acceptance remain separate open gates.
+
+
+### Identical appended structure ownership (2026-11-04)
+
+A production-adapter regression test reproduced the remaining identity gap on
+c80d79b57: append an identical XYZ object, remove the original root, and export.
+The host returned science despite the surviving object belonging to the append.
+The pre-fix result is recorded in `/tmp/burette-identical-before.log`.
+
+The local runtime now records appended structure refs per plugin and rejects
+scientific binding to those objects. It blocks binding while append is active,
+preserves provenance through tree removal/Undo, and resets it on a new scene
+import. Restoring the original root permits export again. No coordinate or
+basename heuristic substitutes for the append provenance.
+
+Focused checks pass: science-host 15 tests/78 assertions, science-runtime 20/155,
+import-receipt 2/10, scene-file-actions import/rollback checks and typecheck.
+A fresh vite-dev Browser run also verified the ordinary picker and tab-menu
+path using the water MOLX and an extracted byte-identical XYZ. Add to scene,
+remove water-owned.xyz, then Save scene produced only state.json with an explicit
+omission warning. Back restored the original; removing duplicate.xyz and saving
+then preserved the source, document UUID, atom IDs and Original bytes. Independent
+ZIP results are in `/tmp/burette-identical-oracle.json`; screenshot:
+`/tmp/burette-identical-recovered.png`. The initial direct temporary-path open
+failed, so both fixtures were loaded through the ordinary browser chooser.
+
+The omission path also shows a redundant Structure action failed toast; this
+notification behavior remains open. The tested viewport was dark, 1280 × 720.
+Reopen of these particular exports, light/compact interactions, and packaged or
+native UI remain unverified. No whole-scene or whole-stage completion is claimed.

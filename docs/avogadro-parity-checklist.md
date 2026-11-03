@@ -32,6 +32,8 @@ and [manual Undo/Apply with a clean saved source](avogadro-parity-evidence/stage
 
 [Scientific MOLX export after removing an added structure](avogadro-parity-evidence/stage-01-02-09-editing-io.md#2026-11-04-scientific-export-after-removing-an-added-structure) now has a reproduced failure, fix, browser save/reopen proof and archive identity checks.
 
+[Identical appended structure ownership](avogadro-parity-evidence/stage-01-02-09-editing-io.md#identical-appended-structure-ownership-2026-11-04) now rejects transferring science to an appended copy after the original is removed; Browser omission and original-restoration exports were inspected independently.
+
 All rows remain **partial**, with the listed acceptance gates **untested as a
 complete matrix**. The source column names implemented foundations, not full-stage
 completion. Requirement IDs refer to the adoption contract and extension inventory.

@@ -3,6 +3,10 @@
   const sessions = new WeakMap();
   const modelLoads = new WeakSet();
   const appendOwners = new WeakMap();
+  // Appended objects never own the existing document's scientific source, even
+  // when their coordinates and raw bytes happen to be identical. Keep refs so
+  // deleting and undoing a scene-tree removal does not erase that provenance.
+  const appendedStructureRefs = new WeakMap();
   const MAX_SCENE_MODELS = 200;
   const allModels = preset => preset === 'all-models' || preset === 'preset-trajectory-all-models';
   const modelLimit = () => new Error('A scene supports up to 200 loaded models. Open a collection and select fewer structures.');
@@ -131,10 +135,11 @@
   function scienceBinding(viewer) {
     const plugin = viewer?.plugin;
     const session = scienceSessions.get(plugin);
-    if (session?.importLoading) throw new Error('Wait for the scene to finish opening.');
+    if (session?.importLoading || appendOwners.has(plugin)) throw new Error('Wait for the scene to finish opening.');
     const roots = plugin?.managers?.structure?.hierarchy?.current?.structures;
     if (!Array.isArray(roots) || roots.length !== 1) throw new Error('Scientific data is saved with scenes of exactly one structure.');
     const structureCell = roots[0].cell;
+    if (appendedStructureRefs.get(plugin)?.has(structureCell?.transform.ref)) throw new Error('The original scientific structure was removed from this scene.');
     const structure = structureCell?.obj?.data;
     if (!structure) throw new Error('Wait for the scene to load.');
     const cells = plugin.state.data.cells;
@@ -270,6 +275,7 @@
   function beginScienceImport(plugin) {
     const session = scienceSession(plugin);
     if (session.publicExporting) throw new Error('The scene is already being saved.');
+    appendedStructureRefs.delete(plugin);
     session.importToken = crypto.randomUUID();
     session.importLoading = true;
     session.lastManifestSha256 = null;
@@ -451,6 +457,12 @@
           // Each SDF record is a ligand, not an animation frame to discard.
           loadPreset: source.format === 'sdf' ? 'all-models' : 'default'
         }, undefined, owner);
+        let appended = appendedStructureRefs.get(viewer.plugin);
+        if (!appended) appendedStructureRefs.set(viewer.plugin, appended = new Set());
+        for (const entry of viewer.plugin.managers.structure.hierarchy.current.structures || []) {
+          const ref = entry.cell?.transform.ref;
+          if (typeof ref === 'string' && !before.has(ref)) appended.add(ref);
+        }
         sources.forEach(source => session.paths.add(source.path));
         return { ok: true, command: 'append_scene_files', result: { added: sources.length, paths: Array.from(session.paths) } };
       } catch (error) {

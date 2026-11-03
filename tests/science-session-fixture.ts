@@ -18,7 +18,8 @@ export { XYZ, waterScience } from "./scientific-data-fixture";
 // as they would through postMessage.
 const window: Record<string, any> = {};
 vm.runInNewContext(readFileSync(new URL("../PreviewExtension/Web/scene-file-actions.js", import.meta.url), "utf8"), { window, crypto, TextEncoder, TextDecoder, Set, WeakMap, File, Uint8Array, Float64Array });
-export const science = window.BuretteSceneFiles.science;
+export const sceneFiles = window.BuretteSceneFiles;
+export const science = sceneFiles.science;
 
 const STATE = { entries: [{ snapshot: { id: "s1", data: { tree: { transforms: [{ ref: "s", transformer: "ms-plugin.structure-from-model" }] } }, camera: { current: { radius: 7 } } } }], current: "s1" };
 
