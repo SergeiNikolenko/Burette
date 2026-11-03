@@ -682,6 +682,11 @@
       }
       if (!data || (data.source !== 'burette-grid-host' && data.source !== 'burette-host')) return;
       const body = data.body || {};
+      if (body.type === 'gridWindowCapture' || body.type === 'gridWindowRestore' || body.type === 'gridWindowReady') {
+        if (event.source !== window.parent || typeof body.requestId !== 'string' || body.requestId.length > 120) return;
+        void handleGridWindowTransfer(body);
+        return;
+      }
       // Applied in place like the structure viewer: the config already carries
       // the token sets for both themes, so a theme change never reopens the grid.
       if (body.type === 'setViewerTheme') {
@@ -7355,6 +7360,85 @@
       recordsTotal,
       sourceRevision: state.sourceRevision
     });
+  }
+
+  async function handleGridWindowTransfer(body) {
+    const cfg = config();
+    try {
+      if (body.type === 'gridWindowReady') {
+        if (collectionIndexReady() && !state.remoteLoading) post('gridWindowResult', '', { requestId: body.requestId, ok: true });
+        return;
+      }
+      if (!collectionIndexReady() || state.remoteLoading || state.searchTimer || state.tableFilterTimer || state.saveAsPending
+        || state.clustering || state.generating3d || state.aligningPoses || state.evaluatingSemiempirical || state.findingSimilar || state.exportingClusterRepresentatives) {
+        throw new Error('Wait for the collection to finish its current operation.');
+      }
+      if (body.type === 'gridWindowCapture') {
+        if (!state.closeTransitionActive) throw new Error('The collection is not locked for transfer.');
+        post('gridWindowResult', '', { requestId: body.requestId, ok: true, snapshot: captureGridWindowState() });
+      } else {
+        if (state.lastGridWindowRestoreId !== body.requestId) {
+          const scrollY = restoreGridWindowState(body.snapshot);
+          await render(cfg);
+          window.scrollTo({ top: scrollY, behavior: 'instant' });
+          state.lastGridWindowRestoreId = body.requestId;
+        }
+        notifyGridMenuState(cfg);
+        post('gridWindowResult', '', { requestId: body.requestId, ok: true });
+      }
+    } catch (error) {
+      post('gridWindowResult', '', { requestId: body.requestId, ok: false, error: String(error?.message || error) });
+    }
+  }
+
+  function captureGridWindowState() {
+    const encode = value => JSON.parse(JSON.stringify(value, (_key, entry) => entry instanceof Set
+      ? { collection: 'set', entries: [...entry] }
+      : entry instanceof Map ? { collection: 'map', entries: [...entry] } : entry));
+    const view = {};
+    for (const key of gridWindowViewKeys()) view[key] = state[key];
+    const snapshot = JSON.stringify({ version: 1, scrollY: scrollTop(), edit: encode(snapshotGridEditState()),
+      undo: encode(state.undoStack), redo: encode(state.redoStack), view: encode(view) });
+    if (new TextEncoder().encode(snapshot).length > 1500 * 1024) throw new Error('This collection is too large to move with its edits. Keep it in this window.');
+    return snapshot;
+  }
+
+  function gridWindowViewKeys() {
+    return ['query', 'smarts', 'sort', 'descriptorFilters', 'descriptorSort', 'showProperties', 'viewMode',
+      'tableHiddenColumns', 'tablePinnedColumns', 'tableColumnWidths', 'tableColumnFilters', 'tableScrollLeft',
+      'remoteDescriptorIds', 'remoteAnalysisColumns', 'cardRenderer', 'xyzrenderPreset', 'xyzrenderUse3DCoords',
+      'rdkitUseInputCoords', 'hydrogenDisplay', 'cardMin', 'chemicalSpaceFilterActive', 'selectionAnchorIndex'];
+  }
+
+  function restoreGridWindowState(serialized) {
+    if (typeof serialized !== 'string' || new TextEncoder().encode(serialized).length > 1500 * 1024) throw new Error('Invalid collection transfer.');
+    const snapshot = JSON.parse(serialized, (_key, entry) => {
+      if (entry?.collection === 'set' && Array.isArray(entry.entries)) return new Set(entry.entries);
+      if (entry?.collection === 'map' && Array.isArray(entry.entries) && entry.entries.every(pair => Array.isArray(pair) && pair.length === 2)) return new Map(entry.entries);
+      return entry;
+    });
+    const validEdit = edit => edit && ['rows', 'all', 'insertedRows'].every(key => Array.isArray(edit[key]) && edit[key].every(row => row && typeof row === 'object' && Number.isSafeInteger(row.index)))
+      && ['hiddenRows', 'selected', 'deletedPropColumns'].every(key => edit[key] instanceof Set)
+      && ['rowPatches', 'columnValueRanges'].every(key => edit[key] instanceof Map)
+      && typeof edit.dirty === 'boolean' && typeof edit.dirtyReason === 'string'
+      && Number.isFinite(edit.totalRows) && (edit.recordsTotalHint === null || Number.isFinite(edit.recordsTotalHint));
+    const validHistory = history => Array.isArray(history) && history.length <= GRID_EDIT_HISTORY_LIMIT
+      && history.every(entry => typeof entry.label === 'string' && validEdit(entry.snapshot));
+    if (snapshot?.version !== 1 || !Number.isFinite(snapshot.scrollY) || snapshot.scrollY < 0 || !validEdit(snapshot.edit) || !validHistory(snapshot.undo) || !validHistory(snapshot.redo) || !snapshot.view || typeof snapshot.view !== 'object') throw new Error('Invalid collection transfer.');
+    for (const key of gridWindowViewKeys()) {
+      const value = snapshot.view[key], current = state[key];
+      if (current instanceof Set ? !(value instanceof Set) : current instanceof Map ? !(value instanceof Map)
+        : Array.isArray(current) ? !Array.isArray(value) : current !== null && typeof value !== typeof current) throw new Error('Invalid collection view.');
+    }
+    restoreGridEditState(snapshot.edit);
+    state.undoStack = snapshot.undo;
+    state.redoStack = snapshot.redo;
+    for (const key of gridWindowViewKeys()) state[key] = snapshot.view[key];
+    state.searchTextCache = new WeakMap();
+    state.smartsMatches.clear();
+    const search = document.getElementById('search');
+    if (search) search.value = state.query;
+    return snapshot.scrollY;
   }
 
   function snapshotGridEditState() {
