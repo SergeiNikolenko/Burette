@@ -31,7 +31,8 @@ const data = JSON.parse(scripts.find(match => match[1].includes('application/jso
 assert.equal(Buffer.from(data.data, 'base64').toString(), molblock);
 const darkHtml = view('next molecule', 'dark');
 const darkData = JSON.parse(darkHtml.match(/id="burette-inspector-input">([^]*?)<\/script>/)[1]);
-assert.notEqual(darkData.config.inspectorChannel, data.config.inspectorChannel, 'a replaced document has a fresh channel');
+assert.equal(darkHtml, html, 'theme changes reuse the live iframe and its scene');
+assert.equal(darkData.config.inspectorChannel, data.config.inspectorChannel);
 const window = { parent: { postMessage() {} }, addEventListener() {} };
 runInNewContext(readFileSync('apps/desktop/src/preview-grid/molecule-preview-bootstrap.js', 'utf8'), {
   window, document: { getElementById: () => ({ textContent: JSON.stringify(data) }), addEventListener() {} },

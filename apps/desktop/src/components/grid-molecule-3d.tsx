@@ -12,11 +12,13 @@ export default function GridMolecule3D({ molblock, dataURL, hydrogenDisplay, the
   if (initial.current.format !== format) initial.current = { format, text: "" };
   if (!dataURL && !initial.current.text && molblock && molblock.length <= 350_000) initial.current.text = molblock;
   const initialMolblock = initial.current.text;
+  const initialTheme = useRef(theme).current;
   const firstHydrogens = useRef(hydrogenDisplay).current;
   const initialHydrogens = dataURL ? hydrogenDisplay : firstHydrogens;
   const open = useRef(onOpen);
   open.current = onOpen;
   const { html, channel } = useMemo(() => {
+    const theme = initialTheme;
     if (!initialMolblock && !dataURL) return { html: "<!doctype html><html></html>", channel: "" };
     const channel = crypto.randomUUID();
     const config = { format: format === "mmcif" ? "cif" : format, molstarFormat: format, renderer: "molstar", label, appViewer: true,
@@ -31,18 +33,25 @@ export default function GridMolecule3D({ molblock, dataURL, hydrogenDisplay, the
       #buret-toolbar{left:auto!important;right:4px!important;top:4px!important;bottom:auto!important;width:auto!important}
       .buret-toolbar-content>*:not([data-buret-molstar-preset-slot]){display:none!important}
       .msp-viewport-controls,.buret-viewport-corner,.buret-viewport-rail,.buret-generate-3d-control,.buret-grip{display:none!important}
-      .buret-molstar-preset-menu,.buret-tree-menu{background:${theme === "dark" ? "#202020" : "#ffffff"}!important;border:1px solid ${theme === "dark" ? "#383838" : "#e5e5e5"}!important;border-radius:8px;box-shadow:0 8px 24px #0003;backdrop-filter:none!important}
+      html{--preview-menu:#ffffff;--preview-border:#e5e5e5;--preview-trigger:#f5f5f5}
+      html[data-buret-theme="light"]{color-scheme:light}
+      html[data-buret-theme="dark"]{color-scheme:dark;--preview-menu:#202020;--preview-border:#383838;--preview-trigger:#262626}
+      .buret-molstar-preset-menu,.buret-tree-menu{background:var(--preview-menu)!important;border:1px solid var(--preview-border)!important;border-radius:8px;box-shadow:0 8px 24px #0003;backdrop-filter:none!important}
       .buret-molstar-preset-menu{max-height:calc(100vh - 44px);font-size:12px}
-      .buret-molstar-preset-trigger{background:${theme === "dark" ? "#262626" : "#f5f5f5"}!important;border:0!important;border-radius:6px}
+      .buret-molstar-preset-trigger{background:var(--preview-trigger)!important;border:0!important;border-radius:6px}
 
       </style></head><body><div id="app" class="buret-inspector-updating"></div><div id="status" class="hidden"></div>
       <script type="application/json" id="burette-inspector-input">${JSON.stringify({ config, data, dataURL }).replaceAll("<", "\\u003c")}</script>
       <script src="${new URL(bootstrapUrl, window.location.href).href}"></script>
       ${scripts.map(name => `<script src="${asset(name)}"></script>`).join("")}
       </body></html>` };
-  }, [theme, initialMolblock, initialHydrogens, format, label, dataURL]);
+  }, [initialTheme, initialMolblock, initialHydrogens, format, label, dataURL]);
   useEffect(() => {
-    const send = () => !dataURL && frame.current?.contentWindow?.postMessage({ source: "burette-inspector-host", channel, molblock, hydrogenDisplay }, "*");
+    const send = () => {
+      const target = frame.current?.contentWindow;
+      target?.postMessage({ source: "burette-host", body: { type: "setViewerTheme", value: theme, canvasBackground: theme === "dark" ? "graphite" : "white" } }, "*");
+      if (!dataURL) target?.postMessage({ source: "burette-inspector-host", channel, molblock, hydrogenDisplay }, "*");
+    };
     const ready = (event: MessageEvent) => {
       if (event.source !== frame.current?.contentWindow || event.data?.channel !== channel) return;
       if (event.data?.source === "burette-inspector-ready") send();
@@ -52,6 +61,6 @@ export default function GridMolecule3D({ molblock, dataURL, hydrogenDisplay, the
     window.addEventListener("message", ready);
     const timer = window.setTimeout(send, 60);
     return () => { window.clearTimeout(timer); window.removeEventListener("message", ready); };
-  }, [molblock, hydrogenDisplay, html, channel, dataURL]);
+  }, [molblock, hydrogenDisplay, html, channel, dataURL, theme]);
   return <iframe ref={frame} className="grid-molecule-3d" title="Molecule 3D preview" style={{ height }} srcDoc={html} sandbox="allow-scripts allow-same-origin allow-downloads" />;
 }

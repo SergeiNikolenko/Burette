@@ -1045,3 +1045,38 @@ assertions, `bun tests/test-burette-agent-plugin.mjs` passed, and
 `git diff --check` passed. The independent RDKit downloaded-file check and
 re-export byte equality were rerun successfully. Logs are
 `/tmp/burette-polymer-final-test.log` and `/tmp/burette-polymer-final-plugin.log`.
+
+### Preview theme continuity (2026-11-03)
+
+Follow-up inspection distinguishes transient theme animation from settled dialog
+colors. In the packaged browser, the settled dark dialog was rgb(45,45,45) with
+white text; light was white with rgb(26,28,31) text. During the transition an
+intermediate read returned background rgb(163,163,163) and text rgb(126,128,129).
+The earlier screenshots do not prove a persistent palette failure. Transient
+contrast remains an open acceptance concern.
+
+The preview did have a separate lifecycle defect. Changing theme regenerated
+srcdoc and its inspector channel, unloading the molecule and resetting its
+camera. `GridMolecule3D` now sends the existing host theme message in place and
+styles preview menu surfaces from the renderer's theme attribute. A ready
+handshake also applies the current theme after asynchronous startup.
+
+The rebuilt prebuilt-static shell was exercised through Compute → Build polymer,
+actual C1/H6/C2/H5 canvas picks, four repeats with hydrogen ends and Preview.
+The result contained 38 atoms. At 1280 × 720, light → dark changed the renderer
+background from 16777215 to 1118481 while preserving iframe performance time
+origin, structure transform identity, atom count and the complete camera snapshot.
+At 320 × 720, dark → light preserved the same identities and camera and restored
+background 16777215. Both settled compact screenshots show the molecule. Tab from
+Preview focused Create and scrolled it into view; Enter created `Polymer.sdf`.
+The viewport and media emulation were reset after the check.
+
+Local evidence is `/tmp/burette-preview-theme-live.json` and
+`/tmp/burette-preview-theme-320-{dark,light}.png`. The first implementation attempt
+retained the iframe but omitted the host message envelope; browser inspection
+caught the unchanged renderer theme before the envelope was corrected and the
+successful checks above were rerun. The final focused suites passed bootstrap,
+three Blob-preview tests (29 assertions), two peptide-preview tests (11
+assertions) and the Blob-preview TypeScript check. App typecheck and the packaged
+shell build passed. Native WebKit acceptance and the full theme/keyboard/Atlas
+matrix remain open; this run covers preview continuity and compact publication.

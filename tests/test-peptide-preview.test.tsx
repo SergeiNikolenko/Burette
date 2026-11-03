@@ -9,7 +9,7 @@ const { CIF } = require("@molstar/io/reader/cif");
 const { trajectoryFromMmCIF } = require("@molstar/model/formats/structure/mmcif");
 const { Structure } = require("@molstar/model/model/structure");
 
-test("preview format changes replace the frame and keep the exact CIF bytes in both themes", () => {
+test("preview format changes replace the frame while theme changes retain the exact CIF document", () => {
   const source = readFileSync("apps/desktop/src/components/grid-molecule-3d.tsx", "utf8").replace(/^import .*;\n/gm, "")
     .replace(/const assets = import\.meta\.glob[^\n]+/, "const assets = {};").replace("export default function", "function");
   const code = new Bun.Transpiler({ loader: "tsx", tsconfig: { compilerOptions: { jsx: "react" } } }).transformSync(source);
@@ -26,8 +26,7 @@ test("preview format changes replace the frame and keep the exact CIF bytes in b
   expect(Buffer.from(input(first).data, "base64").toString()).toBe(cif);
   expect(input(first).config.inspectorChannel).not.toBe(input(mol).config.inspectorChannel);
   expect(view(peptideMmcif(buildPeptideGeometry("G")), "mmcif")).toBe(first);
-  const dark = input(view(cif, "mmcif", "dark"));
-  expect([dark.config.theme, dark.config.molstarFormat, Buffer.from(dark.data, "base64").toString()]).toEqual(["dark", "mmcif", cif]);
+  expect(view(cif, "mmcif", "dark")).toBe(first);
 });
 
 test("the actual inspector receiver reloads a full-graph CIF using its frame format", async () => {
