@@ -256,7 +256,7 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
           // A rigid motion keeps every atom, so the panel selection survives the new snapshot.
           setInputError(null);
           const result = await draft.apply({ kind: "positions", coordinates, from: editor.current });
-          if (result) setSelection((current) => ({ atoms: mapSelection(selectedAtoms(current, structure), result), from: "panel", structure: result }));
+          if (result) setSelection((current) => ({ atoms: selectedAtoms(current, structure), from: "panel", structure: result }));
         }} />
       {editor.current.metadata ? <GraphMetadataFields key={`metadata:${snapshotId(editor.current)}:${atoms.join(",")}`}
         snapshot={editor.current} atomIndex={atoms.length === 1 ? atoms[0] : null} disabled={busy}
