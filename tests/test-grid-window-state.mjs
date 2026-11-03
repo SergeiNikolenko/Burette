@@ -45,7 +45,10 @@ function presentationRuntime(target, hooks = {}) {
     const refreshGridControls = () => {}, applyGridPreferences = () => {};
     const setStatus = message => { throw new Error(message); };
     const post = (_type, _text, payload) => events.push(['publish', payload]);
-    const refresh = async () => { state.dataToken = 1; state.visibleCount = 240; state.rows = Array.from({length: 240}); };
+    const refresh = async () => {
+      state.dataToken = 1; state.visibleCount = 240; state.rows = Array.from({length: 240});
+      await hooks.onRefresh?.(state);
+    };
     const hasMoreRows = () => state.rows.length < 1800;
     const loadMoreRemote = async () => {
       events.push(['load']); state.rows.push(...Array.from({length: 240})); state.visibleCount += 240;
@@ -83,6 +86,16 @@ for (const invalid of ['{', 'x'.repeat(32769), JSON.stringify({ ...JSON.parse(sa
 const interrupted = presentationRuntime({ ...presentation }, { onLoad: target => { target.gridPresentationGeneration = 1; } });
 await interrupted.restore(savedPresentation);
 assert.ok(!interrupted.events.some(event => event[0] === 'scroll'), 'user input cancels delayed scrolling');
+const superseded = presentationRuntime({ ...presentation }, {
+  onRefresh: async target => {
+    await Promise.resolve();
+    target.dataToken += 1;
+    target.query = 'New results';
+  },
+});
+await superseded.restore(savedPresentation);
+assert.ok(!superseded.events.some(event => ['load', 'render', 'scroll', 'visible'].includes(event[0])),
+  'a newer result set during initial refresh must not receive old paging or scroll');
 let initialize;
 const pending = { ...presentation, gridPresentationInitialization: new Promise(resolve => { initialize = resolve; }) };
 const delayed = presentationRuntime(pending);

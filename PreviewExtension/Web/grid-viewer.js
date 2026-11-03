@@ -7512,9 +7512,12 @@
       if (search) search.value = state.query;
       refreshGridControls(cfg);
       applyGridPreferences(cfg);
-      await refresh(cfg);
-      if (cancelled()) return;
+      const refreshing = refresh(cfg);
+      // Capture the refresh generation before yielding: a newer query may
+      // replace its result set while the initial page is still loading.
       const token = state.dataToken;
+      await refreshing;
+      if (cancelled() || token !== state.dataToken) return;
       while (state.remoteMode && state.visibleCount < saved.visibleCount && hasMoreRows()) {
         const before = state.visibleCount;
         await loadMoreRemote(cfg);
