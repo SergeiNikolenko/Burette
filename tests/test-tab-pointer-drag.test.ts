@@ -26,6 +26,7 @@ function controller() {
   const cleanup = () => { remove.current?.(); mouse.current = null; };
   const stop = () => { cleanup(); };
   const values = {
+    tracePerf: () => {},
     useCallback: (fn: Function) => fn,
     canTransferNativeTab: () => false,
     useMoleculeStore: { getState: () => ({ promotePreviewTab: () => {} }) },
@@ -43,7 +44,7 @@ function controller() {
   };
   const start = new Function(...Object.keys(values), `${js}; return startMouseTabReorder;`)(...Object.values(values));
   return { start: (id: string, altKey = false) => start(id, true, { button: 0, altKey, pointerId: 1, currentTarget: button, clientX: 0, clientY: 0 }),
-    move: (x: number) => listeners.get("pointermove")?.({ buttons: 1, clientX: x, clientY: 0 }),
+    move: (x: number, buttons = 1) => listeners.get("pointermove")?.({ buttons, clientX: x, clientY: 0 }),
     up: (x = 70, y = 10) => listeners.get("pointerup")?.({ clientX: x, clientY: y }),
     target: (value: unknown) => { target = value; }, moves, drops, snapshot, suppressed, captures: () => captures };
 }
@@ -77,6 +78,13 @@ test("a fast local drag commits its release position without an intermediate mov
   const drag = controller(); drag.start("dirty-grid"); drag.up();
   expect(drag.drops).toEqual([{ tabId: "dirty-grid", x: 70, y: 10 }]);
   expect(drag.snapshot.current).toBeNull();
+  expect(drag.captures()).toBe(0);
+});
+
+test("pointer movement without the primary button cancels before a later release", () => {
+  const drag = controller(); drag.start("dirty-grid"); drag.move(70, 0); drag.up();
+  expect(drag.drops).toEqual([]);
+  expect(drag.moves).toEqual([]);
   expect(drag.captures()).toBe(0);
 });
 

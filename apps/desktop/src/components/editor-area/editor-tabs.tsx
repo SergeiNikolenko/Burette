@@ -33,6 +33,7 @@ import { canStartNativeFileDrag, startNativeFileDrag } from "../../lib/native-fi
 import { isFileDragTab, tabFileDragPayload } from "./tab-file-drag";
 import { useSourceEditing } from "../../lib/source-editing/context";
 import { toast } from "../ui/toast";
+import { tracePerf } from "../../lib/perf-trace";
 
 const TAB_REORDER_ANIMATION_MS = 170;
 const TAB_DRAG_ACTIVATE_DELAY_MS = 520;
@@ -402,6 +403,7 @@ export function EditorTabs({
   });
 
   const stopTabDrag = useCallback(() => {
+    if (mouseDragRef.current || reorderSnapshotRef.current) tracePerf("tab:drag-stop", { detail: { active: mouseDragRef.current?.active ?? false, rollback: reorderSnapshotRef.current !== null } });
     nativeDragGenerationRef.current += 1;
     const originalOrder = reorderSnapshotRef.current;
     reorderSnapshotRef.current = null;
@@ -440,11 +442,13 @@ export function EditorTabs({
   };
 
   const startMouseTabReorder = useCallback((tabId: string, tabHasDockPayload: boolean, event: React.PointerEvent<HTMLButtonElement>) => {
+    tracePerf("tab:drag-start", { detail: { button: event.button, altKey: event.altKey, x: event.clientX, y: event.clientY } });
     if (event.button !== 0 || event.altKey) return;
     const button = event.currentTarget;
     button.setPointerCapture(event.pointerId);
     removeMouseDragListeners();
     mouseDragRef.current = { tabId, startX: event.clientX, startY: event.clientY, active: false };
+    tracePerf("tab:drag-armed");
     let frame = 0;
     let pointer = { x: event.clientX, y: event.clientY };
     const scrollAtEdge = () => {
@@ -476,6 +480,7 @@ export function EditorTabs({
     const handleMouseMove = (moveEvent: MouseEvent) => {
       pointer = { x: moveEvent.clientX, y: moveEvent.clientY };
       if ((moveEvent.buttons & 1) !== 1) {
+        tracePerf("tab:drag-cancel", { detail: { reason: "no-primary-button", buttons: moveEvent.buttons } });
         stopTabDrag();
         return;
       }
@@ -501,6 +506,7 @@ export function EditorTabs({
       }
     };
     const handleMouseUp = (upEvent: MouseEvent) => {
+      tracePerf("tab:drag-release", { detail: { active: mouseDragRef.current?.active ?? false, x: upEvent.clientX, y: upEvent.clientY } });
       // Fast gestures can deliver the release before an intermediate move.
       // Resolve local drops from that final position; native transfers must
       // still begin while the pointer is held down.
