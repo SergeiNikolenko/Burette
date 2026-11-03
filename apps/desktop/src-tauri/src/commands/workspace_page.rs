@@ -41,6 +41,35 @@ fn validate_message(message: &Value) -> Result<(), String> {
         Some("ready" | "committed" | "failed" | "commit" | "abort") => Ok(()),
         Some("open") => {
             let location = &message["location"];
+            if let Some(grid) = message.get("grid").filter(|value| !value.is_null()) {
+                let version = grid
+                    .get("sourceVersion")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                if version.len() != 64
+                    || !version
+                        .bytes()
+                        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+                    || grid
+                        .get("snapshot")
+                        .and_then(Value::as_str)
+                        .is_none_or(|snapshot| snapshot.len() > 1500 * 1024)
+                    || location["kind"] != "file"
+                {
+                    return Err("Invalid collection transfer.".into());
+                }
+            }
+            if let Some(text) = message.get("text").filter(|value| !value.is_null()) {
+                if !text.get("content").is_some_and(Value::is_string)
+                    || !text.get("truncated").is_some_and(Value::is_boolean)
+                    || !text.get("path").is_some_and(Value::is_string)
+                    || text.get("path").and_then(Value::as_str)
+                        != location.get("path").and_then(Value::as_str)
+                    || location["kind"] != "text-file"
+                {
+                    return Err("Invalid text transfer.".into());
+                }
+            }
             if !matches!(
                 location["kind"].as_str(),
                 Some(
@@ -176,5 +205,17 @@ mod tests {
         message["location"] =
             serde_json::json!({"kind":"ketcher", "draftKet":"x".repeat(MAX_PAGE_BYTES)});
         assert!(validate_message(&message).is_err());
+    }
+
+    #[test]
+    fn page_transfer_checks_grid_and_text_boundaries() {
+        let mut grid = serde_json::json!({"kind":"open", "id":uuid::Uuid::new_v4().to_string(), "location":{"kind":"file", "path":"/data/source.sdf"}, "grid":{"sourceVersion":"a".repeat(64),"snapshot":"{}"}});
+        assert!(validate_message(&grid).is_ok());
+        grid["grid"]["sourceVersion"] = "bad".into();
+        assert!(validate_message(&grid).is_err());
+        let mut text = serde_json::json!({"kind":"open", "id":uuid::Uuid::new_v4().to_string(), "location":{"kind":"text-file", "path":"/data/source.txt"}, "text":{"content":"hello", "truncated":false, "path":"/data/source.txt"}});
+        assert!(validate_message(&text).is_ok());
+        text["text"]["path"] = "/data/other.txt".into();
+        assert!(validate_message(&text).is_err());
     }
 }
