@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 
 import type { ConformerOperation, ViewerDocument, XtbOperation } from "../../types";
 import type { ShellActions } from "../types";
@@ -24,13 +24,44 @@ const UNAVAILABLE: Record<Exclude<SceneFileState, "available">, string> = {
 // molecular scenes use the same selection-aware jobs as the inspector. A scene
 // built from several files lists each file, so any of them can be computed
 // without selecting it first, and files that are gone show why they cannot.
-export function SceneComputeMenu({ document, actions }: { document: ViewerDocument; actions: ShellActions }) {
+export function SceneComputeMenu({ document, actions, iframeRef }: {
+  document: ViewerDocument;
+  actions: ShellActions;
+  iframeRef?: RefObject<HTMLIFrameElement | null>;
+}) {
   const [files, setFiles] = useState<Array<{ path: string; state: SceneFileState }> | null>(null);
+  const anchor = useRef<HTMLDivElement>(null);
   const host = useComputeHost();
   const connections = useSshConnections().filter(connection => connection.enabled);
-  if (window.BuretteMcpWorkspace || !["molstar", "xyzrender-external"].includes(document.renderer)) return null;
   const combined = document.renderer === "molstar" && new Set(recordedScenePaths(document)).size > 1;
-  if (!combined && document.renderer === "molstar" && ["sdf", "sd", "mol"].includes(document.extension.toLowerCase().replace(/^\./, ""))) return null;
+  const embeddedCompute = !combined && document.renderer === "molstar"
+    && ["sdf", "sd", "mol"].includes(document.extension.toLowerCase().replace(/^\./, ""));
+  const available = !window.BuretteMcpWorkspace && !embeddedCompute
+    && ["molstar", "xyzrender-external"].includes(document.renderer);
+  useEffect(() => {
+    if (!available || !iframeRef) return;
+    const onMessage = (event: MessageEvent) => {
+      const frame = iframeRef.current;
+      const body = event.data?.body;
+      if (!frame || event.source !== frame.contentWindow || event.data?.source !== "burette-viewer"
+        || body?.type !== "sceneComputeAnchor" || body.documentId !== document.id
+        || !Number.isFinite(body.top) || !Number.isFinite(body.right)
+        || body.top < 0 || body.top >= frame.clientHeight || body.right < 0 || body.right >= frame.clientWidth) return;
+      const element = anchor.current;
+      if (element) {
+        element.style.top = `${body.top}px`;
+        element.style.right = `${body.right}px`;
+        element.style.visibility = "visible";
+      }
+    };
+    window.addEventListener("message", onMessage);
+    iframeRef.current?.contentWindow?.postMessage({
+      source: "burette-host",
+      body: { type: "sceneComputeAnchorRequest", documentId: document.id },
+    }, "*");
+    return () => window.removeEventListener("message", onMessage);
+  }, [available, document.id, iframeRef]);
+  if (!available) return null;
 
   const fileItems = (path: string): MenuItemSpec[] => [
     ...CALCULATIONS.map(([operation, text]) => ({
@@ -69,7 +100,7 @@ export function SceneComputeMenu({ document, actions }: { document: ViewerDocume
     action: value => setComputeHost(value === THIS_MAC ? null : value),
   });
   // Opaque base under the soft secondary pill so the scene never shows through it.
-  return <div className="absolute bottom-3 right-3 z-20 rounded-(--radius-button-toolbar) bg-(--app-shell-sidebar-popover-background)">
+  return <div ref={anchor} className={`absolute right-12 top-14 z-20 rounded-(--radius-button-toolbar) bg-(--app-shell-sidebar-popover-background)${iframeRef ? " invisible" : ""}`}>
     <RadixDropdownMenu
       align="end"
       items={items}

@@ -4,6 +4,9 @@
   // Hidden until viewer.js reports the first rendered frame or an error (see
   // revealViewer there). The timer only guards against viewer.js never running.
   document.documentElement.classList.add('buret-viewer-booting');
+  if (window.name === 'burette-editable' || window.name === 'burette-read-only') {
+    document.documentElement.setAttribute('data-burette-app-chrome', '');
+  }
   window.setTimeout(() => document.documentElement.classList.remove('buret-viewer-booting'), 8000);
 
   function mountToolbar() {

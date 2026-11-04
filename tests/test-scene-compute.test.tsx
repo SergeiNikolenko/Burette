@@ -13,6 +13,40 @@ mock.module("../apps/desktop/src/lib/viewer-bridge", () => ({ ...viewerBridge, r
 const { createRoot } = await import("react-dom/client");
 const { SceneComputeMenu } = await import("../apps/desktop/src/components/editor-area/scene-compute-menu");
 
+test("Compute follows the active viewer's anchor after a frame replacement", async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const frames = [document.createElement("iframe"), document.createElement("iframe")];
+  for (const frame of frames) {
+    document.body.append(frame);
+    Object.defineProperties(frame, { clientWidth: { value: 360 }, clientHeight: { value: 600 } });
+  }
+  const iframeRef = { current: frames[0] };
+  const target = { id: "xyz", path: "/structure.xyz", extension: "xyz", renderer: "xyzrender-external" } as ViewerDocument;
+  const report = (frame: HTMLIFrameElement, top: number) => {
+    browser.dispatchEvent(new browser.MessageEvent("message", {
+      source: frame.contentWindow,
+      data: { source: "burette-viewer", body: { type: "sceneComputeAnchor", documentId: target.id, top, right: 56 } },
+    }));
+  };
+  try {
+    await act(async () => root.render(<SceneComputeMenu document={target} actions={{} as ShellActions} iframeRef={iframeRef} />));
+    const anchor = container.firstElementChild as HTMLElement;
+    report(frames[0], 56);
+    expect([anchor.style.top, anchor.style.right, anchor.style.visibility]).toEqual(["56px", "56px", "visible"]);
+    iframeRef.current = frames[1];
+    report(frames[0], 140);
+    expect(anchor.style.top).toBe("56px");
+    report(frames[1], 140);
+    expect(anchor.style.top).toBe("140px");
+  } finally {
+    await act(async () => root.unmount());
+    for (const frame of frames) frame.remove();
+    container.remove();
+  }
+});
+
 test("XYZ scene exposes Compute and dispatches the selected calculation for its own document", async () => {
   const container=document.createElement("div"); document.body.append(container); const root=createRoot(container);
   const target={id:"trajectory",path:"/trajectory.xyz",extension:"xyz",renderer:"molstar"} as ViewerDocument;

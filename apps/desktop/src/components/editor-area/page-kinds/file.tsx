@@ -98,9 +98,15 @@ function StructureViewerSurface({
 
   const handleViewerLoad = useCallback((frame: HTMLIFrameElement, active: boolean) => {
     postViewerVisibility(frame, active);
+    if (active && isActive && !window.BuretteMcpWorkspace && (document.renderer === "molstar" || document.renderer === "xyzrender-external")) {
+      frame.contentWindow?.postMessage({
+        source: "burette-host",
+        body: { type: "sceneComputeAnchorRequest", documentId: document.id },
+      }, "*");
+    }
     restoreGridViewMode(frame, active);
     if (mesoscale && active && frame.contentWindow) bindMesoscaleFrame(document.id, frame.contentWindow);
-  }, [document.id, mesoscale, postViewerVisibility, restoreGridViewMode]);
+  }, [document.id, document.renderer, isActive, mesoscale, postViewerVisibility, restoreGridViewMode]);
   const dropTarget = useMemo(() => ({
     kind: "active-viewer" as const,
     documentId: document.id,
@@ -170,7 +176,7 @@ function StructureViewerSurface({
         onViewerLoad={handleViewerLoad}
         onStagingLoad={(identity, frame) => sourceEditing?.stagingLoaded(document, identity, frame)}
       />
-      {!mesoscale && isActive ? <SceneComputeMenu document={document} actions={actions} /> : null}
+      {!mesoscale && isActive ? <SceneComputeMenu document={document} actions={actions} iframeRef={iframeRef} /> : null}
       {mesoscale ? <MesoscaleCanvasContextMenu document={document} /> : null}
       {mesoscale ? <MesoscaleSelectionBar documentId={document.id} /> : null}
       {mesoscale && mesoscaleSceneOpen ? <MesoscaleSceneOverlay document={document} onClose={() => setMesoscaleSceneOpen(document.id, false)} /> : null}

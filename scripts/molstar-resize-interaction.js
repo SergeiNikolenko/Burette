@@ -12,6 +12,15 @@ function restore(viewer, session) {
   }
 }
 
+function finishSession(viewer, session) {
+  clearTimeout(session.timer);
+  sessions.delete(viewer);
+  const restoreStartedAt = performance.now();
+  restore(viewer, session);
+  const samples = session.samples.sort((a, b) => a - b);
+  session.finish({ frames: samples.length, p95Ms: samples[Math.max(0, Math.ceil(samples.length * 0.95) - 1)] ?? 0, maxMs: samples.at(-1) ?? 0 }, restoreStartedAt);
+}
+
 export const BuretteResizeInteraction = {
   touch(viewer, finish, held = false) {
     const plugin = viewer?.plugin;
@@ -30,18 +39,14 @@ export const BuretteResizeInteraction = {
     }
     clearTimeout(session.timer);
     if (held) return true;
-    session.timer = setTimeout(() => {
-      sessions.delete(viewer);
-      const restoreStartedAt = performance.now();
-      restore(viewer, session);
-      const samples = session.samples.sort((a, b) => a - b);
-      session.finish({ frames: samples.length, p95Ms: samples[Math.max(0, Math.ceil(samples.length * 0.95) - 1)] ?? 0, maxMs: samples.at(-1) ?? 0 }, restoreStartedAt);
-    }, SETTLE_MS);
+    session.timer = setTimeout(() => finishSession(viewer, session), SETTLE_MS);
     return true;
   },
   release(viewer) {
     const session = sessions.get(viewer);
-    if (session) this.touch(viewer, session.finish);
+    if (!session) return false;
+    finishSession(viewer, session);
+    return true;
   },
   record(viewer, ms) {
     const session = sessions.get(viewer);
