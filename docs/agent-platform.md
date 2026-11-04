@@ -130,6 +130,15 @@ The latter copies the generated plugin scripts outside the repository and runs
 both subprocess suites there without module-path fallbacks. Ordinary browser
 Copy/export/reopen remains a separate acceptance surface.
 
+## Scene serialization
+
+Runtime `exportSession` returns `BUSY` while native trajectory comparisons are
+being created or removed; retry after that operation finishes. Host
+`workspace_scene_snapshot` also refuses during this transaction, whether or not
+it carries scientific data. Comparison mutations refuse while any of these
+serializations is in progress. Plain scene snapshots retain existing attachments;
+bounded agent session exports still refuse unadopted scientific attachments.
+
 ## Surfaces
 
 | Mode | Use When | Notes |

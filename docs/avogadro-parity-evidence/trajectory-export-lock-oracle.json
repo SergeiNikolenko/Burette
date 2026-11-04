@@ -1,0 +1,107 @@
+{
+  "status": "passed",
+  "scope": "native comparison transaction API and host scene save/reopen; not UI All acceptance",
+  "archives": [
+    {
+      "name": "comparison-native.molx",
+      "sha256": "218faad7234bb0fda3e5fe27630bf5144d6d5dea45f97c4c1157c4c450691a78"
+    },
+    {
+      "name": "all-export-create.molx",
+      "sha256": "8643882ac09e9adad7aadcbd4879f605c314a785bbef85b5629ce07069620067"
+    },
+    {
+      "name": "all-export-reopen.molx",
+      "sha256": "5cf9fede454aa1f94b4a1c9f6c361af822e04de7d1c9fbadcb77be9c9f6cc415"
+    }
+  ],
+  "scientific_manifest_and_attachment_bytes_unchanged": true,
+  "created_frame_indices": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "reopened_roots": 6,
+  "roots_after_removing_owned_comparisons": 2,
+  "coordinate_values_checked": 960,
+  "max_coordinate_error_angstrom": 1.748046871696829e-07,
+  "served_viewer_sha256": [
+    "d949469c8d125ada6c05b443b90c608781afdb190a4eee16cdbbd4a6db68a835",
+    "d949469c8d125ada6c05b443b90c608781afdb190a4eee16cdbbd4a6db68a835"
+  ],
+  "oracle_script_sha256": "78636bfdab2579d08a77b57a3f6637bc6c88525188ece22c143e9232278912f5",
+  "limitations": [
+    "All/Align controls are not yet connected",
+    "No aligned coordinates",
+    "Tab-close and concurrent editing lifecycle still require UI integration",
+    "Final two-root archive audited but not reopened",
+    "No native or manual IAB acceptance"
+  ],
+  "agent_export_during_comparison": {
+    "ok": false,
+    "code": "BUSY",
+    "message": "The frame comparison is being updated. Export the session again."
+  },
+  "plain_scene_export_during_comparison": {
+    "ok": false,
+    "error": {
+      "code": "ACTION_ERROR",
+      "message": "Wait for the frame comparison to finish."
+    }
+  },
+  "export_retry_and_save_guards": {
+    "create": {
+      "public_export_retry": {
+        "ok": true,
+        "byteLength": 6940,
+        "warnings": [
+          "Scientific workbench data (source, Z-matrix, grids, Hessians, original file) is not included; save it with Export \u2192 Scene in Burette."
+        ]
+      },
+      "comparison_during_save": {
+        "message": "The scene is already being saved."
+      },
+      "plain_scene_retry_and_guard": {
+        "plainRetry": {
+          "ok": true,
+          "hasArchive": true
+        },
+        "plainSaveBusy": "The scene is already being saved."
+      }
+    },
+    "reopen": {
+      "public_export_retry": {
+        "ok": true,
+        "byteLength": 6189,
+        "warnings": [
+          "Scientific workbench data (source, Z-matrix, grids, Hessians, original file) is not included; save it with Export \u2192 Scene in Burette."
+        ]
+      },
+      "comparison_during_save": {
+        "message": "The scene is already being saved."
+      },
+      "plain_scene_retry_and_guard": {
+        "plainRetry": {
+          "ok": true,
+          "hasArchive": true
+        },
+        "plainSaveBusy": "The scene is already being saved."
+      }
+    }
+  },
+  "served_burette_agent_sha256": [
+    "067db4093dd406fd216bed82dea9e5ba2a962fe638dc38be575f83d4ecdeb0d2",
+    "067db4093dd406fd216bed82dea9e5ba2a962fe638dc38be575f83d4ecdeb0d2"
+  ],
+  "served_scene_file_actions_sha256": [
+    "7d946092a1ba7d24136697cd16b0fa6414a2376e34a6fd104043b0167e992a59",
+    "7d946092a1ba7d24136697cd16b0fa6414a2376e34a6fd104043b0167e992a59"
+  ],
+  "cleanup": {
+    "owned_servers_terminated": 2,
+    "ports_closed": true
+  }
+}

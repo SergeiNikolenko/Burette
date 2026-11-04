@@ -549,3 +549,39 @@ test("native All comparison transaction preserves source, retries failures and r
     expect(science.binding(f.viewer)).toEqual(f.report);
   } finally { f.close(); opened.dispose(); }
 });
+
+test("comparison transactions and scientific, agent and plain scene serialization exclude each other", async () => {
+  const f = await fixture("xyz");
+  try {
+    const entered = deferred(), release = deferred();
+    const adding = science.setTrajectoryComparisons(f.viewer, true, async () => { entered.resolve(); await release.promise; });
+    await entered.promise;
+    let exported = false;
+    try {
+      await expect(science.exclusive(f.plugin, async () => { exported = true; })).rejects.toThrow("comparison to finish");
+      expect(exported).toBe(false);
+      await expect(science.serializeSnapshot(f.plugin, options)).rejects.toThrow("comparison to finish");
+    } finally { release.resolve(); await adding; }
+    await science.setTrajectoryComparisons(f.viewer, false);
+    for (const kind of ["science", "agent", "scene"]) {
+      const held = holdSnapshot(f.plugin);
+      const saving = kind === "agent"
+        ? science.exclusive(f.plugin, () => f.plugin.managers.snapshot.serialize(options))
+        : kind === "scene" ? science.serializeSnapshot(f.plugin, options)
+        : science.serialize(f.viewer, f.request, options);
+      await held.entered;
+      try {
+        await expect(science.setTrajectoryComparisons(f.viewer, true, async () => {})).rejects.toThrow("already being saved");
+        expect(science.binding(f.viewer)).toEqual(f.report);
+      } finally { held.release(); await saving; }
+    }
+    // Plain scene saving retains imported attachments; bounded agent export must not.
+    const attachment = f.assets[0], descriptor = fileAsset(attachment.id, attachment.name);
+    f.plugin.managers.asset.set(descriptor, new File([attachment.bytes], attachment.name));
+    const raw = await science.serializeSnapshot(f.plugin, options);
+    expect(unzipSync(new Uint8Array(await raw.arrayBuffer()))[`assets/${attachment.id}`]).toEqual(attachment.bytes);
+    await expect(science.exclusive(f.plugin, async () => {})).rejects.toThrow("scientific attachments");
+    f.plugin.managers.asset.delete(descriptor);
+    expect(await science.setTrajectoryComparisons(f.viewer, true, async () => {})).toEqual({ frameCount: 2, structureCount: 2 });
+  } finally { f.close(); }
+});

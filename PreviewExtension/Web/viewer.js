@@ -729,10 +729,10 @@
       if (!plugin) throw new Error('Wait for the scene to load.');
       const params = { type: 'molx', params: { structureSelection: true, behavior: true, cameraTransition: { name: 'instant', params: {} } } };
       // Host scientific data is written as Burette's own Mol* assets, only for this archive.
-      if (action.science && !window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
+      if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
       const archive = action.science
         ? await window.BuretteSceneFiles.science.serialize(activeMolstarViewer(), action.science, params)
-        : await plugin.managers.snapshot.serialize(params);
+        : await window.BuretteSceneFiles.science.serializeSnapshot(plugin, params);
       if (archive.size > 24 * 1024 * 1024) throw new Error('The scene is too large to move.');
       return { ok: true, result: { dataBase64: bytesToBase64(new Uint8Array(await archive.arrayBuffer())) } };
     }

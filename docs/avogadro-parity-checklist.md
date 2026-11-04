@@ -123,3 +123,8 @@ retains scientific data through host Save scene, fresh reopen and save with a va
   creates/removes owned native comparisons atomically; six-frame API scenario,
   host save/reopen and independent coordinate/attachment checks pass. All/Align
   UI integration and its lifecycle/accessibility acceptance remain open.
+
+- 2026-11-04: [comparison/export mutual exclusion](avogadro-parity-evidence/stage-01-02-09-editing-io.md#comparison-and-export-mutual-exclusion-2026-11-04)
+  covers scientific saves, plain scene snapshots and bounded agent exports.
+  Browser refusal/retry, save/reopen and independent scientific checks pass;
+  All/Align UI and the remaining editing/tab lifecycle are still incomplete.

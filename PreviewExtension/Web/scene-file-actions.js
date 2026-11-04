@@ -154,6 +154,7 @@
   async function setTrajectoryComparisons(viewer, enabled, represent, signal) {
     const plugin = viewer?.plugin;
     if (comparisonJobs.has(plugin)) throw new Error('Wait for the frame comparison to finish.');
+    if (scienceSessions.get(plugin)?.exporting) throw new Error('The scene is already being saved.');
     if (scienceImportPending(plugin)) throw new Error('Wait for scientific data to finish restoring.');
     const owner = scienceBinding(viewer);
     const state = plugin.state.data;
@@ -327,6 +328,22 @@
     for (let index = 0; index < positions.length; index++) if (!(Math.abs(positions[index] - current.positions[index]) <= 1e-3)) return false;
     return true;
   }
+  async function serializeSceneExclusively(plugin, run) {
+    const session = scienceSession(plugin);
+    while (session.exporting) await session.exporting;
+    if (comparisonJobs.has(plugin)) throw new Error('Wait for the frame comparison to finish.');
+    if (session.importLoading) throw new Error('Wait for the scene to finish opening.');
+    let release;
+    session.exporting = new Promise(resolve => { release = resolve; });
+    session.publicExporting = true;
+    try {
+      return await run();
+    } finally {
+      session.publicExporting = false;
+      session.exporting = null;
+      release();
+    }
+  }
   async function serializeScience(viewer, request, params) {
     if (comparisonJobs.has(viewer?.plugin)) throw new Error('Wait for the frame comparison to finish.');
     const plugin = viewer?.plugin;
@@ -498,22 +515,16 @@
         listeners.add(listener);
         return () => listeners.delete(listener);
       },
-      // Another serialization (an agent session export) runs alone and sees no attachments.
+      // Full scene saves preserve existing attachments.
+      serializeSnapshot(plugin, params) {
+        return serializeSceneExclusively(plugin, () => plugin.managers.snapshot.serialize(params));
+      },
+      // Bounded agent session exports must not include scientific attachments.
       async exclusive(plugin, run) {
-        const session = scienceSession(plugin);
-        while (session.exporting) await session.exporting;
-        if (session.importLoading) throw new Error('Wait for the scene to finish opening.');
-        if (plugin?.managers?.asset?.assets?.some(({ asset }) => String(asset?.id).startsWith(SCIENCE_PREFIX))) throw new Error('The scene holds scientific attachments.');
-        let release;
-        session.exporting = new Promise(resolve => { release = resolve; });
-        session.publicExporting = true;
-        try {
-          return await run();
-        } finally {
-          session.publicExporting = false;
-          session.exporting = null;
-          release();
-        }
+        return serializeSceneExclusively(plugin, () => {
+          if (plugin?.managers?.asset?.assets?.some(({ asset }) => String(asset?.id).startsWith(SCIENCE_PREFIX))) throw new Error('The scene holds scientific attachments.');
+          return run();
+        });
       },
     },
     sequence(viewer) {

@@ -1629,3 +1629,47 @@ Still open: connect All/Align controls and persisted mode state, coordinate othe
 edits/tab replacement/non-scientific saves with cancellation, restore autoplay,
 resolve the host multi-file-count export gate, and perform Atlas/manual IAB,
 keyboard/screenreader and native acceptance. No parity stage is promoted.
+
+
+### Comparison and export mutual exclusion (2026-11-04)
+
+The previous transaction guard covered scientific serialization started during
+All creation, but allowed bounded agent export to run inside the unfinished
+transaction. A real Mol* regression first failed because that export resolved
+instead of refusing. Comparisons could also start during serialization, and the
+plain `workspace_scene_snapshot` branch bypassed the serialization lock entirely.
+
+Native comparison mutations now refuse an active serialization. Agent exports
+and plain scene snapshots use the same exclusive serialization helper, which
+refuses active comparison transactions. The agent command reports `BUSY` with a
+retry message; the host snapshot bridge reports its existing action error. Plain
+snapshots retain existing attachments, whereas agent export retains its refusal
+of unadopted scientific attachments. Scientific save keeps its existing asset
+ownership and source validation rules.
+
+Validation:
+
+- Real Mol* runtime: 24 tests, 216 assertions pass. The new test checks both
+  directions for scientific/agent/plain serialization, prevents invoking the
+  export callback while comparisons are pending, retries afterward, and checks
+  exact attachment bytes in a plain snapshot versus agent export refusal.
+- Agent scientific export contracts: 7 tests / 34 assertions; host export
+  contracts: 13 tests / 105 assertions. The general agent runtime suite passes.
+- Browser: held comparison creation refuses real `BuretteAgent.run(exportSession)`
+  with `BUSY` and a plain host snapshot action with `ACTION_ERROR`. Both succeed
+  after release. Held plain snapshots and the normal host Save scene operation
+  refuse comparison mutation. The six-frame scene saves and reopens in a fresh
+  browser; removing owned comparisons preserves the two original root refs and
+  permits another save. These checks repeat after reopen.
+- [Independent oracle](trajectory-export-lock-oracle.json): exact scientific
+  manifests and attachment bytes survive both saves; 960 coordinate values match
+  independently parsed Gaussian orientations within 1.748046871696829e-7 Angstrom.
+  All three served runtime modules match the source files on both servers.
+  Both owned servers are stopped and their ports verified closed.
+
+Gauss scripts/logs: `/tmp/burette-all-export{,-reopen}.cjs`,
+`/tmp/burette-all-export-audit.py`, `/tmp/burette-all-export-*.log`.
+Light 1400x900 and dark 900x800 screenshots were captured, but this is not a
+visual/accessibility acceptance claim. The final two-root archive was audited,
+not reopened. All/Align UI, other edits and tab replacement/cancellation,
+autoplay, and the host multi-file-count gate remain open. No parity stage advances.
