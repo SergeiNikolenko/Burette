@@ -1,0 +1,39 @@
+{
+  "runtime": "prebuilt-static",
+  "styles": [
+    {
+      "theme": "dark",
+      "pointer": "text",
+      "foreground": "rgb(255, 255, 255)",
+      "caret": "rgb(255, 255, 255)"
+    },
+    {
+      "theme": "light",
+      "pointer": "text",
+      "foreground": "rgb(26, 28, 31)",
+      "caret": "rgb(26, 28, 31)"
+    }
+  ],
+  "diagnostic": "Check the structure text for incomplete atom or bond records. The last valid preview is still shown.",
+  "draftPreserved": true,
+  "recovered": true,
+  "date": "2026-11-04",
+  "host": "Gauss",
+  "sourceHead": "23d2b23c4",
+  "fixture": "Water V3000, BEGIN ATOM replaced with BEG, then restored",
+  "viewport": [
+    1400,
+    900
+  ],
+  "compactViewport": [
+    900,
+    800
+  ],
+  "scope": "Text editor caret and pointer, paused draft diagnostic, unchanged last valid preview, terminal Edited after correction",
+  "limitations": [
+    "Not a native macOS acceptance run",
+    "Does not verify 3D hover or scientific export fidelity",
+    "Compact editor remains horizontally scrollable; broader compact layout remains open",
+    "Full desktop typecheck reports five CIF reader errors outside this component"
+  ]
+}

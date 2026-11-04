@@ -859,3 +859,34 @@ The live check used vite-dev, not the compiled shell or a native app.
 Non-PDB PDB writing remains open; this fix prevents false success and is
 not PDB-export parity. Theme, compact, keyboard, transformed geometry and
 ordinary UI export acceptance remain open.
+
+
+### Source editor caret and paused SDF diagnostics (2026-11-04)
+
+The plain CodeMirror source editor now uses the application foreground token for
+its drawn caret/drop cursor and a text pointer over content. Renderer load errors
+show a brief correction hint and explicitly identify the retained last valid
+preview; the controller still retains the full diagnostic and the draft bytes.
+No parser policy, request ownership, or preview promotion guard changed.
+
+All installation, compilation and browser execution for this change ran on Gauss,
+in `/tmp/burette-parity-caret-20261104`; no local build or test browser was started.
+The remote `build:agent-shell` completed. Acceptance used the generated
+`prebuilt-static` shell, with remote headless Chromium, not the local IAB tab.
+
+[Measured results](source-editor-caret-oracle.json): opened `samples/mini.sdf`,
+selected Water, opened its 3D tab, then Text and Edit source. Both dark and light
+themes produced a caret equal to the computed foreground and a `text` pointer.
+Keyboard selection and screenshots were checked. The V2000 zero-atom draft
+produced the concise diagnostic without replacing the editor text. A V3000 water
+fixture then reached terminal Edited; truncating BEGIN ATOM to BEG paused the
+preview, preserved the draft, and visibly retained the water scene. Restoring
+BEGIN ATOM reached terminal Edited again, with no diagnostic. A 900 x 800 capture
+confirmed the recovered editor and scene; this does not close the wider compact
+layout matrix or 3D hover acceptance. Local captures are retained under
+`.tmp/remote-caret/`; the remote driver is `/tmp/burette-caret-remote.cjs`.
+
+The full desktop typecheck is not green: after preparing the pinned Mol* source,
+it reports four typing errors in `crystal-io.ts` (lines 41, 46, 48) and one in
+`molecular-cif.ts` (line 11), outside this component. Native acceptance, general
+SDF format coverage, and the remaining parity stages remain open.

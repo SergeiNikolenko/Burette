@@ -393,7 +393,9 @@ export function TextFileViewer({
         </div>
       </div>
       {sourceEditing?.diagnostic && (
-        <div className="source-edit-diagnostic" role="status">{sourceEditing.diagnostic}</div>
+        <div className="source-edit-diagnostic" role="status">{sourceEditing.diagnostic.startsWith("[web] Burette web renderer failed to load this file.")
+          ? "Check the structure text for incomplete atom or bond records. The last valid preview is still shown."
+          : sourceEditing.diagnostic}</div>
       )}
       </div>
       {markdownDocument ? (
@@ -493,12 +495,16 @@ const textViewerTheme = EditorView.theme({
     fontKerning: "none",
     overflowX: "auto",
   },
+  ".cm-cursor, .cm-dropCursor": {
+    borderLeftColor: "var(--text-primary)",
+  },
   ".cm-panels": {
     backgroundColor: "var(--shadcn-background)",
     color: "var(--text-primary)",
     borderColor: "var(--line-subtler)",
   },
   ".cm-content": {
+    cursor: "text",
     padding: "16px 0 32px",
     minHeight: "100%",
     minWidth: "100%",
