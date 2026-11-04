@@ -646,3 +646,31 @@ section and is not relabelled as fault-injection evidence.
 Final validation also passed typecheck, scene-save/sidebar contract checks, the
 agent-shell rebuild and the plugin check against that completed build. Logs:
 `/tmp/burette-binding-failure-{types-final,save,build-final,plugin}.log`.
+
+
+### Reopen identical-copy ownership exports (2026-11-04)
+
+At `dd74625cc`, a fresh IAB **vite-dev** host reopened the two actual artifacts
+from the identical appended-copy scenario above. This closes the earlier missing
+reopen check for those files; it does not repeat the append/remove/save sequence.
+
+* `/Users/nikolenko/Desktop/original (1).molx` (original owner retained) restored
+  `water-owned.xyz`, Ball & Stick, three atoms. Typed Python `observe` reported
+  attached `zmat` science, three atoms/two perceived bonds and the exact source
+  SHA-256 recorded in the manifest. All three attachment sizes and SHA-256 values
+  independently matched their ZIP bytes. The header offered Original →
+  `water-owned.zmat`; the downloaded 65-byte file matched the embedded original
+  exactly. Screenshot: `/tmp/burette-science-restored.png`.
+* `/Users/nikolenko/Desktop/original.molx` (original owner removed) contained only
+  `state.json`. New tab → Open file restored `duplicate.xyz`, Ball & Stick, three
+  atoms while the scientific scene stayed open in the adjacent tab. The header
+  had no Original download and no imported science was exposed from the neighbour.
+  Typed `observe` returned `SOURCE_UNREADABLE`: ordinary state-only MOLX has no
+  source-owned text for this automation path. This remains an automation coverage
+  limitation, not evidence of restored scientific ownership. Screenshot:
+  `/tmp/burette-science-omitted-reopened.png`.
+
+[Compact oracle](science-ownership-reopen-oracle.json) retains scene hashes,
+attachment/source checks and the observed typed state. Both views were dark,
+1280 × 720. Light/compact/keyboard coverage, repeat saving, unexpected binding
+failure/retry and prebuilt/native lanes remain open. No production code changed.

@@ -1,0 +1,32 @@
+{
+  "runtime": "vite-dev",
+  "commit": "dd74625cc",
+  "sceneSha256": "7b9dac0273d693e6453e20e06fe484157b9e57091c1d2c38d4727f5e07a7d5ee",
+  "attachmentHashesVerified": 3,
+  "sourceTextSha256": "sha256-1aee3c4cfe3335bd4ee4c9f228193c3e711b8b3c01b330bdc957317f557892d9",
+  "scientific": {
+    "origin": "attached",
+    "format": "zmat",
+    "atomCount": 3,
+    "orbitalCount": 0,
+    "basisShellCount": 0
+  },
+  "structure": {
+    "atomCount": 3,
+    "bondCount": 2,
+    "graph": "perceived",
+    "graphComplete": true
+  },
+  "originalDownloadBytesExact": true,
+  "originalName": "water-owned.zmat",
+  "omittedScene": {
+    "sha256": "c4ea9c7930980868e8643387fd2b1f849c94db1974e9c34aed3a7f32d1a8c7a0",
+    "zipEntries": [
+      "state.json"
+    ],
+    "visibleRoot": "duplicate.xyz",
+    "visibleAtoms": 3,
+    "originalDownloadAvailable": false,
+    "typedObserveError": "SOURCE_UNREADABLE"
+  }
+}
