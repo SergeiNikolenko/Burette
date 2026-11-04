@@ -1,0 +1,30 @@
+{
+  "date": "2026-11-04",
+  "head": "568ad581f",
+  "runtime": "vite-dev",
+  "fixtureRecipe": "samples/mini.pdb atoms wrapped in MODEL 1; MODEL 2 repeats serials with x + 20 Angstrom; ENDMDL after each",
+  "fixtureSha256": "9b64b1d8be9d90a92581a1da9ef0d8b96f08323536e1064e2db6731f5aea1324",
+  "frameSelection": [
+    {
+      "index": 1,
+      "actionStatus": "completed",
+      "exportStatus": "completed",
+      "atomCount": 9,
+      "matchesSecondModel": true
+    },
+    {
+      "index": 0,
+      "actionStatus": "completed",
+      "exportStatus": "completed",
+      "atomCount": 9,
+      "matchesFirstModel": true
+    }
+  ],
+  "reopenedSecondModel": {
+    "exportStatus": "completed",
+    "atomCount": 9,
+    "elementsAndCoordinatesMatch": true,
+    "maxCoordinateErrorBoundAngstrom": 1e-12
+  },
+  "selectedModelPdb": "ATOM      1  N   GLY A   1      18.796   0.176   0.000  1.00 20.00           N\nATOM      2  CA  GLY A   1      20.000   0.000   0.000  1.00 20.00           C\nATOM      3  C   GLY A   1      20.722   1.271   0.000  1.00 20.00           C\nATOM      4  O   GLY A   1      20.163   2.360   0.000  1.00 20.00           O\nATOM      5  N   ALA A   2      22.052   1.189   0.000  1.00 20.00           N\nATOM      6  CA  ALA A   2      22.896   2.377   0.000  1.00 20.00           C\nATOM      7  CB  ALA A   2      23.711   2.273   1.276  1.00 20.00           C\nATOM      8  C   ALA A   2      23.793   2.477  -1.230  1.00 20.00           C\nATOM      9  O   ALA A   2      24.675   3.336  -1.236  1.00 20.00           O\nEND\n"
+}

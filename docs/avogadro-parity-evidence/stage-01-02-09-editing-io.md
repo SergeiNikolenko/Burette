@@ -794,3 +794,38 @@ serial collection. Agent-shell build passed; packaged `preview-web/viewer.js`
 matched the source byte for byte. Runtime acceptance was `vite-dev`; prebuilt,
 native, both themes, compact and keyboard coverage were not claimed. No layout
 changed. Full PDB export parity remains incomplete.
+
+
+## Selected PDB model export and reopen (2026-11-04)
+
+A fresh `vite-dev` at `568ad581f` checked whether the source-line PDB fallback
+confuses repeated atom serials across trajectory models. It does not in this
+scenario: `molstarContextSourceEntryForActiveConfig` already obtains the current
+model through `activePdbModelText` before filtering atom serials. No code change
+was needed.
+
+The reproducible input wraps the nine ATOM records from `samples/mini.pdb` in
+MODEL 1 and a copy translated by +20 Å on x in MODEL 2, preserving serials 1–9
+and closing each model with ENDMDL. The initial devFiles open of the temporary
+path displayed a failure toast; the file was then successfully opened through
+the ordinary file chooser. This evidence covers that picker path; the initial
+open failure was not diagnosed.
+
+* Typed `set_structure_pose` with zero-based `index:1` completed. PDB export
+  completed with exactly the nine MODEL 2 atoms, not both models or stale MODEL 1.
+* Returning to `index:0` and exporting again yielded exactly the nine MODEL 1
+  atoms and coordinates.
+* The first export (MODEL 2) was written without modification and reopened through
+  New tab → Open file. A fresh mmCIF export of the reopened live structure
+  contained nine atoms at MODEL 2 coordinates. Independent Python read the PDB
+  fixed-width fields and the mmCIF atom-site columns by tag name; all elements
+  and coordinates matched within 1e-12 Å.
+
+[Oracle and exact selected-model PDB](pdb-selected-model-roundtrip.json) retain
+the fixture hash, construction recipe and action outcomes. Screenshot:
+`/tmp/burette-pdb-selected-model-reopened.png`. This proves model selection,
+export and geometry reopen for this two-model fixture. It does not prove
+arbitrary spatial transform export, atom edits, ANISOU transformation, all-model
+export, molecular topology, manual frame-control accessibility, other themes,
+compact layout or prebuilt/native behavior. The multiple-structure limitation
+and source-less PDB conversion gap above remain open. No runtime code changed.
