@@ -1080,3 +1080,55 @@ A parallel static audit identifies a separate open ANISOU issue: pinned Mol*'s
 exports coordinates through current unit conformations. Rotated displacement
 tensors therefore need their own live fixture and correction; this save fix
 makes no ANISOU claim. Stage 4 remains partial.
+
+## Current-frame anisotropic mmCIF export (2026-11-04)
+
+The ANISOU concern above was reproduced in a fresh Chromium prebuilt-static
+session on Gauss. Two independent four-CA PDB sources used reference coordinates
+`(0,0,0), (3.8,0,0), (5,3.6,0), (3,5,2.8)` Å and moving coordinates
+`(-y+20, x-12, z+7)`. Each reference atom had
+`U = (.10,.20,.30,.01,.02,.03)` Å² in order U11,U22,U33,U12,U13,U23;
+the moving source had the corresponding rotated tensor
+`(.20,.10,.30,-.01,-.03,.02)`. Serial, chain and residue IDs overlap between
+sources. Typed combined open, `align_scene_files`, `export_scene_structure`
+(mmCIF), open and reexport completed, but moving tensors retained source values:
+maximum tensor-component error 0.1 Å², despite zero coordinate error.
+See [`anisotropic-mmcif-before-fix.json`](anisotropic-mmcif-before-fix.json).
+
+The source-build patch `scripts/molstar-anisotrop-export.mjs` registers a standard
+anisotropic category and suppresses the old source-table custom exporter. Its
+focused category module iterates current elements in atom-site export order,
+counts atoms without tensors for foreign keys, maps model elements to source
+rows, and applies `U' = R U Rᵀ` using each unit's current operator. Chain suffixes
+and atom IDs follow the coordinate category, including subsets and unit copies.
+Translation leaves U unchanged. Generated Mol* and the packaged plugin mirror
+were rebuilt through their repository scripts; their lock and mirror checks pass.
+
+Validation:
+
+- `vp run test:mmcif-anisotropic-export` passes real PDB/mmCIF parsing, identity,
+  translation, 90° and 0.37-radian rotations, missing tensor rows, nonconsecutive
+  IDs, selected subsets, duplicated unit operators, retained IDs and reopen.
+  Numerical expectations are independent constants; the general-angle tolerance
+  reflects the writer's six decimal places. The test is registered once in
+  `test:ui`; the entire UI sweep was not run.
+- `vp run test:mmcif-scene-roundtrip` still passes. An independent source review
+  found no required corrections; that review did not itself execute tests.
+- Fresh Chromium acceptance on the rebuilt prebuilt-static shell repeated the
+  combined open/alignment/export, then **two** export/open/reexport cycles.
+  Independent Python parsing checked two CIF blocks, eight atoms, eight tensors,
+  valid atom foreign keys, and every coordinate/tensor component. All errors
+  were zero at exported precision after alignment and after both reopens.
+  See [`anisotropic-mmcif-after-fix.json`](anisotropic-mmcif-after-fix.json).
+
+`U_esd` describes marginal standard uncertainties, not a covariance tensor.
+Identity, translation and signed axis permutations preserve these uncertainties;
+general rotations with U_esd explicitly reject export because the component
+covariances are unavailable. This limitation is covered by the focused test,
+not by a browser error-dialog scenario. Complete-tensor fixtures do not prove
+arbitrary partial/malformed tensors, every crystallographic category, transformed
+PDB export, ellipsoid UI rendering, native surfaces, or all format/producer pairs.
+The final typed scene state reports two ready structures. All three owned shell
+processes from this check exited; the final listener was verified closed.
+The stage remains partial. Browser actions, fixtures, independent audit script
+and logs remain under `/tmp/burette-anisou-*` and the validation tree on Gauss.
