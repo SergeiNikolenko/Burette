@@ -1,0 +1,86 @@
+{
+  "runtime": "prebuilt-static",
+  "fixture": "Two synthetic four-residue CA structures; distinct sequences and B factors, colliding chain/entity/model identifiers",
+  "stages": {
+    "after": [
+      {
+        "atomCount": 4,
+        "residues": [
+          "ALA",
+          "GLY",
+          "SER",
+          "VAL"
+        ],
+        "chemicalComponents": [
+          "ALA",
+          "GLY",
+          "SER",
+          "VAL"
+        ],
+        "bFactorAngstromSquared": 20,
+        "maxCoordinateErrorAngstrom": 0.0
+      },
+      {
+        "atomCount": 4,
+        "residues": [
+          "LYS",
+          "ASP",
+          "TYR",
+          "THR"
+        ],
+        "chemicalComponents": [
+          "ASP",
+          "LYS",
+          "THR",
+          "TYR"
+        ],
+        "bFactorAngstromSquared": 35,
+        "maxCoordinateErrorAngstrom": 0.0
+      }
+    ],
+    "reexport": [
+      {
+        "atomCount": 4,
+        "residues": [
+          "ALA",
+          "GLY",
+          "SER",
+          "VAL"
+        ],
+        "chemicalComponents": [
+          "ALA",
+          "GLY",
+          "SER",
+          "VAL"
+        ],
+        "bFactorAngstromSquared": 20,
+        "maxCoordinateErrorAngstrom": 0.0
+      },
+      {
+        "atomCount": 4,
+        "residues": [
+          "LYS",
+          "ASP",
+          "TYR",
+          "THR"
+        ],
+        "chemicalComponents": [
+          "ASP",
+          "LYS",
+          "THR",
+          "TYR"
+        ],
+        "bFactorAngstromSquared": 35,
+        "maxCoordinateErrorAngstrom": 0.0
+      }
+    ]
+  },
+  "sequence-before": [
+    "AGSV",
+    "KDYT"
+  ],
+  "sequence-after": [
+    "AGSV",
+    "KDYT"
+  ]
+}

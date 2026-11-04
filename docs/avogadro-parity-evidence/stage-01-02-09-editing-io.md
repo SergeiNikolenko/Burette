@@ -987,3 +987,39 @@ isolated validation tree. This does not prove ANISOU rotation, heterogeneous
 metadata, full bond/stereo preservation, PDB conversion, saved MOLX reopening,
 external-consumer compatibility, or the theme/accessibility matrix. These remain
 open acceptance work rather than implied by the eight-site fixture.
+
+### Heterogeneous metadata across independent CIF blocks (2026-11-04)
+
+Follow-up to `63ba84b64`, verified on Gauss using the same rebuilt prebuilt browser
+shell. Two synthetic four-CA PDB sources reuse chain A, entity 1, model 1, atom
+serials and residue numbers, but have different residue sequences (`AGSV` versus
+`KDYT`), component identities, coordinates and isotropic B factors (20 versus
+35 Å²). These are CA-only identity/metadata fixtures, not complete peptide graphs.
+
+The Chromium scenario used `open_docking_view` with `sceneMode: structureAll`,
+waited for two structures, exported mmCIF, read `copy_scene_sequence`, opened the
+export through `manage_tabs/open_file`, waited for two structures again, read the
+sequence and re-exported mmCIF. Every action completed. Unlike the rotation check,
+this scenario does not align the different sequences. Both exports contain two
+blocks with four atoms each, the correct per-source residues and `chem_comp`
+identities, and the original per-source B factors. A separate Python `shlex`
+fixture-specific loop reader checked these fields against independent constants:
+maximum coordinate error is 0 Å at exported precision. Both sequence actions
+return `AGSV` and `KDYT` in source order. The displayed structure labels become
+export block names after reopen; original filenames are not preserved here.
+
+Committed summary: [`multiblock-metadata-oracle.json`](multiblock-metadata-oracle.json).
+Raw action results and scripts remain at `/tmp/burette-metadata-*` on Gauss.
+A screenshot of the reopened file was captured; identity and metadata conclusions
+come from action output and exported bytes, not the image.
+
+`vp run test:mmcif-scene-roundtrip` passes on Gauss and is included in `test:ui`.
+It executes the production export boundary with real Mol* PDB/mmCIF parsing and
+writing, then verifies two export/reopen cycles for coordinates, residues,
+`chem_comp`, B factors and derived polymer sequences. The same regression run
+against `0e2110e8f`'s viewer fails with `1 !== 2` at the independent-block assertion
+(exit 1), confirming it detects the prior behavior. No runtime code changed in
+this follow-up. This is not an independent general-purpose CIF-consumer audit,
+a guarantee about arbitrary categories, or an ANISOU/tensor transform test.
+Manual download/open, full bond/stereo roundtrip, transformed PDB and aligned
+MOLX repeated save/reopen remain open. Stage 4 remains partial.
