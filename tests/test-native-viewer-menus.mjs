@@ -171,17 +171,17 @@ const events = [];
   assert.equal(document.querySelectorAll('#buret-atlas-menu-styles').length, 1);
   assert.equal(document.activeElement, rows[1]);
   assert.deepEqual(rows.map(row => [row.tabIndex, row.getAttribute('aria-checked')]), [[-1, 'false'], [0, 'true'], [-1, 'false'], [-1, 'false']]);
-  const shared = readFileSync('apps/desktop/src/components/ui/dropdown-menu.css', 'utf8').replace('@layer components {', '').replace(/}\s*$/, '');
+  const shared = readFileSync('apps/desktop/src/components/ui/dropdown-menu.css', 'utf8').replaceAll('@layer components {', '@media all {');
   assert.ok(document.getElementById('buret-atlas-menu-styles').textContent.includes(shared));
   for (const name of ['button.atlas.css', 'loading-indicator.atlas.css']) {
     const css = readFileSync(`apps/desktop/src/components/ui/${name}`, 'utf8')
       .replace('@layer theme, base, components, utilities;', '')
-      .replace('@layer components {', '').replace(/}\s*$/, '');
+      .replaceAll('@layer components {', '@media all {');
     assert.ok(document.getElementById('buret-atlas-menu-styles').textContent.includes(css));
   }
   assert.ok(document.getElementById('buret-atlas-menu-styles').textContent.startsWith(
     readFileSync('apps/desktop/src/styles/codex-tokens.css', 'utf8').replaceAll('.app-shell', '.buret-atlas-surface')));
-  const popoverSurface = readFileSync('apps/desktop/src/components/ui/popover-surface.css', 'utf8').replace('@layer components {', '').replace(/}\s*$/, '');
+  const popoverSurface = readFileSync('apps/desktop/src/components/ui/popover-surface.css', 'utf8').replaceAll('@layer components {', '@media all {');
   assert.ok(document.getElementById('buret-atlas-menu-styles').textContent.includes(popoverSurface));
   menu.dataset.buretMolstarPresetMenu = '1';
   const preview = document.createElement('div');

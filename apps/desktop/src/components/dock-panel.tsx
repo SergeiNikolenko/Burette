@@ -532,9 +532,10 @@ function xyzrenderGalleryFilename(src: string) {
 }
 
 async function resolveXyzrenderGalleryResource(src: string) {
-  if (!isTauriRuntime()) return null;
   const fileName = xyzrenderGalleryFilename(src);
   if (!XYZRENDER_GALLERY_FILENAME_PATTERN.test(fileName)) return null;
+  if (window.BuretteMcpWorkspace) return window.BuretteMcpWorkspace.asset(`shell/xyzrender-gallery/${fileName}`);
+  if (!isTauriRuntime()) return null;
   let cached = xyzrenderGalleryResourceCache.get(fileName);
   if (!cached) {
     cached = (async () => {
@@ -943,11 +944,17 @@ function XyzrenderGalleryTile({ label, image, pressed, onSelect }: { label: stri
 }
 
 function XyzrenderGalleryTileImage({ src }: { src: string }) {
-  const [resolvedSrc, setResolvedSrc] = useState(src);
+  const nativeWorkspace = Boolean(window.BuretteMcpWorkspace);
+  const [resolvedSrc, setResolvedSrc] = useState<string | undefined>(nativeWorkspace ? undefined : src);
 
   useEffect(() => {
-    setResolvedSrc(src);
-  }, [src]);
+    let cancelled = false;
+    setResolvedSrc(nativeWorkspace ? undefined : src);
+    if (nativeWorkspace) void resolveXyzrenderGalleryResource(src).then((url) => {
+      if (!cancelled && url) setResolvedSrc(url);
+    }).catch(error => console.warn("[Burette] Could not load gallery preview", error));
+    return () => { cancelled = true; };
+  }, [src, nativeWorkspace]);
 
   const handleError = useCallback(() => {
     if (resolvedSrc !== src) return;

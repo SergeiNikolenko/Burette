@@ -24,13 +24,17 @@ type ThemeTokens = Partial<Record<"light" | "dark", CodexThemeTokens>>;
 // The standalone viewer has no Tailwind layers or shell stylesheet. Scope the
 // original tokens to the popup and use the same Menu stylesheet, unlayered.
 // Keeping it in the existing controls bundle avoids new runtime asset URLs.
+// Preserve block boundaries: styles can contain media rules and keyframes after
+// their component layer. Removing the last brace would leave those blocks open
+// and make the browser discard subsequent button and tooltip rules.
 const source = String(tokens).replaceAll(".app-shell", ".buret-atlas-surface")
-  + behavior + String(popoverStyles).replace("@layer components {", "").replace(/}\s*$/, "")
-  + String(menuStyles).replace("@layer components {", "").replace(/}\s*$/, "")
-  + segmentedStyles + paletteStyles
-  + [buttonStyles, buttonBehavior, loadingStyles, sliderStyles, commandStyles, selectStyles, selectMenuStyles, selectBehavior, tooltipStyles].map(css => String(css)
-    .replace("@layer theme, base, components, utilities;", "")
-    .replace("@layer components {", "").replace(/}\s*$/, "")).join("") + selectionBehavior + selectionToolbar + viewportToolbar;
+  + behavior
+  + [popoverStyles, menuStyles, segmentedStyles, paletteStyles, buttonStyles, buttonBehavior,
+    loadingStyles, sliderStyles, commandStyles, selectStyles, selectMenuStyles, selectBehavior,
+    tooltipStyles].map(css => String(css)
+    .replaceAll("@layer theme, base, components, utilities;", "")
+    .replaceAll("@layer components {", "@media all {")).join("\n")
+  + selectionBehavior + selectionToolbar + viewportToolbar;
 
 export function styleViewerButton(button: HTMLButtonElement, themeTokens: ThemeTokens | undefined, mode: "light" | "dark") {
   if (!button.classList.contains("atlas-button")) {

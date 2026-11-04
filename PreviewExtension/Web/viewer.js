@@ -15769,9 +15769,10 @@ SOFTWARE.
     installExternalArtifactBaseItemInteractions(root, () => scale);
     const sheetCleanup = installExternalArtifactSheet(root, stage, toStagePoint, () => scale);
     const baseItem = root.querySelector('.buret-xyzrender-sheet-item-base');
-    if (baseItem && savedView?.item) {
+    if (baseItem && savedView?.item) setSheetItemRotation(baseItem, savedView.item.rotation);
+    if (baseItem && savedView?.item && !savedView.responsive) {
       for (const key of ['left', 'top', 'width', 'height']) baseItem.style[key] = `${savedView.item[key]}px`;
-      setSheetItemRotation(baseItem, savedView.item.rotation);
+      baseItem.dataset.buretSheetPositioned = 'true';
     }
     const restoredSheet = activeConfig?.popoutSheet;
     const sheetCheckpointApplied = restoredSheet?.version === 1 && Array.isArray(restoredSheet.items);
@@ -15801,9 +15802,10 @@ SOFTWARE.
     }
     // Item geometry and its reference viewport must come from the same snapshot.
     const viewportCleanup = window.BuretteRendererViewState?.observeSheetViewport(root,
-      sheetCheckpointApplied ? restoredSheet.view?.viewport : savedView?.viewport);
+      sheetCheckpointApplied ? restoredSheet.view?.viewport : savedView?.responsive ? null : savedView?.viewport);
     externalArtifactViewSnapshot = () => ({
       scale, x: translateX, y: translateY,
+      responsive: Boolean(baseItem?.isConnected && baseItem.dataset.buretSheetPositioned !== 'true'),
       viewport: { width: root.clientWidth, height: root.clientHeight },
       item: baseItem?.isConnected ? {
         left: baseItem.offsetLeft, top: baseItem.offsetTop,
