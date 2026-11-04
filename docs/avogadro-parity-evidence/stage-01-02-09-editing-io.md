@@ -1489,14 +1489,60 @@ controller or a relaxation of scientific ownership checks.
   Browser baseline records the previous wrong target; fixed records the source
   target and unchanged comparison. Session files contain private credentials.
 
-**Open acceptance gap:** three early interaction attempts without waiting for
+**Timing gap observed before the guard below:** three early interaction attempts without waiting for
 scientific restore acknowledgement changed the source but produced no download
 from Save scene (including one 30-second download observation). Waiting for
 `science.present` and release of imported scientific attachments before stepping
 made the full save/reopen scenario pass. This suggests a restoration timing race;
-its cause, visible progress/disabled controls, and recovery still require a fix.
+the acknowledgement guard below now prevents early frame edits. Broader failure
+recovery still needs acceptance.
 Do not treat ready frame controls alone as proof of completed science restoration.
 The All/Align controls are still absent; comparisons originated through the Mol*
 builder API. Final resaved archive was audited but not reopened. No large-stack
 performance, complete accessibility, manual IAB or native acceptance is claimed.
 No parity stage is promoted.
+
+### Gate frame controls until scientific restore acknowledgement (2026-11-04)
+
+Mol* graph loading finishes before the host validates the scientific manifest.
+The host compares the current frame to the saved binding, so allowing an early
+frame change can invalidate restoration. The science import boundary now exposes
+pending state and notifies its subscribers on import start, graph completion and
+validated ownership transfer. Completing an ordinary foreign import releases the
+guard; scientific attachments keep it pending until adoption succeeds. Invalid
+receipts, changed frames/sources and stale tokens do not release it.
+
+The frame panel disables Previous, Next, slider, loop and smoothing while this
+transfer is pending, exposes aria-busy and an explanatory description/tooltip,
+and updates automatically on acknowledgement. The shared native frame setter
+also rejects programmatic stepping; loop activation refuses pending restoration.
+Panel disposal removes the subscription. No scientific binding checks were relaxed.
+
+- Gauss scientific runtime: 22 tests, 179 assertions passed. Real MOLX tests cover
+  the pending/adopted transition, rejected acknowledgements, foreign imports,
+  stale tokens and subscription removal. The indexed-trajectory integration test
+  exercises the actual panel and setter: disabled controls, rejected early edit,
+  stale completion, automatic recovery. The scene-recovery suite also passed.
+- Browser fault injection holds the actual scene_science_restore_ack message.
+  At source frame 2, Previous/Next/Loop and slider are disabled and aria-busy is
+  true. Synthetic Next and Loop events leave the source unchanged. Releasing the
+  message enables Next automatically. A selected comparison then remains at
+  frame 5 while the real Next button advances the source to frame 3. Ordinary
+  host Save scene downloads the archive; a fresh server/browser reopens it and
+  saves again. Light 1400x900 and dark 900x800 pending-state screenshots were
+  inspected. These are browser automation checks, not manual IAB acceptance.
+- The [independent oracle](trajectory-restore-controls-oracle.json) checks all 60
+  coordinates against Gaussian frame 3 (maximum error 1.4971923789630637e-7
+  Angstrom), unchanged scientific attachment bytes and metadata, and unchanged
+  comparison indices through save/reopen/resave. Only binding.frameIndex changes
+  from 1 to 2. Both servers served the final viewer and scene-file-actions hashes;
+  both owned servers were terminated and their ports verified closed.
+
+Gauss artifacts: `/tmp/burette-restore-controls{,-reopen}.cjs`,
+`/tmp/burette-restore-controls-audit.py`, `/tmp/burette-restore-controls-*.log`,
+`/tmp/burette-restore-controls-pending-{light,dark}.png`. Session files are private.
+
+Remaining acceptance: corrupt-archive failure UX (the guard stays closed),
+restored autoplay and other mutation paths during restoration, complete keyboard
+and screen-reader coverage, native MOLX Align/All, and native/macOS surfaces.
+The final resaved archive was audited but not reopened. No stage is promoted.

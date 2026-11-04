@@ -203,9 +203,14 @@ test("real MOLX reopen retains science until validated ownership and preserves o
   const f = await fixture(), opened = new PluginContext(DefaultPluginSpec());
   try {
     const archive = await science.serialize(f.viewer, f.request, options); await opened.init();
+    const readiness: boolean[] = [];
+    const unsubscribe = science.subscribeImport(opened, () => readiness.push(science.importPending(opened)));
+    expect(science.importPending(opened)).toBe(false);
     const token = science.beginImport(opened);
+    expect(science.importPending(opened)).toBe(true);
     await opened.managers.snapshot.open(new File([archive], "roundtrip.molx"));
     expect(science.completeImport(opened, token)).toBe(true);
+    expect(science.importPending(opened)).toBe(true);
     expect(opened.managers.structure.hierarchy.current.structures.length).toBe(1);
     expect(opened.managers.asset.assets.filter(entry => entry.asset.id.startsWith(science.prefix)).length).toBe(3);
     expect((await science.sdfBinding({ plugin: opened })).sourceSha256).toBe(f.report.sourceSha256);
@@ -214,6 +219,9 @@ test("real MOLX reopen retains science until validated ownership and preserves o
     const unclaimed = unzipSync(new Uint8Array(await (await opened.managers.snapshot.serialize(options)).arrayBuffer()));
     for (const asset of f.assets) expect(unclaimed[`assets/${asset.id}`]).toEqual(asset.bytes);
     expect(await science.adoptValidated({ plugin: opened }, receipt)).toBe(true);
+    expect(science.importPending(opened)).toBe(false);
+    expect(readiness).toEqual([true, true, false]);
+    unsubscribe();
     expect([science.present(opened), await science.adoptValidated({ plugin: opened }, receipt)]).toEqual([true, true]);
     expect(science.adoptImported).toBeUndefined();
     expect(opened.managers.asset.assets.map(entry => String(entry.asset.id))).toEqual([f.provenance.id]);
@@ -264,6 +272,7 @@ test("invalid receipt or current source/frame never adopts imported assets", asy
       await expect(science.adoptValidated(f.importedViewer, receipt)).rejects.toThrow(kind === "receipt" || kind === "missing-graph-sha" ? "matching validated" : "changed");
       expect(sameEntries(f.imported, entries)).toBe(true);
       expect(science.present(f.imported)).toBe(false);
+      expect(science.importPending(f.imported)).toBe(true);
     } finally { f.close(); }
   }
 });
@@ -469,4 +478,20 @@ test("trajectory comparisons preserve the scientific owner through MOLX and reje
     await opened.state.data.build().delete(f.report.modelRef).commit();
     expect(() => science.binding({ plugin: opened })).toThrow("one source structure");
   } finally { f.close(); opened.dispose(); }
+});
+
+test("foreign import releases frame controls and removes readiness subscriptions", async () => {
+  const f = await fixture("xyz");
+  try {
+    const changes: boolean[] = [];
+    const unsubscribe = science.subscribeImport(f.plugin, () => changes.push(science.importPending(f.plugin)));
+    const token = science.beginImport(f.plugin);
+    expect(science.importPending(f.plugin)).toBe(true);
+    unsubscribe();
+    expect(science.completeImport(f.plugin, "stale-token")).toBe(false);
+    expect(science.importPending(f.plugin)).toBe(true);
+    expect(science.completeImport(f.plugin, token)).toBe(true);
+    expect(science.importPending(f.plugin)).toBe(false);
+    expect(changes).toEqual([true]);
+  } finally { f.close(); }
 });

@@ -20895,6 +20895,9 @@ SOFTWARE.
   async function setNativeTrajectoryPoseDirect(index, poseCount) {
     const transform = nativeTrajectoryModelTransform(poseCount);
     if (!transform) return false;
+    if (window.BuretteSceneFiles?.science?.importPending?.(transform.plugin)) {
+      throw new Error('Wait for scientific data to finish restoring, then change frames.');
+    }
     // Clamp against the frames the cell actually holds: after smoothing the caller's
     // total and the loaded trajectory can disagree, and asking for a frame past the
     // end leaves the model on its last one while we report success.
@@ -22494,8 +22497,15 @@ SOFTWARE.
     // A running loop wraps, so its ends never disable the step buttons.
     const syncStepButtons = () => {
       const ends = stepBounds(activePose);
-      previous.disabled = !loopActive && activePose <= ends.start;
-      next.disabled = !loopActive && activePose >= ends.end;
+      const restoring = Boolean(window.BuretteSceneFiles?.science?.importPending?.(viewer.plugin));
+      previous.disabled = restoring || (!loopActive && activePose <= ends.start);
+      next.disabled = restoring || (!loopActive && activePose >= ends.end);
+      loop.disabled = restoring;
+      slider.disabled = restoring;
+      if (smooth) smooth.disabled = restoring;
+      root.setAttribute('aria-busy', String(restoring));
+      root.title = restoring ? 'Restoring scientific data. Frame controls will be available when restoration finishes.' : '';
+      root.setAttribute('aria-description', root.title);
     };
     // Every frame step relabels the control, but within a segment the name does not
     // change. Rewriting the text node anyway relaid the line and cut short the hover
@@ -22623,6 +22633,7 @@ SOFTWARE.
     };
     const isAnimationOptionsOpen = () => root.classList.contains('buret-docking-poses-animation-open');
     const setLoopActive = (active) => {
+      if (active && window.BuretteSceneFiles?.science?.importPending?.(viewer.plugin)) return;
       loopEpoch += 1;
       loopActive = Boolean(active);
       if (!active) queueNativeLoop(false);
@@ -23407,6 +23418,9 @@ SOFTWARE.
     const isolationDisposer = installDockingPoseInteractionIsolation(root);
     const hoverDisposer = installDockingPoseHoverSuppression();
     const dragDisposer = initDockingPoseControlsDrag(root);
+    const scienceImportDisposer = window.BuretteSceneFiles?.science?.subscribeImport?.(viewer.plugin, updateControls);
+    // The graph can be ready before the host has acknowledged its scientific data.
+    syncStepButtons();
     const syncDisposer = prepared.nativeTrajectoryControls
       ? installNativeTrajectoryPoseSync(prepared.poseCount, index => {
           activePose = Math.max(0, Math.min(prepared.poseCount - 1, index));
@@ -23444,6 +23458,7 @@ SOFTWARE.
       } else {
         setLoopActive(false);
       }
+      scienceImportDisposer?.();
       syncDisposer?.();
       isolationDisposer?.();
       hoverDisposer?.();

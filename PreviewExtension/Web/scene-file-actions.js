@@ -123,6 +123,17 @@
   const SCIENCE_BYTE_LIMIT = 21 * 1024 * 1024;
   const SCIENCE_ATOM_LIMIT = 10000;
   const scienceSessions = new WeakMap();
+  const scienceImportListeners = new WeakMap();
+  function scienceImportPending(plugin) {
+    const session = scienceSessions.get(plugin);
+    return Boolean(session?.importLoading || (session?.importToken && !session.lastManifestSha256
+      && plugin?.managers?.asset?.assets?.some(({ asset }) => String(asset?.id).startsWith(SCIENCE_PREFIX))));
+  }
+  function notifyScienceImport(plugin) {
+    for (const listener of scienceImportListeners.get(plugin) || []) {
+      try { listener(); } catch (error) { console.error(error); }
+    }
+  }
   function scienceSession(plugin) {
     let session = scienceSessions.get(plugin);
     if (!session) {
@@ -308,12 +319,14 @@
     session.lastManifestSha256 = null;
     session.lastSourceSha256 = null;
     session.present = false;
+    notifyScienceImport(plugin);
     return session.importToken;
   }
   function completeScienceImport(plugin, token) {
     const session = scienceSessions.get(plugin);
     if (!session || session.importToken !== token) return false;
     session.importLoading = false;
+    notifyScienceImport(plugin);
     return true;
   }
   // Transfer imported assets only after the host validated the same archive manifest.
@@ -375,6 +388,7 @@
       session.lastManifestSha256 = receipt;
       session.lastSourceSha256 = document.source?.extension === 'sdf' ? document.source.sha256 : null;
       session.present = true;
+      notifyScienceImport(plugin);
       return true;
     } finally {
       session.exporting = null;
@@ -409,6 +423,13 @@
       completeImport: completeScienceImport,
       adoptValidated: adoptValidatedScience,
       present: plugin => Boolean(scienceSessions.get(plugin)?.present),
+      importPending: scienceImportPending,
+      subscribeImport(plugin, listener) {
+        let listeners = scienceImportListeners.get(plugin);
+        if (!listeners) scienceImportListeners.set(plugin, listeners = new Set());
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
       // Another serialization (an agent session export) runs alone and sees no attachments.
       async exclusive(plugin, run) {
         const session = scienceSession(plugin);

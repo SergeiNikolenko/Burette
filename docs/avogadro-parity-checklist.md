@@ -108,5 +108,8 @@ retains scientific data through host Save scene, fresh reopen and save with a va
 - 2026-11-04: selected native comparisons no longer redirect the scientific source
   frame stepper. Browser save/fresh reopen preserves source frame 3 and fixed
   comparison frame 5; see [stepper oracle](avogadro-parity-evidence/trajectory-comparison-step-oracle.json).
-  Early stepping before scientific restoration acknowledgement still needs
-  investigation/recovery; native MOLX Align/All remain open. No stage promotion.
+  [Restore acknowledgement gating](avogadro-parity-evidence/stage-01-02-09-editing-io.md#gate-frame-controls-until-scientific-restore-acknowledgement-2026-11-04)
+  now prevents early frame edits and automatically restores controls after adoption;
+  held-acknowledgement browser save/reopen and independent science checks pass.
+  Corrupt-archive recovery, restored autoplay and native MOLX Align/All remain open.
+  No stage promotion.
