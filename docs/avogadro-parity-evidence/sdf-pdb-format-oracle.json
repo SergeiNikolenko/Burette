@@ -1,0 +1,73 @@
+{
+  "runtime": "vite-dev",
+  "date": "2026-11-04",
+  "baselineCommit": "445a167b3",
+  "scenario": "samples/mini.sdf -> select Water card -> Open in new tab -> typed export_scene_structure",
+  "fixtureSha256": "fae3c363717c6520ffa23778c065772595cae51fb97b5dc95eadb1b54b7f42fc",
+  "before": {
+    "status": "completed",
+    "name": "water.modified.pdb",
+    "mimeType": "chemical/x-pdb",
+    "text": "Water\n  Burette\n  3  2  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    0.9572    0.0000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n   -0.2390    0.9270    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\n  1  3  1  0  0  0  0\nM  END\n> <Name>\nWater\n> <SMILES>\n[H]O[H]\nEND\n",
+    "count": 1,
+    "pdbAtomRecordCount": 0
+  },
+  "after": {
+    "status": "failed",
+    "error": {
+      "code": "ACTION_ERROR",
+      "message": "PDB export cannot convert this source format yet. Export mmCIF to keep the scene geometry."
+    }
+  },
+  "mmcif": {
+    "status": "completed",
+    "text": "data_MODEL\n#\n_entity.details                     . \n_entity.formula_weight              . \n_entity.id                          1 \n_entity.src_method                  . \n_entity.type                        non-polymer \n_entity.pdbx_description            'Unknown Entity' \n_entity.pdbx_number_of_molecules    . \n_entity.pdbx_parent_entity_id       . \n_entity.pdbx_mutation               . \n_entity.pdbx_fragment               . \n_entity.pdbx_ec                     . \n#\nloop_\n_atom_site.group_PDB\n_atom_site.id\n_atom_site.type_symbol\n_atom_site.label_atom_id\n_atom_site.label_comp_id\n_atom_site.label_seq_id\n_atom_site.label_alt_id\n_atom_site.pdbx_PDB_ins_code\n_atom_site.label_asym_id\n_atom_site.label_entity_id\n_atom_site.Cartn_x\n_atom_site.Cartn_y\n_atom_site.Cartn_z\n_atom_site.occupancy\n_atom_site.B_iso_or_equiv\n_atom_site.pdbx_formal_charge\n_atom_site.auth_atom_id\n_atom_site.auth_comp_id\n_atom_site.auth_seq_id\n_atom_site.auth_asym_id\n_atom_site.pdbx_PDB_model_num\n. 1 O O MOL 1 . . A 1 0 0 0 1 0 0 O MOL 1 A 1 \n. 2 H H MOL 1 . . A 1 0.957 0 0 1 0 0 H MOL 1 A 1 \n. 3 H H MOL 1 . . A 1 -0.239 0.927 0 1 0 0 H MOL 1 A 1 \n#\n",
+    "atomCount": 3,
+    "sourceAtoms": [
+      [
+        "O",
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        "H",
+        0.9572,
+        0.0,
+        0.0
+      ],
+      [
+        "H",
+        -0.239,
+        0.927,
+        0.0
+      ]
+    ],
+    "exportedAtoms": [
+      [
+        "O",
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        "H",
+        0.957,
+        0.0,
+        0.0
+      ],
+      [
+        "H",
+        -0.239,
+        0.927,
+        0.0
+      ]
+    ],
+    "maxCoordinateErrorAngstrom": 0.000200000000000089
+  },
+  "limitations": [
+    "PDB writer for non-PDB sources remains unimplemented",
+    "No CIF reopen or topology validation in this check",
+    "No native/prebuilt runtime, theme, compact or keyboard verification"
+  ]
+}

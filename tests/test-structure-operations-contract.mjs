@@ -111,6 +111,22 @@ for (const helper of ["molstarStructureAtomSerials", "molstarChainAtomSerials", 
   assert.equal(reads, 1, "multi-structure failure must precede source serial collection");
 }
 
+// A source-backed filter must not label SDF bytes as a successful PDB file.
+{
+  let source = { format: "sdf", data: "Water\n  Burette\n\n  3  2  0  0  0  0            999 V2000\nM  END\n" };
+  const context = {
+    molstarContextSourceEntryForActiveConfig: () => source,
+    molstarExportFileName: () => "water.modified.pdb",
+    pdbSerialFromLine: line => Number(line.slice(6, 11).trim()),
+    filteredPdbConectLine: () => null,
+  };
+  const exportPdb = runInNewContext(`${exportPayload}\nmolstarPdbExportPayloadForAtomSerials`, context);
+  assert.throws(() => exportPdb(new Set([1, 2, 3])), /Export mmCIF to keep the scene geometry/);
+  const atom = "HETATM    1  O1  MOL A   1       0.000   0.000   0.000  1.00 10.00           O";
+  source = { format: "pdb", data: `${atom}\nEND\n` };
+  assert.equal(exportPdb(new Set([1])).text, `${atom}\nEND\n`);
+}
+
 // Split and extract reach the scene's structure even when no pick supplied one.
 assert.match(fn("splitMolstarStructureIntoChains"), /molstarTargetStructureData\(target\)/);
 assert.match(fn("extractMolstarChainToFile"), /molstarTargetStructureData\(target\)/);

@@ -829,3 +829,33 @@ arbitrary spatial transform export, atom edits, ANISOU transformation, all-model
 export, molecular topology, manual frame-control accessibility, other themes,
 compact layout or prebuilt/native behavior. The multiple-structure limitation
 and source-less PDB conversion gap above remain open. No runtime code changed.
+
+### Reject SDF bytes mislabeled as PDB (2026-11-04)
+
+Fresh vite-dev on `445a167b3`: open `samples/mini.sdf`, select the Water
+card, and use **Open in new tab**. Actual CLI `export_scene_structure` with
+`format: pdb` reported `completed`, `chemical/x-pdb`, and `water.modified.pdb`,
+but the payload contained SDF text and zero PDB atom records. The common
+source-backed subset filter accepted an SDF context source and copied its
+nonempty lines as PDB headers. This is a reproduced format-integrity defect.
+
+The filter now requires a PDB context source before reading lines. Reloading
+the browser and repeating the scenario returned terminal `failed` /
+`ACTION_ERROR`: “PDB export cannot convert this source format yet. Export mmCIF
+to keep the scene geometry.” Initial not-ready attempts were excluded; the
+recorded result comes from the ready viewer. Existing PDB subset behavior is
+covered by executing the real helper in the focused contract suite.
+
+The same scene still exports mmCIF successfully. Independent Python parsing
+of `_atom_site` columns against fixed-width SDF coordinates recovered O/H/H
+in order, three atoms, and maximum coordinate error 0.0002 Å, within the
+writer's three-decimal rounding. Exact before/after payloads and coordinate
+evidence: [sdf-pdb-format-oracle.json](sdf-pdb-format-oracle.json). This does
+not establish bond/charge/stereo retention or a CIF reopen.
+
+Validation: `vp exec bun tests/test-structure-operations-contract.mjs` and
+`vp run build:agent-shell` passed; generated preview viewer matches source.
+The live check used vite-dev, not the compiled shell or a native app.
+Non-PDB PDB writing remains open; this fix prevents false success and is
+not PDB-export parity. Theme, compact, keyboard, transformed geometry and
+ordinary UI export acceptance remain open.

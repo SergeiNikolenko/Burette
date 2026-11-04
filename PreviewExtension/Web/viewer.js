@@ -26186,6 +26186,9 @@ SOFTWARE.
   function molstarPdbExportPayloadForAtomSerials(requestedSerials, fileName) {
     const sourceEntry = molstarContextSourceEntryForActiveConfig();
     if (!sourceEntry) throw new Error('PDB fallback export is unavailable for this structure.');
+    if (sourceEntry.format !== 'pdb') {
+      throw new Error('PDB export cannot convert this source format yet. Export mmCIF to keep the scene geometry.');
+    }
     if (!requestedSerials?.size) throw new Error('No atoms were selected for export.');
     const lines = sourceEntry.data.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
     const output = [];
