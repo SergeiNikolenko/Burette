@@ -6649,8 +6649,6 @@ img.radix-menu-item-icon {
   overflow: hidden;
   background: var(--bg-base);
 }
-/* Reserve a top row for shell actions instead of covering renderer controls. */
-.molecule-stage:has(> .scene-compute-menu) > .scene-viewer-frame { top: 52px; }
 .molecule-stage.mesoscale-left-panel-open { --mesoscale-canvas-left: 330px; }
 .molecule-stage.mesoscale-right-panel-open { --mesoscale-canvas-right: 300px; }
 .mesoscale-toolbar {

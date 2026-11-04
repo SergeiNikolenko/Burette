@@ -162,17 +162,15 @@ function StructureViewerSurface({
       onDrop={handleDrop}
       onContextMenu={handleContextMenu}
     >
-      <div className="scene-viewer-frame absolute inset-0">
-        <ViewerFrame
-          document={document}
-          iframeRef={iframeRef}
-          stagingIframeRef={stagingIframeRef}
-          sourcePreview={sourceSession?.sourcePreview ?? undefined}
-          onViewerLoad={handleViewerLoad}
-          onStagingLoad={(identity, frame) => sourceEditing?.stagingLoaded(document, identity, frame)}
-        />
-      </div>
-      {!mesoscale ? <SceneComputeMenu document={document} actions={actions} /> : null}
+      <ViewerFrame
+        document={document}
+        iframeRef={iframeRef}
+        stagingIframeRef={stagingIframeRef}
+        sourcePreview={sourceSession?.sourcePreview ?? undefined}
+        onViewerLoad={handleViewerLoad}
+        onStagingLoad={(identity, frame) => sourceEditing?.stagingLoaded(document, identity, frame)}
+      />
+      {!mesoscale && isActive ? <SceneComputeMenu document={document} actions={actions} /> : null}
       {mesoscale ? <MesoscaleCanvasContextMenu document={document} /> : null}
       {mesoscale ? <MesoscaleSelectionBar documentId={document.id} /> : null}
       {mesoscale && mesoscaleSceneOpen ? <MesoscaleSceneOverlay document={document} onClose={() => setMesoscaleSceneOpen(document.id, false)} /> : null}
