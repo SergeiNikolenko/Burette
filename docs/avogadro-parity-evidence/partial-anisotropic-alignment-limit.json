@@ -60,5 +60,5 @@
   ],
   "maxRotationElementError": 1.0843705463395804e-07,
   "exportResult": "ACTION_ERROR: Cannot rotate anisotropic displacement uncertainties without their component covariance matrix.",
-  "status": "open; alignment precision not repaired by component-mask fix"
+  "status": "baseline failure; resolved for this fixture by rmsd-anisotropic-mmcif-after-fix.json"
 }

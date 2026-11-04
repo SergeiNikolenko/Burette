@@ -1169,8 +1169,49 @@ Validation:
 Separate finding: align_scene_files on integer-coordinate mmCIF inputs produced
 an off-axis rotation error of 1.08437e-7. Export with numeric U_esd then explicitly
 refused the non-permutation. The [captured MOLX matrix](partial-anisotropic-alignment-limit.json)
-is evidence of this open alignment-precision problem, not successful aligned
-partial-U_esd export. CoreCIF aliases are handled by provider scalar columns but
+records the baseline alignment-precision failure. The following Float64 repair
+now verifies aligned partial-U_esd export. CoreCIF aliases are handled by provider scalar columns but
 were not exercised in this browser fixture. Native/external readers, arbitrary
 malformed tensor input, ellipsoid rendering and the complete UI matrix remain
+unverified.
+
+
+## Double-precision mmCIF alignment (2026-11-04)
+
+The partial-tensor fixture revealed an independent precision defect in the
+mmCIF alignment path: Mol* MinimizeRmsd creates an EVD cache whose 4x4 matrix
+uses Matrix.create's default Float32 storage. Both covariance accumulation and
+eigenvectors were rounded there despite Float64 input positions. The captured
+90-degree alignment had off-axis terms up to 1.08437e-7, so the anisotropic
+exporter's signed-permutation check correctly rejected numeric uncertainties.
+
+`scripts/molstar-rmsd-precision.mjs` changes only that RMSD state's EVD matrix
+to Float64 through the production build plugin. It does not change global
+Matrix/EVD defaults or weaken the uncertainty guard. A unique source anchor
+requires review if the pinned implementation changes.
+
+The real MinimizeRmsd regression failed without the plugin with
+`inverse matrix 0: 3.422853700474349e-8 != 0`. The production-plugin preload
+passed exact 90-degree and general 0.37-radian rotations, translation, coordinate
+recovery, orthogonality and state reuse at 1e-12 tolerance. The test is included
+in `test:ui`; the full test:ui sweep was not rerun.
+
+A fresh prebuilt-browser scenario opened two integer-coordinate four-CA mmCIF
+structures, aligned them, saved an actual MOLX download to inspect the applied
+matrix, exported mmCIF, and reopened/reexported twice. The independent Python
+oracle found two blocks, eight atoms and eight tensors, zero coordinate error
+at export precision, and **all 96 U/U_esd values and markers preserved** at every
+stage. The downloaded matrix's largest error against the exact inverse was
+**2.1316282072803006e-14**. A separate live 0.37-radian alignment still explicitly
+rejected numerical U_esd without covariances; reopening the successful export
+returned two ready structures. [Oracle](rmsd-anisotropic-mmcif-after-fix.json)
+and [baseline matrix](partial-anisotropic-alignment-limit.json) preserve both
+sides of the result.
+
+Production vendor and browser-shell builds, packaged-mirror and vendor-lock
+checks passed. Independent source review found no required corrections. The
+owned shell exited and its port closed. This establishes the partial-tensor
+signed-permutation browser scenario, not full alignment/scientific-format
+parity: general-rotation uncertainty propagation still requires covariances;
+large/rank-deficient/external-reader/native and complete UI matrices remain
 unverified.
