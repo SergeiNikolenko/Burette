@@ -1067,3 +1067,10 @@ transmittance predictions. Raman retains activity units (angstrom^4/amu).
 Bounds: 10000 modes, 20000 grid points, 20000000 evaluations and the shared artifact
 byte limit. Only scalar quantities are cloned to the worker. Common job ownership
 provides source revision pinning, replay, cancellation and stale export checks.
+
+
+Vibrational exports capture the registered original filename with their scientific
+snapshot, so imported FCHK data is not relabeled as the materialized XYZ. That name
+participates in the opaque source revision; replacing it requires a fresh observe.
+Exports from an older snapshot retain their original name, including explicit stale
+exports. Sources without an attached original use the document title.

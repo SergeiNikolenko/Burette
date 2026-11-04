@@ -63,3 +63,37 @@ test("real controller pins vibrational jobs, replays operations and rejects stal
     expect(await controller.execute({ type: "workbench", operation: "export", jobId: job.jobId, artifact: "display" })).toMatchObject({ ok: false, error: { code: "STALE_RESULT" } });
   } finally { controller.dispose(); }
 });
+
+test("attached FCHK export pins original name and invalidates renamed provenance", async () => {
+  const { adoptRestoredScientificSource, releaseScopedScientificSource } = await import("../apps/desktop/src/lib/workbench/scientific-source-state");
+  const { createAgentSourceOwner } = await import("../apps/desktop/src/lib/workbench/agent-source");
+  const document = { id: "original-name", title: "converted.xyz", path: "/converted.xyz", extension: "xyz", renderer: "molstar", byteCount: 20 } as any;
+  const xyz = "3\nwater\nO 0 0 0\nH 0 0 1\nH 1 0 0\n";
+  const register = (name: string) => adoptRestoredScientificSource(document.id, { text: xyz, document: science }, { name, file: new Blob([text]) });
+  register("original-water.fchk");
+  const owner = createAgentSourceOwner({ runtime: "browser-agent-shell", draftsVisible: true, documents: () => [document], activeDocument: () => document, readSource: async () => ({ text: xyz, origin: "file" }) }, new AbortController().signal);
+  try {
+    const first = await owner.snapshotOf({});
+    register("replacement-water.fchk");
+    const second = await owner.snapshotOf({});
+    const result = await vibrationalSpectrumJob.run(first, { kind: "ir", source: "frame", frameIndex: 0 }, {
+      signal: new AbortController().signal, timeoutMs: 10000, stem: "water",
+      artifact: async (name, fileName, mimeType, content) => ({ name, fileName, mimeType, content, byteCount: content.length, sha256: "test" }),
+    });
+    const source = JSON.parse(result.artifacts.find(a => a.name === "source")!.content);
+    expect(source.source.name).toBe("original-water.fchk");
+    expect(first.revision).not.toBe(second.revision);
+  } finally { owner.dispose(); releaseScopedScientificSource(document.id); }
+});
+
+test("invalid grids and overflow never publish partial vibrational artifacts", async () => {
+  let published = 0;
+  const context = { signal: new AbortController().signal, timeoutMs: 10000, stem: "water", artifact: async (name: string, fileName: string, mimeType: string, content: string) => { published++; return { name, fileName, mimeType, content, byteCount: content.length, sha256: "test" }; } };
+  for (const axes of [{ axisStartCm1: 10, axisEndCm1: 10 }, { axisStartCm1: 0, axisEndCm1: 20001 }]) {
+    await expect(vibrationalSpectrumJob.run(snapshot, { kind: "ir", source: "file", ...axes }, context)).rejects.toThrow("bounded");
+  }
+  const overflow = structuredClone(snapshot);
+  overflow.scientific!.modes[0].intensityKmMol = Number.MAX_VALUE;
+  await expect(vibrationalSpectrumJob.run(overflow, { kind: "ir", source: "file" }, context)).rejects.toThrow("finite source quantity");
+  expect(published).toBe(0);
+});

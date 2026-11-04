@@ -26,7 +26,7 @@ export const vibrationalSpectrumJob: AgentJobRunner<"vibrational_spectrum"> = {
     Object.assign(options, vibrationalAxisRange(modes, params.kind, options));
     for (const key of ["axisStartCm1", "axisEndCm1"] as const) if (params[key] !== undefined) options[key] = params[key];
     const plot = await computeVibrationalSpectrum({ modes, kind: params.kind, options }, { signal, timeoutMs });
-    const provenance = { sourceName: snapshot.document.title, format: snapshot.scientific!.format,
+    const provenance = { sourceName: snapshot.scientificSourceName ?? snapshot.document.title, format: snapshot.scientific!.format,
       frame: params.source === "frame" ? params.frameIndex! + 1 : null, frameCount: snapshot.scientific!.frames.length };
     const settings = { kind: "vibrational-spectrum-display-settings", version: 1, spectrum: params.kind,
       source: { ...provenance, scope: params.source, frameIndex: params.frameIndex ?? null }, parameters: options,

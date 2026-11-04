@@ -525,3 +525,32 @@ not close Hessian or displaced-geometry automation. All stage statuses stay part
 Compiled CLI/MCP compatibility passed 7 tests / 990 assertions, including the
 expanded capability list; this does not claim IR/Raman execution over MCP. The
 packaged/root contracts matched byte-for-byte. Logs: `/tmp/burette-vibration-*.log`.
+
+
+## Preserve original vibrational source names (2026-11-04)
+
+The new vibrational job initially used the materialized document title, so an
+imported FCHK was incorrectly named `.xyz` in source CSV/JSON and settings.
+The source owner now captures the registered original name with the scientific
+payload before asynchronous work, and includes that name in the opaque source
+revision. Parsed sources without an attached original retain their document title.
+The job exports the captured name rather than looking up mutable import state.
+A subsequent name replacement changes the revision; an older snapshot keeps its
+original provenance. No original file bytes are cloned for this metadata field.
+
+A regression test failed before the fix (`converted.xyz` instead of
+`original-water.fchk`) and passed afterward. Seven tests / 34 assertions now also
+cover zero-width and over-limit grids and Float32 intensity overflow: each rejects
+before any artifact callback. This is numerical failure coverage, not running
+cancellation evidence. Logs: `/tmp/burette-vibration-name-{before,tests}.log`.
+
+Fresh live IAB **vite-dev** imported `gaussian16-water-raman.fchk`; Python frame-0
+Raman succeeded and all three provenance-bearing exports named that original FCHK.
+A separate file/final-geometry job's source CSV matched the UI's Export → Spectrum
+as CSV byte-for-byte (972 bytes). Frame and file provenance remain distinct.
+[Compact live evidence](vibrational-source-name-live.json). Screenshot:
+`/tmp/burette-vibration-name-ui.png`. Typecheck, rebuilt shell and plugin validation
+passed; the live session checks source vite-dev, not prebuilt/native runtime.
+
+Compiled CLI/MCP compatibility also passed 7 tests / 990 assertions after the
+source-revision change (`/tmp/burette-vibration-name-cli.log`).

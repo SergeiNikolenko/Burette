@@ -31,7 +31,7 @@ type DocumentLifetime = { path: string; runtimePath: string | undefined; abort: 
 export type Snapshot = {
   lifetime: DocumentLifetime; document: ViewerDocument; revision: string; sourceTextSha256: string;
   origin: WorkbenchSourceRead["origin"]; byteCount: number; scientific: ScientificDocument | null;
-  scientificOrigin: "attached" | "parsed" | null; sourceError: string | null;
+  scientificOrigin: "attached" | "parsed" | null; scientificSourceName?: string; sourceError: string | null;
   structure: MolecularStructure | null; structureError: string | null;
   /** Exact text and logical extension the revision was read from. */
   text: string; extension: string;
@@ -81,7 +81,10 @@ export function createAgentSourceOwner(environment: WorkbenchAgentEnvironment, l
     const byteCount = new TextEncoder().encode(read.text).length;
     if (byteCount > 12 * 1024 * 1024) throw new WorkbenchError("SOURCE_TOO_LARGE", "Agent scientific sources are limited to 12 MiB.");
     // Capture full attached data before yielding. The quantum worker owns its smaller calculation projection.
-    const attached = scientificStateFor(document.id, read.text).revision?.document ?? null;
+    const scientificState = scientificStateFor(document.id, read.text);
+    const attached = scientificState.revision?.document ?? null;
+    // Capture provenance with the scientific payload, before any asynchronous work.
+    const scientificSourceName = attached ? scientificState.original?.name ?? document.title : document.title;
     const payload = attached ? scientificDocumentPayload(attached) : null;
     if (payload && payload.byteLength > SCIENCE_SESSION_LIMITS.attachmentBytes) {
       throw new WorkbenchError("SOURCE_TOO_LARGE", "Agent scientific data exceeds the scene's 20 MiB data limit.");
@@ -131,14 +134,14 @@ export function createAgentSourceOwner(environment: WorkbenchAgentEnvironment, l
       throw new WorkbenchError("SOURCE_TOO_LARGE", "Agent scientific data exceeds the scene's 20 MiB data limit.");
     }
     const scienceDigest = attachedDigest ?? await parsedPayload?.sha256() ?? null;
-    const revision = `sha256-${await sha256(JSON.stringify([sourceTextSha256, scienceDigest, parsed.structure]))}`;
+    const revision = `sha256-${await sha256(JSON.stringify([sourceTextSha256, scienceDigest, parsed.structure, scientific ? scientificSourceName : null]))}`;
     assertOpen(document, opened);
     if (request.expectedSourceRevision && request.expectedSourceRevision !== revision) {
       throw new WorkbenchError("REVISION_CONFLICT", "The source or its scientific calculation data changed. Observe again and use the current sourceRevision.",
         { documentId: document.id, expectedSourceRevision: request.expectedSourceRevision, sourceRevision: revision });
     }
     return { lifetime: opened, document: { ...document }, revision, sourceTextSha256, origin: read.origin, byteCount,
-      scientific, scientificOrigin: scientific ? attached ? "attached" : "parsed" : null, sourceError: parsed.sourceError,
+      scientific, scientificSourceName: scientific ? scientificSourceName : undefined, scientificOrigin: scientific ? attached ? "attached" : "parsed" : null, sourceError: parsed.sourceError,
       structure: parsed.structure, structureError: parsed.structureError, text: read.text, extension, source: parsed.source,
       sdfRecords: extension === "sdf" || extension === "sd" ? sdfRecords(read.text).length : 0,
       crystal: parsed.crystal, crystalError: parsed.crystalError,
