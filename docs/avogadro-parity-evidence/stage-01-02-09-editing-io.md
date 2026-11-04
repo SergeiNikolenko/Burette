@@ -1351,3 +1351,30 @@ terminated, their ports checked closed, and the original fixture restored.
 This closes the tested original-trajectory Align/disable/save failure, not the
 missing Align/All controls after MOLX reopen. All-mode alignment, error/cancel
 recovery, native, manual IAB, full Atlas and accessibility acceptance remain open.
+
+### Restore the mmCIF export contract check (2026-11-04)
+
+The stale assertion described above is now replaced by execution of the real
+`molstarModifiedMmCifExportPayload` boundary with a recording writer. The check
+requires distinct blocks for two independent sources with the same display name,
+passes each original structure to the writer, retains `copyAllCategories`, emits
+text CIF with the correct download name/MIME/count, preserves the single-source
+label, and rejects an empty writer result or missing writer. Production code is
+unchanged.
+
+On Gauss, `vp exec node tests/test-ui-shell-contract.mjs` exited 0, including the
+widget compute capability checks. `vp run test:mmcif-scene-roundtrip` also exited
+0: real Mol* export and import preserve independent residue metadata, sequences,
+coordinates and B-factors through two rounds. Logs are
+`/tmp/burette-export-contract.log` and `/tmp/burette-export-roundtrip.log`.
+
+The historical failure was independently reconfirmed with the old contract and
+an explicit `fs.promises.readFile` interception, reporting
+`BASELINE_VIEWER_INJECTED` before the expected assertion failure (exit 1).
+The injected viewer matches commit `84a163aa7`, SHA-256
+`e74d0603632f8a2230172f4ad0b8f063a1367d2db0f064b6bfb6b94d892f64ac`.
+Log: `/tmp/burette-export-baseline.log`. The temporary test file was removed.
+
+This repairs test coverage for the existing multi-block writer; it adds no new
+browser/native acceptance. Missing Align/All after MOLX reopen and the other
+trajectory gaps above remain open. No parity stage is promoted.

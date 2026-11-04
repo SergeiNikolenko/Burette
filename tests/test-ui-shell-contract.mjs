@@ -6533,7 +6533,39 @@ assert.match(previewViewer, /const toMmCif = molstarExportToMmCif\(\);/);
 assert.match(previewViewer, /function molstarExportToMmCif\(\) \{[\s\S]*?const structureLib = molstarStructureRuntime\(\);\s*if \(typeof structureLib\?\.to_mmCIF === 'function'\) return structureLib\.to_mmCIF;\s*if \(typeof lib\.to_mmCIF === 'function'\)/);
 assert.match(previewViewer, /runtime\?\.Structure\?\.to_mmCIF/);
 assert.match(previewViewer, /if \(!toMmCif\) return molstarModifiedPdbExportPayload\(\);/);
-assert.match(previewViewer, /toMmCif\(label, structures, false, \{ copyAllCategories: true \}\)/);
+// Exercise the export boundary: independent sources must not share a CIF block.
+// Checking one historical call spelling rejected the correct multi-block writer.
+{
+  const body = previewViewer.match(/\n  function molstarModifiedMmCifExportPayload\([\s\S]*?\n  \}/u)?.[0];
+  assert.ok(body);
+  const entries = [{ name: "same-name", structure: { source: 1 } }, { name: "same-name", structure: { source: 2 } }];
+  const calls = [];
+  let writer = (label, structure, binary, options) => {
+    calls.push({ label, structure, binary, options });
+    return `data_${label}\n# source ${structure.source}\n`;
+  };
+  const exportScene = new Function("molstarExportToMmCif", "molstarCurrentStructuresForExport", "molstarExportFileName",
+    `${body}; return molstarModifiedMmCifExportPayload;`)(() => writer, () => entries, () => "scene.cif");
+  const result = exportScene();
+  assert.equal(result.count, 2);
+  assert.equal(result.mimeType, "chemical/x-cif");
+  assert.equal(result.name, "scene.cif");
+  assert.equal(calls.length, 2);
+  assert.equal(new Set(calls.map(call => call.label)).size, 2);
+  calls.forEach((call, index) => {
+    assert.equal(call.structure, entries[index].structure);
+    assert.equal(call.binary, false);
+    assert.equal(call.options.copyAllCategories, true);
+    assert.ok(result.text.includes(`# source ${index + 1}`));
+  });
+  entries.splice(1); calls.length = 0;
+  assert.equal(exportScene().count, 1);
+  assert.equal(calls[0].label, "same-name");
+  writer = () => "";
+  assert.throws(exportScene, /empty mmCIF export/);
+  writer = null;
+  assert.throws(exportScene, /mmCIF export is unavailable/);
+}
 assert.match(previewViewer, /type: 'exportText',[\s\S]*?name: payload\.name,\s*mimeType: payload\.mimeType,\s*text: payload\.text/);
 assert.match(previewViewer, /function saveMolstarModifiedStructureAs\(format, target\)/);
 assert.match(previewViewer, /function installDownloadExportBridge\(\)/);
