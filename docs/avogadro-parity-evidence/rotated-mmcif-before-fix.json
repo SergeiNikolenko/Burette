@@ -1,0 +1,45 @@
+{
+  "runtime": "prebuilt-static",
+  "fixture": "Four synthetic noncoplanar CA sites; geometry and identity only",
+  "referenceCoordinatesAngstrom": [
+    [
+      0,
+      0,
+      0
+    ],
+    [
+      3.8,
+      0,
+      0
+    ],
+    [
+      5,
+      3.6,
+      0
+    ],
+    [
+      3,
+      5,
+      2.8
+    ]
+  ],
+  "movingTransform": "x=-y+20; y=x-12; z=z+7",
+  "stages": {
+    "after": {
+      "atomCount": 8,
+      "blockCount": 1,
+      "uniqueAtomIdentities": 4,
+      "duplicateAtomIdentities": 4,
+      "maxCoordinateErrorAngstrom": 0.0,
+      "exportName": "Mol_ scene_ rotation-reference.pdb + 1 more structure.modified.cif"
+    },
+    "reexport": {
+      "atomCount": 8,
+      "blockCount": 1,
+      "uniqueAtomIdentities": 4,
+      "duplicateAtomIdentities": 4,
+      "maxCoordinateErrorAngstrom": 0.0,
+      "exportName": "rotation-export.modified.cif"
+    }
+  }
+}

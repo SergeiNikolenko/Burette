@@ -943,3 +943,47 @@ The remote drivers are `/tmp/burette-transform-combined.cjs` and
 `/tmp/burette-transform-oracle.py`; the successful screenshot and exported CIF
 are `/tmp/burette-transform-aligned.png` and `/tmp/burette-transform-export.cif`.
 No application code changed and the broader parity stages remain partial.
+
+## Preserve independent CIF namespaces after rotation and reopen (2026-11-04)
+
+The next live scenario exposed a scientific identity defect beyond the earlier
+coordinate-only checks. Two independent PDB structures each contained four
+noncoplanar Cα sites in ALA residues 1–4, chain A, model 1. Reference coordinates
+were `(0,0,0)`, `(3.8,0,0)`, `(5,3.6,0)`, `(3,5,2.8)` Å. The moving structure
+used `x'=-y+20`, `y'=x-12`, `z'=z+7`: a 90° Z rotation plus translation.
+This synthetic fixture tests geometry and identity, not a complete peptide graph.
+
+After opening `structureAll`, waiting for two ready structures and aligning,
+the original mmCIF export had correct coordinates but placed both independent
+namespaces into one block. Eight rows had only four unique atom identities
+(model, chain, residue, component, atom name, alternate ID and insertion code).
+Reopening and reexporting retained the duplicates and merged them into one chain.
+See [before-fix oracle](rotated-mmcif-before-fix.json). Atom count and coordinate
+agreement alone therefore do not establish multi-source scientific roundtrip.
+
+`molstarModifiedMmCifExportPayload` now exports each scene structure into its own
+uniquely named CIF block. Each call receives one structure and copies that
+structure's categories, avoiding the exporter context's first-model metadata
+assumption. The existing shared loader already opens one trajectory per CIF
+coordinate block in the same coordinate frame. Single-structure naming and the
+typed payload shape/count remain unchanged; multi-structure output now contains
+multiple `data_` blocks, which external consumers must support.
+
+All build and runtime acceptance ran on Gauss. The focused structure-operations
+contract passed, including independent structure/category calls, unique block
+names for matching source names, unchanged single-source output, and failure
+when any individual block is empty. `vp run build:agent-shell` completed. A fresh
+`prebuilt-static` session then repeated alignment, typed mmCIF export, opening the
+written CIF as a new tab, and typed reexport. Both post-fix outputs contain two
+blocks, eight atoms, eight distinct block-scoped atom identities and no duplicate
+identities. An independent Python token reader compared the element/coordinate
+multisets against the known reference twice: maximum coordinate error was 0 Å
+at the exported precision. The reopened viewer reported two structures and was
+visually nonblank. See [after-fix oracle](rotated-mmcif-after-fix.json).
+
+Drivers remain on Gauss at `/tmp/burette-rotation-check.cjs` and
+`/tmp/burette-rotation-audit.py`; output is `samples/rotation-export.cif` in the
+isolated validation tree. This does not prove ANISOU rotation, heterogeneous
+metadata, full bond/stereo preservation, PDB conversion, saved MOLX reopening,
+external-consumer compatibility, or the theme/accessibility matrix. These remain
+open acceptance work rather than implied by the eight-site fixture.

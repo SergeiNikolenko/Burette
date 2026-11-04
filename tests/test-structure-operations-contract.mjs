@@ -111,6 +111,33 @@ for (const helper of ["molstarStructureAtomSerials", "molstarChainAtomSerials", 
   assert.equal(reads, 1, "multi-structure failure must precede source serial collection");
 }
 
+// Separate source namespaces must stay in separate CIF blocks, including when
+// names collide; never pass unrelated models to the first-model category copier.
+{
+  const first = { metadata: 'first' }, second = { metadata: 'second' };
+  let entries = [{ name: 'same', structure: first }], emptySecond = false;
+  const calls = [];
+  const exportCif = runInNewContext(`${fn('molstarModifiedMmCifExportPayload')}\nmolstarModifiedMmCifExportPayload`, {
+    molstarCurrentStructuresForExport: () => entries,
+    molstarExportFileName: () => 'scene.cif',
+    molstarExportToMmCif: () => (name, structure, binary, options) => {
+      assert.ok(structure === first || structure === second);
+      assert.equal(binary, false);
+      assert.equal(options.copyAllCategories, true);
+      calls.push(name);
+      return emptySecond && structure === second ? '' : `data_${name}\n_entry.id ${structure.metadata}\n#\n`;
+    },
+  });
+  assert.equal(exportCif().text, 'data_same\n_entry.id first\n#\n');
+  entries.push({ name: 'same', structure: second });
+  const combined = exportCif();
+  assert.equal(combined.count, 2);
+  assert.equal(new Set(calls.slice(1)).size, 2);
+  assert.match(combined.text, /_entry.id first[\s\S]*data_burette_modified_structures_2\n_entry.id second/);
+  emptySecond = true;
+  assert.throws(exportCif, /empty mmCIF export/);
+}
+
 // A source-backed filter must not label SDF bytes as a successful PDB file.
 {
   let source = { format: "sdf", data: "Water\n  Burette\n\n  3  2  0  0  0  0            999 V2000\nM  END\n" };

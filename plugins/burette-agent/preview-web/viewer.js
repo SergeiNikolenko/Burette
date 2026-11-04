@@ -26239,8 +26239,14 @@ SOFTWARE.
     const exports = molstarCurrentStructuresForExport();
     if (!exports.length) throw new Error('No modified Mol* structure is available to save.');
     const label = exports.length === 1 ? exports[0].name : 'burette_modified_structures';
-    const structures = exports.length === 1 ? exports[0].structure : exports.map(entry => entry.structure);
-    const text = toMmCif(label, structures, false, { copyAllCategories: true });
+    // Independent sources have independent chain/entity/model namespaces. A
+    // shared block silently merges matching identifiers and copies metadata
+    // from only the first model. The loader preserves one trajectory per block.
+    const text = exports.map((entry, index) => {
+      const block = toMmCif(exports.length === 1 ? label : `${label}_${index + 1}`, entry.structure, false, { copyAllCategories: true });
+      if (typeof block !== 'string' || !block.trim()) throw new Error('Mol* returned an empty mmCIF export.');
+      return block;
+    }).join('\n');
     if (typeof text !== 'string' || !text.trim()) throw new Error('Mol* returned an empty mmCIF export.');
     return {
       name: molstarExportFileName(),
