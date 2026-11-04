@@ -1546,3 +1546,37 @@ Remaining acceptance: corrupt-archive failure UX (the guard stays closed),
 restored autoplay and other mutation paths during restoration, complete keyboard
 and screen-reader coverage, native MOLX Align/All, and native/macOS surfaces.
 The final resaved archive was audited but not reopened. No stage is promoted.
+
+### Report failed frame changes to automation (2026-11-04)
+
+The panel's frame setter catches failures to keep UI gestures from producing
+unhandled rejections and rolls back its local state. Previously,
+`set_structure_pose` ignored that outcome and returned success even when the
+restoration guard refused the change. The setter now returns a failure outcome
+with the original message; the action handler translates it into ACTION_ERROR.
+Successful action responses keep their existing shape. UI gestures still keep
+their existing error logging and rollback behavior.
+
+- The real indexed-trajectory control integration now calls the action handler:
+  a pending restore returns ACTION_ERROR and retains frame index 9; after import
+  completion, retry succeeds and displays decoded frame 10. An injected update
+  failure before commit reports its decoder error, retains frame/config index 10,
+  and retry after recovery displays frame 11. The frame-index contract also passes.
+- Browser acceptance sends the ordinary host/viewer agent-action messages while
+  holding scientific acknowledgement. The failed command returns ACTION_ERROR
+  with the restoration message and leaves the source at frame 2. After release,
+  the same command succeeds and actually displays frame 3. Reset, selected
+  comparison Next, host Save scene, fresh browser reopen and save pass.
+- [Independent oracle](trajectory-frame-action-oracle.json) records the actual
+  command replies, source index, attachment-byte preservation and Gaussian
+  coordinate comparison (60 values, maximum error 1.4971923789630637e-7 Angstrom).
+  Both runtime hashes were checked on both servers; owned servers were stopped
+  and ports checked closed. Light/dark browser scenario dimensions remain
+  1400x900 and 900x800. No native or manual IAB acceptance is claimed.
+
+Gauss scripts/logs: `/tmp/burette-frame-action{,-reopen}.cjs`,
+`/tmp/burette-frame-action-audit.py`, `/tmp/burette-frame-action-*.log`.
+The final resaved archive was audited, not reopened. Other action consumers
+(including SDF collection selection), restoration failure UX, autoplay and native
+MOLX All/Align still need their corresponding implementation/acceptance work.
+No parity stage is promoted.

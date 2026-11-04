@@ -21059,7 +21059,8 @@ SOFTWARE.
         if (activeMolstarViewer() !== viewer || activeStructurePoseSetter !== setter
           || !['sourceSha256', 'structureRef', 'modelRef', 'trajectoryRef', 'frameIndex', 'frameCount'].every(key => current[key] === expected[key])) throw new Error('The trajectory source changed. Select the current frame again.');
       }
-      await setter(index);
+      const outcome = await setter(index);
+      if (outcome?.ok === false) throw new Error(outcome.message);
       return {
         ok: true,
         command: 'set_structure_pose',
@@ -22879,6 +22880,7 @@ SOFTWARE.
         notifyDockingPoseChanged(activePose, prepared);
         // Only a committed switch outside the open list can request a guide.
         if (options.userStep === true && poseCompareGuide && !isFileListOpen()) requestContextualGuide('pose-compare', label);
+        return { ok: true };
       } catch (error) {
         writeTrajectoryControlIndex(activeConfig, prepared, previousIndex);
         activePose = previousIndex;
@@ -22890,6 +22892,7 @@ SOFTWARE.
         // already rolled back to the frame still on screen, which is the honest report.
         // eslint-disable-next-line no-console
         console.error(error);
+        return { ok: false, message: error?.message || String(error) };
       }
     };
     // Dots and files show or hide poses until the next step; a pin keeps a pose

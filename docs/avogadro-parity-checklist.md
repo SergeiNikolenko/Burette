@@ -113,3 +113,8 @@ retains scientific data through host Save scene, fresh reopen and save with a va
   held-acknowledgement browser save/reopen and independent science checks pass.
   Corrupt-archive recovery, restored autoplay and native MOLX Align/All remain open.
   No stage promotion.
+
+- 2026-11-04: [failed frame changes reach automation](avogadro-parity-evidence/stage-01-02-09-editing-io.md#report-failed-frame-changes-to-automation-2026-11-04).
+  `set_structure_pose` now returns the actual refusal instead of false success;
+  held-acknowledgement failure/retry, decoder-failure rollback, browser save/reopen
+  and independent scientific checks pass. Other command consumers remain open.

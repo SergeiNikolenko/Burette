@@ -455,7 +455,7 @@ const controlContext = vm.createContext({
   restoreDockingPoseControlsPosition: () => {}, installScrubNumberField: () => {}, installDockingPoseInteractionIsolation: () => {}, installDockingPoseHoverSuppression: () => {}, initDockingPoseControlsDrag: () => {},
   clearMolstarTrajectoryHover: () => {}, afterNativeTrajectoryPaint: () => Promise.resolve(), readNativeTrajectoryPositionFromDom: () => null,
 });
-const controlFunctions = ['nativeTrajectoryFrameCount', 'nativeTrajectoryModelTransform', 'readNativeTrajectoryPosition', 'readTrajectoryControlIndex',
+const controlFunctions = ['agentActionFailure', 'agentFrameIndexFailure', 'setStructurePoseFromAction', 'nativeTrajectoryFrameCount', 'nativeTrajectoryModelTransform', 'readNativeTrajectoryPosition', 'readTrajectoryControlIndex',
   'trajectoryControlStorageKey', 'writeTrajectoryControlIndex', 'setNativeTrajectoryPoseDirect', 'setNativeTrajectoryPose', 'installNativeTrajectoryPoseSync', 'notifyChemicalSpaceMolecule', 'notifyDockingPoseChanged', 'dockingPinnedPoseIndices', 'installDockingPoseControls'];
 const extractedControls = controlFunctions.map(name => {
   const fn = viewerSource.match(new RegExp(`\\n  (?:async )?function ${name}\\([\\s\\S]*?\\n  \\}`, 'u'))?.[0];
@@ -488,7 +488,11 @@ const nextFrameButton = controlsDocument.querySelector('[aria-label="Next frame"
 assert.equal(nextFrameButton.disabled, true);
 assert.equal(frameSlider.disabled, true);
 assert.equal(controlsDocument.querySelector('.buret-docking-poses').getAttribute('aria-busy'), 'true');
-await controlContext.activeStructurePoseSetter(10);
+const blockedAction = await controlContext.setStructurePoseFromAction({ index: 10 });
+assert.deepEqual(JSON.parse(JSON.stringify(blockedAction)), {
+  ok: false, command: 'set_structure_pose',
+  error: { code: 'ACTION_ERROR', message: 'Wait for scientific data to finish restoring, then change frames.' },
+});
 assert.equal(modelCell.transform.params.modelIndex, 9, 'programmatic stepping cannot race scientific restoration');
 assert.equal(importApi.completeImport(controlsViewer.plugin, 'stale-token'), false);
 assert.equal(nextFrameButton.disabled, true);
@@ -496,6 +500,24 @@ assert.equal(importApi.completeImport(controlsViewer.plugin, pendingToken), true
 assert.equal(nextFrameButton.disabled, false);
 assert.equal(frameSlider.disabled, false);
 assert.equal(controlsDocument.querySelector('.buret-docking-poses').getAttribute('aria-busy'), 'false');
+const retriedAction = await controlContext.setStructurePoseFromAction({ index: 10 });
+assert.deepEqual(JSON.parse(JSON.stringify(retriedAction)), { ok: true, command: 'set_structure_pose', result: { index: 10 } });
+assert.equal(modelCell.transform.params.modelIndex, 10);
+assert.equal(shownModel.frame.x[0], 10);
+// A decoder/update failure also reaches the command caller; UI state rolls back.
+const workingUpdate = controlsViewer.plugin.state.updateTransform;
+controlsViewer.plugin.state.updateTransform = async () => { throw new Error('Trajectory frame could not be decoded.'); };
+const failedUpdate = await controlContext.setStructurePoseFromAction({ index: 11 });
+assert.deepEqual(JSON.parse(JSON.stringify(failedUpdate)), {
+  ok: false, command: 'set_structure_pose',
+  error: { code: 'ACTION_ERROR', message: 'Trajectory frame could not be decoded.' },
+});
+assert.equal(modelCell.transform.params.modelIndex, 10);
+assert.equal(controlContext.readTrajectoryControlIndex(controlContext.activeConfig, restoredControls, restoredControls.poseCount), 10);
+controlsViewer.plugin.state.updateTransform = workingUpdate;
+const recoveredUpdate = await controlContext.setStructurePoseFromAction({ index: 11 });
+assert.deepEqual(JSON.parse(JSON.stringify(recoveredUpdate)), { ok: true, command: 'set_structure_pose', result: { index: 11 } });
+assert.equal(shownModel.frame.x[0], 11);
 controlContext.dockingPoseControlsDisposer();
 controlContext.dockingPoseKeydownDisposer();
 IndexedTrajectory.dispose({ b: playable });
