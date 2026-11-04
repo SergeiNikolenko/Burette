@@ -145,6 +145,17 @@ try {
   assert.equal(await read.text(), 'HEADER ALLOWED');
   const listing = await fetch(`${base}/__burette/dev-files?${new URLSearchParams({ root: allowed })}`, { headers });
   assert.deepEqual((await listing.json()).files, [join(allowed, 'ordinary.pdb')]);
+  // MOLX restoration must read the original archive before another Save scene.
+  const archive = Buffer.from('504b0506000000000000000000000000000000000000', 'hex');
+  await writeFile(join(allowed, 'scene.molx'), archive);
+  const sceneRead = await fetch(`${base}/__burette/read-file?${new URLSearchParams({ path: join(allowed, 'scene.molx') })}`, { headers });
+  assert.equal(sceneRead.status, 200);
+  assert.deepEqual(Buffer.from(await sceneRead.arrayBuffer()), archive);
+  await writeFile(join(outside, 'scene.molx'), archive);
+  await symlink(join(outside, 'scene.molx'), join(allowed, 'linked.molx'));
+  for (const path of [join(outside, 'scene.molx'), join(allowed, 'linked.molx')]) {
+    assert.equal((await fetch(`${base}/__burette/read-file?${new URLSearchParams({ path })}`, { headers })).status, 400);
+  }
   // Workspace bytes are data even when their filename is an active web type.
   for (const extension of ['html', 'htm', 'js', 'mjs', 'svg', 'xml', 'css', 'pdb']) {
     const file = join(allowed, `untrusted.${extension}`);

@@ -1023,3 +1023,60 @@ this follow-up. This is not an independent general-purpose CIF-consumer audit,
 a guarantee about arbitrary categories, or an ANISOU/tensor transform test.
 Manual download/open, full bond/stereo roundtrip, transformed PDB and aligned
 MOLX repeated save/reopen remain open. Stage 4 remains partial.
+
+### Repair repeated aligned MOLX saves in the prebuilt browser shell (2026-11-04)
+
+A real context-menu `Save scene…` download followed by reopening the archive
+exposed a second-save failure. The first MOLX correctly contained two embedded
+PDB sources and their alignment transform, and `workspace_scene_state` reported
+`{structureCount: 2, ready: true}` after reopen. mmCIF export also worked. But the
+second Save produced no download and the immediate toast was
+`ScienceSessionError: Could not read the scene source. Try opening it again.`
+This reproduced twice before fixing it; a later diagnostic captured the toast
+before its dismissal rather than treating the 45-second download timeout alone
+as proof of a save error.
+
+The prebuilt shell's `STRUCTURE_EXTENSIONS` omitted `molx`. Consequently its
+`/__burette/read-file` endpoint rejected archive-byte reads even though the viewer
+could display the MOLX through another route. `useScienceSessionRestore` retained
+the rejected restore promise; `captureWorkspaceSceneSnapshot` correctly waited
+for it before writing another archive. Added `molx` to the server's existing
+format allowlist and regenerated the packaged script using `build:agent-shell`.
+No restore guard, root restriction, symlink check or size bound was bypassed.
+
+Validation on Gauss:
+
+- A real server regression in `tests/test-agent-shell-security.mjs` failed with
+  HTTP `400 !== 200` against the previous server. With the fix it passes exact
+  archive-byte equality and rejection of direct and symlinked out-of-root MOLX
+  paths, alongside the existing token, cookie, Host/Origin and parent-swap checks.
+- `vp run build:agent-shell` and `test-packaged-plugin-mirror.mjs` passed (42
+  runtime files, 18 scripts). Source and packaged server scripts match.
+- Fresh Chromium/prebuilt-static session, 1400×900: the existing four-CA rotation
+  fixture uses moving coordinates `(-y+20, x-12, z+7)`. Typed combined open and
+  alignment were followed by the actual tab context menu `Save scene…`, browser
+  download, typed `manage_tabs/open_file`, a second menu save/download and a
+  second reopen. Both source PDB paths were temporarily absent during both
+  reopens; the test restored them in `finally`. Both save/open cycles completed.
+- Independent Python inspection of exported CIF loops found two blocks and eight
+  atoms after alignment and after each reopen, with 0 Å maximum coordinate error
+  at exported precision. Inspection of each downloaded ZIP found `state.json`,
+  exact original embedded PDB text and labels, and the expected inverse rotation
+  and translation matrix (maximum element error `3.55e-15`). Both final scene
+  state actions report two ready structures. The archived original-source hashes
+  match between rounds; archive hashes differ, as expected for session snapshots.
+
+Summary: [`aligned-molx-roundtrip-oracle.json`](aligned-molx-roundtrip-oracle.json).
+Reproduction scripts, logs, action output, PNG and the two downloaded archives
+remain under `/tmp/burette-molx-*` and
+`/tmp/burette-cif-types-20261104/samples/molx-round{1,2}.molx` on Gauss. The owned
+browser was closed and server process/listener stopped. This proves a combined,
+state-only PDB scene, not scientific attachments, full bond/stereo retention,
+all formats, native saving, or a full UI/theme/keyboard acceptance matrix.
+
+A parallel static audit identifies a separate open ANISOU issue: pinned Mol*'s
+`formats/structure/property/anisotropic.ts` exports the original
+`atom_site_anisotrop` table, while `model/structure/export/categories/atom_site.ts`
+exports coordinates through current unit conformations. Rotated displacement
+tensors therefore need their own live fixture and correction; this save fix
+makes no ANISOU claim. Stage 4 remains partial.
