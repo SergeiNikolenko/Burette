@@ -1,4 +1,5 @@
 import { parseCifText } from "@molstar/io/reader/cif/text/parser";
+import type { CifBlock } from "@molstar/io/reader/cif/data-model";
 import { cifField } from "./cif-crystal";
 import { ELEMENT_SYMBOLS } from "./elements";
 import type { MolecularAtom } from "./types";
@@ -8,7 +9,8 @@ export async function readMolecularCif(text: string): Promise<MolecularAtom[]> {
   if (text.length > 20_000_000 || new TextEncoder().encode(text).length > 20_000_000) throw new Error("Molecular CIF input exceeds 20 MB.");
   const parsed = await parseCifText(text).run();
   if (parsed.isError) throw new Error(`Invalid CIF: ${parsed.message}`);
-  const blocks = parsed.result.blocks.filter(block => cifField(block, "atom_site.Cartn_x", "atom_site_Cartn_x"));
+  const parsedBlocks: CifBlock[] = parsed.result.blocks;
+  const blocks = parsedBlocks.filter(block => cifField(block, "atom_site.Cartn_x", "atom_site_Cartn_x"));
   if (blocks.length !== 1) throw new Error("Choose a CIF with one Cartesian coordinate block.");
   const block = blocks[0];
   const site = (name: string) => cifField(block, `atom_site.${name}`, `atom_site_${name}`);

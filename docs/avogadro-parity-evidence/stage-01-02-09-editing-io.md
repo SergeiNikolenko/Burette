@@ -890,3 +890,26 @@ The full desktop typecheck is not green: after preparing the pinned Mol* source,
 it reports four typing errors in `crystal-io.ts` (lines 41, 46, 48) and one in
 `molecular-cif.ts` (line 11), outside this component. Native acceptance, general
 SDF format coverage, and the remaining parity stages remain open.
+
+## CIF reader typecheck recovery (2026-11-04)
+
+The five errors above reproduced on Gauss before this change. Both readers now
+type the parser's block collection as Mol* `CifBlock[]`, restoring inferred
+category and field types without changing coordinate parsing or admission rules.
+No casts to `any`, compiler relaxations, or runtime format conversions were added.
+
+Validation used a fresh `git archive` of `9002eb594b57e0503bfbd8ebe068fac91b4c28ca`
+plus the two changed readers, with the already installed root and desktop
+dependencies on Gauss. `vp exec tsc --noEmit -p apps/desktop/tsconfig.json` exited
+0. `vp run test:coordinate-interchange-reader` passed 5 tests, including compiled
+worker Cartesian CIF recovery and invalid-input refusals; `vp run test:crystal-io`
+passed 22 tests, including periodic reference fixtures and coordinate roundtrips.
+These checks ran remotely; no local build, test server, or browser was started.
+
+The tested reader SHA-256 values matched the local files:
+
+- `crystal-io.ts`: `e8dff40ad9aeb3a583b9bb1d82f77f86849a23d7780fefc3d20088c2bee198b9`
+- `molecular-cif.ts`: `cec9badaf39ed192fb1a585aca1af919872f86de40dee04d08a621de8808a1ba`
+
+This closes the recorded desktop typecheck failure only. It adds no browser,
+native, UI-matrix, or full-parity acceptance evidence.

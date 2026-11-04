@@ -1,4 +1,5 @@
 import { parseCifText } from "@molstar/io/reader/cif/text/parser";
+import type { CifBlock } from "@molstar/io/reader/cif/data-model";
 import { readCifCrystal } from "./cif-crystal";
 import { cartesianToFractional, readUnitCell } from "./crystal";
 import { symmetryOperationXyz, type CrystalSites, type SymmetryOperation } from "./crystal-symmetry";
@@ -38,7 +39,8 @@ export type CrystalDocument = CrystalSites & {
 async function cifTypeSymbols(text: string, header: string) {
   const parsed = await parseCifText(text).run();
   if (parsed.isError) throw new Error(`Invalid CIF: ${parsed.message}`);
-  const block = parsed.result.blocks.find((candidate) => candidate.header === header);
+  const blocks: CifBlock[] = parsed.result.blocks;
+  const block = blocks.find((candidate) => candidate.header === header);
   // Field lookup as readCifCrystal does it: DDL1 names are whole categories, DDLm names category.field.
   for (const name of ["atom_site_type_symbol", "atom_site.type_symbol"]) {
     const [categoryName, fieldName = ""] = name.split(".");
