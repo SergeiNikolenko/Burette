@@ -438,3 +438,35 @@ test("actual host viewer actions bind scientific sources and serialize their ful
     expect(f.plugin.managers.asset.assets.map(entry => String(entry.asset.id))).toEqual([f.provenance.id]);
   } finally { f.close(); }
 });
+
+test("trajectory comparisons preserve the scientific owner through MOLX and reject unrelated roots", async () => {
+  const f = await fixture("xyz"), opened = new PluginContext(DefaultPluginSpec());
+  await opened.init();
+  try {
+    const model = await f.plugin.builders.structure.createModel(f.report.trajectoryRef, { modelIndex: 1 });
+    const derived = await f.plugin.builders.structure.createStructure(model);
+    expect(() => science.binding(f.viewer)).toThrow("one source structure");
+    const tag = `burette-trajectory-comparison-v1:${f.report.structureRef}`;
+    await f.plugin.state.data.build().to(derived).tag(tag).commit();
+    expect(science.binding(f.viewer)).toEqual(f.report);
+    const archive = await science.serialize(f.viewer, f.request, options);
+    await opened.managers.snapshot.open(new File([archive], "comparisons.molx"));
+    expect(opened.managers.structure.hierarchy.current.structures.length).toBe(2);
+    expect(science.binding({ plugin: opened })).toEqual(f.report);
+    // Even identical bytes are not the same trajectory identity.
+    const raw = await f.plugin.builders.data.rawData({ data: xyz });
+    const other = await f.plugin.builders.structure.parseTrajectory(raw, "xyz");
+    const otherModel = await f.plugin.builders.structure.createModel(other, { modelIndex: 1 });
+    const unrelated = await f.plugin.builders.structure.createStructure(otherModel);
+    await f.plugin.state.data.build().to(unrelated).tag(tag).commit();
+    expect(() => science.binding(f.viewer)).toThrow("one source structure");
+    await f.plugin.state.data.build().delete(raw).commit();
+    expect(science.binding(f.viewer)).toEqual(f.report);
+    await f.plugin.state.data.build().to(derived).tag("burette-trajectory-comparison-v1:wrong-owner").commit();
+    expect(() => science.binding(f.viewer)).toThrow("one source structure");
+    await f.plugin.state.data.build().delete(model).commit();
+    expect(science.binding(f.viewer)).toEqual(f.report);
+    await opened.state.data.build().delete(f.report.modelRef).commit();
+    expect(() => science.binding({ plugin: opened })).toThrow("one source structure");
+  } finally { f.close(); opened.dispose(); }
+});

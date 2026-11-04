@@ -1416,3 +1416,45 @@ Captured graph: `/tmp/burette-molx-graph-probe.json`; execution log:
 `/tmp/burette-molx-graph-probe.log`. The owned server was terminated and its port
 checked closed. This is an architecture experiment, not an Align/All fix or a
 browser/native acceptance claim for those controls. No parity stage is promoted.
+
+### Scientific owner with native trajectory comparisons (2026-11-04)
+
+The runtime now accepts explicitly marked comparison roots alongside exactly one
+unmarked scientific source root. A comparison's root transform must contain one
+`burette-trajectory-comparison-v1:<source-structure-ref>` tag. The marker alone
+is insufficient: the comparison must use a different model under the exact same
+trajectory, an in-range integral frame index, the same atom count and source-order
+elements, and units belonging to that model. The existing complete-atom and
+source-coordinate checks remain in force. Scenes are bounded to 256 roots.
+Unmarked extra roots, unrelated trajectories even with identical parser bytes,
+ambiguous tags and orphaned comparisons are rejected. A comparison error does
+not report the original source as removed; that code remains specific to the
+source owner's provenance.
+
+The real Mol* integration test serializes and reopens the two-root MOLX and checks
+that the scientific report remains identical. It also tests unmarked roots,
+identical-but-distinct trajectories, conflicting owner tags and owner removal.
+All 21 science runtime tests and 20 focused agent-export/restore/save/ownership
+regressions pass on Gauss.
+
+A browser experiment created a frame-5 comparison via the native builder API,
+then used the ordinary host **Save scene…** menu. A fresh browser/server reopened
+that archive with two roots and source frame 2/6, then saved it again. The
+[independent oracle](trajectory-comparison-owner-oracle.json) confirms that the
+scientific manifest and every attachment byte are unchanged across the original
+and two new archives, including UUID, atom identities and trajectory binding.
+The reopened source coordinates match Gaussian frame 2 within 1.071e-7 Å.
+The changed `scene-file-actions.js` was verified on both serving runtimes.
+
+This supplies the persistence prerequisite for native comparison controls.
+The comparison was created through Mol* builders, not the still-missing All
+button. Alignment transforms, creation/removal through the user toolbar,
+playback with comparisons and full control restoration still need implementation
+and user-scenario acceptance. The final saved archive was not reopened; this is
+not native/macOS or manual IAB acceptance. No stage is promoted.
+
+Gauss logs: `/tmp/burette-comparison-runtime-test.log`,
+`/tmp/burette-comparison-regression.log`, `/tmp/burette-comparison-browser.log`,
+`/tmp/burette-comparison-reopen.log` and `/tmp/burette-comparison-audit.log`.
+Independent script: `/tmp/burette-comparison-audit.py` (hash in the oracle).
+Both owned servers were terminated and their ports checked closed.

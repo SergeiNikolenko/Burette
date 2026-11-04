@@ -131,15 +131,42 @@
     }
     return session;
   }
-  // The one structure a scientific source describes: its refs, frame, atoms in source order.
+  // Comparison roots explicitly name their scientific owner. This marker persists
+  // in MOLX, but is not sufficient by itself: every root must share the exact
+  // trajectory and complete source atom ordering. Unrelated roots remain invalid.
+  const SCIENCE_COMPARISON_TAG = 'burette-trajectory-comparison-v1:';
   function scienceBinding(viewer) {
     const plugin = viewer?.plugin;
     const session = scienceSessions.get(plugin);
     if (session?.importLoading || appendOwners.has(plugin)) throw new Error('Wait for the scene to finish opening.');
     const roots = plugin?.managers?.structure?.hierarchy?.current?.structures;
-    if (!Array.isArray(roots) || roots.length !== 1) throw new Error('Scientific data is saved with scenes of exactly one structure.');
-    const structureCell = roots[0].cell;
-    if (appendedStructureRefs.get(plugin)?.has(structureCell?.transform.ref)) throw Object.assign(new Error('The original scientific structure was removed from this scene.'), { code: 'SCIENCE_SOURCE_REMOVED' });
+    const invalid = () => { throw new Error('Scientific data is saved with one source structure and its validated trajectory comparisons.'); };
+    if (!Array.isArray(roots) || !roots.length || roots.length > 256) return invalid();
+    const marked = roots.map(root => ({ root, tags: (root.cell?.transform.tags || []).filter(tag => tag.startsWith(SCIENCE_COMPARISON_TAG)) }));
+    const owners = marked.filter(entry => !entry.tags.length);
+    if (owners.length !== 1) return invalid();
+    const owner = owners[0].root;
+    if (appendedStructureRefs.get(plugin)?.has(owner.cell?.transform.ref)) throw Object.assign(new Error('The original scientific structure was removed from this scene.'), { code: 'SCIENCE_SOURCE_REMOVED' });
+    const report = scienceBindingOfRoot(viewer, owner.cell);
+    for (const entry of marked) {
+      if (entry.root === owner) continue;
+      if (entry.tags.length !== 1 || entry.tags[0] !== SCIENCE_COMPARISON_TAG + report.structureRef) return invalid();
+      const comparison = scienceBindingOfRoot(viewer, entry.root.cell);
+      const model = plugin.state.data.cells.get(comparison.modelRef);
+      if (comparison.trajectoryRef !== report.trajectoryRef || comparison.modelRef === report.modelRef
+        || comparison.frameCount !== report.frameCount || comparison.frameCount < 2
+        || model?.transform.params?.modelIndex !== comparison.frameIndex
+        || comparison.frameIndex >= comparison.frameCount
+        || comparison.atomCount !== report.atomCount
+        || comparison.elements.some((element, index) => element !== report.elements[index])
+        || entry.root.cell.obj.data.units.some(unit => unit.model !== model.obj.data)) return invalid();
+    }
+    return report;
+  }
+  // Its refs, selected frame and atom coordinates in source order.
+  function scienceBindingOfRoot(viewer, structureCell) {
+    const plugin = viewer.plugin;
+    const session = scienceSessions.get(plugin);
     const structure = structureCell?.obj?.data;
     if (!structure) throw new Error('Wait for the scene to load.');
     const cells = plugin.state.data.cells;

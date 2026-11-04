@@ -100,4 +100,7 @@ Recent focused regression: [expected absent science owner notification](avogadro
 removes the duplicate failure toast for an appended copy without transferring science ownership.
 
 Focused trajectory fix: [disabling alignment restores scientific scene saving](avogadro-parity-evidence/stage-01-02-09-editing-io.md#restore-scientific-trajectory-after-disabling-alignment-2026-11-04)
-passed two UI cycles and a source-independent MOLX reopen. Restored MOLX Align/All controls and the stale UI-shell mmCIF text contract remain open; no stage is promoted.
+passed two UI cycles and a source-independent MOLX reopen. Restored MOLX Align/All controls remain open; the stale mmCIF contract was repaired and verified separately. No stage is promoted.
+
+Persistence prerequisite: [scientific owner with native trajectory comparisons](avogadro-parity-evidence/stage-01-02-09-editing-io.md#scientific-owner-with-native-trajectory-comparisons-2026-11-04)
+retains scientific data through host Save scene, fresh reopen and save with a validated comparison root. Toolbar integration and alignment remain open.
