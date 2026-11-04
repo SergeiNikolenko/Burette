@@ -1215,3 +1215,44 @@ signed-permutation browser scenario, not full alignment/scientific-format
 parity: general-rotation uncertainty propagation still requires covariances;
 large/rank-deficient/external-reader/native and complete UI matrices remain
 unverified.
+
+### Repeated scientific MOLX saves in fresh browser contexts (2026-11-04)
+
+At `406aedb6b`, the prebuilt-static browser shell imported the real minimized
+Gaussian 16 Water Raman fixture from `tests/fixtures/quantum/gaussian16-water-raman.fchk`.
+The remote snapshot matched all 1,528 checked runtime source files in the local
+checkout. This is acceptance of existing behavior; no product code changed.
+
+Three actual tab-menu **Save scene…** downloads, with two intervening reopens,
+retained the scientific attachments. Each reopen used a new shell session and
+a fresh Chromium process/context. The copied original FCHK was temporarily
+absent during both reopens and saves; the first MOLX was also absent during the
+second reopen/save. Both hidden files were restored afterward. This extends the
+earlier state-only aligned-PDB roundtrip to a scene carrying scientific data.
+
+The [independent Python oracle](repeated-scientific-molx-oracle.json) checks all
+three archives against the FCHK bytes and each other:
+
+- Exact 4,546-byte Original, 249-byte XYZ, scientific JSON and 81-value Float64
+  Hessian attachments, including their manifest digests.
+- Stable document UUID, three atom IDs, reference frame 0 and one-frame binding.
+- Source coordinates, atomic masses, three frequencies, 21 named Vib-E2 scalar
+  values, 27 displacement components and the symmetric Hessian. Uninterpreted
+  Vib-E2 fields are retained in Original; this does not claim semantic support
+  for all 14 source blocks.
+- The reopened **Compute → Show vibrations → Export → Spectrum as CSV** download
+  retains the FCHK provenance and matches the source scalar values.
+
+The restored Vibrations panel was inspected at 900 × 800 in dark mode and
+1,400 × 900 in light mode. Animate became available after binding completed;
+two canvas samples during animation differed by 3,187 pixels, and stopping
+returned the canvas exactly to its baseline (zero differing pixels). This is
+visual movement/rollback evidence, not an independent numerical audit of animated
+displacements. Screenshots and raw actions remain on Gauss under
+`/tmp/burette-repeat-science-*`; session JSON files are private. All three owned
+shell ports closed after the check.
+
+Stage 4 remains partial. This single-frame FCHK scenario does not close
+multi-frame reference selection, edit/save/reopen, fault/retry, MCD producer pairs,
+large/malformed inputs, all scientific readers, keyboard-only/accessibility,
+Codex UI Atlas comparison, native or hosted acceptance.

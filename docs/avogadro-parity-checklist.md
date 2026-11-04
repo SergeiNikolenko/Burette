@@ -36,6 +36,8 @@ and [manual Undo/Apply with a clean saved source](avogadro-parity-evidence/stage
 
 [Partial anisotropic components](avogadro-parity-evidence/stage-01-02-09-editing-io.md#partial-anisotropic-mmcif-components-2026-11-04) now preserve per-component CIF unknown/missing markers through two Browser reopens; [Float64 RMSD alignment](avogadro-parity-evidence/stage-01-02-09-editing-io.md#double-precision-mmcif-alignment-2026-11-04) also preserves these components after a 90-degree alignment and two reopens, without relaxing the general-rotation covariance guard.
 
+[Repeated scientific MOLX saves](avogadro-parity-evidence/stage-01-02-09-editing-io.md#repeated-scientific-molx-saves-in-fresh-browser-contexts-2026-11-04) preserve real FCHK attachments across three menu downloads and two fresh-context reopens without the original source. Restored spectrum export and animation/rollback were also exercised; broader scientific-session and accessibility matrices remain open.
+
 All rows remain **partial**, with the listed acceptance gates **untested as a
 complete matrix**. The source column names implemented foundations, not full-stage
 completion. Requirement IDs refer to the adoption contract and extension inventory.
