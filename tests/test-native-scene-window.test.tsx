@@ -125,6 +125,34 @@ test("failed exit checkpoint restores selection without publishing recovery", as
   expect({ tabs: state.tabs, selected: state.activeTabId, busy: nativePopoutBusy() })
     .toEqual({ tabs: before, selected: "notes", busy: false });
 }));
+test("cancelled app exit cannot publish a late checkpoint or change the next selected tab", async () => withListener(async () => {
+  state.documents = [{ ...doc, renderer: "xyzrender-external", recoveryPath: undefined }];
+  state.tabs = [{ ...tab, location: { ...tab.location, recoveryPath: undefined } }, { id: "notes", location: { kind: "launcher" } }];
+  state.activeTabId = "notes";
+  state.setActiveTab = (id: string) => { state.activeTabId = id; };
+  sheetArchive = { version: 1, items: [] };
+  let finishWrite!: (path: string) => void;
+  writeSheet = () => new Promise(resolve => { finishWrite = resolve; });
+  const controller = new AbortController();
+  const exiting = checkpointNativePopoutForExit(controller.signal);
+  await flush();
+  expect(nativePopoutBusy()).toBe(true);
+  controller.abort();
+  await expect(exiting).rejects.toThrow("cancelled");
+  expect({ selected: state.activeTabId, busy: nativePopoutBusy(), recovery: state.tabs[0].location.recoveryPath })
+    .toEqual({ selected: "notes", busy: false, recovery: undefined });
+  state.activeTabId = "tab";
+  finishWrite(path); await flush();
+  expect({ selected: state.activeTabId, busy: nativePopoutBusy(), recovery: state.tabs[0].location.recoveryPath, count: state.tabs.length })
+    .toEqual({ selected: "tab", busy: false, recovery: undefined, count: 2 });
+}));
+test("app exit preserves deferred scene checkpoints without waking their viewers", async () => withListener(async () => {
+  state.documents = [{ ...doc, runtimeDeferred: true }];
+  await checkpointNativePopoutForExit();
+  expect(savedSources).toHaveLength(0);
+  expect(state.tabs[0].location.recoveryPath).toBe(path);
+  expect(nativePopoutBusy()).toBe(false);
+}));
 test("receiver rejects an already-open source without modifying its tabs", async () => withListener(async () => {
   let opened = false; openIncoming = async () => { opened = true; };
   await listener({ payload: { kind: "offer", id: "collision", from: "workspace-parent", path, sourcePath: doc.path, title: "Protein", index: 0, pinned: false } });

@@ -12,7 +12,9 @@ use super::state::{QuitGuard, QuitRequestStart};
 
 pub(crate) const EXIT_PREFLIGHT_EVENT: &str = "app:exit-preflight";
 const EXIT_TRANSITION_RESUMED_EVENT: &str = "app:exit-transition-resumed";
-const EXIT_PREFLIGHT_RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
+// Scene checkpointing has a 15-second frontend deadline; allow its failure
+// response to arrive before declaring an unresponsive window.
+const EXIT_PREFLIGHT_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
 #[derive(Debug, PartialEq, Eq)]
 enum ExitPreflightOutcome {
     Ready(Vec<String>),

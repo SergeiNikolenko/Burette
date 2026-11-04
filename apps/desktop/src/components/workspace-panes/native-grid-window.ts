@@ -13,10 +13,12 @@ export function canTransferNativeGridTab(tabId: string) {
   return location?.kind === "file" && state.documents.some(item => item.path === location.path && item.renderer === "grid2d");
 }
 
-function gridRequest(documentId: string, type: "gridWindowCapture" | "gridWindowRestore" | "gridWindowReady", snapshot?: string) {
+function gridRequest(documentId: string, type: "gridWindowCapture" | "gridWindowRestore" | "gridWindowReady", snapshot?: string, signal?: AbortSignal) {
+  signal?.throwIfAborted();
   const requestId = crypto.randomUUID();
   return new Promise<string>((resolve, reject) => {
-    const cleanup = () => { clearTimeout(timeout); clearInterval(retry); window.removeEventListener("message", receive); };
+    const cleanup = () => { clearTimeout(timeout); clearInterval(retry); window.removeEventListener("message", receive); signal?.removeEventListener("abort", abort); };
+    const abort = () => { cleanup(); reject(signal?.reason); };
     const receive = (event: MessageEvent) => {
       const body = event.data?.body;
       if (event.data?.source !== "burette-grid" || body?.type !== "gridWindowResult" || body.requestId !== requestId) return;
@@ -30,23 +32,55 @@ function gridRequest(documentId: string, type: "gridWindowCapture" | "gridWindow
     }, "*");
     const timeout = setTimeout(() => { cleanup(); reject(new Error("The collection did not finish loading.")); }, 15000);
     const retry = setInterval(send, 250);
-    window.addEventListener("message", receive); send();
+    window.addEventListener("message", receive);
+    signal?.addEventListener("abort", abort, { once: true });
+    send();
   });
 }
 
-export async function captureNativeGridTab(tab: MoleculeTab) {
+export async function captureNativeGridTab(tab: MoleculeTab, signal?: AbortSignal) {
+  signal?.throwIfAborted();
   if (tab.location.kind !== "file") throw new Error("No collection is selected.");
   const path = tab.location.path;
   const document = useMoleculeStore.getState().documents.find(item => item.path === path);
   if (!document) throw new Error("The collection is no longer open.");
+  const previousTabId = useMoleculeStore.getState().activeTabId;
+  const controller = new AbortController();
+  const cancel = () => controller.abort(signal?.reason);
+  signal?.addEventListener("abort", cancel, { once: true });
+  const timeout = setTimeout(() => controller.abort(new Error("The collection did not finish loading.")), 15000);
+  let abort!: () => void;
+  const cancelled = new Promise<never>((_, reject) => {
+    abort = () => reject(controller.signal.reason);
+    controller.signal.addEventListener("abort", abort, { once: true });
+  });
   setGridDocumentCloseTransition([document.id], true);
   const release = () => setGridDocumentCloseTransition([document.id], false);
   try {
-    await waitForGridDocumentCloseTransition([document.id]);
-    const sourceVersion = await invoke<string>("grid_transfer_source_version", { documentId: document.id });
-    const snapshot = await gridRequest(document.id, "gridWindowCapture");
-    return { value: { sourceVersion, snapshot }, release };
-  } catch (error) { release(); throw error; }
+    // Selecting the tab mounts cold/restored collections. Do not ask the native
+    // registry for an index until that viewer confirms its baseline is ready.
+    useMoleculeStore.getState().setActiveTab(tab.id);
+    return await Promise.race([cancelled, (async () => {
+      await gridRequest(document.id, "gridWindowReady", undefined, controller.signal);
+      controller.signal.throwIfAborted();
+      await waitForGridDocumentCloseTransition([document.id], controller.signal);
+      controller.signal.throwIfAborted();
+      const sourceVersion = await invoke<string>("grid_transfer_source_version", { documentId: document.id });
+      controller.signal.throwIfAborted();
+      const snapshot = await gridRequest(document.id, "gridWindowCapture", undefined, controller.signal);
+      controller.signal.throwIfAborted();
+      return { value: { sourceVersion, snapshot }, release };
+    })()]);
+  } catch (error) {
+    release();
+    const store = useMoleculeStore.getState();
+    if (store.activeTabId === tab.id && previousTabId && store.tabs.some(item => item.id === previousTabId)) store.setActiveTab(previousTabId);
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    signal?.removeEventListener("abort", cancel);
+    controller.signal.removeEventListener("abort", abort);
+  }
 }
 
 export async function restoreNativeGridTab(documentId: string, value: GridWindowSnapshot) {

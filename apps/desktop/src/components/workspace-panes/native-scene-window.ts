@@ -195,8 +195,9 @@ function retainCheckpoint(tabId: string, path: string) {
 
 // Reopening a closed sheet must use the view at close time, not the previous
 // exit/transfer checkpoint. A failed capture leaves the tab and source alive.
-export async function checkpointNativeScenesForClose(tabIds: string[]) {
+export async function checkpointNativeScenesForClose(tabIds: string[], signal?: AbortSignal) {
   if (!isTauriRuntime()) return;
+  signal?.throwIfAborted();
   const store = useMoleculeStore.getState();
   const wanted = new Set(tabIds);
   const targets = store.tabs.filter(tab => wanted.has(tab.id) && tab.location.kind === "file")
@@ -214,6 +215,14 @@ export async function checkpointNativeScenesForClose(tabIds: string[]) {
   if (nativePopoutBusy()) throw new Error("Wait for the scene to finish moving.");
   const activeTabId = store.activeTabId;
   const controller = new AbortController();
+  let cancel!: () => void;
+  const cancelled = new Promise<never>((_, reject) => {
+    cancel = () => {
+      controller.abort();
+      reject(new Error("The window close was cancelled."));
+    };
+    signal?.addEventListener("abort", cancel, { once: true });
+  });
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const surfaces = targets.map(tab => activeViewerIframeForDocument(currentDocument(tab.id).id)?.closest<HTMLElement>(".page-surface"))
     .filter((surface): surface is HTMLElement => !!surface)
@@ -222,6 +231,7 @@ export async function checkpointNativeScenesForClose(tabIds: string[]) {
   for (const { surface } of surfaces) surface.inert = true;
   try {
     await Promise.race([
+      cancelled,
       (async () => {
         for (const tab of targets) {
           controller.signal.throwIfAborted();
@@ -243,6 +253,7 @@ export async function checkpointNativeScenesForClose(tabIds: string[]) {
     ]);
   } finally {
     controller.abort();
+    signal?.removeEventListener("abort", cancel);
     clearTimeout(timeout);
     for (const { surface, inert } of surfaces) surface.inert = inert;
     const current = useMoleculeStore.getState();
@@ -251,26 +262,11 @@ export async function checkpointNativeScenesForClose(tabIds: string[]) {
   }
 }
 
-export async function checkpointNativePopoutForExit() {
+export async function checkpointNativePopoutForExit(signal?: AbortSignal) {
   if (nativePopoutBusy()) throw new Error("Wait for the scene to finish moving.");
-  const activeTabId = useMoleculeStore.getState().activeTabId;
-  usePopout.setState({ busy: true });
-  try {
-    const store = useMoleculeStore.getState();
-    // A fresh rendered sheet also needs its SVG and layout, not a source reload.
-    const recoveryIds = new Set(store.documents.filter(document => document.recoveryPath || document.renderer === "xyzrender-external").map(document => document.id));
-    for (const tab of store.tabs) {
-      if (tab.location.kind !== "file" || (!recoveryIds.has(tab.location.documentId ?? "") && !isNativePopoutTab(tab.id))) continue;
-      retainCheckpoint(tab.id, await checkpoint(tab.id));
-    }
-  }
-  finally {
-    // Capturing a lazy viewer focuses its tab. Preserve the user's selection
-    // both for restoration and when a failed checkpoint cancels the exit.
-    const store = useMoleculeStore.getState();
-    if (activeTabId && store.tabs.some(tab => tab.id === activeTabId)) store.setActiveTab(activeTabId);
-    usePopout.setState({ busy: false });
-  }
+  // Use the same bounded, cancellable capture as tab close. Unopened restored
+  // tabs keep their existing checkpoint instead of loading during app exit.
+  await checkpointNativeScenesForClose(useMoleculeStore.getState().tabs.map(tab => tab.id), signal);
 }
 
 export function useNativePopoutSession(actions: ShellActions) {
