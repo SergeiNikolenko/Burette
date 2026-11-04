@@ -118,3 +118,8 @@ retains scientific data through host Save scene, fresh reopen and save with a va
   `set_structure_pose` now returns the actual refusal instead of false success;
   held-acknowledgement failure/retry, decoder-failure rollback, browser save/reopen
   and independent scientific checks pass. Other command consumers remain open.
+
+- 2026-11-04: [native All graph transaction prerequisite](avogadro-parity-evidence/stage-01-02-09-editing-io.md#native-trajectory-all-transaction-prerequisite-2026-11-04)
+  creates/removes owned native comparisons atomically; six-frame API scenario,
+  host save/reopen and independent coordinate/attachment checks pass. All/Align
+  UI integration and its lifecycle/accessibility acceptance remain open.

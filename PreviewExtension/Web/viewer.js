@@ -20895,6 +20895,7 @@ SOFTWARE.
   async function setNativeTrajectoryPoseDirect(index, poseCount) {
     const transform = nativeTrajectoryModelTransform(poseCount);
     if (!transform) return false;
+    if (window.BuretteSceneFiles?.science?.comparisonPending?.(transform.plugin)) throw new Error('Wait for the frame comparison to finish.');
     if (window.BuretteSceneFiles?.science?.importPending?.(transform.plugin)) {
       throw new Error('Wait for scientific data to finish restoring, then change frames.');
     }

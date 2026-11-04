@@ -146,6 +146,71 @@
   // in MOLX, but is not sufficient by itself: every root must share the exact
   // trajectory and complete source atom ordering. Unrelated roots remain invalid.
   const SCIENCE_COMPARISON_TAG = 'burette-trajectory-comparison-v1:';
+  const TRAJECTORY_ALL_TAG = 'burette-trajectory-all-v1:';
+  const comparisonJobs = new WeakSet();
+
+  // Preserve the source model and authored comparisons. Only additions owned by
+  // this operation are removed when leaving All; edits commit as one transaction.
+  async function setTrajectoryComparisons(viewer, enabled, represent, signal) {
+    const plugin = viewer?.plugin;
+    if (comparisonJobs.has(plugin)) throw new Error('Wait for the frame comparison to finish.');
+    if (scienceImportPending(plugin)) throw new Error('Wait for scientific data to finish restoring.');
+    const owner = scienceBinding(viewer);
+    const state = plugin.state.data;
+    const roots = plugin.managers.structure.hierarchy.current.structures;
+    const marker = TRAJECTORY_ALL_TAG + owner.structureRef;
+    const owned = roots.filter(root => root.cell.transform.tags?.includes(marker));
+    const checkCancelled = () => signal?.throwIfAborted();
+    checkCancelled();
+    if (enabled && typeof represent !== 'function') throw new Error('Frame comparison representations are unavailable.');
+    const present = new Set(roots.map(root => scienceBindingOfRoot(viewer, root.cell).frameIndex));
+    if (enabled && owner.frameCount > 256) throw new Error('This comparison would exceed the 256-structure scene limit.');
+    const missing = Array.from({ length: enabled ? owner.frameCount : 0 }, (_, index) => index).filter(index => !present.has(index));
+    if (enabled && roots.length + missing.length > 256) throw new Error('This comparison would exceed the 256-structure scene limit.');
+    comparisonJobs.add(plugin);
+    try {
+      await plugin.dataTransaction(async () => {
+        if (enabled) {
+          for (const index of missing) {
+            checkCancelled();
+            const model = await plugin.builders.structure.createModel(owner.trajectoryRef, { modelIndex: index });
+            const structure = await plugin.builders.structure.createStructure(model);
+            const frame = scienceBindingOfRoot(viewer, state.cells.get(structure.ref));
+            if (frame.frameIndex !== index || frame.atomCount !== owner.atomCount
+              || frame.elements.some((element, atom) => element !== owner.elements[atom])
+              || !frame.positions.every(Number.isFinite)) throw new Error(`Frame ${index + 1} does not preserve the source atom ordering and finite coordinates.`);
+            await state.build().to(structure).tag([SCIENCE_COMPARISON_TAG + owner.structureRef, marker]).commit();
+            await represent(structure, index);
+          }
+        } else {
+          const refs = new Set(owned.map(root => root.cell.transform.ref));
+          const update = state.build();
+          const removedModels = new Set();
+          for (const root of owned) {
+            const report = scienceBindingOfRoot(viewer, root.cell);
+            const children = Array.from(state.tree.children.get(report.modelRef) || []);
+            // A model can also own an authored sibling: do not delete that sibling.
+            if (children.length && children.every(ref => refs.has(ref))) {
+              if (!removedModels.has(report.modelRef)) update.delete(report.modelRef);
+              removedModels.add(report.modelRef);
+            } else update.delete(root.cell.transform.ref);
+          }
+          await update.commit();
+        }
+        checkCancelled();
+      }, { rethrowErrors: true });
+    } finally {
+      comparisonJobs.delete(plugin);
+    }
+    // Mol* can roll back a failed state update without throwing. Verify the
+    // committed graph rather than reporting the requested state as successful.
+    const current = scienceBinding(viewer);
+    const committed = plugin.managers.structure.hierarchy.current.structures;
+    if (current.structureRef !== owner.structureRef || current.modelRef !== owner.modelRef || current.frameIndex !== owner.frameIndex
+      || (enabled ? new Set(committed.map(root => scienceBindingOfRoot(viewer, root.cell).frameIndex)).size !== owner.frameCount
+        : committed.some(root => root.cell.transform.tags?.includes(marker)))) throw new Error('The frame comparison could not be committed.');
+    return { frameCount: owner.frameCount, structureCount: committed.length };
+  }
   function scienceBinding(viewer) {
     const plugin = viewer?.plugin;
     const session = scienceSessions.get(plugin);
@@ -263,6 +328,7 @@
     return true;
   }
   async function serializeScience(viewer, request, params) {
+    if (comparisonJobs.has(viewer?.plugin)) throw new Error('Wait for the frame comparison to finish.');
     const plugin = viewer?.plugin;
     const manager = plugin?.managers?.asset;
     const assets = request?.assets;
@@ -415,6 +481,8 @@
     science: {
       prefix: SCIENCE_PREFIX,
       binding: scienceBinding,
+      setTrajectoryComparisons,
+      comparisonPending: plugin => comparisonJobs.has(plugin),
       bindingReport: scienceBindingReport,
       sdfBinding: sdfSourceBinding,
       graphBinding: graphSourceBinding,

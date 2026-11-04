@@ -495,3 +495,57 @@ test("foreign import releases frame controls and removes readiness subscriptions
     expect(changes).toEqual([true]);
   } finally { f.close(); }
 });
+
+
+test("native All comparison transaction preserves source, retries failures and removes only owned roots", async () => {
+  const f = await fixture("xyz"), opened = new PluginContext(DefaultPluginSpec());
+  await opened.init();
+  try {
+    const originalCells = f.plugin.state.data.cells.size;
+    const render = async () => {
+      expect(science.comparisonPending(f.plugin)).toBe(true);
+      expect(science.binding(f.viewer)).toEqual(f.report);
+      await expect(science.setTrajectoryComparisons(f.viewer, false)).rejects.toThrow("comparison to finish");
+      await expect(science.serialize(f.viewer, f.request, options)).rejects.toThrow("comparison to finish");
+    };
+    await expect(science.setTrajectoryComparisons(f.viewer, true, async () => { throw new Error("representation failed"); })).rejects.toThrow("representation failed");
+    expect(f.plugin.state.data.cells.size).toBe(originalCells);
+    expect(science.binding(f.viewer)).toEqual(f.report);
+    const abort = new AbortController();
+    await expect(science.setTrajectoryComparisons(f.viewer, true, async () => abort.abort(), abort.signal)).rejects.toThrow();
+    expect(f.plugin.state.data.cells.size).toBe(originalCells);
+    expect(science.comparisonPending(f.plugin)).toBe(false);
+    expect(await science.setTrajectoryComparisons(f.viewer, true, render)).toEqual({ frameCount: 2, structureCount: 2 });
+    expect(science.binding(f.viewer)).toEqual(f.report);
+    const allCells = f.plugin.state.data.cells.size;
+    await science.setTrajectoryComparisons(f.viewer, true, render);
+    expect(f.plugin.state.data.cells.size).toBe(allCells);
+    const archive = await science.serialize(f.viewer, f.request, options);
+    await opened.managers.snapshot.open(new File([archive], "native-all.molx"));
+    expect(science.binding({ plugin: opened })).toEqual(f.report);
+    expect(await science.setTrajectoryComparisons({ plugin: opened }, false)).toEqual({ frameCount: 2, structureCount: 1 });
+    expect(science.binding({ plugin: opened })).toEqual(f.report);
+    const generated = f.plugin.managers.structure.hierarchy.current.structures.find(root => root.cell.transform.tags?.some(tag => tag.startsWith("burette-trajectory-all-v1:")))!;
+    const sibling = await f.plugin.builders.structure.createStructure(generated.model!.cell.transform.ref);
+    await f.plugin.state.data.build().to(sibling).tag(`burette-trajectory-comparison-v1:${f.report.structureRef}`).commit();
+    await science.setTrajectoryComparisons(f.viewer, false);
+    expect(f.plugin.state.data.cells.has(sibling.ref)).toBe(true);
+    expect(f.plugin.state.data.cells.has(generated.cell.transform.ref)).toBe(false);
+    await f.plugin.state.data.build().delete(generated.model!.cell.transform.ref).commit();
+    expect(f.plugin.state.data.cells.size).toBe(originalCells);
+    const model = await f.plugin.builders.structure.createModel(f.report.trajectoryRef, { modelIndex: 1 });
+    const authored = await f.plugin.builders.structure.createStructure(model);
+    await f.plugin.state.data.build().to(authored).tag(`burette-trajectory-comparison-v1:${f.report.structureRef}`).commit();
+    const authoredCells = f.plugin.state.data.cells.size;
+    await science.setTrajectoryComparisons(f.viewer, true, render);
+    await science.setTrajectoryComparisons(f.viewer, false);
+    expect(f.plugin.state.data.cells.size).toBe(authoredCells);
+    expect(f.plugin.state.data.cells.has(authored.ref)).toBe(true);
+    expect(science.binding(f.viewer)).toEqual(f.report);
+    await f.plugin.state.data.build().delete(model).commit();
+    await f.plugin.state.data.build().to(f.raw).update({ data: xyz.replace("O 1.4", "N 1.4") }).commit();
+    await expect(science.setTrajectoryComparisons(f.viewer, true, async () => {})).rejects.toThrow("does not list each atom once");
+    expect(f.plugin.state.data.cells.size).toBe(originalCells);
+    expect(science.binding(f.viewer)).toEqual(f.report);
+  } finally { f.close(); opened.dispose(); }
+});

@@ -1580,3 +1580,52 @@ The final resaved archive was audited, not reopened. Other action consumers
 (including SDF collection selection), restoration failure UX, autoplay and native
 MOLX All/Align still need their corresponding implementation/acceptance work.
 No parity stage is promoted.
+
+### Native trajectory All transaction prerequisite (2026-11-04)
+
+Added `science.setTrajectoryComparisons(viewer, enabled, represent, signal)` in
+`scene-file-actions.js`. This is the graph/persistence prerequisite for MOLX All;
+**the All and Align buttons are not connected to it yet**. The renderer callback
+owns representation styling, keeping the scientific module independent of UI style.
+
+The operation builds missing frames from the exact source trajectory, preserves
+its source model/index, reuses authored frame comparisons, and marks only its own
+additions. Off removes those additions and their unshared models; an authored
+sibling sharing a model is retained. Both directions use one Mol* transaction.
+Cancellation and representation/atom-order failures roll back additions. The
+frame count is bounded before constructing the missing-frame list, and the
+resulting scene is limited to 256 roots. Frame
+changes and scientific serialization refuse work while the transaction is busy;
+read-only source binding stays available so the pager retains its source owner.
+Postconditions also detect Mol* rollback that did not throw an exception.
+
+Validation:
+
+- Real Mol* runtime suite: 23 tests pass. New coverage includes representation
+  failure/retry, cancellation, idempotent enable, scientific save refusal while
+  busy, MOLX reopen/off, authored comparisons, shared-model sibling retention,
+  invalid atom mapping and absence of leaked model cells after rollback/removal.
+- Indexed trajectory integration passes. Browser acceptance holds a real
+  comparison transaction, verifies `set_structure_pose` returns ACTION_ERROR,
+  then releases it. API creation produces six actual roots for frames 0–5 from
+  an initial two-root Gaussian scene. Host Save scene and a fresh browser reopen
+  preserve all six. API removal returns to exactly the original two root refs,
+  followed by another host Save scene. A representation fault also rolls back
+  in the browser. These calls are API-driven, not All-button acceptance.
+- [Independent oracle](native-trajectory-all-oracle.json): exact scientific
+  manifest and attachment bytes survive both saves; 960 coordinate values across
+  before/after/reopened states match independently parsed Gaussian orientations,
+  maximum error 1.748046871696829e-7 Angstrom. Only the ephemeral import token is
+  excluded from cross-session live-binding equality. Both runtime module hashes
+  are checked on both servers; both owned servers are terminated and ports closed.
+
+Scripts/logs: Gauss `/tmp/burette-native-all{,-reopen}.cjs`,
+`/tmp/burette-native-all-audit.py`, `/tmp/burette-native-all-*.log`.
+Light 1400x900 and dark 900x800 screenshots were captured; the light creation
+screenshot was inspected. Its error toast is the deliberately refused busy frame
+command. The final two-root archive was audited but not reopened.
+
+Still open: connect All/Align controls and persisted mode state, coordinate other
+edits/tab replacement/non-scientific saves with cancellation, restore autoplay,
+resolve the host multi-file-count export gate, and perform Atlas/manual IAB,
+keyboard/screenreader and native acceptance. No parity stage is promoted.
