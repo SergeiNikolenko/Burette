@@ -1378,3 +1378,41 @@ Log: `/tmp/burette-export-baseline.log`. The temporary test file was removed.
 This repairs test coverage for the existing multi-block writer; it adds no new
 browser/native acceptance. Missing Align/All after MOLX reopen and the other
 trajectory gaps above remain open. No parity stage is promoted.
+
+### MOLX native trajectory graph probe (2026-11-04)
+
+A fresh headless browser opened `samples/unalign-fixed.molx` with the verified
+viewer SHA-256 `69fb11d799c4d236cf9e493790db05c357383cef62c9a54f9f195283617459af`.
+Align and All remain absent. The [graph oracle](molx-native-graph-oracle.json)
+confirms that this is not loss of source frames: the native XYZ parser ancestor
+contains exactly the scientific source attachment bytes, and all six native
+models are readable from the original trajectory. An independent Python parser
+of Gaussian Standard orientation tables checked 360 coordinate values, source
+atom order and elements. Maximum native coordinate error was 1.7481e-7 Å,
+within the 2e-7 Å tolerance for these Float32 coordinates.
+
+Using the real Mol* builders, the probe created a model for frame index 4 under
+the existing trajectory and a structure under that model. This preserves the
+trajectory reference without clearing or reparsing the scene. The existing
+scientific binding guard then rejected the second root with
+`Scientific data is saved with scenes of exactly one structure.` Removing only
+the temporary model subtree restored the binding, frame index 1 and every live
+coordinate exactly. The saved archive's structure/model/trajectory refs also
+match the original live binding. No temporary model was saved.
+
+This changes the implementation route: reuse the bound native trajectory for
+comparison models, rather than route MOLX bytes through the XYZ text overlay.
+The current XYZ overlay clears the plugin and creates separate one-frame sources;
+reusing it would discard this graph identity. Before enabling controls, the
+scientific contract needs an explicit distinction between the source structure
+and derived comparison structures, validated against their common trajectory.
+It must continue rejecting unrelated roots. Alignment also needs reversible
+native conformation transforms and a defined scientific save contract; merely
+relaxing the one-root guard would not establish coordinate correctness.
+
+Probe and independent oracle scripts: `/tmp/burette-molx-graph-probe.cjs` and
+`/tmp/burette-molx-graph-audit.py` on Gauss (hashes recorded in the oracle).
+Captured graph: `/tmp/burette-molx-graph-probe.json`; execution log:
+`/tmp/burette-molx-graph-probe.log`. The owned server was terminated and its port
+checked closed. This is an architecture experiment, not an Align/All fix or a
+browser/native acceptance claim for those controls. No parity stage is promoted.
