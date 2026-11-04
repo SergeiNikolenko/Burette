@@ -713,3 +713,45 @@ and typed job routes before repeating this browser scenario. PDB export needs
 its own geometry writer/fallback investigation. No runtime code changed; both
 issues remain open. Other themes, compact/keyboard, prebuilt and native were not
 validated in this pass.
+
+
+## Molecular Cartesian CIF computation after scene export (2026-11-04)
+
+Fixed the computation failure above in `workbench/structure.ts`: Cartesian
+CIF/mmCIF without fractional sites now uses a dedicated bounded molecular reader
+in the existing reader worker. Fractional CIF and VASP retain crystal expansion.
+Cartesian cell metadata does not cause periodic expansion on the molecular path.
+The reader retains atom order and coordinates and perceives the chemical graph;
+it does not claim to import declared bond topology or quantum data. Both dotted
+and flat atom-site tags use the crystal reader's shared case-insensitive field
+lookup, including its conflicting-alias rejection.
+
+The molecular path admits one coordinate block and one model, with explicit
+element symbols, finite coordinates, and fully occupied sites. Explicit nonzero
+formal charges require a charge-preserving graph (which this coordinate-only
+path does not yet provide). Alternate
+conformations and multiple models require selection before computation; they
+are rejected instead of combined. Limits: 20 MB UTF-8 input, 100,000 coordinate
+sites, numeric magnitude at most 1e6; downstream chemistry retains its 256-atom
+limit. Model/alternate selection UX and trajectory support remain separate gaps.
+
+A fresh `vite-dev` session opened the original state-only scene. Typed
+`export_scene_structure` mmCIF completed and matched the previous 1,131 exported
+bytes exactly. New tab → Open file reopened that fresh export; shipped Python
+`Workbench.observe()` reported 3 atoms, 2 perceived bonds, no source error,
+`scientific:null`. `Workbench.run('properties')` succeeded with H2O, 3 atoms and
+2 bonds. The ordinary Info → Calculate properties dialog independently showed
+H2O, 18.015 g/mol, 18.0106 Da, 3 atoms and 2 bonds. These counts/formula agree
+with the source O/H/H rows. Screenshot: `/tmp/burette-cif-properties.png`;
+[compact live record](molecular-cif-reopen-live.json).
+
+Validation: compiled-reader tests cover the exact exported bytes, dotted/flat
+fields, malformed/ambiguous inputs, size rejection and retained fractional CIF
+cell/coordinates (5 tests, 34 assertions). Source-reader and crystal regressions
+passed (16 tests, 93 assertions); typed Properties checks passed (4 tests, 31
+assertions), as did compiled CLI/MCP compatibility checks (7 tests, 990
+assertions). The latter are not an actual MCP execution of this CIF fixture.
+Typecheck and agent-shell build passed. The
+fresh live runtime was `vite-dev`, not a prebuilt/native execution. PDB export,
+other themes, compact/keyboard and broader molecular CIF selection/topology
+coverage remain open. No interface layout changed.

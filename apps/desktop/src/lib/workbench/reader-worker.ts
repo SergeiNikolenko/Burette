@@ -1,3 +1,4 @@
+import { readMolecularCif } from "../molecular-workbench/molecular-cif";
 import { parseScientificFile } from "../molecular-workbench/quantum";
 import { readCifCrystal } from "../molecular-workbench/cif-crystal";
 import { readCrystalView } from "../molecular-workbench/crystal-io";
@@ -8,6 +9,7 @@ scope.onmessage = async ({ data }) => {
   try {
     let result: unknown;
     switch (data.action) {
+      case "molecular-cif": result = await readMolecularCif(data.text); break;
       case "parse": result = parseScientificFile(data.name, data.text); break;
       case "cif": result = await readCifCrystal(data.text); break;
       case "crystal": result = await readCrystalView({ format: data.format, text: data.text }); break;

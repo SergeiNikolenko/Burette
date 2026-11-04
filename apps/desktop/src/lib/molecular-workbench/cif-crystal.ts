@@ -6,7 +6,7 @@ import type { MolecularAtom, UnitCell, Vec3 } from "./types";
 
 type SymmetryOperation = { rotation: UnitCell; translation: Vec3 };
 const wrap = (value: number) => value - Math.floor(value);
-function field(block: CifBlock, ...names: string[]) {
+export function cifField(block: CifBlock, ...names: string[]) {
   // A flat CIF loop stores complete tags as categories with an empty field;
   // a dotted loop stores category + field. Reconstruct exact admitted tags.
   const admitted = new Set(names.map(name => name.toLowerCase()));
@@ -146,19 +146,19 @@ export async function readCifCrystal(text: string, options: { block?: string } =
   if (text.length > 20_000_000) throw new Error("Crystal CIF input exceeds 20 MB.");
   const parsed = await parseCifText(text).run();
   if (parsed.isError) throw new Error(`Invalid CIF: ${parsed.message}`);
-  const blocks = parsed.result.blocks.filter((block: CifBlock) => field(block, "atom_site_fract_x", "atom_site.fract_x", "atom_site_Cartn_x", "atom_site.Cartn_x"));
+  const blocks = parsed.result.blocks.filter((block: CifBlock) => cifField(block, "atom_site_fract_x", "atom_site.fract_x", "atom_site_Cartn_x", "atom_site.Cartn_x"));
   const block = options.block ? blocks.find((block: CifBlock) => block.header === options.block) : blocks.length === 1 ? blocks[0] : undefined;
   if (!block) throw new Error(options.block ? "The selected CIF crystal block was not found." : "Choose one CIF crystal block containing atom coordinates.");
   const cellValues = ["length_a", "length_b", "length_c", "angle_alpha", "angle_beta", "angle_gamma"].map(name => {
-    const value = field(block, `cell_${name}`, `cell.${name}`);
+    const value = cifField(block, `cell_${name}`, `cell.${name}`);
     if (!value || value.rowCount !== 1) throw new Error("The CIF unit-cell parameters are incomplete.");
     return cifNumber(value.str(0));
   });
   const [a, b, c, alpha, beta, gamma] = cellValues;
   const cell = cellFromParameters({ a, b, c, alpha, beta, gamma });
-  const symops = field(block, "space_group_symop_operation_xyz", "space_group_symop.operation_xyz", "symmetry_equiv_pos_as_xyz", "symmetry_equiv.pos_as_xyz");
-  const groupNumber = field(block, "space_group_IT_number", "space_group.IT_number", "symmetry_Int_Tables_number", "symmetry.Int_Tables_number")?.str(0);
-  const groupName = field(block, "space_group_name_H-M_alt", "space_group.name_H-M_alt", "symmetry_space_group_name_H-M", "symmetry.space_group_name_H-M")?.str(0);
+  const symops = cifField(block, "space_group_symop_operation_xyz", "space_group_symop.operation_xyz", "symmetry_equiv_pos_as_xyz", "symmetry_equiv.pos_as_xyz");
+  const groupNumber = cifField(block, "space_group_IT_number", "space_group.IT_number", "symmetry_Int_Tables_number", "symmetry.Int_Tables_number")?.str(0);
+  const groupName = cifField(block, "space_group_name_H-M_alt", "space_group.name_H-M_alt", "symmetry_space_group_name_H-M", "symmetry.space_group_name_H-M")?.str(0);
   if (groupNumber && groupNumber !== "." && groupNumber !== "?") {
     const number = cifNumber(groupNumber);
     if (!Number.isInteger(number) || number < 1 || number > 230) throw new Error("The CIF space-group number must be between 1 and 230.");
@@ -173,17 +173,17 @@ export async function readCifCrystal(text: string, options: { block?: string } =
   if (groupName && ![".", "?"].includes(groupName) && groupName.replace(/\s/g, "").toUpperCase() === "P1"
     && (keys.size !== 1 || !keys.has(operation("x,y,z")))) throw new Error("The symmetry table disagrees with the CIF P1 space-group name.");
   validateOperations(operations, cell, keys);
-  const fractions = ["x", "y", "z"].map(axis => field(block, `atom_site_fract_${axis}`, `atom_site.fract_${axis}`));
+  const fractions = ["x", "y", "z"].map(axis => cifField(block, `atom_site_fract_${axis}`, `atom_site.fract_${axis}`));
   const fractional = fractions.every(Boolean);
   if (!fractional && fractions.some(Boolean)) throw new Error("The CIF fractional coordinates are incomplete.");
-  const coordinates = fractional ? fractions : ["x", "y", "z"].map(axis => field(block, `atom_site_Cartn_${axis}`, `atom_site.Cartn_${axis}`));
+  const coordinates = fractional ? fractions : ["x", "y", "z"].map(axis => cifField(block, `atom_site_Cartn_${axis}`, `atom_site.Cartn_${axis}`));
   if (!coordinates.every(Boolean)) throw new Error("The CIF atom coordinates are incomplete.");
   const count = coordinates[0]!.rowCount;
   if (!count || count > 100_000 || count * operations.length > 500_000 || coordinates.some(value => value!.rowCount !== count)) throw new Error("CIF symmetry expansion exceeds the atom budget or has inconsistent coordinate rows.");
-  const types = field(block, "atom_site_type_symbol", "atom_site.type_symbol");
-  const labels = field(block, "atom_site_label", "atom_site.label", "atom_site.label_atom_id");
-  const occupancies = field(block, "atom_site_occupancy", "atom_site.occupancy");
-  const disorder = [field(block, "atom_site_disorder_group", "atom_site.disorder_group"), field(block, "atom_site_disorder_assembly", "atom_site.disorder_assembly"), field(block, "atom_site_label_alt_id", "atom_site.label_alt_id")].filter(Boolean);
+  const types = cifField(block, "atom_site_type_symbol", "atom_site.type_symbol");
+  const labels = cifField(block, "atom_site_label", "atom_site.label", "atom_site.label_atom_id");
+  const occupancies = cifField(block, "atom_site_occupancy", "atom_site.occupancy");
+  const disorder = [cifField(block, "atom_site_disorder_group", "atom_site.disorder_group"), cifField(block, "atom_site_disorder_assembly", "atom_site.disorder_assembly"), cifField(block, "atom_site_label_alt_id", "atom_site.label_alt_id")].filter(Boolean);
   if ([types, labels, occupancies, ...disorder].some(value => value && value.rowCount !== count)) throw new Error("CIF atom metadata has inconsistent row counts.");
   const atoms: MolecularAtom[] = [], sourceAtomIndices: number[] = [], atomLabels: string[] = [];
   const alreadyPresent = siteIdentity(cell);
