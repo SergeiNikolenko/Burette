@@ -20797,6 +20797,16 @@ SOFTWARE.
       });
     });
     if (matches.length) {
+      // A selected comparison is a fixed reference frame, not the playback
+      // target. Only a validated scientific owner overrides ordinary selection;
+      // independent multi-structure scenes keep their existing selection rules.
+      if (plugin.managers?.structure?.hierarchy?.current?.structures?.length > 1) {
+        try {
+          const ownerRef = window.BuretteSceneFiles?.science?.binding(activeViewer)?.modelRef;
+          const owner = matches.find(match => match.ref === ownerRef);
+          if (owner) return owner;
+        } catch (_) { /* No validated scientific owner in this scene. */ }
+      }
       const exact = matches.filter(match => match.countMatches);
       const pool = exact.length ? exact : matches;
       return pool.find(match => match.selected) ||

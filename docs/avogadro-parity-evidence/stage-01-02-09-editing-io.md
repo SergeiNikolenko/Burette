@@ -1458,3 +1458,45 @@ Gauss logs: `/tmp/burette-comparison-runtime-test.log`,
 `/tmp/burette-comparison-reopen.log` and `/tmp/burette-comparison-audit.log`.
 Independent script: `/tmp/burette-comparison-audit.py` (hash in the oracle).
 Both owned servers were terminated and their ports checked closed.
+
+### Keep the source stepper independent of comparison selection (2026-11-04)
+
+A selected native comparison redirected Next frame to the comparison model:
+with source frame 2 and comparison frame 5, Next produced source 2/comparison 3.
+`nativeTrajectoryModelTransform` now prefers the model returned by the existing
+strict scientific binding when multiple roots are present. Independent scenes
+without a validated scientific owner retain their selection behavior. This is a
+small change at the existing shared read/write target resolver, not a new frame
+controller or a relaxation of scientific ownership checks.
+
+- Focused recovery regression covers selected comparison/cell order, stale frame
+  count, unrelated roots and runtimes without a hierarchy. The recovery suite and
+  real indexed-trajectory suite passed on Gauss.
+- Fresh browser-shell opening of `comparison-native.molx`, after scientific restore
+  acknowledgement: select only the comparison, Next -> source frame 3/comparison
+  frame 5. Previous/Next at dark 900x800 preserves that relationship. Ordinary
+  host Save scene produces `comparison-step.molx`; a new browser/server reopens
+  frame 3 with two roots, checks light 1400x900/dark 900x800 and saves again.
+- [Independent oracle](trajectory-comparison-step-oracle.json) compares original
+  Gaussian frame 3 with all 60 live coordinate values (maximum error
+  1.4971923789630637e-7 Angstrom, tolerance 2e-7). All scientific attachment bytes,
+  their hashes, UUID and metadata persist. The only manifest change is the
+  intended binding.frameIndex 1 -> 2. Saved Mol* model indices preserve the source
+  and fixed comparison through reopening. Both servers served the final viewer
+  SHA recorded in the oracle.
+- Scripts/logs on Gauss: `/tmp/burette-comparison-step{,-reopen}.cjs`,
+  `/tmp/burette-comparison-step-audit.py`, `/tmp/burette-comparison-step-*.log`.
+  Browser baseline records the previous wrong target; fixed records the source
+  target and unchanged comparison. Session files contain private credentials.
+
+**Open acceptance gap:** three early interaction attempts without waiting for
+scientific restore acknowledgement changed the source but produced no download
+from Save scene (including one 30-second download observation). Waiting for
+`science.present` and release of imported scientific attachments before stepping
+made the full save/reopen scenario pass. This suggests a restoration timing race;
+its cause, visible progress/disabled controls, and recovery still require a fix.
+Do not treat ready frame controls alone as proof of completed science restoration.
+The All/Align controls are still absent; comparisons originated through the Mol*
+builder API. Final resaved archive was audited but not reopened. No large-stack
+performance, complete accessibility, manual IAB or native acceptance is claimed.
+No parity stage is promoted.

@@ -581,3 +581,26 @@ console.log('Docking All control and agent changes keep picker checks synchroniz
   assert.deepEqual(indices, [1, 1]);
   dispose(); assert.equal(disposed, true);
 }
+
+// Selecting a derived reference must not redirect the source frame stepper.
+{
+  const fs = await import('node:fs');
+  const vm = await import('node:vm');
+  const viewer = fs.readFileSync(new URL('../PreviewExtension/Web/viewer.js', import.meta.url), 'utf8');
+  const body = viewer.match(/\n  function nativeTrajectoryModelTransform\([\s\S]*?\n  \}/u)?.[0];
+  assert.ok(body);
+  const owner = { transform: { ref: 'source-model', params: { modelIndex: 1 }, transformer: { id: 'model-from-trajectory' } } };
+  const comparison = { transform: { ref: 'comparison-model', params: { modelIndex: 4 }, transformer: { id: 'model-from-trajectory' } } };
+  let validated = true;
+  const plugin = { state: { data: { cells: new Map([['comparison-model', comparison], ['source-model', owner]]) } },
+    managers: { structure: { hierarchy: { current: { structures: [{}, {}] }, selection: { structures: [{ model: { cell: comparison } }] } } } } };
+  const scope = vm.createContext({ activeViewer: { plugin }, nativeTrajectoryFrameCount: () => 6,
+    window: { BuretteSceneFiles: { science: { binding() { if (!validated) throw Error('Unrelated roots'); return { modelRef: 'source-model' }; } } } } });
+  vm.runInContext(`${body}; globalThis.pick = nativeTrajectoryModelTransform;`, scope);
+  assert.equal(scope.pick(6).ref, 'source-model', 'scientific owner wins over selected comparison and cell order');
+  assert.equal(scope.pick(100).ref, 'source-model', 'stale frame total must not redirect playback');
+  validated = false;
+  assert.equal(scope.pick(6).ref, 'comparison-model', 'ordinary unrelated structures retain selection semantics');
+  delete plugin.managers;
+  assert.equal(scope.pick(6).ref, 'comparison-model', 'minimal runtimes without a hierarchy retain cell fallback');
+}

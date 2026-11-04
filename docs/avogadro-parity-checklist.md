@@ -104,3 +104,9 @@ passed two UI cycles and a source-independent MOLX reopen. Restored MOLX Align/A
 
 Persistence prerequisite: [scientific owner with native trajectory comparisons](avogadro-parity-evidence/stage-01-02-09-editing-io.md#scientific-owner-with-native-trajectory-comparisons-2026-11-04)
 retains scientific data through host Save scene, fresh reopen and save with a validated comparison root. Toolbar integration and alignment remain open.
+
+- 2026-11-04: selected native comparisons no longer redirect the scientific source
+  frame stepper. Browser save/fresh reopen preserves source frame 3 and fixed
+  comparison frame 5; see [stepper oracle](avogadro-parity-evidence/trajectory-comparison-step-oracle.json).
+  Early stepping before scientific restoration acknowledgement still needs
+  investigation/recovery; native MOLX Align/All remain open. No stage promotion.
