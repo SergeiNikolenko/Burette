@@ -3,7 +3,7 @@ import { RadixDropdownMenu } from "./radix-menu";
 import type { MenuItemSpec } from "./menu-types";
 import type { ShellActions, ShellViewState } from "./types";
 import { AnimatedOrbitIcon } from "./ui/animated-icons";
-import { History, SidebarLeft } from "./ui/app-icons";
+import { History, SidebarLeft, SidebarLeftHidden } from "./ui/app-icons";
 import { ShortcutTooltip } from "./shortcut-tooltip";
 import "./native-workspace-navigation.css";
 
@@ -40,7 +40,7 @@ function SidebarToggle({ open, onToggle }: { open: boolean; onToggle: () => void
   return <ShortcutTooltip label={open ? "Hide sidebar" : "Show sidebar"}>
     <button type="button" className="chrome-button native-sidebar-toggle" aria-pressed={open}
       aria-label={open ? "Hide workspace navigation" : "Show workspace navigation"} onClick={onToggle}>
-      <SidebarLeft size={18} aria-hidden />
+      {open ? <SidebarLeft size={18} aria-hidden /> : <SidebarLeftHidden size={18} aria-hidden />}
     </button>
   </ShortcutTooltip>;
 }
@@ -62,7 +62,7 @@ export function NativeWorkspaceMenu({ state, actions, onShowSidebar, fileItems =
     })),
   ];
   return <RadixDropdownMenu items={items} align="start" trigger={<ShortcutTooltip label="Workspace pages"><button type="button" className="chrome-button native-sidebar-toggle"
-    aria-label="Workspace pages"><SidebarLeft size={18} aria-hidden /></button></ShortcutTooltip>} />;
+    aria-label="Workspace pages"><SidebarLeftHidden size={18} aria-hidden /></button></ShortcutTooltip>} />;
 }
 
 // Codex sidebar anatomy: icon tool rows, a section title, then text-only rows.

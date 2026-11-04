@@ -36,9 +36,9 @@ test("shortcut search matches commands, descriptions and key combinations; clear
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
       input.dispatchEvent(new Event("input", { bubbles: true }));
     }); };
-    await fill("  DOCK  "); expect(rows()).toEqual(["Toggle bottom dock", "Toggle right dock"]);
+    await fill("  DOCK  "); expect(rows()).toEqual(["Toggle bottom dock"]);
     await fill("molecular"); expect(rows()).toEqual(["Open structures"]);
-    await fill("⌥⌘B"); expect(rows()).toEqual(["Toggle right dock"]);
+    await fill("⌥⌘B"); expect(rows()).toEqual(["Toggle right panel"]);
     expect(shell.querySelector("kbd")?.textContent).toBe("⌥⌘B");
     await fill("no-such-shortcut"); expect(rows()).toEqual([]);
     expect(shell.querySelector('[role="status"]')?.textContent).toBe("No matching shortcuts");
@@ -68,7 +68,7 @@ test("search by keystrokes records a combo and matches it exactly", async () => 
     expect(input.placeholder).toBe("Press shortcut to search");
     await press({ key: "b", code: "KeyB", metaKey: true, altKey: true });
     expect(input.value).toBe("⌥⌘B");
-    expect(rows()).toEqual(["Toggle right dock"]);
+    expect(rows()).toEqual(["Toggle right panel"]);
     await press({ key: "Escape", code: "Escape" });
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     expect(input.readOnly).toBe(false);

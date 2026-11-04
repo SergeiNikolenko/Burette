@@ -7,6 +7,7 @@
 @import "./components/ui/tooltip.atlas.css";
 @import "./components/ui/tooltip.css";
 @import "./components/ui/dropdown-menu.css";
+@import "./components/workspace-panes/native-workspace-chrome.css";
 
 @custom-variant dark (&:is(.app-shell[data-effective-theme="dark"] *));
 
@@ -91,7 +92,8 @@
   --chrome-control-height: 28px;
   --control-radius: 10px;
   --chrome-control-padding: 6px;
-  --chrome-height: 40px;
+  --workspace-chrome-height: 44px;
+  --chrome-height: var(--workspace-chrome-height);
   --chrome-drag-height: var(--chrome-height);
   font-family: var(--ui-font);
   color: var(--text);
@@ -342,16 +344,12 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
    with it in light. */
 .app-shell[data-runtime="browser"] {
   background: light-dark(
-    var(--color-token-main-surface-primary),
+    var(--color-surface-secondary),
     color-mix(in srgb, var(--color-token-main-surface-primary) 96%, white)
   );
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
-.app-shell[data-runtime="browser"] .workbench {
-  border-radius: 0;
-}
-
 .app-shell[data-hero-embed="true"] :is(
   .drag-region,
   .chrome-leading-controls,
@@ -369,11 +367,10 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   display: none;
 }
 
-/* Stops at the right dock: its header is in the title row and is its own drag
-   region, so this band must not cover the dock's tabs. */
+/* The right group's header owns its own stretch of the shared titlebar. */
 .drag-region {
   position: absolute;
-  inset: 0 var(--right-dock-edge, var(--right-dock-width, 0px)) auto 0;
+  inset: 0 var(--workspace-side-width, 0px) auto 0;
   height: var(--chrome-drag-height);
   z-index: 2;
 }
@@ -416,12 +413,10 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
      to the panel: a dragged sidebar only reaches the DOM a render later. No
      transition on `left` either — the sidebar's own toggle animation moves the
      measured edge, so easing it here again would rubber-band the strip behind
-     every drag frame. The right edge stops at the right dock, as the Codex
-     thread header stops at the side panel: the dock puts its own tabs in this
-     row, beside the trailing controls. With the dock closed the strip only
-     clears those controls (their measured width plus both 12px gaps). */
-  left: max(var(--chrome-leading-inset, 192px), calc(var(--sidebar-edge, var(--sidebar-layout-width, 0px)) + 12px));
-  right: max(calc(var(--chrome-trailing-width, 122px) + 24px), calc(var(--right-dock-edge, var(--right-dock-width, 0px)) + 12px));
+     every drag frame. The end follows the right group, or clears the
+     trailing controls when the group is hidden. */
+  left: max(var(--chrome-leading-inset, 192px), calc(var(--sidebar-edge, var(--sidebar-layout-width, 0px)) + 8px));
+  right: max(calc(var(--chrome-trailing-width, 122px) + 24px), calc(var(--workspace-side-width, 0px) + 10px));
   z-index: 4;
   height: var(--chrome-height);
   display: flex;
@@ -453,7 +448,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: background 140ms ease-out, color 140ms ease-out, transform 140ms ease-out;
+  transition: background-color var(--transition-duration-basic) var(--ease-out), color var(--transition-duration-basic) var(--ease-out), transform 100ms var(--ease-out);
 }
 .chrome-button { width: 28px; }
 .activity-indicator {
@@ -1004,8 +999,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   flex: 0 0 auto;
   color: var(--text-muted);
 }
-/* The new-tab control is a ToolbarButton; only its spacing from the tabs lives here. */
-.new-tab { margin-left: 4px; }
+.new-tab { flex-shrink: 0; }
 .chrome-button:hover { background: var(--color-background-primary-ghost-hover); color: var(--color-text); }
 .chrome-button[data-active] { background: var(--tab-active-bg); color: var(--text-secondary); }
 .chrome-button:active { transform: scale(0.94); }
@@ -1016,15 +1010,13 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   z-index: 1;
   min-width: 0;
   flex: 1;
-  height: calc(var(--chrome-control-height) + var(--chrome-control-padding) * 2);
-  padding-block: var(--chrome-control-padding);
+  height: var(--chrome-height);
   display: flex;
   align-items: center;
   gap: 4px;
   overflow: hidden;
-  scrollbar-width: none;
+  container-type: inline-size;
 }
-.tab-strip::-webkit-scrollbar { display: none; }
 .tab-history-controls { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
 .tab-scroll-region {
   min-width: 0;
@@ -1040,19 +1032,36 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .tab-scroll-region::-webkit-scrollbar { display: none; }
 .tab-strip-spacer { min-width: 0; align-self: stretch; flex: 1 1 28px; }
 .tab-shell {
+  /* Atlas distributes the usable strip width and scrolls below the 90px floor. */
+  --tab-width: clamp(90px, calc((100cqw - 32px) / var(--tab-count, 1) - 4px), 240px);
   position: relative;
   display: flex;
   align-items: center;
   flex: 0 0 auto;
-  will-change: transform;
+  width: var(--tab-width);
+}
+.tab-shell:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  inset-inline-end: -2px;
+  inset-block-start: 10px;
+  width: 1px;
+  height: 12px;
+  background: var(--color-border);
+  pointer-events: none;
+  transition: opacity var(--transition-duration-basic) var(--ease-out);
+}
+.tab-shell:is([data-active], :hover, :focus-within)::after,
+.tab-shell:has(+ .tab-shell:is([data-active], :hover, :focus-within))::after {
+  opacity: 0;
 }
 .tab-shell[data-dragging="true"] {
   z-index: 12;
 }
 .tab {
   position: relative;
-  max-width: 180px;
-  height: 28px;
+  width: 100%;
+  height: 32px;
   border: 0;
   border-radius: 10px;
   background: transparent;
@@ -1060,21 +1069,22 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   /* The right padding is exactly the close button's box plus its inset, so
      the button never slides in from outside the pill and an inactive tab
      reserves no room beyond what the hover state fills. */
-  padding: 0 26px 0 10px;
+  padding: 4px 29px 4px 10px;
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
   flex: 0 1 auto;
-  min-width: 78px;
+  min-width: 0;
   cursor: default;
-  line-height: 1.15;
+  font-weight: 430;
+  line-height: var(--menu-line-height);
   touch-action: none;
   user-select: none;
-  transition: background 140ms ease-out, color 140ms ease-out, transform 140ms ease-out;
+  transition: background-color var(--transition-duration-basic) var(--ease-out), color var(--transition-duration-basic) var(--ease-out);
 }
-.tab > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); font-weight: 400; }
-.tab:hover { background: var(--color-background-primary-ghost-hover); color: var(--color-text); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); }
-.tab.active { background: var(--tab-active-bg); color: var(--color-text); box-shadow: inset 0 0 0 0.5px var(--color-border); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); }
+.tab-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); }
+.tab:hover { background: var(--color-background-primary-ghost-hover); color: var(--color-text); }
+.tab.active { background: light-dark(var(--color-surface), var(--tab-active-bg)); color: var(--color-text); }
 .tab-shell[data-selected="true"] .tab {
   background: var(--surface-selected);
   color: var(--text-secondary);
@@ -1083,11 +1093,9 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .tab-shell[data-selected="true"] .tab.active {
   box-shadow: inset 0 0 0 1px var(--line-strong);
 }
-.tab:active { transform: scale(0.985); }
 .tab-shell[data-dragging="true"] .tab {
   background: var(--tab-active-bg);
   color: var(--text-secondary);
-  transform: none;
   opacity: 0.72;
 }
 .close-glyph {
@@ -1099,12 +1107,12 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .tab-shell > .tab:last-child { padding-right: 10px; }
 .tab-close {
   position: absolute;
-  right: 4px;
+  inset-inline-end: 7px;
   top: 50%;
   transform: translateY(-50%);
   width: 20px;
   height: 20px;
-  border-radius: 8px;
+  border-radius: 6px;
   display: grid;
   place-items: center;
   border: 0;
@@ -1114,15 +1122,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   color: var(--text-faint);
   background: transparent;
   cursor: default;
-  transition: opacity 120ms ease-out, color 120ms ease-out, background 120ms ease-out;
-}
-@container (max-width: 320px) {
-  .topbar .tab-history-controls,
-  .topbar .new-tab,
-  .topbar .tab-strip-spacer { display: none; }
-  .topbar .tab-scroll-region { width: 100%; flex: 1 1 auto; }
-  .topbar .tab-shell { min-width: 0; max-width: 100%; flex: 0 0 auto; }
-  .topbar .tab { min-width: 0; max-width: 100%; padding-inline: 10px 26px; }
+  transition: opacity var(--transition-duration-basic) var(--ease-out), color var(--transition-duration-basic) var(--ease-out), background-color var(--transition-duration-basic) var(--ease-out);
 }
 .tab-shell:hover .tab-close,
 .tab-shell:focus-within .tab-close { opacity: 1; pointer-events: auto; }
@@ -1133,11 +1133,8 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   background: transparent;
 }
 .tab-close:hover {
-  color: var(--text-secondary);
-  /* Opaque: --surface-hover is alpha-blended and lets the tab title ghost
-     through the close pill. */
-  background: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 26%), var(--bg-base));
-  box-shadow: inset 0 0 0 1px var(--line-subtle);
+  color: var(--color-text);
+  background: var(--color-background-primary-ghost-hover);
 }
 .utility-tab { min-width: auto; }
 .workspace { position: relative; min-height: 0; flex: 1; display: flex; }
@@ -1152,7 +1149,6 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .workspace-panels[data-panels-animating] > [data-panel] {
   transition: flex-grow 140ms ease-out;
 }
-.workbench-panels[data-panels-animating] > [data-panel],
 .workbench-main-panels[data-panels-animating] > [data-panel] {
   transition: flex-grow 180ms cubic-bezier(0.2, 0, 0, 1);
 }
@@ -1166,8 +1162,6 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 }
 .workspace-sidebar-panel { position: relative; height: 100%; min-height: 0; overflow: hidden; }
 .workspace-center-panel { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: flex; }
-.workbench-panels { flex: 1; min-width: 0; min-height: 0; }
-.workbench-main-panel { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
 /* The separator overhang must not scroll the stage upward when it gains focus. */
 .workbench-main-panels { overflow: clip !important; min-width: 0; min-height: 0; height: 100%; width: 100%; }
 .main-panel { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: flex; }
@@ -1192,13 +1186,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   margin: -7px 0;
   cursor: row-resize;
 }
-/* The right dock starts below the shared toolbar. Its divider and drag target
-   must start there too, so they cannot cross the Finder or dock buttons. */
-.resizable-handle.workspace-right-dock-handle {
-  margin-top: var(--chrome-height);
-}
-/* The workbench border already draws the sidebar edge as one hairline, so the
-   handle's own line only appears while it is hovered or dragged. */
+/* The divider is quiet until the user reaches for it. */
 .workspace-sidebar-handle:not(:hover, :active)::after { opacity: 0; }
 .resizable-handle::after {
   content: "";
@@ -1255,9 +1243,6 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .resizable-handle:active .resizable-handle-grip { height: 56px; }
 .resizable-handle-horizontal:hover .resizable-handle-grip,
 .resizable-handle-horizontal:active .resizable-handle-grip { height: 4px; width: 56px; }
-/* The workbench card, the stage and the docks stay opaque (`--bg-base`): only
-   the sidebar is translucent, which it gets from the shell's own `--bg`
-   showing through. The Translucent preference is a sidebar-only effect. */
 .workbench {
   min-width: 0;
   min-height: 0;
@@ -1265,16 +1250,24 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   display: flex;
   background: var(--bg-base);
   overflow: hidden;
-  border-left: 1px solid var(--workspace-edge-border);
-  border-radius: 0;
 }
-.app-shell[data-settings-mode="true"] .workbench {
-  border-radius: 0;
-  box-shadow: none;
+/* The titlebar belongs to the backdrop. The workspace below it shares one
+   inset frame, including when its right tab group is open. */
+.app-shell:not([data-settings-mode], [data-hosted-mcp-widget], [data-hero-embed]) {
+  --workspace-frame-radius: 12px;
+  --workspace-frame-start: var(--workspace-frame-radius);
 }
-.app-shell[data-hosted-mcp-widget="true"] .workbench {
-  border-radius: 0;
-  box-shadow: none;
+.app-shell[data-sidebar-open="true"] {
+  --workspace-frame-start: 0px;
+}
+.app-shell:not([data-settings-mode], [data-hosted-mcp-widget], [data-hero-embed]) .workbench {
+  margin-inline-end: 4px;
+  margin-block-end: 4px;
+  border-radius: 0 0 var(--workspace-frame-radius) var(--workspace-frame-start);
+  background: transparent;
+}
+.app-shell:not([data-settings-mode], [data-hosted-mcp-widget], [data-hero-embed]) .main-stage {
+  background: transparent;
 }
 /* Also fix previously created hosted cards whose cached wrapper used 80vh.
    The Apps host owns the available height, including expanded side panels. */
@@ -2530,6 +2523,7 @@ img.radix-menu-item-icon {
 }
 .chrome-button:focus-visible,
 .tab:focus-visible,
+.tab-close:focus-visible,
 .sidebar-product:focus-visible,
 .sidebar-settings-button:focus-visible,
 .dock-tab:focus-visible,
@@ -8286,6 +8280,8 @@ img.settings-open-destination-icon {
   .new-tab,
   .tab-history-button,
   .tab,
+  .tab-close,
+  .tab-shell::after,
   .sidebar-search-toggle,
   .sidebar-search-row,
   .project-group-row,
