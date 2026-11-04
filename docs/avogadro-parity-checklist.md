@@ -34,6 +34,8 @@ and [manual Undo/Apply with a clean saved source](avogadro-parity-evidence/stage
 
 [Identical appended structure ownership](avogadro-parity-evidence/stage-01-02-09-editing-io.md#identical-appended-structure-ownership-2026-11-04) now rejects transferring science to an appended copy after the original is removed; Browser omission and original-restoration exports were inspected independently.
 
+[Partial anisotropic components](avogadro-parity-evidence/stage-01-02-09-editing-io.md#partial-anisotropic-mmcif-components-2026-11-04) now preserve per-component CIF unknown/missing markers through two Browser reopens; aligned numeric uncertainties exposed a separate mmCIF RMSD precision limit.
+
 All rows remain **partial**, with the listed acceptance gates **untested as a
 complete matrix**. The source column names implemented foundations, not full-stage
 completion. Requirement IDs refer to the adoption contract and extension inventory.

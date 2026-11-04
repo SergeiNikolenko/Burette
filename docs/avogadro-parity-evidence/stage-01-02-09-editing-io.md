@@ -1132,3 +1132,45 @@ The final typed scene state reports two ready structures. All three owned shell
 processes from this check exited; the final listener was verified closed.
 The stage remains partial. Browser actions, fixtures, independent audit script
 and logs remain under `/tmp/burette-anisou-*` and the validation tree on Gauss.
+
+
+## Partial anisotropic mmCIF components (2026-11-04)
+
+The preceding current-frame exporter used a tensor-wide CIF value kind. A live
+prebuilt-browser fixture with two four-CA mmCIF structures and independently
+missing (`.`) / unknown (`?`) U and U_esd components exposed **17 incorrect
+components out of 96** during ordinary export, retained after two reopens. This
+was data corruption even without alignment: missing values became zeros or
+known components acquired another component's missing marker.
+
+The exporter now reads individual mmCIF source fields and emits scalar writer
+fields with independent value kinds. The six-component linear form of R U R^T
+computes known outputs and propagates missing dependencies only to affected
+outputs; `?` takes precedence over `.`. Numeric U contributions are not truncated.
+Signed permutations preserve each U_esd marker and permute numeric standard
+uncertainties without signs. General mixing still refuses numerical U_esd when
+component covariances are unavailable, including a partially populated row.
+
+Validation:
+
+- Real Mol* parser/export tests cover both markers, translation, signed 90-degree
+  rotation, partial-U general rotation with independently known components,
+  reopen, and refusal to mix partial numeric uncertainties.
+- A fresh prebuilt Chromium session opened both sources, exported twice without
+  alignment, reopened/reexported twice, and reached two ready structures. An
+  independent Python CIF parser compared all 96 components at each stage:
+  **zero mismatches**, eight atoms/eight tensor rows/two blocks, valid atom IDs,
+  and zero coordinate error. [Before](partial-anisotropic-mmcif-before-fix.json)
+  and [after](partial-anisotropic-mmcif-after-fix.json) record the oracle.
+- Production vendor and agent-shell builds, vendor-lock and packaged-mirror
+  checks passed. Independent source review found no required corrections. All
+  fixture shell processes exited and the final port closed.
+
+Separate finding: align_scene_files on integer-coordinate mmCIF inputs produced
+an off-axis rotation error of 1.08437e-7. Export with numeric U_esd then explicitly
+refused the non-permutation. The [captured MOLX matrix](partial-anisotropic-alignment-limit.json)
+is evidence of this open alignment-precision problem, not successful aligned
+partial-U_esd export. CoreCIF aliases are handled by provider scalar columns but
+were not exercised in this browser fixture. Native/external readers, arbitrary
+malformed tensor input, ellipsoid rendering and the complete UI matrix remain
+unverified.

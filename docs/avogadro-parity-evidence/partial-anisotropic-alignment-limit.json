@@ -1,0 +1,64 @@
+{
+  "fixture": "Four CA atoms with partial U and U_esd, reference coordinates below, moving=(-y+20,x-12,z+7)",
+  "referenceCoordinates": [
+    [
+      0,
+      0,
+      0
+    ],
+    [
+      4,
+      0,
+      0
+    ],
+    [
+      5,
+      4,
+      0
+    ],
+    [
+      3,
+      5,
+      3
+    ]
+  ],
+  "observedAlignmentMatrixColumnMajor": [
+    3.422853700474349e-08,
+    -0.9999999657714609,
+    2.969168888663791e-08,
+    0,
+    0.9999999657714556,
+    3.422854022439026e-08,
+    1.0843705463395804e-07,
+    0,
+    -1.0843705463395804e-07,
+    2.969168888663791e-08,
+    0.9999999999999937,
+    0,
+    11.999999924773741,
+    19.999999470389703,
+    -6.9999995510939375,
+    1
+  ],
+  "expectedMatrixColumnMajor": [
+    0,
+    -1,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    12,
+    20,
+    -7,
+    1
+  ],
+  "maxRotationElementError": 1.0843705463395804e-07,
+  "exportResult": "ACTION_ERROR: Cannot rotate anisotropic displacement uncertainties without their component covariance matrix.",
+  "status": "open; alignment precision not repaired by component-mask fix"
+}

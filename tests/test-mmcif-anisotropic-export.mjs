@@ -104,4 +104,32 @@ close(tensor(await exported(uncertain), 0, 'U_esd'), errors);
 close(tensor(await exported(Structure.transform(uncertain, translation)), 0, 'U_esd'), errors);
 close(tensor(await exported(Structure.transform(uncertain, rotation)), 0, 'U_esd'), [.002, .001, .003, .0001, .0003, .0002]);
 assert.throws(() => to_mmCIF('uncertain', Structure.transform(uncertain, generalRotation), false, { copyAllCategories: true }), /component covariance matrix/);
+// Missing components retain their own masks, independent of U11's mask.
+function componentValues(block, prefix = 'U') {
+  return components.map(c => {
+    const field = block.categories.atom_site_anisotrop.getField(`${prefix}[${c}]`);
+    const kind = field.valueKind(0);
+    return kind === 0 ? field.float(0) : kind === 1 ? '.' : '?';
+  });
+}
+for (const marker of ['.', '?']) {
+  const partial = await structureFrom(cif.replace('13 .1 .2 .3 .01 .02 .03', `13 . .2 .3 ${marker} .02 .03`));
+  const expected = ['.', .2, .3, marker, .02, .03];
+  assert.deepEqual(componentValues(await exported(partial)), expected);
+  assert.deepEqual(componentValues(await exported(Structure.transform(partial, translation))), expected);
+  const permuted = await exported(Structure.transform(partial, rotation));
+  assert.deepEqual(componentValues(permuted), [.2, '.', .3, marker, -.03, .02]);
+  assert.deepEqual(componentValues(await exported(await structureFrom(to_mmCIF('partial', Structure.transform(partial, rotation), false)))),
+    [.2, '.', .3, marker, -.03, .02]);
+  // A general Z rotation still determines U33, U13 and U23 exactly;
+  // unavailable dependencies mask only affected output components.
+  const mixed = componentValues(await exported(Structure.transform(partial, generalRotation)));
+  assert.deepEqual(mixed.slice(0, 4), [marker, marker, .3, marker]);
+  close(mixed.slice(4), [.007798083953171832, .03520212900748027]);
+}
+const partialErrors = await structureFrom(withErrors.replace(errors.join(' '), '. 0.002 0.003 ? 0.0002 0.0003'));
+assert.deepEqual(componentValues(await exported(partialErrors), 'U_esd'), ['.', .002, .003, '?', .0002, .0003]);
+assert.deepEqual(componentValues(await exported(Structure.transform(partialErrors, translation)), 'U_esd'), ['.', .002, .003, '?', .0002, .0003]);
+assert.deepEqual(componentValues(await exported(Structure.transform(partialErrors, rotation)), 'U_esd'), [.002, '.', .003, '?', .0003, .0002]);
+assert.throws(() => to_mmCIF('partial-errors', Structure.transform(partialErrors, generalRotation), false), /component covariance matrix/);
 console.log('mmCIF anisotropic export: current transforms, subsets, duplicate operators, IDs, uncertainties and reopen passed');
