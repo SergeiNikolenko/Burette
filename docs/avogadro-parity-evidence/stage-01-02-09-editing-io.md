@@ -1256,3 +1256,55 @@ Stage 4 remains partial. This single-frame FCHK scenario does not close
 multi-frame reference selection, edit/save/reopen, fault/retry, MCD producer pairs,
 large/malformed inputs, all scientific readers, keyboard-only/accessibility,
 Codex UI Atlas comparison, native or hosted acceptance.
+
+
+### Scientific trajectory frame persistence and missing controls (2026-11-04)
+
+A real Gaussian16 optimization, `tests/fixtures/quantum/gaussian/cclib-dvb_gopt.out`,
+opened as a six-frame, 20-atom scientific trajectory in the prebuilt browser shell.
+Source HEAD was `6d1987fc1`; fresh SHA-256 comparisons of 1,528 tracked runtime
+source files against the Gauss snapshot found no differences. The existing
+prebuilt distribution was reused, not claimed as a newly built immutable release.
+
+Actual UI sequence: Next frame twice → frame 3/6 → tab menu Save scene; open that
+MOLX in a fresh browser context with the original output temporarily absent;
+observe 3/6, Next frame twice → 5/6 → Save scene; open the second MOLX in another
+fresh context with both the output and first archive absent; observe 5/6 → Save
+scene again. Three saves and two intervening reopens passed. The third archive
+was inspected, not reopened. Original files were restored and the three dedicated
+servers were stopped, with their ports verified closed.
+
+The [independent oracle](multiframe-scientific-molx-oracle.json) parses Gaussian
+Standard orientation, SCF, Mulliken and dipole tables without importing the
+application parser, and cross-checks the stored cclib reference. All three saved
+XYZ/science/Original attachments are byte-identical. UUID, atom IDs and trajectory
+identity survive. Every one of the 360 coordinates in each XYZ and structured
+science payload matches the producer; so do five SCF energies, 40 Mulliken charges
+and six dipole components. The sixth geometry is a final reprint without a new
+SCF energy; no energy is invented. Missing per-frame properties remain absent.
+
+Saved scene binding indices are 2, 4 and 4, while scientific referenceFrameIndex
+remains 0. These represent different things: the visible frame and the scientific
+reference geometry. Four active-geometry mmCIF exports agree with the selected
+frames within 0.000478 Å, bounded by the writer's three-decimal coordinates;
+this is not a full-precision live-coordinate comparison. Steps layout still omits
+document-level eigenvalue-only orbitals from structured science; Original retains
+the complete producer output.
+
+**Open control regression:** the initial trajectory exposes visible Align and
+All buttons; both are absent after MOLX reopen (DOM counts 1 → 0 and screenshots).
+Frame stepping remains available: focused Next + Enter advances 5/6 → 6/6,
+and focused Previous + Space returns to 5/6. The session preparation branch in
+`PreviewExtension/Web/viewer.js` restores native frame controls but does not restore
+XYZ overlay capability; alignment also depends on raw XYZ input. This is a
+reproduced limitation, not a fix. Preserve saved scene identity and validation
+when restoring these capabilities; do not replace a session with a new XYZ scene.
+
+Screenshots at 1400×900 light and 900×800 dark show the restored molecule and
+frame stepper without visible clipping. Scratch artifacts use
+`/tmp/burette-multiframe-*`; script hashes and cleanup evidence are in the oracle.
+The control probe's first attempt failed on an ambiguous All text locator; the
+retry used the actual accessible name and passed. This does not establish full
+keyboard/assistive-technology, Atlas, native or hosted acceptance. Nonzero
+scientific referenceFrameIndex, edit/save/reopen and fault/retry matrices remain
+open. All stages remain partial.

@@ -26,6 +26,8 @@ Quick Look, iPhone or hosted acceptance from either.
 
 ## Stage ledger
 
+[Scientific trajectory MOLX frame persistence](avogadro-parity-evidence/stage-01-02-09-editing-io.md#scientific-trajectory-frame-persistence-and-missing-controls-2026-11-04) preserves all six producer frames and selected frame changes through two reopens. Align/All controls disappear after reopen; this reproduced regression remains open.
+
 Latest focused evidence includes [Generate 3D camera fitting, Undo/Redo and
 MOLX round trip](avogadro-parity-evidence/stage-01-02-09-editing-io.md#generate-3d-camera-framing-and-scene-round-trip-2026-11-03)
 and [manual Undo/Apply with a clean saved source](avogadro-parity-evidence/stage-01-02-09-editing-io.md#manual-undo-keeps-apply-available-2026-11-03).

@@ -1,0 +1,207 @@
+{
+  "status": "passed",
+  "oracle": "Independent Python Gaussian Standard orientation / SCF / Mulliken / dipole parser, cross-checked stored cclib reference; no application parser imports",
+  "source_sha256": "f4e280b32b0d9f25ac7a21cfe47e810fe5cecb8b669e8d9751329a0ffded260d",
+  "cclib_energy_max_abs_error_hartree": 5.684341886080802e-14,
+  "source_bytes": 210729,
+  "uuid": "480e76c0-733b-4f9d-ae40-1c5c535cc9d4",
+  "rounds": [
+    {
+      "round": 1,
+      "archive_sha256": "4cb424aba65b7c82fd550b692a7d62a6993ec269f30bef30acf886d5f87f4ce9",
+      "manifest_sha256": "6a38d80426ed61d9ba42d3fb6ea5da13780762ecf943ac5f005320614e86d548",
+      "attachments": {
+        "burette-science-attachment-0": "78ae8f29876d25980d73e7fcbb5a88aa5983e71baace3126387811ef054965d5",
+        "burette-science-attachment-1": "1e72bd9a98e59dded7b36d46c1a6080b1a494f2ff1e350272e9e1807a3570e9e",
+        "burette-science-attachment-2": "f4e280b32b0d9f25ac7a21cfe47e810fe5cecb8b669e8d9751329a0ffded260d"
+      },
+      "frames": 6,
+      "atoms_per_frame": 20,
+      "source_xyz_coordinate_values_exact": 360,
+      "scientific_coordinate_values_exact": 360,
+      "energies_exact": 5,
+      "charges_exact": 40,
+      "dipole_components_exact": 6,
+      "referenceFrameIndex": 0,
+      "binding_frameIndex": 2,
+      "binding": {
+        "structureRef": "im-LXJPXmg_qRiAAAAAADk",
+        "modelRef": "im-LXJPXmg_qRiAAAAAADe",
+        "trajectoryRef": "im-LXJPXmg_qRiAAAAAADP",
+        "frameIndex": 2,
+        "frameCount": 6,
+        "atomCount": 20
+      }
+    },
+    {
+      "round": 2,
+      "archive_sha256": "141d2220e0676d61e16bee3d7209799cee344c62065836a66f30608f1003f8cc",
+      "manifest_sha256": "592b077ec5da8e652aa7c5c0e681646de4c63b53925df72bb58dc861147f12fa",
+      "attachments": {
+        "burette-science-attachment-0": "78ae8f29876d25980d73e7fcbb5a88aa5983e71baace3126387811ef054965d5",
+        "burette-science-attachment-1": "1e72bd9a98e59dded7b36d46c1a6080b1a494f2ff1e350272e9e1807a3570e9e",
+        "burette-science-attachment-2": "f4e280b32b0d9f25ac7a21cfe47e810fe5cecb8b669e8d9751329a0ffded260d"
+      },
+      "frames": 6,
+      "atoms_per_frame": 20,
+      "source_xyz_coordinate_values_exact": 360,
+      "scientific_coordinate_values_exact": 360,
+      "energies_exact": 5,
+      "charges_exact": 40,
+      "dipole_components_exact": 6,
+      "referenceFrameIndex": 0,
+      "binding_frameIndex": 4,
+      "binding": {
+        "structureRef": "im-LXJPXmg_qRiAAAAAADk",
+        "modelRef": "im-LXJPXmg_qRiAAAAAADe",
+        "trajectoryRef": "im-LXJPXmg_qRiAAAAAADP",
+        "frameIndex": 4,
+        "frameCount": 6,
+        "atomCount": 20
+      }
+    },
+    {
+      "round": 3,
+      "archive_sha256": "79233bae867676797935798e85a5a3933a732df563948a34470e1d51a924b9ac",
+      "manifest_sha256": "592b077ec5da8e652aa7c5c0e681646de4c63b53925df72bb58dc861147f12fa",
+      "attachments": {
+        "burette-science-attachment-0": "78ae8f29876d25980d73e7fcbb5a88aa5983e71baace3126387811ef054965d5",
+        "burette-science-attachment-1": "1e72bd9a98e59dded7b36d46c1a6080b1a494f2ff1e350272e9e1807a3570e9e",
+        "burette-science-attachment-2": "f4e280b32b0d9f25ac7a21cfe47e810fe5cecb8b669e8d9751329a0ffded260d"
+      },
+      "frames": 6,
+      "atoms_per_frame": 20,
+      "source_xyz_coordinate_values_exact": 360,
+      "scientific_coordinate_values_exact": 360,
+      "energies_exact": 5,
+      "charges_exact": 40,
+      "dipole_components_exact": 6,
+      "referenceFrameIndex": 0,
+      "binding_frameIndex": 4,
+      "binding": {
+        "structureRef": "im-LXJPXmg_qRiAAAAAADk",
+        "modelRef": "im-LXJPXmg_qRiAAAAAADe",
+        "trajectoryRef": "im-LXJPXmg_qRiAAAAAADP",
+        "frameIndex": 4,
+        "frameCount": 6,
+        "atomCount": 20
+      }
+    }
+  ],
+  "active_geometry": [
+    {
+      "capture": "geometry",
+      "sha256": "f80b96135318400fa20b3581cef1ad86f23dacbe0a32977e003399e814c77bee",
+      "frame_index": 2,
+      "atoms": 20,
+      "coordinate_values": 60,
+      "max_abs_error_angstrom": 0.0004770000000000607,
+      "tolerance_angstrom": 0.000501
+    },
+    {
+      "capture": "reopened-frame3-geometry",
+      "sha256": "69ebc130227a807c191e6515e137e62711a89a87e0f74302df7f35458c565c81",
+      "frame_index": 2,
+      "atoms": 20,
+      "coordinate_values": 60,
+      "max_abs_error_angstrom": 0.0004770000000000607,
+      "tolerance_angstrom": 0.000501
+    },
+    {
+      "capture": "reopened-geometry",
+      "sha256": "2db45d3276be2aa7f29f01a507119feaf5530a80624686ff72a62ddc632ae346",
+      "frame_index": 4,
+      "atoms": 20,
+      "coordinate_values": 60,
+      "max_abs_error_angstrom": 0.00047799999999997844,
+      "tolerance_angstrom": 0.000501
+    },
+    {
+      "capture": "second-reopened-geometry",
+      "sha256": "fde58654a73dbaade6a40304be7eb18fee27a890efde472e2e03451f7f8ecd25",
+      "frame_index": 4,
+      "atoms": 20,
+      "coordinate_values": 60,
+      "max_abs_error_angstrom": 0.00047799999999997844,
+      "tolerance_angstrom": 0.000501
+    }
+  ],
+  "all_attachment_bytes_and_identity_stable": true,
+  "ui_control_limit": "Parent live UI observed Align and All controls on initial XYZ toolbar but absent on restored MOLX; this oracle proves data/frame preservation, not full toolbar parity.",
+  "expected_omissions": [
+    "Sixth frame is final geometry reprint without new SCF energy; no energy invented.",
+    "Only frames0 and5 contain Mulliken charges and dipole; other frames retain absence.",
+    "Steps layout omits document-level eigenvalue-only orbitals from structured science; complete producer Original retains them."
+  ],
+  "browser_acceptance": {
+    "source_head": "6d1987fc17c86d2c4ab96ee15cb7739fa1132f03",
+    "runtime": "prebuilt-static",
+    "runtime_source_files_compared": 1528,
+    "runtime_source_mismatches": 0,
+    "source_manifest_sha256": "bdbe5d9b72b608a56a32fdc018bc5ca0a671459ad1cf526d78855798d6576c7b",
+    "save_count": 3,
+    "intervening_fresh_context_reopens": 2,
+    "source_absent_during_first_reopen": true,
+    "source_and_round1_absent_during_second_reopen": true,
+    "referenceFrameIndex_nonzero_tested": false,
+    "viewports": [
+      {
+        "width": 1400,
+        "height": 900,
+        "theme": "light"
+      },
+      {
+        "width": 900,
+        "height": 800,
+        "theme": "dark"
+      }
+    ],
+    "toolbar": {
+      "original": {
+        "alignCount": 1,
+        "allCount": 1,
+        "alignVisible": true,
+        "allVisible": true,
+        "body": "Seq\nStyle: Auto\nH\nSEQ\nFrame 1 / 6\nAlign\nAll\n20\nfps\nLoop\nSmooth\nNext frame"
+      },
+      "restored": {
+        "alignCount": 0,
+        "allCount": 0,
+        "alignVisible": false,
+        "allVisible": false,
+        "body": "Seq\nStyle: Auto\nH\nSEQ\nFrame 5 / 6\n20\nfps\nLoop\nSmooth\nNext frame",
+        "keyboard": {
+          "enterNext": 6,
+          "spacePrevious": 5
+        }
+      }
+    },
+    "cleanup": [
+      {
+        "pid": 1881887,
+        "port": 40793,
+        "closed": true,
+        "session_verified": true
+      },
+      {
+        "pid": 2205152,
+        "port": 39837,
+        "closed": true,
+        "session_verified": true
+      },
+      {
+        "pid": 3010962,
+        "port": 44723,
+        "closed": true,
+        "session_verified": true
+      }
+    ],
+    "scratch_scripts": {
+      "burette-multiframe-check.cjs": "32ced21db56fed90f12705c25af7442e9d8d4ad2b83dda564b787f6913859b92",
+      "burette-multiframe-check2.cjs": "7be086a4db40860e311bbf915f8f6ceda83b375796fb9654b4b10b97ac741631",
+      "burette-multiframe-check3.cjs": "2413296ab2480b8d4e8ba5e7b8b7c8a32833bc0fa1cabb0ffdbbd381166aa30f",
+      "burette-multiframe-controls.cjs": "9355bfcc7e6e600ceae3a462a7ac86cc56c38454ceaec0ec279e17289d9a3df6",
+      "burette-multiframe-audit.py": "6b6a4ac1bf614458eaff27757d950111974d8efabeebee709dffe8568a57f4d3"
+    }
+  }
+}
