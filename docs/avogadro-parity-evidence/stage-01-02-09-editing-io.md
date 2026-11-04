@@ -913,3 +913,33 @@ The tested reader SHA-256 values matched the local files:
 
 This closes the recorded desktop typecheck failure only. It adds no browser,
 native, UI-matrix, or full-parity acceptance evidence.
+
+## Aligned two-structure mmCIF export (2026-11-04)
+
+The prebuilt browser shell generated at `9002eb594` was exercised on Gauss with
+remote Chromium. Open `samples/mini.pdb` and a second copy with each atom's x
+coordinate increased by 20 Å using `open_docking_view`, `sceneMode:structureAll`.
+Wait for `workspace_scene_state` to report two structures before exporting;
+completion of `open_docking_view` alone does not establish renderer readiness.
+Export mmCIF, run `align_scene_files`, then export mmCIF again. All three actions
+completed. The onboarding dialog was dismissed for the final browser capture.
+
+An independent Python token reader extracted element symbols and Cartesian
+coordinates from the exported atom-site loops. Both exports contain 18 atoms
+in the same element order. Before alignment all nine corresponding atom pairs
+are 20 Å apart; afterward every pair has identical exported coordinates. The
+reference structure's maximum displacement is 0 Å. Thus this translation-only
+fixture proves mmCIF writes the aligned geometry rather than the original second
+file's coordinates. See [numeric oracle](aligned-mmcif-export-oracle.json).
+
+Ordinary `append_scene_files` into a single-file scene is a different route:
+its alignment command returned `ACTION_ERROR` (no alignment controller), and
+the unchanged 18-atom export retained the 20 Å separation. This does not prove
+a failure of the combined-scene UI, which explicitly opens `structureAll`.
+
+This check does not cover rotation, ANISOU transformation, transformed PDB
+export, manual download, saved MOLX reopening, or the theme/accessibility matrix.
+The remote drivers are `/tmp/burette-transform-combined.cjs` and
+`/tmp/burette-transform-oracle.py`; the successful screenshot and exported CIF
+are `/tmp/burette-transform-aligned.png` and `/tmp/burette-transform-export.cif`.
+No application code changed and the broader parity stages remain partial.
