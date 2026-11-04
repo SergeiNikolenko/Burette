@@ -46,9 +46,13 @@ const { createDocumentCloseShellActions } = await import("../apps/desktop/src/ho
 const { useMoleculeStore } = await import("../apps/desktop/src/stores/molecule-store.ts");
 const document = { id: "doc", path: "/tmp/source.pdb", title: "source.pdb", extension: "pdb", renderer: "molstar", runtimePath: "/tmp/preview.html" };
 const controller = useSourceEditingController({ activeDocument: document, preferences: {},
-  pushErrorStatus: error => errors.push(error), setDockOpen() {}, setDockActiveTab() {},
+  pushErrorStatus: error => errors.push(error),
 });
 await controller.beginEditing(document);
+const sourceTab = useMoleculeStore.getState().tabs.find(tab => tab.pane === "right" && tab.location.kind === "tool" && tab.location.tool === "text");
+assert.equal(sourceTab?.location.sourcePath, document.path, "Edit Source stays bound to the requested molecule");
+await controller.beginEditing(document);
+assert.deepEqual(useMoleculeStore.getState().tabs.filter(tab => tab.pane === "right").map(tab => tab.id), [sourceTab.id], "Editing the same source reuses its right-group tab");
 controller.updateDraft(document, "ATOM draft\n");
 const draft = sessions[document.path];
 
@@ -201,7 +205,7 @@ assert.equal(sessions[document.path].content, transfer.content);
 assert.equal(sessions[document.path].dirty, true);
 
 const receiver = useSourceEditingController({ activeDocument: document, preferences: {},
-  pushErrorStatus: error => errors.push(error), setDockOpen() {}, setDockActiveTab() {},
+  pushErrorStatus: error => errors.push(error),
 });
 openSource = async () => ({ handleId: "receiver-handle", content: "ATOM externally changed\n", previewMode: "live",
   revision: { modifiedAt: 10, byteCount: 24, contentHash: "external" } });
@@ -244,7 +248,7 @@ for (const renderer of ["molstar", "xyzrender-external", "grid2d"]) {
   const previewDocument = { ...document, id: `preview-${renderer}`, renderer };
   const previewController = useSourceEditingController({ activeDocument: previewDocument,
     preferences: { rendererMode: renderer === "molstar" ? "xyzrender-external" : "molstar", theme: "dark" },
-    pushErrorStatus: error => errors.push(error), setDockOpen() {}, setDockActiveTab() {},
+    pushErrorStatus: error => errors.push(error),
   });
   await previewController.beginEditing(previewDocument);
   previewController.updateDraft(previewDocument, "ATOM      1  N   GLY A   1      -1.204   0.176   0.000  1.00 20.00           N\nEND\n");

@@ -86,7 +86,7 @@ test("explicit transfer authenticates the source and keeps the pane camera indep
   document.body.replaceChildren();
 });
 
-test.each(["reply", "disconnected", "timeout", "closed"])("delayed existing-document camera capture stays in workspace A after switching to B (%s)", async outcome => {
+test.each(["reply", "disconnected", "timeout", "closed"])("delayed bottom preview keeps the camera scoped to its original source view (%s)", async outcome => {
   for (const name of ["window", "navigator", "HTMLElement", "Element", "Node", "Event", "localStorage"] as const) {
     Object.defineProperty(globalThis, name, { configurable: true, value: name === "window" ? browser : browser[name] });
   }
@@ -94,7 +94,7 @@ test.each(["reply", "disconnected", "timeout", "closed"])("delayed existing-docu
   const { act, createElement } = await import("react");
   const { createRoot } = await import("react-dom/client");
   const { useMoleculeStore } = await import("../apps/desktop/src/stores/molecule-store");
-  const { useTabWorkspaceStore } = await import("../apps/desktop/src/stores/tab-workspace-store");
+  const { useTabWorkspaceStore, WINDOW_TOOLS_ID } = await import("../apps/desktop/src/stores/tab-workspace-store");
   const { useDockLayout } = await import("../apps/desktop/src/hooks/use-dock-layout");
   const { useAppDockPayloadOpen } = await import("../apps/desktop/src/hooks/use-app-dock-payload-open");
   const doc = { id: `shared-${outcome}`, path: `/shared-${outcome}.pdb`, renderer: "molstar" } as ViewerDocument;
@@ -109,7 +109,7 @@ test.each(["reply", "disconnected", "timeout", "closed"])("delayed existing-docu
     const { captureDockTarget } = useDockLayout(active);
     open = useAppDockPayloadOpen({
       captureDockTarget, documents: [doc], textDocuments: [], preferences: {} as never,
-      addBackgroundDocuments() {}, addBackgroundTextDocuments() {}, openDocumentTab() {},
+      addBackgroundDocuments() {}, addBackgroundTextDocuments() {},
       detectContentSpectrumPaths: async () => new Set(), openStructureRecordDocuments: async () => ({ opened: [], errors: [] }),
       pushStatus() {}, pushErrorStatus: error => { throw error; }, rememberRecentStructures() {},
     });
@@ -123,7 +123,7 @@ test.each(["reply", "disconnected", "timeout", "closed"])("delayed existing-docu
   let pending!: Promise<void>;
   try {
     await act(async () => root.render(createElement(Harness)));
-    await act(async () => { pending = open({ area: "right", tabKind: "files", payload: { paths: [doc.path], records: [] } }); });
+    await act(async () => { pending = open({ area: "bottom", tabKind: "files", payload: { paths: [doc.path], records: [] } }); });
     expect(requestId).not.toBe("");
     await act(async () => useMoleculeStore.setState({ activeTabId: "B", ...(outcome === "closed" ? { tabs: tabs.slice(1) } : {}) }));
     if (outcome === "disconnected") frame.remove();
@@ -135,14 +135,12 @@ test.each(["reply", "disconnected", "timeout", "closed"])("delayed existing-docu
     });
     const workspaces = useTabWorkspaceStore.getState().workspaces;
     expect(workspaces.B).toBeUndefined();
-    if (outcome === "closed") expect(workspaces.A).toBeUndefined();
-    else {
-      expect(workspaces.A.right.documentId).toBe(doc.id);
-      expect(workspaces.A.droppedStructures.map(drop => drop.payload.paths)).toEqual([[doc.path]]);
-    }
+    expect(workspaces.A).toBeUndefined();
+    expect(workspaces[WINDOW_TOOLS_ID].bottom.documentId).toBe(doc.id);
+    expect(workspaces[WINDOW_TOOLS_ID].droppedStructures.map(drop => drop.payload.paths)).toEqual([[doc.path]]);
     const panel = document.createElement("aside");
     panel.className = "dock-panel";
-    panel.dataset.area = "right";
+    panel.dataset.area = "bottom";
     panel.dataset.workspaceId = "A";
     panel.innerHTML = `<iframe class="viewer-iframe" data-document-id="${doc.id}" data-read-only="true"></iframe>`;
     document.body.append(panel);

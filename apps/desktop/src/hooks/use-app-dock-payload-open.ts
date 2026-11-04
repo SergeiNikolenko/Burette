@@ -70,7 +70,7 @@ export function useAppDockPayloadOpen({
   textDocuments,
 }: UseAppDockPayloadOpenOptions) {
   return useCallback(async (input: DockDropInput) => {
-    const { workspaceId, addDockDrop, setDockDocument, setDockTool } = captureDockTarget();
+    const { workspaceId, addDockDrop, setDockDocument, setDockTool, openRightInputs } = captureDockTarget();
     const ketcherItem = input.payload.items?.find((item) => item.kind === "ketcher") ?? null;
     const itemPaths = (input.payload.items ?? [])
       .map((item) => item.path)
@@ -79,13 +79,13 @@ export function useAppDockPayloadOpen({
     const cleanRecords = input.payload.records;
     if (!dockTabLoadsDroppedDocument(input.tabKind)) {
       addDockDrop(input);
-      pushStatus(`Added input to ${DOCK_TAB_LABELS[input.tabKind]} in ${input.area === "right" ? "right dock" : "bottom dock"}`);
+      pushStatus(`Added input to ${DOCK_TAB_LABELS[input.tabKind]} in ${input.area === "right" ? "right panel" : "bottom dock"}`);
       return;
     }
     if (ketcherItem && cleanPaths.length === 0 && cleanRecords.length === 0) {
       setDockTool(input.area, "ketcher");
       addDockDrop(input);
-      pushStatus(`Opened Ketcher in ${input.area === "right" ? "right dock" : "bottom dock"}`);
+      pushStatus(`Opened Ketcher in ${input.area === "right" ? "right panel" : "bottom dock"}`);
       return;
     }
     if (cleanPaths.length === 0 && cleanRecords.length === 0) {
@@ -97,18 +97,22 @@ export function useAppDockPayloadOpen({
       ? { existingDocumentId: null, unopenedPaths: cleanPaths }
       : resolveDockDropPaths(cleanPaths, documents, textDocuments);
     const dockPreferences = { ...preferences, rendererMode: input.rendererMode ?? "auto" as const };
-    if (existingDocumentId) {
+    const existingRightIds = input.area === "right" ? cleanPaths.map(path =>
+      [...documents, ...textDocuments].find(document => document.path === path)?.id,
+    ).filter((id): id is string => Boolean(id)) : [];
+    if (existingDocumentId && input.area === "bottom") {
       const source = documents.find(document => document.id === existingDocumentId);
       if (input.tabKind === "files" && source) await prepareDockCameraTransfer(input.area, source, workspaceId);
       setDockDocument(input.area, existingDocumentId);
     }
     if (unopenedPaths.length === 0 && cleanRecords.length === 0) {
+      if (existingRightIds.length) openRightInputs(existingRightIds, input.tabKind);
       addDockDrop(input);
-      pushStatus(`Opened existing document in ${input.area === "right" ? "right dock" : "bottom dock"}`);
+      pushStatus(`Opened existing document in ${input.area === "right" ? "right panel" : "bottom dock"}`);
       return;
     }
 
-    pushStatus(`Opening in ${input.area === "right" ? "right dock" : "bottom dock"}...`);
+    pushStatus(`Opening in ${input.area === "right" ? "right panel" : "bottom dock"}...`);
     let unmaterializedDocuments: Array<ViewerDocument | TextFileDocument> = [];
     try {
       const dockOpenPaths = unopenedPaths;
@@ -240,12 +244,17 @@ export function useAppDockPayloadOpen({
         unmaterializedDocuments = unmaterializedDocuments.filter((document) => !materializedTextClaims.has(document));
       }
       const firstDockDocumentId = documentPaths[0] ? dockMediaId(documentPaths[0]) : openedStructures[0]?.id ?? openedTextDocuments[0]?.id ?? existingDocumentId;
-      if (firstDockDocumentId) {
+      if (input.area === "right" && firstDockDocumentId) {
+        const ordered = [...documentPaths.map(dockMediaId), ...openedStructures.map(document => document.id),
+          ...openedTextDocuments.map(document => document.id), ...existingRightIds];
+        openRightInputs(ordered, input.tabKind);
+        addDockDrop(input);
+      } else if (firstDockDocumentId) {
         setDockDocument(input.area, firstDockDocumentId);
         addDockDrop(input);
       }
       const openedCount = openedStructures.length + openedTextDocuments.length + documentPaths.length;
-      const dockLabel = input.area === "right" ? "right dock" : "bottom dock";
+      const dockLabel = input.area === "right" ? "right panel" : "bottom dock";
       const openedText = `Opened ${openedCount} item${openedCount === 1 ? "" : "s"} in ${dockLabel}`;
       if (errors.length > 0) {
         pushStatus(openedCount > 0 ? `${openedText}. ${summarizeErrors(errors)}` : summarizeErrors(errors), "error", errors);

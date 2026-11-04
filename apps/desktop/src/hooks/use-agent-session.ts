@@ -7,7 +7,7 @@ import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 import type { DockArea } from "../lib/dock";
 import { executeAgentTabAction, type AgentTabActions } from "../lib/agent-tab-actions";
 import { agentGridState, recordAgentGridState } from "../lib/agent-grid-state";
-import { setAgentWorkspacePanel } from "../lib/agent-workspace-panel";
+import { setAgentRightPanel, setAgentWorkspacePanel } from "../lib/agent-workspace-panel";
 import { perfNow, tracePerf } from "../lib/perf-trace";
 import type { MoleculeTab } from "../stores/molecule-store";
 import { createSelectionContext } from "../../../burette-public-plugin/lib/hosted-context";
@@ -665,7 +665,8 @@ async function renderPanel(
     );
   }
   const area: DockArea = action.area === "bottom" ? "bottom" : "right";
-  setDockDocument(area, document.id);
+  if (area === "right") setAgentRightPanel(true, document.id);
+  else setDockDocument(area, document.id);
   const panel = {
     id: `agent-panel:${area}:${kind}:${document.title}`,
     area,

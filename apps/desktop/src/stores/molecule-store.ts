@@ -1,4 +1,5 @@
 import { moveTabHistory } from "../lib/tab-navigation";
+import { useWorkspacePanesStore } from "./workspace-panes-store";
 import { rememberClosedTab } from "./closed-tabs";
 import { create } from "zustand";
 import { createJSONStorage, persist, type PersistStorage } from "zustand/middleware";
@@ -104,7 +105,7 @@ type MoleculeState = {
   setActiveDocument: (id: string) => void;
   moveTab: (id: string, toIndex: number) => void;
   placeTab: (id: string, pane: TabPane | null) => void;
-  openScreenTab: (location: Location, pane?: TabPane | null, options?: { newTab: boolean }) => void;
+  openScreenTab: (location: Location, pane?: TabPane | null, options?: { newTab: boolean; focus?: boolean }) => string;
   togglePinnedTab: (id: string) => void;
   renameTab: (id: string, title: string) => void;
   promotePreviewTab: (id: string) => void;
@@ -453,8 +454,13 @@ function stateAfterClosingTabs(state: MoleculeState, wanted: Set<string>, additi
   const documents = state.documents.filter(keep);
   const textDocuments = state.textDocuments.filter(keep);
   const focusedPane = state.tabs.find(tab => tab.id === state.activeTabId)?.pane ?? null;
-  const sibling = tabs.find(tab => tab.location.kind !== "settings" && (tab.pane ?? null) === focusedPane);
-  const activeTabId = activeTabIdOrFirst(tabs, wanted.has(state.activeTabId ?? "") ? sibling?.id ?? null : state.activeTabId);
+  const group = state.tabs.filter(tab => tab.location.kind !== "settings" && (tab.pane ?? null) === focusedPane);
+  const focusedIndex = group.findIndex(tab => tab.id === state.activeTabId);
+  const sibling = group.slice(focusedIndex + 1).find(tab => !wanted.has(tab.id))
+    ?? group.slice(0, focusedIndex).reverse().find(tab => !wanted.has(tab.id));
+  const mainSelection = useWorkspacePanesStore.getState().selectedTabs.main;
+  const fallback = focusedPane && tabs.some(tab => tab.id === mainSelection && !tab.pane) ? mainSelection ?? null : null;
+  const activeTabId = activeTabIdOrFirst(tabs, wanted.has(state.activeTabId ?? "") ? sibling?.id ?? fallback : state.activeTabId);
   return { documents, textDocuments, tabs, activeTabId, activeDocumentId: activeDocumentIdFrom(tabs, activeTabId, documents) };
 }
 
@@ -521,8 +527,8 @@ function ensureTabs(tabs: MoleculeTab[]) {
   const next = [...tabs];
   // A retained Settings page does not count as an open workspace tab, and
   // neither does a placed one: the main strip always shows at least one tab.
-  if (!next.some(isMainTab)
-    && !(typeof window !== "undefined" && window.BuretteMcpWorkspace)) {
+  const widget = typeof window !== "undefined" ? window.BuretteMcpWorkspace : undefined;
+  if (!next.some(isMainTab) && (!widget || widget.placement?.getSnapshot()?.mode === "fullscreen")) {
     next.push(createLauncherTab());
   }
   return next.sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)));
@@ -1094,13 +1100,21 @@ export const useMoleculeStore = create<MoleculeState>()(
             activeDocumentId: activeDocumentIdFrom(tabs, activeTabId, state.documents),
           };
         }),
-      // Opens a screen that is not a file (Jobs, Chemical Space...) or brings
-      // the open one forward, optionally straight into a secondary pane.
-      openScreenTab: (location, pane = null, options) => {
+      // Bring an existing screen forward in its group unless the caller
+      // explicitly requests a destination. A new screen defaults to main.
+      openScreenTab: (location, destination, options) => {
         const existing = options?.newTab ? undefined : get().tabs.find((tab) => tab.location.kind !== "settings" && sameLocation(tab.location, location));
-        const tab = existing ?? { id: createTabId(), location, back: [], forward: [] };
-        if (!existing) set((state) => ({ tabs: [...(pane ? state.tabs : state.tabs.filter(retainedOnOpen)), tab] }));
-        get().placeTab(tab.id, pane);
+        const pane = destination === undefined ? existing?.pane ?? null : destination;
+        const tab = withPane(existing ?? { id: createTabId(), location, back: [], forward: [] }, pane);
+        set(state => {
+          const tabs = ensureTabs((existing
+            ? state.tabs.map(current => current.id === tab.id ? tab : current)
+            : [...(pane || options?.newTab ? state.tabs : state.tabs.filter(retainedOnOpen)), tab])
+            .map(current => pane === "floating" && current.id !== tab.id && current.pane === pane ? withPane(current, null) : current));
+          const activeTabId = activeTabIdOrFirst(tabs, options?.focus === false ? state.activeTabId : tab.id);
+          return { tabs, activeTabId, activeDocumentId: activeDocumentIdFrom(tabs, activeTabId, state.documents) };
+        });
+        return tab.id;
       },
       renameTab: (id, title) => set((state) => ({
         tabs: state.tabs.map((tab) => {

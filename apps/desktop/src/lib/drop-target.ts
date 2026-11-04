@@ -29,6 +29,11 @@ export function describeDropTargetElement(element: Element | null): DropTargetDe
   const folderTarget = element?.closest<HTMLElement>("[data-drop-directory]");
   if (folderTarget?.dataset.dropDirectory) return { kind: "folder", directory: folderTarget.dataset.dropDirectory };
 
+  const workspaceTool = element?.closest<HTMLElement>("[data-workspace-tool-drop]")?.dataset.workspaceToolDrop as DockTabKind | undefined;
+  if (workspaceTool && dockTabCatalog("right").includes(workspaceTool)) {
+    return { kind: "dock", area: "right", tabKind: workspaceTool };
+  }
+
   const documentTarget = element?.closest<HTMLElement>("[data-drop-document-path]");
   const documentPath = documentTarget?.dataset.dropDocumentPath?.trim();
   if (documentPath) {

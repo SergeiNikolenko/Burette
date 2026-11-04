@@ -12,6 +12,7 @@ import { isTauriRuntime } from "../lib/tauri";
 import { prepareDeferredViewerRuntime } from "./use-deferred-viewer-runtime";
 import type { ViewerDocument, ViewerPreferences } from "../types";
 import { classifySourceShape, sourceDraftValidationError, sourceNotEditableMessage } from "../lib/source-editing/policy";
+import { openRightTool } from "../lib/right-workspace-panel";
 
 const LIVE_PREVIEW_LIMIT = 1_000_000;
 const SOURCE_EDIT_LIMIT = 3_000_000;
@@ -57,8 +58,6 @@ type UseSourceEditingOptions = {
   activeDocument: ViewerDocument | null;
   preferences: ViewerPreferences;
   pushErrorStatus: (error: unknown, prefix?: string, details?: string[]) => void;
-  setDockOpen: (area: "right" | "bottom", open: boolean) => void;
-  setDockActiveTab: (area: "right" | "bottom", kind: "text") => void;
 };
 
 function randomId() {
@@ -92,8 +91,6 @@ export function useSourceEditingController({
   activeDocument,
   preferences,
   pushErrorStatus,
-  setDockActiveTab,
-  setDockOpen,
 }: UseSourceEditingOptions): SourceEditingContextValue {
   const [sessions, setSessions] = useState<Record<string, InternalSourceSession>>({});
   const sessionsRef = useRef(sessions);
@@ -136,8 +133,7 @@ export function useSourceEditingController({
     if (closingDocumentIdsRef.current.has(document.id)) return;
     const existing = sessionsRef.current[document.path];
     if (existing) {
-      setDockOpen("right", true);
-      setDockActiveTab("right", "text");
+      openRightTool("text", document.path);
       return;
     }
     const extension = document.extension.toLowerCase().replace(/^\./u, "");
@@ -219,8 +215,7 @@ export function useSourceEditingController({
         sourcePreview: adapter.getSnapshot(),
       };
       commitSessions((current) => ({ ...current, [document.path]: session }));
-      setDockOpen("right", true);
-      setDockActiveTab("right", "text");
+      openRightTool("text", document.path);
     } catch (error) {
       const parsed = parseNativeSourceError(error);
       const message = parsed?.code === "source_not_editable" && parsed.details?.reason === "unsupported_shape"
@@ -230,7 +225,7 @@ export function useSourceEditingController({
     } finally {
       if (openingSourceTokensRef.current.get(document.id) === token) openingSourceTokensRef.current.delete(document.id);
     }
-  }, [clearStagingWindows, commitSessions, preferences, pushErrorStatus, setDockActiveTab, setDockOpen, updateSession]);
+  }, [clearStagingWindows, commitSessions, preferences, pushErrorStatus, updateSession]);
 
   const preparePreview = useCallback(async (document: ViewerDocument, content?: string, revision?: number) => {
     const session = sessionsRef.current[document.path];

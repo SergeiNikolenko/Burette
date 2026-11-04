@@ -11,6 +11,7 @@ import { FileBlank, Atom, Plus } from "./ui/app-icons";
 import { Button } from "./ui/button";
 import { ShortcutTooltip } from "./shortcut-tooltip";
 import { requestContextualGuide } from "./onboarding/request";
+import { openScreen } from "./workspace-panes/pane-actions";
 
 export function DockFileTabs({ area, entries, activeKey, textViews, onTextView, actions, state }: {
   area: DockArea;
@@ -51,7 +52,9 @@ export function DockFileTabs({ area, entries, activeKey, textViews, onTextView, 
         const destination = area === "right" ? "bottom" : "right";
         const items = [
           menuItem("dock-file-other-panel", destination === "right" ? "Open in right panel" : "Open in bottom panel", () => actions.openDockPayload({ area: destination, tabKind: "files", payload })),
-          menuItem("dock-file-main", "Open in main area", () => actions.openPaths([entry.path])),
+          menuItem("dock-file-main", "Open in Main Tabs", () => openScreen(entry.kind === "media"
+            ? { kind: "document", path: entry.path }
+            : { kind: entry.kind === "document" ? "file" : "text-file", path: entry.path, documentId: entry.documentId }, null)),
           ...(entry.kind !== "media" && capabilities.text ? [menuItem("dock-file-text", "Text", () => {
             select(); onTextView(entry.key, true);
             if (entry.kind === "document") requestContextualGuide("source-dock", tab);

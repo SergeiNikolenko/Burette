@@ -387,6 +387,9 @@ export type ShellViewState = {
   viewerLigandSelection: ViewerLigandSelection | null;
   structureStory: StructureStory | null;
   structureOverlayMode: StructureOverlayMode;
+  viewerLigandSelections?: Record<string, ViewerLigandSelection | null>;
+  structureStories?: Record<string, StructureStory | null>;
+  structureOverlayModes?: Record<string, StructureOverlayMode>;
   xtbStatus: XtbStatus | null;
   xtbSettings: XtbSettings;
   xtbJobs: XtbJob[];

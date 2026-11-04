@@ -2,6 +2,7 @@ import { canTransferNativeTab, moveNativeTab } from "../editor-area/native-tab-t
 import { openNativePageWindow } from "./native-page-window";
 import type { MenuItemSpec } from "../menu-types";
 import type { ShellActions, ShellViewState } from "../types";
+import type * as AppIconData from "../ui/app-icon-data";
 import { canOpenNativePopout, openNativePopout } from "./native-popout";
 import { returnClosedTab, takeClosedTab } from "../../stores/closed-tabs";
 import type { Location } from "../editor-area/page-kinds";
@@ -17,12 +18,26 @@ import { toast } from "../ui/toast";
 export function placeScreen(tabId: string, pane: TabPane | null) {
   useWorkspacePanesStore.getState().setFullView(null);
   useMoleculeStore.getState().placeTab(tabId, pane);
+  if (pane === "right" || pane === "bottom") useWorkspacePanesStore.getState().setGroupOpen(pane, true);
   if (pane === "floating") useWorkspacePanesStore.getState().setFloatingMinimized(false);
 }
 
-export function openScreen(location: Location, pane: TabPane | null = null, options?: { newTab: boolean }) {
-  useMoleculeStore.getState().openScreenTab(location, pane, options);
-  if (pane === "floating") useWorkspacePanesStore.getState().setFloatingMinimized(false);
+export function openScreen(location: Location, pane?: TabPane | null, options?: { newTab: boolean }) {
+  const id = useMoleculeStore.getState().openScreenTab(location, pane, options);
+  const targetPane = pane === undefined ? useMoleculeStore.getState().tabs.find(tab => tab.id === id)?.pane : pane;
+  if (targetPane === "floating") useWorkspacePanesStore.getState().setFloatingMinimized(false);
+}
+
+// All new-screen entry points share the same empty-tab reuse rule.
+export function openScreenInGroup(location: Location, pane: TabPane | null, selectedTabId?: string) {
+  const store = useMoleculeStore.getState();
+  const empty = store.tabs.find(tab => tab.id === selectedTabId && (tab.pane ?? null) === pane
+    && tab.location.kind === "launcher" && !tab.pinned && !tab.title && !tab.back.length && !tab.forward.length);
+  if (empty && location.kind !== "launcher") {
+    store.navigateTabLocation(empty.id, location, "replace");
+    store.setActiveTab(empty.id);
+  } else openScreen(location, pane, { newTab: true });
+  if (pane === "right" || pane === "bottom") useWorkspacePanesStore.getState().setGroupOpen(pane, true);
 }
 
 // File loading can be asynchronous; consecutive ⇧⌘T requests must restore the
@@ -68,23 +83,26 @@ export function reopenClosedTab(actions: Pick<ShellActions, "openStructurePaths"
 
 // The screens that are not files, offered by the new-tab menu and the pane
 // switchers. Start page first, like Codex's "New page".
-export const SCREEN_ENTRIES: { id: string; text: string; location: Location }[] = [
-  { id: "screen-launcher", text: "New tab", location: { kind: "launcher" } },
-  { id: "screen-jobs", text: "Jobs", location: { kind: "jobs" } },
-  { id: "screen-chemical-space", text: "Chemical space", location: { kind: "chemical-space" } },
-  { id: "screen-ketcher", text: "Ketcher", location: { kind: "ketcher" } },
+export const SCREEN_ENTRIES: { id: string; text: string; icon: keyof typeof AppIconData; location: Location }[] = [
+  { id: "screen-launcher", text: "New tab", icon: "Plus", location: { kind: "launcher" } },
+  { id: "screen-files", text: "Files", icon: "Folder", location: { kind: "tool", tool: "files", area: "right" } },
+  { id: "screen-jobs", text: "Jobs", icon: "Stopwatch", location: { kind: "jobs" } },
+  { id: "screen-chemical-space", text: "Chemical space", icon: "Orbit", location: { kind: "chemical-space" } },
+  { id: "screen-ketcher", text: "Ketcher", icon: "Edit", location: { kind: "ketcher" } },
 ];
 
 // "Pop out", "Move to New Window" and "Move to Main Window" for one screen, shared by the tab context
 // menu and the floating window header so they always agree.
 export function paneMoveItems(tab: MoleculeTab, state: ShellViewState, actions: ShellActions): MenuItemSpec[] {
   const full = useWorkspacePanesStore.getState().fullViewTabId === tab.id;
+  const nativeWidget = Boolean(window.BuretteMcpWorkspace);
+  const panes: TabPane[] = nativeWidget ? ["right"] : ["right", "bottom"];
   const items: MenuItemSpec[] = [
     { kind: "item", id: "pane-full-view", text: full ? "Exit Full View" : "Enter Full View", action: () => {
       useMoleculeStore.getState().setActiveTab(tab.id);
       useWorkspacePanesStore.getState().setFullView(full ? null : tab.id);
     } },
-    ...(["right", "bottom"] as const).filter(pane => tab.pane !== pane).map(pane => ({
+    ...panes.filter(pane => tab.pane !== pane).map(pane => ({
       kind: "item" as const, id: `pane-split-${pane}`, text: pane === "right" ? "Move to Right Split" : "Move to Bottom Split", action: () => placeScreen(tab.id, pane),
     })),
   ];
@@ -94,7 +112,7 @@ export function paneMoveItems(tab: MoleculeTab, state: ShellViewState, actions: 
   if (tab.pane) {
     items.push({ kind: "item", id: "pane-move-main", text: "Move to Main Tabs", action: () => placeScreen(tab.id, null) });
   }
-  if (canOpenNativePopout(tab) || tab.pane !== "floating") {
+  if (!nativeWidget && (canOpenNativePopout(tab) || tab.pane !== "floating")) {
     items.push({ kind: "item", id: "pane-pop-out", text: "Pop out", action: async () => {
       if (canOpenNativePopout(tab)) {
         if (await openNativePopout(tab, state, actions)) placeScreen(tab.id, null);

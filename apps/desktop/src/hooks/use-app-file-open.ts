@@ -1,3 +1,4 @@
+import { openRightTool } from "../lib/right-workspace-panel";
 import { isNativePreviewWindow } from "../lib/window-scope";
 import { useCallback } from "react";
 import { saveStructureRecordsInFolder } from "./save-structure-records";
@@ -390,9 +391,7 @@ export function useAppFileOpen({
         }
         if (!options.background && !options.inActiveTab && !options.preserveActiveTab && documents[0]) {
           setActiveDocument(documents[0].id);
-          setDockDocument("right", documents[0].id);
-          setDockActiveTab("right", "inspector");
-          setDockOpen("right", true);
+          openRightTool("inspector", documents[0].path);
           setDockDocument("bottom", documents[0].id);
           openDockTab("bottom", "spectrum");
         }

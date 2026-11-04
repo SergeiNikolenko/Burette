@@ -1201,7 +1201,7 @@ export function createDockDropShellActions({
     addDockDrop: (input) => {
       addDockDrop(input);
       const count = input.payload.paths.length + input.payload.records.length + (input.payload.items?.length ?? 0);
-      const target = input.area === "right" ? "right dock" : "bottom dock";
+      const target = input.area === "right" ? "right panel" : "bottom dock";
       pushStatus(`Added ${count} item${count === 1 ? "" : "s"} to ${target}`);
     },
   };

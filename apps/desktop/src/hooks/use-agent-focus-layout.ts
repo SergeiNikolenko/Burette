@@ -1,4 +1,5 @@
 import { useLayoutEffect } from "react";
+import { setRightPanelOpen } from "../lib/right-workspace-panel";
 
 import { browserDevAgentFocusLayout } from "../lib/browser-dev-startup";
 import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
@@ -25,7 +26,7 @@ export function applyAgentFocusLayout(
     const heroEmbed = isWebDemoHeroEmbed();
     if (!state.sidebarOpen) state.toggleSidebar();
     if (activeTabId) {
-      workspace.setDockOpen(activeTabId, "right", !heroEmbed);
+      setRightPanelOpen(!heroEmbed);
       workspace.setDockOpen(activeTabId, "bottom", false);
     }
     return true;
@@ -36,7 +37,7 @@ export function applyAgentFocusLayout(
   const state = useShellStore.getState();
   state.closeSidebar();
   if (activeTabId) {
-    workspace.setDockOpen(activeTabId, "right", false);
+    setRightPanelOpen(false);
     workspace.setDockOpen(activeTabId, "bottom", false);
   }
   return true;
