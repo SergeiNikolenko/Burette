@@ -268,6 +268,7 @@ export function useAppNativeMenu({
   const nativeStateRef = useRef<NativeMenuState>({ ...nativeState, recentDocuments });
   const closingWindowRef = useRef(false);
   const closeRequestInFlightRef = useRef(false);
+  const exitCheckpointRef = useRef<AbortController | null>(null);
   const getWindowDocumentDirtySnapshotRef = useRef(getWindowDocumentDirtySnapshot);
   const confirmSourceCloseWindowRef = useRef(confirmSourceCloseWindow);
   nativeStateRef.current = { ...nativeState, recentDocuments };
@@ -393,13 +394,18 @@ export function useAppNativeMenu({
     // Global listeners also receive requests addressed to other windows. Each
     // window must checkpoint once, otherwise repeated requests race that work.
     const listener = getCurrentWindow().listen<ExitPreflightRequest>(EXIT_PREFLIGHT_EVENT, ({ payload }) => {
+      exitCheckpointRef.current?.abort();
+      const checkpointController = new AbortController();
+      exitCheckpointRef.current = checkpointController;
       const barrier = sealWindowMutations();
       const snapshot = getWindowDocumentDirtySnapshotRef.current();
       const transferBusy = nativeWindowTransferBusy();
-      void checkpointNativePopoutForExit().then(() => false, (error: unknown) => {
+      void checkpointNativePopoutForExit(checkpointController.signal).then(() => false, (error: unknown) => {
+        if (checkpointController.signal.aborted) return true;
         console.warn("Native exit scene checkpoint failed", error);
         return true;
       }).then(checkpointFailed => {
+        if (checkpointController.signal.aborted) return;
         const closeTransitionActive = snapshot.closeTransitionActive || transferBusy || checkpointFailed
           || barrier.closeTransitionActive || barrier.pendingCount > 0;
         if (closeTransitionActive) journalAction("status", "exit-preflight-blocked", { detail: {
@@ -431,6 +437,7 @@ export function useAppNativeMenu({
     });
     return () => {
       active = false;
+      exitCheckpointRef.current?.abort();
       cleanup();
       if (registrationId) {
         void invoke("unregister_exit_preflight_listener", { registrationId });
@@ -441,7 +448,11 @@ export function useAppNativeMenu({
   useEffect(() => {
     if (!isTauriRuntime()) return undefined;
     return trackTauriListener(
-      listen(EXIT_TRANSITION_RESUMED_EVENT, resumeWindowMutations),
+      listen(EXIT_TRANSITION_RESUMED_EVENT, () => {
+        exitCheckpointRef.current?.abort();
+        exitCheckpointRef.current = null;
+        resumeWindowMutations();
+      }),
       EXIT_TRANSITION_RESUMED_EVENT,
     );
   }, []);
