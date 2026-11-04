@@ -564,3 +564,20 @@ console.log('Docking pose visibility edits follow pins, sets and All, and recove
   } finally { await window.happyDOM.close(); }
 }
 console.log('Docking All control and agent changes keep picker checks synchronized');
+
+// While Align builds a one-frame overlay, Mol* publishes its model before the
+// overlay cache owns the new refs. That transient model cannot move the source pager.
+{
+  let changed, position = { index: 1, total: 6 }, disposed = false;
+  const indices = [];
+  const activeViewer = { plugin: { state: { data: { events: { changed: {
+    subscribe(fn) { changed = fn; return { unsubscribe() { disposed = true; } }; },
+  } } } } } };
+  const install = new Function('activeViewer', 'xyzSingleFrameSceneActive', 'readNativeTrajectoryPosition',
+    `${extract('installNativeTrajectoryPoseSync')} return installNativeTrajectoryPoseSync;`)(activeViewer, () => false, () => position);
+  const dispose = install(6, index => indices.push(index));
+  position = { index: 0, total: 1 }; changed();
+  position = { index: 1, total: 6 }; changed();
+  assert.deepEqual(indices, [1, 1]);
+  dispose(); assert.equal(disposed, true);
+}

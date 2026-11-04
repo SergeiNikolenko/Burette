@@ -19573,6 +19573,10 @@ SOFTWARE.
     await loadMolstarEntry(viewer, { ...prepared, loadPreset: 'default' }, presetOptions);
     if (prepared.keepDefaultMolstarStyle !== true) await applyMolstarStyle(viewer, prepared.molstarStyleOverride || configuredMolstarStyle(activeConfig));
     await applyMolstarWaterLineRepresentation(viewer);
+    // The old overlay remains loaded until reload removes it. Retire its cache
+    // before installing the new pager, or restoring the selected frame builds
+    // another one-frame overlay instead of stepping this native trajectory.
+    if (prepared.xyzFrameOverlayAvailable && prepared.nativeTrajectoryControls) resetXyzFrameOverlayState(viewer);
     installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
   }
 
@@ -20928,7 +20932,9 @@ SOFTWARE.
     const sync = () => {
       if (xyzSingleFrameSceneActive(activeViewer)) return;
       const position = readNativeTrajectoryPosition(poseCount);
-      if (position) onPoseChange(position.index);
+      // Overlay construction briefly exposes a one-frame model before its refs
+      // are registered. It must not reset the six-frame (or other) source pager.
+      if (position?.total === poseCount) onPoseChange(position.index);
     };
     const subscription = state.events.changed.subscribe(sync);
     sync();
@@ -23031,7 +23037,11 @@ SOFTWARE.
             xyzFrameAlignment = null;
           }
           align.disabled = true;
-          return applyXyzFrameOverlayVisibility(viewer, prepared, activePose, { focus: true, installControls: false }).then(() => {
+          // Turning alignment off must restore the full native trajectory, not
+          // leave a one-frame overlay that cannot bind to its scientific source.
+          const restoreTrajectory = !enabling && activeSdfPoseMode !== 'all' && prepared.nativeTrajectoryControls;
+          return (restoreTrajectory ? reloadActiveMolstarStructure()
+            : applyXyzFrameOverlayVisibility(viewer, prepared, activePose, { focus: true, installControls: false })).then(() => {
             align.textContent = enabling ? 'Aligned' : 'Align';
             align.classList.toggle('active', enabling);
             align.setAttribute('aria-pressed', enabling ? 'true' : 'false');

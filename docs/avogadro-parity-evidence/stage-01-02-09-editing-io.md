@@ -1308,3 +1308,46 @@ retry used the actual accessible name and passed. This does not establish full
 keyboard/assistive-technology, Atlas, native or hosted acceptance. Nonzero
 scientific referenceFrameIndex, edit/save/reopen and fault/retry matrices remain
 open. All stages remain partial.
+
+### Restore scientific trajectory after disabling alignment (2026-11-04)
+
+The Gaussian six-frame, 20-atom optimization exposed a prerequisite to restoring
+MOLX controls: on the original XYZ trajectory, Align followed by disabling Align
+left a one-frame overlay. The pager could reset from 2/6 to 1/6, or still show
+2/6 while the real graph contained only one frame. Save scene then correctly
+rejected the scientific binding with `The scene does not show the current source
+yet. Wait for it to update, then save again.` No archive was downloaded.
+
+The viewer now ignores native pager notifications whose frame count differs
+from the source pager, restores the full native trajectory when disabling Align
+in single-frame viewing mode, and retires the old overlay cache before installing
+that trajectory's controls. Without the cache change, restoring the selected
+frame immediately rebuilt another single-frame overlay. Scientific binding
+validation remains unchanged.
+
+Browser acceptance used the real `cclib-dvb_gopt.out` fixture. Frame 2/6 survived
+two Align/disable cycles: light at 1400×900 and dark at 900×800. Save scene succeeded;
+a fresh browser/server reopened the archive with the original file temporarily
+absent, retained 2/6, and saved a second archive. Reviewed screenshots show the
+molecule and frame controls without visible clipping in these viewports.
+
+[Independent oracle](unalign-scientific-molx-oracle.json) parses Gaussian directly
+and cross-checks the stored cclib reference, without application parser imports.
+Both archives retain all six frames, 360 exact XYZ and 360 exact scientific
+coordinate values, five energies, 40 charges, six dipole components, and the
+original producer bytes. All scientific attachment bytes, UUID, atom identities
+and trajectory binding are stable across reopen. The restored live coordinates
+match source frame 2 within 1.071e-7 Å; exported and reopened mmCIF geometry matches
+within 0.000498 Å, consistent with its three-decimal writer.
+
+The served changed viewer SHA-256 was verified, as were 1,528 runtime source files.
+The web shell build, scene-recovery test and indexed-trajectory test passed.
+The broader UI-shell text contract **does not pass**: line 6536 still expects the
+old single-call `toMmCif(label, structures, ...)` spelling. The same failure was
+reproduced with the unchanged HEAD viewer; it is not evidence against this change
+and remains an outstanding contract-maintenance item. Five owned servers were
+terminated, their ports checked closed, and the original fixture restored.
+
+This closes the tested original-trajectory Align/disable/save failure, not the
+missing Align/All controls after MOLX reopen. All-mode alignment, error/cancel
+recovery, native, manual IAB, full Atlas and accessibility acceptance remain open.
