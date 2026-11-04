@@ -674,3 +674,42 @@ reopen check for those files; it does not repeat the append/remove/save sequence
 attachment/source checks and the observed typed state. Both views were dark,
 1280 × 720. Light/compact/keyboard coverage, repeat saving, unexpected binding
 failure/retry and prebuilt/native lanes remain open. No production code changed.
+
+
+## State-only scene geometry export and computation gaps (2026-11-04)
+
+Fresh `vite-dev` at `6582b8584`, IAB tab 12, opened the same state-only
+`original.molx` above (SHA-256 recorded in the oracle). This is an explicit
+geometry export from the visible scene, not restoration of source-owned science.
+
+* CLI `act` with `{"type":"export_scene_structure","format":"pdb"}` reached
+  terminal `failed`: `ACTION_ERROR`, `PDB fallback export is unavailable for this
+  structure.` The fallback in `viewer.js:molstarPdbExportPayloadForAtomSerials`
+  requires a source entry. PDB conversion of this restored XYZ scene remains open.
+* The same action with `format:mmcif` completed. The 1,131-byte result is preserved
+  as [recovered geometry](state-only-recovered-geometry.cif.json) (JSON `text` preserves
+  the exact exported bytes, including trailing spaces). Independent Python
+  compared its atom-site rows with the inline XYZ in the MOLX `state.json`:
+  three atoms, identical O/H/H order, maximum Cartesian coordinate difference
+  0.00014170859860740403 Å. Export rounds to three decimal places; it is not an
+  exact coordinate round trip. No scientific attachment was reconstructed.
+* New tab → Open file loaded those exact mmCIF bytes as
+  `/OpenedFiles/recovered-geometry.cif` while the source scene remained open.
+  Screenshot: `/tmp/burette-state-geometry-recovered.png`.
+* Shipped Python `Workbench.observe()` recognized the new file and its exact
+  source hash, with `scientific:null`, but `structure:null`. Its `sourceError`
+  describes supported scientific inputs rather than mmCIF. `Workbench.run`
+  for `properties` failed with `JOB_UNAVAILABLE`: `The CIF unit-cell parameters
+  are incomplete.` A second request reproduced the same failure. This is not a
+  successful compute round trip: `workbench/structure.ts` routes all CIF/mmCIF
+  sources through the crystal reader even when atom sites are Cartesian and no
+  unit cell is present.
+
+[Compact runtime oracle](state-only-geometry-export-oracle.json) records both
+failures and the geometry comparison. Next implementation must distinguish
+molecular Cartesian mmCIF from periodic fractional CIF, preserve crystal
+expansion, define multi-model/alternate-location handling and test both reader
+and typed job routes before repeating this browser scenario. PDB export needs
+its own geometry writer/fallback investigation. No runtime code changed; both
+issues remain open. Other themes, compact/keyboard, prebuilt and native were not
+validated in this pass.
