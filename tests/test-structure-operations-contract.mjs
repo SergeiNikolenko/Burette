@@ -94,6 +94,23 @@ for (const helper of ["molstarStructureAtomSerials", "molstarChainAtomSerials", 
   assert.match(fn(helper), /StructureProperties\.atom\.id\(location\)/, helper);
 }
 
+// Execute the actual fallback boundary: overlapping serials from two scene
+// structures must never reach the single-source filter and report success.
+{
+  let structures = [{ structure: { elementCount: 9 } }], reads = 0;
+  const context = {
+    molstarCurrentStructuresForExport: () => structures,
+    molstarCurrentAtomSerialsForExport: () => { reads++; return new Set([1, 2, 3]); },
+    molstarExportFileName: () => "mini.modified.pdb",
+    molstarPdbExportPayloadForAtomSerials: (serials, name) => ({ name, count: serials.size }),
+  };
+  const exportPdb = runInNewContext(`${fn("molstarModifiedPdbExportPayload")}\nmolstarModifiedPdbExportPayload`, context);
+  assert.equal(exportPdb().count, 3);
+  structures = [...structures, { structure: { elementCount: 9 } }];
+  assert.throws(() => exportPdb(), /Export mmCIF to keep all structures/);
+  assert.equal(reads, 1, "multi-structure failure must precede source serial collection");
+}
+
 // Split and extract reach the scene's structure even when no pick supplied one.
 assert.match(fn("splitMolstarStructureIntoChains"), /molstarTargetStructureData\(target\)/);
 assert.match(fn("extractMolstarChainToFile"), /molstarTargetStructureData\(target\)/);

@@ -755,3 +755,42 @@ Typecheck and agent-shell build passed. The
 fresh live runtime was `vite-dev`, not a prebuilt/native execution. PDB export,
 other themes, compact/keyboard and broader molecular CIF selection/topology
 coverage remain open. No interface layout changed.
+
+
+## Reject lossy PDB export of multiple scene structures (2026-11-04)
+
+A fresh `vite-dev` session at `c474fe2f2` opened `samples/mini.pdb` (9 atoms).
+Typed `append_scene_files` added a second copy with every x coordinate translated
+by +20 Å, keeping the original PDB serials 1–9. Both inputs have their own scene
+structure. Before the fix, `export_scene_structure` with `format:pdb` returned
+`completed` but emitted only the original 9 atoms. Its single-source line filter
+unions serial numbers across structures and cannot represent both namespaces.
+This is silent data loss, separate from the state-only-scene PDB error above.
+
+The whole-scene PDB fallback now rejects more than one exportable structure
+before collecting serials, with `Export mmCIF to keep all structures.` This is
+an interim correctness guard, not implementation of multi-structure PDB export.
+Single-source subset filtering and preservation of original PDB records remain
+unchanged. Source-less PDB conversion, transformed single-source coordinates,
+extracted selection paths and a full current-scene PDB writer remain open.
+
+After reloading the viewer, the same real scenario showed:
+
+* Single PDB export completed; its nine element/coordinate tuples exactly matched
+  the fixture.
+* Append completed, then PDB export terminated `failed` with `ACTION_ERROR` and
+  the explicit limitation; no success payload with truncated geometry was returned.
+* mmCIF export completed with 18 atoms. Independent Python parsed the atom-site
+  fields by tag name and compared every element and coordinate with both PDB
+  inputs: exact equality, including the +20 Å translation.
+* New tab → Open file reopened the mmCIF export. Shipped Python `Workbench.observe`
+  reported 18 atoms. Its perceived graph was incomplete (16 bonds), so this
+  check proves geometry preservation, not complete topology or successful chemistry.
+
+[Runtime oracle](pdb-multisource-loss-oracle.json) records before/after results.
+`test-structure-operations-contract.mjs` passed, including a behavioral execution
+of the actual fallback function showing that multi-structure rejection precedes
+serial collection. Agent-shell build passed; packaged `preview-web/viewer.js`
+matched the source byte for byte. Runtime acceptance was `vite-dev`; prebuilt,
+native, both themes, compact and keyboard coverage were not claimed. No layout
+changed. Full PDB export parity remains incomplete.

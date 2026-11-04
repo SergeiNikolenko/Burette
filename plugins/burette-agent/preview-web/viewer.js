@@ -26170,6 +26170,11 @@ SOFTWARE.
   }
 
   function molstarModifiedPdbExportPayload() {
+    // The source-line fallback has one serial namespace. Combining structures
+    // here silently drops atoms whose serials overlap another source.
+    if (molstarCurrentStructuresForExport().length > 1) {
+      throw new Error("PDB export cannot preserve multiple scene structures yet. Export mmCIF to keep all structures.");
+    }
     const includedSerials = molstarCurrentAtomSerialsForExport();
     if (!includedSerials.size) throw new Error('No modified Mol* atoms are available to save.');
     return molstarPdbExportPayloadForAtomSerials(includedSerials, molstarExportFileName('pdb'));
