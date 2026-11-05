@@ -1162,6 +1162,15 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 }
 .workspace-sidebar-panel { position: relative; height: 100%; min-height: 0; overflow: hidden; }
 .workspace-center-panel { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: flex; }
+/* Only the sidebar shows the window material. The titlebar beside it and the
+   gutter around the workspace frame paint the same opaque tint the browser
+   shell uses, so a windowed workspace never shows the desktop through it. */
+.app-shell[data-runtime="tauri"]:not([data-hosted-mcp-widget], [data-hero-embed]) .workspace-center-panel {
+  background: light-dark(
+    var(--color-surface-secondary),
+    color-mix(in srgb, var(--color-token-main-surface-primary) 96%, white)
+  );
+}
 /* The separator overhang must not scroll the stage upward when it gains focus. */
 .workbench-main-panels { overflow: clip !important; min-width: 0; min-height: 0; height: 100%; width: 100%; }
 .main-panel { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: flex; }
