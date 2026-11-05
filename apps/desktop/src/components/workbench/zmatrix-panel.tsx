@@ -12,7 +12,7 @@ import { downloadTextFile } from "../../lib/file-export";
 import { INTERNAL_COORDINATE_KINDS, formatInternalCoordinate, internalCoordinateUnit, type InternalCoordinateKind } from "../../lib/geometry-editing";
 import type { MolecularForceField } from "../../lib/molecular-workbench/chemistry";
 import { runChemistryTask, type ChemistryResults } from "../../lib/molecular-workbench/compute-client";
-import type { OptimizationMethod } from "../../lib/molecular-workbench/optimization";
+import type { OptimizationMethod, OptimizationProgress } from "../../lib/molecular-workbench/optimization";
 import type { ScientificDocument } from "../../lib/molecular-workbench/quantum";
 import { serializeXyz } from "../../lib/molecular-workbench/xyz";
 import { useSourceEditing } from "../../lib/source-editing/context";
@@ -31,10 +31,9 @@ import type { ShellActions } from "../types";
 import { ArrowCurvedRight, Copy, Download, FileCode, Undo } from "../ui/app-icons";
 import { Button } from "../ui/button";
 import { IconAction, ValueField } from "./geometry-fields";
-import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { ConstraintToggle } from "./constraint-toggle";
-import { OptimizeButton } from "./optimize-button";
+import { OpenStepsButton, OptimizeButton, OptimizingStatus, optimizerLabel } from "./optimize-button";
 import { CoordinateDefinition, VariableName, variableToken } from "./zmatrix-definition-controls";
 import { ZmatrixAddMenu, ZmatrixRowMenu } from "./zmatrix-row-controls";
 import "./workbench-layout.css";
@@ -89,6 +88,7 @@ export function ZmatrixPanel({ document, actions, science, text }: {
   // the document, or any change of that text, stops it.
   const optimizeJob = useRef<{ controller: AbortController; text: string } | null>(null);
   const [optimizing, setOptimizing] = useState(false);
+  const [progress, setProgress] = useState<OptimizationProgress | null>(null);
   useEffect(() => () => optimizeJob.current?.controller.abort(), []);
   useEffect(() => { optimizeJob.current?.controller.abort(); }, [bindingKey]);
   useEffect(() => {
@@ -376,7 +376,7 @@ export function ZmatrixPanel({ document, actions, science, text }: {
   // MMFF94 minimization of the real atoms, frozen rows and fixed coordinates held. The
   // optimized atoms are written back through the same rows; the result is one revision,
   // applied only to the source text it started from.
-  const optimize = async (method: OptimizationMethod, forceField: MolecularForceField) => {
+  const optimize = async (method: OptimizationMethod, forceField: MolecularForceField, maxIterations: number) => {
     if (!binding) return;
     if (applying || optimizeJob.current || applyingDocuments.has(document.id)) return;
     const controller = new AbortController();
@@ -384,12 +384,15 @@ export function ZmatrixPanel({ document, actions, science, text }: {
     const started = lifetime.current;
     const fromText = text;
     setOptimizing(true);
+    setProgress(null);
     setError(null);
     setNotice(null);
     let result: ChemistryResults["optimize-zmatrix"];
     try {
       const molecule = await runChemistryTask({ action: "parse", source: serializeXyz(science.atoms, "Z-matrix"), format: "xyz" }, { signal: controller.signal });
-      result = await runChemistryTask({ action: "optimize-zmatrix", molecule, definition, options: { frozenRows: [...constraints.frozen], lockedCoordinates: [...constraints.locked], forceField, method } }, { signal: controller.signal, timeoutMs: 300_000 });
+      result = await runChemistryTask({ action: "optimize-zmatrix", molecule, definition, options: { frozenRows: [...constraints.frozen], lockedCoordinates: [...constraints.locked], forceField, method, maxIterations } }, {
+        signal: controller.signal, timeoutMs: 300_000, onProgress: (step) => { if (optimizeJob.current?.controller === controller) setProgress(step); },
+      });
     } catch (caught) {
       if (started === lifetime.current) {
         if (latestText.current !== fromText) setError(CHANGED);
@@ -474,21 +477,23 @@ export function ZmatrixPanel({ document, actions, science, text }: {
         <IconAction label="Export input file" onClick={exportInput}><FileCode aria-hidden /></IconAction>
         {optimizing ? (
           <>
-            <span role="status" className="workbench-status"><Spinner aria-hidden className="size-3" />Optimizing</span>
+            <OptimizingStatus progress={progress} />
             <Button type="button" variant="ghost" size="xs" onClick={cancelOptimize}>Cancel</Button>
           </>
         ) : (
           <TooltipProvider><Tooltip><TooltipTrigger asChild>
-            <span><OptimizeButton atomCount={science.atoms.length} constraintCount={constraintCount} coupled size="xs" variant="secondary" disabled={busy} onOptimize={(method, forceField) => void optimize(method, forceField)} /></span>
+            <span><OptimizeButton atomCount={science.atoms.length} constraintCount={constraintCount} coupled size="xs" variant="secondary" disabled={busy} onOptimize={(method, forceField, maxIterations) => void optimize(method, forceField, maxIterations)} /></span>
           </TooltipTrigger><TooltipContent>{constraintCount ? `Optimize with ${constraintCount} constraint${constraintCount === 1 ? "" : "s"}` : "Optimize geometry"}</TooltipContent></Tooltip></TooltipProvider>
         )}
       </div>
       {error || bindingError ? <p role="alert" className="geometry-panel-error">{error || bindingError}</p> : null}
       {result ? (
         <p className="geometry-panel-result" role="status">
-          {result.forceField ?? "MMFF94"} {result.initialEnergy.toFixed(2)} → {result.energy.toFixed(2)} kcal/mol
+          {result.forceField ?? "MMFF94"}, {optimizerLabel(result.method)} {result.initialEnergy.toFixed(2)} → {result.energy.toFixed(2)} kcal/mol
+          {`, ${result.iterations} step${result.iterations === 1 ? "" : "s"}`}
           {result.residual ? ` · residual ${[result.residual.distance === null ? null : `${result.residual.distance.toFixed(3)} Å`, result.residual.angle === null ? null : `${result.residual.angle.toFixed(2)}°`].filter(Boolean).join(", ")}` : ""}
           {" · "}<span data-status={result.converged ? "success" : "failure"} className="workbench-value">{result.converged ? "Converged" : "Not converged"}</span>
+          <OpenStepsButton actions={actions} document={document} frames={result.frames} />
         </p>
       ) : null}
       {notice ? <p role="status" className="geometry-panel-result">{notice}</p> : null}

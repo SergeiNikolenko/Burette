@@ -1,6 +1,6 @@
 import { atomsFromZmatrixDocument, resolveZmatrixDocument, type ZmatrixDocument } from '../../../../../scripts/zmatrix-document.mjs';
 import { placeInReferenceFrame, type CoordinateAtom } from '../../../../../scripts/internal-coordinates.mjs';
-import { createOptimizationEvaluator, type MolecularStructure, type OptimizeOptions, type OptimizationResult } from '../molecular-workbench/chemistry';
+import { createOptimizationEvaluator, type MolecularStructure, type OptimizeOptions, type OptimizationProgress, type OptimizationResult } from '../molecular-workbench/chemistry';
 import { MINIMIZER_METHODS, minimize } from '../molecular-workbench/minimizer';
 import { zmatrixAtomIndices, zmatrixLockKey } from './zmatrix-optimization';
 import { placeWithFrozenAtoms, projectFrozenShape } from './zmatrix-frozen-projection';
@@ -19,7 +19,7 @@ const wrap = (value: number) => value > 180 ? value - 360 * Math.ceil((value - 1
  * all of them. Dummy points contribute placement only, never force-field atoms.
  * Frozen atoms add exact shape equations, rather than a harmonic penalty.
  */
-export function optimizeZmatrix(molecule: MolecularStructure, definition: ZmatrixDocument, options: ZmatrixOptimizeOptions = {}): CoupledZmatrixOptimizationResult {
+export function optimizeZmatrix(molecule: MolecularStructure, definition: ZmatrixDocument, options: ZmatrixOptimizeOptions = {}, onProgress?: (progress: OptimizationProgress) => void): CoupledZmatrixOptimizationResult {
   const method = options.method ?? 'lbfgs', iterations = options.maxIterations ?? 250;
   if (!MINIMIZER_METHODS.includes(method) || !Number.isInteger(iterations) || iterations < 1 || iterations > 1000) throw new Error('Invalid optimization method or iteration limit.');
   if (molecule.atoms.length > 64 || definition.rows.length > 64) throw new Error('Coupled Z-matrix optimization supports up to 64 atoms and rows.');
@@ -102,8 +102,9 @@ export function optimizeZmatrix(molecule: MolecularStructure, definition: Zmatri
     }) });
     const frames: NonNullable<OptimizationResult['frames']> = [{ atoms: molecule.atoms.map(atom => ({ ...atom })), energy: initialEnergy }];
     const result = initial.length && frozen.length < molecule.atoms.length ? minimize(initial, objective, method, iterations, x => {
-      const atoms = unpack(x).atoms;
-      frames.push({ atoms, energy: evaluator.energy(atoms) });
+      const atoms = unpack(x).atoms, energy = evaluator.energy(atoms);
+      frames.push({ atoms, energy });
+      onProgress?.({ iteration: frames.length - 1, energy });
     }) : null;
     const output = unpack(result?.x ?? initial), energy = evaluator.energy(output.atoms);
     if (!Number.isFinite(energy) || energy > initialEnergy + 1e-6) throw new Error('Coupled Z-matrix optimization did not lower the energy.');

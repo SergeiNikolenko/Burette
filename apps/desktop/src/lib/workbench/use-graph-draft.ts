@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
 import type { MolecularAtom, Vec3, MolecularForceField } from "../molecular-workbench/types";
-import type { OptimizationMethod } from "../molecular-workbench/optimization";
+import type { ConstraintResidual, GeometryConstraint, OptimizationMethod, OptimizationProgress } from "../molecular-workbench/optimization";
 import { runGraphTask } from "../molecular-workbench/graph-compute-client";
 import type { GraphEdit, GraphEditResult } from "../molecular-workbench/graph-edit";
 import type { FragmentSource } from "../molecular-workbench/fragment-source";
@@ -20,6 +20,8 @@ export type GraphOutcome = {
   forceField?: MolecularForceField; method: string; initialEnergy: number; energy: number; converged: boolean; iterations?: number | null;
   /** Step geometries with physical energies; absent or two endpoint frames when the minimizer exposes no steps. */
   frames?: { atoms: MolecularAtom[]; energy: number }[]; frameSampling?: "steps" | "endpoints";
+  /** Measured values of the held distances, angles and dihedrals at the result. */
+  residuals?: ConstraintResidual[];
 };
 export type GraphSnapshot = { structure: GraphEditResult; annotations: AtomAnnotation[]; text: string; outcome: GraphOutcome | null; metadata: GraphMetadata | null; atomIds: readonly string[] | null;
   /** Camera policy for the transition into this snapshot, also used when undoing it. */
@@ -37,17 +39,21 @@ export type GraphOperation =
   | { kind: "positions"; coordinates: Vec3[]; from: GraphSnapshot };
 
 // `prepare-3d` embeds a flat depiction with hydrogens and relaxes it; source atoms keep their indices.
-export type GraphAdvancedOperation = { kind: "add-hydrogens" } | { kind: "prepare-3d" } | { kind: "optimize"; method: OptimizationMethod; forceField: MolecularForceField }
+export type GraphAdvancedOperation = { kind: "add-hydrogens" } | { kind: "prepare-3d" }
+  // Constraint atom indices refer to the current snapshot; the atoms keep their indices.
+  | { kind: "optimize"; method: OptimizationMethod; forceField: MolecularForceField; maxIterations?: number; constraints?: GeometryConstraint[] }
   // One rigid fragment bonded to `target` in place of a hydrogen, or a separate molecule when `target` is null.
   | { kind: "insert-fragment"; fragment: FragmentSource; target: number | null }
   // Protonation states for `pH`, then every hydrogen explicit; heavy atoms keep their indices and coordinates.
   | { kind: "protonate"; pH: number };
 export type GraphComputeResult = { structure: GraphEditResult; outcome: GraphOutcome | null };
-export type GraphAdvancedCompute = (operation: GraphAdvancedOperation, structure: GraphEditResult, signal: AbortSignal) => Promise<GraphComputeResult>;
+export type GraphAdvancedCompute = (operation: GraphAdvancedOperation, structure: GraphEditResult, signal: AbortSignal, onProgress: (progress: OptimizationProgress) => void) => Promise<GraphComputeResult>;
 
 // The adopted logical object owns its history and pending work. Null denotes an ordinary file.
-type Entry = { owner: LogicalSource | null | undefined; history: GraphHistory | null; error: string | null; busy: boolean; loading: string | null; controller: AbortController | null };
-const EMPTY: Entry = { owner: undefined, history: null, error: null, busy: false, loading: null, controller: null };
+type Entry = { owner: LogicalSource | null | undefined; history: GraphHistory | null; error: string | null; busy: boolean; loading: string | null; controller: AbortController | null;
+  /** The latest minimizer step of the running optimization. */
+  progress: OptimizationProgress | null };
+const EMPTY: Entry = { owner: undefined, history: null, error: null, busy: false, loading: null, controller: null, progress: null };
 const HISTORY_LIMIT = 100;
 const MAX_DOCUMENTS = 16;
 
@@ -97,7 +103,7 @@ async function load(key: string, document: ViewerDocument, text: string) {
   }
 }
 
-async function compute(operation: Exclude<GraphOperation, { kind: "metadata" }>, structure: GraphEditResult, signal: AbortSignal, advanced?: GraphAdvancedCompute): Promise<GraphComputeResult> {
+async function compute(operation: Exclude<GraphOperation, { kind: "metadata" }>, structure: GraphEditResult, signal: AbortSignal, onProgress: (progress: OptimizationProgress) => void, advanced?: GraphAdvancedCompute): Promise<GraphComputeResult> {
   if (operation.kind === "edits") return { structure: await runGraphTask({ action: "edit-graph", molecule: structure, edits: operation.edits }, { signal }), outcome: null };
   if (operation.kind === "positions") {
     return { structure: await replaceGraphPositions(structure, operation.coordinates, signal), outcome: null };
@@ -108,7 +114,7 @@ async function compute(operation: Exclude<GraphOperation, { kind: "metadata" }>,
       : { ...structure, sourceAtomIndices: structure.atoms.map((_, index) => index) }, outcome: null };
   }
   if (!advanced) throw new Error("This graph operation is not available here.");
-  return advanced(operation, structure, signal);
+  return advanced(operation, structure, signal, onProgress);
 }
 
 /**
@@ -179,7 +185,7 @@ export function useGraphDraft(document: ViewerDocument | null, computeAdvanced?:
     signal?.addEventListener("abort", abort, { once: true });
     const documentLifetime = sourceEditing.captureOperation(document), owner = started.owner;
     const lifetime = { ...documentLifetime, isCurrent: () => documentLifetime.isCurrent() && options?.isCurrent?.() !== false && logicalSourceFor(document.id) === owner };
-    update(key, { busy: true, error: null, controller });
+    update(key, { busy: true, error: null, controller, progress: null });
     try {
       if (!lifetime.isCurrent()) throw new DOMException("The document closed while editing.", "AbortError");
       const previous = history.current;
@@ -187,7 +193,7 @@ export function useGraphDraft(document: ViewerDocument | null, computeAdvanced?:
       if (operation.kind === "add-hydrogens" || operation.kind === "protonate") {
         checkHydrogenSourcePose(previous.text, previous.structure);
       }
-      const result = operation.kind === "metadata" ? { structure: previous.structure, outcome: previous.outcome } : await compute(operation, previous.structure, controller.signal, computeAdvanced);
+      const result = operation.kind === "metadata" ? { structure: previous.structure, outcome: previous.outcome } : await compute(operation, previous.structure, controller.signal, (progress) => { if (entries.get(key)?.controller === controller) update(key, { progress }); }, computeAdvanced);
       controller.signal.throwIfAborted();
       const metadata = !previous.metadata ? null : operation.kind === "metadata" ? patchGraphMetadata(previous.metadata, operation.patch)
         : operation.kind === "positions" || operation.kind === "optimize" ? previous.metadata : remapGraphMetadata(previous.metadata, result.structure.sourceAtomIndices);
@@ -205,13 +211,13 @@ export function useGraphDraft(document: ViewerDocument | null, computeAdvanced?:
           if (sourceExtension(document) === "mol") rememberGraphAtomIds(document.id, next.text, next.atomIds);
         }, next.view);
       if (!lifetime.isCurrent()) throw new DOMException("The source lifetime changed while editing.", "AbortError");
-      update(key, { history: { origin: history.origin, current: next, undo: [...history.undo, history.current].slice(-HISTORY_LIMIT), redo: [] }, busy: false, controller: null });
+      update(key, { history: { origin: history.origin, current: next, undo: [...history.undo, history.current].slice(-HISTORY_LIMIT), redo: [] }, busy: false, controller: null, progress: null });
       // Publish the new snapshot before clearing indices of the previous scene.
       // Consumers can then distinguish a replaced scene from a user clearing it.
       forgetViewerAtomSelection(document.id);
       return result.structure;
     } catch (error) {
-      if (entries.get(key)?.owner === owner && logicalSourceFor(document.id) === owner) update(key, { busy: false, controller: null, error: controller.signal.aborted || isAbortError(error) ? null : message(error) });
+      if (entries.get(key)?.owner === owner && logicalSourceFor(document.id) === owner) update(key, { busy: false, controller: null, progress: null, error: controller.signal.aborted || isAbortError(error) ? null : message(error) });
       return null;
     } finally {
       signal?.removeEventListener("abort", abort);
@@ -253,6 +259,7 @@ export function useGraphDraft(document: ViewerDocument | null, computeAdvanced?:
     error: readError ?? (current ? entry.error : null),
     loading: (!current || !entry.history) && !(current && entry.error) && !readError,
     busy: current && entry.busy,
+    progress: current && entry.busy ? entry.progress : null,
     session,
     apply,
     undo: () => restore("undo"),

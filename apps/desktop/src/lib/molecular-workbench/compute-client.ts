@@ -1,10 +1,10 @@
-import type { MolecularStructure, OptimizeOptions, MolecularForceField, ProtonationResult } from './chemistry';
+import type { MolecularStructure, OptimizeOptions, OptimizationProgress, MolecularForceField, ProtonationResult } from './chemistry';
 export type { ProtonationResult } from './chemistry';
 export type { ProtonationChange, ProtonationGroup } from './protonation';
 import type { GraphEdit, GraphEditResult } from './graph-edit';
 import type { EnergyForces } from './energy-forces';
 import type { MolecularAtom } from './types';
-import { runWorkerTask } from './worker-task';
+import { runWorkerTask, type WorkerTaskOptions } from './worker-task';
 
 import type { ZmatrixDocument } from "../../../../../scripts/zmatrix-document.mjs";
 import type { ZmatrixOptimizeOptions } from "../workbench/zmatrix-coupled-optimization";
@@ -44,7 +44,8 @@ export type ChemistryResults = {
 };
 
 /** Each job has an isolated worker. Termination cancels synchronous OCL work,
- * including minimization, without waiting for its event loop to become idle. */
-export function runChemistryTask<T extends ChemistryRequest>(request: T, options: { signal?: AbortSignal; timeoutMs?: number } = {}): Promise<ChemistryResults[T['action']]> {
+ * including minimization, without waiting for its event loop to become idle. Optimizations
+ * report their latest step through `onProgress`. */
+export function runChemistryTask<T extends ChemistryRequest>(request: T, options: WorkerTaskOptions<OptimizationProgress> = {}): Promise<ChemistryResults[T['action']]> {
   return runWorkerTask(() => new Worker(new URL('./compute-worker.ts', import.meta.url), { type: 'module' }), request, options);
 }

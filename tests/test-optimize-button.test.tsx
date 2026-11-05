@@ -73,3 +73,19 @@ test("every method and field runs up to 256 atoms; above that the button states 
     expect([...view.host.querySelectorAll<HTMLButtonElement>("button")].every(node => node.disabled)).toBe(true);
   } finally { await view.close(); localStorage.clear(); }
 });
+
+test("the step limit is chosen in the menu, remembered, and passed with every run", async () => {
+  localStorage.clear();
+  const limits: number[] = [];
+  const render = () => <OptimizeButton atomCount={3} onOptimize={(_method, _field, maxIterations) => limits.push(maxIterations)} />;
+  const view = await mount(render());
+  try {
+    await click(button(view.host, "Optimize")); expect(limits.pop()).toBe(250);
+    await openMenu(view.host);
+    expect(menuState().slice(-4)).toEqual([["100", false, null], ["250", true, null], ["500", false, null], ["1000", false, null]]);
+    await choose("1000"); await click(button(view.host, "Optimize")); expect(limits.pop()).toBe(1000);
+    await view.render(null); await view.render(render());
+    expect(button(view.host, "Optimize").title).toBe("MMFF94, BFGS, up to 1000 steps");
+    await click(button(view.host, "Optimize")); expect(limits).toEqual([1000]);
+  } finally { await view.close(); localStorage.clear(); }
+});

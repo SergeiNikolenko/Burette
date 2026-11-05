@@ -78,12 +78,12 @@ export function PropertiesDialogBody({ document, actions, onDone }: { document: 
     return () => controller.abort();
   }, [structure]);
 
-  const runOperation = async (operation: Operation, method: OptimizationMethod = "bfgs", forceField: MolecularForceField = "MMFF94") => {
+  const runOperation = async (operation: Operation, method: OptimizationMethod = "bfgs", forceField: MolecularForceField = "MMFF94", maxIterations?: number) => {
     if (!structure) return;
     const result = await job.run(OPERATION_LABELS[operation], async (signal) => {
       if (operation === "optimize" || operation === "prepare-3d") {
         const optimized = operation === "optimize"
-          ? await runChemistryTask({ action: "optimize", molecule: structure, options: { method, forceField } }, { signal, timeoutMs: 300_000 })
+          ? await runChemistryTask({ action: "optimize", molecule: structure, options: { method, forceField, maxIterations } }, { signal, timeoutMs: 300_000 })
           : await runChemistryTask({ action: "prepare-3d", molecule: structure, options: {} }, { signal, timeoutMs: 300_000 });
         const steps = optimized.iterations === null ? "" : `, ${optimized.iterations} step${optimized.iterations === 1 ? "" : "s"}`;
         return { molfile: optimized.molecule.molfile, frames: optimized.frameSampling === "steps" ? optimized.frames : undefined, title: operation === "optimize" ? `${optimized.forceField} optimization` : "3D coordinates",
@@ -189,7 +189,7 @@ export function PropertiesDialogBody({ document, actions, onDone }: { document: 
             <Button type="button" variant="secondary" disabled={!ready}
               onClick={() => void (inPlace ? runInPlace({ kind: "add-hydrogens" }) : runOperation("add-hydrogens"))}>Add hydrogens</Button>
             <OptimizeButton atomCount={structure?.atoms.length ?? 0} disabled={!ready}
-              onOptimize={(method, forceField) => void (inPlace ? runInPlace({ kind: "optimize", method, forceField }) : runOperation("optimize", method, forceField))} />
+              onOptimize={(method, forceField, maxIterations) => void (inPlace ? runInPlace({ kind: "optimize", method, forceField, maxIterations }) : runOperation("optimize", method, forceField, maxIterations))} />
           </>
         )}
       </DialogFooter>

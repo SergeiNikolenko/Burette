@@ -4,7 +4,6 @@ import "./workbench/geometry.css";
 import { Button } from "./ui/button";
 import { IconAction, InternalCoordinateInput } from "./workbench/geometry-fields";
 import { ArrowCurvedRight, CompareArrows, Copy, Download, FileBlank, FileCode, Undo } from "./ui/app-icons";
-import { Spinner } from "./ui/spinner";
 import { measureGeometry } from "../../../../scripts/molecular-geometry.js";
 import { readCoordinateInterchange, writeCoordinateInterchange } from "../../../../scripts/coordinate-interchange.mjs";
 import { runChemistryTask } from "../lib/molecular-workbench/compute-client";
@@ -14,12 +13,11 @@ import { openWorkbenchDialog } from "../lib/workbench/dialog-store";
 import { isAbortError } from "../lib/viewer-errors";
 import { PanelEmptyState } from "./ui/panel-empty-state";
 import { ConstraintToggle } from "./workbench/constraint-toggle";
-import { OptimizeButton, optimizerLabel } from "./workbench/optimize-button";
-import { RESIDUAL_TOLERANCE, resolveConstraints, type ConstraintResidual, type OptimizationMethod, type OptimizationResult } from "../lib/molecular-workbench/optimization";
-import { HARTREE_KCAL_MOL, fileStem } from "../lib/workbench/formats";
+import { ConstraintResiduals, OpenStepsButton, OptimizeButton, OptimizingStatus, optimizerLabel } from "./workbench/optimize-button";
+import { resolveConstraints, type ConstraintResidual, type OptimizationMethod, type OptimizationProgress, type OptimizationResult } from "../lib/molecular-workbench/optimization";
+import { fileStem } from "../lib/workbench/formats";
 import { downloadTextFile } from "../lib/file-export";
 import { MEASUREMENT_NOUNS, consumeGeometryFocus, measurementCell, useGeometryFocusRequest } from "../lib/workbench/geometry-focus";
-import { openScientificDocument } from "../lib/workbench/generated-document-open";
 import { CoordinateEditor } from "./workbench/coordinate-editor";
 import { SegmentedControl, SegmentedControlItem } from "./ui/segmented-control";
 import type { Vec3 } from "../lib/molecular-workbench/types";
@@ -152,6 +150,7 @@ function CartesianGeometryPanel({ document, actions, convert }: {
   const [frozen, setFrozen] = useState<ReadonlySet<number>>(() => new Set());
   const [locked, setLocked] = useState<ReadonlySet<string>>(() => new Set());
   const [optimizing, setOptimizing] = useState(false);
+  const [progress, setProgress] = useState<OptimizationProgress | null>(null);
   const [steps, setSteps] = useState<OptimizationSteps | null>(null);
   const [view, setView] = useState<"internal" | "cartesian">("internal");
   const table = useRef<HTMLTableElement | null>(null);
@@ -351,18 +350,21 @@ function CartesianGeometryPanel({ document, actions, convert }: {
     try { resolveConstraints(parseXyz(geometryText(editor.frame, editor.rows)).atoms, constraints); }
     catch (error) { constraintError = error instanceof Error ? error.message : String(error); }
   }
-  const optimize = async (method: OptimizationMethod, forceField: MolecularForceField) => {
+  const optimize = async (method: OptimizationMethod, forceField: MolecularForceField, maxIterations: number) => {
     optimizeJob.current?.abort();
     const controller = new AbortController();
     optimizeJob.current = controller;
     const started = editor;
     const currentLifetime = lifetime.current;
     setOptimizing(true);
+    setProgress(null);
     setEditError(null);
     try {
       const text = geometryText(started.frame, started.rows);
       const molecule = await runChemistryTask({ action: "parse", source: text, format: "xyz" }, { signal: controller.signal });
-      const result = await runChemistryTask({ action: "optimize", molecule, options: { constraints, forceField, method } }, { signal: controller.signal, timeoutMs: 300_000 });
+      const result = await runChemistryTask({ action: "optimize", molecule, options: { constraints, forceField, method, maxIterations } }, {
+        signal: controller.signal, timeoutMs: 300_000, onProgress: (step) => { if (optimizeJob.current === controller) setProgress(step); },
+      });
       if (controller.signal.aborted || currentLifetime !== lifetime.current || editorRef.current !== started) return;
       const positions = result.molecule.atoms.map((atom) => [atom.x, atom.y, atom.z]);
       if (positions.length !== started.rows.length || result.molecule.atoms.some((atom, index) => atom.element !== started.rows[index].element)) {
@@ -482,12 +484,12 @@ function CartesianGeometryPanel({ document, actions, convert }: {
         <IconAction label="Export input file" onClick={exportInput}><FileCode aria-hidden /></IconAction>
         {optimizing ? (
           <>
-            <span role="status" className="workbench-status"><Spinner aria-hidden className="size-3" />Optimizing</span>
+            <OptimizingStatus progress={progress} />
             <Button type="button" variant="ghost" size="xs" onClick={cancelOptimize}>Cancel</Button>
           </>
         ) : (
           <TooltipProvider><Tooltip><TooltipTrigger asChild>
-            <span><OptimizeButton atomCount={editor.rows.length} constraintCount={constraints.length} unavailableReason={constraintError} size="xs" variant="secondary" disabled={applying} onOptimize={(method, forceField) => void optimize(method, forceField)} /></span>
+            <span><OptimizeButton atomCount={editor.rows.length} constraintCount={constraints.length} unavailableReason={constraintError} size="xs" variant="secondary" disabled={applying} onOptimize={(method, forceField, maxIterations) => void optimize(method, forceField, maxIterations)} /></span>
           </TooltipTrigger><TooltipContent>{constraints.length ? `Optimize with ${constraints.length} constraint${constraints.length === 1 ? "" : "s"}` : "Optimize geometry"}</TooltipContent></Tooltip></TooltipProvider>
         )}
         {session?.dirty ? (
@@ -506,28 +508,9 @@ function CartesianGeometryPanel({ document, actions, convert }: {
             {optimization.forceField}, {optimizerLabel(optimization.method)} {optimization.initialEnergy.toFixed(2)} → {optimization.energy.toFixed(2)} kcal/mol
             {optimization.iterations === null ? "" : `, ${optimization.iterations} step${optimization.iterations === 1 ? "" : "s"}`}
             {" · "}<span data-status={optimization.converged ? "success" : "failure"} className="workbench-value">{optimization.converged ? "Converged" : "Not converged"}</span>
-            {steps?.summary === optimization && steps.frames.length > 1
-              ? <Button type="button" variant="ghost" size="xs" onClick={() => void openScientificDocument(actions, `${fileStem(document.title)}-optimization`, {
-                format: "xyz", atoms: steps.frames[0].atoms, modes: [], orbitals: [],
-                frames: steps.frames.map((frame) => ({ atoms: frame.atoms, energyHartree: frame.energy / HARTREE_KCAL_MOL })),
-              }, "steps")}>Open steps</Button> : null}
+            {steps?.summary === optimization ? <OpenStepsButton actions={actions} document={document} frames={steps.frames} /> : null}
           </p>
-          {optimization.residuals.length ? (
-            <ul aria-label="Constraint residuals" className="geometry-panel-residuals">
-              {optimization.residuals.map((item) => {
-                const unit = item.unit === "angstrom" ? "Å" : "°", digits = item.unit === "angstrom" ? 3 : 1;
-                return (
-                  <li key={`${item.kind}:${item.atoms.join(",")}`}>
-                    <span>{item.atoms.map((atom) => atomLabel(editor.rows, atom)).join("–")}</span>
-                    <span>{item.value.toFixed(digits)} {unit}</span>
-                    <span data-status={Math.abs(item.error) <= RESIDUAL_TOLERANCE[item.unit] ? "success" : "failure"} className="workbench-value">
-                      {item.error >= 0 ? "+" : "−"}{Math.abs(item.error).toFixed(digits)} {unit}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : null}
+          <ConstraintResiduals residuals={optimization.residuals} atomLabel={(atom) => atomLabel(editor.rows, atom)} />
         </div>
       ) : null}
       <SegmentedControl aria-label="Geometry view" value={view} onValueChange={(value) => setView(value as "internal" | "cartesian")}>

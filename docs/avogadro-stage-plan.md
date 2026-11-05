@@ -74,14 +74,15 @@ current one has open code or acceptance items.
      `maxIterations` and forward them to the chemistry task.
   2. Add freeze/lock controls for the current selection in the Edit panel and
      show constraint residuals as Geometry does.
-  3. Store a target value per lock in Geometry.
-  4. Add a step limit (1–1000) to the Optimize menu.
-  5. Keep method, iterations and frames in the Z-matrix result and show
+  3. Add a step limit (1–1000) to the Optimize menu.
+  4. Keep method, iterations and frames in the Z-matrix result and show
      **Open steps**; show `optimizerLabel` in every result line.
-  6. Post `{ iteration, energy }` progress from the worker and show it in the
+  5. Post `{ iteration, energy }` progress from the worker and show it in the
      running status.
-  7. Disable unsupported minimizer choices with a reason, or update
+  6. Disable unsupported minimizer choices with a reason, or update
      `docs/graph-editing-and-properties.md` if all choices are valid.
+  A Geometry lock holds the value its field shows, and typing a value moves the
+  atoms there first, so Geometry needs no separate target per lock.
 - **Done when:** SDF → freeze two atoms and lock one distance at a new target →
   optimize with UFF/L-BFGS → watch progress → Open steps → Undo, with residuals
   checked against RDKit.

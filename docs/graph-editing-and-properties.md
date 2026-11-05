@@ -29,14 +29,24 @@ Properties includes formula, masses, graph counts, charge, hydrogen-bond
 counts, rotatable bonds, polar surface area and cLogP. Gasteiger charge CSV
 preserves atom order. Energy and force export require a supported force field
 and finite results. The optimization controls offer MMFF94, MMFF94s and UFF,
-with BFGS (the MMFF toolkit minimizer, unconstrained only), L-BFGS, FIRE,
-ABC-FIRE and FIRE followed by L-BFGS. A method or force field that cannot run on
-the structure (UFF or numerical methods above 64 atoms, BFGS with constraints,
-UFF or coupled Z-matrix variables) is shown disabled with its reason, and the
-checked method is the one that runs. Methods other than BFGS can open their
-steps as XYZ with per-step energies. Geometry lists each distance, angle and
-dihedral constraint with its value and signed residual, and refuses constraints
-that are undefined on the current geometry before optimizing.
+with BFGS, L-BFGS, FIRE, ABC-FIRE and FIRE followed by L-BFGS, and a step limit
+of 100, 250 (the default), 500 or 1000 accepted steps. Every method holds the
+same constraints and records every step; the checked method is the one that
+runs. Optimize is disabled with its reason when the structure is outside the
+shared bounds (256 atoms, 64 constraints, 64 atoms for coupled Z-matrix
+variables); a structure without an analytic MMFF gradient reports the 64-atom
+numerical limit when it runs. While it runs, the status
+shows the latest step and its energy. Every result line names the force field
+and method, and **Open steps** opens the steps as XYZ with per-step energies.
+
+In the Edit panel of an SDF/MOL structure, **Freeze** keeps the selected atoms
+in place and **Hold distance/angle/dihedral** restrains two, three or four
+selected atoms to a target, which starts at the current value and can be
+typed. Constraints follow their atoms through edits and optimizations; Undo,
+Redo and operations that renumber atoms start without them. Geometry and Edit
+list each held distance, angle and dihedral with its value and signed residual
+after Optimize, and refuse constraints that are undefined on the current
+geometry before optimizing.
 
 A flat SDF/MOL drawing (every z at zero) offers Generate 3D in Properties and in
 the Edit menu: hydrogens are added after the source atoms, the structure is

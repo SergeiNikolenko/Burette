@@ -5,13 +5,13 @@ import { appendHydrogens } from './hydrogen-geometry';
 import { assignProtonationStates, type ProtonationChange } from './protonation';
 import { serializePhysicalMolfile } from './molecule-serialization';
 import { readUnspecifiedMolfileStereo, retainUnknownStereo } from './molecule-stereochemistry';
-import { optimizeCartesian, defaultOptimizationMethod, optimizationUnavailable, OPTIMIZATION_LIMITS, CONFORMER_LIMITS, flatDepiction, type EnergyEvaluator, type OptimizeOptions, type OptimizationResult } from './optimization';
+import { optimizeCartesian, defaultOptimizationMethod, optimizationUnavailable, OPTIMIZATION_LIMITS, CONFORMER_LIMITS, flatDepiction, type EnergyEvaluator, type OptimizeOptions, type OptimizationProgress, type OptimizationResult } from './optimization';
 import { createForceField, type MolecularForceField } from './forcefield';
 import { ForceFieldMMFF94 } from 'openchemlib';
 import { calculateGasteigerWasm, createUffWasmEvaluator, extractMmffParametersWasm, prepareUffWasm } from './uff-wasm';
 import { decodeMmffTerms, mmffEnergy } from './mmff-analytic';
 export type { MolecularForceField } from './forcefield';
-export type { GeometryConstraint, OptimizeOptions, OptimizationResult, OptimizationMethod } from './optimization';
+export type { GeometryConstraint, OptimizeOptions, OptimizationProgress, OptimizationResult, OptimizationMethod } from './optimization';
 
 Resources.register(resources);
 
@@ -214,7 +214,7 @@ export async function adjustHydrogensForPh(structure: MolecularStructure, pH: nu
 }
 
 /** Optimizes with exactly the requested field and method and records every step. */
-export function optimize(structure: MolecularStructure, options: OptimizeOptions = {}): OptimizationResult {
+export function optimize(structure: MolecularStructure, options: OptimizeOptions = {}, onProgress?: (progress: OptimizationProgress) => void): OptimizationResult {
   const forceField = options.forceField ?? 'MMFF94', constraints = options.constraints ?? [];
   const method = options.method ?? defaultOptimizationMethod(forceField, constraints.length > 0);
   const maxIterations = options.maxIterations ?? 250;
@@ -223,7 +223,7 @@ export function optimize(structure: MolecularStructure, options: OptimizeOptions
   if (unavailable) throw new Error(unavailable);
   const evaluator = createOptimizationEvaluator(structure, forceField);
   try {
-    const { atoms, ...result } = optimizeCartesian(structure, evaluator, method, forceField, { constraints, maxIterations });
+    const { atoms, ...result } = optimizeCartesian(structure, evaluator, method, forceField, { constraints, maxIterations }, onProgress);
     return { ...result, molecule: snapshot(toOcl({ ...structure, atoms }), structure.title, structure.graphSource, structure.graphComplete, structure.atomMap) };
   } finally { evaluator.dispose(); }
 }

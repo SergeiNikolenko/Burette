@@ -5,7 +5,9 @@ import type { ViewerDocument } from "../../types";
 // A reloading scene reports through the source session; previews time out sooner.
 const RELOAD_LIMIT_MS = 15_000;
 
-export type OptimizationSummary = { forceField?: MolecularForceField; initialEnergy: number; energy: number; converged: boolean; residual: { distance: number | null; angle: number | null } | null };
+export type OptimizationSummary = Pick<OptimizationResult, "method" | "iterations" | "frames"> & {
+  forceField?: MolecularForceField; initialEnergy: number; energy: number; converged: boolean; residual: { distance: number | null; angle: number | null } | null;
+};
 
 export function summary(result: OptimizationResult): OptimizationSummary {
   const largest = (unit: "angstrom" | "degrees") => {
@@ -13,7 +15,8 @@ export function summary(result: OptimizationResult): OptimizationSummary {
     return errors.length ? Math.max(...errors) : null;
   };
   return {
-    forceField: result.forceField, initialEnergy: result.initialEnergy, energy: result.energy, converged: result.converged,
+    forceField: result.forceField, method: result.method, iterations: result.iterations, frames: result.frames,
+    initialEnergy: result.initialEnergy, energy: result.energy, converged: result.converged,
     residual: result.constraintResiduals.length ? { distance: largest("angstrom"), angle: largest("degrees") } : null,
   };
 }

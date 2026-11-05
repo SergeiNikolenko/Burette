@@ -152,7 +152,7 @@ async function openZmat(text, name = "molecule.zmat") {
 // Optimized water as the worker reports it: `move` maps each current atom to its new position.
 const optimized = (atoms, move, extra = {}) => ({
   molecule: { atoms: atoms.map((atom, index) => { const [x, y, z] = move(atom, index); return { element: atom.element, x, y, z }; }), bonds: [] },
-  initialEnergy: 0.15, energy: 0, unit: "kcal/mol", converged: true, constraintResiduals: [], ...extra,
+  initialEnergy: 0.15, energy: 0, unit: "kcal/mol", converged: true, constraintResiduals: [], method: "lbfgs", iterations: 12, ...extra,
 });
 const TIMEOUT_MS = 30_000;
 const water = "O\nX 1 1.0\nH 1 R 2 A\nH 1 R 2 A 3 180\n\nR = 0.9572\nA = 52.26\n";
@@ -191,7 +191,7 @@ test("Optimize holds frozen atoms and fixed coordinates on real atoms, writes on
     assert.deepEqual(atomsOf(parsed.at(-1).source).map(({ element }) => element), ["O", "H", "H"]);
     assert.equal(job.request.action, "optimize-zmatrix");
     assert.deepEqual(job.request.definition, before.internalCoordinates);
-    assert.deepEqual(job.request.options, { frozenRows: [0], lockedCoordinates: ['3:0'], forceField: 'MMFF94', method: 'lbfgs' });
+    assert.deepEqual(job.request.options, { frozenRows: [0], lockedCoordinates: ['3:0'], forceField: 'MMFF94', method: 'lbfgs', maxIterations: 250 });
     assert.equal(job.options.timeoutMs, 300_000);
     assert.equal(body().querySelector('.zmatrix-panel .workbench-status[role="status"]')?.textContent, "Optimizing");
     assert.deepEqual(statuses(), []);
@@ -212,7 +212,7 @@ test("Optimize holds frozen atoms and fixed coordinates on real atoms, writes on
     assert.equal(shown(document), t1, "the scene moves the atoms at the same camera");
     assert.equal(staged(document), null, "no reload");
     assert.equal(alert(), null);
-    assert.equal(result(), "MMFF94 0.15 → 0.00 kcal/mol · Converged");
+    assert.equal(result(), "MMFF94, L-BFGS 0.15 → 0.00 kcal/mol, 12 steps · Converged");
     assert.equal(statuses().some(text => text.includes("no longer follows")), false);
 
     // The definition keeps its rows and the reference point, and places exactly the optimized atoms.
@@ -239,7 +239,7 @@ test("Optimize holds frozen atoms and fixed coordinates on real atoms, writes on
     assert.equal(shown(document), imported);
     await click(byLabel("Redo"));
     assert.equal(current(document), t1);
-    assert.equal(result(), "MMFF94 0.15 → 0.00 kcal/mol · Converged", "Redo brings back the result of exactly this revision");
+    assert.equal(result(), "MMFF94, L-BFGS 0.15 → 0.00 kcal/mol, 12 steps · Converged", "Redo brings back the result of exactly this revision");
     assert.deepEqual(seen.revisions, [imported, t1]);
 
     // Quantum input gets the real atoms and the same constraints.
@@ -349,7 +349,7 @@ test("frozen atoms and fixed coordinates stay with the rows they were set on: a 
     assert.equal(pressed("Freeze H2"), false);
     assert.ok(statuses().includes("Frozen atoms and fixed coordinates stay with the previous rows; Undo returns to them."));
     await click(optimizeButton());
-    assert.deepEqual(jobs.at(-1).request.options, { frozenRows: [], lockedCoordinates: [], forceField: 'MMFF94', method: 'lbfgs' });
+    assert.deepEqual(jobs.at(-1).request.options, { frozenRows: [], lockedCoordinates: [], forceField: 'MMFF94', method: 'lbfgs', maxIterations: 250 });
     await click(cancelButton());
 
     await click(byLabel("Undo"));
@@ -358,7 +358,7 @@ test("frozen atoms and fixed coordinates stay with the rows they were set on: a 
     assert.deepEqual(statuses(), []);
     await click(optimizeButton());
     // The coupled optimizer receives row identities, including dummy rows.
-    assert.deepEqual(jobs.at(-1).request.options, { frozenRows: [2], lockedCoordinates: [], forceField: 'MMFF94', method: 'lbfgs' });
+    assert.deepEqual(jobs.at(-1).request.options, { frozenRows: [2], lockedCoordinates: [], forceField: 'MMFF94', method: 'lbfgs', maxIterations: 250 });
     await click(cancelButton());
   } finally { await view.unmount(); }
 }, TIMEOUT_MS);

@@ -17,11 +17,13 @@ function normalized(structure: MolecularStructure, signal: AbortSignal) {
 const outcome = (result: OptimizationResult): GraphOutcome => ({
   forceField: result.forceField, method: optimizerLabel(result.method), initialEnergy: result.initialEnergy, energy: result.energy,
   converged: result.converged, iterations: result.iterations, frames: result.frames, frameSampling: result.frameSampling,
+  residuals: result.constraintResiduals,
 });
 
-const computeAdvanced: GraphAdvancedCompute = async (operation, structure, signal) => {
+const computeAdvanced: GraphAdvancedCompute = async (operation, structure, signal, onProgress) => {
   if (operation.kind === "optimize") {
-    const result = await runChemistryTask({ action: "optimize", molecule: structure, options: { method: operation.method, forceField: operation.forceField } }, { signal, timeoutMs: 300_000 });
+    const { method, forceField, maxIterations, constraints } = operation;
+    const result = await runChemistryTask({ action: "optimize", molecule: structure, options: { method, forceField, maxIterations, constraints } }, { signal, timeoutMs: 300_000, onProgress });
     return { structure: await normalized(result.molecule, signal), outcome: outcome(result) };
   }
   // Hydrogens are appended after the source atoms, so source atoms keep their indices.
