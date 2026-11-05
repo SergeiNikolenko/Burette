@@ -12,6 +12,7 @@ import { captureToolResult } from './mcp-app-capture.mjs';
 import { mcpAppCheckpoint } from './mcp-app-checkpoint.mjs';
 import { completeMcpAction, enqueueMcpAction, pendingMcpActions, readMcpAction, withMcpAdmission } from './mcp-app-action-log.mjs';
 import { openMcpSession } from './mcp-app-open.mjs';
+import { molecularSessionRoot, molecularCapabilities, molecularSessionAction } from './molecular-session-actions.mjs';
 import { compactViewerActionError, validateMcpAppAction, xyzrenderOpenNotes } from './mcp-app-action-rules.mjs';
 
 const root = join(tmpdir(), 'burette-mcp-app');
@@ -27,13 +28,15 @@ async function writeJson(path, value) {
   await rename(temporary, path);
 }
 
-function directory(sessionId) {
+async function directory(sessionId) {
   if (!/^[0-9a-f-]{36}$/u.test(sessionId || '')) throw new Error('Invalid MCP App session ID.');
+  const durable = join(molecularSessionRoot, sessionId);
+  if (await stat(join(durable, 'session.json')).then(() => true, error => { if (error.code === 'ENOENT') return false; throw error; })) return durable;
   return join(root, sessionId);
 }
 
 async function readSession(sessionId) {
-  try { return JSON.parse(await readFile(join(directory(sessionId), 'session.json'), 'utf8')); }
+  try { return JSON.parse(await readFile(join(await directory(sessionId), 'session.json'), 'utf8')); }
   catch (error) {
     if (error.code === 'ENOENT') return null;
     throw error;
@@ -73,13 +76,13 @@ export async function runMcpAppOperation(input, { assetRoot } = {}) {
     if (input.displayMode != null && !['inline', 'fullscreen'].includes(input.displayMode)) throw new Error('Display mode must be inline or fullscreen.');
     if (input.additionalFiles != null && (!Array.isArray(input.additionalFiles) || input.additionalFiles.length > 7)) throw new Error('A native workspace supports at most 8 files.');
     if (input.entrypoint != null && !['file', 'thread', 'global'].includes(input.entrypoint)) throw new Error('Unknown host entrypoint.');
-    return openMcpSession(root, input, async (sessionId, sessionDir) => {
+    return openMcpSession(input.autonomous ? molecularSessionRoot : root, input, async (sessionId, sessionDir) => {
       let sourceFile = input.file;
       if (input.structure != null) {
         sourceFile = join(sessionDir, `sketch.${input.structure.format}`);
         await writeFile(sourceFile, input.structure.content, { mode: 0o600, flag: 'wx' });
       }
-      const { snapshots } = input.empty ? { snapshots: [] } : await snapshotMcpDocuments([sourceFile, ...(input.additionalFiles || [])], input.workspace);
+      const { snapshots } = input.empty ? { snapshots: [] } : await snapshotMcpDocuments([sourceFile, ...(input.additionalFiles || [])], input.autonomous ? false : input.workspace);
       if (input.view === 'docking' && snapshots.length < 2) throw new Error('Docking requires a receptor and at least one ligand file.');
       if (input.view === 'ketcher' && !['mol', 'sdf', 'sd', 'smi', 'smiles', 'ket', 'rxn'].includes(snapshots[0].document.format)) throw new Error('Ketcher requires MOL, SDF, SMILES, KET or RXN input.');
       await mkdir(join(sessionDir, 'actions'), { mode: 0o700 });
@@ -100,7 +103,8 @@ export async function runMcpAppOperation(input, { assetRoot } = {}) {
     if (input.operation === 'observe') return { apiVersion, sessionId: input.sessionId, ready: false, closed: true, expired: true, tabs: [], activeDocument: null, selection: null };
     throw new Error('Viewer session has expired. Open a new viewer to start a new session.');
   }
-  const sessionDir = directory(session.sessionId);
+  const sessionDir = await directory(session.sessionId);
+  if (input.operation === 'molecular') return molecularSessionAction(sessionDir, session, input);
   const closed = await readFile(join(sessionDir, 'closed.json'), 'utf8').then(JSON.parse).catch(error => {
     if (error.code === 'ENOENT') return null;
     throw error;
@@ -115,6 +119,7 @@ export async function runMcpAppOperation(input, { assetRoot } = {}) {
         : Array.isArray(state.tabs) && state.tabs.length === 0 ? 'empty' : 'loading';
     return { apiVersion, sessionId: session.sessionId, label: session.label, sha256: session.sha256, ...state,
       ready: state.ready === true && fresh,
+      molecular: { ...molecularCapabilities, dataReady: session.documents.some(document => ['pdb', 'ent', 'mmcif', 'cif'].includes(document.format)) },
       lifecycle: { status, heartbeatAgeMs: Number.isFinite(age) ? Math.max(0, age) : null },
     };
   }

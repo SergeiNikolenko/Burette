@@ -15,9 +15,9 @@ export async function mcpAppCheckpoint(directory, input) {
   if (typeof input.value !== 'string' || Buffer.byteLength(input.value) > 699052) throw new Error('Checkpoint exceeds its payload limit.');
   if (input.key === 'workspace') {
     const entries = JSON.parse(input.value);
-    if (!entries || Array.isArray(entries) || typeof entries !== 'object' || Object.keys(entries).length > 2) throw new Error('Invalid workspace checkpoint.');
+    if (!entries || Array.isArray(entries) || typeof entries !== 'object' || Object.keys(entries).length > 4) throw new Error('Invalid workspace checkpoint.');
     for (const [key, value] of Object.entries(entries)) {
-      if (!/^burette\.(molecule\.session|tab-workspaces)\.mcp-[a-f0-9-]{36}$/u.test(key) || typeof value !== 'string') throw new Error('Invalid workspace storage key.');
+      if (!/^burette\.(?:molecule\.session\.mcp-[a-f0-9-]{36}(?:\.active)?|(?:tab-workspaces|workspace-panes)\.mcp-[a-f0-9-]{36})$/u.test(key) || typeof value !== 'string') throw new Error('Invalid workspace storage key.');
     }
   } else {
     if (!/^[A-Za-z0-9+/]+={0,2}$/u.test(input.value)) throw new Error('Invalid compressed scene.');
