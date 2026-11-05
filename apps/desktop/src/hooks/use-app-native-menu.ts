@@ -6,7 +6,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { confirm as confirmDialog, message as messageDialog } from "@tauri-apps/plugin-dialog";
 import type { ShellActions, ShellViewState, StructureViewerAction } from "../components/types";
 import { reopenClosedTab } from "../components/workspace-panes/pane-actions";
-import { checkpointNativePopoutForExit, returnNativePopout } from "../components/workspace-panes/native-scene-window";
+import { checkpointNativePopoutForExit } from "../components/workspace-panes/native-scene-window";
 import { nativeWindowTransferBusy } from "../lib/window-transfer";
 import { journalAction } from "../lib/action-journal";
 import { canInspectConformerEnsemble } from "../lib/conformer-ensemble";
@@ -284,8 +284,8 @@ export function useAppNativeMenu({
     if (closingWindowRef.current || closeRequestInFlightRef.current) return;
     closeRequestInFlightRef.current = true;
     try {
+      // A moved scene closes with its window; Move to Main Window sends it back.
       if (nativeWindowTransferBusy()) return;
-      if (await returnNativePopout()) return;
       const barrier = sealWindowMutations();
       const snapshot = getWindowDocumentDirtySnapshotRef.current();
       const decision = await decideWindowClose({

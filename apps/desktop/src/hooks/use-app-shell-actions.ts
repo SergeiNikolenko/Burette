@@ -1,4 +1,4 @@
-import { checkpointNativeScenesForClose, isNativePopoutTab, returnNativePopout } from "../components/workspace-panes/native-scene-window";
+import { checkpointNativeScenesForClose } from "../components/workspace-panes/native-scene-window";
 import { nativeWindowTransferBusy } from "../lib/window-transfer";
 import { confirmUnsavedSceneClose } from "./file-batch-scene";
 import { rendererViewReloadOptions } from "../lib/renderer-view-state";
@@ -1303,18 +1303,14 @@ export function createDocumentCloseShellActions({
       throw error;
     }
   };
-  const returnOwner = async (targets: MoleculeTab[]) => {
-    if (nativeWindowTransferBusy()) return false;
-    if (!targets.some(tab => isNativePopoutTab(tab.id))) return true;
-    // The handoff owns closing its tab. A failed handoff leaves all targets intact.
-    await returnNativePopout();
-    return false;
-  };
+  // Closing a moved tab closes it here like any other tab. Sending it back is
+  // the explicit Move to Main Window action: a close that waited on another
+  // window's viewer (asleep in its own fullscreen Space) never finished.
 
   const closeActions: Pick<ShellActions, "closeDocument" | "closeTab" | "closeOtherTabs" | "closeTabs" | "closeActiveDocument" | "clearAllDocuments"> = {
     closeDocument: async (id: string) => {
       const targets = tabs.filter(tab => tab.location.kind === "file" && (tab.location.documentId === id || tab.location.path === documents.find(doc => doc.id === id)?.path));
-      if (!await returnOwner(targets)) return;
+      if (nativeWindowTransferBusy()) return;
       const documentIds = documentIdsClosingWithTabs(targets, [id]);
       const permit = await confirmClose(documentIds, targets);
       if (!permit) return;
@@ -1326,7 +1322,7 @@ export function createDocumentCloseShellActions({
     },
     closeTab: async (id: string) => {
       const tab = tabs.find((candidate) => candidate.id === id);
-      if (!await returnOwner(tab ? [tab] : [])) return;
+      if (nativeWindowTransferBusy()) return;
       const documentIds = documentIdsClosingWithTabs(tab ? [tab] : []);
       const permit = await confirmClose(documentIds, tab ? [tab] : []);
       if (!permit) return;
@@ -1338,15 +1334,8 @@ export function createDocumentCloseShellActions({
     },
     closeTabs: async (ids: string[]) => {
       const wanted = new Set(ids);
-      let targets = tabs.filter(tab => wanted.has(tab.id));
+      const targets = tabs.filter(tab => wanted.has(tab.id));
       if (!targets.length || nativeWindowTransferBusy()) return;
-      if (targets.some(tab => isNativePopoutTab(tab.id))) {
-        const owners = new Set(targets.filter(tab => isNativePopoutTab(tab.id)).map(tab => tab.id));
-        await returnNativePopout();
-        const remaining = useMoleculeStore.getState().tabs;
-        targets = targets.filter(tab => !owners.has(tab.id) && remaining.some(candidate => candidate.id === tab.id));
-      }
-      if (!targets.length) return;
       const documentIds = documentIdsClosingWithTabs(targets);
       const permit = await confirmClose(documentIds, targets);
       if (!permit) return;
@@ -1358,15 +1347,8 @@ export function createDocumentCloseShellActions({
     },
     closeOtherTabs: async (id: string) => {
       const pane = tabs.find(tab => tab.id === id)?.pane ?? null;
-      let otherTabs = tabs.filter((tab) => tab.id !== id && !tab.pinned && (tab.pane ?? null) === pane);
+      const otherTabs = tabs.filter((tab) => tab.id !== id && !tab.pinned && (tab.pane ?? null) === pane);
       if (otherTabs.length === 0 || nativeWindowTransferBusy()) return;
-      if (otherTabs.some(tab => isNativePopoutTab(tab.id))) {
-        const owners = new Set(otherTabs.filter(tab => isNativePopoutTab(tab.id)).map(tab => tab.id));
-        await returnNativePopout();
-        const remaining = useMoleculeStore.getState().tabs;
-        otherTabs = otherTabs.filter(tab => !owners.has(tab.id) && remaining.some(candidate => candidate.id === tab.id));
-      }
-      if (!otherTabs.length) return;
       const documentIds = documentIdsClosingWithTabs(otherTabs);
       const permit = await confirmClose(documentIds, otherTabs);
       if (!permit) return;
@@ -1380,7 +1362,7 @@ export function createDocumentCloseShellActions({
     closeActiveDocument: async () => {
       const activeTab = tabs.find(tab => tab.id === useMoleculeStore.getState().activeTabId)
         ?? tabs.find(tab => tab.location.kind === "file" && tab.location.documentId === activeDocument?.id);
-      if (!await returnOwner(activeTab ? [activeTab] : [])) return;
+      if (nativeWindowTransferBusy()) return;
       const documentIds = documentIdsClosingWithTabs(activeTab ? [activeTab] : []);
       const permit = await confirmClose(documentIds, activeTab ? [activeTab] : []);
       if (!permit) return;

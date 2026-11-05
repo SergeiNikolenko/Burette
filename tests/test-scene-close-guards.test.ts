@@ -82,10 +82,10 @@ test("a pending native handoff prevents all destructive close routes", async () 
   }
 });
 
-test("owner tab close delegates to return; parent-missing retained checkpoint is not discarded by bulk close", async () => {
-  const f = fixture(); owner = "history-tab";
-  await f.actions.closeTabs(["history-tab"]);
-  expect(returning).toHaveBeenCalledTimes(1); expect(f.close).not.toHaveBeenCalled(); expect(confirm).not.toHaveBeenCalled();
+test("closing a tab moved in from another window closes it here without a handoff", async () => {
+  const f = fixture(); owner = "history-tab"; confirm.mockReturnValue(true);
+  await f.actions.closeTab("history-tab");
+  expect(returning).not.toHaveBeenCalled(); expect(confirm).toHaveBeenCalledTimes(1); expect(f.close).toHaveBeenCalledTimes(1);
 });
 
 test("Close All retains pinned documents and their dirty runtime, and records closed tabs for reopening", async () => {
