@@ -62,7 +62,7 @@ assert.equal(compatibility.bundle.relativePath, "plugins/burette-agent");
 
 const mcpConfig = JSON.parse(await read(".mcp.json"));
 assert.equal(mcpConfig.mcpServers.burette_agent_mcp.command, "node");
-assert.deepEqual(mcpConfig.mcpServers.burette_agent_mcp.args, ["./mcp/lib/server-bundle.mjs", "--stdio"]);
+assert.deepEqual(mcpConfig.mcpServers.burette_agent_mcp.args, ["--max-semi-space-size=1", "./mcp/lib/server-bundle.mjs", "--stdio"]);
 assert.deepEqual(mcpConfig.mcpServers.burette_agent_mcp.icons, [
   { src: "./assets/composer-icon.png", mimeType: "image/png", sizes: ["32x32"] },
   { src: "./assets/app-icon.png", mimeType: "image/png", sizes: ["512x512"] },

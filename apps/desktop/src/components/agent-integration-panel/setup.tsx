@@ -36,7 +36,7 @@ export function AgentSetup({ bundlePath }: { bundlePath: string | null }) {
           title: "Connect local tools",
           instructions: "Add this server to your client’s MCP configuration, then restart the client. Requires Node.js. Embedded workspaces depend on client support; this does not install the Codex plugin.",
           value: JSON.stringify({ mcpServers: { burette_agent_mcp: {
-            command: "node", args: [`${bundlePath}/mcp/lib/server-bundle.mjs`, "--stdio"], cwd: bundlePath,
+            command: "node", args: ["--max-semi-space-size=1", `${bundlePath}/mcp/lib/server-bundle.mjs`, "--stdio"], cwd: bundlePath,
           } } }, null, 2),
           copyLabel: "Copy configuration",
         })}>MCP configuration</Button>,
