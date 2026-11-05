@@ -5,6 +5,10 @@ plugin. `burette.open_workspace` remains the separate Browser/desktop contract
 for explicitly requested workflows or explained native capability limits.
 A native result does not automatically append a standalone-app link.
 
+Scientific analysis and publication exports use the separate
+[autonomous molecular session](autonomous-molecular-sessions.md) tools. Their
+execution and saved results do not depend on a mounted native panel.
+
 ## Native plugin upgrades and desktop links
 
 The MCP server snapshots its packaged HTML and native asset directory before

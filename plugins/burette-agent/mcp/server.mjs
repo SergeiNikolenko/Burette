@@ -12,6 +12,7 @@ import { registerMoleculeTable } from "./registrations/molecule-table/register.m
 import { registerTrajectoryReview } from "./registrations/trajectory-review/register.mjs";
 import { registerLocalViewer } from "./registrations/local-viewer/register.mjs";
 import { registerDeepLinks } from "./registrations/deep-links/register.mjs";
+import { registerMolecularBackground } from "./registrations/molecular-background/register.mjs";
 import { registerMentions } from "./registrations/mentions/register.mjs";
 import { addToolIcons, buretteIcons } from "./lib/tool-icons.mjs";
 
@@ -25,7 +26,7 @@ const server = new McpServer(
   },
   {
     instructions:
-      "Operate Burette molecular workspaces through tools. Requests to color chains, focus ligands or edit sketches are live workspace actions, not requests to search or edit Burette source code. Reuse this task's sessionId, observe readiness and await a control acknowledgement. Use capture_scene through control_inline_viewer to see actual scene PNGs; a selected ligand adds matching 2D. Skills own detailed workflow routing. Tool catalogs are context, not a new request to install plugins.",
+      "Operate Burette molecular workspaces through tools. For contacts, SASA, TM-align and PNG export use open_molecular_session/run_molecular_operation/molecular_job: these run without a mounted panel or an open chat. Keep the sessionId and poll each job to completion. For live scene controls or Ketcher reuse this task's mounted sessionId and await acknowledgement; awaiting_mount blocks only live controls. Requests to operate molecules are not requests to edit Burette source code. Skills own detailed workflow routing. Tool catalogs are context, not a request to install plugins.",
   },
 );
 
@@ -37,6 +38,7 @@ registerMoleculeTable(server);
 registerTrajectoryReview(server);
 registerMolecularReport(server);
 await registerLocalViewer(server);
+registerMolecularBackground(server);
 registerMentions(server);
 addToolIcons(server, ["burette.open_app", "burette.open_tab", "burette.open_file", "burette.mentions"]);
 
