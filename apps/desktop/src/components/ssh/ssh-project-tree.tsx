@@ -5,7 +5,7 @@ import { useSshProjectMenu } from "./ssh-project-details";
 import { useSshStatus } from "../../lib/ssh-connection-status";
 import { SshDeleteFolderDialog } from "./ssh-delete-folder-dialog";
 import { FolderExpandCollapseIcon } from "../sidebar/folder-expand-collapse-icon";
-import { useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { MarqueeName } from "../marquee-name";
 import { SidebarFolderIcon } from "../sidebar/sidebar-folder-icon";
 import { FileKindIcon, fileKindForPath } from "../sidebar/file-kind-icon";
@@ -38,6 +38,8 @@ export function RemoteProject({ project, connection, onOpen, actions, state }: {
   const [limits, setLimits] = useState<Record<string, number>>({});
   const [deleting, setDeleting] = useState<{ path: string; fullPath: string } | null>(null);
   const [dropNotice, setDropNotice] = useState<{ path: string; message: string; error: boolean } | null>(null);
+  const [warmed, setWarmed] = useState(new Set<string>());
+  const warming = useRef<{ path: string; promise: Promise<SshDirectory> } | null>(null);
   const lock = useRef(false);
   const queued = useRef<Array<{ operation: Operation; refresh: boolean }>>([]);
   const dragSource = useRef<{ path: string; directory: boolean } | null>(null);
@@ -79,25 +81,9 @@ export function RemoteProject({ project, connection, onOpen, actions, state }: {
       setPending(operation); setFailure(null);
       if (operation.type === "download") setDropNotice(null);
       if (operation.type === "list") {
-        const value = await sshList(project.host, project.root, operation.path, true);
-        const records = [value, ...(value.discovered ?? [])];
-        setDirectories(previous => {
-          const next = new Map(previous);
-          for (const record of records) {
-            const { discovered: _discovered, expanded: _expanded, ...listing } = record;
-            next.delete(record.path);
-            // A subfolder cut short by the shared scan budget is stale, so opening it searches it again.
-            next.set(record.path, { time: record === value || !record.truncated ? Date.now() : 0, value: listing });
-          }
-          while (next.size > 128) {
-            const candidates = [...next.keys()].filter(path => path !== "." && path !== operation.path && !operation.path.startsWith(`${path}/`));
-            const evicted = candidates.find(path => !expanded.has(path)) ?? candidates[0];
-            if (!evicted) break;
-            next.delete(evicted);
-            setExpanded(current => new Set([...current].filter(path => path !== evicted && !path.startsWith(`${evicted}/`))));
-          }
-          return next;
-        });
+        // Opening a folder that is already loading in the background reuses that request.
+        const value = await (!refresh && warming.current?.path === operation.path ? warming.current.promise : sshList(project.host, project.root, operation.path, true));
+        store(operation.path, value);
         // Discovery warms listings; only an explicit click expands a folder.
         // A late scan must not reopen folders the user has just collapsed.
       } else if (operation.type === "download") {
@@ -109,6 +95,42 @@ export function RemoteProject({ project, connection, onOpen, actions, state }: {
     } catch (error) { setFailure({ operation, message: String(error) }); }
     finally { release(); }
   }
+  function store(listed: string, value: SshDirectory) {
+    const records = [value, ...(value.discovered ?? [])];
+    setDirectories(previous => {
+      const next = new Map(previous);
+      for (const record of records) {
+        const { discovered: _discovered, expanded: _expanded, ...listing } = record;
+        next.delete(record.path);
+        // A subfolder cut short by the shared scan budget is stale, so opening it searches it again.
+        next.set(record.path, { time: record === value || !record.truncated ? Date.now() : 0, value: listing });
+      }
+      while (next.size > 128) {
+        const candidates = [...next.keys()].filter(path => path !== "." && path !== listed && !listed.startsWith(`${path}/`));
+        const evicted = candidates.find(path => !expanded.has(path)) ?? candidates[0];
+        if (!evicted) break;
+        next.delete(evicted);
+        setExpanded(current => new Set([...current].filter(path => path !== evicted && !path.startsWith(`${evicted}/`))));
+      }
+      return next;
+    });
+  }
+  // Load the project root and the subfolders of open folders before they are clicked,
+  // one folder at a time and only while no requested list or download is running.
+  // Each folder is tried once, so failures and evicted listings fall back to loading on open.
+  useEffect(() => {
+    if (!enabled || pending || warming.current) return;
+    const subfolders = [...expanded].reverse().flatMap(parent => (directories.get(parent)?.value.entries.slice(0, limits[parent] ?? 100) ?? [])
+      .filter(entry => entry.directory)
+      .map(entry => parent === "." ? entry.name : `${parent}/${entry.name}`));
+    const path = [".", ...subfolders].find(candidate => !directories.get(candidate)?.time && !warmed.has(candidate));
+    if (!path) return;
+    const promise = sshList(project.host, project.root, path, true);
+    warming.current = { path, promise };
+    promise
+      .then(value => { store(path, value); setLastSuccess(Date.now()); }, () => {})
+      .finally(() => { warming.current = null; setWarmed(previous => new Set(previous).add(path)); });
+  }, [enabled, pending, expanded, directories, limits, warmed]);
   function release() {
     lock.current = false; setPending(null);
     const next = queued.current.shift();

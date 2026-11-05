@@ -65,6 +65,35 @@ test("SSH expansion queues every requested folder and the root control collapses
   }
 });
 
+test("SSH project root and the subfolders of open folders load before they are clicked", async () => {
+  const originalFetch = globalThis.fetch;
+  const paths: string[] = [];
+  globalThis.fetch = (async (_url: unknown, options: RequestInit) => {
+    const { path } = JSON.parse(String(options.body));
+    paths.push(path);
+    const entries = path === "." ? [{ name: "a", directory: true }, { name: "b", directory: true }] : [{ name: `${path}.pdb`, directory: false }];
+    return new Response(JSON.stringify({ root: "/data", path, entries, truncated: false }), { headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  const settle = async () => { for (let attempt = 0; attempt < 10; attempt++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 1)); }); };
+  try {
+    await act(async () => { root.render(<RemoteProject project={{ id: "warm", name: "Remote", host: "fixture", root: "/data" }} onOpen={() => {}} {...shellStub} />); });
+    await settle();
+    expect(paths).toEqual(["."]);
+    await act(async () => { container.querySelector<HTMLButtonElement>('button[aria-label="Expand Remote"]')!.click(); });
+    await settle();
+    expect(paths).toEqual([".", "a", "b"]);
+    await act(async () => { container.querySelector<HTMLButtonElement>('button[aria-label="Expand b"]')!.click(); });
+    expect(container.textContent).toContain("b.pdb");
+    expect(paths).toEqual([".", "a", "b"]);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("SSH subfolders cut short by the scan budget are searched again when opened", async () => {
   const originalFetch = globalThis.fetch;
   const paths: string[] = [];
