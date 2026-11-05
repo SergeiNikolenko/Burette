@@ -26,6 +26,17 @@ export function readMeasurementRequest(value: unknown): MeasurementRequest | nul
     frameIndex: 0, frameCount: 1, atomCount: v.atomCount, sourceSha256: v.sourceSha256, sourceFormat: v.sourceFormat };
 }
 
+/** An XYZ measurement only names ordered atoms; Geometry edits it through its own rows. */
+export function readXyzMeasurementAtoms(value: unknown): number[] | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as { kind?: unknown; atoms?: unknown; atomCount?: unknown; sourceFormat?: unknown; frameCount?: unknown };
+  const size = ({ distance: 2, angle: 3, dihedral: 4 } as Record<string, number>)[String(v.kind)];
+  if (!size || v.sourceFormat !== "xyz" || v.frameCount !== 1 || !Array.isArray(v.atoms) || v.atoms.length !== size || new Set(v.atoms).size !== size
+    || !Number.isInteger(v.atomCount) || (v.atomCount as number) > 10_000
+    || v.atoms.some(index => !Number.isInteger(index) || index < 0 || index >= (v.atomCount as number))) return null;
+  return [...v.atoms] as number[];
+}
+
 /** Both the displayed parser input and the draft must still be the requested revision. */
 export async function checkMeasurementSource(request: MeasurementRequest, text: string, value: Record<string, unknown>) {
   if (value.atomCount !== request.atomCount || value.sourceFormat !== request.sourceFormat) throw new Error("The structure changed. Open the measurement again.");

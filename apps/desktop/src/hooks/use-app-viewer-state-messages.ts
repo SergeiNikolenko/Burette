@@ -6,7 +6,9 @@ import type { DockTabKind } from "../lib/dock";
 import { updateHostedMcpSelectionContext } from "../lib/hosted-mcp-widget";
 import { rememberViewerAtomSelection } from "../lib/workbench/selection";
 import { openWorkbenchDialog } from "../lib/workbench/dialog-store";
-import { readMeasurementRequest } from "../lib/workbench/measurement-request";
+import { readMeasurementRequest, readXyzMeasurementAtoms } from "../lib/workbench/measurement-request";
+import { requestGeometryFocus } from "../lib/workbench/geometry-focus";
+import { geometryPanelAvailable } from "../components/geometry-panel";
 import { structureEditAvailable } from "../lib/workbench/graph-draft";
 import { sourceExtension } from "../lib/science-session/state";
 import { isViewerFrameVisible } from "../lib/viewer-frame-visibility";
@@ -91,6 +93,14 @@ export function useAppViewerStateMessages({
       const request = readMeasurementRequest(body.measurement);
       const frame = activeDocument ? activeViewerIframeForDocument(activeDocument.id, "molstar") : null;
       const extension = activeDocument ? sourceExtension(activeDocument) : null;
+      const xyzAtoms = readXyzMeasurementAtoms(body.measurement);
+      const ownFrame = Boolean(eventSource && activeDocument && frame && activeDocument.id === body.documentId
+        && frame.contentWindow === eventSource && !isReadOnlyViewerMessageSource(eventSource) && ownsCurrentSourceFrame(activeDocument, frame));
+      if (xyzAtoms && ownFrame && extension === "xyz" && geometryPanelAvailable(activeDocument)) {
+        requestGeometryFocus(activeDocument!.id, xyzAtoms);
+        openDockTab("right", "geometry");
+        return true;
+      }
       if (request && eventSource && activeDocument && frame && activeDocument.id === body.documentId && structureEditAvailable(activeDocument)
         && (extension === "sd" ? "sdf" : extension) === request.sourceFormat
         && frame.contentWindow === eventSource && !isReadOnlyViewerMessageSource(eventSource) && ownsCurrentSourceFrame(activeDocument, frame)) {

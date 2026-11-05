@@ -306,6 +306,55 @@ test("Geometry Undo restores the exact CRLF receipt after an acknowledged edit",
 });
 
 
+test("Geometry Redo replays an undone edit and a new edit clears it", async () => {
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host), sent = [];
+  const doc = { id: "redo-water", path: "/redo-water.xyz", extension: "xyz", renderer: "molstar" };
+  const bond = () => host.querySelector('[role="spinbutton"][aria-label="Bond of H2, Å"]');
+  const step = () => act(async () => bond().dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true })));
+  const click = (label) => act(async () => host.querySelector(`[aria-label="${label}"]`).click());
+  try {
+    await act(async () => root.render(<GeometryPanel document={doc} actions={{ runStructureViewerAction: (_doc, action) => sent.push(action) }} />));
+    assert.equal(host.querySelector('[aria-label="Redo"]').disabled, true);
+    await step();
+    const edited = session.content;
+    await click("Undo");
+    assert.equal(session.content, xyz);
+    await click("Redo");
+    assert.equal(session.content, edited);
+    assert.equal(sent.filter(action => action.type === "update_geometry").at(-1).text, edited, "Redo updates the scene");
+    assert.equal(host.querySelector('[aria-label="Redo"]').disabled, true);
+    await click("Undo");
+    await step();
+    assert.equal(host.querySelector('[aria-label="Redo"]').disabled, true, "a new edit drops the undone branch");
+    await click("Undo");
+    assert.equal(session.content, xyz);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+test("a 3D measurement focuses its Geometry cell or reports that it is not a row", async () => {
+  const { requestGeometryFocus } = await import("../apps/desktop/src/lib/workbench/geometry-focus");
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  const doc = { id: "focus-water", path: "/focus-water.xyz", extension: "xyz", renderer: "molstar" };
+  const settle = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 5)); });
+  try {
+    // A request made before the tab opens applies once the panel reads its source.
+    requestGeometryFocus(doc.id, [1, 0]);
+    await act(async () => root.render(<GeometryPanel document={doc} actions={{ runStructureViewerAction: () => ({ ok: true }) }} />));
+    await settle();
+    assert.equal(document.activeElement?.getAttribute("aria-label"), "Bond of H2, Å");
+    await act(async () => requestGeometryFocus(doc.id, [2, 0, 1]));
+    await settle();
+    assert.equal(document.activeElement?.getAttribute("aria-label"), "Angle of H3, °");
+    await act(async () => requestGeometryFocus(doc.id, [1, 2]));
+    await settle();
+    assert.equal(host.querySelector('[role="alert"]')?.textContent, "This distance is not a Geometry row.");
+    await act(async () => requestGeometryFocus("another-document", [1, 0]));
+    assert.equal(host.querySelector('[role="alert"]')?.textContent, "This distance is not a Geometry row.");
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
 test("raw UTF8 BOM Geometry preserves its source bytes through an edit and Undo", async () => {
   const original = "\uFEFF" + xyz.replaceAll("\n", "\r\n"); session.content = original;
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host), sent = [];

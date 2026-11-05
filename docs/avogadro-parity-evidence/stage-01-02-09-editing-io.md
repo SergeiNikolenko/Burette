@@ -1711,3 +1711,58 @@ the frame the source left and refits the alignment onto the new frame.
 
 Still open: keyboard-only and screen-reader passes, Loop playback with All on,
 large trajectories near the 255-frame limit, and native/Quick Look surfaces.
+
+### Geometry panel: Redo, Z-matrix copy/export and 3D measurement focus for XYZ (2026-11-05)
+
+The Geometry panel for an XYZ file had Undo without Redo, offered **Convert to
+Z-matrix** only in the collinear error state, could not export a Z-matrix from
+the Cartesian view or copy one from the Z-matrix view, and the 3D
+**Set distance/angle/dihedral…** menu item was hidden for XYZ. Now:
+
+- The Cartesian editor keeps a `future` stack beside its history. **Redo** replays
+  an undone edit; any new edit clears the stack.
+- **Convert to Z-matrix** is offered whenever the panel shows the saved source
+  text, and **Export Z-matrix** downloads `<name>.zmat` through
+  `writeCoordinateInterchange`. The Z-matrix view gains **Copy Z-matrix** with the
+  same serializer.
+- The viewer shows **Set …** for a measurement on a single-geometry XYZ file
+  (`canEditMeasurementCoordinates`, `measurement-coordinate.js`). The host reads the
+  request with `readXyzMeasurementAtoms` and, instead of opening the coordinate
+  dialog, opens the Geometry tab with a focus request
+  (`lib/workbench/geometry-focus.ts`). The panel focuses the matching bond, angle or
+  dihedral cell in either direction of the atom list, or reports that the
+  measurement is not a Geometry row. XYZ trajectories keep the item hidden.
+
+Checks on Gauss in a fresh checkout with the pinned Mol* source:
+`bun run typecheck`, `test:geometry-ui`, `test:measurement-source-preview` with the
+measurement dialog suite, `test:zmatrix-controls`, `test:coordinate-interchange`
+(10 tests), `tests/test-scene-tree-native-menu.mjs` and
+`tests/test-ui-shell-contract.mjs` pass. New component tests cover Redo and its
+reset, measurement focus in both atom orders and the not-a-row message; the host
+route test covers XYZ focus routing and ignored foreign or invalid requests.
+
+Browser scenario on Gauss, agent shell rebuilt from this checkout
+(`prebuilt-static` runtime), ethanol XYZ fixture: add a C1–C2 distance, open the
+scene tree, right-click the measurement, **Set distance…** → Geometry tab with focus
+on *Bond of C2* → type 1.6 → **Undo** → **Redo** → **Export Z-matrix** → **Undo** →
+**Convert to Z-matrix** → **Copy Z-matrix** (real clipboard read) → open the exported
+`.zmat` in a fresh server and browser. Light 1400x900 and dark 900x800 screenshots
+were inspected.
+
+[Independent oracle](geometry-xyz-zmatrix-oracle.json), 11/11 checks: a Python
+NeRF rebuild of the exported Z-matrix reproduces every interatomic distance of the
+edited scene within 9.3e-8 Angstrom, the copied Z-matrix reproduces the saved
+geometry within 1.6e-7 Angstrom, Undo restores every source coordinate within 1e-6,
+Redo replays the edit exactly, and the reopened `.zmat` matches the edited
+geometry. The page and console errors equal those of the shell built before this
+change on the same file: the missing macOS Finder icon on Linux and the
+root-relative `molstar.css` and `viewer-runtime.css` links of the viewer frame.
+
+The same fresh checkout exposed a desktop typecheck failure outside this stage: the
+pinned Mol* parser returns CIF blocks as `ReadonlyArray`, so `crystal-io.ts` and
+`molecular-cif.ts` now type them as `readonly CifBlock[]` (`test:crystal-io` 22
+tests and `test:coordinate-interchange-reader` 5 tests pass).
+
+Still open: keyboard-only and screen-reader passes of the focus route, angle and
+dihedral focus in the browser, Z-matrix rows that reference dummy atoms, and
+native/Quick Look surfaces.

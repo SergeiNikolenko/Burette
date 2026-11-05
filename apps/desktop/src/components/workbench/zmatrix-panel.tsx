@@ -24,10 +24,11 @@ import { useMoleculeStore } from "../../stores/molecule-store";
 import { admitCoordinateSourceRevision, scientificStateFor, subscribeImports } from "../../lib/workbench/scientific-source-state";
 import { recordImportedRevision, revisionIndex, useImportedOriginal, useImportedRevisions, type ImportedRevision } from "../../lib/workbench/source";
 import { isReferencePoint, nextVariableName, sameDefinition, variableUses, withReference, withRowValue, withVariable, zmatrixOptimizedRevision, zmatrixRevision, zmatrixRowLabels, zmatrixRowsRevision } from "../../lib/workbench/zmatrix-draft";
-import { zmatrixConstraints, zmatrixLockKey, zmatrixRowStructure } from "../../lib/workbench/zmatrix-optimization";
+import { zmatrixAtomIndices, zmatrixConstraints, zmatrixLockKey, zmatrixRowStructure } from "../../lib/workbench/zmatrix-optimization";
+import { MEASUREMENT_NOUNS, consumeGeometryFocus, measurementCell, useGeometryFocusRequest } from "../../lib/workbench/geometry-focus";
 import type { ViewerDocument } from "../../types";
 import type { ShellActions } from "../types";
-import { ArrowCurvedRight, Download, FileCode, Undo } from "../ui/app-icons";
+import { ArrowCurvedRight, Copy, Download, FileCode, Undo } from "../ui/app-icons";
 import { Button } from "../ui/button";
 import { IconAction, ValueField } from "./geometry-fields";
 import { Spinner } from "../ui/spinner";
@@ -97,6 +98,25 @@ export function ZmatrixPanel({ document, actions, science, text }: {
   // The last optimization result, shown while the source is the revision it produced.
   const [optimized, setOptimized] = useState<{ text: string; summary: OptimizationSummary } | null>(null);
   const labels = zmatrixRowLabels(definition);
+  // A 3D measurement names real atoms; reference points sit between them in the rows.
+  const table = useRef<HTMLTableElement | null>(null);
+  const focusRequest = useGeometryFocusRequest(document.id);
+  const handledFocus = useRef(0);
+  useEffect(() => {
+    if (!focusRequest || handledFocus.current === focusRequest.id) return;
+    handledFocus.current = focusRequest.id;
+    consumeGeometryFocus(focusRequest.id);
+    const atomRows = zmatrixAtomIndices(definition);
+    const cell = measurementCell(definition.rows, focusRequest.atoms.map((atom) => atomRows.indexOf(atom)));
+    if (!cell) {
+      setError(`This ${MEASUREMENT_NOUNS[focusRequest.atoms.length - 2]} is not a Z-matrix row.`);
+      return;
+    }
+    setError(null);
+    const field = table.current?.querySelector<HTMLElement>(`[data-geometry-atom="${cell.row}"] [data-geometry-slot="${cell.slot}"] :is(input, [role="spinbutton"], button)`);
+    field?.scrollIntoView({ block: "nearest" });
+    field?.focus();
+  }, [focusRequest, definition]);
   const values = resolveZmatrixDocument(definition);
   const uses = variableUses(definition);
   const variableNames = definition.variables.map(({ name }) => name);
@@ -422,13 +442,22 @@ export function ZmatrixPanel({ document, actions, science, text }: {
       setError(message(caught));
     }
   };
+  const zmatrixText = () => {
+    const pair = readCoordinateInterchange(text, "xyz");
+    return writeCoordinateInterchange({ ...pair, internalCoordinates: definition }, "zmat", pair.comment);
+  };
   const exportZmatrix = () => {
     try {
-      const pair = readCoordinateInterchange(text, "xyz");
-      const exported = writeCoordinateInterchange({ ...pair, internalCoordinates: definition }, "zmat", pair.comment);
-      downloadTextFile(`${fileStem(original?.name ?? document.title)}.zmat`, exported);
+      downloadTextFile(`${fileStem(original?.name ?? document.title)}.zmat`, zmatrixText());
       setError(null);
     } catch { setError("Could not export the Z-matrix. Try again."); }
+  };
+  const copyZmatrix = async () => {
+    try {
+      if (typeof navigator.clipboard?.writeText !== "function") throw new Error("Clipboard unavailable.");
+      await navigator.clipboard.writeText(zmatrixText());
+      setError(null);
+    } catch { setError("Could not copy the Z-matrix. Try again."); }
   };
   const busy = applying || optimizing || !binding;
   const result = optimized?.text === text ? optimized.summary : null;
@@ -440,6 +469,7 @@ export function ZmatrixPanel({ document, actions, science, text }: {
         <IconAction label="Redo" disabled={busy || position < 0 || position >= revisions.length - 1} onClick={() => void show(revisions[position + 1], false)}><ArrowCurvedRight aria-hidden /></IconAction>
         <ZmatrixAddMenu disabled={busy} rowLabels={labels} variables={variableNames} suggestedName={nextVariableName(definition)}
           onAddRow={(row) => editRows({ type: "append", row })} onAddVariable={addVariable} />
+        <IconAction label="Copy Z-matrix" onClick={copyZmatrix}><Copy aria-hidden /></IconAction>
         <IconAction label="Export Z-matrix" onClick={exportZmatrix}><Download aria-hidden /></IconAction>
         <IconAction label="Export input file" onClick={exportInput}><FileCode aria-hidden /></IconAction>
         {optimizing ? (
@@ -493,7 +523,7 @@ export function ZmatrixPanel({ document, actions, science, text }: {
             </tbody>
           </table>
         ) : null}
-        <table className="geometry-table" aria-label="Z-matrix rows">
+        <table ref={table} className="geometry-table" aria-label="Z-matrix rows">
           <thead>
             <tr>
               <th scope="col">Row</th>
@@ -502,7 +532,7 @@ export function ZmatrixPanel({ document, actions, science, text }: {
           </thead>
           <tbody>
             {definition.rows.map((row, index) => (
-              <tr key={index} data-reference-point={isReferencePoint(row) || undefined}>
+              <tr key={index} data-geometry-atom={index} data-reference-point={isReferencePoint(row) || undefined}>
                 <th scope="row">
                   <span className="geometry-atom">
                     <ZmatrixRowMenu label={labels[index]} referencePoint={isReferencePoint(row)} index={index} rowCount={definition.rows.length} disabled={busy}
@@ -517,7 +547,7 @@ export function ZmatrixPanel({ document, actions, science, text }: {
                   const token = row.values[slot];
                   const label = `${COLUMN_LABELS[kind]} of ${labels[index]}`;
                   return (
-                    <td key={kind}>
+                    <td key={kind} data-geometry-slot={slot}>
                       <div className="geometry-value">
                         <CoordinateDefinition label={label} slot={slot} refs={row.refs} earlierRows={labels.slice(0, index)}
                           token={token} variables={variableNames} disabled={busy} canBind={(binding) => canBind(index, slot, binding)}

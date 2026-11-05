@@ -54,7 +54,6 @@ current one has open code or acceptance items.
      the Z-matrix toolbar, reusing `writeCoordinateInterchange`.
   4. Allow Set distance/angle/dihedral for XYZ in the viewer; route it to the
      Geometry tab with a focus request that matches `row.refs`.
-  5. Pass `zmatrixLockUnavailable` into the lock toggles.
 - **Done when:** XYZ → edit a distance from the 3D measurement → Undo → Redo →
   convert → Copy and Export Z-matrix → reopen the exported file with identical
   geometry.

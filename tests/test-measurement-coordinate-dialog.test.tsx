@@ -165,7 +165,7 @@ test("the host opens only the active editable frame's own graph measurement", as
   } finally { await v.close(); }
 });
 
-test("ring cuts are refused at open; the XYZ runtime refuses before any host request", async () => {
+test("ring cuts are refused at open; an XYZ measurement opens its Geometry row instead of the dialog", async () => {
   const v = await fixture("cyclohexanol", "v2000", "distance", [1, 2]);
   try {
     await v.open();
@@ -178,8 +178,37 @@ test("ring cuts are refused at open; the XYZ runtime refuses before any host req
     await plugin.builders.structure.hierarchy.applyPreset(trajectory, "default", { representationPreset: "empty" });
     const structure = plugin.managers.structure.hierarchy.current.structures[0].cell.obj!.data;
     const loci = (index: number) => StructureElement.Loci(structure, [{ unit: structure.units[0], indices: Int32Array.of(index) as never }]);
-    const added = await plugin.managers.structure.measurement.addDistance(loci(0), loci(1));
-    await expect(runtime.describe({ plugin }, [plugin.state.data.cells.get(added.representation.ref)], science)).rejects.toThrow(/MOL or SDF/u);
+    const added = await plugin.managers.structure.measurement.addDistance(loci(1), loci(0));
+    const request = await runtime.describe({ plugin }, [plugin.state.data.cells.get(added.representation.ref)], science);
+    expect(request).toMatchObject({ kind: "distance", atoms: [1, 0], sourceFormat: "xyz", atomCount: 3, frameCount: 1 });
+    const doc = { id: "measurement-xyz", path: "/water.xyz", title: "water.xyz", extension: "xyz", renderer: "molstar", runtimePath: "<html/>" } as ViewerDocument;
+    const page = document.createElement("div"); page.className = "page-surface"; page.dataset.active = "true";
+    const frame = document.createElement("iframe"); frame.className = "viewer-iframe"; frame.dataset.documentId = doc.id; frame.dataset.renderer = "molstar";
+    page.append(frame); document.body.append(page);
+    const { useGeometryFocusRequest } = await import("../apps/desktop/src/lib/workbench/geometry-focus");
+    const opened: string[] = [];
+    let handle!: ReturnType<typeof useAppViewerStateMessages>["handleViewerStateMessage"], focus: unknown = null, dialog: unknown = null;
+    function Probe() {
+      dialog = useWorkbenchDialogRequest(); focus = useGeometryFocusRequest(doc.id);
+      handle = useAppViewerStateMessages({ ownsCurrentSourceFrame: () => true, activeDocument: doc, documents: [doc], updateDirtyGridDocument: noop, addDocuments: noop,
+        openCommandPalette: noop, openDockTab: (area: string, kind: string) => { opened.push(`${area}:${kind}`); }, toggleDockTab: noop, setPreference: noop,
+        setViewerLigandSelections: noop, setStructureOverlayModes: noop, setStructureStories: noop, toggleSidebar: noop, toggleDock: noop }).handleViewerStateMessage;
+      return null;
+    }
+    const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+    try {
+      await act(async () => root.render(<Probe />));
+      const send = (measurement: unknown, sender: unknown = frame.contentWindow) => act(async () => {
+        handle("burette-viewer", { type: "editMeasurementCoordinate", documentId: doc.id, measurement }, sender as MessageEventSource);
+      });
+      // Another window, a second frame or an out-of-range atom are ignored.
+      for (const [measurement, sender] of [[request, window], [{ ...request, frameCount: 2 }, frame.contentWindow], [{ ...request, atoms: [1, 3] }, frame.contentWindow]] as const) {
+        await send(measurement, sender);
+      }
+      expect([opened, focus, dialog]).toEqual([[], null, null]);
+      await send(request);
+      expect([opened, (focus as { atoms: number[] } | null)?.atoms, dialog]).toEqual([["right:geometry"], [1, 0], null]);
+    } finally { await act(async () => root.unmount()); host.remove(); page.remove(); }
   } finally { plugin.dispose(); }
 });
 

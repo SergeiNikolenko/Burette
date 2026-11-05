@@ -29,6 +29,7 @@ const measurementTargets = {
 };
 const deps = {
   activeConfig: { appViewer: true, format: 'sdf' },
+  activeMolstarPrepared: null,
   normalizeFormat: value => String(value ?? '').toLowerCase(),
   isSdfPoseConformerSet: config => config.trajectoryFrameCount > 1,
   requestMeasurementCoordinate: ref => actions.push(['coordinate', ref]),
@@ -114,8 +115,13 @@ const angle = posted.at(-1);
 assert.equal(angle.items.find(item => item.id === 'measurement-coordinate')?.text, 'Set angle…');
 reply(angle, 'select', 'measurement-coordinate');
 assert.deepEqual(actions, [['coordinate', 'angle-ref']]);
+// A single XYZ geometry routes to its Geometry row; an XYZ trajectory has no single source geometry.
+deps.activeConfig.format = 'xyz';
+assert.equal(menu.showNativeMeasurementMenu('angle-ref', { clientX: 12, clientY: 24 }), true);
+assert.equal(posted.at(-1).items.some(item => item.id === 'measurement-coordinate'), true);
+deps.activeConfig.format = 'sdf';
 for (const config of [{ visualizationOnly: true }, { quickLookViewer: true }, { hostedMcpWidgetBootstrap: true },
-  { format: 'xyz' }, { trajectoryFrameCount: 2 }, { docking: true }]) {
+  { format: 'xyz', trajectoryFrameCount: 2 }, { trajectoryFrameCount: 2 }, { docking: true }]) {
   Object.assign(deps.activeConfig, config);
   assert.equal(menu.showNativeMeasurementMenu('angle-ref', { clientX: 12, clientY: 24 }), true);
   assert.equal(posted.at(-1).items.some(item => item.id === 'measurement-coordinate'), false);

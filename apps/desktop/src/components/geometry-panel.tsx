@@ -3,7 +3,7 @@ import "./workbench/workbench-layout.css";
 import "./workbench/geometry.css";
 import { Button } from "./ui/button";
 import { IconAction, InternalCoordinateInput } from "./workbench/geometry-fields";
-import { Copy, FileBlank, FileCode, Undo } from "./ui/app-icons";
+import { ArrowCurvedRight, CompareArrows, Copy, Download, FileBlank, FileCode, Undo } from "./ui/app-icons";
 import { Spinner } from "./ui/spinner";
 import { measureGeometry } from "../../../../scripts/molecular-geometry.js";
 import { readCoordinateInterchange, writeCoordinateInterchange } from "../../../../scripts/coordinate-interchange.mjs";
@@ -17,6 +17,8 @@ import { ConstraintToggle } from "./workbench/constraint-toggle";
 import { OptimizeButton, optimizerLabel } from "./workbench/optimize-button";
 import { RESIDUAL_TOLERANCE, resolveConstraints, type ConstraintResidual, type OptimizationMethod, type OptimizationResult } from "../lib/molecular-workbench/optimization";
 import { HARTREE_KCAL_MOL, fileStem } from "../lib/workbench/formats";
+import { downloadTextFile } from "../lib/file-export";
+import { MEASUREMENT_NOUNS, consumeGeometryFocus, measurementCell, useGeometryFocusRequest } from "../lib/workbench/geometry-focus";
 import { openScientificDocument } from "../lib/workbench/generated-document-open";
 import { CoordinateEditor } from "./workbench/coordinate-editor";
 import { SegmentedControl, SegmentedControlItem } from "./ui/segmented-control";
@@ -102,7 +104,7 @@ type GeometryState = { rows: ZmatrixRow[]; frame: GeometryBase; optimization?: O
 const NEEDS_REFERENCE_POINT = new Set(["DEGENERATE_REFERENCE_PLANE", "ILL_CONDITIONED_ANGLE"]);
 type GeometryHistory = GeometryState & { text: string };
 // Raw source bytes and the loader-decoded runtime baseline differ when the file starts with a UTF8 BOM.
-type Editor = GeometryState & { binding: GeometryBinding; sourceText: string; base: GeometryBase; history: GeometryHistory[] };
+type Editor = GeometryState & { binding: GeometryBinding; sourceText: string; base: GeometryBase; history: GeometryHistory[]; future: GeometryHistory[] };
 
 // Panel changes retain the bounded edit history, never a renderer binding. A fresh
 // source session or source replacement cannot borrow a previous document's history.
@@ -152,6 +154,27 @@ function CartesianGeometryPanel({ document, actions, convert }: {
   const [optimizing, setOptimizing] = useState(false);
   const [steps, setSteps] = useState<OptimizationSteps | null>(null);
   const [view, setView] = useState<"internal" | "cartesian">("internal");
+  const table = useRef<HTMLTableElement | null>(null);
+  const focusRequest = useGeometryFocusRequest(document.id);
+  const handledFocus = useRef(0);
+  useEffect(() => {
+    if (!focusRequest || !editor || handledFocus.current === focusRequest.id) return;
+    handledFocus.current = focusRequest.id;
+    consumeGeometryFocus(focusRequest.id);
+    const cell = measurementCell(editor.rows, focusRequest.atoms);
+    if (!cell) {
+      setEditError(`This ${MEASUREMENT_NOUNS[focusRequest.atoms.length - 2]} is not a Geometry row.`);
+      return;
+    }
+    setEditError(null);
+    setView("internal");
+    // The table renders after switching back from the Cartesian view.
+    requestAnimationFrame(() => {
+      const field = table.current?.querySelector<HTMLElement>(`[data-geometry-atom="${cell.row}"] [data-geometry-slot="${cell.slot}"] :is(input, [role="spinbutton"])`);
+      field?.scrollIntoView({ block: "nearest" });
+      field?.focus();
+    });
+  }, [focusRequest, editor]);
   const optimizeJob = useRef<AbortController | null>(null);
   useEffect(() => () => optimizeJob.current?.abort(), [document.id, document.path]);
   const lifetime = useRef(0);
@@ -205,7 +228,7 @@ function CartesianGeometryPanel({ document, actions, convert }: {
         const retained = saved && saved.sessionId === currentSession?.sessionId && saved.state.sourceText === sourceText
           && saved.runtimePath === document.runtimePath && saved.openClaimId === document.openClaimId && saved.sourceOwner();
         if (!retained) panelHistories.delete(document);
-        setEditor(retained ? { ...saved.state, binding } : { binding, sourceText, base, frame: base, rows: base.rows, history: [] });
+        setEditor(retained ? { ...saved.state, binding } : { binding, sourceText, base, frame: base, rows: base.rows, history: [], future: [] });
         setSourceError(null); setEditError(null);
       }, (error) => {
         if (modelRead.current !== read) return;
@@ -232,7 +255,9 @@ function CartesianGeometryPanel({ document, actions, convert }: {
   if (!editor) return null;
 
   const snapshot = (): GeometryHistory => ({ rows: editor.rows, frame: editor.frame, optimization: editor.optimization, text: editor.sourceText });
-  const apply = async (rows: ZmatrixRow[], history: GeometryHistory[], frame: GeometryBase = editor.frame, optimization?: OptimizationSummary, exactText?: string) => {
+  // A new edit clears Redo; Undo and Redo pass the stacks they leave behind.
+  const apply = async (rows: ZmatrixRow[], history: GeometryHistory[], frame: GeometryBase = editor.frame, optimization?: OptimizationSummary, exactText?: string,
+    future: GeometryHistory[] = []) => {
     if (applyingRef.current) return false;
     let text: string;
     try {
@@ -277,7 +302,7 @@ function CartesianGeometryPanel({ document, actions, convert }: {
       } catch (error) { written.current = previousWritten; throw error; }
       setEditError(null);
       written.current = text;
-      const state = { base: editor.base, sourceText: text, rows, frame, history, optimization };
+      const state = { base: editor.base, sourceText: text, rows, frame, history, future, optimization };
       setEditor({ ...state, binding: { ...editor.binding, text: runtimeText } });
       const committedSession = sourceEditing?.sessionForDocument(document);
       if (committedSession?.content === text && sourceOwner()) panelHistories.set(document, {
@@ -311,7 +336,11 @@ function CartesianGeometryPanel({ document, actions, convert }: {
   );
   const undo = () => {
     const previous = editor.history.at(-1);
-    if (previous) void apply(previous.rows, editor.history.slice(0, -1), previous.frame, previous.optimization, previous.text);
+    if (previous) void apply(previous.rows, editor.history.slice(0, -1), previous.frame, previous.optimization, previous.text, [...editor.future, snapshot()]);
+  };
+  const redo = () => {
+    const next = editor.future.at(-1);
+    if (next) void apply(next.rows, [...editor.history, snapshot()].slice(-HISTORY_LIMIT), next.frame, next.optimization, next.text, editor.future.slice(0, -1));
   };
   const constraints = geometryConstraints(editor.rows, frozen, locked);
   // MMFF94 minimization of the current draft. The result is one undoable edit;
@@ -391,6 +420,20 @@ function CartesianGeometryPanel({ document, actions, convert }: {
       setEditError("Could not copy the Z-matrix. Try again.");
     }
   };
+  const exportZmatrix = () => {
+    try {
+      const pair = readCoordinateInterchange(geometryText(editor.frame, editor.rows), "xyz");
+      downloadTextFile(`${fileStem(document.title)}.zmat`, writeCoordinateInterchange(pair, "zmat", pair.comment));
+      setEditError(null);
+    } catch {
+      setEditError("Could not export the Z-matrix. Try again.");
+    }
+  };
+  // Conversion reads the saved science, so it is offered while the panel shows that text.
+  const convertible = convert !== null && convert.text === editor.sourceText;
+  const convertToZmatrix = () => {
+    try { convert?.run(); } catch (error) { setEditError(error instanceof Error ? error.message : String(error)); }
+  };
   const toggleFrozen = (atom: number) => setFrozen((current) => {
     const next = new Set(current);
     if (!next.delete(atom)) next.add(atom);
@@ -432,7 +475,10 @@ function CartesianGeometryPanel({ document, actions, convert }: {
     <div className="dock-content geometry-panel">
       <div className="geometry-panel-toolbar">
         <IconAction label="Undo" disabled={applying || editor.history.length === 0} onClick={undo}><Undo aria-hidden /></IconAction>
+        <IconAction label="Redo" disabled={applying || editor.future.length === 0} onClick={redo}><ArrowCurvedRight aria-hidden /></IconAction>
+        {convertible ? <IconAction label="Convert to Z-matrix" disabled={applying || optimizing} onClick={convertToZmatrix}><CompareArrows aria-hidden /></IconAction> : null}
         <IconAction label="Copy Z-matrix" onClick={copyZmatrix}><Copy aria-hidden /></IconAction>
+        <IconAction label="Export Z-matrix" onClick={exportZmatrix}><Download aria-hidden /></IconAction>
         <IconAction label="Export input file" onClick={exportInput}><FileCode aria-hidden /></IconAction>
         {optimizing ? (
           <>
@@ -490,7 +536,7 @@ function CartesianGeometryPanel({ document, actions, convert }: {
       </SegmentedControl>
       {view === "cartesian" ? (
         <CoordinateEditor atoms={parseXyz(editor.binding.text).atoms} revision={editor.binding.text} disabled={applying || optimizing} onApply={applyCoordinates} />
-      ) : <table className="geometry-table"
+      ) : <table ref={table} className="geometry-table"
         onPointerDownCapture={clearSelection}
         onPointerOver={(event) => preview(event.target)} onPointerLeave={clearPreview}
         onFocusCapture={(event) => preview(event.target)}

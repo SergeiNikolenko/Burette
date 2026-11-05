@@ -29,6 +29,8 @@ Quick Look, iPhone or hosted acceptance from either.
 
 [Scientific trajectory MOLX frame persistence](avogadro-parity-evidence/stage-01-02-09-editing-io.md#scientific-trajectory-frame-persistence-and-missing-controls-2026-11-04) preserves all six producer frames and selected frame changes through two reopens. [All and Align now work after reopen](avogadro-parity-evidence/stage-01-02-09-editing-io.md#all-and-align-controls-for-restored-molx-trajectories-2026-11-05): browser clicks, save/reopen and an independent Kabsch oracle pass; keyboard, Loop playback and native surfaces remain open.
 
+[The XYZ Geometry panel now completes edit, Undo/Redo, Z-matrix copy/export and reopen](avogadro-parity-evidence/stage-01-02-09-editing-io.md#geometry-panel-redo-z-matrix-copyexport-and-3d-measurement-focus-for-xyz-2026-11-05), starting from a 3D measurement that focuses its Geometry row; browser clicks, a real clipboard read and an independent Z-matrix rebuild pass; keyboard, dummy-atom rows and native surfaces remain open.
+
 Latest focused evidence includes [Generate 3D camera fitting, Undo/Redo and
 MOLX round trip](avogadro-parity-evidence/stage-01-02-09-editing-io.md#generate-3d-camera-framing-and-scene-round-trip-2026-11-03)
 and [manual Undo/Apply with a clean saved source](avogadro-parity-evidence/stage-01-02-09-editing-io.md#manual-undo-keeps-apply-available-2026-11-03).

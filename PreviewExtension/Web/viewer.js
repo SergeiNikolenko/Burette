@@ -9361,7 +9361,11 @@ SOFTWARE.
 
   function canEditMeasurementCoordinates(targets) {
     const config = activeConfig || window.BuretteConfig;
-    return config?.appViewer === true && !isVisualizationOnly(config) && hasExplicitMolecularGraphFormat(config)
+    // A single-geometry XYZ measurement opens the matching Geometry row in the host.
+    const singleXyz = normalizeFormat(config?.sourceExtension || config?.molstarFormat || config?.format) === 'xyz'
+      && !(Number(config?.trajectoryFrameCount || activeMolstarPrepared?.xyzFrameCount || activeMolstarPrepared?.poseCount || 0) > 1);
+    return config?.appViewer === true && !isVisualizationOnly(config)
+      && (hasExplicitMolecularGraphFormat(config) || singleXyz)
       && !config.docking && !isSdfPoseConformerSet(config) && targets.length === 1
       && ['Distance', 'Angle', 'Dihedral'].includes(targets[0].obj?.label);
   }
