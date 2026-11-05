@@ -93,7 +93,7 @@ assert.match(agentCli, /browser-dev-shell/);
 assert.match(agentCli, /browser-preview/);
 assert.match(agentCli, /processId/);
 assert.match(agentCli, /sessionDir/);
-assert.match(agentCli, /spawn\('vp', \['dev', 'apps\/desktop'/);
+assert.match(agentCli, /startAgentServer\('vp', \['dev', 'apps\/desktop'/);
 assert.match(agentCli, /'--strictPort'/);
 assert.match(agentCli, /'apps\/desktop\/vite\.config\.ts'/);
 

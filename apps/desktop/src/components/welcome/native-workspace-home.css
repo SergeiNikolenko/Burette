@@ -1,6 +1,11 @@
 .app-shell[data-sidebar-open="true"] .native-home-ketcher {
   display: none;
 }
+.native-workspace-home {
+  position: absolute;
+  inset: var(--chrome-height) 0 0;
+  height: auto;
+}
 /* Codex list page: heading-xl title and pill rows of the token row height. */
 .native-home-title { margin: 0; color: var(--color-text); font-size: 28px; line-height: 1.2; font-weight: 500; }
 .native-home-list { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; }
