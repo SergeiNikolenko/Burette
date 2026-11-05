@@ -7115,7 +7115,9 @@ assert.match(appNativeMenuHook, /invoke<string>\("register_exit_preflight_listen
 assert.match(appNativeMenuHook, /invoke\("unregister_exit_preflight_listener", \{ registrationId/);
 assert.match(appNativeMenuHook, /invoke\("respond_to_exit_preflight"/);
 assert.match(appNativeMenuHook, /const barrier = sealWindowMutations\(\)/);
-assert.match(appNativeMenuHook, /const closeTransitionActive = snapshot\.closeTransitionActive\s*\|\| transferBusy\s*\|\| checkpointFailed\s*\|\| barrier\.closeTransitionActive\s*\|\| barrier\.pendingCount > 0/);
+assert.match(appNativeMenuHook, /const closeTransitionActive = snapshot\.closeTransitionActive\s*\|\| transferBusy\s*\|\| barrier\.closeTransitionActive\s*\|\| barrier\.pendingCount > 0/);
+// A failed exit checkpoint asks to quit without saving instead of silently cancelling Cmd+Q.
+assert.match(appNativeMenuHook, /dirty: snapshot\.dirty \|\| barrier\.pendingCount > 0 \|\| checkpointFailed,/);
 assert.match(appNativeMenuHook, /requestId: payload\.requestId,\s*closeTransitionActive,/);
 assert.match(appNativeMenuHook, /dirty: snapshot\.dirty \|\| barrier\.pendingCount > 0/);
 assert.match(appNativeMenuHook, /revision: snapshot\.revision/);

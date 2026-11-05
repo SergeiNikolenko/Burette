@@ -406,9 +406,9 @@ export function useAppNativeMenu({
         return true;
       }).then(checkpointFailed => {
         if (checkpointController.signal.aborted) return;
-        const closeTransitionActive = snapshot.closeTransitionActive || transferBusy || checkpointFailed
+        const closeTransitionActive = snapshot.closeTransitionActive || transferBusy
           || barrier.closeTransitionActive || barrier.pendingCount > 0;
-        if (closeTransitionActive) journalAction("status", "exit-preflight-blocked", { detail: {
+        if (closeTransitionActive || checkpointFailed) journalAction("status", "exit-preflight-blocked", { detail: {
           requestId: payload.requestId,
           documentTransition: snapshot.closeTransitionActive,
           transferBusy,
@@ -419,7 +419,9 @@ export function useAppNativeMenu({
         return invoke("respond_to_exit_preflight", {
           requestId: payload.requestId,
           closeTransitionActive,
-          dirty: snapshot.dirty || barrier.pendingCount > 0,
+          // A scene that could not be saved (its viewer asleep behind another
+          // app, say) asks to quit without saving; blocking left Cmd+Q silent.
+          dirty: snapshot.dirty || barrier.pendingCount > 0 || checkpointFailed,
           revision: snapshot.revision,
         });
       }).catch((error) => {
