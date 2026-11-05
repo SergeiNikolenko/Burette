@@ -129,3 +129,36 @@ export function requestGridView(documentId: string, mode: "table" | "cards") {
     window.addEventListener('message', receive); send();
   });
 }
+
+// The selection lives in the grid; the shell only sees it in the grid's menu
+// state broadcast, which a state request makes the grid send again at once.
+export function requestGridSelectedSourceIndexes(documentId: string) {
+  return new Promise<{ sourceIndexes: number[]; truncated: boolean }>((resolve, reject) => {
+    const frameWindow = activeViewerIframeForDocument(documentId, "grid2d")?.contentWindow;
+    if (!frameWindow) {
+      reject(new Error("Open the collection and wait for it to load before retrying."));
+      return;
+    }
+    const cleanup = () => { window.clearTimeout(timeout); window.removeEventListener("message", receive); };
+    const receive = (event: MessageEvent) => {
+      const body = event.data?.body;
+      if (event.source !== frameWindow || event.data?.source !== "burette-grid" || body?.type !== "gridMenuStateChanged") return;
+      cleanup();
+      const indexes: unknown[] = Array.isArray(body.selectedSourceIndexes) ? body.selectedSourceIndexes : [];
+      resolve({
+        sourceIndexes: indexes.filter((index): index is number => Number.isSafeInteger(index) && (index as number) >= 0),
+        truncated: body.selectionTruncated === true,
+      });
+    };
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("The collection did not report its selection. Wait for it to finish loading, then retry."));
+    }, 5000);
+    window.addEventListener("message", receive);
+    try {
+      frameWindow.postMessage({ source: "burette-grid-host", body: { type: "chemicalSpaceRequestState", documentId } }, "*");
+    } catch (error) {
+      cleanup(); reject(error);
+    }
+  });
+}
