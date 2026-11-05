@@ -55,6 +55,13 @@ annotations survive restoration. Late exports cannot overwrite a newer snapshot
 or another active tab; autosaves must not re-import themselves into the live
 editor. Run `bun tests/test-ketcher-draft-persistence.mjs` after changing this path.
 
+`follow-active-molecule.ts` loads the main pane's molecule into a shown Ketcher
+whose draft is empty or still equals its last import or applied grid edit. Grid
+rows go through the grid's own `structure.edit-in-ketcher` command, so "Save to
+collection" writes back to that row; small PDB/MOL/single-record SDF files load
+without a file write-back. Edited drafts are never replaced. Run
+`bun test tests/test-ketcher-follow-active-molecule.test.tsx`.
+
 The 3.18 adapter also routes annotation, import/CDX, periodic table, chemical
 properties, macromolecule library and 3D preview surfaces through shared controls.
 The loader publishes its API after rendering preferences settle. Rendering defaults

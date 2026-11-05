@@ -3215,7 +3215,7 @@ assert.match(ketcherPage, /function isMolfileCountsLine\(line: string\)/);
 assert.match(ketcherPage, /setHasSketch\(true\)/);
 assert.match(ketcherPage, /if \(hasImportedStructure\) \{/);
 assert.match(ketcherPage, /const molfile = await withKetcherTimeout\(ketcher\.getMolfile\("v2000"\), "Imported sketch export"\);/);
-assert.match(ketcherPage, /if \(!isBlankKetcherMolfile\(molfile\)\) await persistDraft\(molfile\);/);
+assert.match(ketcherPage, /const saved = isBlankKetcherMolfile\(molfile\) \? undefined : await persistDraft\(molfile\);/);
 assert.match(ketcherPage, /setHasSketch\(false\)/);
 assert.doesNotMatch(ketcherPage, /className="ketcher-empty-watermark"/);
 assert.match(ketcherPage, /await withKetcherTimeout\(ketcher\.getMolfile\("v2000"\), "Sketch export"\)/);
@@ -3679,7 +3679,7 @@ assert.match(ketcherWorkflow, /window\.dispatchEvent\(new CustomEvent\("burette:
 assert.match(appKetcherActionsHook, /queueKetcherImportRequest\(request\);\s*setKetcherImportRequest\(request\);\s*openKetcherTab\(\{ kind: "ketcher", importRequestId: request\.id, importRequest: request \}\);/);
 assert.doesNotMatch(app, /openKetcherTab\(\);\s*window\.setTimeout\(\(\) => \{\s*queueKetcherImportRequest\(request\)/);
 assert.match(app, /applyKetcherToGridRow,/);
-assert.match(appKetcherActionsHook, /const ketcherTabId = tabs\.find\(\(tab\) => tab\.location\.kind === "ketcher"\)\?\.id \?\? null;/);
+assert.match(appKetcherActionsHook, /const ketcherTab = tabs\.find\(\(tab\) => tab\.location\.kind === "ketcher"\);\s*const ketcherTabId = ketcherTab && !ketcherTab\.pane \? ketcherTab\.id : null;/);
 assert.match(appKetcherActionsHook, /type: "gridApplyKetcherRow"[\s\S]*save: true/);
 assert.match(appKetcherActionsHook, /if \(ketcherTabId\) \{\s*window\.setTimeout\(\(\) => \{\s*setActiveDocument\(request\.documentId\);\s*closeTab\(ketcherTabId\);\s*\}, 0\);\s*\}/);
 assert.match(appKetcherActionsHook, /openKetcherWithStructures = useCallback\(\(paths: string\[\], fragments: KetcherImportRequest\["fragments"\] = \[\]\)/);
