@@ -7,6 +7,8 @@ contains only documents that describe the active project.
 
 - [Avogadro capability adoption](avogadro-adoption.md): complete twelve-stage
   functional contract and scientific acceptance requirements.
+- [Avogadro staged delivery plan](avogadro-stage-plan.md): the order of the
+  remaining parity work, one finished workflow per stage.
 - [Avogadro parity acceptance ledger](avogadro-parity-checklist.md): adopted
   foundations, partial workflows and remaining surface-specific evidence.
 - [Avogadro extension contracts](avogadro-extensions.md): pinned candidate

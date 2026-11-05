@@ -4,6 +4,7 @@ import vm from "node:vm";
 import { Window } from "happy-dom";
 import { PluginContext } from "@molstar/plugin";
 import { DefaultPluginSpec } from "@molstar/plugin/default-spec";
+import { StateTransforms } from "@molstar/viewer/state-transforms";
 import type { Asset } from "@molstar/core/util/assets";
 import type { UUID } from "@molstar/core/util/uuid";
 import { unzipSync } from "../apps/desktop/node_modules/fflate/esm/browser.js";
@@ -547,6 +548,48 @@ test("native All comparison transaction preserves source, retries failures and r
     await expect(science.setTrajectoryComparisons(f.viewer, true, async () => {})).rejects.toThrow("does not list each atom once");
     expect(f.plugin.state.data.cells.size).toBe(originalCells);
     expect(science.binding(f.viewer)).toEqual(f.report);
+  } finally { f.close(); opened.dispose(); }
+});
+
+test("frame alignment fits comparisons onto the source frame, persists in MOLX and keeps the science binding", async () => {
+  const f = await fixture("xyz"), opened = new PluginContext(DefaultPluginSpec());
+  await opened.init();
+  const transformer = StateTransforms.Model.TransformStructureConformation;
+  // Frame 2 is frame 1 moved 0.2 Å along x; a centroid shift is its exact rigid fit.
+  const translate = (moving: number[][], reference: number[][]) => {
+    const shift = [0, 1, 2].map(axis => reference.reduce((sum, point, atom) => sum + point[axis] - moving[atom][axis], 0) / moving.length);
+    return { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, ...shift, 1], rmsd: 0 };
+  };
+  const comparisonX = (plugin: PluginContext) => {
+    const root = plugin.managers.structure.hierarchy.current.structures.find(entry => entry.cell.transform.ref !== f.report.structureRef)!;
+    const structure = root.transform!.cell.obj!.data;
+    return structure.units[0].conformation.x(structure.units[0].elements[0]);
+  };
+  try {
+    expect(science.trajectoryComparisonMode(f.viewer)).toEqual({ frameIndex: 0, frameCount: 2, available: true, all: false, complete: false, aligned: false });
+    await expect(science.setTrajectoryComparisonAlignment(f.viewer, true, translate, transformer)).rejects.toThrow("Show all frames");
+    await science.setTrajectoryComparisons(f.viewer, true, async () => {});
+    await expect(science.setTrajectoryComparisonAlignment(f.viewer, true, () => ({ matrix: [1], rmsd: 0 }), transformer)).rejects.toThrow("could not be aligned");
+    expect(science.trajectoryComparisonMode(f.viewer)?.aligned).toBe(false);
+    expect(await science.setTrajectoryComparisonAlignment(f.viewer, true, translate, transformer)).toEqual({ aligned: true, structureCount: 1, rmsd: 0 });
+    expect(comparisonX(f.plugin)).toBeCloseTo(0, 6);
+    expect(science.binding(f.viewer)).toEqual(f.report);
+    const archive = await science.serialize(f.viewer, f.request, options);
+    await opened.managers.snapshot.open(new File([archive], "aligned.molx"));
+    expect(science.trajectoryComparisonMode({ plugin: opened })).toEqual({ frameIndex: 0, frameCount: 2, available: true, all: true, complete: true, aligned: true });
+    expect(comparisonX(opened)).toBeCloseTo(0, 6);
+    expect(science.binding({ plugin: opened })).toEqual(f.report);
+    expect(await science.setTrajectoryComparisonAlignment({ plugin: opened }, false, undefined, transformer)).toEqual({ aligned: false, structureCount: 1, rmsd: null });
+    expect(science.trajectoryComparisonMode({ plugin: opened })?.all).toBe(true);
+    await science.setTrajectoryComparisons({ plugin: opened }, false);
+    expect(science.trajectoryComparisonMode({ plugin: opened })).toEqual({ frameIndex: 0, frameCount: 2, available: true, all: false, complete: false, aligned: false });
+    expect(science.binding({ plugin: opened })).toEqual(f.report);
+    // Stepping the source under All leaves its old frame unshown until it is added back.
+    await science.setTrajectoryComparisons(f.viewer, true, async () => {});
+    await f.plugin.state.updateTransform(f.plugin.state.data, f.report.modelRef, { modelIndex: 1 });
+    expect(science.trajectoryComparisonMode(f.viewer)).toMatchObject({ frameIndex: 1, all: true, complete: false });
+    expect(await science.setTrajectoryComparisons(f.viewer, true, async () => {})).toEqual({ frameCount: 2, structureCount: 3 });
+    expect(science.trajectoryComparisonMode(f.viewer)).toMatchObject({ frameIndex: 1, all: true, complete: true });
   } finally { f.close(); opened.dispose(); }
 });
 

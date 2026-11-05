@@ -1673,3 +1673,41 @@ Light 1400x900 and dark 900x800 screenshots were captured, but this is not a
 visual/accessibility acceptance claim. The final two-root archive was audited,
 not reopened. All/Align UI, other edits and tab replacement/cancellation,
 autoplay, and the host multi-file-count gate remain open. No parity stage advances.
+
+### All and Align controls for restored MOLX trajectories (2026-11-05)
+
+A reopened scientific MOLX trajectory showed only the frame stepper: All and
+Align were built for XYZ text overlays and the restored session failed both
+checks. The pose toolbar now adds both buttons for `molx` sessions through
+`createSceneFrameComparisonControls` in `viewer.js`. All calls the existing
+`science.setTrajectoryComparisons` transaction. Align calls the new
+`science.setTrajectoryComparisonAlignment`, which inserts one tagged
+`TransformStructureConformation` per comparison with an atom-order Kabsch fit
+onto the source frame. The source structure is never transformed, so the
+scientific binding and its validation are unchanged. Button state comes from
+`science.trajectoryComparisonMode`, read from the scene graph, so a saved
+All/Align state reopens pressed. When the source frame changes, the toolbar adds
+the frame the source left and refits the alignment onto the new frame.
+
+- Real Mol* runtime suite: 25 tests, 233 assertions. The new test covers refusal
+  without comparisons, a malformed fit, the exact fitted coordinates, MOLX
+  save/reopen with alignment, Align off, All off, and completion after a source
+  step. The indexed-trajectory integration (now including the new controller)
+  and the UI shell contract pass.
+- Browser shell on Gauss, prebuilt plugin shell with the changed runtime
+  assets, fixture `unalign-fixed.molx` (six Gaussian frames, source frame 2):
+  real clicks on All, Align and Next, host **Save scene…**, a fresh server and
+  browser reopen, Align off, All off and a second save. Screenshots at light
+  1400x900 and dark 900x800 were inspected.
+- [Independent oracle](trajectory-all-align-oracle.json), 55/55 checks: numpy
+  Kabsch RMSD equals the displayed RMSD for every comparison in the aligned,
+  stepped and reopened states (largest difference 6.7e-16 Angstrom); every
+  displayed transform keeps interatomic distances within 1e-4 Angstrom; all six
+  frames stay shown after the step; scientific attachments are byte-identical in
+  the three archives and the manifest changes only by `binding.frameIndex` 1 -> 2.
+- Console noise also present in the 2026-11-04 runs before this change: the
+  Linux server has no macOS Finder icon (404) and one stylesheet is refused for
+  its MIME type. No other page or console errors occurred.
+
+Still open: keyboard-only and screen-reader passes, Loop playback with All on,
+large trajectories near the 255-frame limit, and native/Quick Look surfaces.

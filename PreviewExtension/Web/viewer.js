@@ -4217,6 +4217,111 @@
     return button;
   }
 
+  // A restored MOLX trajectory keeps one source structure bound to its science.
+  // All adds the other frames as comparisons of the same trajectory; Align fits
+  // them onto the displayed source frame by atom order and follows frame steps.
+  // Both states live in the scene graph, so they survive Save scene and reopen.
+  function createSceneFrameComparisonControls(viewer) {
+    const science = window.BuretteSceneFiles?.science;
+    if (typeof science?.trajectoryComparisonMode !== 'function') return null;
+    const transformer = window.molstar?.lib?.plugin?.StateTransforms?.Model?.TransformStructureConformation;
+    const all = document.createElement('button');
+    all.type = 'button';
+    all.className = 'buret-docking-pose-all';
+    all.dataset.buretAction = 'scene-frame-comparisons';
+    all.textContent = 'All';
+    const align = document.createElement('button');
+    align.type = 'button';
+    align.className = 'buret-docking-pose-align';
+    align.dataset.buretAction = 'scene-frame-alignment';
+    let busy = false;
+    let disposed = false;
+    let alignedFrame = null;
+    let completedFrame = null;
+    let rmsd = null;
+    const fit = (moving, reference) => {
+      const result = pdbRigidAlignment(moving, reference);
+      if (!result) throw new Error('Not enough atoms to align these frames.');
+      validateRigidAlignmentMatrix(result.matrix);
+      return result;
+    };
+    const represent = async (structure) => {
+      const mode = science.trajectoryComparisonMode(viewer);
+      const style = xyzFrameBackgroundStyle(readSdfCollectionContextStyle(activeConfig), xyzFrameForegroundStyle(configuredMolstarStyle(activeConfig)));
+      const opacity = xyzFrameBackgroundLayerOpacity(readSdfCollectionContextOpacity(activeConfig), Math.max(1, (mode?.frameCount || 2) - 1));
+      const representation = sdfCollectionRepresentationForStyle(style, opacity, readXyzFrameContextColor(activeConfig), XYZ_FRAME_BACKGROUND_MIN_ALPHA);
+      const component = await tryCreateMolstarComponent(viewer.plugin, structure, 'all');
+      if (!await addCollectionRepresentation(viewer.plugin, structure, component, representation, 0)) {
+        throw new Error('Mol* could not show this frame.');
+      }
+    };
+    const run = async (task, failure) => {
+      busy = true;
+      sync();
+      try {
+        await task();
+      } catch (error) {
+        setStatus(`${failure}\n\n${error?.message || String(error)}`, 'error');
+      } finally {
+        busy = false;
+        if (!disposed) sync();
+      }
+    };
+    const applyAlignment = async enabled => {
+      const result = await science.setTrajectoryComparisonAlignment(viewer, enabled, fit, transformer);
+      rmsd = result.rmsd;
+      alignedFrame = enabled ? science.trajectoryComparisonMode(viewer)?.frameIndex ?? null : null;
+    };
+    const setAligned = enabled => run(() => applyAlignment(enabled), 'Frames could not be aligned.');
+    // Adds the frame the source stepped away from, keeping the alignment on.
+    const completeFrames = aligned => run(async () => {
+      await science.setTrajectoryComparisons(viewer, true, represent);
+      if (aligned) await applyAlignment(true);
+    }, 'Frames could not be shown together.');
+    function sync() {
+      const mode = disposed ? null : science.trajectoryComparisonMode(viewer);
+      const restoring = Boolean(science.importPending?.(viewer.plugin));
+      all.hidden = !mode?.available;
+      align.hidden = !mode?.available || !mode.all;
+      all.disabled = busy || restoring;
+      align.disabled = busy || restoring || !transformer;
+      const allTitle = mode?.all ? 'Show only the current frame' : `Show all ${mode?.frameCount || ''} frames together`.replace('  ', ' ');
+      all.classList.toggle('active', Boolean(mode?.all));
+      all.setAttribute('aria-pressed', mode?.all ? 'true' : 'false');
+      all.setAttribute('aria-label', allTitle);
+      all.title = allTitle;
+      align.classList.toggle('active', Boolean(mode?.aligned));
+      align.setAttribute('aria-pressed', mode?.aligned ? 'true' : 'false');
+      align.textContent = mode?.aligned ? (Number.isFinite(rmsd) ? `Aligned · ${rmsd.toFixed(2)} Å` : 'Aligned') : 'Align';
+      align.title = mode?.aligned ? 'Show the frames in their original orientation' : 'Superimpose every frame onto the current frame by atom order';
+      if (!mode?.aligned) alignedFrame = null;
+      // A reopened scene was saved aligned onto the frame it reopens at.
+      if (mode?.aligned && alignedFrame === null) alignedFrame = mode.frameIndex;
+      if (!mode || busy || restoring) return;
+      // One attempt per source frame: a refusal is reported once, not retried on every refresh.
+      if (mode.all && !mode.complete && completedFrame !== mode.frameIndex) {
+        completedFrame = mode.frameIndex;
+        void completeFrames(mode.aligned);
+      } else if (mode.aligned && mode.frameIndex !== alignedFrame) {
+        alignedFrame = mode.frameIndex;
+        void setAligned(true);
+      }
+    }
+    all.addEventListener('click', () => {
+      const enabled = !science.trajectoryComparisonMode(viewer)?.all;
+      void run(async () => {
+        await science.setTrajectoryComparisons(viewer, enabled, represent);
+        rmsd = null;
+        alignedFrame = null;
+      }, enabled ? 'Frames could not be shown together.' : 'Frames could not be hidden.');
+    });
+    align.addEventListener('click', () => {
+      void setAligned(!science.trajectoryComparisonMode(viewer)?.aligned);
+    });
+    sync();
+    return { all, align, sync, destroy() { disposed = true; } };
+  }
+
   function updateSdfPoseButton() {
     const button = document.querySelector('#buret-toolbar [data-buret-action="sdf-poses"]');
     if (!button) return;
@@ -21945,6 +22050,9 @@ SOFTWARE.
     const controlLabelLower = controlLabel.toLowerCase();
     root.setAttribute('aria-label', `${controlLabel} controls`);
     const all = overlayToggleAvailable ? createStructureOverlayToggleButton(prepared) : null;
+    const sceneComparison = !all && activeMolstarPrepared?.kind === 'session' && activeMolstarPrepared.format === 'molx'
+      ? createSceneFrameComparisonControls(viewer)
+      : null;
     const spread = prepared.kind === 'sdf-collection' ? document.createElement('button') : null;
     if (spread) {
       spread.type = 'button';
@@ -22552,6 +22660,7 @@ SOFTWARE.
       const controlBounds = trajectoryControlBounds(activePose);
       applyLabel(activePose);
       syncStepButtons();
+      sceneComparison?.sync();
       slider.max = String(controlBounds.count);
       slider.value = String(activePose - controlBounds.start + 1);
       slider.dataset.globalFrameIndex = String(activePose);
@@ -23399,6 +23508,7 @@ SOFTWARE.
       if (align) mainRow.append(align);
       if (spread) mainRow.append(spread);
       if (all) mainRow.append(all);
+      if (sceneComparison) mainRow.append(sceneComparison.align, sceneComparison.all);
       animationRow.append(speedField, loop, slider);
       if (smoothAvailable) animationRow.append(smooth);
     }
@@ -23463,6 +23573,7 @@ SOFTWARE.
         setLoopActive(false);
       }
       scienceImportDisposer?.();
+      sceneComparison?.destroy();
       syncDisposer?.();
       isolationDisposer?.();
       hoverDisposer?.();

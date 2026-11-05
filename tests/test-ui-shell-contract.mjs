@@ -6909,7 +6909,7 @@ assert.match(previewViewer, /speed\.title = 'Target source frames per second; un
 assert.match(previewViewer, /function createStructureOverlayToggleButton\(prepared = activeMolstarPrepared\)/);
 assert.match(previewViewer, /button\.dataset\.buretAction = 'structure-overlay-toggle'/);
 assert.match(previewViewer, /root\.classList\.add\('buret-docking-poses-overlay-only'\)/);
-assert.match(previewViewer, /if \(all\) mainRow\.append\(all\);\s*animationRow\.append\(speedField, loop, slider\);\s*if \(smoothAvailable\) animationRow\.append\(smooth\);/);
+assert.match(previewViewer, /if \(all\) mainRow\.append\(all\);\s*if \(sceneComparison\) mainRow\.append\(sceneComparison\.align, sceneComparison\.all\);\s*animationRow\.append\(speedField, loop, slider\);\s*if \(smoothAvailable\) animationRow\.append\(smooth\);/);
 assert.match(previewViewer, /toggleRow\.className = 'buret-docking-pose-toggles'/);
 assert.match(previewViewer, /if \(!toggleRow\) root\.append\(animationRow\);/);
 assert.match(previewViewer, /animation\.addEventListener\('contextmenu'/);

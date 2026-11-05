@@ -212,6 +212,69 @@
         : committed.some(root => root.cell.transform.tags?.includes(marker)))) throw new Error('The frame comparison could not be committed.');
     return { frameCount: owner.frameCount, structureCount: committed.length };
   }
+  // Align fits every comparison onto the source's displayed frame by source atom
+  // order. Matrices live in tagged conformation transforms between each comparison
+  // and its representations, so they persist in MOLX while comparison coordinates,
+  // the source structure and its science stay untouched. The caller supplies the
+  // rigid fit and Mol* transformer to keep this module independent of the viewer.
+  const TRAJECTORY_ALIGN_TAG = 'burette-trajectory-align-v1:';
+  async function setTrajectoryComparisonAlignment(viewer, enabled, fit, transformer) {
+    const plugin = viewer?.plugin;
+    if (comparisonJobs.has(plugin)) throw new Error('Wait for the frame comparison to finish.');
+    if (scienceSessions.get(plugin)?.exporting) throw new Error('The scene is already being saved.');
+    if (scienceImportPending(plugin)) throw new Error('Wait for scientific data to finish restoring.');
+    if (!transformer) throw new Error('Mol* conformation transforms are unavailable.');
+    if (enabled && typeof fit !== 'function') throw new Error('Frame alignment is unavailable.');
+    const owner = scienceBinding(viewer);
+    const state = plugin.state.data;
+    const tag = TRAJECTORY_ALIGN_TAG + owner.structureRef;
+    const comparisons = plugin.managers.structure.hierarchy.current.structures.filter(root => root.cell.transform.ref !== owner.structureRef);
+    if (enabled && !comparisons.length) throw new Error('Show all frames before aligning them.');
+    const reference = Array.from({ length: owner.atomCount }, (_, atom) => Array.from(owner.positions.subarray(atom * 3, atom * 3 + 3)));
+    const update = state.build();
+    let rmsdTotal = 0;
+    for (const root of comparisons) {
+      const existing = root.transform?.cell;
+      if (existing && !existing.transform.tags?.includes(tag)) throw new Error('A frame comparison already has another transform.');
+      if (!enabled) {
+        if (existing) update.delete(existing.transform.ref);
+        continue;
+      }
+      const frame = scienceBindingOfRoot(viewer, root.cell);
+      const moving = Array.from({ length: frame.atomCount }, (_, atom) => Array.from(frame.positions.subarray(atom * 3, atom * 3 + 3)));
+      const result = fit(moving, reference);
+      if (!result?.matrix || result.matrix.length !== 16 || !Array.from(result.matrix).every(Number.isFinite) || !Number.isFinite(result.rmsd)) {
+        throw new Error(`Frame ${frame.frameIndex + 1} could not be aligned.`);
+      }
+      const params = { transform: { name: 'matrix', params: { data: Array.from(result.matrix), transpose: false } } };
+      if (existing) update.to(existing).update(params);
+      else update.to(root.cell).insert(transformer, params, { tags: tag });
+      rmsdTotal += result.rmsd;
+    }
+    await plugin.runTask(state.updateTree(update, { revertOnError: true, revertIfAborted: true }));
+    const mode = trajectoryComparisonMode(viewer);
+    if (!mode || mode.aligned !== Boolean(enabled)) throw new Error('The frame alignment could not be committed.');
+    return { aligned: mode.aligned, structureCount: comparisons.length, rmsd: enabled ? rmsdTotal / comparisons.length : null };
+  }
+  // The toolbar state of a scientific trajectory scene, or null for other scenes.
+  function trajectoryComparisonMode(viewer) {
+    let owner;
+    try { owner = scienceBinding(viewer); } catch (_) { return null; }
+    if (owner.frameCount < 2) return null;
+    const roots = viewer.plugin.managers.structure.hierarchy.current.structures;
+    const comparisons = roots.filter(root => root.cell.transform.ref !== owner.structureRef);
+    const alignTag = TRAJECTORY_ALIGN_TAG + owner.structureRef;
+    return {
+      frameIndex: owner.frameIndex,
+      frameCount: owner.frameCount,
+      // Stepping under All can show one frame twice: N + 1 roots within the 256 limit.
+      available: owner.frameCount < 256,
+      all: roots.some(root => root.cell.transform.tags?.includes(TRAJECTORY_ALL_TAG + owner.structureRef)),
+      // Stepping the source away from its frame leaves that frame unshown.
+      complete: new Set(roots.map(root => root.model?.cell?.transform.params?.modelIndex ?? 0)).size === owner.frameCount,
+      aligned: comparisons.length > 0 && comparisons.every(root => root.transform?.cell?.transform.tags?.includes(alignTag)),
+    };
+  }
   function scienceBinding(viewer) {
     const plugin = viewer?.plugin;
     const session = scienceSessions.get(plugin);
@@ -499,6 +562,8 @@
       prefix: SCIENCE_PREFIX,
       binding: scienceBinding,
       setTrajectoryComparisons,
+      setTrajectoryComparisonAlignment,
+      trajectoryComparisonMode,
       comparisonPending: plugin => comparisonJobs.has(plugin),
       bindingReport: scienceBindingReport,
       sdfBinding: sdfSourceBinding,

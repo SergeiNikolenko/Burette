@@ -456,7 +456,7 @@ const controlContext = vm.createContext({
   clearMolstarTrajectoryHover: () => {}, afterNativeTrajectoryPaint: () => Promise.resolve(), readNativeTrajectoryPositionFromDom: () => null,
 });
 const controlFunctions = ['agentActionFailure', 'agentFrameIndexFailure', 'setStructurePoseFromAction', 'nativeTrajectoryFrameCount', 'nativeTrajectoryModelTransform', 'readNativeTrajectoryPosition', 'readTrajectoryControlIndex',
-  'trajectoryControlStorageKey', 'writeTrajectoryControlIndex', 'setNativeTrajectoryPoseDirect', 'setNativeTrajectoryPose', 'installNativeTrajectoryPoseSync', 'notifyChemicalSpaceMolecule', 'notifyDockingPoseChanged', 'dockingPinnedPoseIndices', 'installDockingPoseControls'];
+  'trajectoryControlStorageKey', 'writeTrajectoryControlIndex', 'setNativeTrajectoryPoseDirect', 'setNativeTrajectoryPose', 'installNativeTrajectoryPoseSync', 'notifyChemicalSpaceMolecule', 'notifyDockingPoseChanged', 'dockingPinnedPoseIndices', 'createSceneFrameComparisonControls', 'installDockingPoseControls'];
 const extractedControls = controlFunctions.map(name => {
   const fn = viewerSource.match(new RegExp(`\\n  (?:async )?function ${name}\\([\\s\\S]*?\\n  \\}`, 'u'))?.[0];
   assert.ok(fn, name);
