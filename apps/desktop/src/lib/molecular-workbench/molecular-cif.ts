@@ -9,7 +9,7 @@ export async function readMolecularCif(text: string): Promise<MolecularAtom[]> {
   if (text.length > 20_000_000 || new TextEncoder().encode(text).length > 20_000_000) throw new Error("Molecular CIF input exceeds 20 MB.");
   const parsed = await parseCifText(text).run();
   if (parsed.isError) throw new Error(`Invalid CIF: ${parsed.message}`);
-  const parsedBlocks: CifBlock[] = parsed.result.blocks;
+  const parsedBlocks: readonly CifBlock[] = parsed.result.blocks;
   const blocks = parsedBlocks.filter(block => cifField(block, "atom_site.Cartn_x", "atom_site_Cartn_x"));
   if (blocks.length !== 1) throw new Error("Choose a CIF with one Cartesian coordinate block.");
   const block = blocks[0];
