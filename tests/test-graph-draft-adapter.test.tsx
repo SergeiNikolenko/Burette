@@ -58,3 +58,35 @@ for (const [method, label] of [["bfgs", "BFGS"], ["lbfgs", "L-BFGS"]] as const) 
     expect(view.controller.sessionForDocument(view.doc)?.content).toBe(optimized.text);
   } finally { await view.close(); }
 });
+
+test("a constrained optimization holds frozen atoms and a distance target, reports residuals, and respects the step limit", async () => {
+  const { runChemistryTask } = await import("../apps/desktop/src/lib/molecular-workbench/compute-client");
+  const view = await fixture("sdf", useGraphDraft);
+  try {
+    expect(await view.apply({ kind: "add-hydrogens" })).not.toBeNull();
+    const hydrogenated = view.graph.history!.current;
+    await act(async () => view.focused.apply({ kind: "positions", from: hydrogenated,
+      coordinates: hydrogenated.structure.atoms.map((atom, index) => [atom.x, atom.y, atom.z + index * index * 0.015]) }));
+    const spatial = view.graph.history!.current, atoms = spatial.structure.atoms;
+    const length = (list: typeof atoms, a: number, b: number) => Math.hypot(list[a].x - list[b].x, list[a].y - list[b].y, list[a].z - list[b].z);
+    const target = length(atoms, 1, 2) + 0.15;
+    const constraints = [{ kind: "freeze" as const, atoms: [0] }, { kind: "distance" as const, atoms: [1, 2], target }];
+    expect(await view.apply({ kind: "optimize", forceField: "UFF", method: "lbfgs", maxIterations: 500, constraints })).not.toBeNull();
+    const optimized = view.graph.history!.current, outcome = optimized.outcome!;
+    expect(view.graph.error).toBeNull();
+    expect(optimized.structure.atoms[0]).toMatchObject({ x: atoms[0].x, y: atoms[0].y, z: atoms[0].z });
+    expect(outcome.residuals).toHaveLength(1);
+    expect(outcome.residuals![0]).toMatchObject({ kind: "distance", atoms: [1, 2], target, unit: "angstrom" });
+    expect(Math.abs(length(optimized.structure.atoms, 1, 2) - target)).toBeLessThan(0.01);
+    expect(outcome.residuals![0].value).toBeCloseTo(length(optimized.structure.atoms, 1, 2), 6);
+    expect(outcome.frames!.length).toBeGreaterThan(2);
+    await act(async () => view.graph.undo()); expect(view.graph.history!.current).toBe(spatial);
+
+    // The worker reports steps while it runs and stops at the requested limit.
+    const progress: { iteration: number; energy: number }[] = [];
+    const limited = await runChemistryTask({ action: "optimize", molecule: spatial.structure, options: { forceField: "UFF", method: "fire", maxIterations: 5 } }, { onProgress: step => progress.push(step) });
+    expect(limited.iterations).toBeLessThanOrEqual(5);
+    expect(progress.length).toBeGreaterThan(0);
+    expect(progress.every((step, index) => step.iteration >= 1 && step.iteration <= 5 && Number.isFinite(step.energy) && (index === 0 || step.iteration > progress[index - 1].iteration))).toBe(true);
+  } finally { await view.close(); }
+});

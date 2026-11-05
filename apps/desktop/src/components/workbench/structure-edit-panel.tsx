@@ -2,9 +2,8 @@ import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from
 import type { GraphEdit, GraphEditResult } from "../../lib/molecular-workbench/graph-edit";
 import { moveAtomOrder } from "../../lib/molecular-workbench/atom-order";
 import type { Vec3 } from "../../lib/molecular-workbench/types";
-import { HARTREE_KCAL_MOL, fileStem } from "../../lib/workbench/formats";
-import { openScientificDocument } from "../../lib/workbench/generated-document-open";
-import { flatDepiction } from "../../lib/molecular-workbench/optimization";
+import { flatDepiction, resolveConstraints, type GeometryConstraint, type OptimizationMethod } from "../../lib/molecular-workbench/optimization";
+import type { MolecularForceField } from "../../lib/molecular-workbench/types";
 import { useViewerAtomSelection } from "../../lib/workbench/selection";
 import { useLogicalSource } from "../../lib/science-session/state";
 import { useWorkspaceMenus } from "../workspace-menus";
@@ -21,7 +20,8 @@ import { SegmentedControl, SegmentedControlItem } from "../ui/segmented-control"
 import { Spinner } from "../ui/spinner";
 import { CoordinateEditor } from "./coordinate-editor";
 import { GraphMetadataFields } from "./graph-metadata-fields";
-import { OptimizeButton } from "./optimize-button";
+import { ConstraintResiduals, OpenStepsButton, OptimizeButton, OptimizingStatus } from "./optimize-button";
+import { ConstraintEditor } from "./structure-edit/constraint-editor";
 import { useGraphDraft, type GraphOutcome, type GraphSnapshot } from "./use-graph-draft";
 import { SelectionEditor } from "./structure-edit/selection-editor";
 import { AtomTable } from "./structure-edit/atom-table";
@@ -38,6 +38,18 @@ import "./structure-edit/structure-edit.css";
 // object, so a selection of another structure reads as empty in the same render.
 type Selection = { atoms: number[]; from: "panel" | "viewer"; structure: GraphEditResult | null };
 const NO_SELECTION: Selection = { atoms: [], from: "panel", structure: null };
+// Constraints are held for the structure they were set on and follow its atoms through
+// edits and optimizations; Undo, Redo and renumbering operations start without them.
+type Held = { constraints: GeometryConstraint[]; structure: GraphEditResult | null };
+const NOT_HELD: Held = { constraints: [], structure: null };
+
+/** Constraints after an edit: those whose atoms all survived it, at their new positions. */
+function mapConstraints(constraints: GeometryConstraint[], structure: GraphEditResult) {
+  return constraints.flatMap((constraint) => {
+    const atoms = constraint.atoms.map((atom) => structure.sourceAtomIndices.indexOf(atom));
+    return atoms.every((atom) => atom >= 0) ? [{ ...constraint, atoms }] : [];
+  });
+}
 
 function selectedAtoms(selection: Selection, structure: GraphEditResult | undefined) {
   if (!structure || selection.structure !== structure) return [];
@@ -92,6 +104,7 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
   const session = draft.session;
   const editor = draft.history;
   const [selection, setSelection] = useState<Selection>(NO_SELECTION);
+  const [held, setHeld] = useState<Held>(NOT_HELD);
   const [view, setView] = useState<"atoms" | "bonds" | "cartesian">("atoms");
   const [addElement, setAddElement] = useState("C");
   const [inputError, setInputError] = useState<string | null>(null);
@@ -101,6 +114,7 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
   send.current = actions.runStructureViewerAction;
   const currentStructure = editor?.current.structure;
   const atoms = selectedAtoms(selection, currentStructure);
+  const constraints = currentStructure && held.structure === currentStructure ? held.constraints : [];
 
   // A selection made in the 3D view replaces the panel's selection; clearing it in
   // the view clears it here too. Atoms picked in the panel stay picked.
@@ -136,10 +150,24 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
   const apply = async (edits: GraphEdit[], select?: (result: GraphEditResult) => number[]) => {
     setInputError(null);
     const result = await draft.apply({ kind: "edits", edits });
-    if (result) setSelection((current) => ({
+    if (!result) return;
+    setSelection((current) => ({
       atoms: current === selection && select ? select(result) : mapSelection(selectedAtoms(current, structure), result),
       from: "panel", structure: result,
     }));
+    setHeld({ constraints: mapConstraints(constraints, result), structure: result });
+  };
+  // The same atoms at new positions keep their constraints.
+  const keepConstraints = (result: GraphEditResult) => setHeld({ constraints, structure: result });
+  let constraintError: string | null = null;
+  if (constraints.length) {
+    try { resolveConstraints(structure.atoms, constraints); }
+    catch (caught) { constraintError = caught instanceof Error ? caught.message : String(caught); }
+  }
+  const optimize = async (operation: { method: OptimizationMethod; forceField: MolecularForceField; maxIterations: number }) => {
+    setInputError(null);
+    const result = await draft.apply({ kind: "optimize", ...operation, constraints });
+    if (result) { setSelection((current) => ({ atoms: selectedAtoms(current, structure), from: current.from, structure: result })); keepConstraints(result); }
   };
   // Adding or removing hydrogens (also when generating 3D coordinates) renumbers atoms, so the selection does not carry over.
   const renumbering = async (operation: { kind: "add-hydrogens" | "remove-hydrogens" | "prepare-3d" } | { kind: "protonate"; pH: number }) => {
@@ -221,7 +249,8 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
             <Button type="submit" variant="secondary" size="xs" disabled={busy}><Plus aria-hidden />Add</Button>
           </ShortcutTooltip>
         </form>
-        <OptimizeButton atomCount={structure.atoms.length} size="xs" variant="secondary" disabled={busy} onOptimize={(method, forceField) => void draft.apply({ kind: "optimize", method, forceField })} />
+        <OptimizeButton atomCount={structure.atoms.length} constraintCount={constraints.length} unavailableReason={constraintError} size="xs" variant="secondary" disabled={busy}
+          onOptimize={(method, forceField, maxIterations) => void optimize({ method, forceField, maxIterations })} />
         <DropdownMenu>
           <ShortcutTooltip label="More actions">
             <DropdownMenuTrigger asChild>
@@ -238,7 +267,8 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
           </DropdownMenuContent>
         </DropdownMenu>
         {busy ? (
-          <span className="workbench-status" role="status"><Spinner aria-hidden className="size-3" /><span className="sr-only">Applying…</span>
+          <span className="workbench-status">
+            {draft.progress ? <OptimizingStatus progress={draft.progress} /> : <span role="status"><Spinner aria-hidden className="size-3" /><span className="sr-only">Applying…</span></span>}
             <Button type="button" variant="ghost" size="xs" onClick={draft.cancel}>Cancel</Button>
           </span>
         ) : null}
@@ -255,7 +285,7 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
       <InsertFragmentDialog open={inserting} onOpenChange={setInserting} target={atoms.length === 1 ? label(structure, atoms[0]) : null}
         busy={busy} error={error} onInsert={fragment => void insertFragment(fragment)} />
       <AdjustPhDialog open={adjustingPh} onOpenChange={setAdjustingPh} onApply={pH => void renumbering({ kind: "protonate", pH })} />
-      {outcome ? <OptimizationOutcome outcome={outcome} onOpenSteps={() => openSteps(actions, document, outcome)} /> : null}
+      {outcome ? <OptimizationOutcome outcome={outcome} structure={structure} actions={actions} document={document} /> : null}
       {truncated ? <p className="workbench-value">Select at most {VIEWER_SELECTION_LIMIT} atoms to edit them.</p> : null}
       <SelectionEditor key={`${snapshotId(editor.current)}:${atoms.join(",")}`} structure={structure} annotations={annotations}
         atoms={atoms} disabled={busy} onApply={(edits) => void apply(edits)} onDelete={deleteSelected} onMove={move} onError={setInputError}
@@ -263,8 +293,10 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
           // A rigid motion keeps every atom, so the panel selection survives the new snapshot.
           setInputError(null);
           const result = await draft.apply({ kind: "positions", coordinates, from: editor.current });
-          if (result) setSelection((current) => ({ atoms: selectedAtoms(current, structure), from: "panel", structure: result }));
+          if (result) { setSelection((current) => ({ atoms: selectedAtoms(current, structure), from: "panel", structure: result })); keepConstraints(result); }
         }} />
+      <ConstraintEditor structure={structure} selected={atoms} constraints={constraints} disabled={busy} onError={setInputError}
+        onChange={(next) => { setInputError(null); setHeld({ constraints: next, structure }); }} />
       {editor.current.metadata ? <GraphMetadataFields key={`metadata:${snapshotId(editor.current)}:${atoms.join(",")}`}
         snapshot={editor.current} atomIndex={atoms.length === 1 ? atoms[0] : null} disabled={busy}
         onApply={patch => { setInputError(null); void draft.apply({ kind: "metadata", from: editor.current, patch }); }} /> : null}
@@ -283,23 +315,16 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
   );
 }
 
-/** The minimizer steps as a trajectory; kcal/mol become hartree so Plots can chart them in any unit. */
-function openSteps(actions: ShellActions, document: ViewerDocument, outcome: GraphOutcome) {
-  const frames = outcome.frames;
-  if (outcome.frameSampling !== "steps" || !frames || frames.length < 2) return;
-  void openScientificDocument(actions, `${fileStem(document.title)}-optimization`, {
-    format: "xyz", atoms: frames[0].atoms, modes: [], orbitals: [],
-    frames: frames.map((frame) => ({ atoms: frame.atoms, energyHartree: frame.energy / HARTREE_KCAL_MOL })),
-  }, "steps");
-}
-
-function OptimizationOutcome({ outcome, onOpenSteps }: { outcome: GraphOutcome; onOpenSteps: () => void }) {
+function OptimizationOutcome({ outcome, structure, actions, document }: { outcome: GraphOutcome; structure: GraphEditResult; actions: ShellActions; document: ViewerDocument }) {
   const steps = outcome.iterations == null ? "" : `, ${outcome.iterations} step${outcome.iterations === 1 ? "" : "s"}`;
   return (
-    <p className="geometry-panel-result structure-edit-outcome" role="status">
-      <span>{outcome.forceField ?? "MMFF94"}, {outcome.method} {outcome.initialEnergy.toFixed(2)} → {outcome.energy.toFixed(2)} kcal/mol{steps}</span>
-      <span className="workbench-value" data-status={outcome.converged ? "success" : "failure"}>{outcome.converged ? "Converged" : "Not converged"}</span>
-      {outcome.frameSampling === "steps" && outcome.frames && outcome.frames.length > 1 ? <Button type="button" variant="ghost" size="xs" onClick={onOpenSteps}>Open steps</Button> : null}
-    </p>
+    <div className="geometry-panel-result" role="status">
+      <p className="structure-edit-outcome">
+        <span>{outcome.forceField ?? "MMFF94"}, {outcome.method} {outcome.initialEnergy.toFixed(2)} → {outcome.energy.toFixed(2)} kcal/mol{steps}</span>
+        <span className="workbench-value" data-status={outcome.converged ? "success" : "failure"}>{outcome.converged ? "Converged" : "Not converged"}</span>
+        {outcome.frameSampling === "steps" ? <OpenStepsButton actions={actions} document={document} frames={outcome.frames} /> : null}
+      </p>
+      <ConstraintResiduals residuals={outcome.residuals ?? []} atomLabel={(atom) => label(structure, atom)} />
+    </div>
   );
 }

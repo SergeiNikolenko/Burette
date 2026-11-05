@@ -554,3 +554,63 @@ passed; the live session checks source vite-dev, not prebuilt/native runtime.
 
 Compiled CLI/MCP compatibility also passed 7 tests / 990 assertions after the
 source-revision change (`/tmp/burette-vibration-name-cli.log`).
+
+### Constrained optimization in the Edit panel, step limit, progress and steps for every result (2026-11-06)
+
+The Edit panel of an SDF/MOL structure optimized without constraints or a step
+limit, the running status of every panel said only "Optimizing", and the
+Z-matrix result dropped its method, step count and steps. The minimizer core
+already held constraints and recorded every step; this change carries them to
+the user:
+
+- **Edit panel:** **Freeze** keeps the selected atoms in place; **Hold
+  distance/angle/dihedral** restrains two, three or four selected atoms to a
+  target that starts at the measured value and can be typed
+  (`structure-edit/constraint-editor.tsx`). The `optimize` graph operation carries
+  `constraints` and `maxIterations` to the chemistry worker, and its outcome keeps
+  the residuals, listed under the result line as in Geometry. Constraints follow
+  their atoms through edits (by `sourceAtomIndices`) and optimizations; Undo, Redo
+  and renumbering operations start without them, as the selection does.
+  Constraints undefined on the current geometry disable Optimize with the reason.
+- **Every panel:** the Optimize menu has a step limit of 100, 250, 500 or 1000
+  (remembered like the method and force field). The worker posts `{ iteration,
+  energy }` at most every 100 ms before its answer (`runWorkerTask` `onProgress`),
+  and the running status shows "Step N, E kcal/mol". The Z-matrix result line now
+  names the method and step count and offers **Open steps**; Geometry, Edit and
+  Z-matrix share one Open steps button and one residual list.
+- `docs/graph-editing-and-properties.md` no longer claims that BFGS is
+  unconstrained-only or that BFGS has no steps; every method holds constraints and
+  records steps (`test-optimize-button`, `test-optimization-reference`).
+
+Checks on Gauss: `bun run typecheck`, `test:structure-edit-controls` (new graph
+draft test: two holds, residuals, frozen atom exact, Undo, worker progress and a
+5-step limit; new menu test: step limit chosen, remembered, passed),
+`test:geometry-ui`, `test:minimizer-core`, `test:optimization-reference`,
+`test:zmatrix-draft`, `test:zmatrix-controls`, `test:zmatrix-coupled-core`,
+`test:physics-worker-core`, `test:properties-consumer`,
+`test:workbench-prepare-conformers-ui` and `test:mol-graph-identities` pass.
+`test:structure-edit-panel` (3 of 13: element field and metadata edits) and one
+`test:workbench-automation-jobs` contract test (the job-kind list lacks `spectrum`
+and `vibrational_spectrum`) fail identically on the unchanged commit `a84a4b375`.
+
+Browser scenario on Gauss, agent shell rebuilt from this checkout, RDKit-embedded
+1-butanol SDF with hydrogens (15 atoms): open Edit from the command palette, pick
+C1 and C2 in the atom table → **Freeze**, pick C3 and O5 → **Hold distance** →
+type the target 2.645 Å (measured 2.395) → choose UFF, L-BFGS and 1000 steps →
+Optimize (status "Step 1, 23.20 kcal/mol") → result "UFF, L-BFGS 4.37 → 11.27
+kcal/mol, 94 steps, Converged" with the residual row → **Open steps** opens
+`butanol-optimization.xyz` with 95 frames → back on the structure, **Undo**.
+Light 1400x900 and dark 900x800 screenshots were inspected.
+
+[Independent RDKit oracle](constrained-optimization-oracle.json), 18/18 checks:
+both frozen atoms keep exact coordinates; C3–O5 reaches 2.6416 Å (−0.003 Å, the
+displayed residual); the start and final energies equal RDKit UFF of the source
+and of the displayed result within 0.01 kcal/mol; an RDKit UFF minimization with
+the same fixed points and a 2·10⁴ kcal/(mol·Å²) distance constraint reaches the
+same physical energy (gap 0.0000 kcal/mol) and geometry (RMSD 3·10⁻⁵ Å); Undo
+restores the source geometry. Page and console errors equal those of the shell
+built before this change.
+
+Still open: keyboard-only and screen-reader passes of the constraint controls,
+constraints surviving Undo/Redo, angle and dihedral holds in the browser (covered
+by `test-optimization-reference`), MOL files, and native/Quick Look surfaces.

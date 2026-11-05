@@ -31,6 +31,8 @@ Quick Look, iPhone or hosted acceptance from either.
 
 [The XYZ Geometry panel now completes edit, Undo/Redo, Z-matrix copy/export and reopen](avogadro-parity-evidence/stage-01-02-09-editing-io.md#geometry-panel-redo-z-matrix-copyexport-and-3d-measurement-focus-for-xyz-2026-11-05), starting from a 3D measurement that focuses its Geometry row; browser clicks, a real clipboard read and an independent Z-matrix rebuild pass; keyboard, dummy-atom rows and native surfaces remain open.
 
+[SDF optimization now freezes atoms and holds distances, angles and dihedrals at typed targets](avogadro-parity-evidence/stage-03-10-optimization-automation.md#constrained-optimization-in-the-edit-panel-step-limit-progress-and-steps-for-every-result-2026-11-06), with a step limit, live progress and Open steps in Edit, Geometry and Z-matrix; browser clicks and an independent RDKit constrained-minimum oracle pass; keyboard, constraints across Undo and native surfaces remain open.
+
 Latest focused evidence includes [Generate 3D camera fitting, Undo/Redo and
 MOLX round trip](avogadro-parity-evidence/stage-01-02-09-editing-io.md#generate-3d-camera-framing-and-scene-round-trip-2026-11-03)
 and [manual Undo/Apply with a clean saved source](avogadro-parity-evidence/stage-01-02-09-editing-io.md#manual-undo-keeps-apply-available-2026-11-03).

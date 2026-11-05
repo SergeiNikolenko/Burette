@@ -65,3 +65,33 @@
   align-items: center;
   gap: 6px;
 }
+.structure-edit-constraints {
+  display: grid;
+  gap: 4px;
+}
+.structure-edit-constraint-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.structure-edit-constraint-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+}
+.structure-edit-constraint-target {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.structure-edit-constraint-target [data-slot="input"] {
+  width: 72px;
+  height: 24px;
+  font-size: 12px;
+}
