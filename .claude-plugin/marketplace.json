@@ -1,0 +1,17 @@
+{
+  "name": "burette",
+  "owner": {
+    "name": "Sergei Nikolenko",
+    "url": "https://github.com/SergeiNikolenko/Burette"
+  },
+  "metadata": {
+    "description": "Burette molecular structure tools for Claude Code."
+  },
+  "plugins": [
+    {
+      "name": "burette",
+      "source": "./plugins/burette-agent",
+      "description": "Molecular structure tools for Claude Code: contacts, SASA, TM-align and PNG export without an open viewer."
+    }
+  ]
+}

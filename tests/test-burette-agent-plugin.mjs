@@ -49,6 +49,22 @@ assert.equal(manifest.interface.termsOfServiceURL, "https://github.com/SergeiNik
 assert.match(await readFile("PRIVACY.md", "utf8"), /local Codex\s+plugin/);
 assert.match(await readFile("TERMS.md", "utf8"), /MIT License/);
 
+// Claude Code launches stdio servers from the user's project, so the bundle
+// path must be anchored to the plugin root instead of the Codex-relative cwd.
+const claudeManifest = JSON.parse(await read(".claude-plugin/plugin.json"));
+assert.deepEqual(
+  { name: claudeManifest.name, version: claudeManifest.version, server: claudeManifest.mcpServers.burette_agent_mcp },
+  {
+    name: manifest.name,
+    version: manifest.version,
+    server: { command: "node", args: ["${CLAUDE_PLUGIN_ROOT}/mcp/lib/server-bundle.mjs", "--stdio"] },
+  },
+);
+const claudeMarketplace = JSON.parse(await readFile(".claude-plugin/marketplace.json", "utf8"));
+assert.deepEqual(claudeMarketplace.plugins.map(({ name, source }) => ({ name, source })), [
+  { name: "burette", source: "./plugins/burette-agent" },
+]);
+
 const compatibility = JSON.parse(await read("compatibility.json"));
 assert.equal(compatibility.schema, "burette_agent_compatibility.v1");
 assert.equal(compatibility.plugin.name, "burette");

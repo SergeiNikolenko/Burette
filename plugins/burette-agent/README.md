@@ -276,6 +276,23 @@ resource with the installed build and observe the requested card. Follow
 `docs/native-widget-development.md`; do not routinely restart Codex or confuse
 installation with a refreshed, mounted widget.
 
+## Claude Code Installation
+
+The same plugin directory also carries `.claude-plugin/plugin.json`, and the
+repository root lists it in `.claude-plugin/marketplace.json`:
+
+```bash
+claude plugin marketplace add SergeiNikolenko/Burette --sparse .claude-plugin plugins/burette-agent
+claude plugin install burette@burette
+claude mcp list   # plugin:burette:burette_agent_mcp ... Connected
+```
+
+Claude Code starts stdio servers from the user's project directory, so its
+manifest anchors the bundle with `${CLAUDE_PLUGIN_ROOT}` instead of the Codex
+`.mcp.json` relative `cwd`. Claude Code has no Codex widget host; use the
+autonomous `burette.open_molecular_session`, `burette.run_molecular_operation`
+and `burette.molecular_job` tools there. Keep both manifest versions equal.
+
 Public Plugins Directory submission remains a separate deployment target from
 this local stdio bundle. The hosted plugin provides the public HTTPS endpoint,
 support/privacy/terms URLs, review test cases, and accurate tool annotations;

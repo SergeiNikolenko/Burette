@@ -1,0 +1,26 @@
+{
+  "name": "burette",
+  "version": "0.2.71-autonomous.20261105",
+  "description": "A universal molecular viewer for proteins, ligands, and molecular structures, with 3D visualization and 2D editing.",
+  "author": {
+    "name": "Sergei Nikolenko",
+    "url": "https://github.com/SergeiNikolenko/Burette"
+  },
+  "homepage": "https://github.com/SergeiNikolenko/Burette",
+  "repository": "https://github.com/SergeiNikolenko/Burette",
+  "license": "MIT",
+  "keywords": [
+    "burette",
+    "molecular-visualization",
+    "molstar",
+    "cheminformatics",
+    "structural-biology",
+    "mcp"
+  ],
+  "mcpServers": {
+    "burette_agent_mcp": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/mcp/lib/server-bundle.mjs", "--stdio"]
+    }
+  }
+}
