@@ -22,6 +22,7 @@
       "cwd": ".",
       "command": "node",
       "args": [
+        "--max-semi-space-size=1",
         "./mcp/lib/server-bundle.mjs",
         "--stdio"
       ]
