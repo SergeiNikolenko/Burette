@@ -8636,7 +8636,7 @@ assert.match(sidebarFileTreeNode, /getPayload: \(\) => sidebarProjectItemsDragPa
 assert.match(sidebarFileTreeNode, /getPayload: \(\) => sidebarProjectItemsDragPayload\(projectTreeNodeItems\(node\), folderPath\)/);
 assert.match(sidebarFileTreeNode, /getPayload: \(\) => sidebarProjectItemsDragPayload\(menus\.selected\.has\(item\.path\)\s*\? Array\.from\(new Map\(state\.sidebarProjects\.flatMap\(project => project\.items\)\s*\.filter\(file => menus\.selected\.has\(file\.path\)\)\.map\(file => \[file\.path, file\]\)\)\.values\(\)\) : \[item\]\)/);
 assert.match(sidebarFileTreeNode, /className="project-group-row"[\s\S]*draggable=\{!renaming && project\.items\.length > 0\}/);
-assert.match(sidebarFileTreeNode, /className="project-folder-row"[\s\S]*draggable=\{node.hasItems\}/);
+assert.match(sidebarFileTreeNode, /className="project-folder-row"[\s\S]*?draggable\n/);
 assert.match(sidebarFileTreeNode, /readStructureDragPayload\(event\.dataTransfer\)/);
 assert.match(sidebarFileTreeNode, /shellDropActionChoices\(payload, sidebarDropTarget\(item, state\), \{ kind: "sidebar" \}\)/);
 assert.match(sidebarFileTreeNode, /runShellDropActionChoices\(actions, payload, choices, \{ x: event\.clientX, y: event\.clientY \}\)/);

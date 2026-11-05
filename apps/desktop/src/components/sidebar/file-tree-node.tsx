@@ -30,7 +30,6 @@ type ProjectTreeNode =
     name: string;
     path: string;
     children: ProjectTreeNode[];
-    hasItems: boolean;
   }
   | {
     kind: "item";
@@ -51,8 +50,9 @@ export function ProjectGroup({
 }) {
 
   const menus = useWorkspaceMenus();
-  const emptyFolders = project.rootPath ? menus.folders[project.rootPath] : undefined;
-  const projectTree = useMemo(() => buildProjectTree(project.items, emptyFolders), [project.items, emptyFolders]);
+  // Folders come only from the files they contain, so a folder without
+  // anything Burette opens never takes a row.
+  const projectTree = useMemo(() => buildProjectTree(project.items), [project.items]);
   const defaultExpandedFolderPaths = useMemo(
     () => expandFoldersByDefault ? collectProjectFolderPaths(projectTree) : singleFolderChain(projectTree),
     [expandFoldersByDefault, projectTree],
@@ -120,13 +120,8 @@ export function ProjectGroup({
     actions.toggleProjectExpanded(project.id);
   };
 
-  const handleRowClick = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if (event.detail > 1) {
-      event.preventDefault();
-      return;
-    }
-    handleToggle();
-  };
+  // Every click toggles, as in Codex: rapid clicks are not a double click.
+  const handleRowClick = () => handleToggle();
 
   const handleRowMouseDown = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (event.detail < 2) return;
@@ -408,13 +403,7 @@ function ProjectTreeNodeView({
   const handleToggle = () => {
     if (!forceExpanded) toggleFolderPath(node.path);
   };
-  const handleRowClick = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if (event.detail > 1) {
-      event.preventDefault();
-      return;
-    }
-    handleToggle();
-  };
+  const handleRowClick = () => handleToggle();
   const startRename = () => {
     if (!folderPath) return;
     const command = menus.folder(project, folderPath, false, () => {}).find(entry => entry.kind === "item" && entry.id === "rename-folder");
@@ -482,7 +471,7 @@ function ProjectTreeNodeView({
         {...hoverCard}
         data-drop-directory={project.rootPath ? `${project.rootPath}/${node.path}` : undefined}
         style={projectDepthStyle(depth)}
-        draggable={node.hasItems}
+        draggable
         onMouseDown={(event) => {
           handleRowMouseDown(event);
           sidebarDrag.onMouseDown(event);
@@ -682,11 +671,11 @@ export function ProjectItem({
   );
 }
 
-function buildProjectTree(items: SidebarProjectItem[], emptyFolders: string[] = []) {
+function buildProjectTree(items: SidebarProjectItem[]) {
   const roots: ProjectTreeNode[] = [];
   const folders = new Map<string, Extract<ProjectTreeNode, { kind: "folder" }>>();
 
-  const childrenFor = (folderPath: string | null, hasItems = false) => {
+  const childrenFor = (folderPath: string | null): ProjectTreeNode[] => {
     if (!folderPath) return roots;
     let folder = folders.get(folderPath);
     if (!folder) {
@@ -697,24 +686,18 @@ function buildProjectTree(items: SidebarProjectItem[], emptyFolders: string[] = 
         name: segments.at(-1) ?? folderPath,
         path: folderPath,
         children: [],
-        hasItems,
       };
       folders.set(folderPath, folder);
       const parentPath = segments.length > 1 ? segments.slice(0, -1).join("/") : null;
-      childrenFor(parentPath, hasItems).push(folder);
-    } else if (hasItems && !folder.hasItems) {
-      folder.hasItems = true;
-      const separator = folderPath.lastIndexOf("/");
-      childrenFor(separator < 0 ? null : folderPath.slice(0, separator), true);
+      childrenFor(parentPath).push(folder);
     }
     return folder.children;
   };
 
-  for (const path of emptyFolders) childrenFor(path);
   for (const item of items) {
     const segments = item.relativePath.split("/").filter(Boolean);
     const parentPath = segments.length > 1 ? segments.slice(0, -1).join("/") : null;
-    childrenFor(parentPath, true).push({
+    childrenFor(parentPath).push({
       kind: "item",
       key: item.key,
       item,

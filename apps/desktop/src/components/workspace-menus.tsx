@@ -13,7 +13,7 @@ import { useWorkspaceFileActions } from "../hooks/use-workspace-file-actions";
 import { useSidebarFileMenus } from "./sidebar/file-operations";
 import { workspaceFileMenu } from "./workspace-file-menu";
 import { menuItem, menuSections, submenu, fileCapabilities } from "./workspace-menu-items";
-import { FolderOpenDialog, readFolderContents } from "./folder-open-dialog";
+import { FolderOpenDialog } from "./folder-open-dialog";
 import { toast } from "./ui/toast";
 
 type Menus = {
@@ -22,10 +22,9 @@ type Menus = {
   folder: (project: SidebarProject, path: string, root: boolean, rename: () => void) => MenuItemSpec[];
   selected: Set<string>;
   select: (path: string, event: FileSelectionModifiers) => boolean;
-  folders: Record<string, string[]>;
   batch: Pick<ReturnType<typeof useLocalFileBatch>, "progress" | "cancel"> | null;
 };
-const Context = createContext<Menus>({ scene: () => [], files: async () => [], folder: () => [], selected: new Set(), select: () => false, folders: {}, batch: null });
+const Context = createContext<Menus>({ scene: () => [], files: async () => [], folder: () => [], selected: new Set(), select: () => false, batch: null });
 export const useWorkspaceMenus = () => useContext(Context);
 
 export function WorkspaceMenus({ state, actions, children }: { state: ShellViewState; actions: ShellActions; children: ReactNode }) {
@@ -37,23 +36,11 @@ export function WorkspaceMenus({ state, actions, children }: { state: ShellViewS
   const [batch, setBatch] = useState<{ path: string; mode: string } | null>(null);
   const [renamingScene, setRenamingScene] = useState<ViewerDocument | null>(null);
   const { selected, select } = useFileSelection();
-  const [folders, setFolders] = useState<Record<string, string[]>>({});
-  const [revision, setRevision] = useState(0);
-  const refresh = () => { setRevision(value => value + 1); window.dispatchEvent(new Event("burette-project-refresh")); };
+  const refresh = () => { window.dispatchEvent(new Event("burette-project-refresh")); };
   useEffect(() => {
     window.addEventListener("burette-folder-contents-changed", refresh);
     return () => window.removeEventListener("burette-folder-contents-changed", refresh);
   }, []);
-  const roots = state.sidebarProjects.flatMap(project => project.rootPath ? [project.rootPath] : []).join('\n');
-  useEffect(() => {
-    let current = true;
-    const paths = roots.split('\n').filter(Boolean);
-    void Promise.all(paths.map(async path => {
-      try { return [path, (await readFolderContents(path, true, state)).folders.map(folder => folder.slice(path.length + 1))] as const; }
-      catch { return [path, []] as const; }
-    })).then(entries => { if (current) setFolders(Object.fromEntries(entries)); });
-    return () => { current = false; };
-  }, [roots, revision]);
   const run = (action: () => unknown | Promise<unknown>) => () => {
     void Promise.resolve().then(action).catch(error => toast.add({ title: String(error), type: "error" }));
   };
@@ -114,7 +101,7 @@ export function WorkspaceMenus({ state, actions, children }: { state: ShellViewS
     ...submenu("merge-scene", "Add to scene", workflows.mergeTargets(document).map((target, index) =>
       menuItem(`merge-scene-${index}`, target.title, run(() => workflows.mergeScene(document, target))))),
   ] : [];
-  return <Context.Provider value={{ scene, files, folder, selected, select, folders, batch: localBatch }}>{children}{batchFiles.dialog}<SceneNameDialog document={renamingScene} onClose={() => setRenamingScene(null)} />
+  return <Context.Provider value={{ scene, files, folder, selected, select, batch: localBatch }}>{children}{batchFiles.dialog}<SceneNameDialog document={renamingScene} onClose={() => setRenamingScene(null)} />
     <FolderOpenDialog path={batch?.path ?? null} initialMode={batch?.mode ?? "tabs"} workflows={workflows} state={state} actions={actions} openBatch={localBatch.open} cancelBatch={localBatch.cancel} progress={localBatch.progress} onClose={() => setBatch(null)} />
   </Context.Provider>;
 }
