@@ -11,6 +11,7 @@ import { tmAlign } from 'molstar/lib/commonjs/mol-model/structure/structure/util
 const MAX_ATOMS = 20000;
 const MAX_PAIRS = 5000000;
 const RESULT_LIMIT = 500;
+const conformerPolicy = 'Per author residue: retain shared blank-alt atoms and one conformer with highest mean occupancy; ties prefer A then lexical alt ID. Atom identities use author atom names.';
 const radii = { C: 1.7, N: 1.55, O: 1.52, S: 1.8, P: 1.8, F: 1.47, CL: 1.75, BR: 1.85, I: 1.98 };
 const fail = (code, message) => { throw Object.assign(new Error(message), { code }); };
 const distanceSquared = (a, b) => (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2;
@@ -46,12 +47,34 @@ async function loadDocument(document) {
       atoms.push({ unit, index, position, chain: StructureProperties.chain.auth_asym_id(location),
         labelChain: StructureProperties.chain.label_asym_id(location), residue: StructureProperties.residue.auth_seq_id(location),
         insertionCode: StructureProperties.residue.pdbx_PDB_ins_code(location) || '',
-        component: StructureProperties.atom.label_comp_id(location), name: StructureProperties.atom.label_atom_id(location),
+        component: StructureProperties.atom.label_comp_id(location), name: unit.model.atomicHierarchy.atoms.auth_atom_id.value(location.element),
+        altId: unit.model.atomicHierarchy.atoms.label_alt_id.value(location.element) || '',
+        occupancy: unit.model.atomicConformation.occupancy.value(location.element),
         element: StructureProperties.atom.type_symbol(location).toUpperCase(),
         polymer: StructureProperties.entity.type(location) === 'polymer' });
     }
   }
-  return { documentId: document.id, sha256, structure, atoms };
+  const residues = new Map();
+  for (const atom of atoms) {
+    const key = `${atom.labelChain}|${atom.chain}|${atom.residue}|${atom.insertionCode}`;
+    if (!residues.has(key)) residues.set(key, []);
+    residues.get(key).push(atom);
+  }
+  const retained = [];
+  for (const residue of residues.values()) {
+    const alternatives = new Map();
+    for (const atom of residue.filter(atom => atom.altId)) {
+      if (!Number.isFinite(atom.occupancy) || atom.occupancy < 0) fail('INVALID_STRUCTURE', 'Alternate atom occupancy must be finite and nonnegative.');
+      if (!alternatives.has(atom.altId)) alternatives.set(atom.altId, []);
+      alternatives.get(atom.altId).push(atom.occupancy);
+    }
+    const chosen = [...alternatives].map(([id, values]) => ({ id, occupancy: values.reduce((sum, value) => sum + value, 0) / values.length }))
+      .sort((a, b) => b.occupancy - a.occupancy || (a.id === 'A' ? -1 : b.id === 'A' ? 1 : a.id < b.id ? -1 : 1))[0]?.id;
+    const shared = new Set(residue.filter(atom => !atom.altId).map(atom => atom.name));
+    retained.push(...residue.filter(atom => !atom.altId || atom.altId === chosen && !shared.has(atom.name)));
+  }
+  return { documentId: document.id, sha256, structure, atoms: retained, sourceAtomCount: atoms.length,
+    discardedAlternateAtomCount: atoms.length - retained.length };
 }
 
 function select(loaded, selection) {
@@ -67,7 +90,7 @@ function select(loaded, selection) {
 }
 
 function identity(atom) {
-  return { chain: atom.chain, residue: atom.residue, insertionCode: atom.insertionCode, component: atom.component, atom: atom.name };
+  return { chain: atom.chain, residue: atom.residue, insertionCode: atom.insertionCode, component: atom.component, atom: atom.name, altId: atom.altId };
 }
 
 function contactResult(first, second, cutoff) {
@@ -165,7 +188,7 @@ function align(first, second) {
 
 export async function runMolecularAnalysis({ documents, action }) {
   const loaded = await Promise.all(documents.map(loadDocument));
-  const sources = loaded.map(({ documentId, sha256 }) => ({ documentId, sha256 }));
+  const sources = loaded.map(({ documentId, sha256, sourceAtomCount, discardedAlternateAtomCount }) => ({ documentId, sha256, sourceAtomCount, discardedAlternateAtomCount }));
   if (action.type === 'inspect') {
     const inventory = loaded.map(document => {
       const chains = new Map();
@@ -177,7 +200,7 @@ export async function runMolecularAnalysis({ documents, action }) {
       return { documentId: document.documentId, atomCount: document.atoms.length, chains: [...chains.values()].slice(0, 100),
         chainCount: chains.size, truncated: chains.size > 100 };
     });
-    return { type: action.type, sources, inventory };
+    return { type: action.type, sources, conformerPolicy, inventory };
   }
   const first = select(loaded, action.selection), second = select(loaded, action.target);
   if (first.document === second.document) {
@@ -189,5 +212,5 @@ export async function runMolecularAnalysis({ documents, action }) {
   else if (action.type === 'buried_area') result = buriedArea(first, second, action.probeRadius ?? 1.4, action.samples ?? 240);
   else if (action.type === 'align') result = align(first, second);
   else fail('UNSUPPORTED_ACTION', 'Unsupported autonomous molecular analysis.');
-  return { type: action.type, sources, partnerAtomCounts: [first.atoms.length, second.atoms.length], ...result };
+  return { type: action.type, sources, conformerPolicy, partnerAtomCounts: [first.atoms.length, second.atoms.length], ...result };
 }

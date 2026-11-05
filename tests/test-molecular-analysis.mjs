@@ -66,6 +66,33 @@ test('mmCIF sources preserve author chains and residue selection through the sam
   assert.equal(result.contacts[0].first.residue, 2);
 });
 
+test('alternate conformations select highest mean occupancy, prefer A on ties and retain shared atoms', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'burette-analysis-altloc-test-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, 'source'), baselinePath = join(directory, 'baseline');
+  await writeFile(baselinePath, pdb);
+  const line = pdb.split('\n')[1];
+  const alternative = (id, occupancy, x) => line.slice(0, 16) + id + line.slice(17, 30) + x.toFixed(3).padStart(8) + line.slice(38, 54) + occupancy.toFixed(2).padStart(6) + line.slice(60);
+  const conformers = occupancy => pdb.replace(line, `${alternative('A', 0.4, 20)}\n${alternative('B', occupancy, 0)}`);
+  const run = (type, source = path) => runMolecularAnalysis({ documents: [{ id: 'minimal', path: source, format: 'pdb' }], action: { type, selection, target } });
+  await writeFile(path, conformers(0.6));
+  const contacts = await run('contacts');
+  assert.equal(contacts.atomContactCount, 3);
+  assert.deepEqual(contacts.partnerAtomCounts, [3, 3]);
+  assert.equal(contacts.contacts[0].first.atom, 'CA');
+  assert.equal(contacts.contacts[0].first.altId, 'B');
+  assert.equal(contacts.sources[0].discardedAlternateAtomCount, 1);
+  assert.match(contacts.conformerPolicy, /highest mean occupancy/);
+  const area = await run('buried_area'), baselineArea = await run('buried_area', baselinePath);
+  assert.equal(area.interfaceAreaSquareAngstrom, baselineArea.interfaceAreaSquareAngstrom);
+  const alignment = await run('align');
+  assert.equal(alignment.alignedCount, 3);
+  assert.ok(alignment.rmsdAngstrom < 1e-6);
+  await writeFile(path, conformers(0.4));
+  const tie = await run('contacts');
+  assert.equal(tie.atomContactCount, 2, 'Equal-occupancy conformer A moves the first residue away from the interface.');
+});
+
 const fixtureDirectory = process.env.BURETTE_SCIENTIFIC_FIXTURES;
 test('source-pinned RCSB interface and conformer acceptance without a renderer', { skip: !fixtureDirectory && 'Set BURETTE_SCIENTIFIC_FIXTURES to the directory of the exact RCSB PDB files.' }, async () => {
   const hashes = { '1YCR': 'd8f23749da9ec22da2e17bb31c33803e3db6123233cd0404bdc005111196e7a3',
