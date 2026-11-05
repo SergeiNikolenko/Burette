@@ -4,6 +4,7 @@ use std::collections::VecDeque;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+use tauri::Manager;
 
 const PLUGIN_NAMES: [&str; 2] = ["burette", "burrete"];
 const PLUGIN_RELATIVE_PATH: &str = "plugins/burette-agent";
@@ -62,8 +63,9 @@ pub(crate) struct AgentIntegrationCheck {
 }
 
 #[tauri::command]
-pub(crate) fn agent_integration_status() -> AgentIntegrationStatus {
-    let plugin_root = find_bundled_plugin_root();
+pub(crate) fn agent_integration_status(app: tauri::AppHandle) -> AgentIntegrationStatus {
+    let resource_dir = app.path().resource_dir().ok();
+    let plugin_root = find_bundled_plugin_root(resource_dir.as_deref());
     let mut checks = Vec::new();
 
     let bundled_plugin = match plugin_root {
@@ -402,10 +404,18 @@ fn is_plugin_name(name: &str) -> bool {
     PLUGIN_NAMES.contains(&name)
 }
 
-fn find_bundled_plugin_root() -> Option<PathBuf> {
+fn find_bundled_plugin_root(resource_dir: Option<&Path>) -> Option<PathBuf> {
     if let Some(path) = env::var_os("BURETTE_AGENT_PLUGIN_DIR").map(PathBuf::from) {
         if path.join(MANIFEST_RELATIVE_PATH).exists() {
             return Some(normalize_path(&path));
+        }
+    }
+
+    // A packaged app keeps the plugin in Contents/Resources, which is a
+    // sibling of the executable's Contents/MacOS and never one of its ancestors.
+    if let Some(candidate) = resource_dir.map(|dir| dir.join(PLUGIN_RELATIVE_PATH)) {
+        if candidate.join(MANIFEST_RELATIVE_PATH).exists() {
+            return Some(normalize_path(&candidate));
         }
     }
 
@@ -469,4 +479,32 @@ fn check(
 
 fn normalize_path(path: &Path) -> PathBuf {
     path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn packaged_resource_dir_wins_over_development_checkouts() {
+        let contents = env::temp_dir().join(format!(
+            "burette-agent-integration-{}/Burette.app/Contents",
+            std::process::id()
+        ));
+        let resources = contents.join("Resources");
+        let plugin = resources.join(PLUGIN_RELATIVE_PATH);
+        fs::create_dir_all(plugin.join(".codex-plugin")).unwrap();
+        fs::create_dir_all(contents.join("MacOS")).unwrap();
+        fs::write(
+            plugin.join(MANIFEST_RELATIVE_PATH),
+            r#"{"name":"burette","version":"0.0.0-test"}"#,
+        )
+        .unwrap();
+
+        let expected = normalize_path(&plugin);
+        let found = find_bundled_plugin_root(Some(&resources));
+        let _ = fs::remove_dir_all(contents.parent().unwrap().parent().unwrap());
+
+        assert_eq!(found, Some(expected));
+    }
 }
