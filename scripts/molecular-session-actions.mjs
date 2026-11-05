@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { rename, unlink, writeFile } from 'node:fs/promises';
 import { appendMcpDocuments } from './mcp-app-documents.mjs';
+import { enqueueMcpAction } from './mcp-app-action-log.mjs';
 import { runMolecularJob, getMolecularJob, cancelMolecularJob } from './molecular-jobs.mjs';
 
 export const molecularSessionRoot = join(homedir(), '.burette', 'molecular-sessions');
@@ -23,7 +24,11 @@ export async function molecularSessionAction(sessionDir, session, input) {
       const job = await getMolecularJob(reference);
       if (job.status !== 'completed' || !job.result?.scenePath) throw new Error('A completed scene export is required.');
       if (job.result.nativeAttachment?.supported === false) throw new Error(job.result.nativeAttachment.reason);
-      session = (await appendMcpDocuments(sessionDir, [job.result.scenePath], { allowClosedPanel: true })).session;
+      const appended = await appendMcpDocuments(sessionDir, [job.result.scenePath], { allowClosedPanel: true });
+      session = appended.session;
+      await enqueueMcpAction(sessionDir, async () => ({ actionId: randomUUID(),
+        action: { type: 'open_files', paths: appended.paths, view: 'auto' },
+        status: 'queued', queuedAt: process.hrtime.bigint().toString() }));
     }
     const presentationId = randomUUID();
     const temporary = join(sessionDir, `presentation.${presentationId}.tmp`);

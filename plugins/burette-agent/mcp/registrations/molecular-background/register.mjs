@@ -52,12 +52,20 @@ export function registerMolecularBackground(server) {
   }, input => result(async () => {
     if (Number(Boolean(input.file)) + Number(Boolean(input.pdbId)) !== 1) throw new Error('Provide exactly one file or PDB ID.');
     const file = input.pdbId ? await resolvePdbEntry(input.pdbId) : input.file;
-    return { ...await runMcpAppOperation({ operation: 'open', ...input, file, autonomous: true, workspace: true }), molecular: molecularCapabilities };
+    const { ready, ...session } = await runMcpAppOperation({ operation: 'open', ...input, file, autonomous: true, workspace: true });
+    return { ...session, molecular: molecularCapabilities };
   }));
   server.registerTool('burette.add_molecular_files', {
-    title: 'Add autonomous molecular sources', description: 'Add immutable local sources to the same autonomous session without mounting a panel. Use returned document IDs for analysis and scene layers.',
-    inputSchema: { ...locator, paths: z.array(z.string().min(1).max(4096)).min(1).max(7) }, annotations,
-  }, input => result(() => runMcpAppOperation({ operation: 'molecular', command: 'add_files', ...input })));
+    title: 'Add autonomous molecular sources', description: 'Add local files or explicit public PDB IDs to the same autonomous session without mounting a panel. Use returned document IDs for analysis and scene layers.',
+    inputSchema: { ...locator, paths: z.array(z.string().min(1).max(4096)).max(7).optional(),
+      pdbIds: z.array(pdbIdSchema).max(7).optional() }, annotations: { ...annotations, openWorldHint: true },
+  }, input => result(async () => {
+    const count = (input.paths?.length ?? 0) + (input.pdbIds?.length ?? 0);
+    if (count < 1 || count > 7) throw new Error('Provide 1–7 local files or public PDB IDs.');
+    const ids = [...new Set((input.pdbIds ?? []).map(id => id.trim().toUpperCase()))];
+    const paths = [...(input.paths ?? []), ...await Promise.all(ids.map(resolvePdbEntry))];
+    return runMcpAppOperation({ operation: 'molecular', command: 'add_files', sessionId: input.sessionId, paths });
+  }));
   server.registerTool('burette.run_molecular_operation', {
     title: 'Run background molecular operation',
     description: 'Run inspect, 4 Å-style heavy-atom contacts, Shrake–Rupley buried area, chain TM-align, or versioned Mol* PNG/MVSJ/metadata export independently of the panel. Author chain/residue numbering. Reuse requestId for retries. queued/running is not completion: poll molecular_job. Rendering requires installed Chromium; data analysis does not. Jobs serialize across chats and release processes on completion.',

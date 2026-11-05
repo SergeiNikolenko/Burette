@@ -13,8 +13,8 @@ snapshots; no visible viewer, browser tab or localhost server is needed.
    authorized `file` or explicit public `pdbId`, optional `additionalFiles`, and
    a fresh UUID `openRequestId`. Retry that same ID with identical inputs.
    Retain the returned document IDs. Add comparison files with
-   `burette.add_molecular_files`; an explicit accession authorizes downloading
-   that public source when a local second file is needed.
+   `burette.add_molecular_files` with `paths` or `pdbIds`, for example
+   `pdbIds: ["1AKE"]`. Explicit accessions authorize their public download.
 2. Call `burette.run_molecular_operation` with that sessionId, one fresh UUID
    `requestId`, and a typed action. Reuse the same requestId only for delivery
    retries of the identical operation. `inspect` returns chain inventory.
@@ -35,6 +35,8 @@ snapshots; no visible viewer, browser tab or localhost server is needed.
    Present the image to the user. When an interactive view is wanted, call
    `burette.show_molecular_session` using the existing sessionId and the completed
    render requestId. Creation of this panel does not prove it is visibly ready.
+   Check `nativeAttachment.supported` before attaching an exported scene: its
+   embedded sources also count toward the native 8-document/16 MiB limit.
 
 `contacts` uses a cutoff in Å (default 4), heavy-atom pairs, and returns full
 count plus a bounded sample. `buried_area` uses probeRadius 1.4 Å and 240

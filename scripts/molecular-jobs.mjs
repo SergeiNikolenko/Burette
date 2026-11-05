@@ -70,30 +70,30 @@ export async function runMolecularJob({ sessionDir, sessionId, documents, action
   await mkdir(join(runtimeRoot, 'queue'), { recursive: true, mode: 0o700 });
   await mkdir(join(runtimeRoot, 'actions'), { recursive: true, mode: 0o700 });
   const record = await withMcpAdmission(runtimeRoot, async () => {
-  if ((await readdir(join(runtimeRoot, 'queue'))).filter(name => name.endsWith('.json')).length >= 128
-    && !await readMolecularJson(paths.record)) fail('QUEUE_FULL', '128 molecular jobs are already pending.');
-  await mkdir(join(resolve(sessionDir), 'molecular-jobs'), { recursive: true, mode: 0o700 });
-  let created = false;
-  try { await mkdir(paths.directory, { mode: 0o700 }); created = true; }
-  catch (error) { if (error.code !== 'EEXIST') throw error; }
-  let record;
-  if (created) {
-    record = { requestId: requestId.toLowerCase(), sessionId, sessionDir: resolve(sessionDir), runtimeRoot, documents, action,
-      fingerprint, timeoutMs, status: 'queued', queuedAt: new Date().toISOString() };
-    await writeMolecularJson(paths.record, record);
-  } else {
-    for (let attempt = 0; attempt < 20 && !record; attempt++) {
-      record = await readMolecularJson(paths.record);
-      if (!record) await delay(25);
+    if ((await readdir(join(runtimeRoot, 'queue'))).filter(name => name.endsWith('.json')).length >= 128
+      && !await readMolecularJson(paths.record)) fail('QUEUE_FULL', '128 molecular jobs are already pending.');
+    await mkdir(join(resolve(sessionDir), 'molecular-jobs'), { recursive: true, mode: 0o700 });
+    let created = false;
+    try { await mkdir(paths.directory, { mode: 0o700 }); created = true; }
+    catch (error) { if (error.code !== 'EEXIST') throw error; }
+    let record;
+    if (created) {
+      record = { requestId: requestId.toLowerCase(), sessionId, sessionDir: resolve(sessionDir), runtimeRoot, documents, action,
+        fingerprint, timeoutMs, status: 'queued', queuedAt: new Date().toISOString() };
+      await writeMolecularJson(paths.record, record);
+    } else {
+      for (let attempt = 0; attempt < 20 && !record; attempt++) {
+        record = await readMolecularJson(paths.record);
+        if (!record) await delay(25);
+      }
+      if (!record) fail('JOB_INITIALIZATION_INTERRUPTED', 'Job initialization is incomplete; the request is preserved.');
+      if (record.fingerprint !== fingerprint) fail('REQUEST_CONFLICT', 'requestId is already bound to different molecular inputs.');
     }
-    if (!record) fail('JOB_INITIALIZATION_INTERRUPTED', 'Job initialization is incomplete; the request is preserved.');
-    if (record.fingerprint !== fingerprint) fail('REQUEST_CONFLICT', 'requestId is already bound to different molecular inputs.');
-  }
-  if (!molecularTerminalStatuses.has(record.status)) {
-    const queueId = createHash('sha256').update(paths.record).digest('hex');
-    await writeMolecularJson(join(runtimeRoot, 'queue', `${queueId}.json`), { recordPath: paths.record });
-  }
-  return record;
+    if (!molecularTerminalStatuses.has(record.status)) {
+      const queueId = createHash('sha256').update(paths.record).digest('hex');
+      await writeMolecularJson(join(runtimeRoot, 'queue', `${queueId}.json`), { recordPath: paths.record });
+    }
+    return record;
   });
   if (!molecularTerminalStatuses.has(record.status)) await startMolecularSupervisor(runtimeRoot);
   const deadline = Date.now() + waitMs;

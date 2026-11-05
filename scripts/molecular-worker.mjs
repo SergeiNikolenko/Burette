@@ -1,6 +1,6 @@
 import { execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdir, open, readdir, unlink } from 'node:fs/promises';
+import { link, mkdir, open, readdir, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setPriority } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -25,27 +25,32 @@ async function orphanIdentity(pid, recordPath) {
 
 async function acquire(root) {
   const path = join(root, 'supervisor.json'), identity = { pid: process.pid, token: randomUUID() };
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const handle = await open(path, 'wx', 0o600);
-      try { await handle.writeFile(JSON.stringify(identity)); } finally { await handle.close(); }
-      return async () => { if ((await readMolecularJson(path))?.token === identity.token) await remove(path); };
-    } catch (error) {
-      if (error.code !== 'EEXIST') throw error;
-      let owner;
-      try { owner = await readMolecularJson(path); } catch { return null; }
-      if (!owner || !Number.isSafeInteger(owner.pid) || molecularProcessAlive(owner.pid)) return null;
-      // Only a positively dead owner can be recovered; a live or malformed
-      // ownership file is preserved rather than stealing its execution slot.
-      const recovery = `${path}.recovery`;
-      let handle;
-      try { handle = await open(recovery, 'wx', 0o600); }
-      catch (error) { if (error.code === 'EEXIST') return null; throw error; }
-      try { if ((await readMolecularJson(path))?.token === owner.token) await remove(path); }
-      finally { await handle.close(); await remove(recovery); }
+  const temporary = join(root, `supervisor.${identity.token}.claim`);
+  await writeFile(temporary, JSON.stringify(identity), { flag: 'wx', mode: 0o600 });
+  try {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        // Publish only a complete identity. A crash before this exclusive link
+        // leaves an unused claim, never an empty global execution lock.
+        await link(temporary, path);
+        return async () => { if ((await readMolecularJson(path))?.token === identity.token) await remove(path); };
+      } catch (error) {
+        if (error.code !== 'EEXIST') throw error;
+        let owner;
+        try { owner = await readMolecularJson(path); } catch { return null; }
+        if (!owner || !Number.isSafeInteger(owner.pid) || molecularProcessAlive(owner.pid)) return null;
+        // Only a positively dead owner can be recovered; a live or malformed
+        // ownership file is preserved rather than stealing its execution slot.
+        const recovery = `${path}.recovery`;
+        let handle;
+        try { handle = await open(recovery, 'wx', 0o600); }
+        catch (error) { if (error.code === 'EEXIST') return null; throw error; }
+        try { if ((await readMolecularJson(path))?.token === owner.token) await remove(path); }
+        finally { await handle.close(); await remove(recovery); }
+      }
     }
-  }
-  return null;
+    return null;
+  } finally { await remove(temporary); }
 }
 
 function stopTask(child, signal = 'SIGTERM') {

@@ -160,3 +160,16 @@ test('concurrent admissions keep the global queue within its bound', async t => 
   assert.equal((await readdir(join(input.runtimeRoot, 'queue'))).length, accepted);
   assert.ok(results.filter(value => value.status === 'rejected').every(value => ['QUEUE_FULL', 'QUEUE_BUSY'].includes(value.reason.code)));
 });
+
+test('dead supervisor ownership and an unpublished claim do not block a new worker', async t => {
+  const input = await fixture(t);
+  await mkdir(join(input.runtimeRoot, 'queue'), { recursive: true });
+  const abandoned = join(input.runtimeRoot, `supervisor.${randomUUID()}.claim`);
+  await writeFile(abandoned, '{');
+  await writeFile(join(input.runtimeRoot, 'supervisor.json'), JSON.stringify({ pid: 2147483647, token: randomUUID() }));
+  const result = await runMolecularJob({ ...input, waitMs: 15_000 });
+  assert.equal(result.status, 'completed', JSON.stringify(result));
+  await until(async () => !molecularProcessAlive(result.supervisorPid));
+  assert.equal(await readFile(abandoned, 'utf8'), '{');
+  assert.deepEqual((await readdir(input.runtimeRoot)).filter(name => name.endsWith('.claim')), [abandoned.split('/').at(-1)]);
+});

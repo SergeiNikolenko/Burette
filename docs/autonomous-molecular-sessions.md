@@ -57,6 +57,10 @@ installation when standard discovery cannot find one. The renderer has no
 network dependency: source bytes and runtime assets are supplied locally.
 
 The same self-contained MVSJ describes both export and native reopening.
+`nativeAttachment` reports whether originals plus that scene fit the native
+8-document/16 MiB limit; a successful image export alone does not imply that
+the scene fits the existing panel. Presentation queues an explicit scene-open
+action so restored earlier tabs do not hide the newly exported scene.
 PNG and scene are published without replacement; the `.render.json` sidecar
 is the completion marker. A hard crash before that marker may leave incomplete
 artifacts; they must not be reported as completed or overwritten by a retry.
