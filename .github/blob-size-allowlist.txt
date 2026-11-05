@@ -58,3 +58,11 @@ plugins/burette-agent/assets/native-workspace/230af816a8807480083706e9d68f1979c9
 plugins/burette-agent/assets/native-workspace/4663fab0e537d936af5efe54186bf3cb6b8af89695f446051899ab4755cfe14b.gz
 plugins/burette-agent/assets/native-workspace/51169747ca808a776b811302c080a4997b33dcee8912ac71813d2c81737b3f95.gz
 plugins/burette-agent/assets/native-workspace/94ec3a8751f4224210d79a639ccde620c64f769cdcc77d59edaec5caa7187030.gz
+
+# Pinned autonomous Mol* analysis and playwright-core runtime (no browser binaries).
+plugins/burette-agent/scripts/molecular-analysis.mjs
+plugins/burette-agent/vendor/playwright-core/lib/mcpBundleImpl/index.js
+plugins/burette-agent/vendor/playwright-core/lib/vite/htmlReport/index.html
+plugins/burette-agent/vendor/playwright-core/lib/vite/traceViewer/assets/defaultSettingsView-CJSZINFr.js
+plugins/burette-agent/vendor/playwright-core/types/protocol.d.ts
+plugins/burette-agent/vendor/playwright-core/types/types.d.ts

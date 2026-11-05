@@ -15,9 +15,11 @@ const previewWeb = resolve(pluginRoot, 'preview-web');
 const mcpLibDir = resolve(pluginRoot, 'mcp/lib');
 const mcpOnly = process.argv.includes('--mcp-only');
 const exampleAssets = resolve(pluginRoot, 'assets/examples');
-await mkdir(exampleAssets, { recursive: true });
-await cp(resolve(appRoot, 'samples/structures/proteins/1htb.pdb'), resolve(exampleAssets, '1htb.pdb'));
-await cp(resolve(appRoot, 'apps/burette-public-plugin/public/demo-library/Quantum/caffeine.xyz'), resolve(exampleAssets, 'caffeine.xyz'));
+if (!mcpOnly) {
+  await mkdir(exampleAssets, { recursive: true });
+  await cp(resolve(appRoot, 'samples/structures/proteins/1htb.pdb'), resolve(exampleAssets, '1htb.pdb'));
+  await cp(resolve(appRoot, 'apps/burette-public-plugin/public/demo-library/Quantum/caffeine.xyz'), resolve(exampleAssets, 'caffeine.xyz'));
+}
 const runtimeScripts = [
   'amber_nc_preview_extract.py',
   'agent-preview.mjs',
@@ -75,6 +77,9 @@ for (const script of runtimeScripts) {
 // Node entrypoint; the package must not depend on a development checkout.
 await run('bun', ['build', resolve(repoRoot, 'scripts/native-workspace-xyzrender.mjs'),
   '--outfile', resolve(pluginRoot, 'scripts/native-workspace-xyzrender.mjs'), '--target', 'node', '--format', 'esm']);
+const playwrightIndex = process.argv.indexOf('--playwright-root');
+await run('bun', [resolve(repoRoot, 'scripts/build-molecular-runtime.mjs'),
+  ...(playwrightIndex >= 0 ? ['--playwright-root', process.argv[playwrightIndex + 1]] : [])]);
 if (!mcpOnly) {
 const storyTemplateAssets = resolve(pluginRoot, 'assets', 'mvs-story-templates');
 await rm(storyTemplateAssets, { recursive: true, force: true });

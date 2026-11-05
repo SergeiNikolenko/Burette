@@ -35,6 +35,15 @@ const requiredBundleFiles = [
   'scripts/mcp-app-file-actions.mjs',
   'scripts/mcp-app-action-log.mjs',
   'scripts/mcp-app-open.mjs',
+  'scripts/molecular-analysis.mjs',
+  'scripts/molecular-jobs.mjs',
+  'scripts/molecular-worker.mjs',
+  'scripts/molecular-render.mjs',
+  'scripts/molecular-scene.mjs',
+  'scripts/molecular-session-actions.mjs',
+  'vendor/playwright-core/package.json',
+  'vendor/playwright-core/index.js',
+  'vendor/playwright-core/lib/server/browserType.js',
   'scripts/local-file-actions.mjs',
   "browser-shell-dist/boot-overlay.js",
   "browser-shell-dist/index.html",
@@ -159,7 +168,12 @@ async function stagePlugin() {
     "--exclude", "mcp/lib/tool-response 2.mjs",
     `${pluginRoot}/`, `${personalPluginRoot}/`,
   ], { cwd: repoRoot });
-  await writeFile(path.join(personalPluginRoot, ".burette-agent-install.json"), `${JSON.stringify({ repoRoot }, null, 2)}\n`);
+  const sourceMetadata = path.join(personalPluginRoot, ".burette-agent-install.json");
+  // Composed packages already identify the source checkout that built their
+  // backend. Installing from scratch staging must preserve that provenance.
+  if (isSourceCheckout() || !existsSync(sourceMetadata)) {
+    await writeFile(sourceMetadata, `${JSON.stringify({ repoRoot }, null, 2)}\n`);
+  }
 }
 
 function installWithCodex(command) {

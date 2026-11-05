@@ -76,3 +76,15 @@ admission and idle shutdown. Session tests run with no app exchange or panel.
 Use `scripts/check-molecular-background.mjs` for pinned 1YCR, 4AKE/1AKE and
 1EMA acceptance and retained artifacts/metrics. Native mounted-scene acceptance
 is a separate check; successful headless export does not prove host mounting.
+
+## Focused package delivery
+
+Build the server and autonomous worker with `bun scripts/build-agent-shell-plugin.mjs
+--mcp-only --playwright-root /path/to/playwright-core-1.58.2`. The supplied npm
+package is verified against the exact manifest version and vendored intact;
+browser binaries are not included. `stage-molecular-plugin.mjs --base-plugin
+/path/to/installed/burette --output /new/staging/path` composes this backend with
+the previously installed native/browser/preview UI, preserving those assets
+byte-for-byte. Its build metadata records the source commit, base package version
+and native asset manifest digest. Install the staged package through its normal
+`scripts/install-local.mjs`; never overwrite an installed cache manually.
