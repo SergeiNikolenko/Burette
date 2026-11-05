@@ -5233,26 +5233,16 @@ html:is([data-burette-header-band], [data-burette-app-chrome]) body #buret-scene
 }
 /* The capsule shadow above replaces the toggle's own box-shadow focus ring. */
 html:is([data-burette-header-band], [data-burette-app-chrome]) body #buret-scene-tree-toggle:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 0; }
-/* Codex marks a pressed viewer control with a blue-tinted surface; on dark
-   themes its text is chart blue lifted toward white by the theme contrast. */
+/* Codex shows a pressed ghost toggle with the neutral ghost fill and full-contrast
+   text (Atlas "ghostActive"); accent colors are reserved for status. */
 html:is([data-burette-header-band], [data-burette-app-chrome]) body #buret-scene-tree-toggle[aria-expanded="true"] {
-  background: color-mix(in srgb, var(--color-surface) 90%, var(--color-chart-blue)); color: var(--color-text-info);
+  background-image: linear-gradient(var(--color-background-secondary-ghost-hover) 0 0); color: var(--color-text);
 }
 /* The toolbar's content box clips anything outside its buttons, so focus rings
    sit inside them, as on Codex's inset-ring chips. */
 html:is([data-burette-header-band], [data-burette-app-chrome]) body :is(#buret-toolbar, #buret-viewport-rail, #buret-selection-bar) .atlas-button {
   border-radius: var(--radius-full); --button-ring-offset: -2px;
   --button-text-color: var(--color-text); --button-text-color-hover: var(--color-text);
-}
-html:is([data-burette-header-band], [data-burette-app-chrome]) body :is(#buret-toolbar, #buret-viewport-rail) .atlas-button[data-selected] {
-  --button-background-color: color-mix(in srgb, var(--color-surface) 90%, var(--color-chart-blue));
-  --button-text-color-hover: var(--color-text-info);
-}
-html:is([data-burette-header-band], [data-burette-app-chrome]) body.buret-theme-dark :is(#buret-toolbar, #buret-viewport-rail) .atlas-button[data-selected] {
-  --button-text-color-hover: color-mix(in srgb, var(--color-chart-blue), var(--white) calc(19.5% + var(--codex-base-contrast) * 0.325% + max(0, var(--codex-base-contrast) - 60) * 0.325%));
-}
-html:is([data-burette-header-band], [data-burette-app-chrome]) body.buret-theme-dark #buret-scene-tree-toggle[aria-expanded="true"] {
-  color: color-mix(in srgb, var(--color-chart-blue), var(--white) calc(19.5% + var(--codex-base-contrast) * 0.325% + max(0, var(--codex-base-contrast) - 60) * 0.325%));
 }
 html:is([data-burette-header-band], [data-burette-app-chrome]) body #buret-viewport-rail .atlas-button[data-buret-viewport-action="clear-selection"] {
   --button-text-color: var(--color-text-danger); --button-text-color-hover: var(--color-text-danger);

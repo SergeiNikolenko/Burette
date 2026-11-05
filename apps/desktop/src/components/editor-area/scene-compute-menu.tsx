@@ -51,7 +51,7 @@ export function SceneComputeMenu({ document, actions, iframeRef }: {
       if (element) {
         element.style.top = `${body.top}px`;
         element.style.right = `${body.right}px`;
-        element.style.visibility = "visible";
+        element.style.visibility = body.covered === true ? "hidden" : "visible";
       }
     };
     window.addEventListener("message", onMessage);

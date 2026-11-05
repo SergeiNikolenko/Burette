@@ -4416,7 +4416,7 @@
   function sizeMolstarPresetPreview(preview) {
     if (!preview) return;
     const { stage } = molstarPresetPreviewElements();
-    const sourceCanvas = activeViewer?.plugin?.canvas3d?.webgl?.gl?.canvas || document.querySelector('#app canvas');
+    const sourceCanvas = activeViewer?.plugin?.canvas3dContext?.canvas || document.querySelector('#app canvas');
     const sourceRect = sourceCanvas?.getBoundingClientRect?.();
     const sourceWidth = Number(sourceRect?.width);
     const sourceHeight = Number(sourceRect?.height);
@@ -4522,7 +4522,7 @@
   }
 
   function molstarPresetPreviewViewportKey() {
-    const sourceCanvas = activeViewer?.plugin?.canvas3d?.webgl?.gl?.canvas || document.querySelector('#app canvas');
+    const sourceCanvas = activeViewer?.plugin?.canvas3dContext?.canvas || document.querySelector('#app canvas');
     const sourceRect = sourceCanvas?.getBoundingClientRect?.();
     const width = Math.max(1, Number(sourceRect?.width) || 1);
     const height = Math.max(1, Number(sourceRect?.height) || 1);
@@ -4588,7 +4588,7 @@
   }
 
   function molstarPresetPreviewPixelScale() {
-    const source = activeViewer?.plugin?.canvas3d?.webgl?.gl?.canvas;
+    const source = activeViewer?.plugin?.canvas3dContext?.canvas;
     const rect = source?.getBoundingClientRect?.();
     const cssWidth = Number(rect?.width);
     const backingWidth = Number(source?.width);
@@ -4652,7 +4652,7 @@
   }
 
   async function captureMolstarPresetPreview(item, viewer, serial) {
-    const source = viewer?.plugin?.canvas3d?.webgl?.gl?.canvas;
+    const source = viewer?.plugin?.canvas3dContext?.canvas;
     if (!source || !(Number(source.width) > 0) || !(Number(source.height) > 0)) {
       throw new Error('Mol* preview viewport is unavailable.');
     }
@@ -7224,10 +7224,12 @@
       const right = railRect && railHorizontal === 'right'
         ? Math.ceil(window.innerWidth - viewportRailLeft + FLOATING_LAYOUT_GAP)
         : TOOLBAR_MARGIN;
-      const key = `${top}:${right}`;
+      // Host chrome paints above the iframe, so it yields while a viewer menu is open.
+      const covered = Array.from(document.querySelectorAll('.buret-atlas-menu, .atlas-popover-surface')).some(isVisible);
+      const key = `${top}:${right}:${covered}`;
       if (key !== lastHostComputeAnchor) {
         lastHostComputeAnchor = key;
-        postHostMessage({ type: 'sceneComputeAnchor', top, right });
+        postHostMessage({ type: 'sceneComputeAnchor', top, right, covered });
       }
     }
     repositionDockingPoseControlsForLayout(mainRect);
@@ -30076,7 +30078,7 @@ SOFTWARE.
   function installMolstarBrowserAnnotationTarget(viewer) {
     molstarBrowserAnnotationTargetCleanup?.();
     molstarBrowserAnnotationTargetCleanup = null;
-    const canvas = viewer?.plugin?.canvas3d?.webgl?.gl?.canvas;
+    const canvas = viewer?.plugin?.canvas3dContext?.canvas;
     if (!(canvas instanceof HTMLCanvasElement)) return;
     let annotationTarget = null;
     let observedCommentRoot = null;

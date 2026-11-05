@@ -24,10 +24,10 @@ test("Compute follows the active viewer's anchor after a frame replacement", asy
   }
   const iframeRef = { current: frames[0] };
   const target = { id: "xyz", path: "/structure.xyz", extension: "xyz", renderer: "xyzrender-external" } as ViewerDocument;
-  const report = (frame: HTMLIFrameElement, top: number) => {
+  const report = (frame: HTMLIFrameElement, top: number, covered = false) => {
     browser.dispatchEvent(new browser.MessageEvent("message", {
       source: frame.contentWindow,
-      data: { source: "burette-viewer", body: { type: "sceneComputeAnchor", documentId: target.id, top, right: 56 } },
+      data: { source: "burette-viewer", body: { type: "sceneComputeAnchor", documentId: target.id, top, right: 56, covered } },
     }));
   };
   try {
@@ -35,6 +35,11 @@ test("Compute follows the active viewer's anchor after a frame replacement", asy
     const anchor = container.firstElementChild as HTMLElement;
     report(frames[0], 56);
     expect([anchor.style.top, anchor.style.right, anchor.style.visibility]).toEqual(["56px", "56px", "visible"]);
+    // A viewer menu under the host button hides Compute until the menu closes.
+    report(frames[0], 56, true);
+    expect(anchor.style.visibility).toBe("hidden");
+    report(frames[0], 56);
+    expect(anchor.style.visibility).toBe("visible");
     iframeRef.current = frames[1];
     report(frames[0], 140);
     expect(anchor.style.top).toBe("56px");

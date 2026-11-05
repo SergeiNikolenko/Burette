@@ -5503,7 +5503,9 @@ assert.match(previewViewer, /function trackMolstarPresetPreviewState\(viewer\)/)
 assert.match(previewViewer, /state\?\.events\?\.changed\?\.subscribe\?\./);
 assert.match(previewViewer, /function captureMolstarPresetPreview\(item, viewer, serial\)/);
 assert.match(previewViewer, /function copyMolstarPresetPreviewCanvasProps\(sourceViewer, targetViewer\)[\s\S]*axes: \{ name: 'off', params: \{\} \}[\s\S]*targetCanvas\.setProps\(previewProps\);/);
-assert.match(previewViewer, /const source = viewer\?\.plugin\?\.canvas3d\?\.webgl\?\.gl\?\.canvas;/);
+// Bundled Mol* exposes the WebGL canvas on canvas3dContext; Canvas3D has no webgl field.
+assert.match(previewViewer, /const source = viewer\?\.plugin\?\.canvas3dContext\?\.canvas;/);
+assert.doesNotMatch(previewViewer, /canvas3d\?\.webgl/);
 assert.match(previewViewer, /drawMolstarPresetPreviewFrame\(item, source\)/);
 assert.doesNotMatch(previewViewer, /helper\.getPreview\(/);
 assert.match(previewViewer, /preview\.dataset\.frameAspect = \(sourceWidth \/ sourceHeight\)\.toFixed\(3\)/);
