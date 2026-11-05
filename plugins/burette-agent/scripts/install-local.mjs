@@ -55,6 +55,8 @@ const requiredBundleFiles = [
   "preview-web/rdkit/RDKit_minimal.wasm",
   "scripts/agent-preview.mjs",
   "scripts/agent-shell-server.mjs",
+  "scripts/agent-server-process.mjs",
+  "scripts/agent-server-idle.mjs",
   "scripts/burette-agent.mjs",
   "scripts/mvs-story.mjs",
   "scripts/mvs-story-templates.mjs",

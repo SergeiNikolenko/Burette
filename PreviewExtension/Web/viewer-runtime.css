@@ -540,6 +540,21 @@ body .msp-plugin .msp-highlight-info {
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
 }
+/* Long labels (e.g. a whole polymer sequence) keep their last lines, where the residue and chain are. */
+body .msp-plugin .msp-highlight-info {
+  box-sizing: content-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  max-height: calc(4 * 1.4em);
+  padding-block: 0;
+  line-height: 1.4em;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+body .msp-plugin .msp-highlight-info > :last-child {
+  padding-bottom: 3px;
+}
 body .msp-plugin .msp-snapshot-description-wrapper *,
 body .msp-plugin .msp-highlight-info * {
   background: transparent !important;

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { createServer } from 'node:http';
+import { installAgentServerIdleTimeout } from './agent-server-idle.mjs';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { constants, existsSync, readFileSync, realpathSync, statSync, watch } from 'node:fs';
@@ -188,6 +189,7 @@ const server = createServer((req, res) => {
   });
 });
 
+installAgentServerIdleTimeout(server);
 server.listen(args.port, args.host, () => {
   console.log(JSON.stringify({
     ok: true,

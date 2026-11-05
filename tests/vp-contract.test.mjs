@@ -20,6 +20,7 @@ const contractScripts = {
   "test-tab-pointer-drag.test.ts": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-tab-pointer-drag.test.ts", import.meta.url))]),
   "test-shared-store.test.ts": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-shared-store.test.ts", import.meta.url))]),
   "test-startup-open-events.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-startup-open-events.test.tsx", import.meta.url))]),
+  "test-agent-server-lifecycle.mjs": () => isolatedNode("./test-agent-server-lifecycle.mjs"),
   "test-browser-dev-trj.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-browser-dev-trj.mjs", import.meta.url))]),
   "test-collect-diagnostics.py": () => promisify(execFile)("python3", [fileURLToPath(new URL("./test-collect-diagnostics.py", import.meta.url))]),
   "test-action-journal.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-action-journal.mjs", import.meta.url))]),

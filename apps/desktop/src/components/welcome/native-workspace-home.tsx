@@ -57,7 +57,7 @@ export function NativeWorkspaceHome({ actions, home }: { actions: ShellActions; 
   // Laid out like a Codex list page (Archive): a large title with its action,
   // then plain pill rows.
   return (
-    <div className="native-workspace-home h-full w-full overflow-y-auto overscroll-contain px-5 py-8 sm:px-8">
+    <div className="native-workspace-home w-full overflow-y-auto overscroll-contain px-5 py-8 sm:px-8">
       <div className="mx-auto flex w-full max-w-[720px] flex-col gap-5">
         <header className="flex items-start justify-between gap-4">
           <h1 className="native-home-title">Recent files</h1>
