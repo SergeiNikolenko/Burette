@@ -21,7 +21,8 @@ export function serializePhysicalMolfile(input: Molecule): string {
   const source = mol.toMolfileV3();
   const requiredUnknown = Array.from({ length: mol.getAllAtoms() }, (_, i) => i).filter(i => mol.isAtomConfigurationUnknown(i) || mol.getAtomParity(i) === Molecule.cAtomParityUnknown);
   const output = source.split('\n').map((line, index) => {
-    if (index === 1) return line.replace(/\b2D\b/, '3D');
+    // The header line names the program that wrote the file, as formats.ts does.
+    if (index === 1) return '  Burette           3D';
     if (line === 'M  V30 BEGIN BOND') inBonds = true;
     else if (line === 'M  V30 END BOND') inBonds = false;
     else if (inBonds) {
