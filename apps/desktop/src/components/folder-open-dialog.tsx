@@ -12,6 +12,7 @@ import { NativeSelect, NativeSelectOption } from "./ui/native-select";
 import type { useLocalFileBatch } from "../hooks/use-local-file-batch";
 import { scanBrowserDevFolders } from "../lib/browser-dev-startup";
 import { requestContextualGuide } from "./onboarding/request";
+import { basename } from "../lib/sidebar-projects";
 
 type FolderContents = { files: string[]; folders: string[]; truncated: boolean };
 export async function readFolderContents(path: string, recursive: boolean, state: ShellViewState): Promise<FolderContents> {
@@ -72,7 +73,7 @@ export function FolderOpenDialog({ path, state, actions, onClose, initialMode, w
       } else if (mode === "aligned") await workflows.openAligned(paths);
       else if (mode === "window") await actions.openNewWindow(paths);
       else if (mode === "right") await actions.openDockPayload({ area: "right", tabKind: "files", payload: {
-        paths, records: [], items: paths.map(path => ({ kind: "file", path, title: path.split('/').pop() || path })),
+        paths, records: [], items: paths.map(path => ({ kind: "file", path, title: basename(path) || path })),
       } });
       else if (mode === "poses") await workflows.openPoses(paths);
       else if (mode === "together") await openBatch(paths, "scene", watch && path ? { path, recursive, baseline: contents.files } : undefined);

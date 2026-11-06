@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { desktopDir, join } from "@tauri-apps/api/path";
 import { save } from "@tauri-apps/plugin-dialog";
 import { isTauriRuntime } from "../../lib/tauri";
+import { isAbsoluteNativeFilePath } from "../../lib/native-menu-paths";
+import { moveToTrashMenuLabel, trashName } from "../../lib/platform";
 import { basename } from "../../lib/sidebar-projects";
 import { MOVE_INTO_FOLDER_EVENT, type MoveIntoFolderRequest } from "../../lib/move-into-folder";
 import { useMoleculeStore } from "../../stores/molecule-store";
@@ -118,11 +120,11 @@ export function SidebarFileOperations({ state, actions, children }: {
     setRequest(next);
   };
   const menus: FileMenus = (path, kind = "file") => {
-    if ((!isTauriRuntime() && !state.buildInfo.isBrowserDev) || !path.startsWith("/")) return [];
+    if ((!isTauriRuntime() && !state.buildInfo.isBrowserDev) || !isAbsoluteNativeFilePath(path)) return [];
     if (kind !== "file") return [
       { kind: "item", id: "rename-folder", text: "Rename folder…", action: () => choose({ operation: "renameFolder", path, name: basename(path) }) },
       { kind: "item", id: "new-folder", text: "Folder…", action: () => choose({ operation: "createFolder", path, name: "Untitled Folder" }) },
-      { kind: "item", id: "trash-folder", text: "Move to Trash", variant: "destructive", action: () => { void run({ operation: "trashFolder", path }); } },
+      { kind: "item", id: "trash-folder", text: `Move to ${trashName()}`, variant: "destructive", action: () => { void run({ operation: "trashFolder", path }); } },
     ];
     const document = state.documents.find(document => document.path === path);
     const dirty = Boolean(document && state.dirtyGridDocuments.has(document.id));
@@ -143,7 +145,7 @@ export function SidebarFileOperations({ state, actions, children }: {
       } }] : []),
       { kind: "separator" },
       // Like Finder, Move to Trash needs no confirmation: the item stays recoverable in Trash.
-      { kind: "item", id: "trash-file", text: "Move to trash", variant: "destructive", action: () => { void run({ operation: "trash", path }); } },
+      { kind: "item", id: "trash-file", text: moveToTrashMenuLabel(), variant: "destructive", action: () => { void run({ operation: "trash", path }); } },
     ];
   };
   const dismiss = () => { if (!running.current) setRequest(null); };

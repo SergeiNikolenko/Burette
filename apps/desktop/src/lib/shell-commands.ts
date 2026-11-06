@@ -3,7 +3,7 @@ import { openWorkbenchDialog } from "./workbench/dialog-store";
 import { inputExportSupportsDocument } from "./workbench/structure";
 import type { ShellActions, ShellViewState } from "../components/types";
 import { parsePdbFetchCommand, parseSmilesCommand } from "./structure-fetch";
-import { isMacPlatform, revealInFileManagerLabel } from "./platform";
+import { fileManagerReference, isMacPlatform, revealInFileManagerLabel } from "./platform";
 import type { ViewerPreferences } from "../types";
 import { postGridCommand } from "./viewer-bridge";
 
@@ -255,7 +255,7 @@ export function buildShellCommands(
       id: "reveal-active",
       group: "Active structure",
       label: revealInFileManagerLabel(),
-      description: isMacPlatform() ? "Show the active structure in Finder" : "Show the active structure in the file manager",
+      description: `Show the active structure in ${fileManagerReference()}`,
       run: actions.revealActiveDocument,
     },
     {

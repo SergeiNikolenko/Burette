@@ -11,6 +11,7 @@ import { captureNativeGridTab, canTransferNativeGridTab, restoreNativeGridTab, t
 import { applyTransferredTabPlacement, captureTabPlacement, resolveTabTransferTarget, type TabTransferPlacement, type TabTransferPosition } from "./native-tab-placement";
 import type { TextFileDocument } from "../../types";
 import { setGridDocumentCloseTransition } from "../../lib/window-mutation-barrier";
+import { isAbsoluteNativeFilePath } from "../../lib/native-menu-paths";
 
 const CHANNEL = "burette-workspace-page";
 const MAX_PAGE_BYTES = 2 * 1024 * 1024;
@@ -80,7 +81,7 @@ export async function openNativePageWindow(tab: MoleculeTab, options: {
       targetPosition: options.targetPosition, targetViewportWidth: options.targetViewportWidth };
     offerId = offer.id;
     if (new TextEncoder().encode(JSON.stringify(offer)).length > MAX_PAGE_BYTES) throw new Error("Save this screen before opening it in another window.");
-    if (workspacePageSources(location).some(path => !path.startsWith("/"))) throw new Error("Save this source before opening it in another window.");
+    if (!workspacePageSources(location).every(isAbsoluteNativeFilePath)) throw new Error("Save this source before opening it in another window.");
     const destination = options.targetWindow ?? await invoke<string>("open_new_workspace_window", { paths: [], screenPosition: options.screenPosition });
     peer = destination;
     await new Promise<void>((resolve, reject) => {

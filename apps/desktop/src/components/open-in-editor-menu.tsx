@@ -17,7 +17,7 @@ import { visibleEditorTargets } from "../lib/chemical-editor-targets";
 import { useCompressedSource } from "../lib/compressed-files/sources";
 import { BrowserStructureDownload } from "./browser-structure-download";
 import { useImportedOriginal } from "../lib/workbench/scientific-source-state";
-import { isLocalFilePath } from "../lib/browser-file-actions";
+import { isAbsoluteNativeFilePath } from "../lib/native-menu-paths";
 
 type ActiveFile = {
   path: string;
@@ -29,7 +29,7 @@ export function OpenInEditorMenu({ state, actions, presentation = "chrome", navi
   const compressed = useCompressedSource(activeFile?.path ?? null);
   const original = useImportedOriginal(state.activeDocument?.path === activeFile?.path ? state.activeDocument?.id ?? null : null);
   const download = !isTauriRuntime() && (original || compressed) && activeFile ? <BrowserStructureDownload file={activeFile} document={state.activeDocument} /> : undefined;
-  const filePath = activeFile && isLocalFilePath(activeFile.path) ? activeFile.path : null;
+  const filePath = activeFile && isAbsoluteNativeFilePath(activeFile.path) ? activeFile.path : null;
   const localFinderIconUrl = useFinderIconUrl();
   const localDefaultIconUrl = useDefaultApplicationIconUrl(filePath);
   const { targets: discoveredTargets, loading } = useChemicalEditorTargets(filePath, actions.listChemicalEditorTargets);

@@ -38,6 +38,7 @@ import { isTauriRuntime } from "../lib/tauri";
 import { activeViewerIframeForDocument } from "../lib/viewer-bridge";
 import { useJobLifecycle } from "./use-job-lifecycle";
 import type { DerivedColumnJob, ViewerDocument } from "../types";
+import { basename } from "../lib/sidebar-projects";
 
 const DERIVED_SOURCE_BATCH = 200;
 const DERIVED_JOB_HISTORY_LIMIT = 20;
@@ -1348,7 +1349,7 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
     const runKey = `${documentId}:similar-in-file`;
     if (runningKeysRef.current.has(runKey)) return;
     runningKeysRef.current.add(runKey);
-    const referenceName = referencePath.split("/").filter(Boolean).pop() || referencePath;
+    const referenceName = basename(referencePath) || referencePath;
     const similarityColumn = { columnId: "SimilarityToFile", label: `Similarity to ${referenceName}`.slice(0, 120) };
     const matchColumn = { columnId: "MostSimilarInFile", label: `Most similar in ${referenceName}`.slice(0, 120) };
     const updateJob = beginDerivedJob(similarityColumn.label, targetDocument.title);
