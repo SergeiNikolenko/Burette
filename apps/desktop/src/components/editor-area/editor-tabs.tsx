@@ -25,7 +25,7 @@ import { TabHoverPreview, type TabPreviewInfo } from "./tab-hover-preview";
 import { captureTabThumbnail, pruneTabThumbnails } from "./tab-thumbnails";
 import { ShortcutTooltip } from "../shortcut-tooltip";
 import { defaultShortcutLabel } from "../../lib/keyboard-shortcuts";
-import { revealInFileManagerLabel } from "../../lib/platform";
+import { isMacPlatform, revealInFileManagerLabel } from "../../lib/platform";
 import { ToolbarButton } from "../ui/toolbar-button";
 import { Plus } from "../ui/app-icons";
 import { isMainTab, useMoleculeStore, type MoleculeTab } from "../../stores/molecule-store";
@@ -820,7 +820,7 @@ export function EditorTabs({
                 aria-label={dirty ? `${title}, Unsaved changes` : title}
                 className={active ? "tab active" : "tab"}
                 aria-grabbed={isDragging || undefined}
-                title="Drag to move tab; Option-drag to export file"
+                title={isMacPlatform() ? "Drag to move tab; Option-drag to export file" : "Drag to move tab"}
                 onPointerDown={readOnly ? undefined : (event) => {
                   if (event.button !== 0) return;
                   event.currentTarget.draggable = event.altKey;

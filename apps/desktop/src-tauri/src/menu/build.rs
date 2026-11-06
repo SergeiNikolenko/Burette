@@ -81,7 +81,12 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
         .enabled(false)
         .accelerator("CmdOrCtrl+Shift+S")
         .build(app)?;
-    let reveal_active = MenuItemBuilder::with_id("file.reveal-active", "Reveal in Finder")
+    let reveal_label = if cfg!(target_os = "macos") {
+        "Reveal in Finder"
+    } else {
+        "Show in File Manager"
+    };
+    let reveal_active = MenuItemBuilder::with_id("file.reveal-active", reveal_label)
         .enabled(false)
         .accelerator("CmdOrCtrl+Shift+R")
         .build(app)?;
