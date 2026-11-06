@@ -1299,6 +1299,33 @@ html[data-hosted-mcp-widget="true"] #root {
 .sidebar-shell-inner {
   height: 100%;
 }
+/* Sidebar peek (use-sidebar-peek.ts): the hidden sidebar slides over the
+   content from its collapsed panel, under the leading window controls (z 5)
+   and above the tab strip (z 4, earlier in the DOM). Codex timings: 0.3 s in,
+   0.2 s out. */
+.app-shell[data-sidebar-peek] .sidebar-shell-inner {
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 4;
+  background: var(--bg);
+}
+.app-shell[data-sidebar-peek="open"] .sidebar-shell-inner,
+.app-shell[data-sidebar-peek="closing"] .sidebar-shell-inner {
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.16);
+}
+.app-shell[data-sidebar-peek="open"] .sidebar-shell-inner {
+  animation: sidebar-peek-in 300ms cubic-bezier(0.2, 0, 0, 1);
+}
+.app-shell[data-sidebar-peek="closing"] .sidebar-shell-inner {
+  pointer-events: none;
+  animation: sidebar-peek-out 200ms cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+@keyframes sidebar-peek-in { from { transform: translateX(-100%); } }
+@keyframes sidebar-peek-out { to { transform: translateX(-100%); } }
+@media (prefers-reduced-motion: reduce) {
+  .app-shell[data-sidebar-peek] .sidebar-shell-inner { animation: none; }
+  .app-shell[data-sidebar-peek="closing"] .sidebar-shell-inner { visibility: hidden; }
+}
 .sidebar {
   position: relative;
   z-index: 1;
