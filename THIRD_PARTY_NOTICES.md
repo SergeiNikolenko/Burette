@@ -320,12 +320,12 @@ reference lists of that revision under the same license.
 
 ## OpenChemistry ligand templates
 
-`metal-ligands.json` copies the Cartesian coordinates and bonds of 16 ligand files
-under `ligands/monodentate` and `ligands/bidentate` of OpenChemistry/fragments
+`metal-ligands.json` copies the Cartesian coordinates and bonds of 75 ligand files
+under `ligands/` of OpenChemistry/fragments
 `7d842f435aec4729a308b23ad7f9501bdd44aa02` (BSD-3-Clause, Copyright 2022 Open
 Chemistry; `docs/third-party/fragments-LICENSE`), with each file's path and SHA-256;
-formal charges are reassigned for dative coordination and hydroxido is aqua with one
-H removed. `scripts/generate-metal-ligands.ts` regenerates the extract. The metal
+formal charges are reassigned for dative coordination, hydroxido is aqua with one
+H removed, and the corrections listed in `docs/metal-complex-builder.md` are applied. `scripts/generate-metal-ligands.ts` regenerates the extract. The metal
 complex builder follows the OpenChemistry/avogadrolibs Template tool
 (`avogadro/qtplugins/templatetool`, `064eeb4706877ffed8ddc4b037489ed3748b0547`,
 `docs/third-party/avogadro-LICENSE`) as an interface reference; its center templates

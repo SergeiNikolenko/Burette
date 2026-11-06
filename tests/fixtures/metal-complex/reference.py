@@ -82,7 +82,8 @@ def crystal_spheres(spec):
 
 centers = {}
 for name, geometry in [("2-lin", "linear"), ("3-tpl", "trigonal-planar"), ("4-tet", "tetrahedral"), ("4-sqp", "square-planar"),
-                       ("5-tbp", "trigonal-bipyramidal"), ("5-spy", "square-pyramidal"), ("6-oct", "octahedral")]:
+                       ("5-tbp", "trigonal-bipyramidal"), ("5-spy", "square-pyramidal"), ("6-oct", "octahedral"),
+                       ("6-tpr", "trigonal-prismatic"), ("7-pbp", "pentagonal-bipyramidal"), ("8-sqa", "square-antiprismatic")]:
     data = json.loads((avogadro / "avogadro/qtplugins/templatetool/centers" / f"{name}.cjson").read_text())
     coords, numbers = data["atoms"]["coords"]["3d"], data["atoms"]["elements"]["number"]
     metal = next(i for i, number in enumerate(numbers) if number != 1)

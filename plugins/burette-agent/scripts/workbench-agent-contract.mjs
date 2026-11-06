@@ -254,10 +254,17 @@ function defined(entries) {
 const POLYMER_END_GROUPS = ['hydrogen', 'methyl', 'hydroxyl', 'phenyl', 'tert-butyl'];
 const TACTICITIES = ['isotactic', 'syndiotactic', 'atactic'];
 const PEPTIDE_TERMINI = { nTerminus: ['amine', 'ammonium'], cTerminus: ['acid', 'carboxylate'] };
-const METAL_GEOMETRIES = ['linear', 'trigonal-planar', 'tetrahedral', 'square-planar', 'trigonal-bipyramidal', 'square-pyramidal', 'octahedral'];
+const METAL_GEOMETRIES = ['linear', 'trigonal-planar', 'tetrahedral', 'square-planar', 'trigonal-bipyramidal', 'square-pyramidal', 'octahedral',
+  'trigonal-prismatic', 'pentagonal-bipyramidal', 'hexagonal-bipyramidal', 'square-antiprismatic'];
 // Ids of apps/desktop/src/lib/molecular-workbench/metal-ligands.json (kept equal by test:builder-agent).
-const METAL_LIGANDS = ['aqua', 'hydroxido', 'ammine', 'fluorido', 'chlorido', 'bromido', 'iodido', 'cyanido', 'carbonyl', 'phosphane', 'trimethylphosphane',
-  'pyridine', 'ethylenediamine', 'bipyridine', 'phenanthroline', 'oxalato', 'acetylacetonato'];
+const METAL_LIGANDS = ['aqua', 'hydroxido', 'ammine', 'fluorido', 'chlorido', 'bromido', 'iodido', 'cyanido', 'carbonyl', 'phosphane', 'trimethylphosphane', 'pyridine',
+  'triphenylphosphane', 'trimethylamine', 'diethyl-ether', 'tetrahydrofuran', 'dimethyl-sulfide', 'sulfanido', 'azido', 'isocyanido', 'nitrito-n',
+  'nitrosyl', 'thiocyanato-n', 'thiocyanato-s', 'methyl', 'ethyl', 'propyl', 'isopropyl', 'tert-butyl', 'simes', 'ethylenediamine', 'bipyridine',
+  'phenanthroline', 'oxalato', 'acetylacetonato', 'tmeda', 'dmpe', 'dppe', 'quinolinolato', 'dimethylglyoxime', 'ethenedithiolato',
+  'diethylenetriamine', 'iminodiacetato', 'terpyridine', 'tacn', 'trithiacyclononane', 'scorpionate', 'triphos', 'nitrilotriacetato', 'tpa',
+  'triethylenetetramine', 'cyclen', 'cyclam', 'salen', 'porphyrinato', 'phthalocyaninato', '12-crown-4', 'edta', '18-crown-6', 'hexaaza-18-crown-6',
+  'ethylene', 'acetylene', 'allyl', 'cyclopropenyl', 'eta3-cyclopentadienyl', 'eta3-indenyl', 'butadiene', 'cyclobutadiene', 'eta4-cyclopentadienyl',
+  'cyclooctadiene', 'cyclopentadienyl', 'indenyl', 'fluorenyl', 'benzene', 'tropylium', 'cyclooctatetraene'];
 const LIBRARY_ID = /^[a-z_]{1,32}\/[A-Za-z0-9 ,_+()-]{1,64}$/u;
 const SMILES = /^\S+$/u;
 
@@ -771,9 +778,9 @@ const JOB_DEFINITIONS = {
     build: true,
     describe: {
       engine: 'Rigid ligand placement on ideal coordination polyhedra (OpenChemistry/fragments ligand templates)',
-      requires: 'No source document; one metal, 1–8 ligands filling every site of the geometry exactly once.',
+      requires: 'No source document; one metal, 1–8 ligands filling every site of the geometry exactly once (a haptic ring takes one site).',
       params: { metal: 'element symbol', oxidationState: '-2–8', geometry: METAL_GEOMETRIES,
-        ligands: 'array of { ligand, sites (zero-based polyhedron sites, two for bidentate ligands), distanceAngstrom 1.4–3.5 (default: covalent radii) }',
+        ligands: 'array of { ligand, sites (zero-based polyhedron sites, one per donor, one for a haptic ring), distanceAngstrom 1.4–3.5 (default: covalent radii; metal–centroid for a haptic ring; not for three or more donors) }',
         ligand: METAL_LIGANDS, format: ['sdf', 'mol'] },
       artifacts: ['structure'],
     },
@@ -788,8 +795,8 @@ const JOB_DEFINITIONS = {
         rejectUnknownFields(item, ['ligand', 'sites', 'distanceAngstrom'], label);
         const ligand = oneOf(item.ligand, `${label}.ligand`, new Set(METAL_LIGANDS), undefined);
         if (!ligand) invalid(`${label}.ligand is required.`);
-        if (!Array.isArray(item.sites) || item.sites.length < 1 || item.sites.length > 2) invalid(`${label}.sites must hold one or two site indices.`);
-        return defined({ ligand, sites: item.sites.map((site, i) => integer(site, `${label}.sites[${i}]`, 0, 5)), distanceAngstrom: finite(item.distanceAngstrom, `${label}.distanceAngstrom`, 1.4, 3.5) });
+        if (!Array.isArray(item.sites) || item.sites.length < 1 || item.sites.length > 6) invalid(`${label}.sites must hold one to six site indices.`);
+        return defined({ ligand, sites: item.sites.map((site, i) => integer(site, `${label}.sites[${i}]`, 0, 7)), distanceAngstrom: finite(item.distanceAngstrom, `${label}.distanceAngstrom`, 1.4, 3.5) });
       });
       return { metal: text(p.metal, 'job.params.metal', 2, /^[A-Z][a-z]?$/u), oxidationState: integer(p.oxidationState, 'job.params.oxidationState', -2, 8, 0),
         geometry, ligands, format: oneOf(p.format, 'job.params.format', new Set(['sdf', 'mol']), 'sdf') };

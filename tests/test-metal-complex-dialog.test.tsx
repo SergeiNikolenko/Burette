@@ -101,11 +101,11 @@ test("tris-chelate built through the controls previews and opens the exact RDKit
     await select("Metal", "Ru"); await input("Oxidation state", "2"); await select("Geometry", "octahedral");
     expect([1, 2, 3, 4].map(site => value("select", `Equatorial ${site} ligand`))).toEqual(["chlorido", "chlorido", "ammine", "ammine"]);
     await select("Equatorial 1 ligand", "bipyridine");
-    expect(value("select", "Equatorial 1 chelate partner")).toBe("1"); expect(value("select", "Equatorial 2 ligand")).toBe("bipyridine");
-    await select("Equatorial 3 ligand", "bipyridine"); expect(value("select", "Equatorial 3 chelate partner")).toBe("3");
-    await select("Equatorial 3 chelate partner", "4"); expect(value("select", "Equatorial 4 ligand")).toBe("aqua"); expect(value("select", "Axial 5 ligand")).toBe("bipyridine");
-    await select("Equatorial 4 ligand", "bipyridine"); expect(value("select", "Equatorial 4 chelate partner")).toBe("5");
-    expect([...dialog()!.querySelectorAll('select[aria-label="Equatorial 4 chelate partner"] option')].map(option => option.textContent)).toEqual(["With 1", "With 3", "With 5", "With 6"]);
+    expect(value("select", "Equatorial 1 other sites")).toBe("0,1"); expect(value("select", "Equatorial 2 ligand")).toBe("bipyridine");
+    await select("Equatorial 3 ligand", "bipyridine"); expect(value("select", "Equatorial 3 other sites")).toBe("2,3");
+    await select("Equatorial 3 other sites", "2,4"); expect(value("select", "Equatorial 4 ligand")).toBe("aqua"); expect(value("select", "Axial 5 ligand")).toBe("bipyridine");
+    await select("Equatorial 4 ligand", "bipyridine"); expect(value("select", "Equatorial 4 other sites")).toBe("3,5");
+    expect([...dialog()!.querySelectorAll('select[aria-label="Equatorial 4 other sites"] option')].map(option => option.textContent)).toEqual(["With 1", "With 3", "With 5", "With 6"]);
     for (const site of ["Equatorial 1", "Equatorial 3", "Equatorial 4"]) await input(`${site} metal–donor distance, angstrom`, "2.07");
     expect(dialog()!.querySelector('[role="spinbutton"][aria-label="Axial 6 metal–donor distance, angstrom"]')!.getAttribute("aria-valuenow")).toBe("2.07");
     expect(dialog()!.querySelector('[aria-label="Total charge"]')!.textContent).toBe("+2");
@@ -116,7 +116,7 @@ test("tris-chelate built through the controls previews and opens the exact RDKit
     const text = readBrowserDevVirtualTextDocument(f.opened[0].path)!;
     expect(text).toBe(sample("tris-bpy-ruthenium")); expect(f.opened[0].title).toBe("[Ru(bpy)3]2+.sdf");
     const reopened = parseMolecule(text, "sdf");
-    expect({ atoms: reopened.atoms.length, bonds: reopened.bonds.length, coordination: reopened.bonds.filter(bond => bond.order === 0).length })
+    expect({ atoms: reopened.atoms.length, bonds: reopened.bonds.length, coordination: reopened.bonds.filter(bond => bond.order === 9).length })
       .toEqual({ atoms: reference.complexes["tris-bpy-ruthenium"].rdkit.atoms, bonds: reference.complexes["tris-bpy-ruthenium"].rdkit.bonds, coordination: 6 });
     expect(compiler).toContain("metal-complex-builder.tsx"); expect(compiler).toContain("metal-complex-builder-host.tsx");
   } finally { await f.close(); }
@@ -131,12 +131,16 @@ test("an overlapping choice shows the reason, keeps the form, and a corrected ge
     expect(alert()).toContain("overlap"); expect(f.opened).toEqual([]); expect(dialog()).not.toBeNull();
     await select("Geometry", "tetrahedral");
     expect([1, 2, 3, 4].map(site => value("select", `Site ${site} ligand`))).toEqual(Array(4).fill("trimethylphosphane"));
-    expect([...dialog()!.querySelectorAll('select[aria-label="Site 1 ligand"] optgroup')].map(group => (group as HTMLOptGroupElement).label)).toEqual(["Monodentate", "Bidentate"]);
+    expect([...dialog()!.querySelectorAll('select[aria-label="Site 1 ligand"] optgroup')].map(group => (group as HTMLOptGroupElement).label))
+      .toEqual(["Monodentate", "Haptic", "Bidentate", "Tridentate", "Tetradentate", "Hexadentate"]);
     await click("Create"); await wait(() => f.opened.length === 1, "corrected create");
     expect(f.opened[0].title).toBe("[Fe(PMe3)4]2+.sdf");
     await act(async () => openWorkbenchDialog({ kind: "builder", builder: "metal", document: null }));
     await wait(() => value("select", "Metal") === "Pt", "fresh form"); await select("Geometry", "linear");
-    expect([...dialog()!.querySelectorAll('select[aria-label="Site 1 ligand"] optgroup')].map(group => [(group as HTMLOptGroupElement).label, (group as HTMLOptGroupElement).disabled])).toEqual([["Monodentate", false], ["Bidentate", true]]);
+    // A linear site takes any single-site ligand, haptic rings included, and no chelate.
+    expect([...dialog()!.querySelectorAll('select[aria-label="Site 1 ligand"] optgroup')].map(group => [(group as HTMLOptGroupElement).label,
+      [...group.querySelectorAll("option")].every(option => !(option as HTMLOptionElement).disabled), [...group.querySelectorAll("option")].every(option => (option as HTMLOptionElement).disabled)]))
+      .toEqual([["Monodentate", true, false], ["Haptic", true, false], ["Bidentate", false, true], ["Tridentate", false, true], ["Tetradentate", false, true], ["Hexadentate", false, true]]);
   } finally { await f.close(); }
 });
 

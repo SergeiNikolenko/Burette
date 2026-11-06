@@ -24,7 +24,9 @@ uv run --python 3.12 --with rdkit==2025.9.1 --with openbabel-wheel==3.1.1.22 --w
 Tools recorded in `reference.json`: Python 3.12.12, RDKit 2025.09.1, Open Babel 3.1.0
 (`openbabel-wheel` 3.1.1.22), gemmi 0.7.5. `reference.py` downloads each CIF from
 `https://www.crystallography.net/cod/<id>.cif` into the cache directory; coordination spheres are
-built from all symmetry images of the donor sites within the cutoff in `complexes.json`.
+built from all symmetry images of the donor sites within the cutoff in `complexes.json`. Where
+crystallography.net resets the connection (it did from this Mac and Gauss on 2026-11-06), fetch the
+CIFs from another host into the cache directory first; `reference.py` reads a cached file as is.
 
 ## Crystal structures (Crystallography Open Database)
 
@@ -58,4 +60,12 @@ must match exactly.
   for each donor element: Fe–CO 0.21 Å and Ru–bpy 0.11 Å are the largest; the Jahn–Teller apical
   Cu–O (2.59 Å against 1.98 Å) is excluded.
 - Ideal polyhedra match the Avogadro 2 center templates within 0.2°, except square pyramidal:
-  Burette uses the vacant octahedron (90°/180°), Avogadro a C4v pyramid with 113°/133°.
+  Burette uses the vacant octahedron (90°/180°), Avogadro a C4v pyramid with 113°/133°, and the
+  equal-edge trigonal prism and square antiprism, which Avogadro draws unevenly.
+
+## Read-back only samples
+
+These have no crystal comparison; RDKit and Open Babel read them back and RDKit's ligand SMILES must
+equal PubChem's structures canonicalized by RDKit: ferrocene, bis(benzene)chromium, Zeise's anion,
+cymantrene, [Fe(edta)]⁻, [Ru(terpy)2]2+, [Co(tacn)2]3+, [Fe(Tp)2], [Ni(cyclam)]2+, zinc porphyrin,
+W(CH3)6 (trigonal prism), [ZrF7]3− (pentagonal bipyramid) and [Mo(CN)8]4− (square antiprism).

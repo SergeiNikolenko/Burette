@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { COORDINATION_GEOMETRIES, defaultDonorDistance, METAL_COVALENT_RADII, METAL_DONOR_DISTANCE_LIMITS, METAL_LIGANDS, OXIDATION_STATE_LIMITS,
+import { COORDINATION_GEOMETRIES, defaultDonorDistance, fittingSiteSets, ligandSiteCount, METAL_COVALENT_RADII, METAL_DONOR_DISTANCE_LIMITS, METAL_LIGANDS, OXIDATION_STATE_LIMITS,
   type CoordinationGeometry, type MetalLigandId } from "../../lib/molecular-workbench/metal-complex";
 import { runMetalComplexTask, type MetalComplexBuildRequest, type MetalComplexBuildResult } from "../../lib/workbench/metal-complex-task";
 import { openGeneratedStructure } from "../../lib/workbench/generated-document-open";
@@ -16,15 +16,17 @@ import { ScrubNumberField } from "../ui/scrub-number-input";
 import { Spinner } from "../ui/spinner";
 import { useCancellableJob } from "./use-workbench-source";
 
-/** One row per coordination site; a chelate stores its ligand and partner on both of its sites. */
-type SiteChoice = { ligand: MetalLigandId; partner?: number; distance?: number };
+/** One row per coordination site; a ligand on several sites stores itself and the whole site set on each of them. */
+type SiteChoice = { ligand: MetalLigandId; group?: number[]; distance?: number };
 const FILL: MetalLigandId = "aqua";
 const LIGAND_IDS = Object.keys(METAL_LIGANDS) as MetalLigandId[];
-const chelating = (ligand: MetalLigandId) => METAL_LIGANDS[ligand].donors.length === 2;
-const cisSites = (geometry: CoordinationGeometry, site: number) => {
-  const sites = COORDINATION_GEOMETRIES[geometry].sites, [x, y, z] = sites[site][1];
-  return sites.flatMap((other, index) => index !== site && x * other[1][0] + y * other[1][1] + z * other[1][2] > Math.cos(135 * Math.PI / 180) ? [index] : []);
-};
+const LIGAND_GROUPS: [string, (ligand: MetalLigandId) => boolean][] = [
+  ["Monodentate", ligand => !METAL_LIGANDS[ligand].centroid && ligandSiteCount(ligand) === 1],
+  ["Haptic", ligand => Boolean(METAL_LIGANDS[ligand].centroid)],
+  ["Bidentate", ligand => ligandSiteCount(ligand) === 2], ["Tridentate", ligand => ligandSiteCount(ligand) === 3],
+  ["Tetradentate", ligand => ligandSiteCount(ligand) === 4], ["Hexadentate", ligand => ligandSiteCount(ligand) === 6],
+];
+const setsAt = (ligand: MetalLigandId, geometry: CoordinationGeometry, site: number) => fittingSiteSets(ligand, geometry).filter(set => set.includes(site));
 const siteLabel = (geometry: CoordinationGeometry, site: number) => {
   const position = COORDINATION_GEOMETRIES[geometry].sites[site][0];
   return `${position ? `${position[0].toUpperCase()}${position.slice(1)}` : "Site"} ${site + 1}`;
@@ -32,8 +34,7 @@ const siteLabel = (geometry: CoordinationGeometry, site: number) => {
 const formatCharge = (charge: number) => charge > 0 ? `+${charge}` : charge < 0 ? `−${-charge}` : "0";
 
 function release(sites: SiteChoice[], site: number) {
-  const partner = sites[site].partner;
-  if (partner !== undefined) sites[partner] = { ligand: FILL };
+  for (const other of sites[site].group ?? []) sites[other] = { ligand: FILL };
 }
 
 export function MetalComplexBuilderBody({ actions, document, isCurrent, onDone }: {
@@ -46,8 +47,8 @@ export function MetalComplexBuilderBody({ actions, document, isCurrent, onDone }
   const [geometry, setGeometry] = useState<CoordinationGeometry>("square-planar");
   const [sites, setSites] = useState<SiteChoice[]>([{ ligand: "chlorido" }, { ligand: "chlorido" }, { ligand: "ammine" }, { ligand: "ammine" }]);
   const request = useMemo<MetalComplexBuildRequest>(() => ({ metal, oxidationState, geometry, format: "sdf",
-    ligands: sites.flatMap((choice, site) => choice.partner === undefined ? [{ ligand: choice.ligand, sites: [site], distance: choice.distance }]
-      : choice.partner > site ? [{ ligand: choice.ligand, sites: [site, choice.partner], distance: choice.distance }] : []) }), [metal, oxidationState, geometry, sites]);
+    ligands: sites.flatMap((choice, site) => !choice.group ? [{ ligand: choice.ligand, sites: [site], distance: choice.distance }]
+      : choice.group[0] === site ? [{ ligand: choice.ligand, sites: choice.group, distance: choice.distance }] : []) }), [metal, oxidationState, geometry, sites]);
   const charge = request.ligands.reduce((sum, item) => sum + METAL_LIGANDS[item.ligand].atoms.reduce((total, atom) => total + atom[4], 0), oxidationState);
   const latest = useRef(request); latest.current = request;
   const submission = useRef<object | null>(null);
@@ -60,29 +61,35 @@ export function MetalComplexBuilderBody({ actions, document, isCurrent, onDone }
   const changeGeometry = (next: CoordinationGeometry) => {
     const count = COORDINATION_GEOMETRIES[next].sites.length;
     setGeometry(next);
-    // Monodentate choices keep their site number; chelates are re-placed by the user.
-    setSites(Array.from({ length: count }, (_, site) => sites[site] && sites[site].partner === undefined ? sites[site] : { ligand: FILL }));
+    // Single-site choices keep their site number; ligands on several sites are re-placed by the user.
+    setSites(Array.from({ length: count }, (_, site) => sites[site] && !sites[site].group ? sites[site] : { ligand: FILL }));
+  };
+  const place = (next: SiteChoice[], ligand: MetalLigandId, group: number[], distance?: number) => {
+    for (const other of group) release(next, other);
+    for (const other of group) next[other] = { ligand, group, distance };
   };
   const changeLigand = (site: number, ligand: MetalLigandId) => {
     const next = [...sites]; release(next, site);
-    if (!chelating(ligand)) { next[site] = { ligand }; setSites(next); return; }
-    const candidates = cisSites(geometry, site), partner = candidates.find(other => next[other].partner === undefined) ?? candidates[0];
-    release(next, partner);
-    next[site] = { ligand, partner }; next[partner] = { ligand, partner: site };
+    if (ligandSiteCount(ligand) === 1) { next[site] = { ligand }; setSites(next); return; }
+    // The fitting site set that disturbs the fewest ligands already spanning several sites.
+    const disturbed = (set: number[]) => set.filter(other => other !== site && next[other].group).length;
+    const [group] = [...setsAt(ligand, geometry, site)].sort((a, b) => disturbed(a) - disturbed(b));
+    if (!group) return;
+    place(next, ligand, group);
     setSites(next);
   };
-  const changePartner = (site: number, partner: number) => {
+  const changeGroup = (site: number, group: number[]) => {
     const next = [...sites], { ligand, distance } = next[site];
-    release(next, site); release(next, partner);
-    next[site] = { ligand, partner, distance }; next[partner] = { ligand, partner: site, distance };
+    release(next, site); place(next, ligand, group, distance);
     setSites(next);
   };
   const changeDistance = (site: number, distance: number) => {
-    const next = [...sites], partner = next[site].partner;
-    next[site] = { ...next[site], distance };
-    if (partner !== undefined) next[partner] = { ...next[partner], distance };
+    const next = [...sites];
+    for (const other of next[site].group ?? [site]) next[other] = { ...next[other], distance };
     setSites(next);
   };
+  // Ligands that cannot fill any site set through a site are disabled in that site's list.
+  const reachable = useMemo(() => COORDINATION_GEOMETRIES[geometry].sites.map((_, site) => new Set(LIGAND_IDS.filter(ligand => setsAt(ligand, geometry, site).length))), [geometry]);
 
   const build = async (create: boolean) => {
     if (submission.current || !isCurrent()) return;
@@ -131,21 +138,22 @@ export function MetalComplexBuilderBody({ actions, document, isCurrent, onDone }
       </div>
       <div role="group" aria-label="Coordination sites" className="workbench-form">
         {sites.map((choice, site) => {
-          const label = siteLabel(geometry, site), cis = cisSites(geometry, site);
+          const label = siteLabel(geometry, site), count = ligandSiteCount(choice.ligand), haptic = Boolean(METAL_LIGANDS[choice.ligand].centroid);
           return <div key={site} className="workbench-row">
             <span className="w-24 shrink-0 self-center">{label}</span>
             <NativeSelect aria-label={`${label} ligand`} name={`site-${site + 1}-ligand`} size="sm" className="min-w-0 flex-1" value={choice.ligand}
               onChange={event => changeLigand(site, event.target.value as MetalLigandId)}>
-              <NativeSelectOptGroup label="Monodentate">{LIGAND_IDS.filter(id => !chelating(id)).map(id => <NativeSelectOption key={id} value={id}>{METAL_LIGANDS[id].label}</NativeSelectOption>)}</NativeSelectOptGroup>
-              <NativeSelectOptGroup label="Bidentate" disabled={!cis.length}>{LIGAND_IDS.filter(chelating).map(id => <NativeSelectOption key={id} value={id}>{METAL_LIGANDS[id].label}</NativeSelectOption>)}</NativeSelectOptGroup>
+              {LIGAND_GROUPS.map(([name, member]) => <NativeSelectOptGroup key={name} label={name}>
+                {LIGAND_IDS.filter(member).map(id => <NativeSelectOption key={id} value={id} disabled={!reachable[site].has(id)}>{METAL_LIGANDS[id].label}</NativeSelectOption>)}
+              </NativeSelectOptGroup>)}
             </NativeSelect>
-            {choice.partner !== undefined ? <NativeSelect aria-label={`${label} chelate partner`} name={`site-${site + 1}-partner`} size="sm" className="w-28" value={String(choice.partner)}
-              onChange={event => changePartner(site, Number(event.target.value))}>
-              {cis.map(other => <NativeSelectOption key={other} value={String(other)}>{`With ${other + 1}`}</NativeSelectOption>)}
+            {choice.group ? <NativeSelect aria-label={`${label} other sites`} name={`site-${site + 1}-sites`} size="sm" className="w-32" value={choice.group.join(",")}
+              onChange={event => changeGroup(site, event.target.value.split(",").map(Number))}>
+              {setsAt(choice.ligand, geometry, site).map(set => <NativeSelectOption key={set.join(",")} value={set.join(",")}>{`With ${set.filter(other => other !== site).map(other => other + 1).join(", ")}`}</NativeSelectOption>)}
             </NativeSelect> : null}
-            <ScrubNumberField aria-label={`${label} metal–donor distance, angstrom`} name={`site-${site + 1}-distance`} autoComplete="off" className="w-24"
+            {count < 3 ? <ScrubNumberField aria-label={`${label} metal–${haptic ? "centroid" : "donor"} distance, angstrom`} name={`site-${site + 1}-distance`} autoComplete="off" className="w-24"
               value={choice.distance ?? defaultDonorDistance(metal, choice.ligand)} min={METAL_DONOR_DISTANCE_LIMITS.min} max={METAL_DONOR_DISTANCE_LIMITS.max} step={.01}
-              onValueChange={value => changeDistance(site, value)} onValueCommitted={value => changeDistance(site, value)} />
+              onValueChange={value => changeDistance(site, value)} onValueCommitted={value => changeDistance(site, value)} /> : null}
           </div>;
         })}
       </div>

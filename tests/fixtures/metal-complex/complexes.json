@@ -267,5 +267,164 @@
         { "ligand": "carbonyl", "sites": [2] }
       ]
     }
+  },
+  "ferrocene": {
+    "options": {
+      "metal": "Fe",
+      "oxidationState": 2,
+      "geometry": "linear",
+      "ligands": [
+        { "ligand": "cyclopentadienyl", "sites": [0] },
+        { "ligand": "cyclopentadienyl", "sites": [1] }
+      ]
+    }
+  },
+  "bis-benzene-chromium": {
+    "options": {
+      "metal": "Cr",
+      "oxidationState": 0,
+      "geometry": "linear",
+      "ligands": [
+        { "ligand": "benzene", "sites": [0] },
+        { "ligand": "benzene", "sites": [1] }
+      ]
+    }
+  },
+  "zeise-anion": {
+    "options": {
+      "metal": "Pt",
+      "oxidationState": 2,
+      "geometry": "square-planar",
+      "ligands": [
+        { "ligand": "ethylene", "sites": [0] },
+        { "ligand": "chlorido", "sites": [1] },
+        { "ligand": "chlorido", "sites": [2] },
+        { "ligand": "chlorido", "sites": [3] }
+      ]
+    }
+  },
+  "cymantrene": {
+    "options": {
+      "metal": "Mn",
+      "oxidationState": 1,
+      "geometry": "tetrahedral",
+      "ligands": [
+        { "ligand": "cyclopentadienyl", "sites": [0] },
+        { "ligand": "carbonyl", "sites": [1] },
+        { "ligand": "carbonyl", "sites": [2] },
+        { "ligand": "carbonyl", "sites": [3] }
+      ]
+    }
+  },
+  "edta-ferrate": {
+    "options": {
+      "metal": "Fe",
+      "oxidationState": 3,
+      "geometry": "octahedral",
+      "ligands": [
+        { "ligand": "edta", "sites": [0, 1, 2, 3, 4, 5] }
+      ]
+    }
+  },
+  "bis-terpy-ruthenium": {
+    "options": {
+      "metal": "Ru",
+      "oxidationState": 2,
+      "geometry": "octahedral",
+      "ligands": [
+        { "ligand": "terpyridine", "sites": [0, 1, 2] },
+        { "ligand": "terpyridine", "sites": [3, 4, 5] }
+      ]
+    }
+  },
+  "bis-tacn-cobalt": {
+    "options": {
+      "metal": "Co",
+      "oxidationState": 3,
+      "geometry": "octahedral",
+      "ligands": [
+        { "ligand": "tacn", "sites": [0, 1, 4] },
+        { "ligand": "tacn", "sites": [2, 3, 5] }
+      ]
+    }
+  },
+  "bis-tp-iron": {
+    "options": {
+      "metal": "Fe",
+      "oxidationState": 2,
+      "geometry": "octahedral",
+      "ligands": [
+        { "ligand": "scorpionate", "sites": [0, 1, 4] },
+        { "ligand": "scorpionate", "sites": [2, 3, 5] }
+      ]
+    }
+  },
+  "cyclam-nickel": {
+    "options": {
+      "metal": "Ni",
+      "oxidationState": 2,
+      "geometry": "square-planar",
+      "ligands": [
+        { "ligand": "cyclam", "sites": [0, 1, 2, 3] }
+      ]
+    }
+  },
+  "porphyrin-zinc": {
+    "options": {
+      "metal": "Zn",
+      "oxidationState": 2,
+      "geometry": "square-planar",
+      "ligands": [
+        { "ligand": "porphyrinato", "sites": [0, 1, 2, 3] }
+      ]
+    }
+  },
+  "hexamethyltungsten": {
+    "options": {
+      "metal": "W",
+      "oxidationState": 6,
+      "geometry": "trigonal-prismatic",
+      "ligands": [
+        { "ligand": "methyl", "sites": [0] },
+        { "ligand": "methyl", "sites": [1] },
+        { "ligand": "methyl", "sites": [2] },
+        { "ligand": "methyl", "sites": [3] },
+        { "ligand": "methyl", "sites": [4] },
+        { "ligand": "methyl", "sites": [5] }
+      ]
+    }
+  },
+  "heptafluorozirconate": {
+    "options": {
+      "metal": "Zr",
+      "oxidationState": 4,
+      "geometry": "pentagonal-bipyramidal",
+      "ligands": [
+        { "ligand": "fluorido", "sites": [0] },
+        { "ligand": "fluorido", "sites": [1] },
+        { "ligand": "fluorido", "sites": [2] },
+        { "ligand": "fluorido", "sites": [3] },
+        { "ligand": "fluorido", "sites": [4] },
+        { "ligand": "fluorido", "sites": [5] },
+        { "ligand": "fluorido", "sites": [6] }
+      ]
+    }
+  },
+  "octacyanomolybdate": {
+    "options": {
+      "metal": "Mo",
+      "oxidationState": 4,
+      "geometry": "square-antiprismatic",
+      "ligands": [
+        { "ligand": "cyanido", "sites": [0] },
+        { "ligand": "cyanido", "sites": [1] },
+        { "ligand": "cyanido", "sites": [2] },
+        { "ligand": "cyanido", "sites": [3] },
+        { "ligand": "cyanido", "sites": [4] },
+        { "ligand": "cyanido", "sites": [5] },
+        { "ligand": "cyanido", "sites": [6] },
+        { "ligand": "cyanido", "sites": [7] }
+      ]
+    }
   }
 }

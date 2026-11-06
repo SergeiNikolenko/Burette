@@ -989,9 +989,11 @@ OpenChemLib conformer used when a SMILES is opened (embedding `seed`) is relaxed
 the `optimize` engine, with the optimize summary and `structure`/`xyz`/`trajectory`
 artifacts. `metal_complex` accepts `metal` (element symbol), `oxidationState`
 (−2–8), `geometry` (`linear`, `trigonal-planar`, `tetrahedral`, `square-planar`,
-`trigonal-bipyramidal`, `square-pyramidal`, `octahedral`), up to 8 `ligands`
-(`{ ligand, sites, distanceAngstrom? }`, one site per monodentate and two for a
-bidentate ligand, zero-based in the polyhedron's site order) and `format`
+`trigonal-bipyramidal`, `square-pyramidal`, `octahedral`, `trigonal-prismatic`,
+`pentagonal-bipyramidal`, `hexagonal-bipyramidal`, `square-antiprismatic`), up to 8
+`ligands` (`{ ligand, sites, distanceAngstrom? }`, one site per donor and one for a
+haptic ring, zero-based in the polyhedron's site order; three or more donors keep
+their template distances and take no `distanceAngstrom`) and `format`
 (`sdf`/`mol`). It exports the same file as the Build metal complex dialog
 (coordination bonds as V2000 type 9 with `M  CHG`); invalid site assignments
 and overlapping ligands fail the job. See
