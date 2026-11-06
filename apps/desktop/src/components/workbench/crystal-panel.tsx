@@ -50,7 +50,8 @@ function NumberField({ label, value, onChange, min, max, step, digits, disabled 
   return (
     <label className="workbench-field">
       <span>{label}</span>
-      <ScrubNumberField aria-label={label} name={label} autoComplete="off" value={value} min={min} max={max} step={step} largeStep={step * 10}
+      {/* The usual 4.75rem, narrower when three share a row of the 260 px dock. */}
+      <ScrubNumberField aria-label={label} name={label} autoComplete="off" className="w-full max-w-[4.75rem]" value={value} min={min} max={max} step={step} largeStep={step * 10}
         formatValue={(next) => next.toFixed(digits)} disabled={disabled} onValueChange={onChange} onValueCommitted={onChange} />
     </label>
   );

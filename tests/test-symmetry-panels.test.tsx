@@ -38,6 +38,10 @@ const buttons = () => [...browser.document.querySelectorAll("button")] as unknow
 const button = (label: string) => buttons().find(node => node.textContent === label || node.getAttribute("aria-label") === label)!;
 const click = async (label: string) => { await act(async () => button(label).click()); };
 const text = () => browser.document.body.textContent ?? "";
+const chooseTolerance = async (value: string) => {
+  const node = browser.document.querySelector('select[aria-label="Tolerance"]') as unknown as HTMLSelectElement;
+  await act(async () => { node.value = value; node.dispatchEvent(new browser.Event("change", { bubbles: true }) as unknown as Event); });
+};
 
 async function mount(name: string, options: { text?: string; panel?: typeof CrystalPanel; ready?: string } = {}) {
   const Panel = options.panel ?? CrystalPanel;
@@ -163,7 +167,7 @@ test("distorted XYZ ammonia: C3v at the loose tolerance, Symmetrize as one Undo 
   expect(analyzePointGroup(msym, { atoms: parseXyz(source).atoms, tolerance: "tight" }, "detect").pointGroup).not.toBe("C3v");
   const panel = await mount("ammonia.xyz", { text: source, panel: SymmetryPanel, ready: "Undo" });
   try {
-    await act(async () => buttons().find(node => node.textContent === "Loose")!.click());
+    await chooseTolerance("loose");
     await wait(() => Boolean(button("Symmetrize")) && text().includes("Point group"), "point group found");
     expect(browser.document.querySelector('[aria-label="C3v"]')).not.toBeNull();
     await click("Symmetrize");
@@ -188,7 +192,7 @@ test("distorted MOL water: Symmetrize is one step of the shared graph draft and 
   const mol = ["water", "  Burette", "", "  3  2  0  0  0  0  0  0  0  0999 V2000", ...atoms.map(row), "  1  2  1  0", "  1  3  1  0", "M  END", ""].join("\n");
   const panel = await mount("water.mol", { text: mol, panel: SymmetryPanel, ready: "Undo" });
   try {
-    await act(async () => buttons().find(node => node.textContent === "Loose")!.click());
+    await chooseTolerance("loose");
     await wait(() => Boolean(button("Symmetrize")) && Boolean(browser.document.querySelector('[aria-label="C2v"]')), "point group found");
     await click("Symmetrize");
     await wait(() => panel.draft() !== null && panel.draft() !== mol && Boolean(button("Symmetrize")), "symmetrized draft");

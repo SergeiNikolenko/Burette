@@ -23,7 +23,11 @@ function spaceGroupSettings() {
   return settings;
 }
 
-const settingLabel = (setting: SpaceGroupSetting) => `${setting.number} ${setting.symbol}${setting.setting ? ` (${setting.setting})` : ""}`;
+/** "P 2_1/c" as P2₁/c and "F m -3 m" as Fm3̅m: screw axes subscripted, rotoinversions overlined. Plain text, so it also fits a select option. */
+const hermannMauguin = (symbol: string) => symbol.replaceAll(" ", "")
+  .replace(/_(\d)/gu, (_, digit: string) => String.fromCharCode(0x2080 + Number(digit)))
+  .replace(/-(\d)/gu, "$1̅");
+const settingLabel = (setting: SpaceGroupSetting) => `${setting.number} ${hermannMauguin(setting.symbol)}${setting.setting ? ` (${setting.setting})` : ""}`;
 
 /**
  * Space group of the current cell at a chosen tolerance, and the edits that follow from
@@ -58,7 +62,7 @@ export function CrystalSpaceGroupSection({ format, revision, disabled, apply }: 
   const fill = hallNumber ?? result?.hallNumber ?? 1;
   const symmetry = (kind: "primitive" | "conventional" | "symmetrize" | "asymmetric-unit") => () => void apply({ kind, tolerance });
   return (
-    <CollapsibleSection title="Space group" detail={result ? `${result.symbol} (${result.number})` : undefined}>
+    <CollapsibleSection title="Space group" detail={result ? `${hermannMauguin(result.symbol)} (${result.number})` : undefined}>
       <div className="workbench-form">
         <div className="workbench-row">
           <label className="workbench-field">
@@ -73,7 +77,7 @@ export function CrystalSpaceGroupSection({ format, revision, disabled, apply }: 
         {result ? (
           <>
             <dl className="workbench-properties">
-              <div><dt>Space group</dt><dd>{result.symbol} ({result.number})</dd></div>
+              <div><dt>Space group</dt><dd>{hermannMauguin(result.symbol)} ({result.number})</dd></div>
               <div><dt>Crystal system</dt><dd className="capitalize">{result.crystalSystem}</dd></div>
               <div><dt>Operations</dt><dd>{result.operationCount.toLocaleString("en-US")}</dd></div>
               <div><dt>Primitive cell</dt><dd>{result.primitive.atomCount.toLocaleString("en-US")} atoms</dd></div>

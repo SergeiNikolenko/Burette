@@ -15,6 +15,7 @@ import type { ViewerDocument } from "../../types";
 import type { ShellActions } from "../types";
 import { ArrowCurvedRight, Atom, Undo } from "../ui/app-icons";
 import { Button } from "../ui/button";
+import { NativeSelect, NativeSelectOption } from "../ui/native-select";
 import { PanelEmptyState } from "../ui/panel-empty-state";
 import { SegmentedControl, SegmentedControlItem } from "../ui/segmented-control";
 import { Spinner } from "../ui/spinner";
@@ -134,13 +135,14 @@ export function SymmetryPanel({ document, actions }: { document: ViewerDocument 
           : atoms && !tooLarge && !current ? <span role="status" className="workbench-status"><Spinner aria-hidden className="size-3" />Finding point group</span> : null}
       </div>
       {tooLarge ? <p role="alert" className="workbench-error">{`Point groups are found for up to ${MAX_POINT_GROUP_ATOMS} atoms. This structure has ${atoms!.length.toLocaleString("en-US")}.`}</p> : (
-        <div className="workbench-field">
-          <span id="symmetry-tolerance-label">Tolerance</span>
-          <SegmentedControl aria-labelledby="symmetry-tolerance-label" className="self-start" value={tolerance} disabled={busy}
-            onValueChange={(value) => { setTolerance(value as PointGroupTolerance); setOutcome(null); setSelected(null); }}>
-            {TOLERANCES.map((item) => <SegmentedControlItem key={item.value} value={item.value}>{item.label}</SegmentedControlItem>)}
-          </SegmentedControl>
-        </div>
+        <label className="workbench-field">
+          <span>Tolerance</span>
+          {/* A list, as in Avogadro: four segments do not fit the narrowest dock. */}
+          <NativeSelect aria-label="Tolerance" size="sm" value={tolerance} disabled={busy}
+            onChange={(event) => { setTolerance(event.target.value as PointGroupTolerance); setOutcome(null); setSelected(null); }}>
+            {TOLERANCES.map((item) => <NativeSelectOption key={item.value} value={item.value}>{item.label}</NativeSelectOption>)}
+          </NativeSelect>
+        </label>
       )}
       {error ? <p role="alert" className="workbench-error">{error}</p> : null}
       {result && atoms ? (
