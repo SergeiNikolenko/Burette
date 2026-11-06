@@ -744,6 +744,10 @@ transport payloads.
 `geometry_topology_scene_capture` and `geometry_topology_scene_validate` are private
 source-owner topology checkpoint routes, likewise rejected before CLI queueing.
 
+`calculation_overlay` draws the Info dock's dipole arrow or charge labels
+(`{ kind: "dipole" | "charges", overlay }`, or no `overlay` to remove it). It is a
+private host route: the overlay follows the dock's frame and is not public CLI state.
+
 
 ### Read the displayed indexed trajectory frame
 

@@ -906,6 +906,22 @@
       if (!window.molstar?.BuretteGeometry) throw new Error('Reload a runtime supporting live Geometry.');
       return { ok: true, result: window.molstar.BuretteGeometry.binding(viewer?.plugin, () => activeMolstarViewer() === viewer) };
     }
+    if (type === 'calculation_overlay') {
+      const plugin = activeMolstarViewer()?.plugin;
+      // Charge colours are overpaint on the atoms; without an overlay every atom returns to its theme colour.
+      if (action.kind === 'charge-colors') {
+        if (action.overlay) {
+          return window.BuretteAgent.run({ command: 'colorScalarField', args: { mode: 'partial-charge', values: action.overlay.values || [], provenance: { source: String(action.overlay.source || '') } } });
+        }
+        const all = (plugin?.query?.structure?.registry?.list || []).find(query => query?.label === 'All');
+        if (!all) throw new Error('The 3D viewer is not ready.');
+        await plugin.managers.structure.component.applyTheme({ action: { name: 'resetColor', params: {} }, selection: all });
+        return { ok: true, result: { kind: 'charge-colors', shown: false } };
+      }
+      const overlay = window.molstar?.BuretteCalculationOverlay;
+      if (!overlay) throw new Error('Reload a runtime supporting calculation overlays.');
+      return { ok: true, result: action.overlay ? await overlay.show(plugin, action.kind, action.overlay) : await overlay.hide(plugin, action.kind) };
+    }
     if (type === 'update_geometry') {
       const viewer = activeMolstarViewer();
       const geometry = window.molstar?.BuretteGeometry;

@@ -1,0 +1,16 @@
+.calculation-results-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+.calculation-results-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.calculation-results-value {
+  color: var(--text-secondary);
+  font-size: 12px;
+}

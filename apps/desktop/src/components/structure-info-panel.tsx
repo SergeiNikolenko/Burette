@@ -39,6 +39,7 @@ import { InspectorToolRow } from "./inspector-tool-row";
 import { PropertiesToolRow } from "./workbench/properties-entrypoint";
 import { sourceExtension, useTrajectoryFrame, type TrajectoryFrameState } from "../lib/workbench/source";
 import { CoordinateSetCard } from "./workbench/coordinate-set-card";
+import { CalculationResultsCard } from "./workbench/calculation-results-card";
 import { CollapsibleSection } from "./ui/collapsible-section";
 import { Field, FieldGroup, FieldTitle, FieldLabel, FieldDescription, FieldSet, FieldLegend } from "./ui/field";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
@@ -543,6 +544,7 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
       </> : null}
 
       {sourceExtension(document) === "mol" ? <CoordinateSetCard document={document} /> : null}
+      <CalculationResultsCard document={document} />
 
       {derivedTopology ? (
         <DerivedTopologyCard document={document} isBrowserDev={isBrowserDev} actions={actions} />
