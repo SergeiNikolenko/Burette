@@ -56,6 +56,14 @@ Native Quick Look smoke skips public CSV/TSV files because macOS normally routes
 those UTIs through the system table generator. Use browser-dev or the packaged
 desktop app for Burette grid rendering checks.
 
+## Linux Bundles
+
+| Command | Use When |
+| --- | --- |
+| `./scripts/install-linux-build-deps.sh` | Installing the WebKitGTK and bundler packages on Debian or Ubuntu. |
+| `./scripts/build-linux.sh` | Building the deb, rpm and AppImage bundles into `build/linux/`; `BURETTE_LINUX_BUNDLES` narrows the list. |
+| `node scripts/linux-desktop-metadata.mjs` | Regenerating `packaging/linux/` after `config/preview-formats.json` changes; `--check` runs inside `check:formats`. |
+
 ## Agent Platform
 
 Use the CLI as the execution contract:

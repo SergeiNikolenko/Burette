@@ -14,6 +14,8 @@ contains only documents that describe the active project.
 - [Changelog](../CHANGELOG.md): pointer to GitHub Releases, which are the
   human-readable changelog for each version.
 - [Architecture](architecture.md): repository boundaries and runtime shape.
+- [Burette on Linux](linux.md): Linux bundles, desktop integration, build
+  steps, and the features that stay macOS-only.
 - [Repository layout](repository-layout.md): top-level code map, app surfaces,
   checked-in samples, and scratch-file policy.
 - [Product direction](product.md): current product surfaces, users, core jobs,
