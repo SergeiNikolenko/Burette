@@ -11,11 +11,30 @@ test("energy contracts admit the three graph fields and Lennard-Jones, and prese
   for (const kind of ["energy", "energy_forces"]) {
     expect(validateWorkbenchRequest(request(kind))).toMatchObject({ ok: true, request: { job: { kind, params: { forceField: "MMFF94" } } } });
     for (const forceField of ["MMFF94", "MMFF94s", "UFF", "LJ"]) expect(validateWorkbenchRequest(request(kind, { forceField }))).toMatchObject({ ok: true, request: { job: { kind, params: { forceField } } } });
-    for (const params of [{ forceField: "mmff94" }, { forceField: null }, { forceField: "GAFF" }, { forceField: "lj" }, { forceField: "xtb:gfn2" }, { addHydrogens: true }, { apply: true }, { method: "fire" }, { atomIndices: [0] }, []]) expect(validateWorkbenchRequest(request(kind, params))).toMatchObject({ ok: false, error: { code: "INVALID_ARGS" } });
+    for (const params of [{ forceField: "mmff94" }, { forceField: null }, { forceField: "GAFF" }, { forceField: "lj" }, { forceField: "xtb:gfn3" }, { addHydrogens: true }, { apply: true }, { method: "fire" }, { atomIndices: [0] }, []]) expect(validateWorkbenchRequest(request(kind, params))).toMatchObject({ ok: false, error: { code: "INVALID_ARGS" } });
   }
   const contract = workbenchContractSummary();
   expect(contract.jobs.energy.artifacts).toEqual([]); expect(contract.jobs.energy_forces.artifacts).toEqual(["forces"]);
   expect(contract.limits).toMatchObject({ activeJobs: 2, queuedJobs: 8, retainedJobs: 32, requestBytes: 262144, responseBytes: 65536, artifactBytes: 16777216, jobTimeoutMs: 120000 });
+});
+test("external model ids pass only in their exact forms and only for the coordinate jobs", () => {
+  const good = ["xtb:gfn2", "xtb:gfn1", "xtb:gfnff", "avogadro:avogadro-harmonic-energy/harmonic-binary", "avogadro:pkg.v2_x/GFN-FF", `avogadro:${"a".repeat(64)}/${"B".repeat(64)}`];
+  const bad = ["xtb:gfn3", "xtb:GFN2", "xtb:", " xtb:gfn2", "xtb:gfn2\n", "avogadro:", "avogadro:pkg", "avogadro:pkg/", "avogadro:/model", "avogadro:Pkg/model",
+    "avogadro:-pkg/model", "avogadro:pkg/-model", "avogadro:pkg/model/extra", "avogadro:pkg/mo del", "avogadro:pkg/mo$del", `avogadro:${"a".repeat(65)}/m`, `avogadro:p/${"m".repeat(65)}`, "orca:b3lyp", 7];
+  for (const kind of ["energy", "energy_forces", "frame_energy_forces", "optimize"]) {
+    for (const forceField of good) expect(validateWorkbenchRequest(request(kind, { forceField }))).toMatchObject({ ok: true, request: { job: { kind, params: { forceField } } } });
+    for (const forceField of bad) {
+      const result = validateWorkbenchRequest(request(kind, { forceField }));
+      expect(result).toMatchObject({ ok: false, error: { code: "INVALID_ARGS" } });
+      expect(result.ok || result.error.message).toContain("avogadro:<package>/<identifier>");
+    }
+  }
+  // External models carry no MMFF-specific default: an unconstrained run uses L-BFGS.
+  expect(validateWorkbenchRequest(request("optimize", { forceField: "xtb:gfn2" }))).toMatchObject({ ok: true, request: { job: { params: { forceField: "xtb:gfn2", method: "lbfgs", maxIterations: 250, constraints: [] } } } });
+  for (const kind of ["prepare_3d", "conformers"]) for (const forceField of ["xtb:gfn2", "avogadro:avogadro-harmonic-energy/harmonic-binary"]) {
+    expect(validateWorkbenchRequest(request(kind, { forceField }))).toMatchObject({ ok: false, error: { code: "INVALID_ARGS" } });
+  }
+  expect(validateWorkbenchRequest({ type: "workbench", operation: "build", operationId: "built", job: { kind: "smiles", params: { smiles: "CCO", forceField: "xtb:gfn2" } } })).toMatchObject({ ok: false, error: { code: "INVALID_ARGS" } });
 });
 function source(text: string, extension = "xyz") {
   const document: ViewerDocument = { id: crypto.randomUUID(), title: `fixed.${extension}`, path: `/fixed.${extension}`, extension, renderer: "molstar", runtimePath: "/viewer", byteCount: text.length };

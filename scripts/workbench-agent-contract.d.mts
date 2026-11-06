@@ -21,8 +21,10 @@ export type WorkbenchOperation =
   | 'submit' | 'build' | 'status' | 'jobs' | 'cancel' | 'export';
 export const WORKBENCH_OPERATIONS: readonly WorkbenchOperation[];
 export type WorkbenchForceField = 'MMFF94' | 'MMFF94s' | 'UFF';
-/** Models that evaluate or relax existing coordinates; LJ needs no bond graph. */
-export type WorkbenchEnergyModel = WorkbenchForceField | 'LJ';
+/** External models, desktop app only: xTB methods and Avogadro energy packages. */
+export type WorkbenchExternalEnergyModel = 'xtb:gfn2' | 'xtb:gfn1' | 'xtb:gfnff' | `avogadro:${string}/${string}`;
+/** Models that evaluate or relax existing coordinates; LJ and external models need no bond graph. */
+export type WorkbenchEnergyModel = WorkbenchForceField | 'LJ' | WorkbenchExternalEnergyModel;
 export type WorkbenchJobKind = WorkbenchJobRequest['kind'];
 /** Kinds that build a new structure without a source document (operation `build`). */
 export type WorkbenchBuildJobKind = 'smiles' | 'peptide' | 'metal_complex' | 'nucleic_acid';

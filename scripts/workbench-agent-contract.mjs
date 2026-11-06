@@ -25,6 +25,13 @@ export const WORKBENCH_LIMITS = Object.freeze({
 const FORCE_FIELDS = ['MMFF94', 'MMFF94s', 'UFF'];
 // Lennard-Jones needs no bond graph, so it only evaluates or relaxes existing coordinates.
 const ENERGY_MODELS = [...FORCE_FIELDS, 'LJ'];
+// External models: xTB methods and Avogadro energy packages (package names and model
+// identifiers as the desktop plugin manager admits them). They need no bond graph and
+// run only in the desktop app when that model is listed and set up; the runner refuses otherwise.
+const EXTERNAL_ENERGY_MODEL = /^(?:xtb:(?:gfn2|gfn1|gfnff)|avogadro:[a-z0-9][a-z0-9._-]{0,63}\/[A-Za-z0-9][A-Za-z0-9._-]{0,63})$/u;
+const EXTERNAL_ENERGY_MODEL_FORMS = ['xtb:gfn2', 'xtb:gfn1', 'xtb:gfnff', 'avogadro:<package>/<identifier>'];
+const ENERGY_MODEL_PARAMS = [...ENERGY_MODELS, ...EXTERNAL_ENERGY_MODEL_FORMS];
+const EXTERNAL_REQUIREMENT = 'External models (xtb:…, avogadro:…) run only in the Burette desktop app with that model available; they need 3D coordinates but no bond graph, and take charge and spin from the structure.';
 const OPTIMIZE_METHODS = ['bfgs', 'lbfgs', 'fire', 'abc-fire', 'hybrid'];
 const SEED_MAX = 2_147_483_639;
 
@@ -208,7 +215,11 @@ const LIBRARY_ID = /^[a-z_]{1,32}\/[A-Za-z0-9 ,_+()-]{1,64}$/u;
 const SMILES = /^\S+$/u;
 
 const forceField = value => oneOf(value, 'job.params.forceField', new Set(FORCE_FIELDS), 'MMFF94');
-const energyModel = value => oneOf(value, 'job.params.forceField', new Set(ENERGY_MODELS), 'MMFF94');
+function energyModel(value) {
+  if (value === undefined) return 'MMFF94';
+  if (ENERGY_MODELS.includes(value) || (typeof value === 'string' && EXTERNAL_ENERGY_MODEL.test(value))) return value;
+  invalid(`job.params.forceField must be one of ${ENERGY_MODELS.join(', ')}, or an external model id: ${EXTERNAL_ENERGY_MODEL_FORMS.join(', ')}.`);
+}
 const seed = value => integer(value, 'job.params.seed', 0, SEED_MAX, 1);
 
 function constraints(value) {
@@ -295,27 +306,27 @@ const JOB_DEFINITIONS = {
   },
   energy: {
     describe: {
-      engine: 'OpenChemLib MMFF94/MMFF94s, RDKit UFF, or Lennard-Jones with Avogadro parameters',
-      requires: 'A complete chemical graph with explicit hydrogens, 1–256 atoms; LJ needs only coordinates.',
-      params: { forceField: ENERGY_MODELS },
+      engine: 'OpenChemLib MMFF94/MMFF94s, RDKit UFF, Lennard-Jones with Avogadro parameters, or an external model (xTB, Avogadro energy packages)',
+      requires: `A complete chemical graph with explicit hydrogens, 1–256 atoms; LJ needs only coordinates. ${EXTERNAL_REQUIREMENT}`,
+      params: { forceField: ENERGY_MODEL_PARAMS },
       artifacts: [],
     },
     params: value => ({ forceField: energyModel(params(value, ['forceField'], 'energy job.params').forceField) }),
   },
   energy_forces: {
     describe: {
-      engine: 'OpenChemLib MMFF94/MMFF94s central-difference forces, or RDKit UFF and Lennard-Jones analytic forces',
-      requires: 'A complete chemical graph with explicit hydrogens, 1–64 atoms; LJ needs only coordinates.',
-      params: { forceField: ENERGY_MODELS },
+      engine: 'OpenChemLib MMFF94/MMFF94s central-difference forces, RDKit UFF and Lennard-Jones analytic forces, or the gradient of an external model',
+      requires: `A complete chemical graph with explicit hydrogens, 1–64 atoms; LJ needs only coordinates. ${EXTERNAL_REQUIREMENT}`,
+      params: { forceField: ENERGY_MODEL_PARAMS },
       artifacts: ['forces'],
     },
     params: value => ({ forceField: energyModel(params(value, ['forceField'], 'energy_forces job.params').forceField) }),
   },
   frame_energy_forces: {
     describe: {
-      engine: 'Same energies and forces as energy_forces, for a page of frames sharing one graph',
-      requires: 'A multi-frame XYZ with a complete graph (any XYZ for LJ), or a multi-record SDF whose records share one graph; 1–64 atoms; at most 64 frames and 2048 atom-frames per job.',
-      params: { forceField: ENERGY_MODELS, offset: 'first zero-based frame (default 0)', count: '1–64 frames (default: as many as fit)' },
+      engine: 'Same energies and forces as energy_forces, for a page of frames sharing one graph; an external model evaluates the page in one session',
+      requires: `A multi-frame XYZ with a complete graph (any XYZ for LJ and external models), or a multi-record SDF whose records share one graph (external models: the same atoms); 1–64 atoms; at most 64 frames and 2048 atom-frames per job. ${EXTERNAL_REQUIREMENT}`,
+      params: { forceField: ENERGY_MODEL_PARAMS, offset: 'first zero-based frame (default 0)', count: '1–64 frames (default: as many as fit)' },
       artifacts: ['forces', 'extxyz'],
     },
     params(value) {
@@ -327,9 +338,9 @@ const JOB_DEFINITIONS = {
   },
   optimize: {
     describe: {
-      engine: 'Burette Cartesian minimizer (BFGS, L-BFGS, FIRE, ABC-FIRE, hybrid) on MMFF94/MMFF94s (RDKit analytic terms, else OpenChemLib central differences), RDKit UFF or Lennard-Jones (analytic)',
-      requires: 'A complete chemical graph with explicit hydrogens, 1–256 atoms (LJ needs only coordinates); central-difference MMFF supports at most 64 atoms.',
-      params: { forceField: ENERGY_MODELS, method: OPTIMIZE_METHODS, maxIterations: '1–1000 (default 250)', constraints: 'up to 64 of freeze/distance/angle/dihedral; zero-based source atoms; target in Å or degrees (default: current value)' },
+      engine: 'Burette Cartesian minimizer (BFGS, L-BFGS, FIRE, ABC-FIRE, hybrid) on MMFF94/MMFF94s (RDKit analytic terms, else OpenChemLib central differences), RDKit UFF or Lennard-Jones (analytic), or an external model',
+      requires: `A complete chemical graph with explicit hydrogens, 1–256 atoms (LJ needs only coordinates); central-difference MMFF supports at most 64 atoms. ${EXTERNAL_REQUIREMENT}`,
+      params: { forceField: ENERGY_MODEL_PARAMS, method: OPTIMIZE_METHODS, maxIterations: '1–1000 (default 250)', constraints: 'up to 64 of freeze/distance/angle/dihedral; zero-based source atoms; target in Å or degrees (default: current value)' },
       artifacts: ['structure', 'xyz', 'trajectory'],
     },
     params(value) {
