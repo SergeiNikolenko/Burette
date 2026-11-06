@@ -224,6 +224,22 @@ metadata, and run the focused contract check.
   unless they are intentionally minimized and documented under `samples/` or
   `tests/fixtures/`.
 
+## User-Facing Features
+
+A feature is finished when its user documentation, landing copy and media are
+updated with it, not later.
+
+- Save the acceptance screenshots (light and dark) outside the repository in
+  `~/Documents/Projects/Burette-media/<project>/<stage-or-feature>/<theme>-<state>.png`
+  and keep that folder's `README.md` index current.
+- Update the user docs in the landing repository (`burette-landing/content`)
+  and the Features catalog (`components/features/catalog.json`) on a landing
+  branch; follow [docs/avogadro-showcase-plan.md](docs/avogadro-showcase-plan.md)
+  for placement and copy rules. Do not push the landing `main` or deploy
+  without the maintainer's go.
+- Draft a short LinkedIn post for each feature a user would notice, next to the
+  landing copy. Drafts only; publishing needs the maintainer's go.
+
 ## Rust And TypeScript Conventions
 
 - In Rust, prefer enums, named methods, or explicit types over call sites with
