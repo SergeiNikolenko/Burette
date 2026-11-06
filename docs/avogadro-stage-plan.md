@@ -167,8 +167,12 @@ current one has open code or acceptance items.
   Energy, Edit, Geometry and Properties; Auto Optimize and coupled Z-matrix runs
   refuse them with a reason. Agent jobs accept `LJ` for `energy`,
   `energy_forces`, `frame_energy_forces` and `optimize`.
-- **Open:** external models in agent jobs (the job runner lives in the browser
-  worker), models without gradients (Avogadro differences them), unit cells,
+- **Done (agent jobs):** the contract accepts `xtb:gfn2|gfn1|gfnff` and
+  `avogadro:<package>/<identifier>` for `energy`, `energy_forces`,
+  `frame_energy_forces` and `optimize`; the runner drives the native sessions
+  (one per frame page) and refuses missing, unavailable or browser-shell models.
+- **Open:** a desktop workbench runtime (jobs run only in `browser-agent-shell`,
+  which lists no external models), models without gradients (Avogadro differences them), unit cells,
   `pdb` input, and the packaged desktop acceptance.
 - **Checks:** `test:minimizer-core`, `test:workbench-physics`
   (`test-external-energy-models`), `test:energy-agent`, and in

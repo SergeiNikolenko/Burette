@@ -416,7 +416,7 @@
     "check:agent-graph-source": "tsc --noEmit -p tests/tsconfig.agent-graph-source.json",
     "test:properties-agent": "bun test tests/test-properties-agent-contract.test.ts tests/test-properties-agent.test.ts && bun test tests/test-orbital-cli-compiled.test.tsx",
     "check:properties-agent": "tsc --noEmit -p tests/tsconfig.properties-agent.json && tsc --noEmit -p tests/tsconfig.orbital-cli.json",
-    "test:energy-agent": "bun test tests/test-energy-agent.test.ts && bun test tests/test-orbital-cli-compiled.test.tsx",
+    "test:energy-agent": "bun test tests/test-energy-agent.test.ts && bun test tests/test-energy-agent-external.test.ts && bun test tests/test-orbital-cli-compiled.test.tsx",
     "check:energy-agent": "tsc --noEmit -p tests/tsconfig.energy-agent.json && tsc --noEmit -p tests/tsconfig.orbital-cli.json",
     "test:built-xyz-lattice": "bun tests/test-built-molstar-xyz-lattice.mjs",
     "test:graph-normalization-stereo": "bun test tests/test-graph-normalization-stereo.test.ts tests/test-atom-reorder.test.ts",
