@@ -582,6 +582,9 @@ async function createTrajectoryPairPayload(filePath) {
     byteCount: coordinateInfo.size + modelInfo.size,
     sourcePath: filePath,
     sourceExtension: extension,
+    // As the browser-dev server (apps/desktop/vite/browser-dev/files.ts); the shell reads both.
+    topologyPath: modelPath,
+    trajectoryPath: coordinatePath,
     docking: {
       activePose: null,
       sceneMode: null,

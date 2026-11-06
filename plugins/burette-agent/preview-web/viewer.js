@@ -741,6 +741,11 @@
       if (!indexed) throw new Error('Trajectory frame data is unavailable in this runtime.');
       return { ok: true, result: indexed.readActiveFrame(activeMolstarViewer(), action) };
     }
+    if (type === 'indexed_trajectory_scan') {
+      const indexed = window.molstar?.BuretteIndexedTrajectory;
+      if (!indexed?.scanPositions) throw new Error('Trajectory scans are unavailable in this runtime.');
+      return { ok: true, result: await indexed.scanPositions(activeMolstarViewer(), action) };
+    }
     if (type === 'scene_science_binding') {
       if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
       return { ok: true, result: await window.BuretteSceneFiles.science.bindingReport(activeMolstarViewer(), action.sourceExtension) };
@@ -780,6 +785,19 @@
       const payload = molstarModifiedStructureExportPayloadForFormat(action.format);
       if (new TextEncoder().encode(payload.text).length > 24 * 1024 * 1024) throw new Error('Structure export exceeds 24 MB.');
       return { ok: true, result: payload };
+    }
+    // The visible scene as the viewport menu's Export 3D model writes it; the CLI saves the bytes to a file.
+    if (type === 'export_scene_model') {
+      const exporter = window.molstar?.BuretteSceneExport, plugin = viewportPlugin();
+      if (!exporter || !plugin) throw new Error('This viewer cannot export a 3D model.');
+      const format = action.format ?? 'glb';
+      if (!exporter.formats[format]) throw new Error(`3D model format must be one of ${Object.keys(exporter.formats).join(', ')}.`);
+      const { blob, vertexCount, faceCount, assertSceneUnchanged } = await exporter.exportScene(plugin, format);
+      assertSceneUnchanged();
+      if (blob.size > 16 * 1024 * 1024) throw new Error('The 3D model exceeds the 16 MiB agent export limit. Hide components or export it from the viewport menu.');
+      const { extension, mimeType } = exporter.formats[format];
+      return { ok: true, result: { name: `${safeExportBaseName(activeConfig?.label, 'scene')}.${extension}`, format, mimeType, byteCount: blob.size, vertexCount, faceCount,
+        dataBase64: bytesToBase64(new Uint8Array(await blob.arrayBuffer())) } };
     }
     if (type === 'copy_scene_sequence') {
       if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
@@ -1143,7 +1161,7 @@
     if (type === 'describe_region') return describeAgentRegion(action);
     if (type === 'annotation_snapshot') return annotationSnapshot(action);
     if (type === 'replace_document') return replaceMolecularDocument(action);
-    if (['set_scene_motion', 'set_scene_wiggle', 'rotate_camera'].includes(type)) return controlViewportFromAction(action);
+    if (['set_scene_motion', 'set_scene_wiggle', 'rotate_camera', 'set_camera_projection', 'view_axis'].includes(type)) return controlViewportFromAction(action);
     if (type === 'hide_waters') {
       return window.BuretteSceneActions?.hideWaters?.() || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.hideWaters is unavailable.');
     }
@@ -11376,7 +11394,7 @@ SOFTWARE.
         };
       })));
     return {
-      camera: snapshot ? { position: snapshot.position, target: snapshot.target, up: snapshot.up, radius: snapshot.radius } : null,
+      camera: snapshot ? { mode: snapshot.mode, position: snapshot.position, target: snapshot.target, up: snapshot.up, radius: snapshot.radius } : null,
       exactSelection: window.BuretteAgent?.selectionState?.() ?? null,
       motion: viewportMotionState(),
       wiggle: wiggle ? { name: wiggle.name, animation: Object.fromEntries(VIEWPORT_WIGGLE_SLIDERS.map(spec => [spec.name, Number(wiggle.animation[spec.name]) || 0])) } : null,
@@ -11401,6 +11419,16 @@ SOFTWARE.
         if (!['off', 'even', 'uncertainty'].includes(action.mode)) throw new Error('Wiggle mode must be off, even or uncertainty.');
         await setViewportWiggleKind(action.mode);
         refreshViewportWiggleControls();
+      } else if (action.type === 'set_camera_projection') {
+        // The camera menu's Perspective and Orthographic.
+        if (!['perspective', 'orthographic'].includes(action.mode)) throw new Error('Camera projection must be perspective or orthographic.');
+        plugin.canvas3d.setProps({ camera: { mode: action.mode } });
+      } else if (action.type === 'view_axis') {
+        // The camera menu's View from ±X/Y/Z, without its animation.
+        const index = ['+x', '-x', '+y', '-y', '+z', '-z'].indexOf(String(action.axis).toLowerCase());
+        if (index < 0) throw new Error('View axis must be +x, -x, +y, -y, +z or -z.');
+        const [, direction, up] = VIEWPORT_AXIS_VIEWS[index];
+        requestMolstarStructureFocus(activeMolstarViewer(), { direction, up, durationMs: 0 });
       } else {
         const axis = action.axis;
         if (!Array.isArray(axis) || axis.length !== 3 || !axis.every(Number.isFinite) || !Number.isFinite(Math.hypot(...axis)) || Math.hypot(...axis) === 0 || !Number.isFinite(action.angleDegrees)) {
@@ -19750,10 +19778,14 @@ SOFTWARE.
       if (pair.synthetic) await applyMolstarUniformRepresentation(viewer, molstarDerivedTopologyRepresentation());
       return !!options.representationPreset;
     }
-    if (normalizeFormat(pair.coordinateEntry.format) === 'trr') {
+    // Raw TRR, XTC and DCD are read frame by frame, which the Plots dock samples;
+    // an XTC or DCD beyond that budget still loads whole.
+    const rawFormat = normalizeFormat(pair.coordinateEntry.format);
+    const rawLimit = window.molstar?.BuretteIndexedTrajectory?.rawByteLimit ?? 0;
+    if (rawFormat === 'trr' || (['xtc', 'dcd'].includes(rawFormat) && pair.coordinateEntry.data?.byteLength <= rawLimit)) {
       const indexed = window.molstar?.BuretteIndexedTrajectory;
-      if (!indexed?.loadRawTrr) throw new Error('TRR trajectory support is unavailable in this runtime.');
-      await indexed.loadRawTrr(viewer, pair, options);
+      if (!indexed?.loadRaw) throw new Error('Trajectory support is unavailable in this runtime.');
+      await indexed.loadRaw(viewer, pair, rawFormat, options);
       if (pair.synthetic) await applyMolstarUniformRepresentation(viewer, molstarDerivedTopologyRepresentation());
       return !!options.representationPreset;
     }
@@ -28084,7 +28116,9 @@ SOFTWARE.
     };
     const items = molstarNativeMenuEntries(session, { ...target, pickingLevel: mode }, mode);
     molstarNativeMenuPending = session;
-    if (postHostMessage({ type: 'molstarContextMenu', requestId: session.requestId, ...point, items })) return true;
+    // The host adds its editing tools; Edit geometry opens at the picked atom's row.
+    const atomIndex = !target.selectionBased && Number.isInteger(target.atom?.atomIndex) ? target.atom.atomIndex : undefined;
+    if (postHostMessage({ type: 'molstarContextMenu', requestId: session.requestId, ...point, items, atomIndex })) return true;
     molstarNativeMenuPending = null;
     return false;
   }
