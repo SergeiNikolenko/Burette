@@ -77,6 +77,28 @@ assert.match(linuxBuildScript, /--exclude \/lib64/);
 assert.match(linuxBuildScript, /"xyzrender-runtime", python_root: "xyzrender-python"/);
 assert.match(linuxBuildScript, /stage_xyzrender_runtime\n(?:.*\n)*?\(cd apps\/desktop && bun run build:tauri -- --bundles "\$BUNDLES" --config "\$XYZRENDER_TAURI_CONFIG"\)/);
 
+// Windows bundles stage the locked renderer behind a batch wrapper that sets
+// the same environment as the shell wrappers and the worker pool.
+const windowsStage = source("scripts/stage-xyzrender-windows.py");
+const xyzrenderRust = source("apps/desktop/src-tauri/src/preview/xyzrender.rs");
+const windowsWrapper = windowsStage.match(/WRAPPER = '\\r\\n'\.join\(\[\n([\s\S]*?)\n\]\)/)?.[1];
+assert.ok(windowsWrapper, "Windows xyzrender wrapper not found");
+const wrapperEnvironment = [...wrapper(buildScript).matchAll(/^(PYTHON\w+)=.* \\$/gm)].map((match) => match[1]);
+assert.deepEqual(wrapperEnvironment, ["PYTHONNOUSERSITE", "PYTHONDONTWRITEBYTECODE", "PYTHONPATH"]);
+for (const name of wrapperEnvironment) {
+  assert.match(windowsWrapper, new RegExp(`'set "${name}=`), `Windows wrapper must set ${name}`);
+  assert.match(xyzrenderRust, new RegExp(`\\("${name}", `), `bundled worker pool must set ${name}`);
+}
+assert.match(windowsWrapper, /'"%PYTHON%" -m xyzrender\.cli %\*'/);
+assert.match(windowsStage, /'bootstrap-windows-x86_64\.json'/);
+assert.match(windowsStage, /'requirements-windows-x86_64\.txt'/);
+assert.match(windowsStage, /PYTHON_PLATFORM = 'x86_64-pc-windows-msvc'/);
+assert.match(windowsStage, /scripts\/prune-xyzrender-runtime\.py/);
+assert.match(windowsStage, /scripts\/prepare-xyzrender-bytecode\.py/);
+assert.match(windowsStage, /'xyzrender-runtime', python_root\.as_posix\(\): 'xyzrender-python'/);
+assert.match(xyzrenderRust, /#\[cfg\(windows\)\]\nconst BUNDLED_XYZRENDER_WRAPPER: &str = "xyzrender\.cmd";/);
+assert.match(xyzrenderRust, /runtime_utils::standalone_python\(&resources\.join\("xyzrender-python"\)\)/);
+
 assert.match(releaseWorkflow, /echo "allow_adhoc=true"/);
 assert.match(releaseWorkflow, /Apple signing is partially configured/);
 assert.match(releaseWorkflow, /environment: release/);
