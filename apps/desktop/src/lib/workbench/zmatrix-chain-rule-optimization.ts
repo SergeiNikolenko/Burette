@@ -37,8 +37,9 @@ export async function optimizeZmatrixAsync(molecule: MolecularStructure, definit
   const problem = coupledZmatrixProblem(molecule, definition, options), { unpack } = problem;
   const evaluate = async (atoms: MolecularAtom[]) => {
     signal?.throwIfAborted();
-    // An abort may fail the evaluation in flight; report it as the abort.
-    const value = await evaluator.evaluate(atoms).catch(error => { signal?.throwIfAborted(); throw error; });
+    // An abort may fail the evaluation in flight; report it as the abort. Frozen atoms
+    // carry no chain-rule weight, so a differenced model skips them.
+    const value = await evaluator.evaluate(atoms, problem.frozen).catch(error => { signal?.throwIfAborted(); throw error; });
     signal?.throwIfAborted();
     return value;
   };
