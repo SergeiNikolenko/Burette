@@ -3,7 +3,8 @@ import { writeCjson } from "../molecular-workbench/cjson-graph";
 import { writeExtendedXyz } from "../molecular-workbench/crystal-io";
 import { serializeXyz } from "../molecular-workbench/xyz";
 import { sourceExtension } from "../science-session/state";
-import { readMolecularStructure, readWorkbenchSource } from "./structure";
+import { readMolecularStructure, readWorkbenchSource, workbenchSupportsDocument } from "./structure";
+import type { AgentJobRunner } from "./agent-jobs";
 
 export type StructureExportFormat = "xyz" | "mol" | "cjson";
 
@@ -27,3 +28,14 @@ export async function structureExportText(document: ViewerDocument, text: string
   if (format === "mol") return structure.molfile;
   return `${JSON.stringify(writeCjson({ title: source.title, atoms: structure.atoms, bonds: structure.bonds, cell: source.cell }), null, 2)}\n`;
 }
+
+const MIME_TYPES: Record<StructureExportFormat, string> = { xyz: "chemical/x-xyz", mol: "chemical/x-mdl-molfile", cjson: "application/json" };
+
+/** Export → Structure for agents: the source revision as one coordinate file; the document is never changed. */
+export const structureExportJob: AgentJobRunner<"structure_export"> = {
+  unavailable: snapshot => workbenchSupportsDocument(snapshot.document) ? null : "Export structures from a MOL, SDF, XYZ, CIF, POSCAR or quantum output source.",
+  async run(input, { format }, { signal, stem, artifact }) {
+    const text = await structureExportText(input.document, input.text, format, signal);
+    return { summary: { format }, artifacts: [await artifact("structure", `${stem}.${format}`, MIME_TYPES[format], text)] };
+  },
+};

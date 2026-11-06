@@ -36,6 +36,11 @@ export type WorkbenchMetadataEdit = {
   atoms: { index: number; atomName?: string | null; residue?: { name: string; sequence: number; chain: string; insertionCode: string } | null }[];
   conformerLabel?: string | null;
 };
+export type WorkbenchGraphEdit =
+  | { kind: 'add_atom'; element: string; position: [number, number, number] }
+  | { kind: 'update_atom'; index: number; element?: string; charge?: number; isotope?: number; position?: [number, number, number] }
+  | { kind: 'delete_atoms'; indices: number[] }
+  | { kind: 'set_bond'; a: number; b: number; order: 0 | 1 | 2 | 3 | 9 };
 export type WorkbenchCrystalTransform =
   | { operation: 'set_cell'; cell: [number, number, number][]; keep: 'fractional' | 'cartesian' }
   | { operation: 'wrap' | 'standard_orientation' | 'niggli' }
@@ -72,6 +77,10 @@ export type WorkbenchJobRequest =
   | { kind: 'powder_xrd'; params: { wavelengthAngstrom: number; twoThetaMinDegrees: number; twoThetaMaxDegrees: number; profile: 'gaussian' | 'lorentzian' | null; fwhmDegrees?: number } }
   | { kind: 'crystal_transform'; params: WorkbenchCrystalTransform }
   | { kind: 'biological_assembly'; params: { assemblyId?: string; modelNumber?: string } }
+  | { kind: 'graph_edit'; params: { edits: WorkbenchGraphEdit[] } }
+  | { kind: 'structure_export'; params: { format: 'xyz' | 'mol' | 'cjson' } }
+  | { kind: 'quantum_input'; params: { program: 'orca' | 'gaussian' | 'psi4' | 'cp2k'; task: 'energy' | 'optimize' | 'frequencies'; method?: string; basis?: string;
+      charge: number; multiplicity: number; coordinates: 'cartesian' | 'zmatrix'; constraints: WorkbenchConstraint[]; periodic: boolean } }
   | { kind: 'properties'; params: { chargeModel?: 'Gasteiger' } }
   | { kind: 'orbital_cube'; params: { field: 'orbital' | 'density' | 'spin-density'; orbitalIndex?: number; spacingAngstrom?: number; paddingAngstrom?: number;
     grid?: { origin: [number, number, number]; axes: [[number, number, number], [number, number, number], [number, number, number]]; dimensions: [number, number, number] } } }

@@ -200,6 +200,10 @@ browser-dev and native app validation remain separate surfaces.
   returned as a JPEG preview (long edge 1280 px) written next to the capture;
   `result.inlineImage` names the file that was inlined. The capture works in
   a hidden Browser tab, so an agent-owned shell needs no visible window.
+- `set_camera_projection` (`mode`: `perspective` or `orthographic`) and
+  `view_axis` (`axis`: `+x`, `-x`, `+y`, `-y`, `+z`, `-z`) are the 3D
+  toolbar's projection switch and axis views; `observe` reports the camera
+  `mode`.
 - Screenshot interpretation must not replace typed `observe`, validation
   output, or CLI/MCP errors.
 - Session `act` rejects action types that neither the shell nor the Mol* viewer
@@ -869,6 +873,8 @@ forces kcal/(mol·Å). No job modifies the open document.
 | `spectrum` | `kind` (`vcd`, `mcd`, `nmr`, `electronic`, `ecd`, `dos`), `source` (`file`, `frame`, `companion`), explicit `frameIndex` for frame/companion; NMR `atomicNumber`; optional `scale`, `offset`, `fwhm`, `axisStart`, `axisEnd` | `source` (JSON), `source_csv`, `display` (CSV), `settings` (JSON) |
 | `pair_distribution` | `rMax` 1–100 Å (10), `binWidth` 0.001–1 Å (0.1), `centre`, `neighbour` | `distribution` (JSON), `csv` |
 | `biological_assembly` | `assemblyId`, `modelNumber`; each is required only when the PDB or mmCIF source defines several | `structure` (mmCIF); the source stays unchanged |
+| `structure_export` | `format` `xyz`, `mol` or `cjson` (required), as Export → Structure writes it: MOL of an SDF is its first record as written, XYZ and CJSON keep a crystal cell | `structure` |
+| `quantum_input` | `program` `orca`, `gaussian`, `psi4` or `cp2k` (required), `task` `energy`, `optimize` or `frequencies`, `method` and `basis` (the Export input file defaults per program), `charge`, `multiplicity`, `coordinates` `cartesian` or `zmatrix` (not CP2K), `constraints` without targets (optimize only), `periodic` (CP2K takes the source cell; true) | `input` (`.inp`, `.gjf` or `.dat`); nothing runs |
 
 `optimize` defaults to `bfgs` for unconstrained MMFF and to `lbfgs` for UFF, LJ
 or any constraint. All five methods support all four models, including
@@ -940,7 +946,7 @@ revision and its Undo history untouched. Indices are zero-based source rows.
   `axis` (`x` by default, `y` or `z`). The summary includes translation in
   Å and the proper rotation matrix applied after translation.
 
-`insert_fragment`, `hydrogens` and `polymer` are `submit` jobs on an open
+`insert_fragment`, `hydrogens`, `polymer` and `graph_edit` are `submit` jobs on an open
 explicit MOL/SDF source; they share the revision pinning, queue, cancellation,
 stale/closed handling and export rules above. Each succeeded job has one
 `structure` artifact: a new V3000 record under the source title, as SDF (with
@@ -957,6 +963,12 @@ document or its Undo history; open the exported file explicitly.
   operations as the Edit tab. `ph` also reports `pH`, the per-site `changes`
   (output atom, group, pKa, protonated/deprotonated) and `omittedChanges`; see
   [hydrogen-protonation.md](hydrogen-protonation.md).
+- `graph_edit`: `edits`, 1–16 Edit-tab changes applied in order, all or
+  none; each zero-based index refers to the structure after the previous edit:
+  `add_atom` (`element`, `position` in Å), `update_atom` (`index` and any of
+  `element`, `charge`, `isotope`, `position`), `delete_atoms` (`indices`) and
+  `set_bond` (`a`, `b`, `order` 0 to remove, 1, 2, 3 or 9 for dative). The
+  summary reports formula, counts, `editCount` and `sourceAtomIndices`.
 - `polymer`: zero-based `head`, `tail`, `headLeaving`, `tailLeaving`, `count`
   1–500, `bondLengthAngstrom` (default 1.54), optional `tacticity`, `headEnd` and
   `tailEnd` (`hydrogen`, `methyl`, `hydroxyl`, `phenyl`, `tert-butyl`) and
@@ -1014,7 +1026,8 @@ energies = [frame["energy"] for frame in wb.iter_frame_energy_forces("UFF", batc
 ```
 
 `build(kind, params)` runs a documentless `build` job (`smiles`, `peptide`) and
-waits for it. `iter_atoms`/`iter_orbitals` page with the first page's revision pinned.
+waits for it. `open(*paths)` opens files, such as an exported artifact, in the
+session's workspace; later jobs run on the new active document. `iter_atoms`/`iter_orbitals` page with the first page's revision pinned.
 `iter_frame_energy_forces` pins the revision once and submits one job per page
 with operation ids `<operation_prefix>-<offset>`, so rerunning an interrupted
 loop reuses finished pages and an edited source raises `REVISION_CONFLICT`.

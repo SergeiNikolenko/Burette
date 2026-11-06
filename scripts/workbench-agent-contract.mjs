@@ -128,6 +128,53 @@ function oneOf(value, field, allowed, fallback) {
 }
 
 const CONSTRAINT_ATOMS = { freeze: 1, distance: 2, angle: 3, dihedral: 4 };
+const ELEMENT_SYMBOL = /^[A-Z][a-z]?$/u;
+const BOND_ORDERS = [0, 1, 2, 3, 9];
+const STRUCTURE_EXPORT_FORMATS = ['xyz', 'mol', 'cjson'];
+const QUANTUM_PROGRAMS = ['orca', 'gaussian', 'psi4', 'cp2k'];
+const QUANTUM_TASKS = ['energy', 'optimize', 'frequencies'];
+const QUANTUM_KEYWORD = /^[A-Za-z0-9][A-Za-z0-9_+*(),./-]{0,79}$/u;
+
+// One Edit-tab change; indices refer to the structure after the previous edit.
+function graphEdit(value, field) {
+  if (!plainObject(value)) invalid(`${field} must be an object.`);
+  const element = (v, f) => { if (typeof v !== 'string' || !ELEMENT_SYMBOL.test(v)) invalid(`${f} must be an element symbol.`); return v; };
+  const vector = (v, f) => {
+    if (!Array.isArray(v) || v.length !== 3) invalid(`${f} must be [x, y, z] in angstrom.`);
+    return v.map((n, i) => finite(n, `${f}[${i}]`, -1e6, 1e6) ?? invalid(`${f}[${i}] is required.`));
+  };
+  const atom = (v, f) => integer(v, f, 0, 255);
+  const { kind } = value;
+  if (kind === 'add_atom') {
+    const p = params(value, ['kind', 'element', 'position'], field);
+    return { kind, element: element(p.element, `${field}.element`), position: vector(p.position, `${field}.position`) };
+  }
+  if (kind === 'update_atom') {
+    const p = params(value, ['kind', 'index', 'element', 'charge', 'isotope', 'position'], field);
+    const edit = defined({ kind, index: atom(p.index, `${field}.index`),
+      element: p.element === undefined ? undefined : element(p.element, `${field}.element`),
+      charge: p.charge === undefined ? undefined : integer(p.charge, `${field}.charge`, -8, 8),
+      isotope: p.isotope === undefined ? undefined : integer(p.isotope, `${field}.isotope`, 0, 300),
+      position: p.position === undefined ? undefined : vector(p.position, `${field}.position`) });
+    if (Object.keys(edit).length < 3) invalid(`${field} changes nothing; set element, charge, isotope or position.`);
+    return edit;
+  }
+  if (kind === 'delete_atoms') {
+    const p = params(value, ['kind', 'indices'], field);
+    if (!Array.isArray(p.indices) || !p.indices.length || p.indices.length > 256) invalid(`${field}.indices must list 1–256 atoms.`);
+    const indices = p.indices.map((index, i) => atom(index, `${field}.indices[${i}]`));
+    if (new Set(indices).size !== indices.length) invalid(`${field}.indices lists an atom twice.`);
+    return { kind, indices };
+  }
+  if (kind === 'set_bond') {
+    const p = params(value, ['kind', 'a', 'b', 'order'], field);
+    const a = atom(p.a, `${field}.a`), b = atom(p.b, `${field}.b`);
+    if (a === b) invalid(`${field} bonds an atom to itself.`);
+    if (!BOND_ORDERS.includes(p.order)) invalid(`${field}.order must be 0 (no bond), 1, 2, 3 or 9 (dative).`);
+    return { kind, a, b, order: p.order };
+  }
+  invalid(`${field}.kind must be add_atom, update_atom, delete_atoms or set_bond.`);
+}
 const MEASUREMENT_KINDS = ['distance', 'angle', 'dihedral'];
 const FRAGMENTS = ['smaller', 'first', 'last'];
 const AXES = ['x', 'y', 'z'];
@@ -643,6 +690,50 @@ const JOB_DEFINITIONS = {
         headEnd: oneOf(p.headEnd, 'job.params.headEnd', ends, 'hydrogen'), tailEnd: oneOf(p.tailEnd, 'job.params.tailEnd', ends, 'hydrogen'),
         relax: bool(p.relax, 'job.params.relax') ?? false,
       });
+    },
+  },
+  graph_edit: {
+    describe: {
+      engine: 'OpenChemLib graph edits, as the Edit tab makes them',
+      requires: 'An explicit MOL/SDF graph, 1–256 atoms after every edit. The edited structure is exported, never applied to the document.',
+      params: { edits: '1–16 edits in order; zero-based indices refer to the structure after the previous edit: { kind: "add_atom", element, position: [x, y, z] }, { kind: "update_atom", index, element?, charge?, isotope?, position? }, { kind: "delete_atoms", indices }, { kind: "set_bond", a, b, order: 0 (no bond), 1, 2, 3 or 9 (dative) }' },
+      artifacts: ['structure'],
+    },
+    params(value) {
+      const p = params(value, ['edits'], 'graph_edit job.params');
+      if (!Array.isArray(p.edits) || p.edits.length < 1 || p.edits.length > 16) invalid('job.params.edits must hold 1–16 edits.');
+      return { edits: p.edits.map((edit, index) => graphEdit(edit, `job.params.edits[${index}]`)) };
+    },
+  },
+  structure_export: {
+    describe: {
+      engine: 'Burette coordinate writers, as Export → Structure writes them',
+      requires: 'A single-file source the workbench reads (MOL, SDF, XYZ, CIF, POSCAR or a quantum output). MOL of an SDF is its first record as written; XYZ and CJSON keep a crystal cell; MOL and CJSON of other sources need the chemical graph (1–256 atoms).',
+      params: { format: STRUCTURE_EXPORT_FORMATS },
+      artifacts: ['structure'],
+    },
+    params: value => ({ format: oneOf(params(value, ['format'], 'structure_export job.params').format, 'job.params.format', new Set(STRUCTURE_EXPORT_FORMATS), undefined) ?? invalid('job.params.format is required.') }),
+  },
+  quantum_input: {
+    describe: {
+      engine: 'Burette input writers, as Export input file writes them; no quantum program runs',
+      requires: 'A MOL, SDF, XYZ, PDB (first model), CIF, POSCAR or quantum output source. CP2K gets the source cell unless periodic is false.',
+      params: { program: QUANTUM_PROGRAMS, task: QUANTUM_TASKS, method: 'keyword (the dialog default per program)', basis: 'keyword (the dialog default per program)', charge: '-100–100 (0)', multiplicity: '1–101 (1)', coordinates: ['cartesian', 'zmatrix (not CP2K)'], constraints: 'freeze, distance, angle, dihedral at the current geometry; optimize only', periodic: 'CP2K cell from the source (true)' },
+      artifacts: ['input'],
+    },
+    params(value) {
+      const p = params(value, ['program', 'task', 'method', 'basis', 'charge', 'multiplicity', 'coordinates', 'constraints', 'periodic'], 'quantum_input job.params');
+      const program = oneOf(p.program, 'job.params.program', new Set(QUANTUM_PROGRAMS), undefined) ?? invalid('job.params.program is required.');
+      const task = oneOf(p.task, 'job.params.task', new Set(QUANTUM_TASKS), 'energy');
+      const coordinates = oneOf(p.coordinates, 'job.params.coordinates', new Set(['cartesian', 'zmatrix']), 'cartesian');
+      if (program === 'cp2k' && coordinates === 'zmatrix') invalid('CP2K reads Cartesian coordinates only.');
+      for (const key of ['method', 'basis']) if (p[key] !== undefined && (typeof p[key] !== 'string' || !QUANTUM_KEYWORD.test(p[key]))) invalid(`job.params.${key} must be one keyword of at most 80 characters.`);
+      const frozen = constraints(p.constraints);
+      if (frozen.some(item => item.target !== undefined)) invalid('Input files hold the current geometry; job.params.constraints take no target.');
+      if (frozen.length && task !== 'optimize') invalid('Constraints require task optimize.');
+      if (p.periodic !== undefined && typeof p.periodic !== 'boolean') invalid('job.params.periodic must be a boolean.');
+      return defined({ program, task, method: p.method, basis: p.basis, charge: integer(p.charge, 'job.params.charge', -100, 100, 0),
+        multiplicity: integer(p.multiplicity, 'job.params.multiplicity', 1, 101, 1), coordinates, constraints: frozen, periodic: p.periodic ?? true });
     },
   },
   smiles: {

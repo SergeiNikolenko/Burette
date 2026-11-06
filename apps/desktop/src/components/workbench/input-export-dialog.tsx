@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { generateQuantumInput, ZMATRIX_ENGINES, type CoordinateStyle, type InputConstraint, type QuantumEngine } from "../../lib/molecular-workbench/input-export";
+import { generateQuantumInput, QUANTUM_INPUT_DEFAULTS as DEFAULTS, ZMATRIX_ENGINES, type CoordinateStyle, type InputConstraint, type QuantumEngine } from "../../lib/molecular-workbench/input-export";
 import type { MolecularAtom } from "../../lib/molecular-workbench/types";
 import type { ZmatrixDocument } from "../../../../../scripts/zmatrix-document.mjs";
 import { useStructureSourceText } from "../../lib/source-editing/use-structure-source-text";
@@ -22,12 +22,6 @@ import { useWorkbenchSource } from "./use-workbench-source";
 
 type Task = "energy" | "optimize" | "frequencies";
 const ENGINES: [QuantumEngine, string][] = [["orca", "ORCA"], ["gaussian", "Gaussian"], ["psi4", "Psi4"], ["cp2k", "CP2K"]];
-const DEFAULTS: Record<QuantumEngine, { method: string; basis: string }> = {
-  orca: { method: "B3LYP", basis: "def2-SVP" },
-  gaussian: { method: "B3LYP", basis: "6-31G(d)" },
-  psi4: { method: "b3lyp", basis: "def2-svp" },
-  cp2k: { method: "PBE", basis: "DZVP-MOLOPT-SR-GTH" },
-};
 const NO_CONSTRAINTS: InputConstraint[] = [];
 const CONSTRAINT_LABELS: Record<InputConstraint["kind"], string> = { freeze: "Frozen atom", distance: "Distance", angle: "Angle", dihedral: "Dihedral" };
 

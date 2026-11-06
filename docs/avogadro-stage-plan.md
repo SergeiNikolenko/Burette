@@ -415,8 +415,23 @@ current one has open code or acceptance items.
   per commit.
 - **Done when:** a Python script builds, edits, exports and reopens a molecule
   without the UI.
+- **Done (2026-11-06):** the viewer accepts `set_camera_projection` (`mode`)
+  and `view_axis` (`±x`, `±y`, `±z`), and `observe` reports the camera mode.
+  `graph_edit` submits 1–16 Edit-tab changes (add, update and delete atoms, set
+  a bond, dative included) applied in order, all or none, and exports the edited
+  structure; `structure_export` writes the source as Export → Structure does.
+  `quantum_input` writes the Export input file text (ORCA, Gaussian, Psi4,
+  CP2K; Cartesian or Z-matrix; frozen coordinates; the CP2K cell) with the
+  dialog's per-program defaults, now shared from `input-export.ts`.
+  `Workbench.open(*paths)` opens exported artifacts, so a script continues on
+  its own results. Already covered before this stage: builder insertion
+  (`insert_fragment`, `build`), assemblies (`biological_assembly`), Z-matrix
+  edits (`measurement_set`) and model export (`export-model`). Check on
+  Gauss: a Python script built ethanol from SMILES, exported and opened it,
+  replaced O by S with `graph_edit`, exported XYZ and reopened it: C2H6S, 9 atoms
+  in source order; `set_camera_projection` and `view_axis +x` in both themes.
 - **Checks:** `test:workbench-automation-jobs`, `test:workbench-python-client`,
-  `test:plugin`.
+  `test:crystal-agent`, `test:orbital-cli-compiled`, `test-burette-agent-cli`.
 
 ## Stage 12. Extensions and interaction polish
 

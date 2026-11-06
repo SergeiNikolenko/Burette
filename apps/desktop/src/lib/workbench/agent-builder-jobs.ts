@@ -1,6 +1,7 @@
 import { runChemistryTask } from "../molecular-workbench/compute-client";
 import { runGraphTask } from "../molecular-workbench/graph-compute-client";
-import type { GraphEditResult } from "../molecular-workbench/graph-edit";
+import type { GraphEdit, GraphEditResult } from "../molecular-workbench/graph-edit";
+import type { WorkbenchGraphEdit } from "../../../../../scripts/workbench-agent-contract.mjs";
 import { runFragmentTask } from "./fragment-task";
 import { preparePolymerRequest, runPolymerTask } from "./polymer-task";
 import { runPeptideTask } from "./peptide-task";
@@ -40,7 +41,17 @@ function graphSummary(structure: GraphEditResult, source: number) {
 }
 
 /** Structure edits on an explicit graph. Each returns a new structure artifact; the open document is never changed. */
-export const builderJobs: { [K in "insert_fragment" | "hydrogens" | "polymer"]: AgentJobRunner<K> } = {
+// The contract's snake_case edits are the Edit tab's own graph edits.
+function graphEdit(edit: WorkbenchGraphEdit): GraphEdit {
+  switch (edit.kind) {
+    case "add_atom": return { kind: "add-atom", element: edit.element, position: edit.position };
+    case "update_atom": return { ...edit, kind: "update-atom" };
+    case "delete_atoms": return { kind: "delete-atoms", indices: edit.indices };
+    case "set_bond": return { kind: "set-bond", a: edit.a, b: edit.b, order: edit.order };
+  }
+}
+
+export const builderJobs: { [K in "insert_fragment" | "hydrogens" | "polymer" | "graph_edit"]: AgentJobRunner<K> } = {
   insert_fragment: {
     unavailable: explicitGraph,
     paramsUnavailable: (snapshot, { atomIndex }) => atomIndex !== undefined && atomIndex >= snapshot.structure!.atoms.length ? `atomIndex must be below ${snapshot.structure!.atoms.length}.` : null,
@@ -82,6 +93,16 @@ export const builderJobs: { [K in "insert_fragment" | "hydrogens" | "polymer"]: 
         { head, tail, headLeaving, tailLeaving, count, bondLength: bondLengthAngstrom, endGroups: "hydrogen", tacticity, ends: { head: headEnd, tail: tailEnd }, relax }), context);
       return { summary: { atomCount: polymer.atomCount, bondCount: polymer.bondCount, repeatCount: count, repeatAlternatives: polymer.repeatAlternatives, relaxation: polymer.relaxation ?? null },
         artifacts: [await context.artifact("structure", `${context.stem}-polymer-${count}.sdf`, "chemical/x-mdl-sdfile", polymer.sdf)] };
+    },
+  },
+  graph_edit: {
+    unavailable: explicitGraph,
+    // Edits apply together or not at all; sourceAtomIndices maps each result atom to its source atom (-1 for added ones).
+    async run(input, { edits }, context) {
+      const structure = input.structure!;
+      const edited = await runGraphTask({ action: "edit-graph", molecule: structure, edits: edits.map(graphEdit) }, context);
+      return { summary: { ...graphSummary(edited, structure.atoms.length), editCount: edits.length },
+        artifacts: [await structureArtifact(input, "edited", edited.molfile, context)] };
     },
   },
 };

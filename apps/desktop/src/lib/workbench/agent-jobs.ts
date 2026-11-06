@@ -9,6 +9,8 @@ import { vibrationalSpectrumJob } from "./agent-vibrational-spectrum-job";
 import { spectrumJob } from "./agent-spectrum-job";
 import { pairDistributionJob } from "./agent-pair-distribution";
 import { biologicalAssemblyJob } from "./agent-assembly-job";
+import { structureExportJob } from "./structure-export";
+import { quantumInputJob } from "./agent-quantum-input-job";
 import { crystalTransformJob, pointGroupJob, powderXrdJob, spaceGroupJob } from "./agent-crystal-jobs";
 
 export type AgentArtifact = { name: string; fileName: string; mimeType: string; content: string; byteCount: number; sha256: string };
@@ -58,6 +60,8 @@ export const AGENT_JOBS: { [K in WorkbenchSubmitJobKind]: AgentJobRunner<K> } = 
   powder_xrd: powderXrdJob,
   crystal_transform: crystalTransformJob,
   biological_assembly: biologicalAssemblyJob,
+  structure_export: structureExportJob,
+  quantum_input: quantumInputJob,
   orbital_cube: orbitalCubeJob,
 };
 

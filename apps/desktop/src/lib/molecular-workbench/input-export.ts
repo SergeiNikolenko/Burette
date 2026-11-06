@@ -14,6 +14,13 @@ export type QuantumInputOptions = {
   /** The Z-matrix the user wrote for these atoms; without it one is built in atom order. */
   definition?: ZmatrixDocument;
 };
+/** The method and basis Export input file starts each program with. */
+export const QUANTUM_INPUT_DEFAULTS: Record<QuantumEngine, { method: string; basis: string }> = {
+  orca: { method: "B3LYP", basis: "def2-SVP" },
+  gaussian: { method: "B3LYP", basis: "6-31G(d)" },
+  psi4: { method: "b3lyp", basis: "def2-svp" },
+  cp2k: { method: "PBE", basis: "DZVP-MOLOPT-SR-GTH" },
+};
 /** Programs whose geometry can be a Z-matrix: Gaussian and Psi4 natively, ORCA as `* gzmt`. */
 export const ZMATRIX_ENGINES: readonly QuantumEngine[] = ["orca", "gaussian", "psi4"];
 

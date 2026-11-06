@@ -51,7 +51,7 @@ JobKind = Literal[
     "prepare_3d", "conformers", "metadata_edit", "measurement_set", "coordinate_align",
     "spectrum", "vibrational_spectrum", "pair_distribution", "point_group",
     "space_group", "powder_xrd", "crystal_transform", "biological_assembly", "orbital_cube",
-    "insert_fragment", "hydrogens", "polymer",
+    "insert_fragment", "hydrogens", "polymer", "graph_edit", "structure_export", "quantum_input",
 ]
 # Kinds that build a new structure without a source document (operation ``build``).
 BuildKind = Literal["smiles", "peptide", "metal_complex", "nucleic_acid"]
@@ -145,6 +145,9 @@ class Workbench:
             command += ["--output", str(Path(output).expanduser().resolve())]
         if overwrite:
             command.append("--overwrite")
+        return self._run(command, body)
+
+    def _run(self, command: List[str], body: Mapping[str, Any]) -> Dict[str, Any]:
         try:
             completed = subprocess.run(command, input=json.dumps(body), capture_output=True, text=True, timeout=self.timeout, check=False)
         except subprocess.TimeoutExpired as error:
@@ -159,6 +162,11 @@ class Workbench:
                 raise WorkbenchError("CLI_FAILED", (completed.stderr or completed.stdout).strip()[:2000] or f"exit status {completed.returncode}") from None
             raise WorkbenchError(error.get("code", "CLI_FAILED"), error.get("message", ""), error.get("details"))
         return json.loads(completed.stdout)["result"]
+
+    def open(self, *paths: str | os.PathLike[str]) -> Dict[str, Any]:
+        """Opens files in the session's workspace, such as an exported artifact; jobs then run on the new active document."""
+        action = {"type": "open_files", "paths": [str(Path(path).expanduser().resolve()) for path in paths]}
+        return self._run([*self.cli, "act", "--session-dir", self.session_dir, "--stdin", "--wait-ms", str(self.wait_ms)], action)
 
     # Reads ---------------------------------------------------------------
 

@@ -53,7 +53,7 @@ test("the contract resolves explicit optimizer defaults and rejects malformed ty
     ["metadata_edit", {}], ["metadata_edit", { atoms: [{ index: 0 }] }], ["pair_distribution", { rMax: 100, binWidth: 0.001 }],
   ] as const) expect(params(kind, value)).toBe("INVALID_ARGS");
   expect(validateWorkbenchRequest(submitRequest("molecular_dynamics"))).toMatchObject({ ok: false, error: { code: "UNSUPPORTED_WORKBENCH_JOB" } });
-  expect(Object.keys(workbenchContractSummary().jobs)).toEqual(["properties", "energy", "energy_forces", "frame_energy_forces", "optimize", "prepare_3d", "conformers", "metadata_edit", "measurement_set", "coordinate_align", "spectrum", "vibrational_spectrum", "pair_distribution", "point_group", "space_group", "powder_xrd", "crystal_transform", "biological_assembly", "orbital_cube", "insert_fragment", "hydrogens", "polymer", "smiles", "nucleic_acid", "metal_complex", "peptide"]);
+  expect(Object.keys(workbenchContractSummary().jobs)).toEqual(["properties", "energy", "energy_forces", "frame_energy_forces", "optimize", "prepare_3d", "conformers", "metadata_edit", "measurement_set", "coordinate_align", "spectrum", "vibrational_spectrum", "pair_distribution", "point_group", "space_group", "powder_xrd", "crystal_transform", "biological_assembly", "orbital_cube", "insert_fragment", "hydrogens", "polymer", "graph_edit", "structure_export", "quantum_input", "smiles", "nucleic_acid", "metal_complex", "peptide"]);
 });
 
 test("optimize jobs reach the RDKit minimum, export source-ordered artifacts and an energy-per-step trajectory", async () => {
@@ -195,4 +195,56 @@ test("pair distribution of a simple cubic cell has its six nearest neighbours at
   expect(job.summary).toMatchObject({ boundary: "periodic", atomCount: 1, distanceUnit: "angstrom", minDistance: expect.closeTo(3, 9), coordination: expect.closeTo(6, 9) });
   const isolated = workspace(fixture("acetonitrile.sdf"), "sdf");
   expect((await isolated.ok({ operation: "observe" })).jobs.pair_distribution).toEqual({ available: false, reason: "Open a structure with a unit cell to calculate g(r)." });
+});
+
+test("graph edits turn ethanol into acetonitrile in order, and structure export writes the source as MOL, XYZ and CJSON", async () => {
+  const code = (kind: string, value: unknown) => { const result = validateWorkbenchRequest(submitRequest(kind, value)); return result.ok ? null : result.error.code; };
+  for (const [kind, value] of [
+    ["graph_edit", {}], ["graph_edit", { edits: [] }], ["graph_edit", { edits: [{ kind: "set_bond", a: 1, b: 1, order: 1 }] }],
+    ["graph_edit", { edits: [{ kind: "set_bond", a: 0, b: 1, order: 4 }] }], ["graph_edit", { edits: [{ kind: "update_atom", index: 0 }] }],
+    ["graph_edit", { edits: [{ kind: "add_atom", element: "cl", position: [0, 0, 0] }] }], ["structure_export", {}], ["structure_export", { format: "pdb" }],
+  ] as const) expect(code(kind, value)).toBe("INVALID_ARGS");
+  const f = workspace(fixture("ethanol.sdf"), "sdf");
+  // The methylene and hydroxyl hydrogens go first, so the oxygen keeps index 2.
+  const edited = await f.finish((await f.submit("graph_edit", { edits: [
+    { kind: "delete_atoms", indices: [6, 7, 8] }, { kind: "update_atom", index: 2, element: "N" }, { kind: "set_bond", a: 1, b: 2, order: 3 },
+  ] })).jobId);
+  expect(edited).toMatchObject({ status: "succeeded", summary: { atomCount: 6, bondCount: 5, sourceAtomCount: 9, sourceAtomIndices: [0, 1, 2, 3, 4, 5], editCount: 3 } });
+  const nitrile = rdkit.get_mol((await f.exported(edited.jobId, "structure")).content, JSON.stringify({ removeHs: true }))!;
+  try { expect(nitrile.get_smiles()).toBe("CC#N"); } finally { nitrile.delete(); }
+  const exported = async (format: string) => {
+    const job = await f.finish((await f.submit("structure_export", { format })).jobId);
+    expect(job).toMatchObject({ status: "succeeded", summary: { format } });
+    return (await f.exported(job.jobId, "structure")).content as string;
+  };
+  const mol = await exported("mol");
+  expect(mol).toBe(fixture("ethanol.sdf").split(/^M {2}END$/mu)[0] + "M  END\n");
+  const xyz = (await exported("xyz")).trim().split("\n");
+  expect([xyz[0], xyz.slice(2).map(line => line.trim().split(/\s+/u)[0]).join("")]).toEqual(["9", "CCOHHHHHH"]);
+  const cjson = JSON.parse(await exported("cjson"));
+  expect([cjson.atoms.elements.number, cjson.bonds.order.length]).toEqual([[6, 6, 8, 1, 1, 1, 1, 1, 1], 8]);
+});
+
+test("quantum input jobs write the Export input file text with the dialog's defaults, a Z-matrix and the source cell", async () => {
+  const code = (value: unknown) => { const result = validateWorkbenchRequest(submitRequest("quantum_input", value)); return result.ok ? null : result.error.code; };
+  for (const value of [{}, { program: "nwchem" }, { program: "cp2k", coordinates: "zmatrix" }, { program: "orca", constraints: [{ kind: "freeze", atoms: [0] }] },
+    { program: "orca", task: "optimize", constraints: [{ kind: "distance", atoms: [0, 1], target: 1.5 }] }, { program: "orca", method: "B3LYP def2-SVP" }]) expect(code(value)).toBe("INVALID_ARGS");
+  const f = workspace(fixture("ethanol.sdf"), "sdf");
+  const write = async (params: Record<string, unknown>) => {
+    const job = await f.finish((await f.submit("quantum_input", params)).jobId);
+    expect(job.status).toBe("succeeded");
+    return { summary: job.summary, text: (await f.exported(job.jobId, "input")).content as string };
+  };
+  const orca = await write({ program: "orca" });
+  expect(orca.summary).toMatchObject({ program: "orca", method: "B3LYP", basis: "def2-SVP", task: "energy", atomCount: 9, periodic: false });
+  expect(orca.text.split("\n").slice(0, 3)).toEqual(["! B3LYP def2-SVP SP", "", "* xyz 0 1"]);
+  const gaussian = await write({ program: "gaussian", task: "optimize", coordinates: "zmatrix", constraints: [{ kind: "freeze", atoms: [0] }] });
+  expect(gaussian.text.startsWith("#p B3LYP/6-31G(d) Opt=ModRedundant\n")).toBe(true);
+  expect(gaussian.text.split("\n").slice(5, 8).map(line => line.split(" ").length)).toEqual([1, 3, 5]);
+  expect(gaussian.text).toContain("\nX 1 F\n");
+  const cubic = workspace(fixture("simple-cubic.xyz"), "xyz");
+  // One copper atom has 29 electrons, so a singlet is refused as in the dialog.
+  expect(await cubic.finish((await cubic.submit("quantum_input", { program: "cp2k" })).jobId)).toMatchObject({ status: "failed", error: { message: expect.stringContaining("multiplicity") } });
+  const job = await cubic.finish((await cubic.submit("quantum_input", { program: "cp2k", multiplicity: 2 })).jobId);
+  expect([job.summary.periodic, (await cubic.exported(job.jobId, "input")).content.includes("PERIODIC XYZ")]).toEqual([true, true]);
 });
