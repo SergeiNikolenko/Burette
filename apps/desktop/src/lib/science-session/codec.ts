@@ -5,7 +5,7 @@ import { validateScientificDocument } from "./scientific-document";
 import { readSdfSource } from "./sdf-source";
 import { checkMcdOriginalDescriptors, encodeMcdOriginals, decodeMcdOriginals, type McdCompanionOriginal, type McdOriginalDescriptor } from "./mcd-originals";
 import { sha256Hex } from "../source-editing/source-identity";
-import { readSceneSourceFrames, type SceneSourceExtension } from "./source-frames";
+import { isCrystalSceneExtension, sceneSourceFrames, type SceneSourceExtension } from "./source-frames";
 import type { ScienceSceneBinding } from "./scene-binding";
 export { sha256Hex, positionsMatch } from "../source-editing/source-identity";
 export { readXyzFrames, readSceneSourceFrames, type XyzFrame } from "./source-frames";
@@ -27,6 +27,8 @@ export const SCIENCE_MANIFEST_ASSET_ID = "burette-science-manifest";
 export const SCIENCE_MANIFEST_ASSET_NAME = "burette-science.json";
 export const SCIENCE_SESSION_KIND = "burette.science-session";
 export const SCIENCE_SESSION_VERSION = 4;
+/** A crystal (CIF or POSCAR) source; earlier versions cannot carry one. */
+export const CRYSTAL_SESSION_VERSION = 5;
 const ATTACHMENT_ID = /^burette-science-attachment-(\d{1,3})$/u;
 export type AttachmentType = "utf8" | "json" | "bytes" | "float32le" | "float64le";
 export type AttachmentDescriptor = { id: string; dtype: AttachmentType; count: number; byteLength: number; sha256: string };
@@ -34,7 +36,7 @@ export type AttachmentDescriptor = { id: string; dtype: AttachmentType; count: n
 
 export type ScienceManifest = {
   kind: typeof SCIENCE_SESSION_KIND;
-  version: 1 | 2 | 3 | typeof SCIENCE_SESSION_VERSION;
+  version: 1 | 2 | 3 | typeof SCIENCE_SESSION_VERSION | typeof CRYSTAL_SESSION_VERSION;
   document: { uuid: string };
   /** The editable logical source; `sha256` identifies the revision the scene shows. */
   source: { extension: SceneSourceExtension; attachment: string; sha256: string };
@@ -183,7 +185,7 @@ const attachmentId = (index: number) => `${SCIENCE_ASSET_PREFIX}attachment-${ind
 
 /** Manifest and attachment assets for one acknowledged revision; nothing is written. */
 export async function encodeScienceSession(content: ScienceSessionContent): Promise<EncodedScienceSession> {
-  const frames = readSceneSourceFrames(content.source.text, content.source.extension);
+  const frames = await sceneSourceFrames(content.source.text, content.source.extension);
   checkGraphSourceIds(content.source.text, content.source.extension, content.atomIds);
   if (content.source.extension !== "xyz" && content.science && !(content.source.extension === "mol" && content.science.format === "cjson")) fail("science", "Graph scenes require explicit CJSON scientific ownership.");
   const graphScience = content.source.extension === "mol" && content.science?.format === "cjson";
@@ -235,7 +237,7 @@ export async function encodeScienceSession(content: ScienceSessionContent): Prom
   const manifest: ScienceManifest = {
     kind: SCIENCE_SESSION_KIND,
     // Preserve legacy writers; explicit CJSON graph science uses v4.
-    version: graphScience ? 4 : companions ? 3 : content.source.extension === "mol" ? 2 : 1,
+    version: isCrystalSceneExtension(content.source.extension) ? CRYSTAL_SESSION_VERSION : graphScience ? 4 : companions ? 3 : content.source.extension === "mol" ? 2 : 1,
     document: { uuid: content.documentUuid },
     source: { extension: content.source.extension, attachment: sourceAttachment, sha256: attachments[0].sha256 },
     atoms: { count: elements.length, ids: content.atomIds ? [...content.atomIds] : null },
@@ -296,11 +298,12 @@ function decodeJson(bytes: Uint8Array, what: string): unknown {
 function checkManifest(value: unknown): ScienceManifest {
   if (!isRecord(value) || value.kind !== SCIENCE_SESSION_KIND) fail("manifest", "The scientific manifest is not a Burette manifest.");
   const manifest = value as Record<string, unknown>;
-  if (manifest.version !== 1 && manifest.version !== 2 && manifest.version !== 3 && manifest.version !== SCIENCE_SESSION_VERSION) fail("version", `Scientific data version ${String(manifest.version).slice(0, 16)} is not supported by this Burette.`);
+  if (manifest.version !== 1 && manifest.version !== 2 && manifest.version !== 3 && manifest.version !== SCIENCE_SESSION_VERSION && manifest.version !== CRYSTAL_SESSION_VERSION) fail("version", `Scientific data version ${String(manifest.version).slice(0, 16)} is not supported by this Burette.`);
   const document = manifest.document, source = manifest.source, atoms = manifest.atoms, binding = manifest.binding;
   if (!isRecord(document) || typeof document.uuid !== "string" || !/^[0-9a-f-]{8,64}$/iu.test(document.uuid)) fail("manifest", "The scientific manifest lacks its document id.");
-  if (!isRecord(source) || !["xyz", "sdf", "mol"].includes(source.extension as string) || typeof source.attachment !== "string" || typeof source.sha256 !== "string") fail("manifest", "The scientific manifest lacks its source.");
+  if (!isRecord(source) || !["xyz", "sdf", "mol", "cif", "vasp"].includes(source.extension as string) || typeof source.attachment !== "string" || typeof source.sha256 !== "string") fail("manifest", "The scientific manifest lacks its source.");
   if (source.extension === "mol" && manifest.version === 1) fail("version", "MOL scene sources require scientific data version 2 or later.");
+  if ((manifest.version === CRYSTAL_SESSION_VERSION) !== isCrystalSceneExtension(source.extension as string)) fail("version", "Crystal scene sources require scientific data version 5, and only they use it.");
   if (manifest.version === 4 && (source.extension !== "mol" || !manifest.science || !manifest.original)) {
     fail("version", "Scientific data version 4 requires CJSON graph science and its Original.");
   }
@@ -377,7 +380,7 @@ export async function decodeScienceSession(archive: Uint8Array): Promise<Decoded
   } catch {
     return fail("source", "The scene source is not UTF-8 text.");
   }
-  const frames = readSceneSourceFrames(text, manifest.source.extension);
+  const frames = await sceneSourceFrames(text, manifest.source.extension);
   checkGraphSourceIds(text, manifest.source.extension, manifest.atoms.ids);
   if (manifest.source.extension !== "xyz" && manifest.science && manifest.version !== 4) fail("science", "Graph scientific data requires version 4.");
   const elements = frames[0].elements;

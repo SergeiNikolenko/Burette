@@ -13,6 +13,8 @@ import { ScienceSessionError, SCIENCE_SESSION_LIMITS } from "./contracts";
 import { checkBindingReport, checkSceneShowsSource, type ScienceSceneBinding, type SceneScienceBindingReport } from "./scene-binding";
 export { checkBindingReport, checkSceneShowsSource, type SceneScienceBindingReport } from "./scene-binding";
 import { readSdfSource } from "./sdf-source";
+import { isCrystalSceneExtension, shownSceneSource } from "./source-frames";
+import { periodicCrystalFormat } from "../molecular-workbench/crystal-io";
 import { readSceneDocumentBytes } from "./source-bytes";
 import { atomIdsAlong, documentUuidFor, graphAtomIds, logicalSourceFor, plainAtomIds, sourceExtension } from "./state";
 
@@ -42,8 +44,11 @@ function sourceSession(options: ExportOptions, document: ViewerDocument) {
  */
 export async function prepareSceneScienceExport(document: ViewerDocument, options: ExportOptions): Promise<SceneScienceExport | null> {
   const extension = sourceExtension(document) === "sd" ? "sdf" : sourceExtension(document);
-  if (document.renderer !== "molstar" || document.dockingRequest || document.mergedCollection || (extension !== "xyz" && extension !== "sdf" && extension !== "mol")) return null;
-  const graph = extension !== "xyz";
+  if (document.renderer !== "molstar" || document.dockingRequest || document.mergedCollection
+    || (extension !== "xyz" && extension !== "sdf" && extension !== "mol" && !isCrystalSceneExtension(extension))) return null;
+  const graph = extension === "sdf" || extension === "mol";
+  // A crystal carries its CIF or POSCAR so the reopened scene edits the cell again.
+  const crystal = isCrystalSceneExtension(extension);
   const request = options.request ?? requestViewerAction;
   const session: SourceEditingView | null = sourceSession(options, document);
   const logical = logicalSourceFor(document.id);
@@ -56,8 +61,9 @@ export async function prepareSceneScienceExport(document: ViewerDocument, option
     virtualText = readBrowserDevVirtualTextDocument(document.path);
     text = virtualText ?? await readStructureText(document.path);
   }
+  if (crystal && periodicCrystalFormat(extension, text) !== extension) return null;
   const state = scientificStateFor(document.id, text);
-  const carriesScience = Boolean(graph || logical || state.revision || state.original);
+  const carriesScience = Boolean(graph || crystal || logical || state.revision || state.original);
   if (options.sceneFileCount > 1) {
     // The recorded list outlives removals from the tree. Check the live count,
     // then still require the exact source binding below before carrying science.
@@ -88,7 +94,8 @@ export async function prepareSceneScienceExport(document: ViewerDocument, option
   }
   let frames: ReturnType<typeof checkSceneShowsSource>;
   try {
-    frames = checkSceneShowsSource(report, text, extension);
+    const shown = await shownSceneSource(text, extension);
+    frames = checkSceneShowsSource(report, shown.text, shown.extension);
     if (graph && report.sourceSha256 !== await sha256Hex(text)) throw new ScienceSessionError("binding", "The scene does not show the current graph source yet. Wait for it to update, then save again.");
   } catch (error) {
     if (!carriesScience) return null;

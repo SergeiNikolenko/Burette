@@ -326,8 +326,8 @@ export function useSourceEditingController({
       if (beginOptions?.reveal !== false) { setDockOpen("right", true); setDockActiveTab("right", revealTab); }
       return;
     }
-    // Logical XYZ is admitted only by Geometry; graph sources keep their real-format preview lane.
-    const logical = restored?.extension === "sdf" || restored?.extension === "mol" || logicalXyzGeometry ? restored : null;
+    // Logical XYZ is admitted only by Geometry; graph and crystal sources keep their real-format preview lane.
+    const logical = restored?.extension === "sdf" || restored?.extension === "mol" || restored?.extension === "cif" || restored?.extension === "vasp" || logicalXyzGeometry ? restored : null;
     const extension = logical?.extension ?? document.extension.toLowerCase().replace(/^\./u, "");
     if ((document.virtual && !logicalXyzGeometry && !structureEditAvailable(document) && !(browserDraftSource && isBrowserDraftSource(document))) || document.dockingRequest || document.mergedCollection || !EDITABLE_EXTENSIONS.has(extension)) {
       pushErrorStatus(new Error("This structure source is read-only in the first live-editing release."), "Edit source");

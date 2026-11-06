@@ -2,7 +2,7 @@ import type { CrystalEdit } from "../molecular-workbench/crystal-edit";
 import { periodicCrystalFormat, type CrystalDocument, type CrystalFormat } from "../molecular-workbench/crystal-io";
 import { SOURCE_EDIT_MAX_BYTES, utf8ByteCount } from "../source-editing/policy";
 import { useStructureSourceText } from "../source-editing/use-structure-source-text";
-import { sourceExtension } from "../science-session/state";
+import { sourceExtension, useLogicalSource } from "../science-session/state";
 import { runCrystalTask } from "./crystal-task";
 import { runReaderTask } from "./reader-task";
 import { workbenchSupportsDocument } from "./structure";
@@ -14,16 +14,24 @@ export type CrystalRevision = TextRevision<CrystalDocument, CrystalEdit["kind"]>
 const PERIODIC_EXTENSIONS = new Set(["cif", "mmcif", "mcif", "vasp", "xyz"]);
 
 /** Documents whose source can be a crystal the panel edits; only these are read to find out. */
-function crystalDocument(document: ViewerDocument | null) {
-  return document && workbenchSupportsDocument(document) && PERIODIC_EXTENSIONS.has(sourceExtension(document))
+function crystalDocument(document: ViewerDocument | null, extension: string) {
+  return document && workbenchSupportsDocument(document) && PERIODIC_EXTENSIONS.has(extension)
     && document.byteCount <= SOURCE_EDIT_MAX_BYTES ? document : null;
+}
+
+/** The extension the document is edited as. A reopened scene publishes its source after it
+ * mounts, so the extension comes from the store as a value the memoized hooks depend on. */
+function useEditedExtension(document: ViewerDocument | null) {
+  const logical = useLogicalSource(document?.id ?? null);
+  return document ? logical?.extension ?? sourceExtension(document) : "";
 }
 
 /** Whether the document's current source is a crystal the Crystal panel can open. */
 export function useCrystalAvailable(document: ViewerDocument | null) {
-  const candidate = crystalDocument(document);
+  const extension = useEditedExtension(document);
+  const candidate = crystalDocument(document, extension);
   const { text } = useStructureSourceText(candidate);
-  return Boolean(candidate && text !== null && periodicCrystalFormat(sourceExtension(candidate), text));
+  return Boolean(candidate && text !== null && periodicCrystalFormat(extension, text));
 }
 
 /**
@@ -32,8 +40,9 @@ export function useCrystalAvailable(document: ViewerDocument | null) {
  * asymmetric unit of a source that cannot carry symmetry opens as a new CIF instead.
  */
 export function useCrystalDraft(document: ViewerDocument | null, openCif: (name: string, text: string) => Promise<unknown>) {
-  const candidate = crystalDocument(document);
-  const extension = candidate ? sourceExtension(candidate) : "";
+  const edited = useEditedExtension(document);
+  const candidate = crystalDocument(document, edited);
+  const extension = candidate ? edited : "";
   const formatOf = (text: string): CrystalFormat | null => periodicCrystalFormat(extension, text);
   const draft = useTextDraft<CrystalDocument, CrystalEdit["kind"]>("crystal", candidate, candidate ? {
     accepts: (text) => formatOf(text) !== null,

@@ -1,7 +1,11 @@
 import { normalizeElement, ScienceSessionError, SCIENCE_SESSION_LIMITS, type ScienceSessionErrorCode } from "./contracts";
 import { readGraphSource } from "./graph-source";
+import { periodicCrystalFormat, readCrystalView, writeExtendedXyz } from "../molecular-workbench/crystal-io";
 
-export type SceneSourceExtension = "xyz" | "sdf" | "mol";
+/** CIF and POSCAR (`vasp`) are crystal sources: the scene shows their full cell as extended XYZ. */
+export type CrystalSceneExtension = "cif" | "vasp";
+export type SceneSourceExtension = "xyz" | "sdf" | "mol" | CrystalSceneExtension;
+export const isCrystalSceneExtension = (extension: string): extension is CrystalSceneExtension => extension === "cif" || extension === "vasp";
 
 function fail(code: ScienceSessionErrorCode, message: string): never {
   throw new ScienceSessionError(code, message);
@@ -42,8 +46,28 @@ export function readXyzFrames(text: string): XyzFrame[] {
 }
 
 /** Graph sources have one frame; XYZ retains its existing multi-frame contract. */
-export function readSceneSourceFrames(text: string, extension: SceneSourceExtension = "xyz"): XyzFrame[] {
+export function readSceneSourceFrames(text: string, extension: Exclude<SceneSourceExtension, CrystalSceneExtension> = "xyz"): XyzFrame[] {
   if (extension === "sdf" || extension === "mol") return [readGraphSource(text, extension)];
   if (extension === "xyz") return readXyzFrames(text);
   return fail("source", "The scene source format is unsupported.");
+}
+
+/**
+ * The text and format the scene shows for a source. A crystal is shown as the extended XYZ
+ * of its full cell, written exactly as the viewer receives it (see crystal-preview).
+ */
+export async function shownSceneSource(text: string, extension: SceneSourceExtension): Promise<{ text: string; extension: Exclude<SceneSourceExtension, CrystalSceneExtension> }> {
+  if (!isCrystalSceneExtension(extension)) return { text, extension };
+  const format = periodicCrystalFormat(extension, text);
+  if (format !== extension) fail("source", "The scene source is not a crystal.");
+  let view;
+  try { view = await readCrystalView({ format, text }); }
+  catch (error) { return fail("source", `The crystal source cannot be read: ${error instanceof Error ? error.message : String(error)}`); }
+  return { text: writeExtendedXyz(view.atoms, view.cell, view.title), extension: "xyz" };
+}
+
+/** Frames of a source as the scene shows them. */
+export async function sceneSourceFrames(text: string, extension: SceneSourceExtension) {
+  const shown = await shownSceneSource(text, extension);
+  return readSceneSourceFrames(shown.text, shown.extension);
 }

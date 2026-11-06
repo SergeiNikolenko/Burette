@@ -47,6 +47,7 @@ import { ViewerFrame } from "./editor-area/viewer-frame";
 import { TextFileViewer } from "./text-file-viewer";
 import { MarkdownRichViewer } from "./text-file-viewer/markdown-rich-viewer";
 import { useSourceEditing } from "../lib/source-editing/context";
+import { useLogicalSource } from "../lib/science-session/state";
 import { TextDocumentInfoPanel } from "./text-document-info-panel";
 import { FileInfoPanel } from "./file-info-panel";
 import { basename } from "../lib/sidebar-projects";
@@ -1186,6 +1187,8 @@ function SingleDocumentTextPanel({
   onStructureSelection: ShellActions["selectTextStructure"];
 }) {
   const sourceEditing = useSourceEditing();
+  // A restored scene shows the source saved inside it rather than the archive.
+  const logical = useLogicalSource(activeDocument?.id ?? null);
   const textPreviewLimit = isMaestroStructure(activeDocument) ? 1_500_000 : 3_000_000;
   const existingDocument = activeTextDocument ?? (activeDocument
     ? textDocuments.find((document) => document.path === activeDocument.path) ?? null
@@ -1198,7 +1201,7 @@ function SingleDocumentTextPanel({
     setError(null);
     if (!activeDocument || activeTextDocument || existingDocument) return undefined;
     let cancelled = false;
-    const virtualText = readBrowserDevVirtualTextDocument(activeDocument.path);
+    const virtualText = logical?.text ?? readBrowserDevVirtualTextDocument(activeDocument.path);
     const documentPromise = virtualText === null
       ? readStructureTextDocument(activeDocument.path, {
         id: activeDocument.id,
@@ -1207,7 +1210,7 @@ function SingleDocumentTextPanel({
         extension: activeDocument.extension,
         byteCount: activeDocument.byteCount,
       }, { maxBytes: textPreviewLimit })
-      : Promise.resolve(textDocumentFromVirtualText(activeDocument, virtualText));
+      : Promise.resolve(textDocumentFromVirtualText(activeDocument, virtualText, logical?.extension));
     void documentPromise
       .then((document) => {
         if (cancelled) return;
@@ -1220,7 +1223,7 @@ function SingleDocumentTextPanel({
     return () => {
       cancelled = true;
     };
-  }, [activeDocument, activeTextDocument, existingDocument, textPreviewLimit]);
+  }, [activeDocument, activeTextDocument, existingDocument, logical, textPreviewLimit]);
 
   if (!activeDocument && !activeTextDocument) {
     return (
@@ -1394,13 +1397,13 @@ function textPreviewLimitForExtension(extension: string) {
   return ["mae", "maegz", "cms"].includes(extension.toLowerCase()) ? 1_500_000 : 3_000_000;
 }
 
-function textDocumentFromVirtualText(document: ViewerDocument, content: string): TextFileDocument {
+function textDocumentFromVirtualText(document: ViewerDocument, content: string, extension = document.extension): TextFileDocument {
   return {
     id: document.id,
     path: document.path,
     title: document.title,
-    extension: document.extension,
-    language: document.extension,
+    extension,
+    language: extension,
     byteCount: content.length,
     content,
     truncated: false,

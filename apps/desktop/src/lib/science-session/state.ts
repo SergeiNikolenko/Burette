@@ -1,13 +1,14 @@
 import { validateAtomProvenance } from "./atom-provenance";
 import { useSyncExternalStore } from "react";
 import type { ViewerDocument } from "../../types";
+import type { SceneSourceExtension } from "./source-frames";
 
 /**
  * The editable source a restored MOLX scene carries. The document stays a `.molx` scene;
  * Text, Geometry and the source editor read and edit this text instead of the archive,
  * and their edits move the restored structure in place (see use-source-editing).
  */
-export type LogicalSource = { documentId: string; extension: "xyz" | "sdf" | "mol"; text: string };
+export type LogicalSource = { documentId: string; extension: SceneSourceExtension; text: string };
 
 const logical = new Map<string, LogicalSource>();
 // A pending restore has no published source, even when an earlier source is retained.

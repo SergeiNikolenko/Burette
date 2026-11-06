@@ -3,6 +3,7 @@ import type { DockTabKind } from "../dock";
 import { useSourceEditing, type SourceEditingOperation } from "../source-editing/context";
 import { useStructureSourceText } from "../source-editing/use-structure-source-text";
 import { logicalSourceFor, useLogicalSource, type LogicalSource } from "../science-session/state";
+import { isCrystalSceneExtension } from "../science-session/source-frames";
 import { forgetViewerAtomSelection } from "./selection";
 import type { ViewerDocument } from "../../types";
 
@@ -164,8 +165,9 @@ export function useTextDraft<Value, Edit extends string>(scope: string, document
     error: readError ?? (current ? entry.error : null),
     busy: current && entry.busy,
     session,
-    // A restored scene keeps its source inside the scene; these edits need the file itself.
-    editable: !logical,
+    // A restored scene keeps its source inside the scene; these edits need the file itself,
+    // except a crystal's CIF or POSCAR, which the edit replaces as the scene's whole structure.
+    editable: !logical || isCrystalSceneExtension(logical.extension),
     apply,
     undo: () => restore("undo"),
     redo: () => restore("redo"),

@@ -344,8 +344,28 @@ current one has open code or acceptance items.
   `powder_xrd`.
 - **Done when:** CIF → supercell → Save scene → reopen → edit cell again →
   export CIF that reopens with the same lattice.
-- **Checks:** `test:crystal-edit`, `test:crystal-io`, `test:crystal-agent`,
-  `test:assembly-worker`.
+- **Done (2026-11-06):** Save scene keeps a CIF or POSCAR crystal as the scene's
+  source (session version 5; a crystal source in an older version, or a
+  version 5 scene without one, is refused). The scene is checked against the
+  full cell the viewer shows, symmetry expanded. A reopened crystal scene offers
+  the Crystal panel with the saved cell, and its edits are Undo steps saved with
+  the next Save scene; Text shows the source saved in the scene instead of the
+  archive bytes, which it used to fail on for every restored scene. A React
+  Compiler trap had hidden the Crystal tab after a restore: the hook read the
+  source extension from a store without subscribing to it. The agent contract gains
+  `biological_assembly` (the Compute menu's assembly, exported as mmCIF; the
+  assembly and model are required only when the file defines several) and an
+  optional `profile` (`gaussian`, `lorentzian`) with `fwhmDegrees` on
+  `powder_xrd`, which adds the broadened curve to the pattern artifact. Browser
+  check on Gauss, both themes: rutile CIF → supercell a×2 → Save scene → reopen
+  (12 → 24 atoms, a = 9.188 Å) → b×2 → Save scene → reopen: 48 atoms,
+  a = b = 9.188, c = 5.918 Å in the saved CIF. Exporting the restored scene as
+  a standalone CIF is Export → Structure, stage 10.
+- **Checks:** `test:crystal-scene-source` (new, in `test:ui`), `test:crystal-edit`,
+  `test:crystal-io`, `test:crystal-open`, `test:crystal-agent`,
+  `test:assembly-worker`, `test:science-codec`, `test:science-runtime`,
+  `test:browser-session-restore`, `test:workbench-automation-jobs`,
+  `test:workbench-python-client`.
 
 ## Stage 10. Export to every structure format
 

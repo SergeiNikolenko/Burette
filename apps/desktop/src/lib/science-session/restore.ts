@@ -8,6 +8,7 @@ import { requestViewerAction } from "../viewer-bridge";
 import { adoptRestoredScientificSource, releaseScopedScientificSource, type ImportedRevision } from "../workbench/scientific-source-state";
 import { decodeScienceSession, sha256Hex, ScienceSessionError, SCIENCE_SESSION_LIMITS } from "./codec";
 import { checkBindingReport, checkSceneShowsSource } from "./scene-binding";
+import { shownSceneSource } from "./source-frames";
 import { readSceneDocumentBytes } from "./source-bytes";
 import { adoptLogicalSource, beginScienceSessionRestore, releaseClosedScienceSessions, rememberRevisionAtomIds } from "./state";
 
@@ -63,13 +64,15 @@ export async function restoreScienceSession(document: ViewerDocument, dependenci
     if (!isCurrent()) return "cancelled";
     if (!content) return "foreign";
     if (!await sceneReady(document, { ...dependencies, isOpen: isCurrent })) return "cancelled";
-    const graph = content.source.extension !== "xyz";
+    const graph = content.source.extension === "sdf" || content.source.extension === "mol";
     const report = checkBindingReport(await dependencies.request(document.id, { type: "scene_science_binding", ...(graph ? { sourceExtension: content.source.extension } : {}) }));
     if (!isCurrent()) return "cancelled";
     if (BINDING_KEYS.some((key) => report[key] !== content.binding[key])) {
       throw new ScienceSessionError("binding", "The scene structure does not match its scientific data.");
     }
-    const frames = checkSceneShowsSource(report, content.source.text, content.source.extension);
+    const shown = await shownSceneSource(content.source.text, content.source.extension);
+    if (!isCurrent()) return "cancelled";
+    const frames = checkSceneShowsSource(report, shown.text, shown.extension);
     if (graph && report.sourceSha256 !== await sha256Hex(content.source.text)) throw new ScienceSessionError("binding", "The scene graph does not match its saved source.");
     if (!isCurrent()) return "cancelled";
     if (!report.importToken) throw new ScienceSessionError("binding", "The scene did not report its import identity.");
