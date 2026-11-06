@@ -2,7 +2,8 @@
 //!
 //! The fuzzy-graph and curve-fitting flow is adapted from `hanxiao/mlx-vis`
 //! commit `06c8a75ad007820b35185937f83c03e09ab6bd5b` (Apache-2.0).
-//! Production optimization is implemented independently in Metal.
+//! Optimization runs in Metal (`compute/metal/umap.v1.metal`) or in its CPU
+//! port in `embedding.rs`.
 
 use std::{
     collections::{BTreeMap, HashMap},
