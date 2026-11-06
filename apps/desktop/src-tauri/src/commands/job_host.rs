@@ -1,5 +1,5 @@
-//! Host-side helpers for long-running jobs: keeping the Mac awake while any
-//! window runs a job, and posting a notification when one finishes.
+//! Host-side helpers for long-running jobs: keeping the computer awake while
+//! any window runs a job, and posting a notification when one finishes.
 
 use std::collections::BTreeSet;
 use std::process::{Child, Command, Stdio};
@@ -18,8 +18,9 @@ static SLEEP_PREVENTION: Mutex<SleepPrevention> = Mutex::new(SleepPrevention {
 });
 
 /// Records whether the calling window has running jobs that should keep the
-/// system awake. A `caffeinate -i -w <pid>` child holds the idle-sleep
-/// assertion while any window asks for it, and exits with the app.
+/// system awake. A `caffeinate -i -w <pid>` child (a `systemd-inhibit` child on
+/// Linux) holds the idle-sleep assertion while any window asks for it, and
+/// exits with the app.
 #[tauri::command]
 pub(crate) fn set_sleep_prevention<R: Runtime>(
     window: WebviewWindow<R>,
@@ -63,6 +64,7 @@ impl SleepPrevention {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn spawn_caffeinate() -> Result<Child, String> {
     Command::new("/usr/bin/caffeinate")
         .args(["-i", "-w", &std::process::id().to_string()])
@@ -71,6 +73,28 @@ fn spawn_caffeinate() -> Result<Child, String> {
         .stderr(Stdio::null())
         .spawn()
         .map_err(|error| format!("Cannot keep the Mac awake: {error}"))
+}
+
+/// logind holds the inhibitor lock until `tail --pid` returns, which it does
+/// when the app exits.
+#[cfg(not(target_os = "macos"))]
+fn spawn_caffeinate() -> Result<Child, String> {
+    Command::new("systemd-inhibit")
+        .args([
+            "--what=idle:sleep",
+            "--who=Burette",
+            "--why=Running molecular jobs",
+            "--mode=block",
+            "tail",
+            "-f",
+            "/dev/null",
+            &format!("--pid={}", std::process::id()),
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("Cannot keep the computer awake: {error}"))
 }
 
 #[tauri::command]
@@ -84,8 +108,18 @@ pub(crate) fn notify_job_finished(title: String, body: String) -> Result<(), Str
         if unsafe { macos::post_user_notification(&title, &body) } {
             return Ok(());
         }
+        post_with_osascript(&title, &body)
     }
-    post_with_osascript(&title, &body)
+    #[cfg(not(target_os = "macos"))]
+    {
+        notify_rust::Notification::new()
+            .appname("Burette")
+            .summary(&title)
+            .body(&body)
+            .show()
+            .map(|_| ())
+            .map_err(|error| format!("Cannot post a notification: {error}"))
+    }
 }
 
 fn bounded(value: &str, limit: usize) -> String {
@@ -94,6 +128,7 @@ fn bounded(value: &str, limit: usize) -> String {
 
 /// Fallback for unbundled development builds, where the notification center
 /// has no application identity to post under.
+#[cfg(target_os = "macos")]
 fn post_with_osascript(title: &str, body: &str) -> Result<(), String> {
     Command::new("/usr/bin/osascript")
         .args([

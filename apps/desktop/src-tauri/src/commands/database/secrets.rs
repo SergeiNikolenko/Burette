@@ -1,4 +1,5 @@
-//! Database passwords, kept in the login keychain.
+//! Database passwords, kept in the login keychain on macOS and in the Secret
+//! Service keyring (GNOME Keyring, KWallet) on Linux.
 //!
 //! Everything else the shell remembers lives in localStorage, which is plain
 //! text on disk and readable by anything that can read the profile. A database
@@ -7,7 +8,8 @@
 //!
 //! The secret itself is written to the tool's stdin, never to its arguments: the
 //! argument list of a running process is readable by other processes on macOS,
-//! and a password in argv is a password in `ps`.
+//! and a password in argv is a password in `ps`. On Linux it travels over the
+//! session bus, encrypted with the service's negotiated session key.
 
 #[cfg(target_os = "macos")]
 use std::io::Write;
@@ -136,21 +138,91 @@ pub(crate) fn delete(account: &str) -> Result<bool, String> {
 
 #[cfg(not(target_os = "macos"))]
 pub(crate) fn store(account: &str, secret: &str) -> Result<(), String> {
-    validate_account(account)?;
+    let account = validate_account(account)?;
     validate_secret(secret)?;
-    Err("Saving database passwords needs the macOS keychain".to_string())
+    let service = keyring::connect()?;
+    let collection = service
+        .get_default_collection()
+        .map_err(|error| keyring::failure("open the keyring", error))?;
+    collection
+        .ensure_unlocked()
+        .map_err(|error| keyring::failure("unlock the keyring", error))?;
+    collection
+        .create_item(
+            &format!("{KEYCHAIN_SERVICE}: {account}"),
+            keyring::attributes(&account),
+            secret.as_bytes(),
+            true,
+            "text/plain",
+        )
+        .map_err(|error| keyring::failure("store the password", error))?;
+    Ok(())
 }
 
 #[cfg(not(target_os = "macos"))]
 pub(crate) fn read(account: &str) -> Result<Option<String>, String> {
-    validate_account(account)?;
-    Ok(None)
+    let account = validate_account(account)?;
+    let service = keyring::connect()?;
+    let Some(item) = keyring::find(&service, &account)? else {
+        return Ok(None);
+    };
+    item.ensure_unlocked()
+        .map_err(|error| keyring::failure("unlock the password", error))?;
+    let secret = item
+        .get_secret()
+        .map_err(|error| keyring::failure("read the password", error))?;
+    let secret = String::from_utf8(secret)
+        .map_err(|_| "The stored password is not valid text".to_string())?;
+    Ok((!secret.is_empty()).then_some(secret))
 }
 
 #[cfg(not(target_os = "macos"))]
 pub(crate) fn delete(account: &str) -> Result<bool, String> {
-    validate_account(account)?;
-    Ok(false)
+    let account = validate_account(account)?;
+    let service = keyring::connect()?;
+    let Some(item) = keyring::find(&service, &account)? else {
+        return Ok(false);
+    };
+    item.delete()
+        .map_err(|error| keyring::failure("delete the password", error))?;
+    Ok(true)
+}
+
+#[cfg(not(target_os = "macos"))]
+mod keyring {
+    use std::collections::HashMap;
+
+    use secret_service::blocking::{Item, SecretService};
+    use secret_service::EncryptionType;
+
+    use super::KEYCHAIN_SERVICE;
+
+    pub(super) fn connect() -> Result<SecretService<'static>, String> {
+        SecretService::connect(EncryptionType::Dh).map_err(|error| {
+            format!("Could not reach the system keyring (GNOME Keyring or KWallet): {error}")
+        })
+    }
+
+    /// The same service and account pair the macOS keychain item uses.
+    pub(super) fn attributes(account: &str) -> HashMap<&str, &str> {
+        HashMap::from([("service", KEYCHAIN_SERVICE), ("account", account)])
+    }
+
+    /// A missing item is the normal state for a connection nobody saved a
+    /// password for, not a failure worth raising.
+    pub(super) fn find<'a>(
+        service: &'a SecretService<'a>,
+        account: &str,
+    ) -> Result<Option<Item<'a>>, String> {
+        let found = service
+            .search_items(attributes(account))
+            .map_err(|error| failure("search the keyring", error))?;
+        Ok(found.unlocked.into_iter().chain(found.locked).next())
+    }
+
+    pub(super) fn failure(what: &str, error: secret_service::Error) -> String {
+        format!("Could not {what}: {error}")
+    }
 }
 
 #[cfg(target_os = "macos")]

@@ -18,6 +18,23 @@ struct RuntimeOwner {
     _lock: fs::File,
 }
 
+/// Folders above `executable` that may hold Burette's bundled runtimes: the
+/// macOS app's `Contents/Resources` (a flat `Resources` in development builds)
+/// and `lib/Burette`, which the deb, rpm and AppImage bundles place beside
+/// `bin`.
+pub(crate) fn bundled_resource_dirs(executable: &Path) -> Vec<PathBuf> {
+    executable
+        .ancestors()
+        .flat_map(|ancestor| {
+            [
+                ancestor.join("Resources"),
+                ancestor.join("Contents").join("Resources"),
+                ancestor.join("lib").join("Burette"),
+            ]
+        })
+        .collect()
+}
+
 /// Retain runtime files for the process lifetime, including cold tabs and view
 /// history. Closing a grid may still explicitly delete its own runtime. Age or
 /// size-based maintenance must never evict files the current process can reload.

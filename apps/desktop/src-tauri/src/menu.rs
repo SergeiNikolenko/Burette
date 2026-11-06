@@ -11,9 +11,11 @@ use tauri::Manager;
 pub(crate) use build::configure_menu;
 pub(crate) use events::handle_event;
 pub(crate) use quit::{
-    authorize_exit, confirm_exit, exit_transition_is_active, request_quit, request_system_quit,
-    should_prevent_exit, validate_exit_permit, ExitIntent, ExitTransition, SystemQuitRequest,
+    authorize_exit, confirm_exit, exit_transition_is_active, request_quit, should_prevent_exit,
+    validate_exit_permit, ExitIntent, ExitTransition,
 };
+#[cfg(target_os = "macos")]
+pub(crate) use quit::{request_system_quit, SystemQuitRequest};
 pub(crate) use state::OpenDocumentRegistry;
 
 #[tauri::command]

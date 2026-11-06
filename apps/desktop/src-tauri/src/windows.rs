@@ -1,3 +1,4 @@
+#[cfg(target_os = "macos")]
 use tauri::window::Color;
 #[cfg(target_os = "macos")]
 use tauri::window::{Effect, EffectState, EffectsBuilder};
@@ -277,6 +278,8 @@ pub(crate) fn hide_workspace_application<R: Runtime>(app: &tauri::AppHandle<R>) 
 }
 
 fn show_workspace_application<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(), String> {
+    #[cfg(not(target_os = "macos"))]
+    let _ = app;
     #[cfg(target_os = "macos")]
     {
         app.set_activation_policy(tauri::ActivationPolicy::Regular)
@@ -328,6 +331,9 @@ fn create_workspace_window<R: Runtime>(
     } else {
         builder
     };
+    // The clear window lets the macOS material show through the page. Linux
+    // has no such material, and a transparent GTK window shows the desktop.
+    #[cfg(target_os = "macos")]
     let builder = builder
         .transparent(true)
         .background_color(Color(0, 0, 0, 0));

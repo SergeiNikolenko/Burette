@@ -300,7 +300,7 @@ pub(crate) fn pick_open_targets<R: Runtime>(
             .unwrap_or_default();
         Ok(files
             .into_iter()
-            .filter_map(|path| path.into_path())
+            .filter_map(|path| path.into_path().ok())
             .map(|path| path.to_string_lossy().to_string())
             .collect())
     }
@@ -1599,36 +1599,31 @@ fn conformer_python_candidates() -> Vec<PythonCommand> {
 
 fn bundled_conformer_python_candidates_from_executable(executable: &Path) -> Vec<PythonCommand> {
     let mut candidates = Vec::new();
-    for ancestor in executable.ancestors() {
-        for resources in [
-            ancestor.join("Resources"),
-            ancestor.join("Contents").join("Resources"),
-        ] {
-            let python = resources
-                .join("xyzrender-python")
-                .join("bin")
-                .join("python3");
-            if !python.is_file() || !is_executable(&python) {
-                continue;
-            }
-            let runtime_lib = resources.join("xyzrender-runtime").join("lib");
-            let Some(site_packages) = find_bundled_site_packages(&runtime_lib) else {
-                continue;
-            };
-            candidates.push(PythonCommand {
-                label: format!("bundled conformer Python ({})", python.display()),
-                command: python.to_string_lossy().to_string(),
-                args: Vec::new(),
-                envs: vec![
-                    (
-                        "PYTHONPATH".to_string(),
-                        site_packages.to_string_lossy().to_string(),
-                    ),
-                    ("PYTHONNOUSERSITE".to_string(), "1".to_string()),
-                    ("PYTHONDONTWRITEBYTECODE".to_string(), "1".to_string()),
-                ],
-            });
+    for resources in crate::preview::runtime_utils::bundled_resource_dirs(executable) {
+        let python = resources
+            .join("xyzrender-python")
+            .join("bin")
+            .join("python3");
+        if !python.is_file() || !is_executable(&python) {
+            continue;
         }
+        let runtime_lib = resources.join("xyzrender-runtime").join("lib");
+        let Some(site_packages) = find_bundled_site_packages(&runtime_lib) else {
+            continue;
+        };
+        candidates.push(PythonCommand {
+            label: format!("bundled conformer Python ({})", python.display()),
+            command: python.to_string_lossy().to_string(),
+            args: Vec::new(),
+            envs: vec![
+                (
+                    "PYTHONPATH".to_string(),
+                    site_packages.to_string_lossy().to_string(),
+                ),
+                ("PYTHONNOUSERSITE".to_string(), "1".to_string()),
+                ("PYTHONDONTWRITEBYTECODE".to_string(), "1".to_string()),
+            ],
+        });
     }
     candidates
 }
