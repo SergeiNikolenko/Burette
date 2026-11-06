@@ -1,6 +1,6 @@
 import type { MolecularStructure } from './molecular-graph';
 import type { MolecularAtom, MolecularForceField, MinimizerMethod, Vec3 } from './types';
-import { MINIMIZER_METHODS, minimize, type MinimizerStop } from './minimizer';
+import { MINIMIZER_METHODS, createAsyncMinimizer, minimize, type MinimizerOptions, type MinimizerResult, type MinimizerStop } from './minimizer';
 import { measureGeometry } from '../../../../../scripts/molecular-geometry.js';
 
 /** Every method minimizes the same physical energy here, holds the same constraints and records every step. */
@@ -49,7 +49,7 @@ const LINEAR_SINE = 1e-3;
 /** Constraint satisfaction accepted as converged. */
 export const RESIDUAL_TOLERANCE = { angstrom: 0.01, degrees: 1 } as const;
 
-type Restraint = { kind: ConstraintResidual['kind']; atoms: number[]; target: number };
+export type Restraint = { kind: ConstraintResidual['kind']; atoms: number[]; target: number };
 type V = [number, number, number];
 const sub = (a: V, b: V): V => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const dot = (a: V, b: V) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -148,25 +148,78 @@ export function constraintResiduals(atoms: MolecularAtom[], restraints: readonly
   });
 }
 
+/** The Cartesian variables of one optimization: frozen atoms are not variables, and
+ * restraints add their harmonic penalty to the physical energy. Shared by the worker
+ * optimization, the external-model driver and Auto Optimize sessions. */
+export type CartesianProblem = {
+  /** Coordinates of the movable atoms, x y z per atom, in Å. */
+  initial: number[];
+  /** Atom index of each variable triplet. */
+  movable: number[];
+  frozen: number[];
+  restraints: readonly Restraint[];
+  /** The full structure at `x`; frozen atoms keep their input coordinates exactly. */
+  unpack(x: number[]): MolecularAtom[];
+  /** Objective at `atoms` = unpack(x): physical energy plus restraint penalty, and its
+   * gradient over the movable atoms. A non-finite physical energy stays non-finite. */
+  objective(physical: { energy: number; gradient: readonly Vec3[] }, atoms: MolecularAtom[]): { energy: number; gradient: number[] };
+  /** The physical energy of an objective value at `atoms`. */
+  physicalEnergy(total: number, atoms: MolecularAtom[]): number;
+};
+
+export function cartesianProblem(molecule: Pick<MolecularStructure, 'atoms'>, constraints: GeometryConstraint[] = []): CartesianProblem {
+  const { frozen, restraints } = resolveConstraints(molecule.atoms, constraints);
+  const fixed = new Set(frozen), movable = molecule.atoms.flatMap((_, i) => fixed.has(i) ? [] : [i]);
+  return {
+    initial: movable.flatMap(i => [molecule.atoms[i].x, molecule.atoms[i].y, molecule.atoms[i].z]), movable, frozen, restraints,
+    unpack(x) {
+      const atoms = molecule.atoms.map(a => ({ ...a }));
+      movable.forEach((atom, i) => { atoms[atom].x = x[3 * i]; atoms[atom].y = x[3 * i + 1]; atoms[atom].z = x[3 * i + 2]; });
+      return atoms;
+    },
+    objective({ energy, gradient }, atoms) {
+      if (!Number.isFinite(energy)) return { energy, gradient: movable.flatMap(() => [Number.NaN, Number.NaN, Number.NaN]) };
+      const penalty = restraintPenalty(atoms, restraints);
+      return { energy: energy + penalty.energy, gradient: movable.flatMap(atom => [0, 1, 2].map(axis => gradient[atom][axis] + penalty.gradient[atom][axis])) };
+    },
+    physicalEnergy: (total, atoms) => total - restraintPenalty(atoms, restraints).energy,
+  };
+}
+
+type CartesianOptions = Pick<OptimizeOptions, 'constraints' | 'maxIterations'> & MinimizerOptions;
+type CartesianResult = Omit<OptimizationResult, 'molecule'> & { atoms: MolecularAtom[] };
+
+function checkCartesian(atomCount: number, options: CartesianOptions) {
+  const maxIterations = options.maxIterations ?? 250;
+  if (!Number.isInteger(maxIterations) || maxIterations < 1 || maxIterations > OPTIMIZATION_LIMITS.iterations) throw new Error('Use 1–1000 optimization iterations.');
+  const unavailable = optimizationUnavailable(atomCount, options.constraints?.length ?? 0);
+  if (unavailable) throw new Error(unavailable);
+  return maxIterations;
+}
+
+function cartesianResult(problem: CartesianProblem, run: MinimizerResult | null, frames: OptimizationFrame[], atoms: MolecularAtom[], energy: number,
+  fields: Pick<OptimizationResult, 'forceField' | 'method' | 'gradient'>): CartesianResult {
+  // The minimizer returns its lowest point, which may precede its last step.
+  if (frames.at(-1)!.atoms.some((atom, i) => atom.x !== atoms[i].x || atom.y !== atoms[i].y || atom.z !== atoms[i].z)) frames.push({ atoms, energy });
+  const residuals = constraintResiduals(atoms, problem.restraints);
+  const satisfied = residuals.every(r => Math.abs(r.error) <= RESIDUAL_TOLERANCE[r.unit]);
+  return {
+    atoms, initialEnergy: frames[0].energy, energy, unit: 'kcal/mol', ...fields, iterations: run?.iterations ?? 0,
+    converged: (run?.converged ?? true) && satisfied, stopReason: run?.stopReason ?? 'no-variables', maxGradient: run?.maxGradient ?? 0,
+    frameSampling: 'steps', frames, constraintResiduals: residuals, frozenAtoms: problem.frozen,
+  };
+}
+
 /**
  * Cartesian minimization of force-field energy plus harmonic restraints. Frozen atoms
  * are not variables, so their coordinates are returned exactly. Central differences
  * (h = 1e-4 Å) stand in for a missing analytic force-field gradient, up to
  * OPTIMIZATION_LIMITS.numericalAtoms atoms.
  */
-export function optimizeCartesian(molecule: MolecularStructure, evaluator: EnergyEvaluator, method: MinimizerMethod, forceField: MolecularForceField, options: Pick<OptimizeOptions, 'constraints' | 'maxIterations' | 'gradientTolerance' | 'energyTolerance'>, onProgress?: (progress: OptimizationProgress) => void): Omit<OptimizationResult, 'molecule'> & { atoms: MolecularAtom[] } {
-  const n = molecule.atoms.length, maxIterations = options.maxIterations ?? 250;
-  if (!Number.isInteger(maxIterations) || maxIterations < 1 || maxIterations > OPTIMIZATION_LIMITS.iterations) throw new Error('Use 1–1000 optimization iterations.');
-  const unavailable = optimizationUnavailable(n, options.constraints?.length ?? 0);
-  if (unavailable) throw new Error(unavailable);
+export function optimizeCartesian(molecule: MolecularStructure, evaluator: EnergyEvaluator, method: MinimizerMethod, forceField: MolecularForceField, options: CartesianOptions, onProgress?: (progress: OptimizationProgress) => void): CartesianResult {
+  const n = molecule.atoms.length, maxIterations = checkCartesian(n, options);
   if (!evaluator.gradient && n > OPTIMIZATION_LIMITS.numericalAtoms) throw new Error(`${forceField} has no analytic gradient for this structure (separate fragments interact, or the toolkits type it differently); numerical optimization supports up to ${OPTIMIZATION_LIMITS.numericalAtoms} atoms and it has ${n}.`);
-  const { frozen, restraints } = resolveConstraints(molecule.atoms, options.constraints ?? []);
-  const fixed = new Set(frozen), movable = molecule.atoms.flatMap((_, i) => fixed.has(i) ? [] : [i]);
-  const unpack = (x: number[]) => {
-    const atoms = molecule.atoms.map(a => ({ ...a }));
-    movable.forEach((atom, i) => { atoms[atom].x = x[3 * i]; atoms[atom].y = x[3 * i + 1]; atoms[atom].z = x[3 * i + 2]; });
-    return atoms;
-  };
+  const problem = cartesianProblem(molecule, options.constraints), fixed = new Set(problem.frozen);
   const h = 1e-4, axes = ['x', 'y', 'z'] as const;
   const physicalGradient = (atoms: MolecularAtom[]): Vec3[] => evaluator.gradient?.(atoms) ?? atoms.map((atom, i) => fixed.has(i) ? [0, 0, 0] : axes.map(axis => {
     const original = atom[axis];
@@ -176,30 +229,56 @@ export function optimizeCartesian(molecule: MolecularStructure, evaluator: Energ
     return (plus - minus) / (2 * h);
   }) as Vec3);
   const objective = (x: number[]) => {
-    const atoms = unpack(x), energy = evaluator.energy(atoms);
-    if (!Number.isFinite(energy)) return { energy, gradient: x.map(() => Number.NaN) };
-    const physical = physicalGradient(atoms), penalty = restraintPenalty(atoms, restraints);
-    return { energy: energy + penalty.energy, gradient: x.map((_, i) => physical[movable[Math.floor(i / 3)]][i % 3] + penalty.gradient[movable[Math.floor(i / 3)]][i % 3]) };
+    const atoms = problem.unpack(x), energy = evaluator.energy(atoms);
+    return problem.objective({ energy, gradient: Number.isFinite(energy) ? physicalGradient(atoms) : [] }, atoms);
   };
-  const initialEnergy = evaluator.energy(molecule.atoms);
-  const frames: OptimizationFrame[] = [{ atoms: molecule.atoms.map(a => ({ ...a })), energy: initialEnergy }];
-  const run = movable.length
-    ? minimize(movable.flatMap(i => [molecule.atoms[i].x, molecule.atoms[i].y, molecule.atoms[i].z]), objective, method, maxIterations, (x, total) => {
-      const atoms = unpack(x), energy = total - restraintPenalty(atoms, restraints).energy;
+  const frames: OptimizationFrame[] = [{ atoms: molecule.atoms.map(a => ({ ...a })), energy: evaluator.energy(molecule.atoms) }];
+  const run = problem.movable.length
+    ? minimize(problem.initial, objective, method, maxIterations, (x, total) => {
+      const atoms = problem.unpack(x), energy = problem.physicalEnergy(total, atoms);
       frames.push({ atoms, energy });
       onProgress?.({ iteration: frames.length - 1, energy, atoms });
     }, { gradientTolerance: options.gradientTolerance, energyTolerance: options.energyTolerance })
     : null;
-  const atoms = run ? unpack(run.x) : molecule.atoms.map(a => ({ ...a }));
-  const energy = evaluator.energy(atoms);
-  // The minimizer returns its lowest point, which may precede its last step.
-  if (frames.at(-1)!.atoms.some((atom, i) => atom.x !== atoms[i].x || atom.y !== atoms[i].y || atom.z !== atoms[i].z)) frames.push({ atoms, energy });
-  const residuals = constraintResiduals(atoms, restraints);
-  const satisfied = residuals.every(r => Math.abs(r.error) <= RESIDUAL_TOLERANCE[r.unit]);
-  return {
-    atoms, initialEnergy, energy, unit: 'kcal/mol', forceField, method, iterations: run?.iterations ?? 0,
-    converged: (run?.converged ?? true) && satisfied, stopReason: run?.stopReason ?? 'no-variables',
-    gradient: evaluator.gradient ? 'analytic' : 'central-difference', maxGradient: run?.maxGradient ?? 0,
-    frameSampling: 'steps', frames, constraintResiduals: residuals, frozenAtoms: frozen,
+  const atoms = run ? problem.unpack(run.x) : molecule.atoms.map(a => ({ ...a }));
+  return cartesianResult(problem, run, frames, atoms, evaluator.energy(atoms), { forceField, method, gradient: evaluator.gradient ? 'analytic' : 'central-difference' });
+}
+
+/** An energy model that answers asynchronously, such as an external program: energy
+ * in kcal/mol and its analytic gradient in kcal/(mol·Å) for every atom. */
+export type AsyncEnergyEvaluator = { evaluate(atoms: MolecularAtom[]): Promise<{ energy: number; gradient: Vec3[] }>; dispose(): void | Promise<void> };
+
+/** `optimizeCartesian` with an asynchronous evaluator: the same variables, restraints,
+ * minimizer steps and result. Each point is evaluated once; aborting `signal` stops
+ * before the next evaluation. The caller disposes the evaluator. */
+export async function optimizeCartesianAsync(molecule: Pick<MolecularStructure, 'atoms'>, evaluator: AsyncEnergyEvaluator, method: MinimizerMethod, forceField: OptimizationResult['forceField'], options: CartesianOptions,
+  onProgress?: (progress: OptimizationProgress) => void, signal?: AbortSignal): Promise<CartesianResult> {
+  const maxIterations = checkCartesian(molecule.atoms.length, options), problem = cartesianProblem(molecule, options.constraints);
+  const evaluate = async (atoms: MolecularAtom[]) => {
+    signal?.throwIfAborted();
+    const value = await evaluator.evaluate(atoms);
+    signal?.throwIfAborted();
+    return value;
   };
+  const initial = await evaluate(molecule.atoms.map(a => ({ ...a })));
+  const frames: OptimizationFrame[] = [{ atoms: molecule.atoms.map(a => ({ ...a })), energy: initial.energy }];
+  let run: MinimizerResult | null = null;
+  if (problem.movable.length) {
+    // The starting point was evaluated above; the minimizer asks for it first.
+    let start: typeof initial | undefined = initial;
+    const minimizer = await createAsyncMinimizer(problem.initial, async x => {
+      const atoms = problem.unpack(x), value = start ?? await evaluate(atoms);
+      start = undefined;
+      return problem.objective(value, atoms);
+    }, method, { gradientTolerance: options.gradientTolerance, energyTolerance: options.energyTolerance });
+    await minimizer.run(maxIterations, (x, total) => {
+      const atoms = problem.unpack(x), energy = problem.physicalEnergy(total, atoms);
+      frames.push({ atoms, energy });
+      onProgress?.({ iteration: frames.length - 1, energy, atoms });
+    });
+    run = minimizer.result();
+  }
+  const atoms = run ? problem.unpack(run.x) : molecule.atoms.map(a => ({ ...a }));
+  const energy = run ? problem.physicalEnergy(run.energy, atoms) : initial.energy;
+  return cartesianResult(problem, run, frames, atoms, energy, { forceField, method, gradient: 'analytic' });
 }

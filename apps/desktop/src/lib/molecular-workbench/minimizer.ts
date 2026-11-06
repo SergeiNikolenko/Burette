@@ -11,10 +11,16 @@
  * A minimizer keeps every piece of state between `run` calls (FIRE velocity and
  * time step, the quasi-Newton history, stall counters and the energy window), so a
  * run cut into chunks of any size takes exactly the steps of one long run.
+ *
+ * The stepping logic is one generator that yields each point it needs evaluated and
+ * receives the objective there. `createMinimizer` answers it synchronously and
+ * `createAsyncMinimizer` awaits an external objective, so both take the same steps.
  */
 import type { MinimizerMethod } from './types';
 export type { MinimizerMethod } from './types';
-export type Objective = (x: number[]) => { energy: number; gradient: number[] };
+export type Evaluation = { energy: number; gradient: number[] };
+export type Objective = (x: number[]) => Evaluation;
+export type AsyncObjective = (x: number[]) => Promise<Evaluation>;
 /** `converged`: the largest gradient component fell below the gradient tolerance.
  * `energy`: the mean energy change per step over at least ten steps fell below the
  * energy tolerance. `line-search`: no finite downhill step remained (quasi-Newton
@@ -24,13 +30,21 @@ export type MinimizerStop = 'converged' | 'energy' | 'iterations' | 'line-search
 /** Tolerances in the objective's units; the energy test is off unless given. */
 export type MinimizerOptions = { gradientTolerance?: number; energyTolerance?: number };
 export type MinimizerResult = { x: number[]; energy: number; converged: boolean; iterations: number; stopReason: MinimizerStop; maxGradient: number };
+type StepListener = (x: number[], energy: number) => void;
 export type Minimizer = {
   /** Takes up to `count` more steps. Returns why the run ended, or `iterations`
    * when it can continue. `onStep` sees every accepted point. */
-  run(count: number, onStep?: (x: number[], energy: number) => void): MinimizerStop;
+  run(count: number, onStep?: StepListener): MinimizerStop;
   /** The lowest point reached, which may precede the last FIRE step. */
   result(): MinimizerResult;
 };
+/** A minimizer over an asynchronous objective. One `run` at a time. */
+export type AsyncMinimizer = {
+  run(count: number, onStep?: StepListener): Promise<MinimizerStop>;
+  result(): MinimizerResult;
+};
+/** Yields the points to evaluate and receives the objective at each. */
+type Steps<T> = Generator<number[], T, Evaluation>;
 
 export const MINIMIZER_METHODS: readonly MinimizerMethod[] = ['bfgs', 'lbfgs', 'fire', 'abc-fire', 'hybrid'];
 /** Largest number of variables: 256 atoms in Cartesian coordinates. */
@@ -48,13 +62,11 @@ const norm = (a: number[]) => Math.sqrt(dot(a, a));
 const largest = (a: number[]) => a.reduce((top, v) => Math.max(top, Math.abs(v)), 0);
 const finite = (r: ReturnType<Objective>, length: number) => Number.isFinite(r.energy) && r.gradient.length === length && r.gradient.every(Number.isFinite);
 
-/** A trial point with a non-finite objective is rejected like an uphill one; only
- * the starting point must be finite. */
-export function createMinimizer(initial: number[], evaluate: Objective, method: MinimizerMethod, options: MinimizerOptions = {}): Minimizer {
+function* minimizerSteps(initial: number[], method: MinimizerMethod, options: MinimizerOptions): Steps<{ run(count: number, onStep?: StepListener): Steps<MinimizerStop>; result(): MinimizerResult }> {
   const { gradientTolerance = GRADIENT_TOLERANCE, energyTolerance } = options;
   if (!MINIMIZER_METHODS.includes(method) || !initial.length || initial.length > MINIMIZER_VARIABLES || initial.some(x => !Number.isFinite(x))
     || !(gradientTolerance >= 0) || (energyTolerance !== undefined && !(energyTolerance >= 0))) throw new Error('Invalid minimizer configuration.');
-  let x = initial.slice(), value = evaluate(x);
+  let x = initial.slice(), value = yield x.slice();
   if (!finite(value, x.length)) throw new Error('Non-finite optimization objective.');
   const n = x.length;
   let velocity = x.map(() => 0), dt = .05, alpha = .25, nPos = 0, quasiNewton = method === 'lbfgs' || method === 'bfgs';
@@ -72,7 +84,7 @@ export function createMinimizer(initial: number[], evaluate: Objective, method: 
 
   /** 'step' after an accepted point, 'retry' when no point was accepted but the
    * method can continue, otherwise the reason the run ends. */
-  function quasiNewtonStep(): 'step' | 'retry' | MinimizerStop {
+  function* quasiNewtonStep(): Steps<'step' | 'retry' | MinimizerStop> {
     let direction: number[];
     if (method === 'bfgs') {
       const h = inverse, g = value.gradient;
@@ -94,7 +106,7 @@ export function createMinimizer(initial: number[], evaluate: Objective, method: 
     if (dot(direction, value.gradient) >= 0) { history.length = 0; inverse = undefined; direction = value.gradient.map(g => -g); }
     let step = Math.min(1, .1 / largest(direction)), next: number[] | undefined, accepted: ReturnType<Objective> | undefined;
     for (let trial = 0; trial < 24; trial++, step *= .5) {
-      const trialX = x.map((v, i) => v + step * direction[i]), trialValue = evaluate(trialX);
+      const trialX = x.map((v, i) => v + step * direction[i]), trialValue = yield trialX.slice();
       if (finite(trialValue, x.length) && trialValue.energy <= value.energy + 1e-4 * step * dot(value.gradient, direction)) { next = trialX; accepted = trialValue; break; }
     }
     if (!next || !accepted) return restart() ? 'retry' : 'line-search';
@@ -115,14 +127,14 @@ export function createMinimizer(initial: number[], evaluate: Objective, method: 
     return restart() ? 'step' : 'stalled';
   }
 
-  function fireStep(): 'step' | 'retry' | 'line-search' {
+  function* fireStep(): Steps<'step' | 'retry' | 'line-search'> {
     // Convert gradients from kcal/mol/Å to Avogadro's kJ/mol/Å convention.
     let g = value.gradient.map(v => v * 4.184);
     const power = -dot(g, velocity);
     if (power > 0) { if (++nPos > 5) { dt = Math.min(dt * 1.1, .5); alpha *= .99; } }
     else if (power < 0) {
       nPos = 0; dt *= .5; alpha = .25;
-      const back = x.map((v, i) => v - .5 * dt * velocity[i]), backValue = evaluate(back);
+      const back = x.map((v, i) => v - .5 * dt * velocity[i]), backValue = yield back.slice();
       velocity.fill(0);
       // Unlike the original driver, re-evaluate after backtracking so forces
       // always correspond to the actual coordinates being integrated.
@@ -142,7 +154,7 @@ export function createMinimizer(initial: number[], evaluate: Objective, method: 
       if (move > .05) scale = Math.min(scale, .05 / move);
     }
     velocity = velocity.map(v => v * scale);
-    const trialX = x.map((v, i) => v + dt * velocity[i]), trialValue = evaluate(trialX);
+    const trialX = x.map((v, i) => v + dt * velocity[i]), trialValue = yield trialX.slice();
     if (!finite(trialValue, x.length)) {
       // A non-finite point is never integrated: shrink the step and restart from rest.
       dt *= .5; nPos = 0; alpha = .25; velocity.fill(0);
@@ -153,14 +165,14 @@ export function createMinimizer(initial: number[], evaluate: Objective, method: 
   }
 
   return {
-    run(count, onStep) {
+    *run(count, onStep) {
       if (!Number.isInteger(count) || count < 1) throw new Error('Invalid minimizer configuration.');
       if (stop) return stop;
       for (let taken = 0; taken < count;) {
         const maxGradient = largest(value.gradient);
         if (maxGradient < gradientTolerance) return stop = 'converged';
         if (method === 'hybrid' && maxGradient < HYBRID_SWITCH) quasiNewton = true;
-        const outcome = quasiNewton ? quasiNewtonStep() : fireStep();
+        const outcome = quasiNewton ? yield* quasiNewtonStep() : yield* fireStep();
         if (outcome === 'retry') continue;
         if (outcome === 'line-search') return stop = outcome;
         taken++; steps++;
@@ -181,6 +193,40 @@ export function createMinimizer(initial: number[], evaluate: Objective, method: 
       const stationary = maxGradient < gradientTolerance;
       return { x: final.x.slice(), energy: final.energy, converged: stationary || stop === 'energy', iterations: steps, stopReason: stationary ? 'converged' : stop ?? 'iterations', maxGradient };
     },
+  };
+}
+
+function drive<T>(steps: Steps<T>, evaluate: Objective): T {
+  let request = steps.next();
+  while (!request.done) request = steps.next(evaluate(request.value));
+  return request.value;
+}
+
+async function driveAsync<T>(steps: Steps<T>, evaluate: AsyncObjective): Promise<T> {
+  let request = steps.next();
+  while (!request.done) request = steps.next(await evaluate(request.value));
+  return request.value;
+}
+
+/** A trial point with a non-finite objective is rejected like an uphill one; only
+ * the starting point must be finite. */
+export function createMinimizer(initial: number[], evaluate: Objective, method: MinimizerMethod, options: MinimizerOptions = {}): Minimizer {
+  const core = drive(minimizerSteps(initial, method, options), evaluate);
+  return { run: (count, onStep) => drive(core.run(count, onStep), evaluate), result: core.result };
+}
+
+/** `createMinimizer` over an objective that answers asynchronously, such as an
+ * external program. It takes exactly the steps of the synchronous minimizer. */
+export async function createAsyncMinimizer(initial: number[], evaluate: AsyncObjective, method: MinimizerMethod, options: MinimizerOptions = {}): Promise<AsyncMinimizer> {
+  const core = await driveAsync(minimizerSteps(initial, method, options), evaluate);
+  let running = false;
+  return {
+    async run(count, onStep) {
+      if (running) throw new Error('This minimizer is already running.');
+      running = true;
+      try { return await driveAsync(core.run(count, onStep), evaluate); } finally { running = false; }
+    },
+    result: core.result,
   };
 }
 
