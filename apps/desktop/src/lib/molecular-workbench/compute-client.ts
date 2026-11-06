@@ -7,7 +7,7 @@ import type { MolecularAtom } from './types';
 import { runWorkerTask, type WorkerTaskOptions } from './worker-task';
 
 import type { ZmatrixDocument } from "../../../../../scripts/zmatrix-document.mjs";
-import type { ZmatrixOptimizeOptions } from "../workbench/zmatrix-coupled-optimization";
+import type { ZmatrixOptimizeOptions } from "../workbench/zmatrix-coupled-problem";
 
 export type ChemistryRequest =
   | { action: 'generate'; smiles: string; seed?: number }

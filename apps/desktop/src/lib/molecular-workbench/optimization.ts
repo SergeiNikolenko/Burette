@@ -30,8 +30,10 @@ export type OptimizationResult = {
   forceField: EnergyModelId; method: OptimizationMethod;
   /** Accepted steps. */
   iterations: number; converged: boolean; stopReason: OptimizationStop;
-  /** How the physical force-field gradient was obtained; restraint gradients are analytic. */
-  gradient: 'analytic' | 'central-difference';
+  /** How the physical force-field gradient was obtained; restraint gradients are analytic.
+   * `chain-rule`: the model's Cartesian gradient times the differenced Jacobian of the
+   * atom positions in coupled Z-matrix variables. */
+  gradient: 'analytic' | 'central-difference' | 'chain-rule';
   /** Largest remaining gradient component of the optimized objective, kcal/(mol·Å). */
   maxGradient: number;
   /** The start, every accepted step and the result. */
