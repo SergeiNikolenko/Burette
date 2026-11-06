@@ -33,6 +33,18 @@ for the browser shell and on a `macvm` guest on Orion for the packaged app.
 - **Done when:** a Gaussian and an ORCA frequency log show the charge models
   they print, labels and colour match the log numbers, and the dipole arrow
   length and direction match the printed vector. ZPE, H and G match the log.
+- **Done (0148fc910, 6fd801780, f29c88978):** thermochemistry from Gaussian,
+  ORCA (output and property file), Psi4, NWChem, Q-Chem and xtb `--ohess`,
+  checked against each program's printed numbers (`test:thermochemistry`); ORCA
+  output now also keeps Mulliken and Löwdin charges and the dipole, and Gaussian
+  `freq=hpmodes` logs open. The Info dock shows **Charges** (model, *Color
+  atoms*, *Labels*, *Dipole arrow*, one angstrom per debye from the centre of
+  the atoms) and **Thermochemistry** for the geometry the scene shows. Colours
+  use the app's colour-blind-safe scale (negative blue, positive orange) in
+  place of red–white–blue. Fixing the colouring found that multi-part agent
+  selections had kept only their last part. Browser shell verified on Gauss
+  (p-nitroaniline xtb, Psi4 water, both themes); the packaged app on a `macvm`
+  guest is not, because Orion froze when the guest started the app.
 
 ### Stage 15. Orbital level diagram and convergence plots
 
