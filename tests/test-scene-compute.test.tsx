@@ -30,7 +30,7 @@ test("XYZ scene exposes Compute and dispatches the selected calculation for its 
     const polymerTrigger=container.querySelector<HTMLButtonElement>("button")!;
     expect(polymerTrigger).not.toBeNull();
     await act(async()=>{polymerTrigger.dispatchEvent(new MouseEvent("pointerdown",{bubbles:true,button:0}));polymerTrigger.click();});
-    expect([...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].map(item=>item.textContent)).toEqual(["Build polymer…"]);
+    expect([...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].map(item=>item.textContent)).toEqual(["Build polymer…", "Build peptide…", "Build DNA or RNA…", "Build metal complex…"]);
   } finally {await act(async()=>root.unmount());container.remove();}
 });
 

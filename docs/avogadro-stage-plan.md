@@ -314,8 +314,24 @@ current one has open code or acceptance items.
   append or scene composition).
 - **Done when:** SDF → insert a peptide and a metal complex → Undo → Save →
   reopen with formula and connectivity checked by RDKit.
+- **Done (2026-11-06):** Compute lists Build peptide, Build DNA or RNA and Build
+  metal complex for every single-file scene (and for plain MOL/SDF, where the
+  menu used to be hidden), after Build biological assembly and Build polymer.
+  All three insert into an open MOL/SDF as one Undo step, and the view widens to
+  show the new molecule. Graph editing takes bond order 9 (MDL dative): the
+  complex's metal–donor edges insert as dative bonds, the Edit tab lists them
+  as Dative and offers Dative for a bond to a metal, and the graph model reports
+  them as 9 instead of 0, which meant "no bond". PDB and mmCIF targets do not
+  receive inserted residues: builders open those results as new documents, to
+  be combined as a scene. Polymer has no Insert: its source is the open document
+  itself and its chains outgrow the 256-atom editing limit. Browser check on
+  Gauss, both themes: caffeine SDF → Compute → Build peptide (AG) → Insert →
+  Build metal complex (cisplatin) → Insert → Undo → Redo → Save copy → reopen:
+  RDKit reads C13H26Cl2N8O5Pt as caffeine, L-Ala-Gly and cisplatin with four
+  dative bonds, and the reopened file has 55 atoms.
 - **Checks:** `test:insert-built-structure`, `test:fragment-insertion`,
-  `test:metal-complex`, the new nucleic scripts.
+  `test:metal-complex`, `test:nucleic` (now in `test:ui`), `test:scene-compute`,
+  `test:cjson-compute-owner`.
 
 ## Stage 9. Crystals: editable sources after Save scene
 
@@ -386,6 +402,15 @@ current one has open code or acceptance items.
   with `build:agent-shell`; they lag the stage 2–7 runtime changes. Test CJSON
   files with per-conformer vibrations and unrestricted orbitals, which no
   fixture covers yet.
+- **Stage 8 leftovers:** the first edit of a document that has no editing
+  session yet (a builder Insert straight after opening) starts the session,
+  reloads the base viewer and stages the draft at the same time; in headless
+  Chromium the staged preview misses its 10 s limit and the viewer keeps the
+  old structure until the next edit, although the draft and Save are right.
+  Check it in a real browser and the packaged app before changing the preview
+  lifecycle. Failing at HEAD before stage 8 on Gauss: the tris-en-cobalt exact
+  bytes in `test:metal-complex` and the metal sample in `test:builder-agent`
+  (`-0.0000` coordinates), and three `test:structure-edit-panel` cases.
 - **Done when:** every stage scenario above passes at 1400 and 900 px in both
   themes on the browser shell, and the stage 1–4 scenarios pass in the packaged
   macOS app.

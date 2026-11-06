@@ -107,7 +107,7 @@ test('normal CJSON owning file page exposes source Spectra and the polymer build
   const trigger=view.host.querySelector<HTMLButtonElement>('button[aria-label="Open molecular compute menu"]');expect(trigger).not.toBeNull();
   await act(async()=>trigger!.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true})));
   const items=[...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
-  expect(items.map(item=>item.textContent)).toEqual(['Show spectra','Build polymer…']);
+  expect(items.map(item=>item.textContent)).toEqual(['Show spectra','Build polymer…','Build peptide…','Build DNA or RNA…','Build metal complex…']);
   await act(async()=>items[0].click());await settle();await waitForPanel(view.host);
   expect([getTabWorkspace(view.workspace).right.documentId,getTabWorkspace(view.workspace).right.activeTab]).toEqual([view.current.id,'scientific-spectra']);
   expect([...view.host.querySelectorAll('table[aria-label="NMR source values"] tbody th')].map(node=>node.textContent)).toEqual(['H3','H4']);
@@ -127,7 +127,7 @@ test('normal CJSON palette opens the same source-owned dock and exact source rep
   await act(async()=>{writeBrowserDevVirtualTextDocument(view.current.path,original+'\n');useMoleculeStore.setState(state=>({documents:state.documents.map(doc=>doc.id===view.current.id?{...doc}:doc)}));});
   await settle();const remaining=view.host.querySelector<HTMLButtonElement>('button[aria-label="Open molecular compute menu"]');expect(remaining).not.toBeNull();expect(view.host.querySelector('table')).toBeNull();
   await act(async()=>remaining!.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true})));
-  expect([...document.querySelectorAll('[role="menuitem"]')].map(item=>item.textContent)).toEqual(['Build polymer…']);
+  expect([...document.querySelectorAll('[role="menuitem"]')].map(item=>item.textContent)).toEqual(['Build polymer…','Build peptide…','Build DNA or RNA…','Build metal complex…']);
   await act(async()=>remaining!.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})));
   await act(async()=>{writeBrowserDevVirtualTextDocument(view.current.path,original);useMoleculeStore.setState(state=>({documents:state.documents.map(doc=>doc.id===view.current.id?{...doc}:doc)}));});
   for(let i=0;i<100&&!view.host.querySelector('button[aria-label="Open molecular compute menu"]');i++)await settle();
@@ -135,14 +135,14 @@ test('normal CJSON palette opens the same source-owned dock and exact source rep
  } finally {await view.close();}
 });
 
-test('owning scene page offers only the polymer action for plain MOL/SDF and preserves existing XYZ/CIF compute menus',async()=>{
+test('owning scene page offers only the builders for plain MOL/SDF and preserves existing XYZ/CIF compute menus',async()=>{
  for(const kind of ['mol','sdf','cjson-no-spectra','xyz','cif'] as const){
   const view=await fixture(kind);
   try {
    await settle();const button=view.host.querySelector<HTMLButtonElement>('button[aria-label="Open molecular compute menu"]');
    if(kind==='mol'||kind==='sdf'||kind==='cjson-no-spectra'){
     expect(button).not.toBeNull();await act(async()=>button!.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true})));
-    expect([...document.querySelectorAll('[role="menuitem"]')].map(item=>item.textContent)).toEqual(['Build polymer…']);
+    expect([...document.querySelectorAll('[role="menuitem"]')].map(item=>item.textContent)).toEqual(['Build polymer…','Build peptide…','Build DNA or RNA…','Build metal complex…']);
    }
    else {expect(button).not.toBeNull();await act(async()=>button!.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true})));
     expect([...document.querySelectorAll('[role="menuitem"]')].some(item=>item.textContent==='Energy & charges')).toBe(true);

@@ -25,6 +25,7 @@ import { basename } from "../../lib/sidebar-projects";
 
 const CALCULATIONS: [XtbOperation, string][] = [["properties", "Energy & charges"], ["optimize", "Optimize with xTB"], ["hessian", "Vibrational modes"], ["md", "Molecular dynamics"]];
 const THIS_MAC = "this-mac";
+const BUILDERS = [["peptide", "Build peptide…"], ["nucleic", "Build DNA or RNA…"], ["metal", "Build metal complex…"]] as const;
 const CONFORMER_JOBS: [ConformerOperation, string][] = [["crest-generate", "Generate conformers"], ["prism-prune", "Prune conformers"]];
 const UNAVAILABLE: Record<Exclude<SceneFileState, "available">, string> = {
   removed: "Removed from the scene",
@@ -52,7 +53,6 @@ export function SceneComputeMenu({ document, actions }: { document: ViewerDocume
   if (window.BuretteMcpWorkspace || !["molstar", "xyzrender-external"].includes(document.renderer)) return null;
   const combined = document.renderer === "molstar" && new Set(recordedScenePaths(document)).size > 1;
   const embeddedGraph = !combined && document.renderer === "molstar" && ["sdf", "sd", "mol"].includes(sourceExtension(document));
-  if (embeddedGraph && !hasScientificSpectra && !hasPlots && !hasPolymer && !pluginCommands.length) return null;
 
   const fileItems = (path: string): MenuItemSpec[] => [
     ...CALCULATIONS.map(([operation, text]) => ({
@@ -89,8 +89,13 @@ export function SceneComputeMenu({ document, actions }: { document: ViewerDocume
   if (!embeddedGraph && !combined && hasSymmetry) items.push(...(hasOrbitals || hasVibrations || hasCrystal ? [] : [{ kind: "separator" as const }]), { kind: "item", id: "workbench-tool-symmetry", text: SYMMETRY_COMMAND.label, action: () => openSymmetryTool(actions, document.id, "symmetry") });
   if (!combined && hasScientificSpectra) items.push(...(embeddedGraph || hasOrbitals || hasVibrations || hasCrystal || hasSymmetry ? [] : [{ kind: "separator" as const }]), { kind: "item", id: "workbench-tool-scientific-spectra", text: SCIENTIFIC_SPECTRA_COMMAND.label, action: () => openScientificSpectra(actions, document.id) });
   if (!combined && hasPlots) items.push(...(embeddedGraph || hasOrbitals || hasVibrations || hasCrystal || hasSymmetry || hasScientificSpectra ? [] : [{ kind: "separator" as const }]), { kind: "item", id: "workbench-tool-plots", text: PLOTS_COMMAND.label, action: () => openPlots(actions, document.id) });
-  if (!combined && assemblySourceFormat(document)) items.push({ kind: "separator" }, { kind: "item", id: "workbench-assembly", text: "Build biological assembly…", action: () => openWorkbenchDialog({ kind: "assembly", document }) });
-  if (!combined && hasPolymer) items.push({ kind: "item", id: "workbench-polymer", text: "Build polymer…", action: () => openWorkbenchDialog({ kind: "builder", builder: "polymer", document }) });
+  // Builders open a new document; peptide, DNA/RNA and metal complex also insert into an editable MOL/SDF.
+  if (!combined) {
+    if (items.length) items.push({ kind: "separator" });
+    if (assemblySourceFormat(document)) items.push({ kind: "item", id: "workbench-assembly", text: "Build biological assembly…", action: () => openWorkbenchDialog({ kind: "assembly", document }) });
+    if (hasPolymer) items.push({ kind: "item", id: "workbench-polymer", text: "Build polymer…", action: () => openWorkbenchDialog({ kind: "builder", builder: "polymer", document }) });
+    for (const [builder, text] of BUILDERS) items.push({ kind: "item", id: `workbench-${builder}`, text, action: () => openWorkbenchDialog({ kind: "builder", builder, document }) });
+  }
   if (!combined && pluginCommands.length) items.push(...(items.length ? [{ kind: "separator" as const }] : []), ...commandMenuItems(pluginCommands, entry => startAvogadroCommand(entry, document)));
   // Every calculation here, and xTB/CREST started elsewhere, runs where this points.
   if (!embeddedGraph && connections.length > 0) items.push({ kind: "separator" }, {
