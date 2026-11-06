@@ -5,6 +5,8 @@ contains only documents that describe the active project.
 
 ## Current Docs
 
+- [Interaction performance audit, 2026-11-16](performance-audit-2026-11-16.md):
+  measured interaction fixes, production browser comparisons, native VM evidence, and coverage limits.
 - [Performance and reliability audit, 2026-09-20](performance-reliability-audit-2026-09-20.md):
   22 source-backed findings, isolated mechanism checks, priorities and acceptance scenarios.
 - [macOS product quality priorities](macos-product-quality.md): calendar release
