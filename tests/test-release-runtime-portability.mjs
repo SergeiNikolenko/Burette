@@ -89,6 +89,7 @@ for (const name of wrapperEnvironment) {
   assert.match(windowsWrapper, new RegExp(`'set "${name}=`), `Windows wrapper must set ${name}`);
   assert.match(xyzrenderRust, new RegExp(`\\("${name}", `), `bundled worker pool must set ${name}`);
 }
+assert.match(windowsWrapper, /'set "PYTHONUTF8=1"'/);
 assert.match(windowsWrapper, /'"%PYTHON%" -m xyzrender\.cli %\*'/);
 assert.match(windowsStage, /'bootstrap-windows-x86_64\.json'/);
 assert.match(windowsStage, /'requirements-windows-x86_64\.txt'/);

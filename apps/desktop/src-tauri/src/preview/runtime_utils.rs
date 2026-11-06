@@ -67,7 +67,10 @@ impl SimplifiedCanonicalize for Path {
 
 /// A command for a console tool. The app runs in the Windows GUI subsystem,
 /// so without `CREATE_NO_WINDOW` each console child would open its own
-/// console window.
+/// console window. Python children there would also write their piped output
+/// in the ANSI code page and fail on the first non-ASCII character, so they
+/// run in UTF-8 mode, as they effectively do under the UTF-8 locales of macOS
+/// and Linux.
 pub(crate) fn background_command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
     #[allow(unused_mut)]
     let mut command = std::process::Command::new(program);
@@ -75,7 +78,9 @@ pub(crate) fn background_command(program: impl AsRef<std::ffi::OsStr>) -> std::p
     {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        command.creation_flags(CREATE_NO_WINDOW);
+        command
+            .creation_flags(CREATE_NO_WINDOW)
+            .env("PYTHONUTF8", "1");
     }
     command
 }

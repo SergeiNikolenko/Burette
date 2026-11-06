@@ -44,6 +44,9 @@ WRAPPER = '\r\n'.join([
     'set "PYTHONNOUSERSITE=1"',
     'set "PYTHONDONTWRITEBYTECODE=1"',
     'set "PYTHONPATH=%SITE_PACKAGES%"',
+    # Piped output would otherwise use the ANSI code page, which cannot encode
+    # the help text.
+    'set "PYTHONUTF8=1"',
     '"%PYTHON%" -m xyzrender.cli %*',
     'exit /b %ERRORLEVEL%',
     ':missing_python',
@@ -64,7 +67,7 @@ def clean_environment():
     # Ambient pip/uv/Python configuration must not weaken hash checks or inject packages.
     env = {key: value for key, value in os.environ.items()
            if not key.startswith(('UV_', 'PIP_', 'PYTHON')) and key != 'VIRTUAL_ENV'}
-    env.update(PYTHONNOUSERSITE='1', PYTHONDONTWRITEBYTECODE='1')
+    env.update(PYTHONNOUSERSITE='1', PYTHONDONTWRITEBYTECODE='1', PYTHONUTF8='1')
     return env
 
 
