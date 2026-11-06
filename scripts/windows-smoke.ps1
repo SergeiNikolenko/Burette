@@ -26,6 +26,19 @@ function Save-Screen([string]$name) {
 }
 
 $stderr = Join-Path $output 'burette-stderr.log'
+# CI runners have no GPU, and WebView2 no longer falls back to software WebGL
+# on its own; this only affects the app started by this script.
+$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--enable-unsafe-swiftshader'
+$shell = New-Object -ComObject WScript.Shell
+# Escape dismisses the first-run welcome so the screenshots show the documents.
+function Dismiss-Welcome {
+  $process = Get-Process -Name 'Burette' -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($process -and $shell.AppActivate($process.Id)) {
+    Start-Sleep -Milliseconds 500
+    $shell.SendKeys('{ESC}')
+    Start-Sleep -Seconds 3
+  }
+}
 function Assert-Running {
   $running = Get-Process -Name 'Burette' -ErrorAction SilentlyContinue
   if (-not $running) {
@@ -39,6 +52,7 @@ try {
     -RedirectStandardError $stderr -RedirectStandardOutput (Join-Path $output 'burette-stdout.log')
   Start-Sleep -Seconds 40
   Assert-Running
+  Dismiss-Welcome
   Save-Screen '01-protein.png'
 
   # A second launch hands the file to the running instance.
