@@ -4,7 +4,7 @@ import { SYMMETRY_ATOM_LIMIT } from "../molecular-workbench/crystal-symmetry";
 import { MAX_POINT_GROUP_ATOMS } from "../molecular-workbench/symmetry/point-group";
 import { runSymmetryTask } from "../molecular-workbench/symmetry/symmetry-client";
 import type { UnitCell } from "../molecular-workbench/types";
-import { powderPatternCsv, powderPatternJson, XRD_LIMITS, XRD_RADIATION } from "../molecular-workbench/xrd/powder-xrd";
+import { broadenPattern, powderPatternCsv, powderPatternJson, XRD_LIMITS, XRD_RADIATION } from "../molecular-workbench/xrd/powder-xrd";
 import { XRD_ENGINE } from "../molecular-workbench/xrd/xrd-engine";
 import { serializeXyz } from "../molecular-workbench/xyz";
 import { runCrystalTask } from "./crystal-task";
@@ -82,10 +82,12 @@ export const powderXrdJob: AgentJobRunner<"powder_xrd"> = {
     const { wavelengthAngstrom: wavelength, twoThetaMinDegrees: twoThetaMin, twoThetaMaxDegrees: twoThetaMax } = params;
     const pattern = await runPowderXrdTask({ atoms: crystal.atoms, cell: crystal.cell, wavelength, twoThetaMin, twoThetaMax }, { signal, timeoutMs });
     const radiation = XRD_RADIATION.find((item) => item.wavelength === wavelength)?.label ?? "Custom wavelength";
-    const context = { title: input.document.title, radiation, profile: null, engine: XRD_ENGINE };
+    const profile = params.profile ? broadenPattern(pattern, params.profile, params.fwhmDegrees!) : null;
+    const context = { title: input.document.title, radiation, profile, engine: XRD_ENGINE };
     const strongest = [...pattern.peaks].sort((a, b) => b.relativeIntensity - a.relativeIntensity).slice(0, SUMMARY_ROWS);
     return {
-      summary: { wavelengthAngstrom: wavelength, twoThetaMinDegrees: twoThetaMin, twoThetaMaxDegrees: twoThetaMax, peakCount: pattern.peaks.length, absentReflections: pattern.absentReflections,
+      summary: { wavelengthAngstrom: wavelength, twoThetaMinDegrees: twoThetaMin, twoThetaMaxDegrees: twoThetaMax,
+        ...(profile ? { profile: profile.shape, fwhmDegrees: profile.fwhm, profilePoints: profile.twoTheta.length } : {}), peakCount: pattern.peaks.length, absentReflections: pattern.absentReflections,
         strongestPeaks: strongest.map(({ twoTheta, d, relativeIntensity, multiplicity, hkl }) => ({ twoTheta, d, relativeIntensity, multiplicity, hkl })) },
       artifacts: [
         await artifact("peaks", `${stem}-xrd.csv`, "text/csv", powderPatternCsv(pattern, context)),

@@ -69,8 +69,9 @@ export type WorkbenchJobRequest =
   | { kind: 'pair_distribution'; params: { rMax: number; binWidth: number; centre: string | null; neighbour: string | null } }
   | { kind: 'point_group'; params: { tolerance: 'tight' | 'normal' | 'loose' | 'very-loose' } }
   | { kind: 'space_group'; params: { toleranceAngstrom: number } }
-  | { kind: 'powder_xrd'; params: { wavelengthAngstrom: number; twoThetaMinDegrees: number; twoThetaMaxDegrees: number } }
+  | { kind: 'powder_xrd'; params: { wavelengthAngstrom: number; twoThetaMinDegrees: number; twoThetaMaxDegrees: number; profile: 'gaussian' | 'lorentzian' | null; fwhmDegrees?: number } }
   | { kind: 'crystal_transform'; params: WorkbenchCrystalTransform }
+  | { kind: 'biological_assembly'; params: { assemblyId?: string; modelNumber?: string } }
   | { kind: 'properties'; params: { chargeModel?: 'Gasteiger' } }
   | { kind: 'orbital_cube'; params: { field: 'orbital' | 'density' | 'spin-density'; orbitalIndex?: number; spacingAngstrom?: number; paddingAngstrom?: number;
     grid?: { origin: [number, number, number]; axes: [[number, number, number], [number, number, number], [number, number, number]]; dimensions: [number, number, number] } } }

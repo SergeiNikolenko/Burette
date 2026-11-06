@@ -697,7 +697,7 @@ with a `Lattice`, and the availability of each job:
 | --- | --- | --- |
 | `point_group` | `tolerance`: `tight`, `normal`, `loose`, `very-loose` (`normal`) | `symmetrized` (XYZ in chemical-graph atom order) |
 | `space_group` | `toleranceAngstrom` 0.0001–0.5 (0.01) | none; the summary carries the group, Hall number, sites and standard cells |
-| `powder_xrd` | `wavelengthAngstrom` 0.1–5 (Cu Kα1), `twoThetaMinDegrees`/`twoThetaMaxDegrees` 0–170 (10, 90) | `peaks` (CSV), `pattern` (JSON) |
+| `powder_xrd` | `wavelengthAngstrom` 0.1–5 (Cu Kα1), `twoThetaMinDegrees`/`twoThetaMaxDegrees` 0–170 (10, 90), `profile` `gaussian`, `lorentzian` or `null` (sticks only), `fwhmDegrees` 0.001–5 (0.1) with a profile | `peaks` (CSV), `pattern` (JSON, with the broadened profile when one is set) |
 | `spectrum` | `kind` (`vcd`, `mcd`, `nmr`, `electronic`, `ecd`, `dos`), `source` (`file`, `frame`, `companion`), explicit `frameIndex` for frame/companion; NMR `atomicNumber`; optional `scale`, `offset`, `fwhm`, `axisStart`, `axisEnd` | `source` (JSON), `source_csv`, `display` (CSV), `settings` (JSON) |
 | `pair_distribution` | `rMax` 1–100 Å (10), `binWidth` 0.001–1 Å (0.1), `centre`, `neighbour` element or `null` | `distribution` (JSON), `csv`; runs on the full cell (CIF symmetry expanded) |
 | `crystal_transform` | `operation` and its fields, below | `structure` |
@@ -867,6 +867,7 @@ forces kcal/(mol·Å). No job modifies the open document.
 | `metadata_edit` | `atoms` (index, `atomName`, `residue`), `conformerLabel` | `structure` |
 | `spectrum` | `kind` (`vcd`, `mcd`, `nmr`, `electronic`, `ecd`, `dos`), `source` (`file`, `frame`, `companion`), explicit `frameIndex` for frame/companion; NMR `atomicNumber`; optional `scale`, `offset`, `fwhm`, `axisStart`, `axisEnd` | `source` (JSON), `source_csv`, `display` (CSV), `settings` (JSON) |
 | `pair_distribution` | `rMax` 1–100 Å (10), `binWidth` 0.001–1 Å (0.1), `centre`, `neighbour` | `distribution` (JSON), `csv` |
+| `biological_assembly` | `assemblyId`, `modelNumber`; each is required only when the PDB or mmCIF source defines several | `structure` (mmCIF); the source stays unchanged |
 
 `optimize` defaults to `bfgs` for unconstrained MMFF and to `lbfgs` for UFF, LJ
 or any constraint. All five methods support all four models, including

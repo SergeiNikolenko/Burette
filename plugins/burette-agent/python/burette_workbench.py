@@ -50,7 +50,7 @@ JobKind = Literal[
     "properties", "energy", "energy_forces", "frame_energy_forces", "optimize",
     "prepare_3d", "conformers", "metadata_edit", "measurement_set", "coordinate_align",
     "spectrum", "vibrational_spectrum", "pair_distribution", "point_group",
-    "space_group", "powder_xrd", "crystal_transform", "orbital_cube",
+    "space_group", "powder_xrd", "crystal_transform", "biological_assembly", "orbital_cube",
     "insert_fragment", "hydrogens", "polymer",
 ]
 # Kinds that build a new structure without a source document (operation ``build``).

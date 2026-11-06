@@ -20,7 +20,7 @@ test("the contract lists all job kinds and validates crystal parameters before q
     "properties", "energy", "energy_forces", "frame_energy_forces", "optimize",
     "prepare_3d", "conformers", "metadata_edit", "measurement_set", "coordinate_align",
     "spectrum", "vibrational_spectrum", "pair_distribution", "point_group", "space_group", "powder_xrd", "crystal_transform",
-    "orbital_cube", "insert_fragment", "hydrogens", "polymer", "smiles",
+    "biological_assembly", "orbital_cube", "insert_fragment", "hydrogens", "polymer", "smiles",
     "nucleic_acid", "metal_complex", "peptide",
   ]);
   const accepted = (kind: string, params?: unknown) => {
@@ -30,12 +30,16 @@ test("the contract lists all job kinds and validates crystal parameters before q
   };
   expect(accepted("point_group")).toEqual({ tolerance: "normal" });
   expect(accepted("space_group")).toEqual({ toleranceAngstrom: 0.01 });
-  expect(accepted("powder_xrd")).toEqual({ wavelengthAngstrom: 1.5405929, twoThetaMinDegrees: 10, twoThetaMaxDegrees: 90 });
+  expect(accepted("powder_xrd")).toEqual({ wavelengthAngstrom: 1.5405929, twoThetaMinDegrees: 10, twoThetaMaxDegrees: 90, profile: null });
+  expect(accepted("powder_xrd", { profile: "lorentzian" })).toMatchObject({ profile: "lorentzian", fwhmDegrees: 0.1 });
+  expect(accepted("biological_assembly", { modelNumber: "2" })).toEqual({ modelNumber: "2" });
   expect(accepted("crystal_transform", { operation: "supercell", repeats: [2, 2, 1] })).toEqual({ operation: "supercell", repeats: [2, 2, 1] });
   expect(accepted("crystal_transform", { operation: "primitive" })).toEqual({ operation: "primitive", toleranceAngstrom: 0.01 });
   expect(accepted("crystal_transform", { operation: "set_cell", cell: [[5, 0, 0], [0, 5, 0], [0, 0, 5]] })).toEqual({ operation: "set_cell", cell: [[5, 0, 0], [0, 5, 0], [0, 0, 5]], keep: "fractional" });
   for (const [kind, params] of [
     ["point_group", { tolerance: "huge" }], ["space_group", { toleranceAngstrom: 1 }], ["powder_xrd", { twoThetaMinDegrees: 50, twoThetaMaxDegrees: 40 }],
+    ["powder_xrd", { fwhmDegrees: 0.2 }], ["powder_xrd", { profile: "voigt" }], ["powder_xrd", { profile: "gaussian", fwhmDegrees: 6 }],
+    ["biological_assembly", { assemblyId: 1 }], ["biological_assembly", { modelNumber: "" }],
     ["crystal_transform", {}], ["crystal_transform", { operation: "supercell", repeats: [2, 2] }],
     ["crystal_transform", { operation: "supercell", repeats: [21, 1, 1] }], ["crystal_transform", { operation: "fill", hallNumber: 531 }],
     ["crystal_transform", { operation: "wrap", repeats: [2, 2, 2] }], ["crystal_transform", { operation: "set_cell", cell: [[1, 0], [0, 1, 0], [0, 0, 1]] }],
@@ -89,9 +93,26 @@ test("space_group, powder_xrd and pair_distribution match spglib, pymatgen and A
   expect(peaks).toHaveLength(rutile.xrd!.length);
   peaks.forEach(([twoTheta, , , , , multiplicity], index) => { expect(Math.abs(twoTheta - rutile.xrd![index].twoTheta)).toBeLessThan(1e-5); expect(multiplicity).toBe(rutile.xrd![index].multiplicity); });
   expect(JSON.parse(xrd.artifacts.pattern).format).toBe("burette-powder-xrd");
+  // A broadened profile peaks at the strongest reflection and is scaled to 100 there.
+  const broadened = await session("rutile.cif").run("powder_xrd", { profile: "gaussian", fwhmDegrees: 0.2 });
+  const profile = JSON.parse(broadened.artifacts.pattern).profile as { shape: string; fwhmDegrees: number; twoTheta: number[]; intensity: number[] };
+  const top = profile.intensity.indexOf(Math.max(...profile.intensity));
+  expect([profile.shape, profile.fwhmDegrees, broadened.summary.profile, Math.round(profile.intensity[top])]).toEqual(["gaussian", 0.2, "gaussian", 100]);
+  expect(Math.abs(profile.twoTheta[top] - broadened.summary.strongestPeaks[0].twoTheta)).toBeLessThan(0.05);
   const pairs = await session("quartz.cif").run("pair_distribution", { rMax: quartz.pairDistribution!.rMax, binWidth: quartz.pairDistribution!.binWidth });
   const histograms = JSON.parse(pairs.artifacts.distribution).histograms as { counts: number[] }[];
   expect(histograms[0].counts.map((_, bin) => histograms.reduce((sum, item) => sum + item.counts[bin], 0))).toEqual(quartz.pairDistribution!.total);
+});
+
+test("biological_assembly exports the chosen model of a deposited assembly as mmCIF", async () => {
+  const text = await Bun.file(new URL("fixtures/assemblies/two-model.cif", import.meta.url)).text();
+  const assembly = session("two-model.cif", text);
+  await expect(assembly.run("biological_assembly")).rejects.toThrow("defines 2 models; set job.params.modelNumber to one of 1, 2");
+  const built = await assembly.run("biological_assembly", { modelNumber: "2" });
+  expect(built.summary).toMatchObject({ assemblyId: "1", modelNumber: "2", copies: 2, atomCount: 2, chainCount: 2, assemblyCount: 1, modelCount: 2 });
+  expect(built.artifacts.structure).toContain("_atom_site.Cartn_x");
+  const observed = await session("rutile.cif").ok({ operation: "observe" });
+  expect(observed.jobs.biological_assembly).toEqual({ available: false, reason: "Open a PDB or mmCIF file with a biological assembly." });
 });
 
 test("point_group symmetrizes a distorted molecule; the artifact keeps the group at the tight tolerance", async () => {

@@ -517,17 +517,21 @@ const JOB_DEFINITIONS = {
     describe: {
       engine: 'Gemmi structure factors (IT92 form factors), Lorentz-polarization, no Debye-Waller factor',
       requires: 'A crystal with its own cell, 1–2000 atoms.',
-      params: { wavelengthAngstrom: '0.1–5 (default 1.5405929, Cu Kα1)', twoThetaMinDegrees: '0–170 (default 10)', twoThetaMaxDegrees: '0–170 (default 90)' },
+      params: { wavelengthAngstrom: '0.1–5 (default 1.5405929, Cu Kα1)', twoThetaMinDegrees: '0–170 (default 10)', twoThetaMaxDegrees: '0–170 (default 90)',
+        profile: ['gaussian', 'lorentzian', null], fwhmDegrees: 'with profile: 0.001–5 (default 0.1)' },
       artifacts: ['peaks', 'pattern'],
     },
     params(value) {
-      const p = params(value, ['wavelengthAngstrom', 'twoThetaMinDegrees', 'twoThetaMaxDegrees'], 'powder_xrd job.params');
+      const p = params(value, ['wavelengthAngstrom', 'twoThetaMinDegrees', 'twoThetaMaxDegrees', 'profile', 'fwhmDegrees'], 'powder_xrd job.params');
       const result = {
         wavelengthAngstrom: finite(p.wavelengthAngstrom, 'job.params.wavelengthAngstrom', 0.1, 5) ?? 1.5405929,
         twoThetaMinDegrees: finite(p.twoThetaMinDegrees, 'job.params.twoThetaMinDegrees', 0, 170) ?? 10,
         twoThetaMaxDegrees: finite(p.twoThetaMaxDegrees, 'job.params.twoThetaMaxDegrees', 0, 170) ?? 90,
+        profile: p.profile === null ? null : oneOf(p.profile, 'job.params.profile', new Set(['gaussian', 'lorentzian']), null),
       };
       if (!(result.twoThetaMaxDegrees > result.twoThetaMinDegrees)) invalid('job.params.twoThetaMaxDegrees must exceed twoThetaMinDegrees.');
+      if (result.profile) result.fwhmDegrees = finite(p.fwhmDegrees, 'job.params.fwhmDegrees', 0.001, 5) ?? 0.1;
+      else if (p.fwhmDegrees !== undefined) invalid('job.params.fwhmDegrees needs a profile.');
       return result;
     },
   },
@@ -543,6 +547,24 @@ const JOB_DEFINITIONS = {
       artifacts: ['structure'],
     },
     params: value => crystalTransformParams(params(value, ['operation', 'cell', 'keep', 'volumeCubicAngstrom', 'repeats', 'toleranceAngstrom', 'hallNumber'], 'crystal_transform job.params')),
+  },
+  biological_assembly: {
+    describe: {
+      engine: 'Burette biological assembly expansion (PDB REMARK 350, mmCIF pdbx_struct_assembly)',
+      requires: 'A PDB or mmCIF source up to 20 MB with an explicit assembly definition; at most 250000 expanded atoms. The assembly is exported as a new mmCIF.',
+      params: { assemblyId: 'required when the file defines several assemblies', modelNumber: 'required when the file has several models' },
+      artifacts: ['structure'],
+    },
+    params(value) {
+      const p = params(value, ['assemblyId', 'modelNumber'], 'biological_assembly job.params');
+      const result = {};
+      for (const key of ['assemblyId', 'modelNumber']) {
+        if (p[key] === undefined) continue;
+        if (typeof p[key] !== 'string' || !p[key].trim() || p[key].length > 64) invalid(`job.params.${key} must be a non-empty string of at most 64 characters.`);
+        result[key] = p[key];
+      }
+      return result;
+    },
   },
   orbital_cube: {
     describe: {
