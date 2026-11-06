@@ -443,8 +443,28 @@ current one has open code or acceptance items.
   `lib/workbench/focus-tool-dock.ts`.
 - **Done when:** install one format plugin, open its file; right-click an atom
   and open Geometry.
+- **Done (2026-11-06):** right-clicking an atom in 3D offers Edit atoms and
+  bonds, Edit geometry and Properties…, which open the matching tool focused on
+  that atom. Installed packages that declare `file-formats` readers add “With
+  <format>” to Open; their CJSON or other output opens as a new document.
+  Packages with `input-generators` add their programs to Export input file
+  under More programs, with the package's own options (JSON or TOML, tabs,
+  defaults) and a live preview of every generated file. Both follow
+  Avogadro's package-mode protocol (`--read` for readers, no flag for
+  generators, `$$coords:…$$`/`$$zmat:…$$` keywords). Checked on Gauss: cclib
+  read an MP2 water log; all 11 avogadro-generators programs answered with
+  default options. The metal complex builder now carries the 76 ligands of
+  OpenChemistry/fragments (haptic rings, tri-, tetra- and hexadentate
+  chelates, with the missing hydrogens and charges corrected), fits
+  polydentate ligands to the site sets their bite angles allow, and adds
+  trigonal prismatic, pentagonal and hexagonal bipyramidal and square
+  antiprismatic geometries. RDKit and Open Babel read every new sample back
+  with the expected charge, among them ferrocene, Zeise's anion, Fe(edta)⁻,
+  Ru(terpy)₂²⁺ and Ni(cyclam)²⁺. The 166 substituent groups came earlier;
+  the 156 polymer repeat units are not ported.
 - **Checks:** `test:extension-runner`, `test:extension-ui`,
-  `test:avogadro-commands`.
+  `test:avogadro-commands`, `test:avogadro-plugin-formats`,
+  `test:metal-complex`, `test:builder-agent`.
 
 ## Stage 13. Hardening and other surfaces
 
