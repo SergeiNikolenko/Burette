@@ -10,6 +10,7 @@
   <a href="https://opensource.org/licenses/MIT"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-yellow.svg?style=flat-square" /></a>
   <img alt="macOS 12+" src="https://img.shields.io/badge/macOS-12%2B-blue.svg?style=flat-square" />
   <img alt="Linux x86_64" src="https://img.shields.io/badge/Linux-x86__64-blue.svg?style=flat-square" />
+  <img alt="Windows x64" src="https://img.shields.io/badge/Windows-x64-blue.svg?style=flat-square" />
   <img alt="iOS source app" src="https://img.shields.io/badge/iOS-source%20app-blue.svg?style=flat-square" />
   <img alt="Quick Look" src="https://img.shields.io/badge/Quick%20Look-extension-57606a.svg?style=flat-square" />
   <img alt="Molstar" src="https://img.shields.io/badge/viewer-Mol%2A-0f8f72.svg?style=flat-square" />
@@ -54,7 +55,8 @@ plugin for working with molecular files through ChatGPT or Codex.
 Current macOS release bundles require Apple Silicon and macOS 12 or later.
 Linux releases ship the desktop workspace for x86_64 as deb, rpm and AppImage
 bundles; see [Burette on Linux](docs/linux.md) for installation and the
-differences from the Mac app.
+differences from the Mac app. Windows releases ship it for x64 as an installer;
+see [Burette on Windows](docs/windows.md).
 
 You can install Burette with the Homebrew tap:
 

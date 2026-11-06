@@ -20,7 +20,7 @@ later provide. The deb and rpm packages declare it as a dependency.
 The deb and rpm packages install a desktop entry and a shared-mime-info
 package (`/usr/share/mime/packages/burette.xml`). Both are generated from
 `config/preview-formats.json`, the registry the macOS `Info.plist` follows, by
-`scripts/linux-desktop-metadata.mjs`; `bun run check:formats` fails when the
+`scripts/desktop-metadata.mjs`; `bun run check:formats` fails when the
 checked-in copies under `packaging/linux/` are stale.
 
 - Distinctive molecular extensions (`.pdb`, `.cif`, `.sdf`, `.mol2`, `.xtc`,
