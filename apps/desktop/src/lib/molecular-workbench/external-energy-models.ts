@@ -6,7 +6,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useEffect, useSyncExternalStore } from 'react';
 import { isTauriRuntime } from '../tauri';
 import { ELEMENT_SYMBOLS, ENERGY_MODELS, energyModel, energyModelUnavailable, isExternalEnergyModelId } from './energy-models';
-import { MODEL_INPUT_FORMATS, chargeAndMultiplicity, modelBootstrap, type ModelInputFormat } from './external-energy-input';
+import { MODEL_INPUT_FORMATS, PERIODIC_INPUT_FORMATS, chargeAndMultiplicity, modelBootstrap, type ModelInputFormat } from './external-energy-input';
 import type { MolecularStructure } from './molecular-graph';
 import { OPTIMIZATION_LIMITS, type AsyncEnergyEvaluator } from './optimization';
 import type { EnergyModelId, ExternalEnergyModelId, MolecularAtom, Vec3 } from './types';
@@ -23,11 +23,13 @@ export type ExternalEnergyModel = {
   gradients: boolean; ions: boolean; radicals: boolean;
   /** Energies of many coordinate sets per request (binary-v1 `support.batch`). */
   batch: boolean;
+  /** Accepts a periodic structure (`support.unit-cell`). */
+  unitCell: boolean;
   elements: ReadonlySet<string>;
   /** Why it cannot run yet, such as a package that is not set up. */
   unavailable?: string;
 };
-type NativeModel = Omit<ExternalEnergyModel, 'elements' | 'unavailable' | 'inputFormat'> & { elements: number[]; inputFormat: string | null; unavailable: string | null; unitCell: boolean };
+type NativeModel = Omit<ExternalEnergyModel, 'elements' | 'unavailable' | 'inputFormat'> & { elements: number[]; inputFormat: string | null; unavailable: string | null };
 
 let models: readonly ExternalEnergyModel[] = [];
 let pending: Promise<readonly ExternalEnergyModel[]> | null = null;
@@ -37,7 +39,7 @@ const listeners = new Set<() => void>();
 export function refreshExternalEnergyModels(native: Call = call): Promise<readonly ExternalEnergyModel[]> {
   if (!isTauriRuntime() && native === call) return Promise.resolve(models);
   pending ??= native<NativeModel[]>('energy_models_list').then(list => {
-    models = list.filter(model => isExternalEnergyModelId(model.id)).map(({ elements, inputFormat, unavailable, unitCell: _, ...model }) => ({
+    models = list.filter(model => isExternalEnergyModelId(model.id)).map(({ elements, inputFormat, unavailable, ...model }) => ({
       ...model, elements: new Set(elements.map(z => ELEMENT_SYMBOLS[z - 1]).filter(Boolean)),
       ...(inputFormat ? { inputFormat } : {}), ...(unavailable ? { unavailable } : {}),
     }));
@@ -100,6 +102,9 @@ export async function openExternalEnergyEvaluator(model: ExternalEnergyModel, st
   const { charge, multiplicity } = chargeAndMultiplicity(structure);
   if (charge && !model.ions) throw new Error(`${model.name} does not accept charged structures.`);
   if (multiplicity !== 1 && !model.radicals) throw new Error(`${model.name} does not accept radicals.`);
+  // As Avogadro's ScriptEnergy::setMolecule; xTB runs molecules only here.
+  if (structure.cell && !model.unitCell) throw new Error(`${model.name} does not support unit cells.`);
+  if (structure.cell && model.inputFormat && !PERIODIC_INPUT_FORMATS.includes(model.inputFormat)) throw new Error(`${model.name} reads ${model.inputFormat.toUpperCase()}, which cannot carry a unit cell.`);
   const bootstrap = model.inputFormat ? modelBootstrap(structure, model.inputFormat as ModelInputFormat, charge, multiplicity) : undefined;
   const elements = structure.atoms.map(atom => atom.element);
   const session = await native<string>('energy_model_open', { request: { model: model.id, elements, charge, multiplicity, ...(bootstrap ? { bootstrap } : {}) } });

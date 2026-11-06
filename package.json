@@ -145,7 +145,7 @@
     "test:workbench-automation-jobs": "bun test tests/test-workbench-automation-jobs.test.ts && bun test tests/test-workbench-coordinate-jobs.test.ts && bun test tests/test-spectrum-agent.test.ts && bun test tests/test-vibrational-spectrum-agent.test.ts",
     "test:workbench-python-client": "bun test tests/test-workbench-python-client.test.tsx",
     "test:workbench-prepare-conformers-ui": "bun test tests/test-workbench-prepare-conformers-ui.test.tsx",
-    "test:workbench-physics": "bun test tests/test-energy-models.test.ts tests/test-workbench-forcefields.test.ts tests/test-workbench-minimizer.test.ts tests/test-workbench-energy-forces.test.ts tests/test-auto-optimize.test.ts && bun run test:external-energy-models",
+    "test:workbench-physics": "bun test tests/test-energy-models.test.ts tests/test-workbench-forcefields.test.ts tests/test-workbench-minimizer.test.ts tests/test-workbench-energy-forces.test.ts tests/test-auto-optimize.test.ts tests/test-periodic-energy.test.ts && bun run test:external-energy-models",
     "test:external-energy-models": "bun test tests/test-external-energy-models.test.ts",
     "test:science-import-receipt": "bun test tests/test-science-import-receipt.test.ts",
     "test:science-host": "bun test tests/test-science-host-roundtrip.test.ts tests/test-science-host-regressions.test.ts tests/test-science-restore-ownership.test.ts",

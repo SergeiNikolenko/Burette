@@ -19,7 +19,7 @@ test("the contract lists all job kinds and validates crystal parameters before q
   expect(Object.keys(workbenchContractSummary().jobs)).toEqual([
     "properties", "energy", "energy_forces", "frame_energy_forces", "optimize",
     "prepare_3d", "conformers", "metadata_edit", "measurement_set", "coordinate_align",
-    "pair_distribution", "point_group", "space_group", "powder_xrd", "crystal_transform",
+    "spectrum", "vibrational_spectrum", "pair_distribution", "point_group", "space_group", "powder_xrd", "crystal_transform",
     "orbital_cube", "insert_fragment", "hydrogens", "polymer", "smiles",
     "nucleic_acid", "metal_complex", "peptide",
   ]);

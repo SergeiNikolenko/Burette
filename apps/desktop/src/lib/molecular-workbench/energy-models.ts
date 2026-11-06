@@ -4,7 +4,8 @@
  * cb0e94852889da9f7288bd1e58241e69990935a7 (BSD-3-Clause), with its Alvarez van der
  * Waals radii (core/elementdata.h). See docs/third-party/avogadro-LICENSE. */
 import type { EnergyEvaluator } from './optimization';
-import type { EnergyModelId, ExternalEnergyModelId, MolecularAtom, MolecularForceField, Vec3 } from './types';
+import { validateCell } from './crystal';
+import type { EnergyModelId, ExternalEnergyModelId, MolecularAtom, MolecularForceField, UnitCell, Vec3 } from './types';
 
 export type EnergyModel = {
   id: MolecularForceField; name: string;
@@ -61,9 +62,10 @@ export function recommendedEnergyModel(atoms: readonly Pick<MolecularAtom, 'elem
  * (clusters, noble gases); a bonded structure neither graph field describes is an
  * error. UFF can still refuse an atom its typer does not recognize when it runs.
  * External models are never chosen automatically, as in Avogadro. */
-export function resolveEnergyModel<T extends EnergyModelChoice>(choice: T, structure: { atoms: readonly Pick<MolecularAtom, 'element'>[]; bonds: readonly unknown[]; graphComplete: boolean }): Exclude<T, 'auto'> | MolecularForceField {
+export function resolveEnergyModel<T extends EnergyModelChoice>(choice: T, structure: { atoms: readonly Pick<MolecularAtom, 'element'>[]; bonds: readonly unknown[]; graphComplete: boolean; cell?: UnitCell }): Exclude<T, 'auto'> | MolecularForceField {
   if (choice !== 'auto') return choice as Exclude<T, 'auto'>;
   if (!structure.bonds.length) return 'LJ';
+  if (structure.cell) throw new Error('No built-in model has periodic terms for bonded atoms. Choose Lennard-Jones or an external model that supports unit cells.');
   if (!structure.graphComplete) throw new Error('XYZ does not specify bond orders or charges. Provide SMILES or SDF before this calculation, or choose Lennard-Jones for a non-bonded cluster.');
   const field = RECOMMENDED.find(id => !energyModelUnavailable(id, structure.atoms));
   if (!field) throw new Error(`${energyModelUnavailable('UFF', structure.atoms)} Choose Lennard-Jones for a non-bonded cluster.`);
@@ -72,16 +74,26 @@ export function resolveEnergyModel<T extends EnergyModelChoice>(choice: T, struc
 
 const KJ_PER_KCAL = 4.184, DEPTH = 100 / KJ_PER_KCAL, EXPONENT = 6, CLOSEST = 0.1;
 
+/** Why a built-in model cannot run on a periodic structure, or null: only
+ * Lennard-Jones has periodic terms here. (Avogadro's own UFF applies the minimum
+ * image to its nonbonded pairs; Burette's UFF and MMFF come from RDKit and
+ * OpenChemLib, which have none.) */
+export function periodicUnavailable(id: MolecularForceField, structure: { cell?: UnitCell }): string | null {
+  return structure.cell && id !== 'LJ' ? `${energyModel(id).name} has no periodic terms. Choose Lennard-Jones or an external model that supports unit cells.` : null;
+}
+
 /** E = ε Σ_{i<j} [(σ/r)¹² − 2(σ/r)⁶] over every pair, bonded or not, with σ the sum
- * of van der Waals radii and ε = 100 kJ/mol; r is clamped at 0.1 Å. kcal/mol. */
-export function createLennardJonesEvaluator(elements: readonly string[]): EnergyEvaluator {
+ * of van der Waals radii and ε = 100 kJ/mol; r is clamped at 0.1 Å. kcal/mol.
+ * In a `cell` each pair takes its minimum image, as calc/lennardjones.cpp does. */
+export function createLennardJonesEvaluator(elements: readonly string[], cell?: UnitCell): EnergyEvaluator {
   const radii = elements.map(element => VDW_RADII[element]);
   if (radii.some(radius => radius === undefined)) throw new Error('Lennard-Jones needs real elements.');
+  const image = cell ? minimumImage(cell) : (delta: Vec3) => delta;
   const evaluate = (atoms: MolecularAtom[], gradient?: Vec3[]) => {
     if (atoms.length !== radii.length || atoms.some((atom, i) => atom.element !== elements[i])) throw new Error('Energy coordinates must preserve molecular atom identities.');
     let energy = 0;
     for (let i = 0; i < atoms.length; i++) for (let j = i + 1; j < atoms.length; j++) {
-      const delta: Vec3 = [atoms[i].x - atoms[j].x, atoms[i].y - atoms[j].y, atoms[i].z - atoms[j].z];
+      const delta = image([atoms[i].x - atoms[j].x, atoms[i].y - atoms[j].y, atoms[i].z - atoms[j].z]);
       const r = Math.max(Math.hypot(...delta), CLOSEST), ratio = ((radii[i] + radii[j]) / r) ** EXPONENT;
       energy += DEPTH * (ratio * ratio - 2 * ratio);
       if (!gradient) continue;
@@ -94,5 +106,18 @@ export function createLennardJonesEvaluator(elements: readonly string[]): Energy
     energy: atoms => evaluate(atoms),
     gradient(atoms) { const gradient = atoms.map((): Vec3 => [0, 0, 0]); evaluate(atoms, gradient); return gradient; },
     dispose() {},
+  };
+}
+
+/** The shortest periodic copy of a separation: fractional components wrapped to
+ * [−½, ½), as Avogadro's UnitCell::minimumImage. Cartesian = fractional · M with
+ * the lattice vectors as the rows of M. */
+function minimumImage(cell: UnitCell) {
+  validateCell(cell);
+  const [[a, b, c], [d, e, f], [g, h, k]] = cell, det = a * (e * k - f * h) - b * (d * k - f * g) + c * (d * h - e * g);
+  const inverse = [[e * k - f * h, c * h - b * k, b * f - c * e], [f * g - d * k, a * k - c * g, c * d - a * f], [d * h - e * g, b * g - a * h, a * e - b * d]].map(row => row.map(v => v / det));
+  return (delta: Vec3): Vec3 => {
+    const fractional = [0, 1, 2].map(j => delta[0] * inverse[0][j] + delta[1] * inverse[1][j] + delta[2] * inverse[2][j]).map(v => v - Math.round(v));
+    return [0, 1, 2].map(j => fractional[0] * cell[0][j] + fractional[1] * cell[1][j] + fractional[2] * cell[2][j]) as Vec3;
   };
 }

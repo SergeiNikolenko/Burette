@@ -20,6 +20,8 @@ const listed = [
     gradients: false, ions: true, radicals: false, unitCell: false, batch: false, elements: [1, 6, 7, 8], unavailable: null },
   { id: 'avogadro:avogadro-harmonic-energy/harmonic-batch', name: 'Harmonic (batch)', description: '', source: 'avogadro-harmonic-energy', inputFormat: 'cjson',
     gradients: false, ions: true, radicals: false, unitCell: false, batch: true, elements: [1, 6, 7, 8], unavailable: null },
+  { id: 'avogadro:avogadro-harmonic-energy/harmonic-periodic', name: 'Harmonic (periodic)', description: '', source: 'avogadro-harmonic-energy', inputFormat: 'cjson',
+    gradients: true, ions: true, radicals: false, unitCell: true, batch: false, elements: [18], unavailable: null },
 ];
 const harmonic = (x: number[]) => x.reduce((sum, v) => sum + v * v, 0);
 async function native(command: string, args?: Args): Promise<unknown> {
@@ -102,6 +104,25 @@ test('models without gradients are differenced from energies, skipping frozen at
     if (command === 'energy_model_evaluate_batch') expect(requests.every(([, args]) => args!.coordinates.length === 3 * n * (1 + 6 * (n - 1)))).toBe(true);
   }
   expect(sessions.size).toBe(0);
+});
+
+test('a unit cell reaches only models that declare unit-cell support, in the Chemical JSON start-up input', async () => {
+  await models.refreshExternalEnergyModels(native as never);
+  const { energyWithModel } = await import('../apps/desktop/src/lib/molecular-workbench/optimize-with-model');
+  const { parseMolecule } = await import('../apps/desktop/src/lib/molecular-workbench/chemistry');
+  const crystal = parseMolecule('2\nLattice="10 0 0 0 10 0 3 0 9" Ar2\nAr 1 0 0\nAr 4 0 0\n', 'xyz');
+  calls = [];
+  await expect(energyWithModel(crystal, 'xtb:gfn2')).rejects.toThrow('GFN2-xTB does not support unit cells.');
+  expect(calls.some(([command]) => command === 'energy_model_open')).toBe(false);
+  await energyWithModel(crystal, 'avogadro:avogadro-harmonic-energy/harmonic-periodic');
+  const bootstrap = JSON.parse(calls.find(([command]) => command === 'energy_model_open')![1]!.request.bootstrap);
+  const cell = bootstrap.cjson.unitCell;
+  expect(cell.cellVectors).toEqual([10, 0, 0, 0, 10, 0, 3, 0, 9]);
+  expect([cell.a, cell.b, cell.alpha, cell.gamma]).toEqual([10, 10, 90, 90]);
+  expect(cell.c).toBeCloseTo(Math.hypot(3, 9), 12);
+  expect(cell.beta).toBeCloseTo(Math.acos(3 / Math.hypot(3, 9)) * 180 / Math.PI, 12);
+  // Extended XYZ carries the cell in its comment line.
+  expect(JSON.parse(modelBootstrap({ ...crystal, title: 'Ar2' }, 'xyz', 0, 1)).xyz.split('\n')[1]).toBe('Lattice="10 0 0 0 10 0 3 0 9" Ar2');
 });
 
 test('unsupported charge or spin never opens a session, and Cancel closes the running one', async () => {

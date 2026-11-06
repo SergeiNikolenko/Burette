@@ -8,10 +8,13 @@
 import { sdfFromGraph } from '../workbench/formats';
 import { ELEMENT_SYMBOLS } from './energy-models';
 import type { MolecularStructure } from './molecular-graph';
-import type { MolecularBond } from './types';
+import type { MolecularBond, UnitCell, Vec3 } from './types';
 
 export type ModelInputFormat = 'cjson' | 'cml' | 'mdl' | 'mol' | 'sdf' | 'xyz';
 export const MODEL_INPUT_FORMATS: readonly string[] = ['cjson', 'cml', 'mdl', 'mol', 'sdf', 'xyz'];
+/** The input formats that carry a unit cell: Chemical JSON `unitCell` and the
+ * extended XYZ `Lattice`. */
+export const PERIODIC_INPUT_FORMATS: readonly string[] = ['cjson', 'xyz'];
 
 /** Formal charges and Kekulé bonds in structure atom order, from the V3000 molfile
  * the structure carries; without one, no charges and the structure's own bonds. */
@@ -38,13 +41,24 @@ export function chargeAndMultiplicity(structure: MolecularStructure) {
   return { charge, multiplicity: Math.abs(electrons) % 2 ? 2 : 1 };
 }
 
+/** Chemical JSON `unitCell`: lengths in Å, angles in degrees and the lattice vectors. */
+function unitCell(cell: UnitCell) {
+  const length = (v: Vec3) => Math.hypot(...v), angle = (u: Vec3, v: Vec3) => Math.acos((u[0] * v[0] + u[1] * v[1] + u[2] * v[2]) / (length(u) * length(v))) * 180 / Math.PI;
+  const [a, b, c] = cell;
+  return { a: length(a), b: length(b), c: length(c), alpha: angle(b, c), beta: angle(a, c), gamma: angle(a, b), cellVectors: cell.flat() };
+}
+
 const cmlOrder = (order: number) => order === 1.5 ? 'A' : String(order);
 
 /** The one-line start-up JSON for an Avogadro energy model. */
 export function modelBootstrap(structure: MolecularStructure, format: ModelInputFormat, charge: number, multiplicity: number): string {
-  const { atoms, title } = structure, { charges, bonds } = graph(structure);
+  const { atoms, title, cell } = structure, { charges, bonds } = graph(structure);
   let molecule: unknown;
-  if (format === 'xyz') molecule = `${atoms.length}\n${title.replace(/[\r\n]/gu, ' ')}\n${atoms.map(a => `${a.element} ${a.x} ${a.y} ${a.z}`).join('\n')}\n`;
+  if (format === 'xyz') {
+    // An extended XYZ comment line keeps its Lattice; otherwise the cell is added to it.
+    const comment = title.replace(/[\r\n]/gu, ' '), lattice = cell && !/\bLattice\s*=/iu.test(comment) ? `Lattice="${cell.flat().join(' ')}" ` : '';
+    molecule = `${atoms.length}\n${lattice}${comment}\n${atoms.map(a => `${a.element} ${a.x} ${a.y} ${a.z}`).join('\n')}\n`;
+  }
   // V2000 is the widest-read molfile; coordinate requests then carry full precision.
   else if (format === 'sdf' || format === 'mol' || format === 'mdl') molecule = sdfFromGraph(atoms, bonds, title, [], charges);
   else if (format === 'cml') {
@@ -57,6 +71,7 @@ export function modelBootstrap(structure: MolecularStructure, format: ModelInput
       atoms: { elements: { number: atoms.map(a => atomicNumber(a.element)) }, coords: { '3d': atoms.flatMap(a => [a.x, a.y, a.z]) }, formalCharges: charges },
       bonds: { connections: { index: bonds.flatMap(b => [b.a, b.b]) }, order: bonds.map(b => b.order === 1.5 ? 1 : b.order) },
       properties: { totalCharge: charge, totalSpinMultiplicity: multiplicity },
+      ...(cell ? { unitCell: unitCell(cell) } : {}),
     };
   }
   return JSON.stringify({ charge, spin: multiplicity, selectedAtoms: [], [format]: molecule, options: {} });

@@ -2,7 +2,8 @@ import { sourceAtomPositions } from './molfile-positions';
 import { Molecule } from 'openchemlib';
 import { readUnspecifiedMolfileStereo, retainUnknownStereo } from './molecule-stereochemistry';
 import { atomicNumber } from './elements';
-import type { MolecularAtom, MolecularBond } from './types';
+import type { MolecularAtom, MolecularBond, UnitCell } from './types';
+import { readUnitCell } from './crystal';
 import { serializePhysicalMolfile } from './molecule-serialization';
 import { parseXyz } from './xyz';
 
@@ -11,6 +12,9 @@ export type MolecularStructure = {
   graphSource: 'explicit' | 'perceived'; graphComplete: boolean;
   /** Output atom index -> OCL molfile atom index (OCL moves plain H to the end). */
   atomMap?: number[];
+  /** Lattice vectors (Å) of a periodic source, such as an extended XYZ `Lattice`;
+   * energy models without periodic terms refuse it. */
+  cell?: UnitCell;
 };
 
 // Single-bond covalent radii, angstrom (Cordero et al., Dalton Trans. 2008,
@@ -64,6 +68,7 @@ export function parseMolecule(source: string, format: 'xyz' | 'sdf' | 'mol'): Mo
   if (format !== 'xyz') throw new Error('Unsupported molecule format.');
   const { atoms, title } = parseXyz(source);
   checkMoleculeSize(atoms.length);
+  const cell = readUnitCell(title);
   const mol = new Molecule(atoms.length, atoms.length * 2);
   atoms.forEach(a => { const i = mol.addAtom(atomicNumber(a.element)); mol.setAtomX(i, a.x); mol.setAtomY(i, a.y); mol.setAtomZ(i, a.z); mol.setAtomMapNo(i, i + 1); });
   const degrees = atoms.map(() => 0);
@@ -79,5 +84,5 @@ export function parseMolecule(source: string, format: 'xyz' | 'sdf' | 'mol'): Mo
   mol.ensureHelperArrays(Molecule.cHelperRings);
   const atomMap = atoms.map((_, i) => Array.from({ length: mol.getAllAtoms() }, (_, j) => j).find(j => mol.getAtomMapNo(j) === i + 1)!);
   atomMap.forEach(i => mol.setAtomMapNo(i, 0));
-  return snapshotMolecule(mol, title, 'perceived', complete, atomMap);
+  return { ...snapshotMolecule(mol, title, 'perceived', complete, atomMap), ...(cell ? { cell } : {}) };
 }

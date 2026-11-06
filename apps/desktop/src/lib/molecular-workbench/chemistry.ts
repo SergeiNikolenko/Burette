@@ -10,7 +10,7 @@ import { createForceField, type MolecularForceField } from './forcefield';
 import { ForceFieldMMFF94 } from 'openchemlib';
 import { calculateGasteigerWasm, createUffWasmEvaluator, extractMmffParametersWasm, prepareUffWasm } from './uff-wasm';
 import { decodeMmffTerms, mmffEnergy } from './mmff-analytic';
-import { createLennardJonesEvaluator, energyModel } from './energy-models';
+import { createLennardJonesEvaluator, energyModel, periodicUnavailable } from './energy-models';
 export type { MolecularForceField } from './forcefield';
 export type { GeometryConstraint, OptimizeOptions, OptimizationProgress, OptimizationResult, OptimizationMethod } from './optimization';
 
@@ -82,16 +82,22 @@ export function getProperties(structure: MolecularStructure) {
     hydrogenBondDonors: p.donorCount, hydrogenBondAcceptors: p.acceptorCount, rotatableBonds: p.rotatableBondCount, polarSurfaceArea: p.polarSurfaceArea, logP: p.logP };
 }
 export function getEnergy(structure: MolecularStructure, forceField: MolecularForceField = 'MMFF94'): number {
-  return forceField === 'LJ' ? lennardJones(structure).energy(structure.atoms) : createForceField(toOcl(structure), forceField).getTotalEnergy();
+  return forceField === 'LJ' ? lennardJones(structure).energy(structure.atoms) : createForceField(toOcl(periodicChecked(structure, forceField)), forceField).getTotalEnergy();
 }
 /** Lennard-Jones reads only elements and coordinates, never the bond graph. */
-const lennardJones = (structure: MolecularStructure) => createLennardJonesEvaluator(structure.atoms.map(atom => atom.element));
+const lennardJones = (structure: MolecularStructure) => createLennardJonesEvaluator(structure.atoms.map(atom => atom.element), structure.cell);
+/** Graph fields have no periodic terms; a structure with a cell never reaches them. */
+function periodicChecked(structure: MolecularStructure, forceField: MolecularForceField) {
+  const reason = periodicUnavailable(forceField, structure);
+  if (reason) throw new Error(reason);
+  return structure;
+}
 /** A numerical job retains one parsed graph (and, for UFF, one RDKit kernel with its
  * initial nonbonded term list). Energies may be non-finite at undefined geometries;
  * callers reject such points. The caller owns disposal, including cancellation. */
 export function createEnergyEvaluator(structure: MolecularStructure, forceField: MolecularForceField = 'MMFF94'): EnergyEvaluator {
   if (forceField === 'LJ') return lennardJones(structure);
-  return energyEvaluatorForGraph(structure, forceField, toOcl(structure));
+  return energyEvaluatorForGraph(periodicChecked(structure, forceField), forceField, toOcl(structure));
 }
 
 function energyEvaluatorForGraph(structure: MolecularStructure, forceField: Exclude<MolecularForceField, 'LJ'>, mol: Molecule): EnergyEvaluator {
@@ -137,6 +143,7 @@ const MMFF_SURFACE_AGREEMENT = 1e-3;
  * differences for such graphs and when analytic extraction or the energy check fails. */
 export function createOptimizationEvaluator(structure: MolecularStructure, forceField: MolecularForceField = 'MMFF94'): EnergyEvaluator {
   if (forceField === 'LJ') return lennardJones(structure);
+  periodicChecked(structure, forceField);
   const { mol, sourceMap } = readOclGraph(structure, true);
   const reference = energyEvaluatorForGraph(structure, forceField, mol);
   const n = structure.atoms.length;
@@ -232,7 +239,8 @@ export function optimize(structure: MolecularStructure, options: OptimizeOptions
   try {
     const { atoms, ...result } = optimizeCartesian(structure, evaluator, method, forceField, { constraints, maxIterations, gradientTolerance: options.gradientTolerance, energyTolerance: options.energyTolerance }, onProgress);
     // A model without a graph field also relaxes XYZ input whose bond orders are unknown.
-    return { ...result, molecule: snapshot(toOcl({ ...structure, atoms }, energyModel(forceField).graph), structure.title, structure.graphSource, structure.graphComplete, structure.atomMap) };
+    const molecule = snapshot(toOcl({ ...structure, atoms }, energyModel(forceField).graph), structure.title, structure.graphSource, structure.graphComplete, structure.atomMap);
+    return { ...result, molecule: structure.cell ? { ...molecule, cell: structure.cell } : molecule };
   } finally { evaluator.dispose(); }
 }
 

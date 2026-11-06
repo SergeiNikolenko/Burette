@@ -8,7 +8,7 @@ function determinant(cell: UnitCell) {
   return a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0]);
 }
 
-function validateCell(cell: UnitCell) {
+export function validateCell(cell: UnitCell) {
   if (cell.length !== 3 || cell.some(vector => vector.length !== 3 || vector.some(value => !Number.isFinite(value) || Math.abs(value) > 1e5)) || Math.abs(determinant(cell)) < 1e-8) {
     throw new Error("The cell must contain three finite, independent lattice vectors.");
   }
