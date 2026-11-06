@@ -15,13 +15,12 @@ import { formatBytes, rendererLabel } from "../format";
 import type { ShellActions, ShellViewState } from "../types";
 import { isRemoteStructureUrl } from "../../lib/remote-structure";
 import { buildShellCommands, filterShellCommands, type ShellCommand } from "../../lib/shell-commands";
+import { useCommandPaletteSearch, useSetCommandPaletteSearch } from "../../hooks/use-command-palette";
 
 type CommandPaletteProps = {
   state: ShellViewState;
   actions: ShellActions;
   isOpen: boolean;
-  query: string;
-  onQueryChange: (query: string) => void;
   onClose: () => void;
   onRunError: (error: unknown, prefix?: string) => void;
 };
@@ -48,15 +47,15 @@ export function CommandPalette({
   state,
   actions,
   isOpen,
-  query,
-  onQueryChange,
   onClose,
   onRunError,
 }: CommandPaletteProps) {
   const listRef = useRef<HTMLDivElement | null>(null);
+  const query = useCommandPaletteSearch();
+  const onQueryChange = useSetCommandPaletteSearch();
 
-  const items = useMemo<PaletteItem[]>(() => {
-    const projectItems = state.sidebarProjects.flatMap((project) => project.items.map((item) => ({
+  const projectItems = useMemo<PaletteItem[]>(() => (
+    state.sidebarProjects.flatMap((project) => project.items.map((item) => ({
       id: `${item.source}-${item.path}`,
       group: "Structures",
       label: item.title,
@@ -77,8 +76,10 @@ export function CommandPalette({
           openedAt: item.openedAt ?? Date.now(),
         });
       },
-    })));
+    })))
+  ), [actions, state.sidebarProjects]);
 
+  const items = useMemo<PaletteItem[]>(() => {
     const commands: PaletteItem[] = [
       ...projectItems,
       ...buildShellCommands(state, actions, query).map((command) => ({
@@ -89,7 +90,7 @@ export function CommandPalette({
       })),
     ];
     return commands;
-  }, [actions, query, state]);
+  }, [actions, projectItems, query, state]);
 
   const visibleItems = useMemo(() => {
     const queryUrl = query.trim();

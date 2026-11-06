@@ -7925,6 +7925,15 @@ SOFTWARE.
     }
     const { children, rootRef } = sceneTreeChildRefs(state);
     if (rootRef === null) return [];
+    const siblingTypeCounts = new Map();
+    for (const [parentRef, refs] of children) {
+      const counts = new Map();
+      for (const ref of refs) {
+        const name = state.cells.get(ref)?.obj?.type?.name;
+        counts.set(name, (counts.get(name) || 0) + 1);
+      }
+      siblingTypeCounts.set(parentRef, counts);
+    }
     const colorTargets = sceneTreeColorTargets(viewer);
     // Decorators such as custom-model-properties re-wrap their parent under the
     // same label. Mol* shows one row for the whole chain, and the managers address
@@ -7960,13 +7969,12 @@ SOFTWARE.
           const objectName = cell.obj.type?.name;
           const childRefs = chain.flatMap(ref => children.get(ref) || [])
             .filter(ref => !isSceneTreeDecorator(state.cells.get(ref)) && state.cells.get(ref)?.obj?.type?.typeClass !== 'Null');
-          const siblings = (children.get(cell.transform.parent) || [])
-            .filter(ref => state.cells.get(ref)?.obj?.type?.name === objectName);
+          const siblingCount = siblingTypeCounts.get(cell.transform.parent)?.get(objectName) || 0;
           const singleTrajectory = objectName === 'Trajectory' && cell.obj.data?.frameCount === 1 && childRefs.length === 1;
-          const singleModel = objectName === 'Model' && siblings.length === 1 && childRefs.length === 1
+          const singleModel = objectName === 'Model' && siblingCount === 1 && childRefs.length === 1
             && state.cells.get(cell.transform.parent)?.obj?.data?.frameCount === 1;
           const plainStructure = cell.transform.transformer?.id === 'ms-plugin.structure-from-model'
-            && siblings.length === 1 && cell.obj.label === 'Model' && childRefs.length > 0;
+            && siblingCount === 1 && cell.obj.label === 'Model' && childRefs.length > 0;
           if (singleTrajectory || singleModel || plainStructure || (molstarStoryState().available && (
             (['Trajectory', 'Model'].includes(objectName) && childRefs.length === 1)
             || cell.transform.transformer?.id === 'ms-plugin.structure-from-model'
@@ -7983,7 +7991,7 @@ SOFTWARE.
           const display = sceneTreeRowLabel(cell, rawLabel);
           const label = display.label;
           const measurementName = ['Label', 'Distance', 'Angle', 'Dihedral'].includes(label);
-          const measurementTargets = measurementEditable ? sceneTreeMeasurementTargets(viewer, nodeRef) : [];
+          const measurementTargets = measurementEditable ? sceneTreeMeasurementTargets(viewer, nodeRef, children) : [];
           const customText = measurementName ? sceneTreeMeasurementValue(measurementTargets, 'custom-text') : undefined;
           const measurementSource = measurementName ? sceneTreeMeasurementSource(nodeCell) : '';
           const nested = build(chain);
@@ -22744,7 +22752,9 @@ SOFTWARE.
     };
     const scheduleSliderInputPose = (index) => {
       pendingSliderIndex = Math.max(0, Math.min(prepared.poseCount - 1, index));
-      if (sliderInputTimer) clearTimeout(sliderInputTimer);
+      // Keep the scheduled flush: resetting it on every input starves live
+      // scrubbing when pointer events arrive faster than the 24 ms interval.
+      if (sliderInputTimer) return;
       sliderInputTimer = window.setTimeout(() => {
         sliderInputTimer = null;
         flushPendingSliderInput();

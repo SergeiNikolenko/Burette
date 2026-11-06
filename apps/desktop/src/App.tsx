@@ -9,10 +9,8 @@ import { Toaster } from "./components/ui/toast";
 import { WindowTitle } from "./components/window-title";
 import {
   useCloseCommandPalette,
-  useCommandPaletteSearch,
   useIsCommandPaletteOpen,
   useOpenCommandPalette,
-  useSetCommandPaletteSearch,
 } from "./hooks/use-command-palette";
 import { useAppActiveTextDocument } from "./hooks/use-app-active-text-document";
 import { useAppBrowserDevStartup } from "./hooks/use-app-browser-dev-startup";
@@ -586,10 +584,8 @@ export default function App() {
     skipNextPreferenceRefreshRef,
   } = useAppViewerRuntimeRefs();
   const commandPaletteOpen = useIsCommandPaletteOpen();
-  const commandPaletteQuery = useCommandPaletteSearch();
   const openCommandPalette = useOpenCommandPalette();
   const closeCommandPalette = useCloseCommandPalette();
-  const setCommandPaletteQuery = useSetCommandPaletteSearch();
 
   const { requestMolstarXtbContextDocument } = useAppMolstarXtbContext({
     activeViewerIframeForDocument,
@@ -1373,8 +1369,6 @@ export default function App() {
             state={state}
             actions={actions}
             isOpen={commandPaletteOpen}
-            query={commandPaletteQuery}
-            onQueryChange={setCommandPaletteQuery}
             onClose={closeCommandPalette}
             onRunError={pushErrorStatus}
           />
