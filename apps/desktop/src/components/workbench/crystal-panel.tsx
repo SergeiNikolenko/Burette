@@ -45,13 +45,14 @@ const EXPORTS = [
 ] as const;
 const plural = (count: number, one: string) => `${count.toLocaleString("en-US")} ${one}${count === 1 ? "" : "s"}`;
 
-type Field = { label: string; value: number; onChange: (value: number) => void; min?: number; max?: number; step: number; digits: number; disabled?: boolean };
-function NumberField({ label, value, onChange, min, max, step, digits, disabled }: Field) {
+type Field = { label: string; value: number; onChange: (value: number) => void; min?: number; max?: number; step: number; digits: number; disabled?: boolean; className?: string };
+// Three to a row: the usual 4.75rem fields, narrower in the 260 px dock.
+const GRID_FIELD = "w-full max-w-[4.75rem]";
+function NumberField({ label, value, onChange, min, max, step, digits, disabled, className }: Field) {
   return (
     <label className="workbench-field">
       <span>{label}</span>
-      {/* The usual 4.75rem, narrower when three share a row of the 260 px dock. */}
-      <ScrubNumberField aria-label={label} name={label} autoComplete="off" className="w-full max-w-[4.75rem]" value={value} min={min} max={max} step={step} largeStep={step * 10}
+      <ScrubNumberField aria-label={label} name={label} autoComplete="off" className={className} value={value} min={min} max={max} step={step} largeStep={step * 10}
         formatValue={(next) => next.toFixed(digits)} disabled={disabled} onValueChange={onChange} onValueCommitted={onChange} />
     </label>
   );
@@ -174,14 +175,14 @@ function CellSection({ revision, disabled, readOnly, apply, mode, setMode, polic
         </SegmentedControl>
         {mode === "parameters" ? (
           <div className="workbench-grid workbench-grid-3">
-            {AXES.map((axis) => <NumberField key={axis} label={`${axis}, Å`} value={parameters[axis]} min={0.1} max={1e4} step={0.01} digits={4} disabled={readOnly}
+            {AXES.map((axis) => <NumberField key={axis} className={GRID_FIELD} label={`${axis}, Å`} value={parameters[axis]} min={0.1} max={1e4} step={0.01} digits={4} disabled={readOnly}
               onChange={(value) => setParameters({ ...parameters, [axis]: value })} />)}
-            {ANGLES.map(([angle, symbol]) => <NumberField key={angle} label={`${symbol}, °`} value={parameters[angle]} min={1} max={179} step={0.1} digits={3} disabled={readOnly}
+            {ANGLES.map(([angle, symbol]) => <NumberField key={angle} className={GRID_FIELD} label={`${symbol}, °`} value={parameters[angle]} min={1} max={179} step={0.1} digits={3} disabled={readOnly}
               onChange={(value) => setParameters({ ...parameters, [angle]: value })} />)}
           </div>
         ) : (
           <div className="workbench-grid workbench-grid-3">
-            {vectors.map((row, i) => row.map((value, j) => <NumberField key={`${i}${j}`} label={`${AXES[i]} ${"xyz"[j]}, Å`} value={value} min={-1e4} max={1e4} step={0.01} digits={4} disabled={readOnly}
+            {vectors.map((row, i) => row.map((value, j) => <NumberField key={`${i}${j}`} className={GRID_FIELD} label={`${AXES[i]} ${"xyz"[j]}, Å`} value={value} min={-1e4} max={1e4} step={0.01} digits={4} disabled={readOnly}
               onChange={(entry) => setVectors(vectors.map((vector, r) => r === i ? vector.map((old, c) => c === j ? entry : old) : vector) as UnitCell)} />))}
           </div>
         )}
