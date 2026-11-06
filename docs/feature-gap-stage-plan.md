@@ -1,0 +1,207 @@
+# Feature gap stage plan: Avogadro, Chemcraft and DataWarrior
+
+The Avogadro parity stages 1–13 are in [avogadro-stage-plan.md](avogadro-stage-plan.md).
+This plan continues with what Avogadro 2, Chemcraft and DataWarrior still do that
+Burette does not, as of 2026-11-06. One stage at a time; each stage ends with
+tests, screenshots in `Burette-media/avogadro-parity/stage-NN-<feature>/`, the
+user docs and Features cards on the landing branch, and a LinkedIn draft (see
+the repository AGENTS rule on docs and landing).
+
+Stages run browser first. Desktop-only parts say so. Acceptance runs on Gauss
+for the browser shell and on a `macvm` guest on Orion for the packaged app.
+
+## A. Calculation results (Avogadro, Chemcraft)
+
+### Stage 14. Charges, dipole and thermochemistry from calculation logs
+
+- **They have:** Chemcraft labels atoms with Mulliken, Löwdin, NBO or ESP
+  charges, colours atoms by charge and draws the dipole arrow. Avogadro's
+  Molecule Properties lists the dipole moment, and its Label tool shows partial
+  charges.
+- **We have:** the quantum readers already keep printed charge sets and the
+  dipole per frame (`scientific-types.ts` `charges`, `dipoleDebye`), but no
+  UI shows them; Properties offers only Gasteiger charges as a CSV.
+- **User gets:** an Info dock **Charges** card with the charge models of the
+  current frame. Charges can be shown as 3D labels or as atom colours on a
+  red–white–blue scale, and the dipole can be drawn as an arrow. Frequency jobs
+  add a thermochemistry card with ZPE, H, G and S at the printed temperature.
+- **Where:** readers in `lib/molecular-workbench/quantum/*` (thermochemistry
+  blocks for Gaussian, ORCA, Psi4, Q-Chem, NWChem); the card next to the
+  existing coordinate-set card in `structure-info-panel.tsx`; labels, colours
+  and the arrow through the viewer bridge (`viewer.js` Mol* label and shape
+  representations).
+- **Done when:** a Gaussian and an ORCA frequency log show the charge models
+  they print, labels and colour match the log numbers, and the dipole arrow
+  length and direction match the printed vector. ZPE, H and G match the log.
+
+### Stage 15. Orbital level diagram and convergence plots
+
+- **They have:** Chemcraft's MO diagram (levels with occupancy, α/β columns,
+  click to show an orbital), SCF and optimization convergence graphs. Avogadro
+  lists orbitals with energies in its Orbitals window.
+- **We have:** an orbital list and HOMO–LUMO gap in `orbitals-panel.tsx`;
+  frame energies in the Plots panel.
+- **User gets:** a level diagram in the Orbitals panel (α and β side by side
+  for unrestricted files). Clicking a level shows its surface. Plots gains
+  energy, maximum force and RMS force by optimization step for any log that
+  prints them.
+- **Where:** `orbitals-panel.tsx` (SVG diagram, keyboard selectable),
+  `plots-panel.tsx` series from `output-history.ts`.
+- **Done when:** the unrestricted CJSON fixture and a Gaussian optimization log
+  show the expected levels and convergence values in both themes.
+
+### Stage 16. Electrostatic potential surfaces
+
+- **They have:** Avogadro colours molecular surfaces by electrostatic potential
+  from partial charges. Chemcraft maps an ESP or density cube onto an isosurface.
+- **User gets:** a surface coloured by ESP. It is computed from the charges
+  (stage 14, or Gasteiger when the file has none) or taken from a potential
+  cube. The colour range is adjustable.
+- **Where:** cube fields in `lib/molecular-workbench` and the surface
+  representation in `viewer.js`; Mol* volume colouring of an isosurface by a
+  second volume.
+- **Done when:** water and formaldehyde ESP values at sample surface points
+  match an independent Coulomb sum from the same charges, and a density + ESP
+  cube pair from a Gaussian job colours as cubegen does.
+
+### Stage 17. Cube arithmetic and slices
+
+- **They have:** Chemcraft adds, subtracts and scales cube files (difference
+  densities) and draws 2D contour slices. Avogadro 1 drew a slice plane.
+- **User gets:** **New field** from two cubes on the same grid (A − B, A + B,
+  k·A), and a slice plane with contours and colour that can be moved through
+  the field.
+- **Where:** the multi-field Cube reader from stage 6; a slice panel next to
+  the field picker.
+- **Done when:** a difference density integrates to the expected electron
+  difference, and slice values match the cube at grid points.
+
+### Stage 18. Relaxed scans and IRC paths
+
+- **They have:** Chemcraft reads Gaussian/ORCA relaxed scans and IRC runs and
+  plots the energy against the scanned coordinate or the reaction coordinate.
+  Each point is linked to its geometry.
+- **User gets:** a Scan / IRC plot that selects the matching frame when a point
+  is clicked, with the scanned bond, angle or dihedral detected from the input.
+- **Where:** readers in `quantum/gaussian-log.ts`, `orca-*` (scan and IRC
+  blocks); `plots-panel.tsx` series linked to frames.
+- **Done when:** a Gaussian ModRedundant scan and an ORCA IRC log give the
+  printed energies and coordinates, and clicking a point shows that geometry.
+
+## B. Building and manipulation in 3D (Avogadro)
+
+### Stage 19. Draw tool
+
+- **They have:** Avogadro's Draw tool: click empty space to add an atom of the
+  chosen element, drag from an atom to add a bonded atom, click a bond to
+  cycle its order. Hydrogens are adjusted as you go.
+- **User gets:** a Draw mode in the 3D view of MOL, SDF and XYZ files, with an
+  element and bond-order picker, live hydrogen adjustment, and every stroke as
+  one Undo step of the existing edit draft.
+- **Where:** pointer handling in `viewer.js` next to the atom drag of stage 3C;
+  graph edits through `graph-edit.ts` and the structure-edit draft.
+- **Done when:** drawing ethanol from methane in clicks gives the same graph as
+  RDKit from SMILES, and Undo walks back stroke by stroke.
+
+### Stage 20. Manipulate, bond-centric tool and Select menu
+
+- **They have:** Avogadro's Manipulate tool (move or rotate the selection),
+  Bond-Centric Manipulate (rotate one side about a bond, stretch the bond),
+  and a Select menu: all, none, invert, by element, by residue, by SMARTS,
+  enlarge selection.
+- **User gets:** the same three tools on the selection bar of the 3D view and a
+  Select submenu in the 3D context menu and command palette.
+- **Where:** `preview-controls/viewer-selection-toolbar` and the Mol*
+  selection managers; moves through the Geometry/Edit drafts.
+- **Done when:** rotating a butane end about C2–C3 changes only that dihedral
+  (checked against the Geometry panel), and each select command picks the
+  expected atoms.
+
+### Stage 21. Vector graphics and movies
+
+- **They have:** Avogadro exports SVG graphics and records movies of a
+  rotation, a vibration or a trajectory.
+- **User gets:** Export → Image as SVG for ball-and-stick and licorice views,
+  and Record movie (WebM in the browser, MP4 in the Mac app) for spin,
+  vibration and trajectory playback.
+- **Where:** the screenshot path in `viewer.js` (`capture`), MediaRecorder on
+  the Mol* canvas; the native encoder in `src-tauri` for MP4.
+- **Done when:** the SVG opens in a vector editor with one element per atom and
+  bond, and a 5 s vibration movie plays at the chosen frame rate.
+
+## C. Collections and SAR (DataWarrior)
+
+The August DataWarrior port (PR #609) brought the Collection, Analyze and
+Database menus. These stages cover what it left out.
+
+### Stage 22. Linked charts for collections
+
+- **They have:** DataWarrior views: scatter, histogram, bar, box and pie
+  charts. All views share the table's selection and filters, and colour and
+  size follow any column.
+- **User gets:** a Chart dock tab for a collection with scatter, histogram,
+  bar and box charts of any columns. Selecting points selects grid rows and
+  the other way round, and grid filters apply to the chart.
+- **Where:** `grid-viewer.js` selection/filter state through `grid-ui.tsx`;
+  a new chart component in the dock (canvas for 100k rows).
+- **Done when:** a 10k-row SDF with descriptors keeps selection and filters in
+  sync both ways at 60 fps pan and zoom.
+
+### Stage 23. Matched molecular pairs and the SAR table
+
+- **They have:** DataWarrior's matched-pair analysis (transformations with their
+  mean property change) and SAR tables over a scaffold's R-groups.
+- **We have:** R-group decomposition and activity cliffs.
+- **User gets:** **Matched pairs** under Analyze, giving transformations with
+  their count and mean Δ of a chosen column, plus the pairs behind each one.
+  **SAR table** lays the R-group decomposition out as an R1 × R2 matrix
+  coloured by activity.
+- **Where:** `rgroup-decomposition-dialog.tsx`, the chemistry worker
+  (fragmentation by single acyclic cuts as in Hussain–Rea).
+- **Done when:** a small ChEMBL series gives the same transformations and means
+  as mmpdb on the same data.
+
+### Stage 24. Property models and Predict Missing Values
+
+- **They have:** DataWarrior builds kNN, PLS and random-forest models from
+  descriptors and fills missing values.
+- **User gets:** **Build model** from a column and a descriptor set, with
+  cross-validated R² or accuracy. The model predicts a new column or fills the
+  missing cells, and shows the nearest training neighbours of a prediction.
+- **Where:** descriptors from the derived-column channel; models in a worker
+  (Rust/WASM or the compute crate).
+- **Done when:** a public solubility set reproduces the R² of scikit-learn's
+  kNN and random forest within 0.02 on the same split.
+
+### Stage 25. Combinatorial enumeration
+
+- **They have:** DataWarrior's combinatorial library from a scaffold with R
+  positions and building-block lists, and reaction-based enumeration.
+- **User gets:** **Enumerate library** from a core with R1…Rn and one
+  collection per position, or from a reaction and reactant collections. The
+  result is a new collection with the source of each part.
+- **Where:** the Reaction submenu's reaction runner; RDKit reaction
+  enumeration in the chemistry worker.
+- **Done when:** a 3 × 4 amide library gives 12 products identical to RDKit's
+  `EnumerateLibrary`.
+
+### Stage 26. Data shaping: pivot, merge by key, category filters, row lists
+
+- **They have:** DataWarrior's pivot and reverse pivot, merge of files by a key
+  column, category filters with counts, named row lists and the form view.
+- **User gets:**
+  - Pivot / Unpivot and Merge by key in the Collection menu;
+  - a category filter with value counts in the filter section;
+  - saved row lists (named selections) to filter and export by;
+  - a record form view for one row at a time.
+- **Where:** `grid-filter-section.tsx`, the virtual edit layer of
+  `grid-viewer.js`.
+- **Done when:** pivot followed by unpivot returns the original table, and a
+  merge by ChEMBL ID matches a pandas merge.
+
+## Not planned yet
+
+Yaehmop band structures, QTAIM and Flexophore have no open engine that runs in
+the browser at a reasonable size. DataWarrior macros wait for the agent jobs to
+cover the collection menus, and self-organizing maps wait for stage 22's
+chart views. Revisit each with a concrete engine choice.

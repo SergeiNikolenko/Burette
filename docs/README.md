@@ -9,6 +9,8 @@ contains only documents that describe the active project.
   functional contract and scientific acceptance requirements.
 - [Avogadro staged delivery plan](avogadro-stage-plan.md): the order of the
   remaining parity work, one finished workflow per stage.
+- [Feature gap stage plan](feature-gap-stage-plan.md): stages 14–26 for what
+  Avogadro, Chemcraft and DataWarrior still do that Burette does not.
 - [Avogadro parity acceptance ledger](avogadro-parity-checklist.md): adopted
   foundations, partial workflows and remaining surface-specific evidence.
 - [Avogadro extension contracts](avogadro-extensions.md): pinned candidate
