@@ -12,6 +12,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Atom } from "@/components/ui/app-icons";
 import { Kbd } from "@/components/ui/kbd";
 import { isHostedMcpWidget } from "@/lib/hosted-mcp-widget";
+import { defaultShortcutLabel } from "@/lib/keyboard-shortcuts";
 import type { ShellActions } from "../types";
 import { NativeWorkspaceHome } from "./native-workspace-home";
 
@@ -61,7 +62,7 @@ export function WelcomeScreen({ actions }: { actions: ShellActions }) {
         >
           Open file
         </Button>
-        <Kbd className="bg-transparent text-(--color-text-tertiary)" aria-hidden>⌘O</Kbd>
+        <Kbd className="bg-transparent text-(--color-text-tertiary)" aria-hidden>{defaultShortcutLabel("file.open")}</Kbd>
       </EmptyContent>
     </Empty>
   );

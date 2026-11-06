@@ -1545,10 +1545,10 @@ assert.match(appLayout, /actions\.navigateBack/);
 assert.match(appLayout, /actions\.navigateForward/);
 assert.match(appLayout, /actions\.canNavigateBack/);
 assert.match(appLayout, /actions\.canNavigateForward/);
-assert.match(appLayout, /<ShortcutTooltip label="Back" shortcut="⌘\[">/);
-assert.match(appLayout, /<ShortcutTooltip label="Forward" shortcut="⌘\]">/);
-assert.match(appLayout, /<ShortcutTooltip label="Toggle sidebar" shortcut="⌘B">/);
-assert.match(editorTabs, /<ShortcutTooltip label="New tab" shortcut="⌘T">/);
+assert.match(appLayout, /<ShortcutTooltip label="Back" shortcut=\{defaultShortcutLabel\("view\.navigate-back"\)\}>/);
+assert.match(appLayout, /<ShortcutTooltip label="Forward" shortcut=\{defaultShortcutLabel\("view\.navigate-forward"\)\}>/);
+assert.match(appLayout, /<ShortcutTooltip label="Toggle sidebar" shortcut=\{defaultShortcutLabel\("view\.toggle-sidebar"\)\}>/);
+assert.match(editorTabs, /<ShortcutTooltip label="New tab" shortcut=\{defaultShortcutLabel\("file\.new-tab"\)\}>/);
 assert.doesNotMatch(editorTabs, /className="new-tab"[^>]*title=/);
 assert.match(appLayout, /getCurrentWindow/);
 assert.match(appLayout, /appWindow\.isFullscreen\(\)/);
@@ -2086,7 +2086,7 @@ assert.doesNotMatch(gridViewer, /railHoverIndex/);
 assert.match(gridViewer, /effectiveMolecularGrid\(cfg\) \? 'Molecule navigation' : 'Row navigation'/);
 assert.match(gridViewer, /function initGridRail\(cfg\)/);
 assert.match(gridCss, /\.buret-grid-rail \{/);
-assert.match(styles, /\.app-shell\[data-runtime="browser"\]\s*\{[^}]*backdrop-filter: none;[^}]*-webkit-backdrop-filter: none;/s);
+assert.match(styles, /\.app-shell\[data-runtime="browser"\],\s*\.app-shell\[data-platform="linux"\]\s*\{[^}]*backdrop-filter: none;[^}]*-webkit-backdrop-filter: none;/s);
 assert.doesNotMatch(styles, /\.app-shell\[data-runtime="tauri"\]\[data-active-page-kind="ketcher"\]\s*\{[^}]*backdrop-filter: none;/s);
 assert.doesNotMatch(styles, /\.app-shell\[data-runtime="tauri"\]\[data-active-page-kind="ketcher"\]\s*\{[^}]*-webkit-backdrop-filter: none;/s);
 assert.doesNotMatch(styles, /\.app-shell\[data-runtime="tauri"\]\[data-active-page-kind="ketcher"\]\s*\{[^}]*background: var\(--bg-base\);/s);
@@ -2475,7 +2475,7 @@ assert.match(appGenerate3DConformerHook, /generateBrowserDev3DConformer\(request
 assert.match(appGenerate3DConformerHook, /\.\.\.conformerGenerationPreferences\(preferences\)/);
 assert.match(appGenerate3DConformerHook, /mode,/);
 assert.match(appGenerate3DConformerHook, /`Starting native \$\{conformerGenerationTaskLabel\(mode\)\} workflow\.\.\.`/);
-assert.match(appGenerate3DConformerHook, /`Generating \$\{conformerGenerationTaskLabel\(mode\)\} with the native Metal backend\.\.\.`/);
+assert.match(appGenerate3DConformerHook, /`Generating \$\{conformerGenerationTaskLabel\(mode\)\} with the \$\{nativeComputeLabel\("native Metal"\)\} backend\.\.\.`/);
 assert.doesNotMatch(app, /browserDevGeneratedConformerDocument/);
 assert.match(appGenerate3DConformerHook, /const poseSetText = generated3DPoseSetText\(text, document\.extension, conformer\.text, mode\)/);
 assert.match(appGenerate3DConformerHook, /const poseSetTitle = generated3DPoseSetTitle\(conformer\.title, poseSetText\)/);
@@ -3080,7 +3080,7 @@ assert.match(styles, /\.dock-viewer \.ketcher-page \{[\s\S]*position: relative;[
 assert.match(styles, /\.dock-viewer \.ketcher-page-body \{[\s\S]*overflow: hidden;[\s\S]*padding: 12px;/);
 assert.match(styles, /\.topbar, \.chrome-leading-controls, \.chrome-trailing-controls, \.sidebar-toggle-root, \.tab-strip/);
 assert.match(styles, /\.chrome-leading-controls \{/);
-assert.match(styles, /\.app-shell\[data-runtime="browser"\] \.chrome-leading-controls,/);
+assert.match(styles, /\.app-shell\[data-runtime="browser"\] \.chrome-leading-controls,\n\.app-shell\[data-platform="linux"\] \.chrome-leading-controls,/);
 assert.match(styles, /\.app-shell\[data-window-fullscreen="true"\] \.chrome-leading-controls \{\s*left: 12px;/);
 assert.doesNotMatch(styles, /instance-badge/);
 assert.doesNotMatch(styles, /sidebar-link/);
@@ -3741,7 +3741,7 @@ assert.match(welcome, />Drop a structure here<\/EmptyTitle>/);
 assert.doesNotMatch(welcome, /Use the shell to inspect files quickly/);
 assert.match(welcome, /Open file/);
 assert.match(welcome, /onClick=\{\(\) => void actions\.chooseFiles\(\)\}/);
-assert.match(welcome, /<Kbd[^>]*>⌘O<\/Kbd>/);
+assert.match(welcome, /<Kbd[^>]*>\{defaultShortcutLabel\("file\.open"\)\}<\/Kbd>/);
 // The open action uses shadcn Button + Kbd inside an Empty, not bare elements styled by
 
 // .new-tab-page descendant rules.

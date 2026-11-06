@@ -84,6 +84,7 @@ import { ShortcutTooltip } from "./shortcut-tooltip";
 import { useChemicalSpaceSetting } from "../hooks/use-chemical-space-setting";
 import { useThemePortalContainer } from "./radix-menu";
 import { requestContextualGuide } from "./onboarding/request";
+import { isMacPlatform } from "../lib/platform";
 
 const ChemicalSpace3D = lazy(() => import("./chemical-space-3d").then((module) => ({
   default: module.ChemicalSpace3D,
@@ -1174,7 +1175,7 @@ export function ChemicalSpacePanel({ document, viewerDocument = null, inspectorO
                     aria-label={resultTimingDescription(displayedResult)}
                   >
                     <span className="truncate">
-                      {displayedResult.successfulRecords.toLocaleString()} molecules · Metal
+                      {displayedResult.successfulRecords.toLocaleString()} molecules{isMacPlatform() ? " · Metal" : ""}
                     </span>
                   </Badge>
                 </TooltipTrigger>
@@ -3078,13 +3079,13 @@ function progressLabel(progress: ChemicalSpaceProgress | null) {
       : progress.representationStage === "loading"
         ? "Loading model"
         : progress.representationStage === "similarity"
-          ? "Metal similarity"
-          : "Metal embeddings";
+          ? isMacPlatform() ? "Metal similarity" : "Similarity"
+          : isMacPlatform() ? "Metal embeddings" : "Embeddings";
     return `${stage} ${completed} / ${total}`;
   }
-  if (progress.phase === "embedding") return "Metal similarity + embedding…";
+  if (progress.phase === "embedding") return isMacPlatform() ? "Metal similarity + embedding…" : "Similarity + embedding…";
   if (progress.phase === "study") {
-    return `Metal study ${Math.min(progress.completedFrames ?? 0, progress.totalFrames ?? 0)} / ${progress.totalFrames ?? 0}`;
+    return `${isMacPlatform() ? "Metal study" : "Study"} ${Math.min(progress.completedFrames ?? 0, progress.totalFrames ?? 0)} / ${progress.totalFrames ?? 0}`;
   }
   return "Preparing snapshot…";
 }
@@ -3108,7 +3109,7 @@ function resultTimingLabel(result: ChemicalSpaceResult) {
 }
 
 function resultTimingDescription(result: ChemicalSpaceResult) {
-  const prefix = `${result.successfulRecords.toLocaleString()} molecules, Metal. ${representationLabel(result.representation)}. Similarity graph ${similarityTimeLabel(result)}.`;
+  const prefix = `${result.successfulRecords.toLocaleString()} molecules${isMacPlatform() ? ", Metal" : ""}. ${representationLabel(result.representation)}. Similarity graph ${similarityTimeLabel(result)}.`;
   if (result.method === "tmap") {
     return `${prefix} Minimum spanning tree with ${result.treeEdges.length.toLocaleString()} edges. Layout ${result.layoutHostTimeMs.toFixed(1)} milliseconds.`;
   }

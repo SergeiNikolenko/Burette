@@ -13,6 +13,7 @@ import type { DropPreviewTarget, FileDropPreview } from "../lib/drop-preview";
 import { describeDropTargetElement } from "../lib/drop-target";
 import { requestMoveIntoFolder } from "../lib/move-into-folder";
 import { nativeFileDragPayload, nativeFileDragTabId } from "../lib/native-file-drag";
+import { isMacPlatform } from "../lib/platform";
 import { parentDirectory } from "../lib/sidebar-projects";
 import { TAB_DRAG_MIME, hasStructureDrag, readStructureDragPayload, structureDragPayloadFromBrowserFiles, structureDragPayloadFromText, structureDragRecordsToFragments } from "../lib/structure-drag";
 import type { StructureDragPayload, StructureDragRecord } from "../lib/structure-drag";
@@ -84,8 +85,7 @@ function tauriDropPoint(position: { x: number; y: number } | null | undefined) {
   if (!position || typeof window === "undefined") return null;
   // Wry 0.55 WKWebView reports NSDraggingInfo coordinates in logical points;
   // Tauri wraps them as PhysicalPosition without conversion. Other hosts use pixels.
-  const mac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
-  const scale = mac ? 1 : Math.max(1, window.devicePixelRatio || 1);
+  const scale = isMacPlatform() ? 1 : Math.max(1, window.devicePixelRatio || 1);
   return { x: position.x / scale, y: position.y / scale };
 }
 

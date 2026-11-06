@@ -339,10 +339,11 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   }
 }
 
-/* No native window vibrancy behind the shell in a browser, so the sidebar tint
-   is opaque: Codex paints it one step above the main surface in dark and level
-   with it in light. */
-.app-shell[data-runtime="browser"] {
+/* No native window vibrancy behind the shell in a browser or an opaque Linux
+   window, so the sidebar tint is opaque: Codex paints it one step above the
+   main surface in dark and level with it in light. */
+.app-shell[data-runtime="browser"],
+.app-shell[data-platform="linux"] {
   background: light-dark(
     var(--color-surface-secondary),
     color-mix(in srgb, var(--color-token-main-surface-primary) 96%, white)
@@ -390,6 +391,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   padding: var(--chrome-control-padding) 0;
 }
 .app-shell[data-runtime="browser"] .chrome-leading-controls,
+.app-shell[data-platform="linux"] .chrome-leading-controls,
 .app-shell[data-window-fullscreen="true"] .chrome-leading-controls {
   left: 12px;
 }
@@ -2134,10 +2136,12 @@ kbd span { margin-left: 2px; }
 .project:focus-within .project-actions,
 .project.pinned .project-actions { opacity: 1; pointer-events: auto; }
 /* Holding ⌘ labels the rows ⌘1–⌘9 open (lib/command-key-hints.ts). The badge
-   takes the trailing action's slot so the row never reflows. */
+   takes the trailing action's slot so the row never reflows. Off macOS the
+   same shortcut is Ctrl+1–Ctrl+9. */
+.app-shell:is([data-platform="linux"], [data-platform="other"]) { --command-hint-prefix: "Ctrl+"; }
 .project[data-command-hint]::after,
 .tab-shell[data-command-hint]::after {
-  content: "⌘" attr(data-command-hint);
+  content: var(--command-hint-prefix, "⌘") attr(data-command-hint);
   position: absolute;
   right: 6px;
   top: 50%;

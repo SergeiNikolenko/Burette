@@ -4,6 +4,7 @@ import { runAnalysisWorkflow } from "../lib/compute-analysis";
 import { generateBrowserDev3DConformer, openBrowserDevTextDocument } from "../lib/browser-dev-documents";
 import { conformerGenerationPreferences } from "../lib/conformer-generation";
 import { pathExtension } from "../lib/file-routing";
+import { isMacPlatform, nativeComputeLabel } from "../lib/platform";
 import { isTauriRuntime } from "../lib/tauri";
 import { runConformerWorkflow, type ConformerVariant, type MmffVariant } from "../lib/compute-conformer";
 import { runStandaloneConformerWorkflow, type StandaloneComputeSource } from "../lib/standalone-compute";
@@ -186,7 +187,7 @@ export function useAppGridConformerMessages({
         });
       };
       if (!isTauriRuntime() || !documentId || sourceIndexes.length < 2) {
-        const error = "Native Metal pose alignment requires at least two selected rows in the desktop Grid.";
+        const error = `${isMacPlatform() ? "Native Metal pose alignment" : "Pose alignment"} requires at least two selected rows in the desktop Grid.`;
         reply("gridAlignmentError", { error });
         pushStatus(error, "error");
         return true;
@@ -301,14 +302,14 @@ export function useAppGridConformerMessages({
         }
         const progressLabels = optimizeInputGeometry ? {
           extracting: "Extracting input geometry and MMFF parameters",
-          embedding: `${mmffVariant}-optimizing input geometry on Metal GPU`,
-          stereo: "Validating stereochemistry on Metal GPU",
+          embedding: `${mmffVariant}-optimizing input geometry on ${nativeComputeLabel("Metal GPU")}`,
+          stereo: `Validating stereochemistry on ${nativeComputeLabel("Metal GPU")}`,
           validation: "Checking CPU reference parity",
           publishing: "Publishing optimized geometries and updating Grid",
         } as const : {
           extracting: "Extracting conformer constraints",
-          embedding: `Generating ${conformerVariant} conformers on Metal GPU`,
-          stereo: "Validating stereochemistry on Metal GPU",
+          embedding: `Generating ${conformerVariant} conformers on ${nativeComputeLabel("Metal GPU")}`,
+          stereo: `Validating stereochemistry on ${nativeComputeLabel("Metal GPU")}`,
           validation: "Checking CPU reference parity",
           publishing: "Publishing the generated conformer artifact",
         } as const;
@@ -372,14 +373,14 @@ export function useAppGridConformerMessages({
         return;
       }
       if (optimizeInputGeometry) {
-        throw new Error("Input geometry optimization requires the native desktop Metal runtime.");
+        throw new Error(`Input geometry optimization requires the native desktop ${nativeComputeLabel("Metal")} runtime.`);
       }
       let generatedCount = 0;
       const generatedStructures: Array<{ sourceIndex: number; molblock: string }> = [];
       const errors: string[] = [];
       for (const [index, molecule] of molecules.entries()) {
         updateGridJob({
-          progress: `Generating molecule ${(index + 1).toLocaleString()} of ${molecules.length.toLocaleString()} with Metal GPU`,
+          progress: `Generating molecule ${(index + 1).toLocaleString()} of ${molecules.length.toLocaleString()} with ${nativeComputeLabel("Metal GPU")}`,
           backend: "nativeMetal",
         });
         const item = molecule && typeof molecule === "object" ? molecule as Record<string, unknown> : {};
@@ -445,7 +446,7 @@ export function useAppGridConformerMessages({
         primaryOpenPath: generatedDocument.sourcePath ?? generatedDocument.path,
         error: errors.join("; ") || null,
       });
-      pushStatus(`Generated 3D for ${generatedCount} molecule${generatedCount === 1 ? "" : "s"} with Metal GPU and opened the generated conformer artifact.${suffix}`, errors.length ? "error" : "success");
+      pushStatus(`Generated 3D for ${generatedCount} molecule${generatedCount === 1 ? "" : "s"} with ${nativeComputeLabel("Metal GPU")} and opened the generated conformer artifact.${suffix}`, errors.length ? "error" : "success");
     })()
       .catch((error) => {
         const message = statusErrorMessage(error);

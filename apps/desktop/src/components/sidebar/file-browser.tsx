@@ -14,6 +14,7 @@ import { Search as Search01Icon } from "@/components/ui/app-icon-data";
 import { AnimatedOrbitIcon } from "../ui/animated-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { filterSidebarProjects, sortSidebarProjects } from "../../lib/sidebar-projects";
+import { defaultShortcutLabel } from "../../lib/keyboard-shortcuts";
 import { hasStructureDrag, readStructureDragPayload } from "../../lib/structure-drag";
 import { isWebDemoWorkspace, webDemoProjectRoot } from "../../lib/web-demo-workspace";
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
@@ -172,7 +173,7 @@ export function FileBrowser({
     }}>
       {sidebar && <div className="sidebar-browser-header">
         <strong className="sidebar-browser-title">Burette</strong>
-        <SidebarTooltip label="Search commands and structures (⌘P)">
+        <SidebarTooltip label={`Search commands and structures (${defaultShortcutLabel("view.command-palette")})`}>
           <button
             type="button"
             className="sidebar-search-toggle"

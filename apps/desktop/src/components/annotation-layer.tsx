@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } f
 import { captureAnnotatedView, clearRegionSelection, clickTargetBox, controlAt, deliverAnnotations, describeRegion, type Annotation, type AnnotationImage, type RegionGranularity, type RegionRect, type RegionTarget } from "../lib/annotation-region";
 import { useAnnotationStore } from "../stores/annotation-store";
 import { ShortcutTooltip } from "./shortcut-tooltip";
+import { formatAccelerator } from "../lib/keyboard-shortcuts";
 import { Annotate, Camera, Check, Delete, Eye, EyeOff, FileImage, X } from "./ui/app-icons";
 import "./annotation-layer.css";
 
@@ -26,7 +27,7 @@ export function AnnotateToggle({ className }: { className?: string }) {
   const toggle = useAnnotationStore((state) => state.toggle);
   if (!window.BuretteMcpWorkspace) return null;
   return (
-    <ShortcutTooltip label={active ? "Click anywhere to annotate, or click and drag to select a region. Hold Space to click through the webpage." : "Annotate this page"} shortcut={active ? undefined : "⌘."}>
+    <ShortcutTooltip label={active ? "Click anywhere to annotate, or click and drag to select a region. Hold Space to click through the webpage." : "Annotate this page"} shortcut={active ? undefined : formatAccelerator("CmdOrCtrl+.")}>
       <button type="button" className={`annotate-toggle ${className ?? ""}`} data-active={active || undefined} aria-pressed={active}
         aria-label="Annotate" onMouseDown={(event) => event.preventDefault()} onClick={toggle}>
         <Annotate size={18} aria-hidden />

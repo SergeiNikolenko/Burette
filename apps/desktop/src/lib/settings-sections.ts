@@ -1,3 +1,5 @@
+import { isMacPlatform } from "./platform";
+
 export type SettingsSectionId =
   | "general"
   | "appearance"
@@ -60,7 +62,7 @@ export const settingsNavGroups: SettingsNavGroup[] = [
   {
     title: "System",
     items: [
-      { id: "maintenance", label: "Maintenance", description: "Quick Look, logs, diagnostics, cache, and panel layout" },
+      { id: "maintenance", label: "Maintenance", description: isMacPlatform() ? "Quick Look, logs, diagnostics, cache, and panel layout" : "Logs, diagnostics, cache, and panel layout" },
     ],
   },
 ];

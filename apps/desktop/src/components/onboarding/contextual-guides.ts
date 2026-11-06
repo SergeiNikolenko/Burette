@@ -1,6 +1,8 @@
 // One-time contextual education shown when the user first reaches a feature.
 // `where` and `when` document the trigger for the dev gallery and docs; they
 // are never rendered in the product.
+import { defaultShortcutLabel } from "../../lib/keyboard-shortcuts";
+
 export type GuidePattern = "carousel" | "announcement" | "education" | "first-use" | "inline";
 export type GuideMedia = { label: string; image?: string; video?: string; poster?: string };
 export type GuideSlide = { title: string; body: string };
@@ -112,7 +114,7 @@ export const contextualGuides = {
   },
   "source-edit": {
     pattern: "first-use", title: "Edit the source file",
-    body: "Change the records of a local structure and save with ⌘S. Check the result in 3D without closing the text.",
+    body: `Change the records of a local structure and save with ${defaultShortcutLabel("file.save")}. Check the result in 3D without closing the text.`,
     media: [still("Source editor", "source-edit.webp")],
     alt: "An editable structure source beside the molecule.",
     where: "Local structure → Text → Edit source",

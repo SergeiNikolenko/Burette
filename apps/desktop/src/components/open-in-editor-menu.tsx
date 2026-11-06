@@ -6,6 +6,7 @@ import { ShortcutTooltip } from "./shortcut-tooltip";
 import type { ChemicalEditorTarget, ShellActions, ShellViewState } from "./types";
 import type { MenuItemSpec } from "./menu-types";
 import { isTauriRuntime } from "../lib/tauri";
+import { revealInFileManagerLabel } from "../lib/platform";
 import { useFinderIconUrl } from "../hooks/use-finder-icon-url";
 import { useDefaultApplicationIconUrl } from "../hooks/use-default-application-icon-url";
 import { AppImageIcon } from "./ui/app-image-icon";
@@ -61,7 +62,7 @@ export function OpenInEditorMenu({ state, actions, presentation = "chrome", navi
         kind: "submenu", id: "open-default-destination", text: "Default for Open",
         items: [
           { value: "default-app" as const, label: "System default app" },
-          { value: "finder" as const, label: "Reveal in Finder" },
+          { value: "finder" as const, label: revealInFileManagerLabel() },
           ...visibleTargets.map(target => ({ value: `editor:${target.id}` as const, label: target.name })),
         ].map(option => ({
           kind: "checkbox" as const, id: `open-default-${option.value}`, text: option.label,
@@ -83,7 +84,7 @@ export function OpenInEditorMenu({ state, actions, presentation = "chrome", navi
       {
         kind: "item" as const,
         id: "chemical-editor-finder",
-        text: "Reveal in Finder",
+        text: revealInFileManagerLabel(),
         iconText: "FI",
         iconUrl: finderIconUrl ?? undefined,
         action: () => {
@@ -159,7 +160,7 @@ function preferredTargetForDestination(destination: string, targets: ChemicalEdi
 function openDestinationLabel(destination: string, target: ChemicalEditorTarget | null) {
   if (destination === "default-app") return "Open with Default App";
   if (target) return `Open in ${target.name}`;
-  return destination === "finder" || destination === "auto" ? "Reveal in Finder" : "Open with Default App";
+  return destination === "finder" || destination === "auto" ? revealInFileManagerLabel() : "Open with Default App";
 }
 
 function openDestinationIconUrl(

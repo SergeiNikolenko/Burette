@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { isTauriRuntime } from "../../lib/tauri";
+import { isMacPlatform } from "../../lib/platform";
 import { defaultPreferences } from "../../stores/settings-store";
 import { useShellStore } from "../../stores/shell-store";
 import { defaultTabWorkspace, useTabWorkspaceStore, WINDOW_TOOLS_ID } from "../../stores/tab-workspace-store";
@@ -21,7 +22,8 @@ type SetPreference = ShellActions["setPreference"];
 
 const INTERFACE_SCALES = [0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
 const RETENTION_DAYS = [7, 30, 90, 0];
-const COMPUTE_BACKENDS: ViewerPreferences["computeBackend"][] = ["auto", "metal", "cpu"];
+// Metal is the only GPU backend, so other platforms compute on the CPU.
+const COMPUTE_BACKENDS: ViewerPreferences["computeBackend"][] = isMacPlatform() ? ["auto", "metal", "cpu"] : ["auto", "cpu"];
 const COMPUTE_BACKEND_LABELS: Record<ViewerPreferences["computeBackend"], string> = {
   auto: "Automatic",
   metal: "GPU (Metal)",
@@ -132,7 +134,7 @@ export function JobsSettingsSections({ preferences, actions }: { preferences: Vi
         title="Notifications and power"
         rows={[
           toggleRow("Notify when a job finishes", "notifyOnJobCompletion", preferences, setPreference),
-          toggleRow("Keep the Mac awake while jobs run", "preventSleepDuringJobs", preferences, setPreference),
+          toggleRow(isMacPlatform() ? "Keep the Mac awake while jobs run" : "Keep the computer awake while jobs run", "preventSleepDuringJobs", preferences, setPreference),
         ]}
       />
       <SettingsSection
