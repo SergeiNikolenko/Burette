@@ -27,13 +27,35 @@ pub(crate) enum ComputeBackendPreference {
     Cpu,
 }
 
+/// The GPU backend this build can execute, if any.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum GpuBackendBuild {
+    Metal,
+    None,
+}
+
+impl GpuBackendBuild {
+    const CURRENT: Self = if cfg!(target_os = "macos") {
+        Self::Metal
+    } else {
+        Self::None
+    };
+}
+
 impl ComputeBackendPreference {
     /// Applies the user's backend choice on top of a workflow's requested policy.
     pub(crate) fn apply(self, requested: BackendPolicy) -> BackendPolicy {
-        match self {
-            Self::Auto => requested,
-            Self::Metal => BackendPolicy::GpuRequired,
-            Self::Cpu => BackendPolicy::ReferenceCpu,
+        self.apply_for(GpuBackendBuild::CURRENT, requested)
+    }
+
+    /// Without a GPU backend in the build, `Auto` runs every workflow on the
+    /// CPU reference path instead of failing GPU admission. An explicit Metal
+    /// choice stays GPU-required so it fails visibly rather than silently.
+    fn apply_for(self, build: GpuBackendBuild, requested: BackendPolicy) -> BackendPolicy {
+        match (self, build) {
+            (Self::Auto, GpuBackendBuild::Metal) => requested,
+            (Self::Auto, GpuBackendBuild::None) | (Self::Cpu, _) => BackendPolicy::ReferenceCpu,
+            (Self::Metal, _) => BackendPolicy::GpuRequired,
         }
     }
 }
@@ -178,17 +200,71 @@ mod tests {
 
     #[test]
     fn backend_preference_overrides_requested_policy() {
+        use ComputeBackendPreference::{Auto, Cpu, Metal};
+        let cases = [
+            (
+                Auto,
+                GpuBackendBuild::Metal,
+                BackendPolicy::GpuPreferred,
+                BackendPolicy::GpuPreferred,
+            ),
+            (
+                Auto,
+                GpuBackendBuild::Metal,
+                BackendPolicy::GpuRequired,
+                BackendPolicy::GpuRequired,
+            ),
+            (
+                Auto,
+                GpuBackendBuild::None,
+                BackendPolicy::GpuRequired,
+                BackendPolicy::ReferenceCpu,
+            ),
+            (
+                Auto,
+                GpuBackendBuild::None,
+                BackendPolicy::GpuPreferred,
+                BackendPolicy::ReferenceCpu,
+            ),
+            (
+                Cpu,
+                GpuBackendBuild::Metal,
+                BackendPolicy::GpuRequired,
+                BackendPolicy::ReferenceCpu,
+            ),
+            (
+                Cpu,
+                GpuBackendBuild::None,
+                BackendPolicy::GpuRequired,
+                BackendPolicy::ReferenceCpu,
+            ),
+            (
+                Metal,
+                GpuBackendBuild::Metal,
+                BackendPolicy::ReferenceCpu,
+                BackendPolicy::GpuRequired,
+            ),
+            (
+                Metal,
+                GpuBackendBuild::None,
+                BackendPolicy::ReferenceCpu,
+                BackendPolicy::GpuRequired,
+            ),
+        ];
+        for (preference, build, requested, expected) in cases {
+            assert_eq!(
+                preference.apply_for(build, requested),
+                expected,
+                "{preference:?} on {build:?} for {requested:?}"
+            );
+        }
         assert_eq!(
-            ComputeBackendPreference::Auto.apply(BackendPolicy::GpuPreferred),
-            BackendPolicy::GpuPreferred
-        );
-        assert_eq!(
-            ComputeBackendPreference::Cpu.apply(BackendPolicy::GpuRequired),
-            BackendPolicy::ReferenceCpu
-        );
-        assert_eq!(
-            ComputeBackendPreference::Metal.apply(BackendPolicy::ReferenceCpu),
-            BackendPolicy::GpuRequired
+            Auto.apply(BackendPolicy::GpuRequired),
+            if cfg!(target_os = "macos") {
+                BackendPolicy::GpuRequired
+            } else {
+                BackendPolicy::ReferenceCpu
+            }
         );
     }
 

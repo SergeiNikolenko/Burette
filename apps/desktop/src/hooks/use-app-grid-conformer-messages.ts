@@ -43,7 +43,7 @@ type GridAlignmentResult = {
     combinedSimilarity: number;
   }>;
   gpuTimeMs: number;
-  backend: "nativeMetal";
+  backend: "nativeMetal" | "nativeCpuReference";
   mapping: string;
   chargeModel: string;
   gridApplied: boolean;
@@ -281,7 +281,7 @@ export function useAppGridConformerMessages({
       status: "running",
       startedAt: Date.now(),
       progress: "Submitted to the compute coordinator",
-      backend: "nativeMetal",
+      backend: isMacPlatform() ? "nativeMetal" : "referenceCpu",
       cancelable: false,
       result: null,
       error: null,
@@ -315,7 +315,7 @@ export function useAppGridConformerMessages({
         } as const;
         const onProgress = (phase: keyof typeof progressLabels, job: { jobId: string }) => {
           const progress = progressLabels[phase];
-          updateGridJob({ durableJobId: job.jobId, cancelable: true, progress, backend: "nativeMetal" });
+          updateGridJob({ durableJobId: job.jobId, cancelable: true, progress });
           pushStatus(`${progress}...`);
         };
         const result = gridSource
@@ -341,7 +341,7 @@ export function useAppGridConformerMessages({
           cancelable: false,
           completedAt: Date.now(),
           progress: `${result.passedCount.toLocaleString()} of ${result.conformerCount.toLocaleString()} geometries passed validation${inputFailures ? `; ${inputFailures} input molecules failed` : ""}`,
-          backend: "nativeMetal",
+          backend: result.backend,
           durableJobId: result.job.jobId,
           reportPath: result.reportPath,
           primaryOpenPath: result.primaryOpenPath,

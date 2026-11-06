@@ -30,6 +30,34 @@ const MAX_ALIGNMENT_OUTPUT_BYTES: usize = 64 * 1024 * 1024;
 const DEFAULT_MAX_MEMORY_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const SHAPE_ALPHA: f32 = 2.417_987_8;
 
+/// Numeric backend that aligns and scores one pose batch.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum AlignmentBackend<'a> {
+    NativeMetal {
+        runtime: &'a MetalTanimotoRuntime,
+        service: Option<&'a ComputeServiceClient>,
+    },
+    ReferenceCpu,
+}
+
+impl AlignmentBackend<'_> {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::NativeMetal { .. } => "nativeMetal",
+            Self::ReferenceCpu => "nativeCpuReference",
+        }
+    }
+
+    fn sdf_label(self) -> String {
+        match self {
+            Self::NativeMetal { runtime, .. } => {
+                format!("Metal GPU ({})", runtime.device_identity().name)
+            }
+            Self::ReferenceCpu => "CPU reference".into(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct GridAlignmentRequest {
@@ -88,7 +116,8 @@ pub(crate) fn durable_alignment_request(
             mode: AlignmentModeV1::MappedHorn,
         },
         execution_policy: ExecutionPolicy {
-            backend_policy: BackendPolicy::GpuRequired,
+            backend_policy: crate::commands::app_preferences::compute_backend()
+                .apply(BackendPolicy::GpuRequired),
             scheduling_policy: SchedulingPolicy::Interactive,
         },
         limits: AnalysisResourceLimits {
@@ -152,8 +181,10 @@ fn execute_grid_alignment_with_run_id(
         .map(parse_row)
         .collect::<ComputeResult<Vec<_>>>()?;
     execute_alignment_rows(
-        runtime,
-        None,
+        AlignmentBackend::NativeMetal {
+            runtime,
+            service: None,
+        },
         request,
         run_id,
         rows,
@@ -164,8 +195,7 @@ fn execute_grid_alignment_with_run_id(
 }
 
 pub(crate) fn execute_snapshot_alignment_with_run_id(
-    runtime: &MetalTanimotoRuntime,
-    compute_service: Option<&ComputeServiceClient>,
+    backend: AlignmentBackend<'_>,
     rows: Vec<GridAlignmentSourceRow>,
     request: &GridAlignmentRequest,
     run_id: Uuid,
@@ -187,8 +217,7 @@ pub(crate) fn execute_snapshot_alignment_with_run_id(
         .map(parse_row)
         .collect::<ComputeResult<Vec<_>>>()?;
     execute_alignment_rows(
-        runtime,
-        compute_service.map(|service| (service, run_id)),
+        backend,
         request,
         run_id,
         rows,
@@ -198,10 +227,8 @@ pub(crate) fn execute_snapshot_alignment_with_run_id(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 fn execute_alignment_rows(
-    runtime: &MetalTanimotoRuntime,
-    compute_service: Option<(&ComputeServiceClient, Uuid)>,
+    backend: AlignmentBackend<'_>,
     request: &GridAlignmentRequest,
     run_id: Uuid,
     rows: Vec<GridAlignmentSourceRow>,
@@ -230,12 +257,8 @@ fn execute_alignment_rows(
     let mut transforms = vec![rigid_transform_matrix(
         burette_compute_core::RigidTransform::IDENTITY,
     )];
-    let mut sdf_records = vec![sdf_record(
-        &parsed[0],
-        None,
-        &scores[0],
-        runtime.device_identity().name.as_str(),
-    )?];
+    let backend_label = backend.sdf_label();
+    let mut sdf_records = vec![sdf_record(&parsed[0], None, &scores[0], &backend_label)?];
     checkpoint(
         1,
         Some(
@@ -246,65 +269,74 @@ fn execute_alignment_rows(
         checkpoint(pair_index + 1, None)?;
         let mapping =
             infer_atom_mapping(probe, reference, &reference_graph, &reference_signatures)?;
-        let descriptors = [AlignmentPairDescriptor {
-            probe_atom_start: 0,
-            probe_atom_count: probe.atoms.len() as u64,
-            reference_atom_start: 0,
-            reference_atom_count: reference.atoms.len() as u64,
-            mapping_start: 0,
-            mapping_count: mapping.len() as u64,
-            mode: AlignmentMode::MappedHorn,
-        }];
-        let batch = MetalAlignmentBatch {
-            probe_atoms: &probe.atoms,
-            reference_atoms: &reference.atoms,
-            mappings: &mapping,
-            pairs: &descriptors,
-        };
-        let execution = compute_service.map_or_else(
-            || {
-                runtime
-                    .align_and_score_profiled(batch, max_memory_bytes)
-                    .map_err(|e| e.to_string())
-            },
-            |(service, job_id)| {
-                service.align_and_score(job_id, batch, max_memory_bytes, &|| {
-                    checkpoint(pair_index + 1, None).map_err(|e| e.to_string())
-                })
-            },
-        );
-        let execution = match execution {
-            Ok(execution) => execution,
-            Err(error) => {
-                // Restore typed cancellation after the service admission callback.
-                checkpoint(pair_index + 1, None)?;
-                return Err(ComputeCoordinatorError::Unavailable(error));
+        let (transform, scores_for_pair) = match backend {
+            AlignmentBackend::NativeMetal { runtime, service } => {
+                let descriptors = [AlignmentPairDescriptor {
+                    probe_atom_start: 0,
+                    probe_atom_count: probe.atoms.len() as u64,
+                    reference_atom_start: 0,
+                    reference_atom_count: reference.atoms.len() as u64,
+                    mapping_start: 0,
+                    mapping_count: mapping.len() as u64,
+                    mode: AlignmentMode::MappedHorn,
+                }];
+                let batch = MetalAlignmentBatch {
+                    probe_atoms: &probe.atoms,
+                    reference_atoms: &reference.atoms,
+                    mappings: &mapping,
+                    pairs: &descriptors,
+                };
+                let execution = service.map_or_else(
+                    || {
+                        runtime
+                            .align_and_score_profiled(batch, max_memory_bytes)
+                            .map_err(|e| e.to_string())
+                    },
+                    |service| {
+                        service.align_and_score(run_id, batch, max_memory_bytes, &|| {
+                            checkpoint(pair_index + 1, None).map_err(|e| e.to_string())
+                        })
+                    },
+                );
+                let execution = match execution {
+                    Ok(execution) => execution,
+                    Err(error) => {
+                        // Restore typed cancellation after the service admission callback.
+                        checkpoint(pair_index + 1, None)?;
+                        return Err(ComputeCoordinatorError::Unavailable(error));
+                    }
+                };
+                gpu_time_ms += execution.gpu_time_ms;
+                let metal = execution.pairs.into_iter().next().ok_or_else(|| {
+                    ComputeCoordinatorError::Protocol("Alignment returned no result".into())
+                })?;
+                validate_cpu_parity(probe, reference, &mapping, &metal)?;
+                (metal.transform, metal.scores)
+            }
+            AlignmentBackend::ReferenceCpu => {
+                let cpu = align_and_score(
+                    &probe.atoms,
+                    &reference.atoms,
+                    &mapping,
+                    AlignmentMode::MappedHorn,
+                )
+                .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
+                (cpu.transform, cpu.scores)
             }
         };
-        gpu_time_ms += execution.gpu_time_ms;
-        let metal = execution.pairs.first().ok_or_else(|| {
-            ComputeCoordinatorError::Protocol("Alignment returned no result".into())
-        })?;
-        validate_cpu_parity(probe, reference, &mapping, metal)?;
         let score = GridAlignmentScore {
             source_index: rows[pair_index + 1].source_index,
             name: rows[pair_index + 1].name.clone(),
             is_reference: false,
-            rmsd: metal.scores.rmsd.unwrap_or_default(),
-            shape_tanimoto: metal.scores.shape_tanimoto,
-            electrostatic_carbo: metal
-                .scores
+            rmsd: scores_for_pair.rmsd.unwrap_or_default(),
+            shape_tanimoto: scores_for_pair.shape_tanimoto,
+            electrostatic_carbo: scores_for_pair
                 .electrostatic_available
-                .then_some(metal.scores.electrostatic_carbo),
-            combined_similarity: metal.scores.combined_similarity,
+                .then_some(scores_for_pair.electrostatic_carbo),
+            combined_similarity: scores_for_pair.combined_similarity,
         };
-        sdf_records.push(sdf_record(
-            probe,
-            Some(metal.transform),
-            &score,
-            runtime.device_identity().name.as_str(),
-        )?);
-        transforms.push(rigid_transform_matrix(metal.transform));
+        sdf_records.push(sdf_record(probe, Some(transform), &score, &backend_label)?);
+        transforms.push(rigid_transform_matrix(transform));
         checkpoint(
             pair_index + 2,
             Some(
@@ -329,7 +361,7 @@ fn execute_alignment_rows(
         aligned_sdf,
         scores,
         gpu_time_ms,
-        backend: "nativeMetal",
+        backend: backend.label(),
         mapping: "deterministicElementBondGraph",
         charge_model,
         grid_applied: false,
@@ -343,7 +375,7 @@ pub(crate) fn apply_grid_alignment_result(
     snapshot: &MolecularSnapshotRef,
     frozen_rows: &[GridAlignmentSourceRow],
     result: &GridAlignmentResult,
-    runtime: &MetalTanimotoRuntime,
+    backend: AlignmentBackend<'_>,
     artifact_id: Uuid,
     artifact_manifest_sha256: &str,
 ) -> ComputeResult<()> {
@@ -355,7 +387,7 @@ pub(crate) fn apply_grid_alignment_result(
         snapshot,
         &source_rows,
         &result.scores,
-        runtime,
+        backend,
         result.gpu_time_ms,
         &result.charge_model,
         artifact_id,
@@ -874,7 +906,7 @@ fn sdf_record(
     molecule: &ParsedMolfile,
     transform: Option<burette_compute_core::RigidTransform>,
     score: &GridAlignmentScore,
-    device: &str,
+    backend_label: &str,
 ) -> ComputeResult<String> {
     let mut lines = molecule.lines.clone();
     if let Some(transform) = transform {
@@ -924,14 +956,14 @@ fn sdf_record(
         .map(|value| format!("{value:.8}"))
         .unwrap_or_else(|| "unavailable (no non-zero atomic charges)".into());
     Ok(format!(
-        "{}\n>  <BURETTE_ALIGNMENT_REFERENCE>\n{}\n\n>  <BURETTE_ALIGNED_RMSD>\n{:.8}\n\n>  <BURETTE_SHAPE_TANIMOTO>\n{:.8}\n\n>  <BURETTE_ELECTROSTATIC_CARBO>\n{}\n\n>  <BURETTE_COMBINED_SIMILARITY>\n{:.8}\n\n>  <BURETTE_COMPUTE_BACKEND>\nMetal GPU ({})\n\n$$$$",
+        "{}\n>  <BURETTE_ALIGNMENT_REFERENCE>\n{}\n\n>  <BURETTE_ALIGNED_RMSD>\n{:.8}\n\n>  <BURETTE_SHAPE_TANIMOTO>\n{:.8}\n\n>  <BURETTE_ELECTROSTATIC_CARBO>\n{}\n\n>  <BURETTE_COMBINED_SIMILARITY>\n{:.8}\n\n>  <BURETTE_COMPUTE_BACKEND>\n{}\n\n$$$$",
         lines.join("\n"),
         score.is_reference,
         score.rmsd,
         score.shape_tanimoto,
         esp,
         score.combined_similarity,
-        device,
+        backend_label,
     ))
 }
 
@@ -941,7 +973,7 @@ fn apply_grid_scores(
     snapshot: &MolecularSnapshotRef,
     rows: &[GridAlignmentSourceRow],
     scores: &[GridAlignmentScore],
-    runtime: &MetalTanimotoRuntime,
+    backend: AlignmentBackend<'_>,
     gpu_time_ms: u64,
     charge_model: &str,
     artifact_id: Uuid,
@@ -951,7 +983,10 @@ fn apply_grid_scores(
         "mapping": "deterministicElementBondGraph",
         "shapeGaussian": "alpha=2.4179878/r_vdw^2; amplitude=1",
         "chargeModel": charge_model,
-        "runtime": runtime.runtime_identity().version,
+        "runtime": match backend {
+            AlignmentBackend::NativeMetal { runtime, .. } => runtime.runtime_identity().version.as_str(),
+            AlignmentBackend::ReferenceCpu => "referenceCpu",
+        },
     });
     let settings_bytes = serde_json::to_vec(&settings)
         .map_err(|error| ComputeCoordinatorError::Protocol(error.to_string()))?;
@@ -980,10 +1015,16 @@ fn apply_grid_scores(
             snapshot_sha256: snapshot.snapshot_sha256.clone(),
             normalized_settings_sha256,
             provenance: serde_json::json!({
-                "backend": "nativeMetal",
-                "device": runtime.device_identity(),
+                "backend": backend.label(),
+                "device": match backend {
+                    AlignmentBackend::NativeMetal { runtime, .. } => Some(runtime.device_identity()),
+                    AlignmentBackend::ReferenceCpu => None,
+                },
                 "gpuTimeMs": gpu_time_ms,
-                "cpuParity": "passed",
+                "cpuParity": match backend {
+                    AlignmentBackend::NativeMetal { .. } => "passed",
+                    AlignmentBackend::ReferenceCpu => "notApplicable",
+                },
                 "mapping": "deterministic exact element and bond-graph isomorphism",
                 "chargeModel": charge_model,
                 "electrostaticFallback": "score unavailable when all atomic charges are zero",
@@ -1098,6 +1139,46 @@ mod tests {
         let mol = "x\n  Burette\n\n  1  0  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 Xx  0  0  0  0  0  0  0  0  0  0  0  0\nM  END";
         assert!(parse_molfile(mol).is_err());
         assert!(normalized_indexes(&[1]).is_err());
+    }
+
+    #[test]
+    fn reference_cpu_aligns_a_reordered_pose_without_metal() {
+        let reference = "methanol\n  Burette\n\n  3  2  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.4000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    2.0000    0.7000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\n  2  3  1  0  0  0  0\nM  END";
+        let pose = "methanol pose\n  Burette\n\n  3  2  0  0  0  0            999 V2000\n    2.0000    0.7000    1.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n    0.0000    0.0000    1.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.4000    0.0000    1.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n  2  3  1  0  0  0  0\n  3  1  1  0  0  0  0\nM  END";
+        let rows = [reference, pose]
+            .into_iter()
+            .enumerate()
+            .map(|(index, molblock)| GridAlignmentSourceRow {
+                row_id: index as i64 + 1,
+                source_index: index as u64,
+                molecule_content_sha256: "0".repeat(64),
+                name: format!("pose {index}"),
+                molblock: Some(molblock.into()),
+            })
+            .collect();
+        let result = execute_snapshot_alignment_with_run_id(
+            AlignmentBackend::ReferenceCpu,
+            rows,
+            &GridAlignmentRequest {
+                document_id: "cpu-alignment".into(),
+                source_indexes: vec![0, 1],
+                max_memory_bytes: None,
+            },
+            Uuid::new_v4(),
+            &|_, _| Ok(()),
+        )
+        .expect("CPU alignment");
+        assert_eq!(result.backend, "nativeCpuReference");
+        assert_eq!(result.gpu_time_ms, 0);
+        assert!(
+            result.scores[1].rmsd < 1.0e-4,
+            "rmsd {}",
+            result.scores[1].rmsd
+        );
+        // The translated pose lands back on the reference plane.
+        assert!((result.transforms[1][14] + 1.0).abs() < 1.0e-4);
+        assert!(result.aligned_sdf.contains("CPU reference"));
+        assert!(!result.aligned_sdf.contains("Metal GPU"));
     }
 
     #[test]
