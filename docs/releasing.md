@@ -230,6 +230,13 @@ Every release app bundle must satisfy:
 - Finder Quick Look can preview PDB, CIF, and XYZ samples.
 - Update metadata points to the Burette release endpoint.
 
+The Release workflow also builds the Linux bundles on `ubuntu-24.04` with
+`scripts/build-linux.sh` and attaches them to the same GitHub release after the
+macOS job creates it: `Burette_<version>_amd64.deb`,
+`Burette-<version>-1.x86_64.rpm`, `Burette_<version>_amd64.AppImage` and
+`Burette-<version>-linux.sha256`. Linux builds are not signed and have no
+in-app installer; the update check sends Linux users to the release page.
+
 The zip artifact is the in-app updater artifact. The dmg artifact is for manual
 distribution and is not currently consumed by the updater. The DMG uses the
 branded Finder layout from `packaging/dmg/background.tiff`, with the app and the
@@ -382,6 +389,10 @@ snapshot wheel when needed, and regenerate the lock from the repository root wit
 ```bash
 MACOSX_DEPLOYMENT_TARGET=12.0 uv pip compile --no-config --default-index https://pypi.org/simple --python-version 3.13.13 --python-platform aarch64-apple-darwin --generate-hashes --only-binary :all: config/xyzrender/requirements.in -o config/xyzrender/requirements.txt
 ```
+
+Linux bundles use the parallel `bootstrap-linux-x86_64.json` and
+`requirements-linux-x86_64.txt`, constrained to the same versions as the macOS
+lock; `config/xyzrender/README.md` gives the command that regenerates them.
 
 Review changed wheels/bootstrap digests and run the native build plus renderer and
 Quick Look acceptance. Lock/helper changes trigger native CI. Local development
