@@ -450,6 +450,8 @@ export type ViewerDocument = {
   title: string;
   extension: string;
   renderer: string;
+  /** Durable scene snapshot used to restore this document without changing its source identity. */
+  recoveryPath?: string;
   viewerProfile?: "structure" | "mesoscale" | "grid" | "spectrum";
   runtimePath: string;
   /** Admitted source; native runtime is prepared when a viewer mounts. */

@@ -114,6 +114,36 @@ enum WritePermitMode {
 }
 
 impl OpenDocumentRegistry {
+    pub(crate) fn has_snapshots(&self, labels: &[String]) -> bool {
+        self.state.lock().is_ok_and(|state| {
+            labels
+                .iter()
+                .all(|label| state.paths_by_window.contains_key(label))
+        })
+    }
+
+    pub(crate) fn owner_for_path(
+        &self,
+        path: &Path,
+        candidates: &[String],
+        preferred: Option<&str>,
+    ) -> Option<String> {
+        let path = normalized_document_path(path);
+        let state = self.state.lock().ok()?;
+        let owns = |label: &str| {
+            crate::windows::is_workspace_window_label(label)
+                && candidates.iter().any(|candidate| candidate == label)
+                && state
+                    .paths_by_window
+                    .get(label)
+                    .is_some_and(|snapshot| snapshot.paths.contains(&path))
+        };
+        preferred
+            .filter(|label| owns(label))
+            .map(str::to_string)
+            .or_else(|| candidates.iter().filter(|label| owns(label)).min().cloned())
+    }
+
     fn replace(&self, window_label: &str, revision: u64, paths: &[String]) -> Result<(), String> {
         let normalized: HashSet<PathBuf> = paths
             .iter()
@@ -607,6 +637,7 @@ pub(super) fn sync_native_menu<R: Runtime>(
             state.document_registry_revision,
             &state.open_document_paths,
         )?;
+    crate::startup::flush_external_open_documents(&app);
     sync_document_edited(&window, state.document_dirty)?;
 
     if !window.is_focused().map_err(|error| error.to_string())? {
@@ -657,7 +688,8 @@ pub(super) fn sync_native_menu<R: Runtime>(
         "file.export-preview-svg",
         state.can_export_external_preview,
     )?;
-    set_enabled(&app, "file.close-tab", state.active_tab_closable)?;
+    // Close falls back to closing the window when no document tab is active.
+    set_enabled(&app, "file.close-tab", true)?;
     set_enabled(
         &app,
         "file.close-other-tabs",
@@ -1497,6 +1529,64 @@ mod tests {
         contextual_history_title, recent_menu_titles, validate_recent_documents, NativeMenuState,
         OpenDocumentRegistry, RecentMenuDocument, RecentMenuSnapshot, MAX_MENU_TITLE_CHARS,
     };
+
+    #[test]
+    fn cold_external_owner_is_unknown_until_all_restored_snapshots_arrive() {
+        let registry = OpenDocumentRegistry::default();
+        let labels = vec!["main".into(), "workspace-restored".into()];
+        let path = "/tmp/burette-cold-owned.xyz";
+        assert!(!registry.has_snapshots(&labels));
+        registry.replace("main", 1, &[]).unwrap();
+        assert!(!registry.has_snapshots(&labels));
+        registry
+            .replace("workspace-restored", 1, &[path.into()])
+            .unwrap();
+        assert!(registry.has_snapshots(&labels));
+        assert_eq!(
+            registry.owner_for_path(std::path::Path::new(path), &labels, Some("main")),
+            Some("workspace-restored".into())
+        );
+        registry.remove_window("workspace-restored");
+        assert!(registry.has_snapshots(&["main".into()]));
+    }
+
+    #[test]
+    fn external_open_reuses_live_workspace_owner_and_excludes_preview() {
+        let registry = OpenDocumentRegistry::default();
+        let path = "/tmp/burette-owned-structure.pdb";
+        registry
+            .replace("workspace-other", 1, &[path.into()])
+            .unwrap();
+        registry
+            .replace("workspace-preview-test", 1, &[path.into()])
+            .unwrap();
+        let candidates = vec![
+            "main".into(),
+            "workspace-other".into(),
+            "workspace-preview-test".into(),
+        ];
+        assert_eq!(
+            registry.owner_for_path(std::path::Path::new(path), &candidates, Some("main")),
+            Some("workspace-other".into())
+        );
+        assert_eq!(
+            registry.owner_for_path(
+                std::path::Path::new(path),
+                &candidates,
+                Some("workspace-preview-test")
+            ),
+            Some("workspace-other".into())
+        );
+        assert_eq!(
+            registry.owner_for_path(std::path::Path::new(path), &["main".into()], Some("main")),
+            None
+        );
+        registry.replace("main", 1, &[path.into()]).unwrap();
+        assert_eq!(
+            registry.owner_for_path(std::path::Path::new(path), &candidates, Some("main")),
+            Some("main".into())
+        );
+    }
     use serde_json::json;
     use std::path::Path;
 

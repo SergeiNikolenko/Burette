@@ -276,7 +276,9 @@ fn emit_command_to_window<R: Runtime>(
         )
         .is_ok()
     {
-        let _ = window.emit(MENU_COMMAND_EVENT, ());
+        let _ = window
+            .app_handle()
+            .emit_to(window.label(), MENU_COMMAND_EVENT, ());
     }
 }
 
@@ -291,9 +293,10 @@ fn focused_window<R: Runtime>(app: &tauri::AppHandle<R>) -> Option<tauri::Webvie
     windows
         .values()
         .find(|window| window.is_focused().unwrap_or(false))
-        .or_else(|| windows.get("main"))
-        .or_else(|| windows.values().next())
         .cloned()
+        .or_else(|| {
+            crate::windows::focused_window_label(app).and_then(|label| windows.get(&label).cloned())
+        })
 }
 
 #[cfg(test)]

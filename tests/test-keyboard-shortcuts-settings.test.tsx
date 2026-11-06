@@ -13,6 +13,17 @@ const { createRoot } = await import("react-dom/client");
 const { KeyboardShortcutsSection } = await import("../apps/desktop/src/components/settings-panel/keyboard-shortcuts-section");
 const { SearchInput } = await import("../apps/desktop/src/components/ui/search-input");
 
+test("macOS tab shortcuts match shifted physical bracket keys and exclude Back/Forward", async () => {
+  const { matchesAccelerator, resolveShortcutBindings } = await import("../apps/desktop/src/lib/keyboard-shortcuts");
+  const bindings = resolveShortcutBindings({});
+  const previous = new KeyboardEvent("keydown", { key: "{", code: "BracketLeft", metaKey: true, shiftKey: true });
+  const next = new KeyboardEvent("keydown", { key: "}", code: "BracketRight", metaKey: true, shiftKey: true });
+  expect(matchesAccelerator(previous, bindings["window.previous-tab"])).toBe(true);
+  expect(matchesAccelerator(next, bindings["window.next-tab"])).toBe(true);
+  expect(matchesAccelerator(previous, bindings["view.navigate-back"])).toBe(false);
+  expect(matchesAccelerator(next, bindings["view.navigate-forward"])).toBe(false);
+});
+
 test("shortcut search matches commands, descriptions and key combinations; clear restores focus and results", async () => {
   const shell = document.createElement("div"); document.body.append(shell);
   const root = createRoot(shell);
@@ -25,9 +36,9 @@ test("shortcut search matches commands, descriptions and key combinations; clear
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
       input.dispatchEvent(new Event("input", { bubbles: true }));
     }); };
-    await fill("  DOCK  "); expect(rows()).toEqual(["Toggle bottom dock", "Toggle right dock"]);
+    await fill("  DOCK  "); expect(rows()).toEqual(["Toggle bottom dock"]);
     await fill("molecular"); expect(rows()).toEqual(["Open structures"]);
-    await fill("⌥⌘B"); expect(rows()).toEqual(["Toggle right dock"]);
+    await fill("⌥⌘B"); expect(rows()).toEqual(["Toggle right panel"]);
     expect(shell.querySelector("kbd")?.textContent).toBe("⌥⌘B");
     await fill("no-such-shortcut"); expect(rows()).toEqual([]);
     expect(shell.querySelector('[role="status"]')?.textContent).toBe("No matching shortcuts");
@@ -57,7 +68,7 @@ test("search by keystrokes records a combo and matches it exactly", async () => 
     expect(input.placeholder).toBe("Press shortcut to search");
     await press({ key: "b", code: "KeyB", metaKey: true, altKey: true });
     expect(input.value).toBe("⌥⌘B");
-    expect(rows()).toEqual(["Toggle right dock"]);
+    expect(rows()).toEqual(["Toggle right panel"]);
     await press({ key: "Escape", code: "Escape" });
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     expect(input.readOnly).toBe(false);

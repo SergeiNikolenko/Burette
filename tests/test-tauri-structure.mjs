@@ -432,10 +432,10 @@ assert.match(startupSource, /paths_by_window: Mutex<HashMap<String, Vec<String>>
 assert.match(startupSource, /push_for_window/);
 assert.match(startupSource, /drain_for_window/);
 assert.match(startupCommand, /window: tauri::WebviewWindow<R>/);
-assert.match(lib, /startup::emit_agent_session\(app, session_dir\)/);
+assert.match(lib, /startup::emit_agent_session\(app, window.label\(\), session_dir\)/);
 assert.match(agentSessionHook, /invoke<string \| null>\("startup_agent_session"\)/);
-assert.match(agentSessionHook, /listen<string>\("agent-session"/);
-assert.match(agentSessionHook, /trackTauriListener\(listen<string>\("agent-session"/);
+assert.match(agentSessionHook, /listen\("agent-session"/);
+assert.match(agentSessionHook, /trackTauriListener\(listen\("agent-session"/);
 assert.match(agentSessionHook, /VITE_BURETTE_AGENT_SHELL/);
 assert.match(agentSessionHook, /BROWSER_AGENT_SESSION_DIR/);
 assert.match(agentSessionHook, /activateSession\(BROWSER_AGENT_SESSION_DIR\)/);
@@ -1371,10 +1371,17 @@ for (const [id, accelerator] of [
   ['view.zoom-actual', 'CmdOrCtrl+0'],
   ['view.zoom-in', 'CmdOrCtrl+='],
   ['view.zoom-out', 'CmdOrCtrl+-'],
-  ['window.previous-tab', 'Ctrl+Shift+Tab'],
-  ['window.next-tab', 'Ctrl+Tab'],
 ]) {
   assertMenuItemAccelerator(nativeMenuSource, id, accelerator);
+}
+for (const [id, mac, other] of [
+  ['window.previous-tab', 'CmdOrCtrl+Shift+[', 'Ctrl+Shift+Tab'],
+  ['window.next-tab', 'CmdOrCtrl+Shift+]', 'Ctrl+Tab'],
+]) {
+  const start = nativeMenuSource.indexOf(`with_id("${id}"`);
+  const item = nativeMenuSource.slice(start, nativeMenuSource.indexOf('.build(app)', start));
+  const compact = item.replace(/\s+/g, ' ');
+  assert.ok(compact.includes(`.accelerator(if cfg!(target_os = "macos") { "${mac}" } else { "${other}" })`), `${id} platform accelerator`);
 }
 assert.match(menuEvents, /crate::zoom::handle_menu_command/);
 // Settings > Keyboard shortcuts: every customizable menu row in the shared
@@ -1475,7 +1482,7 @@ assert.match(nativeMenuSource, /emit_command_to_window\(&window, "file\.open-rec
 assert.match(nativeMenuSource, /PendingNativeMenuCommands/);
 assert.match(nativeMenuSource, /MAX_PENDING_COMMANDS_PER_WINDOW/);
 assert.match(nativeMenuSource, /pending\.drain\(window\.label\(\)\)/);
-assert.match(nativeMenuSource, /window\.emit\(MENU_COMMAND_EVENT, \(\)\)/);
+assert.match(nativeMenuSource, /emit_to\(window\.label\(\), MENU_COMMAND_EVENT, \(\)\)/);
 assert.doesNotMatch(nativeMenuSource, /strictly_focused_window/);
 assert.doesNotMatch(nativeMenuSource, /DirtyWindowRegistry/);
 assert.match(nativeMenuSource, /ExitPreflightCoordinator/);
@@ -1661,8 +1668,8 @@ assert.match(previewRuntimeGrid, /grid-ui-v\d+/);
 assert.match(previewXyzrender, /std::env::current_exe\(\)/);
 assert.match(previewXyzrender, /xyzrender-runtime/);
 assert.match(gridViewerJS, /resetDocumentRuntimeState\(\);\n\s+state\.remoteMode = isRemoteMode\(cfg\);/);
-assert.match(gridViewerJS, /buildUI\(cfg\);\n\s+installGridTextFocusListeners\(\);\n\s+installRowHoverPreview\(cfg\);\n\s+refresh\(cfg\);\n\s+try \{\n\s+await initRDKit\(\);/);
-assert.match(gridViewerJS, /if \(state\.cardRenderer === 'rdkit'\) \{\n\s+if \(state\.remoteMode\) \{\n\s+if \(state\.rows\.length\) void renderVirtualWindow\(cfg, state\.token, \{ force: true \}\);\n\s+\} else \{\n\s+render\(cfg\);\n\s+\}\n\s+\}/);
+assert.match(gridViewerJS, /buildUI\(cfg\);\n\s+post\('gridViewModeReady', '', \{\}\);\n\s+installGridTextFocusListeners\(\);\n\s+installRowHoverPreview\(cfg\);\n\s+await refresh\(cfg\);\n\s+try \{\n\s+await initRDKit\(\);/);
+assert.match(gridViewerJS, /if \(state\.cardRenderer === 'rdkit'\) \{\n\s+if \(state\.remoteMode\) \{\n\s+if \(state\.rows\.length\) await renderVirtualWindow\(cfg, state\.token, \{ force: true \}\);\n\s+\} else \{\n\s+await render\(cfg\);\n\s+\}\n\s+\}/);
 assert.match(gridViewerJS, /function supportsXyzrenderCards\(cfg\)/);
 assert.match(gridViewerJS, /cfg\?\.appViewer === true && \(\s*cfg\?\.gridDataMode === 'bridge'/);
 assert.doesNotMatch(gridViewerJS, /return \(cfg\?\.appViewer === true && cfg\?\.gridDataMode === 'bridge'\)\s*\|\|\s*\(typeof cfg\?\.xyzrenderEndpoint === 'string'/);

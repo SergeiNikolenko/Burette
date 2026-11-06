@@ -3,7 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { isTauriRuntime } from "../../lib/tauri";
 import { defaultPreferences } from "../../stores/settings-store";
 import { useShellStore } from "../../stores/shell-store";
-import { defaultTabWorkspace, useTabWorkspaceStore } from "../../stores/tab-workspace-store";
+import { defaultTabWorkspace, useTabWorkspaceStore, WINDOW_TOOLS_ID } from "../../stores/tab-workspace-store";
+import { useWorkspacePanesStore } from "../../stores/workspace-panes-store";
 import type { ViewerPreferences } from "../../types";
 import type { ShellActions } from "../types";
 import {
@@ -191,14 +192,13 @@ function formatBytes(bytes: number) {
   return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unit]}`;
 }
 
-/** Puts the sidebar and every tab's docks back at their default sizes. */
+/** Restores the window's default panel sizes. */
 function resetPanelLayout() {
-  const defaults = defaultTabWorkspace();
-  const { workspaces, setDockSize } = useTabWorkspaceStore.getState();
-  for (const tabId of Object.keys(workspaces)) {
-    setDockSize(tabId, "right", defaults.right.size);
-    setDockSize(tabId, "bottom", defaults.bottom.size);
-  }
+  const { split } = useWorkspacePanesStore.getInitialState();
+  const panes = useWorkspacePanesStore.getState();
+  panes.setSplit("right", split.right);
+  panes.setSplit("bottom", split.bottom);
+  useTabWorkspaceStore.getState().setDockSize(WINDOW_TOOLS_ID, "bottom", defaultTabWorkspace().bottom.size);
   useShellStore.getState().setSidebarWidth(useShellStore.getInitialState().sidebarWidth);
 }
 

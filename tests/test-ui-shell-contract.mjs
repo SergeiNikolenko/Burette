@@ -1172,7 +1172,7 @@ assert.match(app, /useAppDirtyGridDocuments\(\)/);
 assert.doesNotMatch(app, /setDirtyGridDocuments/);
 assert.match(appGridControlMessagesHook, /updateDirtyGridDocument\(documentId, body\.dirty === true\)/);
 assert.match(appGridFileActionsHook, /forgetDirtyGridDocument\(documentId\)/);
-assert.match(appShellActionsHook, /clearDirtyGridDocuments\(\);/);
+assert.match(appShellActionsHook, /forgetDirtyGridDocuments\(documentIds\);/);
 assert.match(appDirtyGridHook, /useState<Set<string>>\(\(\) => new Set\(\)\)/);
 assert.match(appDirtyGridHook, /const dirtyGridDocumentsRef = useRef\(dirtyGridDocuments\)/);
 assert.match(appDirtyGridHook, /dirtyGridDocumentsRef\.current = next;\s*setDirtyGridDocuments\(next\)/s);
@@ -1186,7 +1186,7 @@ assert.match(appDirtyGridHook, /transition\.pendingDocumentIds/);
 // Closing must not be gated on in-flight mutations: an unbounded wait here used
 // to strand the window with the grid overlay up and every later close refused.
 assert.doesNotMatch(appShellActionsHook, /waitForPending/);
-assert.match(appShellActionsHook, /const completeClose = \(permit: WindowCloseMutationPermit, close: \(\) => void\) => \{\s*try \{\s*if \(!nativePopoutBusy\(\)\) close\(\);\s*\} finally \{\s*permit\.release\(\);/s);
+assert.match(appShellActionsHook, /const completeClose = \(permit: WindowCloseMutationPermit, close: \(\) => void\) => \{\s*try \{\s*if \(!nativeWindowTransferBusy\(\)\) close\(\);\s*\} finally \{\s*permit\.release\(\);/s);
 assert.match(appGridWorkflowsHook, /if \(result\.recordsAppended > 0\) updateDirtyGridDocument\(targetDocument\.id, true\);\s*notifyGridRecordsAppended\(targetDocument\.id, result\)/s);
 assert.match(appKetcherActionsHook, /updateDirtyGridDocument\(request\.documentId, true\);\s*iframe\.contentWindow\.postMessage/s);
 assert.match(appKetcherActionsHook, /isGridDocumentCloseTransitionActive\(request\.documentId\)/);
@@ -1306,7 +1306,7 @@ assert.match(appStartupEffectsHook, /dockingRequestForDrop\(paths\[0\], paths\.s
 assert.match(appStartupEffectsHook, /await openDockingDocument\(trajectoryDockingRequest\.receptorPath, trajectoryDockingRequest\.ligandPaths\)/);
 assert.match(appStartupEffectsHook, /openedPersistedTabsRef/);
 assert.match(appStartupEffectsHook, /invoke<string\[\]>\("existing_paths", \{ paths \}\)/);
-assert.match(appStartupEffectsHook, /pruneMissingFileTabs\(paths, existingPaths\)/);
+assert.match(appStartupEffectsHook, /pruneMissingFileTabs\(paths\.map\(logicalPath\), existingPaths\.map\(logicalPath\)\)/);
 assert.match(appStartupEffectsHook, /await openPaths\(existingPaths, \{ preferredPath, preserveActiveTab: true \}\)/);
 assert.match(app, /useAppOpenDropController\(\{/);
 assert.equal((appOpenDropControllerHook.match(/useOpenEvents\(/g) || []).length, 1);
@@ -1420,18 +1420,16 @@ assert.match(appStartupEffectsHook, /function uniqueParentDirectories\(paths: st
 assert.match(appStartupEffectsHook, /function commonParentDirectory\(paths: string\[\]\)/);
 assert.match(appStartupEffectsHook, /invoke<string\[\]>\("existing_paths", \{ paths \}\)/);
 assert.match(openEventsHook, /return startupOpenSettled/);
-assert.match(openEventsHook, /openPendingDocuments\(\{ replace: true \}, true\)/);
+assert.match(openEventsHook, /openPendingDocuments\(true\)/);
+assert.doesNotMatch(openEventsHook, /replace: true/);
 assert.match(appLayout, /from "\.\/editor-area"/);
 assert.match(appLayout, /from "\.\/editor-area\/editor-tabs"/);
 assert.match(appLayout, /from "\.\/sidebar"/);
 assert.match(appLayout, /from "\.\/file-drop-feedback"/);
 assert.doesNotMatch(appLayout, /SidebarLeftIcon/);
 assert.doesNotMatch(appLayout, /from "\.\/system-icon"/);
-assert.match(appLayout, /function DockToggleIcon\(\{ className \}: \{ className\?: string \}\)/);
-assert.match(appLayout, /function clampRightDockWidth\(width: number, workbenchWidth: number\)/);
 // Shell controls use the shared reviewed icon geometry.
-assert.match(appLayout, /import \{ ArrowLeft, ArrowRight, SidebarLeft as PanelLeft \} from "@\/components\/ui\/app-icons"/);
-assert.match(appLayout, /<PanelLeft className=\{className\} size=\{16\} aria-hidden \/>/);
+assert.match(appLayout, /import \{[^\n]*SidebarLeft, SidebarLeftHidden[^\n]*\} from "@\/components\/ui\/app-icons"/);
 assert.match(appLayout, /<FileDropFeedback preview=\{dropPreview\} \/>/);
 assert.doesNotMatch(appLayout, /drop-overlay/);
 assert.doesNotMatch(appLayout, /StatusSurface/);
@@ -1453,36 +1451,26 @@ assert.match(uiToast, /HugeiconsIcon/);
 assert.match(appLayout, /const chromeVisible = !settingsMode && !hostedMcpWidget/);
 assert.match(appLayout, /\{!hostedMcpWidget && <div className="drag-region" data-tauri-drag-region \/>\}/);
 assert.match(appLayout, /const sidebarLayoutWidth = sidebarVisible \? sidebarWidth : 0/);
-assert.match(appLayout, /const workbenchWidth = viewportWidth - sidebarLayoutWidth/);
-assert.match(appLayout, /const rightDockWidth = clampRightDockWidth\(state\.rightDockWidth, workbenchWidth\)/);
-// A spilling grid is told how far the dock floats over it, measured from the
-// two rects, so its toolbar menus stay out of the covered strip. The cover is
-// pushed on any dock resize because a spilling grid fires no resize of its own.
-assert.match(appLayout, /const cover = dockLeft === undefined \? 0 : Math\.max\(0, Math\.round\(iframe\.getBoundingClientRect\(\)\.right - dockLeft\)\)/);
-assert.match(appLayout, /type: "gridViewportCover", cover/);
-assert.match(appLayout, /new ResizeObserver\(\(\) => post\(\)\)/);
+assert.doesNotMatch(appLayout, /<DockPanel area="right"|id="right-dock"|gridViewportCover/);
 assert.doesNotMatch(appLayout, /Math\.max\(360, clampedSidebarWidth\)/);
 assert.match(appLayout, /const compactLeadingChrome = !tauriRuntime \|\| windowFullscreen/);
 // The tab strip is placed from the panels' measured edges, not from the stored
 // sizes: a squeezed panel keeps reporting the size it wants, and a stored size
 // only reaches the DOM a render after the drag frame that produced it. React
 // contributes the leading-chrome inset (traffic lights) and the first-paint
-// seeds; `--sidebar-edge` / `--right-dock-edge` come from the observer.
+// seeds; the sidebar and workspace group publish their measured edges.
 assert.match(appLayout, /const chromeLeadingInset = compactLeadingChrome\s*\?\s*"112px"\s*:\s*viewportWidth <= 520\s*\?\s*"calc\(82px \/ var\(--window-zoom, 1\) \+ 40px\)"\s*:\s*"calc\(92px \/ var\(--window-zoom, 1\) \+ 100px\)"/);
 assert.match(appLayout, /"--chrome-leading-inset": chromeLeadingInset/);
 assert.doesNotMatch(appLayout, /tabChromeLeft/);
 assert.match(appLayout, /import \{ usePanelEdgeVariables \} from "\.\/ui\/use-panel-edge-variables"/);
 assert.match(appLayout, /\{ elementRef: sidebarElementRef, property: "--sidebar-edge" \}/);
-assert.match(appLayout, /\{ elementRef: rightDockElementRef, property: "--right-dock-edge" \}/);
 
 assert.match(appLayout, /<header className="topbar">/);
-assert.match(appLayout, /const rightDockOpen = !settingsMode && !hostedMcpWidget && state\.rightDockOpen/);
 assert.match(appLayout, /const pluginSurface = isAgentPluginSurface\(state\.buildInfo\.isAgentShell\);/);
 assert.match(appLayout, /\{!hostedMcpWidget && pluginSurface \? <AnnotateToggle /);
 assert.match(appLayout, /const bottomDockOpen = !settingsMode && !hostedMcpWidget && !pluginSurface && state\.bottomDockOpen/);
-assert.match(appLayout, /"--right-dock-width": `\$\{rightDockOpen \? rightDockWidth : 0\}px`/);
 assert.match(appLayout, /"--chrome-height": hostedMcpWidget \? "0px" : undefined/);
-assert.match(appLayout, /\{chromeVisible && !window\.BuretteMcpWorkspace && \(/);
+assert.match(appLayout, /\{chromeVisible && \(!window\.BuretteMcpWorkspace \|\| nativeWorkspaceChrome\) && \(/);
 assert.match(appLayout, /const activePageKind = state\.activeTab\?\.location\.kind \?\? null/);
 assert.match(appLayout, /data-active-page-kind=\{activePageKind \?\? undefined\}/);
 assert.match(appLayout, /<Sidebar state=\{layoutState\} actions=\{actions\} open=\{sidebarVisible\} \/>/);
@@ -1539,7 +1527,6 @@ assert.match(editorTabs, /actions\.saveMoleculeCollectionAs\(tabDocument\.id\)/)
 assert.match(editorTabs, /kind: tab\.location\.kind === "ketcher" \? "ketcher" as const : tab\.location\.kind === "text-file" \? "writer" as const : "tab" as const/);
 assert.match(editorTabs, /startMouseTabReorder\(tab\.id, true, event\);/);
 assert.match(editorTabs, /showNativeContextMenu\(menuSections\(/);
-assert.match(editorTabs, /openScreen\(\{ kind: "launcher" \}/);
 assert.doesNotMatch(editorTabs, /from "lucide-react"/);
 assert.doesNotMatch(editorTabs, /className="tab-history-controls"/);
 assert.match(editorTabs, /import \{ CloseIcon \} from "\.\.\/close-icon"/);
@@ -1547,7 +1534,7 @@ assert.match(editorTabs, /<CloseIcon size=\{13\} \/>/);
 assert.match(appLayout, /className="chrome-leading-controls"/);
 // The trailing title-bar button toggles the right dock directly; the bottom
 // dock opens from its shortcut only.
-assert.match(appLayout, /<RightDockToggle open=\{rightDockOpen\} toggle=\{\(\) => actions\.toggleDock\("right"\)\} \/>/);
+assert.match(appLayout, /<RightDockToggle open=\{state\.rightDockOpen\} toggle=\{\(\) => actions\.toggleDock\("right"\)\} \/>/);
 assert.doesNotMatch(appLayout, /toggleDock\("bottom"\)/);
 
 assert.match(appLayout, /from "\.\/shortcut-tooltip"/);
@@ -1584,7 +1571,7 @@ assert.match(fileKind, /export const fileKind = definePageKind/);
 assert.match(fileKind, /keepAlive: true/);
 assert.match(fileKind, /kind: "file"/);
 assert.match(fileKind, /path: location\.path/);
-assert.match(fileKind, /const document = findIndexedDocument\(state\.documents, location\);\s*return document \? <ViewerSurface document=\{document\} actions=\{actions\} preferences=\{state\.preferences\} isActive=\{isActive\} \/> : null;/);
+assert.match(fileKind, /const document = findIndexedDocument\(state\.documents, location\);\s*return document \? <ViewerSurface tabId=\{tabId\} document=\{document\} actions=\{actions\} preferences=\{state\.preferences\} isActive=\{isActive\} \/> : null;/);
 assert.doesNotMatch(fileKind, /findIndexedDocument\(state\.documents, location\) \?\? state\.activeDocument/);
 assert.match(fileKind, /className=\{`molecule-stage/);
 assert.match(fileKind, /sourcePreview=\{sourceSession\?\.sourcePreview \?\? undefined\}/);
@@ -2253,12 +2240,10 @@ assert.match(styles, /--sidebar-divider-right: transparent/);
 assert.match(styles, /--workspace-edge-border: color-mix\(in srgb, var\(--fg-base\) calc\(var\(--contrast\) \* 22%\), transparent\)/);
 assert.match(styles, /\.sidebar::after \{[^}]*background: var\(--sidebar-divider-right\);/s);
 assert.doesNotMatch(styles, /\.splitter::after \{ background: var\(--sidebar-divider-right\); \}/);
-// The workbench card's edge shadow lives on the sidebar handle now: the center
-// ResizablePanel clips its children (overflow: hidden), so a box-shadow on
-// .workbench itself can never reach over the sidebar.
-assert.match(styles, /\.workbench \{[^}]*background: var\(--bg-base\);[^}]*overflow: hidden;[^}]*border-left: 1px solid var\(--workspace-edge-border\);[^}]*border-radius: 0;/s);
-// The workbench, stage and docks stay opaque (`--bg-base`); only the sidebar is
-// translucent, which it gets from the shell's own `--bg` showing through.
+// The titlebar sits on the workspace backdrop, with one inset content frame.
+assert.match(styles, /\.workbench \{[^}]*margin-inline-end: 4px;[^}]*margin-block-end: 4px;/s);
+assert.match(styles, /--workspace-frame-radius: 12px;/);
+assert.doesNotMatch(styles, /\.workbench \{[^}]*border-left:/s);
 assert.match(styles, /\.main-stage \{[^}]*background: var\(--bg-base\);/s);
 assert.match(styles, /\.dock-panel \{[^}]*background: var\(--bg-base\);/s);
 assert.doesNotMatch(styles, /\.workbench \{[^}]*box-shadow: -12px 0 28px/s);
@@ -2266,9 +2251,6 @@ assert.doesNotMatch(styles, /\.workbench \{[^}]*box-shadow: -12px 0 28px/s);
 assert.doesNotMatch(styles, /\.workspace-sidebar-handle::before/);
 assert.match(styles, /\.workspace-sidebar-handle:not\(:hover, :active\)::after \{ opacity: 0; \}/);
 assert.match(appLayout, /className="workspace-sidebar-handle"/);
-assert.match(styles, /\.app-shell\[data-settings-mode="true"\] \.workbench \{[^}]*border-radius: 0;[^}]*box-shadow: none;[^}]*\}/s);
-assert.match(styles, /\.app-shell\[data-hosted-mcp-widget="true"\] \.workbench \{[^}]*border-radius: 0;[^}]*box-shadow: none;[^}]*\}/s);
-assert.match(styles, /\.app-shell\[data-runtime="browser"\] \.workbench \{\s*border-radius: 0;\s*\}/s);
 assert.doesNotMatch(styles, /\.main-stage \{[^}]*border-radius: 20px 0 0 20px;/s);
 assert.match(styles, /\.app-shell\[data-theme="auto"\] \{[^}]*color-scheme: light dark/s);
 assert.match(styles, /@media \(prefers-color-scheme: light\) \{[\s\S]*\.app-shell\[data-theme="auto"\]/);
@@ -2286,27 +2268,23 @@ assert.match(styles, /\.pin-hit/);
 assert.match(styles, /\.tab-scroll-region \{[^}]*width: max-content;[^}]*flex: 0 1 auto/s);
 assert.match(styles, /\.tab-strip-spacer \{[^}]*min-width: 0;[^}]*flex: 1 1 28px/s);
 assert.match(styles, /\.tab-shell \{[^}]*position: relative/s);
-assert.match(styles, /\.tab \{[^}]*height: 28px;/s);
-assert.match(styles, /\.tab:hover \{[^}]*backdrop-filter: blur\(40px\)/);
-assert.match(styles, /--tab-active-bg: var\(--color-background-primary-ghost-hover\);/);
-// Dock AppShellTabStrip uses the original 5% text/surface selected fill.
-assert.match(styles, /\.tab\.active \{[^}]*background: var\(--tab-active-bg\);[^}]*backdrop-filter: blur\(40px\)/s);
+assert.match(styles, /\.tab \{[^}]*height: 32px;[^}]*border-radius: 10px;/s);
+assert.match(styles, /--tab-width: clamp\(90px,[^;]*240px\);/);
+assert.doesNotMatch(styles, /\.tab(?:\.active|:hover) \{[^}]*backdrop-filter:/s);
 // The close button sits inside the pill's right padding from the start and
 // only fades in; sliding it in from outside forced every tab to reserve the
 // slide distance on top of the button, which spread the strip out.
-assert.match(styles, /\.tab-close \{[^}]*right: 4px;[^}]*transform: translateY\(-50%\);/s);
+assert.match(styles, /\.tab-close \{[^}]*inset-inline-end: 7px;[^}]*transform: translateY\(-50%\);/s);
 assert.doesNotMatch(styles, /\.tab-close \{[^}]*translate\(100%/s);
 // Every tab reserves exactly the close button's room before hover reveals it,
 // so nothing shifts on hover and inactive tabs carry no dead space.
-assert.match(styles, /\.tab \{[^}]*padding: 0 26px 0 10px;/s);
+assert.match(styles, /\.tab \{[^}]*padding: 4px 29px 4px 10px;/s);
 // A tab with no close button (pinned, read-only) closes up on the right.
 assert.match(styles, /\.tab-shell > \.tab:last-child \{ padding-right: 10px; \}/);
-assert.match(styles, /@container \(max-width: 320px\) \{[\s\S]*\.topbar \.tab-shell \{[^}]*flex: 0 0 auto;/);
-assert.match(styles, /@container \(max-width: 320px\) \{[\s\S]*\.topbar \.tab \{[^}]*padding-inline: 10px 26px;/);
 assert.match(styles, /\.tab-shell\[data-active\] \.tab-close \{[^}]*opacity: 1;[^}]*pointer-events: auto;[^}]*background: transparent;/s);
 assert.match(styles, /\.tab-shell:hover \.tab-close/);
 assert.match(styles, /\.tab-shell:focus-within \.tab-close \{[^}]*opacity: 1;[^}]*pointer-events: auto;/s);
-assert.match(styles, /\.tab-close:hover \{[^}]*color: var\(--text-secondary\);[^}]*background: color-mix\(in srgb, var\(--fg-base\) calc\(var\(--contrast\) \* 26%\), var\(--bg-base\)\);[^}]*box-shadow: inset 0 0 0 1px var\(--line-subtle\)/s);
+assert.match(styles, /\.tab-close:hover \{[^}]*background: var\(--color-background-primary-ghost-hover\);/s);
 assert.match(closeIcon, /export function CloseIcon/);
 assert.match(closeIcon, /className="close-glyph"/);
 assert.doesNotMatch(closeIcon, /from "\.\/system-icon"/);
@@ -2341,8 +2319,8 @@ assert.match(appLayout, /function useInitialSize/);
 // bottom dock's floor for that column IS the strip's height - drop it and the
 // dock's own tabs slide underneath the document tabs. The two numbers live in
 // different files, so they are pinned to each other here.
-assert.match(appLayout, /const CHROME_HEIGHT = 56;/);
-assert.match(styles, /--chrome-height: 40px;/);
+assert.match(appLayout, /const CHROME_HEIGHT = 44;/);
+assert.match(styles, /--workspace-chrome-height: 44px;/);
 assert.match(appLayout, /<ResizablePanel id="main"[^>]*minSize=\{`\$\{CHROME_HEIGHT\}px`\}/);
 assert.match(appLayout, /onLayoutChanged=\{\(_layout, meta\) => \{/);
 assert.match(appLayout, /if \(!meta\.isUserInteraction\) return;/);
@@ -2371,8 +2349,7 @@ assert.match(appLayout, /return panel \? !panel\.isCollapsed\(\) : sizePx > 1;/)
 // keystrokes, so a later window resize would look like a user close.
 assert.doesNotMatch(appLayout, /onResize=/);
 assert.doesNotMatch(appLayout, /\[data-separator=/);
-assert.match(appLayout, /if \(!settingsMode\) setSidebarOpen\(isPanelOpen\(panel, px\)\);/);
-assert.match(appLayout, /if \(open !== rightDockOpenRef\.current\) actions\.setDockOpen\("right", open\);/);
+assert.match(appLayout, /const open = isPanelOpen\(panel, px\);[\s\S]*else setSidebarOpen\(open\);/);
 assert.match(appLayout, /if \(open !== bottomDockOpenRef\.current\) actions\.setDockOpen\("bottom", open\);/);
 // Fixed-pixel group resizing belongs to react-resizable-panels 4.14. A second
 // ResizeObserver/rAF correction must not fight that layout while dragging.
@@ -2389,15 +2366,12 @@ assert.doesNotMatch(appLayout, /animatingRef/);
 assert.match(appLayout, /function useResizeDragSession/);
 assert.match(appLayout, /function useDragCommittedSize/);
 assert.match(appLayout, /const sidebarResize = useDragCommittedSize\(onSidebarWidthChange\);/);
-assert.match(appLayout, /const rightDockResize = useDragCommittedSize\(\(px\) => actions\.setDockSize\("right", px\)\);/);
 assert.match(appLayout, /const bottomDockResize = useDragCommittedSize\(\(px\) => actions\.setDockSize\("bottom", px\)\);/);
 assert.match(appLayout, /if \(px > 1\) sidebarResize\.report\(px\);/);
-assert.match(appLayout, /if \(px > 1\) rightDockResize\.report\(px\);/);
 assert.match(appLayout, /if \(px > 1\) bottomDockResize\.report\(px\);/);
 assert.doesNotMatch(appLayout, /if \(px > 1\) actions\.setDockSize/);
 assert.doesNotMatch(appLayout, /if \(px > 1\) onSidebarWidthChange/);
 assert.match(appLayout, /onPointerDown=\{\(event\) => \{ if \(event\.button === 0\) beginResizeDrag\(sidebarResize\); \}\}/);
-assert.match(appLayout, /onPointerDown=\{\(event\) => \{ if \(event\.button === 0\) beginResizeDrag\(rightDockResize\); \}\}/);
 assert.match(appLayout, /onPointerDown=\{\(event\) => \{ if \(event\.button === 0\) beginResizeDrag\(bottomDockResize\); \}\}/);
 assert.match(appLayout, /window\.addEventListener\("pointerup", end, true\);/);
 assert.match(appLayout, /const release = shellRef\.current \? beginViewerLayoutGesture\(shellRef\.current\) : null;/);
@@ -2719,7 +2693,7 @@ for (const group of ["Geometry", "Electronic", "Dynamics"]) {
   assert.match(structureInfoPanel, new RegExp(`\\["${group}", \\[`), `xTB menu should group operations under ${group}`);
 }
 assert.match(structureInfoPanel, /<NativeSelectOptGroup key=\{group\} label=\{group\}>/);
-assert.match(structureInfoPanel, /onRun=\{\(\) => void actions\.runXtbActiveOperation\(xtbOperation\)\}/);
+assert.match(structureInfoPanel, /onRun=\{\(\) => void actions\.runXtbActiveOperation\(xtbOperation, document\)\}/);
 assert.match(structureInfoPanel, /<XtbInlineSettings settings=\{xtbSettings\}/);
 assert.match(structureInfoPanel, /value=\{settings\.method\}[\s\S]*?labels=\{XTB_METHOD_LABELS\}/);
 // The runtime refuses a direct job above the atom cap and tells you to select
@@ -2979,12 +2953,11 @@ assert.doesNotMatch(styles, /\.structure-inspector-details > summary/);
 assert.match(styles, /\.structure-inspector-details-body \{[^}]*padding-top: 4px;/s);
 assert.doesNotMatch(styles, /\.structure-inspector-details-body \{[^}]*border-top/s);
 assert.doesNotMatch(styles, /\.structure-inspector-style-option\[data-selected="true"\]/);
-// Codex side panel: the right dock owns its part of the title row, so the tab
-// strip stops at the dock and otherwise clears the measured trailing controls.
-assert.match(styles, /\.topbar \{[^}]*right: max\(calc\(var\(--chrome-trailing-width, 122px\) \+ 24px\), calc\(var\(--right-dock-edge/s);
-assert.match(styles, /\.dock-panel\[data-area="right"\] \.dock-header \{[^}]*height: var\(--chrome-height\);[^}]*var\(--chrome-trailing-width, 0px\)/s);
-assert.doesNotMatch(styles, /\.dock-panel\[data-area="right"\] \{[^}]*padding-top: var\(--chrome-height\)/s);
-assert.match(styles, /@container \(max-width: 320px\)/);
+// The shared right group owns the measured end of the main title strip.
+assert.match(styles, /\.topbar \{[^}]*--workspace-side-width/s);
+assert.match(await source("apps/desktop/src/components/workspace-panes/workspace-split-layout.tsx"), /<WorkspaceGroupHeader group="right"/);
+// Narrow strips retain their New tab control; the tabs scroll beside it.
+assert.match(styles, /\.new-tab \{ flex-shrink: 0; \}/);
 assert.match(previewRuntimeCss, /@media \(max-width: 360px\)[\s\S]*?top: 64px;[\s\S]*?width: calc\(100vw - 24px\)/);
 assert.match(previewRuntimeCss, /grid-template-columns: 28px auto minmax\(62px, 1fr\) auto auto/);
 assert.doesNotMatch(previewRuntimeCss, /\.buret-trajectory-smooth-button \{\s*grid-column:/);
@@ -3114,7 +3087,7 @@ assert.doesNotMatch(styles, /sidebar-link/);
 assert.match(launcherKind, /export const launcherKind = definePageKind/);
 assert.match(launcherKind, /<WelcomeScreen actions=\{actions\} \/>/);
 assert.doesNotMatch(sidebarWorkspaceSwitcher, /return `v\$\{info\.version\}`;/);
-assert.match(sidebarFileBrowser, /const hideProjectPreviews = state\.buildInfo\.isAgentShell && !state\.workspacePath/);
+assert.match(sidebarFileBrowser, /const hideProjectPreviews = sidebar && state\.buildInfo\.isAgentShell && !state\.workspacePath/);
 assert.match(sidebarFileBrowser, /const visibleProjects = useMemo\(\(\) => hideProjectPreviews \? \[\] : sortSidebarProjects/);
 assert.match(sidebarFileBrowser, /\{!hideProjectPreviews && \(/);
 assert.match(ketcherKind, /export const ketcherKind = definePageKind/);
@@ -3242,7 +3215,7 @@ assert.match(ketcherPage, /function isMolfileCountsLine\(line: string\)/);
 assert.match(ketcherPage, /setHasSketch\(true\)/);
 assert.match(ketcherPage, /if \(hasImportedStructure\) \{/);
 assert.match(ketcherPage, /const molfile = await withKetcherTimeout\(ketcher\.getMolfile\("v2000"\), "Imported sketch export"\);/);
-assert.match(ketcherPage, /if \(!isBlankKetcherMolfile\(molfile\)\) await persistDraft\(molfile\);/);
+assert.match(ketcherPage, /const saved = isBlankKetcherMolfile\(molfile\) \? undefined : await persistDraft\(molfile\);/);
 assert.match(ketcherPage, /setHasSketch\(false\)/);
 assert.doesNotMatch(ketcherPage, /className="ketcher-empty-watermark"/);
 assert.match(ketcherPage, /await withKetcherTimeout\(ketcher\.getMolfile\("v2000"\), "Sketch export"\)/);
@@ -3706,7 +3679,7 @@ assert.match(ketcherWorkflow, /window\.dispatchEvent\(new CustomEvent\("burette:
 assert.match(appKetcherActionsHook, /queueKetcherImportRequest\(request\);\s*setKetcherImportRequest\(request\);\s*openKetcherTab\(\{ kind: "ketcher", importRequestId: request\.id, importRequest: request \}\);/);
 assert.doesNotMatch(app, /openKetcherTab\(\);\s*window\.setTimeout\(\(\) => \{\s*queueKetcherImportRequest\(request\)/);
 assert.match(app, /applyKetcherToGridRow,/);
-assert.match(appKetcherActionsHook, /const ketcherTabId = tabs\.find\(\(tab\) => tab\.location\.kind === "ketcher"\)\?\.id \?\? null;/);
+assert.match(appKetcherActionsHook, /const ketcherTab = tabs\.find\(\(tab\) => tab\.location\.kind === "ketcher"\);\s*const ketcherTabId = ketcherTab && !ketcherTab\.pane \? ketcherTab\.id : null;/);
 assert.match(appKetcherActionsHook, /type: "gridApplyKetcherRow"[\s\S]*save: true/);
 assert.match(appKetcherActionsHook, /if \(ketcherTabId\) \{\s*window\.setTimeout\(\(\) => \{\s*setActiveDocument\(request\.documentId\);\s*closeTab\(ketcherTabId\);\s*\}, 0\);\s*\}/);
 assert.match(appKetcherActionsHook, /openKetcherWithStructures = useCallback\(\(paths: string\[\], fragments: KetcherImportRequest\["fragments"\] = \[\]\)/);
@@ -3799,7 +3772,7 @@ assert.match(sidebarSurface, /pinnedItems/);
 assert.match(sidebarSurface, /state\.projectsOpen/);
 assert.match(sidebarSurface, /actions\.toggleProjectsOpen/);
 assert.match(sidebarSurface, /actions\.setExpandedProjectIds/);
-assert.match(sidebarSurface, /actions\.openRecentStructure/);
+assert.match(sidebarSurface, /openSidebarFile\(item\.path, permanent/);
 assert.match(sidebarSurface, /from "@\/components\/ui\/app-icon-data"/);
 assert.match(sidebarSurface, /from "@hugeicons\/react"/);
 assert.doesNotMatch(sidebarSurface, /from "\.\.\/system-icon"/);
@@ -3923,9 +3896,9 @@ assert.match(sidebarSurface, /Expand all project folders/);
 assert.match(sidebarSurface, /Collapse all project folders/);
 assert.match(sidebarSurface, /Close all tabs/);
 assert.match(nativeContextMenu, /export async function showNativeContextMenu/);
-assert.match(nativeContextMenu, /options: \{ forceWeb\?: boolean; presentation\?: MenuPresentation \} = \{\}/);
+assert.match(nativeContextMenu, /options: \{ forceWeb\?: boolean; presentation\?: MenuPresentation; contentClassName\?: string \} = \{\}/);
 assert.match(nativeContextMenu, /if \(options\.forceWeb \|\| !isTauriRuntime\(\)\)/);
-assert.match(nativeContextMenu, /showRadixContextMenu\(spec, at\)/);
+assert.match(nativeContextMenu, /showRadixContextMenu\(spec, at, options\.contentClassName\)/);
 assert.match(nativeContextMenu, /from "\.\/menu-types"/);
 assert.match(nativeContextMenu, /from "\.\/radix-menu"/);
 assert.match(radixMenu, /export function useThemePortalContainer/);
@@ -4023,7 +3996,7 @@ assert.match(keyboardShortcutsSection, /findShortcutConflict\(definition\.id, re
 assert.match(keyboardShortcutsSection, /Reset all to defaults/);
 assert.match(shortcutRegistry, /id: "view\.toggle-sidebar", label: "Toggle sidebar"[^\n]*defaultAccelerator: "CmdOrCtrl\+B"/);
 assert.match(shortcutRegistry, /id: "view\.toggle-bottom-panel", label: "Toggle bottom dock"[^\n]*defaultAccelerator: "CmdOrCtrl\+J"/);
-assert.match(shortcutRegistry, /id: "view\.toggle-inspector", label: "Toggle right dock"[^\n]*defaultAccelerator: "CmdOrCtrl\+Alt\+B"/);
+assert.match(shortcutRegistry, /id: "view\.toggle-inspector", label: "Toggle right panel"[^\n]*defaultAccelerator: "CmdOrCtrl\+Alt\+B"/);
 // Codex Appearance: one theme card for the active mode, a collapsed Advanced
 // section, and fonts chosen as System or a custom value.
 assert.match(themesSection, /export function AppearanceSettings/);
@@ -4343,7 +4316,7 @@ assert.match(appShellNavigationActionsHook, /openSettingsSectionTab\(section\)/)
 assert.match(appShellNavigationActionsHook, /activateLastNonSettingsTab\(\)/);
 assert.match(appOpenActionsHook, /await invoke<string\[]>\("pick_open_targets"\)/);
 assert.match(appOpenActionsHook, /await pickWebDemoFiles\(\)/);
-assert.match(app, /<WindowTitle activeDocument=\{activeDocument\} \/>/);
+assert.match(app, /<WindowTitle state=\{state\} \/>/);
 assert.match(app, /useAppViewerRuntimeRefs\(\)/);
 assert.match(appViewerRuntimeRefsHook, /const pendingViewerReloadOptionsRef = useRef<ViewerReloadOptions \| null>\(null\)/);
 assert.match(appViewerRuntimeRefsHook, /const pendingViewerReloadDocumentIdRef = useRef<string \| null>\(null\)/);
@@ -4356,7 +4329,7 @@ assert.doesNotMatch(app, /const reloadXyzrenderDocument = useCallback/);
 assert.doesNotMatch(app, /source: "burette-host"[\s\S]*type: "setXyzrenderControls"/);
 assert.match(appViewerReloadActionsHook, /export function useAppViewerReloadActions\(\{/);
 assert.match(appViewerReloadActionsHook, /const reloadActive = useCallback/);
-assert.match(appViewerReloadActionsHook, /await openDocuments\(\[targetDocument\.path\], reloadOptions, preferences, \{ inActiveTab: true \}\)/);
+assert.match(appViewerReloadActionsHook, /await openDocuments\(\[targetDocument\.path\], reloadOptions, preferences, \{ inActiveTab: true, fromSource: !reloadOptions \}\)/);
 assert.match(appViewerReloadActionsHook, /source: "burette-host"[\s\S]*type: "setXyzrenderControls"/);
 assert.match(appViewerReloadActionsHook, /const canPatchXyzrenderIframe = iframe\?\.dataset\.renderer === "xyzrender-external"/);
 assert.match(appViewerReloadActionsHook, /\.buret-external-artifact-root, \.buret-xyzrender-sheet-item-base, \.buret-external-artifact-object/);
@@ -4455,7 +4428,7 @@ assert.match(appMolstarContextMessagesHook, /void openDockingDocument\(targetDoc
 assert.doesNotMatch(app, /const targetDocument = \(pendingViewerReloadDocumentIdRef\.current/);
 assert.match(appViewerReloadActionsHook, /const targetDocument = \(pendingViewerReloadDocumentIdRef\.current/);
 assert.match(appViewerReloadActionsHook, /const reloadOptions = pendingViewerReloadOptionsRef\.current \?\? undefined/);
-assert.match(appViewerReloadActionsHook, /await openDocuments\(\[targetDocument\.path\], reloadOptions, preferences, \{ inActiveTab: true \}\)/);
+assert.match(appViewerReloadActionsHook, /await openDocuments\(\[targetDocument\.path\], reloadOptions, preferences, \{ inActiveTab: true, fromSource: !reloadOptions \}\)/);
 assert.match(app, /from "\.\/hooks\/use-app-drop-actions"/);
 assert.match(app, /useAppDropActions\(\{/);
 assert.match(appDropActionsHook, /from "\.\.\/components\/native-context-menu"/);
@@ -4594,8 +4567,6 @@ assert.match(appSpectrumDockLifecycleHook, /if \(activeDocument\?\.renderer === 
 assert.match(appSpectrumDockLifecycleHook, /bottomDockTabs\.find\(\(tab\) => tab\.kind === "spectrum"\)/);
 assert.match(appSpectrumDockLifecycleHook, /closeDockTab\("bottom", spectrumTab\.id\)/);
 assert.match(appSpectrumDockLifecycleHook, /if \(bottomDockActiveTab === "spectrum"\) setDockActiveTab\("bottom", "files"\)/);
-assert.match(appSpectrumDockLifecycleHook, /rightDockDocument\?\.renderer !== "spectrum"/);
-assert.match(appSpectrumDockLifecycleHook, /setDockDocument\("right", activeDocument\?\.id \?\? null\)/);
 assert.match(editorTabs, /const dockDropTargetAtPoint = useCallback/);
 assert.match(editorTabs, /document\.elementFromPoint\(clientX, clientY\)/);
 assert.match(editorTabs, /describeDropTargetElement\(element\)/);
@@ -5126,7 +5097,7 @@ assert.match(previewViewer, /updateSceneTreeAssemblySymmetry\(ref, \{ scale: Num
 assert.doesNotMatch(previewRuntimeCss, /\.buret-assembly-symmetry \{\s*align-self: center;\s*height: 28px;\s*line-height: 1;/);
 assert.match(previewViewer, /function toolbarViewportBounds\(\)/);
 assert.match(previewViewer, /document\.querySelector\('\.msp-layout-region\.msp-layout-main, \.msp-layout-main, \.msp-viewport'\)/);
-assert.match(previewViewer, /const bounds = toolbarViewportBounds\(\);[\s\S]*const rightEdge = bounds\.right;/);
+assert.match(previewViewer, /const bounds = toolbarViewportBounds\(\);[\s\S]*toolbar\.style\.right = Math\.max\(TOOLBAR_MARGIN, window\.innerWidth - bounds\.right \+ TOOLBAR_MARGIN\)/);
 assert.match(previewShell, /data-buret-renderer="molstar"[\s\S]*data-buret-renderer="xyzrender-external"/);
 assert.doesNotMatch(previewShell, /data-buret-renderer="xyz-fast"/);
 assert.doesNotMatch(previewShell, /id="buret-open-in-app"/);
@@ -5532,7 +5503,9 @@ assert.match(previewViewer, /function trackMolstarPresetPreviewState\(viewer\)/)
 assert.match(previewViewer, /state\?\.events\?\.changed\?\.subscribe\?\./);
 assert.match(previewViewer, /function captureMolstarPresetPreview\(item, viewer, serial\)/);
 assert.match(previewViewer, /function copyMolstarPresetPreviewCanvasProps\(sourceViewer, targetViewer\)[\s\S]*axes: \{ name: 'off', params: \{\} \}[\s\S]*targetCanvas\.setProps\(previewProps\);/);
-assert.match(previewViewer, /const source = viewer\?\.plugin\?\.canvas3d\?\.webgl\?\.gl\?\.canvas;/);
+// Bundled Mol* exposes the WebGL canvas on canvas3dContext; Canvas3D has no webgl field.
+assert.match(previewViewer, /const source = viewer\?\.plugin\?\.canvas3dContext\?\.canvas;/);
+assert.doesNotMatch(previewViewer, /canvas3d\?\.webgl/);
 assert.match(previewViewer, /drawMolstarPresetPreviewFrame\(item, source\)/);
 assert.doesNotMatch(previewViewer, /helper\.getPreview\(/);
 assert.match(previewViewer, /preview\.dataset\.frameAspect = \(sourceWidth \/ sourceHeight\)\.toFixed\(3\)/);
@@ -7112,18 +7085,15 @@ assert.match(appNativeMenuHook, /invoke\("sync_native_menu", \{ state: nativeSta
 assert.match(appNativeMenuHook, /const openDocumentPaths = useMemo/);
 // Retab document tabs must reach the registry sync too: they hold no
 // ViewerDocument, but their file is open and needs the write guard.
-assert.match(appNativeMenuHook, /nativeOpenDocumentPaths\(\s*state\.documents,\s*state\.textDocuments,\s*state\.tabs\.flatMap\(\(tab\) => \(tab\.location\.kind === "document" \? \[tab\.location\.path\] : \[\]\)\),?\s*\)/);
+assert.match(appNativeMenuHook, /nativeOpenDocumentPaths\(\s*state\.documents,\s*state\.textDocuments,\s*nativeTabDocumentPaths\(state\.tabs\),?\s*\)/);
 assert.match(appNativeMenuHook, /const activeDocumentReadable = activeDocumentFileBacked/);
 assert.match(appNativeMenuHook, /const documentRegistryRevision = useMemo\([\s\S]*nextDocumentRegistryRevision\(\)/);
 assert.match(appNativeMenuHook, /hasActiveFile: activeDocumentFileBacked \|\| activeTextTabFileBacked/);
 assert.match(appNativeMenuHook, /canExportExternalPreview: activeDocument\?\.renderer === "xyzrender-external"/);
 assert.match(appNativeMenuHook, /getCurrentWindow\(\)\.onFocusChanged/);
 assert.match(appNativeMenuHook, /getCurrentWindow\(\)\.onCloseRequested/);
-// The close button and File > Close Window share one coordinator: with other
-// windows open it closes just this window through close_workspace_window;
-// the last window keeps quitting through request_app_quit, whose Rust flow
-// runs the unsaved-changes preflight (a plain window close left a windowless
-// process alive that recreated a window, so the button did nothing).
+// The close button and File > Close Window share one dirty-state coordinator,
+// including the last window. macOS keeps the app running for Dock reopening.
 assert.match(
   appNativeMenuHook,
   /onCloseRequested\(\(event\) => \{[\s\S]*event\.preventDefault\(\);\s*void closeCurrentWindow\(\);/s,
@@ -7131,7 +7101,7 @@ assert.match(
 assert.match(appNativeMenuHook, /case "file\.close-window":\s*await closeCurrentWindow\(\);/s);
 assert.match(
   appNativeMenuHook,
-  /const closeCurrentWindow = useCallback\(async \(\) => \{[\s\S]*if \(windowCount <= 1\) \{\s*void invoke\("request_app_quit"\)[\s\S]*invoke<boolean>\("close_workspace_window"\)/s,
+  /const closeCurrentWindow = useCallback\(async \(\) => \{[\s\S]*decideWindowClose\([\s\S]*invoke<boolean>\("close_workspace_window"\)/s,
 );
 assert.doesNotMatch(appNativeMenuHook, /getCurrentWindow\(\)\.close\(\)/);
 assert.doesNotMatch(appNativeMenuHook, /confirmCloseWindowRef/);
@@ -7145,10 +7115,13 @@ assert.match(appNativeMenuHook, /invoke<string>\("register_exit_preflight_listen
 assert.match(appNativeMenuHook, /invoke\("unregister_exit_preflight_listener", \{ registrationId/);
 assert.match(appNativeMenuHook, /invoke\("respond_to_exit_preflight"/);
 assert.match(appNativeMenuHook, /const barrier = sealWindowMutations\(\)/);
-assert.match(appNativeMenuHook, /closeTransitionActive: snapshot\.closeTransitionActive\s*\|\| checkpointFailed\s*\|\| barrier\.closeTransitionActive\s*\|\| barrier\.pendingCount > 0/);
+assert.match(appNativeMenuHook, /const closeTransitionActive = snapshot\.closeTransitionActive\s*\|\| transferBusy\s*\|\| barrier\.closeTransitionActive\s*\|\| barrier\.pendingCount > 0/);
+// A failed exit checkpoint asks to quit without saving instead of silently cancelling Cmd+Q.
+assert.match(appNativeMenuHook, /dirty: snapshot\.dirty \|\| barrier\.pendingCount > 0 \|\| checkpointFailed,/);
+assert.match(appNativeMenuHook, /requestId: payload\.requestId,\s*closeTransitionActive,/);
 assert.match(appNativeMenuHook, /dirty: snapshot\.dirty \|\| barrier\.pendingCount > 0/);
 assert.match(appNativeMenuHook, /revision: snapshot\.revision/);
-assert.match(appNativeMenuHook, /listen\(EXIT_TRANSITION_RESUMED_EVENT, resumeWindowMutations\)/);
+assert.match(appNativeMenuHook, /listen\(EXIT_TRANSITION_RESUMED_EVENT, \(\) => \{\s*exitCheckpointRef\.current\?\.abort\(\);\s*exitCheckpointRef\.current = null;\s*resumeWindowMutations\(\)/);
 assert.match(appNativeMenuHook, /\}, \[\]\);\s*\n\s*const handleNativeMenuCommand/s);
 assert.match(appNativeMenuHook, /document\.addEventListener\("focusin", syncEditingState, true\)/);
 assert.match(viewerFrame, /"data-read-only": readOnly \? "true" : undefined/);
@@ -7621,7 +7594,7 @@ assert.doesNotMatch(editorTabs, /id: "show-tab-document-metadata"/);
 assert.match(editorTabs, /id: "reveal-tab-text-file"/);
 assert.match(editorTabs, /id: "copy-tab-text-file-path"/);
 assert.doesNotMatch(editorTabs, /id: "show-tab-text-file-metadata"/);
-assert.match(windowTitle, /activeDocument\.path/);
+assert.match(windowTitle, /pageKind\(tab\.location\)\.title\(tab\.location, state\)/);
 assert.match(app, /from "\.\/hooks\/use-app-active-text-document"/);
 assert.match(app, /const activeTextDocument = useAppActiveTextDocument\(\{ activeTab, textDocuments \}\)/);
 assert.doesNotMatch(app, /const activeTextDocument = useMemo/);
@@ -8427,9 +8400,9 @@ assert.doesNotMatch(gridCss, /\.buret-grid-molecule-context-menu button:hover,[\
 assert.match(gridViewer, /function installRowHoverPreview\(cfg\)/);
 assert.match(gridViewer, /\.buret-card\[data-index\], \.buret-grid-table-row\[data-index\], \.buret-grid-rail-tick\[data-buret-grid-rail-index\]/);
 assert.match(gridViewer, /postGridRowHover\(index, cfg\);\s*postChemicalSpaceHover\(index\);/);
-assert.match(gridViewer, /buildUI\(cfg\);\s*installGridTextFocusListeners\(\);\s*installRowHoverPreview\(cfg\);/);
+assert.match(gridViewer, /buildUI\(cfg\);\s*post\('gridViewModeReady', '', \{\}\);\s*installGridTextFocusListeners\(\);\s*installRowHoverPreview\(cfg\);/);
 assert.match(gridViewer, /function updateGridToolbarCondensed\(\) \{[\s\S]*classList\.toggle\('buret-grid-controls-condensed', scrollTop\(\) > 24\);/);
-assert.match(gridViewer, /function handleGridScroll\(cfg\) \{\s*updateGridToolbarCondensed\(\);/);
+assert.match(gridViewer, /function handleGridScroll\(cfg\) \{\s*scheduleGridPresentation\(\);\s*updateGridToolbarCondensed\(\);/);
 assert.match(gridCss, /#grid-controls\.buret-grid-controls-condensed \.buret-grid-toolbar \{[^}]*padding: 8px;/s);
 assert.match(gridCss, /#grid-controls\.buret-grid-controls-condensed \.buret-load-status \{[^}]*display: none;/s);
 assert.match(gridCss, /#grid-controls\.buret-grid-controls-condensed \.buret-toolbar-row-main \{[^}]*display: none;/s);
@@ -8595,7 +8568,9 @@ assert.match(editorTabs, /const handleEmptyTabStripDrop = useCallback/);
 assert.match(editorTabs, /shellDropActionChoices\(payload, \{ kind: "workspace" \}, \{ kind: "tab" \}\)/);
 assert.match(editorTabs, /runShellDropActionChoices\(actions, payload, choices, \{ x: event\.clientX, y: event\.clientY \}\)/);
 assert.match(editorTabs, /onKeyDown=\{handleTabListKeyDown\}/);
-assert.match(editorTabs, /draggable=\{!readOnly\}\s+tabIndex=/);
+assert.match(editorTabs, /draggable=\{false\}\s+tabIndex=/);
+assert.match(editorTabs, /event\.currentTarget\.draggable = event\.altKey/);
+assert.match(editorTabs, /button\.setPointerCapture\(event\.pointerId\)/);
 assert.match(editorTabs, /startMouseTabReorder\(tab\.id, true, event\)/);
 assert.match(editorTabs, /event\.dataTransfer\.setData\(TAB_DRAG_MIME, tab\.id\)/);
 assert.match(editorTabs, /paths: tabPath \? \[tabPath\] : \[\]/);
@@ -8663,7 +8638,7 @@ assert.match(sidebarFileTreeNode, /getPayload: \(\) => sidebarProjectItemsDragPa
 assert.match(sidebarFileTreeNode, /getPayload: \(\) => sidebarProjectItemsDragPayload\(projectTreeNodeItems\(node\), folderPath\)/);
 assert.match(sidebarFileTreeNode, /getPayload: \(\) => sidebarProjectItemsDragPayload\(menus\.selected\.has\(item\.path\)\s*\? Array\.from\(new Map\(state\.sidebarProjects\.flatMap\(project => project\.items\)\s*\.filter\(file => menus\.selected\.has\(file\.path\)\)\.map\(file => \[file\.path, file\]\)\)\.values\(\)\) : \[item\]\)/);
 assert.match(sidebarFileTreeNode, /className="project-group-row"[\s\S]*draggable=\{!renaming && project\.items\.length > 0\}/);
-assert.match(sidebarFileTreeNode, /className="project-folder-row"[\s\S]*draggable=\{node.hasItems\}/);
+assert.match(sidebarFileTreeNode, /className="project-folder-row"[\s\S]*?draggable\n/);
 assert.match(sidebarFileTreeNode, /readStructureDragPayload\(event\.dataTransfer\)/);
 assert.match(sidebarFileTreeNode, /shellDropActionChoices\(payload, sidebarDropTarget\(item, state\), \{ kind: "sidebar" \}\)/);
 assert.match(sidebarFileTreeNode, /runShellDropActionChoices\(actions, payload, choices, \{ x: event\.clientX, y: event\.clientY \}\)/);

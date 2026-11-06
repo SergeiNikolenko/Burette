@@ -5,6 +5,7 @@ import type { KetcherSketchRequest } from "../components/types";
 import { openBrowserDevMolstarContextDocument, openBrowserDevTextDocument, readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { runXtbRequest, requestXtbStatus } from "../lib/chemistry-job-requests";
 import { xtbOperationLabel } from "../lib/chemistry-settings";
+import { fetchDerivedSourceRows } from "../lib/derived-columns";
 import { directChemistryJobGuardMessage } from "../lib/direct-chemistry-guard";
 import type { DockArea, DockTabKind } from "../lib/dock";
 import { structureExtensionFromPath } from "../lib/file-routing";
@@ -14,7 +15,9 @@ import { basename } from "../lib/sidebar-projects";
 import type { StructureDragPayload } from "../lib/structure-drag";
 import { readStructureText } from "../lib/structure-text";
 import { isTauriRuntime } from "../lib/tauri";
+import { requestGridSelectedSourceIndexes } from "../lib/viewer-bridge";
 import { useMoleculeStore } from "../stores/molecule-store";
+import { requestGridRecords } from "./use-app-derived-columns";
 import type {
   ViewerDocument,
   ViewerPreferences,
@@ -35,7 +38,14 @@ type XtbRunJobOptions = {
   openPrimary?: boolean;
   openOptimizedPoseInCurrentView?: boolean;
   poseSourceDocument?: ViewerDocument | null;
+  /** False when sourcePath only anchors the run folder, e.g. a collection file. */
+  compareWithSource?: boolean;
 };
+
+// Each selected row is its own run; past this, one click would queue hours of xTB.
+const GRID_XTB_ROW_LIMIT = 10;
+
+type GridStructureRow = { index: number; name?: string | null; smiles?: string | null; molblock?: string | null };
 
 type PushStatus = (message: string, kind?: "info" | "success" | "error", details?: string[]) => void;
 type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => void;
@@ -99,6 +109,34 @@ function xtbInputRequestForDocument(document: ViewerDocument): Pick<XtbRunReques
     sourcePath: document.sourcePath ?? null,
     label: document.title,
   };
+}
+
+// A collection file is not something xTB can read: the run gets the row's own
+// structure, and the backend embeds SMILES or a flat drawing in 3D first.
+function xtbInputRequestForGridRow(document: ViewerDocument, row: GridStructureRow): Pick<XtbRunRequest, "inputText" | "inputExtension" | "sourcePath" | "label"> | null {
+  const label = row.name?.trim() || `${document.title} #${row.index + 1}`;
+  const molblock = row.molblock?.trim() ? row.molblock.trimEnd() : "";
+  const smiles = row.smiles?.trim() ?? "";
+  if (!molblock && !smiles) return null;
+  return {
+    inputText: molblock ? `${molblock}\n` : `${smiles} ${label}\n`,
+    inputExtension: molblock ? "sdf" : "smi",
+    sourcePath: document.sourcePath ?? document.path,
+    label,
+  };
+}
+
+async function gridStructureRows(document: ViewerDocument, sourceIndexes: number[]): Promise<GridStructureRow[]> {
+  if (!isTauriRuntime()) {
+    const wanted = new Set(sourceIndexes);
+    return (await requestGridRecords(document.id)).filter((row) => wanted.has(row.index));
+  }
+  // The collection database holds every row; the grid only holds the page on screen.
+  const rows = await Promise.all(sourceIndexes.map(async (index): Promise<GridStructureRow | null> => {
+    const row = (await fetchDerivedSourceRows(document.id, index - 1, 1)).rows[0];
+    return row?.sourceIndex === index ? { index, name: row.name, smiles: row.smiles, molblock: row.molblock } : null;
+  }));
+  return rows.filter((row): row is GridStructureRow => row !== null);
 }
 
 function xtbInputRequestForMolstarContextDocument(
@@ -308,7 +346,7 @@ export function useAppXtbWorkflows({
       if (options.openPrimary !== false && result.primaryOpenPath) {
         void openPaths([result.primaryOpenPath]);
       }
-      if (!options.openOptimizedPoseInCurrentView && result.ok && request.operation === "optimize" && sourcePath && result.primaryOpenPath) {
+      if (!options.openOptimizedPoseInCurrentView && options.compareWithSource !== false && result.ok && request.operation === "optimize" && sourcePath && result.primaryOpenPath) {
         openDockTab("bottom", "compare");
         setDockActiveTab("bottom", "compare");
         setDockOpen("bottom", true);
@@ -347,6 +385,37 @@ export function useAppXtbWorkflows({
   const runXtbActiveOperation = useCallback(async (operation: XtbOperation, document: ViewerDocument | null = activeDocument) => {
     if (!document) {
       pushStatus("Open a structure before running xTB.", "error");
+      return;
+    }
+    if (document.renderer === "grid2d") {
+      let rows: GridStructureRow[];
+      try {
+        const selection = await requestGridSelectedSourceIndexes(document.id);
+        if (selection.truncated || selection.sourceIndexes.length > GRID_XTB_ROW_LIMIT) {
+          pushStatus(`Select at most ${GRID_XTB_ROW_LIMIT} molecules for xTB; each one is a separate calculation.`, "error");
+          return;
+        }
+        rows = await gridStructureRows(document, selection.sourceIndexes);
+      } catch (error) {
+        pushErrorStatus(error, "xTB input could not be read; calculation was not started");
+        return;
+      }
+      const inputRequests = rows
+        .map((row) => xtbInputRequestForGridRow(document, row))
+        .filter((inputRequest): inputRequest is NonNullable<typeof inputRequest> => inputRequest !== null);
+      if (inputRequests.length === 0) {
+        pushStatus("Select a molecule in the collection before running xTB.", "error");
+        return;
+      }
+      // One after another: parallel xTB runs would compete for the same cores.
+      for (const inputRequest of inputRequests) {
+        await runXtbJob({ operation, ...inputRequest }, {
+          title: xtbOperationLabel(operation),
+          inputLabel: inputRequest.label ?? document.title,
+          openPrimary: operation !== "properties",
+          compareWithSource: false,
+        });
+      }
       return;
     }
     let contextDocument: MolstarContextDocument | null;

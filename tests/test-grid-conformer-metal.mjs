@@ -139,10 +139,10 @@ assert.equal(refreshes, 1, 'only a successfully applied result refreshes the sou
 
 const menuState = { ...state, undoStack: [], redoStack: [] };
 let menuPayload;
-const notifyMenu = new Function('state', 'capabilities', 'selectedMolecularGridRowCount', 'selectedGridRowCount', 'effectiveMolecularGrid', 'gridHasReactionRows', 'collectionIndexReady', 'supportsXyzrenderCards', 'post',
+const notifyMenu = new Function('state', 'capabilities', 'selectedMolecularGridRowCount', 'selectedGridRowCount', 'effectiveMolecularGrid', 'gridHasReactionRows', 'collectionIndexReady', 'supportsXyzrenderCards', 'post', 'publishGridPresentation',
   'const GRID_SELECTION_BRIDGE_LIMIT = 1000, NATIVE_MOLSTAR_SELECTION_LIMIT = 256, NATIVE_KETCHER_SELECTION_LIMIT = 256, NATIVE_GENERATE_3D_SELECTION_LIMIT = 256;\n' + functionSource('notifyGridMenuState') + '\nreturn notifyGridMenuState;')(
   menuState, () => ({cluster:true, editing:true, selection:true}), () => 0, () => 0, () => true, () => false, () => true, () => false,
-  (_type, _message, payload) => { menuPayload = payload; });
+  (_type, _message, payload) => { menuPayload = payload; }, () => {});
 notifyMenu({appViewer:true});
 assert.equal(menuPayload.canGenerate3dForSelection, true, 'native compute remains enabled when selected rows are outside the loaded page');
 assert.deepEqual(menuPayload.selectedSourceIndexes, [301,2]);

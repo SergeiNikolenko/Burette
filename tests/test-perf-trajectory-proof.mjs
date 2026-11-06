@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -113,6 +113,10 @@ try {
   const marker = JSON.parse(await readFile(ready, 'utf8'));
   assert.equal(marker.run, 1); assert.equal(marker.documentId, 'doc');
   await writeFile(screenshot, 'test screenshot boundary');
+  // Fast filesystems can give both writes the same timestamp. Model a later
+  // capture explicitly so the freshness check does not depend on I/O speed.
+  const capturedAt = new Date((await stat(ready)).mtimeMs + 1000);
+  await utimes(screenshot, capturedAt, capturedAt);
   await writeFile(finish, JSON.stringify({ paused: true, evidencePath: screenshot }));
   assert.equal((await pending).evidencePath, screenshot);
   await assert.rejects(trajectoryPauseRendezvous({ output, name: 'massive', run: 0 }), /overwrite/);

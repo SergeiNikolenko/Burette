@@ -78,15 +78,15 @@ test("warm residency preserves visited views without valid heap telemetry and bo
   ]).toEqual([10, 6, 4, 4, 10, 10, Infinity]);
 });
 
-test("folder indexing marks draggable ancestors once and walks wide/deep trees without spread or recursive copies", () => {
+test("folder indexing lists only folders that hold files and walks wide/deep trees without spread or recursive copies", () => {
   // Test private data algorithms without adding production exports for tests.
   const source = readFileSync(new URL("../apps/desktop/src/components/sidebar/file-tree-node.tsx", import.meta.url), "utf8");
   const functions = source.slice(source.indexOf("function buildProjectTree("), source.indexOf("function collectProjectFolderPathsFor("));
   const js = new Bun.Transpiler({ loader: "tsx" }).transformSync(functions);
   const { buildProjectTree, collectProjectFolderPaths } = new Function(`${js}; return { buildProjectTree, collectProjectFolderPaths };`)();
-  const tree = buildProjectTree([{ key: "one", relativePath: "a/b/one.pdb" }, { key: "two", relativePath: "a/two.pdb" }], ["a/b", "empty/sub"]);
-  expect(tree.map((node: any) => [node.path, node.hasItems, node.children[0].hasItems])).toEqual([["a", true, true], ["empty", false, false]]);
-  expect(collectProjectFolderPaths(tree)).toEqual(["a", "a/b", "empty", "empty/sub"]);
+  const tree = buildProjectTree([{ key: "one", relativePath: "a/b/one.pdb" }, { key: "two", relativePath: "a/two.pdb" }]);
+  expect(tree.map((node: any) => [node.path, node.children.map((child: any) => child.path ?? child.key)])).toEqual([["a", ["a/b", "two"]]]);
+  expect(collectProjectFolderPaths(tree)).toEqual(["a", "a/b"]);
   const wide = Array.from({ length: 140_000 }, (_, i) => ({ kind: "folder", path: String(i), children: [] }));
   expect(collectProjectFolderPaths([{ kind: "folder", path: "root", children: wide }]).length).toBe(140_001);
   let deep: any = { kind: "folder", path: "leaf", children: [] };

@@ -682,6 +682,25 @@
       }
       if (!data || (data.source !== 'burette-grid-host' && data.source !== 'burette-host')) return;
       const body = data.body || {};
+      if (body.type === 'gridRestoreViewMode') {
+        if (event.source !== window.parent || state.hostViewModeSession) return;
+        state.hostViewModeSession = true;
+        if (typeof body.snapshot === 'string' && body.snapshot) {
+          void restoreGridPresentation(body.snapshot);
+          return;
+        }
+        if (body.value === 'cards' || body.value === 'table') {
+          const cfg = config();
+          setGridViewMode(effectiveMolecularGrid(cfg) ? body.value : 'table', cfg);
+        }
+        notifyGridMenuState(config());
+        return;
+      }
+      if (body.type === 'gridWindowCapture' || body.type === 'gridWindowRestore' || body.type === 'gridWindowReady') {
+        if (event.source !== window.parent || typeof body.requestId !== 'string' || body.requestId.length > 120) return;
+        void handleGridWindowTransfer(body);
+        return;
+      }
       // Applied in place like the structure viewer: the config already carries
       // the token sets for both themes, so a theme change never reopens the grid.
       if (body.type === 'setViewerTheme') {
@@ -1312,6 +1331,7 @@
 
   function notifyGridMenuState(cfg) {
     if (cfg?.appViewer !== true) return;
+    publishGridPresentation();
     const undoEntry = state.undoStack[state.undoStack.length - 1] || null;
     const redoEntry = state.redoStack[state.redoStack.length - 1] || null;
     const caps = capabilities(cfg);
@@ -3645,6 +3665,7 @@
   }
 
   function handleGridScroll(cfg) {
+    scheduleGridPresentation();
     updateGridToolbarCondensed();
     scheduleVirtualWindowRender(cfg);
     maybeLoadMore(cfg);
@@ -3668,7 +3689,7 @@
     if (!rect || rect.top <= window.innerHeight + GRID_LOAD_AHEAD_PX) loadMore(cfg);
   }
 
-  async function render(cfg) {
+  async function render(cfg, { visibleCount } = {}) {
     const token = ++state.token;
     const grid = document.getElementById('grid');
     cancelVirtualWindowRender();
@@ -3680,7 +3701,9 @@
     state.renderedCount = 0;
     state.windowStart = 0;
     state.windowEnd = 0;
-    state.visibleCount = state.remoteMode ? Math.min(loadBatchSize(cfg), state.rows.length) : state.rows.length;
+    state.visibleCount = Number.isSafeInteger(visibleCount) && visibleCount >= 0
+      ? Math.min(visibleCount, state.rows.length)
+      : state.remoteMode ? Math.min(loadBatchSize(cfg), state.rows.length) : state.rows.length;
     if (!state.rows.length) {
       grid.innerHTML = '<div class="buret-empty">No molecules match this search.</div>';
       updateChrome(cfg);
@@ -3691,6 +3714,7 @@
   }
 
   async function loadMore(cfg) {
+    if (state.restoringGridPresentation) return;
     if (state.remoteMode) {
       await loadMoreRemote(cfg);
       return;
@@ -4075,6 +4099,7 @@
     const next = Math.max(0, Math.round(wrapper.scrollLeft || 0));
     if (next === state.tableScrollLeft) return;
     state.tableScrollLeft = next;
+    scheduleGridPresentation();
     if (state.tableColumnScrollFrame || state.rendering || !state.rows.length) return;
     state.tableColumnScrollFrame = window.requestAnimationFrame(() => {
       state.tableColumnScrollFrame = 0;
@@ -7357,6 +7382,194 @@
     });
   }
 
+  async function handleGridWindowTransfer(body) {
+    const cfg = config();
+    try {
+      if (body.type === 'gridWindowReady') {
+        if (collectionIndexReady() && !state.remoteLoading && !state.restoringGridPresentation) post('gridWindowResult', '', { requestId: body.requestId, ok: true });
+        return;
+      }
+      if (!collectionIndexReady() || state.remoteLoading || state.restoringGridPresentation || state.searchTimer || state.tableFilterTimer || state.saveAsPending
+        || state.clustering || state.generating3d || state.aligningPoses || state.evaluatingSemiempirical || state.findingSimilar || state.exportingClusterRepresentatives) {
+        throw new Error('Wait for the collection to finish its current operation.');
+      }
+      if (body.type === 'gridWindowCapture') {
+        if (!state.closeTransitionActive) throw new Error('The collection is not locked for transfer.');
+        post('gridWindowResult', '', { requestId: body.requestId, ok: true, snapshot: captureGridWindowState() });
+      } else {
+        if (state.lastGridWindowRestoreId !== body.requestId) {
+          const scrollY = restoreGridWindowState(body.snapshot);
+          refreshGridControls(cfg);
+          applyGridPreferences(cfg);
+          await render(cfg, { visibleCount: state.visibleCount });
+          window.scrollTo({ top: scrollY, behavior: 'instant' });
+          state.lastGridWindowRestoreId = body.requestId;
+        }
+        notifyGridMenuState(cfg);
+        post('gridWindowResult', '', { requestId: body.requestId, ok: true });
+      }
+    } catch (error) {
+      post('gridWindowResult', '', { requestId: body.requestId, ok: false, error: String(error?.message || error) });
+    }
+  }
+
+  function captureGridWindowState() {
+    const encode = value => JSON.parse(JSON.stringify(value, (_key, entry) => entry instanceof Set
+      ? { collection: 'set', entries: [...entry] }
+      : entry instanceof Map ? { collection: 'map', entries: [...entry] } : entry));
+    const view = {};
+    for (const key of gridWindowViewKeys()) view[key] = state[key];
+    const snapshot = JSON.stringify({ version: 1, scrollY: scrollTop(), visibleCount: state.visibleCount, edit: encode(snapshotGridEditState()),
+      undo: encode(state.undoStack), redo: encode(state.redoStack), view: encode(view) });
+    if (new TextEncoder().encode(snapshot).length > 1500 * 1024) throw new Error('This collection is too large to move with its edits. Keep it in this window.');
+    return snapshot;
+  }
+
+  function gridWindowViewKeys() {
+    return ['query', 'smarts', 'sort', 'descriptorFilters', 'descriptorSort', 'showProperties', 'viewMode',
+      'tableHiddenColumns', 'tablePinnedColumns', 'tableColumnWidths', 'tableColumnFilters', 'tableScrollLeft',
+      'remoteDescriptorIds', 'remoteAnalysisColumns', 'cardRenderer', 'xyzrenderPreset', 'xyzrenderUse3DCoords',
+      'rdkitUseInputCoords', 'hydrogenDisplay', 'cardMin', 'chemicalSpaceFilterActive', 'selectionAnchorIndex'];
+  }
+
+  // Restart checkpoints contain presentation only. Rows, edits and undo history
+  // belong to the transfer protocol, never to the persisted tab location.
+  function gridPresentationKeys() {
+    return gridWindowViewKeys().filter(key => key !== 'remoteDescriptorIds' && key !== 'remoteAnalysisColumns');
+  }
+
+  function captureGridPresentation() {
+    if (state.visibleCount > 100000 || state.selected.size > 100000) return '';
+    const view = {};
+    for (const key of gridPresentationKeys()) view[key] = state[key] instanceof Set ? [...state[key]]
+      : state[key] instanceof Map ? Object.fromEntries(state[key]) : state[key];
+    const snapshot = JSON.stringify({ version: 1, view, selected: [...state.selected],
+      scrollY: scrollTop(), visibleCount: state.visibleCount });
+    // Empty checkpoints explicitly invalidate a previous, now stale selection.
+    return snapshot.length <= 32768 ? snapshot : '';
+  }
+
+  function readGridPresentation(serialized) {
+    if (typeof serialized !== 'string' || serialized.length > 32768) return null;
+    try {
+      const saved = JSON.parse(serialized);
+      if (saved?.version !== 1 || !saved.view || typeof saved.view !== 'object'
+        || !Number.isFinite(saved.scrollY) || saved.scrollY < 0 || saved.scrollY > 1e9
+        || !Number.isSafeInteger(saved.visibleCount) || saved.visibleCount < 0 || saved.visibleCount > 100000
+        || !Array.isArray(saved.selected) || !saved.selected.every(index => Number.isSafeInteger(index) && index >= 0)
+        || !['cards', 'table'].includes(saved.view.viewMode)) return null;
+      for (const key of gridPresentationKeys()) {
+        const value = saved.view[key], current = state[key];
+        if (current instanceof Set ? !Array.isArray(value) || !value.every(item => typeof item === 'string')
+          : Array.isArray(current) ? !Array.isArray(value)
+          : current !== null ? typeof value !== typeof current || value === null
+          : value !== null && typeof value !== 'object' && typeof value !== 'number' && typeof value !== 'string') return null;
+      }
+      if (!Number.isFinite(saved.view.tableScrollLeft) || saved.view.tableScrollLeft < 0) return null;
+      const view = saved.view;
+      const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+      const optionalNumber = value => value === undefined || Number.isFinite(value);
+      if (!record(view.tableColumnWidths) || !Object.values(view.tableColumnWidths).every(value => Number.isFinite(value) && value > 0 && value <= 10000)
+        || !record(view.tableColumnFilters) || !Object.values(view.tableColumnFilters).every(filter => record(filter)
+          && Object.values(filter).every(value => typeof value === 'string' || typeof value === 'boolean' || Number.isFinite(value)))
+        || !view.descriptorFilters.every(filter => record(filter) && typeof filter.id === 'string' && optionalNumber(filter.min) && optionalNumber(filter.max))
+        || (view.descriptorSort !== null && (!record(view.descriptorSort) || typeof view.descriptorSort.id !== 'string' || !['asc', 'desc'].includes(view.descriptorSort.direction)))
+        || (view.selectionAnchorIndex !== null && (!Number.isSafeInteger(view.selectionAnchorIndex) || view.selectionAnchorIndex < 0))
+        || (view.cardMin !== null && (!Number.isSafeInteger(view.cardMin) || view.cardMin < 0 || view.cardMin > 4096))
+        || !['none', 'all'].includes(view.hydrogenDisplay) || !['rdkit', 'xyzrender'].includes(view.cardRenderer)) return null;
+      return saved;
+    } catch { return null; }
+  }
+
+  function publishGridPresentation() {
+    if (!state.hostViewModeSession || !state.gridPresentationReady || state.restoringGridPresentation) return;
+    post('gridViewModeChanged', '', { value: state.viewMode, snapshot: captureGridPresentation() });
+  }
+
+  function scheduleGridPresentation() {
+    if (state.gridPresentationTimer) return;
+    state.gridPresentationTimer = window.setTimeout(() => {
+      state.gridPresentationTimer = 0;
+      publishGridPresentation();
+    }, 100);
+  }
+
+  async function restoreGridPresentation(serialized) {
+    const generation = state.gridPresentationGeneration || 0;
+    const cancelled = () => generation !== (state.gridPresentationGeneration || 0);
+    state.restoringGridPresentation = true;
+    try {
+      await state.gridPresentationInitialization;
+      if (cancelled()) return;
+      const saved = readGridPresentation(serialized);
+      if (!saved) return;
+      for (const key of gridPresentationKeys()) state[key] = state[key] instanceof Set ? new Set(saved.view[key])
+        : state[key] instanceof Map ? new Map(Object.entries(saved.view[key])) : saved.view[key];
+      state.selected = new Set(saved.selected);
+      const cfg = config();
+      if (!effectiveMolecularGrid(cfg)) state.viewMode = 'table';
+      const search = document.getElementById('search');
+      if (search) search.value = state.query;
+      refreshGridControls(cfg);
+      applyGridPreferences(cfg);
+      const refreshing = refresh(cfg);
+      // Capture the refresh generation before yielding: a newer query may
+      // replace its result set while the initial page is still loading.
+      const token = state.dataToken;
+      await refreshing;
+      if (cancelled() || token !== state.dataToken) return;
+      while (state.remoteMode && state.visibleCount < saved.visibleCount && hasMoreRows()) {
+        const before = state.visibleCount;
+        await loadMoreRemote(cfg);
+        if (cancelled() || token !== state.dataToken) return;
+        if (state.visibleCount <= before) break;
+      }
+      if (token !== state.dataToken) return;
+      await render(cfg, { visibleCount: saved.visibleCount });
+      if (cancelled()) return;
+      window.scrollTo({ top: saved.scrollY, behavior: 'instant' });
+      await renderVirtualWindow(cfg, state.token, { force: true });
+    } catch (error) {
+      setStatus(error?.message || String(error), 'error');
+    } finally {
+      state.restoringGridPresentation = false;
+      publishGridPresentation();
+    }
+  }
+
+  function restoreGridWindowState(serialized) {
+    if (typeof serialized !== 'string' || new TextEncoder().encode(serialized).length > 1500 * 1024) throw new Error('Invalid collection transfer.');
+    const snapshot = JSON.parse(serialized, (_key, entry) => {
+      if (entry?.collection === 'set' && Array.isArray(entry.entries)) return new Set(entry.entries);
+      if (entry?.collection === 'map' && Array.isArray(entry.entries) && entry.entries.every(pair => Array.isArray(pair) && pair.length === 2)) return new Map(entry.entries);
+      return entry;
+    });
+    const validEdit = edit => edit && ['rows', 'all', 'insertedRows'].every(key => Array.isArray(edit[key]) && edit[key].every(row => row && typeof row === 'object' && Number.isSafeInteger(row.index)))
+      && ['hiddenRows', 'selected', 'deletedPropColumns'].every(key => edit[key] instanceof Set)
+      && ['rowPatches', 'columnValueRanges'].every(key => edit[key] instanceof Map)
+      && typeof edit.dirty === 'boolean' && typeof edit.dirtyReason === 'string'
+      && Number.isFinite(edit.totalRows) && (edit.recordsTotalHint === null || Number.isFinite(edit.recordsTotalHint));
+    const validHistory = history => Array.isArray(history) && history.length <= GRID_EDIT_HISTORY_LIMIT
+      && history.every(entry => typeof entry.label === 'string' && validEdit(entry.snapshot));
+    if (snapshot?.version !== 1 || !Number.isFinite(snapshot.scrollY) || snapshot.scrollY < 0 || !validEdit(snapshot.edit) || !validHistory(snapshot.undo) || !validHistory(snapshot.redo) || !snapshot.view || typeof snapshot.view !== 'object') throw new Error('Invalid collection transfer.');
+    if (snapshot.visibleCount !== undefined && (!Number.isSafeInteger(snapshot.visibleCount) || snapshot.visibleCount < 0 || snapshot.visibleCount > snapshot.edit.rows.length)) throw new Error('Invalid collection visible row count.');
+    for (const key of gridWindowViewKeys()) {
+      const value = snapshot.view[key], current = state[key];
+      if (current instanceof Set ? !(value instanceof Set) : current instanceof Map ? !(value instanceof Map)
+        : Array.isArray(current) ? !Array.isArray(value) : current !== null && typeof value !== typeof current) throw new Error('Invalid collection view.');
+    }
+    restoreGridEditState(snapshot.edit);
+    state.visibleCount = snapshot.visibleCount ?? state.rows.length;
+    state.undoStack = snapshot.undo;
+    state.redoStack = snapshot.redo;
+    for (const key of gridWindowViewKeys()) state[key] = snapshot.view[key];
+    state.searchTextCache = new WeakMap();
+    state.smartsMatches.clear();
+    const search = document.getElementById('search');
+    if (search) search.value = state.query;
+    return snapshot.scrollY;
+  }
+
   function snapshotGridEditState() {
     return {
       rows: state.rows.slice(),
@@ -9787,6 +10000,8 @@
   }
 
   async function main() {
+    let finishPresentationInitialization;
+    state.gridPresentationInitialization = new Promise(resolve => { finishPresentationInitialization = resolve; });
     try {
       const cfg = config();
       resetDocumentRuntimeState();
@@ -9801,21 +10016,22 @@
       normalizeCardRenderer(cfg);
       normalizeGridViewMode(cfg);
       buildUI(cfg);
+      post('gridViewModeReady', '', {});
       installGridTextFocusListeners();
       installRowHoverPreview(cfg);
-      refresh(cfg);
+      await refresh(cfg);
       try {
         await initRDKit();
         pumpRdkitCardQueue();
         const filledSmiles = !state.remoteMode && fillMissingSmilesFromMolblocks();
         if (state.cardRenderer === 'rdkit') {
           if (state.remoteMode) {
-            if (state.rows.length) void renderVirtualWindow(cfg, state.token, { force: true });
+            if (state.rows.length) await renderVirtualWindow(cfg, state.token, { force: true });
           } else {
-            render(cfg);
+            await render(cfg);
           }
         } else if (filledSmiles) {
-          refresh(cfg);
+          await refresh(cfg);
         }
       } catch {
         // initRDKit already recorded the failure and reported it; the queue
@@ -9825,8 +10041,19 @@
     } catch (error) {
       const message = error?.message || String(error);
       setStatus(message, 'error');
+    } finally {
+      state.gridPresentationReady = true;
+      finishPresentationInitialization();
+      publishGridPresentation();
     }
   }
+
+  window.addEventListener('pagehide', publishGridPresentation);
+  for (const type of ['pointerdown', 'keydown', 'wheel']) window.addEventListener(type, event => {
+    if (event.isTrusted && state.restoringGridPresentation) {
+      state.gridPresentationGeneration = (state.gridPresentationGeneration || 0) + 1;
+    }
+  }, { capture: true, passive: true });
 
   window.addEventListener('beforeunload', event => {
     if (!state.dirty) return;

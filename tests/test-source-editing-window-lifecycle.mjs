@@ -35,12 +35,12 @@ assert.match(nativeMenuHook, /closeTransitionActive: snapshot\.closeTransitionAc
 // The close button and File > Close Window go through the one close
 // coordinator: it seals window mutations, honours the source-editing confirm
 // (dirty sources) and the generic discard prompt, then destroys just this
-// window; the last window still quits the app through request_app_quit.
+// window, including the last window on macOS.
 assert.match(nativeMenuHook, /onCloseRequested\(\(event\) => \{[\s\S]*event\.preventDefault\(\);\s*void closeCurrentWindow\(\);/su);
 assert.match(nativeMenuHook, /case "file\.close-window":\s*await closeCurrentWindow\(\);/su);
-assert.match(nativeMenuHook, /const closeCurrentWindow = useCallback\(async \(\) => \{[\s\S]*if \(windowCount <= 1\) \{\s*void invoke\("request_app_quit"\)[\s\S]*const barrier = sealWindowMutations\(\);\s*const snapshot = getWindowDocumentDirtySnapshotRef\.current\(\);\s*const decision = await decideWindowClose\(\{/su);
+assert.match(nativeMenuHook, /const closeCurrentWindow = useCallback\(async \(\) => \{[\s\S]*const barrier = sealWindowMutations\(\);\s*const snapshot = getWindowDocumentDirtySnapshotRef\.current\(\);\s*const decision = await decideWindowClose\(\{/su);
 assert.match(nativeMenuHook, /sourceConfirm: \(\) => confirmSourceCloseWindowRef\.current\(\)/u);
-assert.match(nativeMenuHook, /if \(decision === "abort" \|\| nativePopoutBusy\(\)\) \{\s*resumeWindowMutations\(\);\s*return;/su);
+assert.match(nativeMenuHook, /if \(decision === "abort" \|\| nativeWindowTransferBusy\(\)\) \{\s*resumeWindowMutations\(\);\s*return;/su);
 assert.match(app, /confirmSourceCloseWindow: sourceEditing\.confirmCloseWindow/u);
 assert.match(app, /gridDirty: gridSnapshot\.dirty,\s*sourceDirty: sourceSnapshot\.dirty/su);
 

@@ -20,8 +20,10 @@ for (const width of [120, 320, 640, 1280]) {
       get offsetWidth() { return Math.min(420, parseFloat(this.style.maxWidth)); } };
     position(toolbar);
     assert.equal(bounds().right, width, 'A stale molecular viewport cannot move controls outside the actual frame');
-    assert.ok(parseFloat(toolbar.style.left) + toolbar.offsetWidth <= width);
-    assert.ok(parseFloat(toolbar.style.left) >= 0);
+    assert.equal(toolbar.style.left, 'auto');
+    const right = parseFloat(toolbar.style.right);
+    assert.ok(right >= 12);
+    assert.ok(width - right - toolbar.offsetWidth >= 0);
     assert.ok(parseFloat(content.style.maxWidth) >= 0);
   }
 }

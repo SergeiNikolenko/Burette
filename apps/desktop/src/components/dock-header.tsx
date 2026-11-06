@@ -12,7 +12,7 @@ const icons: Record<DockTabKind, AppIconType> = {
   review: Eye, "chemical-space": Orbit,
 };
 
-export function DockHeader({ area, tabs, activeKind, panelId, readOnly, transientTabId, fileDragProps, onSelect, onClose, onAdd, onHide, onOpenScreen }: {
+export function DockHeader({ area, tabs, activeKind, panelId, readOnly, transientTabId, fileDragProps, onSelect, onClose, onAdd, onHide, onOpenScreen, openScreenLabel = "Open as Workspace Tab" }: {
   area: DockArea;
   tabs: DockTab[];
   activeKind: DockTabKind;
@@ -25,6 +25,7 @@ export function DockHeader({ area, tabs, activeKind, panelId, readOnly, transien
   onAdd: (event: MouseEvent<HTMLButtonElement>) => void;
   onHide: () => void;
   onOpenScreen?: () => void;
+  openScreenLabel?: string;
 }) {
   const header = useRef<HTMLDivElement>(null);
   const restoreFocus = useRef(false);
@@ -72,7 +73,7 @@ export function DockHeader({ area, tabs, activeKind, panelId, readOnly, transien
       </div>
     </RovingFocusGroup.Root>
     {!readOnly && <>
-      {onOpenScreen && <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon-toolbar" className="dock-icon-button" onClick={onOpenScreen} aria-label="Open as Workspace Tab"><Expand aria-hidden /></Button></TooltipTrigger><TooltipContent compact showArrow={false}>Open as Workspace Tab</TooltipContent></Tooltip>}
+      {onOpenScreen && <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon-toolbar" className="dock-icon-button" onClick={onOpenScreen} aria-label={openScreenLabel}><Expand aria-hidden /></Button></TooltipTrigger><TooltipContent compact showArrow={false}>{openScreenLabel}</TooltipContent></Tooltip>}
       <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon-toolbar" className="dock-icon-button" onClick={onAdd} aria-label={`Add ${area} dock tab`}><Plus aria-hidden /></Button></TooltipTrigger><TooltipContent compact showArrow={false}>Add panel</TooltipContent></Tooltip>
       {area === "bottom" && <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon-toolbar" className="dock-icon-button dock-hide-button" onClick={onHide} aria-label={`Close ${area} dock`}><X aria-hidden /></Button></TooltipTrigger><TooltipContent compact showArrow={false}>Close panel</TooltipContent></Tooltip>}
     </>}

@@ -23,6 +23,20 @@ static TERMINATION_PENDING: AtomicBool = AtomicBool::new(false);
 /// Shared by the window builder and the manual re-layout below so both agree.
 pub(crate) const TRAFFIC_LIGHT_INSET: LogicalPosition<f64> = LogicalPosition { x: 20.0, y: 24.0 };
 
+pub(crate) fn disable_automatic_window_tabbing() {
+    // Burette owns its document tabs and split panes. AppKit's automatic tabs
+    // would introduce a second, independent tab strip around those windows.
+    let disable = || unsafe {
+        NSWindow::setAllowsAutomaticWindowTabbing_(class!(NSWindow) as *const Class as id, NO);
+    };
+    let on_main_thread: cocoa::base::BOOL = unsafe { msg_send![class!(NSThread), isMainThread] };
+    if on_main_thread == YES {
+        disable();
+    } else {
+        DispatchQueue::main().exec_sync(disable);
+    }
+}
+
 /// Re-applies the traffic light inset tao computes inside its `drawRect:`.
 ///
 /// tao only lays the buttons out when its content view redraws, so a window

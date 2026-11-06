@@ -212,6 +212,7 @@ pub(crate) enum WorkspaceOpenTarget {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // Keep existing command arguments compatible.
 pub(crate) fn open_new_workspace_window<R: Runtime>(
     app: tauri::AppHandle<R>,
     window: WebviewWindow<R>,
@@ -220,7 +221,14 @@ pub(crate) fn open_new_workspace_window<R: Runtime>(
     presentation: Option<windows::WindowPresentation>,
     scene: Option<PreviewScene>,
     structure: Option<super::documents::TextStructureRequest>,
+    screen_position: Option<windows::NativeScreenPosition>,
 ) -> Result<String, String> {
+    if screen_position
+        .as_ref()
+        .is_some_and(|point| !point.x.is_finite() || !point.y.is_finite())
+    {
+        return Err("Invalid window position.".into());
+    }
     let mut paths = paths.unwrap_or_default();
     if paths.len() > 200
         || paths
@@ -296,6 +304,11 @@ pub(crate) fn open_new_workspace_window<R: Runtime>(
     } else {
         windows::open_new_workspace_window(&app, presentation)?
     };
+    if target != WorkspaceOpenTarget::MainWindow {
+        if let (Some(position), Some(created)) = (screen_position, app.get_webview_window(&label)) {
+            windows::place_workspace_window(&created, position)?;
+        }
+    }
     crate::startup::signal_open_documents_for_window(&app, &label, paths);
     Ok(label)
 }
@@ -332,22 +345,36 @@ impl PreviewScene {
     }
 }
 
-/// Close the calling workspace window. With other windows still open the window
-/// is destroyed on its own (its per-window registries unwind on `Destroyed`)
-/// and `true` is returned. The last window keeps the quit behaviour instead:
-/// closing it runs the shared quit flow with the unsaved-changes preflight, and
-/// `false` tells the caller that flow now owns the window.
+/// Close the calling window after its frontend dirty-state preflight.
+/// macOS keeps running without windows; other platforms quit on the last
+/// workspace. `false` means the app quit flow took ownership of the window.
 #[tauri::command]
 pub(crate) fn close_workspace_window<R: Runtime>(
     app: tauri::AppHandle<R>,
     window: WebviewWindow<R>,
 ) -> Result<bool, String> {
-    if app.webview_windows().len() > 1 {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app;
         window.destroy().map_err(|error| error.to_string())?;
-        return Ok(true);
+        Ok(true)
     }
-    crate::menu::request_quit(&app);
-    Ok(false)
+    #[cfg(not(target_os = "macos"))]
+    {
+        if !windows::is_workspace_window_label(window.label())
+            || app
+                .webview_windows()
+                .keys()
+                .filter(|label| windows::is_workspace_window_label(label))
+                .count()
+                > 1
+        {
+            window.destroy().map_err(|error| error.to_string())?;
+            return Ok(true);
+        }
+        crate::menu::request_quit(&app);
+        Ok(false)
+    }
 }
 
 #[tauri::command]
@@ -843,6 +870,18 @@ mod tests {
     use base64::Engine;
     use std::fs;
     use std::path::PathBuf;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn closing_last_workspace_destroys_window_without_requesting_quit() {
+        use tauri::test::{mock_builder, mock_context, noop_assets};
+        let app = mock_builder().build(mock_context(noop_assets())).unwrap();
+        let window = tauri::WebviewWindowBuilder::new(&app, "main", tauri::WebviewUrl::default())
+            .build()
+            .unwrap();
+        // No QuitGuard is registered: a close must never enter the quit flow.
+        assert!(super::close_workspace_window(app.handle().clone(), window).unwrap());
+    }
 
     #[test]
     fn app_log_rotates_with_one_bounded_previous_copy() {

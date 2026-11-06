@@ -31,6 +31,7 @@ pub(crate) mod runtime_doctor;
 pub(crate) mod shell;
 pub(crate) mod source_editing;
 pub(crate) mod startup;
+pub(crate) mod tab_drag;
 pub(crate) mod tab_thumbnail;
 pub(crate) mod telemetry;
 pub(crate) mod text_files;

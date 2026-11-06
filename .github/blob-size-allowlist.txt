@@ -187,3 +187,13 @@ plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-DcS5exTY.js
 plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-CsZ3p8Hg.js
 plugins/burette-agent/browser-shell-dist/assets/viewer-b2xQvG17.js
 plugins/burette-agent/browser-shell-dist/assets/molecule-store-qgEVw2dA.js
+# Reviewed generated shell for workspace window transfers and Atlas chrome.
+plugins/burette-agent/browser-shell-dist/assets/molstar-Bt0_yBKf.js
+plugins/burette-agent/browser-shell-dist/assets/molecule-store-DWfwqvRX.js
+plugins/burette-agent/browser-shell-dist/assets/dist-CaSS9Yvv.js
+plugins/burette-agent/browser-shell-dist/assets/viewer-CWuvV8Z4.js
+plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-BoEZLpZJ.js
+plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-tns_zEpb.js
+plugins/burette-agent/browser-shell-dist/assets/native-viewer-menus-D9NK3wlE.js
+plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-w58iwFRc.js
+plugins/burette-agent/browser-shell-dist/assets/index-laV_2sV6.css

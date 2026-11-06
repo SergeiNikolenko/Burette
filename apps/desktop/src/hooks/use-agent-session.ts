@@ -7,7 +7,7 @@ import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 import type { DockArea } from "../lib/dock";
 import { executeAgentTabAction, type AgentTabActions } from "../lib/agent-tab-actions";
 import { agentGridState, recordAgentGridState } from "../lib/agent-grid-state";
-import { setAgentWorkspacePanel } from "../lib/agent-workspace-panel";
+import { setAgentRightPanel, setAgentWorkspacePanel } from "../lib/agent-workspace-panel";
 import { perfNow, tracePerf } from "../lib/perf-trace";
 import type { MoleculeTab } from "../stores/molecule-store";
 import { createSelectionContext } from "../../../burette-public-plugin/lib/hosted-context";
@@ -206,14 +206,17 @@ export function useAgentSession({
   useEffect(() => {
     if (!isTauriRuntime()) return undefined;
     let cancelled = false;
-    void invoke<string | null>("startup_agent_session")
+    const drainSession = () => invoke<string | null>("startup_agent_session")
       .then((sessionDir) => {
-        if (!cancelled && !sessionDirRef.current) void activateSession(sessionDir);
+        if (!cancelled) void activateSession(sessionDir);
       })
       .catch((error) => pushErrorStatusRef.current(error, "Agent session startup failed"));
 
-    const cleanup = trackTauriListener(listen<string>("agent-session", (event) => {
-      activateSession(event.payload);
+    const cleanup = trackTauriListener(listen("agent-session", () => {
+      void drainSession();
+    }).then((unlisten) => {
+      void drainSession();
+      return unlisten;
     }), "agent-session");
 
     return () => {
@@ -662,7 +665,8 @@ async function renderPanel(
     );
   }
   const area: DockArea = action.area === "bottom" ? "bottom" : "right";
-  setDockDocument(area, document.id);
+  if (area === "right") setAgentRightPanel(true, document.id);
+  else setDockDocument(area, document.id);
   const panel = {
     id: `agent-panel:${area}:${kind}:${document.title}`,
     area,

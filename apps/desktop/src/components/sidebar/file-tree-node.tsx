@@ -5,7 +5,6 @@ import { SidebarTooltip } from "./sidebar-tooltip";
 import { Pin, PinFilled, DotsHorizontal } from "../ui/app-icons";
 import { SidebarFolderIcon } from "./sidebar-folder-icon";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
-import { documentFallbackExtensions } from "../../lib/file-routing";
 import type { SidebarProject, SidebarProjectItem } from "../../lib/sidebar-projects";
 import { hasStructureDrag, readStructureDragPayload, type StructureDragPayload } from "../../lib/structure-drag";
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
@@ -17,6 +16,8 @@ import type { ShellActions, ShellViewState } from "../types";
 import { FileKindIcon, fileKindForPath } from "./file-kind-icon";
 import { folderHoverCard, structureHoverCard, useSidebarHoverCard } from "./sidebar-hover-card";
 import { useSidebarStructureDrag } from "./use-sidebar-structure-drag";
+import { openSidebarFile } from "../../lib/sidebar-file-preview";
+import { useSourceEditing } from "../../lib/source-editing/context";
 
 const COLLAPSED_PROJECT_ITEM_LIMIT = 5;
 // Collapse only when at least two rows would hide behind "Show more".
@@ -29,7 +30,6 @@ type ProjectTreeNode =
     name: string;
     path: string;
     children: ProjectTreeNode[];
-    hasItems: boolean;
   }
   | {
     kind: "item";
@@ -50,8 +50,9 @@ export function ProjectGroup({
 }) {
 
   const menus = useWorkspaceMenus();
-  const emptyFolders = project.rootPath ? menus.folders[project.rootPath] : undefined;
-  const projectTree = useMemo(() => buildProjectTree(project.items, emptyFolders), [project.items, emptyFolders]);
+  // Folders come only from the files they contain, so a folder without
+  // anything Burette opens never takes a row.
+  const projectTree = useMemo(() => buildProjectTree(project.items), [project.items]);
   const defaultExpandedFolderPaths = useMemo(
     () => expandFoldersByDefault ? collectProjectFolderPaths(projectTree) : singleFolderChain(projectTree),
     [expandFoldersByDefault, projectTree],
@@ -119,13 +120,8 @@ export function ProjectGroup({
     actions.toggleProjectExpanded(project.id);
   };
 
-  const handleRowClick = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if (event.detail > 1) {
-      event.preventDefault();
-      return;
-    }
-    handleToggle();
-  };
+  // Every click toggles, as in Codex: rapid clicks are not a double click.
+  const handleRowClick = () => handleToggle();
 
   const handleRowMouseDown = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (event.detail < 2) return;
@@ -407,13 +403,7 @@ function ProjectTreeNodeView({
   const handleToggle = () => {
     if (!forceExpanded) toggleFolderPath(node.path);
   };
-  const handleRowClick = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if (event.detail > 1) {
-      event.preventDefault();
-      return;
-    }
-    handleToggle();
-  };
+  const handleRowClick = () => handleToggle();
   const startRename = () => {
     if (!folderPath) return;
     const command = menus.folder(project, folderPath, false, () => {}).find(entry => entry.kind === "item" && entry.id === "rename-folder");
@@ -481,7 +471,7 @@ function ProjectTreeNodeView({
         {...hoverCard}
         data-drop-directory={project.rootPath ? `${project.rootPath}/${node.path}` : undefined}
         style={projectDepthStyle(depth)}
-        draggable={node.hasItems}
+        draggable
         onMouseDown={(event) => {
           handleRowMouseDown(event);
           sidebarDrag.onMouseDown(event);
@@ -577,30 +567,22 @@ export function ProjectItem({
     state,
   });
   const hoverCard = useSidebarHoverCard(structureHoverCard(item));
-  const openItem = () => {
-    // A CSV/TSV row can be bound to the hidden text copy that the grid and dock
-    // keep for source editing; reopen it instead so it lands in the molecule
-    // grid or the table viewer. Raw text stays an explicit Open As choice.
-    const textCopyOfTable = item.renderer === "text" && documentFallbackExtensions.has(item.extension.toLowerCase());
-    if (item.documentId && !textCopyOfTable) {
-      actions.selectDocument(item.documentId);
-      return;
-    }
-    void actions.openRecentStructure({
-      path: item.path,
-      title: item.title,
-      extension: item.extension,
-      renderer: item.renderer,
-      byteCount: item.byteCount,
-      openedAt: item.openedAt ?? Date.now(),
-    });
+  const sourceEditing = useSourceEditing();
+  const previewState = useRef({ state, actions, sourceEditing });
+  previewState.current = { state, actions, sourceEditing };
+  const openItem = (permanent = false) => {
+    void openSidebarFile(item.path, permanent, () => previewState.current.actions, document => {
+      const current = previewState.current;
+      const source = current.sourceEditing?.sessionForDocument(document);
+      return current.state.dirtyGridDocuments.has(document.id) || Boolean(source?.dirty || source?.saving);
+    }, id => previewState.current.state.tabs.some(tab => tab.id === id)).catch(error => console.warn("Sidebar file open failed", error));
   };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) return;
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      if (!menus.select(item.path, event)) openItem();
+      if (!menus.select(item.path, event)) openItem(true);
     }
   };
 
@@ -654,6 +636,7 @@ export function ProjectItem({
       onMouseDown={sidebarDrag.onMouseDown}
       onClickCapture={sidebarDrag.onClickCapture}
       onClick={event => { if (!menus.select(item.path, event)) openItem(); }}
+      onDoubleClick={event => { event.preventDefault(); openItem(true); }}
       aria-selected={menus.selected.has(item.path)}
       onDragStart={sidebarDrag.onDragStart}
       onDragEnd={sidebarDrag.onDragEnd}
@@ -688,11 +671,11 @@ export function ProjectItem({
   );
 }
 
-function buildProjectTree(items: SidebarProjectItem[], emptyFolders: string[] = []) {
+function buildProjectTree(items: SidebarProjectItem[]) {
   const roots: ProjectTreeNode[] = [];
   const folders = new Map<string, Extract<ProjectTreeNode, { kind: "folder" }>>();
 
-  const childrenFor = (folderPath: string | null, hasItems = false) => {
+  const childrenFor = (folderPath: string | null): ProjectTreeNode[] => {
     if (!folderPath) return roots;
     let folder = folders.get(folderPath);
     if (!folder) {
@@ -703,24 +686,18 @@ function buildProjectTree(items: SidebarProjectItem[], emptyFolders: string[] = 
         name: segments.at(-1) ?? folderPath,
         path: folderPath,
         children: [],
-        hasItems,
       };
       folders.set(folderPath, folder);
       const parentPath = segments.length > 1 ? segments.slice(0, -1).join("/") : null;
-      childrenFor(parentPath, hasItems).push(folder);
-    } else if (hasItems && !folder.hasItems) {
-      folder.hasItems = true;
-      const separator = folderPath.lastIndexOf("/");
-      childrenFor(separator < 0 ? null : folderPath.slice(0, separator), true);
+      childrenFor(parentPath).push(folder);
     }
     return folder.children;
   };
 
-  for (const path of emptyFolders) childrenFor(path);
   for (const item of items) {
     const segments = item.relativePath.split("/").filter(Boolean);
     const parentPath = segments.length > 1 ? segments.slice(0, -1).join("/") : null;
-    childrenFor(parentPath, true).push({
+    childrenFor(parentPath).push({
       kind: "item",
       key: item.key,
       item,

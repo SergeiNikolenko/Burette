@@ -50,6 +50,8 @@ const {
 const {
   createWorkspaceHistoryShellActions,
 } = await import("../apps/desktop/src/hooks/use-app-shell-actions.ts");
+const { useWorkspacePanesStore } = await import("../apps/desktop/src/stores/workspace-panes-store.ts");
+const { openRightTool, setRightPanelOpen } = await import("../apps/desktop/src/lib/right-workspace-panel.ts");
 
 const initialShell = getShellStoreSnapshot();
 
@@ -77,6 +79,7 @@ function resetStores() {
   });
   useShellStore.getState().restoreSnapshot(initialShell);
   useTabWorkspaceStore.setState({ workspaces: {} });
+  useWorkspacePanesStore.setState({ selectedTabs: {}, closedGroups: {}, fullViewTabId: null });
   useSettingsStore.getState().restoreSnapshot({ preferences: defaultPreferences });
   configureWorkspaceHistoryExtras({});
   useWorkspaceHistoryStore.getState().clearWorkspaceHistory();
@@ -108,6 +111,18 @@ assert.equal(useWorkspaceHistoryStore.getState().undoWorkspaceAction(), true);
 assert.equal(useMoleculeStore.getState().activeDocumentId, "doc-2");
 assert.equal(getTabWorkspace(closedTabId).right.open, true);
 assert.equal(getTabWorkspace(closedTabId).right.size, 512);
+
+resetStores();
+const info = openRightTool("inspector");
+useMoleculeStore.getState().setActiveTab("tab-1");
+const history = useWorkspaceHistoryStore.getState();
+history.withWorkspaceHistory("Hide right panel", "layout", () => setRightPanelOpen(false));
+assert.equal(useWorkspacePanesStore.getState().closedGroups.right, true);
+assert.equal(history.undoWorkspaceAction(), true);
+assert.equal(useWorkspacePanesStore.getState().closedGroups.right, false);
+assert.equal(useWorkspacePanesStore.getState().selectedTabs.right, info);
+assert.equal(history.redoWorkspaceAction(), true);
+assert.equal(useWorkspacePanesStore.getState().closedGroups.right, true);
 
 resetStores();
 useWorkspaceHistoryStore.getState().withWorkspaceHistory("Change renderer", "settings", () => {

@@ -19,7 +19,7 @@ function retainPreparation(document: ViewerDocument, preferences: ViewerPreferen
       if (!stillCurrent()) return;
       tracePerf("document:prepare-start", { detail: { documentId: document.id } });
       const result = await invoke<OpenDocumentsResult>("open_documents", {
-        paths: [document.path], preferences: { ...preferences, ...document.runtimeDeferredPreferences },
+        paths: [document.recoveryPath ?? document.path], preferences: { ...preferences, ...document.runtimeDeferredPreferences },
         openStateRevision: currentDocumentRegistryRevision(),
       });
       if (!stillCurrent()) {

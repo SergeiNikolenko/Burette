@@ -561,11 +561,19 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
 
     let previous_tab = MenuItemBuilder::with_id("window.previous-tab", "Previous Tab")
         .enabled(false)
-        .accelerator("Ctrl+Shift+Tab")
+        .accelerator(if cfg!(target_os = "macos") {
+            "CmdOrCtrl+Shift+["
+        } else {
+            "Ctrl+Shift+Tab"
+        })
         .build(app)?;
     let next_tab = MenuItemBuilder::with_id("window.next-tab", "Next Tab")
         .enabled(false)
-        .accelerator("Ctrl+Tab")
+        .accelerator(if cfg!(target_os = "macos") {
+            "CmdOrCtrl+Shift+]"
+        } else {
+            "Ctrl+Tab"
+        })
         .build(app)?;
     let window_menu = SubmenuBuilder::with_id(app, WINDOW_SUBMENU_ID, "Window")
         .items(&[

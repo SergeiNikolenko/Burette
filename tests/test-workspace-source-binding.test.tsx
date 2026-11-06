@@ -12,6 +12,8 @@ const { createRoot } = await import("react-dom/client");
 const { useMoleculeStore } = await import("../apps/desktop/src/stores/molecule-store");
 const { useTabWorkspaceStore, getTabWorkspaceStoreSnapshot, WINDOW_TOOLS_ID } = await import("../apps/desktop/src/stores/tab-workspace-store");
 const { useDockLayout } = await import("../apps/desktop/src/hooks/use-dock-layout");
+const { useWorkspacePanesStore } = await import("../apps/desktop/src/stores/workspace-panes-store");
+const { migrateLegacyRightPanels, openRightTool } = await import("../apps/desktop/src/lib/right-workspace-panel");
 const { chemicalSpaceKind } = await import("../apps/desktop/src/components/editor-area/page-kinds/chemical-space");
 const collection = (id: string, path = "/collection.sdf") => ({ id, path, title: path, extension: "sdf", renderer: "grid2d" }) as ViewerDocument;
 
@@ -25,8 +27,12 @@ test("a pinned analysis never substitutes another collection", () => {
   expect(follow.props.children.props.children.props.document).toBe(other);
 });
 
-test("saved pins resolve new runtime IDs and remain missing until their source returns", async () => {
-  useMoleculeStore.setState({ documents: [collection("old")], textDocuments: [] });
+test("legacy right pins migrate into one group and resolve new runtime IDs by path", async () => {
+  useMoleculeStore.setState({
+    tabs: [{ id: "owner", location: { kind: "launcher" }, back: [], forward: [] }],
+    activeTabId: "owner", documents: [collection("old")], textDocuments: [],
+  });
+  useWorkspacePanesStore.setState({ selectedTabs: {}, closedGroups: {}, fullViewTabId: null });
   useTabWorkspaceStore.setState({ workspaces: {} });
   useTabWorkspaceStore.getState().setDockDocument("owner", "right", "old");
   const snapshot = getTabWorkspaceStoreSnapshot();
@@ -36,13 +42,25 @@ test("saved pins resolve new runtime IDs and remain missing until their source r
   const host = document.createElement("div");
   const root = createRoot(host);
   let binding: string | null = null;
-  function Probe() { binding = useDockLayout("owner").rightDockDocumentId; return null; }
+  function Probe() { binding = useDockLayout(useMoleculeStore(state => state.activeTabId)).rightDockDocumentId; return null; }
   await act(async () => { useMoleculeStore.setState({ documents: [collection("new")] }); root.render(<Probe />); });
   expect(binding).toBe("new");
+  const migratedTabs = useMoleculeStore.getState().tabs.filter(tab => tab.pane === "right");
+  expect(migratedTabs.map(tab => tab.location)).toEqual([
+    { kind: "tool", area: "right", tool: "inspector", sourcePath: "/collection.sdf" },
+    { kind: "tool", area: "right", tool: "text", sourcePath: "/collection.sdf" },
+    { kind: "file", path: "/collection.sdf", documentId: "new" },
+  ]);
+  expect(useTabWorkspaceStore.getState().workspaces.owner.right.open).toBe(false);
+  await act(async () => migrateLegacyRightPanels());
+  expect(useMoleculeStore.getState().tabs.filter(tab => tab.pane === "right")).toEqual(migratedTabs);
   await act(async () => { useMoleculeStore.setState({ documents: [collection("other", "/other.sdf")] }); });
   expect(binding).toBe("missing:/collection.sdf");
-  await act(async () => { useTabWorkspaceStore.getState().setDockDocument("owner", "right", null); });
+  await act(async () => { openRightTool("inspector", "/collection.sdf"); });
+  expect(binding).toBe("missing:/collection.sdf");
+  await act(async () => { openRightTool("inspector"); });
   expect(binding).toBeNull();
+  expect(useMoleculeStore.getState().tabs.filter(tab => tab.pane === "right")).toHaveLength(4);
   await act(async () => root.unmount());
 });
 

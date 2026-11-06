@@ -18,6 +18,24 @@ the same typography when they occupy one header band.
 
 ## Layers
 
+Desktop process launches route files and their agent session to the same normal
+workspace window: the focused workspace, then the last active workspace, then
+the main or another existing workspace. Preview windows are not implicit launch
+destinations. This also applies when startup restores a workspace without a
+`main` window. Agent attachments are queued by window label; a targeted
+`agent-session` notification tells the registered listener to drain
+`startup_agent_session`. The command consumes the pending attachment once,
+so another window cannot claim it and a listener that mounts late can still
+receive it.
+
+Ordinary external file opens (Finder, Dock, or process launch without an agent
+session) reuse a live normal workspace that already owns the normalized source
+path. Multi-file requests are grouped by existing owner; unopened files go to
+the last active workspace, and the first requested file determines which window
+is focused. Explicit agent-session launches keep their whole file batch in one
+workspace so session observation and actions do not span unrelated windows.
+Explicit new-view and window-transfer commands keep their own destinations.
+
 | Layer | Path | Responsibility |
 | --- | --- | --- |
 | Hosted public plugin | `apps/burette-public-plugin` | Public HTTPS MCP tools for one authorized attachment or public PDB entry, plus the sandboxed Burette workspace. |

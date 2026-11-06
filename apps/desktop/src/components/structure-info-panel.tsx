@@ -506,12 +506,12 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
               state={runningXtbJob ? "running" : xtbMissing ? "missing" : "ready"}
               primaryLabel="Optimize"
               primaryDisabled={xtbBlocked}
-              onPrimary={() => void actions.runXtbActiveOperation("optimize")}
+              onPrimary={() => void actions.runXtbActiveOperation("optimize", document)}
               key={document.id}
               inputLabel={document.title}
               onHistory={() => actions.toggleDockTab("bottom", "jobs")}
               runLabel={xtbOperation === "optimize" ? "Optimize" : operationTitle(xtbOperation)}
-              onRun={() => void actions.runXtbActiveOperation(xtbOperation)}
+              onRun={() => void actions.runXtbActiveOperation(xtbOperation, document)}
             >
               <FieldGroup className="mb-5">
                 <Field>

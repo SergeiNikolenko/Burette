@@ -4671,7 +4671,7 @@ body .msp-plugin .buret-seq-enhanced > .msp-sequence-select { display: none; }
 .buret-seq-header [data-role="Molecule"] {
   order: -2;
   flex: 1;
-  min-width: 40px;
+  min-width: 0;
   text-align: left;
   text-overflow: ellipsis;
   overflow: hidden;
@@ -4684,7 +4684,7 @@ body .msp-plugin .buret-seq-enhanced > .msp-sequence-select { display: none; }
 .buret-seq-button {
   appearance: none;
   border: 0;
-  border-radius: 6px;
+  border-radius: 999px;
   padding: 6px 8px;
   background: transparent;
   color: inherit;
@@ -4692,7 +4692,7 @@ body .msp-plugin .buret-seq-enhanced > .msp-sequence-select { display: none; }
   cursor: pointer;
   white-space: nowrap;
 }
-.buret-seq-control { display: inline-flex; min-width: 0; }
+.buret-seq-control { position: relative; display: inline-flex; min-width: 0; }
 .buret-seq-control > .buret-seq-button {
   display: flex;
   align-items: center;
@@ -4701,8 +4701,10 @@ body .msp-plugin .buret-seq-enhanced > .msp-sequence-select { display: none; }
   width: 100%;
   min-width: 0;
 }
-.buret-seq-control > .buret-seq-button > span { overflow: hidden; text-overflow: ellipsis; }
-.buret-seq-control svg { width: 14px; height: 14px; flex-shrink: 0; color: var(--buret-molstar-muted-text); }
+.buret-seq-header .buret-seq-context,
+.buret-seq-control .atlas-select-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.buret-seq-control .atlas-select-indicator { flex: 0 0 auto; }
+.buret-seq-control .atlas-select-icon { display: block; width: 8px; height: 12px; color: var(--buret-molstar-muted-text); }
 .buret-seq-button:hover, .buret-seq-button[aria-expanded="true"] {
   background-color: var(--buret-molstar-hover-background);
 }
@@ -5229,46 +5231,45 @@ html[data-burette-header-band] .msp-plugin-content.msp-layout-expanded { top: va
    viewer below the band. */
 html[data-burette-header-band] .buret-sequence-layout { top: var(--burette-header-band-height, 48px); }
 html[data-burette-header-band] .buret-viewport-corner { top: 8px !important; left: var(--burette-header-band-corner-left, 8px) !important; }
-html[data-burette-header-band] body :is(#buret-toolbar, #buret-scene-tree-toggle, #buret-viewport-rail, #buret-selection-bar) {
+/* Shared Codex capsule appearance. Header-band positioning stays widget-only. */
+html:is([data-burette-header-band], [data-burette-app-chrome]) body :is(#buret-toolbar:where(:not(.collapsed, .buret-suppressed-by-molstar-panel)), #buret-scene-tree-toggle, #buret-viewport-rail, #buret-selection-bar) {
   box-sizing: border-box; border: 0; border-radius: var(--radius-full); color: var(--color-text);
   background: var(--color-surface-elevated); box-shadow: var(--shadow-viewer-surface);
   font: var(--text-sm)/20px var(--font-sans);
   -webkit-backdrop-filter: blur(var(--blur-xl)); backdrop-filter: blur(var(--blur-xl));
 }
-html[data-burette-header-band] body.buret-theme-dark :is(#buret-toolbar, #buret-scene-tree-toggle, #buret-viewport-rail, #buret-selection-bar) {
+html:is([data-burette-header-band], [data-burette-app-chrome]) body.buret-theme-dark :is(#buret-toolbar:where(:not(.collapsed, .buret-suppressed-by-molstar-panel)), #buret-scene-tree-toggle, #buret-viewport-rail, #buret-selection-bar) {
   background: var(--color-surface-elevated-secondary);
   box-shadow: 0 0 0 var(--border-width-hairline) var(--color-border), var(--shadow-xl-spread);
 }
-html[data-burette-header-band] body #buret-scene-tree-toggle { width: 32px; height: 32px; }
-html[data-burette-header-band] body #buret-scene-tree-toggle:hover {
+html:is([data-burette-header-band], [data-burette-app-chrome]) body #buret-scene-tree-toggle { width: 32px; height: 32px; }
+html:is([data-burette-header-band], [data-burette-app-chrome]) body #buret-scene-tree-toggle:hover {
   background-image: linear-gradient(var(--color-background-primary-ghost-hover) 0 0);
 }
 /* The capsule shadow above replaces the toggle's own box-shadow focus ring. */
-html[data-burette-header-band] body #buret-scene-tree-toggle:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 0; }
-/* Codex marks a pressed viewer control with a blue-tinted surface; on dark
-   themes its text is chart blue lifted toward white by the theme contrast. */
-html[data-burette-header-band] body #buret-scene-tree-toggle[aria-expanded="true"] {
-  background: color-mix(in srgb, var(--color-surface) 90%, var(--color-chart-blue)); color: var(--color-text-info);
+html:is([data-burette-header-band], [data-burette-app-chrome]) body #buret-scene-tree-toggle:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 0; }
+/* Codex shows a pressed ghost toggle with the neutral ghost fill and full-contrast
+   text (Atlas "ghostActive"); accent colors are reserved for status. */
+html:is([data-burette-header-band], [data-burette-app-chrome]) body #buret-scene-tree-toggle[aria-expanded="true"] {
+  background-image: linear-gradient(var(--color-background-secondary-ghost-hover) 0 0); color: var(--color-text);
 }
 /* The toolbar's content box clips anything outside its buttons, so focus rings
    sit inside them, as on Codex's inset-ring chips. */
-html[data-burette-header-band] body :is(#buret-toolbar, #buret-viewport-rail, #buret-selection-bar) .atlas-button {
+html:is([data-burette-header-band], [data-burette-app-chrome]) body :is(#buret-toolbar, #buret-viewport-rail, #buret-selection-bar) .atlas-button {
   border-radius: var(--radius-full); --button-ring-offset: -2px;
   --button-text-color: var(--color-text); --button-text-color-hover: var(--color-text);
 }
-html[data-burette-header-band] body :is(#buret-toolbar, #buret-viewport-rail) .atlas-button[data-selected] {
-  --button-background-color: color-mix(in srgb, var(--color-surface) 90%, var(--color-chart-blue));
-  --button-text-color-hover: var(--color-text-info);
-}
-html[data-burette-header-band] body.buret-theme-dark :is(#buret-toolbar, #buret-viewport-rail) .atlas-button[data-selected] {
-  --button-text-color-hover: color-mix(in srgb, var(--color-chart-blue), var(--white) calc(19.5% + var(--codex-base-contrast) * 0.325% + max(0, var(--codex-base-contrast) - 60) * 0.325%));
-}
-html[data-burette-header-band] body.buret-theme-dark #buret-scene-tree-toggle[aria-expanded="true"] {
-  color: color-mix(in srgb, var(--color-chart-blue), var(--white) calc(19.5% + var(--codex-base-contrast) * 0.325% + max(0, var(--codex-base-contrast) - 60) * 0.325%));
-}
-html[data-burette-header-band] body #buret-viewport-rail .atlas-button[data-buret-viewport-action="clear-selection"] {
+html:is([data-burette-header-band], [data-burette-app-chrome]) body #buret-viewport-rail .atlas-button[data-buret-viewport-action="clear-selection"] {
   --button-text-color: var(--color-text-danger); --button-text-color-hover: var(--color-text-danger);
 }
+
+html[data-burette-app-chrome] #buret-toolbar:not(.collapsed, .buret-suppressed-by-molstar-panel),
+html[data-burette-app-chrome] #buret-viewport-rail {
+  padding: 2px;
+  gap: 0;
+}
+html[data-burette-app-chrome] #buret-toolbar .buret-toolbar-content { gap: 0; }
+html[data-burette-app-chrome] #buret-viewport-rail { width: 32px; }
 html[data-burette-header-band] #buret-toolbar {
   top: var(--burette-header-band-toolbar-top, 8px) !important; left: auto !important; right: var(--burette-header-band-right, 8px) !important;
   height: 32px; padding: 2px; gap: 0;
@@ -5814,15 +5815,15 @@ body .buret-docking-poses { view-transition-name: buret-pose-controls; }
   object-position: left top;
 }
 
-/* After the first layout, islands glide to the place a resize or a
-   neighbour's new shape gives them; dragging still moves them directly. */
+/* Geometry must follow live viewport bounds without an easing tail. Discrete
+   toolbar changes already use view transitions; interpolating measured left/top
+   also makes dependent rails chase intermediate positions during resizing. */
 html.buret-chrome-settled #buret-toolbar:not(.buret-dragging) {
-  transition: background 180ms ease, box-shadow 180ms ease,
-    left 260ms cubic-bezier(0.32, 0.72, 0, 1), top 260ms cubic-bezier(0.32, 0.72, 0, 1);
+  transition: background 180ms ease, box-shadow 180ms ease;
 }
 html.buret-chrome-settled body .buret-docking-poses:not(.buret-docking-poses-dragging),
 html.buret-chrome-settled #buret-viewport-rail:not(.buret-dragging) {
-  transition: left 260ms cubic-bezier(0.32, 0.72, 0, 1), top 260ms cubic-bezier(0.32, 0.72, 0, 1);
+  transition: none;
 }
 
 /* A pane narrower than the toolbar wraps its buttons onto a second row

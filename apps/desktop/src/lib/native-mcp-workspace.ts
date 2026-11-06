@@ -32,6 +32,8 @@ declare global {
         set: (mode: "inline" | "fullscreen") => Promise<{ ok: boolean; mode: string }>;
       };
       preparePreview: (html: string) => string;
+      /** Resolve a packaged resource through the offline widget transport. */
+      asset: (path: string) => Promise<string>;
       home?: NativeWorkspaceHome;
       sendAnnotations?: (batch: {
         text: string;

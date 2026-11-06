@@ -171,12 +171,12 @@ console.log('Grid card scheduling: priority, frame budget, in-flight deduplicati
 {
   const callbacks = [];
   const scrolling = { tableScrollLeft: 0, tableColumnScrollFrame: 0, rows: [{}], token: 1 };
-  let columns = [{ id: 'name' }, { id: 'smiles' }], rebuilds = 0;
+  let columns = [{ id: 'name' }, { id: 'smiles' }], rebuilds = 0, checkpoints = 0;
   const scroll = new Function('state', 'window', 'tableColumnWindow', 'tableVisibleColumns',
-    'tableColumnCatalog', 'startVisibleRdkitCards', 'renderVirtualWindow', `
+    'tableColumnCatalog', 'startVisibleRdkitCards', 'renderVirtualWindow', 'scheduleGridPresentation', `
       ${body('handleTableColumnScroll')} return handleTableColumnScroll;
     `)(scrolling, { requestAnimationFrame(fn) { callbacks.push(fn); return 1; } },
-    () => ({ windowColumns: columns }), value => value, () => [], () => {}, () => { rebuilds++; });
+    () => ({ windowColumns: columns }), value => value, () => [], () => {}, () => { rebuilds++; }, () => { checkpoints++; });
   const wrapper = { scrollLeft: 20, dataset: { columnWindow: 'name|smiles' } };
   scroll(wrapper, {});
   callbacks.shift()();
@@ -186,6 +186,7 @@ console.log('Grid card scheduling: priority, frame budget, in-flight deduplicati
   scroll(wrapper, {});
   callbacks.shift()();
   assert.equal(rebuilds, 1, 'crossing the column window mounts newly visible columns');
+  assert.equal(checkpoints, 2, 'both horizontal scroll changes schedule presentation persistence');
 }
 
 {

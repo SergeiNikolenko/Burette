@@ -43,11 +43,9 @@ try {
   settle(); held.plugin.handleResize();
   assert.equal(held.resizes(), 0, 'a stationary host gesture must retain its buffer beyond the settle timeout');
   interaction.touch(held.viewer, finishHeld, true);
-  interaction.release(held.viewer);
-  assert.equal(timers.size, 1);
-  settle();
-  assert.deepEqual([held.resizes(), heldFinishes], [1, 1]);
-  interaction.release(held.viewer);
+  assert.equal(interaction.release(held.viewer), true);
+  assert.deepEqual([held.resizes(), heldFinishes], [1, 1], 'release restores exact geometry immediately');
+  assert.equal(interaction.release(held.viewer), false);
   assert.equal(timers.size, 0, 'duplicate release cannot redraw');
 
   const changed = fixture();

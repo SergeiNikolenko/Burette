@@ -9,7 +9,7 @@ import { sidebarCreationItems } from "./context-actions";
 import { showNativeContextMenu } from "../native-context-menu";
 import { SidebarTooltip } from "./sidebar-tooltip";
 import { useDropHighlightReset } from "../../hooks/use-drop-highlight-reset";
-import { useMemo, useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useId, useMemo, useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Search as Search01Icon } from "@/components/ui/app-icon-data";
 import { AnimatedOrbitIcon } from "../ui/animated-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -85,10 +85,15 @@ function handleSidebarTreeKeyDown(event: ReactKeyboardEvent<HTMLDivElement>, sel
 export function FileBrowser({
   state,
   actions,
+  presentation = "sidebar",
 }: {
   state: ShellViewState;
   actions: ShellActions;
+  presentation?: "sidebar" | "panel";
 }) {
+  const id = useId();
+  const sidebar = presentation === "sidebar";
+  const treeId = sidebar ? "sidebar" : id;
   const menus = useWorkspaceMenus();
   const [sshDialogOpen, setSshDialogOpen] = useState(false);
   const sshProjects = useSshProjects();
@@ -97,7 +102,7 @@ export function FileBrowser({
   const [pinnedOpen, setPinnedOpen] = useState(true);
   const [ketcherDropActive, setKetcherDropActive] = useState(false);
   useDropHighlightReset(setKetcherDropActive);
-  const hideProjectPreviews = state.buildInfo.isAgentShell && !state.workspacePath;
+  const hideProjectPreviews = sidebar && state.buildInfo.isAgentShell && !state.workspacePath;
   const sidebarQuery = state.sidebarQuery.trim();
   const hasSidebarQuery = sidebarQuery.length > 0;
   const visibleProjects = useMemo(() => hideProjectPreviews ? [] : sortSidebarProjects(
@@ -165,7 +170,7 @@ export function FileBrowser({
       event.preventDefault();
       void showNativeContextMenu(sidebarCreationItems(state, actions), { x: event.clientX, y: event.clientY });
     }}>
-      <div className="sidebar-browser-header">
+      {sidebar && <div className="sidebar-browser-header">
         <strong className="sidebar-browser-title">Burette</strong>
         <SidebarTooltip label="Search commands and structures (⌘P)">
           <button
@@ -179,13 +184,13 @@ export function FileBrowser({
             <HugeiconsIcon icon={Search01Icon} size={16} strokeWidth={2} />
           </button>
         </SidebarTooltip>
-      </div>
+      </div>}
       {menus.batch?.progress && <div className="flex items-center gap-2 px-3 py-1" role="status" aria-live="polite">
         <span className="min-w-0 flex-1 truncate text-sm tabular-nums">Opening {menus.batch.progress.completed} of {menus.batch.progress.total}…</span>
         <Button variant="ghost" size="icon-xs" aria-label="Cancel opening files" onClick={menus.batch.cancel}><X size={14} aria-hidden="true" /></Button>
       </div>}
       {/* Keep secondary screens in the new-tab menu and pane switchers. */}
-      {SCREEN_ENTRIES.filter(entry => entry.location.kind === "launcher").map(entry => {
+      {sidebar && SCREEN_ENTRIES.filter(entry => entry.location.kind === "launcher").map(entry => {
         const current = !state.activeTab?.pane && state.activeTab?.location.kind === entry.location.kind;
         return <button key={entry.id} type="button" className="sidebar-tool-row" aria-current={current ? "page" : undefined}
           onClick={() => openScreen(entry.location)}>
@@ -193,7 +198,7 @@ export function FileBrowser({
           <span className="sidebar-tool-label">{entry.text}</span>
         </button>;
       })}
-      <SidebarTooltip label="Open Ketcher">
+      {sidebar && <SidebarTooltip label="Open Ketcher">
         <button
           type="button"
           className="sidebar-tool-row"
@@ -216,7 +221,7 @@ export function FileBrowser({
           </span>
           <span className="sidebar-tool-label">Ketcher</span>
         </button>
-      </SidebarTooltip>
+      </SidebarTooltip>}
       {hasPinned && (
         <section className="sidebar-section pinned-section" aria-label="Pinned">
           <div className="sidebar-section-header">
@@ -226,7 +231,7 @@ export function FileBrowser({
                 className="sidebar-section-title-button"
                 onClick={() => setPinnedOpen((value) => !value)}
                 aria-expanded={pinnedExpanded}
-                aria-controls="sidebar-pinned-tree"
+                aria-controls={`${treeId}-pinned-tree`}
               >
                 <span>Pinned</span>
                 <span className={pinnedExpanded ? "sidebar-section-chevron expanded" : "sidebar-section-chevron"} aria-hidden="true">
@@ -236,7 +241,7 @@ export function FileBrowser({
             </SidebarTooltip>
           </div>
           {pinnedExpanded && (
-            <div className="project-tree pinned-structures" role="tree" aria-multiselectable="true" id="sidebar-pinned-tree" onKeyDown={event => handleSidebarTreeKeyDown(event, menus.select)}>
+            <div className="project-tree pinned-structures" role="tree" aria-multiselectable="true" id={`${treeId}-pinned-tree`} onKeyDown={event => handleSidebarTreeKeyDown(event, menus.select)}>
               {pinnedProjects.map((project) => (
                 <ProjectGroup key={project.id} project={project} state={state} actions={actions}
                   expandFoldersByDefault={isWebDemoWorkspace() && project.rootPath === webDemoProjectRoot()} />
@@ -257,7 +262,7 @@ export function FileBrowser({
             className="sidebar-section-title-button"
             onClick={actions.toggleProjectsOpen}
             aria-expanded={projectsExpanded}
-            aria-controls="sidebar-projects-tree"
+            aria-controls={`${treeId}-projects-tree`}
           >
             <span>Projects</span>
             <span className={projectsExpanded ? "sidebar-section-chevron expanded" : "sidebar-section-chevron"} aria-hidden="true">
@@ -339,7 +344,7 @@ export function FileBrowser({
               {hasSidebarQuery ? "No matching projects or structures" : "No project structures yet"}
             </div>
           ) : (
-            <div className="project-tree" role="tree" aria-multiselectable="true" id="sidebar-projects-tree" onKeyDown={event => handleSidebarTreeKeyDown(event, menus.select)}>
+            <div className="project-tree" role="tree" aria-multiselectable="true" id={`${treeId}-projects-tree`} onKeyDown={event => handleSidebarTreeKeyDown(event, menus.select)}>
               {organization.organization === "connection" && recentProjects.length > 0 && <div className="ssh-project-section-title">This computer</div>}
               {recentProjects.map((project) => (
                 <ProjectGroup

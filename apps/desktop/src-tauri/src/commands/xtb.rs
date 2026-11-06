@@ -331,7 +331,7 @@ fn finish_xtb_run(
         Some(format!(
             "xTB timed out after {} seconds. {}",
             xtb_timeout(request).as_secs(),
-            truncate_text(log, 480)
+            xtb_failure_excerpt(log)
         ))
     } else {
         let recovery_note = if primary_open_path.is_some() {
@@ -343,7 +343,7 @@ fn finish_xtb_run(
             "xTB ended {}.{} {}",
             xtb_exit_status_text(status),
             recovery_note,
-            truncate_text(log, 480)
+            xtb_failure_excerpt(log)
         ))
     };
     let result = XtbRunResult {
@@ -699,7 +699,13 @@ fn prepare_xtb_input_with_hydrogens(
         .unwrap_or("")
         .to_ascii_lowercase();
     let prep_log_path = work_dir.join("xtb-prep.log");
-    if !supports_openbabel_hydrogen_extension(&extension) {
+    // xTB cannot read SMILES, and a flat 2D drawing optimizes to a flat
+    // molecule; both need a 3D embedding before the run.
+    let needs_3d = xtb_input_needs_3d_coordinates(input_path, &extension);
+    // Without coordinates there is nothing xTB could run on, so a failed
+    // embedding stops the job instead of handing xTB the SMILES text.
+    let requires_3d = is_smiles_extension(&extension);
+    if !needs_3d && !supports_openbabel_hydrogen_extension(&extension) {
         append_xtb_prep_log(
             &prep_log_path,
             &format!(
@@ -711,6 +717,9 @@ fn prepare_xtb_input_with_hydrogens(
         return Ok(input_path.to_path_buf());
     }
     let Some(obabel) = resolve_executable("obabel") else {
+        if requires_3d {
+            return Err("Open Babel ('obabel') is required to build 3D coordinates from SMILES for xTB. Install Open Babel, then retry.".into());
+        }
         append_xtb_prep_log(
             &prep_log_path,
             "Open Babel executable 'obabel' was not found; xTB will use the original input.",
@@ -720,14 +729,23 @@ fn prepare_xtb_input_with_hydrogens(
     if is_cif_extension(&extension) {
         return prepare_xtb_cif_input_with_hydrogens(input_path, work_dir, output_stem, &obabel);
     }
-    let output_path = work_dir.join(format!("{output_stem}.{}", safe_extension(&extension)));
+    let output_extension = if needs_3d {
+        "sdf".to_string()
+    } else {
+        safe_extension(&extension)
+    };
+    let output_path = work_dir.join(format!("{output_stem}.{output_extension}"));
+    let mut args = vec![
+        input_path.to_string_lossy().to_string(),
+        "-O".into(),
+        output_path.to_string_lossy().to_string(),
+        "-h".into(),
+    ];
+    if needs_3d {
+        args.push("--gen3d".into());
+    }
     let output = Command::new(&obabel)
-        .args([
-            input_path.to_string_lossy().to_string(),
-            "-O".into(),
-            output_path.to_string_lossy().to_string(),
-            "-h".into(),
-        ])
+        .args(&args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
@@ -741,12 +759,22 @@ fn prepare_xtb_input_with_hydrogens(
         append_xtb_prep_log(
             &prep_log_path,
             &format!(
-                "Prepared xTB input with hydrogens using {}: {}",
+                "Prepared xTB input with hydrogens{} using {}: {}",
+                if needs_3d { " and 3D coordinates" } else { "" },
                 obabel.display(),
                 output_path.display()
             ),
         );
         return Ok(output_path);
+    }
+    if requires_3d {
+        return Err(format!(
+            "Open Babel could not build 3D coordinates for xTB. {}",
+            truncate_text(
+                command_output_text(&output.stdout, &output.stderr).trim(),
+                480
+            )
+        ));
     }
     append_xtb_prep_log(
         &prep_log_path,
@@ -829,6 +857,25 @@ fn prepare_xtb_cif_input_with_hydrogens(
         ),
     );
     Ok(input_path.to_path_buf())
+}
+
+fn is_smiles_extension(extension: &str) -> bool {
+    matches!(extension, "smi" | "smiles")
+}
+
+fn xtb_input_needs_3d_coordinates(input_path: &Path, extension: &str) -> bool {
+    if is_smiles_extension(extension) {
+        return true;
+    }
+    if !matches!(extension, "sdf" | "sd" | "mol") {
+        return false;
+    }
+    // Only the first record decides, so a large SDF is not read whole.
+    let mut head = Vec::new();
+    let read =
+        fs::File::open(input_path).and_then(|file| file.take(1024 * 1024).read_to_end(&mut head));
+    read.is_ok()
+        && super::conformer::should_generate_crest_input_3d(&String::from_utf8_lossy(&head))
 }
 
 fn is_cif_extension(extension: &str) -> bool {
@@ -1579,7 +1626,12 @@ fn write_xtb_report(path: &Path, result: &XtbRunResult, log: &str) -> Result<(),
         report.push_str("\n```\n");
     }
     report.push_str("\n## Log Tail\n\n```text\n");
-    report.push_str(&truncate_text(log, 8000));
+    let tail_start = log
+        .char_indices()
+        .rev()
+        .nth(7999)
+        .map_or(0, |(index, _)| index);
+    report.push_str(&log[tail_start..]);
     report.push_str("\n```\n");
     fs::write(path, report).map_err(|err| format!("{}: {err}", path.display()))
 }
@@ -1588,6 +1640,74 @@ fn command_output_text(stdout: &[u8], stderr: &[u8]) -> String {
     let mut text = String::from_utf8_lossy(stdout).to_string();
     text.push_str(&String::from_utf8_lossy(stderr));
     truncate_text(&text, 2000)
+}
+
+/// What xTB said about a failure. Every log opens with the same banner and
+/// citation list, so its head never explains anything. Fatal errors end in an
+/// `[ERROR]` block whose numbered `-N-` lines are a stack, innermost (`-1-`)
+/// first in meaning but last in print order.
+fn xtb_failure_excerpt(log: &str) -> String {
+    const MAX_LINES: usize = 3;
+    let lines = log.lines().map(str::trim).collect::<Vec<_>>();
+    let error_start = lines
+        .iter()
+        .rposition(|line| line.starts_with("[ERROR]"))
+        .unwrap_or(0);
+    let mut stack = lines[error_start..]
+        .iter()
+        .filter_map(|line| {
+            let (number, message) = line.strip_prefix('-')?.split_once('-')?;
+            let number = number.parse::<u8>().ok()?;
+            let message = message.trim();
+            (!message.is_empty()).then_some((number, message))
+        })
+        .collect::<Vec<_>>();
+    stack.sort_by_key(|(number, _)| *number);
+    let mut excerpt = stack
+        .into_iter()
+        .map(|(_, message)| message)
+        .collect::<Vec<_>>();
+    if excerpt.is_empty() {
+        excerpt = lines
+            .iter()
+            .filter_map(|line| line.strip_prefix("[ERROR]").map(str::trim))
+            .filter(|message| {
+                !message.is_empty() && *message != "Program stopped due to fatal error"
+            })
+            .collect();
+    }
+    if excerpt.is_empty() {
+        let mut tail = lines
+            .iter()
+            .rev()
+            .copied()
+            .filter(|line| !is_xtb_log_noise(line))
+            .take(MAX_LINES)
+            .collect::<Vec<_>>();
+        tail.reverse();
+        excerpt = tail;
+    }
+    excerpt
+        .into_iter()
+        .take(MAX_LINES)
+        .map(|line| truncate_text(line, 240))
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+fn is_xtb_log_noise(line: &str) -> bool {
+    line.is_empty()
+        // Banner frames and rules: `-----`, `=====`, `|  x T B  |`, `#####`.
+        || line.starts_with('|')
+        || line.chars().all(|ch| matches!(ch, '-' | '=' | '#' | '*' | ' '))
+        // Fortran backtrace frames: `#0  0x100c2c983`.
+        || line
+            .strip_prefix('#')
+            .is_some_and(|rest| rest.starts_with(|ch: char| ch.is_ascii_digit()))
+        || matches!(
+            line,
+            "ERROR STOP" | "Error termination. Backtrace:" | "abnormal termination of xtb"
+        )
 }
 
 fn truncate_text(text: &str, limit: usize) -> String {
@@ -1832,6 +1952,93 @@ molecular dipole:
 
         fs::remove_dir_all(&work_dir).expect("remove test work dir");
         assert_eq!(status.code(), Some(124));
+    }
+
+    #[test]
+    fn failure_excerpt_reports_the_error_stack_instead_of_the_banner() {
+        // Trimmed from a real run that was handed a CSV collection.
+        let log = r#"      -----------------------------------------------------------
+     |                   =====================                   |
+     |                           x T B                           |
+     |                   =====================                   |
+     |                         S. Grimme                         |
+     |          Mulliken Center for Theoretical Chemistry        |
+     |                    University of Bonn                     |
+      -----------------------------------------------------------
+
+   * xtb version 6.7.1 (edcfbbe) compiled by 'runner@host' on 2026-06-10
+
+ * started run on 2026/11/05 at 23:55:22.960
+########################################################################
+[ERROR] Program stopped due to fatal error
+-2- reading geometry input '/data/moses-properties.csv' failed
+-1- Error: coordinates not present, cannot work without coordinates
+  --> /data/moses-properties.csv:49
+   |
+49 |
+   |^ unexpected end of input
+   |
+########################################################################
+abnormal termination of xtb
+ERROR STOP
+
+Error termination. Backtrace:
+#0  0x100c2c983
+#1  0x100c2d557
+"#;
+        assert_eq!(
+            xtb_failure_excerpt(log),
+            "Error: coordinates not present, cannot work without coordinates; \
+             reading geometry input '/data/moses-properties.csv' failed"
+        );
+    }
+
+    #[test]
+    fn failure_excerpt_falls_back_to_the_last_meaningful_lines() {
+        let log = "      ------\n     |  x T B  |\n      ------\n\n   * started run\n SCC did not converge\n normal output ends here\n\nERROR STOP\n#0  0x1\n";
+        assert_eq!(
+            xtb_failure_excerpt(log),
+            "* started run; SCC did not converge; normal output ends here"
+        );
+    }
+
+    #[test]
+    fn smiles_input_is_embedded_in_3d_before_xtb_runs() {
+        if resolve_executable("obabel").is_none() {
+            eprintln!("skipped: Open Babel is not installed");
+            return;
+        }
+        let work_dir =
+            std::env::temp_dir().join(format!("burette-xtb-smiles-test-{}", unix_timestamp_ms()));
+        fs::create_dir_all(&work_dir).expect("create work dir");
+        // The request a Grid row sends: the row's structure, not the collection file.
+        let request: XtbRunRequest = serde_json::from_value(json!({
+            "operation": "optimize",
+            "inputText": "CCO MOSES 1\n",
+            "inputExtension": "smi",
+            "sourcePath": "/data/moses-properties.csv",
+        }))
+        .expect("request");
+        let prepared = prepare_xtb_input_with_hydrogens(
+            &prepare_xtb_input(&request, &work_dir).expect("input"),
+            &work_dir,
+            "input-with-h",
+        )
+        .expect("prepared input");
+        let text = fs::read_to_string(&prepared).expect("prepared text");
+        fs::remove_dir_all(&work_dir).expect("remove work dir");
+        assert_eq!(
+            prepared.extension().and_then(|value| value.to_str()),
+            Some("sdf")
+        );
+        // Ethanol with hydrogens: 9 atoms, and not flat.
+        assert!(text
+            .lines()
+            .nth(3)
+            .is_some_and(|line| line.trim_start().starts_with("9 ")));
+        assert!(!super::super::conformer::should_generate_crest_input_3d(
+            &text
+        ));
     }
 
     /// Runs every operation the app offers through the same job path as the

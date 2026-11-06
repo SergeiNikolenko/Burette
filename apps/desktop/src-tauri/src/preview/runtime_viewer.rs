@@ -60,6 +60,12 @@ pub(crate) fn create_runtime<R: Runtime>(
     preferences: &ViewerPreferences,
     reload_options: Option<&ViewerReloadOptions>,
 ) -> Result<CreatedRuntime, String> {
+    let popout_sheet = crate::commands::popout_scene::sheet_checkpoint(app, file_path)?;
+    let source_identity = crate::commands::popout_scene::recovery_source(app, file_path)?;
+    let file_path = source_identity
+        .as_ref()
+        .map(|source| source.source_path.as_path())
+        .unwrap_or(file_path);
     let base = app
         .path()
         .app_cache_dir()
@@ -128,7 +134,6 @@ pub(crate) fn create_runtime<R: Runtime>(
     let trajectory_frame_count = xyz_frame_count.max(pdb_model_count);
     let is_trajectory = trajectory_frame_count > 1;
     let xyzrender_available = xyzrender_available_for_document(format, data);
-    let popout_sheet = crate::commands::popout_scene::sheet_checkpoint(app, file_path)?;
     let mut renderer = renderer.to_string();
     let requested_renderer = normalize_renderer_mode(&preferences.renderer_mode);
     if is_trajectory && requested_renderer == "auto" && renderer != "molstar" {

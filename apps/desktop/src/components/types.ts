@@ -137,7 +137,7 @@ export type FileOpenOptions = { shouldApply?: () => boolean; requireSuccess?: bo
 
 export type ShellActions = {
   chooseFiles: () => void | Promise<void>;
-  openStructurePaths: (paths: string[], options?: { mode?: OpenDocumentsMode; rendererMode?: "molstar" | "grid2d" | "xyzrender-external"; shouldApply?: () => boolean }) => void | Promise<void>;
+  openStructurePaths: (paths: string[], options?: { mode?: OpenDocumentsMode; rendererMode?: "molstar" | "grid2d" | "xyzrender-external"; gridViewMode?: "cards" | "table"; gridViewState?: string; shouldApply?: () => boolean }) => void | Promise<void>;
   openTextPaths: (paths: string[]) => void | Promise<void>;
   openPaths: (paths: string[], options?: FileOpenOptions) => void | Promise<void>;
   openStructureRecords: (records: StructureDragPayload["records"], directory?: string) => void | Promise<void>;
@@ -387,6 +387,9 @@ export type ShellViewState = {
   viewerLigandSelection: ViewerLigandSelection | null;
   structureStory: StructureStory | null;
   structureOverlayMode: StructureOverlayMode;
+  viewerLigandSelections?: Record<string, ViewerLigandSelection | null>;
+  structureStories?: Record<string, StructureStory | null>;
+  structureOverlayModes?: Record<string, StructureOverlayMode>;
   xtbStatus: XtbStatus | null;
   xtbSettings: XtbSettings;
   xtbJobs: XtbJob[];

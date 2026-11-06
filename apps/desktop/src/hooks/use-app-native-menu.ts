@@ -2,11 +2,13 @@ import { adjacentMainTabId } from "../stores/molecule-store";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { getAllWindows, getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { confirm as confirmDialog, message as messageDialog } from "@tauri-apps/plugin-dialog";
 import type { ShellActions, ShellViewState, StructureViewerAction } from "../components/types";
 import { reopenClosedTab } from "../components/workspace-panes/pane-actions";
-import { checkpointNativePopoutForExit, nativePopoutBusy, returnNativePopout } from "../components/workspace-panes/native-scene-window";
+import { checkpointNativePopoutForExit } from "../components/workspace-panes/native-scene-window";
+import { nativeWindowTransferBusy } from "../lib/window-transfer";
+import { journalAction } from "../lib/action-journal";
 import { canInspectConformerEnsemble } from "../lib/conformer-ensemble";
 import { isMolstarViewerExtension } from "../lib/docking-documents";
 import { isKetcherImportExtension } from "../lib/drop-actions";
@@ -23,6 +25,7 @@ import {
   fileBackedViewerDocumentPath,
   isAbsoluteNativeFilePath,
   nativeOpenDocumentPaths,
+  nativeTabDocumentPaths,
 } from "../lib/native-menu-paths";
 import type { DerivedColumnKind } from "../lib/derived-columns";
 import { nativeMenuAccelerators } from "../lib/keyboard-shortcuts";
@@ -182,7 +185,7 @@ export function useAppNativeMenu({
     () => nativeOpenDocumentPaths(
       state.documents,
       state.textDocuments,
-      state.tabs.flatMap((tab) => (tab.location.kind === "document" ? [tab.location.path] : [])),
+      nativeTabDocumentPaths(state.tabs),
     ),
     [state.documents, state.textDocuments, state.tabs],
   );
@@ -265,6 +268,7 @@ export function useAppNativeMenu({
   const nativeStateRef = useRef<NativeMenuState>({ ...nativeState, recentDocuments });
   const closingWindowRef = useRef(false);
   const closeRequestInFlightRef = useRef(false);
+  const exitCheckpointRef = useRef<AbortController | null>(null);
   const getWindowDocumentDirtySnapshotRef = useRef(getWindowDocumentDirtySnapshot);
   const confirmSourceCloseWindowRef = useRef(confirmSourceCloseWindow);
   nativeStateRef.current = { ...nativeState, recentDocuments };
@@ -272,27 +276,16 @@ export function useAppNativeMenu({
   confirmSourceCloseWindowRef.current = confirmSourceCloseWindow;
 
   // The single close coordinator for this window: the title-bar close button
-  // and File > Close Window both land here. With other windows open the window
-  // closes on its own after the unsaved-changes checks; the last window keeps
-  // quitting the app through request_app_quit (whose Rust flow runs the
-  // unsaved-changes preflight) so a windowless process never lingers.
+  // and File > Close Window both land here. Every window, including the last,
+  // runs its own unsaved-changes checks. Cmd+Q owns the separate app quit flow.
   const closeCurrentWindow = useCallback(async () => {
     // A close request that is already waiting on a confirm dialog must not be
     // re-entered by a second click or shortcut.
     if (closingWindowRef.current || closeRequestInFlightRef.current) return;
     closeRequestInFlightRef.current = true;
     try {
-      if (nativePopoutBusy()) return;
-      if (await returnNativePopout()) return;
-      const windowCount = await getAllWindows()
-        .then((windows) => windows.length)
-        .catch(() => 1);
-      if (windowCount <= 1) {
-        void invoke("request_app_quit").catch((error) => {
-          console.warn("App quit request failed", error);
-        });
-        return;
-      }
+      // A moved scene closes with its window; Move to Main Window sends it back.
+      if (nativeWindowTransferBusy()) return;
       const barrier = sealWindowMutations();
       const snapshot = getWindowDocumentDirtySnapshotRef.current();
       const decision = await decideWindowClose({
@@ -315,7 +308,7 @@ export function useAppNativeMenu({
           );
         },
       });
-      if (decision === "abort" || nativePopoutBusy()) {
+      if (decision === "abort" || nativeWindowTransferBusy()) {
         resumeWindowMutations();
         return;
       }
@@ -342,7 +335,7 @@ export function useAppNativeMenu({
   useEffect(() => {
     if (isTauriRuntime()) return;
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (!getWindowDocumentDirtySnapshotRef.current().dirty && !nativePopoutBusy()) return;
+      if (!getWindowDocumentDirtySnapshotRef.current().dirty && !nativeWindowTransferBusy()) return;
       event.preventDefault();
       event.returnValue = "";
     };
@@ -388,10 +381,7 @@ export function useAppNativeMenu({
   useEffect(() => {
     if (!isTauriRuntime()) return undefined;
     return trackTauriListener(getCurrentWindow().onCloseRequested((event) => {
-      // Preventing the plain window close is deliberate: the coordinator runs
-      // the unsaved-changes checks first, and for the last window a plain
-      // close left a windowless process alive (macOS default) that then
-      // recreated a window, so the button looked like it did nothing.
+      // The coordinator checks unsaved edits before the native window closes.
       event.preventDefault();
       void closeCurrentWindow();
     }), "native window close guard");
@@ -401,18 +391,40 @@ export function useAppNativeMenu({
     if (!isTauriRuntime()) return undefined;
     let active = true;
     let registrationId: string | null = null;
-    const listener = listen<ExitPreflightRequest>(EXIT_PREFLIGHT_EVENT, ({ payload }) => {
+    // Global listeners also receive requests addressed to other windows. Each
+    // window must checkpoint once, otherwise repeated requests race that work.
+    const listener = getCurrentWindow().listen<ExitPreflightRequest>(EXIT_PREFLIGHT_EVENT, ({ payload }) => {
+      exitCheckpointRef.current?.abort();
+      const checkpointController = new AbortController();
+      exitCheckpointRef.current = checkpointController;
       const barrier = sealWindowMutations();
       const snapshot = getWindowDocumentDirtySnapshotRef.current();
-      void checkpointNativePopoutForExit().then(() => false, () => true).then(checkpointFailed => invoke("respond_to_exit_preflight", {
-        requestId: payload.requestId,
-        closeTransitionActive: snapshot.closeTransitionActive
-          || checkpointFailed
-          || barrier.closeTransitionActive
-          || barrier.pendingCount > 0,
-        dirty: snapshot.dirty || barrier.pendingCount > 0,
-        revision: snapshot.revision,
-      })).catch((error) => {
+      const transferBusy = nativeWindowTransferBusy();
+      void checkpointNativePopoutForExit(checkpointController.signal).then(() => false, (error: unknown) => {
+        if (checkpointController.signal.aborted) return true;
+        console.warn("Native exit scene checkpoint failed", error);
+        return true;
+      }).then(checkpointFailed => {
+        if (checkpointController.signal.aborted) return;
+        const closeTransitionActive = snapshot.closeTransitionActive || transferBusy
+          || barrier.closeTransitionActive || barrier.pendingCount > 0;
+        if (closeTransitionActive || checkpointFailed) journalAction("status", "exit-preflight-blocked", { detail: {
+          requestId: payload.requestId,
+          documentTransition: snapshot.closeTransitionActive,
+          transferBusy,
+          checkpointFailed,
+          closeTransition: barrier.closeTransitionActive,
+          pendingMutations: barrier.pendingCount,
+        } });
+        return invoke("respond_to_exit_preflight", {
+          requestId: payload.requestId,
+          closeTransitionActive,
+          // A scene that could not be saved (its viewer asleep behind another
+          // app, say) asks to quit without saving; blocking left Cmd+Q silent.
+          dirty: snapshot.dirty || barrier.pendingCount > 0 || checkpointFailed,
+          revision: snapshot.revision,
+        });
+      }).catch((error) => {
         console.warn("Native exit preflight response failed", error);
       });
     });
@@ -427,6 +439,7 @@ export function useAppNativeMenu({
     });
     return () => {
       active = false;
+      exitCheckpointRef.current?.abort();
       cleanup();
       if (registrationId) {
         void invoke("unregister_exit_preflight_listener", { registrationId });
@@ -437,7 +450,11 @@ export function useAppNativeMenu({
   useEffect(() => {
     if (!isTauriRuntime()) return undefined;
     return trackTauriListener(
-      listen(EXIT_TRANSITION_RESUMED_EVENT, resumeWindowMutations),
+      listen(EXIT_TRANSITION_RESUMED_EVENT, () => {
+        exitCheckpointRef.current?.abort();
+        exitCheckpointRef.current = null;
+        resumeWindowMutations();
+      }),
       EXIT_TRANSITION_RESUMED_EVENT,
     );
   }, []);
@@ -646,7 +663,8 @@ export function useAppNativeMenu({
         if (activeDocument && isGrid) actions.openCorrelationMatrix(activeDocument.id);
         return;
       case "file.close-tab":
-        await actions.closeActiveDocument();
+        if (activeTabClosable || (state.activeTabId && state.tabs.length > 1)) await actions.closeActiveDocument();
+        else await closeCurrentWindow();
         return;
       case "file.close-other-tabs":
         if (!state.activeTabId) return;
@@ -730,7 +748,7 @@ export function useAppNativeMenu({
       default:
         console.warn(`Unknown native menu command: ${command}`);
     }
-  }, [actions, activeDocument, canOpenCollectionAnalysis, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, closeCurrentWindow, conformerSelection, isGrid, openDocuments, saveActiveSource, sourceSaveEnabled, state.activeTabId, state.activeTab?.pinned, state.tabs]);
+  }, [actions, activeDocument, activeTabClosable, canOpenCollectionAnalysis, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, closeCurrentWindow, conformerSelection, isGrid, openDocuments, saveActiveSource, sourceSaveEnabled, state.activeTabId, state.activeTab?.pinned, state.tabs]);
 
   // Grid commands need the mounted grid and its records, not just a new document.
   // Cancel if the user leaves the target tab while it is opening.

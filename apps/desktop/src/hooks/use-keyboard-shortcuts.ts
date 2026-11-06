@@ -92,6 +92,13 @@ export function useKeyboardShortcuts(state: ShellViewState, actions: ShellAction
         void actions.openMostRecentStructure();
         return;
       }
+      // Native macOS menus own Command+Shift+brackets, including viewer frames.
+      // Keep Control+Tab available as an alternate while the shell has focus.
+      if (matchesAccelerator(event, "Ctrl+Tab") || matchesAccelerator(event, "Ctrl+Shift+Tab")) {
+        event.preventDefault();
+        selectAdjacentTab(event.shiftKey ? -1 : 1);
+        return;
+      }
       if (isTauriRuntime()) return;
       if (commandKey && key === "z" && !event.altKey) {
         if (

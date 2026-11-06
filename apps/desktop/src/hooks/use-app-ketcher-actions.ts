@@ -247,7 +247,9 @@ export function useAppKetcherActions({
     if (isGridDocumentCloseTransitionActive(request.documentId)) {
       throw new Error("Wait for the collection update to finish before applying the grid edit.");
     }
-    const ketcherTabId = tabs.find((tab) => tab.location.kind === "ketcher")?.id ?? null;
+    // A docked editor stays open beside the collection and follows its selection.
+    const ketcherTab = tabs.find((tab) => tab.location.kind === "ketcher");
+    const ketcherTabId = ketcherTab && !ketcherTab.pane ? ketcherTab.id : null;
     const iframe = activeViewerIframeForDocument(request.documentId, "grid2d");
     if (!iframe?.contentWindow) {
       pushStatus("Grid edit target is not open.", "error");

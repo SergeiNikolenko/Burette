@@ -22,6 +22,7 @@ import { createTextSearchPanel, toggleTextSearch } from "./text-file-viewer/text
 import { registerTextFind } from "../lib/text-find";
 import { classifySourceEditEligibility, classifySourceShape, sourceNotEditableMessage } from "../lib/source-editing/policy";
 import { requestContextualGuide } from "./onboarding/request";
+import { registerSourceEditor, restoreSourceEditorView, type SourceEditorViewState } from "../lib/source-editing/view-state";
 
 const AGENT_SHELL_BUILD = import.meta.env.VITE_BURETTE_AGENT_SHELL === "1";
 
@@ -35,6 +36,7 @@ export function TextFileViewer({
   openPaths?: MarkdownOpenPaths;
   onStructureSelection?: (document: TextFileDocument, selection: TextStructureSelection | null) => void;
   sourceEditing?: {
+    viewState?: SourceEditorViewState;
     editable: boolean;
     content: string;
     status: string;
@@ -61,6 +63,7 @@ export function TextFileViewer({
   const lineDragStartRef = useRef<{ from: number; to: number } | null>(null);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const editRequestedRef = useRef(false);
+  const restoredViewRef = useRef<SourceEditorViewState | undefined>(undefined);
   const languageCompartment = useMemo(() => new Compartment(), [document.id]);
   const markdownDocument = isMarkdown(document);
   const maestroDocument = isMaestroText(document);
@@ -167,6 +170,7 @@ export function TextFileViewer({
     });
     viewRef.current = view;
     const unregisterFind = registerTextFind(view.dom, () => { toggleTextSearch(view); });
+    const unregisterSource = editable ? registerSourceEditor(document.path, view) : () => {};
     const lineRangeFromElement = (lineElement: HTMLElement) => {
       const line = view.state.doc.lineAt(view.posAtDOM(lineElement, 0));
       return { from: line.from, to: line.to };
@@ -270,6 +274,7 @@ export function TextFileViewer({
       parent.removeEventListener("pointerleave", onPointerLeave);
       view.destroy();
       unregisterFind();
+      unregisterSource();
       viewRef.current = null;
     };
   }, [document.id, editable, languageCompartment, nonEditorDocument]);
@@ -284,6 +289,14 @@ export function TextFileViewer({
     });
     syncingContentRef.current = false;
   }, [editorContent, nonEditorDocument]);
+
+  useEffect(() => {
+    const state = sourceEditing?.viewState;
+    const view = viewRef.current;
+    if (!state || !view || !editable || restoredViewRef.current === state) return;
+    restoreSourceEditorView(view, state);
+    restoredViewRef.current = state;
+  }, [editable, editorContent, sourceEditing?.viewState]);
 
   useEffect(() => {
     if (nonEditorDocument) return undefined;

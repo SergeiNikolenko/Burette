@@ -123,6 +123,18 @@ const restoredStop = viewContext.window.BuretteRendererViewState.observeSheetVie
 assert.deepEqual(placed.style, { left: '300px', top: '300px', width: '800px', height: '400px' });
 restoredStop();
 
+// A fresh, untouched base follows CSS sizing until the user edits its layout.
+const responsive = { ...placed, style: {}, dataset: {}, classList: { contains: () => true } };
+viewport.querySelectorAll = () => [responsive];
+const responsiveStop = viewContext.window.BuretteRendererViewState.observeSheetViewport(viewport, null);
+viewport.clientWidth = 300; resize();
+assert.deepEqual(responsive.style, { left: '50%', top: '50%' }, 'opening Style keeps the default artwork centered without pinning its dimensions');
+responsive.dataset.buretSheetPositioned = 'true'; resize();
+assert.equal(responsive.style.width, '800px', 'explicitly resized artwork retains its authored dimensions');
+responsiveStop();
+first.save('responsive', { xyz: { scale: 1, x: 0, y: 0, responsive: true } });
+assert.equal(runtime().read('responsive').xyz.responsive, true, 'automatic sizing survives a renderer remount');
+
 // An accidentally broadcast host command must not open another document's editor.
 const viewerSource = readFileSync(new URL('../PreviewExtension/Web/viewer.js', import.meta.url), 'utf8');
 const branch = viewerSource.slice(viewerSource.indexOf("    if (event.source === window.parent && body.type === 'openXyzrenderEditor')"), viewerSource.indexOf("    if (event.source === window.parent && body.type === 'applyXyzrenderAnimationFrame')"));

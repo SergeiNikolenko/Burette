@@ -84,7 +84,9 @@ export function useAppViewerStateMessages({
         const dockView = dockCameraRestore(eventSource, document.id);
         postMessageToViewerSource(eventSource, { source: "burette-host", body: {
           type: "rendererViewStateResponse", documentId: document.id, requestId: body.requestId,
-          viewState: dockView?.viewState ?? rendererViewReloadOptions(document.path).rendererViewState,
+          // A new scene archive is authoritative; an older source-file camera
+          // must not overwrite it. Later remounts retain this archive's edits.
+          viewState: dockView?.viewState ?? rendererViewReloadOptions(document.recoveryPath ?? document.path).rendererViewState,
           sourceViewport: dockView?.sourceViewport,
         } });
       }

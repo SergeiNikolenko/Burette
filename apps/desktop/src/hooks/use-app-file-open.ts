@@ -1,3 +1,4 @@
+import { openRightTool } from "../lib/right-workspace-panel";
 import { isNativePreviewWindow } from "../lib/window-scope";
 import { useCallback } from "react";
 import { saveStructureRecordsInFolder } from "./save-structure-records";
@@ -63,7 +64,7 @@ type UseAppFileOpenOptions = {
   addProjectRoot: (path: string) => void;
   addBackgroundDocuments: (documents: ViewerDocument[]) => void;
   addBackgroundTextDocuments: (documents: TextFileDocument[]) => void;
-  addDocuments: (documents: ViewerDocument[], options?: { preserveActiveTab?: boolean }) => void;
+  addDocuments: (documents: ViewerDocument[], options?: { preserveActiveTab?: boolean; gridViewMode?: "cards" | "table"; gridViewState?: string }) => void;
   addTextDocuments: (documents: TextFileDocument[], options?: { preserveActiveTab?: boolean }) => void;
   closeDocument: (id: string) => void;
   detectContentSpectrumPaths: (paths: string[]) => Promise<Set<string>>;
@@ -177,7 +178,7 @@ export function useAppFileOpen({
       paths: string[],
       reloadOptions?: ViewerReloadOptions,
       preferencesOverride?: Partial<ViewerPreferences>,
-      options: { replace?: boolean; inActiveTab?: boolean; mode?: OpenDocumentsMode; deferErrorStatus?: boolean; preserveActiveTab?: boolean; reuseExisting?: boolean; shouldApply?: () => boolean } = {},
+      options: { replace?: boolean; inActiveTab?: boolean; fromSource?: boolean; mode?: OpenDocumentsMode; gridViewMode?: "cards" | "table"; gridViewState?: string; deferErrorStatus?: boolean; preserveActiveTab?: boolean; reuseExisting?: boolean; shouldApply?: () => boolean } = {},
     ) => {
       const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
       if (!cleanPaths.length) return;
@@ -224,11 +225,13 @@ export function useAppFileOpen({
             ? useMoleculeStore.getState().documents.map((document) => [document.path, document] as const)
             : []);
           const pathsToOpen = batchPaths.filter((path) => !retainedByPath.has(path));
+          const recoveryPaths = new Map(useMoleculeStore.getState().documents.flatMap(document => !options.fromSource && document.recoveryPath
+            ? [[document.path, document.recoveryPath] as const] : []));
           let batch: OpenDocumentsResult;
           try {
             batch = pathsToOpen.length === 0 ? { documents: [], errors: [] } : isTauriRuntime()
               ? await invoke<OpenDocumentsResult>("open_documents", {
-                  paths: pathsToOpen,
+                  paths: pathsToOpen.map(path => recoveryPaths.get(path) ?? path),
                   preferences: effectivePreferences,
                   reloadOptions,
                   mode: options.mode,
@@ -240,7 +243,10 @@ export function useAppFileOpen({
               ? { ...document, runtimeDeferredPreferences: { ...preferencesOverride, rendererMode: effectivePreferences.rendererMode } }
               : document);
             if (retainedByPath.size > 0) {
-              const openedByPath = new Map(batch.documents.map((document) => [document.path, document]));
+              const openedByPath = new Map(batch.documents.flatMap((document) => [
+                [document.path, document] as const,
+                ...(document.recoveryPath ? [[document.recoveryPath, document] as const] : []),
+              ]));
               batch.documents = batchPaths.flatMap((path) => {
                 const document = retainedByPath.get(path) ?? openedByPath.get(path);
                 return document ? [document] : [];
@@ -257,13 +263,19 @@ export function useAppFileOpen({
             await abortOpenDocumentClaims(batch.documents);
             return null;
           }
+          if (options.fromSource) {
+            for (const opened of batch.documents) {
+              const previous = useMoleculeStore.getState().documents.find(document => document.path === opened.path && document.recoveryPath);
+              if (previous) replaceDocument(previous.id, opened);
+            }
+          }
           result.errors.push(...batch.errors);
           if (batch.documents.length === 0) continue;
           const previousActiveTabId = useMoleculeStore.getState().activeTabId;
           try {
             if (result.documents.length === 0 && options.replace) setDocuments(batch.documents);
             else if (result.documents.length === 0 && options.inActiveTab) openDocumentsInActiveTab(batch.documents);
-            else addDocuments(batch.documents, { preserveActiveTab: options.preserveActiveTab || result.documents.length > 0 });
+            else addDocuments(batch.documents, { preserveActiveTab: options.preserveActiveTab || result.documents.length > 0, gridViewMode: options.gridViewMode, gridViewState: options.gridViewState });
           } catch (error) {
             void abortOpenDocumentClaims(batch.documents).catch((abortError) => {
               console.warn("Open document claim abort failed", abortError);
@@ -379,9 +391,7 @@ export function useAppFileOpen({
         }
         if (!options.background && !options.inActiveTab && !options.preserveActiveTab && documents[0]) {
           setActiveDocument(documents[0].id);
-          setDockDocument("right", documents[0].id);
-          setDockActiveTab("right", "inspector");
-          setDockOpen("right", true);
+          openRightTool("inspector", documents[0].path);
           setDockDocument("bottom", documents[0].id);
           openDockTab("bottom", "spectrum");
         }

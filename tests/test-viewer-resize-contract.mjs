@@ -25,7 +25,7 @@ const observerBlock = viewer.slice(
 assert.ok(observerBlock.length > 0, "installViewerResizeObserver must exist");
 assert.match(
   observerBlock,
-  /scheduleViewerResize\(viewer\);/u,
+  /scheduleViewerResize\(viewer, true\);/u,
   "the container observer must schedule through scheduleViewerResize",
 );
 assert.doesNotMatch(
@@ -60,7 +60,7 @@ assert.match(
 );
 assert.match(
   viewer,
-  /if \(!viewerCanvasIsVisible\(target\)\) return;/u,
+  /if \(!target \|\| !viewerCanvasIsVisible\(target\)\) return;/u,
   "a queued resize must be cancelled if its tab becomes hidden before the frame runs",
 );
 assert.match(
@@ -87,7 +87,7 @@ assert.match(filePage, /stagingIframeRef=\{stagingIframeRef\}/u);
 // release, coalesce within a frame, and apply the last geometry in that frame.
 const schedulerBlock = viewer.slice(
   viewer.indexOf("const resizeState = {"),
-  viewer.indexOf("  let viewerResizeObserver = null;"),
+  viewer.indexOf("  function installViewerResizeObserver(viewer)"),
 );
 const hostGestureHandler = viewer.slice(
   viewer.indexOf("    if (event.source === window.parent && body.type === 'hostLayoutGesture')"),
@@ -95,11 +95,16 @@ const hostGestureHandler = viewer.slice(
 );
 const animationFrames = [];
 const makeScheduler = new Function(
-  "requestAnimationFrame", "setTimeout", "getComputedStyle", "window",
-  `${schedulerBlock}
+  "requestAnimationFrame", "setTimeout", "getComputedStyle", "window", "ResizeObserver",
+  `let sequenceDrag = false;
+   const document = { querySelector: () => sequenceDrag };
+   ${schedulerBlock}
+   ${observerBlock}
    return {
      scheduleViewerResize,
+     installViewerResizeObserver,
      setHostVisible(value) { hostViewerVisible = value; },
+     setSequenceDrag(value) { sequenceDrag = value; },
      setHostGesture(activeViewer, active) {
        const event = { source: window.parent }, body = { type: 'hostLayoutGesture', active };
        ${hostGestureHandler}
@@ -193,25 +198,62 @@ globalThis.setTimeout = callback => { settled.set(++timerId, callback); return t
 globalThis.clearTimeout = id => settled.delete(id);
 try {
   const messages = [];
+  let reportBounds;
   const live = makeScheduler(
     callback => { animationFrames.push(callback); return animationFrames.length; },
     () => { throw Error("scheduler does not own settling timers"); },
     () => ({ display: "block", visibility: "visible" }),
     { molstar: { BuretteResizeInteraction }, parent: { postMessage: value => messages.push(value) } },
+    class {
+      constructor(notify) { reportBounds = () => notify([{ contentRect: bounds }]); }
+      observe() {}
+    },
   );
   Object.assign(fakeViewer.plugin.canvas3dContext.canvas, { width: 1600, height: 1200, style: { width: '800px', height: '600px' } });
   const start = applied.length;
   live.scheduleViewerResize(fakeViewer); tick();
+  live.installViewerResizeObserver(fakeViewer);
+  live.setSequenceDrag(true);
   for (let i = 0; i < 60; i++) {
     bounds = { width: 500 + i * 2, height: 400 + i };
-    live.scheduleViewerResize(fakeViewer); tick();
+    live.scheduleViewerResize(fakeViewer);
+    assert.equal(fakeViewer.plugin.canvas3dContext.canvas.style.left, '50%',
+      'the retained projection must be centered before an observer-triggered paint');
+    tick();
     fakeViewer.plugin.handleResize();
     assert.equal(applied.length, start + 1, "GL targets stay intact throughout the gesture");
   }
+  live.setSequenceDrag(false);
   [...settled.values()].forEach(callback => callback()); settled.clear();
   assert.equal(applied.length, start + 2);
   assert.deepEqual(painted, bounds, "the final resize must draw atomically");
   assert.equal(messages.at(-1).body.frames, 60);
+
+  // Full View followed by Sequence. The actual observer must restore the
+  // drawing buffer before paint, including a second layout change that lands
+  // while a normal scheduler frame is pending.
+  const beforeDiscrete = applied.length;
+  for (const size of [{ width: 924, height: 944 }, { width: 924, height: 840 }]) {
+    bounds = size;
+    live.scheduleViewerResize(fakeViewer);
+    reportBounds();
+    assert.deepEqual(painted, size, 'a discrete layout draws at the new bounds before the next frame');
+    assert.notEqual(fakeViewer.plugin.canvas3dContext.canvas.style.left, '50%', 'no centered old buffer');
+    assert.equal(settled.size, 0, 'a discrete layout must not debounce the drawing buffer');
+  }
+  tick();
+  assert.equal(applied.length, beforeDiscrete + 2, 'observer draws and queued notifications are deduplicated');
+
+  live.setSequenceDrag(true);
+  bounds = { width: 924, height: 800 };
+  reportBounds(); tick();
+  assert.equal(settled.size, 1, 'continuous Sequence resizing can reuse the buffer');
+  live.setSequenceDrag(false);
+  bounds = { width: 700, height: 800 };
+  reportBounds();
+  assert.deepEqual(painted, bounds, 'discrete geometry interrupts a previous gesture settle');
+  assert.equal(settled.size, 0);
+
   const beforeHold = applied.length;
   const originalHeldResize = fakeViewer.plugin.handleResize;
   live.setHostGesture(fakeViewer, true);
@@ -224,24 +266,26 @@ try {
   [...settled.values()].forEach(callback => callback()); settled.clear();
   fakeViewer.plugin.handleResize();
   assert.equal(applied.length, beforeHold, 'paused host gestures keep internal Mol* resize gated');
-  live.setHostGesture(replacement, false); tick();
-  [...settled.values()].forEach(callback => callback()); settled.clear();
+  live.setHostGesture(replacement, false);
   assert.equal(fakeViewer.plugin.handleResize, originalHeldResize, 'release includes a previous active viewer');
   assert.equal(replacement.plugin.handleResize, replacementResize);
   assert.equal(applied.length, beforeHold + 1, 'host release restores and draws exactly once');
   assert.deepEqual(painted, bounds);
+  tick();
+  assert.equal(applied.length, beforeHold + 1, 'queued events do not repeat the release draw');
   live.scheduleViewerResize(fakeViewer); tick();
   const beforeHidden = applied.length;
+  live.setSequenceDrag(true);
   bounds = { width: 700, height: 500 };
   live.scheduleViewerResize(fakeViewer); tick();
   live.setHostVisible(false);
   [...settled.values()].forEach(callback => callback()); settled.clear();
   assert.equal(applied.length, beforeHidden, "settling a hidden viewer does not draw");
+  live.setSequenceDrag(false);
   live.setHostVisible(true);
   live.scheduleViewerResize(fakeViewer); tick();
-  assert.equal(settled.size, 1, "reactivation at the same bounds must still catch up");
-  [...settled.values()].forEach(callback => callback()); settled.clear();
-  assert.deepEqual(painted, bounds);
+  assert.equal(settled.size, 0);
+  assert.deepEqual(painted, bounds, "reactivation at the same bounds must still catch up");
 } finally {
   BuretteResizeInteraction.dispose(fakeViewer);
   globalThis.setTimeout = originalSetTimeout;

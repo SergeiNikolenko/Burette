@@ -1,3 +1,4 @@
+import { useWorkspacePanesStore } from "../stores/workspace-panes-store";
 import { NativePreviewLayout } from "./workspace-panes/native-preview-layout";
 import { isNativePreviewWindow } from "../lib/window-scope";
 import { UsageStatistics } from "./usage-statistics";
@@ -12,8 +13,9 @@ import { usePanelEdgeVariables } from "./ui/use-panel-edge-variables";
 import { SidebarFileOperations } from "./sidebar/file-operations";
 import { WorkspaceMenus } from "./workspace-menus";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
-import { ArrowLeft, ArrowRight, SidebarLeft as PanelLeft } from "@/components/ui/app-icons";
+import { ArrowLeft, ArrowRight, SidebarLeft, SidebarLeftHidden } from "@/components/ui/app-icons";
 import { RightDockToggle } from "./workspace-panes/right-dock-toggle";
+import { FullViewExitButton } from "./workspace-panes/full-view-exit";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { DockPanel } from "./dock-panel";
 import { ViewerArea } from "./editor-area";
@@ -30,7 +32,6 @@ import type { ShellActions, ShellViewState } from "./types";
 import type { FileDropPreview } from "../lib/drop-preview";
 import { createDragCommit, type DragCommit } from "../lib/drag-commit";
 import { isTauriRuntime } from "../lib/tauri";
-import { activeViewerIframeForDocument, postMessageToViewerSource } from "../lib/viewer-bridge";
 import { buildThemeStyle, resolveThemeMode, useSystemThemeMode } from "../lib/theme";
 import { isHostedKetcherWidget, isHostedMcpWidget } from "../lib/hosted-mcp-widget";
 import { HostedKetcherViewSwitch } from "./hosted-ketcher-view-switch";
@@ -39,14 +40,11 @@ import { AnnotateToggle, AnnotationLayer } from "./annotation-layer";
 import { isAgentPluginSurface } from "../lib/native-mcp-workspace";
 import { OnboardingHost } from "./onboarding";
 
-// Collection grids may continue behind an overlay inspector; molecular viewers
-// must instead resize to the visible panel so their controls remain reachable.
-const MAIN_MIN_WIDTH = 420;
 // The editor tab strip is absolutely positioned over the first band of the
 // viewer column, so that band is the one part of it the bottom dock may not
 // climb into: the dock's own tabs would land under the document tabs. Mirrors
 // `--chrome-height` in styles.css, and test-ui-shell-contract keeps them equal.
-const CHROME_HEIGHT = 56;
+const CHROME_HEIGHT = 44;
 
 // react-resizable-panels writes `overflow: auto` inline on every panel, which
 // beats the `overflow: hidden` in our panel classes — content with its own
@@ -54,24 +52,8 @@ const CHROME_HEIGHT = 56;
 // caller's `style` is merged after the library's, so this restores clipping.
 const CLIPPED_PANEL_STYLE: CSSProperties = { overflow: "hidden" };
 
-// The one panel that must not clip: once the right dock overlaps it, its
-// content keeps MAIN_MIN_WIDTH and spills past the panel's right edge, where
-// the dock — painted after it — covers the overflow.
-const SPILLING_PANEL_STYLE: CSSProperties = { overflow: "visible" };
-
 function clampSidebarWidth(width: number, maxSidebarWidth: number) {
   return Math.max(240, Math.min(maxSidebarWidth, Math.round(width)));
-}
-
-// The separator may travel to the leading edge, covering the entire viewer.
-function rightDockMaxWidth(workbenchWidth: number) {
-  return Math.max(0, workbenchWidth);
-}
-
-function clampRightDockWidth(width: number, workbenchWidth: number) {
-  const maxWidth = rightDockMaxWidth(workbenchWidth);
-  const minWidth = Math.min(180, maxWidth);
-  return Math.max(minWidth, Math.min(maxWidth, Math.round(width)));
 }
 
 // Keeps an always-mounted collapsible Panel in sync with an external open/closed
@@ -256,10 +238,8 @@ function WorkspaceAppLayout({
   onPaste: (event: React.ClipboardEvent<HTMLElement>) => void;
 }) {
   const sidebarElementRef = useRef<HTMLDivElement | null>(null);
-  const rightDockElementRef = useRef<HTMLDivElement | null>(null);
   const shellRef = usePanelEdgeVariables([
     { elementRef: sidebarElementRef, property: "--sidebar-edge" },
-    { elementRef: rightDockElementRef, property: "--right-dock-edge" },
   ]);
   const viewportWidth = useViewportWidth(shellRef);
   const tauriRuntime = isTauriRuntime();
@@ -296,7 +276,8 @@ function WorkspaceAppLayout({
   }, [tauriRuntime]);
   const placement = useNativeWorkspacePlacement();
   const [nativeNavigationOpen, setNativeNavigationOpen] = useState(false);
-  const nativeExpanded = placement?.mode === "fullscreen" && viewportWidth >= 760;
+  const nativeWorkspaceChrome = placement?.mode === "fullscreen";
+  const nativeExpanded = nativeWorkspaceChrome && viewportWidth >= 760;
   const hostedMcpWidget = isHostedMcpWidget();
   const heroEmbed = isWebDemoHeroEmbed();
   // Codex sidebar bounds: 240px up to 520px, always leaving 240px of content.
@@ -310,10 +291,7 @@ function WorkspaceAppLayout({
     : settingsMode || (!hostedMcpWidget && state.sidebarOpen);
   const sidebarWidth = clampSidebarWidth(state.sidebarWidth, maxSidebarWidth);
   const sidebarLayoutWidth = sidebarVisible ? sidebarWidth : 0;
-  const workbenchWidth = viewportWidth - sidebarLayoutWidth;
-  const rightDockWidth = clampRightDockWidth(state.rightDockWidth, workbenchWidth);
-  const activeGridId = state.activeDocument?.renderer === "grid2d" ? state.activeDocument.id : null;
-  const layoutState = sidebarWidth === state.sidebarWidth && rightDockWidth === state.rightDockWidth ? state : { ...state, sidebarWidth, rightDockWidth };
+  const layoutState = sidebarWidth === state.sidebarWidth ? state : { ...state, sidebarWidth };
   const compactLeadingChrome = !tauriRuntime || windowFullscreen;
   // How far the leading window controls reach: the tab strip starts past them
   // when the sidebar is narrower than they are (or closed). The sidebar's own
@@ -326,7 +304,8 @@ function WorkspaceAppLayout({
     : viewportWidth <= 520
       ? "calc(82px / var(--window-zoom, 1) + 40px)"
       : "calc(92px / var(--window-zoom, 1) + 100px)";
-  const rightDockOpen = !settingsMode && !hostedMcpWidget && state.rightDockOpen;
+  const fullViewTabId = useWorkspacePanesStore(store => store.fullViewTabId);
+  const fullViewGroup = state.tabs.find(tab => tab.id === fullViewTabId)?.pane;
   // The agent plugin surfaces (native widget and browser agent shell) have no
   // bottom dock: its Jobs/compute tabs are excluded there. Annotate mode sends
   // to the agent chat, so only these surfaces have it.
@@ -351,19 +330,14 @@ function WorkspaceAppLayout({
   // would collapse the panel before the group is marked as animating and the
   // toggle would jump instead of sliding.
   const sidebarAnimating = usePanelToggleAnimation(sidebarVisible, shellRef);
-  const rightDockAnimating = usePanelToggleAnimation(rightDockOpen, shellRef);
   const bottomDockAnimating = usePanelToggleAnimation(bottomDockOpen, shellRef);
   const sidebarPanelRef = useCollapsiblePanelSync(sidebarVisible, sidebarWidth);
-  const rightDockPanelRef = useCollapsiblePanelSync(rightDockOpen, rightDockWidth);
   const bottomDockPanelRef = useCollapsiblePanelSync(bottomDockOpen, state.bottomDockHeight);
   // Seed closed panels collapsed: allocating their expanded width first can
   // leave the center at 0% when a narrow host mounts before its first resize.
   const initialSidebarSize = useInitialSize(sidebarVisible ? sidebarWidth : 0);
-  const initialRightDockSize = useInitialSize(rightDockOpen ? rightDockWidth : 0);
   const initialBottomDockSize = useInitialSize(bottomDockOpen ? state.bottomDockHeight : 0);
   // Latest open flags / stored pixel sizes, readable from observer callbacks.
-  const rightDockOpenRef = useRef(rightDockOpen);
-  rightDockOpenRef.current = rightDockOpen;
   const bottomDockOpenRef = useRef(bottomDockOpen);
   bottomDockOpenRef.current = bottomDockOpen;
   // The sidebar store only exposes a toggle; wrap it as an idempotent setter so
@@ -381,8 +355,6 @@ function WorkspaceAppLayout({
   // 4.14 preserves fixed pixel sizes from the requested (unclamped) layout.
   // A second rAF correction would resize nested groups again after every move.
   const workspaceGroupRef = useRef<HTMLDivElement | null>(null);
-  const workbenchGroupRef = useRef<HTMLDivElement | null>(null);
-  const workbenchMainGroupRef = useRef<HTMLDivElement | null>(null);
   // Sizes reported while a separator is being dragged are committed once, on
   // release; anything else (keyboard resizes) commits as it comes. The drag
   // frames themselves need no store round-trip: the panel library lays the
@@ -390,59 +362,12 @@ function WorkspaceAppLayout({
   // variables the chrome follows.
   const beginResizeDrag = useResizeDragSession(shellRef);
   const sidebarResize = useDragCommittedSize(onSidebarWidthChange);
-  const rightDockResize = useDragCommittedSize((px) => actions.setDockSize("right", px));
   const bottomDockResize = useDragCommittedSize((px) => actions.setDockSize("bottom", px));
-  // A spilling grid keeps its full width and fires no resize when the dock
-  // floats over it, so how far the dock covers it is measured from the two rects
-  // and pushed to the grid runtime. The measurement is driven by a ResizeObserver
-  // on the dock element rather than React state: the panel library resizes the
-  // layout directly, and its widths do not always flow back through state in time.
-  useEffect(() => {
-    if (!activeGridId) return;
-    const observer = new ResizeObserver(() => post());
-    const shell = shellRef.current;
-    const post = () => {
-      // Keep the toolbar inside the exposed strip throughout the gesture.
-      // The grid defers costly virtual-window measurement until resize settles.
-      const iframe = activeViewerIframeForDocument(activeGridId, "grid2d");
-      const win = iframe?.contentWindow ?? null;
-      if (!iframe || !win) return;
-      observer.observe(iframe);
-      const dockEl = rightDockOpen ? rightDockElementRef.current : null;
-      const dockLeft = dockEl?.getBoundingClientRect().left;
-      const cover = dockLeft === undefined ? 0 : Math.max(0, Math.round(iframe.getBoundingClientRect().right - dockLeft));
-      postMessageToViewerSource(win, { source: "burette-grid-host", body: { type: "gridViewportCover", cover, rightDockOpen } });
-    };
-    post();
-    const onViewerLoad = (event: Event) => {
-      if (event.target === activeViewerIframeForDocument(activeGridId, "grid2d")) post();
-    };
-    window.addEventListener("load", onViewerLoad, true);
-    const pinObserver = new MutationObserver(() => post());
-    if (shell) pinObserver.observe(shell, { attributes: true, attributeFilter: ["data-resizing"] });
-    const dockEl = rightDockElementRef.current;
-    if (dockEl) observer.observe(dockEl);
-    if (workbenchGroupRef.current) observer.observe(workbenchGroupRef.current);
-    // The iframe may not be mounted yet right after a load; retry once shortly.
-    const timer = window.setTimeout(post, 400);
-    return () => {
-      observer?.disconnect();
-      pinObserver.disconnect();
-      window.clearTimeout(timer);
-      window.removeEventListener("load", onViewerLoad, true);
-    };
-    // viewportWidth belongs here: when the dock overlaps a floored grid, a window
-    // resize moves the dock without changing its size, so the dock's own observer
-    // stays silent while `cover` has in fact changed. The width is quantised, so
-    // this re-runs once per resize step rather than once per pixel.
-  }, [activeGridId, rightDockOpen, viewportWidth, shellRef]);
   const systemThemeMode = useSystemThemeMode();
-  // The layout widths seed the chrome before the edge observer's first pass;
-  // `--sidebar-edge` / `--right-dock-edge` take over from there.
+  // Seed the sidebar width before the edge observer’s first pass.
   const shellStyle = {
     ...buildThemeStyle(state.preferences, systemThemeMode),
     "--sidebar-layout-width": `${sidebarLayoutWidth}px`,
-    "--right-dock-width": `${rightDockOpen ? rightDockWidth : 0}px`,
     "--chrome-leading-inset": chromeLeadingInset,
     "--chrome-height": hostedMcpWidget ? "0px" : undefined,
   } as CSSProperties;
@@ -481,6 +406,7 @@ function WorkspaceAppLayout({
       data-runtime={tauriRuntime ? "tauri" : "browser"}
       data-window-fullscreen={windowFullscreen ? "true" : undefined}
       data-hosted-mcp-widget={hostedMcpWidget ? "true" : undefined}
+      data-native-workspace-chrome={window.BuretteMcpWorkspace && nativeWorkspaceChrome ? "true" : undefined}
       data-hero-embed={heroEmbed ? "true" : undefined}
       data-settings-mode={settingsMode ? "true" : undefined}
       data-drop-active={state.dropActive || undefined}
@@ -501,7 +427,7 @@ function WorkspaceAppLayout({
       <XyzrenderAnimationDialog />
       {!hostedMcpWidget && <UsageStatistics pageKind={activePageKind ?? undefined} renderer={state.activeDocument?.renderer} />}
       {!hostedMcpWidget && <div className="drag-region" data-tauri-drag-region />}
-      {chromeVisible && !window.BuretteMcpWorkspace && (
+      {chromeVisible && (!window.BuretteMcpWorkspace || nativeWorkspaceChrome) && (
         <>
           {!hostedMcpWidget ? (
             <div className="chrome-leading-controls" data-tauri-drag-region>
@@ -536,10 +462,12 @@ function WorkspaceAppLayout({
                   type="button"
                   className="sidebar-toggle-root"
                   onMouseDown={(event) => event.preventDefault()}
-                  onClick={onToggleSidebar}
-                  aria-label={state.sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+                  onClick={window.BuretteMcpWorkspace ? () => setNativeNavigationOpen(open => !open) : onToggleSidebar}
+                  disabled={Boolean(window.BuretteMcpWorkspace && !nativeExpanded)}
+                  aria-label={sidebarVisible ? "Hide sidebar" : "Show sidebar"}
+                  aria-expanded={sidebarVisible}
                 >
-                  <DockToggleIcon />
+                  {sidebarVisible ? <SidebarLeft size={16} aria-hidden /> : <SidebarLeftHidden size={16} aria-hidden />}
                 </ToolbarButton>
               </ShortcutTooltip>
             </div>
@@ -547,10 +475,11 @@ function WorkspaceAppLayout({
           <div className="chrome-trailing-controls" ref={trailingControlsRef} data-tauri-drag-region>
             {!hostedMcpWidget ? <ActivityIndicator state={layoutState} actions={actions} /> : null}
             {!hostedMcpWidget && pluginSurface ? <AnnotateToggle className="chrome-button dock-toggle-button" /> : null}
-            {!hostedMcpWidget && !window.BuretteMcpWorkspace && <RightDockToggle open={rightDockOpen} toggle={() => actions.toggleDock("right")} />}
+            <FullViewExitButton />
+            <RightDockToggle open={state.rightDockOpen} toggle={() => actions.toggleDock("right")} />
           </div>
           <header className="topbar">
-            <EditorTabs state={layoutState} actions={actions} readOnly={hostedMcpWidget} />
+            <EditorTabs group={fullViewGroup ?? "main"} state={layoutState} actions={actions} readOnly={hostedMcpWidget} />
             {/* Codex keeps "Open in" at the end of the thread header, left of the right dock. */}
             {!hostedMcpWidget ? <div className="topbar-actions"><OpenInEditorMenu state={layoutState} actions={actions} /></div> : null}
           </header>
@@ -580,7 +509,11 @@ function WorkspaceAppLayout({
             const panel = sidebarPanelRef.current;
             const px = Math.round(panel?.getSize().inPixels ?? 0);
             if (px > 1) sidebarResize.report(px);
-            if (!settingsMode) setSidebarOpen(isPanelOpen(panel, px));
+            if (!settingsMode) {
+              const open = isPanelOpen(panel, px);
+              if (window.BuretteMcpWorkspace) setNativeNavigationOpen(open);
+              else setSidebarOpen(open);
+            }
           }}
         >
           <ResizablePanel
@@ -600,12 +533,12 @@ function WorkspaceAppLayout({
               {window.BuretteMcpWorkspace ? <NativeWorkspaceSidebar state={layoutState} actions={actions} onToggleSidebar={() => setNativeNavigationOpen(false)} /> : <Sidebar state={layoutState} actions={actions} open={sidebarVisible} />}
             </div>
           </ResizablePanel>
-          {chromeVisible && !window.BuretteMcpWorkspace ? (
+          {chromeVisible && (!window.BuretteMcpWorkspace || nativeExpanded) ? (
             <ResizableHandle
               withHandle
               className="workspace-sidebar-handle"
               aria-label="Resize sidebar"
-              data-collapsed={!state.sidebarOpen || undefined}
+              data-collapsed={!sidebarVisible || undefined}
               onPointerDown={(event) => { if (event.button === 0) beginResizeDrag(sidebarResize); }}
             />
           ) : null}
@@ -613,107 +546,49 @@ function WorkspaceAppLayout({
             <section className="workbench">
               {/* The plugin's file header leads the content column, so an open
                   sidebar never sits under it. */}
-              {window.BuretteMcpWorkspace ? <OpenInEditorMenu state={layoutState} actions={actions} presentation="file-header"
+              {window.BuretteMcpWorkspace && !nativeWorkspaceChrome ? <OpenInEditorMenu state={layoutState} actions={actions} presentation="file-header"
                 navigation={sidebarVisible ? undefined : items => <NativeWorkspaceMenu fileItems={items} state={layoutState} actions={actions}
                   onShowSidebar={nativeExpanded ? () => setNativeNavigationOpen(true) : undefined} />} /> : null}
               <ResizablePanelGroup
-                orientation="horizontal"
-                className="workbench-panels"
-                elementRef={workbenchGroupRef}
-                data-panels-animating={rightDockAnimating || undefined}
+                orientation="vertical"
+                className="workbench-main-panels"
+                data-panels-animating={bottomDockAnimating || undefined}
                 onLayoutChanged={(_layout, meta) => {
                   if (!meta.isUserInteraction) return;
-                  const panel = rightDockPanelRef.current;
+                  const panel = bottomDockPanelRef.current;
                   const px = Math.round(panel?.getSize().inPixels ?? 0);
-                  if (px > 1) rightDockResize.report(px);
+                  if (px > 1) bottomDockResize.report(px);
                   const open = isPanelOpen(panel, px);
-                  if (open !== rightDockOpenRef.current) actions.setDockOpen("right", open);
+                  if (open !== bottomDockOpenRef.current) actions.setDockOpen("bottom", open);
                 }}
               >
-                <ResizablePanel
-                  id="workbench-main"
-                  className="workbench-main-panel"
-                  minSize="0px"
-                  style={activeGridId ? SPILLING_PANEL_STYLE : CLIPPED_PANEL_STYLE}
-                >
-                  <ResizablePanelGroup
-                    orientation="vertical"
-                    className="workbench-main-panels"
-                    style={{ minWidth: activeGridId ? Math.max(0, Math.min(MAIN_MIN_WIDTH, workbenchWidth)) : 0 }}
-                    elementRef={workbenchMainGroupRef}
-                    data-panels-animating={bottomDockAnimating || undefined}
-                    onLayoutChanged={(_layout, meta) => {
-                      if (!meta.isUserInteraction) return;
-                      const panel = bottomDockPanelRef.current;
-                      const px = Math.round(panel?.getSize().inPixels ?? 0);
-                      if (px > 1) bottomDockResize.report(px);
-                      const open = isPanelOpen(panel, px);
-                      if (open !== bottomDockOpenRef.current) actions.setDockOpen("bottom", open);
-                    }}
-                  >
-                    {/* The floor is the tab strip and nothing more: the dock's own
-                        percentage cap used to stop the drag at 30% of main, and a
-                        140px floor kept a band of document on screen when the work
-                        had moved entirely into the dock. Going to zero instead put
-                        the dock's tabs underneath the document tabs, since the
-                        strip is painted over this column rather than above it. */}
-                    <ResizablePanel id="main" className="main-panel" style={CLIPPED_PANEL_STYLE} minSize={`${CHROME_HEIGHT}px`}>
-                      <section className="main-stage">
-                        <ViewerArea state={layoutState} actions={actions} />
-                      </section>
-                    </ResizablePanel>
-                    {chromeVisible && !pluginSurface ? (
-                      <ResizableHandle
-                        withHandle
-                        className="resizable-handle-horizontal"
-                        aria-label="Resize bottom dock"
-                        data-collapsed={!state.bottomDockOpen || undefined}
-                        onPointerDown={(event) => { if (event.button === 0) beginResizeDrag(bottomDockResize); }}
-                      />
-                    ) : null}
-                    <ResizablePanel
-                      id="bottom-dock"
-                      className="dock-panel-shell"
-                      style={CLIPPED_PANEL_STYLE}
-                      panelRef={bottomDockPanelRef}
-                      collapsible
-                      collapsedSize="0px"
-                      defaultSize={`${initialBottomDockSize}px`}
-                      minSize="180px"
-                      maxSize="100%"
-                      groupResizeBehavior="preserve-pixel-size"
-                    >
-                      {/* Always mounted: DockPanel renders its own closed state
-                          (data-open / aria-hidden / inert) and unmounting it on
-                          close would drop the dock's internal state and re-fire
-                          the xyzrender auto-open on every reopen. */}
-                      <DockPanel area="bottom" state={layoutState} actions={actions} />
-                    </ResizablePanel>
-                  </ResizablePanelGroup>
+                <ResizablePanel id="main" className="main-panel" style={CLIPPED_PANEL_STYLE} minSize={`${CHROME_HEIGHT}px`}>
+                  <section className="main-stage">
+                    <ViewerArea state={layoutState} actions={actions} />
+                  </section>
                 </ResizablePanel>
-                {chromeVisible ? (
+                {chromeVisible && !pluginSurface ? (
                   <ResizableHandle
                     withHandle
-                    className="workspace-right-dock-handle"
-                    aria-label="Resize right dock"
-                    data-collapsed={!state.rightDockOpen || undefined}
-                    onPointerDown={(event) => { if (event.button === 0) beginResizeDrag(rightDockResize); }}
+                    className="resizable-handle-horizontal"
+                    aria-label="Resize bottom dock"
+                    data-collapsed={!state.bottomDockOpen || undefined}
+                    onPointerDown={(event) => { if (event.button === 0) beginResizeDrag(bottomDockResize); }}
                   />
                 ) : null}
                 <ResizablePanel
-                  id="right-dock"
+                  id="bottom-dock"
                   className="dock-panel-shell"
                   style={CLIPPED_PANEL_STYLE}
-                  elementRef={rightDockElementRef}
-                  panelRef={rightDockPanelRef}
+                  panelRef={bottomDockPanelRef}
                   collapsible
                   collapsedSize="0px"
-                  defaultSize={`${initialRightDockSize}px`}
-                  minSize={`${Math.min(260, workbenchWidth * .25)}px`}
-                  maxSize={`${rightDockMaxWidth(workbenchWidth)}px`}
+                  defaultSize={`${initialBottomDockSize}px`}
+                  minSize="180px"
+                  maxSize="100%"
                   groupResizeBehavior="preserve-pixel-size"
                 >
-                  <DockPanel area="right" state={layoutState} actions={actions} readOnly={hostedMcpWidget} />
+                  <DockPanel area="bottom" state={layoutState} actions={actions} />
                 </ResizablePanel>
               </ResizablePanelGroup>
             </section>
@@ -725,8 +600,4 @@ function WorkspaceAppLayout({
       <FileDropFeedback preview={dropPreview} />
     </main></WorkspaceMenus></SidebarFileOperations>
   );
-}
-
-function DockToggleIcon({ className }: { className?: string }) {
-  return <PanelLeft className={className} size={16} aria-hidden />;
 }

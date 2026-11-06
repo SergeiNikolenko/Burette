@@ -304,7 +304,7 @@ function classifyControl(element: HTMLElement, surface: string) {
 const CONTROL_LABELS = new Map([
   ["hide sidebar", "toggle_sidebar"], ["show sidebar", "toggle_sidebar"],
   ["hide bottom dock", "toggle_bottom_dock"], ["show bottom dock", "toggle_bottom_dock"],
-  ["hide right dock", "toggle_right_dock"], ["show right dock", "toggle_right_dock"],
+  ["hide right panel", "toggle_right_dock"], ["show right panel", "toggle_right_dock"],
   ["open ketcher", "open_ketcher"], ["open settings", "open_settings"],
   ["new tab", "new_tab"], ["back", "navigate_back"], ["forward", "navigate_forward"],
   ["project options", "project_options"], ["file actions", "file_actions"],

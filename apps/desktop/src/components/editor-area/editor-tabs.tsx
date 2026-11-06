@@ -7,6 +7,7 @@ import { menuSections, submenu } from "../workspace-menu-items";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ShellActions, ShellViewState } from "../types";
 import type { MenuItemSpec } from "../menu-types";
+import type { CSSProperties } from "react";
 import { ScrollFade } from "../scroll-fade";
 import { TAB_DRAG_MIME, hasStructureDrag, readStructureDragPayload, type StructureDragPayload, writeStructureDragPayload } from "../../lib/structure-drag";
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
@@ -18,21 +19,24 @@ import { MarqueeName } from "../marquee-name";
 import { Badge } from "../ui/badge";
 import type { DropTargetContext } from "../../lib/drop-actions";
 import { describeDropTargetElement } from "../../lib/drop-target";
+import { canTransferNativeTab, transferNativeTab } from "./native-tab-transfer";
+import { TabDragPreview } from "./tab-drag-preview";
 import { TabHoverPreview, type TabPreviewInfo } from "./tab-hover-preview";
 import { captureTabThumbnail, pruneTabThumbnails } from "./tab-thumbnails";
 import { ShortcutTooltip } from "../shortcut-tooltip";
 import { ToolbarButton } from "../ui/toolbar-button";
 import { Plus } from "../ui/app-icons";
-import { isMainTab } from "../../stores/molecule-store";
-import { SCREEN_ENTRIES, openScreen, paneMoveItems } from "../workspace-panes/pane-actions";
+import { isMainTab, useMoleculeStore, type MoleculeTab } from "../../stores/molecule-store";
+import { SCREEN_ENTRIES, openScreenInGroup, paneMoveItems, placeScreen } from "../workspace-panes/pane-actions";
 import { TabKindIcon } from "./tab-kind-icon";
 import { TabNameDialog } from "../scene-name-dialog";
 import { canStartNativeFileDrag, startNativeFileDrag } from "../../lib/native-file-drag";
 import { isFileDragTab, tabFileDragPayload } from "./tab-file-drag";
 import { useSourceEditing } from "../../lib/source-editing/context";
 import { toast } from "../ui/toast";
+import { tracePerf } from "../../lib/perf-trace";
 
-const TAB_REORDER_ANIMATION_MS = 170;
+const TAB_REORDER_ANIMATION_MS = 150;
 const TAB_DRAG_ACTIVATE_DELAY_MS = 520;
 const TAB_MOUSE_REORDER_THRESHOLD_PX = 8;
 // Lets a freshly shown page paint before its hover-preview image is taken. A
@@ -52,6 +56,8 @@ export function EditorTabs({
   group?: WorkspaceGroup;
 }) {
   const workspaceMenus = useWorkspaceMenus();
+  const actionsRef = useRef(actions);
+  actionsRef.current = actions;
   const sourceEditing = useSourceEditing();
   const nativeDragPendingRef = useRef(false);
   const nativeDragGenerationRef = useRef(0);
@@ -67,13 +73,15 @@ export function EditorTabs({
   const [selectionAnchorTabId, setSelectionAnchorTabId] = useState<string | null>(null);
   const draggingTabIdRef = useRef<string | null>(null);
   const selectedTabIdsRef = useRef<Set<string>>(new Set());
+  const reorderSnapshotRef = useRef<string[] | null>(null);
   const mouseDragRef = useRef<{ tabId: string; startX: number; startY: number; active: boolean } | null>(null);
   const removeMouseDragListenersRef = useRef<(() => void) | null>(null);
   const dragActivationRef = useRef<{ tabId: string; timeout: number } | null>(null);
-  const tabWindow = useTabWindow(visibleTabs, state.activeTabId, draggingTabId);
+  const tabWindow = useTabWindow(visibleTabs, selectedTab?.id ?? null, draggingTabId);
   const tabShellRefs = tabWindow.shells;
   const pendingFocusRef = useRef<string | null>(null);
   const previousTabRectsRef = useRef<Map<string, DOMRect> | null>(null);
+  const reorderAnimations = useRef(new WeakMap<HTMLDivElement, Animation>());
   const latestTabsRef = useRef(visibleTabs);
   latestTabsRef.current = visibleTabs;
   const stripRef = useRef<HTMLDivElement>(null);
@@ -86,6 +94,17 @@ export function EditorTabs({
     const timers = TAB_THUMBNAIL_SETTLE_MS.map((delay) => window.setTimeout(() => void captureTabThumbnail(activeTabId), delay));
     return () => timers.forEach((timer) => window.clearTimeout(timer));
   }, [activeTabId]);
+
+  useEffect(() => {
+    for (const tab of state.tabs) {
+      if (!tab.preview || tab.location.kind !== "file") continue;
+      const document = findIndexedDocument(state.documents, tab.location, "first");
+      const source = sourceEditing?.sessionForDocument(document);
+      if (document && (state.dirtyGridDocuments?.has(document.id) || document.sceneUnsaved || source?.dirty || source?.saving)) {
+        useMoleculeStore.getState().promotePreviewTab(tab.id);
+      }
+    }
+  }, [state.tabs, state.documents, state.dirtyGridDocuments, sourceEditing]);
 
   useEffect(() => {
     pruneTabThumbnails(new Set(state.tabs.map((tab) => tab.id)));
@@ -117,21 +136,28 @@ export function EditorTabs({
     const previousRects = previousTabRectsRef.current;
     if (!previousRects) return;
     previousTabRectsRef.current = null;
+    // The previous rects are the positions currently on screen. Read all new
+    // positions after cancelling interrupted animations, then animate.
+    for (const element of tabShellRefs.current.values()) reorderAnimations.current.get(element)?.cancel();
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const nextRects = measureTabRects();
     for (const [id, element] of tabShellRefs.current) {
       if (id === draggingTabId) continue;
       const previousRect = previousRects.get(id);
-      if (!previousRect) continue;
-      const nextRect = element.getBoundingClientRect();
+      const nextRect = nextRects.get(id);
+      if (!previousRect || !nextRect) continue;
       const deltaX = previousRect.left - nextRect.left;
       if (Math.abs(deltaX) < 0.5) continue;
-      element.animate(
+      const animation = element.animate(
         [
           { transform: `translateX(${deltaX}px)` },
           { transform: "translateX(0)" },
         ],
-        { duration: TAB_REORDER_ANIMATION_MS, easing: "cubic-bezier(0.2, 0, 0, 1)" },
+        { duration: TAB_REORDER_ANIMATION_MS, easing: "cubic-bezier(.19, 1, .22, 1)" },
       );
+      // Retargeting on the next pointer move intentionally cancels this run.
+      void animation.finished.catch(() => {});
+      reorderAnimations.current.set(element, animation);
     }
   }, [state.tabs]);
 
@@ -312,7 +338,7 @@ export function EditorTabs({
 
   const moveDraggedTab = useCallback((tabId: string, pointerX: number) => {
     const orderedTabs = latestTabsRef.current;
-    if (orderedTabs.length < 2) return;
+    if (!state.tabs.some(tab => tab.id === tabId)) return;
     const otherTabs = orderedTabs.filter((tab) => tab.id !== tabId);
     let targetIndex = tabWindow.reorderIndex(tabId, pointerX) ?? otherTabs.length;
     for (let index = 0; !tabWindow.windowed && index < otherTabs.length; index += 1) {
@@ -325,7 +351,9 @@ export function EditorTabs({
       }
     }
     const currentIndex = orderedTabs.findIndex((tab) => tab.id === tabId);
-    if (currentIndex === targetIndex) return;
+    const movingBetweenGroups = currentIndex < 0;
+    if (!movingBetweenGroups && currentIndex === targetIndex) return;
+    if (movingBetweenGroups) placeScreen(tabId, group === "main" ? null : group);
     const stateTabsWithoutDragged = state.tabs.filter((tab) => tab.id !== tabId);
     const targetTabId = otherTabs[targetIndex]?.id ?? null;
     const stateTargetIndex = targetTabId
@@ -333,7 +361,10 @@ export function EditorTabs({
       : stateTabsWithoutDragged.length;
     previousTabRectsRef.current = measureTabRects();
     actions.moveTab(tabId, stateTargetIndex);
-  }, [actions, measureTabRects, state.tabs, tabWindow.reorderIndex, tabWindow.windowed]);
+  }, [actions, group, measureTabRects, state.tabs, tabWindow.reorderIndex, tabWindow.windowed]);
+
+  const moveDraggedTabRef = useRef(moveDraggedTab);
+  moveDraggedTabRef.current = moveDraggedTab;
 
   const clearDragActivation = useCallback(() => {
     const activation = dragActivationRef.current;
@@ -381,13 +412,18 @@ export function EditorTabs({
   });
 
   const stopTabDrag = useCallback(() => {
+    if (mouseDragRef.current || reorderSnapshotRef.current) tracePerf("tab:drag-stop", { detail: { active: mouseDragRef.current?.active ?? false, rollback: reorderSnapshotRef.current !== null } });
     nativeDragGenerationRef.current += 1;
+    const originalOrder = reorderSnapshotRef.current;
+    reorderSnapshotRef.current = null;
+    originalOrder?.forEach((id, index) => actionsRef.current.moveTab(id, index));
     removeMouseDragListeners();
     clearDragActivation();
-    if (draggingTabIdRef.current) actions.setStructureDragActive(false);
+    if (draggingTabIdRef.current) actionsRef.current.setStructureDragActive(false);
     draggingTabIdRef.current = null;
     setDraggingTabId(null);
-  }, [actions, clearDragActivation, removeMouseDragListeners]);
+    window.setTimeout(() => { suppressDragClickRef.current = false; }, 0);
+  }, [clearDragActivation, removeMouseDragListeners]);
 
   const startNativeTabDrag = (tabId: string) => {
     removeMouseDragListeners();
@@ -403,7 +439,7 @@ export function EditorTabs({
       if (generation !== nativeDragGenerationRef.current) return;
       const { inAppDrop } = await startNativeFileDrag(payload, tabId);
       if (!inAppDrop || generation !== nativeDragGenerationRef.current) return;
-      if (document.elementFromPoint(inAppDrop.x, inAppDrop.y)?.closest(".tab-strip")) moveDraggedTab(tabId, inAppDrop.x);
+      if (document.elementFromPoint(inAppDrop.x, inAppDrop.y)?.closest(".tab-strip")) window.dispatchEvent(new CustomEvent("burette-native-tab-drop", { detail: { tabId, x: inAppDrop.x, y: inAppDrop.y } }));
       else runTabDropAtPoint(tabId, inAppDrop.x, inAppDrop.y);
     }).catch(() => {
       toast.add({ title: "Could not drag this tab. Save the file and try again.", type: "error" });
@@ -414,52 +450,113 @@ export function EditorTabs({
     });
   };
 
-  const startMouseTabReorder = useCallback((tabId: string, tabHasDockPayload: boolean, event: React.MouseEvent<HTMLButtonElement>) => {
-    if (event.button !== 0) return;
+  const startMouseTabReorder = useCallback((tabId: string, tabHasDockPayload: boolean, event: React.PointerEvent<HTMLButtonElement>) => {
+    tracePerf("tab:drag-start", { detail: { button: event.button, altKey: event.altKey, x: event.clientX, y: event.clientY } });
+    if (event.button !== 0 || event.altKey) return;
+    const button = event.currentTarget;
+    button.setPointerCapture(event.pointerId);
     removeMouseDragListeners();
     mouseDragRef.current = { tabId, startX: event.clientX, startY: event.clientY, active: false };
-
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      const drag = mouseDragRef.current;
-      if (!drag || drag.tabId !== tabId) return;
-      if ((moveEvent.buttons & 1) !== 1) {
-        stopTabDrag();
-        return;
+    tracePerf("tab:drag-armed");
+    let frame = 0;
+    let pointer = { x: event.clientX, y: event.clientY };
+    const scrollAtEdge = () => {
+      frame = 0;
+      if (!mouseDragRef.current?.active) return;
+      if (document.elementFromPoint(pointer.x, pointer.y)?.closest(".tab-strip") === stripRef.current) {
+        moveDraggedTabRef.current(tabId, pointer.x);
       }
+      frame = window.requestAnimationFrame(scrollAtEdge);
+    };
+
+    const activateDrag = (x: number, y: number) => {
+      const drag = mouseDragRef.current;
+      if (!drag || drag.tabId !== tabId) return false;
       if (!drag.active) {
-        if (Math.hypot(moveEvent.clientX - drag.startX, moveEvent.clientY - drag.startY) < TAB_MOUSE_REORDER_THRESHOLD_PX) return;
+        if (Math.hypot(x - drag.startX, y - drag.startY) < TAB_MOUSE_REORDER_THRESHOLD_PX) return false;
         drag.active = true;
+        if (state.tabs.find(tab => tab.id === tabId)?.preview) useMoleculeStore.getState().promotePreviewTab(tabId);
+        reorderSnapshotRef.current = state.tabs.map(tab => tab.id);
+        suppressDragClickRef.current = true;
         draggingTabIdRef.current = tabId;
         setDraggingTabId(tabId);
         if (tabHasDockPayload) actions.setStructureDragActive(true);
+        frame = window.requestAnimationFrame(scrollAtEdge);
       }
-      if (document.elementFromPoint(moveEvent.clientX, moveEvent.clientY)?.closest(".tab-strip")) {
-        moveDraggedTab(tabId, moveEvent.clientX);
+      return true;
+    };
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      pointer = { x: moveEvent.clientX, y: moveEvent.clientY };
+      if ((moveEvent.buttons & 1) !== 1) {
+        tracePerf("tab:drag-cancel", { detail: { reason: "no-primary-button", buttons: moveEvent.buttons } });
+        stopTabDrag();
+        return;
+      }
+      if (!activateDrag(pointer.x, pointer.y)) return;
+      const outsideWindow = moveEvent.clientX < 0 || moveEvent.clientY < 0 || moveEvent.clientX >= window.innerWidth || moveEvent.clientY >= window.innerHeight;
+      if (outsideWindow && canTransferNativeTab(tabId)) {
+        nativeDragPendingRef.current = true;
+        setDraggingTabId(null);
+        removeMouseDragListeners();
+        const generation = ++nativeDragGenerationRef.current;
+        void transferNativeTab(tabId, () => generation !== nativeDragGenerationRef.current).then(moved => {
+          if (moved) reorderSnapshotRef.current = null;
+        }).catch(() => {
+          toast.add({ title: "Could not move tab", type: "error" });
+        }).finally(() => {
+          nativeDragPendingRef.current = false;
+          stopTabDrag();
+        });
+        return;
+      }
+      if (document.elementFromPoint(moveEvent.clientX, moveEvent.clientY)?.closest(".tab-strip") === stripRef.current) {
+        moveDraggedTabRef.current(tabId, moveEvent.clientX);
       }
     };
     const handleMouseUp = (upEvent: MouseEvent) => {
+      tracePerf("tab:drag-release", { detail: { active: mouseDragRef.current?.active ?? false, x: upEvent.clientX, y: upEvent.clientY } });
+      // Fast gestures can deliver the release before an intermediate move.
+      // Resolve local drops from that final position; native transfers must
+      // still begin while the pointer is held down.
+      if (upEvent.clientX >= 0 && upEvent.clientY >= 0
+        && upEvent.clientX < window.innerWidth && upEvent.clientY < window.innerHeight) {
+        activateDrag(upEvent.clientX, upEvent.clientY);
+      }
       const drag = mouseDragRef.current;
-      if (drag?.tabId === tabId && drag.active && tabHasDockPayload) {
-        runTabDropAtPoint(tabId, upEvent.clientX, upEvent.clientY);
+      if (drag?.tabId === tabId && drag.active) {
+        const strip = document.elementFromPoint(upEvent.clientX, upEvent.clientY)?.closest(".tab-strip");
+        if (strip) {
+          reorderSnapshotRef.current = null;
+          window.dispatchEvent(new CustomEvent("burette-native-tab-drop", { detail: { tabId, x: upEvent.clientX, y: upEvent.clientY } }));
+        } else if (tabHasDockPayload && runTabDropAtPoint(tabId, upEvent.clientX, upEvent.clientY)) {
+          reorderSnapshotRef.current = null;
+        }
       }
       stopTabDrag();
+      window.setTimeout(() => { suppressDragClickRef.current = false; }, 0);
     };
 
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp, { once: true });
+    window.addEventListener("pointermove", handleMouseMove);
+    window.addEventListener("pointerup", handleMouseUp, { once: true });
+    window.addEventListener("pointercancel", stopTabDrag, { once: true });
     removeMouseDragListenersRef.current = () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("pointermove", handleMouseMove);
+      window.removeEventListener("pointerup", handleMouseUp);
+      window.removeEventListener("pointercancel", stopTabDrag);
+      if (button.hasPointerCapture(event.pointerId)) button.releasePointerCapture(event.pointerId);
     };
-  }, [actions, moveDraggedTab, removeMouseDragListeners, runTabDropAtPoint, stopTabDrag]);
+  }, [actions, state.tabs, moveDraggedTab, removeMouseDragListeners, runTabDropAtPoint, stopTabDrag]);
 
   useEffect(() => {
     const escape = (event: KeyboardEvent) => { if (event.key === "Escape") stopTabDrag(); };
-    window.addEventListener("blur", stopTabDrag);
+    const blur = () => { if (!nativeDragPendingRef.current) stopTabDrag(); };
+    window.addEventListener("blur", blur);
     window.addEventListener("burette-structure-drag-cancel", stopTabDrag);
     window.addEventListener("keydown", escape, true);
     return () => {
-      window.removeEventListener("blur", stopTabDrag);
+      window.removeEventListener("blur", blur);
       window.removeEventListener("burette-structure-drag-cancel", stopTabDrag);
       window.removeEventListener("keydown", escape, true);
       removeMouseDragListeners();
@@ -469,15 +566,20 @@ export function EditorTabs({
   useEffect(() => {
     if (readOnly) return;
     const drop = (event: Event) => {
-      const { tabId, x } = (event as CustomEvent<{ tabId: string; x?: number }>).detail;
-      if (Number.isFinite(x) && state.tabs.some(tab => tab.id === tabId)) moveDraggedTab(tabId, x!);
+      const { tabId, x, y } = (event as CustomEvent<{ tabId: string; x?: number; y?: number }>).detail;
+      if (x === undefined || y === undefined || document.elementFromPoint(x, y)?.closest(".tab-strip") !== stripRef.current) return;
+      reorderSnapshotRef.current = null;
+      if (Number.isFinite(x) && state.tabs.some(tab => tab.id === tabId)) {
+        moveDraggedTab(tabId, x!);
+        selectAndFocusTab(tabId);
+      }
       stopTabDrag();
     };
     const hover = (event: Event) => {
       const { tabId, sourceTabId, x } = (event as CustomEvent<{ tabId: string | null; sourceTabId: string | null; x?: number }>).detail;
       if (sourceTabId) {
         clearDragActivation();
-        if (tabId && Number.isFinite(x)) moveDraggedTab(sourceTabId, x!);
+        if (tabId && latestTabsRef.current.some(tab => tab.id === tabId) && latestTabsRef.current.some(tab => tab.id === sourceTabId) && Number.isFinite(x)) moveDraggedTab(sourceTabId, x!);
       } else if (tabId) scheduleDragActivation(tabId);
       else clearDragActivation();
     };
@@ -489,7 +591,7 @@ export function EditorTabs({
       window.removeEventListener("burette-native-drag-hover", hover);
       window.removeEventListener("burette-native-drag-end", clearDragActivation);
     };
-  }, [readOnly, state.tabs, moveDraggedTab, stopTabDrag, scheduleDragActivation, clearDragActivation]);
+  }, [readOnly, state.tabs, moveDraggedTab, stopTabDrag, scheduleDragActivation, clearDragActivation, selectAndFocusTab]);
 
   const updateNativeTabDrag = useCallback((event: React.DragEvent<HTMLElement>) => {
     const tabId = draggingTabIdRef.current;
@@ -543,7 +645,8 @@ export function EditorTabs({
 
   return (
     // Entering the strip usually precedes a switch, so the page is still visible here.
-    <div ref={stripRef} className="tab-strip" onPointerEnter={() => { if (activeTabId) void captureTabThumbnail(activeTabId); }}>
+    <div ref={stripRef} className="tab-strip" data-workspace-group={group} style={{ "--tab-count": visibleTabs.length || 1 } as CSSProperties} onPointerEnter={() => { if (activeTabId) void captureTabThumbnail(activeTabId); }}>
+      {draggingTabId && !nativeDragPendingRef.current ? <TabDragPreview tabId={draggingTabId} title={describeTabPreview(draggingTabId)?.title ?? ""} /> : null}
       <TabHoverPreview stripRef={stripRef} describe={describeTabPreview} />
       <TabNameDialog tab={renamingTab} defaultName={renamingTab ? pageKind(renamingTab.location).title(renamingTab.location, state) : ""} onClose={() => setRenamingTabId(null)} />
       <ScrollFade
@@ -559,7 +662,7 @@ export function EditorTabs({
         onDrop={readOnly ? undefined : handleEmptyTabStripDrop}
         onKeyDown={handleTabListKeyDown}
       >
-        <div style={tabWindow.windowed ? { position: "relative", width: tabWindow.totalWidth, height: 28, flex: "0 0 auto" } : { display: "contents" }}>
+        <div style={tabWindow.windowed ? { position: "relative", width: tabWindow.totalWidth, height: 32, flex: "0 0 auto" } : { display: "contents" }}>
         {tabWindow.indices.map((index) => {
           const tab = visibleTabs[index];
           const kind = pageKind(tab.location);
@@ -642,6 +745,16 @@ export function EditorTabs({
             const sceneMenu = chosenTabs.length === 1 && tabDocument ? workspaceMenus.scene(tabDocument).filter(entry => !("id" in entry && entry.id === "rename-scene")) : [];
             const rename: MenuItemSpec[] = chosenTabs.length === 1
               ? [{ kind: "item", id: "rename-tab", text: "Rename tab…", action: () => setRenamingTabId(tab.id) }] : [];
+            const newTabToRight: MenuItemSpec[] = group === "floating" ? [] : [{
+              kind: "item", id: "new-tab-to-right", text: "New tab to the right", icon: "Plus",
+              action: () => {
+                const store = useMoleculeStore.getState();
+                const anchor = store.tabs.findIndex(current => current.id === tab.id);
+                if (anchor < 0) return;
+                const id = store.openScreenTab({ kind: "launcher" }, tab.pane ?? null, { newTab: true });
+                store.moveTab(id, anchor + 1);
+              },
+            }];
             const tabMenu = shared.filter(entry => !("id" in entry && ["pin-files", "trash-file", "rename-file", "duplicate-file"].includes(entry.id)));
             if (sceneMenu.length) {
               const exports = tabMenu.find(entry => entry.kind === "submenu" && entry.id === "file-export");
@@ -662,8 +775,9 @@ export function EditorTabs({
             const only = closing.length === 1 && closing[0].kind === "item" ? closing[0] : undefined;
             const close: MenuItemSpec[] = only ? [{ ...only, id: "close-tabs", text: `Close ${only.text}` }] : submenu("close-tabs", "Close", closing, "xmark");
             const bare = !compact.length && !sceneMenu.length && !reveal.length;
-            void showNativeContextMenu(menuSections(opening, [pin, ...rename, ...sceneMenu, ...(bare ? close : [])],
-              [...compact.filter(entry => !opening.includes(entry)), ...reveal], window.BuretteMcpWorkspace ? [] : paneMoveItems(tab, state, actions), bare ? [] : close), { x: event.clientX, y: event.clientY });
+            const canMove = !window.BuretteMcpWorkspace || window.BuretteMcpWorkspace.placement?.getSnapshot()?.mode === "fullscreen";
+            void showNativeContextMenu(menuSections(opening, [...newTabToRight, pin, ...rename, ...sceneMenu, ...(bare ? close : [])],
+              [...compact.filter(entry => !opening.includes(entry)), ...reveal], canMove ? paneMoveItems(tab, state, actions) : [], bare ? [] : close), { x: event.clientX, y: event.clientY });
           };
           return (
             <div
@@ -696,7 +810,7 @@ export function EditorTabs({
               <button
                 type="button"
                 role="tab"
-                draggable={!readOnly}
+                draggable={false}
                 tabIndex={active ? 0 : -1}
                 aria-selected={active}
                 aria-posinset={index + 1}
@@ -704,14 +818,17 @@ export function EditorTabs({
                 aria-label={dirty ? `${title}, Unsaved changes` : title}
                 className={active ? "tab active" : "tab"}
                 aria-grabbed={isDragging || undefined}
-                onMouseDown={readOnly ? undefined : (event) => {
+                title="Drag to move tab; Option-drag to export file"
+                onPointerDown={readOnly ? undefined : (event) => {
                   if (event.button !== 0) return;
+                  event.currentTarget.draggable = event.altKey;
                   startMouseTabReorder(tab.id, true, event);
                 }}
                 onClick={(event) => {
                   if (suppressDragClickRef.current) { event.preventDefault(); event.stopPropagation(); return; }
                   handleTabClick(tab.id, event);
                 }}
+                onDoubleClick={readOnly ? undefined : () => useMoleculeStore.getState().promotePreviewTab(tab.id)}
                 onContextMenu={readOnly ? undefined : showTabMenu}
                 onDragStart={readOnly ? undefined : (event) => {
                   if (canStartNativeFileDrag() && isFileDragTab(tab)) {
@@ -796,13 +913,13 @@ export function EditorTabs({
                 }}
               >
                 <span className="tab-kind-icon" aria-hidden><TabKindIcon location={tab.location} state={state} /></span>
-                <MarqueeName className="tab-title">{`${tab.pinned ? "⌖ " : ""}${title}`}</MarqueeName>
+                <MarqueeName className={tab.preview ? "tab-title italic" : "tab-title"}>{`${tab.pinned ? "⌖ " : ""}${title}`}</MarqueeName>
                 {dirty ? <Badge className="ml-1.5 size-2 p-0" aria-hidden="true" /> : null}
               </button>
               {!readOnly && !tab.pinned ? <button
                 type="button"
                 className="tab-close"
-                aria-label={"Close " + title}
+                aria-label={`Close ${title} tab`}
                 onClick={(event) => {
                   event.stopPropagation();
                   actions.closeTab(tab.id);
@@ -816,7 +933,10 @@ export function EditorTabs({
         </div>
       </ScrollFade>
       {!readOnly ? <ShortcutTooltip label="New tab" shortcut="⌘T">
-        <ToolbarButton type="button" className="new-tab" onMouseDown={(event) => event.preventDefault()} onClick={() => openScreen({ kind: "launcher" }, group === "main" ? null : group, { newTab: true })} onContextMenu={(event) => showNewTabMenu(event, group)} aria-label="New tab">
+        <ToolbarButton type="button" className="new-tab" onMouseDown={(event) => event.preventDefault()}
+          onClick={(event) => showNewTabMenu(event, group, selectedTab, state)}
+          onContextMenu={(event) => showNewTabMenu(event, group, selectedTab, state)}
+          aria-label="New tab" aria-haspopup="menu">
           <Plus size={16} aria-hidden />
         </ToolbarButton>
       </ShortcutTooltip> : null}
@@ -831,17 +951,26 @@ export function EditorTabs({
   );
 }
 
-// Right-clicking "+" offers every kind of screen a tab can hold, the way the
-// atlas new-tab menu lists tab kinds. A plain click stays "New Tab".
-function showNewTabMenu(event: React.MouseEvent<HTMLButtonElement>, group: WorkspaceGroup) {
+function showNewTabMenu(event: React.MouseEvent<HTMLButtonElement>, group: WorkspaceGroup, selected: MoleculeTab | null, state: ShellViewState) {
   event.preventDefault();
   const rect = event.currentTarget.getBoundingClientRect();
-  const items: MenuItemSpec[] = SCREEN_ENTRIES.map((entry) => ({
+  const pane = group === "main" ? null : group;
+  const location = selected?.location;
+  const main = selectedGroupTab(state.tabs, state.activeTabId, useWorkspacePanesStore.getState().selectedTabs, "main")?.location;
+  const sourcePath = (location?.kind === "file" ? location.path : location?.kind === "tool" ? location.sourcePath : null)
+    ?? state.activeDocument?.path ?? (main?.kind === "file" ? main.path : null);
+  const entries = [...SCREEN_ENTRIES];
+  if (sourcePath) entries.push(
+    { id: "screen-info", text: "Info", icon: "InfoCircle", location: { kind: "tool", tool: "inspector", area: "right", sourcePath } },
+    { id: "screen-text", text: "Text", icon: "FileDocument", location: { kind: "tool", tool: "text", area: "right", sourcePath } },
+  );
+  const items: MenuItemSpec[] = entries.map((entry) => ({
     kind: "item",
     id: `new-tab-${entry.id}`,
     text: entry.text,
+    icon: entry.icon,
     accelerator: entry.location.kind === "launcher" ? "CmdOrCtrl+T" : undefined,
-    action: () => openScreen(entry.location, group === "main" ? null : group, { newTab: true }),
+    action: () => openScreenInGroup(entry.location, pane, selected?.id),
   }));
-  void showNativeContextMenu(items, { x: rect.left, y: rect.bottom + 4 }, { presentation: "dropdown" });
+  void showNativeContextMenu(items, { x: rect.left, y: rect.bottom + 4 }, { presentation: "dropdown", contentClassName: "workspace-new-tab-menu" });
 }

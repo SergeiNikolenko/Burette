@@ -29,6 +29,7 @@ import type { KetcherLocation } from "./editor-area/page-kinds";
 import type { KetcherEditorApi } from "./ketcher-editor";
 import { registerKetcherAgentController, unregisterKetcherAgentController, type KetcherPersistWriter } from "../lib/ketcher-agent";
 import { KetcherPersistRequestPrompt } from "./ketcher/persist-request";
+import { ketcherDraftSignature, useKetcherFollowActiveMolecule } from "./ketcher/follow-active-molecule";
 import { requestContextualGuide } from "./onboarding/request";
 import { RadixDropdownMenu } from "./radix-menu";
 import { ChevronDown, Minus, Plus, ColorTheme, Grid, Cube, Camera } from "@/components/ui/app-icons";
@@ -381,6 +382,7 @@ export function KetcherPage({
   const nextImportRetryAtRef = useRef(0);
   const sketchDragRecordRef = useRef<StructureDragRecord | null>(null);
   const restoredDraftRef = useRef("");
+  const cleanDraftSignatureRef = useRef("");
   const editorShellRef = useRef<HTMLDivElement | null>(null);
   const shouldMountEditor = isActive || editorHasActivated;
   const systemThemeMode = useSystemThemeMode();
@@ -495,6 +497,7 @@ export function KetcherPage({
     saveKetcherDraft({ tabId, molfile: savedMolfile, ket: savedKet });
     setHasSketch(hasCurrentSketch);
     if (!hasCurrentSketch) setPreserved3dSource(null);
+    return { molfile: savedMolfile, ket: savedKet };
   }, [ketcher, saveKetcherDraft, tabId]);
 
   const applyHostedSeed = useCallback(async (instance: KetcherEditorApi, seed: HostedKetcherSeed | null) => {
@@ -952,7 +955,8 @@ export function KetcherPage({
         }
         if (hasImportedStructure) {
           const molfile = await withKetcherTimeout(ketcher.getMolfile("v2000"), "Imported sketch export");
-          if (!isBlankKetcherMolfile(molfile)) await persistDraft(molfile);
+          const saved = isBlankKetcherMolfile(molfile) ? undefined : await persistDraft(molfile);
+          if (saved) cleanDraftSignatureRef.current = ketcherDraftSignature(saved);
           setHasSketch(true);
           setPreserved3dSource(source3d);
         }
@@ -1027,6 +1031,9 @@ export function KetcherPage({
           sourceRow: gridEditSource.sourceRow,
           structureColumn: gridEditSource.structureColumn,
         });
+        // The row now holds this sketch, so it may follow the next molecule.
+        const saved = await persistDraft(molfile);
+        if (saved) cleanDraftSignatureRef.current = ketcherDraftSignature(saved);
         setStatus("Saving edit to collection");
       } catch (error) {
         setStatus(ketcherExportErrorMessage(error));
@@ -1036,7 +1043,16 @@ export function KetcherPage({
     }).catch((error) => {
       setStatus(error instanceof Error ? error.message : String(error));
     });
-  }, [actions, exportingSketch, gridEditSource, ketcher]);
+  }, [actions, exportingSketch, gridEditSource, ketcher, persistDraft]);
+
+  useKetcherFollowActiveMolecule({
+    tabId,
+    location,
+    state,
+    enabled: acceptImportRequests && isActive && Boolean(ketcher) && !isHostedKetcherWidget(),
+    cleanDraftSignature: cleanDraftSignatureRef,
+    importStructures,
+  });
 
   // The tooltip names the reason while the button is disabled, so a greyed
   // "Save to collection" never leaves the user guessing.

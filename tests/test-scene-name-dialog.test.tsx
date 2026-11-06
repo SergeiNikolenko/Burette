@@ -44,7 +44,7 @@ test("a tab label changes independently of the scene title and source file", asy
     expect(mount.querySelector('[aria-label="Tab name"]')).not.toBeNull();
     await fill(mount, "  Ligand detail  "); await submit(mount);
     expect({ closed, tabs: useMoleculeStore.getState().tabs, documents: useMoleculeStore.getState().documents }).toEqual({
-      closed: 1, tabs: [{ ...tab, title: "Ligand detail" }], documents: [scene],
+      closed: 1, tabs: [{ ...tab, title: "Ligand detail", preview: false }], documents: [scene],
     });
   } finally {
     await act(async () => root.unmount()); mount.remove(); useMoleculeStore.setState(snapshot);

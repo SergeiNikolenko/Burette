@@ -10,6 +10,8 @@ commands.allow = [
   "read_indexed_trajectory_frame",
   "operate_sidebar_file",
   "start_file_drag",
+  "start_tab_drag",
+  "grid_transfer_source_version",
   "capture_tab_thumbnail",
   "popup_macos_context_menu",
   "read_folder_contents",
