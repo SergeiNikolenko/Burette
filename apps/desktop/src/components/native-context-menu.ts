@@ -15,7 +15,7 @@ export async function showNativeContextMenu(
     return true;
   }
 
-  // The AppKit popup exists only on macOS; Linux goes straight to the fallbacks.
+  // The AppKit popup exists only on macOS; Linux and Windows go straight to the fallbacks.
   if (isMacPlatform()) {
     const { showMacContextMenu } = await import("./mac-context-menu");
     if (await showMacContextMenu(spec, at, options.presentation)) return true;

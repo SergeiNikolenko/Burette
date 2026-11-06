@@ -7,6 +7,7 @@ import { useWorkspacePanesStore } from "../../stores/workspace-panes-store";
 import type { ViewerDocument } from "../../types";
 import type { KetcherLocation } from "../editor-area/page-kinds/ketcher";
 import type { KetcherImportRequest, ShellViewState } from "../types";
+import { basename } from "../../lib/sidebar-projects";
 
 // A docked Ketcher with no work of its own shows the molecule in the main
 // pane: the selected grid row (through the grid's own "Edit in Ketcher", so
@@ -47,7 +48,7 @@ export function ketcherFollowSource(
     key: `structure:${document.id}`,
     documentId: document.id,
     path: document.path,
-    title: document.title || document.path.split("/").pop() || "structure",
+    title: document.title || basename(document.path) || "structure",
     extension,
   };
 }

@@ -16,6 +16,8 @@ import {
 } from "@burette/ketcher-agent-contract";
 import type { KetcherEditorApi } from "../components/ketcher-editor";
 import type { TextFileSaveOutcome } from "./file-export";
+import { isAbsoluteNativeFilePath } from "./native-menu-paths";
+import { basename } from "./sidebar-projects";
 
 export type KetcherAgentEditor = {
   containsReaction?: () => boolean;
@@ -569,17 +571,18 @@ function localContentRefPath(contentRef: string) {
     try {
       const url = new URL(path);
       if (url.host && url.host !== "localhost") return null;
-      path = decodeURIComponent(url.pathname);
+      // file:///C:/data/a.mol carries the drive after the URL's leading slash.
+      path = decodeURIComponent(url.pathname).replace(/^\/(?=[A-Za-z]:\/)/u, "");
     } catch {
       return null;
     }
   }
-  if (!path.startsWith("/") || path.split("/").includes("..")) return null;
+  if (!isAbsoluteNativeFilePath(path) || path.split(/[\\/]/u).includes("..")) return null;
   return path;
 }
 
 function pathExtension(path: string) {
-  const name = path.slice(path.lastIndexOf("/") + 1);
+  const name = basename(path);
   const dot = name.lastIndexOf(".");
   return dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
 }

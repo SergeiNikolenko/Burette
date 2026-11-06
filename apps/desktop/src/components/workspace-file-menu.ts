@@ -5,6 +5,8 @@ import type { ShellActions, ShellViewState } from "./types";
 import type { useWorkspaceFileActions } from "../hooks/use-workspace-file-actions";
 import { isTauriRuntime } from "../lib/tauri";
 import { fileManagerName } from "../lib/platform";
+import { isAbsoluteNativeFilePath } from "../lib/native-menu-paths";
+import { basename } from "../lib/sidebar-projects";
 import { menuItem as item, submenu, menuSections, fileCapabilities } from "./workspace-menu-items";
 import { requestContextualGuide } from "./onboarding/request";
 
@@ -17,7 +19,7 @@ export function workspaceFileMenu(paths: string[], state: ShellViewState, action
   const single = paths.length === 1;
   const path = paths[0];
   const caps = paths.map(fileCapabilities);
-  const local = paths.every(path => path.startsWith("/"));
+  const local = paths.every(isAbsoluteNativeFilePath);
   const document = single ? state.documents.find(document => document.path === path) : null;
   // The native menu has no anchor, so the comparison opens over the file the user chose to view.
   const openAs = (rendererMode: "molstar" | "xyzrender-external") => async () => {
@@ -27,7 +29,7 @@ export function workspaceFileMenu(paths: string[], state: ShellViewState, action
   const opening = [
     command("open-tabs", single ? "New tab" : "In separate tabs", () => openBatch(paths, "tabs")),
     ...(["right", "bottom"] as const).map(area => command(`open-${area}`, area === "right" ? "Right panel" : "Bottom panel", () => actions.openDockPayload({ area, tabKind: "files", payload: {
-      paths, records: [], items: paths.map(path => ({ kind: "file", path, title: path.split('/').pop() || path })),
+      paths, records: [], items: paths.map(path => ({ kind: "file", path, title: basename(path) || path })),
     } }))),
     ...(isTauriRuntime() && local ? [command("open-window", "New window", () => actions.openNewWindow(paths))] : []),
     ...(isTauriRuntime() && local && single && caps[0].scene ? [command("open-popout", "Popout", () => invoke("open_new_workspace_window", { paths, presentation: "preview" }))] : []),

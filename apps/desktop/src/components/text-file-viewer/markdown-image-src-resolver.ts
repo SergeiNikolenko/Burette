@@ -1,11 +1,7 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { EditorView, ViewPlugin } from "@codemirror/view";
-
-function parentDirectory(path: string): string | null {
-  const normalized = path.replace(/\\/g, "/");
-  const index = normalized.lastIndexOf("/");
-  return index > 0 ? normalized.slice(0, index) : null;
-}
+import { isAbsoluteNativeFilePath } from "../../lib/native-menu-paths";
+import { joinPath, parentDirectory } from "../../lib/sidebar-projects";
 
 function resolveImgSrc(img: HTMLImageElement, markdownDir: string) {
   const src = img.getAttribute("src");
@@ -19,7 +15,7 @@ function resolveImgSrc(img: HTMLImageElement, markdownDir: string) {
   ) {
     return;
   }
-  const absolute = src.startsWith("/") ? src : `${markdownDir}/${src}`;
+  const absolute = isAbsoluteNativeFilePath(src) ? src : joinPath(markdownDir, src);
   img.src = convertFileSrc(absolute);
 }
 

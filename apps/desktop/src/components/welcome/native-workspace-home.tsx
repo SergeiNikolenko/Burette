@@ -92,7 +92,7 @@ export function NativeWorkspaceHome({ actions, home }: { actions: ShellActions; 
 // Downloaded PDB entries and bundled examples live in cache folders whose
 // names mean nothing to the user.
 function folderOf(path: string) {
-  const folders = path.split("/").slice(1, -1);
+  const folders = path.split(/[\\/]/u).slice(1, -1);
   if (folders[folders.length - 1] === "burette-pdb-entries") return "Protein Data Bank";
   if (folders.slice(-3).join("/") === "burette-agent/assets/examples") return "Burette examples";
   return folders.slice(-2).join("/");

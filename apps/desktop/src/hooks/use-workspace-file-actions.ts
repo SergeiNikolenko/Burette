@@ -12,6 +12,7 @@ import { fileCapabilities } from "../components/workspace-menu-items";
 import { togetherDockingRequest } from "../lib/docking-documents";
 import type { ShellActions, ShellViewState } from "../components/types";
 import type { ViewerDocument } from "../types";
+import { basename } from "../lib/sidebar-projects";
 
 export function useWorkspaceFileActions(state: ShellViewState, actions: ShellActions) {
   // Files and records imported into each open scene, so a scene can later join another one whole.
@@ -143,6 +144,6 @@ export function useWorkspaceFileActions(state: ShellViewState, actions: ShellAct
       const link = window.document.createElement('a'); link.href = result.dataUri; link.download = name; link.click();
     }
   };
-  const copyNames = (paths: string[]) => writeClipboardText(paths.map(path => path.split('/').pop() || path).join('\n'));
+  const copyNames = (paths: string[]) => writeClipboardText(paths.map(path => basename(path) || path).join('\n'));
   return { isCombinedScene: (document: ViewerDocument) => scenePaths(document).length > 1, sceneTargets, addToScene, addRecordsToScene, mergeTargets, mergeScene, gridView, saveScene, copyNames, focusViewer, openRecordScene, openTogether, openPoses, openAligned, exportStructure, copySequence, exportImage };
 }

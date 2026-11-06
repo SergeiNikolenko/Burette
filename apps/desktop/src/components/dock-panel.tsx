@@ -1310,7 +1310,7 @@ function dockingTextSourcesForDocument(document: ViewerDocument | null): Docking
     document.dockingRequest.receptorPath,
     ...document.dockingRequest.ligandPaths,
   ]).map((path, index) => {
-    const title = fileName(path);
+    const title = basename(path);
     const extension = extensionFromPath(path);
     return { key: `${index}:${path}`, path, title, extension };
   });
@@ -1343,14 +1343,10 @@ function isMaestroStructure(document: ViewerDocument | null) {
 }
 
 function extensionFromPath(path: string) {
-  const name = fileName(path).toLowerCase();
+  const name = basename(path).toLowerCase();
   if (name.endsWith(".mae.gz")) return "maegz";
   const index = name.lastIndexOf(".");
   return index >= 0 ? name.slice(index + 1) : "";
-}
-
-function fileName(path: string) {
-  return path.replace(/\\/g, "/").split("/").filter(Boolean).pop() || path;
 }
 
 function activeTextDocumentFromState(state: ShellViewState) {

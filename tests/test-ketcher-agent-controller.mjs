@@ -97,7 +97,7 @@ async function readyController(host) {
 // contentRef reads local structure files through the host reader, bounded to 1 MiB.
 {
   const reads = [];
-  const files = new Map([["/data/nad.mol", ETHANOL_MOLFILE]]);
+  const files = new Map([["/data/nad.mol", ETHANOL_MOLFILE], ["C:\\Data\\nad.mol", ETHANOL_MOLFILE], ["C:/Data/nad.mol", ETHANOL_MOLFILE]]);
   const host = {
     readContentRef: async (path, maxBytes) => {
       reads.push([path, maxBytes]);
@@ -119,10 +119,17 @@ async function readyController(host) {
   assert.equal(fromUrl.ok, true, JSON.stringify(fromUrl.error));
   assert.equal(reads.at(-1)[0], "/data/nad.mol");
 
+  for (const [contentRef, readPath] of [["C:\\Data\\nad.mol", "C:\\Data\\nad.mol"], ["file:///C:/Data/nad.mol", "C:/Data/nad.mol"]]) {
+    const windows = await controller.execute(action(controller, "set_structure", { format: "mol", contentRef }));
+    assert.equal(windows.ok, true, JSON.stringify(windows.error));
+    assert.equal(reads.at(-1)[0], readPath);
+  }
+
   const revision = controller.snapshot().structureRevision;
   const rejected = [
     [{ format: "mol", contentRef: "nad.mol" }, "INVALID_INPUT", /absolute local file path/],
     [{ format: "mol", contentRef: "/data/../etc/nad.mol" }, "INVALID_INPUT", /absolute local file path/],
+    [{ format: "mol", contentRef: "C:\\Data\\..\\nad.mol" }, "INVALID_INPUT", /absolute local file path/],
     [{ format: "mol", contentRef: "https://example.com/nad.mol" }, "INVALID_INPUT", /absolute local file path/],
     [{ format: "mol", contentRef: "/data/nad.pdb" }, "UNSUPPORTED_FORMAT", /\.mol, \.sdf, \.sd, \.mdl/],
     [{ format: "mol", contentRef: "/private/secret.mol" }, "INVALID_INPUT", /outside the files this workspace is authorized to read/],
@@ -137,7 +144,7 @@ async function readyController(host) {
     assert.equal(result.snapshot.phase, "ready");
     assert.equal(result.snapshot.structureRevision, revision);
   }
-  assert.equal(editor.calls.length, 2, "rejected references must never reach the editor");
+  assert.equal(editor.calls.length, 4, "rejected references must never reach the editor");
 
   const { controller: hostless } = await readyController({});
   const unavailable = await hostless.execute(action(hostless, "set_structure", { format: "mol", contentRef: "/data/nad.mol" }));

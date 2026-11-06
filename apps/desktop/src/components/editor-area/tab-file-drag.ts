@@ -6,6 +6,7 @@ import type { StructureDragPayload } from "../../lib/structure-drag";
 import type { SourceEditingContextValue } from "../../lib/source-editing/context";
 import { requestViewerAction } from "../../lib/viewer-bridge";
 import { safeExportFileName } from "../../lib/file-export";
+import { isAbsoluteNativeFilePath } from "../../lib/native-menu-paths";
 
 const MAX_DRAG_FILES = 200;
 const MAX_DRAG_BYTES = 24 * 1024 * 1024;
@@ -36,11 +37,11 @@ export async function tabFileDragPayload(tabs: MoleculeTab[], state: Pick<ShellV
   for (const tab of tabs) {
     const location = tab.location;
     if (location.kind === "document") {
-      if (!location.path.startsWith("/")) throw new Error("Save this document before dragging it.");
+      if (!isAbsoluteNativeFilePath(location.path)) throw new Error("Save this document before dragging it.");
       paths.push(location.path);
     } else if (location.kind === "text-file") {
       const document = state.textDocuments.find(document => document.path === location.path);
-      if (location.path.startsWith("/")) paths.push(location.path);
+      if (isAbsoluteNativeFilePath(location.path)) paths.push(location.path);
       else if (document && !document.truncated && document.language !== "image") {
         paths.push(await materialize(tab.title ?? document.title, document.extension || "txt", document.content));
       } else throw new Error("Save this document before dragging it.");
@@ -50,11 +51,11 @@ export async function tabFileDragPayload(tabs: MoleculeTab[], state: Pick<ShellV
       const draft = document ? sourceEditing?.sessionForDocument(document) : null;
       if (document && draft?.dirty) paths.push(await materialize(tab.title ?? document.title, document.extension, draft.content));
       else if (document?.renderer === "molstar" && (document.dockingRequest || document.sceneUnsaved
-        || document.sceneSourcePaths?.length || document.virtual || !location.path.startsWith("/"))) {
+        || document.sceneSourcePaths?.length || document.virtual || !isAbsoluteNativeFilePath(location.path))) {
         const result = await requestViewerAction(document.id, { type: "workspace_scene_snapshot" });
         if (typeof result.dataBase64 !== "string") throw new Error("The scene could not be exported.");
         paths.push(await materialize(tab.title ?? document.title, "molx", result.dataBase64, "base64"));
-      } else if (location.path.startsWith("/")) paths.push(location.path);
+      } else if (isAbsoluteNativeFilePath(location.path)) paths.push(location.path);
       else throw new Error("Save this document before dragging it.");
     } else if (location.kind === "ketcher") {
       const { getKetcherAgentController } = await import("../../lib/ketcher-agent");

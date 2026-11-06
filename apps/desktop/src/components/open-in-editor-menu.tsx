@@ -14,7 +14,7 @@ import { ChevronDown } from "./ui/app-icons";
 import { WorkspaceFileHeader } from "./workspace-file-header";
 import { useNativeApplicationIcons } from "../hooks/use-native-application-icons";
 import { visibleEditorTargets } from "../lib/chemical-editor-targets";
-import { isLocalFilePath } from "../lib/browser-file-actions";
+import { isAbsoluteNativeFilePath } from "../lib/native-menu-paths";
 
 type ActiveFile = {
   path: string;
@@ -23,7 +23,7 @@ type ActiveFile = {
 
 export function OpenInEditorMenu({ state, actions, presentation = "chrome", navigation }: { state: ShellViewState; actions: ShellActions; presentation?: "chrome" | "file-header"; navigation?: (items: MenuItemSpec[]) => ReactNode }) {
   const activeFile = useMemo(() => activeFileFromState(state), [state]);
-  const filePath = activeFile && isLocalFilePath(activeFile.path) ? activeFile.path : null;
+  const filePath = activeFile && isAbsoluteNativeFilePath(activeFile.path) ? activeFile.path : null;
   const localFinderIconUrl = useFinderIconUrl();
   const localDefaultIconUrl = useDefaultApplicationIconUrl(filePath);
   const { targets: discoveredTargets, loading } = useChemicalEditorTargets(filePath, actions.listChemicalEditorTargets);

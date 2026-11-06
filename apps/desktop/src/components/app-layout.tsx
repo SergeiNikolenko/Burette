@@ -305,8 +305,8 @@ function WorkspaceAppLayout({
   });
   const sidebarPeeking = sidebarPeek !== "closed";
   const platform = desktopPlatform();
-  // Linux windows carry native decorations, so no traffic lights sit in the page.
-  const compactLeadingChrome = !tauriRuntime || windowFullscreen || platform === "linux";
+  // Only macOS places traffic lights in the page; Linux and Windows windows carry native decorations.
+  const compactLeadingChrome = !tauriRuntime || windowFullscreen || platform !== "macos";
   // How far the leading window controls reach: the tab strip starts past them
   // when the sidebar is narrower than they are (or closed). The sidebar's own
   // edge comes from `--sidebar-edge`, measured rather than stored.

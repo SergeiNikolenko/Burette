@@ -10,6 +10,8 @@ import {
 assert.equal(isAbsoluteNativeFilePath("/tmp/molecules.sdf"), true);
 assert.equal(isAbsoluteNativeFilePath("C:\\molecules.sdf"), true);
 assert.equal(isAbsoluteNativeFilePath("relative/molecules.sdf"), false);
+assert.equal(isAbsoluteNativeFilePath("\\\\lab\\share\\molecules.sdf"), true);
+assert.equal(isAbsoluteNativeFilePath("C:molecules.sdf"), false, "drive-relative paths depend on the cwd");
 
 const combinedDocument = {
   path: "/tmp/workspace#combined-sdf-grid",

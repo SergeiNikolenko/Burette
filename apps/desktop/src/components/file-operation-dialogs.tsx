@@ -1,6 +1,6 @@
 import { useId } from "react";
 import { basename } from "../lib/sidebar-projects";
-import { isMacPlatform } from "../lib/platform";
+import { isMacPlatform, trashName } from "../lib/platform";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Input } from "./ui/input";
@@ -11,7 +11,7 @@ export type FileOperationRequest =
   | { operation: "duplicate" | "trash" | "trashFolder"; path: string }
   | { operation: "saveCopy" | "moveInto"; path: string; destination: string };
 
-const labels = { rename: "Rename File", duplicate: "Duplicate File", trash: "Move to Trash", saveCopy: "Save File Copy", renameFolder: "Rename Folder", createFolder: "New Folder", trashFolder: "Move Folder to Trash", moveInto: "Move to Folder" };
+const labels = { rename: "Rename File", duplicate: "Duplicate File", trash: `Move to ${trashName()}`, saveCopy: "Save File Copy", renameFolder: "Rename Folder", createFolder: "New Folder", trashFolder: `Move Folder to ${trashName()}`, moveInto: "Move to Folder" };
 
 // Native filesystem controllers own transactions; these forms only collect intent.
 export function FileOperationDialog({ request, name, onNameChange, error, busy, onDismiss, onRun }: {
@@ -33,7 +33,7 @@ export function FileOperationDialog({ request, name, onNameChange, error, busy, 
       }}>
         <DialogHeader><DialogTitle>{request ? labels[request.operation] : "File"}</DialogTitle>
           <DialogDescription className={needsName ? "sr-only" : "break-words"}>
-            {trashing ? `“${basename(request.path)}” can be restored from Trash.` : request ? basename(request.path) : "File operation"}
+            {trashing ? `“${basename(request.path)}” can be restored from the ${trashName()}.` : request ? basename(request.path) : "File operation"}
           </DialogDescription>
         </DialogHeader>
         {needsName ? <label className="grid gap-2 text-xs"><span className={renaming ? "sr-only" : undefined}>Name</span>
@@ -58,8 +58,8 @@ export function TrashFilesDialog({ paths, completed, error, busy, onDismiss, onR
 }) {
   return <Dialog open={paths.length > 0} onOpenChange={open => { if (!open && !busy) onDismiss(); }}>
     <DialogContent variant="form" size="narrow" className="overscroll-contain" showCloseButton={!busy} onEscapeKeyDown={event => { if (busy) event.preventDefault(); }}>
-      <DialogHeader><DialogTitle>Move {paths.length} {paths.length === 1 ? "File" : "Files"} to Trash</DialogTitle>
-        <DialogDescription>{isMacPlatform() ? "You can restore these files in Finder." : "You can restore them from the Trash."}</DialogDescription>
+      <DialogHeader><DialogTitle>Move {paths.length} {paths.length === 1 ? "File" : "Files"} to {trashName()}</DialogTitle>
+        <DialogDescription>{isMacPlatform() ? "You can restore these files in Finder." : `You can restore them from the ${trashName()}.`}</DialogDescription>
       </DialogHeader>
       <ul aria-label="Files to move" className="grid min-w-0 max-h-[min(40dvh,280px)] gap-2 overflow-y-auto overscroll-contain break-words text-sm">
         {paths.map(path => <li key={path} className="[content-visibility:auto] [contain-intrinsic-size:auto_24px]">{basename(path)}</li>)}
@@ -69,7 +69,7 @@ export function TrashFilesDialog({ paths, completed, error, busy, onDismiss, onR
       <DialogFooter>
         {busy ? <span role="status" className="mr-auto flex items-center gap-2 text-sm"><Spinner aria-hidden />Moving…</span> : null}
         <Button type="button" variant="secondary" disabled={busy} onClick={onDismiss}>Cancel</Button>
-        <Button disabled={busy} onClick={onRetry}>Move to Trash</Button>
+        <Button disabled={busy} onClick={onRetry}>Move to {trashName()}</Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>;
