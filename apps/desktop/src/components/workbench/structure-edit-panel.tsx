@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import type { GraphEdit, GraphEditResult } from "../../lib/molecular-workbench/graph-edit";
 import { moveAtomOrder } from "../../lib/molecular-workbench/atom-order";
-import type { Vec3 } from "../../lib/molecular-workbench/types";
+import type { MolecularAtom, Vec3 } from "../../lib/molecular-workbench/types";
+import type { GeometryBinding } from "../../lib/geometry-binding";
+import { useGeometryBinding } from "../../hooks/use-geometry-binding";
+import { useGeometryLivePreview } from "../../hooks/use-geometry-live-preview";
 import { flatDepiction, resolveConstraints, type GeometryConstraint, type OptimizationMethod } from "../../lib/molecular-workbench/optimization";
 import { energyModel, type EnergyModelChoice } from "../../lib/molecular-workbench/energy-models";
 import { useViewerAtomSelection } from "../../lib/workbench/selection";
@@ -99,6 +102,18 @@ function newAtomPosition(structure: GraphEditResult, anchor: number | null): Vec
   return [maxX + 2 * NEW_BOND_LENGTH, mean("y"), mean("z")];
 }
 
+/** The scene's Geometry rows are the structure's atoms in source order. */
+function sameAtoms(binding: GeometryBinding, atoms: readonly MolecularAtom[]) {
+  const rows = binding.text.split("\n").slice(2).filter((line) => line.trim());
+  return rows.length === atoms.length && rows.every((line, index) => line.trim().split(/\s+/u)[0] === atoms[index].element);
+}
+
+/** The binding's XYZ with new coordinates for the same atoms. */
+function xyzAt(binding: GeometryBinding, atoms: readonly MolecularAtom[]) {
+  const [count, title] = binding.text.split("\n", 2);
+  return [count, title, ...atoms.map((atom) => `${atom.element} ${atom.x} ${atom.y} ${atom.z}`)].join("\n") + "\n";
+}
+
 export function StructureEditPanel({ document, actions }: { document: ViewerDocument; actions: ShellActions }) {
   const sourceEditing = useSourceEditing();
   const logicalSource = useLogicalSource(document.id);
@@ -124,9 +139,15 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
   // Optimize Geometry, Calculate Energy and the other Calculate commands from menus and the palette.
   const command = useRef<(command: OptimizationCommand) => void>(() => {});
   useOptimizationCommandHandler(document.id, Boolean(editor), (name) => command.current(name));
-  const auto = useAutoOptimize();
   // The snapshot Auto Optimize started from; any other change to the draft ends the session.
   const autoBase = useRef<GraphSnapshot | null>(null);
+  // While Auto Optimize runs, its frames preview in the scene through a Geometry binding.
+  const [autoScene, setAutoScene] = useState(false);
+  const autoBinding = useGeometryBinding(document, actions.runStructureViewerAction, editor?.current ?? document,
+    (binding) => Boolean(editor) && sameAtoms(binding, editor!.current.structure.atoms), autoScene).binding;
+  const live = useGeometryLivePreview(document, autoBinding, actions.runStructureViewerAction,
+    (caught) => setInputError(caught instanceof Error ? caught.message : String(caught)));
+  const auto = useAutoOptimize(document, autoBinding, actions.runStructureViewerAction);
   useEffect(() => {
     if (autoBase.current && autoBase.current !== editor?.current) { autoBase.current = null; auto.stop(); }
   }, [editor?.current]);
@@ -202,16 +223,18 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
     void optimize({ method: run.method, forceField: run.model, maxIterations: run.maxIterations });
   };
   auto.handlers.current = {
-    frame: () => {},
+    frame: (relaxed) => { if (autoBinding) live.preview(xyzAt(autoBinding, relaxed), autoBinding.text); },
     finish: (relaxed) => {
       const base = autoBase.current;
       autoBase.current = null;
-      if (base !== editor.current) return;
-      void draft.apply({ kind: "positions", coordinates: relaxed.map((atom) => [atom.x, atom.y, atom.z]), from: base }).then((result) => {
+      if (base !== editor.current) { live.cancel(); setAutoScene(false); return; }
+      // The scene keeps the relaxed frame until the published draft reloads it.
+      const shown = autoBinding ? live.commit(xyzAt(autoBinding, relaxed), autoBinding.text).catch(() => {}) : Promise.resolve();
+      void shown.then(() => draft.apply({ kind: "positions", coordinates: relaxed.map((atom) => [atom.x, atom.y, atom.z]), from: base })).then((result) => {
         if (result) { setSelection((current) => ({ atoms: selectedAtoms(current, structure), from: current.from, structure: result })); keepConstraints(result); }
-      });
+      }).finally(() => setAutoScene(false));
     },
-    cancel: () => { autoBase.current = null; },
+    cancel: () => { autoBase.current = null; live.cancel(); setAutoScene(false); },
   };
   // Avogadro's Auto Optimize is a toggle: the same command stops it and keeps the result.
   const toggleAutoOptimize = () => {
@@ -220,6 +243,7 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
     if (blocked) { setInputError(blocked); return; }
     setInputError(null);
     autoBase.current = editor.current;
+    setAutoScene(true);
     auto.start(structure, constraints);
   };
   // Adding or removing hydrogens (also when generating 3D coordinates) renumbers atoms, so the selection does not carry over.

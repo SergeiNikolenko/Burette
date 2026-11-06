@@ -1,4 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import { setAtomDragMode, subscribeAtomDrag } from "../../lib/atom-drag";
+import type { GeometryBinding } from "../../lib/geometry-binding";
+import type { ViewerDocument } from "../../types";
+import type { ShellActions } from "../types";
 import { startAutoOptimize, type AutoOptimizeFrame, type AutoOptimizeSession } from "../../lib/molecular-workbench/auto-optimize-client";
 import { energyModel, resolveEnergyModel } from "../../lib/molecular-workbench/energy-models";
 import type { MolecularStructure } from "../../lib/molecular-workbench/molecular-graph";
@@ -21,9 +25,10 @@ export type AutoOptimizeHandlers = {
  * Avogadro's Auto Optimize tool: the structure relaxes continuously with the configured
  * model (Hybrid FIRE, then L-BFGS, as Avogadro), atoms dragged in the 3D view hold their
  * new positions while the others follow, and Stop publishes the result as one Undo step.
- * The panel assigns `handlers.current` every render.
+ * The panel assigns `handlers.current` every render; `binding` is the scene the frames preview
+ * into, which also carries the drag gestures while a session runs.
  */
-export function useAutoOptimize() {
+export function useAutoOptimize(document: ViewerDocument, binding: GeometryBinding | null, send: ShellActions["runStructureViewerAction"]) {
   const handlers = useRef<AutoOptimizeHandlers>({ frame: () => {}, finish: () => {}, cancel: () => {} });
   const session = useRef<AutoOptimizeSession | null>(null), latest = useRef<AutoOptimizeFrame | null>(null), moved = useRef(false);
   const [running, setRunning] = useState<{ model: MolecularForceField; frame: AutoOptimizeFrame | null } | null>(null);
@@ -51,6 +56,20 @@ export function useAutoOptimize() {
   };
   const move = (atoms: number[], positions: Vec3[]) => { moved.current = true; session.current?.move(atoms, positions); };
   const release = () => session.current?.release();
+
+  // Atoms dragged in the 3D view hold their positions; the viewer keeps them under the pointer.
+  const active = Boolean(running);
+  useEffect(() => {
+    if (!active || !binding) return undefined;
+    const controller = new AbortController();
+    const unsubscribe = subscribeAtomDrag(document, binding, (event) => {
+      move(event.atoms, event.positions);
+      if (event.phase === "end" || event.phase === "cancel") release();
+    });
+    void setAtomDragMode(document, binding, true, send, controller.signal)
+      .catch((caught) => { if (!controller.signal.aborted) setError(caught instanceof Error ? caught.message : String(caught)); });
+    return () => { controller.abort(); unsubscribe(); void setAtomDragMode(document, binding, false, send).catch(() => {}); };
+  }, [active, binding, document.id]);
 
   const frame = running?.frame;
   const status = running ? (

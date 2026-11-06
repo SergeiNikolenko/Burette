@@ -54,8 +54,13 @@ test("Auto Optimize relaxes the Geometry draft until Stop, which keeps the resul
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
   const doc = { id: "argon", title: "argon.xyz", path: "/argon.xyz", extension: "xyz", renderer: "molstar" };
-  const previews = [];
-  const actions = { setDockDocument() {}, openDockTab() {}, runStructureViewerAction: (_document, action) => { if (action.type === "update_geometry") previews.push(action); } };
+  const previews = [], dragModes = [];
+  const actions = { setDockDocument() {}, openDockTab() {}, runStructureViewerAction: async (_document, action) => {
+    if (action.type === "update_geometry") previews.push(action);
+    if (action.type === "atom_drag") dragModes.push(action.enabled);
+  } };
+  const drag = (phase, positions) => act(async () => window.dispatchEvent(new window.MessageEvent("message", { source: window,
+    data: { source: "burette-viewer", body: { type: "atom-drag", phase, lease: "panel-fixture", atoms: [0], positions } } })));
   const status = () => host.querySelector('[role="status"].workbench-status')?.textContent ?? "";
   try {
     await act(async () => root.render(React.createElement(GeometryPanel, { document: doc, actions })));
@@ -66,11 +71,17 @@ test("Auto Optimize relaxes the Geometry draft until Stop, which keeps the resul
     assert.match(status(), /^ΔE -\d+\.\d\d kcal\/mol$/u);
     assert.equal(host.querySelector('[role="status"].workbench-status').title, "Auto Optimize, Lennard-Jones");
     assert.equal(writes.length, 0, "frames only preview; the draft is unchanged while Auto Optimize runs");
-    // Let the cluster settle, then stop.
+    assert.deepEqual(dragModes, [true], "the session turns on dragging in the 3D view");
+    // Atom 1 is dragged away and held there; the other two follow it.
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 300)));
+    await drag("start", [[0, 0, 0]]);
+    await drag("move", [[-1.5, 0.5, 0.25]]);
     await act(async () => new Promise((resolve) => setTimeout(resolve, 300)));
     await act(async () => [...host.querySelectorAll("button")].find((button) => button.textContent === "Stop").click());
     await until(() => writes.length === 1, "the published result");
     assert.equal(status(), "");
+    assert.deepEqual(dragModes, [true, false], "Stop turns dragging off");
+    assert.deepEqual(writes[0].split("\n")[2].trim().split(/\s+/u).slice(1).map(Number), [-1.5, 0.5, 0.25]);
     for (const distance of pairs(writes[0])) assert.ok(Math.abs(distance - 3.66) < 1e-3, `pair distance ${distance}`);
 
     await act(async () => host.querySelector('[aria-label="Undo"]').click());

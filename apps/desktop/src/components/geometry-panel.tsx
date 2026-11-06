@@ -188,7 +188,7 @@ function CartesianGeometryPanel({ document, actions, convert }: {
     error => setEditError(error instanceof Error ? error.message : String(error)));
   const [configuring, setConfiguring] = useState(false);
   const energy = useEnergyCalculation(editor?.frame);
-  const auto = useAutoOptimize();
+  const auto = useAutoOptimize(document, editor?.binding ?? null, actions.runStructureViewerAction);
   // The geometry Auto Optimize started from; any other change to the editor ends the session.
   const autoBase = useRef<Editor | null>(null);
   useEffect(() => {
