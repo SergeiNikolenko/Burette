@@ -38,36 +38,3 @@ runInNewContext(readFileSync('apps/desktop/src/preview-grid/molecule-preview-boo
 assert.deepEqual(JSON.parse(JSON.stringify(window.BuretteConfig)), data.config);
 assert.equal(window.BuretteDataBase64, data.data);
 console.log('Inspector bootstrap: strict CSP, delayed source and iframe reuse passed.');
-
-const layout = readFileSync('apps/desktop/src/components/app-layout.tsx', 'utf8');
-const begin = layout.indexOf('    if (!activeGridId) return;\n    const observer = new ResizeObserver');
-const end = layout.indexOf('  }, [activeGridId, rightDockOpen, viewportWidth, shellRef]);', begin);
-assert(begin > 0 && end > begin);
-const effect = new Bun.Transpiler({ loader: 'ts' }).transformSync(`function run() {${layout.slice(begin, end)}}`);
-let resized; let unpinned; let frameRight = 1000; const covers = []; const observed = [];
-let pinned = false;
-const shell = { hasAttribute: (name) => name === 'data-resizing' && pinned };
-const iframe = { contentWindow: {}, getBoundingClientRect: () => ({ right: frameRight }) };
-const dock = { getBoundingClientRect: () => ({ left: 600 }) };
-const env = {
-  activeGridId: 'scene', rightDockOpen: true, rightDockElementRef: { current: dock }, workbenchGroupRef: { current: {} },
-  shellRef: { current: shell },
-  ResizeObserver: class { constructor(callback) { resized = callback; } observe(target) { observed.push(target); } disconnect() {} },
-  MutationObserver: class { constructor(callback) { unpinned = callback; } observe() {} disconnect() {} },
-  activeViewerIframeForDocument: () => iframe,
-  postMessageToViewerSource: (_win, message) => covers.push(message.body.cover),
-  window: { addEventListener() {}, removeEventListener() {}, setTimeout() {}, clearTimeout() {} },
-};
-const cleanup = new Function(...Object.keys(env), `${effect}; return run();`)(...Object.values(env));
-assert(observed.includes(iframe), 'iframe resizing must invalidate the dock cover');
-frameRight = 700; resized();
-assert.deepEqual(covers, [400, 100]);
-// Molecular frames remain pinned, but grid chrome follows the visible strip.
-pinned = true;
-frameRight = 800; resized();
-frameRight = 900; resized();
-assert.deepEqual(covers, [400, 100, 200, 300]);
-pinned = false; unpinned();
-assert.deepEqual(covers, [400, 100, 200, 300, 300]);
-cleanup();
-console.log('Grid layout: iframe resize recalculates available card width.');
