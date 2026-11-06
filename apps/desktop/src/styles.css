@@ -1307,7 +1307,12 @@ html[data-hosted-mcp-widget="true"] #root {
   position: absolute;
   inset: 0 auto 0 0;
   z-index: 4;
-  background: var(--bg);
+  /* No window material behind a floating panel: paint the opaque sidebar tint
+     of the browser shell. */
+  background: light-dark(
+    var(--color-surface-secondary),
+    color-mix(in srgb, var(--color-token-main-surface-primary) 96%, white)
+  );
 }
 .app-shell[data-sidebar-peek="open"] .sidebar-shell-inner,
 .app-shell[data-sidebar-peek="closing"] .sidebar-shell-inner {

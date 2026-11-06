@@ -79,11 +79,16 @@ export function useSidebarPeek({
           window.clearTimeout(closeTimer);
           closeTimer = 0;
         } else if (!closeTimer && !dragging) {
-          closeTimer = window.setTimeout(() => {
-            closeTimer = 0;
-            // A context menu or rename dialog opened from the sidebar keeps it.
-            if (!document.querySelector("[role='menu'], [role='dialog']")) hide();
-          }, CLOSE_DELAY_MS);
+          // A context menu or rename dialog opened from the sidebar keeps it
+          // until the layer closes. Keep re-checking: over the viewer iframe
+          // the document sees no further pointer events to retry on.
+          const closeWhenUnblocked = () => {
+            closeTimer = document.querySelector("[role='menu'], [role='dialog']")
+              ? window.setTimeout(closeWhenUnblocked, CLOSE_DELAY_MS)
+              : 0;
+            if (!closeTimer) hide();
+          };
+          closeTimer = window.setTimeout(closeWhenUnblocked, CLOSE_DELAY_MS);
         }
       } else if (onTrigger) {
         if (!openTimer) openTimer = window.setTimeout(show, OPEN_DELAY_MS);
