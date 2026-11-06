@@ -900,6 +900,8 @@
       applyMolstarInteractivity({ atom_index: bin.atomIndices }, 'select', { mode: 'replace', granularity: 'atom', warnings });
       await component.applyTheme({ action: { name: 'color', params: { color: bin.color } }, selection: query });
     }
+    // The bins were painted through the selection; leave none behind.
+    try { state.viewer?.structureInteractivity?.({ action: 'select' }); } catch (_) {}
     try { state.plugin?.managers?.structure?.selection?.clear?.(); } catch (_) {}
     state.sceneVersion++;
     return {
@@ -1555,7 +1557,10 @@
       optimizeDirection: options.optimizeDirection !== false,
       zoomOut: options.zoomOut !== false
     };
-    for (const schema of schemas) {
+    // Each Mol* call replaces the selection and highlight, so they get every schema at once;
+    // focus moves to the first schema that resolves.
+    const batches = action === 'focus' || schemas.length < 2 ? schemas : [{ items: schemas }];
+    for (const schema of batches) {
       try {
         viewer.structureInteractivity({
           elements: schema,
