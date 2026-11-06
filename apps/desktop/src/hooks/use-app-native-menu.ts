@@ -26,6 +26,9 @@ import {
 } from "../lib/native-menu-paths";
 import type { DerivedColumnKind } from "../lib/derived-columns";
 import { nativeMenuAccelerators } from "../lib/keyboard-shortcuts";
+import { structureEditAvailable } from "../lib/workbench/graph-draft";
+import { geometryPanelAvailable } from "../components/geometry-panel";
+import { requestOptimizationCommand, type OptimizationCommand } from "../lib/workbench/optimization-commands";
 import { useSettingsStore } from "../stores/settings-store";
 import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 import { postGridCommand } from "../lib/viewer-bridge";
@@ -91,6 +94,15 @@ const postGridMenuCommand = postGridCommand;
 async function openExternalUrl(url: string) {
   await invoke("open_external_url", { url });
 }
+
+const OPTIMIZATION_MENU_COMMANDS: Record<string, OptimizationCommand> = {
+  "structure.optimize-geometry": "optimize",
+  "structure.auto-optimize": "auto-optimize",
+  "structure.calculate-energy": "calculate-energy",
+  "structure.configure-optimization": "configure",
+  "structure.freeze-atoms": "freeze",
+  "structure.unfreeze-atoms": "unfreeze",
+};
 
 export function useAppNativeMenu({
   state,
@@ -160,6 +172,9 @@ export function useAppNativeMenu({
     && activeDocumentReadable
     && canInspectConformerEnsemble(extension)
     && state.conformerStatus?.prism.installed === true);
+  // Avogadro's Optimize Geometry and Calculate commands run in the panel that edits the coordinates.
+  const optimizationPanel = structureEditAvailable(activeDocument) ? "structure-edit" : geometryPanelAvailable(activeDocument) ? "geometry" : null;
+  const canOptimizeGeometry = Boolean(!isGrid && optimizationPanel);
   const canRunXtb = Boolean(activeDocument
     && !isGrid
     && activeDocumentReadable
@@ -258,10 +273,11 @@ export function useAppNativeMenu({
     canRunCrest,
     canRunPrism,
     canRunXtb,
+    canOptimizeGeometry,
     rgroupRuntimeAvailable: state.rgroupRuntimeAvailable,
     openDocumentPaths,
     recentDocuments: null,
-  }), [activeDocument, activeTabClosable, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, closableTabCount, canOpenCollectionAnalysis, documentRegistryRevision, gridMenuState, isGrid, openDocumentPaths, selectedMoleculeCount, shellEditingText, sourceSaveEnabled, state.activeTab, state.rgroupRuntimeAvailable, state.bottomDockOpen, state.rightDockOpen, state.sidebarOpen, state.tabs.length, windowDocumentDirty]);
+  }), [activeDocument, activeTabClosable, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, canOptimizeGeometry, closableTabCount, canOpenCollectionAnalysis, documentRegistryRevision, gridMenuState, isGrid, openDocumentPaths, selectedMoleculeCount, shellEditingText, sourceSaveEnabled, state.activeTab, state.rgroupRuntimeAvailable, state.bottomDockOpen, state.rightDockOpen, state.sidebarOpen, state.tabs.length, windowDocumentDirty]);
   const nativeStateRef = useRef<NativeMenuState>({ ...nativeState, recentDocuments });
   const closingWindowRef = useRef(false);
   const closeRequestInFlightRef = useRef(false);
@@ -699,6 +715,15 @@ export function useAppNativeMenu({
         if (!activeDocument || isGrid || !canRunPrism) return;
         await actions.runConformerOperation("prism-prune", activeDocument);
         return;
+      case "structure.optimize-geometry":
+      case "structure.auto-optimize":
+      case "structure.calculate-energy":
+      case "structure.configure-optimization":
+      case "structure.freeze-atoms":
+      case "structure.unfreeze-atoms":
+        if (!activeDocument || !canOptimizeGeometry || !optimizationPanel) return;
+        requestOptimizationCommand(actions, activeDocument, optimizationPanel, OPTIMIZATION_MENU_COMMANDS[command]);
+        return;
       case "structure.xtb-optimize":
         if (!activeDocument || isGrid || !canRunXtb) return;
         await actions.runXtbActiveOperation("optimize");
@@ -730,7 +755,7 @@ export function useAppNativeMenu({
       default:
         console.warn(`Unknown native menu command: ${command}`);
     }
-  }, [actions, activeDocument, canOpenCollectionAnalysis, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, closeCurrentWindow, conformerSelection, isGrid, openDocuments, saveActiveSource, sourceSaveEnabled, state.activeTabId, state.activeTab?.pinned, state.tabs]);
+  }, [actions, activeDocument, canOpenCollectionAnalysis, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, canOptimizeGeometry, optimizationPanel, closeCurrentWindow, conformerSelection, isGrid, openDocuments, saveActiveSource, sourceSaveEnabled, state.activeTabId, state.activeTab?.pinned, state.tabs]);
 
   // Grid commands need the mounted grid and its records, not just a new document.
   // Cancel if the user leaves the target tab while it is opening.

@@ -230,7 +230,7 @@ export function optimize(structure: MolecularStructure, options: OptimizeOptions
   if (unavailable) throw new Error(unavailable);
   const evaluator = createOptimizationEvaluator(structure, forceField);
   try {
-    const { atoms, ...result } = optimizeCartesian(structure, evaluator, method, forceField, { constraints, maxIterations }, onProgress);
+    const { atoms, ...result } = optimizeCartesian(structure, evaluator, method, forceField, { constraints, maxIterations, gradientTolerance: options.gradientTolerance, energyTolerance: options.energyTolerance }, onProgress);
     // A model without a graph field also relaxes XYZ input whose bond orders are unknown.
     return { ...result, molecule: snapshot(toOcl({ ...structure, atoms }, energyModel(forceField).graph), structure.title, structure.graphSource, structure.graphComplete, structure.atomMap) };
   } finally { evaluator.dispose(); }

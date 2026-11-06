@@ -52,6 +52,19 @@ numerical limit when it runs. While it runs, the status
 shows the latest step and its energy. Every result line names the force field
 and method, and **Open steps** opens the steps as XYZ with per-step energies.
 
+Avogadro's commands run in the panel that edits the active structure (Edit for
+SDF/MOL, Geometry for XYZ) from the Structure menu, the command palette and
+⌥⌘O: **Optimize Geometry** optimizes with the saved settings, **Calculate
+Energy** reports the single-point energy of the model Automatic or the chosen
+field gives, **Freeze/Unfreeze Selected Atoms** change the frozen atoms of the
+3D selection, and **Configure Optimization…** (also the last item of the
+Optimize menu) sets the force field, minimizer, any step limit from 1 to 1000
+and the convergence as powers of ten: the energy change per step averaged over
+ten steps (default 10⁻⁵ kcal/mol, as Avogadro's energy window) and the largest
+gradient component (default 10⁻³ kcal/(mol·Å)). In Geometry the 3D view follows
+each reported step; Cancel restores the start, and the finished run is one
+Undo step. The xTB job in the Compute menu is **Optimize with xTB**.
+
 In the Edit panel of an SDF/MOL structure, **Freeze** keeps the selected atoms
 in place and **Hold distance/angle/dihedral** restrains two, three or four
 selected atoms to a target, which starts at the current value and can be

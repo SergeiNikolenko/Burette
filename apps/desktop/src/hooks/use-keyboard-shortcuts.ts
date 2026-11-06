@@ -13,6 +13,9 @@ import { useAnnotationStore } from "../stores/annotation-store";
 import { useSettingsStore } from "../stores/settings-store";
 import { isAgentPluginSurface } from "../lib/native-mcp-workspace";
 import { reopenClosedTab } from "../components/workspace-panes/pane-actions";
+import { structureEditAvailable } from "../lib/workbench/graph-draft";
+import { geometryPanelAvailable } from "../components/geometry-panel";
+import { requestOptimizationCommand } from "../lib/workbench/optimization-commands";
 
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
@@ -57,6 +60,11 @@ export function useKeyboardShortcuts(state: ShellViewState, actions: ShellAction
       ["file.close-tab", () => actions.closeActiveDocument()],
       ["file.close-other-tabs", () => state.activeTabId && actions.closeOtherTabs(state.activeTabId)],
       ["file.reopen-closed-tab", () => reopenClosedTab(actions)],
+      ["structure.optimize-geometry", () => {
+        const document = state.activeDocument ?? null;
+        const panel = structureEditAvailable(document) ? "structure-edit" : geometryPanelAvailable(document) ? "geometry" : null;
+        if (document && panel) requestOptimizationCommand(actions, document, panel, "optimize");
+      }],
     ];
     const onKeyDown = (event: KeyboardEvent) => {
       const commandKey = event.metaKey || event.ctrlKey;
@@ -117,5 +125,5 @@ export function useKeyboardShortcuts(state: ShellViewState, actions: ShellAction
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [actions, enabled, shortcutOverrides, state.activeTab?.location.kind, state.activeTabId, state.buildInfo.isAgentShell, state.tabs, toggleSidebar]);
+  }, [actions, enabled, shortcutOverrides, state.activeDocument, state.activeTab?.location.kind, state.activeTabId, state.buildInfo.isAgentShell, state.tabs, toggleSidebar]);
 }

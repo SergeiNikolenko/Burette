@@ -52,6 +52,7 @@ or the hosted MCP widget is open.
 | Cmd+I | Get information about the active file |
 | Cmd+Shift+E | Export active external preview as PNG |
 | Cmd+Option+E | Export active external preview as SVG |
+| Cmd+Option+O | Optimize Geometry: optimize the active structure in its Edit or Geometry panel |
 | Cmd+1 ... Cmd+9 | Open the numbered sidebar structure, or the matching workspace tab when the sidebar shows none; hold Cmd to show the numbers |
 
 Undo/redo is context-dependent: the desktop Edit menu swaps the predefined

@@ -19,10 +19,12 @@ export const CONFORMER_LIMITS = Object.freeze({ count: 32, seeds: 2_147_483_647 
 export type GeometryConstraint = { kind: 'freeze' | 'distance' | 'angle' | 'dihedral'; atoms: number[]; target?: number };
 export type ConstraintResidual = { kind: Exclude<GeometryConstraint['kind'], 'freeze'>; atoms: number[]; target: number; value: number; error: number; unit: 'angstrom' | 'degrees' };
 export type OptimizationFrame = { atoms: MolecularAtom[]; energy: number };
-/** The latest accepted step while a minimization runs; energy is the physical energy in kcal/mol. */
-export type OptimizationProgress = { iteration: number; energy: number };
+/** The latest accepted step while a minimization runs; energy is the physical energy in kcal/mol
+ * and `atoms` the step's coordinates in input order, so a view can follow the run. */
+export type OptimizationProgress = { iteration: number; energy: number; atoms?: MolecularAtom[] };
 export type OptimizationStop = MinimizerStop | 'no-variables';
-export type OptimizeOptions = { method?: OptimizationMethod; forceField?: MolecularForceField; constraints?: GeometryConstraint[]; maxIterations?: number };
+/** Tolerances default to the minimizer's: gradient 10⁻³ kcal/(mol·Å), no energy window. */
+export type OptimizeOptions = { method?: OptimizationMethod; forceField?: MolecularForceField; constraints?: GeometryConstraint[]; maxIterations?: number; gradientTolerance?: number; energyTolerance?: number };
 export type OptimizationResult = {
   molecule: MolecularStructure; initialEnergy: number; energy: number; unit: 'kcal/mol';
   forceField: MolecularForceField; method: OptimizationMethod;
@@ -152,7 +154,7 @@ export function constraintResiduals(atoms: MolecularAtom[], restraints: readonly
  * (h = 1e-4 Å) stand in for a missing analytic force-field gradient, up to
  * OPTIMIZATION_LIMITS.numericalAtoms atoms.
  */
-export function optimizeCartesian(molecule: MolecularStructure, evaluator: EnergyEvaluator, method: MinimizerMethod, forceField: MolecularForceField, options: Pick<OptimizeOptions, 'constraints' | 'maxIterations'>, onProgress?: (progress: OptimizationProgress) => void): Omit<OptimizationResult, 'molecule'> & { atoms: MolecularAtom[] } {
+export function optimizeCartesian(molecule: MolecularStructure, evaluator: EnergyEvaluator, method: MinimizerMethod, forceField: MolecularForceField, options: Pick<OptimizeOptions, 'constraints' | 'maxIterations' | 'gradientTolerance' | 'energyTolerance'>, onProgress?: (progress: OptimizationProgress) => void): Omit<OptimizationResult, 'molecule'> & { atoms: MolecularAtom[] } {
   const n = molecule.atoms.length, maxIterations = options.maxIterations ?? 250;
   if (!Number.isInteger(maxIterations) || maxIterations < 1 || maxIterations > OPTIMIZATION_LIMITS.iterations) throw new Error('Use 1–1000 optimization iterations.');
   const unavailable = optimizationUnavailable(n, options.constraints?.length ?? 0);
@@ -185,8 +187,8 @@ export function optimizeCartesian(molecule: MolecularStructure, evaluator: Energ
     ? minimize(movable.flatMap(i => [molecule.atoms[i].x, molecule.atoms[i].y, molecule.atoms[i].z]), objective, method, maxIterations, (x, total) => {
       const atoms = unpack(x), energy = total - restraintPenalty(atoms, restraints).energy;
       frames.push({ atoms, energy });
-      onProgress?.({ iteration: frames.length - 1, energy });
-    })
+      onProgress?.({ iteration: frames.length - 1, energy, atoms });
+    }, { gradientTolerance: options.gradientTolerance, energyTolerance: options.energyTolerance })
     : null;
   const atoms = run ? unpack(run.x) : molecule.atoms.map(a => ({ ...a }));
   const energy = evaluator.energy(atoms);

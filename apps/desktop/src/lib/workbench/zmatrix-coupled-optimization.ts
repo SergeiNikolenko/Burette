@@ -104,8 +104,8 @@ export function optimizeZmatrix(molecule: MolecularStructure, definition: Zmatri
     const result = initial.length && frozen.length < molecule.atoms.length ? minimize(initial, objective, method, iterations, x => {
       const atoms = unpack(x).atoms, energy = evaluator.energy(atoms);
       frames.push({ atoms, energy });
-      onProgress?.({ iteration: frames.length - 1, energy });
-    }) : null;
+      onProgress?.({ iteration: frames.length - 1, energy, atoms });
+    }, { gradientTolerance: options.gradientTolerance, energyTolerance: options.energyTolerance }) : null;
     const output = unpack(result?.x ?? initial), energy = evaluator.energy(output.atoms);
     if (!Number.isFinite(energy) || energy > initialEnergy + 1e-6) throw new Error('Coupled Z-matrix optimization did not lower the energy.');
     frames.push({ atoms: output.atoms, energy });

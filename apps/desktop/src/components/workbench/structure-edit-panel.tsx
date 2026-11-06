@@ -20,7 +20,10 @@ import { SegmentedControl, SegmentedControlItem } from "../ui/segmented-control"
 import { Spinner } from "../ui/spinner";
 import { CoordinateEditor } from "./coordinate-editor";
 import { GraphMetadataFields } from "./graph-metadata-fields";
-import { ConstraintResiduals, OpenStepsButton, OptimizeButton, OptimizingStatus } from "./optimize-button";
+import { ConstraintResiduals, OpenStepsButton, OptimizeButton, OptimizingStatus, useEnergyCalculation } from "./optimize-button";
+import { useOptimizationCommandHandler, type OptimizationCommand } from "../../lib/workbench/optimization-commands";
+import { optimizationRun, optimizerSettings } from "../../lib/workbench/optimizer-settings";
+import { optimizationUnavailable } from "../../lib/molecular-workbench/optimization";
 import { ConstraintEditor } from "./structure-edit/constraint-editor";
 import { useGraphDraft, type GraphOutcome, type GraphSnapshot } from "./use-graph-draft";
 import { SelectionEditor } from "./structure-edit/selection-editor";
@@ -115,6 +118,11 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
   const currentStructure = editor?.current.structure;
   const atoms = selectedAtoms(selection, currentStructure);
   const constraints = currentStructure && held.structure === currentStructure ? held.constraints : [];
+  const [configuring, setConfiguring] = useState(false);
+  const energy = useEnergyCalculation(currentStructure);
+  // Optimize Geometry, Calculate Energy and the other Calculate commands from menus and the palette.
+  const command = useRef<(command: OptimizationCommand) => void>(() => {});
+  useOptimizationCommandHandler(document.id, Boolean(editor), (name) => command.current(name));
 
   // A selection made in the 3D view replaces the panel's selection; clearing it in
   // the view clears it here too. Atoms picked in the panel stay picked.
@@ -168,6 +176,22 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
     setInputError(null);
     const result = await draft.apply({ kind: "optimize", ...operation, constraints });
     if (result) { setSelection((current) => ({ atoms: selectedAtoms(current, structure), from: current.from, structure: result })); keepConstraints(result); }
+  };
+  const freeze = (frozen: boolean) => {
+    if (!atoms.length) { setInputError(`Select the atoms to ${frozen ? "freeze" : "unfreeze"}.`); return; }
+    const kept = constraints.filter((item) => item.kind !== "freeze" || !atoms.includes(item.atoms[0]));
+    setInputError(null);
+    setHeld({ constraints: frozen ? [...kept, ...atoms.map((atom) => ({ kind: "freeze" as const, atoms: [atom] }))] : kept, structure });
+  };
+  command.current = (name) => {
+    if (name === "configure") { setConfiguring(true); return; }
+    if (name === "freeze" || name === "unfreeze") { freeze(name === "freeze"); return; }
+    if (name === "calculate-energy") { void energy.calculate(structure); return; }
+    if (name !== "optimize") return;
+    const blocked = busy ? "Wait for the current edit to finish." : constraintError ?? optimizationUnavailable(structure.atoms.length, constraints.length);
+    if (blocked) { setInputError(blocked); return; }
+    const run = optimizationRun(optimizerSettings(), structure.atoms.map((atom) => atom.element), constraints.length > 0);
+    void optimize({ method: run.method, forceField: run.model, maxIterations: run.maxIterations });
   };
   // Adding or removing hydrogens (also when generating 3D coordinates) renumbers atoms, so the selection does not carry over.
   const renumbering = async (operation: { kind: "add-hydrogens" | "remove-hydrogens" | "prepare-3d" } | { kind: "protonate"; pH: number }) => {
@@ -250,6 +274,7 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
           </ShortcutTooltip>
         </form>
         <OptimizeButton atomCount={structure.atoms.length} elements={structure.atoms.map((atom) => atom.element)} constraintCount={constraints.length} unavailableReason={constraintError} size="xs" variant="secondary" disabled={busy}
+          configureOpen={configuring} onConfigureOpenChange={setConfiguring}
           onOptimize={(method, forceField, maxIterations) => void optimize({ method, forceField, maxIterations })} />
         <DropdownMenu>
           <ShortcutTooltip label="More actions">
@@ -285,6 +310,7 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
       <InsertFragmentDialog open={inserting} onOpenChange={setInserting} target={atoms.length === 1 ? label(structure, atoms[0]) : null}
         busy={busy} error={error} onInsert={fragment => void insertFragment(fragment)} />
       <AdjustPhDialog open={adjustingPh} onOpenChange={setAdjustingPh} onApply={pH => void renumbering({ kind: "protonate", pH })} />
+      {energy.line}
       {outcome ? <OptimizationOutcome outcome={outcome} structure={structure} actions={actions} document={document} /> : null}
       {truncated ? <p className="workbench-value">Select at most {VIEWER_SELECTION_LIMIT} atoms to edit them.</p> : null}
       <SelectionEditor key={`${snapshotId(editor.current)}:${atoms.join(",")}`} structure={structure} annotations={annotations}

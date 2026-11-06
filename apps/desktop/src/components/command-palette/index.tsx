@@ -8,6 +8,7 @@ import { CRYSTAL_COMMAND, openSymmetryTool, SYMMETRY_COMMAND, useSymmetryAvailab
 import { useCrystalAvailable } from "../../lib/workbench/use-crystal-draft";
 import { structureEditAvailable } from "../../lib/workbench/graph-draft";
 import { geometryPanelAvailable } from "../geometry-panel";
+import { OPTIMIZATION_COMMANDS, requestOptimizationCommand } from "../../lib/workbench/optimization-commands";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Command,
@@ -109,6 +110,12 @@ export function CommandPalette({
       ...([["structure-edit", "Edit atoms and bonds", "Elements, charges and bond orders", structureEditAvailable], ["geometry", "Edit geometry", "Bond lengths, angles and dihedrals", geometryPanelAvailable]] as const)
         .flatMap(([kind, label, description, available]) => state.activeDocument && available(state.activeDocument) ? [{ id: `workbench-tool-${kind}`, group: "Suggested", label, description,
           run: () => { actions.setDockDocument("right", state.activeDocument!.id); actions.openDockTab("right", kind); } }] : []),
+      ...(() => {
+        const document = state.activeDocument ?? null;
+        const panel = structureEditAvailable(document) ? "structure-edit" : geometryPanelAvailable(document) ? "geometry" : null;
+        return document && panel ? OPTIMIZATION_COMMANDS.map(({ command, label }) => ({ id: `optimization-${command}`, group: "Calculate", label, description: "",
+          shortcut: command === "optimize" ? "⌥⌘O" : undefined, run: () => requestOptimizationCommand(actions, document, panel, command) })) : [];
+      })(),
       ...(state.activeDocument ? pluginCommands.map(entry => ({ id: `avogadro-command-${entry.id}`, group: "Extensions", label: entry.path.join(" › "),
         description: entry.plugin.name, run: () => startAvogadroCommand(entry, state.activeDocument!) })) : []),
       ...buildShellCommands(state, actions, query).map((command) => ({

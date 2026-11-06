@@ -1,5 +1,7 @@
 #![allow(deprecated, unexpected_cfgs)]
 #![allow(clippy::items_after_test_module, clippy::too_many_arguments)]
+// The native menu state fixture is one large serde_json::json! literal.
+#![recursion_limit = "256"]
 
 mod commands;
 mod compute;

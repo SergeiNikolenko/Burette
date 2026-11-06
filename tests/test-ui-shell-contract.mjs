@@ -7141,6 +7141,7 @@ for (const stateField of [
   "canRunCrest",
   "canRunPrism",
   "canRunXtb",
+  "canOptimizeGeometry",
 ]) {
   assert.match(nativeMenuTypes, new RegExp(`\\b${stateField}\\??:`));
 }
@@ -7215,6 +7216,8 @@ assertSourceIncludesAll(appNativeMenuHook, [
   "file.reopen-closed-tab",
   "structure.crest-generate",
   "structure.prism-prune",
+  "structure.optimize-geometry",
+  "structure.calculate-energy",
   "structure.xtb-optimize",
   "structure.xtb-properties",
   "structure.xtb-frequencies",

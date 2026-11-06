@@ -1,33 +1,23 @@
 import { useState } from "react";
-import type { MolecularForceField } from "../../lib/molecular-workbench/forcefield";
-import { ENERGY_MODELS, energyModel, energyModelUnavailable, recommendedEnergyModel, type EnergyModelChoice } from "../../lib/molecular-workbench/energy-models";
-import { OPTIMIZATION_LIMITS, OPTIMIZATION_METHODS, RESIDUAL_TOLERANCE, defaultOptimizationMethod, optimizationUnavailable, type ConstraintResidual, type OptimizationFrame, type OptimizationMethod, type OptimizationProgress } from "../../lib/molecular-workbench/optimization";
+import { ENERGY_MODELS, energyModel, energyModelUnavailable, resolveEnergyModel, type EnergyModelChoice } from "../../lib/molecular-workbench/energy-models";
+import { OPTIMIZATION_LIMITS, OPTIMIZATION_METHODS, RESIDUAL_TOLERANCE, optimizationUnavailable, type ConstraintResidual, type OptimizationFrame, type OptimizationMethod, type OptimizationProgress } from "../../lib/molecular-workbench/optimization";
 import { HARTREE_KCAL_MOL, fileStem } from "../../lib/workbench/formats";
 import { openScientificDocument } from "../../lib/workbench/generated-document-open";
+import { optimizationRun, optimizerSettings as settingsSnapshot, updateOptimizerSettings, useOptimizerSettings } from "../../lib/workbench/optimizer-settings";
+import { runChemistryTask } from "../../lib/molecular-workbench/compute-client";
+import type { MolecularStructure } from "../../lib/molecular-workbench/molecular-graph";
 import type { ViewerDocument } from "../../types";
 import type { ShellActions } from "../types";
 import { ChevronDown } from "../ui/app-icons";
 import { Button } from "../ui/button";
 import { ButtonGroup } from "../ui/button-group";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import { Spinner } from "../ui/spinner";
+import { METHOD_LABELS as LABELS, OptimizerSettingsDialog } from "./optimizer-settings-dialog";
 import "./geometry.css";
 
-const LABELS: Record<OptimizationMethod, string> = { bfgs: "BFGS", lbfgs: "L-BFGS", fire: "FIRE", "abc-fire": "ABC-FIRE", hybrid: "FIRE, then L-BFGS" };
-// "auto" picks the first model in the recommendation order that accepts the structure.
-const FORCE_FIELDS = ["auto", ...ENERGY_MODELS.map((model) => model.id)] as const;
-const METHOD_KEY = "burette.workbench.optimizer";
-const FIELD_KEY = "burette.workbench.force-field";
-const STEPS_KEY = "burette.workbench.optimizer-steps";
-// The minimizer's default is 250 accepted steps; 1000 is the shared upper bound.
+// The minimizer's default is 250 accepted steps; 1000 is the shared upper bound. Configure takes any limit in between.
 const STEP_LIMITS = ["100", "250", "500", String(OPTIMIZATION_LIMITS.iterations)] as const;
-
-function stored<T extends string>(key: string, values: readonly T[]): T | null {
-  try { const value = localStorage.getItem(key); return values.includes(value as T) ? value as T : null; } catch { return null; }
-}
-function remember(key: string, value: string) {
-  try { localStorage.setItem(key, value); } catch { /* storage unavailable: keep the choice for this view */ }
-}
 
 export function optimizerLabel(method: OptimizationMethod) { return LABELS[method]; }
 
@@ -72,24 +62,41 @@ export function OptimizingStatus({ progress }: { progress: OptimizationProgress 
   );
 }
 
+type EnergyNote = { structure: object; text: string; failed?: boolean } | null;
+
+/** Avogadro's Calculate Energy: the single-point energy of a structure with the configured model.
+ * The note belongs to the structure it describes and disappears once that changes. */
+export function useEnergyCalculation(current: object | null | undefined) {
+  const [note, setNote] = useState<EnergyNote>(null);
+  const calculate = async (structure: MolecularStructure, owner: object = structure) => {
+    try {
+      const forceField = resolveEnergyModel(settingsSnapshot().model, structure);
+      const energy = await runChemistryTask({ action: "energy", molecule: structure, forceField });
+      setNote({ structure: owner, text: `${energyModel(forceField).name} energy ${energy.toFixed(2)} kcal/mol` });
+    } catch (error) { setNote({ structure: owner, text: error instanceof Error ? error.message : String(error), failed: true }); }
+  };
+  const shown = note && note.structure === current ? note : null;
+  return { calculate, line: shown ? <p role={shown.failed ? "alert" : "status"} className="workbench-status">{shown.text}</p> : null };
+}
+
 /**
  * Optimize with an explicit method; the menu beside it picks the force field and method.
  * The checked method is the one that runs. `coupled` optimizations move shared Z-matrix
  * variables by differencing the energy, which bounds their size. Automatic is passed on
  * as "auto": the caller resolves it once the structure's bond graph is known.
  */
-export function OptimizeButton({ atomCount, elements = [], constraintCount = 0, coupled = false, unavailableReason, disabled, size = "default", variant = "default", onOptimize }: {
+export function OptimizeButton({ atomCount, elements = [], constraintCount = 0, coupled = false, unavailableReason, disabled, size = "default", variant = "default", configureOpen, onConfigureOpenChange, onOptimize }: {
   atomCount: number; elements?: readonly string[]; constraintCount?: number; coupled?: boolean; unavailableReason?: string | null;
   disabled?: boolean; size?: "default" | "xs"; variant?: "default" | "secondary";
+  /** Configure Optimization… is open; a panel controls it to open the dialog from a command. */
+  configureOpen?: boolean; onConfigureOpenChange?: (open: boolean) => void;
   onOptimize: (method: OptimizationMethod, forceField: EnergyModelChoice, maxIterations: number) => void;
 }) {
-  const [preferred, setPreferred] = useState(() => stored(METHOD_KEY, OPTIMIZATION_METHODS));
-  const [choice, setChoice] = useState(() => stored(FIELD_KEY, FORCE_FIELDS) ?? "auto");
-  const [steps, setSteps] = useState(() => stored(STEPS_KEY, STEP_LIMITS) ?? "250");
+  const settings = useOptimizerSettings(), choice = settings.model, steps = String(settings.steps);
+  const [ownConfigureOpen, setOwnConfigureOpen] = useState(false);
+  const configuring = configureOpen ?? ownConfigureOpen, setConfiguring = onConfigureOpenChange ?? setOwnConfigureOpen;
   const atoms = elements.map((element) => ({ element }));
-  // Automatic is resolved on the parsed structure; its likely field only picks the default method here.
-  const forceField: MolecularForceField = choice === "auto" ? recommendedEnergyModel(atoms) : choice;
-  const method = preferred ?? defaultOptimizationMethod(forceField, constraintCount > 0 || coupled);
+  const { method } = optimizationRun(settings, elements, constraintCount > 0 || coupled);
   const blocked = unavailableReason ?? optimizationUnavailable(atomCount, constraintCount) ?? (choice === "auto" ? null : energyModelUnavailable(choice, atoms))
     ?? (coupled && atomCount > OPTIMIZATION_LIMITS.numericalAtoms ? `Coupled Z-matrix optimization supports up to ${OPTIMIZATION_LIMITS.numericalAtoms} atoms; this structure has ${atomCount}.` : null);
   return (
@@ -104,10 +111,7 @@ export function OptimizeButton({ atomCount, elements = [], constraintCount = 0, 
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuLabel>Force field</DropdownMenuLabel>
-          <DropdownMenuRadioGroup value={choice} onValueChange={(value) => {
-            if (!FORCE_FIELDS.includes(value as typeof FORCE_FIELDS[number])) return;
-            setChoice(value as typeof FORCE_FIELDS[number]); remember(FIELD_KEY, value);
-          }}>
+          <DropdownMenuRadioGroup value={choice} onValueChange={(value) => updateOptimizerSettings({ model: value as EnergyModelChoice })}>
             <DropdownMenuRadioItem value="auto">Automatic</DropdownMenuRadioItem>
             {ENERGY_MODELS.map((model) => {
               const reason = energyModelUnavailable(model.id, atoms);
@@ -116,22 +120,19 @@ export function OptimizeButton({ atomCount, elements = [], constraintCount = 0, 
           </DropdownMenuRadioGroup>
           <DropdownMenuSeparator />
           <DropdownMenuLabel>Minimizer</DropdownMenuLabel>
-          <DropdownMenuRadioGroup value={method} onValueChange={(value) => {
-            if (!OPTIMIZATION_METHODS.includes(value as OptimizationMethod)) return;
-            setPreferred(value as OptimizationMethod); remember(METHOD_KEY, value);
-          }}>
+          <DropdownMenuRadioGroup value={method} onValueChange={(value) => updateOptimizerSettings({ method: value as OptimizationMethod })}>
             {OPTIMIZATION_METHODS.map((item) => <DropdownMenuRadioItem key={item} value={item}>{LABELS[item]}</DropdownMenuRadioItem>)}
           </DropdownMenuRadioGroup>
           <DropdownMenuSeparator />
           <DropdownMenuLabel>Step limit</DropdownMenuLabel>
-          <DropdownMenuRadioGroup value={steps} onValueChange={(value) => {
-            if (!STEP_LIMITS.includes(value as typeof STEP_LIMITS[number])) return;
-            setSteps(value as typeof STEP_LIMITS[number]); remember(STEPS_KEY, value);
-          }}>
+          <DropdownMenuRadioGroup value={steps} onValueChange={(value) => updateOptimizerSettings({ steps: Number(value) })}>
             {STEP_LIMITS.map((item) => <DropdownMenuRadioItem key={item} value={item}>{item}</DropdownMenuRadioItem>)}
           </DropdownMenuRadioGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => setConfiguring(true)}>Configure…</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      <OptimizerSettingsDialog open={configuring} onOpenChange={setConfiguring} elements={elements} />
     </ButtonGroup>
   );
 }

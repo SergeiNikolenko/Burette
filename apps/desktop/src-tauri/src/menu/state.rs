@@ -60,6 +60,7 @@ pub(crate) struct NativeMenuState {
     can_run_crest: bool,
     can_run_prism: bool,
     can_run_xtb: bool,
+    can_optimize_geometry: bool,
     rgroup_runtime_available: bool,
     open_document_paths: Vec<String>,
     recent_documents: Option<Vec<RecentMenuDocument>>,
@@ -785,6 +786,17 @@ pub(super) fn sync_native_menu<R: Runtime>(
     )?;
     set_enabled(&app, "structure.crest-generate", state.can_run_crest)?;
     set_enabled(&app, "structure.prism-prune", state.can_run_prism)?;
+    for id in [
+        "structure.optimize-geometry",
+        "structure.auto-optimize",
+        "structure.calculate",
+        "structure.calculate-energy",
+        "structure.configure-optimization",
+        "structure.freeze-atoms",
+        "structure.unfreeze-atoms",
+    ] {
+        set_enabled(&app, id, state.can_optimize_geometry)?;
+    }
     set_enabled(&app, "structure.xtb-optimize", state.can_run_xtb)?;
     set_enabled(&app, "structure.xtb-properties", state.can_run_xtb)?;
     set_enabled(&app, "structure.xtb-frequencies", state.can_run_xtb)?;
@@ -1540,6 +1552,7 @@ mod tests {
             "canRunCrest": false,
             "canRunPrism": false,
             "canRunXtb": false,
+            "canOptimizeGeometry": false,
             "rgroupRuntimeAvailable": false,
             "openDocumentPaths": ["/tmp/molecules.sdf"],
             "recentDocuments": null

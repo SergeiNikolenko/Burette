@@ -1248,6 +1248,12 @@ assertSourceIncludesAll(nativeMenuSource, [
   'structure.crest-generate',
   'structure.prism-prune',
   'structure.xtb',
+  'structure.optimize-geometry',
+  'structure.auto-optimize',
+  'structure.calculate-energy',
+  'structure.configure-optimization',
+  'structure.freeze-atoms',
+  'structure.unfreeze-atoms',
   'structure.xtb-optimize',
   'structure.xtb-properties',
   'structure.xtb-frequencies',
@@ -1315,6 +1321,12 @@ assertSourceIncludesAll(menuEvents, [
   'edit.find',
   'structure.crest-generate',
   'structure.prism-prune',
+  'structure.optimize-geometry',
+  'structure.auto-optimize',
+  'structure.calculate-energy',
+  'structure.configure-optimization',
+  'structure.freeze-atoms',
+  'structure.unfreeze-atoms',
   'structure.xtb-optimize',
   'structure.xtb-properties',
   'structure.xtb-frequencies',
@@ -1416,6 +1428,7 @@ for (const field of [
   'can_run_crest',
   'can_run_prism',
   'can_run_xtb',
+  'can_optimize_geometry',
 ]) {
   assert.match(nativeMenuSource, new RegExp(`\\b${field}:`));
 }
@@ -1435,6 +1448,7 @@ assert.match(nativeMenuSource, /"structure\.generate-3d",\s*state\.can_generate_
 assert.match(nativeMenuSource, /"structure\.crest-generate", state\.can_run_crest/);
 assert.match(nativeMenuSource, /"structure\.prism-prune", state\.can_run_prism/);
 assert.match(nativeMenuSource, /"structure\.xtb-optimize", state\.can_run_xtb/);
+assert.match(nativeMenuSource, /set_enabled\(&app, id, state\.can_optimize_geometry\)/);
 assert.match(nativeMenuSource, /"collection\.copy-selected", has_grid_selection/);
 assert.match(nativeMenuSource, /"collection\.calculate-descriptors",\s*state\.is_grid && state\.grid_has_molecules && !state\.grid_dirty/s);
 // The Reaction submenu follows the reaction flag the grid reports, so it stays

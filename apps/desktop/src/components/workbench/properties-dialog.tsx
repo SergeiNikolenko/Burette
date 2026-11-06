@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { runChemistryTask, type ChemistryResults } from "../../lib/molecular-workbench/compute-client";
 import { energyModel, resolveEnergyModel, type EnergyModelChoice } from "../../lib/molecular-workbench/energy-models";
+import { optimizerTolerances } from "../../lib/workbench/optimizer-settings";
 import { CONFORMER_LIMITS, flatDepiction, type OptimizationMethod } from "../../lib/molecular-workbench/optimization";
 import { HARTREE_KCAL_MOL, conformerSdfRecord, fileStem, forcesCsv, sdfRecord } from "../../lib/workbench/formats";
 import { openGeneratedStructure, openScientificDocument } from "../../lib/workbench/generated-document-open";
@@ -83,7 +84,7 @@ export function PropertiesDialogBody({ document, actions, onDone }: { document: 
     const result = await job.run(OPERATION_LABELS[operation], async (signal) => {
       if (operation === "optimize" || operation === "prepare-3d") {
         const optimized = operation === "optimize"
-          ? await runChemistryTask({ action: "optimize", molecule: structure, options: { method, forceField: resolveEnergyModel(choice, structure), maxIterations } }, { signal, timeoutMs: 300_000 })
+          ? await runChemistryTask({ action: "optimize", molecule: structure, options: { method, forceField: resolveEnergyModel(choice, structure), maxIterations, ...optimizerTolerances() } }, { signal, timeoutMs: 300_000 })
           : await runChemistryTask({ action: "prepare-3d", molecule: structure, options: {} }, { signal, timeoutMs: 300_000 });
         const steps = optimized.iterations === null ? "" : `, ${optimized.iterations} step${optimized.iterations === 1 ? "" : "s"}`;
         return { suffix: operation === "optimize" ? optimized.forceField.toLowerCase() : OPERATION_SUFFIX[operation], molfile: optimized.molecule.molfile, frames: optimized.frameSampling === "steps" ? optimized.frames : undefined, title: operation === "optimize" ? `${energyModel(optimized.forceField).name} optimization` : "3D coordinates",

@@ -9,12 +9,16 @@ import { readCoordinateInterchange, writeCoordinateInterchange } from "../../../
 import { runChemistryTask } from "../lib/molecular-workbench/compute-client";
 import type { GeometryConstraint } from "../lib/molecular-workbench/chemistry";
 import { energyModel, resolveEnergyModel, type EnergyModelChoice } from "../lib/molecular-workbench/energy-models";
+import { optimizationRun, optimizerSettings, optimizerTolerances } from "../lib/workbench/optimizer-settings";
+import { useOptimizationCommandHandler, type OptimizationCommand } from "../lib/workbench/optimization-commands";
 import { parseXyz } from "../lib/molecular-workbench/xyz";
 import { openWorkbenchDialog } from "../lib/workbench/dialog-store";
 import { isAbortError } from "../lib/viewer-errors";
 import { PanelEmptyState } from "./ui/panel-empty-state";
 import { ConstraintToggle } from "./workbench/constraint-toggle";
-import { ConstraintResiduals, OpenStepsButton, OptimizeButton, OptimizingStatus, optimizerLabel } from "./workbench/optimize-button";
+import { ConstraintResiduals, OpenStepsButton, OptimizeButton, OptimizingStatus, optimizerLabel, useEnergyCalculation } from "./workbench/optimize-button";
+import { useViewerAtomSelection } from "../lib/workbench/selection";
+import { optimizationUnavailable } from "../lib/molecular-workbench/optimization";
 import { resolveConstraints, type ConstraintResidual, type OptimizationMethod, type OptimizationProgress, type OptimizationResult } from "../lib/molecular-workbench/optimization";
 import { fileStem } from "../lib/workbench/formats";
 import { downloadTextFile } from "../lib/file-export";
@@ -181,6 +185,12 @@ function CartesianGeometryPanel({ document, actions, convert }: {
   useEffect(() => { lifetime.current++; return () => { lifetime.current++; }; }, [document.id, document.path]);
   const live = useGeometryLivePreview(document, editor?.binding ?? null, actions.runStructureViewerAction,
     error => setEditError(error instanceof Error ? error.message : String(error)));
+  const [configuring, setConfiguring] = useState(false);
+  const energy = useEnergyCalculation(editor?.frame);
+  const viewerSelection = useViewerAtomSelection(document.id);
+  // Optimize Geometry, Calculate Energy and the other Calculate commands from menus and the palette.
+  const command = useRef<(command: OptimizationCommand) => void>(() => {});
+  useOptimizationCommandHandler(document.id, Boolean(editor), (name) => command.current(name));
   // Text this panel wrote into the draft. Re-deriving rows from it would let
   // nearest-neighbour references jump after every edit.
   const written = useRef<string | null>(null);
@@ -364,8 +374,13 @@ function CartesianGeometryPanel({ document, actions, convert }: {
       const text = geometryText(started.frame, started.rows);
       const molecule = await runChemistryTask({ action: "parse", source: text, format: "xyz" }, { signal: controller.signal });
       const forceField = resolveEnergyModel(choice, molecule);
-      const result = await runChemistryTask({ action: "optimize", molecule, options: { constraints, forceField, method, maxIterations } }, {
-        signal: controller.signal, timeoutMs: 300_000, onProgress: (step) => { if (optimizeJob.current === controller) setProgress(step); },
+      const result = await runChemistryTask({ action: "optimize", molecule, options: { constraints, forceField, method, maxIterations, ...optimizerTolerances() } }, {
+        signal: controller.signal, timeoutMs: 300_000, onProgress: (step) => {
+          if (optimizeJob.current !== controller) return;
+          setProgress(step);
+          // The view follows the run; Cancel or a failure restores the start.
+          if (step.atoms) live.preview(textAt(started.frame, step.atoms.map((atom) => [atom.x, atom.y, atom.z])), started.binding.text);
+        },
       });
       if (controller.signal.aborted || currentLifetime !== lifetime.current || editorRef.current !== started) return;
       const positions = result.molecule.atoms.map((atom) => [atom.x, atom.y, atom.z]);
@@ -379,12 +394,32 @@ function CartesianGeometryPanel({ document, actions, convert }: {
         converged: result.converged, iterations: result.iterations, residuals: result.constraintResiduals };
       if (await apply(rows, [...started.history, snapshot()].slice(-HISTORY_LIMIT), frame, summary) && result.frameSampling === "steps") setSteps({ summary, frames: result.frames });
     } catch (error) {
+      if (optimizeJob.current === controller) live.cancel();
       if (!isAbortError(error) && !controller.signal.aborted && currentLifetime === lifetime.current) setEditError(error instanceof Error ? error.message : String(error));
     } finally {
       if (optimizeJob.current === controller) { optimizeJob.current = null; setOptimizing(false); }
     }
   };
-  const cancelOptimize = () => { optimizeJob.current?.abort(); optimizeJob.current = null; setOptimizing(false); };
+  const cancelOptimize = () => { optimizeJob.current?.abort(); optimizeJob.current = null; setOptimizing(false); live.cancel(); };
+  command.current = (name) => {
+    if (name === "configure") { setConfiguring(true); return; }
+    if (name === "freeze" || name === "unfreeze") {
+      const picked = viewerSelection && !viewerSelection.truncated ? viewerSelection.atoms.filter((atom) => atom < editor.rows.length) : [];
+      if (!picked.length) { setEditError(`Select the atoms to ${name} in the 3D view.`); return; }
+      setEditError(null);
+      setFrozen((current) => { const next = new Set(current); for (const atom of picked) { if (name === "freeze") next.add(atom); else next.delete(atom); } return next; });
+      return;
+    }
+    if (name === "calculate-energy") {
+      void runChemistryTask({ action: "parse", source: geometryText(editor.frame, editor.rows), format: "xyz" }).then((molecule) => energy.calculate(molecule, editor.frame), (error) => setEditError(error instanceof Error ? error.message : String(error)));
+      return;
+    }
+    if (name !== "optimize") return;
+    const blocked = optimizing || applying ? "Wait for the current edit to finish." : constraintError ?? optimizationUnavailable(editor.rows.length, constraints.length);
+    if (blocked) { setEditError(blocked); return; }
+    const run = optimizationRun(optimizerSettings(), editor.rows.map((row) => row.element), constraints.length > 0);
+    void optimize(run.method, run.model, run.maxIterations);
+  };
   // New positions for the same atoms from the coordinate editor: one undoable edit that keeps
   // unmoved atom lines verbatim. Its rows are measured afresh, as when the text is opened.
   const applyCoordinates = async (positions: Vec3[]) => {
@@ -491,7 +526,7 @@ function CartesianGeometryPanel({ document, actions, convert }: {
           </>
         ) : (
           <TooltipProvider><Tooltip><TooltipTrigger asChild>
-            <span><OptimizeButton atomCount={editor.rows.length} elements={editor.rows.map((row) => row.element)} constraintCount={constraints.length} unavailableReason={constraintError} size="xs" variant="secondary" disabled={applying} onOptimize={(method, forceField, maxIterations) => void optimize(method, forceField, maxIterations)} /></span>
+            <span><OptimizeButton atomCount={editor.rows.length} elements={editor.rows.map((row) => row.element)} constraintCount={constraints.length} unavailableReason={constraintError} size="xs" variant="secondary" disabled={applying} configureOpen={configuring} onConfigureOpenChange={setConfiguring} onOptimize={(method, forceField, maxIterations) => void optimize(method, forceField, maxIterations)} /></span>
           </TooltipTrigger><TooltipContent>{constraints.length ? `Optimize with ${constraints.length} constraint${constraints.length === 1 ? "" : "s"}` : "Optimize geometry"}</TooltipContent></Tooltip></TooltipProvider>
         )}
         {session?.dirty ? (
@@ -504,6 +539,7 @@ function CartesianGeometryPanel({ document, actions, convert }: {
         ) : null}
       </div>
       {editError ? <p role="alert" className="geometry-panel-error">{editError}</p> : null}
+      {energy.line}
       {optimization ? (
         <div className="geometry-panel-result" role="status">
           <p>

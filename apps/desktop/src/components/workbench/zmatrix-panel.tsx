@@ -11,6 +11,7 @@ import { useGeometryLivePreview } from "../../hooks/use-geometry-live-preview";
 import { downloadTextFile } from "../../lib/file-export";
 import { INTERNAL_COORDINATE_KINDS, formatInternalCoordinate, internalCoordinateUnit, type InternalCoordinateKind } from "../../lib/geometry-editing";
 import { energyModel, resolveEnergyModel, type EnergyModelChoice } from "../../lib/molecular-workbench/energy-models";
+import { optimizerTolerances } from "../../lib/workbench/optimizer-settings";
 import { runChemistryTask, type ChemistryResults } from "../../lib/molecular-workbench/compute-client";
 import type { OptimizationMethod, OptimizationProgress } from "../../lib/molecular-workbench/optimization";
 import type { ScientificDocument } from "../../lib/molecular-workbench/quantum";
@@ -391,7 +392,7 @@ export function ZmatrixPanel({ document, actions, science, text }: {
     try {
       const molecule = await runChemistryTask({ action: "parse", source: serializeXyz(science.atoms, "Z-matrix"), format: "xyz" }, { signal: controller.signal });
       const forceField = resolveEnergyModel(choice, molecule);
-      result = await runChemistryTask({ action: "optimize-zmatrix", molecule, definition, options: { frozenRows: [...constraints.frozen], lockedCoordinates: [...constraints.locked], forceField, method, maxIterations } }, {
+      result = await runChemistryTask({ action: "optimize-zmatrix", molecule, definition, options: { frozenRows: [...constraints.frozen], lockedCoordinates: [...constraints.locked], forceField, method, maxIterations, ...optimizerTolerances() } }, {
         signal: controller.signal, timeoutMs: 300_000, onProgress: (step) => { if (optimizeJob.current?.controller === controller) setProgress(step); },
       });
     } catch (caught) {

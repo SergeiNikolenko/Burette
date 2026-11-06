@@ -304,10 +304,50 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
             &xtb_fukui,
         ])
         .build()?;
+    // Avogadro's Extensions › Optimize Geometry and Calculate commands, run by the
+    // Edit (SDF/MOL) or Geometry (XYZ) panel of the active structure.
+    let optimize_geometry =
+        MenuItemBuilder::with_id("structure.optimize-geometry", "Optimize Geometry")
+            .enabled(false)
+            .accelerator("CmdOrCtrl+Alt+O")
+            .build(app)?;
+    let auto_optimize = MenuItemBuilder::with_id("structure.auto-optimize", "Auto Optimize")
+        .enabled(false)
+        .build(app)?;
+    let calculate_energy =
+        MenuItemBuilder::with_id("structure.calculate-energy", "Calculate Energy")
+            .enabled(false)
+            .build(app)?;
+    let configure_optimization = MenuItemBuilder::with_id(
+        "structure.configure-optimization",
+        "Configure Optimization…",
+    )
+    .enabled(false)
+    .build(app)?;
+    let freeze_atoms = MenuItemBuilder::with_id("structure.freeze-atoms", "Freeze Selected Atoms")
+        .enabled(false)
+        .build(app)?;
+    let unfreeze_atoms =
+        MenuItemBuilder::with_id("structure.unfreeze-atoms", "Unfreeze Selected Atoms")
+            .enabled(false)
+            .build(app)?;
+    let calculate = SubmenuBuilder::with_id(app, "structure.calculate", "Calculate")
+        .items(&[
+            &calculate_energy,
+            &configure_optimization,
+            &PredefinedMenuItem::separator(app)?,
+            &freeze_atoms,
+            &unfreeze_atoms,
+        ])
+        .build()?;
     let structure_menu = SubmenuBuilder::with_id(app, "structure.menu", "Structure")
         .items(&[
             &open_in_molstar,
             &edit_in_ketcher,
+            &PredefinedMenuItem::separator(app)?,
+            &optimize_geometry,
+            &auto_optimize,
+            &calculate,
             &PredefinedMenuItem::separator(app)?,
             &conformers,
             &xtb,

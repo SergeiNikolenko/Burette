@@ -23,7 +23,7 @@ import { setComputeHost, useComputeHost } from "../../lib/remote-jobs";
 import { useSshConnections } from "../../lib/ssh-projects";
 import { basename } from "../../lib/sidebar-projects";
 
-const CALCULATIONS: [XtbOperation, string][] = [["properties", "Energy & charges"], ["optimize", "Optimize geometry"], ["hessian", "Vibrational modes"], ["md", "Molecular dynamics"]];
+const CALCULATIONS: [XtbOperation, string][] = [["properties", "Energy & charges"], ["optimize", "Optimize with xTB"], ["hessian", "Vibrational modes"], ["md", "Molecular dynamics"]];
 const THIS_MAC = "this-mac";
 const CONFORMER_JOBS: [ConformerOperation, string][] = [["crest-generate", "Generate conformers"], ["prism-prune", "Prune conformers"]];
 const UNAVAILABLE: Record<Exclude<SceneFileState, "available">, string> = {
