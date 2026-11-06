@@ -505,6 +505,23 @@ current one has open code or acceptance items.
   `test:retained-plots`, `test:powder-xrd`, `test:builder-agent`,
   `test:metal-complex`. The one regression, `test:built-topology-cube`,
   stubbed the scene file actions that snapshots now serialize through.
+- **Done (2026-11-06, browser shell):** the packaged plugin's `preview-web`
+  and `agent-shell-server.mjs` copies match their sources again
+  (`test-packaged-plugin-mirror.mjs`). MOL files Burette writes name it in the
+  header line instead of OpenChemLib. Avogadro-written CJSON fixtures
+  (`tests/fixtures/cjson/avogadro-written/`, avogadrolibs `cb0e9485`) cover
+  unrestricted orbitals, checked against PySCF's own alpha orbitals, and
+  per-conformer vibrations; that writer drops multiplicity and occupations from
+  Molden input and copies the alpha matrix into `betaCoefficients`. The peptide,
+  nucleic-acid and metal-complex builders preview without overflow at 1400 and
+  900 px in both themes. Crystal and Symmetry fit the narrowest (260 px) dock:
+  the cell grid fields shrink, Symmetry's tolerance is a list as in Avogadro,
+  and space groups read P2₁/c. Workbench CSS already honours
+  `prefers-reduced-motion`. Still open: inactive segment labels use the shared
+  `--color-text-tertiary` token (about 3.8:1 on the light segment track),
+  which is an app-wide design-system choice; and the camera keeps its scale on
+  resize by the `docs/performance.md` contract, so a window narrowed to 760 px
+  crops the molecule until Reset zoom.
 - **Done when:** every stage scenario above passes at 1400 and 900 px in both
   themes on the browser shell, and the stage 1–4 scenarios pass in the packaged
   macOS app.
