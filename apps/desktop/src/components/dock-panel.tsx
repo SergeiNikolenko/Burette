@@ -1,5 +1,5 @@
 import { PlotsDockContent } from "./workbench/plots-dock-content";
-import { usePlotsAvailable } from "../lib/workbench/plots-tool";
+import { plotsDockArea, usePlotsAvailable } from "../lib/workbench/plots-tool";
 import { ScientificSpectraDockContent } from "./workbench/scientific-spectra-dock-content";
 import { useScientificSpectraAvailable } from "../lib/workbench/scientific-spectra-tool";
 import { OrbitalsDockContent } from "./workbench/orbitals-dock-content";
@@ -114,7 +114,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
   const hasOrbitals = useOrbitalsAvailable(activeStructureDocument);
   const orbitalsDockAvailable = area === "right" && hasOrbitals;
   const hasPlots = usePlotsAvailable(activeStructureDocument);
-  const plotsDockAvailable = area === "bottom" && hasPlots;
+  const plotsDockAvailable = area === plotsDockArea() && hasPlots;
   const hasScientificSpectra = useScientificSpectraAvailable(activeStructureDocument);
   const scientificSpectraDockAvailable = area === "right" && hasScientificSpectra;
   const hasVibrations = useVibrationsAvailable(activeStructureDocument);

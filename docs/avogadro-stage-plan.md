@@ -285,8 +285,20 @@ current one has open code or acceptance items.
   modelled on the TRR adapter; add a bounded, cancellable range job to Plots.
 - **Done when:** PDB + XTC → Plots → distance over all frames → CSV matches
   MDAnalysis.
-- **Checks:** `test:indexed-trajectory-runtime`, `test:indexed-plots`,
-  `test:built-indexed-trajectory`.
+- **Done (2026-11-06):** XTC and DCD files up to 75 MiB open through the same
+  indexed adapter as TRR (`scripts/xtc-dcd-index.mjs`): only the displayed
+  frame is decoded, times come from the file (DCD in AKMA units), and DCD files
+  with fixed atoms or a fourth dimension are refused. Larger files keep the
+  previous loading path. Plots gains Scan all frames: pages of 200 frames read
+  without moving the scene, a Cancel, a chart over every frame with the current
+  frame marked, and Export CSV. The scan refuses a trajectory that changed under
+  it. The agent surfaces have no bottom dock, so Plots opens in the right dock
+  there; before this it opened invisibly. Browser check on Gauss, both themes:
+  PDB + XTC and PDB + DCD (12 atoms, 30 frames, written by MDAnalysis 2.11) →
+  Show plots → atoms 1 10 → Scan all frames → Export CSV: 30/30 rows, max
+  |Δ distance| 4e-6 Å (XTC precision) and 5e-7 Å (DCD), times exact.
+- **Checks:** `test:indexed-trajectory-runtime` (`test-browser-xtc-dcd`),
+  `test:indexed-plots`, `test:built-indexed-trajectory`.
 
 ## Stage 8. Builders in the Compute menu and insertion into documents
 
@@ -369,7 +381,11 @@ current one has open code or acceptance items.
   Quick Look.
 - **Known items:** light-theme contrast in builder dialogs, the 760 px molecular
   crop after resizing, missing `prefers-reduced-motion` rules in workbench CSS,
-  narrow layouts of the Crystal and Symmetry panels.
+  narrow layouts of the Crystal and Symmetry panels. Refresh the packaged
+  mirrors (`plugins/burette-agent/preview-web` and `browser-shell-dist`) once
+  with `build:agent-shell`; they lag the stage 2–7 runtime changes. Test CJSON
+  files with per-conformer vibrations and unrestricted orbitals, which no
+  fixture covers yet.
 - **Done when:** every stage scenario above passes at 1400 and 900 px in both
   themes on the browser shell, and the stage 1–4 scenarios pass in the packaged
   macOS app.

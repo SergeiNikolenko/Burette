@@ -1,5 +1,7 @@
 import { isDocumentMediaPath, documentFallbackExtensions, pathExtension } from "./file-routing";
 import { basename } from "./sidebar-projects";
+import { defaultBuildInfo } from "./build-info";
+import { isAgentPluginSurface } from "./native-mcp-workspace";
 import type { StructureDragPayload } from "./structure-drag";
 import type { TextFileDocument, ViewerDocument } from "../types";
 
@@ -191,8 +193,12 @@ export function ensureDefaultDockTabs(area: DockArea, tabs: DockTab[]) {
   return [...defaults, ...extras];
 }
 
+// The agent surfaces have no bottom dock, so Plots joins the right dock there.
+const AGENT_RIGHT_DOCK_TAB_CATALOG: DockTabKind[] = [...RIGHT_DOCK_TAB_CATALOG, "plots"];
+
 export function dockTabCatalog(area: DockArea) {
-  return area === "right" ? RIGHT_DOCK_TAB_CATALOG : BOTTOM_DOCK_TAB_CATALOG;
+  if (area === "bottom") return BOTTOM_DOCK_TAB_CATALOG;
+  return isAgentPluginSurface(defaultBuildInfo.isAgentShell) ? AGENT_RIGHT_DOCK_TAB_CATALOG : RIGHT_DOCK_TAB_CATALOG;
 }
 
 export function dockTabLoadsDroppedDocument(kind: DockTabKind) {
