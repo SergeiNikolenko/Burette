@@ -121,9 +121,9 @@ export function CrystalPanel({ document, actions }: { document: ViewerDocument |
       {draft.error ? <p role="alert" className="workbench-error">{draft.error}</p> : null}
       {current && draft.format ? (
         <>
-          <CellSection key={`cell:${current.id}`} revision={current} disabled={locked} apply={apply}
+          <CellSection key={`cell:${current.id}`} revision={current} disabled={locked} readOnly={!draft.editable} apply={apply}
             mode={cellMode} setMode={setCellMode} policy={policy} setPolicy={setPolicy} />
-          <TransformSection key={`transform:${current.id}`} revision={current} disabled={locked} apply={apply} />
+          <TransformSection key={`transform:${current.id}`} revision={current} disabled={locked} readOnly={!draft.editable} apply={apply} />
           <CrystalSpaceGroupSection format={draft.format} revision={current} disabled={locked} apply={apply} />
           <AnalysisSection title="Powder diffraction">
             <PowderXrdSection title={document.title} atoms={current.value.atoms} cell={current.value.cell} revision={String(current.id)} actions={actions} />
@@ -144,9 +144,11 @@ function AnalysisSection({ title, children }: { title: string; children: ReactNo
 }
 
 type CellMode = "parameters" | "vectors";
+// Fields dim only for a read-only source; while an edit runs only the buttons wait, so the
+// fields keep their look instead of flashing at half opacity on every Apply, Undo and Redo.
+type SectionProps = { revision: CrystalRevision; disabled: boolean; readOnly: boolean; apply: (edit: CrystalEdit) => Promise<void> };
 
-function CellSection({ revision, disabled, apply, mode, setMode, policy, setPolicy }: {
-  revision: CrystalRevision; disabled: boolean; apply: (edit: CrystalEdit) => Promise<void>;
+function CellSection({ revision, disabled, readOnly, apply, mode, setMode, policy, setPolicy }: SectionProps & {
   mode: CellMode; setMode: (mode: CellMode) => void; policy: CoordinatePolicy; setPolicy: (policy: CoordinatePolicy) => void;
 }) {
   const cell = revision.value.cell;
@@ -171,14 +173,14 @@ function CellSection({ revision, disabled, apply, mode, setMode, policy, setPoli
         </SegmentedControl>
         {mode === "parameters" ? (
           <div className="workbench-grid workbench-grid-3">
-            {AXES.map((axis) => <NumberField key={axis} label={`${axis}, Å`} value={parameters[axis]} min={0.1} max={1e4} step={0.01} digits={4} disabled={disabled}
+            {AXES.map((axis) => <NumberField key={axis} label={`${axis}, Å`} value={parameters[axis]} min={0.1} max={1e4} step={0.01} digits={4} disabled={readOnly}
               onChange={(value) => setParameters({ ...parameters, [axis]: value })} />)}
-            {ANGLES.map(([angle, symbol]) => <NumberField key={angle} label={`${symbol}, °`} value={parameters[angle]} min={1} max={179} step={0.1} digits={3} disabled={disabled}
+            {ANGLES.map(([angle, symbol]) => <NumberField key={angle} label={`${symbol}, °`} value={parameters[angle]} min={1} max={179} step={0.1} digits={3} disabled={readOnly}
               onChange={(value) => setParameters({ ...parameters, [angle]: value })} />)}
           </div>
         ) : (
           <div className="workbench-grid workbench-grid-3">
-            {vectors.map((row, i) => row.map((value, j) => <NumberField key={`${i}${j}`} label={`${AXES[i]} ${"xyz"[j]}, Å`} value={value} min={-1e4} max={1e4} step={0.01} digits={4} disabled={disabled}
+            {vectors.map((row, i) => row.map((value, j) => <NumberField key={`${i}${j}`} label={`${AXES[i]} ${"xyz"[j]}, Å`} value={value} min={-1e4} max={1e4} step={0.01} digits={4} disabled={readOnly}
               onChange={(entry) => setVectors(vectors.map((vector, r) => r === i ? vector.map((old, c) => c === j ? entry : old) : vector) as UnitCell)} />))}
           </div>
         )}
@@ -199,7 +201,7 @@ function CellSection({ revision, disabled, apply, mode, setMode, policy, setPoli
   );
 }
 
-function TransformSection({ revision, disabled, apply }: { revision: CrystalRevision; disabled: boolean; apply: (edit: CrystalEdit) => Promise<void> }) {
+function TransformSection({ revision, disabled, readOnly, apply }: SectionProps) {
   const volume = Math.abs(signedVolume(revision.value.cell));
   const [target, setTarget] = useState(volume);
   const [repeats, setRepeats] = useState<[number, number, number]>([2, 2, 2]);
@@ -214,11 +216,11 @@ function TransformSection({ revision, disabled, apply }: { revision: CrystalRevi
           <Button type="button" size="xs" variant="secondary" disabled={disabled} onClick={() => void apply({ kind: "niggli" })}>Niggli reduce</Button>
         </div>
         <div className="workbench-row">
-          <NumberField label="Volume, Å³" value={target} min={volume * SCALE_VOLUME_LIMITS.factor.min} max={volume * SCALE_VOLUME_LIMITS.factor.max} step={1} digits={2} disabled={disabled} onChange={setTarget} />
+          <NumberField label="Volume, Å³" value={target} min={volume * SCALE_VOLUME_LIMITS.factor.min} max={volume * SCALE_VOLUME_LIMITS.factor.max} step={1} digits={2} disabled={readOnly} onChange={setTarget} />
           <Button type="button" size="xs" variant="secondary" disabled={disabled || Math.abs(target - volume) < 1e-9} onClick={() => void apply({ kind: "scale-volume", volume: target })}>Scale</Button>
         </div>
         <div className="workbench-row">
-          {AXES.map((axis, index) => <NumberField key={axis} label={`${axis} ×`} value={repeats[index]} min={1} max={SUPERCELL_LIMITS.repeat} step={1} digits={0} disabled={disabled}
+          {AXES.map((axis, index) => <NumberField key={axis} label={`${axis} ×`} value={repeats[index]} min={1} max={SUPERCELL_LIMITS.repeat} step={1} digits={0} disabled={readOnly}
             onChange={(value) => setRepeats(repeats.map((old, i) => i === index ? Math.round(value) : old) as [number, number, number])} />)}
           <Button type="button" size="xs" variant="secondary" disabled={disabled || tooLarge || repeats.every((value) => value === 1)}
             onClick={() => void apply({ kind: "supercell", repeats })}>Build supercell</Button>
