@@ -39,6 +39,41 @@ test("Avogadro's vibrations keep their frequencies, intensities and atom displac
   expect(document.frames.every(frame => frame.modes === undefined)).toBe(true);
 });
 
+test("an unrestricted CJSON written by Avogadro keeps both spins and evaluates its alpha orbitals as PySCF does", () => {
+  const text = fixture("avogadro-ch2-triplet-uhf.cjson"), { orbitals } = JSON.parse(text);
+  const document = parseScientificFile("ch2.cjson", text);
+  expect({
+    spins: document.orbitals.map(orbital => orbital.spin).join(" "),
+    energiesEv: document.orbitals.map(orbital => orbital.energyHartree * 27.211386245988),
+    // The file carries multiplicity 1 and no occupations, so four electrons of each spin fill.
+    occupancy: document.orbitals.map(orbital => orbital.occupancy),
+  }).toEqual({
+    spins: "alpha alpha alpha alpha alpha alpha alpha beta beta beta beta beta beta beta",
+    energiesEv: [...orbitals.alphaEnergies, ...orbitals.betaEnergies].map((energy: number) => expect.closeTo(energy, 9)),
+    occupancy: [1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0],
+  });
+  // PySCF's own UHF alpha orbitals 3 and 4 at these points (Å; bohr^-3/2), from avogadro-written/uhf.py.
+  const points: Vec3[] = [[0.3, 0.2, 0.4], [0, 0.6, -0.2], [-0.25, -0.5, 0.3], [0.1, 0, -0.6]];
+  const pyscf = { 3: [0.3007590986, -0.1182163009, 0.1543796572, -0.2165745381], 4: [0.2671138838, 0, -0.1480036665, 0.041703804] };
+  for (const [orbital, values] of Object.entries(pyscf)) {
+    points.forEach((point, n) => expect(evaluateOrbital(document, Number(orbital), point)).toBeCloseTo(values[n], 6));
+  }
+});
+
+test("per-conformer vibrations written by Avogadro stay with the coordinate sets that carry them", () => {
+  const text = fixture("avogadro-water-hessians.cjson"), { vibrations } = JSON.parse(text);
+  const document = parseScientificFile("water.cjson", text);
+  // Set 3 is active: its modes are the document's, set 0 keeps its own and sets 1 and 2 have none.
+  expect({
+    frames: document.frames.map(frame => frame.modes?.map(mode => [mode.frequencyCm1, mode.intensityKmMol]) ?? null),
+    active: document.modes.map(mode => [mode.frequencyCm1, mode.intensityKmMol]),
+  }).toEqual({
+    frames: [vibrations.conformers["0"].frequencies.map((frequency: number, n: number) => [frequency, vibrations.conformers["0"].intensities[n]]), null, null, null],
+    active: vibrations.frequencies.map((frequency: number, n: number) => [frequency, vibrations.intensities[n]]),
+  });
+  expect(vibrations.conformers["3"].frequencies).toEqual(vibrations.frequencies);
+});
+
 test("malformed CJSON science is refused with its reason", () => {
   const base = JSON.parse(fixture("avogadro-formaldehyde-raman.cjson"));
   const broken = (patch: (value: any) => void) => { const copy = structuredClone(base); patch(copy); return JSON.stringify(copy); };

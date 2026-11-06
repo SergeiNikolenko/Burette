@@ -41,6 +41,22 @@
       "originalSha256": "e797b04299ac22f023051645a72e6b8582923a13ec4083d6b1c956889f194fe1",
       "extractSha256": "e797b04299ac22f023051645a72e6b8582923a13ec4083d6b1c956889f194fe1",
       "extraction": "Unchanged."
+    },
+    {
+      "path": "avogadro-ch2-triplet-uhf.cjson",
+      "writer": "OpenChemistry/avogadrolibs cb0e9485 Io::CjsonFormat after QuantumIO::MoldenFile",
+      "input": "PySCF 2.15.0 UHF/STO-3G triplet CH2 written by pyscf.tools.molden (avogadro-written/uhf.py)",
+      "generator": "avogadro-written/README.md",
+      "sha256": "a6b58c66e7fad9af107c5b0e7106c84af8a6d515409c17d5304c559a60a16e40",
+      "extraction": "Unchanged writer output."
+    },
+    {
+      "path": "avogadro-water-hessians.cjson",
+      "writer": "OpenChemistry/avogadrolibs cb0e9485 Io::CjsonFormat",
+      "input": "PySCF 2.15.0 HF/STO-3G water optimization: four coordinate sets, Hessians and IR intensities at sets 0 and 3 (avogadro-written/vib.py)",
+      "generator": "avogadro-written/README.md",
+      "sha256": "580f03176163d826c1d7d68ff32652beccceec160c0d310f5aab38ac847e1685",
+      "extraction": "Unchanged writer output."
     }
   ]
 }
