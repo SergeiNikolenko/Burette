@@ -1852,6 +1852,9 @@ pub(crate) mod document_open_tests {
             let home =
                 std::env::temp_dir().join(format!("burette-test-home-{}", uuid::Uuid::new_v4()));
             fs::create_dir_all(&home).expect("test home should be created");
+            // macOS temp_dir is a symlink (/var -> /private/var); tests compare
+            // canonical app_data_dir paths against stored ones.
+            let home = home.canonicalize().expect("test home should resolve");
             std::env::set_var("HOME", &home);
             home
         })
