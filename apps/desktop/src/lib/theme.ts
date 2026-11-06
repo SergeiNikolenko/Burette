@@ -12,6 +12,7 @@ type ThemeTokens = {
   editorFont: string;
   translucent: number;
   contrast: number;
+  resolved?: boolean;
 };
 
 export function readSystemThemeMode(): ThemeMode {
@@ -79,7 +80,7 @@ export function resolveAppearanceTheme(preferences: ViewerPreferences, mode: The
 export function readPreviewThemeTokens(preferences: ViewerPreferences, mode: ThemeMode): ThemeTokens {
   const tokens = readThemeTokens(preferences, mode);
   const codex = resolveAppearanceTheme(preferences, mode);
-  return { ...tokens, accent: codex.accent, background: codex.surface, foreground: codex.ink, contrast: codex.contrast };
+  return { ...tokens, accent: codex.accent, background: codex.surface, foreground: codex.ink, contrast: codex.contrast, resolved: true };
 }
 
 // The Codex host owns the widget's theme. A viewer frame left on "auto" would

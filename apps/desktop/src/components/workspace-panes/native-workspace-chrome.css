@@ -13,3 +13,10 @@
 #root .app-shell[data-native-workspace-chrome] .workspace-sidebar-handle {
   display: block;
 }
+
+/* A narrow pane keeps the tab strip readable: Annotate drops its label, as it
+   does in the compact file header. */
+@media (max-width: 520px) {
+  #root .app-shell[data-native-workspace-chrome] .chrome-trailing-controls .annotate-toggle {width:32px; padding:0}
+  #root .app-shell[data-native-workspace-chrome] .chrome-trailing-controls .annotate-toggle > span {display:none}
+}

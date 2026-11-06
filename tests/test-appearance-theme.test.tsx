@@ -3,18 +3,21 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { defaultPreferences } from "../apps/desktop/src/stores/settings-store";
 import { buildThemeStyle, readPreviewThemeTokens, resolveAppearanceTheme } from "../apps/desktop/src/lib/theme";
+import { codexThemeColors } from "../apps/desktop/src/lib/codex-theme";
 import { AppearanceSettings } from "../apps/desktop/src/components/settings-panel/themes-section";
 import type { ShellActions } from "../apps/desktop/src/components/types";
 
 test("native workspace shell and molecular preview follow the host background", () => {
   const previous = globalThis.window;
-  Object.defineProperty(globalThis, "window", { configurable: true, value: { BuretteMcpWorkspace: { theme: "dark", backgrounds: { light: "#fafafa", dark: "#101010" } } } });
+  // Codex dark chat is #111111, which is also the pre-Codex saved default.
+  Object.defineProperty(globalThis, "window", { configurable: true, value: { BuretteMcpWorkspace: { theme: "dark", backgrounds: { light: "#fafafa", dark: "#111111" } } } });
   try {
     for (const mode of ["light", "dark"] as const) {
-      const expected = mode === "dark" ? "#101010" : "#fafafa";
+      const expected = mode === "dark" ? "#111111" : "#fafafa";
       expect(resolveAppearanceTheme(defaultPreferences, mode).surface).toBe(expected);
-      expect(readPreviewThemeTokens(defaultPreferences, mode).background).toBe(expected);
-      expect(buildThemeStyle(defaultPreferences, "dark")["--bg-base" as keyof React.CSSProperties]).toBe("#101010");
+      // The viewer frames resolve the tokens again and must keep the host color.
+      expect(codexThemeColors(readPreviewThemeTokens(defaultPreferences, mode), mode).background).toBe(expected);
+      expect(buildThemeStyle(defaultPreferences, "dark")["--bg-base" as keyof React.CSSProperties]).toBe("#111111");
     }
   } finally { Object.defineProperty(globalThis, "window", { configurable: true, value: previous }); }
 });

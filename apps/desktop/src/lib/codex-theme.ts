@@ -30,22 +30,24 @@ const LEGACY_DEFAULTS: Record<CodexThemeVariant, CodexTheme> = {
   dark: { accent: "#af52de", surface: "#111111", ink: "#fcfcfc", contrast: 16 },
 };
 
-export type CodexThemeTokens = { accent?: string; background?: string; foreground?: string; contrast?: number };
+// `resolved` marks tokens the shell already resolved, such as a widget host's
+// own background, which may equal a legacy default and must stay as sent.
+export type CodexThemeTokens = { accent?: string; background?: string; foreground?: string; contrast?: number; resolved?: boolean };
 
 // Resolves saved appearance tokens (shell preferences or viewer theme tokens).
 export function codexThemeFromTokens(tokens: CodexThemeTokens | undefined, variant: CodexThemeVariant): CodexTheme {
-  const legacy = LEGACY_DEFAULTS[variant];
+  const legacy = tokens?.resolved ? null : LEGACY_DEFAULTS[variant];
   const fallback = CODEX_DEFAULT_THEME[variant];
   const color = (value: string | undefined, key: "accent" | "surface" | "ink") => {
     const normalized = value?.trim().toLowerCase() ?? "";
-    return /^#[0-9a-f]{6}$/.test(normalized) && normalized !== legacy[key] ? normalized : fallback[key];
+    return /^#[0-9a-f]{6}$/.test(normalized) && normalized !== legacy?.[key] ? normalized : fallback[key];
   };
   const contrast = typeof tokens?.contrast === "number" ? tokens.contrast : Number.NaN;
   return {
     accent: color(tokens?.accent, "accent"),
     surface: color(tokens?.background, "surface"),
     ink: color(tokens?.foreground, "ink"),
-    contrast: !Number.isFinite(contrast) || contrast === legacy.contrast ? fallback.contrast : Math.min(100, Math.max(0, contrast)),
+    contrast: !Number.isFinite(contrast) || contrast === legacy?.contrast ? fallback.contrast : Math.min(100, Math.max(0, contrast)),
   };
 }
 
