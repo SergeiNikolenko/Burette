@@ -1,5 +1,6 @@
-//! Database passwords, kept in the login keychain on macOS and in the Secret
-//! Service keyring (GNOME Keyring, KWallet) on Linux.
+//! Database passwords, kept in the login keychain on macOS, in the Secret
+//! Service keyring (GNOME Keyring, KWallet) on Linux and in Windows Credential
+//! Manager on Windows.
 //!
 //! Everything else the shell remembers lives in localStorage, which is plain
 //! text on disk and readable by anything that can read the profile. A database
@@ -9,7 +10,8 @@
 //! The secret itself is written to the tool's stdin, never to its arguments: the
 //! argument list of a running process is readable by other processes on macOS,
 //! and a password in argv is a password in `ps`. On Linux it travels over the
-//! session bus, encrypted with the service's negotiated session key.
+//! session bus, encrypted with the service's negotiated session key; on Windows
+//! it goes straight to the Credential Manager API.
 
 #[cfg(target_os = "macos")]
 use std::io::Write;
@@ -136,7 +138,7 @@ pub(crate) fn delete(account: &str) -> Result<bool, String> {
     Ok(output.status.success())
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
 pub(crate) fn store(account: &str, secret: &str) -> Result<(), String> {
     let account = validate_account(account)?;
     validate_secret(secret)?;
@@ -159,7 +161,7 @@ pub(crate) fn store(account: &str, secret: &str) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
 pub(crate) fn read(account: &str) -> Result<Option<String>, String> {
     let account = validate_account(account)?;
     let service = keyring::connect()?;
@@ -176,7 +178,7 @@ pub(crate) fn read(account: &str) -> Result<Option<String>, String> {
     Ok((!secret.is_empty()).then_some(secret))
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
 pub(crate) fn delete(account: &str) -> Result<bool, String> {
     let account = validate_account(account)?;
     let service = keyring::connect()?;
@@ -188,7 +190,7 @@ pub(crate) fn delete(account: &str) -> Result<bool, String> {
     Ok(true)
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
 mod keyring {
     use std::collections::HashMap;
 
@@ -222,6 +224,40 @@ mod keyring {
 
     pub(super) fn failure(what: &str, error: secret_service::Error) -> String {
         format!("Could not {what}: {error}")
+    }
+}
+
+/// Generic credentials named after the same service and account pair as the
+/// macOS keychain item.
+#[cfg(windows)]
+fn credential(account: &str) -> Result<::keyring::Entry, String> {
+    ::keyring::Entry::new(KEYCHAIN_SERVICE, &validate_account(account)?)
+        .map_err(|error| format!("Could not reach Windows Credential Manager: {error}"))
+}
+
+#[cfg(windows)]
+pub(crate) fn store(account: &str, secret: &str) -> Result<(), String> {
+    validate_secret(secret)?;
+    credential(account)?
+        .set_password(secret)
+        .map_err(|error| format!("Could not store the password: {error}"))
+}
+
+#[cfg(windows)]
+pub(crate) fn read(account: &str) -> Result<Option<String>, String> {
+    match credential(account)?.get_password() {
+        Ok(secret) => Ok((!secret.is_empty()).then_some(secret)),
+        Err(::keyring::Error::NoEntry) => Ok(None),
+        Err(error) => Err(format!("Could not read the password: {error}")),
+    }
+}
+
+#[cfg(windows)]
+pub(crate) fn delete(account: &str) -> Result<bool, String> {
+    match credential(account)?.delete_credential() {
+        Ok(()) => Ok(true),
+        Err(::keyring::Error::NoEntry) => Ok(false),
+        Err(error) => Err(format!("Could not delete the password: {error}")),
     }
 }
 

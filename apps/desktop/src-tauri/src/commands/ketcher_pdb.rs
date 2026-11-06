@@ -1,4 +1,3 @@
-use std::process::Command;
 use std::time::Duration;
 
 #[tauri::command]
@@ -19,7 +18,7 @@ fn convert(text: &str) -> Result<String, String> {
     let executable = super::conformer::resolve_executable("obabel")
         .ok_or("Install Open Babel to reconstruct bonds from PDB, or open the original SDF.")?;
     let output = super::conformer_process::run(
-        Command::new(executable).args(["-ipdb", "-osdf"]),
+        crate::preview::runtime_utils::background_command(executable).args(["-ipdb", "-osdf"]),
         text.as_bytes(),
         Duration::from_secs(15),
     )

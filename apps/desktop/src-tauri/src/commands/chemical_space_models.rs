@@ -20,6 +20,8 @@ use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use crate::preview::runtime_utils::{executable_name, home_dir, venv_python};
+
 const WORKER_SCRIPT: &str =
     include_str!("../../../../../compute/models/chemical_space_representations.py");
 const MODEL_ASSETS: &str = include_str!("../../../../../compute/models/model_assets.py");
@@ -366,28 +368,22 @@ fn resolve_model_python() -> Option<(PathBuf, &'static str)> {
 }
 
 fn resolve_managed_model_python(root: &Path) -> Option<PathBuf> {
-    stamped_runtime_is_current(root).then(|| root.join("bin/python3"))
+    stamped_runtime_is_current(root).then(|| venv_python(root))
 }
 
 fn model_runtime_dir() -> Result<PathBuf, String> {
     if let Some(path) = env::var_os("BURETTE_CHEMICAL_SPACE_MODEL_RUNTIME_DIR") {
         return Ok(PathBuf::from(path));
     }
-    let home = env::var_os("HOME").ok_or("HOME is not set for the model runtime install")?;
-    Ok(PathBuf::from(home)
-        .join("Library")
-        .join("Application Support")
-        .join("Burette")
-        .join("model-python"))
+    crate::preview::runtime_utils::user_support_dir()
+        .map(|support| support.join("model-python"))
+        .ok_or_else(|| "No user data folder for the model runtime install".to_string())
 }
 
 fn model_weights_dir() -> Result<PathBuf, String> {
-    let home = env::var_os("HOME").ok_or("HOME is not set for the model weights directory")?;
-    Ok(PathBuf::from(home)
-        .join("Library")
-        .join("Application Support")
-        .join("Burette")
-        .join("chemical-space-models"))
+    crate::preview::runtime_utils::user_support_dir()
+        .map(|support| support.join("chemical-space-models"))
+        .ok_or_else(|| "No user data folder for the model weights".to_string())
 }
 
 fn resolve_uv_executable() -> Result<PathBuf, String> {
@@ -398,12 +394,12 @@ fn resolve_uv_executable() -> Result<PathBuf, String> {
     }
     if let Some(path) = env::var_os("PATH") {
         for dir in env::split_paths(&path) {
-            candidates.push(dir.join("uv"));
+            candidates.push(dir.join(executable_name("uv")));
         }
     }
-    if let Some(home) = env::var_os("HOME") {
-        candidates.push(PathBuf::from(&home).join(".local/bin/uv"));
-        candidates.push(PathBuf::from(&home).join(".cargo/bin/uv"));
+    if let Some(home) = home_dir() {
+        candidates.push(home.join(".local/bin").join(executable_name("uv")));
+        candidates.push(home.join(".cargo/bin").join(executable_name("uv")));
     }
     candidates.extend([
         PathBuf::from("/opt/homebrew/bin/uv"),
@@ -451,22 +447,22 @@ fn stamped_runtime_is_current(root: &Path) -> bool {
     value.get("requirements").and_then(Value::as_str) == Some(REQUIREMENTS)
         && value.get("bootstrapRequirements").and_then(Value::as_str)
             == Some(BOOTSTRAP_REQUIREMENTS)
-        && root.join("bin/python3").is_file()
+        && venv_python(root).is_file()
 }
 
 fn install_into_staging(uv: &Path, staging: &Path) -> Result<(), String> {
     set_install_line("Creating the Python 3.12 environment…");
     run_install_step(
-        Command::new(uv)
+        crate::preview::runtime_utils::background_command(uv)
             .args(["venv", "--python", "3.12", "--no-config"])
             .arg(staging),
         "uv venv",
         INSTALL_TIMEOUT,
     )?;
     ensure_not_cancelled()?;
-    let python = staging.join("bin/python3");
+    let python = venv_python(staging);
     if !python.is_file() {
-        return Err("uv created an environment without bin/python3.".into());
+        return Err("uv created an environment without a Python interpreter.".into());
     }
     let requirements_path = staging.join("requirements.txt");
     fs::write(&requirements_path, REQUIREMENTS)
@@ -475,7 +471,7 @@ fn install_into_staging(uv: &Path, staging: &Path) -> Result<(), String> {
     fs::write(&bootstrap_path, BOOTSTRAP_REQUIREMENTS)
         .map_err(|error| format!("Could not write build-tool lock: {error}"))?;
     run_install_step(
-        Command::new(uv)
+        crate::preview::runtime_utils::background_command(uv)
             .args([
                 "pip",
                 "install",
@@ -496,7 +492,7 @@ fn install_into_staging(uv: &Path, staging: &Path) -> Result<(), String> {
     )?;
     set_install_line("Downloading PyTorch, Transformers, and RDKit…");
     run_install_step(
-        Command::new(uv)
+        crate::preview::runtime_utils::background_command(uv)
             .args([
                 "pip",
                 "sync",
@@ -539,7 +535,7 @@ fn install_into_staging(uv: &Path, staging: &Path) -> Result<(), String> {
 
 fn validate_runtime_imports(python: &Path) -> Result<(), String> {
     run_install_step(
-        Command::new(python).args([
+        crate::preview::runtime_utils::background_command(python).args([
             "-c",
             "import numpy, rdkit, torch, transformers; print('imports ok')",
         ]),
@@ -787,7 +783,7 @@ fn run_represent_worker(
     fs::create_dir_all(&weights)
         .map_err(|error| format!("Could not create {}: {error}", weights.display()))?;
     let script = write_worker_script()?;
-    let mut child = Command::new(python)
+    let mut child = crate::preview::runtime_utils::background_command(python)
         .arg(&script)
         .current_dir(&weights)
         .env("PYTORCH_ENABLE_MPS_FALLBACK", "0")
@@ -935,8 +931,9 @@ mod tests {
     #[test]
     fn stamps_only_match_the_pinned_requirements() {
         let dir = std::env::temp_dir().join(format!("model-stamp-{}", uuid::Uuid::new_v4()));
-        fs::create_dir_all(dir.join("bin")).expect("create runtime dir");
-        fs::write(dir.join("bin/python3"), "").expect("write python placeholder");
+        let python = venv_python(&dir);
+        fs::create_dir_all(python.parent().unwrap()).expect("create runtime dir");
+        fs::write(&python, "").expect("write python placeholder");
         assert!(resolve_managed_model_python(&dir).is_none());
         fs::write(
             dir.join(STAMP_FILE),
@@ -949,10 +946,7 @@ mod tests {
             serde_json::to_string(&json!({ "requirements": REQUIREMENTS, "bootstrapRequirements": BOOTSTRAP_REQUIREMENTS })).expect("stamp"),
         )
         .expect("write stamp");
-        assert_eq!(
-            resolve_managed_model_python(&dir),
-            Some(dir.join("bin/python3"))
-        );
+        assert_eq!(resolve_managed_model_python(&dir), Some(python));
         fs::remove_dir_all(&dir).ok();
     }
 

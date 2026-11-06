@@ -1,5 +1,6 @@
 use crate::commands::ssh::remote_jobs::{self, RemoteJob, RemoteTool};
 use crate::commands::xtb_runtime::{self, XtbRuntimeSource};
+use crate::preview::runtime_utils::SimplifiedCanonicalize;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
@@ -8,7 +9,7 @@ use std::io::{ErrorKind, Read, Write};
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, ExitStatus, Stdio};
+use std::process::{Child, ExitStatus, Stdio};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -381,7 +382,7 @@ fn xtb_work_dir<R: Runtime>(
         .flatten()
         .find_map(|path| {
             PathBuf::from(path)
-                .canonicalize()
+                .canonicalize_simplified()
                 .ok()
                 .filter(|path| path.is_file())
         }) {
@@ -557,18 +558,18 @@ fn xtb_status_from_environment<R: Runtime>(app: &tauri::AppHandle<R>) -> XtbStat
 
 fn resolve_executable(name: &str) -> Option<PathBuf> {
     let mut candidates = Vec::new();
-    if let Some(home) = std::env::var_os("HOME") {
-        let home = PathBuf::from(home);
-        candidates.push(home.join(".pixi/bin").join(name));
-        candidates.push(home.join(".local/bin").join(name));
-        candidates.push(home.join(".cargo/bin").join(name));
+    let name = crate::preview::runtime_utils::executable_name(name);
+    if let Some(home) = crate::preview::runtime_utils::home_dir() {
+        candidates.push(home.join(".pixi/bin").join(&name));
+        candidates.push(home.join(".local/bin").join(&name));
+        candidates.push(home.join(".cargo/bin").join(&name));
     }
     if let Some(path) = std::env::var_os("PATH") {
-        candidates.extend(std::env::split_paths(&path).map(|dir| dir.join(name)));
+        candidates.extend(std::env::split_paths(&path).map(|dir| dir.join(&name)));
     }
     candidates.extend([
-        PathBuf::from("/opt/homebrew/bin").join(name),
-        PathBuf::from("/usr/local/bin").join(name),
+        PathBuf::from("/opt/homebrew/bin").join(&name),
+        PathBuf::from("/usr/local/bin").join(&name),
     ]);
     candidates
         .into_iter()
@@ -607,7 +608,7 @@ fn is_executable(path: &Path) -> bool {
 
 fn xtb_version(executable: &Path) -> Option<String> {
     let started = Instant::now();
-    let mut child = Command::new(executable)
+    let mut child = crate::preview::runtime_utils::background_command(executable)
         .arg("--version")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -680,7 +681,7 @@ fn prepare_xtb_input(request: &XtbRunRequest, work_dir: &Path) -> Result<PathBuf
         .as_deref()
         .ok_or_else(|| "xTB job requires inputPath or inputText.".to_string())?;
     let canonical = PathBuf::from(input_path)
-        .canonicalize()
+        .canonicalize_simplified()
         .map_err(|err| format!("{input_path}: {err}"))?;
     if !canonical.is_file() {
         return Err(format!("{} is not a file.", canonical.display()));
@@ -744,7 +745,7 @@ fn prepare_xtb_input_with_hydrogens(
     if needs_3d {
         args.push("--gen3d".into());
     }
-    let output = Command::new(&obabel)
+    let output = crate::preview::runtime_utils::background_command(&obabel)
         .args(&args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -795,7 +796,7 @@ fn prepare_xtb_cif_input_with_hydrogens(
     let prep_log_path = work_dir.join("xtb-prep.log");
     let pdb_path = work_dir.join(format!("{output_stem}-cif.pdb"));
     let output_path = work_dir.join(format!("{output_stem}.xyz"));
-    let pdb_output = Command::new(obabel)
+    let pdb_output = crate::preview::runtime_utils::background_command(obabel)
         .args([
             input_path.to_string_lossy().to_string(),
             "-O".into(),
@@ -822,7 +823,7 @@ fn prepare_xtb_cif_input_with_hydrogens(
         );
         return Ok(input_path.to_path_buf());
     }
-    let xyz_output = Command::new(obabel)
+    let xyz_output = crate::preview::runtime_utils::background_command(obabel)
         .args([
             pdb_path.to_string_lossy().to_string(),
             "-O".into(),
@@ -1143,7 +1144,7 @@ fn run_xtb_command(
         fs::write(log_path, &log).map_err(|err| format!("{}: {err}", log_path.display()))?;
         return Ok((cancelled_exit_status(), log));
     }
-    let mut command = Command::new(executable);
+    let mut command = crate::preview::runtime_utils::background_command(executable);
     command.args(args).current_dir(work_dir);
     if threads > 0 {
         command.env("OMP_NUM_THREADS", threads.to_string());
@@ -1757,11 +1758,9 @@ fn timeout_exit_status() -> ExitStatus {
     ExitStatus::from_raw(124 << 8)
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
 fn timeout_exit_status() -> ExitStatus {
-    Command::new("false")
-        .status()
-        .expect("false command should produce an exit status")
+    std::os::windows::process::ExitStatusExt::from_raw(124)
 }
 
 #[cfg(unix)]
@@ -1769,11 +1768,9 @@ fn cancelled_exit_status() -> ExitStatus {
     ExitStatus::from_raw(130 << 8)
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
 fn cancelled_exit_status() -> ExitStatus {
-    Command::new("false")
-        .status()
-        .expect("false command should produce an exit status")
+    std::os::windows::process::ExitStatusExt::from_raw(130)
 }
 
 fn unix_timestamp_ms() -> u128 {

@@ -1,3 +1,4 @@
+use crate::preview::runtime_utils::SimplifiedCanonicalize;
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::VecDeque;
@@ -61,12 +62,14 @@ pub(super) fn refresh_bundled_codex_plugin(
     .into_iter()
     .map(PathBuf::from)
     .chain(
-        env::split_paths(&env::var_os("PATH").unwrap_or_default())
-            .flat_map(|dir| [dir.join("node"), dir.join("bun")]),
+        env::split_paths(&env::var_os("PATH").unwrap_or_default()).flat_map(|dir| {
+            ["node", "bun"]
+                .map(|name| dir.join(crate::preview::runtime_utils::executable_name(name)))
+        }),
     )
     .find(|path| path.is_file())
     .ok_or("Node or Bun is required to refresh the installed plugin.")?;
-    let status = Command::new(runtime)
+    let status = crate::preview::runtime_utils::background_command(runtime)
         .arg(plugin.join("scripts/install-local.mjs"))
         .env("BURETTE_APP_BUNDLE", app_bundle)
         .stdin(Stdio::null())
@@ -341,7 +344,7 @@ fn bundle_status(path: &Path, checks: &mut Vec<AgentIntegrationCheck>) -> Plugin
 }
 
 fn agent_install_statuses(bundled_version: Option<&str>) -> Vec<AgentInstallStatus> {
-    let Some(home) = env::var_os("HOME").map(PathBuf::from) else {
+    let Some(home) = crate::preview::runtime_utils::home_dir() else {
         let message = "HOME is not available, so local agent plugin installs cannot be inspected.";
         return vec![
             unknown_install("codex", "Codex", message),
@@ -606,5 +609,6 @@ fn check(
 }
 
 fn normalize_path(path: &Path) -> PathBuf {
-    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+    path.canonicalize_simplified()
+        .unwrap_or_else(|_| path.to_path_buf())
 }

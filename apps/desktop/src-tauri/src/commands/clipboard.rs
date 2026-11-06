@@ -24,7 +24,14 @@ pub(crate) fn write_clipboard_text<R: tauri::Runtime>(
             }
         })
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    {
+        let _ = app;
+        arboard::Clipboard::new()
+            .and_then(|mut clipboard| clipboard.set_text(text))
+            .map_err(|error| format!("Could not write text to the clipboard: {error}"))
+    }
+    #[cfg(target_os = "linux")]
     {
         // GTK owns the selection for as long as the app runs and hands it to
         // the clipboard manager on exit.

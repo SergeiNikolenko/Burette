@@ -170,7 +170,7 @@ pub(crate) fn claim_agent_session<R: Runtime>(
     session_dir: String,
     pending: tauri::State<'_, PendingLinks>,
 ) -> Result<bool, String> {
-    let path = std::fs::canonicalize(session_dir).map_err(|_| "Session directory is missing.")?;
+    let path = dunce::canonicalize(session_dir).map_err(|_| "Session directory is missing.")?;
     let key = path.to_string_lossy().to_string();
     let mut owners = pending.owners.lock().unwrap();
     owners.retain(|_, label| window.app_handle().get_webview_window(label).is_some());
@@ -200,7 +200,7 @@ pub(crate) fn receive<R: Runtime>(app: &tauri::AppHandle<R>, urls: Vec<String>) 
             .unwrap_or_else(|message| Target::Error { message });
         let pending = app.state::<PendingLinks>();
         let owner = if let Target::Session { session_dir, .. } = &target {
-            let key = std::fs::canonicalize(session_dir)
+            let key = dunce::canonicalize(session_dir)
                 .ok()
                 .map(|p| p.to_string_lossy().to_string());
             let owners = pending.owners.lock().unwrap();
