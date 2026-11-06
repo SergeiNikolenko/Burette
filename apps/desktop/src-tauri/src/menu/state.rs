@@ -1687,7 +1687,7 @@ mod tests {
             "canRunXtb": false,
             "canOptimizeGeometry": false,
             "rgroupRuntimeAvailable": false,
-            "openDocumentPaths": ["/tmp/molecules.sdf"],
+            "openDocumentPaths": [std::env::temp_dir().join("molecules.sdf")],
             "recentDocuments": null
         })
     }

@@ -595,7 +595,7 @@ mod tests {
             first_time_ps: Some(0.0),
             first_cell_basis: None,
             source: Some(TrajectorySource::File {
-                path: PathBuf::from("/data/run.xtc"),
+                path: std::env::temp_dir().join("run.xtc"),
             }),
         };
         let saved: IndexedTrajectory =
@@ -615,7 +615,7 @@ mod tests {
         }
         for path in [
             PathBuf::from("relative.xtc"),
-            PathBuf::from(format!("/{}", "x".repeat(4096))),
+            std::env::temp_dir().join("x".repeat(4096)),
         ] {
             assert!(TrajectorySource::File { path }.validate().is_err());
         }

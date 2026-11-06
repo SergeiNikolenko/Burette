@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -1049,8 +1049,7 @@ fn sync_parent_directory(path: &Path) -> Result<(), String> {
     let parent = path
         .parent()
         .ok_or_else(|| "The source has no parent directory.".to_string())?;
-    File::open(parent)
-        .and_then(|directory| directory.sync_all())
+    crate::compute::platform_fs::sync_directory_path(parent)
         .map_err(|_| "Could not flush the source directory.".to_string())
 }
 

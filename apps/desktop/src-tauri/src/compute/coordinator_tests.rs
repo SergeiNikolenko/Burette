@@ -350,6 +350,8 @@ fn conformer_submission_streams_raw_extraction_into_a_durable_job() {
                 .map(|cell| &cell.value)
                 == Some(&serde_json::json!("optimized"))
     }));
+    // The job store keeps files open, which blocks removing them on Windows.
+    drop(coordinator);
     std::fs::remove_dir_all(compute_root).expect("remove compute fixture");
     std::fs::remove_dir_all(grid_root).expect("remove Grid fixture");
 }

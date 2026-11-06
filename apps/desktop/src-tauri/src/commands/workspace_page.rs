@@ -137,6 +137,15 @@ pub(crate) fn relay_workspace_page<R: tauri::Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An absolute path on the host; `/data/...` is relative on Windows.
+    fn data_path(name: &str) -> String {
+        std::path::Path::new(if cfg!(windows) { r"C:\data" } else { "/data" })
+            .join(name)
+            .to_string_lossy()
+            .into_owned()
+    }
+
     #[test]
     fn transfer_fingerprint_uses_the_calling_windows_loaded_rows() {
         use crate::preview::grid_store::{build_grid_store, GridRuntimeRegistry};
@@ -196,7 +205,7 @@ mod tests {
             )
             .is_ok());
         }
-        let mut message = serde_json::json!({"kind":"open", "id":uuid::Uuid::new_v4().to_string(), "location":{"kind":"chemical-space", "collectionPath":"/data/collection.sdf"}});
+        let mut message = serde_json::json!({"kind":"open", "id":uuid::Uuid::new_v4().to_string(), "location":{"kind":"chemical-space", "collectionPath":data_path("collection.sdf")}});
         assert!(validate_message(&message).is_ok());
         message["location"]["collectionPath"] = "https://other/source.sdf".into();
         assert!(validate_message(&message).is_err());
@@ -209,13 +218,13 @@ mod tests {
 
     #[test]
     fn page_transfer_checks_grid_and_text_boundaries() {
-        let mut grid = serde_json::json!({"kind":"open", "id":uuid::Uuid::new_v4().to_string(), "location":{"kind":"file", "path":"/data/source.sdf"}, "grid":{"sourceVersion":"a".repeat(64),"snapshot":"{}"}});
+        let mut grid = serde_json::json!({"kind":"open", "id":uuid::Uuid::new_v4().to_string(), "location":{"kind":"file", "path":data_path("source.sdf")}, "grid":{"sourceVersion":"a".repeat(64),"snapshot":"{}"}});
         assert!(validate_message(&grid).is_ok());
         grid["grid"]["sourceVersion"] = "bad".into();
         assert!(validate_message(&grid).is_err());
-        let mut text = serde_json::json!({"kind":"open", "id":uuid::Uuid::new_v4().to_string(), "location":{"kind":"text-file", "path":"/data/source.txt"}, "text":{"content":"hello", "truncated":false, "path":"/data/source.txt"}});
+        let mut text = serde_json::json!({"kind":"open", "id":uuid::Uuid::new_v4().to_string(), "location":{"kind":"text-file", "path":data_path("source.txt")}, "text":{"content":"hello", "truncated":false, "path":data_path("source.txt")}});
         assert!(validate_message(&text).is_ok());
-        text["text"]["path"] = "/data/other.txt".into();
+        text["text"]["path"] = data_path("other.txt").into();
         assert!(validate_message(&text).is_err());
     }
 }
