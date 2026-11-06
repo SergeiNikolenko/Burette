@@ -786,6 +786,19 @@
       if (new TextEncoder().encode(payload.text).length > 24 * 1024 * 1024) throw new Error('Structure export exceeds 24 MB.');
       return { ok: true, result: payload };
     }
+    // The visible scene as the viewport menu's Export 3D model writes it; the CLI saves the bytes to a file.
+    if (type === 'export_scene_model') {
+      const exporter = window.molstar?.BuretteSceneExport, plugin = viewportPlugin();
+      if (!exporter || !plugin) throw new Error('This viewer cannot export a 3D model.');
+      const format = action.format ?? 'glb';
+      if (!exporter.formats[format]) throw new Error(`3D model format must be one of ${Object.keys(exporter.formats).join(', ')}.`);
+      const { blob, vertexCount, faceCount, assertSceneUnchanged } = await exporter.exportScene(plugin, format);
+      assertSceneUnchanged();
+      if (blob.size > 16 * 1024 * 1024) throw new Error('The 3D model exceeds the 16 MiB agent export limit. Hide components or export it from the viewport menu.');
+      const { extension, mimeType } = exporter.formats[format];
+      return { ok: true, result: { name: `${safeExportBaseName(activeConfig?.label, 'scene')}.${extension}`, format, mimeType, byteCount: blob.size, vertexCount, faceCount,
+        dataBase64: bytesToBase64(new Uint8Array(await blob.arrayBuffer())) } };
+    }
     if (type === 'copy_scene_sequence') {
       if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
       return { ok: true, result: { text: window.BuretteSceneFiles.sequence(activeMolstarViewer()) } };

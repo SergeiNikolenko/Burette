@@ -534,6 +534,9 @@ try {
     const invalidCapture = runCli(['capture', '--session-dir', sessionDir, '--width', '800']);
     assert.equal(invalidCapture.status, 2);
     assert.equal(JSON.parse(invalidCapture.stderr).error.code, 'INVALID_ARGS');
+    const invalidModel = runCli(['export-model', '--session-dir', sessionDir, '--format', 'stl']);
+    assert.equal(invalidModel.status, 2);
+    assert.equal(JSON.parse(invalidModel.stderr).error.code, 'INVALID_ARGS');
     const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYPj/HwADAgH/eL9GtQAAAABJRU5ErkJggg==';
     const capturePath = resolve(sessionDir, 'view.png');
     const captureChild = spawn(process.execPath, ['scripts/burette-agent.mjs', 'capture', '--session-dir', sessionDir, '--output', capturePath, '--width', '800', '--height', '600', '--wait-ms', '10000'], {

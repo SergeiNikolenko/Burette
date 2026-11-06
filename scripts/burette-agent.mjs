@@ -32,6 +32,7 @@ const MAX_PENDING_AGENT_ACTIONS = 64;
 const MAX_ACTION_INPUT_BYTES = 256 * 1024;
 const MAX_CAPTURE_EDGE = 8192;
 const CAPTURE_MIME_TYPES = new Map([['png', 'image/png'], ['jpeg', 'image/jpeg'], ['webp', 'image/webp']]);
+const MODEL_FORMATS = ['glb', 'ply', 'obj', 'x3d', 'wrl', 'pov'];
 
 function usage() {
   console.error(`Usage:
@@ -51,6 +52,7 @@ function usage() {
   node scripts/burette-agent.mjs scene <reset-camera|hide-waters|show-waters|show-surface|color-by-chain|focus-ligand|contacts> --session-dir <session> [--wait-ms 5000]
   node scripts/burette-agent.mjs render-panel --session-dir <desktop-agent-session> --kind markdown --file /tmp/notes.md [--area right]
   node scripts/burette-agent.mjs capture --session-dir <session> | --url <url> [--output /tmp/view.png] [--width 1600 --height 1000] [--format png|jpeg|webp] [--quality 0.9] [--transparent] [--auto-crop] [--overwrite] [--wait-ms 15000]
+  node scripts/burette-agent.mjs export-model --session-dir <session> | --url <url> [--format glb|ply|obj|x3d|wrl|pov] [--output /tmp/scene.glb] [--overwrite] [--wait-ms 60000]
   node scripts/burette-agent.mjs workbench --session-dir <browser-agent-shell-session> '{"operation":"observe"}' [--stdin] [--action-file request.json] [--wait-ms 15000]
   node scripts/burette-agent.mjs workbench --session-dir <session> '{"operation":"export","jobId":"wbj-…","artifact":"cube"}' [--output /tmp/result.cube] [--overwrite]
   node scripts/burette-agent.mjs story-create --spec /tmp/story.json --output /tmp/story.mvsx [--asset protein.pdb=/path/protein.pdb]
@@ -268,6 +270,10 @@ async function main() {
   }
   if (command === 'capture') {
     await capture(options);
+    return;
+  }
+  if (command === 'export-model') {
+    await exportModel(options);
     return;
   }
   if (command === 'workbench') {
@@ -1009,7 +1015,7 @@ async function capture(options) {
   );
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, bytes, { flag: options.overwrite ? 'w' : 'wx' });
-  if (sessionDir && result.action?.id) await replaceCapturedImage(sessionDir, result.action.id, path);
+  if (sessionDir && result.action?.id) await replaceInlineBytes(sessionDir, result.action.id, 'dataUri', path);
   console.log(JSON.stringify({
     ok: true,
     apiVersion,
@@ -1024,16 +1030,49 @@ async function capture(options) {
   }, null, 2));
 }
 
-// The viewer reports the image inline; keep actions.json small by replacing it
-// with the written path once the capture is on disk.
-async function replaceCapturedImage(sessionDir, actionId, path) {
+// The viewer reports images and models inline; keep actions.json small by replacing
+// the inline bytes with the written path once the file is on disk.
+async function replaceInlineBytes(sessionDir, actionId, key, path) {
   const actionsPath = resolve(sessionDir, 'actions.json');
   const actionsFile = await readJsonFile(actionsPath, null);
   const item = actionsFile?.actions?.find?.(action => action?.id === actionId);
-  if (!item?.result?.result?.dataUri) return;
-  const { dataUri: _dataUri, ...rest } = item.result.result;
+  if (!item?.result?.result?.[key]) return;
+  const { [key]: _inline, ...rest } = item.result.result;
   item.result.result = { ...rest, path };
   await writeJsonFile(actionsPath, actionsFile);
+}
+
+// The visible scene as a 3D model in scene coordinates (angstrom), as the viewport
+// menu's Export 3D model writes it; the file is at most 16 MiB.
+async function exportModel(options) {
+  const format = options.format || 'glb';
+  if (!MODEL_FORMATS.includes(format)) fail('INVALID_ARGS', `export-model --format must be one of ${MODEL_FORMATS.join(', ')}.`, 2);
+  const outputPath = options.output ? resolve(options.output) : null;
+  if (outputPath && !options.overwrite && existsSync(outputPath)) fail('OUTPUT_EXISTS', `${outputPath} already exists. Pass --overwrite to replace it.`, 2);
+  const { sessionDir, result } = await runAgentAction(
+    { ...options, command: 'export-model', waitMs: Number.isFinite(options.waitMs) ? options.waitMs : 60000 },
+    async () => ({ type: 'export_scene_model', format }),
+  );
+  let actionResult = result.action?.result || null;
+  if (actionResult?.truncated && actionResult.artifact?.url) {
+    const response = await fetch(buildAgentUrl(options.url, actionResult.artifact.url));
+    if (!response.ok) fail('EXPORT_FAILED', `Model artifact request failed with HTTP ${response.status}.`, 1);
+    actionResult = parseJsonBody(await response.text(), 'Model artifact was not JSON.');
+  }
+  const model = actionResult?.result;
+  if (!result.ok || actionResult?.ok === false || typeof model?.dataBase64 !== 'string') {
+    fail('EXPORT_FAILED', actionResult?.error?.message || 'The active viewer did not return a 3D model.', 1, {
+      action: result.action ? { id: result.action.id, status: result.action.status, error: actionResult?.error || null } : null,
+    });
+  }
+  const bytes = Buffer.from(model.dataBase64, 'base64');
+  const path = outputPath || resolve(sessionDir ? resolve(sessionDir, 'models') : resolve(tmpdir(), 'burette-agent-models'),
+    `${String(model.name || `scene.${format}`).replace(/[^\w.-]+/gu, '_')}`);
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, bytes, { flag: options.overwrite || !outputPath ? 'w' : 'wx' });
+  if (sessionDir && result.action?.id) await replaceInlineBytes(sessionDir, result.action.id, 'dataBase64', path);
+  console.log(JSON.stringify({ ok: true, apiVersion, result: { path, format, mimeType: model.mimeType, byteCount: bytes.length,
+    vertexCount: model.vertexCount, faceCount: model.faceCount, actionId: result.action?.id || null } }, null, 2));
 }
 
 function imageDimensions(bytes) {
@@ -1247,7 +1286,7 @@ const SESSION_SHELL_ACTION_TYPES = [
   'open_docking_view', 'manage_tabs', 'render_panel', 'workbench',
 ];
 const SESSION_VIEWER_ACTION_TYPES = [
-  'indexed_trajectory_frame', 'workspace_scene_state', 'align_scene_files', 'export_scene_structure', 'copy_scene_sequence',
+  'indexed_trajectory_frame', 'workspace_scene_state', 'align_scene_files', 'export_scene_structure', 'export_scene_model', 'copy_scene_sequence',
   'append_scene_files', 'story_observe', 'story_control', 'get_xtb_context', 'focus_ligand',
   'show_ligands', 'hide_components', 'show_components', 'edit_components', 'open_components_menu',
   'remove_components', 'create_component', 'select_residues', 'clear_selection', 'set_sdf_molecule',
