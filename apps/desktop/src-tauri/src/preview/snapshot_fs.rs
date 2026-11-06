@@ -280,6 +280,10 @@ mod platform {
                 verified.directory_identity,
             )?;
             require_directory_link_count(&current, "published snapshot", 2, 2)?;
+            let directory_identity = verified.directory_identity;
+            // NTFS refuses to rename a directory while handles to entries
+            // inside it are open, so the verified content handles close first.
+            drop(verified);
             rename_noreplace(&self.directory, &final_leaf, &cleanup_leaf)?;
             platform_fs::sync_directory(&self.directory).map_err(|error| {
                 format!("Cannot sync quarantined verified snapshot in publication root: {error}")
@@ -288,10 +292,9 @@ mod platform {
                 &self.directory,
                 &cleanup_leaf,
                 "snapshot cleanup staging",
-                verified.directory_identity,
+                directory_identity,
             )?;
             drop(current);
-            drop(verified);
             self.cleanup_staging(snapshot_id, cleanup_attempt_id)
         }
 
@@ -690,9 +693,15 @@ mod platform {
         final_leaf: String,
         active_leaf: String,
         staging_directory: DirectoryFd,
+        /// Released before the publish rename: NTFS refuses to rename a
+        /// directory while handles to entries inside it are open.
+        content: Option<StagingContent>,
+        armed: bool,
+    }
+
+    struct StagingContent {
         pack_directory: DirectoryFd,
         snapshot_directory: DirectoryFd,
-        armed: bool,
     }
 
     impl<'a> SnapshotStaging<'a> {
@@ -744,10 +753,18 @@ mod platform {
                 final_leaf,
                 active_leaf,
                 staging_directory,
-                pack_directory,
-                snapshot_directory,
+                content: Some(StagingContent {
+                    pack_directory,
+                    snapshot_directory,
+                }),
                 armed: true,
             })
+        }
+
+        fn content(&self) -> Result<&StagingContent, String> {
+            self.content
+                .as_ref()
+                .ok_or_else(|| "Snapshot staging content was already released".to_string())
         }
 
         pub(crate) fn create_pack_file(&self, name: &'static str) -> Result<File, String> {
@@ -755,23 +772,24 @@ mod platform {
                 return Err("Unrecognized snapshot pack file".into());
             }
             self.root.verify_path_identity()?;
-            let file = create_file(&self.pack_directory, name)?;
+            let file = create_file(&self.content()?.pack_directory, name)?;
             self.root.verify_path_identity()?;
             Ok(file)
         }
 
         pub(crate) fn create_manifest_file(&self) -> Result<File, String> {
             self.root.verify_path_identity()?;
-            let file = create_file(&self.snapshot_directory, SNAPSHOT_FILES[0])?;
+            let file = create_file(&self.content()?.snapshot_directory, SNAPSHOT_FILES[0])?;
             self.root.verify_path_identity()?;
             Ok(file)
         }
 
         pub(crate) fn sync_directories(&self) -> Result<(), String> {
             self.root.verify_path_identity()?;
-            platform_fs::sync_directory(&self.pack_directory)
+            let content = self.content()?;
+            platform_fs::sync_directory(&content.pack_directory)
                 .map_err(|error| format!("Cannot sync snapshot pack directory: {error}"))?;
-            platform_fs::sync_directory(&self.snapshot_directory)
+            platform_fs::sync_directory(&content.snapshot_directory)
                 .map_err(|error| format!("Cannot sync snapshot manifest directory: {error}"))?;
             platform_fs::sync_directory(&self.staging_directory)
                 .map_err(|error| format!("Cannot sync snapshot staging directory: {error}"))?;
@@ -782,6 +800,7 @@ mod platform {
             self.root.verify_path_identity()?;
             let staging_identity =
                 validate_private_directory(&self.staging_directory, "staging directory")?;
+            drop(self.content.take());
             rename_noreplace(&self.root.directory, &self.active_leaf, &self.final_leaf)?;
             self.active_leaf.clone_from(&self.final_leaf);
 
