@@ -1,14 +1,14 @@
 use super::{
     error::{ComputeCoordinatorError, ComputeResult},
+    platform_fs,
     store::ComputeStore,
 };
 use burette_compute_protocol::JobState;
 use serde::Serialize;
 use serde_json::Value;
 use std::{
-    fs::{File, OpenOptions},
+    fs::File,
     io::Write,
-    os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt},
     path::{Path, PathBuf},
     sync::Mutex,
 };
@@ -41,7 +41,7 @@ pub(crate) struct AnalysisControl<'a> {
 impl<'a> AnalysisControl<'a> {
     pub(crate) fn prepare(store: &ComputeStore) -> ComputeResult<PathBuf> {
         let directory = store.artifact_root()?.join("partial-analysis");
-        match std::fs::DirBuilder::new().mode(0o700).create(&directory) {
+        match platform_fs::create_private_directory_path(&directory) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
             Err(error) => return Err(error.into()),
@@ -55,8 +55,8 @@ impl<'a> AnalysisControl<'a> {
         // Older builds created this diagnostic directory as 0755, inside the
         // private artifact root. It is not a published artifact or an orphan.
         if !metadata.is_dir()
-            || metadata.uid() != rustix::process::geteuid().as_raw()
-            || metadata.mode() & 0o022 != 0
+            || !platform_fs::metadata_owned_by_current_user(&metadata)
+            || !platform_fs::metadata_has_mode(&metadata, 0o022, 0)
         {
             return Err(ComputeCoordinatorError::Filesystem(
                 "Partial analysis report directory is not an owned, non-writable directory".into(),
@@ -95,11 +95,7 @@ impl<'a> AnalysisControl<'a> {
         })?;
         if let Some(row) = row {
             if report.is_none() {
-                let mut file = OpenOptions::new()
-                    .create_new(true)
-                    .write(true)
-                    .mode(0o600)
-                    .open(&self.report_path)?;
+                let mut file = platform_fs::create_new_private_file_path(&self.report_path)?;
                 let header = self.header.to_string();
                 writeln!(file, "{header}")?;
                 *report = Some((file, header.len() + 1));

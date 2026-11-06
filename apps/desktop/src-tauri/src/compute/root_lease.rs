@@ -1,74 +1,43 @@
-#[cfg(unix)]
 use std::{
-    os::fd::OwnedFd,
+    fs::File,
     path::{Component, Path, PathBuf},
     sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
 };
 
-#[cfg(not(unix))]
-use std::sync::Arc;
-
 #[cfg(unix)]
 use rustix::{
-    fs::{
-        fchmod, flock, fstat, fsync, ftruncate, mkdirat, open, openat, seek, statat, unlinkat,
-        AtFlags, Dir, FileType, FlockOperation, Mode, OFlags, SeekFrom,
-    },
-    io::{write, Errno},
-    process::geteuid,
+    fs::{fsync, ftruncate, seek, Dir, SeekFrom},
+    io::write,
 };
-#[cfg(unix)]
 use serde::Serialize;
-#[cfg(unix)]
 use uuid::Uuid;
 
-use crate::compute::error::{ComputeCoordinatorError, ComputeResult};
+use crate::compute::{
+    error::{ComputeCoordinatorError, ComputeResult},
+    platform_fs::{self, DirectoryFd, Errno},
+};
 
-#[cfg(unix)]
 const LOCK_FILE_NAME: &str = ".compute-owner.lock";
-#[cfg(unix)]
 const SNAPSHOTS_DIRECTORY_NAME: &str = "snapshots";
-#[cfg(unix)]
 const SNAPSHOTS_TEMP_PREFIX: &str = ".snapshots.create-";
-#[cfg(unix)]
 const MAX_SNAPSHOTS_TEMP_ATTEMPTS: usize = 8;
-#[cfg(unix)]
 const MAX_COMPUTE_ROOT_ENTRIES: usize = 4_096;
-#[cfg(unix)]
 const LOCK_DIAGNOSTIC_SCHEMA: &str = "burette.compute-owner.v1";
-#[cfg(unix)]
 const MAX_LOCK_DIAGNOSTIC_BYTES: usize = 512;
-#[cfg(unix)]
-const DIRECTORY_MODE: Mode = Mode::from_bits_truncate(0o700);
-#[cfg(unix)]
-const FILE_MODE: Mode = Mode::from_bits_truncate(0o600);
-#[cfg(unix)]
-const DIRECTORY_FLAGS: OFlags = OFlags::RDONLY
-    .union(OFlags::DIRECTORY)
-    .union(OFlags::CLOEXEC)
-    .union(OFlags::NOFOLLOW);
-#[cfg(unix)]
-const CREATE_LOCK_FLAGS: OFlags = OFlags::RDWR
-    .union(OFlags::CREATE)
-    .union(OFlags::EXCL)
-    .union(OFlags::CLOEXEC)
-    .union(OFlags::NOFOLLOW);
-#[cfg(unix)]
-const OPEN_LOCK_FLAGS: OFlags = OFlags::RDWR.union(OFlags::CLOEXEC).union(OFlags::NOFOLLOW);
 
 /// Process-lifetime ownership of the durable compute root.
 ///
 /// The descriptor fields are intentionally never duplicated: closing the lock
-/// descriptor is what releases the advisory lease.
-#[cfg(unix)]
+/// descriptor is what releases the advisory lease. Filesystem access goes
+/// through [`platform_fs`], which documents the Unix and Windows capabilities.
 #[derive(Debug)]
 pub(crate) struct ComputeRootLease {
     compute_root: PathBuf,
     root_identity: FileIdentity,
     lock_identity: FileIdentity,
-    root_directory: OwnedFd,
-    lock_file: OwnedFd,
+    root_directory: DirectoryFd,
+    lock_file: File,
     snapshots_initialization: Mutex<()>,
 }
 
@@ -76,25 +45,23 @@ pub(crate) struct ComputeRootLease {
 ///
 /// `path` is diagnostic only. Trusted access uses `directory`, while `lease`
 /// keeps process ownership alive and verifies the child's current root entry.
-#[cfg(unix)]
 #[derive(Debug)]
 pub(crate) struct ComputeRootChildDirectory {
     lease: Arc<ComputeRootLease>,
     path: PathBuf,
-    directory: OwnedFd,
+    directory: DirectoryFd,
     identity: FileIdentity,
 }
 
-#[cfg(unix)]
 impl ComputeRootLease {
     pub(crate) fn acquire(compute_root: &Path) -> ComputeResult<Self> {
         let (root_directory, root_identity) = create_or_open_compute_root(compute_root)?;
         let lock_file = create_or_open_lock_file(&root_directory)?;
         let lock_identity = validate_private_lock_file(&lock_file)?;
 
-        match flock(&lock_file, FlockOperation::NonBlockingLockExclusive) {
-            Ok(()) => {}
-            Err(Errno::AGAIN) => {
+        match platform_fs::try_lock_exclusive(&lock_file) {
+            Ok(true) => {}
+            Ok(false) => {
                 return Err(ComputeCoordinatorError::Unavailable(
                     "the compute root is already owned by another Burette process".into(),
                 ));
@@ -123,7 +90,7 @@ impl ComputeRootLease {
             started_at_ms: now_ms(),
         };
         write_lock_diagnostic(&lock_file, &diagnostic)?;
-        fsync(&root_directory)
+        platform_fs::sync_directory(&root_directory)
             .map_err(|error| filesystem(format!("cannot sync the compute root: {error}")))?;
 
         let lease = Self {
@@ -152,11 +119,7 @@ impl ComputeRootLease {
         })?;
         self.verify_path_identity()?;
         cleanup_abandoned_snapshots_directories(&self.root_directory)?;
-        match statat(
-            &self.root_directory,
-            SNAPSHOTS_DIRECTORY_NAME,
-            AtFlags::SYMLINK_NOFOLLOW,
-        ) {
+        match platform_fs::stat_at_nofollow(&self.root_directory, SNAPSHOTS_DIRECTORY_NAME) {
             Ok(_) => return self.open_existing_snapshots_directory(),
             Err(Errno::NOENT) => {}
             Err(error) => {
@@ -174,6 +137,12 @@ impl ComputeRootLease {
                     &self.root_directory,
                     SNAPSHOTS_DIRECTORY_NAME,
                     "compute snapshots directory",
+                    identity,
+                )?;
+                #[cfg(windows)]
+                let directory = reopen_published_snapshots_directory(
+                    &self.root_directory,
+                    directory,
                     identity,
                 )?;
                 require_empty_directory(&directory, "new compute snapshots directory")?;
@@ -210,17 +179,13 @@ impl ComputeRootLease {
         self: &Arc<Self>,
     ) -> ComputeResult<ComputeRootChildDirectory> {
         self.verify_path_identity()?;
-        let directory = openat(
-            &self.root_directory,
-            SNAPSHOTS_DIRECTORY_NAME,
-            DIRECTORY_FLAGS,
-            Mode::empty(),
-        )
-        .map_err(|error| {
-            filesystem(format!(
-                "cannot open the compute snapshots directory: {error}"
-            ))
-        })?;
+        let directory =
+            platform_fs::open_directory_at(&self.root_directory, SNAPSHOTS_DIRECTORY_NAME)
+                .map_err(|error| {
+                    filesystem(format!(
+                        "cannot open the compute snapshots directory: {error}"
+                    ))
+                })?;
         let identity = validate_private_directory(&directory, "compute snapshots directory")?;
         validate_directory_entry(
             &self.root_directory,
@@ -233,7 +198,7 @@ impl ComputeRootLease {
 
     fn finish_snapshots_directory(
         self: &Arc<Self>,
-        directory: OwnedFd,
+        directory: DirectoryFd,
         identity: FileIdentity,
     ) -> ComputeResult<ComputeRootChildDirectory> {
         let child = ComputeRootChildDirectory {
@@ -243,12 +208,12 @@ impl ComputeRootLease {
             identity,
         };
         child.verify()?;
-        fsync(&child.directory).map_err(|error| {
+        platform_fs::sync_directory(&child.directory).map_err(|error| {
             filesystem(format!(
                 "cannot sync the compute snapshots directory: {error}"
             ))
         })?;
-        fsync(&self.root_directory).map_err(|error| {
+        platform_fs::sync_directory(&self.root_directory).map_err(|error| {
             filesystem(format!(
                 "cannot sync the compute root after opening snapshots: {error}"
             ))
@@ -277,14 +242,13 @@ impl ComputeRootLease {
     }
 }
 
-#[cfg(unix)]
 impl ComputeRootChildDirectory {
     /// Diagnostic locator only. Consumers must use the retained descriptor.
     pub(crate) fn path(&self) -> &Path {
         &self.path
     }
 
-    pub(crate) fn directory(&self) -> &OwnedFd {
+    pub(crate) fn directory(&self) -> &DirectoryFd {
         &self.directory
     }
 
@@ -307,51 +271,12 @@ impl ComputeRootChildDirectory {
     }
 }
 
-#[cfg(not(unix))]
-#[derive(Debug)]
-pub(crate) struct ComputeRootLease {
-    compute_root: std::path::PathBuf,
-}
-
-#[cfg(not(unix))]
-#[derive(Debug)]
-pub(crate) struct ComputeRootChildDirectory;
-
-#[cfg(not(unix))]
-impl ComputeRootLease {
-    pub(crate) fn acquire(_compute_root: &std::path::Path) -> ComputeResult<Self> {
-        Err(ComputeCoordinatorError::Unavailable(
-            "compute root ownership requires Unix directory capabilities".into(),
-        ))
-    }
-
-    pub(crate) fn compute_root(&self) -> &std::path::Path {
-        &self.compute_root
-    }
-
-    pub(crate) fn open_or_create_snapshots_directory(
-        self: &Arc<Self>,
-    ) -> ComputeResult<ComputeRootChildDirectory> {
-        Err(ComputeCoordinatorError::Unavailable(
-            "compute snapshots require Unix directory capabilities".into(),
-        ))
-    }
-
-    pub(crate) fn verify_path_identity(&self) -> ComputeResult<()> {
-        Err(ComputeCoordinatorError::Unavailable(
-            "compute root ownership requires Unix directory capabilities".into(),
-        ))
-    }
-}
-
-#[cfg(unix)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct FileIdentity {
     device: u64,
     inode: u64,
 }
 
-#[cfg(unix)]
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LockDiagnostic<'a> {
@@ -362,8 +287,7 @@ struct LockDiagnostic<'a> {
     started_at_ms: u64,
 }
 
-#[cfg(unix)]
-fn create_or_open_compute_root(compute_root: &Path) -> ComputeResult<(OwnedFd, FileIdentity)> {
+fn create_or_open_compute_root(compute_root: &Path) -> ComputeResult<(DirectoryFd, FileIdentity)> {
     if !compute_root.is_absolute() {
         return Err(filesystem("compute root must be an absolute path"));
     }
@@ -374,7 +298,7 @@ fn create_or_open_compute_root(compute_root: &Path) -> ComputeResult<(OwnedFd, F
         .file_name()
         .ok_or_else(|| filesystem("compute root must have a final directory name"))?;
     let parent_directory = open_absolute_directory_nofollow(parent)?;
-    let created = match mkdirat(&parent_directory, leaf, DIRECTORY_MODE) {
+    let created = match platform_fs::create_directory_at(&parent_directory, leaf) {
         Ok(()) => true,
         Err(Errno::EXIST) => false,
         Err(error) => {
@@ -383,66 +307,59 @@ fn create_or_open_compute_root(compute_root: &Path) -> ComputeResult<(OwnedFd, F
             )));
         }
     };
-    let root_directory = openat(&parent_directory, leaf, DIRECTORY_FLAGS, Mode::empty())
+    let root_directory = platform_fs::open_directory_at(&parent_directory, leaf)
         .map_err(|error| filesystem(format!("cannot open the compute root: {error}")))?;
     if created {
-        fchmod(&root_directory, DIRECTORY_MODE).map_err(|error| {
+        platform_fs::restrict_directory_permissions(&root_directory).map_err(|error| {
             filesystem(format!(
                 "cannot set private compute root permissions: {error}"
             ))
         })?;
-        fsync(&root_directory)
+        platform_fs::sync_directory(&root_directory)
             .map_err(|error| filesystem(format!("cannot sync the compute root: {error}")))?;
-        fsync(&parent_directory)
+        platform_fs::sync_directory(&parent_directory)
             .map_err(|error| filesystem(format!("cannot sync the compute root parent: {error}")))?;
     }
     let identity = validate_private_directory(&root_directory, "compute root")?;
     Ok((root_directory, identity))
 }
 
-#[cfg(unix)]
-fn create_or_open_lock_file(root_directory: &OwnedFd) -> ComputeResult<OwnedFd> {
-    match openat(root_directory, LOCK_FILE_NAME, CREATE_LOCK_FLAGS, FILE_MODE) {
+fn create_or_open_lock_file(root_directory: &DirectoryFd) -> ComputeResult<File> {
+    match platform_fs::create_read_write_file_at(root_directory, LOCK_FILE_NAME) {
         Ok(file) => {
-            fchmod(&file, FILE_MODE).map_err(|error| {
+            platform_fs::restrict_file_permissions(&file).map_err(|error| {
                 filesystem(format!(
                     "cannot set private compute owner lock permissions: {error}"
                 ))
             })?;
             Ok(file)
         }
-        Err(Errno::EXIST) => openat(
-            root_directory,
-            LOCK_FILE_NAME,
-            OPEN_LOCK_FLAGS,
-            Mode::empty(),
-        )
-        .map_err(|error| filesystem(format!("cannot open the compute owner lock: {error}"))),
+        Err(Errno::EXIST) => platform_fs::open_read_write_file_at(root_directory, LOCK_FILE_NAME)
+            .map_err(|error| filesystem(format!("cannot open the compute owner lock: {error}"))),
         Err(error) => Err(filesystem(format!(
             "cannot create the compute owner lock: {error}"
         ))),
     }
 }
 
-#[cfg(unix)]
-fn open_absolute_directory_nofollow(path: &Path) -> ComputeResult<OwnedFd> {
+fn open_absolute_directory_nofollow(path: &Path) -> ComputeResult<DirectoryFd> {
     if !path.is_absolute() {
         return Err(filesystem("compute root path must be absolute"));
     }
-    let mut directory = open("/", DIRECTORY_FLAGS, Mode::empty())
+    let mut directory = platform_fs::open_absolute_root(path)
         .map_err(|error| filesystem(format!("cannot open the filesystem root: {error}")))?;
     for component in path.components() {
         match component {
             Component::RootDir => {}
+            // The drive or UNC prefix was opened as part of the root.
+            Component::Prefix(_) if cfg!(windows) => {}
             Component::Normal(name) => {
-                directory = openat(&directory, name, DIRECTORY_FLAGS, Mode::empty()).map_err(
-                    |error| {
-                        filesystem(format!(
-                            "compute root path contains an unavailable or symlink component '{}': {error}",
-                            name.to_string_lossy()
-                        ))
-                    },
-                )?;
+                directory = platform_fs::open_directory_at(&directory, name).map_err(|error| {
+                    filesystem(format!(
+                        "compute root path contains an unavailable or symlink component '{}': {error}",
+                        name.to_string_lossy()
+                    ))
+                })?;
             }
             Component::CurDir | Component::ParentDir | Component::Prefix(_) => {
                 return Err(filesystem(
@@ -454,61 +371,56 @@ fn open_absolute_directory_nofollow(path: &Path) -> ComputeResult<OwnedFd> {
     Ok(directory)
 }
 
-#[cfg(unix)]
-fn validate_private_directory(directory: &OwnedFd, label: &str) -> ComputeResult<FileIdentity> {
-    let metadata = fstat(directory)
+fn validate_private_directory(directory: &DirectoryFd, label: &str) -> ComputeResult<FileIdentity> {
+    let metadata = platform_fs::stat(directory)
         .map_err(|error| filesystem(format!("cannot inspect the {label}: {error}")))?;
-    if FileType::from_raw_mode(metadata.st_mode) != FileType::Directory {
+    if !metadata.is_directory() {
         return Err(filesystem(format!("{label} must be a directory")));
     }
-    if metadata.st_uid != geteuid().as_raw() {
+    if !metadata.owned_by_current_user() {
         return Err(filesystem(format!(
             "{label} must be owned by the current user"
         )));
     }
-    if metadata.st_mode & 0o7777 != 0o700 {
+    if !metadata.has_mode(0o700) {
         return Err(filesystem(format!("{label} permissions must be 0700")));
     }
-    Ok(identity(metadata.st_dev as u64, metadata.st_ino as u64))
+    Ok(identity(metadata.device(), metadata.inode()))
 }
 
-#[cfg(unix)]
-fn validate_private_lock_file(file: &OwnedFd) -> ComputeResult<FileIdentity> {
-    let metadata = fstat(file)
+fn validate_private_lock_file(file: &File) -> ComputeResult<FileIdentity> {
+    let metadata = platform_fs::stat(file)
         .map_err(|error| filesystem(format!("cannot inspect the compute owner lock: {error}")))?;
-    if FileType::from_raw_mode(metadata.st_mode) != FileType::RegularFile {
+    if !metadata.is_regular_file() {
         return Err(filesystem("compute owner lock must be a regular file"));
     }
-    if metadata.st_uid != geteuid().as_raw() {
+    if !metadata.owned_by_current_user() {
         return Err(filesystem(
             "compute owner lock must be owned by the current user",
         ));
     }
-    if metadata.st_mode & 0o7777 != 0o600 {
+    if !metadata.has_mode(0o600) {
         return Err(filesystem("compute owner lock permissions must be 0600"));
     }
-    if metadata.st_nlink != 1 {
+    if metadata.link_count() != 1 {
         return Err(filesystem(
             "compute owner lock must have exactly one filesystem link",
         ));
     }
-    Ok(identity(metadata.st_dev as u64, metadata.st_ino as u64))
+    Ok(identity(metadata.device(), metadata.inode()))
 }
 
-#[cfg(unix)]
 fn validate_lock_directory_entry(
-    root_directory: &OwnedFd,
+    root_directory: &DirectoryFd,
     expected: FileIdentity,
 ) -> ComputeResult<()> {
     let metadata =
-        statat(root_directory, LOCK_FILE_NAME, AtFlags::SYMLINK_NOFOLLOW).map_err(|error| {
+        platform_fs::stat_at_nofollow(root_directory, LOCK_FILE_NAME).map_err(|error| {
             filesystem(format!(
                 "cannot inspect the compute owner lock directory entry: {error}"
             ))
         })?;
-    if FileType::from_raw_mode(metadata.st_mode) != FileType::RegularFile
-        || identity(metadata.st_dev as u64, metadata.st_ino as u64) != expected
-    {
+    if !metadata.is_regular_file() || identity(metadata.device(), metadata.inode()) != expected {
         return Err(filesystem(
             "compute owner lock directory entry changed during acquisition",
         ));
@@ -516,13 +428,12 @@ fn validate_lock_directory_entry(
     Ok(())
 }
 
-#[cfg(unix)]
 fn create_temporary_snapshots_directory(
-    root_directory: &OwnedFd,
-) -> ComputeResult<(String, OwnedFd, FileIdentity)> {
+    root_directory: &DirectoryFd,
+) -> ComputeResult<(String, DirectoryFd, FileIdentity)> {
     for _ in 0..MAX_SNAPSHOTS_TEMP_ATTEMPTS {
         let leaf = format!("{SNAPSHOTS_TEMP_PREFIX}{}", Uuid::new_v4());
-        match mkdirat(root_directory, leaf.as_str(), DIRECTORY_MODE) {
+        match platform_fs::create_directory_at(root_directory, leaf.as_str()) {
             Ok(()) => {}
             Err(Errno::EXIST) => continue,
             Err(error) => {
@@ -531,12 +442,7 @@ fn create_temporary_snapshots_directory(
                 )));
             }
         }
-        let directory = match openat(
-            root_directory,
-            leaf.as_str(),
-            DIRECTORY_FLAGS,
-            Mode::empty(),
-        ) {
+        let directory = match platform_fs::open_directory_at(root_directory, leaf.as_str()) {
             Ok(directory) => directory,
             Err(error) => {
                 let open_error = filesystem(format!(
@@ -555,7 +461,7 @@ fn create_temporary_snapshots_directory(
                 }
             };
         let prepared = (|| {
-            fchmod(&directory, DIRECTORY_MODE).map_err(|error| {
+            platform_fs::restrict_directory_permissions(&directory).map_err(|error| {
                 filesystem(format!(
                     "cannot set private temporary snapshots permissions: {error}"
                 ))
@@ -574,7 +480,7 @@ fn create_temporary_snapshots_directory(
                 identity,
             )?;
             require_empty_directory(&directory, "temporary compute snapshots directory")?;
-            fsync(&directory).map_err(|error| {
+            platform_fs::sync_directory(&directory).map_err(|error| {
                 filesystem(format!(
                     "cannot sync the temporary compute snapshots directory: {error}"
                 ))
@@ -601,8 +507,41 @@ fn create_temporary_snapshots_directory(
     )))
 }
 
+fn cleanup_abandoned_snapshots_directories(root_directory: &DirectoryFd) -> ComputeResult<()> {
+    for leaf in temporary_snapshots_leaves(root_directory)? {
+        let encoded_id = leaf
+            .strip_prefix(SNAPSHOTS_TEMP_PREFIX)
+            .expect("temporary snapshots prefix was checked");
+        let identifier = Uuid::parse_str(encoded_id).map_err(|_| {
+            filesystem("compute root contains a malformed temporary snapshots directory")
+        })?;
+        if identifier.is_nil() || identifier.to_string() != encoded_id {
+            return Err(filesystem(
+                "compute root contains a non-canonical temporary snapshots directory",
+            ));
+        }
+        let abandoned =
+            platform_fs::open_directory_at(root_directory, leaf.as_str()).map_err(|error| {
+                filesystem(format!(
+                    "cannot open an abandoned temporary snapshots directory: {error}"
+                ))
+            })?;
+        let identity =
+            validate_private_directory(&abandoned, "abandoned temporary snapshots directory")?;
+        remove_owned_empty_directory(
+            root_directory,
+            &leaf,
+            "abandoned temporary snapshots directory",
+            &abandoned,
+            identity,
+        )?;
+    }
+    Ok(())
+}
+
+/// Bounded scan of the compute root for temporary snapshots directories.
 #[cfg(unix)]
-fn cleanup_abandoned_snapshots_directories(root_directory: &OwnedFd) -> ComputeResult<()> {
+fn temporary_snapshots_leaves(root_directory: &DirectoryFd) -> ComputeResult<Vec<String>> {
     let mut directory = Dir::read_from(root_directory)
         .map_err(|error| filesystem(format!("cannot enumerate the compute root: {error}")))?;
     let mut temporary_leaves = Vec::new();
@@ -627,56 +566,41 @@ fn cleanup_abandoned_snapshots_directories(root_directory: &OwnedFd) -> ComputeR
             temporary_leaves.push(name.to_owned());
         }
     }
-    drop(directory);
-
-    for leaf in temporary_leaves {
-        let encoded_id = leaf
-            .strip_prefix(SNAPSHOTS_TEMP_PREFIX)
-            .expect("temporary snapshots prefix was checked");
-        let identifier = Uuid::parse_str(encoded_id).map_err(|_| {
-            filesystem("compute root contains a malformed temporary snapshots directory")
-        })?;
-        if identifier.is_nil() || identifier.to_string() != encoded_id {
-            return Err(filesystem(
-                "compute root contains a non-canonical temporary snapshots directory",
-            ));
-        }
-        let abandoned = openat(
-            root_directory,
-            leaf.as_str(),
-            DIRECTORY_FLAGS,
-            Mode::empty(),
-        )
-        .map_err(|error| {
-            filesystem(format!(
-                "cannot open an abandoned temporary snapshots directory: {error}"
-            ))
-        })?;
-        let identity =
-            validate_private_directory(&abandoned, "abandoned temporary snapshots directory")?;
-        remove_owned_empty_directory(
-            root_directory,
-            &leaf,
-            "abandoned temporary snapshots directory",
-            &abandoned,
-            identity,
-        )?;
-    }
-    Ok(())
+    Ok(temporary_leaves)
 }
 
-#[cfg(unix)]
+/// Bounded scan of the compute root for temporary snapshots directories.
+#[cfg(windows)]
+fn temporary_snapshots_leaves(root_directory: &DirectoryFd) -> ComputeResult<Vec<String>> {
+    let entries = platform_fs::read_entry_names(root_directory)
+        .map_err(|error| filesystem(format!("cannot enumerate the compute root: {error}")))?;
+    let mut temporary_leaves = Vec::new();
+    for (entry_count, name) in entries.enumerate() {
+        let name = name
+            .map_err(|error| filesystem(format!("cannot read the compute root: {error}")))?
+            .into_string()
+            .map_err(|_| filesystem("compute root contains a non-UTF-8 entry"))?;
+        if entry_count >= MAX_COMPUTE_ROOT_ENTRIES {
+            return Err(filesystem(format!(
+                "compute root exceeds the {MAX_COMPUTE_ROOT_ENTRIES}-entry startup bound"
+            )));
+        }
+        if name.starts_with(SNAPSHOTS_TEMP_PREFIX) {
+            temporary_leaves.push(name);
+        }
+    }
+    Ok(temporary_leaves)
+}
+
 fn validate_directory_entry(
-    root_directory: &OwnedFd,
+    root_directory: &DirectoryFd,
     name: &str,
     label: &str,
     expected: FileIdentity,
 ) -> ComputeResult<()> {
-    let metadata = statat(root_directory, name, AtFlags::SYMLINK_NOFOLLOW)
+    let metadata = platform_fs::stat_at_nofollow(root_directory, name)
         .map_err(|error| filesystem(format!("cannot inspect the {label} entry: {error}")))?;
-    if FileType::from_raw_mode(metadata.st_mode) != FileType::Directory
-        || identity(metadata.st_dev as u64, metadata.st_ino as u64) != expected
-    {
+    if !metadata.is_directory() || identity(metadata.device(), metadata.inode()) != expected {
         return Err(filesystem(format!(
             "{label} entry changed after capability creation"
         )));
@@ -685,7 +609,7 @@ fn validate_directory_entry(
 }
 
 #[cfg(unix)]
-fn require_empty_directory(directory: &OwnedFd, label: &str) -> ComputeResult<()> {
+fn require_empty_directory(directory: &DirectoryFd, label: &str) -> ComputeResult<()> {
     let mut entries = Dir::read_from(directory)
         .map_err(|error| filesystem(format!("cannot enumerate the {label}: {error}")))?;
     for entry in &mut entries {
@@ -699,21 +623,29 @@ fn require_empty_directory(directory: &OwnedFd, label: &str) -> ComputeResult<()
     Ok(())
 }
 
-#[cfg(all(
-    unix,
-    any(target_vendor = "apple", target_os = "linux", target_os = "android")
+#[cfg(windows)]
+fn require_empty_directory(directory: &DirectoryFd, label: &str) -> ComputeResult<()> {
+    let mut entries = platform_fs::read_entry_names(directory)
+        .map_err(|error| filesystem(format!("cannot enumerate the {label}: {error}")))?;
+    match entries.next() {
+        None => Ok(()),
+        Some(Err(error)) => Err(filesystem(format!("cannot read the {label}: {error}"))),
+        Some(Ok(_)) => Err(filesystem(format!("{label} contains an unexpected entry"))),
+    }
+}
+
+#[cfg(any(
+    target_vendor = "apple",
+    target_os = "linux",
+    target_os = "android",
+    windows
 ))]
 fn rename_snapshots_noreplace(
-    root_directory: &OwnedFd,
+    root_directory: &DirectoryFd,
     temporary_leaf: &str,
 ) -> ComputeResult<bool> {
-    match rustix::fs::renameat_with(
-        root_directory,
-        temporary_leaf,
-        root_directory,
-        SNAPSHOTS_DIRECTORY_NAME,
-        rustix::fs::RenameFlags::NOREPLACE,
-    ) {
+    match platform_fs::rename_noreplace_at(root_directory, temporary_leaf, SNAPSHOTS_DIRECTORY_NAME)
+    {
         Ok(()) => Ok(true),
         Err(Errno::EXIST) => Ok(false),
         Err(error) => Err(filesystem(format!(
@@ -722,12 +654,37 @@ fn rename_snapshots_noreplace(
     }
 }
 
+/// Windows capabilities resolve children through the handle's current path.
+/// The retained snapshots capability is reopened through its published name
+/// so it does not depend on the filesystem reporting a renamed path for the
+/// handle that was opened under the temporary name (Wine does not).
+#[cfg(windows)]
+fn reopen_published_snapshots_directory(
+    root_directory: &DirectoryFd,
+    temporary: DirectoryFd,
+    identity: FileIdentity,
+) -> ComputeResult<DirectoryFd> {
+    let published = platform_fs::open_directory_at(root_directory, SNAPSHOTS_DIRECTORY_NAME)
+        .map_err(|error| {
+            filesystem(format!(
+                "cannot open the compute snapshots directory: {error}"
+            ))
+        })?;
+    if inspect_directory_identity(&published, "compute snapshots directory")? != identity {
+        return Err(filesystem(
+            "compute snapshots directory changed during publication",
+        ));
+    }
+    drop(temporary);
+    Ok(published)
+}
+
 #[cfg(all(
     unix,
     not(any(target_vendor = "apple", target_os = "linux", target_os = "android"))
 ))]
 fn rename_snapshots_noreplace(
-    _root_directory: &OwnedFd,
+    _root_directory: &DirectoryFd,
     _temporary_leaf: &str,
 ) -> ComputeResult<bool> {
     Err(ComputeCoordinatorError::Unavailable(
@@ -735,12 +692,11 @@ fn rename_snapshots_noreplace(
     ))
 }
 
-#[cfg(unix)]
 fn remove_owned_empty_directory(
-    root_directory: &OwnedFd,
+    root_directory: &DirectoryFd,
     leaf: &str,
     label: &str,
-    directory: &OwnedFd,
+    directory: &DirectoryFd,
     identity: FileIdentity,
 ) -> ComputeResult<()> {
     if inspect_directory_identity(directory, label)? != identity {
@@ -751,41 +707,40 @@ fn remove_owned_empty_directory(
     validate_directory_entry(root_directory, leaf, label, identity)?;
     require_empty_directory(directory, label)?;
     validate_directory_entry(root_directory, leaf, label, identity)?;
-    unlinkat(root_directory, leaf, AtFlags::REMOVEDIR)
+    platform_fs::remove_directory_at(root_directory, leaf)
         .map_err(|error| filesystem(format!("cannot remove the {label}: {error}")))?;
-    fsync(root_directory)
+    platform_fs::sync_directory(root_directory)
         .map_err(|error| filesystem(format!("cannot sync removal of the {label}: {error}")))
 }
 
-#[cfg(unix)]
-fn inspect_directory_identity(directory: &OwnedFd, label: &str) -> ComputeResult<FileIdentity> {
-    let metadata = fstat(directory)
+fn inspect_directory_identity(directory: &DirectoryFd, label: &str) -> ComputeResult<FileIdentity> {
+    let metadata = platform_fs::stat(directory)
         .map_err(|error| filesystem(format!("cannot inspect the {label}: {error}")))?;
-    if FileType::from_raw_mode(metadata.st_mode) != FileType::Directory {
+    if !metadata.is_directory() {
         return Err(filesystem(format!("{label} must be a directory")));
     }
-    Ok(identity(metadata.st_dev as u64, metadata.st_ino as u64))
+    Ok(identity(metadata.device(), metadata.inode()))
 }
 
-#[cfg(unix)]
 fn cleanup_unopened_temporary_directory(
-    root_directory: &OwnedFd,
+    root_directory: &DirectoryFd,
     leaf: &str,
     original_error: &ComputeCoordinatorError,
 ) -> ComputeResult<()> {
-    match unlinkat(root_directory, leaf, AtFlags::REMOVEDIR) {
-        Ok(()) | Err(Errno::NOENT) => fsync(root_directory).map_err(|error| {
-            filesystem(format!(
-                "{original_error}; cannot sync temporary snapshots cleanup: {error}"
-            ))
-        }),
+    match platform_fs::remove_directory_at(root_directory, leaf) {
+        Ok(()) | Err(Errno::NOENT) => {
+            platform_fs::sync_directory(root_directory).map_err(|error| {
+                filesystem(format!(
+                    "{original_error}; cannot sync temporary snapshots cleanup: {error}"
+                ))
+            })
+        }
         Err(error) => Err(filesystem(format!(
             "{original_error}; cannot safely clean the temporary snapshots directory: {error}"
         ))),
     }
 }
 
-#[cfg(unix)]
 fn validate_root_path_identity(compute_root: &Path, expected: FileIdentity) -> ComputeResult<()> {
     let reopened = open_absolute_directory_nofollow(compute_root).map_err(|error| {
         filesystem(format!(
@@ -801,8 +756,7 @@ fn validate_root_path_identity(compute_root: &Path, expected: FileIdentity) -> C
     Ok(())
 }
 
-#[cfg(unix)]
-fn write_lock_diagnostic(file: &OwnedFd, diagnostic: &LockDiagnostic<'_>) -> ComputeResult<()> {
+fn encode_lock_diagnostic(diagnostic: &LockDiagnostic<'_>) -> ComputeResult<Vec<u8>> {
     let mut encoded = serde_json::to_vec(diagnostic)?;
     encoded.push(b'\n');
     if encoded.len() > MAX_LOCK_DIAGNOSTIC_BYTES {
@@ -810,6 +764,12 @@ fn write_lock_diagnostic(file: &OwnedFd, diagnostic: &LockDiagnostic<'_>) -> Com
             "compute owner diagnostic exceeds {MAX_LOCK_DIAGNOSTIC_BYTES} bytes"
         )));
     }
+    Ok(encoded)
+}
+
+#[cfg(unix)]
+fn write_lock_diagnostic(file: &File, diagnostic: &LockDiagnostic<'_>) -> ComputeResult<()> {
+    let encoded = encode_lock_diagnostic(diagnostic)?;
 
     seek(file, SeekFrom::Start(0))
         .map_err(|error| filesystem(format!("cannot seek the compute owner lock: {error}")))?;
@@ -836,12 +796,28 @@ fn write_lock_diagnostic(file: &OwnedFd, diagnostic: &LockDiagnostic<'_>) -> Com
         .map_err(|error| filesystem(format!("cannot fully sync the compute owner lock: {error}")))
 }
 
-#[cfg(unix)]
+#[cfg(windows)]
+fn write_lock_diagnostic(mut file: &File, diagnostic: &LockDiagnostic<'_>) -> ComputeResult<()> {
+    use std::io::{Seek, SeekFrom, Write};
+
+    let encoded = encode_lock_diagnostic(diagnostic)?;
+    file.seek(SeekFrom::Start(0))
+        .map_err(|error| filesystem(format!("cannot seek the compute owner lock: {error}")))?;
+    file.set_len(0)
+        .map_err(|error| filesystem(format!("cannot truncate the compute owner lock: {error}")))?;
+    file.write_all(&encoded).map_err(|error| {
+        filesystem(format!(
+            "cannot write the compute owner diagnostic: {error}"
+        ))
+    })?;
+    file.sync_all()
+        .map_err(|error| filesystem(format!("cannot fully sync the compute owner lock: {error}")))
+}
+
 fn identity(device: u64, inode: u64) -> FileIdentity {
     FileIdentity { device, inode }
 }
 
-#[cfg(unix)]
 fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -865,7 +841,10 @@ mod tests {
         time::{Duration, Instant},
     };
 
-    use rustix::io::{fcntl_getfd, FdFlags};
+    use rustix::{
+        io::{fcntl_getfd, FdFlags},
+        process::geteuid,
+    };
     use serde_json::Value;
 
     use super::*;
@@ -1279,5 +1258,48 @@ mod tests {
         let _ = child.kill();
         let _ = child.wait();
         panic!("lock owner did not become ready");
+    }
+}
+
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use std::fs;
+
+    use super::*;
+
+    #[test]
+    fn lease_excludes_a_second_owner_keeps_the_diagnostic_readable_and_detects_replacement() {
+        let parent = std::env::temp_dir().join(format!("burette-compute-root-{}", Uuid::new_v4()));
+        fs::create_dir(&parent).expect("create test parent");
+        let compute_root = parent.join("compute");
+
+        let lease = Arc::new(ComputeRootLease::acquire(&compute_root).expect("acquire root"));
+        assert!(matches!(
+            ComputeRootLease::acquire(&compute_root),
+            Err(ComputeCoordinatorError::Unavailable(_))
+        ));
+        let diagnostic = fs::read(compute_root.join(LOCK_FILE_NAME)).expect("read diagnostic");
+        assert_eq!(diagnostic.last(), Some(&b'\n'));
+        let snapshots = lease
+            .open_or_create_snapshots_directory()
+            .expect("create snapshots capability");
+        snapshots.verify().expect("verify snapshots capability");
+        let identity = snapshots.identity;
+        drop((snapshots, lease));
+
+        let lease = Arc::new(ComputeRootLease::acquire(&compute_root).expect("reacquire root"));
+        let reopened = lease
+            .open_or_create_snapshots_directory()
+            .expect("reopen snapshots capability");
+        assert_eq!(reopened.identity, identity);
+
+        fs::rename(&compute_root, parent.join("displaced")).expect("displace held root");
+        fs::create_dir(&compute_root).expect("create replacement root");
+        reopened
+            .verify()
+            .expect_err("replacement root must fail closed");
+
+        drop((reopened, lease));
+        let _ = fs::remove_dir_all(parent);
     }
 }
