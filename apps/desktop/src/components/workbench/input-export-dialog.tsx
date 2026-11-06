@@ -3,7 +3,9 @@ import { generateQuantumInput, QUANTUM_INPUT_DEFAULTS as DEFAULTS, ZMATRIX_ENGIN
 import type { MolecularAtom } from "../../lib/molecular-workbench/types";
 import type { ZmatrixDocument } from "../../../../../scripts/zmatrix-document.mjs";
 import { useStructureSourceText } from "../../lib/source-editing/use-structure-source-text";
-import { isPdbDocument, readPdbAtoms } from "../../lib/workbench/structure";
+import { isPdbDocument, readMolecularStructure, readPdbAtoms } from "../../lib/workbench/structure";
+import { useAvogadroGenerators } from "../../lib/extensions/avogadro-input-generators";
+import type { MolecularBond } from "../../lib/molecular-workbench/types";
 import { readUnitCell } from "../../lib/molecular-workbench/crystal";
 import { safeExportFileName } from "../../lib/file-export";
 import { fileStem } from "../../lib/workbench/formats";
@@ -12,13 +14,14 @@ import type { ViewerDocument } from "../../types";
 import { Button } from "../ui/button";
 import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Input } from "../ui/input";
-import { NativeSelect, NativeSelectOption } from "../ui/native-select";
+import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from "../ui/native-select";
 import { ScrubNumberField } from "../ui/scrub-number-input";
 import { SegmentedControl, SegmentedControlItem } from "../ui/segmented-control";
 import { Spinner } from "../ui/spinner";
 import { Switch } from "../ui/switch";
 import { Textarea } from "../ui/textarea";
 import { useWorkbenchSource } from "./use-workbench-source";
+import { PluginInputForm } from "./plugin-input-form";
 
 type Task = "energy" | "optimize" | "frequencies";
 const ENGINES: [QuantumEngine, string][] = [["orca", "ORCA"], ["gaussian", "Gaussian"], ["psi4", "Psi4"], ["cp2k", "CP2K"]];
@@ -63,6 +66,22 @@ export function InputExportDialogBody({ document, actions, atoms: editedAtoms, c
   const [saving, setSaving] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const awaitingCell = engine === "cp2k" && useCell && (source.loading || Boolean(source.error) || Boolean(cellRead.error));
+  const generators = useAvogadroGenerators();
+  const [pluginId, setPluginId] = useState<string | null>(null);
+  const plugin = generators.find(entry => entry.id === pluginId);
+  // Plugins get the molecule as CJSON with its bonds; edited atoms keep the source's when they are the same atoms.
+  const [bonds, setBonds] = useState<{ source: unknown; bonds: MolecularBond[] } | null>(null);
+  useEffect(() => {
+    const current = source.source;
+    if (!plugin || !current || bonds?.source === current) return;
+    const controller = new AbortController();
+    readMolecularStructure(current, controller.signal).then(structure => setBonds({ source: current, bonds: structure.bonds }), () => setBonds({ source: current, bonds: [] }));
+    return () => controller.abort();
+  }, [plugin, source.source, bonds]);
+  const pluginMolecule = useMemo(() => !atoms ? null : {
+    atoms, cell: plugin?.generator.periodic ? cell : null,
+    bonds: bonds && bonds.source === source.source && source.source?.atoms.length === atoms.length ? bonds.bonds : [],
+  }, [atoms, cell, plugin, bonds, source.source]);
 
   const constraints = useConstraints && task === "optimize" ? requestedConstraints : NO_CONSTRAINTS;
   const generated = useMemo(() => {
@@ -89,15 +108,29 @@ export function InputExportDialogBody({ document, actions, atoms: editedAtoms, c
       </DialogHeader>
       <div className="workbench-form">
         <div className="workbench-row">
-          <SegmentedControl aria-label="Program" value={engine} onValueChange={(value) => {
+          <SegmentedControl aria-label="Program" value={plugin ? "" : engine} onValueChange={(value) => {
             const next = value as QuantumEngine;
+            setPluginId(null);
             setEngine(next);
             setMethod(DEFAULTS[next].method);
             setBasis(DEFAULTS[next].basis);
           }}>
             {ENGINES.map(([value, label]) => <SegmentedControlItem key={value} value={value}>{label}</SegmentedControlItem>)}
           </SegmentedControl>
+          {generators.length ? (
+            <NativeSelect size="sm" aria-label="More programs" value={plugin?.id ?? ""} onChange={(event) => setPluginId(event.target.value || null)}>
+              <NativeSelectOption value="" disabled={!plugin}>More</NativeSelectOption>
+              {[...new Set(generators.map(entry => entry.plugin.name))].map(name => (
+                <NativeSelectOptGroup key={name} label={name}>
+                  {generators.filter(entry => entry.plugin.name === name).map(entry => <NativeSelectOption key={entry.id} value={entry.id}>{entry.generator.programName}</NativeSelectOption>)}
+                </NativeSelectOptGroup>
+              ))}
+            </NativeSelect>
+          ) : null}
         </div>
+      </div>
+      {plugin ? <PluginInputForm key={plugin.id} entry={plugin} document={document} molecule={pluginMolecule} actions={actions} /> : <>
+      <div className="workbench-form">
         <div className="workbench-grid">
           <label className="workbench-field">
             <span>Calculation</span>
@@ -173,6 +206,7 @@ export function InputExportDialogBody({ document, actions, atoms: editedAtoms, c
             .finally(() => setSaving(false));
         }}>{saving ? <><Spinner aria-hidden className="size-3" />Saving</> : "Save"}</Button>
       </DialogFooter>
+      </>}
     </>
   );
 }

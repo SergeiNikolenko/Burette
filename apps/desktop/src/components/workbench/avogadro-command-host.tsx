@@ -18,7 +18,7 @@ async function run(request: AvogadroCommandRequest, values: Record<string, Comma
   for (const notice of await runAvogadroCommand(request, values, actions, runner)) toast.add({ ...notice, type: notice.kind });
 }
 
-function OptionField({ option, value, onChange }: { option: CommandOption; value: CommandOptionValue; onChange: (value: CommandOptionValue) => void }) {
+export function OptionField({ option, value, onChange }: { option: CommandOption; value: CommandOptionValue; onChange: (value: CommandOptionValue) => void }) {
   if (option.type === "boolean") return <label className="workbench-field" title={option.tooltip}>
     <span>{option.label}</span>
     <Switch checked={value === true} onCheckedChange={onChange} aria-label={option.label} />
@@ -26,7 +26,7 @@ function OptionField({ option, value, onChange }: { option: CommandOption; value
   if (option.type === "stringList") return <label className="workbench-field" title={option.tooltip}>
     <span>{option.label}</span>
     <NativeSelect size="sm" aria-label={option.label} value={String(value)} onChange={event => onChange(event.target.value)}>
-      {option.values.map(entry => <NativeSelectOption key={entry} value={entry}>{entry}</NativeSelectOption>)}
+      {option.values.map(entry => <NativeSelectOption key={entry} value={entry}>{entry || "None"}</NativeSelectOption>)}
     </NativeSelect>
   </label>;
   const numeric = option.type === "integer" || option.type === "float";
@@ -39,7 +39,7 @@ function OptionField({ option, value, onChange }: { option: CommandOption; value
   </label>;
 }
 
-function valid(option: CommandOption, value: CommandOptionValue) {
+export function validOption(option: CommandOption, value: CommandOptionValue) {
   if (option.type !== "integer" && option.type !== "float") return true;
   return typeof value === "number" && Number.isFinite(value) && (option.type === "float" || Number.isInteger(value))
     && (option.minimum === undefined || value >= option.minimum) && (option.maximum === undefined || value <= option.maximum);
@@ -60,7 +60,7 @@ export function AvogadroCommandHost({ actions, runner }: { actions: Actions; run
     }
     let live = true;
     (runner ?? avogadroPluginRunner()).readOptions(request.entry.plugin.name, path)
-      .then(text => readCommandOptions(text))
+      .then(text => readCommandOptions(text, path))
       .then(fields => { if (live) { setOptions({ request, fields }); setValues(Object.fromEntries(fields.map(field => [field.key, field.value]))); } },
         () => { if (live) setOptions({ request, error: true }); });
     return () => { live = false; };
@@ -68,7 +68,7 @@ export function AvogadroCommandHost({ actions, runner }: { actions: Actions; run
   const shown = options && options.request === request ? options : null;
   const title = request?.entry.path.join(" › ") ?? "";
   const fields = shown && "fields" in shown ? shown.fields : [];
-  const ready = shown && "fields" in shown && fields.every(field => valid(field, values[field.key]));
+  const ready = shown && "fields" in shown && fields.every(field => validOption(field, values[field.key]));
   return <Dialog open={Boolean(shown)} onOpenChange={open => { if (!open) requestAvogadroCommand(null); }}>
     {shown ? <DialogContent variant="form">
       <DialogHeader>

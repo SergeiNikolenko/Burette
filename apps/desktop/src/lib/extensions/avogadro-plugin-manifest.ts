@@ -17,13 +17,33 @@ export type PluginCommand = {
   inputCjson: boolean;
   userOptions?: string;
 };
+/** A `[[tool.avogadro.file-formats]]` reader: the file in, a molecule in `outputFormat` out. */
+export type PluginFileFormat = {
+  identifier: string;
+  name: string;
+  /** Lower-case extensions without the dot. */
+  extensions: string[];
+  outputFormat: "cjson" | "xyz" | "sdf" | "mol" | "pdb";
+  /** `file`: the script is sent the path and reads the file itself. */
+  inputMode: "string" | "file";
+};
+/** A `[[tool.avogadro.input-generators]]` program: options and a molecule in, input files out. */
+export type PluginInputGenerator = {
+  identifier: string;
+  programName: string;
+  inputFormat: PluginCommand["inputFormat"];
+  periodic: boolean;
+  userOptions?: string;
+};
 export type PluginManifest = {
   name: string;
   version?: string;
   /** The `avogadro-*` console script that implements the package's features. */
   script?: string;
   commands: PluginCommand[];
-  /** Counts of declared feature tables other than menu commands. */
+  formats: PluginFileFormat[];
+  generators: PluginInputGenerator[];
+  /** Counts of declared feature tables Burette does not run. */
   otherFeatures: Record<string, number>;
 };
 
@@ -95,9 +115,10 @@ function value(source: string, start: number, depth = 0): [TomlValue, number] | 
   return undefined;
 }
 
+// Quoted parts may hold spaces (`["Filename Base"]` in an options file) but no dots or quotes.
 function key(text: string): string[] | undefined {
-  const parts = text.split(".").map(part => part.trim().replace(/^"(.*)"$/u, "$1"));
-  return parts.every(part => /^[A-Za-z0-9_-]+$/u.test(part)) ? parts : undefined;
+  const parts = text.split(".").map(part => part.trim());
+  return parts.every(part => /^[A-Za-z0-9_-]+$/u.test(part) || /^"[^"\\\p{Cc}]{1,128}"$/u.test(part)) ? parts.map(part => part.replace(/^"(.*)"$/u, "$1")) : undefined;
 }
 
 export function parseToml(source: string): Table {
@@ -133,7 +154,7 @@ export function parseToml(source: string): Table {
       index += line.length;
       continue;
     }
-    const assignment = /^([A-Za-z0-9_."-]+)\s*=\s*/u.exec(line);
+    const assignment = /^([A-Za-z0-9_.-]+|"[^"\n]+")\s*=\s*/u.exec(line);
     const parsed = assignment ? value(source, index + assignment[0].length) : undefined;
     const path = assignment ? key(assignment[1]) : undefined;
     if (assignment && parsed && path && current) {
@@ -168,9 +189,28 @@ export function readPluginManifest(pyproject: string): PluginManifest | undefine
     commands.push({ identifier, label: label.replace(/…$|\.\.\.$/u, ""), menuPath, inputFormat: format as PluginCommand["inputFormat"],
       inputCjson: entry["input-cjson"] === true, ...(userOptions ? { userOptions } : {}) });
   }
+  const tables = (feature: string) => Array.isArray(tool?.[feature]) ? tool[feature] as Table[] : [];
+  const identifierOf = (entry: Table) => { const value = text(entry.identifier, 64); return value && /^[A-Za-z0-9_.-]+$/u.test(value) ? value : undefined; };
+  const formats: PluginFileFormat[] = [];
+  for (const entry of tables("file-formats")) {
+    const identifier = identifierOf(entry), name = text(entry["format-name"]), output = text(entry["output-format"], 16)?.toLowerCase();
+    const extensions = (Array.isArray(entry["file-extensions"]) ? entry["file-extensions"] : []).map(value => text(value, 16)?.toLowerCase().replace(/^\./u, ""))
+      .filter((value): value is string => Boolean(value && /^[a-z0-9_+-]+$/u.test(value)));
+    // Only readers: Burette writes its own formats.
+    if (!identifier || !name || (entry.support as Table | undefined)?.read !== true || !output || !FORMATS.has(output) || !extensions.length) continue;
+    formats.push({ identifier, name, extensions: [...new Set(extensions)].slice(0, 32), outputFormat: output as PluginFileFormat["outputFormat"],
+      inputMode: text(entry["input-mode"], 16)?.toLowerCase() === "file" ? "file" : "string" });
+  }
+  const generators: PluginInputGenerator[] = [];
+  for (const entry of tables("input-generators")) {
+    const identifier = identifierOf(entry), programName = text(entry["program-name"]), format = text(entry["input-format"], 16)?.toLowerCase() ?? "cjson";
+    const support = entry.support as Table | undefined, userOptions = text(entry["user-options"], 256);
+    if (!identifier || !programName || !FORMATS.has(format) || support?.molecular === false || generators.some(generator => generator.identifier === identifier)) continue;
+    generators.push({ identifier, programName, inputFormat: format as PluginCommand["inputFormat"], periodic: support?.periodic === true, ...(userOptions ? { userOptions } : {}) });
+  }
   const otherFeatures: Record<string, number> = {};
   for (const [feature, entries] of Object.entries(tool ?? {})) {
-    if (feature !== "menu-commands" && Array.isArray(entries) && entries.length) otherFeatures[feature] = entries.length;
+    if (!["menu-commands", "file-formats", "input-generators"].includes(feature) && Array.isArray(entries) && entries.length) otherFeatures[feature] = entries.length;
   }
-  return { name, version: text(project?.version, 64), script: scripts.length === 1 ? scripts[0] : scripts.find(script => script === name), commands, otherFeatures };
+  return { name, version: text(project?.version, 64), script: scripts.length === 1 ? scripts[0] : scripts.find(script => script === name), commands, formats, generators, otherFeatures };
 }

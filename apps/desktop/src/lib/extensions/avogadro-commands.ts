@@ -77,7 +77,7 @@ export async function runAvogadroCommand(request: AvogadroCommandRequest, option
     return [{ kind: "error", title: `${title} could not read this structure.` }];
   }
   const { job, stdout } = await runner.run(entry.plugin.name, title, {
-    script: entry.script, identifier: entry.command.identifier, input: commandInput(entry.command, structure, options, selectedAtoms),
+    script: entry.script, identifier: entry.command.identifier, operation: "command", input: commandInput(entry.command, structure, options, selectedAtoms),
   });
   if (job.status === "cancelled") return [{ kind: "info", title: `${title} was cancelled.` }];
   if (job.status !== "success" || stdout === undefined) return [{ kind: "error", title: job.error ?? `${title} failed.` }];

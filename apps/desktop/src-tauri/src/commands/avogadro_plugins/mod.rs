@@ -200,7 +200,7 @@ pub(crate) async fn avogadro_plugin_prepare<R: Runtime>(
     .map_err(|error| format!("The plugin task failed: {error}"))?
 }
 
-/// Runs one declared command of a prepared package and returns its JSON text.
+/// Runs one declared feature of a prepared package and returns its output text.
 #[tauri::command]
 pub(crate) async fn avogadro_plugin_run<R: Runtime>(
     app: tauri::AppHandle<R>,
@@ -208,12 +208,21 @@ pub(crate) async fn avogadro_plugin_run<R: Runtime>(
     name: String,
     script: String,
     identifier: String,
+    operation: runner::PluginOperation,
     input: String,
 ) -> Result<String, String> {
     let root = plugins_root(&app)?;
     let job = JobGuard::register(&job_id)?;
     tauri::async_runtime::spawn_blocking(move || {
-        runner::run(&root, &name, &script, &identifier, &input, &job.cancel)
+        runner::run(
+            &root,
+            &name,
+            &script,
+            &identifier,
+            operation,
+            &input,
+            &job.cancel,
+        )
     })
     .await
     .map_err(|error| format!("The plugin task failed: {error}"))?

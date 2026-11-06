@@ -225,9 +225,47 @@ molecule opens as a new document (CJSON coordinate sets become SDF records and
 atom/bond labels a notice); `selectedAtoms` becomes the viewer selection;
 `message`, `warning` and `error` become notices. Burette never replaces or
 appends to the active molecule, unlike Avogadro's undoable in-place replace;
-closing the result document is the undo. Other feature kinds in the index
-(`file-formats`, `input-generators`, `electrostatic-models`) are listed but not
-yet wired to Burette's reader, input-export or charge routes.
+closing the result document is the undo. `electrostatic-models` are listed but
+not yet wired to a charge route.
+
+### File formats and input generators
+
+A `[[tool.avogadro.file-formats]]` reader (`support.read = true`, an output
+format Burette opens) adds `Open › With <format-name>` to the sidebar file menu
+of every file whose extension it declares
+([`avogadro-formats.ts`](../apps/desktop/src/lib/extensions/avogadro-formats.ts)).
+As in Avogadro's `fileformatscript.cpp`, the script runs as `<script>
+<identifier> --read --lang en` with the file text on stdin, or
+`{"operation":"read","filename":path}` for `input-mode = "file"`; the molecule
+it prints (CJSON from cclib, after any log lines) opens as a new document named
+after the file. Writers are not offered: Burette writes its own formats.
+
+Each `[[tool.avogadro.input-generators]]` program appears under `More` next to
+ORCA, Gaussian, Psi4 and CP2K in Export input file
+([`plugin-input-form.tsx`](../apps/desktop/src/components/workbench/plugin-input-form.tsx)).
+In package mode Avogadro passes these scripts no operation flag, so a run is
+`<script> <identifier> --lang en` with `{options, cjson, charge, spin,
+selectedAtoms}` on stdin. The form comes from the generator's `user-options`
+file, JSON or TOML (ORCA's has 60 options on four tabs), keeps its pages in the
+file's `tabs` order, keeps option keys with spaces and empty list entries
+verbatim, and names files after the document through `Filename Base`. The
+preview regenerates 400 ms after an option changes, one run at a time.
+[`avogadro-input-generators.ts`](../apps/desktop/src/lib/extensions/avogadro-input-generators.ts)
+then ports `InterfaceScript::replaceKeywords`: `$$atomCount$$`, `$$bondCount$$`
+and `$$coords:SPEC$$`, `$$zmat:SPEC$$`, `$$zmatpad:SPEC$$` filled by Burette's
+coordinate-block generator. A file that offers both a Cartesian and a Z-matrix
+block keeps the one its `Coordinates` option names (any value containing
+`z-matrix`, `zmatrix`, `zmat` or `internal`) and loses the other's line; a file
+that offers one form always gets it. Files given only by `filePath` are refused
+because they would point outside the package. Save writes every returned file.
+
+Verified packages: `avogadro-cclib` (`cf5f13ba`) reads cclib's Gaussian MP2
+water log into CJSON that Burette opens, and `avogadro-generators`
+(OpenChemistry/avogenerators `965ea6302b930cfc34b0b2deefdab5737bfe15c0`) answers
+for all eleven programs (Dalton, GAMESS-UK, Gaussian, MOLPRO, MOPAC, NWChem,
+ORCA, Psi, PySCF, Q-Chem, TeraChem) with Burette's stdin and default options.
+The Gaussian, ORCA (Z-matrix), Dalton (two files) and cclib answers are
+recorded in `tests/fixtures/avogadro/`.
 
 ### Energy models
 
@@ -283,6 +321,7 @@ vp run test:crystals-browser
 vp run test:avogadro-plugin-index
 vp run test:avogadro-plugin-install
 vp run test:avogadro-commands
+vp run test:avogadro-plugin-formats
 (cd apps/desktop/src-tauri && cargo test --lib avogadro_plugins)
 # Real package, downloads RDKit from conda-forge:
 (cd apps/desktop/src-tauri && cargo test --lib real_rdkit_plugin -- --ignored)

@@ -1,0 +1,174 @@
+[project]
+name = "avogadro-generators"
+version = "2.1.0"
+authors =  [
+    { name = "Allison Vacanti", email = "allison.vacanti@kitware.com" },
+    { name = "Kyle Lutz", email = "kyle.lutz@kitware.com" },
+    { name = "Marcus D. Hanwell", email = "marcus.hanwell@kitware.com" },
+    { name = "Geoffrey Hutchison", email = "geoff.hutchison@gmail.com" },
+    { name = "Eric Berquist", email = "eric.berquist@gmail.com" },
+    { name = "Shiv Upadhyay", email = "shivnupadhyay@gmail.com" },
+    { name = "Amanda E. Dumi", email = "amanda.e.dumi@gmail.com" },
+    { name = "Adrea Snow", email = "adrea.snow@gmail.com" },
+    { name = "Christian Clauss", email = "cclauss@me.com" },
+    { name = "Ty Balduf", email = "tbalduf@gmail.com" },
+    { name = "Javier Cerezo", email = "javier.cerezo@um.es" },
+    { name = "Matthew Milner", email = "matterhorn103@proton.me" },
+    { name = "Brock A. Dyer", email = "brockdyer03@gmail.com" },
+]
+license = "BSD-3-Clause"
+description = "Scripts for generating input files for computational chemistry packages"
+readme = "README.md"
+requires-python = ">=3.11"
+
+[project.scripts]
+avogadro-generators = "avogadro_generators:main"
+
+[build-system]
+requires = ["uv_build>=0.10.2,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "codespell>=2.4.3",
+    "pytest>=9.1.1",
+    "ruff>=0.16.4",
+]
+
+
+[tool.avogadro]
+minimum-avogadro-version = "2.1"
+
+[[tool.avogadro.input-generators]]
+identifier = "dalton"
+program-name = "Dalton"
+input-format = "cjson"
+support.molecular = true
+support.periodic = false
+user-options = "src/avogadro_generators/dalton/options.json"
+
+[[tool.avogadro.input-generators]]
+identifier = "gamessuk"
+program-name = "GAMESS-UK"
+input-format = "cjson"
+support.molecular = true
+support.periodic = false
+user-options = "src/avogadro_generators/gamessuk/options.json"
+
+[[tool.avogadro.input-generators]]
+identifier = "gaussian"
+program-name = "Gaussian"
+input-format = "cjson"
+support.molecular = true
+support.periodic = false
+user-options = "src/avogadro_generators/gaussian/options.json"
+
+[[tool.avogadro.input-generators]]
+identifier = "molpro"
+program-name = "MOLPRO"
+input-format = "cjson"
+support.molecular = true
+support.periodic = false
+user-options = "src/avogadro_generators/molpro/options.json"
+
+[[tool.avogadro.input-generators]]
+identifier = "mopac"
+program-name = "MOPAC"
+input-format = "cjson"
+support.molecular = true
+support.periodic = false
+user-options = "src/avogadro_generators/mopac/options.json"
+highlight-styles = "src/avogadro_generators/mopac/syntax.toml"
+
+[[tool.avogadro.input-generators]]
+identifier = "nwchem"
+program-name = "NWChem"
+input-format = "cjson"
+support.molecular = true
+support.periodic = false
+user-options = "src/avogadro_generators/nwchem/options.json"
+highlight-styles = "src/avogadro_generators/nwchem/syntax.toml"
+
+[[tool.avogadro.input-generators]]
+identifier = "orca"
+program-name = "ORCA"
+input-format = "cjson"
+support.molecular = true
+support.periodic = false
+user-options = "src/avogadro_generators/orca/options.toml"
+highlight-styles = "src/avogadro_generators/orca/syntax.toml"
+
+[[tool.avogadro.input-generators]]
+identifier = "psi4"
+program-name = "Psi"
+input-format = "cjson"
+support.molecular = true
+support.periodic = false
+user-options = "src/avogadro_generators/psi4/options.json"
+
+[[tool.avogadro.input-generators]]
+identifier = "pyscf"
+program-name = "PySCF"
+input-format = "cjson"
+support.molecular = true
+support.periodic = false
+user-options = "src/avogadro_generators/pyscf/options.json"
+
+[[tool.avogadro.input-generators]]
+identifier = "qchem"
+program-name = "Q-Chem"
+input-format = "cjson"
+support.molecular = true
+support.periodic = false
+user-options = "src/avogadro_generators/qchem/options.json"
+
+[[tool.avogadro.input-generators]]
+identifier = "terachem"
+program-name = "TeraChem"
+input-format = "cjson"
+support.molecular = true
+support.periodic = false
+user-options = "src/avogadro_generators/terachem/options.json"
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["win-64", "win-arm64", "linux-64", "linux-aarch64", "osx-64", "osx-arm64"]
+
+[tool.pixi.pypi-dependencies]
+avogadro_generators = { path = ".", editable = true }
+
+[tool.pixi.tasks]
+
+[tool.codespell]
+ignore-words-list = "ba,nd,te" # Elements
+skip = "pyproject.toml"
+
+[tool.ruff]
+line-length = 100
+indent-width = 4
+
+target-version = "py311"
+extend-include = ["./scripts/*.py"]
+
+[tool.ruff.lint]
+extend-select = [
+    "S",
+    "I",
+    "FBT",
+    "A",
+    "B905", # zip without explicit `strict` argument.
+]
+allowed-confusables = [
+    "α",
+    "γ",
+    "ρ",
+    "σ",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Line too long. Prefer long single line for enumeration members, avoids super long files
+"src/avogadro_generators/orca/input_blocks/*.py" = ["E501"]
+"src/avogadro_generators/orca/implicit_solvation.py" = ["E501"]
+"src/avogadro_generators/orca/libxc.py" = ["E501"]
+"src/avogadro_generators/orca/basis_sets.py" = ["E501"]
+"src/avogadro_generators/orca/dft.py" = ["E501"]

@@ -134,12 +134,33 @@ pub(crate) fn package_command(root: &Path, name: &str, script: &str) -> Result<C
     Ok(command)
 }
 
-/// Runs one command and returns its standard output.
+/// What a package feature is asked to do, as Avogadro's script hosts ask it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum PluginOperation {
+    /// A menu command or an input generator: JSON in, JSON out. Avogadro passes
+    /// a package-mode script no flag for either; the identifier selects the feature.
+    Command,
+    /// A file format reading a file (its text, or a JSON request naming it) into its output format.
+    Read,
+}
+
+impl PluginOperation {
+    fn flag(self) -> Option<&'static str> {
+        match self {
+            PluginOperation::Command => None,
+            PluginOperation::Read => Some("--read"),
+        }
+    }
+}
+
+/// Runs one feature of a prepared package and returns its standard output.
 pub(crate) fn run(
     root: &Path,
     name: &str,
     script: &str,
     identifier: &str,
+    operation: PluginOperation,
     input: &str,
     cancel: &AtomicBool,
 ) -> Result<String, String> {
@@ -147,7 +168,10 @@ pub(crate) fn run(
         return Err("Invalid plugin command".into());
     }
     let mut command = package_command(root, name, script)?;
-    command.args([identifier, "--lang", "en"]);
+    command
+        .arg(identifier)
+        .args(operation.flag())
+        .args(["--lang", "en"]);
     let output = run_cancellable(
         &mut command,
         input.as_bytes(),
@@ -166,10 +190,10 @@ pub(crate) fn run(
         .map_err(|_| "The command answered with text that is not UTF-8".to_string())
 }
 
-/// Reads a `user-options` JSON file the package declares, below its folder.
+/// Reads a `user-options` JSON or TOML file the package declares, below its folder.
 pub(crate) fn read_options(root: &Path, name: &str, relative: &str) -> Result<String, String> {
     let invalid = || "Invalid plugin options file".to_string();
-    if !relative.ends_with(".json")
+    if !(relative.ends_with(".json") || relative.ends_with(".toml"))
         || relative.len() > 256
         || relative.starts_with('/')
         || relative
@@ -231,6 +255,7 @@ mod tests {
             "avogadro-rdkit",
             "avogadro-rdkit",
             "uff",
+            PluginOperation::Command,
             "{}",
             &AtomicBool::new(false)
         )
@@ -247,11 +272,27 @@ mod tests {
                 "avogadro-rdkit",
                 "avogadro-rdkit",
                 "uff",
+                PluginOperation::Command,
                 "{\"sdf\":\"x\"}\n",
                 &AtomicBool::new(false)
             )
             .unwrap(),
             r#"{"feature":"uff","lang":"en","input":{"sdf":"x"}}"#
+        );
+        // A format reads with `--read`, between the identifier and `--lang`.
+        fake_environment(&root, "avogadro-rdkit", r#"printf '%s|' "$@""#);
+        assert_eq!(
+            run(
+                &root,
+                "avogadro-rdkit",
+                "avogadro-rdkit",
+                "cclib",
+                PluginOperation::Read,
+                "",
+                &AtomicBool::new(false)
+            )
+            .unwrap(),
+            "cclib|--read|--lang|en|"
         );
         fake_environment(
             &root,
@@ -263,6 +304,7 @@ mod tests {
             "avogadro-rdkit",
             "avogadro-rdkit",
             "uff",
+            PluginOperation::Command,
             "{}",
             &AtomicBool::new(false)
         )
@@ -274,6 +316,7 @@ mod tests {
                 "avogadro-rdkit",
                 "avogadro-rdkit",
                 "uff",
+                PluginOperation::Command,
                 "{}",
                 &AtomicBool::new(true)
             )
@@ -291,6 +334,7 @@ mod tests {
                     "avogadro-rdkit",
                     script,
                     identifier,
+                    PluginOperation::Command,
                     "{}",
                     &AtomicBool::new(false)
                 )
@@ -340,7 +384,7 @@ mod tests {
             "../installed.json",
             "/etc/hosts.json",
             "customization/../../x.json",
-            "pyproject.toml",
+            "LICENSE",
         ] {
             assert!(
                 read_options(&root, "avogadro-rdkit", path).is_err(),
@@ -373,6 +417,7 @@ mod tests {
             "avogadro-rdkit",
             "avogadro-rdkit",
             "mmff94",
+            PluginOperation::Command,
             &input.to_string(),
             &AtomicBool::new(false),
         )
@@ -385,6 +430,7 @@ mod tests {
             "avogadro-rdkit",
             "avogadro-rdkit",
             "select-smarts",
+            PluginOperation::Command,
             &serde_json::json!({ "sdf": sdf, "options": { "SMARTS": "[#7]" } }).to_string(),
             &AtomicBool::new(false),
         )

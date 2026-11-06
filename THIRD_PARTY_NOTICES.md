@@ -203,6 +203,22 @@ generators, OpenChemistry/avogenerators revision
 Inc., BSD-3-Clause, retained in `docs/third-party/avogenerators-LICENSE` and
 `apps/desktop/public/third-party-licenses/avogenerators-LICENSE`.
 
+## Avogadro file-format and input-generator plugin protocol
+
+`apps/desktop/src/lib/extensions/avogadro-input-generators.ts` adapts the
+keyword replacement of `InterfaceScript::replaceKeywords` (the `Coordinates`
+choice and the removal of the unused keyword's line) from
+OpenChemistry/avogadrolibs revision `cb0e94852889da9f7288bd1e58241e69990935a7`
+(`avogadro/qtgui/interfacescript.cpp`), BSD-3-Clause as above. The test fixtures
+`tests/fixtures/avogadro/avogadro-generators-965ea630.pyproject.toml`,
+`generators-gaussian-options.json`, `generators-orca-options.toml` and the
+recorded `generators-*.stdout.json` answers come from OpenChemistry/avogenerators
+revision `965ea6302b930cfc34b0b2deefdab5737bfe15c0` (BSD-3-Clause, license as
+above). `avogadro-cclib-cf5f13ba.pyproject.toml` and the recorded
+`cclib-read-water-mp2.stdout.cjson` come from OpenChemistry/avogadro-cclib
+revision `cf5f13ba091d0b46f1f243d579f71facbd572e90`, Copyright (c) 2021, Open
+Chemistry, BSD-3-Clause. No plugin code is bundled; users install the packages.
+
 Open Babel is used only as an external test oracle by
 `tests/support/regenerate-coordinate-block-oracles.py`; its GPL code is not
 bundled or adapted. The committed files under `tests/fixtures/coordinate-block/`

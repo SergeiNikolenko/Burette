@@ -30,8 +30,8 @@ test("the package's own option files become typed fields with their defaults", (
     { key: "ff", label: "Force Field", type: "stringList", values: ["MMFF94", "UFF", "None"], value: "MMFF94", tooltip: "MMFF94 falls back to UFF for atoms without MMFF parameters" },
   ]);
   expect(readCommandOptions(packaged("smarts_options.json"))).toEqual([{ key: "SMARTS", label: "SMARTS Pattern", type: "string", value: "a" }]);
-  expect(readCommandOptions('{"bad key": {"type": "integer"}, "x": {"type": "filePath"}, "flag": {"type": "boolean", "default": true}}'))
-    .toEqual([{ key: "flag", label: "flag", type: "boolean", value: true }]);
+  expect(readCommandOptions('{"bad\\u0007key": {"type": "integer"}, "Processor Cores": {"type": "integer", "default": 2}, "x": {"type": "filePath"}, "flag": {"type": "boolean", "default": true}}'))
+    .toEqual([{ key: "Processor Cores", label: "Processor Cores", type: "integer", value: 2 }, { key: "flag", label: "flag", type: "boolean", value: true }]);
 });
 
 test("command input carries the declared format, CJSON when asked, the selection and options", () => {

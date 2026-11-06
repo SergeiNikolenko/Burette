@@ -1,0 +1,44 @@
+[project]
+name = "avogadro-cclib"
+version = "0.2.0"
+description = "Read computational chemistry output files in Avogadro 2 via cclib"
+authors = [{name = "Geoff Hutchison", email = "geoff.hutchison@gmail.com"}]
+license = "BSD-3-Clause"
+dependencies = ["cclib>=1.8.1,<2"]
+requires-python = ">= 3.11"
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[project.scripts]
+avogadro-cclib = "avogadro_cclib:main"
+
+[build-system]
+build-backend = "uv_build"
+requires = ["uv_build>=0.10.2,<0.11.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.avogadro]
+minimum-avogadro-version = "1.103"
+
+[[tool.avogadro.file-formats]]
+identifier = "cclib"
+format-name = "cclib"
+file-extensions = ["out", "log", "adfout", "g16", "g09", "g03", "g98", "fchk"]
+mime-types = ["chemical/x-cclib"]
+description = "Read computational chemistry output files (Gaussian, ORCA, GAMESS, ADF, and more) via cclib"
+support.read = true
+support.write = false
+output-format = "cjson"
+
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["win-64", "linux-64", "osx-arm64"]
+
+[tool.pixi.pypi-dependencies]
+avogadro-cclib = { path = ".", editable = true }
+
+[tool.pixi.tasks]

@@ -37,7 +37,7 @@ test("the TOML subset reader keeps what it understands and skips the rest", () =
     tool: { pixi: { "pypi-dependencies": { x: { path: ".", editable: true } } }, avogadro: { "energy-models": [{ identifier: "one" }, { identifier: "two" }] } },
   });
   expect(readPluginManifest('[project]\nname = "x"\n[project.scripts]\navogadro-x = "x:main"\navogadro-x-setup = "x:setup"\n[[tool.avogadro.energy-models]]\nidentifier = "e"\n'))
-    .toEqual({ name: "x", version: undefined, script: "avogadro-x", commands: [], otherFeatures: { "energy-models": 1 } });
+    .toEqual({ name: "x", version: undefined, script: "avogadro-x", commands: [], formats: [], generators: [], otherFeatures: { "energy-models": 1 } });
   expect(readPluginManifest("[tool]\nname = 'no project'")).toBeUndefined();
 });
 

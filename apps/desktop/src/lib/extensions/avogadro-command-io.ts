@@ -8,14 +8,16 @@
 import { readCjsonGraph, writeCjson } from "../molecular-workbench/cjson-graph";
 import type { MolecularStructure } from "../molecular-workbench/molecular-graph";
 import { serializeXyz } from "../molecular-workbench/xyz";
-import type { PluginCommand } from "./avogadro-plugin-manifest";
+import { parseToml, type PluginCommand } from "./avogadro-plugin-manifest";
 
 export type CommandOptionValue = string | number | boolean;
+/** `tab` is the page of Avogadro's options dialog the field sits on. */
+type OptionBase = { key: string; label: string; tooltip?: string; tab?: string };
 export type CommandOption =
-  | { key: string; label: string; type: "integer" | "float"; value: number; minimum?: number; maximum?: number; tooltip?: string }
-  | { key: string; label: string; type: "string" | "text"; value: string; tooltip?: string }
-  | { key: string; label: string; type: "boolean"; value: boolean; tooltip?: string }
-  | { key: string; label: string; type: "stringList"; value: string; values: string[]; tooltip?: string };
+  | OptionBase & { type: "integer" | "float"; value: number; minimum?: number; maximum?: number }
+  | OptionBase & { type: "string" | "text"; value: string }
+  | OptionBase & { type: "boolean"; value: boolean }
+  | OptionBase & { type: "stringList"; value: string; values: string[] };
 
 export type CommandResult = {
   /** A molecule to open as a new document. */
@@ -26,31 +28,36 @@ export type CommandResult = {
   messages: { kind: "message" | "warning" | "error"; text: string }[];
 };
 
-const MAX_OPTIONS = 64;
+const MAX_OPTIONS = 128;
 const label = (value: unknown, max = 128) => typeof value === "string" && value.trim() && value.length <= max && !/[\p{Cc}\p{Cf}]/u.test(value) ? value.trim() : undefined;
 const finite = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : undefined;
 
-/** Reads a `user-options` file: `{ key: { type, label, default, ... } }`. Unknown types are dropped. */
-export function readCommandOptions(text: string): CommandOption[] {
-  const document = JSON.parse(text) as unknown;
+/** Reads a `user-options` file, JSON or (by its path) TOML: `{ key: { type, label, default, ... } }`. Unknown types are dropped. */
+export function readCommandOptions(text: string, path = ""): CommandOption[] {
+  const document = (/\.toml$/iu.test(path) ? parseToml(text) : JSON.parse(text)) as unknown;
   if (!document || typeof document !== "object" || Array.isArray(document)) throw new Error("Invalid options");
   const options: CommandOption[] = [];
   for (const [key, raw] of Object.entries(document as Record<string, unknown>).slice(0, MAX_OPTIONS)) {
-    if (!/^[A-Za-z0-9_.-]{1,64}$/u.test(key) || !raw || typeof raw !== "object") continue;
-    const spec = raw as Record<string, unknown>, name = label(spec.label) ?? key, tooltip = label(spec.toolTip, 500);
-    const common = { key, label: name, ...(tooltip ? { tooltip } : {}) };
+    // Generators name options as shown ("Calculation Type"); keys are sent back verbatim.
+    if (label(key, 64) !== key || !raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const spec = raw as Record<string, unknown>, name = label(spec.label) ?? key, tooltip = label(spec.toolTip, 500), tab = label(spec.tab, 64);
+    const common = { key, label: name, ...(tooltip ? { tooltip } : {}), ...(tab ? { tab } : {}) };
     if (spec.type === "integer" || spec.type === "float") {
       const minimum = finite(spec.minimum), maximum = finite(spec.maximum);
       options.push({ ...common, type: spec.type, value: finite(spec.default) ?? minimum ?? 0, ...(minimum !== undefined ? { minimum } : {}), ...(maximum !== undefined ? { maximum } : {}) });
     } else if (spec.type === "string" || spec.type === "text") options.push({ ...common, type: spec.type, value: typeof spec.default === "string" ? spec.default.slice(0, 4096) : "" });
     else if (spec.type === "boolean") options.push({ ...common, type: "boolean", value: spec.default === true });
     else if (spec.type === "stringList" && Array.isArray(spec.values)) {
-      const values = spec.values.map(value => label(value)).filter((value): value is string => Boolean(value)).slice(0, 64);
+      // An empty entry is a real choice ("none") and keeps the default index aligned.
+      const values = spec.values.filter((value): value is string => typeof value === "string" && value.length <= 128 && !/[\p{Cc}\p{Cf}]/u.test(value)).slice(0, 64);
       const index = finite(spec.default);
       if (values.length) options.push({ ...common, type: "stringList", values, value: typeof spec.default === "string" && values.includes(spec.default) ? spec.default : values[index !== undefined && values[index] ? index : 0] });
     }
   }
-  return options;
+  // Pages follow the file's own `tabs` list, as Avogadro lays them out.
+  const tabs = (document as { tabs?: unknown }).tabs, order = Array.isArray(tabs) ? tabs : [];
+  const rank = (option: CommandOption) => { const index = order.indexOf(option.tab); return index < 0 ? order.length : index; };
+  return options.sort((left, right) => rank(left) - rank(right));
 }
 
 /** The stdin document for one command run. */

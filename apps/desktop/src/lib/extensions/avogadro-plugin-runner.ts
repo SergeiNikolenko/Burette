@@ -87,8 +87,8 @@ export function createAvogadroPluginRunner({ call = invoke as Call }: { call?: C
         replaceInstalled(await call<InstalledAvogadroPlugin>("avogadro_plugin_prepare", { jobId, name }));
       });
     },
-    /** Runs one declared command; resolves with the job and the script's stdout when it succeeded. */
-    async run(name: string, title: string, request: { script: string; identifier: string; input: string }) {
+    /** Runs one declared feature (a menu command, a file reader or an input generator); resolves with the job and the script's stdout when it succeeded. */
+    async run(name: string, title: string, request: { script: string; identifier: string; operation: "command" | "read"; input: string }) {
       let stdout: string | undefined;
       const job = await start(name, "run", title, async jobId => {
         stdout = await call<string>("avogadro_plugin_run", { jobId, name, ...request });

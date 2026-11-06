@@ -1,0 +1,897 @@
+# This file was automatically generated, do NOT modify manually!
+
+tabs = ["Basic", "SCF", "Basis", "Electric Properties"]
+
+["Title"]
+label = "Title"
+type = "string"
+default = ""
+toolTip = "Title of the input file (not recognized by ORCA)"
+tab = "Basic"
+
+["Filename Base"]
+label = "Filename Base"
+type = "string"
+default = "job"
+tab = "Basic"
+
+["Processor Cores"]
+label = "Number of Processes"
+type = "integer"
+default = 1
+minimum = 1
+tab = "Basic"
+
+["Memory"]
+label = "Memory"
+type = "integer"
+default = 4
+minimum = 1
+toolTip = "Total available memory (divided by nprocs to get memory per core)"
+tab = "Basic"
+
+["Calculation Type"]
+label = "Calculation Type"
+type = "stringList"
+default = 2
+values = [
+    "SP",
+    "EnGrad",
+    "Opt",
+    "OptTS",
+    "Freq",
+    "NumFreq",
+    "Counterpoise",
+]
+toolTip = "Type of calculation to run. Counterpoise treats each Avogadro layer as one fragment of the complex."
+tab = "Basic"
+
+["Theory"]
+label = "Theory"
+type = "stringList"
+default = 0
+values = [
+    "r2SCAN-3c",
+    "PBEh-3c",
+    "B97-3c",
+    "wB97X-3c",
+    "LDA",
+    "PBE",
+    "B97M-V",
+    "B97M-D4",
+    "r2SCAN",
+    "PBE0",
+    "r2SCAN0",
+    "wB97X-D4",
+    "wB97X-V",
+    "wB97M-D4",
+    "wB97M-V",
+    "Pr2SCAN69",
+    "B2GP-PLYP",
+    "HF",
+    "RI-MP2",
+    "DLPNO-MP2",
+    "SCS-DLPNO-MP2",
+    "RI-CCSD(T)",
+    "DLPNO-CCSD(T)",
+    "DLPNO-CCSD(T1)",
+]
+tab = "Basic"
+
+["Basis"]
+label = "Basis"
+type = "stringList"
+default = 1
+values = [
+    "def2-SVP",
+    "def2-TZVP",
+    "def2-QZVP",
+    "def2-TZVPP",
+    "def2-QZVPP",
+    "def2-SVPD",
+    "def2-TZVPPD",
+    "def2-QZVPPD",
+    "cc-pVDZ",
+    "cc-pVTZ",
+    "cc-pVQZ",
+    "aug-cc-pVDZ",
+    "aug-cc-pVTZ",
+    "aug-cc-pVQZ",
+    "pc-1",
+    "pc-2",
+    "pc-3",
+    "aug-pc-1",
+    "aug-pc-2",
+    "aug-pc-3",
+]
+tab = "Basic"
+
+["Charge"]
+label = "Charge"
+type = "integer"
+default = 0
+minimum = -9
+maximum = 9
+tab = "Basic"
+
+["Multiplicity"]
+label = "Multiplicity"
+type = "integer"
+default = 1
+minimum = 1
+toolTip = "Calculated as 2S+1 where S is the number of unpaired electrons"
+tab = "Basic"
+
+["Solvent"]
+label = "Solvent"
+type = "stringList"
+default = 0
+values = [
+    "",
+    "water",
+    "acetonitrile",
+    "acetone",
+    "ethanol",
+    "methanol",
+    "carbon tetrachloride",
+    "dichloromethane",
+    "chloroform",
+    "dimethylsulfoxide",
+    "n,n-dimethylformamide",
+    "n-hexane",
+    "toluene",
+    "pyridine",
+    "tetrahydrofuran",
+]
+tab = "Basic"
+
+["Solvation Model"]
+label = "Solvation Model"
+type = "stringList"
+default = 0
+values = [
+    "CPCM",
+    "SMD",
+    "COSMO_RS",
+    "ALPB",
+    "ddCOSMO",
+    "CPCMX",
+]
+tab = "Basic"
+
+["basic_disp_corr"]
+label = "Dispersion Correction"
+type = "stringList"
+default = 0
+values = [
+    "",
+    "D3BJ",
+    "D3ZERO",
+    "D4",
+    "NL",
+    "SCNL",
+]
+tab = "Basic"
+
+["basic_print_mos"]
+label = "Print Molecular Orbitals"
+type = "boolean"
+default = true
+tab = "Basic"
+
+["basic_print_level"]
+label = "Print Level"
+type = "stringList"
+default = 2
+values = [
+    "MiniPrint",
+    "SmallPrint",
+    "NormalPrint",
+    "LargePrint",
+]
+tab = "Basic"
+
+["basic_constrain"]
+label = "Use Constraints"
+type = "boolean"
+default = false
+tab = "Basic"
+
+["Coordinates"]
+label = "Coordinates"
+type = "stringList"
+default = 0
+values = [
+    "Cartesian",
+    "Z-Matrix / Internal",
+]
+toolTip = "Write the geometry as Cartesian coordinates or as a z-matrix of bond lengths, angles and torsions."
+tab = "Basic"
+
+["basic_simple_keywords"]
+label = "Additional Simple Keywords"
+type = "string"
+default = ""
+toolTip = "Comma- or whitespace-separated list of simple input keywords."
+tab = "Basic"
+
+[Basis_pople]
+label = "Pople Basis Set"
+type = "stringList"
+default = 0
+values = [
+    "",
+    "STO-3G",
+    "3-21G",
+    "3-21GSP",
+    "4-22GSP",
+    "6-31G",
+    "6-31G(d)",
+    "6-31G(d,p)",
+    "6-31G(2d)",
+    "6-31G(2d,p)",
+    "6-31G(2d,2p)",
+    "6-31G(2df)",
+    "6-31G(2df,2p)",
+    "6-31G(2df,2pd)",
+    "6-31+G(d)",
+    "6-31+G(d,p)",
+    "6-31+G(2d)",
+    "6-31+G(2d,p)",
+    "6-31+G(2d,2p)",
+    "6-31+G(2df)",
+    "6-31+G(2df,2p)",
+    "6-31+G(2df,2pd)",
+    "6-31++G(d,p)",
+    "6-31++G(2d,p)",
+    "6-31++G(2d,2p)",
+    "6-31++G(2df,2p)",
+    "6-31++G(2df,2pd)",
+    "6-311G",
+    "6-311G(d)",
+    "6-311G(d,p)",
+    "6-311G(2d)",
+    "6-311G(2d,p)",
+    "6-311G(2d,2p)",
+    "6-311G(2df)",
+    "6-311G(2df,2p)",
+    "6-311G(2df,2pd)",
+    "6-311G(3df)",
+    "6-311G(3df,3pd)",
+    "6-311+G(d)",
+    "6-311+G(d,p)",
+    "6-311+G(2d)",
+    "6-311+G(2d,p)",
+    "6-311+G(2d,2p)",
+    "6-311+G(2df)",
+    "6-311+G(2df,2p)",
+    "6-311+G(2df,2pd)",
+    "6-311+G(3df)",
+    "6-311+G(3df,2p)",
+    "6-311+G(3df,3pd)",
+    "6-311++G(d,p)",
+    "6-311++G(2d,p)",
+    "6-311++G(2d,2p)",
+    "6-311++G(2df,2p)",
+    "6-311++G(2df,2pd)",
+    "6-311++G(3df,3pd)",
+    "m6-31G",
+    "m6-31G*",
+]
+toolTip = "Pople-style split-valence basis sets."
+tab = "Basis"
+
+[Basis_def2]
+label = "def2 Basis Set"
+type = "stringList"
+default = 0
+values = [
+    "",
+    "def2-SVP",
+    "def2-SV(P)",
+    "def2-TZVP",
+    "def2-TZVP(-f)",
+    "def2-TZVPP",
+    "def2-QZVP",
+    "def2-QZVPP",
+    "def2-SVPD",
+    "def2-TZVPD",
+    "def2-TZVPPD",
+    "def2-QZVPD",
+    "def2-QZVPPD",
+    "ma-def2-SVP",
+    "ma-def2-SV(P)",
+    "ma-def2-mSVP",
+    "ma-def2-TZVP",
+    "ma-def2-TZVP(-f)",
+    "ma-def2-TZVPP",
+    "ma-def2-QZVPP",
+]
+toolTip = "Karlsruhe def2-n(Z)VP basis sets."
+tab = "Basis"
+
+[Basis_cc]
+label = "cc-pVnZ Basis Set"
+type = "stringList"
+default = 0
+values = [
+    "",
+    "cc-pVDZ",
+    "cc-pVTZ",
+    "cc-pVQZ",
+    "cc-pV5Z",
+    "cc-pV6Z",
+    "aug-cc-pVDZ",
+    "aug-cc-pVTZ",
+    "aug-cc-pVQZ",
+    "aug-cc-pV5Z",
+    "aug-cc-pV6Z",
+    "cc-pVD(+d)Z",
+    "cc-pVT(+d)Z",
+    "cc-pVQ(+d)Z",
+    "cc-pV5(+d)Z",
+    "aug-cc-pVD(+d)Z",
+    "aug-cc-pVT(+d)Z",
+    "aug-cc-pVQ(+d)Z",
+    "aug-cc-pV5(+d)Z",
+    "aug-cc-pV6(+d)Z",
+    "apr-cc-pV(Q+d)Z",
+    "may-cc-pV(T+d)Z",
+    "may-cc-pV(Q+d)Z",
+    "jun-cc-pV(D+d)Z",
+    "jun-cc-pV(T+d)Z",
+    "jun-cc-pV(Q+d)Z",
+    "jul-cc-pV(D+d)Z",
+    "jul-cc-pV(T+d)Z",
+    "jul-cc-pV(Q+d)Z",
+    "maug-cc-pV(D+d)Z",
+    "maug-cc-pV(T+d)Z",
+    "maug-cc-pV(Q+d)Z",
+    "cc-pCVDZ",
+    "cc-pCVTZ",
+    "cc-pCVQZ",
+    "cc-pCV5Z",
+    "cc-pCV6Z",
+    "aug-cc-pCVDZ",
+    "aug-cc-pCVTZ",
+    "aug-cc-pCVQZ",
+    "aug-cc-pCV5Z",
+    "aug-cc-pCV6Z",
+    "cc-pwCVDZ",
+    "cc-pwCVTZ",
+    "cc-pwCVQZ",
+    "cc-pwCV5Z",
+    "aug-cc-pwCVDZ",
+    "aug-cc-pwCVTZ",
+    "aug-cc-pwCVQZ",
+    "aug-cc-pwCV5Z",
+]
+toolTip = "Correlation Consistent basis sets."
+tab = "Basis"
+
+[Basis_jensen]
+label = "pc-n Basis Set"
+type = "stringList"
+default = 0
+values = [
+    "",
+    "pc-0",
+    "pc-1",
+    "pc-2",
+    "pc-3",
+    "pc-4",
+    "aug-pc-0",
+    "aug-pc-1",
+    "aug-pc-2",
+    "aug-pc-3",
+    "aug-pc-4",
+    "pcseg-0",
+    "pcseg-1",
+    "pcseg-2",
+    "pcseg-3",
+    "pcseg-4",
+    "aug-pcseg-0",
+    "aug-pcseg-1",
+    "aug-pcseg-2",
+    "aug-pcseg-3",
+    "aug-pcseg-4",
+    "pcSseg-0",
+    "pcSseg-1",
+    "pcSseg-2",
+    "pcSseg-3",
+    "pcSseg-4",
+    "aug-pcSseg-0",
+    "aug-pcSseg-1",
+    "aug-pcSseg-2",
+    "aug-pcSseg-3",
+    "aug-pcSseg-4",
+    "pcJ-0",
+    "pcJ-1",
+    "pcJ-2",
+    "pcJ-3",
+    "pcJ-4",
+    "aug-pcJ-0",
+    "aug-pcJ-1",
+    "aug-pcJ-2",
+    "aug-pcJ-3",
+    "aug-pcJ-4",
+    "pcH-1",
+    "pcH-2",
+    "pcH-3",
+    "pcH-4",
+    "aug-pcH-1",
+    "aug-pcH-2",
+    "aug-pcH-3",
+    "aug-pcH-4",
+    "pcX-1",
+    "pcX-2",
+    "pcX-3",
+    "pcX-4",
+    "aug-pcX-1",
+    "aug-pcX-2",
+    "aug-pcX-3",
+    "aug-pcX-4",
+]
+toolTip = "Jensen's Polarization-Consistent basis sets."
+tab = "Basis"
+
+[Basis_relativistic]
+label = "Relativistic Basis Set"
+type = "stringList"
+default = 0
+values = [
+    "",
+    "DKH-SV(P)",
+    "DKH-SVP",
+    "DKH-TZV(P)",
+    "DKH-TZVP",
+    "DKH-TZVPP",
+    "DKH-QZVP",
+    "DKH-QZVPP",
+    "ZORA-SV(P)",
+    "ZORA-SVP",
+    "ZORA-TZV(P)",
+    "ZORA-TZVP",
+    "ZORA-TZVPP",
+    "ZORA-QZVP",
+    "ZORA-QZVPP",
+    "DKH-def2-SVP",
+    "DKH-def2-SV(P)",
+    "DKH-def2-TZVP",
+    "DKH-def2-TZVP(-f)",
+    "DKH-def2-TZVPP",
+    "DKH-def2-QZVPP",
+    "ZORA-def2-SVP",
+    "ZORA-def2-SV(P)",
+    "ZORA-def2-TZVP",
+    "ZORA-def2-TZVP(-f)",
+    "ZORA-def2-TZVPP",
+    "ZORA-def2-QZVPP",
+    "ma-DKH-def2-SVP",
+    "ma-DKH-def2-SV(P)",
+    "ma-DKH-def2-TZVP",
+    "ma-DKH-def2-TZVP(-f)",
+    "ma-DKH-def2-TZVPP",
+    "ma-DKH-def2-QZVPP",
+    "ma-ZORA-def2-SVP",
+    "ma-ZORA-def2-SV(P)",
+    "ma-ZORA-def2-TZVP",
+    "ma-ZORA-def2-TZVP(-f)",
+    "ma-ZORA-def2-TZVPP",
+    "ma-ZORA-def2-QZVPP",
+    "SARC-DKH-SVP",
+    "SARC-DKH-TZVP",
+    "SARC-DKH-TZVPP",
+    "SARC-ZORA-SVP",
+    "SARC-ZORA-TZVP",
+    "SARC-ZORA-TZVPP",
+    "SARC2-DKH-QZV",
+    "SARC2-DKH-QZVP",
+    "SARC2-ZORA-QZV",
+    "SARC2-ZORA-QZVP",
+    "x2c-SV(P)all",
+    "x2c-SVPall",
+    "x2c-TZVPall",
+    "x2c-TZVPPall",
+    "x2c-QZVPall",
+    "x2c-QZVPPall",
+    "x2c-SV(P)all-s",
+    "x2c-SVPall-s",
+    "x2c-TZVPall-s",
+    "x2c-TZVPPall-s",
+    "x2c-QZVPall-s",
+    "x2c-QZVPPall-s",
+    "cc-pVDZ-DK",
+    "cc-pVTZ-DK",
+    "cc-pVQZ-DK",
+    "cc-pV5Z-DK",
+    "cc-pVDZ-DK3",
+    "cc-pVTZ-DK3",
+    "cc-pVQZ-DK3",
+    "aug-cc-pVDZ-DK",
+    "aug-cc-pVTZ-DK",
+    "aug-cc-pVQZ-DK",
+    "aug-cc-pV5Z-DK",
+    "cc-pwCVDZ-DK",
+    "cc-pwCVTZ-DK",
+    "cc-pwCVQZ-DK",
+    "cc-pwCV5Z-DK",
+    "cc-pwCVDZ-DK3",
+    "cc-pwCVTZ-DK3",
+    "cc-pwCVQZ-DK3",
+    "aug-cc-pwCVDZ-DK",
+    "aug-cc-pwCVTZ-DK",
+    "aug-cc-pwCVQZ-DK",
+    "aug-cc-pwCV5Z-DK",
+    "ANO-RCC-Full",
+    "ANO-RCC-DZP",
+    "ANO-RCC-TZP",
+    "ANO-RCC-QZP",
+]
+toolTip = "Relativistic SARC/ZORA/DKH/x2c basis sets."
+tab = "Basis"
+
+[SCF_CONVERGENCE]
+label = "Convergence Tolerance"
+type = "stringList"
+default = 2
+values = [
+    "Sloppy",
+    "Loose",
+    "Medium",
+    "Strong",
+    "Tight",
+    "VeryTight",
+    "Extreme",
+]
+toolTip = "Set the SCF convergence tolerances."
+tab = "SCF"
+
+[SCF_TOL_E]
+label = "Energy Tolerance"
+type = "string"
+default = 1e-06
+toolTip = "Set the SCF energy convergence criteria."
+tab = "SCF"
+
+[SCF_TOL_RMSP]
+label = "RMS Density Tolerance"
+type = "string"
+default = 1e-06
+toolTip = "Set the SCF RMS density change convergence criteria."
+tab = "SCF"
+
+[SCF_TOL_MAXP]
+label = "Max Density Tolerance"
+type = "string"
+default = 1e-05
+toolTip = "Set the SCF maximum density change convergence criteria."
+tab = "SCF"
+
+[SCF_TOL_ERR]
+label = "DIIS Error Tolerance"
+type = "string"
+default = 1e-05
+toolTip = "Set the SCF DIIS Error convergence criteria."
+tab = "SCF"
+
+[SCF_TOL_G]
+label = "Orbital Gradient Tolerance"
+type = "string"
+default = 5e-05
+toolTip = "Set the SCF orbital gradient convergence criteria."
+tab = "SCF"
+
+[SCF_TOL_X]
+label = "Orbital Rotation Angle Tolerance"
+type = "string"
+default = 5e-05
+toolTip = "Set the SCF orbital rotation angle convergence criteria."
+tab = "SCF"
+
+[SCF_THRESH]
+label = "Integral Prescreening Threshold"
+type = "string"
+default = 1e-10
+toolTip = "Set the SCF integral prescreening threshold."
+tab = "SCF"
+
+[SCF_TCUT]
+label = "Primitive Integral Prescreening Cutoff"
+type = "string"
+default = 1e-11
+toolTip = "Set the SCF primitive integral prescreening threshold."
+tab = "SCF"
+
+[SCF_CONVCHECKMODE]
+label = "Convergence Check Mode"
+type = "integer"
+default = 2
+minimum = 0
+maximum = 2
+toolTip = "Set the SCF convergence check mode."
+tab = "SCF"
+
+[SCF_CONVFORCED]
+label = "Require Convergence"
+type = "integer"
+default = 1
+minimum = 0
+maximum = 1
+toolTip = "Toggle whether or not convergence is mandatory for the next calculation step."
+tab = "SCF"
+
+[SCF_GUESS]
+label = "Initial Guess"
+type = "stringList"
+default = 2
+values = [
+    "HCore",
+    "Hueckel",
+    "PAtom",
+    "PModel",
+    "MORead",
+]
+toolTip = "Pick initial guess for SCF orbitals"
+tab = "SCF"
+
+[SCF_MOINP]
+label = "MOInp GBW File"
+type = "string"
+toolTip = "GBW file used for MORead"
+tab = "SCF"
+
+[SCF_GUESSMODE]
+label = "Guess Mode"
+type = "stringList"
+default = 0
+values = [
+    "FMatrix",
+    "CMatrix",
+]
+toolTip = "Mode for projecting initial guess orbitals onto the basis set (not for Guess=HCore)"
+tab = "SCF"
+
+[SCF_AUTOSTART]
+label = "AutoStart"
+type = "boolean"
+default = true
+toolTip = "Try to use orbitals from existing GBW file of the same name (if it exists)."
+tab = "SCF"
+
+[Basis_AUXJ]
+label = "AuxJ"
+type = "stringList"
+default = 0
+values = [
+    "",
+    "def2/J",
+    "def2-mTZVP/J",
+    "def2-mTZVPP/J",
+    "x2c/J",
+    "SARC/J",
+]
+toolTip = "Specify a Coulomb-fitting auxiliary basis set."
+tab = "Basis"
+
+[Basis_AUXJK]
+label = "AuxJK"
+type = "stringList"
+default = 0
+values = [
+    "",
+    "def2/JK",
+    "def2/JKsmall",
+    "cc-pVTZ/JK",
+    "cc-pVQZ/JK",
+    "cc-pV5Z/JK",
+    "aug-cc-pVTZ/JK",
+    "aug-cc-pVQZ/JK",
+    "aug-cc-pV5Z/JK",
+    "SARC2-DKH-QZV/JK",
+    "SARC2-DKH-QZVP/JK",
+    "SARC2-ZORA-QZV/JK",
+    "SARC2-ZORA-QZVP/JK",
+]
+toolTip = "Specify a Coulomb- and Exchange-fitting auxiliary basis set."
+tab = "Basis"
+
+[Basis_AUXC]
+label = "AuxC"
+type = "stringList"
+default = 0
+values = [
+    "",
+    "def2-SVP/C",
+    "def2-TZVP/C",
+    "def2-TZVPP/C",
+    "def2-QZVPP/C",
+    "def2-SVPD/C",
+    "def2-TZVPD/C",
+    "def2-TZVPPD/C",
+    "def2-QZVPPD/C",
+    "cc-pVDZ/C",
+    "cc-pVTZ/C",
+    "cc-pVQZ/C",
+    "cc-pV5Z/C",
+    "cc-pV6Z/C",
+    "aug-cc-pVDZ/C",
+    "aug-cc-pVTZ/C",
+    "aug-cc-pVQZ/C",
+    "aug-cc-pV5Z/C",
+    "aug-cc-pV6Z/C",
+    "cc-pwCVDZ/C",
+    "cc-pwCVTZ/C",
+    "cc-pwCVQZ/C",
+    "cc-pwCV5Z/C",
+    "aug-cc-pwCVDZ/C",
+    "aug-cc-pwCVTZ/C",
+    "aug-cc-pwCVQZ/C",
+    "aug-cc-pwCV5Z/C",
+]
+toolTip = "Specify a Post-HF auxiliary basis set."
+tab = "Basis"
+
+[Basis_CABS]
+label = "CABS (F12 only)"
+type = "string"
+toolTip = "Specify a Complementary Auxiliary Basis Set (CABS) for F12 calculations."
+tab = "Basis"
+
+[Basis_ECP]
+label = "ECP"
+type = "stringList"
+default = 0
+values = [
+    "",
+    "def2-ECP",
+    "SK-MCDHF-RSC",
+    "HayWadt",
+    "dhf-ECP",
+    "vDZP-ECP",
+    "CRENBL-ECP",
+]
+toolTip = "Specify an Effective Core Potential (ECP)."
+tab = "Basis"
+
+[Basis_GHOSTECP]
+label = "Allow Ghost ECPs"
+type = "boolean"
+default = false
+toolTip = "Specify whether or not to use ECPs for Ghost atoms."
+tab = "Basis"
+
+[Basis_AUTOAUXSIZE]
+label = "AutoAux Size"
+type = "integer"
+default = 1
+minimum = 0
+maximum = 3
+toolTip = "Control size of AutoAux basis sets. Larger value means larger basis."
+tab = "Basis"
+
+[ElProp_DIPOLE]
+label = "Dipole"
+type = "boolean"
+default = true
+toolTip = "Calculate dipole moment."
+tab = "Electric Properties"
+
+[ElProp_QUADRUPOLE]
+label = "Quadrupole"
+type = "boolean"
+default = false
+toolTip = "Calculate quadrupole moment."
+tab = "Electric Properties"
+
+[ElProp_POLAR]
+label = "Polar"
+type = "boolean"
+default = false
+toolTip = "Calculate dipole-dipole polarizability."
+tab = "Electric Properties"
+
+[ElProp_HYPERPOL]
+label = "Dip-Dip-Dip Hyperpolarizability"
+type = "boolean"
+default = false
+toolTip = "Calculate Dipole-Dipole Polarizability."
+tab = "Electric Properties"
+
+[ElProp_POLARVELOCITY]
+label = "Velocity Polarizability"
+type = "boolean"
+default = false
+toolTip = "Calculate polarizability with respect to velocity perturbations."
+tab = "Electric Properties"
+
+[ElProp_POLARDIPQUAD]
+label = "Dipole-Quadrupole Polarizability"
+type = "boolean"
+default = false
+toolTip = "Calculate dipole-quadrupole polarizability."
+tab = "Electric Properties"
+
+[ElProp_POLARQUADQUAD]
+label = "Quadrupole-Quadrupole Polarizability"
+type = "boolean"
+default = false
+toolTip = "Calculate quadrupole-quadrupole polarizability."
+tab = "Electric Properties"
+
+[ElProp_FREQ_R]
+label = "Real Frequency"
+type = "float"
+default = 0.0
+minimum = 0.0
+toolTip = "Purely real frequency, leave blank for static calculation."
+tab = "Electric Properties"
+
+[ElProp_FREQ_I]
+label = "Imaginary Frequency"
+type = "float"
+default = 0.0
+minimum = 0.0
+toolTip = "Purely imaginary frequency, leave blank for static calculation."
+tab = "Electric Properties"
+
+[ElProp_SOLVER]
+label = "CP-SCF Solver"
+type = "stringList"
+default = 2
+values = [
+    "CG",
+    "DIIS",
+    "Pople",
+]
+toolTip = "CG: Conjugate Gradient, DIIS: Direct Inversion in the Iterative Subspace."
+tab = "Electric Properties"
+
+[ElProp_MAXDIIS]
+label = "Max DIIS Dimension"
+type = "integer"
+default = 5
+toolTip = "Maximum dimension of DIIS method."
+tab = "Electric Properties"
+
+[ElProp_SHIFT]
+label = "DIIS Level Shift"
+type = "float"
+default = 0.2
+toolTip = "Level shift used in DIIS solver"
+tab = "Electric Properties"
+
+[ElProp_TOL]
+label = "CP-SCF Convergence Tolerance"
+type = "string"
+default = 0.001
+toolTip = "Convergence of Coupled-Perturbed SCF Equations (norm of the residual)."
+tab = "Electric Properties"
+
+[ElProp_MAXITER]
+label = "Maximum Iterations"
+type = "integer"
+default = 64
+toolTip = "Maximum number of iterations in the CP-SCF solver."
+tab = "Electric Properties"
+
+[ElProp_PRINTLEVEL]
+label = "Print Level"
+type = "integer"
+default = 2
+toolTip = "Control print level for electric property calculation."
+tab = "Electric Properties"
+
+[ElProp_ORIGIN]
+label = "Origin"
+type = "stringList"
+default = 3
+values = [
+    "CenterOfElCharge",
+    "CenterOfNucCharge",
+    "CenterOfSpinDens",
+    "CenterOfMass",
+]
+toolTip = "Origin to use for electric properties."
+tab = "Electric Properties"
+

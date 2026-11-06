@@ -1,0 +1,1 @@
+{"files": [{"filename": "water.gjf", "contents": "%NProcShared=8\n%mem=28GB\n%Chk=water.chk\n#p B3LYP/6-31G(d) Opt\n\n \n\n0 1\n$$coords:Sxyz$$\n$$zmat:_S_I_R_J_A_K_T$$\n\n"}], "mainFile": "water.gjf"}
