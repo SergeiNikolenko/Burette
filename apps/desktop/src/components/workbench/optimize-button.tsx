@@ -82,7 +82,7 @@ export function useEnergyCalculation(current: object | null | undefined) {
 /**
  * Optimize with an explicit method; the menu beside it picks the force field and method.
  * The checked method is the one that runs. `coupled` optimizations move shared Z-matrix
- * variables by differencing the energy, which bounds their size. Automatic is passed on
+ * variables through differenced derivatives, which bounds their size. Automatic is passed on
  * as "auto": the caller resolves it once the structure's bond graph is known.
  */
 export function OptimizeButton({ atomCount, elements = [], constraintCount = 0, coupled = false, unavailableReason, disabled, size = "default", variant = "default", configureOpen, onConfigureOpenChange, onOptimize, onAutoOptimize }: {
@@ -97,8 +97,7 @@ export function OptimizeButton({ atomCount, elements = [], constraintCount = 0, 
   const settings = useOptimizerSettings(), steps = String(settings.steps);
   const [ownConfigureOpen, setOwnConfigureOpen] = useState(false);
   const configuring = configureOpen ?? ownConfigureOpen, setConfiguring = onConfigureOpenChange ?? setOwnConfigureOpen;
-  // External models are Cartesian only; coupled Z-matrix runs difference the energy per variable.
-  const models = useEnergyModelOptions(elements, { external: !coupled });
+  const models = useEnergyModelOptions(elements);
   const choice = settings.model === "auto" || models.some((model) => model.id === settings.model) ? settings.model : "auto";
   const { method } = optimizationRun({ ...settings, model: choice }, elements, constraintCount > 0 || coupled);
   const modelReason = models.find((model) => model.id === choice)?.unavailable ?? null;

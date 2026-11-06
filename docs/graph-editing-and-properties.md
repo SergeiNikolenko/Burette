@@ -85,8 +85,11 @@ gradients, it reads an input format Burette does not write, it lacks an element,
 or the structure has a charge or unpaired electrons it does not accept. Their
 energies are absolute (an xTB water molecule is about −3182 kcal/mol), so only
 differences compare with the force fields. External models never run Auto
-Optimize, which stays in the browser worker, nor coupled Z-matrix variables,
-and the browser shell lists none.
+Optimize, which stays in the browser worker, and the browser shell lists none.
+They do optimize coupled Z-matrix variables: each point is one model
+evaluation, and its Cartesian gradient reaches the variables by the chain rule
+through a differenced Jacobian of the placed atoms, so frozen rows and fixed
+coordinates hold exactly as with the built-in fields.
 
 In the Edit panel of an SDF/MOL structure, **Freeze** keeps the selected atoms
 in place and **Hold distance/angle/dihedral** restrains two, three or four

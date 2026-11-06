@@ -74,12 +74,12 @@ export function externalModelUnavailable(model: ExternalEnergyModel, atoms: read
 export type EnergyModelOption = { id: EnergyModelId; name: string; unavailable: string | null };
 
 /** Every model a menu can offer for these elements: the built-in ones, then the
- * external ones unless `external` is false. */
-export function useEnergyModelOptions(elements: readonly string[], { external = true } = {}): EnergyModelOption[] {
+ * external ones. */
+export function useEnergyModelOptions(elements: readonly string[]): EnergyModelOption[] {
   const listed = useExternalEnergyModels(), atoms = elements.map(element => ({ element }));
   return [
     ...ENERGY_MODELS.map(model => ({ id: model.id, name: model.name, unavailable: energyModelUnavailable(model.id, atoms) })),
-    ...(external ? listed.map(model => ({ id: model.id, name: model.name, unavailable: externalModelUnavailable(model, atoms) })) : []),
+    ...listed.map(model => ({ id: model.id, name: model.name, unavailable: externalModelUnavailable(model, atoms) })),
   ];
 }
 

@@ -164,8 +164,11 @@ current one has open code or acceptance items.
   `energy_model_evaluate`, `energy_model_close`) run `xtb --grad` or keep one
   plugin process per run, owned by the window. `optimizeWithEnergyModel` and
   `useEnergyModelOptions` put the models into Optimize, Configure, Calculate
-  Energy, Edit, Geometry and Properties; Auto Optimize and coupled Z-matrix runs
-  refuse them with a reason. Agent jobs accept `LJ` for `energy`,
+  Energy, Edit, Geometry and Properties; Auto Optimize refuses them with a
+  reason. `optimizeZmatrixWithEnergyModel` runs coupled Z-matrix variables over
+  a session with one evaluation per point: the model's Cartesian gradient times
+  the differenced Jacobian of the placed atoms (`optimizeZmatrixAsync`, gradient
+  `chain-rule`). Agent jobs accept `LJ` for `energy`,
   `energy_forces`, `frame_energy_forces` and `optimize`.
 - **Open:** external models in agent jobs (the job runner lives in the browser
   worker), models without gradients (Avogadro differences them), unit cells,

@@ -57,7 +57,8 @@ mock.module("../apps/desktop/src/lib/molecular-workbench/compute-client", () => 
     if (request.action === "parse") {
       parsed.push(request);
       // A complete bond graph, so Automatic runs MMFF94.
-      return Promise.resolve({ source: request.source, atoms: [], bonds: [{ a: 0, b: 1, order: 1 }], graphComplete: true });
+      const atoms = atomsOf(request.source).map(({ element, position: [x, y, z] }) => ({ element, x, y, z }));
+      return Promise.resolve({ source: request.source, atoms, bonds: [{ a: 0, b: 1, order: 1 }], graphComplete: true, molfile: "", title: "Z-matrix" });
     }
     return new Promise((resolve, reject) => {
       jobs.push({ request, options, resolve, reject });
@@ -70,6 +71,31 @@ mock.module("../apps/desktop/src/lib/geometry-binding", () => ({ readGeometryBin
   lease: "zmatrix-fixture", text: current(document),
   target: { documentId: document.id, source: ensureGeometryViewerFrame(document).contentWindow, isCurrent },
 }) }));
+// An external energy model as the native session commands present it: Lennard-Jones
+// over the session's elements. `hold` keeps each evaluation waiting for the test.
+const PAIR = "avogadro:pair-energy/lennard-jones";
+const nativeCalls = [];
+const sessions = new Map();
+const held = [];
+let hold = false;
+let sessionCount = 0;
+async function native(command, args) {
+  nativeCalls.push(command);
+  if (command === "energy_models_list") return [{ id: PAIR, name: "Pair model", description: "", source: "pair-energy", inputFormat: null, gradients: true, ions: true, radicals: true, unitCell: false, elements: [1, 8], unavailable: null }];
+  if (command === "energy_model_open") { const id = `session-${++sessionCount}`; sessions.set(id, args.request.elements); return id; }
+  // Closing ends the program, which fails the evaluation in flight.
+  if (command === "energy_model_close") { sessions.delete(args.session); held.splice(0).forEach((release) => release()); return null; }
+  const elements = sessions.get(args.session);
+  if (hold) await new Promise((resolve) => held.push(resolve));
+  if (!sessions.has(args.session)) throw new Error("The energy model session is closed.");
+  const x = args.coordinates, atoms = elements.map((element, i) => ({ element, x: x[3 * i], y: x[3 * i + 1], z: x[3 * i + 2] }));
+  const model = createLennardJonesEvaluator(elements);
+  return { energy: model.energy(atoms), gradient: model.gradient(atoms).flat() };
+}
+mock.module("@tauri-apps/api/core", () => ({ invoke: native }));
+const { createLennardJonesEvaluator } = await import("../apps/desktop/src/lib/molecular-workbench/energy-models");
+const { refreshExternalEnergyModels } = await import("../apps/desktop/src/lib/molecular-workbench/external-energy-models");
+const { updateOptimizerSettings } = await import("../apps/desktop/src/lib/workbench/optimizer-settings");
 const { SourceEditingProvider } = await import("../apps/desktop/src/lib/source-editing/context");
 const { useSourceEditingController } = await import("../apps/desktop/src/hooks/use-source-editing");
 const { createRoot } = await import("react-dom/client");
@@ -362,4 +388,51 @@ test("frozen atoms and fixed coordinates stay with the rows they were set on: a 
     assert.deepEqual(jobs.at(-1).request.options, { frozenRows: [2], lockedCoordinates: [], forceField: 'MMFF94', method: 'lbfgs', maxIterations: 250, energyTolerance: 1e-5, gradientTolerance: 1e-3 });
     await click(cancelButton());
   } finally { await view.unmount(); }
+}, TIMEOUT_MS);
+
+test("an external model optimizes the coupled rows over its own session with a frozen atom; Cancel closes the session and keeps the text", async () => {
+  await refreshExternalEnergyModels(native);
+  updateOptimizerSettings({ model: PAIR });
+  const document = await openZmat(water, "water-external.zmat");
+  const view = await mount(document);
+  try {
+    const imported = current(document);
+    const workerJobs = jobs.length;
+    assert.equal(optimizeButton().title, "Pair model, L-BFGS, up to 250 steps");
+    await click(byLabel("Freeze O1"));
+    nativeCalls.length = 0;
+    await click(optimizeButton());
+    const external = () => statuses().find((text) => text.startsWith("Pair model")) ?? null;
+    for (let attempt = 0; attempt < 250 && !external(); attempt++) await settle();
+    assert.match(external(), /^Pair model, L-BFGS \d+\.\d{2} → -?\d+\.\d{2} kcal\/mol, \d+ steps · (Not )?[Cc]onverged/u);
+    assert.equal(alert(), null);
+    assert.equal(jobs.length, workerJobs, "no worker optimization");
+    assert.deepEqual([nativeCalls.filter((command) => command === "energy_model_open").length, nativeCalls.filter((command) => command === "energy_model_close").length, sessions.size], [1, 1, 0]);
+    const t1 = current(document);
+    assert.deepEqual(seen.revisions, [imported, t1], "one revision");
+    assert.equal(lines(t1)[2], lines(imported)[2], "the frozen atom keeps its source line");
+    // Lennard-Jones pushes each O–H to van der Waals contact; both stay one shared R.
+    const definition = seen.science.internalCoordinates;
+    assert.deepEqual([definition.rows[2].values[0], definition.rows[3].values[0]], ["R", "R"]);
+    assert.ok(definition.variables.find((variable) => variable.name === "R").value > 2.5);
+    await click(byLabel("Undo"));
+    assert.equal(current(document), imported);
+
+    // An evaluation in flight when Cancel is pressed: the session closes and nothing applies.
+    hold = true;
+    nativeCalls.length = 0;
+    await click(optimizeButton());
+    assert.equal(body().querySelector('.zmatrix-panel .workbench-status[role="status"]')?.textContent, "Optimizing");
+    await click(cancelButton());
+    await settle();
+    assert.deepEqual([nativeCalls.filter((command) => command === "energy_model_close").length, sessions.size], [1, 0]);
+    assert.equal(alert(), null);
+    assert.equal(current(document), imported);
+    assert.deepEqual(seen.revisions, [imported, t1], "the Redo branch is intact");
+    assert.equal(optimizeButton().disabled, false);
+  } finally {
+    hold = false;
+    updateOptimizerSettings({ model: null });
+    await view.unmount();
+  }
 }, TIMEOUT_MS);
