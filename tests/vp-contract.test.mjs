@@ -142,6 +142,7 @@ const contractScripts = {
   "test-scrub-number-field.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-scrub-number-field.mjs", import.meta.url))]),
   "test-scrub-number-math.mjs": () => import("./test-scrub-number-math.mjs"),
   "test-sidebar-pinned-sections.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-sidebar-pinned-sections.test.tsx", import.meta.url))]),
+  "test-sidebar-virtual-items.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-sidebar-virtual-items.test.tsx", import.meta.url))]),
   "test-sidebar-tree-render.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-sidebar-tree-render.mjs", import.meta.url))]),
   "test-sidebar-tree-collapse.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-sidebar-tree-collapse.test.tsx", import.meta.url))]),
   "test-docking-documents.mjs": () => import("./test-docking-documents.mjs"),

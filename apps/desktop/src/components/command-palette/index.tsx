@@ -5,7 +5,6 @@ import {
   CommandEmpty,
   CommandGroup,
   CommandInput,
-  CommandItem,
   CommandList,
   CommandShortcut,
 } from "@/components/ui/command";
@@ -16,6 +15,7 @@ import type { ShellActions, ShellViewState } from "../types";
 import { isRemoteStructureUrl } from "../../lib/remote-structure";
 import { buildShellCommands, filterShellCommands, type ShellCommand } from "../../lib/shell-commands";
 import { useCommandPaletteSearch, useSetCommandPaletteSearch } from "../../hooks/use-command-palette";
+import { useVirtualResults, PaletteResultItem, VirtualResults } from "./virtual-results";
 
 type CommandPaletteProps = {
   state: ShellViewState;
@@ -92,7 +92,7 @@ export function CommandPalette({
     return commands;
   }, [actions, projectItems, query, state]);
 
-  const visibleItems = useMemo(() => {
+  const visibleItems = useMemo<PaletteItem[]>(() => {
     const queryUrl = query.trim();
     const allItems: PaletteItem[] = isRemoteStructureUrl(queryUrl)
       ? [{
@@ -124,7 +124,11 @@ export function CommandPalette({
   }, [query, visibleItems]);
 
   const firstValue = visibleItems[0]?.id ?? "";
-  const [selectedValue, setSelectedValue] = useState(firstValue);
+  const [selection, setSelectedValue] = useState(firstValue);
+  const selectedValue = visibleItems.some(item => item.id === selection) ? selection : firstValue;
+  useEffect(() => {
+    if (selection !== selectedValue) setSelectedValue(selectedValue);
+  }, [selection, selectedValue]);
 
   useEffect(() => {
     setSelectedValue(firstValue);
@@ -136,6 +140,20 @@ export function CommandPalette({
     void Promise.resolve(item.run()).catch((error) => {
       onRunError(error, `${item.label} failed`);
     });
+  };
+  const virtual = useVirtualResults({ items: visibleItems, query, selectedValue, select: setSelectedValue, run: runItem, listRef });
+  const renderItem = (item: PaletteItem, index: number) => {
+    const Icon = item.icon ?? ArrowRight;
+    const content = <>
+      <Icon aria-hidden="true" />
+      <span className="min-w-0 flex-1 truncate">{item.label}</span>
+      <CommandShortcut className="flex min-w-0 items-center gap-2 tracking-normal">
+        {item.detail ? <span className="max-w-32 truncate">{item.detail}</span> : null}
+        {item.shortcut ? <Kbd className="h-auto py-0.5 leading-none text-current opacity-80">{item.shortcut}</Kbd> : null}
+      </CommandShortcut>
+    </>;
+    return <PaletteResultItem key={item.id} value={item.id} onSelect={() => runItem(item)} title={item.description}
+      virtual={virtual.enabled} id={virtual.itemId(index)} index={index} count={visibleItems.length}>{content}</PaletteResultItem>;
   };
 
   return (
@@ -153,7 +171,7 @@ export function CommandPalette({
         value={selectedValue}
         onValueChange={setSelectedValue}
         onKeyDown={(event) => {
-          if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+          if (!(event.metaKey || event.ctrlKey) || event.altKey) { virtual.onKeyDown(event); return; }
           const key = event.key.toLowerCase();
           if (!event.shiftKey && /^[1-9]$/.test(key)) {
             // Keep palette shortcuts from also switching workspace tabs.
@@ -166,7 +184,7 @@ export function CommandPalette({
           const commandId = key === "o" ? event.shiftKey ? "open-recent" : "open-structure"
             : !event.shiftKey && key === "," ? "open-settings"
             : !event.shiftKey && key === "p" ? "search-projects" : null;
-          if (!commandId) return;
+          if (!commandId) { virtual.onKeyDown(event); return; }
           event.preventDefault();
           event.stopPropagation();
           if (commandId === "search-projects") onQueryChange("");
@@ -177,36 +195,25 @@ export function CommandPalette({
         }}
       >
         <CommandInput
+          asChild
           value={query}
           variant="plain"
           onValueChange={onQueryChange}
           placeholder="Search structures or run a command"
           aria-label="Search commands and open structures"
-        />
+        ><input aria-activedescendant={visibleItems.length ? virtual.activeId : undefined} /></CommandInput>
         <CommandList ref={listRef}>
           {visibleItems.length === 0 ? (
             <CommandEmpty>No results found.</CommandEmpty>
+          ) : virtual.enabled ? (
+            <CommandGroup heading="Results" forceMount>
+              <VirtualResults count={visibleItems.length} rowHeight={virtual.rowHeight} indices={virtual.indices}
+                renderItem={index => renderItem(visibleItems[index], index)} />
+            </CommandGroup>
           ) : (
             visibleGroups.map((group) => (
               <CommandGroup key={group.heading} heading={group.heading}>
-                {group.items.map((item) => {
-                  const Icon = item.icon ?? ArrowRight;
-                  return (
-                  <CommandItem
-                    key={item.id}
-                    value={item.id}
-                    onSelect={() => runItem(item)}
-                    title={item.description}
-                  >
-                    <Icon aria-hidden="true" />
-                    <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                    <CommandShortcut className="flex min-w-0 items-center gap-2 tracking-normal">
-                      {item.detail ? <span className="max-w-32 truncate">{item.detail}</span> : null}
-                      {item.shortcut ? <Kbd className="h-auto py-0.5 leading-none text-current opacity-80">{item.shortcut}</Kbd> : null}
-                    </CommandShortcut>
-                  </CommandItem>
-                  );
-                })}
+                {group.items.map(item => renderItem(item, visibleItems.indexOf(item)))}
               </CommandGroup>
             ))
           )}

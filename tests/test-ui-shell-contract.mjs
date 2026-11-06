@@ -4099,7 +4099,7 @@ assert.match(commandPalette, /shouldFilter=\{false\}/);
 assert.match(commandPalette, /CommandInput/);
 assert.match(commandPalette, /CommandList/);
 assert.match(commandPalette, /CommandGroup/);
-assert.match(commandPalette, /CommandItem/);
+assert.match(commandPalette, /PaletteResultItem/);
 assert.match(commandPalette, /CommandEmpty/);
 assert.match(commandPalette, /shouldFilter=\{false\}/);
 assert.match(commandPalette, /value=\{selectedValue\}/);
