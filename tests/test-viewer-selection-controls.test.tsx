@@ -70,6 +70,7 @@ test("selection builders preserve exact queries, modifiers, actions, placement a
     expect(document.activeElement).toBe(menu().querySelector("input"));
     expect(menu().textContent).not.toContain("Hidden query");
     menu().getBoundingClientRect = () => new DOMRect(0, 0, 324, 400);
+    Object.defineProperties(menu(), { offsetWidth: { value: 324 }, offsetHeight: { value: 400 } });
     api.position();
     expect([menu().style.left, menu().style.top]).toEqual(["250px", "104px"]);
     await act(async () => button("Add").click());

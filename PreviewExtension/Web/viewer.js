@@ -7212,16 +7212,16 @@
   }
 
   function visibleRectTop(selector) {
-    const element = document.querySelector(selector);
-    if (!element || !isVisible(element)) return 0;
-    const rect = element.getBoundingClientRect();
-    return rect.height > 0 ? rect.top : 0;
+    return visibleRect(selector)?.top || 0;
   }
 
   function visibleRect(selector) {
     const element = document.querySelector(selector);
-    if (!element || !isVisible(element)) return null;
-    return element.getBoundingClientRect();
+    if (!element) return null;
+    const style = window.getComputedStyle(element);
+    if (style.display === 'none' || style.visibility === 'hidden') return null;
+    const rect = element.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0 ? rect : null;
   }
 
   function isVisible(element) {
@@ -8893,20 +8893,22 @@ SOFTWARE.
     scheduleSceneTreeRender();
   }
 
-  let sceneTreeMeasurementInFlight = false;
-  let sceneTreePendingMeasurement = null;
+  let sceneTreeMeasurementDrain = null;
+  const sceneTreePendingMeasurement = new Map();
   async function streamSceneTreeMeasurementParam(ref, field, value) {
-    sceneTreePendingMeasurement = { ref, field, value };
-    if (sceneTreeMeasurementInFlight) return;
-    sceneTreeMeasurementInFlight = true;
+    sceneTreePendingMeasurement.set(JSON.stringify([ref, field]), { ref, field, value });
+    if (sceneTreeMeasurementDrain) return;
+    let finishDrain;
+    sceneTreeMeasurementDrain = new Promise(resolve => { finishDrain = resolve; });
     try {
-      while (sceneTreePendingMeasurement) {
-        const next = sceneTreePendingMeasurement;
-        sceneTreePendingMeasurement = null;
+      while (sceneTreePendingMeasurement.size) {
+        const [key, next] = sceneTreePendingMeasurement.entries().next().value;
+        sceneTreePendingMeasurement.delete(key);
         await applySceneTreeMeasurementParam(next.ref, next.field, next.value);
       }
     } finally {
-      sceneTreeMeasurementInFlight = false;
+      sceneTreeMeasurementDrain = null;
+      finishDrain();
     }
   }
 
@@ -9110,40 +9112,44 @@ SOFTWARE.
     return updateSceneTreeRepresentation(ref, old => ({ ...old, colorTheme }));
   }
 
-  // The opacity slider fires on every pixel of the drag; each apply is a state
-  // commit, so newer moves are folded into the one in flight rather than queued
-  // behind it — the representation follows the thumb and never lags a backlog.
-  let sceneTreeAlphaInFlight = false;
-  let sceneTreePendingAlpha = null;
+  // Keep one pending value per target/control, not per pointer event. A second
+  // slider or representation must not erase the first one's final pending edit.
+  let sceneTreeAlphaDrain = null;
+  const sceneTreePendingAlpha = new Map();
   async function streamSceneTreeReprAlpha(ref, alpha) {
-    sceneTreePendingAlpha = { ref, alpha };
-    if (sceneTreeAlphaInFlight) return;
-    sceneTreeAlphaInFlight = true;
+    sceneTreePendingAlpha.set(ref, { ref, alpha });
+    if (sceneTreeAlphaDrain) return;
+    let finishDrain;
+    sceneTreeAlphaDrain = new Promise(resolve => { finishDrain = resolve; });
     try {
-      while (sceneTreePendingAlpha) {
-        const next = sceneTreePendingAlpha;
-        sceneTreePendingAlpha = null;
+      while (sceneTreePendingAlpha.size) {
+        const [key, next] = sceneTreePendingAlpha.entries().next().value;
+        sceneTreePendingAlpha.delete(key);
         await applySceneTreeReprAlpha(next.ref, next.alpha);
       }
     } finally {
-      sceneTreeAlphaInFlight = false;
+      sceneTreeAlphaDrain = null;
+      finishDrain();
     }
   }
 
-  let sceneTreeParamInFlight = false;
-  let sceneTreePendingParam = null;
-  async function streamSceneTreeReprParam(ref, name, value) {
-    sceneTreePendingParam = { ref, name, value };
-    if (sceneTreeParamInFlight) return;
-    sceneTreeParamInFlight = true;
+  let sceneTreeParamDrain = null;
+  const sceneTreePendingParam = new Map();
+  async function streamSceneTreeReprParam(ref, name, value, { kind = 'representation' } = {}) {
+    sceneTreePendingParam.set(JSON.stringify([kind, ref, name]), { ref, name, value, kind });
+    if (sceneTreeParamDrain) return;
+    let finishDrain;
+    sceneTreeParamDrain = new Promise(resolve => { finishDrain = resolve; });
     try {
-      while (sceneTreePendingParam) {
-        const next = sceneTreePendingParam;
-        sceneTreePendingParam = null;
-        await applySceneTreeReprParam(next.ref, next.name, next.value);
+      while (sceneTreePendingParam.size) {
+        const [key, next] = sceneTreePendingParam.entries().next().value;
+        sceneTreePendingParam.delete(key);
+        if (next.kind === 'symmetry') await updateSceneTreeAssemblySymmetry(next.ref, { scale: next.value });
+        else await applySceneTreeReprParam(next.ref, next.name, next.value);
       }
     } finally {
-      sceneTreeParamInFlight = false;
+      sceneTreeParamDrain = null;
+      finishDrain();
     }
   }
 
@@ -10267,7 +10273,9 @@ SOFTWARE.
     const rail = trigger?.closest('#buret-viewport-rail, #buret-selection-bar, .buret-seq-footer');
     if (!menu || !trigger) return;
     const anchor = trigger.getBoundingClientRect();
-    const rect = menu.getBoundingClientRect();
+    // The opening scale animation must not feed changing dimensions back into
+    // placement and schedule another layout pass through the style observers.
+    const rect = { width: menu.offsetWidth, height: menu.offsetHeight };
     // Keep the portalled menu attached to its rail button while the rail moves or
     // the host resizes the preview viewport.
     const bounds = rail.getBoundingClientRect();
@@ -11468,14 +11476,18 @@ SOFTWARE.
       // outside-click dismissal never sees these events and the menu stays open.
       document.addEventListener('input', event => {
         const control = event.target.closest('[data-scene-tree-symmetry-scale]');
-        if (!control) return;
+        const ref = control?.closest('[data-ref]')?.dataset.ref;
+        if (!control || !ref) return;
+        beginSceneTreeControlUndo(control, ref, 'symmetry scale');
         const readout = control.parentElement?.querySelector('.buret-tree-menu-slider-value');
         if (readout) readout.textContent = control.value;
+        streamSceneTreeReprParam(ref, 'scale', Number(control.value), { kind: 'symmetry' });
       });
       document.addEventListener('change', event => {
         const control = event.target.closest('[data-scene-tree-symmetry-scale]');
         const ref = control?.closest('[data-ref]')?.dataset.ref;
         if (!control || !ref) return;
+        if (commitSceneTreeControlUndo(control)) return;
         const node = sceneTreeNodeByRef(sceneTreeNodes(activeMolstarViewer()), ref);
         void runMolstarSceneEdit(`symmetry scale of ${node?.label || 'global symmetry'}`, () => (
           updateSceneTreeAssemblySymmetry(ref, { scale: Number(control.value) })
@@ -20932,7 +20944,7 @@ SOFTWARE.
       if (prepared.dockingSceneMode) {
         const poseCount = Number(prepared.poseCount || 0);
         const activePose = readTrajectoryControlIndex(activeConfig, prepared, poseCount || 1);
-        await applyDockingSceneVisibility(activeViewer, prepared, activePose, { focus: false });
+        await applyDockingSceneVisibility(activeViewer, prepared, activePose, { contextOpacity: opacity, focus: false });
       } else if (prepared.kind === 'docking' && prepared.sdfPoseOverlayAvailable === true) {
         const poseCount = Number(prepared.poseCount || 0);
         const activePose = readTrajectoryControlIndex(activeConfig, prepared, poseCount || 1);
@@ -26005,7 +26017,16 @@ SOFTWARE.
     }
   }
 
+  async function waitForSceneTreeControlUpdates() {
+    // A released slider can still have a final state commit pending. Complete
+    // it before capturing redo state or restoring history over a live write.
+    while (sceneTreeParamDrain || sceneTreeAlphaDrain || sceneTreeMeasurementDrain) {
+      await Promise.all([sceneTreeParamDrain, sceneTreeAlphaDrain, sceneTreeMeasurementDrain]);
+    }
+  }
+
   async function undoMolstarLastEdit() {
+    await waitForSceneTreeControlUpdates();
     const snapshot = molstarEditUndoStack.pop();
     if (!snapshot) {
       setStatus('[web] Nothing to undo.');
@@ -26034,6 +26055,7 @@ SOFTWARE.
   }
 
   async function redoMolstarLastEdit() {
+    await waitForSceneTreeControlUpdates();
     const snapshot = molstarEditRedoStack.pop();
     if (!snapshot) {
       setStatus('[web] Nothing to redo.');

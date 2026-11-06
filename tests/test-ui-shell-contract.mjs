@@ -2959,7 +2959,6 @@ assert.match(structureInfoPanel, /buret\.sdf\.contextStyle\.\$\{document\.id\}/)
 assert.match(structureInfoPanel, /SDF_CONTEXT_OPACITY_DEFAULT = 0\.4/);
 assert.match(structureInfoPanel, /function normalizeSdfContextOpacity/);
 assert.match(structureInfoPanel, /type: "set_sdf_context_opacity"/);
-assert.match(structureInfoPanel, /type: "set_sdf_context_opacity"[\s\S]*?notify: false[\s\S]*?opacity: normalized/);
 assert.match(structureInfoPanel, /<span>Opacity<\/span>/);
 assert.match(structureInfoPanel, /aria-label=\{copy\.opacityAriaLabel\}/);
 assert.doesNotMatch(structureInfoPanel, /opacityDisabled/);
@@ -6737,10 +6736,8 @@ assert.match(previewViewer, /if \(prepared\.kind === 'sdf-collection'\) \{\s*awa
 assert.match(previewViewer, /await applyXyzFrameOverlayVisibilityNow\(viewer, prepared, readTrajectoryControlIndex\(/);
 assert.match(previewViewer, /if \(prepared\.dockingSceneMode\) \{\s*await applyDockingSceneVisibilityNow\(viewer, prepared, prepared\.activePose\);/);
 assert.match(previewViewer, /if \(prepared\.sdfPoseOverlayAvailable === true\) \{\s*await applyDockingPoseCollectionVisibilityNow\(viewer, prepared, prepared\.activePose\);/);
-// The slider fires per pixel; the send is debounced while local state and the
-// stored preference update immediately.
-assert.match(structureInfoPanel, /const SDF_CONTEXT_OPACITY_SEND_DELAY_MS = 150/);
-assert.match(structureInfoPanel, /opacitySendTimer\.current = window\.setTimeout\(\(\) => \{[\s\S]*?type: "set_sdf_context_opacity",[\s\S]*?opacity: normalized,[\s\S]*?\}, SDF_CONTEXT_OPACITY_SEND_DELAY_MS\)/);
+// Background opacity streams during dragging and commits persistence on release.
+assert.match(structureInfoPanel, /onValueCommit=\{values => \{[\s\S]*?opacityUpdates\.commit\(\);/);
 // A ghost background surface over a whole collection would be re-sorted every
 // frame at full grid resolution; the coarser grid keeps it interactive.
 assert.match(previewViewer, /type: 'molecular-surface', typeParams: \{ \.\.\.typeParams, resolution: ghost \? 2 : 0\.5 \}/);

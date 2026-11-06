@@ -81,6 +81,33 @@ assert.equal(styled.at(-1).alpha, 0.2);
 await assert.rejects(queueContext.queueMolstarSceneRebuild(() => { throw Error('failed'); }), /failed/);
 await queueContext.queueMolstarSceneRebuild(() => {});
 
+// Inspector opacity messages must use the same bounded appearance queue for
+// docking scenes; a fast pointer must not enqueue one scene edit per pixel.
+const dockingApplied = [];
+let releaseDocking;
+const dockingContext = {
+  activeViewer: viewer, activeConfig: {}, activeMolstarPrepared: { dockingSceneMode: 'structureAll', poseCount: 3 },
+  molstarSceneRebuildChain: Promise.resolve(), pendingSceneAppearance: new Map(),
+  readTrajectoryControlIndex: () => 0, setSdfCollectionContextOpacity: value => value,
+  withMolstarDrawHold: (_viewer, run) => run(),
+  applyDockingSceneVisibilityNow: async (_viewer, _prepared, _pose, options) => {
+    dockingApplied.push(options.contextOpacity);
+    if (dockingApplied.length === 1) await new Promise(resolve => { releaseDocking = resolve; });
+  },
+};
+runInNewContext(['queueMolstarSceneRebuild', 'applyDockingSceneVisibility', 'setSdfCollectionContextOpacityFromAction']
+  .map(extract).join('\n'), dockingContext);
+const firstOpacity = dockingContext.setSdfCollectionContextOpacityFromAction({ opacity: 0.4, notify: false });
+await Promise.resolve();
+const pendingOpacity = Array.from({ length: 60 }, (_, index) =>
+  dockingContext.setSdfCollectionContextOpacityFromAction({ opacity: 0.41 + index * 0.01, notify: false }));
+assert.deepEqual(dockingApplied, [0.4]);
+assert.equal(dockingContext.pendingSceneAppearance.size, 1);
+releaseDocking();
+const opacityResults = await Promise.all([firstOpacity, ...pendingOpacity]);
+assert.ok(opacityResults.every(result => result.ok));
+assert.deepEqual(dockingApplied, [0.4, 1]);
+
 // The representation transforms themselves change type, color and alpha in
 // bounded commits, preserving refs and resetting defaults across style changes.
 const cache = new WeakMap();

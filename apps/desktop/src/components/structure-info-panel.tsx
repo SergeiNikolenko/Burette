@@ -137,7 +137,6 @@ const SMALL_MOLECULE_CONTEXT_STYLE_OPTIONS = [
   { value: "match", label: "Match" },
 ] as const satisfies readonly SdfContextStyleOption[];
 const SDF_CONTEXT_OPACITY_DEFAULT = 0.4;
-const SDF_CONTEXT_OPACITY_SEND_DELAY_MS = 150;
 const SDF_CONTEXT_OPACITY_MIN = 0.04;
 const SDF_CONTEXT_OPACITY_MAX = 1;
 const SDF_CONTEXT_STYLE_DEFAULT: SdfContextStyle = "match";
@@ -1948,27 +1947,54 @@ function SdfContextStyleCard({
       style,
     });
   };
-  // Dragging the slider fires input events for every pixel, and each viewer
-  // action rebuilds the whole background layer - so the send (not the local
-  // state) is debounced to the last value of the gesture.
-  const opacitySendTimer = useRef<number | null>(null);
-  useEffect(() => () => {
-    if (opacitySendTimer.current !== null) window.clearTimeout(opacitySendTimer.current);
-  }, [document.id]);
+  // Send the latest value each frame; the viewer coalesces representation work.
+  // Keep the pending gesture scoped to its document when the inspector changes.
+  const displayedOpacity = useRef(opacity);
+  displayedOpacity.current = opacity;
+  const opacityUpdates = useMemo(() => {
+    let frame: number | null = null;
+    let pending: number | null = null;
+    let changed: number | null = null;
+    let applied: number | null = null;
+    const flush = () => {
+      frame = null;
+      if (pending === null) return;
+      const opacity = pending;
+      pending = null;
+      applied = opacity;
+      actions.runStructureViewerAction(document, {
+        type: "set_sdf_context_opacity",
+        label: `All background opacity: ${Math.round(opacity * 100)}%`,
+        notify: false,
+        opacity,
+      });
+    };
+    const commit = () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      flush();
+      if (changed !== null) writeSdfContextOpacityPreference(document, changed);
+      changed = null;
+    };
+    return {
+      update(opacity: number) {
+        if (pending === null && opacity === applied && opacity === displayedOpacity.current) return;
+        pending = changed = opacity;
+        if (frame === null) frame = window.requestAnimationFrame(flush);
+      },
+      commit,
+      dispose() {
+        // Closing a tab can remove its iframe before this effect cleans up.
+        if (!activeViewerIframeForDocument(document.id)) pending = null;
+        commit();
+      },
+    };
+  }, [document, actions.runStructureViewerAction]);
+  useEffect(() => () => opacityUpdates.dispose(), [opacityUpdates]);
   const applyOpacity = (nextOpacity: number) => {
     const normalized = normalizeSdfContextOpacity(nextOpacity);
     setOpacity(normalized);
-    writeSdfContextOpacityPreference(document, normalized);
-    if (opacitySendTimer.current !== null) window.clearTimeout(opacitySendTimer.current);
-    opacitySendTimer.current = window.setTimeout(() => {
-      opacitySendTimer.current = null;
-      actions.runStructureViewerAction(document, {
-        type: "set_sdf_context_opacity",
-        label: `All background opacity: ${Math.round(normalized * 100)}%`,
-        notify: false,
-        opacity: normalized,
-      });
-    }, SDF_CONTEXT_OPACITY_SEND_DELAY_MS);
+    opacityUpdates.update(normalized);
+    displayedOpacity.current = normalized;
   };
   const applyColor = (nextColor: SdfContextColor) => {
     const normalized = normalizeSdfContextColor(nextColor);
@@ -2037,6 +2063,10 @@ function SdfContextStyleCard({
           value={[opacity]}
           aria-label={copy.opacityAriaLabel}
           onValueChange={values => { if (values[0] !== undefined) applyOpacity(values[0]); }}
+          onValueCommit={values => {
+            if (values[0] !== undefined) applyOpacity(values[0]);
+            opacityUpdates.commit();
+          }}
         />
         <strong>{Math.round(opacity * 100)}%</strong>
       </div>
