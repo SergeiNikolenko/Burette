@@ -22,6 +22,7 @@ import { CoordinateEditor } from "./coordinate-editor";
 import { GraphMetadataFields } from "./graph-metadata-fields";
 import { ConstraintResiduals, OpenStepsButton, OptimizeButton, OptimizingStatus, useEnergyCalculation } from "./optimize-button";
 import { useOptimizationCommandHandler, type OptimizationCommand } from "../../lib/workbench/optimization-commands";
+import { useAutoOptimize } from "./auto-optimize";
 import { optimizationRun, optimizerSettings } from "../../lib/workbench/optimizer-settings";
 import { optimizationUnavailable } from "../../lib/molecular-workbench/optimization";
 import { ConstraintEditor } from "./structure-edit/constraint-editor";
@@ -123,6 +124,12 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
   // Optimize Geometry, Calculate Energy and the other Calculate commands from menus and the palette.
   const command = useRef<(command: OptimizationCommand) => void>(() => {});
   useOptimizationCommandHandler(document.id, Boolean(editor), (name) => command.current(name));
+  const auto = useAutoOptimize();
+  // The snapshot Auto Optimize started from; any other change to the draft ends the session.
+  const autoBase = useRef<GraphSnapshot | null>(null);
+  useEffect(() => {
+    if (autoBase.current && autoBase.current !== editor?.current) { autoBase.current = null; auto.stop(); }
+  }, [editor?.current]);
 
   // A selection made in the 3D view replaces the panel's selection; clearing it in
   // the view clears it here too. Atoms picked in the panel stay picked.
@@ -187,11 +194,33 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
     if (name === "configure") { setConfiguring(true); return; }
     if (name === "freeze" || name === "unfreeze") { freeze(name === "freeze"); return; }
     if (name === "calculate-energy") { void energy.calculate(structure); return; }
+    if (name === "auto-optimize") { toggleAutoOptimize(); return; }
     if (name !== "optimize") return;
     const blocked = busy ? "Wait for the current edit to finish." : constraintError ?? optimizationUnavailable(structure.atoms.length, constraints.length);
     if (blocked) { setInputError(blocked); return; }
     const run = optimizationRun(optimizerSettings(), structure.atoms.map((atom) => atom.element), constraints.length > 0);
     void optimize({ method: run.method, forceField: run.model, maxIterations: run.maxIterations });
+  };
+  auto.handlers.current = {
+    frame: () => {},
+    finish: (relaxed) => {
+      const base = autoBase.current;
+      autoBase.current = null;
+      if (base !== editor.current) return;
+      void draft.apply({ kind: "positions", coordinates: relaxed.map((atom) => [atom.x, atom.y, atom.z]), from: base }).then((result) => {
+        if (result) { setSelection((current) => ({ atoms: selectedAtoms(current, structure), from: current.from, structure: result })); keepConstraints(result); }
+      });
+    },
+    cancel: () => { autoBase.current = null; },
+  };
+  // Avogadro's Auto Optimize is a toggle: the same command stops it and keeps the result.
+  const toggleAutoOptimize = () => {
+    if (auto.running) { auto.stop(); return; }
+    const blocked = busy ? "Wait for the current edit to finish." : constraintError ?? optimizationUnavailable(structure.atoms.length, constraints.length);
+    if (blocked) { setInputError(blocked); return; }
+    setInputError(null);
+    autoBase.current = editor.current;
+    auto.start(structure, constraints);
   };
   // Adding or removing hydrogens (also when generating 3D coordinates) renumbers atoms, so the selection does not carry over.
   const renumbering = async (operation: { kind: "add-hydrogens" | "remove-hydrogens" | "prepare-3d" } | { kind: "protonate"; pH: number }) => {
@@ -256,7 +285,7 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
 
   const busy = draft.busy;
   const truncated = viewerSelection?.truncated && selection.from === "viewer";
-  const error = inputError ?? draft.error ?? session?.diagnostic ?? null;
+  const error = inputError ?? auto.error ?? draft.error ?? session?.diagnostic ?? null;
   return (
     <div className="dock-content workbench-panel structure-edit-panel" onKeyDown={onPanelKeyDown}>
       <div className="workbench-toolbar">
@@ -275,7 +304,7 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
         </form>
         <OptimizeButton atomCount={structure.atoms.length} elements={structure.atoms.map((atom) => atom.element)} constraintCount={constraints.length} unavailableReason={constraintError} size="xs" variant="secondary" disabled={busy}
           configureOpen={configuring} onConfigureOpenChange={setConfiguring}
-          onOptimize={(method, forceField, maxIterations) => void optimize({ method, forceField, maxIterations })} />
+          onOptimize={(method, forceField, maxIterations) => void optimize({ method, forceField, maxIterations })} onAutoOptimize={toggleAutoOptimize} />
         <DropdownMenu>
           <ShortcutTooltip label="More actions">
             <DropdownMenuTrigger asChild>
@@ -291,6 +320,7 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
               ? <DropdownMenuItem onSelect={() => void renumbering({ kind: "prepare-3d" })}>Generate 3D coordinates</DropdownMenuItem> : null}
           </DropdownMenuContent>
         </DropdownMenu>
+        {auto.status}
         {busy ? (
           <span className="workbench-status">
             {draft.progress ? <OptimizingStatus progress={draft.progress} /> : <span role="status"><Spinner aria-hidden className="size-3" /><span className="sr-only">Applying…</span></span>}

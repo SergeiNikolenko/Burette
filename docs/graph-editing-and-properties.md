@@ -65,6 +65,15 @@ gradient component (default 10⁻³ kcal/(mol·Å)). In Geometry the 3D view fol
 each reported step; Cancel restores the start, and the finished run is one
 Undo step. The xTB job in the Compute menu is **Optimize with xTB**.
 
+**Auto Optimize** (Structure menu, palette, Optimize menu) relaxes the
+structure continuously, as Avogadro's tool: a worker keeps one minimizer
+(Hybrid FIRE, then L-BFGS) and runs it in chunks sized to about 33 ms of work,
+the 3D view follows every chunk and the toolbar shows the model and ΔE. Atoms
+dragged in the 3D view hold the positions they are given while the rest
+follows; each move restarts the minimizer from the new geometry. The same
+command or **Stop** ends the session and keeps the relaxed geometry as one Undo
+step; any other edit ends it without a change.
+
 In the Edit panel of an SDF/MOL structure, **Freeze** keeps the selected atoms
 in place and **Hold distance/angle/dihedral** restrains two, three or four
 selected atoms to a target, which starts at the current value and can be
