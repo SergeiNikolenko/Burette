@@ -21,6 +21,7 @@ const coordinator = source("apps/desktop/src-tauri/src/compute/coordinator.rs");
 const jobLifecycle = source("apps/desktop/src-tauri/src/compute/job_lifecycle.rs");
 const representativeExport = source("apps/desktop/src-tauri/src/compute/representative_export.rs");
 const artifactReader = source("apps/desktop/src-tauri/src/compute/artifact_reader.rs");
+const platformFs = source("apps/desktop/src-tauri/src/compute/platform_fs.rs");
 const chemicalSpace = source("apps/desktop/src-tauri/src/compute/chemical_space.rs");
 const chemicalSpacePanel = source("apps/desktop/src/components/chemical-space-panel.tsx");
 const chemicalSpace3d = source("apps/desktop/src/components/chemical-space-3d.tsx");
@@ -505,8 +506,9 @@ assert.match(representativeExport, /representatives\.csv/);
 assert.match(representativeExport, /representatives\.sdf/);
 assert.match(representativeExport, /representatives\.smi/);
 assert.match(representativeExport, /provenance\.json/);
-assert.match(representativeExport, /renameat_with\(/);
-assert.match(representativeExport, /RenameFlags::NOREPLACE/);
+assert.match(representativeExport, /platform_fs::rename_noreplace_at\(/);
+assert.match(platformFs, /renameat_with\(/);
+assert.match(platformFs, /RenameFlags::NOREPLACE/);
 assert.match(representativeExport, /table_only_record_count/);
 
 // Chemical Space must not submit compute while the grid is still indexing: the

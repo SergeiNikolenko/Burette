@@ -87,7 +87,9 @@ async function prepareLocked(ready) {
     if (digest(bytes) !== molstarSource.sha256) throw new Error('Mol* source archive integrity mismatch.');
     writeFileSync(archive, bytes);
   }
-  const result = spawnSync('tar', ['-xzf', archive, '--strip-components=1', '-C', molstarSourceRoot], { stdio: 'inherit' });
+  // Git Bash puts GNU tar first on Windows, which reads `D:\...` as a remote host.
+  const tar = process.platform === 'win32' ? resolve(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
+  const result = spawnSync(tar, ['-xzf', archive, '--strip-components=1', '-C', molstarSourceRoot], { stdio: 'inherit' });
   if (result.status !== 0) throw new Error('Could not unpack the pinned Mol* source.');
   const version = JSON.parse(readFileSync(resolve(molstarSourceRoot, 'version.json'), 'utf8')).version;
   if (version !== molstarSource.version) throw new Error('Mol* source version mismatch.');
@@ -170,7 +172,10 @@ function linkSourcePackages() {
     if (current && !current.isSymbolicLink()) throw new Error(`Refusing to replace a non-managed Mol* directory: ${path}`);
     if (current && readlinkSync(path) === target) return;
     const temporary = `${path}.burette-${process.pid}`;
-    symlinkSync(target, temporary, 'dir');
+    // Directory symlinks need Developer Mode on Windows; junctions do not, but
+    // a rename cannot replace one.
+    symlinkSync(target, temporary, process.platform === 'win32' ? 'junction' : 'dir');
+    if (current && process.platform === 'win32') rmdirSync(path);
     renameSync(temporary, path);
   };
   const visit = path => {

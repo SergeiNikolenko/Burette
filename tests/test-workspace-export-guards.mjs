@@ -8,9 +8,10 @@ const js = ts.transpileModule(fragment, { compilerOptions: { target: ts.ScriptTa
 const state = { documents: [{ id: 'edited', path: '/edited.sdf' }], dirtyGridDocuments: new Set(['edited']) };
 const copied = [];
 let dialogs = 0;
-const items = new Function('state', 'open', 'invoke', 'menuItem', 'isTauriRuntime', `${js}\nreturn items;`)(
+const items = new Function('state', 'open', 'invoke', 'menuItem', 'isTauriRuntime', 'basename', 'moveToTrashMenuLabel', `${js}\nreturn items;`)(
   state, async () => { dialogs++; return '/export'; }, async (_, payload) => copied.push(payload.request),
   (id, text, action) => ({ kind: 'item', id, text, action }), () => true,
+  (path) => path.split('/').pop(), () => 'Move to trash',
 );
 const files = ['/edited.sdf', '/other.sdf'];
 assert.equal(items(files)[0].disabled, true);
