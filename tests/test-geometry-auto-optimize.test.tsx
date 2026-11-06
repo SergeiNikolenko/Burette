@@ -63,7 +63,8 @@ test("Auto Optimize relaxes the Geometry draft until Stop, which keeps the resul
     window.localStorage.setItem("burette.workbench.force-field", "LJ");
     await act(async () => requestOptimizationCommand(actions, doc, "geometry", "auto-optimize"));
     await until(() => /ΔE -/u.test(status()), "a relaxed frame");
-    assert.match(status(), /^Auto Optimize, Lennard-Jones, ΔE -\d+\.\d\d kcal\/mol$/u);
+    assert.match(status(), /^ΔE -\d+\.\d\d kcal\/mol$/u);
+    assert.equal(host.querySelector('[role="status"].workbench-status').title, "Auto Optimize, Lennard-Jones");
     assert.equal(writes.length, 0, "frames only preview; the draft is unchanged while Auto Optimize runs");
     // Let the cluster settle, then stop.
     await act(async () => new Promise((resolve) => setTimeout(resolve, 300)));

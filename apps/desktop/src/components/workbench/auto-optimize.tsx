@@ -55,8 +55,8 @@ export function useAutoOptimize() {
   const frame = running?.frame;
   const status = running ? (
     <>
-      <span role="status" className="workbench-status"><Spinner aria-hidden className="size-3" />
-        Auto Optimize, {energyModel(running.model).name}{frame ? `, ΔE ${(frame.energy - frame.initialEnergy).toFixed(2)} kcal/mol` : ""}
+      <span role="status" className="workbench-status whitespace-nowrap" title={`Auto Optimize, ${energyModel(running.model).name}`}><Spinner aria-hidden className="size-3" />
+        {frame ? `ΔE ${(frame.energy - frame.initialEnergy).toFixed(2)} kcal/mol` : "Auto Optimize"}
       </span>
       <Button type="button" variant="ghost" size="xs" onClick={stop}>Stop</Button>
     </>
