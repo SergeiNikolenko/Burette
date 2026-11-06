@@ -102,16 +102,10 @@ pub(crate) fn valid_identifier(identifier: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || b"_.-".contains(&byte))
 }
 
-/// Runs one command and returns its standard output.
-pub(crate) fn run(
-    root: &Path,
-    name: &str,
-    script: &str,
-    identifier: &str,
-    input: &str,
-    cancel: &AtomicBool,
-) -> Result<String, String> {
-    if !valid_script(script) || !valid_identifier(identifier) || input.len() > MAX_INPUT_BYTES {
+/// The console script of a prepared package, started from the package folder
+/// with its environment's `bin` first on `PATH` and no inherited Python paths.
+pub(crate) fn package_command(root: &Path, name: &str, script: &str) -> Result<Command, String> {
+    if !valid_script(script) {
         return Err("Invalid plugin command".into());
     }
     let receipt = read_receipt(root, name).ok_or("This plugin is not installed")?;
@@ -130,7 +124,6 @@ pub(crate) fn run(
     }
     let mut command = Command::new(&executable);
     command
-        .args([identifier, "--lang", "en"])
         .current_dir(&dir)
         .env(
             "PATH",
@@ -138,6 +131,23 @@ pub(crate) fn run(
         )
         .env_remove("PYTHONPATH")
         .env_remove("PYTHONHOME");
+    Ok(command)
+}
+
+/// Runs one command and returns its standard output.
+pub(crate) fn run(
+    root: &Path,
+    name: &str,
+    script: &str,
+    identifier: &str,
+    input: &str,
+    cancel: &AtomicBool,
+) -> Result<String, String> {
+    if !valid_script(script) || !valid_identifier(identifier) || input.len() > MAX_INPUT_BYTES {
+        return Err("Invalid plugin command".into());
+    }
+    let mut command = package_command(root, name, script)?;
+    command.args([identifier, "--lang", "en"]);
     let output = run_cancellable(
         &mut command,
         input.as_bytes(),

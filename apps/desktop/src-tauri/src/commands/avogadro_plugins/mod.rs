@@ -20,7 +20,8 @@ use tauri::{Manager, Runtime};
 use crate::commands::database::http::{fetch, fetch_cancellable, DatabaseRequest, FETCH_CANCELLED};
 pub(crate) use index::PluginLink;
 use index::{entry, plugin_link, IndexEntry, SAVED_INDEX};
-pub(crate) use store::InstalledPlugin;
+pub(crate) use runner::{package_command, valid_identifier, valid_script};
+pub(crate) use store::{installed, InstalledPlugin};
 
 const INDEX_URL: &str = "https://avogadro.cc/plugins2.json";
 const MAX_INDEX_BYTES: u64 = 1024 * 1024;
@@ -36,7 +37,7 @@ fn live_index() -> Option<String> {
     LIVE_INDEX.lock().ok().and_then(|live| live.clone())
 }
 
-fn plugins_root<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String> {
+pub(crate) fn plugins_root<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String> {
     Ok(app
         .path()
         .app_data_dir()
