@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { runChemistryTask, type ChemistryResults } from "../../lib/molecular-workbench/compute-client";
-import { energyModel, resolveEnergyModel, type EnergyModelChoice } from "../../lib/molecular-workbench/energy-models";
+import type { EnergyModelChoice } from "../../lib/molecular-workbench/energy-models";
+import { energyModelName } from "../../lib/molecular-workbench/external-energy-models";
+import { optimizeWithEnergyModel } from "../../lib/molecular-workbench/optimize-with-model";
 import { optimizerTolerances } from "../../lib/workbench/optimizer-settings";
 import { CONFORMER_LIMITS, flatDepiction, type OptimizationMethod } from "../../lib/molecular-workbench/optimization";
 import { HARTREE_KCAL_MOL, conformerSdfRecord, fileStem, forcesCsv, sdfRecord } from "../../lib/workbench/formats";
@@ -84,11 +86,11 @@ export function PropertiesDialogBody({ document, actions, onDone }: { document: 
     const result = await job.run(OPERATION_LABELS[operation], async (signal) => {
       if (operation === "optimize" || operation === "prepare-3d") {
         const optimized = operation === "optimize"
-          ? await runChemistryTask({ action: "optimize", molecule: structure, options: { method, forceField: resolveEnergyModel(choice, structure), maxIterations, ...optimizerTolerances() } }, { signal, timeoutMs: 300_000 })
+          ? await optimizeWithEnergyModel(structure, choice, { method, maxIterations, ...optimizerTolerances() }, { signal })
           : await runChemistryTask({ action: "prepare-3d", molecule: structure, options: {} }, { signal, timeoutMs: 300_000 });
         const steps = optimized.iterations === null ? "" : `, ${optimized.iterations} step${optimized.iterations === 1 ? "" : "s"}`;
-        return { suffix: operation === "optimize" ? optimized.forceField.toLowerCase() : OPERATION_SUFFIX[operation], molfile: optimized.molecule.molfile, frames: optimized.frameSampling === "steps" ? optimized.frames : undefined, title: operation === "optimize" ? `${energyModel(optimized.forceField).name} optimization` : "3D coordinates",
-          note: `${energyModel(optimized.forceField).name}, ${optimizerLabel(optimized.method)}: ${optimized.initialEnergy.toFixed(2)} → ${optimized.energy.toFixed(2)} kcal/mol${steps}${optimized.converged ? "" : ", not converged"}` };
+        return { suffix: operation === "optimize" ? optimized.forceField.toLowerCase().replace(/[^a-z0-9]+/gu, "-") : OPERATION_SUFFIX[operation], molfile: optimized.molecule.molfile, frames: optimized.frameSampling === "steps" ? optimized.frames : undefined, title: operation === "optimize" ? `${energyModelName(optimized.forceField)} optimization` : "3D coordinates",
+          note: `${energyModelName(optimized.forceField)}, ${optimizerLabel(optimized.method)}: ${optimized.initialEnergy.toFixed(2)} → ${optimized.energy.toFixed(2)} kcal/mol${steps}${optimized.converged ? "" : ", not converged"}` };
       }
       const changed = await runChemistryTask({ action: operation, molecule: structure }, { signal });
       return { suffix: OPERATION_SUFFIX[operation], molfile: changed.molfile, frames: undefined, title: null, note: null };

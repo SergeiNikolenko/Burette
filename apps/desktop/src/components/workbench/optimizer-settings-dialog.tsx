@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { ENERGY_MODELS, energyModelUnavailable, type EnergyModelChoice } from "../../lib/molecular-workbench/energy-models";
+import type { EnergyModelChoice } from "../../lib/molecular-workbench/energy-models";
+import { useEnergyModelOptions } from "../../lib/molecular-workbench/external-energy-models";
 import { OPTIMIZATION_LIMITS, OPTIMIZATION_METHODS, type OptimizationMethod } from "../../lib/molecular-workbench/optimization";
 import { ENERGY_EXPONENTS, GRADIENT_EXPONENTS, updateOptimizerSettings, useOptimizerSettings, type OptimizerSettings } from "../../lib/workbench/optimizer-settings";
 import { Button } from "../ui/button";
@@ -34,17 +35,14 @@ function SettingsForm({ elements, onDone }: { elements: readonly string[]; onDon
   const saved = useOptimizerSettings();
   const [draft, setDraft] = useState<OptimizerSettings>(saved);
   const set = (patch: Partial<OptimizerSettings>) => setDraft((current) => ({ ...current, ...patch }));
-  const atoms = elements.map((element) => ({ element }));
+  const models = useEnergyModelOptions(elements);
   return <>
     <DialogHeader><DialogTitle>Configure Optimization</DialogTitle></DialogHeader>
     <div className="workbench-form">
       <label className="workbench-field"><span>Force field</span>
         <NativeSelect aria-label="Force field" size="sm" value={draft.model} onChange={(event) => set({ model: event.target.value as EnergyModelChoice })}>
           <NativeSelectOption value="auto">Automatic</NativeSelectOption>
-          {ENERGY_MODELS.map((model) => {
-            const reason = energyModelUnavailable(model.id, atoms);
-            return <NativeSelectOption key={model.id} value={model.id} disabled={Boolean(reason)} title={reason ?? undefined}>{model.name}</NativeSelectOption>;
-          })}
+          {models.map((model) => <NativeSelectOption key={model.id} value={model.id} disabled={Boolean(model.unavailable)} title={model.unavailable ?? undefined}>{model.name}</NativeSelectOption>)}
         </NativeSelect>
       </label>
       <label className="workbench-field"><span>Minimizer</span>

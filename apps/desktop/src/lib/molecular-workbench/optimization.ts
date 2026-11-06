@@ -1,5 +1,5 @@
 import type { MolecularStructure } from './molecular-graph';
-import type { MolecularAtom, MolecularForceField, MinimizerMethod, Vec3 } from './types';
+import type { EnergyModelId, MolecularAtom, MolecularForceField, MinimizerMethod, Vec3 } from './types';
 import { MINIMIZER_METHODS, createAsyncMinimizer, minimize, type MinimizerOptions, type MinimizerResult, type MinimizerStop } from './minimizer';
 import { measureGeometry } from '../../../../../scripts/molecular-geometry.js';
 
@@ -27,7 +27,7 @@ export type OptimizationStop = MinimizerStop | 'no-variables';
 export type OptimizeOptions = { method?: OptimizationMethod; forceField?: MolecularForceField; constraints?: GeometryConstraint[]; maxIterations?: number; gradientTolerance?: number; energyTolerance?: number };
 export type OptimizationResult = {
   molecule: MolecularStructure; initialEnergy: number; energy: number; unit: 'kcal/mol';
-  forceField: MolecularForceField; method: OptimizationMethod;
+  forceField: EnergyModelId; method: OptimizationMethod;
   /** Accepted steps. */
   iterations: number; converged: boolean; stopReason: OptimizationStop;
   /** How the physical force-field gradient was obtained; restraint gradients are analytic. */
@@ -67,7 +67,7 @@ function sine(atoms: MolecularAtom[], [a, b, c]: number[]) {
 
 /** The documented default when no method is named: BFGS for an unconstrained MMFF
  * run, otherwise L-BFGS. Results always report the method used. */
-export function defaultOptimizationMethod(forceField: MolecularForceField, constrained: boolean): OptimizationMethod {
+export function defaultOptimizationMethod(forceField: EnergyModelId, constrained: boolean): OptimizationMethod {
   return forceField.startsWith('MMFF') && !constrained ? 'bfgs' : 'lbfgs';
 }
 
@@ -256,7 +256,8 @@ export async function optimizeCartesianAsync(molecule: Pick<MolecularStructure, 
   const maxIterations = checkCartesian(molecule.atoms.length, options), problem = cartesianProblem(molecule, options.constraints);
   const evaluate = async (atoms: MolecularAtom[]) => {
     signal?.throwIfAborted();
-    const value = await evaluator.evaluate(atoms);
+    // An abort may fail the evaluation in flight; report it as the abort.
+    const value = await evaluator.evaluate(atoms).catch(error => { signal?.throwIfAborted(); throw error; });
     signal?.throwIfAborted();
     return value;
   };

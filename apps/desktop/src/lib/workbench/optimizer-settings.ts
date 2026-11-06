@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { ENERGY_MODELS, recommendedEnergyModel, type EnergyModelChoice } from "../molecular-workbench/energy-models";
+import { ENERGY_MODELS, isExternalEnergyModelId, recommendedEnergyModel, type EnergyModelChoice } from "../molecular-workbench/energy-models";
 import { OPTIMIZATION_LIMITS, OPTIMIZATION_METHODS, defaultOptimizationMethod, type OptimizationMethod } from "../molecular-workbench/optimization";
 
 /** The Optimize menu, Configure dialog and Optimize Geometry command share these choices.
@@ -17,6 +17,8 @@ const KEYS = {
 const MODELS: readonly string[] = ["auto", ...ENERGY_MODELS.map((model) => model.id)];
 export const ENERGY_EXPONENTS = { min: -10, max: -1, default: -5 } as const;
 export const GRADIENT_EXPONENTS = { min: -8, max: 0, default: -3 } as const;
+/** Auto Optimize relaxes each frame in the browser worker; an external model answers one process call at a time. */
+export const AUTO_OPTIMIZE_EXTERNAL = "Auto Optimize runs MMFF94, MMFF94s, UFF or Lennard-Jones; choose one of them for continuous relaxation.";
 
 function read(key: string) {
   try { return localStorage.getItem(key); } catch { return null; }
@@ -32,7 +34,8 @@ function snapshot(): OptimizerSettings {
   if (cache?.raw === raw) return cache.settings;
   const [model, method, steps, energy, gradient] = values;
   const settings: OptimizerSettings = {
-    model: model !== null && MODELS.includes(model) ? model as EnergyModelChoice : "auto",
+    // An external model counts once the desktop shell lists it; consumers fall back to Automatic until then.
+    model: model !== null && (MODELS.includes(model) || isExternalEnergyModelId(model)) ? model as EnergyModelChoice : "auto",
     method: OPTIMIZATION_METHODS.includes(method as OptimizationMethod) ? method as OptimizationMethod : null,
     steps: integer(steps, 1, OPTIMIZATION_LIMITS.iterations) ?? 250,
     energyExponent: integer(energy, ENERGY_EXPONENTS.min, ENERGY_EXPONENTS.max) ?? ENERGY_EXPONENTS.default,

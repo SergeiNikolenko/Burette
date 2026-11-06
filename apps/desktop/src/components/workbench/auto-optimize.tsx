@@ -4,11 +4,11 @@ import type { GeometryBinding } from "../../lib/geometry-binding";
 import type { ViewerDocument } from "../../types";
 import type { ShellActions } from "../types";
 import { startAutoOptimize, type AutoOptimizeFrame, type AutoOptimizeSession } from "../../lib/molecular-workbench/auto-optimize-client";
-import { energyModel, resolveEnergyModel } from "../../lib/molecular-workbench/energy-models";
+import { energyModel, isExternalEnergyModelId, resolveEnergyModel } from "../../lib/molecular-workbench/energy-models";
 import type { MolecularStructure } from "../../lib/molecular-workbench/molecular-graph";
 import type { GeometryConstraint } from "../../lib/molecular-workbench/optimization";
 import type { MolecularAtom, MolecularForceField, Vec3 } from "../../lib/molecular-workbench/types";
-import { optimizerSettings, optimizerTolerances } from "../../lib/workbench/optimizer-settings";
+import { AUTO_OPTIMIZE_EXTERNAL, optimizerSettings, optimizerTolerances } from "../../lib/workbench/optimizer-settings";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 
@@ -40,8 +40,11 @@ export function useAutoOptimize(document: ViewerDocument, binding: GeometryBindi
     end();
     setError(null);
     let model: MolecularForceField;
-    try { model = resolveEnergyModel(optimizerSettings().model, molecule); }
-    catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); return; }
+    try {
+      const resolved = resolveEnergyModel(optimizerSettings().model, molecule);
+      if (isExternalEnergyModelId(resolved)) throw new Error(AUTO_OPTIMIZE_EXTERNAL);
+      model = resolved;
+    } catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); return; }
     latest.current = null; moved.current = false;
     setRunning({ model, frame: null });
     session.current = startAutoOptimize({ type: "start", molecule, forceField: model, method: "hybrid", constraints, gradientTolerance: optimizerTolerances().gradientTolerance },

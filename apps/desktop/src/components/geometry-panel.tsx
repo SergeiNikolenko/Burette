@@ -8,7 +8,9 @@ import { measureGeometry } from "../../../../scripts/molecular-geometry.js";
 import { readCoordinateInterchange, writeCoordinateInterchange } from "../../../../scripts/coordinate-interchange.mjs";
 import { runChemistryTask } from "../lib/molecular-workbench/compute-client";
 import type { GeometryConstraint } from "../lib/molecular-workbench/chemistry";
-import { energyModel, resolveEnergyModel, type EnergyModelChoice } from "../lib/molecular-workbench/energy-models";
+import type { EnergyModelChoice } from "../lib/molecular-workbench/energy-models";
+import { energyModelName } from "../lib/molecular-workbench/external-energy-models";
+import { optimizeWithEnergyModel } from "../lib/molecular-workbench/optimize-with-model";
 import { optimizationRun, optimizerSettings, optimizerTolerances } from "../lib/workbench/optimizer-settings";
 import { useOptimizationCommandHandler, type OptimizationCommand } from "../lib/workbench/optimization-commands";
 import { parseXyz } from "../lib/molecular-workbench/xyz";
@@ -380,9 +382,8 @@ function CartesianGeometryPanel({ document, actions, convert }: {
     try {
       const text = geometryText(started.frame, started.rows);
       const molecule = await runChemistryTask({ action: "parse", source: text, format: "xyz" }, { signal: controller.signal });
-      const forceField = resolveEnergyModel(choice, molecule);
-      const result = await runChemistryTask({ action: "optimize", molecule, options: { constraints, forceField, method, maxIterations, ...optimizerTolerances() } }, {
-        signal: controller.signal, timeoutMs: 300_000, onProgress: (step) => {
+      const result = await optimizeWithEnergyModel(molecule, choice, { constraints, method, maxIterations, ...optimizerTolerances() }, {
+        signal: controller.signal, onProgress: (step) => {
           if (optimizeJob.current !== controller) return;
           setProgress(step);
           // The view follows the run; Cancel or a failure restores the start.
@@ -577,7 +578,7 @@ function CartesianGeometryPanel({ document, actions, convert }: {
       {optimization ? (
         <div className="geometry-panel-result" role="status">
           <p>
-            {energyModel(optimization.forceField ?? "MMFF94").name}, {optimizerLabel(optimization.method)} {optimization.initialEnergy.toFixed(2)} → {optimization.energy.toFixed(2)} kcal/mol
+            {energyModelName(optimization.forceField ?? "MMFF94")}, {optimizerLabel(optimization.method)} {optimization.initialEnergy.toFixed(2)} → {optimization.energy.toFixed(2)} kcal/mol
             {optimization.iterations === null ? "" : `, ${optimization.iterations} step${optimization.iterations === 1 ? "" : "s"}`}
             {" · "}<span data-status={optimization.converged ? "success" : "failure"} className="workbench-value">{optimization.converged ? "Converged" : "Not converged"}</span>
             {steps?.summary === optimization ? <OpenStepsButton actions={actions} document={document} frames={steps.frames} /> : null}

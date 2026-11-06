@@ -10,7 +10,8 @@ import { useGeometryBinding } from "../../hooks/use-geometry-binding";
 import { useGeometryLivePreview } from "../../hooks/use-geometry-live-preview";
 import { downloadTextFile } from "../../lib/file-export";
 import { INTERNAL_COORDINATE_KINDS, formatInternalCoordinate, internalCoordinateUnit, type InternalCoordinateKind } from "../../lib/geometry-editing";
-import { energyModel, resolveEnergyModel, type EnergyModelChoice } from "../../lib/molecular-workbench/energy-models";
+import { isExternalEnergyModelId, resolveEnergyModel, type EnergyModelChoice } from "../../lib/molecular-workbench/energy-models";
+import { energyModelName } from "../../lib/molecular-workbench/external-energy-models";
 import { optimizerTolerances } from "../../lib/workbench/optimizer-settings";
 import { runChemistryTask, type ChemistryResults } from "../../lib/molecular-workbench/compute-client";
 import type { OptimizationMethod, OptimizationProgress } from "../../lib/molecular-workbench/optimization";
@@ -392,6 +393,8 @@ export function ZmatrixPanel({ document, actions, science, text }: {
     try {
       const molecule = await runChemistryTask({ action: "parse", source: serializeXyz(science.atoms, "Z-matrix"), format: "xyz" }, { signal: controller.signal });
       const forceField = resolveEnergyModel(choice, molecule);
+      // Coupled rows difference the energy per variable; external models run Cartesian optimizations only.
+      if (isExternalEnergyModelId(forceField)) throw new Error("External energy models optimize Cartesian coordinates; use Geometry or Edit.");
       result = await runChemistryTask({ action: "optimize-zmatrix", molecule, definition, options: { frozenRows: [...constraints.frozen], lockedCoordinates: [...constraints.locked], forceField, method, maxIterations, ...optimizerTolerances() } }, {
         signal: controller.signal, timeoutMs: 300_000, onProgress: (step) => { if (optimizeJob.current?.controller === controller) setProgress(step); },
       });
@@ -491,7 +494,7 @@ export function ZmatrixPanel({ document, actions, science, text }: {
       {error || bindingError ? <p role="alert" className="geometry-panel-error">{error || bindingError}</p> : null}
       {result ? (
         <p className="geometry-panel-result" role="status">
-          {energyModel(result.forceField ?? "MMFF94").name}, {optimizerLabel(result.method)} {result.initialEnergy.toFixed(2)} → {result.energy.toFixed(2)} kcal/mol
+          {energyModelName(result.forceField ?? "MMFF94")}, {optimizerLabel(result.method)} {result.initialEnergy.toFixed(2)} → {result.energy.toFixed(2)} kcal/mol
           {`, ${result.iterations} step${result.iterations === 1 ? "" : "s"}`}
           {result.residual ? ` · residual ${[result.residual.distance === null ? null : `${result.residual.distance.toFixed(3)} Å`, result.residual.angle === null ? null : `${result.residual.angle.toFixed(2)}°`].filter(Boolean).join(", ")}` : ""}
           {" · "}<span data-status={result.converged ? "success" : "failure"} className="workbench-value">{result.converged ? "Converged" : "Not converged"}</span>

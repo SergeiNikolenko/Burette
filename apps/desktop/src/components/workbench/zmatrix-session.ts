@@ -1,4 +1,4 @@
-import type { OptimizationResult, MolecularForceField } from "../../lib/molecular-workbench/chemistry";
+import type { OptimizationResult } from "../../lib/molecular-workbench/chemistry";
 import type { SourceEditingContextValue } from "../../lib/source-editing/context";
 import type { ViewerDocument } from "../../types";
 
@@ -6,7 +6,7 @@ import type { ViewerDocument } from "../../types";
 const RELOAD_LIMIT_MS = 15_000;
 
 export type OptimizationSummary = Pick<OptimizationResult, "method" | "iterations" | "frames"> & {
-  forceField?: MolecularForceField; initialEnergy: number; energy: number; converged: boolean; residual: { distance: number | null; angle: number | null } | null;
+  forceField?: OptimizationResult["forceField"]; initialEnergy: number; energy: number; converged: boolean; residual: { distance: number | null; angle: number | null } | null;
 };
 
 export function summary(result: OptimizationResult): OptimizationSummary {

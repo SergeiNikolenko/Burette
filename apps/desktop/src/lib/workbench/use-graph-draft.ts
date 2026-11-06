@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
-import type { MolecularAtom, Vec3, MolecularForceField } from "../molecular-workbench/types";
+import type { EnergyModelId, MolecularAtom, Vec3 } from "../molecular-workbench/types";
 import type { EnergyModelChoice } from "../molecular-workbench/energy-models";
 import type { ConstraintResidual, GeometryConstraint, OptimizationMethod, OptimizationProgress } from "../molecular-workbench/optimization";
 import { runGraphTask } from "../molecular-workbench/graph-compute-client";
@@ -18,7 +18,7 @@ import { prepareMeasurementSourcePair, publishMeasurementSourcePair } from "./me
 
 /** What an optimization did, kept with the snapshot it produced. Energies in kcal/mol. */
 export type GraphOutcome = {
-  forceField?: MolecularForceField; method: string; initialEnergy: number; energy: number; converged: boolean; iterations?: number | null;
+  forceField?: EnergyModelId; method: string; initialEnergy: number; energy: number; converged: boolean; iterations?: number | null;
   /** Step geometries with physical energies; absent or two endpoint frames when the minimizer exposes no steps. */
   frames?: { atoms: MolecularAtom[]; energy: number }[]; frameSampling?: "steps" | "endpoints";
   /** Measured values of the held distances, angles and dihedrals at the result. */

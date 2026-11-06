@@ -4,7 +4,7 @@
  * cb0e94852889da9f7288bd1e58241e69990935a7 (BSD-3-Clause), with its Alvarez van der
  * Waals radii (core/elementdata.h). See docs/third-party/avogadro-LICENSE. */
 import type { EnergyEvaluator } from './optimization';
-import type { MolecularAtom, MolecularForceField, Vec3 } from './types';
+import type { EnergyModelId, ExternalEnergyModelId, MolecularAtom, MolecularForceField, Vec3 } from './types';
 
 export type EnergyModel = {
   id: MolecularForceField; name: string;
@@ -25,8 +25,10 @@ const VDW_RADII: Readonly<Record<string, number>> = Object.fromEntries(
   + 'Hf 2.53 Ta 2.57 W 2.49 Re 2.48 Os 2.41 Ir 2.29 Pt 2.32 Au 2.45 Hg 2.47 Tl 2.6 Pb 2.54 Bi 2.5 Po 2.5 At 2.5 Rn 2.5 Fr 2.5 Ra 2.8 '
   + 'Ac 2.93 Th 2.88 Pa 2.71 U 2.82 Np 2.81 Pu 2.83 Am 3.05 Cm 3.38 Bk 3.05 Cf 3 Es 3 Fm 3 Md 3 No 3 Lr 3 Rf 3 Db 3 Sg 3 Bh 3 Hs 3 Mt 3 '
   + 'Ds 3 Rg 3 Cn 3 Nh 3 Fl 3 Mc 3 Lv 3 Ts 3 Og 3').match(/\S+ \S+/g)!.map(pair => { const [symbol, radius] = pair.split(' '); return [symbol, Number(radius)]; }));
+/** Element symbols by atomic number − 1. */
+export const ELEMENT_SYMBOLS: readonly string[] = Object.keys(VDW_RADII);
 // UFF (Rappé et al. 1992) parameterizes elements 1–103.
-const UFF_ELEMENTS = new Set(Object.keys(VDW_RADII).slice(0, 103));
+const UFF_ELEMENTS = new Set(ELEMENT_SYMBOLS.slice(0, 103));
 
 export const ENERGY_MODELS: readonly EnergyModel[] = [
   { id: 'MMFF94', name: 'MMFF94', elements: MMFF_ELEMENTS, graph: true },
@@ -36,7 +38,8 @@ export const ENERGY_MODELS: readonly EnergyModel[] = [
 ];
 const RECOMMENDED = ['MMFF94', 'UFF'] as const;
 /** A model, or the recommended one for the structure being optimized. */
-export type EnergyModelChoice = MolecularForceField | 'auto';
+export type EnergyModelChoice = EnergyModelId | 'auto';
+export const isExternalEnergyModelId = (id: string): id is ExternalEnergyModelId => id.startsWith('xtb:') || id.startsWith('avogadro:');
 
 export const energyModel = (id: MolecularForceField) => ENERGY_MODELS.find(model => model.id === id)!;
 
@@ -56,9 +59,10 @@ export function recommendedEnergyModel(atoms: readonly Pick<MolecularAtom, 'elem
 /** The model Automatic runs on a parsed structure. Lennard-Jones repels bonded atoms
  * to van der Waals contact, so it is chosen only for structures without bonds
  * (clusters, noble gases); a bonded structure neither graph field describes is an
- * error. UFF can still refuse an atom its typer does not recognize when it runs. */
-export function resolveEnergyModel(choice: EnergyModelChoice, structure: { atoms: readonly Pick<MolecularAtom, 'element'>[]; bonds: readonly unknown[]; graphComplete: boolean }): MolecularForceField {
-  if (choice !== 'auto') return choice;
+ * error. UFF can still refuse an atom its typer does not recognize when it runs.
+ * External models are never chosen automatically, as in Avogadro. */
+export function resolveEnergyModel<T extends EnergyModelChoice>(choice: T, structure: { atoms: readonly Pick<MolecularAtom, 'element'>[]; bonds: readonly unknown[]; graphComplete: boolean }): Exclude<T, 'auto'> | MolecularForceField {
+  if (choice !== 'auto') return choice as Exclude<T, 'auto'>;
   if (!structure.bonds.length) return 'LJ';
   if (!structure.graphComplete) throw new Error('XYZ does not specify bond orders or charges. Provide SMILES or SDF before this calculation, or choose Lennard-Jones for a non-bonded cluster.');
   const field = RECOMMENDED.find(id => !energyModelUnavailable(id, structure.atoms));

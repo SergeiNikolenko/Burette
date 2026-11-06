@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { ENERGY_MODELS, energyModel, energyModelUnavailable, resolveEnergyModel, type EnergyModelChoice } from "../../lib/molecular-workbench/energy-models";
+import { isExternalEnergyModelId, type EnergyModelChoice } from "../../lib/molecular-workbench/energy-models";
+import { energyModelName, useEnergyModelOptions } from "../../lib/molecular-workbench/external-energy-models";
+import { energyWithModel } from "../../lib/molecular-workbench/optimize-with-model";
 import { OPTIMIZATION_LIMITS, OPTIMIZATION_METHODS, RESIDUAL_TOLERANCE, optimizationUnavailable, type ConstraintResidual, type OptimizationFrame, type OptimizationMethod, type OptimizationProgress } from "../../lib/molecular-workbench/optimization";
 import { HARTREE_KCAL_MOL, fileStem } from "../../lib/workbench/formats";
 import { openScientificDocument } from "../../lib/workbench/generated-document-open";
-import { optimizationRun, optimizerSettings as settingsSnapshot, updateOptimizerSettings, useOptimizerSettings } from "../../lib/workbench/optimizer-settings";
-import { runChemistryTask } from "../../lib/molecular-workbench/compute-client";
+import { AUTO_OPTIMIZE_EXTERNAL, optimizationRun, optimizerSettings as settingsSnapshot, updateOptimizerSettings, useOptimizerSettings } from "../../lib/workbench/optimizer-settings";
 import type { MolecularStructure } from "../../lib/molecular-workbench/molecular-graph";
 import type { ViewerDocument } from "../../types";
 import type { ShellActions } from "../types";
@@ -70,9 +71,8 @@ export function useEnergyCalculation(current: object | null | undefined) {
   const [note, setNote] = useState<EnergyNote>(null);
   const calculate = async (structure: MolecularStructure, owner: object = structure) => {
     try {
-      const forceField = resolveEnergyModel(settingsSnapshot().model, structure);
-      const energy = await runChemistryTask({ action: "energy", molecule: structure, forceField });
-      setNote({ structure: owner, text: `${energyModel(forceField).name} energy ${energy.toFixed(2)} kcal/mol` });
+      const { model, energy } = await energyWithModel(structure, settingsSnapshot().model);
+      setNote({ structure: owner, text: `${energyModelName(model)} energy ${energy.toFixed(2)} kcal/mol` });
     } catch (error) { setNote({ structure: owner, text: error instanceof Error ? error.message : String(error), failed: true }); }
   };
   const shown = note && note.structure === current ? note : null;
@@ -94,20 +94,24 @@ export function OptimizeButton({ atomCount, elements = [], constraintCount = 0, 
   /** Avogadro's continuous relaxation; the item shows only where a panel supports it. */
   onAutoOptimize?: () => void;
 }) {
-  const settings = useOptimizerSettings(), choice = settings.model, steps = String(settings.steps);
+  const settings = useOptimizerSettings(), steps = String(settings.steps);
   const [ownConfigureOpen, setOwnConfigureOpen] = useState(false);
   const configuring = configureOpen ?? ownConfigureOpen, setConfiguring = onConfigureOpenChange ?? setOwnConfigureOpen;
-  const atoms = elements.map((element) => ({ element }));
-  const { method } = optimizationRun(settings, elements, constraintCount > 0 || coupled);
-  const blocked = unavailableReason ?? optimizationUnavailable(atomCount, constraintCount) ?? (choice === "auto" ? null : energyModelUnavailable(choice, atoms))
+  // External models are Cartesian only; coupled Z-matrix runs difference the energy per variable.
+  const models = useEnergyModelOptions(elements, { external: !coupled });
+  const choice = settings.model === "auto" || models.some((model) => model.id === settings.model) ? settings.model : "auto";
+  const { method } = optimizationRun({ ...settings, model: choice }, elements, constraintCount > 0 || coupled);
+  const modelReason = models.find((model) => model.id === choice)?.unavailable ?? null;
+  const blocked = unavailableReason ?? optimizationUnavailable(atomCount, constraintCount) ?? modelReason
     ?? (coupled && atomCount > OPTIMIZATION_LIMITS.numericalAtoms ? `Coupled Z-matrix optimization supports up to ${OPTIMIZATION_LIMITS.numericalAtoms} atoms; this structure has ${atomCount}.` : null);
+  const autoReason = isExternalEnergyModelId(choice) ? AUTO_OPTIMIZE_EXTERNAL : null;
   return (
     <ButtonGroup>
-      <Button type="button" variant={variant} size={size} disabled={disabled || Boolean(blocked)} title={blocked ?? `${choice === "auto" ? "Automatic" : energyModel(choice).name}, ${LABELS[method]}, up to ${steps} steps`}
+      <Button type="button" variant={variant} size={size} disabled={disabled || Boolean(blocked)} title={blocked ?? `${choice === "auto" ? "Automatic" : energyModelName(choice)}, ${LABELS[method]}, up to ${steps} steps`}
         onClick={() => onOptimize(method, choice, Number(steps))}>Optimize</Button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button type="button" variant={variant} size={size === "xs" ? "icon-xs" : "icon"} disabled={disabled} aria-label={`Optimization method: ${LABELS[method]}, ${choice === "auto" ? "Automatic" : energyModel(choice).name}`}>
+          <Button type="button" variant={variant} size={size === "xs" ? "icon-xs" : "icon"} disabled={disabled} aria-label={`Optimization method: ${LABELS[method]}, ${choice === "auto" ? "Automatic" : energyModelName(choice)}`}>
             <ChevronDown aria-hidden />
           </Button>
         </DropdownMenuTrigger>
@@ -115,10 +119,9 @@ export function OptimizeButton({ atomCount, elements = [], constraintCount = 0, 
           <DropdownMenuLabel>Force field</DropdownMenuLabel>
           <DropdownMenuRadioGroup value={choice} onValueChange={(value) => updateOptimizerSettings({ model: value as EnergyModelChoice })}>
             <DropdownMenuRadioItem value="auto">Automatic</DropdownMenuRadioItem>
-            {ENERGY_MODELS.map((model) => {
-              const reason = energyModelUnavailable(model.id, atoms);
-              return <DropdownMenuRadioItem key={model.id} value={model.id} disabled={Boolean(reason)} title={reason ?? undefined}>{model.name}</DropdownMenuRadioItem>;
-            })}
+            {models.map((model) => (
+              <DropdownMenuRadioItem key={model.id} value={model.id} disabled={Boolean(model.unavailable)} title={model.unavailable ?? undefined}>{model.name}</DropdownMenuRadioItem>
+            ))}
           </DropdownMenuRadioGroup>
           <DropdownMenuSeparator />
           <DropdownMenuLabel>Minimizer</DropdownMenuLabel>
@@ -131,7 +134,7 @@ export function OptimizeButton({ atomCount, elements = [], constraintCount = 0, 
             {STEP_LIMITS.map((item) => <DropdownMenuRadioItem key={item} value={item}>{item}</DropdownMenuRadioItem>)}
           </DropdownMenuRadioGroup>
           <DropdownMenuSeparator />
-          {onAutoOptimize ? <DropdownMenuItem disabled={Boolean(blocked)} onSelect={onAutoOptimize}>Auto Optimize</DropdownMenuItem> : null}
+          {onAutoOptimize ? <DropdownMenuItem disabled={Boolean(blocked ?? autoReason)} title={autoReason ?? undefined} onSelect={onAutoOptimize}>Auto Optimize</DropdownMenuItem> : null}
           <DropdownMenuItem onSelect={() => setConfiguring(true)}>Configure…</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

@@ -1,8 +1,8 @@
 import { runChemistryTask } from "../../lib/molecular-workbench/compute-client";
+import { optimizeWithEnergyModel } from "../../lib/molecular-workbench/optimize-with-model";
 import { runGraphTask } from "../../lib/molecular-workbench/graph-compute-client";
 import type { MolecularStructure } from "../../lib/molecular-workbench/molecular-graph";
 import type { OptimizationResult } from "../../lib/molecular-workbench/optimization";
-import { resolveEnergyModel } from "../../lib/molecular-workbench/energy-models";
 import { optimizerTolerances } from "../../lib/workbench/optimizer-settings";
 import type { ViewerDocument } from "../../types";
 import { useGraphDraft as useSharedGraphDraft, type GraphAdvancedCompute, type GraphOutcome } from "../../lib/workbench/use-graph-draft";
@@ -24,8 +24,8 @@ const outcome = (result: OptimizationResult): GraphOutcome => ({
 
 const computeAdvanced: GraphAdvancedCompute = async (operation, structure, signal, onProgress) => {
   if (operation.kind === "optimize") {
-    const { method, maxIterations, constraints } = operation, forceField = resolveEnergyModel(operation.forceField, structure);
-    const result = await runChemistryTask({ action: "optimize", molecule: structure, options: { method, forceField, maxIterations, constraints, ...optimizerTolerances() } }, { signal, timeoutMs: 300_000, onProgress });
+    const { method, maxIterations, constraints } = operation;
+    const result = await optimizeWithEnergyModel(structure, operation.forceField, { method, maxIterations, constraints, ...optimizerTolerances() }, { signal, onProgress });
     return { structure: await normalized(result.molecule, signal), outcome: outcome(result) };
   }
   // Hydrogens are appended after the source atoms, so source atoms keep their indices.

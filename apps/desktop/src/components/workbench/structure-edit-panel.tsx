@@ -6,7 +6,8 @@ import type { GeometryBinding } from "../../lib/geometry-binding";
 import { useGeometryBinding } from "../../hooks/use-geometry-binding";
 import { useGeometryLivePreview } from "../../hooks/use-geometry-live-preview";
 import { flatDepiction, resolveConstraints, type GeometryConstraint, type OptimizationMethod } from "../../lib/molecular-workbench/optimization";
-import { energyModel, type EnergyModelChoice } from "../../lib/molecular-workbench/energy-models";
+import type { EnergyModelChoice } from "../../lib/molecular-workbench/energy-models";
+import { energyModelName } from "../../lib/molecular-workbench/external-energy-models";
 import { useViewerAtomSelection } from "../../lib/workbench/selection";
 import { useLogicalSource } from "../../lib/science-session/state";
 import { useWorkspaceMenus } from "../workspace-menus";
@@ -400,7 +401,7 @@ function OptimizationOutcome({ outcome, structure, actions, document }: { outcom
   return (
     <div className="geometry-panel-result" role="status">
       <p className="structure-edit-outcome">
-        <span>{energyModel(outcome.forceField ?? "MMFF94").name}, {outcome.method} {outcome.initialEnergy.toFixed(2)} → {outcome.energy.toFixed(2)} kcal/mol{steps}</span>
+        <span>{energyModelName(outcome.forceField ?? "MMFF94")}, {outcome.method} {outcome.initialEnergy.toFixed(2)} → {outcome.energy.toFixed(2)} kcal/mol{steps}</span>
         <span className="workbench-value" data-status={outcome.converged ? "success" : "failure"}>{outcome.converged ? "Converged" : "Not converged"}</span>
         {outcome.frameSampling === "steps" ? <OpenStepsButton actions={actions} document={document} frames={outcome.frames} /> : null}
       </p>
