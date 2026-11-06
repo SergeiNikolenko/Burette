@@ -7,11 +7,11 @@ const controllers: WorkbenchAgentController[] = [];
 afterEach(() => { for (const controller of controllers.splice(0)) controller.dispose(); });
 const revision = `sha256-${"a".repeat(64)}`;
 function request(kind: string, params?: unknown) { return { type: "workbench", operation: "submit", operationId: "energy", expectedSourceRevision: revision, job: { kind, params } }; }
-test("energy contracts admit exactly the existing three fields and preserve bounds", () => {
+test("energy contracts admit the three graph fields and Lennard-Jones, and preserve bounds", () => {
   for (const kind of ["energy", "energy_forces"]) {
     expect(validateWorkbenchRequest(request(kind))).toMatchObject({ ok: true, request: { job: { kind, params: { forceField: "MMFF94" } } } });
-    for (const forceField of ["MMFF94", "MMFF94s", "UFF"]) expect(validateWorkbenchRequest(request(kind, { forceField }))).toMatchObject({ ok: true, request: { job: { kind, params: { forceField } } } });
-    for (const params of [{ forceField: "mmff94" }, { forceField: null }, { forceField: "GAFF" }, { addHydrogens: true }, { apply: true }, { method: "fire" }, { atomIndices: [0] }, []]) expect(validateWorkbenchRequest(request(kind, params))).toMatchObject({ ok: false, error: { code: "INVALID_ARGS" } });
+    for (const forceField of ["MMFF94", "MMFF94s", "UFF", "LJ"]) expect(validateWorkbenchRequest(request(kind, { forceField }))).toMatchObject({ ok: true, request: { job: { kind, params: { forceField } } } });
+    for (const params of [{ forceField: "mmff94" }, { forceField: null }, { forceField: "GAFF" }, { forceField: "lj" }, { forceField: "xtb:gfn2" }, { addHydrogens: true }, { apply: true }, { method: "fire" }, { atomIndices: [0] }, []]) expect(validateWorkbenchRequest(request(kind, params))).toMatchObject({ ok: false, error: { code: "INVALID_ARGS" } });
   }
   const contract = workbenchContractSummary();
   expect(contract.jobs.energy.artifacts).toEqual([]); expect(contract.jobs.energy_forces.artifacts).toEqual(["forces"]);
@@ -46,16 +46,40 @@ test("force jobs refuse large graphs before queueing while energy retains its la
   }
   expect((await over.ok({ operation: "jobs" })).total).toBe(0);
 });
-test("incomplete and collection sources refuse both jobs without creating work", async () => {
+test("incomplete graphs refuse the graph fields and collections refuse every field, without creating work", async () => {
   const sdf = readFileSync(new URL("./fixtures/properties/ethanol.sdf", import.meta.url), "utf8");
   for (const [text, extension] of [["1\nunsaturated carbon\nC 0 0 0\n", "xyz"], [sdf + sdf, "sdf"]]) {
     const f = source(text, extension), observed = await f.ok({ operation: "observe" });
     for (const kind of ["energy", "energy_forces"]) {
-      expect(observed.jobs[kind].available).toBe(false);
-      expect(await f.execute({ operation: "submit", operationId: kind, expectedSourceRevision: observed.sourceRevision, job: { kind } })).toMatchObject({ ok: false, error: { code: "JOB_UNAVAILABLE" } });
+      // Coordinates alone still admit Lennard-Jones.
+      expect(observed.jobs[kind].available).toBe(extension === "xyz");
+      for (const params of [undefined, { forceField: "UFF" }]) {
+        const refused = await f.execute({ operation: "submit", operationId: kind, expectedSourceRevision: observed.sourceRevision, job: { kind, params } });
+        expect(refused).toMatchObject({ ok: false, error: { code: "JOB_UNAVAILABLE" } });
+      }
     }
     expect((await f.ok({ operation: "jobs" })).total).toBe(0);
   }
+});
+
+test("Lennard-Jones evaluates and relaxes an argon pair without a bond graph", async () => {
+  const f = source("2\nargon pair\nAr 0 0 0\nAr 4.2 0 0\n"), observed = await f.ok({ operation: "observe" });
+  const run = async (kind: string, params: Record<string, unknown> = {}) => {
+    const accepted = await f.ok({ operation: "submit", operationId: `lj-${kind}`, expectedSourceRevision: observed.sourceRevision, job: { kind, params: { forceField: "LJ", ...params } } });
+    const job = await f.finish(accepted.job.jobId);
+    expect(job.status).toBe("succeeded");
+    return job;
+  };
+  const energy = await run("energy");
+  expect(energy.summary).toMatchObject({ forceField: "LJ", method: "Lennard-Jones (Avogadro parameters)", unit: "kcal/mol" });
+  expect(energy.summary.energy).toBeLessThan(0);
+  const forces = await run("energy_forces");
+  expect(forces.summary.method).toBe("Lennard-Jones (Avogadro parameters), analytic");
+  const optimized = await run("optimize");
+  // Alvarez van der Waals radius of Ar: the pair settles at 2 × 1.83 Å, the well depth 100 kJ/mol.
+  expect(optimized.summary).toMatchObject({ forceField: "LJ", method: "lbfgs", gradient: "analytic", converged: true });
+  expect(optimized.summary.energy).toBeCloseTo(-100 / 4.184, 4);
+  expect((await f.ok({ operation: "observe" })).sourceRevision).toBe(observed.sourceRevision);
 });
 test("implicit hydrogens fail every selected field without changing the source", async () => {
   const f = source(readFileSync(new URL("./fixtures/properties/ethanol.sdf", import.meta.url), "utf8"), "sdf"), observed = await f.ok({ operation: "observe" });

@@ -13,12 +13,18 @@ import { sdfRecords, type Snapshot } from "./agent-source";
 import type { AgentJobContext, AgentJobRunner } from "./agent-jobs";
 
 const NUMERICAL_ATOMS = 64;
-const label = (forceField: string) => forceField === "UFF" ? "UFF (RDKit)" : `${forceField} (OpenChemLib)`;
+const label = (forceField: string) => forceField === "UFF" ? "UFF (RDKit)" : forceField === "LJ" ? "Lennard-Jones (Avogadro parameters)" : `${forceField} (OpenChemLib)`;
+
+function structureUnavailable(snapshot: Snapshot): string | null {
+  return snapshot.structure ? null : snapshot.structureError ?? snapshot.sourceError ?? "The chemical graph could not be read.";
+}
 
 function graphUnavailable(snapshot: Snapshot): string | null {
-  if (!snapshot.structure) return snapshot.structureError ?? snapshot.sourceError ?? "The chemical graph could not be read.";
-  return snapshot.structure.graphComplete ? null : "This source has no complete bond orders or charges. Open an SDF or MOL version of the structure.";
+  return structureUnavailable(snapshot) ?? (snapshot.structure!.graphComplete ? null : "This source has no complete bond orders or charges. Open an SDF or MOL version of the structure, or use forceField LJ.");
 }
+
+/** Lennard-Jones reads only coordinates; the graph force fields need complete bond orders. */
+const modelUnavailable = (snapshot: Snapshot, { forceField }: { forceField: string }) => forceField === "LJ" ? null : graphUnavailable(snapshot);
 
 /**
  * A result graph as SDF in source atom order. Explicit graphs keep the source record's
@@ -93,19 +99,21 @@ export const graphJobs: { [K in "properties" | "energy" | "energy_forces" | "fra
     },
   },
   energy: {
-    unavailable: graphUnavailable,
+    unavailable: structureUnavailable,
+    paramsUnavailable: modelUnavailable,
     async run(input, { forceField }, { signal, timeoutMs }) {
       return { summary: { method: label(forceField), forceField, energy: await runChemistryTask({ action: "energy", molecule: input.structure!, forceField }, { signal, timeoutMs }), unit: "kcal/mol" }, artifacts: [] };
     },
   },
   energy_forces: {
-    unavailable: snapshot => graphUnavailable(snapshot) ?? (snapshot.structure!.atoms.length > NUMERICAL_ATOMS ? "Forces support at most 64 atoms." : null),
+    unavailable: snapshot => structureUnavailable(snapshot) ?? (snapshot.structure!.atoms.length > NUMERICAL_ATOMS ? "Forces support at most 64 atoms." : null),
+    paramsUnavailable: modelUnavailable,
     async run(input, { forceField }, { signal, timeoutMs, stem, artifact }) {
       const molecule = input.structure!, result = await runChemistryTask({ action: "energy-forces", molecule, forceField }, { signal, timeoutMs });
       const magnitudes = result.forces.map((force) => Math.hypot(...force));
       const forces = JSON.stringify({ forceField, unit: result.forceUnit, energy: result.energy, energyUnit: result.energyUnit, method: result.method, stepAngstrom: result.stepAngstrom, atoms: molecule.atoms.map((atom, index) => ({ index, element: atom.element, force: result.forces[index] })) }, null, 1);
       return {
-        summary: { method: forceField === "UFF" ? "UFF (RDKit), analytic" : `${forceField} (OpenChemLib), central difference`, forceField, energy: result.energy, energyUnit: result.energyUnit, forceUnit: result.forceUnit, maxForce: Math.max(...magnitudes), rmsForce: Math.sqrt(magnitudes.reduce((sum, value) => sum + value * value, 0) / magnitudes.length), atomCount: magnitudes.length },
+        summary: { method: `${label(forceField)}, ${result.method === "analytic" ? "analytic" : "central difference"}`, forceField, energy: result.energy, energyUnit: result.energyUnit, forceUnit: result.forceUnit, maxForce: Math.max(...magnitudes), rmsForce: Math.sqrt(magnitudes.reduce((sum, value) => sum + value * value, 0) / magnitudes.length), atomCount: magnitudes.length },
         artifacts: [await artifact("forces", `${stem}-forces.json`, "application/json", `${forces}\n`)],
       };
     },
@@ -114,11 +122,12 @@ export const graphJobs: { [K in "properties" | "energy" | "energy_forces" | "fra
     unavailable(snapshot) {
       const batch = batchSource(snapshot);
       if (!batch) return snapshot.structureError ?? snapshot.sourceError ?? "This source has no frames with a chemical graph.";
-      if (batch.kind === "frames") return graphUnavailable(snapshot) ?? (snapshot.structure!.atoms.length > NUMERICAL_ATOMS ? "Forces support at most 64 atoms." : null);
+      if (batch.kind === "frames") return snapshot.structure!.atoms.length > NUMERICAL_ATOMS ? "Forces support at most 64 atoms." : null;
       return null;
     },
-    paramsUnavailable(snapshot, { offset, count }) {
+    paramsUnavailable(snapshot, { forceField, offset, count }) {
       const batch = batchSource(snapshot)!;
+      if (batch.kind === "frames" && forceField !== "LJ") { const reason = graphUnavailable(snapshot); if (reason) return reason; }
       if (offset >= batch.count) return `offset must be below the ${batch.count} frames of this source.`;
       const atoms = batchAtoms(snapshot, batch);
       return count !== undefined && count * atoms > WORKBENCH_LIMITS.batchAtomFrames ? `${count} frames of ${atoms} atoms exceed ${WORKBENCH_LIMITS.batchAtomFrames} atom-frames; request at most ${Math.floor(WORKBENCH_LIMITS.batchAtomFrames / atoms)}.` : null;
@@ -153,8 +162,10 @@ export const graphJobs: { [K in "properties" | "energy" | "energy_forces" | "fra
     },
   },
   optimize: {
-    unavailable: graphUnavailable,
-    paramsUnavailable(snapshot, { constraints }) {
+    unavailable: structureUnavailable,
+    paramsUnavailable(snapshot, { forceField, constraints }) {
+      const graph = modelUnavailable(snapshot, { forceField });
+      if (graph) return graph;
       const atoms = snapshot.structure!.atoms;
       const reason = optimizationUnavailable(atoms.length, constraints.length);
       if (reason) return reason;

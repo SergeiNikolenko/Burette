@@ -21,6 +21,8 @@ export type WorkbenchOperation =
   | 'submit' | 'build' | 'status' | 'jobs' | 'cancel' | 'export';
 export const WORKBENCH_OPERATIONS: readonly WorkbenchOperation[];
 export type WorkbenchForceField = 'MMFF94' | 'MMFF94s' | 'UFF';
+/** Models that evaluate or relax existing coordinates; LJ needs no bond graph. */
+export type WorkbenchEnergyModel = WorkbenchForceField | 'LJ';
 export type WorkbenchJobKind = WorkbenchJobRequest['kind'];
 /** Kinds that build a new structure without a source document (operation `build`). */
 export type WorkbenchBuildJobKind = 'smiles' | 'peptide' | 'metal_complex' | 'nucleic_acid';
@@ -51,10 +53,10 @@ export const WORKBENCH_JOB_KINDS: Readonly<Record<WorkbenchJobKind, WorkbenchJob
 export const WORKBENCH_RUNTIMES: readonly ['browser-agent-shell'];
 
 export type WorkbenchJobRequest =
-  | { kind: 'energy'; params: { forceField: WorkbenchForceField } }
-  | { kind: 'energy_forces'; params: { forceField: WorkbenchForceField } }
-  | { kind: 'frame_energy_forces'; params: { forceField: WorkbenchForceField; offset: number; count?: number } }
-  | { kind: 'optimize'; params: { forceField: WorkbenchForceField; method: WorkbenchOptimizeMethod; maxIterations: number; constraints: WorkbenchConstraint[] } }
+  | { kind: 'energy'; params: { forceField: WorkbenchEnergyModel } }
+  | { kind: 'energy_forces'; params: { forceField: WorkbenchEnergyModel } }
+  | { kind: 'frame_energy_forces'; params: { forceField: WorkbenchEnergyModel; offset: number; count?: number } }
+  | { kind: 'optimize'; params: { forceField: WorkbenchEnergyModel; method: WorkbenchOptimizeMethod; maxIterations: number; constraints: WorkbenchConstraint[] } }
   | { kind: 'prepare_3d'; params: { forceField: WorkbenchForceField; method: WorkbenchOptimizeMethod; seed: number; maxIterations: number } }
   | { kind: 'conformers'; params: { forceField: WorkbenchForceField; count: number; seed: number } }
   | { kind: 'metadata_edit'; params: WorkbenchMetadataEdit }

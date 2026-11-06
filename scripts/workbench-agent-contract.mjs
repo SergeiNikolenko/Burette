@@ -23,6 +23,8 @@ export const WORKBENCH_LIMITS = Object.freeze({
 });
 
 const FORCE_FIELDS = ['MMFF94', 'MMFF94s', 'UFF'];
+// Lennard-Jones needs no bond graph, so it only evaluates or relaxes existing coordinates.
+const ENERGY_MODELS = [...FORCE_FIELDS, 'LJ'];
 const OPTIMIZE_METHODS = ['bfgs', 'lbfgs', 'fire', 'abc-fire', 'hybrid'];
 const SEED_MAX = 2_147_483_639;
 
@@ -206,6 +208,7 @@ const LIBRARY_ID = /^[a-z_]{1,32}\/[A-Za-z0-9 ,_+()-]{1,64}$/u;
 const SMILES = /^\S+$/u;
 
 const forceField = value => oneOf(value, 'job.params.forceField', new Set(FORCE_FIELDS), 'MMFF94');
+const energyModel = value => oneOf(value, 'job.params.forceField', new Set(ENERGY_MODELS), 'MMFF94');
 const seed = value => integer(value, 'job.params.seed', 0, SEED_MAX, 1);
 
 function constraints(value) {
@@ -231,7 +234,7 @@ function constraints(value) {
 
 /** BFGS for unconstrained MMFF, L-BFGS otherwise: the default is resolved here, so status reports the method that runs. */
 function optimizer(value, field, constrained) {
-  return oneOf(value, 'job.params.method', new Set(OPTIMIZE_METHODS), field === 'UFF' || constrained ? 'lbfgs' : 'bfgs');
+  return oneOf(value, 'job.params.method', new Set(OPTIMIZE_METHODS), field.startsWith('MMFF') && !constrained ? 'bfgs' : 'lbfgs');
 }
 
 function metadataLabel(value, field, max, empty = false) {
@@ -292,46 +295,46 @@ const JOB_DEFINITIONS = {
   },
   energy: {
     describe: {
-      engine: 'OpenChemLib MMFF94/MMFF94s or RDKit UFF',
-      requires: 'A complete chemical graph, 1–256 atoms; calculations require explicit hydrogens.',
-      params: { forceField: FORCE_FIELDS },
+      engine: 'OpenChemLib MMFF94/MMFF94s, RDKit UFF, or Lennard-Jones with Avogadro parameters',
+      requires: 'A complete chemical graph with explicit hydrogens, 1–256 atoms; LJ needs only coordinates.',
+      params: { forceField: ENERGY_MODELS },
       artifacts: [],
     },
-    params: value => ({ forceField: forceField(params(value, ['forceField'], 'energy job.params').forceField) }),
+    params: value => ({ forceField: energyModel(params(value, ['forceField'], 'energy job.params').forceField) }),
   },
   energy_forces: {
     describe: {
-      engine: 'OpenChemLib MMFF94/MMFF94s central-difference forces or RDKit UFF analytic forces',
-      requires: 'A complete chemical graph, 1–64 atoms; calculations require explicit hydrogens.',
-      params: { forceField: FORCE_FIELDS },
+      engine: 'OpenChemLib MMFF94/MMFF94s central-difference forces, or RDKit UFF and Lennard-Jones analytic forces',
+      requires: 'A complete chemical graph with explicit hydrogens, 1–64 atoms; LJ needs only coordinates.',
+      params: { forceField: ENERGY_MODELS },
       artifacts: ['forces'],
     },
-    params: value => ({ forceField: forceField(params(value, ['forceField'], 'energy_forces job.params').forceField) }),
+    params: value => ({ forceField: energyModel(params(value, ['forceField'], 'energy_forces job.params').forceField) }),
   },
   frame_energy_forces: {
     describe: {
       engine: 'Same energies and forces as energy_forces, for a page of frames sharing one graph',
-      requires: 'A multi-frame XYZ with a complete graph, or a multi-record SDF whose records share one graph; 1–64 atoms; at most 64 frames and 2048 atom-frames per job.',
-      params: { forceField: FORCE_FIELDS, offset: 'first zero-based frame (default 0)', count: '1–64 frames (default: as many as fit)' },
+      requires: 'A multi-frame XYZ with a complete graph (any XYZ for LJ), or a multi-record SDF whose records share one graph; 1–64 atoms; at most 64 frames and 2048 atom-frames per job.',
+      params: { forceField: ENERGY_MODELS, offset: 'first zero-based frame (default 0)', count: '1–64 frames (default: as many as fit)' },
       artifacts: ['forces', 'extxyz'],
     },
     params(value) {
       const p = params(value, ['forceField', 'offset', 'count'], 'frame_energy_forces job.params');
-      const result = { forceField: forceField(p.forceField), offset: integer(p.offset, 'job.params.offset', 0, MAX_INDEX, 0) };
+      const result = { forceField: energyModel(p.forceField), offset: integer(p.offset, 'job.params.offset', 0, MAX_INDEX, 0) };
       if (p.count !== undefined) result.count = integer(p.count, 'job.params.count', 1, WORKBENCH_LIMITS.batchFrames);
       return result;
     },
   },
   optimize: {
     describe: {
-      engine: 'OpenChemLib MMFF94/MMFF94s BFGS, or L-BFGS/FIRE/ABC-FIRE/hybrid on MMFF94/MMFF94s (central-difference gradients) or RDKit UFF (analytic gradients)',
-      requires: 'A complete chemical graph with explicit hydrogens, 1–256 atoms; methods other than bfgs, UFF and constraints need at most 64 atoms; bfgs holds no constraints.',
-      params: { forceField: FORCE_FIELDS, method: OPTIMIZE_METHODS, maxIterations: '1–1000 (default 250)', constraints: 'up to 64 of freeze/distance/angle/dihedral; zero-based source atoms; target in Å or degrees (default: current value)' },
+      engine: 'Burette Cartesian minimizer (BFGS, L-BFGS, FIRE, ABC-FIRE, hybrid) on MMFF94/MMFF94s (RDKit analytic terms, else OpenChemLib central differences), RDKit UFF or Lennard-Jones (analytic)',
+      requires: 'A complete chemical graph with explicit hydrogens, 1–256 atoms (LJ needs only coordinates); central-difference MMFF supports at most 64 atoms.',
+      params: { forceField: ENERGY_MODELS, method: OPTIMIZE_METHODS, maxIterations: '1–1000 (default 250)', constraints: 'up to 64 of freeze/distance/angle/dihedral; zero-based source atoms; target in Å or degrees (default: current value)' },
       artifacts: ['structure', 'xyz', 'trajectory'],
     },
     params(value) {
       const p = params(value, ['forceField', 'method', 'maxIterations', 'constraints'], 'optimize job.params');
-      const field = forceField(p.forceField), held = constraints(p.constraints);
+      const field = energyModel(p.forceField), held = constraints(p.constraints);
       return { forceField: field, method: optimizer(p.method, field, held.length > 0), maxIterations: integer(p.maxIterations, 'job.params.maxIterations', 1, WORKBENCH_LIMITS.optimizationIterations, 250), constraints: held };
     },
   },
