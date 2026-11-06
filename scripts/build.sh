@@ -67,12 +67,34 @@ case "$BUILD_MODE" in
 esac
 XCODE_CONFIGURATION="${BURETTE_XCODE_CONFIGURATION:-$DEFAULT_XCODE_CONFIGURATION}"
 
+# Opt-in Intel build for local testing on x86_64 macOS (the Orion macvm guests).
+# Unset, the build targets the host (arm64) exactly as before.
+BUILD_TARGET="${BURETTE_BUILD_TARGET:-}"
+BUILD_ARCH="arm64"
+XCODE_ARCH_ARGS=()
+case "$BUILD_TARGET" in
+  "") ;;
+  x86_64-apple-darwin)
+    [[ "$BUILD_MODE" == "local" ]] || { echo "error: BURETTE_BUILD_TARGET is only supported for local builds." >&2; exit 2; }
+    BUILD_ARCH="x86_64"
+    XCODE_ARCH_ARGS=(ARCHS=x86_64 ONLY_ACTIVE_ARCH=NO)
+    # The locked RDKit has no macOS x86_64 wheel, so Intel builds ship without
+    # the bundled xyzrender renderer (as local builds without its environment).
+    LOCAL_XYZRENDER_ENV="$SAFE_ROOT/no-xyzrender-for-x86_64"
+    ;;
+  *) echo "error: BURETTE_BUILD_TARGET must be x86_64-apple-darwin or unset, got: $BUILD_TARGET" >&2; exit 2 ;;
+esac
+
 # Web Inspector for every webview, so Safari's Timelines can profile a
 # packaged performance build. Local dev-flavor builds only.
 TAURI_BUILD_ARGS=()
 if [[ "${BURETTE_TAURI_DEVTOOLS:-0}" == "1" ]]; then
   [[ "$BUILD_MODE" == "local" && -n "${BURETTE_DEV_FLAVOR:-}" ]] || { echo "error: BURETTE_TAURI_DEVTOOLS requires a local BURETTE_DEV_FLAVOR build." >&2; exit 2; }
   TAURI_BUILD_ARGS=(-- --features tauri/devtools)
+fi
+if [[ -n "$BUILD_TARGET" ]]; then
+  [[ ${#TAURI_BUILD_ARGS[@]} -gt 0 ]] || TAURI_BUILD_ARGS=(--)
+  TAURI_BUILD_ARGS+=(--target "$BUILD_TARGET")
 fi
 
 if [[ "$BUILD_MODE" == "release" ]]; then
@@ -112,6 +134,7 @@ Burette v10 build
   preview id: $PREVIEW_ID
   thumbnail id: $THUMBNAIL_ID
   build mode: $BUILD_MODE
+  architecture: $BUILD_ARCH
   xcode configuration: $XCODE_CONFIGURATION
   signing identity: $SIGN_IDENTITY
 HDR
@@ -421,7 +444,7 @@ sign_bundled_xyzrender_runtime() {
 bundle_quicklook_xyzrender_launcher() {
   local app="$1"
   local appex="$app/Contents/PlugIns/BurettePreview.appex"
-  [[ -d "$appex" ]] || return 0
+  [[ -d "$appex" && -d "$LOCAL_XYZRENDER_ENV" ]] || return 0
   local libpython=""
   libpython="$(find "$appex/Contents/lib" -maxdepth 1 -type f \( -name 'libpython3*.dylib' -o -name 'Python' \) | head -n 1 || true)"
   [[ -x "$appex/Contents/Resources/xyzrender-python3" ]] || {
@@ -527,13 +550,16 @@ assert_bundled_compute_service() {
     echo "error: native compute service must not be duplicated beside the app executable $label" >&2
     exit 1
   }
-  file "$service" | grep -q 'Mach-O.*arm64' || {
-    echo "error: packaged native compute service is not arm64 Mach-O $label" >&2
+  file "$service" | grep -q "Mach-O.*$BUILD_ARCH" || {
+    echo "error: packaged native compute service is not $BUILD_ARCH Mach-O $label" >&2
     exit 1
   }
 }
 smoke_bundled_compute_service() {
   local app="$1"
+  # The native Metal compute backend is arm64-only; an x86_64 service reports
+  # every capability as unavailable.
+  [[ "$BUILD_ARCH" == "arm64" ]] || { echo "Skipping native compute smoke for $BUILD_ARCH."; return 0; }
   bun "$SAFE_ROOT/scripts/check-compute-service.mjs" "$app"
 }
 
@@ -558,7 +584,7 @@ esac
 
 # Public releases always rebuild the renderer from authenticated, locked artifacts.
 # Native CI uses the same preparation while retaining its isolated dev namespace.
-if [[ "$BUILD_MODE" == "release" || "${BURETTE_BUILD_LOCKED_XYZRENDER:-0}" == "1" ]]; then
+if [[ -z "$BUILD_TARGET" ]] && [[ "$BUILD_MODE" == "release" || "${BURETTE_BUILD_LOCKED_XYZRENDER:-0}" == "1" ]]; then
   LOCAL_XYZRENDER_ENV="$(python3 "$ROOT/scripts/prepare-xyzrender-runtime.py")"
   OWNED_XYZRENDER_SOURCE="$(dirname "$LOCAL_XYZRENDER_ENV")"
 fi
@@ -634,7 +660,7 @@ pushd apps/desktop >/dev/null
 ../../node_modules/.bin/vp build --config vite.config.ts
 popd >/dev/null
 bun run build:tauri ${TAURI_BUILD_ARGS[@]+"${TAURI_BUILD_ARGS[@]}"}
-cargo build --release --bin burette-core-bridge
+cargo build --release --bin burette-core-bridge ${BUILD_TARGET:+--target "$BUILD_TARGET"}
 # `tauri build` runs `cargo build --bins`, so burette-compute-service is already
 # built with Tauri's features and MACOSX_DEPLOYMENT_TARGET. A separate cargo
 # call would recompile tauri and the burette crate with a different environment.
@@ -642,9 +668,11 @@ XCODE_SIGN_ARGS=(CODE_SIGN_IDENTITY="$SIGN_IDENTITY" CODE_SIGNING_ALLOWED=YES)
 if [[ -n "$DEVELOPMENT_TEAM" ]]; then
   XCODE_SIGN_ARGS+=(CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM")
 fi
-xcodebuild -project Burette.xcodeproj -scheme BurettePreview -configuration "$XCODE_CONFIGURATION" -derivedDataPath build COMPILER_INDEX_STORE_ENABLE=NO "${XCODE_SIGN_ARGS[@]}" build
-xcodebuild -project Burette.xcodeproj -scheme BuretteThumbnail -configuration "$XCODE_CONFIGURATION" -derivedDataPath build COMPILER_INDEX_STORE_ENABLE=NO "${XCODE_SIGN_ARGS[@]}" build
+xcodebuild -project Burette.xcodeproj -scheme BurettePreview -configuration "$XCODE_CONFIGURATION" -derivedDataPath build COMPILER_INDEX_STORE_ENABLE=NO "${XCODE_SIGN_ARGS[@]}" ${XCODE_ARCH_ARGS[@]+"${XCODE_ARCH_ARGS[@]}"} build
+xcodebuild -project Burette.xcodeproj -scheme BuretteThumbnail -configuration "$XCODE_CONFIGURATION" -derivedDataPath build COMPILER_INDEX_STORE_ENABLE=NO "${XCODE_SIGN_ARGS[@]}" ${XCODE_ARCH_ARGS[@]+"${XCODE_ARCH_ARGS[@]}"} build
 TAURI_TARGET_DIR="${CARGO_TARGET_DIR:-target}"
+# Cargo puts an explicit --target build under target/<triple>/.
+[[ -z "$BUILD_TARGET" ]] || TAURI_TARGET_DIR+="/$BUILD_TARGET"
 TAURI_BUILT_APP_CANDIDATES=(
   "$TAURI_TARGET_DIR/release/bundle/macos/Burette.app"
   "apps/desktop/src-tauri/target/release/bundle/macos/Burette.app"
@@ -708,6 +736,10 @@ sign_bundled_xyzrender_runtime "$TAURI_BUILT_APP"
 sign_quicklook_xyzrender_launcher "$TAURI_BUILT_APP"
 "$ROOT/scripts/sign-sparkle.sh" "$TAURI_BUILT_APP" "$SIGN_IDENTITY"
 codesign "${CODESIGN_ARGS[@]}" "$TAURI_BUILT_APP/Contents/Helpers/burette-compute-service" >/dev/null
+# The x86_64 linker does not ad-hoc sign executables as the arm64 linker does.
+if [[ "$BUILD_ARCH" != "arm64" ]]; then
+  codesign "${CODESIGN_ARGS[@]}" "$TAURI_BUILT_APP/Contents/MacOS/burette-compute-dev-backend" >/dev/null
+fi
 codesign "${CODESIGN_ARGS[@]}" "$TAURI_BUILT_APP/Contents/PlugIns/BurettePreview.appex/Contents/Resources/burette-core-bridge" >/dev/null
 codesign "${CODESIGN_ARGS[@]}" --entitlements "$ROOT/PreviewExtension/BurettePreview.entitlements" "$TAURI_BUILT_APP/Contents/PlugIns/BurettePreview.appex" >/dev/null
 codesign "${CODESIGN_ARGS[@]}" --entitlements "$ROOT/PreviewExtension/BurettePreview.entitlements" "$TAURI_BUILT_APP/Contents/PlugIns/BuretteThumbnail.appex" >/dev/null

@@ -205,6 +205,15 @@ extension sees the file. `quicklook-preview-smoke.sh` reports those inputs as
 `SKIP`; verify Burette grid rendering through browser-dev or the packaged
 desktop app instead.
 
+## Packaged App In An x86_64 macOS VM
+
+The macOS VMs on Orion (`ssh Orion macvm create NAME medium`) are x86_64 and
+cannot run the default arm64 bundle. Build an Intel bundle with
+`BURETTE_BUILD_TARGET=x86_64-apple-darwin BURETTE_DEV_FLAVOR=<slug> ./scripts/build.sh`,
+copy `build/<bundle>.app` into the guest's `/Applications`, and drive it over the
+VM's VNC port. This bundle has no xyzrender runtime, so xyzrender renders and the
+Quick Look xyzrender path are not covered there.
+
 ## Contract Checks
 
 Run the smallest focused contract first. Common narrow checks:

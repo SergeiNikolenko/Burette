@@ -34,6 +34,11 @@ Deleting the bundle by hand leaves its Launch Services record behind; clean
 existing leftovers with `./scripts/prune-launch-services.sh [--dry-run]`
 (`install.sh` also runs it).
 
+`BURETTE_BUILD_TARGET=x86_64-apple-darwin` (local builds only, needs
+`rustup target add x86_64-apple-darwin`) builds an Intel bundle for the
+x86_64 macOS VMs on Orion (`macvm`). It ships without the xyzrender runtime,
+because the locked RDKit has no macOS x86_64 wheel.
+
 Preview checks:
 
 ```bash
