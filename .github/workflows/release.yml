@@ -316,3 +316,59 @@ jobs:
           tag="${{ needs.release.outputs.tag }}"
           mv linux/SHA256SUMS "linux/Burette-${tag#v}-linux.sha256"
           gh release upload "$tag" linux/*
+
+  windows-bundles:
+    name: Build Windows Installer
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Setup Burette toolchain
+        uses: ./.github/actions/setup-burette-toolchain
+
+      - name: Build Windows installer
+        run: ./scripts/build-windows.sh
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release-bundles
+          path: build/windows
+          retention-days: 7
+          compression-level: 0
+
+  windows-publish:
+    name: Publish Windows Installer
+    needs:
+      - release
+      - windows-bundles
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download Windows installer
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-release-bundles
+          path: windows
+
+      - name: Attach Windows installer to the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tag="${{ needs.release.outputs.tag }}"
+          mv windows/SHA256SUMS "windows/Burette-${tag#v}-windows.sha256"
+          gh release upload "$tag" windows/*

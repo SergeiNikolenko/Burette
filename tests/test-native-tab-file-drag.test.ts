@@ -39,6 +39,12 @@ test("real structure, text and document tabs send filesystem paths to AppKit", a
   expect(nativeFileDragTabId(payload.paths)).toBeNull();
 });
 
+test("Windows drive and UNC tabs send their filesystem paths", async () => {
+  const tabs = [tab("file", "C:\\Data\\a.sdf"), tab("text-file", "\\\\lab\\share\\notes.md"), tab("document", "C:/Data/paper.pdf")];
+  expect((await tabFileDragPayload(tabs, state, null)).paths).toEqual(tabs.map(tab => tab.location.path));
+  expect(calls).toEqual([]);
+});
+
 test("inline text, unsaved sketch and combined scene become actual cache files", async () => {
   const note = tab("text-file", "burette-ketcher-export://note");
   state.textDocuments = [{ path: note.location.path, title: "notes", extension: "txt", content: "unsaved note", truncated: false }];

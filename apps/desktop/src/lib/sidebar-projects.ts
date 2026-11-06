@@ -175,10 +175,18 @@ export function normalizePath(path: string) {
   return normalizeDocumentPath(path);
 }
 
+/** Local paths come back with `/` separators; Windows APIs accept them. */
 export function parentDirectory(path: string) {
   const normalized = normalizePath(path);
   const index = normalized.lastIndexOf("/");
+  // A bare "C:" names the drive's current directory, not its root.
+  if (index === 2 && /^[A-Za-z]:/u.test(normalized)) return normalized.slice(0, 3);
   return index > 0 ? normalized.slice(0, index) : null;
+}
+
+/** Joins a `parentDirectory` result, which ends in `/` only at a drive root. */
+export function joinPath(directory: string, relativePath: string) {
+  return `${directory.replace(/\/$/u, "")}/${relativePath}`;
 }
 
 export function basename(path: string) {

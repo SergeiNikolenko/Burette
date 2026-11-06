@@ -2,6 +2,7 @@ mod prism_input;
 
 use crate::commands::ssh::remote_jobs::{self, RemoteJob, RemoteTool};
 use crate::commands::xtb_runtime;
+use crate::preview::runtime_utils::SimplifiedCanonicalize;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -11,7 +12,7 @@ use std::io::{Read, Write};
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, ExitStatus, Stdio};
+use std::process::{Child, ExitStatus, Stdio};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -801,7 +802,7 @@ fn conformer_input_path(
         });
     }
     let source_path = PathBuf::from(&request.path)
-        .canonicalize()
+        .canonicalize_simplified()
         .map_err(|err| format!("{}: {err}", request.path))?;
     if !source_path.is_file() {
         return Err(format!("{} is not a file.", source_path.display()));
@@ -1024,7 +1025,7 @@ fn run_logged_executable(
         format!("$ {}\n\n", command_line(executable, args)),
     )
     .map_err(|err| format!("{}: {err}", log_path.display()))?;
-    let mut command = Command::new(executable);
+    let mut command = crate::preview::runtime_utils::background_command(executable);
     command
         .args(args)
         .current_dir(cwd)
@@ -1712,18 +1713,18 @@ fn request_clone_without_job(request: &ConformerRunRequest) -> ConformerRunReque
 
 pub(super) fn resolve_executable(name: &str) -> Option<PathBuf> {
     let mut candidates = Vec::new();
-    if let Some(home) = std::env::var_os("HOME") {
-        let home = PathBuf::from(home);
-        candidates.push(home.join(".pixi/bin").join(name));
-        candidates.push(home.join(".local/bin").join(name));
-        candidates.push(home.join(".cargo/bin").join(name));
+    let name = crate::preview::runtime_utils::executable_name(name);
+    if let Some(home) = crate::preview::runtime_utils::home_dir() {
+        candidates.push(home.join(".pixi/bin").join(&name));
+        candidates.push(home.join(".local/bin").join(&name));
+        candidates.push(home.join(".cargo/bin").join(&name));
     }
     if let Some(path) = std::env::var_os("PATH") {
-        candidates.extend(std::env::split_paths(&path).map(|dir| dir.join(name)));
+        candidates.extend(std::env::split_paths(&path).map(|dir| dir.join(&name)));
     }
     candidates.extend([
-        PathBuf::from("/opt/homebrew/bin").join(name),
-        PathBuf::from("/usr/local/bin").join(name),
+        PathBuf::from("/opt/homebrew/bin").join(&name),
+        PathBuf::from("/usr/local/bin").join(&name),
     ]);
     candidates
         .into_iter()
@@ -1731,7 +1732,7 @@ pub(super) fn resolve_executable(name: &str) -> Option<PathBuf> {
 }
 
 fn executable_version(executable: &Path, args: &[&str]) -> Option<String> {
-    let output = Command::new(executable)
+    let output = crate::preview::runtime_utils::background_command(executable)
         .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -1831,19 +1832,11 @@ fn tail_text(text: &str, limit: usize) -> &str {
 }
 
 fn exit_code_for_status(status: &ExitStatus) -> i32 {
-    status
-        .code()
-        .or_else(|| {
-            #[cfg(unix)]
-            {
-                status.signal().map(|signal| 128 + signal)
-            }
-            #[cfg(not(unix))]
-            {
-                None
-            }
-        })
-        .unwrap_or(1)
+    #[cfg(unix)]
+    let signal = status.signal().map(|signal| 128 + signal);
+    #[cfg(not(unix))]
+    let signal = None;
+    status.code().or(signal).unwrap_or(1)
 }
 
 #[cfg(unix)]
@@ -1857,18 +1850,14 @@ fn cancelled_exit_status() -> ExitStatus {
     ExitStatus::from_raw(130 << 8)
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
 fn cancelled_exit_status() -> ExitStatus {
-    Command::new("false")
-        .status()
-        .expect("false command should produce an exit status")
+    std::os::windows::process::ExitStatusExt::from_raw(130)
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
 fn timeout_exit_status() -> ExitStatus {
-    Command::new("false")
-        .status()
-        .expect("false command should produce an exit status")
+    std::os::windows::process::ExitStatusExt::from_raw(124)
 }
 
 fn unix_timestamp_ms() -> u128 {

@@ -3872,9 +3872,10 @@ function normalizeOrientationRef(value: string | null) {
 
 // React Compiler only sees the app's own TypeScript. The preset's default filter
 // matches on code alone, which also sent the viewer runtime (raw and worker
-// imports) through Babel and left the structure viewer blank.
+// imports) through Babel and left the structure viewer blank. Module ids may use
+// either separator on Windows.
 const reactCompiler = reactCompilerPreset();
-reactCompiler.rolldown.filter.id = { include: [/\/apps\/desktop\/src\/.*\.tsx?$/] };
+reactCompiler.rolldown.filter.id = { include: [/[\\/]apps[\\/]desktop[\\/]src[\\/].*\.tsx?$/] };
 
 export default defineConfig({
   root: desktopRoot,

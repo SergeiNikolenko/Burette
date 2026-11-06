@@ -1,6 +1,6 @@
 [package]
 name = "burette"
-version = "2026.11.7"
+version = "2026.11.8"
 description = "Tauri/Rust shell for local molecular previews"
 authors = ["Burette"]
 edition = "2021"
@@ -24,6 +24,7 @@ burette-compute-core = { path = "../../../crates/burette-compute-core" }
 burette-compute-protocol = { path = "../../../crates/burette-compute-protocol" }
 burette-core = { path = "../../../crates/burette-core" }
 burette-mdsmooth = { path = "../../../crates/burette-mdsmooth" }
+dunce = "1"
 ed25519-dalek = "3"
 flate2 = "1"
 libc = "0.2"
@@ -51,9 +52,24 @@ uuid = { version = "1", features = ["v4", "fast-rng"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"
-notify-rust = "4.18"
 secret-service = { version = "5.2", features = ["rt-async-io-crypto-rust"] }
+
+[target.'cfg(any(target_os = "linux", windows))'.dependencies]
+notify-rust = "4.18"
 trash = "5.3"
+
+[target.'cfg(windows)'.dependencies]
+arboard = { version = "3", default-features = false }
+keyring = { version = "3", features = ["windows-native"] }
+windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Storage_FileSystem",
+  "Win32_System_IO",
+  "Win32_System_Power",
+  "Win32_System_Threading",
+  "Win32_UI_Shell",
+] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri-plugin-sparkle-updater = { version = "=0.3.0", optional = true }

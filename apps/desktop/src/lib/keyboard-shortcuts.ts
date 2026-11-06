@@ -12,7 +12,7 @@
 // - "browser": matched by the webview handler in the browser runtime only.
 // - "fixed": shown for reference and used for conflict checks, not editable.
 
-import { isLinuxPlatform, isMacPlatform } from "./platform";
+import { fileManagerReference, isMacPlatform, metaKeyName, revealInFileManagerLabel } from "./platform";
 
 export type ShortcutScope = "menu" | "webview" | "browser" | "fixed";
 
@@ -65,7 +65,7 @@ export const SHORTCUT_DEFINITIONS = [
   { id: "app.quit", label: "Quit Burette", description: "Quit after the exit preflight completes (desktop app).", scope: "menu", defaultAccelerator: "CmdOrCtrl+Q" },
   { id: "window.next-tab", label: "Select next tab", description: "Move to the next tab in the current window.", scope: "menu", defaultAccelerator: isMacPlatform() ? "CmdOrCtrl+Shift+]" : "Ctrl+Tab" },
   { id: "window.previous-tab", label: "Select previous tab", description: "Move to the previous tab in the current window.", scope: "menu", defaultAccelerator: isMacPlatform() ? "CmdOrCtrl+Shift+[" : "Ctrl+Shift+Tab" },
-  { id: "file.reveal-active", label: isMacPlatform() ? "Reveal in Finder" : "Show in File Manager", description: isMacPlatform() ? "Show the active structure file in Finder." : "Show the active structure file in the file manager.", scope: "menu", defaultAccelerator: "CmdOrCtrl+Shift+R" },
+  { id: "file.reveal-active", label: revealInFileManagerLabel(), description: `Show the active structure file in ${fileManagerReference()}.`, scope: "menu", defaultAccelerator: "CmdOrCtrl+Shift+R" },
   { id: "file.copy-active-path", label: "Copy active path", description: "Copy the active structure file path.", scope: "menu", defaultAccelerator: "CmdOrCtrl+Shift+C" },
   { id: "file.show-active-metadata", label: "Get Info", description: "Show renderer, format, path, and file size for the active structure.", scope: "menu", defaultAccelerator: "CmdOrCtrl+I" },
   { id: "file.export-preview-png", label: "Export preview as PNG", description: "Save the active external preview as a PNG file.", scope: "menu", defaultAccelerator: "CmdOrCtrl+Shift+E" },
@@ -290,10 +290,6 @@ export function formatAccelerator(accelerator: string): string {
     return `${parsed.ctrl ? "⌃" : ""}${parsed.alt ? "⌥" : ""}${parsed.shift ? "⇧" : ""}${parsed.meta ? "⌘" : ""}${MAC_KEY_GLYPHS[parsed.key] ?? parsed.key}`;
   }
   return [parsed.ctrl && "Ctrl", parsed.meta && metaKeyName(), parsed.alt && "Alt", parsed.shift && "Shift", parsed.key].filter(Boolean).join("+");
-}
-
-function metaKeyName() {
-  return isLinuxPlatform() ? "Super" : "Win";
 }
 
 /** Key-cap label of a shortcut's default accelerator, for tooltips and hints. */

@@ -83,6 +83,8 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
         .build(app)?;
     let reveal_label = if cfg!(target_os = "macos") {
         "Reveal in Finder"
+    } else if cfg!(windows) {
+        "Show in File Explorer"
     } else {
         "Show in File Manager"
     };

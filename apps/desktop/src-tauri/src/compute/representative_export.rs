@@ -1,8 +1,7 @@
 use std::{
     borrow::Cow,
-    fs::{self, File, OpenOptions},
+    fs::{self, File},
     io::{BufRead, BufReader, Read, Write},
-    os::unix::fs::{DirBuilderExt, OpenOptionsExt},
     path::{Path, PathBuf},
 };
 
@@ -10,7 +9,6 @@ use burette_compute_protocol::{
     ArtifactManifest, JobSnapshot, MolecularSnapshotRecordV1, OrderedRecordMoleculeIdentityHasher,
     MOLECULAR_RECORDS_FILE_PATH,
 };
-use rustix::fs::{renameat_with, RenameFlags};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -19,6 +17,7 @@ use super::{
     artifact_publisher::artifact_manifest_sha256,
     artifact_reader::open_verified_artifact_file,
     error::{ComputeCoordinatorError, ComputeResult},
+    platform_fs,
     snapshot_repository::SnapshotRepository,
     store::ComputeStore,
 };
@@ -27,8 +26,6 @@ const EXPORT_SCHEMA_VERSION: &str = "burette.cluster-representative-export.v1";
 const REPRESENTATIVES_PATH: &str = "result/representatives.bin";
 const CLUSTER_IDS_PATH: &str = "result/cluster-ids.bin";
 const MAX_RECORD_LINE_BYTES: usize = 512 * 1024;
-const DIRECTORY_MODE: u32 = 0o700;
-const FILE_MODE: u32 = 0o600;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -95,7 +92,7 @@ pub(crate) fn export_cluster_representatives(
     }
     let expected_artifact_sha256 = artifact_manifest_sha256(artifact)?;
     let output_root = validate_output_directory(output_directory)?;
-    let output_root_directory = File::open(&output_root)?;
+    let output_root_directory = platform_fs::open_directory_path(&output_root)?;
     let export_id = Uuid::new_v4();
     let leaf = export_bundle_leaf(collection_name, job.job_id, export_id)?;
     let staging_leaf = format!(".{leaf}.staging");
@@ -296,20 +293,14 @@ pub(crate) fn export_cluster_representatives(
         report_file.finish("provenanceReport", "provenance.json", "application/json", 1)?;
 
     sync_directory(&staging)?;
-    renameat_with(
-        &output_root_directory,
-        staging_leaf.as_str(),
-        &output_root_directory,
-        leaf.as_str(),
-        RenameFlags::NOREPLACE,
-    )
-    .map_err(|error| {
-        ComputeCoordinatorError::Filesystem(format!(
-            "cannot publish representative export bundle {}: {error}",
-            destination.display()
-        ))
-    })?;
-    output_root_directory.sync_all()?;
+    platform_fs::rename_noreplace_at(&output_root_directory, staging_leaf.as_str(), leaf.as_str())
+        .map_err(|error| {
+            ComputeCoordinatorError::Filesystem(format!(
+                "cannot publish representative export bundle {}: {error}",
+                destination.display()
+            ))
+        })?;
+    platform_fs::sync_directory_handle(&output_root_directory)?;
     cleanup.disarm();
 
     Ok(ClusterRepresentativeExportResult {
@@ -334,7 +325,7 @@ fn validate_output_directory(path: &Path) -> ComputeResult<PathBuf> {
             "representative export directory must be absolute",
         ));
     }
-    let canonical = fs::canonicalize(path).map_err(|error| {
+    let canonical = dunce::canonicalize(path).map_err(|error| {
         filesystem(format!(
             "cannot resolve representative export directory {}: {error}",
             path.display()
@@ -375,15 +366,12 @@ fn export_bundle_leaf(
 }
 
 fn create_export_directory(path: &Path) -> ComputeResult<()> {
-    fs::DirBuilder::new()
-        .mode(DIRECTORY_MODE)
-        .create(path)
-        .map_err(ComputeCoordinatorError::from)?;
+    platform_fs::create_private_directory_path(path).map_err(ComputeCoordinatorError::from)?;
     Ok(())
 }
 
 fn sync_directory(path: &Path) -> ComputeResult<()> {
-    File::open(path)?.sync_all()?;
+    platform_fs::sync_directory_path(path)?;
     Ok(())
 }
 
@@ -668,11 +656,7 @@ struct HashedExportFile {
 impl HashedExportFile {
     fn create(directory: &Path, name: &str) -> ComputeResult<Self> {
         let path = directory.join(name);
-        let file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(FILE_MODE)
-            .open(&path)?;
+        let file = platform_fs::create_new_private_file_path(&path)?;
         Ok(Self {
             path,
             file: Some(file),

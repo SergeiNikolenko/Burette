@@ -1,9 +1,8 @@
 use std::{
     collections::BTreeSet,
     fmt::Write as _,
-    fs::{self, File, OpenOptions},
+    fs::{self, File},
     io::{Read, Write},
-    os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
 };
 
@@ -14,10 +13,6 @@ use burette_compute_protocol::{
     ResultPackVersion, StageProvenance, WorkflowTemplateId, CLUSTER_FINGERPRINT_ARRAY_NAME,
     CLUSTER_FINGERPRINT_SEMANTIC, CLUSTER_FINGERPRINT_WORDS,
 };
-use rustix::{
-    fs::{renameat_with, RenameFlags},
-    process::geteuid,
-};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -27,6 +22,7 @@ use super::{
     conformer_executor::ConformerDistanceComputation,
     conformer_stereo_executor::ConformerStereoComputation,
     error::{ComputeCoordinatorError, ComputeResult},
+    platform_fs,
     store::ComputeStore,
 };
 use burette_compute_core::{ConformerEnginePackArrays, ConformerPackedArraySpan};
@@ -484,20 +480,18 @@ pub(crate) fn materialize_analysis_artifact(
                 ComputeCoordinatorError::Protocol("artifact byte count overflowed".into())
             })
         })?;
-        let root_directory = File::open(&root)?;
-        renameat_with(
+        let root_directory = platform_fs::open_directory_path(&root)?;
+        platform_fs::rename_noreplace_at(
             &root_directory,
             staging_leaf.as_str(),
-            &root_directory,
             final_leaf.as_str(),
-            RenameFlags::NOREPLACE,
         )
         .map_err(|error| {
             ComputeCoordinatorError::Filesystem(format!(
                 "cannot atomically publish analysis artifact: {error}"
             ))
         })?;
-        root_directory.sync_all()?;
+        platform_fs::sync_directory_handle(&root_directory)?;
         verify_materialized_files(&final_directory, &files_as_descriptors(&files))?;
         Ok(MaterializedComputeArtifact {
             artifact_id,
@@ -808,20 +802,18 @@ pub(crate) fn materialize_cluster_artifact(
             })
         })?;
 
-        let root_directory = File::open(&root)?;
-        renameat_with(
+        let root_directory = platform_fs::open_directory_path(&root)?;
+        platform_fs::rename_noreplace_at(
             &root_directory,
             staging_leaf.as_str(),
-            &root_directory,
             final_leaf.as_str(),
-            RenameFlags::NOREPLACE,
         )
         .map_err(|error| {
             ComputeCoordinatorError::Filesystem(format!(
                 "cannot atomically publish cluster artifact: {error}"
             ))
         })?;
-        root_directory.sync_all()?;
+        platform_fs::sync_directory_handle(&root_directory)?;
         verify_materialized_files(&final_directory, &files_as_descriptors(&files))?;
         Ok(MaterializedComputeArtifact {
             artifact_id,
@@ -990,20 +982,18 @@ pub(crate) fn materialize_conformer_artifact(
                 ComputeCoordinatorError::Protocol("artifact byte count overflowed".into())
             })
         })?;
-        let root_directory = File::open(&root)?;
-        renameat_with(
+        let root_directory = platform_fs::open_directory_path(&root)?;
+        platform_fs::rename_noreplace_at(
             &root_directory,
             staging_leaf.as_str(),
-            &root_directory,
             final_leaf.as_str(),
-            RenameFlags::NOREPLACE,
         )
         .map_err(|error| {
             ComputeCoordinatorError::Filesystem(format!(
                 "cannot atomically publish conformer artifact: {error}"
             ))
         })?;
-        root_directory.sync_all()?;
+        platform_fs::sync_directory_handle(&root_directory)?;
         verify_materialized_files(&final_directory, &files_as_descriptors(&files))?;
         Ok(MaterializedComputeArtifact {
             artifact_id,
@@ -1097,7 +1087,7 @@ pub(crate) fn reconcile_artifact_root(store: &ComputeStore) -> ComputeResult<()>
         ));
     }
     if changed {
-        File::open(&root)?.sync_all()?;
+        platform_fs::sync_directory_path(&root)?;
     }
     Ok(())
 }
@@ -1147,11 +1137,7 @@ impl<'a> ArtifactWriter<'a> {
         bytes: &[u8],
     ) -> ComputeResult<PackedFileDescriptor> {
         let path = self.root.join(relative_path);
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(ARTIFACT_FILE_MODE)
-            .open(&path)?;
+        let mut file = platform_fs::create_new_private_file_path(&path)?;
         file.write_all(bytes)?;
         file.sync_all()?;
         let descriptor = PackedFileDescriptor {
@@ -1166,9 +1152,9 @@ impl<'a> ArtifactWriter<'a> {
     }
 
     fn sync(&self) -> ComputeResult<()> {
-        File::open(self.root.join("engine"))?.sync_all()?;
-        File::open(self.root.join("result"))?.sync_all()?;
-        File::open(self.root)?.sync_all()?;
+        platform_fs::sync_directory_path(&self.root.join("engine"))?;
+        platform_fs::sync_directory_path(&self.root.join("result"))?;
+        platform_fs::sync_directory_path(self.root)?;
         Ok(())
     }
 }
@@ -1901,10 +1887,7 @@ fn encode_f64(values: &[f64]) -> Vec<u8> {
 }
 
 fn initialize_artifact_root(root: &Path) -> ComputeResult<()> {
-    match fs::DirBuilder::new()
-        .mode(ARTIFACT_DIRECTORY_MODE)
-        .create(root)
-    {
+    match platform_fs::create_private_directory_path(root) {
         Ok(()) => {}
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
         Err(error) => return Err(error.into()),
@@ -1913,9 +1896,7 @@ fn initialize_artifact_root(root: &Path) -> ComputeResult<()> {
 }
 
 fn create_private_directory(path: &Path) -> ComputeResult<()> {
-    fs::DirBuilder::new()
-        .mode(ARTIFACT_DIRECTORY_MODE)
-        .create(path)?;
+    platform_fs::create_private_directory_path(path)?;
     validate_private_directory(path)
 }
 
@@ -1923,8 +1904,8 @@ fn validate_private_directory(path: &Path) -> ComputeResult<()> {
     let metadata = fs::symlink_metadata(path)?;
     if !metadata.file_type().is_dir()
         || metadata.file_type().is_symlink()
-        || metadata.uid() != geteuid().as_raw()
-        || metadata.permissions().mode() & 0o777 != ARTIFACT_DIRECTORY_MODE
+        || !platform_fs::metadata_owned_by_current_user(&metadata)
+        || !platform_fs::metadata_has_mode(&metadata, 0o777, ARTIFACT_DIRECTORY_MODE)
     {
         return Err(ComputeCoordinatorError::Filesystem(format!(
             "compute artifact directory is not a private owned directory: {}",
@@ -1944,8 +1925,8 @@ fn verify_materialized_files(
         let metadata = fs::symlink_metadata(&path)?;
         if !metadata.file_type().is_file()
             || metadata.file_type().is_symlink()
-            || metadata.uid() != geteuid().as_raw()
-            || metadata.permissions().mode() & 0o777 != ARTIFACT_FILE_MODE
+            || !platform_fs::metadata_owned_by_current_user(&metadata)
+            || !platform_fs::metadata_has_mode(&metadata, 0o777, ARTIFACT_FILE_MODE)
             || metadata.len() != descriptor.byte_length
         {
             return Err(ComputeCoordinatorError::Filesystem(format!(
@@ -2203,10 +2184,13 @@ mod recovery_tests {
             fs::read_to_string(&report).unwrap(),
             "{\"status\":\"partial\"}\n"
         );
-        fs::rename(&partial, root.join("saved-reports")).unwrap();
-        std::os::unix::fs::symlink(root.join("saved-reports"), &partial).unwrap();
-        assert!(reconcile_artifact_root(&store).is_err());
-        assert!(root.join("saved-reports").exists());
+        #[cfg(unix)]
+        {
+            fs::rename(&partial, root.join("saved-reports")).unwrap();
+            std::os::unix::fs::symlink(root.join("saved-reports"), &partial).unwrap();
+            assert!(reconcile_artifact_root(&store).is_err());
+            assert!(root.join("saved-reports").exists());
+        }
         drop(store);
         fs::remove_dir_all(root).unwrap();
     }

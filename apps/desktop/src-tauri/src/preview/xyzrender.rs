@@ -16,8 +16,19 @@ use super::runtime::XyzrenderControls;
 #[cfg(test)]
 use super::runtime::XyzrenderRegion;
 use super::xyzrender_pool::{render_cards, XyzrenderCardJob, XyzrenderWorkerLaunch};
+use crate::preview::runtime_utils::SimplifiedCanonicalize;
 
 const XYZRENDER_TIMEOUT: Duration = Duration::from_secs(20);
+// The bundled runtime ships a batch wrapper on Windows (scripts/stage-xyzrender-windows.py)
+// and a shell wrapper elsewhere; user installs provide a console-script launcher.
+#[cfg(windows)]
+const BUNDLED_XYZRENDER_WRAPPER: &str = "xyzrender.cmd";
+#[cfg(not(windows))]
+const BUNDLED_XYZRENDER_WRAPPER: &str = "xyzrender";
+#[cfg(windows)]
+const XYZRENDER_LAUNCHER: &str = "xyzrender.exe";
+#[cfg(not(windows))]
+const XYZRENDER_LAUNCHER: &str = "xyzrender";
 const XYZRENDER_LOG_CAPTURE_BYTES: usize = 64 * 1024;
 const XYZRENDER_CACHE_MAX_AGE: Duration = Duration::from_secs(14 * 24 * 60 * 60);
 const XYZRENDER_CACHE_MAX_ENTRIES: usize = 4096;
@@ -522,10 +533,7 @@ fn bundled_xyzrender_python_launch(script: &Path) -> Option<XyzrenderBatchHelper
     let bin = script.parent()?;
     let runtime_root = bin.parent()?;
     let resources = runtime_root.parent()?;
-    let python = resources
-        .join("xyzrender-python")
-        .join("bin")
-        .join("python3");
+    let python = super::runtime_utils::standalone_python(&resources.join("xyzrender-python"));
     if !python.is_file() {
         return None;
     }
@@ -557,6 +565,23 @@ fn find_site_packages(root: &Path) -> Option<PathBuf> {
     None
 }
 
+#[cfg(windows)]
+fn python_interpreter_from_script(script: &Path) -> Option<PathBuf> {
+    // Windows console scripts are binary launchers without a shebang: pip puts
+    // them in the environment's Scripts folder (a venv's python.exe sits beside
+    // them, a base interpreter's one level up), and `uv tool install` links
+    // them from ~/.local/bin into a tool environment under %APPDATA%.
+    let bin = script.parent()?;
+    let mut candidates = vec![bin.join("python.exe")];
+    candidates.extend(bin.parent().map(|parent| parent.join("python.exe")));
+    if let Some(app_data) = std::env::var_os("APPDATA") {
+        candidates
+            .push(PathBuf::from(app_data).join(r"uv\data\tools\xyzrender\Scripts\python.exe"));
+    }
+    candidates.into_iter().find(|path| path.is_file())
+}
+
+#[cfg(not(windows))]
 fn python_interpreter_from_script(script: &Path) -> Option<PathBuf> {
     let text = fs::read_to_string(script).ok()?;
     let first_line = text.lines().next()?.trim();
@@ -1416,7 +1441,7 @@ fn xyzrender_cache_key(
 }
 
 fn canonical_path_string(path: &Path) -> String {
-    path.canonicalize()
+    path.canonicalize_simplified()
         .unwrap_or_else(|_| path.to_path_buf())
         .to_string_lossy()
         .to_string()
@@ -1626,7 +1651,7 @@ fn run_xyzrender_command(
     log_path: &Path,
     timeout: Duration,
 ) -> Result<(ExitStatus, String), String> {
-    let mut command = Command::new(executable);
+    let mut command = crate::preview::runtime_utils::background_command(executable);
     command.args(&args);
     run_xyzrender_process(command, log_path, timeout)
 }
@@ -1722,12 +1747,24 @@ fn resolve_xyzrender_executable() -> Result<PathBuf, String> {
     if let Ok(executable) = std::env::current_exe() {
         candidates.extend(bundled_xyzrender_candidates_from_executable(&executable));
     }
-    if let Some(home) = std::env::var_os("HOME") {
-        candidates.push(PathBuf::from(home).join(".local/bin/xyzrender"));
+    // HOME wins on Windows too, so tests and Git Bash can redirect it;
+    // `uv tool install` and pipx link into %USERPROFILE%\.local\bin there.
+    #[cfg(windows)]
+    let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"));
+    #[cfg(not(windows))]
+    let home = std::env::var_os("HOME");
+    if let Some(home) = home {
+        candidates.push(
+            PathBuf::from(home)
+                .join(".local")
+                .join("bin")
+                .join(XYZRENDER_LAUNCHER),
+        );
     }
     if let Some(path) = std::env::var_os("PATH") {
-        candidates.extend(std::env::split_paths(&path).map(|dir| dir.join("xyzrender")));
+        candidates.extend(std::env::split_paths(&path).map(|dir| dir.join(XYZRENDER_LAUNCHER)));
     }
+    #[cfg(not(windows))]
     candidates.extend([
         PathBuf::from("/opt/homebrew/bin/xyzrender"),
         PathBuf::from("/usr/local/bin/xyzrender"),
@@ -1743,7 +1780,12 @@ fn resolve_xyzrender_executable() -> Result<PathBuf, String> {
 fn bundled_xyzrender_candidates_from_executable(executable: &Path) -> Vec<PathBuf> {
     super::runtime_utils::bundled_resource_dirs(executable)
         .into_iter()
-        .map(|resources| resources.join("xyzrender-runtime/bin/xyzrender"))
+        .map(|resources| {
+            resources
+                .join("xyzrender-runtime")
+                .join("bin")
+                .join(BUNDLED_XYZRENDER_WRAPPER)
+        })
         .collect()
 }
 
@@ -1801,7 +1843,10 @@ fn xyzrender_source_for_path(path: &Path) -> &'static str {
     let text = path.to_string_lossy();
     if text.contains("xyzrender-runtime") {
         "bundled"
-    } else if text.contains(".local/bin") || text.contains(".local/share") {
+    } else if [".local/bin", ".local/share", r".local\bin"]
+        .iter()
+        .any(|part| text.contains(part))
+    {
         "user-local"
     } else if text.contains("/opt/homebrew/") || text.contains("/usr/local/") {
         "system"
@@ -1914,6 +1959,7 @@ mod tests {
         let _ = fs::remove_dir_all(&directory);
     }
 
+    #[cfg(unix)]
     #[test]
     fn times_out_hung_xyzrender_processes() {
         let directory =
@@ -2117,6 +2163,18 @@ mod tests {
         let _ = fs::remove_dir_all(&directory);
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn finds_bundled_xyzrender_runtime_beside_the_windows_executable() {
+        let bundled =
+            PathBuf::from(r"C:\Program Files\Burette\xyzrender-runtime\bin\xyzrender.cmd");
+        assert!(bundled_xyzrender_candidates_from_executable(Path::new(
+            r"C:\Program Files\Burette\Burette.exe"
+        ))
+        .contains(&bundled));
+    }
+
+    #[cfg(not(windows))]
     #[test]
     fn finds_bundled_xyzrender_runtime_from_app_and_appex_executables() {
         let app_executable = Path::new("/Applications/Burette.app/Contents/MacOS/burette");
@@ -2137,15 +2195,16 @@ mod tests {
             "burette-xyzrender-batch-python-{}",
             uuid::Uuid::new_v4()
         ));
-        let runtime_bin = directory.join("Resources/xyzrender-runtime/bin");
-        let site_packages =
-            directory.join("Resources/xyzrender-runtime/lib/python3.13/site-packages");
-        let python_bin = directory.join("Resources/xyzrender-python/bin");
+        let resources = directory.join("Resources");
+        let runtime = resources.join("xyzrender-runtime");
+        let runtime_bin = runtime.join("bin");
+        let site_packages = runtime.join("lib").join("python3.13").join("site-packages");
+        let python =
+            crate::preview::runtime_utils::standalone_python(&resources.join("xyzrender-python"));
         fs::create_dir_all(&runtime_bin).expect("runtime bin should be created");
         fs::create_dir_all(&site_packages).expect("site-packages should be created");
-        fs::create_dir_all(&python_bin).expect("python bin should be created");
-        let wrapper = runtime_bin.join("xyzrender");
-        let python = python_bin.join("python3");
+        fs::create_dir_all(python.parent().unwrap()).expect("python bin should be created");
+        let wrapper = runtime_bin.join(BUNDLED_XYZRENDER_WRAPPER);
         fs::write(&wrapper, "#!/bin/sh\nexec \"$0\"\n").expect("wrapper should be written");
         fs::write(&python, "").expect("python should be written");
 

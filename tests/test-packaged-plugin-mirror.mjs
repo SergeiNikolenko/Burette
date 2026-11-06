@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // `plugins/burette-agent/` ships copies of files that live elsewhere in the repo:
-// scripts/build-agent-shell-plugin.mjs rsyncs PreviewExtension/Web into preview-web
+// scripts/build-agent-shell-plugin.mjs mirrors PreviewExtension/Web into preview-web
 // and copies a handful of scripts alongside. Nothing forced anyone to re-run it, so
 // a change to the source could land while the packaged copy kept the old version -
 // and it did: the large-collection indexing work sat in PreviewExtension/Web for
@@ -47,7 +47,7 @@ async function assertSameFile(sourcePath, copyPath, what) {
   );
 }
 
-// The whole PreviewExtension/Web tree, mirrored with `rsync -a --delete`: the copy
+// The whole PreviewExtension/Web tree, mirrored into an emptied folder: the copy
 // must hold the same files and nothing else.
 const webSource = join(root, "PreviewExtension/Web");
 const webCopy = join(root, "plugins/burette-agent/preview-web");

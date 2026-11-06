@@ -257,7 +257,7 @@ pub(crate) fn render(request: EditorRequest, directory: &Path) -> Result<EditorR
                 )?;
                 return Ok((outcome.success, outcome.log));
             }
-            let mut command = Command::new(&executable);
+            let mut command = crate::preview::runtime_utils::background_command(&executable);
             command
                 .args(args)
                 .env("PYTHON_CPU_COUNT", "4")

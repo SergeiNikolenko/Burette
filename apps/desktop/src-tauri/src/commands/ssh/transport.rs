@@ -1,3 +1,4 @@
+use std::process::{Child, Command};
 use std::sync::{Condvar, Mutex};
 
 static CONNECTIONS: (Mutex<usize>, Condvar) = (Mutex::new(0), Condvar::new());
@@ -37,7 +38,46 @@ pub(super) const CONNECTION_OPTIONS: [&str; 3] = [
     "-oControlPersist=no",
 ];
 
-#[cfg(test)]
+/// OpenSSH in its own process group, so a timeout can stop proxy descendants
+/// whose inherited pipes would otherwise hold readers open. Windows ships the
+/// client in System32\OpenSSH, which is on PATH.
+pub(super) fn ssh_command() -> Command {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        let mut command = Command::new("/usr/bin/ssh");
+        command.process_group(0);
+        command
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let mut command = Command::new("ssh.exe");
+        command.creation_flags(CREATE_NO_WINDOW);
+        command
+    }
+}
+
+pub(super) fn kill_process_tree(child: &mut Child) {
+    #[cfg(unix)]
+    // SAFETY: signals the process group created by `ssh_command`.
+    unsafe {
+        libc::kill(-(child.id() as i32), libc::SIGKILL);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let _ = Command::new("taskkill.exe")
+            .args(["/T", "/F", "/PID", &child.id().to_string()])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+    }
+    let _ = child.kill();
+}
+
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use std::process::Command;

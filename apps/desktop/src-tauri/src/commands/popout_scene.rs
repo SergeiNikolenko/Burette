@@ -1,3 +1,4 @@
+use crate::preview::runtime_utils::SimplifiedCanonicalize;
 use base64::Engine;
 use std::{fs, io::Write};
 use tauri::{Emitter, Manager};
@@ -29,9 +30,14 @@ pub(crate) fn relay_popout_handoff<R: tauri::Runtime>(
                 .map_err(|e| e.to_string())?
                 .join("popout-scenes");
             let scene = std::path::Path::new(path)
-                .canonicalize()
+                .canonicalize_simplified()
                 .map_err(|e| e.to_string())?;
-            if scene.parent() != Some(root.canonicalize().map_err(|e| e.to_string())?.as_path())
+            if scene.parent()
+                != Some(
+                    root.canonicalize_simplified()
+                        .map_err(|e| e.to_string())?
+                        .as_path(),
+                )
                 || scene.extension().is_none_or(|extension| {
                     extension != "molx" && sheet_checkpoint(&app, &scene).ok().flatten().is_none()
                 })
@@ -121,7 +127,7 @@ fn write_source_descriptor(
     else {
         return Ok(());
     };
-    let source = source.canonicalize().unwrap_or(source);
+    let source = source.canonicalize_simplified().unwrap_or(source);
     let paths = scene_source_paths.unwrap_or_default();
     if paths.len() > 200 {
         return Err("Too many scene source paths.".into());
@@ -264,7 +270,10 @@ mod tests {
         )
         .unwrap();
         let descriptor = recovery_source(app.handle(), &checkpoint).unwrap().unwrap();
-        assert_eq!(descriptor.source_path, source.canonicalize().unwrap());
+        assert_eq!(
+            descriptor.source_path,
+            source.canonicalize_simplified().unwrap()
+        );
         assert_eq!(
             serde_json::to_value(descriptor).unwrap(),
             serde_json::json!({
@@ -555,7 +564,7 @@ pub(crate) fn save_popout_sheet<R: tauri::Runtime>(
             .app_data_dir()
             .map_err(|e| e.to_string())?
             .join("popout-scenes");
-        let canonical_root = root.canonicalize().map_err(|e| e.to_string())?;
+        let canonical_root = root.canonicalize_simplified().map_err(|e| e.to_string())?;
         // Check every file before reading descriptors: symlinks must not turn
         // an application checkpoint into an unrelated local file.
         for file in [
@@ -563,7 +572,10 @@ pub(crate) fn save_popout_sheet<R: tauri::Runtime>(
             source.with_extension("source.json"),
             source.with_extension("sheet.json"),
         ] {
-            if file.canonicalize().map_err(|e| e.to_string())?.parent()
+            if file
+                .canonicalize_simplified()
+                .map_err(|e| e.to_string())?
+                .parent()
                 != Some(canonical_root.as_path())
             {
                 return Err("Invalid sheet recovery source.".into());

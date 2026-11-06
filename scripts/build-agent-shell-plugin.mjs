@@ -67,13 +67,8 @@ await rm(storyTemplateAssets, { recursive: true, force: true });
 await cp(resolve(repoRoot, 'templates', 'mvs-story'), storyTemplateAssets, { recursive: true });
 // The standalone validator is generated from the same pinned source as the viewer.
 await cp(resolve(repoRoot, 'scripts/mvs-schema-validator.mjs'), resolve(pluginRoot, 'scripts/mvs-schema-validator.mjs'));
-await mkdir(previewWeb, { recursive: true });
-await run('rsync', [
-  '-a',
-  '--delete',
-  `${resolve(repoRoot, 'PreviewExtension/Web')}/`,
-  `${previewWeb}/`,
-]);
+// previewWeb was removed above, so a plain recursive copy mirrors the source.
+await cp(resolve(repoRoot, 'PreviewExtension/Web'), previewWeb, { recursive: true });
 for (const asset of requiredPreviewAssets) {
   const source = resolve(previewWeb, asset);
   const info = await stat(source).catch(() => null);

@@ -1,4 +1,5 @@
 import type { TextFileDocument, ViewerDocument } from "../types";
+import { basename } from "./sidebar-projects";
 
 export type SpectrumFormat = "ms" | "magma" | "mgf" | "msp" | "mzml" | "mzxml" | "json" | "csv" | "tsv";
 
@@ -594,7 +595,7 @@ function stableHash(value: string) {
 }
 
 function pathExtension(path: string) {
-  const name = path.split("/").pop() ?? path;
+  const name = basename(path);
   const index = name.lastIndexOf(".");
   return index >= 0 ? name.slice(index + 1).toLowerCase() : "";
 }

@@ -19,8 +19,8 @@ static SLEEP_PREVENTION: Mutex<SleepPrevention> = Mutex::new(SleepPrevention {
 
 /// Records whether the calling window has running jobs that should keep the
 /// system awake. A `caffeinate -i -w <pid>` child (a `systemd-inhibit` child on
-/// Linux) holds the idle-sleep assertion while any window asks for it, and
-/// exits with the app.
+/// Linux, a hidden PowerShell child on Windows) holds the idle-sleep assertion
+/// while any window asks for it, and exits with the app.
 #[tauri::command]
 pub(crate) fn set_sleep_prevention<R: Runtime>(
     window: WebviewWindow<R>,
@@ -77,7 +77,7 @@ fn spawn_caffeinate() -> Result<Child, String> {
 
 /// logind holds the inhibitor lock until `tail --pid` returns, which it does
 /// when the app exits.
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
 fn spawn_caffeinate() -> Result<Child, String> {
     Command::new("systemd-inhibit")
         .args([
@@ -97,12 +97,40 @@ fn spawn_caffeinate() -> Result<Child, String> {
         .map_err(|error| format!("Cannot keep the computer awake: {error}"))
 }
 
+/// `SetThreadExecutionState` holds only while the calling thread lives, so the
+/// assertion is owned by a PowerShell child that waits for the app to exit.
+#[cfg(windows)]
+fn spawn_caffeinate() -> Result<Child, String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    // ES_CONTINUOUS | ES_SYSTEM_REQUIRED
+    let script = format!(
+        "$k = Add-Type -Name Power -Namespace Burette -PassThru -MemberDefinition \
+         '[DllImport(\"kernel32.dll\")] public static extern uint SetThreadExecutionState(uint flags);'; \
+         [void]$k::SetThreadExecutionState([uint32]2147483649); Wait-Process -Id {}",
+        std::process::id()
+    );
+    Command::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("Cannot keep the computer awake: {error}"))
+}
+
 #[tauri::command]
-pub(crate) fn notify_job_finished(title: String, body: String) -> Result<(), String> {
+pub(crate) fn notify_job_finished<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    title: String,
+    body: String,
+) -> Result<(), String> {
     let title = bounded(&title, 120);
     let body = bounded(&body, 400);
     #[cfg(target_os = "macos")]
     {
+        let _ = app;
         // SAFETY: Objective-C calls on classes from linked system frameworks;
         // every object created here is released before returning.
         if unsafe { macos::post_user_notification(&title, &body) } {
@@ -112,7 +140,14 @@ pub(crate) fn notify_job_finished(title: String, body: String) -> Result<(), Str
     }
     #[cfg(not(target_os = "macos"))]
     {
-        notify_rust::Notification::new()
+        let mut notification = notify_rust::Notification::new();
+        // Windows attributes a toast to the Start menu shortcut carrying this
+        // AppUserModelID, which the installer sets to the bundle identifier.
+        #[cfg(windows)]
+        notification.app_id(&app.config().identifier);
+        #[cfg(target_os = "linux")]
+        let _ = app;
+        notification
             .appname("Burette")
             .summary(&title)
             .body(&body)

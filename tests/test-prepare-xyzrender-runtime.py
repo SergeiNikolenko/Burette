@@ -1,18 +1,24 @@
 #!/usr/bin/env python3
 import hashlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
 from unittest.mock import patch
+import zipfile
 
 spec = importlib.util.spec_from_file_location('prepare', Path(__file__).resolve().parents[1] / 'scripts/prepare-xyzrender-runtime.py')
 prepare = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(prepare)
+spec = importlib.util.spec_from_file_location('stage', Path(__file__).resolve().parents[1] / 'scripts/stage-xyzrender-windows.py')
+stage = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(stage)
 
 
 class RuntimePreparationTests(unittest.TestCase):
@@ -28,10 +34,11 @@ class RuntimePreparationTests(unittest.TestCase):
                                 'executable': f'{name}/bin/{name}'} for name in ('python', 'uv')}
         (self.locks / 'bootstrap.json').write_text(json.dumps(self.metadata))
         (self.locks / 'requirements.txt').write_text('fixture==1 --hash=sha256:123\n')
-        for target, value in [('ROOT', self.root), ('LOCKS', self.locks)]:
-            patcher = patch.object(prepare, target, value)
-            patcher.start()
-            self.addCleanup(patcher.stop)
+        for module in (prepare, stage):
+            for target, value in [('ROOT', self.root), ('LOCKS', self.locks)]:
+                patcher = patch.object(module, target, value)
+                patcher.start()
+                self.addCleanup(patcher.stop)
 
     def test_wrong_bootstrap_hash_prevents_extraction_and_execution(self):
         self.metadata['python']['sha256'] = '0' * 64
@@ -86,6 +93,112 @@ class RuntimePreparationTests(unittest.TestCase):
         bootstraps = [json.loads((locks / name).read_text()) for name in ('bootstrap.json', 'bootstrap-linux-x86_64.json')]
         for tool, marker in (('python', 'cpython-3.13.13%2B20260414-'), ('uv', '/download/0.11.7/')):
             self.assertTrue(all(marker in bootstrap[tool]['url'] for bootstrap in bootstraps), tool)
+
+    def test_windows_lock_matches_reviewed_darwin_versions(self):
+        locks = Path(__file__).resolve().parents[1] / 'config/xyzrender'
+        def pins(name):
+            lines = (locks / name).read_text().splitlines()
+            return {line.split(' ', 1)[0]: next(entry.strip() for entry in lines[index + 1:] if '--hash' in entry)
+                    for index, line in enumerate(lines) if line and not line.startswith(('#', ' '))}
+        darwin, windows = pins('requirements.txt'), pins('requirements-windows-x86_64.txt')
+        # IPython's POSIX terminal packages give way to colorama; the pruned
+        # runtime keeps neither, and every shared version must match.
+        self.assertEqual(set(darwin) - set(windows), {'appnope==1.0.0', 'pexpect==4.9.0', 'ptyprocess==0.7.0'})
+        self.assertEqual(set(windows) - set(darwin), {'colorama==0.4.6'})
+        wheel = next(name for name in darwin if name.endswith('.whl'))
+        self.assertEqual(windows[wheel], darwin[wheel], 'Both locks must install the same vendored wheel')
+        bootstraps = [json.loads((locks / name).read_text()) for name in ('bootstrap.json', 'bootstrap-windows-x86_64.json')]
+        for tool, marker in (('python', 'cpython-3.13.13%2B20260414-'), ('uv', '/download/0.11.7/')):
+            self.assertTrue(all(marker in bootstrap[tool]['url'] for bootstrap in bootstraps), tool)
+
+    def write_windows_bootstrap(self):
+        def archive(name, members):
+            path = self.root / name
+            if name.endswith('.zip'):
+                with zipfile.ZipFile(path, 'w') as bundle:
+                    for member, data in members.items():
+                        bundle.writestr(member, data)
+            else:
+                with tarfile.open(path, 'w:gz') as bundle:
+                    for member, data in members.items():
+                        info = tarfile.TarInfo(member)
+                        info.size = len(data)
+                        bundle.addfile(info, io.BytesIO(data))
+            return {'url': path.as_uri(), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
+        python = archive('windows-python.tar.gz', {name: b'fixture' for name in (
+            'python/python.exe', 'python/pythonw.exe', 'python/python3.dll', 'python/python313.dll',
+            'python/Lib/os.py', 'python/Lib/tkinter/__init__.py', 'python/DLLs/_ssl.pyd', 'python/DLLs/_tkinter.pyd',
+            'python/DLLs/tcl86t.dll', 'python/DLLs/tk86t.dll', 'python/tcl/tcl8.6/init.tcl', 'python/include/Python.h',
+            'python/libs/python313.lib', 'python/Scripts/.empty')})
+        (self.locks / 'bootstrap-windows-x86_64.json').write_text(json.dumps({
+            'python': {**python, 'executable': 'python/python.exe'},
+            'uv': {**archive('windows-uv.zip', {'uv.exe': b'uv'}), 'executable': 'uv.exe'},
+        }))
+        (self.locks / 'bootstrap-linux-x86_64.json').write_text(json.dumps({
+            'uv': {**archive('linux-uv.tar.gz', {'uv-x86_64-unknown-linux-gnu/uv': b'uv'}),
+                   'executable': 'uv-x86_64-unknown-linux-gnu/uv'},
+        }))
+        (self.locks / 'requirements-windows-x86_64.txt').write_text('fixture==1 --hash=sha256:789\n')
+
+    def test_windows_stage_installs_windows_wheels_beside_a_batch_wrapper(self):
+        self.write_windows_bootstrap()
+        out = self.root.resolve() / 'stage'
+        for host, machine, cross in (('linux', 'x86_64', True), ('win32', 'AMD64', False)):
+            calls = []
+            def run(command, **kwargs):
+                calls.append((command, kwargs))
+                if 'sync' in command:
+                    site = Path(command[command.index('--target') + 1])
+                    (site / 'xyzrender').mkdir(parents=True)
+                    (site / 'bin').mkdir()
+                    (site / 'bin/ipython.exe').write_bytes(b'launcher for the installing interpreter')
+            with self.subTest(host=host), patch.object(stage.sys, 'platform', host), \
+                    patch.object(stage.platform, 'machine', return_value=machine), \
+                    patch.object(stage.subprocess, 'run', side_effect=run), \
+                    patch.dict(os.environ, {'PYTHONPATH': '/untrusted', 'UV_EXTRA_INDEX_URL': 'https://untrusted.invalid'}):
+                overlay = stage.stage(out, cross=cross)
+                runtime, python_root = out / 'xyzrender-runtime', out / 'xyzrender-python'
+                site = runtime / 'lib/python3.13/site-packages'
+                [(sync, options)] = [(command, kwargs) for command, kwargs in calls if 'sync' in command]
+                self.assertEqual(sync[sync.index('--python-platform') + 1], 'x86_64-pc-windows-msvc')
+                self.assertEqual(sync[sync.index('--python-version') + 1], '3.13')
+                self.assertEqual(sync[sync.index('--target') + 1], str(site))
+                self.assertEqual(sync[sync.index('--only-binary') + 1], ':all:')
+                self.assertEqual(sync[-1], str(self.locks / 'requirements-windows-x86_64.txt'))
+                self.assertTrue({'--require-hashes', '--no-config', '--no-cache'} <= set(sync))
+                self.assertEqual(Path(sync[0]).name, 'uv' if cross else 'uv.exe')
+                self.assertEqual(options['cwd'], self.root, 'Resolve the vendored wheel from the repository root')
+                self.assertFalse(any(key.startswith('UV_') for key in options['env']))
+                self.assertNotIn('PYTHONPATH', options['env'])
+                [prune] = [command for command, _ in calls if 'prune-xyzrender-runtime.py' in command[1]]
+                self.assertEqual(prune[2:], [str(runtime), str(python_root)])
+                executed = [command for command, _ in calls if str(python_root) in command[0] or 'xyzrender.cmd' in command[0]]
+                # Only a Windows host may run the staged interpreter.
+                self.assertEqual([Path(command[1]).name if len(command) > 1 else '' for command in executed],
+                                 [] if cross else ['prepare-xyzrender-bytecode.py', '--help'])
+                self.assertFalse((site / 'bin').exists())
+                kept = sorted(str(path.relative_to(python_root)).replace(os.sep, '/')
+                              for path in python_root.rglob('*') if path.is_file())
+                self.assertEqual(kept, ['DLLs/_ssl.pyd', 'Lib/os.py', 'python.exe', 'python3.dll', 'python313.dll'])
+                wrapper = (runtime / 'bin/xyzrender.cmd').read_bytes().decode()
+                self.assertNotIn('\n', wrapper.replace('\r\n', ''))
+                for line in ('set "PYTHONNOUSERSITE=1"', 'set "PYTHONDONTWRITEBYTECODE=1"',
+                             'set "PYTHON=%~dp0..\\..\\xyzrender-python\\python.exe"',
+                             'set "SITE_PACKAGES=%~dp0..\\lib\\python3.13\\site-packages"',
+                             'set "PYTHONPATH=%SITE_PACKAGES%"', '"%PYTHON%" -m xyzrender.cli %*'):
+                    self.assertIn('\r\n' + line + '\r\n', wrapper)
+                self.assertEqual(json.loads(overlay.read_text()), {'bundle': {'resources': {
+                    runtime.as_posix(): 'xyzrender-runtime', python_root.as_posix(): 'xyzrender-python'}}})
+        self.assertEqual([path.name for path in (self.root / 'build').iterdir()], [])
+
+    def test_windows_stage_refuses_an_unexecuted_stage_unless_asked(self):
+        self.write_windows_bootstrap()
+        with patch.object(stage.sys, 'platform', 'linux'), patch.object(stage.platform, 'machine', return_value='x86_64'), \
+                patch.object(stage.prepare.urllib.request, 'urlopen') as download:
+            with self.assertRaisesRegex(RuntimeError, '--cross'):
+                stage.stage(self.root / 'stage')
+            download.assert_not_called()
+        self.assertFalse((self.root / 'stage').exists())
 
     def test_fresh_runtime_ignores_untrusted_installer_environment(self):
         calls = []

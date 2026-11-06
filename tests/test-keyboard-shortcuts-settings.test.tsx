@@ -24,6 +24,29 @@ test("macOS tab shortcuts match shifted physical bracket keys and exclude Back/F
   expect(matchesAccelerator(next, bindings["view.navigate-forward"])).toBe(false);
 });
 
+test("WebView2 and WebKitGTK navigators get Ctrl-based key caps with the Win or Super meta key", async () => {
+  const { acceleratorFromEvent, formatAccelerator, formatHeldModifiers, matchesAccelerator } = await import("../apps/desktop/src/lib/keyboard-shortcuts");
+  const { desktopPlatform } = await import("../apps/desktop/src/lib/platform");
+  const useNavigator = (platform: string, userAgent: string) => {
+    Object.defineProperty(browser.navigator, "platform", { configurable: true, value: platform });
+    Object.defineProperty(browser.navigator, "userAgent", { configurable: true, value: userAgent });
+  };
+  const mac = { platform: navigator.platform, userAgent: navigator.userAgent };
+  try {
+    for (const [platform, userAgent, expected, meta] of [
+      ["Win32", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0", "windows", "Win"],
+      ["Linux x86_64", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko)", "linux", "Super"],
+    ] as const) {
+      useNavigator(platform, userAgent);
+      const event = new KeyboardEvent("keydown", { key: "k", code: "KeyK", ctrlKey: true, metaKey: true, shiftKey: true });
+      const recorded = acceleratorFromEvent(event)!;
+      // The stored accelerator keeps Tauri's portable "Super" token; only the key cap is platform named.
+      expect({ platform: desktopPlatform(), recorded, label: formatAccelerator(recorded), held: formatHeldModifiers(event), matches: matchesAccelerator(event, recorded) })
+        .toEqual({ platform: expected, recorded: "CmdOrCtrl+Super+Shift+K", label: `Ctrl+${meta}+Shift+K`, held: `Ctrl+${meta}+Shift+`, matches: true });
+    }
+  } finally { useNavigator(mac.platform, mac.userAgent); }
+});
+
 test("shortcut search matches commands, descriptions and key combinations; clear restores focus and results", async () => {
   const shell = document.createElement("div"); document.body.append(shell);
   const root = createRoot(shell);

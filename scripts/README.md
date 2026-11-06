@@ -62,7 +62,15 @@ desktop app for Burette grid rendering checks.
 | --- | --- |
 | `./scripts/install-linux-build-deps.sh` | Installing the WebKitGTK and bundler packages on Debian or Ubuntu. |
 | `./scripts/build-linux.sh` | Building the deb, rpm and AppImage bundles into `build/linux/`; `BURETTE_LINUX_BUNDLES` narrows the list. |
-| `node scripts/linux-desktop-metadata.mjs` | Regenerating `packaging/linux/` after `config/preview-formats.json` changes; `--check` runs inside `check:formats`. |
+| `node scripts/desktop-metadata.mjs` | Regenerating `packaging/linux/` and `packaging/windows/` after `config/preview-formats.json` changes; `--check` runs inside `check:formats`. |
+
+## Windows Installer
+
+| Command | Use When |
+| --- | --- |
+| `./scripts/build-windows.sh` | Building the NSIS installer into `build/windows/` from Git Bash on Windows. |
+| `python scripts/stage-xyzrender-windows.py --out <dir>` | Staging the locked xyzrender runtime for the installer; prints the Tauri config overlay. `--cross` stages it from Linux or macOS without running it. |
+| `pwsh scripts/windows-smoke.ps1` | Installing the built installer, opening two samples, saving screenshots to `build/windows-smoke/`, and uninstalling. |
 
 ## Agent Platform
 

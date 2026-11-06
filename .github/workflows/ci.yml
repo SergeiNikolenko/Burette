@@ -21,6 +21,7 @@ jobs:
     outputs:
       native: ${{ steps.scope.outputs.native }}
       linux: ${{ steps.scope.outputs.linux }}
+      windows: ${{ steps.scope.outputs.windows }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -64,10 +65,12 @@ jobs:
 
           native=false
           linux=false
+          windows=false
           while IFS= read -r path; do
             case "$path" in
-              crates/*|packaging/linux/*|config/xtb/*|scripts/linux-*|.github/workflows/ci.yml)
+              crates/*|packaging/*|config/xtb/*|scripts/linux-*|scripts/*-windows*|scripts/windows-*|scripts/desktop-metadata.mjs|.github/workflows/ci.yml)
                 linux=true
+                windows=true
                 ;;
             esac
             case "$path" in
@@ -79,8 +82,9 @@ jobs:
             esac
           done <<< "$changed"
           echo "native=$native" >> "$GITHUB_OUTPUT"
-          [[ "$native" == true ]] && linux=true
+          [[ "$native" == true ]] && linux=true && windows=true
           echo "linux=$linux" >> "$GITHUB_OUTPUT"
+          echo "windows=$windows" >> "$GITHUB_OUTPUT"
 
   validate:
     name: Fast PR Validation (${{ matrix.scope }})
@@ -205,5 +209,57 @@ jobs:
         with:
           name: linux-bundles-${{ github.event.number }}-${{ github.sha }}
           path: build/linux
+          retention-days: 7
+          compression-level: 0
+
+  windows-build:
+    name: Windows Installer Build
+    needs:
+      - changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.windows == 'true'
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Setup Burette toolchain
+        uses: ./.github/actions/setup-burette-toolchain
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows
+
+      - name: Lint and test Rust on Windows
+        run: |
+          bun scripts/stage-native-widget.mjs
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo test --workspace
+
+      - name: Build Windows installer
+        run: ./scripts/build-windows.sh
+
+      - name: Install and launch
+        shell: pwsh
+        run: ./scripts/windows-smoke.ps1
+
+      - name: Upload Windows installer and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build-${{ github.event.number }}-${{ github.sha }}
+          path: |
+            build/windows
+            build/windows-smoke
           retention-days: 7
           compression-level: 0

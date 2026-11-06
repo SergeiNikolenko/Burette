@@ -1,3 +1,4 @@
+use crate::preview::runtime_utils::SimplifiedCanonicalize;
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -481,9 +482,9 @@ impl OpenDocumentRegistry {
 }
 
 fn normalized_document_path(path: &Path) -> PathBuf {
-    path.canonicalize().unwrap_or_else(|_| {
+    path.canonicalize_simplified().unwrap_or_else(|_| {
         path.parent()
-            .and_then(|parent| parent.canonicalize().ok())
+            .and_then(|parent| parent.canonicalize_simplified().ok())
             .and_then(|parent| path.file_name().map(|name| parent.join(name)))
             .unwrap_or_else(|| path.to_path_buf())
     })
@@ -1632,7 +1633,7 @@ mod tests {
             "canRunPrism": false,
             "canRunXtb": false,
             "rgroupRuntimeAvailable": false,
-            "openDocumentPaths": ["/tmp/molecules.sdf"],
+            "openDocumentPaths": [std::env::temp_dir().join("molecules.sdf")],
             "recentDocuments": null
         })
     }

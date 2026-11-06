@@ -2086,7 +2086,7 @@ assert.doesNotMatch(gridViewer, /railHoverIndex/);
 assert.match(gridViewer, /effectiveMolecularGrid\(cfg\) \? 'Molecule navigation' : 'Row navigation'/);
 assert.match(gridViewer, /function initGridRail\(cfg\)/);
 assert.match(gridCss, /\.buret-grid-rail \{/);
-assert.match(styles, /\.app-shell\[data-runtime="browser"\],\s*\.app-shell\[data-platform="linux"\]\s*\{[^}]*backdrop-filter: none;[^}]*-webkit-backdrop-filter: none;/s);
+assert.match(styles, /\.app-shell\[data-runtime="browser"\],\s*\.app-shell\[data-platform="linux"\],\s*\.app-shell\[data-platform="windows"\]\s*\{[^}]*backdrop-filter: none;[^}]*-webkit-backdrop-filter: none;/s);
 assert.doesNotMatch(styles, /\.app-shell\[data-runtime="tauri"\]\[data-active-page-kind="ketcher"\]\s*\{[^}]*backdrop-filter: none;/s);
 assert.doesNotMatch(styles, /\.app-shell\[data-runtime="tauri"\]\[data-active-page-kind="ketcher"\]\s*\{[^}]*-webkit-backdrop-filter: none;/s);
 assert.doesNotMatch(styles, /\.app-shell\[data-runtime="tauri"\]\[data-active-page-kind="ketcher"\]\s*\{[^}]*background: var\(--bg-base\);/s);
@@ -3080,7 +3080,7 @@ assert.match(styles, /\.dock-viewer \.ketcher-page \{[\s\S]*position: relative;[
 assert.match(styles, /\.dock-viewer \.ketcher-page-body \{[\s\S]*overflow: hidden;[\s\S]*padding: 12px;/);
 assert.match(styles, /\.topbar, \.chrome-leading-controls, \.chrome-trailing-controls, \.sidebar-toggle-root, \.tab-strip/);
 assert.match(styles, /\.chrome-leading-controls \{/);
-assert.match(styles, /\.app-shell\[data-runtime="browser"\] \.chrome-leading-controls,\n\.app-shell\[data-platform="linux"\] \.chrome-leading-controls,/);
+assert.match(styles, /\.app-shell\[data-runtime="browser"\] \.chrome-leading-controls,\n\.app-shell\[data-platform="linux"\] \.chrome-leading-controls,\n\.app-shell\[data-platform="windows"\] \.chrome-leading-controls,/);
 assert.match(styles, /\.app-shell\[data-window-fullscreen="true"\] \.chrome-leading-controls \{\s*left: 12px;/);
 assert.doesNotMatch(styles, /instance-badge/);
 assert.doesNotMatch(styles, /sidebar-link/);

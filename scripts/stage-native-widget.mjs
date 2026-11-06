@@ -2,7 +2,7 @@
 // Package the preserved native widget without replacing current desktop sources.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -48,13 +48,15 @@ if (!existsSync(path.join(root, '.git'))) {
   try {
     const archive = path.join(scratch, 'widget.tar');
     git(['archive', '--format=tar', `--output=${archive}`, pin.commit, 'plugins/burette-agent']);
-    execFileSync('tar', ['-xf', archive, '-C', scratch]);
+    // Git Bash puts GNU tar first on Windows, which reads `D:\...` as a remote host.
+    const tar = process.platform === 'win32' ? path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
+    execFileSync(tar, ['-xf', archive, '-C', scratch]);
     const staged = path.join(scratch, 'plugins/burette-agent');
     verify(staged);
     writeFileSync(path.join(staged, '.native-widget-source.json'), JSON.stringify(pin) + '\n');
     rmSync(output, { recursive: true, force: true });
-    // Staging and destination can be on different volumes.
-    execFileSync('rsync', ['-a', `${staged}/`, `${output}/`]);
+    // Staging and destination can be on different volumes, so copy rather than rename.
+    cpSync(staged, output, { recursive: true });
   } finally { rmSync(scratch, { recursive: true, force: true }); }
 }
 console.log(JSON.stringify({ nativeWidget: pin.version, commit: pin.commit, verified: true }));

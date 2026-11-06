@@ -1,6 +1,7 @@
 import { readStructureTextDocument } from "../lib/structure-text";
 import { writeClipboardText } from "../lib/clipboard";
 import { loadDerivedEngines } from "../lib/derived-columns";
+import { basename } from "../lib/sidebar-projects";
 
 async function chemicalFileValues(paths: string[], format: "smiles" | "inchi") {
   const { rdkit } = await loadDerivedEngines();
@@ -17,7 +18,7 @@ async function chemicalFileValues(paths: string[], format: "smiles" | "inchi") {
     for (const record of records) {
       if (values.length >= 200) throw new Error("Copy at most 200 molecules at a time; use the collection export for more.");
       const molecule = rdkit.get_mol(record);
-      if (!molecule) throw new Error(`Cannot parse a molecule in ${path.split('/').pop()}. Nothing was copied.`);
+      if (!molecule) throw new Error(`Cannot parse a molecule in ${basename(path)}. Nothing was copied.`);
       try {
         const value = format === "inchi" ? molecule.get_inchi() : molecule.get_smiles();
         if (!value) throw new Error(`Could not calculate ${format}. Nothing was copied.`);

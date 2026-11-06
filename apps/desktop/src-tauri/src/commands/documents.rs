@@ -10,7 +10,7 @@ use std::net::IpAddr;
 #[cfg(target_os = "macos")]
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 #[cfg(target_os = "macos")]
 use std::sync::mpsc;
 use std::thread::sleep;
@@ -34,6 +34,7 @@ use crate::preview::runtime::{
     ViewerReloadOptions, XyzrenderControls,
 };
 use crate::preview::runtime_grid::create_grid_runtime_with_options;
+use crate::preview::runtime_utils::SimplifiedCanonicalize;
 use crate::preview::runtime_viewer::create_combined_sdf_pose_runtime;
 use crate::preview::text_xyz::{decode_structure_text, xyz_data_from_text};
 use crate::preview::xyzrender::{
@@ -323,7 +324,7 @@ fn classify_open_paths_blocking(paths: Vec<String>) -> ClassifiedOpenPaths {
             continue;
         }
         let input_path = PathBuf::from(trimmed);
-        match input_path.canonicalize() {
+        match input_path.canonicalize_simplified() {
             Ok(canonical) => match fs::metadata(&canonical) {
                 Ok(metadata) if metadata.is_file() => {
                     files.insert(canonical.to_string_lossy().to_string());
@@ -416,10 +417,14 @@ pub(crate) async fn open_documents<R: Runtime>(
                 }
             };
             let claimed_path = recovery_source.clone().unwrap_or_else(|| path.clone());
-            let source_registration = claimed_path.canonicalize().ok().map(|source_path| {
-                let document_id = crate::preview::runtime_utils::stable_id(&source_path);
-                (source_path, document_id)
-            });
+            let source_registration =
+                claimed_path
+                    .canonicalize_simplified()
+                    .ok()
+                    .map(|source_path| {
+                        let document_id = crate::preview::runtime_utils::stable_id(&source_path);
+                        (source_path, document_id)
+                    });
             match open_with_provisional_claim(
                 &registry,
                 &window_label,
@@ -678,7 +683,7 @@ pub(crate) fn open_documents_for_window_label<R: Runtime>(
     for path in document_paths {
         let opened_sources = app.state::<OpenedSourceRegistry>();
         let source_registration = path
-            .canonicalize()
+            .canonicalize_simplified()
             .ok()
             .map(|source_path| -> Result<_, String> {
                 let document_id = crate::preview::runtime_utils::stable_id(&source_path);
@@ -1116,7 +1121,7 @@ fn expand_project_structure_targets_with_metadata(
     limits: ProjectStructureScanLimits,
 ) -> Result<ProjectStructureScanOutcome, String> {
     let canonical = path
-        .canonicalize()
+        .canonicalize_simplified()
         .map_err(|err| format!("{}: {err}", path.display()))?;
     let metadata =
         fs::metadata(&canonical).map_err(|err| format!("{}: {err}", canonical.display()))?;
@@ -1224,7 +1229,9 @@ fn normalize_pdb_id(input: &str) -> Result<String, String> {
 fn fetch_pdb_structure_blocking(pdb_id: &str) -> Result<FetchStructureResult, String> {
     let url = format!("https://files.rcsb.org/download/{pdb_id}.pdb");
     let max_filesize = FETCHED_PDB_MAX_BYTES.to_string();
-    let mut command = Command::new("/usr/bin/curl");
+    let mut command = crate::preview::runtime_utils::background_command(
+        crate::preview::runtime_utils::curl_program(),
+    );
     command.args([
         "--fail",
         "--location",
@@ -1365,7 +1372,7 @@ fn generate_3d_conformer_impl(
     .to_string();
     let mut candidate_errors = Vec::new();
     for python in conformer_python_candidates() {
-        let mut command = Command::new(&python.command);
+        let mut command = crate::preview::runtime_utils::background_command(&python.command);
         command
             .args(&python.args)
             .envs(python.envs.iter().map(|(key, value)| (key, value)))
@@ -1549,9 +1556,10 @@ fn conformer_python_candidates() -> Vec<PythonCommand> {
     if let Some(uvx) = resolve_executable(
         "uvx",
         &[
-            env::var("HOME")
-                .ok()
-                .map(|home| PathBuf::from(home).join(".local/bin/uvx")),
+            crate::preview::runtime_utils::home_dir().map(|home| {
+                home.join(".local/bin")
+                    .join(crate::preview::runtime_utils::executable_name("uvx"))
+            }),
             Some(PathBuf::from("/opt/homebrew/bin/uvx")),
             Some(PathBuf::from("/usr/local/bin/uvx")),
         ],
@@ -1600,10 +1608,8 @@ fn conformer_python_candidates() -> Vec<PythonCommand> {
 fn bundled_conformer_python_candidates_from_executable(executable: &Path) -> Vec<PythonCommand> {
     let mut candidates = Vec::new();
     for resources in crate::preview::runtime_utils::bundled_resource_dirs(executable) {
-        let python = resources
-            .join("xyzrender-python")
-            .join("bin")
-            .join("python3");
+        let python =
+            crate::preview::runtime_utils::standalone_python(&resources.join("xyzrender-python"));
         if !python.is_file() || !is_executable(&python) {
             continue;
         }
@@ -1664,7 +1670,7 @@ fn conformer_python_status_probe(
     python: &PythonCommand,
     script: &str,
 ) -> Result<Option<String>, String> {
-    let mut child = Command::new(&python.command)
+    let mut child = crate::preview::runtime_utils::background_command(&python.command)
         .args(&python.args)
         .envs(python.envs.iter().map(|(key, value)| (key, value)))
         .arg("-c")
@@ -1720,7 +1726,7 @@ fn resolve_executable(name: &str, preferred_paths: &[Option<PathBuf>]) -> Option
     }
     if let Some(paths) = env::var_os("PATH") {
         for row in env::split_paths(&paths) {
-            let candidate = row.join(name);
+            let candidate = row.join(crate::preview::runtime_utils::executable_name(name));
             if candidate.exists() {
                 return Some(candidate);
             }
@@ -1918,7 +1924,7 @@ pub(crate) fn append_to_molecule_collection<R: Runtime>(
         return Err("Collection edit exceeds the 75 MiB input limit".into());
     }
     let target_path = PathBuf::from(&request.target_path)
-        .canonicalize()
+        .canonicalize_simplified()
         .map_err(|err| format!("{}: {err}", request.target_path))?;
     let metadata =
         fs::metadata(&target_path).map_err(|err| format!("{}: {err}", target_path.display()))?;
@@ -2030,7 +2036,7 @@ pub(crate) fn create_molecule_collection<R: Runtime>(
         .ok_or_else(|| "Collection output path must name a file".to_string())?;
     fs::create_dir_all(parent).map_err(|err| format!("{}: {err}", parent.display()))?;
     let output_path = parent
-        .canonicalize()
+        .canonicalize_simplified()
         .map_err(|err| format!("{}: {err}", parent.display()))?
         .join(file_name);
     let ((), claim_id) = write_collection_with_provisional_claim(
@@ -2060,7 +2066,7 @@ pub(crate) fn save_molecule_collection_as<R: Runtime>(
     output_path: String,
 ) -> Result<String, String> {
     let input_path = PathBuf::from(&path)
-        .canonicalize()
+        .canonicalize_simplified()
         .map_err(|err| format!("{path}: {err}"))?;
     let extension = structure_path_extension(&input_path);
     if collection_family(&extension).is_none() {
@@ -2089,7 +2095,7 @@ pub(crate) fn replace_delimited_collection_cell<R: Runtime>(
     request: ReplaceDelimitedCollectionCellRequest,
 ) -> Result<String, String> {
     let path = PathBuf::from(&request.path)
-        .canonicalize()
+        .canonicalize_simplified()
         .map_err(|err| format!("{}: {err}", request.path))?;
     let separator = match structure_path_extension(&path).as_str() {
         "csv" => ',',
@@ -2464,7 +2470,7 @@ fn render_xyzrender_sheet_item_blocking(
         (input_path, extension, data, label)
     } else {
         let input_path = PathBuf::from(&request.path)
-            .canonicalize()
+            .canonicalize_simplified()
             .map_err(|err| format!("{}: {err}", request.path))?;
         let metadata =
             fs::metadata(&input_path).map_err(|err| format!("{}: {err}", input_path.display()))?;
@@ -2739,7 +2745,7 @@ pub(crate) fn sync_viewer_preferences(
 
 fn expand_open_targets(path: PathBuf) -> Result<Vec<PathBuf>, String> {
     let canonical = path
-        .canonicalize()
+        .canonicalize_simplified()
         .map_err(|err| format!("{}: {err}", path.display()))?;
     let metadata =
         fs::metadata(&canonical).map_err(|err| format!("{}: {err}", canonical.display()))?;
@@ -2993,7 +2999,7 @@ impl ProjectStructureScan {
             return Ok(());
         }
         let canonical_directory = directory
-            .canonicalize()
+            .canonicalize_simplified()
             .map_err(|err| format!("{}: {err}", directory.display()))?;
         if let Some(root) = &self.root_boundary {
             if !canonical_directory.starts_with(root) {
@@ -3041,7 +3047,7 @@ impl ProjectStructureScan {
                 continue;
             };
             if metadata.file_type().is_symlink() {
-                let Ok(canonical_target) = path.canonicalize() else {
+                let Ok(canonical_target) = path.canonicalize_simplified() else {
                     continue;
                 };
                 // Alias spelling may be preserved, but selecting a directory
@@ -3092,7 +3098,7 @@ impl ProjectStructureScan {
             if metadata.is_file()
                 && looks_like_supported_structure_file(&path, supported_extensions)
             {
-                if let Ok(canonical_file) = path.canonicalize() {
+                if let Ok(canonical_file) = path.canonicalize_simplified() {
                     if self.is_within_root(&canonical_file) {
                         self.collected.insert(if self.follow_symlinks {
                             path
@@ -3343,7 +3349,7 @@ fn pick_open_targets_macos<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<Vec<
 mod tests {
     use super::{
         bundled_conformer_python_candidates_from_executable, classify_open_paths_blocking,
-        conformer_python_candidates, conformer_python_status_candidates, copy_file_atomically,
+        conformer_python_candidates, conformer_python_status_candidates,
         expand_open_document_paths, expand_open_targets, expand_project_structure_targets,
         generate_3d_conformer_impl, generated_conformer_title,
         list_project_structure_files_blocking, list_project_structure_files_blocking_with_limits,
@@ -3351,13 +3357,15 @@ mod tests {
         open_text_structure_for_window_label, open_with_provisional_claim,
         open_with_provisional_read_claims, read_sdf_file_with_limit,
         release_cancelled_open_runtime, smiles_from_sheet_data, supported_open_target_extensions,
-        write_collection_with_provisional_claim, write_text_atomically, CollectionWriteTarget,
-        ConformerGenerationRequest, ProjectStructureScan, ProjectStructureScanLimits,
-        TextStructureRequest,
+        write_collection_with_provisional_claim, CollectionWriteTarget, ConformerGenerationRequest,
+        ProjectStructureScan, ProjectStructureScanLimits, TextStructureRequest,
     };
+    #[cfg(unix)]
+    use super::{copy_file_atomically, write_text_atomically};
     use crate::menu::OpenDocumentRegistry;
     use crate::preview::grid_store::GridRuntimeRegistry;
     use crate::preview::runtime::{ViewerDocument, ViewerPreferences};
+    use crate::preview::runtime_utils::SimplifiedCanonicalize;
     use std::fs;
     #[cfg(unix)]
     use std::os::unix::fs::{symlink, PermissionsExt};
@@ -3519,7 +3527,7 @@ mod tests {
                 .join(format!("burette-cancelled-grid-{}", uuid::Uuid::new_v4()));
             let runtime = root.join("runtime");
             fs::create_dir_all(&runtime).unwrap();
-            let root = root.canonicalize().unwrap();
+            let root = root.canonicalize_simplified().unwrap();
             let runtime = root.join("runtime");
             let path = root.join("source.smi");
             let document_id = crate::preview::runtime_utils::stable_id(&path);
@@ -3703,10 +3711,16 @@ mod tests {
     fn bundled_conformer_python_candidate_uses_runtime_site_packages() {
         let directory =
             std::env::temp_dir().join(format!("burette-conformer-python-{}", uuid::Uuid::new_v4()));
-        let app_executable = directory.join("Burette.app/Contents/MacOS/burette");
-        let python = directory.join("Burette.app/Contents/Resources/xyzrender-python/bin/python3");
-        let site_packages = directory
-            .join("Burette.app/Contents/Resources/xyzrender-runtime/lib/python3.13/site-packages");
+        let contents = directory.join("Burette.app").join("Contents");
+        let resources = contents.join("Resources");
+        let app_executable = contents.join("MacOS").join("burette");
+        let python =
+            crate::preview::runtime_utils::standalone_python(&resources.join("xyzrender-python"));
+        let site_packages = resources
+            .join("xyzrender-runtime")
+            .join("lib")
+            .join("python3.13")
+            .join("site-packages");
         fs::create_dir_all(app_executable.parent().expect("app executable parent")).unwrap();
         fs::create_dir_all(python.parent().expect("python parent")).unwrap();
         fs::create_dir_all(&site_packages).unwrap();
@@ -3827,11 +3841,19 @@ mod tests {
 
         assert_eq!(
             classified.files,
-            vec![pdb.canonicalize().unwrap().to_string_lossy().to_string()]
+            vec![pdb
+                .canonicalize_simplified()
+                .unwrap()
+                .to_string_lossy()
+                .to_string()]
         );
         assert_eq!(
             classified.directories,
-            vec![nested.canonicalize().unwrap().to_string_lossy().to_string()]
+            vec![nested
+                .canonicalize_simplified()
+                .unwrap()
+                .to_string_lossy()
+                .to_string()]
         );
         assert_eq!(classified.errors.len(), 1);
         assert!(classified.errors[0].contains("missing.pdb"));
@@ -4089,7 +4111,7 @@ mod tests {
         .unwrap();
         fs::write(&txt, "ignore\n").unwrap();
 
-        let canonical_root = root.canonicalize().unwrap();
+        let canonical_root = root.canonicalize_simplified().unwrap();
         let expanded = expand_open_targets(root.clone()).unwrap();
         assert_eq!(
             expanded,
@@ -4126,7 +4148,7 @@ mod tests {
         let pdb = nested.join("mini.pdb");
         fs::write(&pdb, "HEADER TEST\n").unwrap();
 
-        let canonical_pdb = pdb.canonicalize().unwrap();
+        let canonical_pdb = pdb.canonicalize_simplified().unwrap();
         let (expanded, errors) = expand_open_document_paths(vec![
             root.to_string_lossy().to_string(),
             nested.to_string_lossy().to_string(),
@@ -4148,7 +4170,7 @@ mod tests {
         fs::create_dir_all(root.join("run_trj")).unwrap();
         fs::write(root.join("run-out.cms"), b"cms").unwrap();
         fs::write(root.join("run_trj/clickme.dtr"), b"").unwrap();
-        let cms = root.join("run-out.cms").canonicalize().unwrap();
+        let cms = root.join("run-out.cms").canonicalize_simplified().unwrap();
         let pointer = root.join("run_trj/clickme.dtr");
         let (paths, errors) = expand_open_document_paths(vec![
             pointer.to_string_lossy().into_owned(),
@@ -4159,7 +4181,7 @@ mod tests {
         // CMS still resolves the trajectory pointer: normalizing ownership does
         // not remove the coordinate/segment source used by the runtime.
         assert!(super::companion_paths_for_open_path(&cms, "cms")
-            .contains(&pointer.canonicalize().unwrap()));
+            .contains(&pointer.canonicalize_simplified().unwrap()));
         let sources = OpenedSourceRegistry::default();
         let claims = OpenDocumentRegistry::default();
         let id = crate::preview::runtime_utils::stable_id(&cms);
@@ -4219,7 +4241,7 @@ mod tests {
         fs::write(&cif, "data_test\n").unwrap();
         fs::write(&txt, "ignore\n").unwrap();
 
-        let canonical_root = root.canonicalize().unwrap();
+        let canonical_root = root.canonicalize_simplified().unwrap();
         let scans = list_project_structure_files_blocking(vec![root.to_string_lossy().to_string()])
             .expect("project files should be listed");
         assert_eq!(scans.len(), 1);
@@ -4397,7 +4419,10 @@ mod tests {
 
         assert_eq!(
             files,
-            vec![root.canonicalize().unwrap().join("target/candidate.sdf")]
+            vec![root
+                .canonicalize_simplified()
+                .unwrap()
+                .join("target/candidate.sdf")]
         );
         fs::remove_dir_all(root).unwrap();
     }
@@ -4495,7 +4520,7 @@ mod tests {
 
         assert_eq!(
             files,
-            vec![root.canonicalize().unwrap().join("visible.pdb")]
+            vec![root.canonicalize_simplified().unwrap().join("visible.pdb")]
         );
         fs::remove_dir_all(root).unwrap();
     }
@@ -4553,7 +4578,7 @@ mod tests {
 
         assert_eq!(
             files,
-            vec![root.canonicalize().unwrap().join("visible.pdb")]
+            vec![root.canonicalize_simplified().unwrap().join("visible.pdb")]
         );
         fs::remove_dir_all(root).unwrap();
     }
@@ -4570,7 +4595,7 @@ mod tests {
         fs::write(&pdb, "HEADER TEST\n").unwrap();
         symlink(&root, &loop_link).unwrap();
 
-        let canonical_root = root.canonicalize().unwrap();
+        let canonical_root = root.canonicalize_simplified().unwrap();
         let expanded = expand_open_targets(root.clone()).unwrap();
         assert_eq!(expanded, vec![canonical_root.join("mini.pdb")]);
 
@@ -4608,7 +4633,10 @@ mod tests {
 
         assert_eq!(
             files,
-            vec![selected.canonicalize().unwrap().join("inside.pdb")]
+            vec![selected
+                .canonicalize_simplified()
+                .unwrap()
+                .join("inside.pdb")]
         );
 
         fs::remove_file(outside_link).unwrap();
@@ -4644,7 +4672,10 @@ mod tests {
 
         assert_eq!(
             scan.into_paths(),
-            vec![selected.canonicalize().unwrap().join("inside.pdb")]
+            vec![selected
+                .canonicalize_simplified()
+                .unwrap()
+                .join("inside.pdb")]
         );
         fs::remove_dir_all(root).unwrap();
     }
@@ -4675,7 +4706,10 @@ mod tests {
 
         assert_eq!(
             files,
-            vec![library.canonicalize().unwrap().join("inside.pdb")]
+            vec![library
+                .canonicalize_simplified()
+                .unwrap()
+                .join("inside.pdb")]
         );
         fs::remove_file(alias).unwrap();
         fs::remove_file(library.join("inside.pdb")).unwrap();
@@ -4697,7 +4731,7 @@ mod tests {
         fs::write(&pdb, "HEADER TEST\n").unwrap();
         symlink(root.join("missing.pdb"), &broken_link).unwrap();
 
-        let canonical_root = root.canonicalize().unwrap();
+        let canonical_root = root.canonicalize_simplified().unwrap();
         let expanded = expand_open_targets(root.clone()).unwrap();
         assert_eq!(expanded, vec![canonical_root.join("mini.pdb")]);
 
@@ -4717,7 +4751,7 @@ mod tests {
         fs::write(&real, "HEADER TEST\n").unwrap();
         symlink(&real, &alias).unwrap();
 
-        let canonical_root = root.canonicalize().unwrap();
+        let canonical_root = root.canonicalize_simplified().unwrap();
         let expanded = expand_open_targets(root.clone()).unwrap();
         assert_eq!(
             expanded,
@@ -4759,23 +4793,29 @@ mod tests {
         assert_eq!(
             files[0],
             selected
-                .canonicalize()
+                .canonicalize_simplified()
                 .unwrap()
                 .join("alias-dir/inside.pdb")
         );
         assert_eq!(expand_open_targets(root_alias).unwrap(), files);
         assert_eq!(
             expand_open_targets(selected.join("outside-file.pdb")).unwrap(),
-            vec![outside.canonicalize().unwrap().join("outside.pdb")]
+            vec![outside
+                .canonicalize_simplified()
+                .unwrap()
+                .join("outside.pdb")]
         );
         assert_eq!(
             expand_open_targets(selected.join("outside-dir")).unwrap(),
-            vec![outside.canonicalize().unwrap().join("outside.pdb")]
+            vec![outside
+                .canonicalize_simplified()
+                .unwrap()
+                .join("outside.pdb")]
         );
         let mut scan =
             ProjectStructureScan::following_symlinks(super::PROJECT_STRUCTURE_SCAN_LIMITS);
         let supported = supported_open_target_extensions().unwrap();
-        scan.collect(&selected.canonicalize().unwrap(), &supported)
+        scan.collect(&selected.canonicalize_simplified().unwrap(), &supported)
             .unwrap();
         scan.collect(&outside, &supported).unwrap();
         assert_eq!(scan.into_paths(), files);

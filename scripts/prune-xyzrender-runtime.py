@@ -88,8 +88,12 @@ def prune(runtime, python_root):
     for path in sorted(site.rglob("*"), key=lambda p: len(p.parts), reverse=True):
         if path.is_dir() and not path.is_symlink() and not any(path.iterdir()):
             path.rmdir()
-    # Both uv standalone Python and framework Python layouts are supported.
-    for stdlib in python_root.glob("**/lib/python*"):
+    # Both uv standalone Python and framework Python layouts are supported;
+    # the Windows standalone build keeps its standard library in Lib.
+    stdlibs = list(python_root.glob("**/lib/python*"))
+    if (python_root / "Lib" / "os.py").is_file():
+        stdlibs.append(python_root / "Lib")
+    for stdlib in stdlibs:
         if not stdlib.is_dir() or stdlib.is_symlink():
             continue
         for name in ("test", "idlelib", "ensurepip"):

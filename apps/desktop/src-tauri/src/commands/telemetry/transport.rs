@@ -1,36 +1,38 @@
 use std::io::{Read, Write};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 /// Credentials are sent on stdin, never as command-line arguments. Do not
 /// follow redirects: they could forward the installation credential elsewhere.
 pub(super) fn send(url: &str, payload: &serde_json::Value) -> Result<String, String> {
     let failed = || "Statistics service is unavailable. Please try again when online.".to_string();
-    let mut child = Command::new("/usr/bin/curl")
-        .args([
-            "--disable",
-            "--silent",
-            "--fail",
-            "--proto",
-            "=https",
-            "--connect-timeout",
-            "3",
-            "--max-time",
-            "5",
-            "--max-redirs",
-            "0",
-            "--header",
-            "Content-Type: application/json",
-            "--user-agent",
-            "Burette-Statistics/1",
-            "--data-binary",
-            "@-",
-            url,
-        ])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|_| failed())?;
+    let mut child = crate::preview::runtime_utils::background_command(
+        crate::preview::runtime_utils::curl_program(),
+    )
+    .args([
+        "--disable",
+        "--silent",
+        "--fail",
+        "--proto",
+        "=https",
+        "--connect-timeout",
+        "3",
+        "--max-time",
+        "5",
+        "--max-redirs",
+        "0",
+        "--header",
+        "Content-Type: application/json",
+        "--user-agent",
+        "Burette-Statistics/1",
+        "--data-binary",
+        "@-",
+        url,
+    ])
+    .stdin(Stdio::piped())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::null())
+    .spawn()
+    .map_err(|_| failed())?;
     let result = (|| {
         let bytes = serde_json::to_vec(payload).map_err(|_| failed())?;
         child

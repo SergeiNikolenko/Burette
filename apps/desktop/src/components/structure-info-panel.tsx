@@ -2,7 +2,8 @@ import { Checkbox } from "./ui/checkbox";
 import { Slider } from "./ui/slider";
 import { TrajectorySetting } from "./trajectory-setting";
 import { compositionStyleMenu } from "./composition-style-menu";
-import { isLocalFilePath } from "../lib/browser-file-actions";
+import { isAbsoluteNativeFilePath } from "../lib/native-menu-paths";
+import { basename } from "../lib/sidebar-projects";
 import { XTB_METHOD_LABELS, XTB_OPT_LEVEL_LABELS, XTB_SOLVATION_LABELS, XTB_SOLVENT_LABELS, XTB_SOLVENT_OPTIONS } from "../lib/chemistry-settings";
 import { ChevronRight as AppChevronRight, Eye as AppEye, EyeOff as AppEyeOff, Delete as AppDelete, Stopwatch, DotsHorizontal } from "./ui/app-icons";
 import { Suspense, lazy, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
@@ -383,7 +384,7 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
         <div className="structure-brief-title-row">
           <h3 title={document.title}>{document.title}</h3>
           <Badge variant="secondary">{brief.format}</Badge>
-          {!hostedMcpWidget && !document.virtual && isLocalFilePath(document.path) ? (
+          {!hostedMcpWidget && !document.virtual && isAbsoluteNativeFilePath(document.path) ? (
             <TooltipProvider><Tooltip><TooltipTrigger asChild>
               <Button type="button" variant="ghost" size="icon-2xs" aria-label="File actions" aria-haspopup="menu" onClick={showFileActionsMenu}>
                 <DotsHorizontal aria-hidden />
@@ -1421,7 +1422,7 @@ function DerivedTopologyCard({ document, isBrowserDev, actions }: {
               className="justify-self-start"
               onClick={() => { setDevCandidates(null); void pair(path); }}
             >
-              {path.split("/").pop()}
+              {basename(path)}
             </Button>
           ))}
         </AlertDescription>
@@ -3245,7 +3246,7 @@ function xtbArtifactGroupTitle(artifact: XtbArtifact) {
 }
 
 function xtbChargesArtifact(artifacts: XtbArtifact[]) {
-  return artifacts.find((artifact) => artifact.title.toLowerCase() === "charges" || artifact.path.split("/").pop()?.toLowerCase() === "charges") ?? null;
+  return artifacts.find((artifact) => artifact.title.toLowerCase() === "charges" || basename(artifact.path).toLowerCase() === "charges") ?? null;
 }
 
 function openXtbArtifact(artifact: XtbArtifact, actions: ShellActions) {

@@ -127,7 +127,7 @@ PY
 # --- End bundled xyzrender runtime --------------------------------------------
 
 bun scripts/check-release-version.mjs
-node scripts/linux-desktop-metadata.mjs --check
+node scripts/desktop-metadata.mjs --check
 bun install --frozen-lockfile --ignore-scripts
 bun run build:agent-shell
 stage_xyzrender_runtime

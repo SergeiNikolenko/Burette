@@ -1,4 +1,4 @@
-import { isLinuxPlatform, isMacPlatform } from "./platform"
+import { isMacPlatform, metaKeyName } from "./platform"
 
 export type DisplayFormat = {
   alwaysShowSign: boolean
@@ -129,7 +129,7 @@ export function getModifierLabel(key: ModifierKey) {
     case "alt":
       return "Alt"
     case "meta":
-      return isMacPlatform() ? "Cmd" : isLinuxPlatform() ? "Super" : "Win"
+      return metaKeyName()
   }
 }
 

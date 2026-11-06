@@ -6,6 +6,7 @@ import { isTauriRuntime } from "../lib/tauri";
 import { abortOpenDocumentClaims } from "../lib/open-document-claims";
 import { useMoleculeStore } from "../stores/molecule-store";
 import { useSettingsStore } from "../stores/settings-store";
+import { basename } from "../lib/sidebar-projects";
 
 /** A folder scene owns a snapshot, never the source file's existing tab/runtime. */
 export async function createFileBatchScene(path: string, signal: AbortSignal) {
@@ -14,7 +15,7 @@ export async function createFileBatchScene(path: string, signal: AbortSignal) {
   signal.throwIfAborted();
   if (source.truncated) throw new Error("Scene imports are limited to 24 MB at a time.");
   const extension = pathExtension(path);
-  const title = `Scene: ${path.split("/").pop() ?? "Structures"}`;
+  const title = `Scene: ${basename(path) || "Structures"}`;
   const preferences = { ...useSettingsStore.getState().preferences, rendererMode: "molstar" as const };
   const native = isTauriRuntime();
   const document = native

@@ -1,5 +1,6 @@
 //! Stage local MolViewSpec dependencies inside the existing preview asset scope.
 use super::runtime_utils::asset_url;
+use crate::preview::runtime_utils::SimplifiedCanonicalize;
 use serde_json::Value;
 use std::{collections::BTreeMap, fs, path::Path};
 
@@ -22,7 +23,7 @@ pub(super) fn stage_resources(
     let parent = source
         .parent()
         .ok_or("MolViewSpec source has no parent directory")?
-        .canonicalize()
+        .canonicalize_simplified()
         .map_err(|error| error.to_string())?;
     let mut resources = BTreeMap::new();
     let mut total = 0;
@@ -58,7 +59,7 @@ fn visit(
                         if resources.len() >= MAX_RESOURCES {
                             return Err("MolViewSpec has too many local resources".into());
                         }
-                        let path = parent.join(&*reference).canonicalize()
+                        let path = parent.join(&*reference).canonicalize_simplified()
                             .map_err(|error| format!("Cannot load MolViewSpec resource {reference}: {error}. Keep the referenced files beside the MVSJ or open the bundled MVSX."))?;
                         if !path.starts_with(parent) {
                             return Err(format!(

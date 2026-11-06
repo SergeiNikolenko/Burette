@@ -7,6 +7,7 @@ import { ShortcutTooltip } from "./shortcut-tooltip";
 import { FileKindIcon, fileKindForPath } from "./sidebar/file-kind-icon";
 import { ChevronDown, SidebarRight, SidebarRightHidden } from "./ui/app-icons";
 import type { ShellActions } from "./types";
+import { basename } from "../lib/sidebar-projects";
 import type { MenuItemSpec } from "./menu-types";
 import "./workspace-file-header.css";
 
@@ -23,7 +24,7 @@ export function WorkspaceFileHeader({ activeFile, bandDocumentId = null, rightDo
   openLabel?: string;
   actions: Pick<ShellActions, "openPathWithDefaultApp" | "copyPath" | "toggleDock">;
 }) {
-  const name = fileActionsAvailable ? activeFile.path.split("/").filter(Boolean).at(-1) || activeFile.label : activeFile.label;
+  const name = fileActionsAvailable ? basename(activeFile.path) || activeFile.label : activeFile.label;
   const headerRef = useRef<HTMLElement>(null);
   useWorkspaceHeaderBand(headerRef, bandDocumentId);
   // Laid out like a Codex file viewer: the file and annotation capsules lead,

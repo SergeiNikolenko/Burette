@@ -18,6 +18,7 @@ use super::runtime_viewer::{create_docking_runtime, create_runtime, DockingRunti
 use super::synthetic_topology::{synthetic_topology_for_trajectory, SYNTHETIC_TOPOLOGY_EXTENSIONS};
 use super::text_xyz::converted_data_from_text;
 use super::trace::{append_preview_trace, elapsed_ms, preview_error_code, PreviewTraceEvent};
+use crate::preview::runtime_utils::SimplifiedCanonicalize;
 
 pub(crate) const MAX_STRUCTURE_FILE_SIZE: u64 = 75 * 1024 * 1024;
 const DEFAULT_DESKTOP_PREVIEW_LIMIT_MIB: u64 = 1024;
@@ -600,7 +601,7 @@ impl ViewerDocument {
         preferences: &ViewerPreferences,
     ) -> Result<Self, String> {
         let canonical = path
-            .canonicalize()
+            .canonicalize_simplified()
             .map_err(|error| format!("{}: {error}", path.display()))?;
         let metadata = fs::metadata(&canonical).map_err(|error| error.to_string())?;
         if !metadata.is_file() {
@@ -851,7 +852,7 @@ fn open_document_with_grid_options_inner<R: Runtime>(
     source_epoch: Option<&crate::commands::source_editing::SourceRegistrationEpoch>,
 ) -> Result<ViewerDocument, String> {
     let canonical = path
-        .canonicalize()
+        .canonicalize_simplified()
         .map_err(|err| format!("{}: {err}", path.display()))?;
     let metadata = fs::metadata(&canonical).map_err(|err| err.to_string())?;
     if !metadata.is_file() {
@@ -1215,7 +1216,7 @@ pub(crate) fn document_identity_path(path: &Path) -> PathBuf {
         if let Some(bundle) = resolve_desmond_file_bundle(path, "dtr") {
             return bundle
                 .primary_path
-                .canonicalize()
+                .canonicalize_simplified()
                 .unwrap_or(bundle.primary_path);
         }
     }
@@ -1675,7 +1676,7 @@ fn is_coordinate_trajectory_format(format: &str) -> bool {
 
 fn renderable_docking_receptor_path(path: &str) -> String {
     let requested = PathBuf::from(path);
-    let canonical = requested.canonicalize().unwrap_or(requested);
+    let canonical = requested.canonicalize_simplified().unwrap_or(requested);
     let extension = structure_path_extension(&canonical);
     if extension == "tpr" {
         if let Some(companion) = visual_coordinate_companion_for_topology(&canonical, &extension) {
@@ -1695,7 +1696,7 @@ fn normalized_docking_scene_mode(value: Option<&str>) -> Option<&'static str> {
 
 fn read_docking_source(path: &str) -> Result<DockingRuntimeSource, String> {
     let canonical = PathBuf::from(path)
-        .canonicalize()
+        .canonicalize_simplified()
         .map_err(|err| format!("{path}: {err}"))?;
     let metadata = fs::metadata(&canonical).map_err(|err| err.to_string())?;
     if !metadata.is_file() {
@@ -1751,7 +1752,7 @@ fn read_trajectory_source<R: Runtime>(
     path: &str,
 ) -> Result<DockingRuntimeSource, String> {
     let canonical = PathBuf::from(path)
-        .canonicalize()
+        .canonicalize_simplified()
         .map_err(|error| error.to_string())?;
     let extension = structure_path_extension(&canonical);
     if let Some(bundle) = resolve_desmond_file_bundle(&canonical, &extension) {
@@ -1824,6 +1825,7 @@ pub(crate) mod document_open_tests {
     use crate::commands::documents::open_documents_for_window_label;
     use crate::commands::source_editing::OpenedSourceRegistry;
     use crate::preview::grid_store::GridRuntimeRegistry;
+    use crate::preview::runtime_utils::SimplifiedCanonicalize;
     use base64::Engine;
     use std::collections::BTreeMap;
     use std::fs;
@@ -1854,7 +1856,9 @@ pub(crate) mod document_open_tests {
             fs::create_dir_all(&home).expect("test home should be created");
             // macOS temp_dir is a symlink (/var -> /private/var); tests compare
             // canonical app_data_dir paths against stored ones.
-            let home = home.canonicalize().expect("test home should resolve");
+            let home = home
+                .canonicalize_simplified()
+                .expect("test home should resolve");
             std::env::set_var("HOME", &home);
             home
         })
@@ -1875,8 +1879,8 @@ pub(crate) mod document_open_tests {
         assert_eq!(
             json,
             serde_json::json!({
-                "id": super::stable_id(&path.canonicalize().unwrap()),
-                "path": path.canonicalize().unwrap().to_string_lossy(),
+                "id": super::stable_id(&path.canonicalize_simplified().unwrap()),
+                "path": path.canonicalize_simplified().unwrap().to_string_lossy(),
                 "title": "large.pdb", "extension": "pdb", "renderer": "molstar",
                 "runtimePath": "", "runtimeDeferred": true,
                 "byteCount": 100 * 1024 * 1024, "viewerProfile": "structure",
@@ -1946,6 +1950,7 @@ pub(crate) mod document_open_tests {
         target
     }
 
+    #[cfg(unix)]
     fn prepend_fake_xyzrender_environment(script: &str) -> PathBuf {
         let root =
             std::env::temp_dir().join(format!("burette-open-document-{}", uuid::Uuid::new_v4()));
@@ -1953,46 +1958,58 @@ pub(crate) mod document_open_tests {
         fs::create_dir_all(&bin_dir).expect("fake xyzrender bin dir should be created");
         let executable = bin_dir.join("xyzrender");
         fs::write(&executable, script).expect("fake xyzrender should be written");
-        #[cfg(unix)]
-        {
-            let mut permissions = fs::metadata(&executable)
-                .expect("fake xyzrender metadata should be readable")
-                .permissions();
-            permissions.set_mode(0o755);
-            fs::set_permissions(&executable, permissions)
-                .expect("fake xyzrender should be executable");
-        }
+        let mut permissions = fs::metadata(&executable)
+            .expect("fake xyzrender metadata should be readable")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&executable, permissions).expect("fake xyzrender should be executable");
         root
     }
 
     fn with_fake_xyzrender<T>(run: impl FnOnce() -> T) -> T {
-        with_fake_xyzrender_script(
-            concat!(
-                "#!/bin/sh\n",
-                "out=\"\"\n",
-                "while [ \"$#\" -gt 0 ]; do\n",
-                "  if [ \"$1\" = \"-o\" ]; then\n",
-                "    out=\"$2\"\n",
-                "    shift 2\n",
-                "    continue\n",
-                "  fi\n",
-                "  shift\n",
-                "done\n",
-                "printf '%s\\n' '<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>' > \"$out\"\n"
-            ),
-            run,
-        )
+        #[cfg(windows)]
+        let script = concat!(
+            "@echo off\r\n",
+            "set \"out=\"\r\n",
+            ":next\r\n",
+            "if \"%~1\"==\"\" goto write\r\n",
+            "if \"%~1\"==\"-o\" set \"out=%~2\"\r\n",
+            "shift\r\n",
+            "goto next\r\n",
+            ":write\r\n",
+            "> \"%out%\" echo ^<svg xmlns=\"http://www.w3.org/2000/svg\"^>^</svg^>\r\n"
+        );
+        #[cfg(unix)]
+        let script = concat!(
+            "#!/bin/sh\n",
+            "out=\"\"\n",
+            "while [ \"$#\" -gt 0 ]; do\n",
+            "  if [ \"$1\" = \"-o\" ]; then\n",
+            "    out=\"$2\"\n",
+            "    shift 2\n",
+            "    continue\n",
+            "  fi\n",
+            "  shift\n",
+            "done\n",
+            "printf '%s\\n' '<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>' > \"$out\"\n"
+        );
+        with_fake_xyzrender_script(script, run)
     }
 
     fn with_failing_fake_xyzrender<T>(run: impl FnOnce() -> T) -> T {
-        with_fake_xyzrender_script(
-            concat!(
-                "#!/bin/sh\n",
-                "printf '%s\\n' 'fake xyzrender failure' >&2\n",
-                "exit 1\n"
-            ),
-            run,
-        )
+        #[cfg(windows)]
+        let script = concat!(
+            "@echo off\r\n",
+            ">&2 echo fake xyzrender failure\r\n",
+            "exit /b 1\r\n"
+        );
+        #[cfg(unix)]
+        let script = concat!(
+            "#!/bin/sh\n",
+            "printf '%s\\n' 'fake xyzrender failure' >&2\n",
+            "exit 1\n"
+        );
+        with_fake_xyzrender_script(script, run)
     }
 
     fn with_fake_xyzrender_script<T>(script: &str, run: impl FnOnce() -> T) -> T {
@@ -2000,27 +2017,45 @@ pub(crate) mod document_open_tests {
             .lock()
             .expect("env lock should not be poisoned");
         // HOME stays pinned to the shared test home: the fake executable is
-        // injected through PATH alone, so nothing a parallel test depends on
-        // moves while this test runs.
+        // injected through PATH (or the bundled runtime folder on Windows)
+        // alone, so nothing a parallel test depends on moves while this test runs.
         isolated_test_home();
-        let fake_bin_root = prepend_fake_xyzrender_environment(script);
-        let old_path = std::env::var_os("PATH");
-        let mut joined_path = vec![fake_bin_root.join(".local").join("bin")];
-        if let Some(path) = &old_path {
-            joined_path.extend(std::env::split_paths(path));
-        }
-        let joined_path =
-            std::env::join_paths(joined_path).expect("fake xyzrender path should be valid");
-
-        std::env::set_var("PATH", &joined_path);
+        #[cfg(unix)]
+        let (fake_root, old_path) = {
+            let fake_bin_root = prepend_fake_xyzrender_environment(script);
+            let old_path = std::env::var_os("PATH");
+            let mut joined_path = vec![fake_bin_root.join(".local").join("bin")];
+            if let Some(path) = &old_path {
+                joined_path.extend(std::env::split_paths(path));
+            }
+            let joined_path =
+                std::env::join_paths(joined_path).expect("fake xyzrender path should be valid");
+            std::env::set_var("PATH", &joined_path);
+            (fake_bin_root, old_path)
+        };
+        // PATH is searched only for `xyzrender.exe` on Windows, so the fake
+        // wrapper goes where an installed Burette keeps its bundled one:
+        // `xyzrender-runtime\bin\xyzrender.cmd` beside the executable.
+        #[cfg(windows)]
+        let fake_root = {
+            let root = std::env::current_exe()
+                .expect("test executable should resolve")
+                .with_file_name("xyzrender-runtime");
+            let bin_dir = root.join("bin");
+            fs::create_dir_all(&bin_dir).expect("fake xyzrender bin dir should be created");
+            fs::write(bin_dir.join("xyzrender.cmd"), script)
+                .expect("fake xyzrender should be written");
+            root
+        };
 
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(run));
 
+        #[cfg(unix)]
         match old_path {
             Some(value) => std::env::set_var("PATH", value),
             None => std::env::remove_var("PATH"),
         }
-        let _ = fs::remove_dir_all(fake_bin_root);
+        let _ = fs::remove_dir_all(fake_root);
 
         match result {
             Ok(value) => value,
@@ -2104,7 +2139,11 @@ pub(crate) mod document_open_tests {
         assert!(request.receptor_path.ends_with(".gro"));
         assert_eq!(
             request.ligand_paths,
-            vec![path.canonicalize().unwrap().to_string_lossy().to_string()]
+            vec![path
+                .canonicalize_simplified()
+                .unwrap()
+                .to_string_lossy()
+                .to_string()]
         );
         if let Some(parent) = path.parent() {
             let _ = fs::remove_dir_all(parent);
@@ -2138,10 +2177,10 @@ pub(crate) mod document_open_tests {
         assert_eq!(result.documents.len(), 1);
         let document = &result.documents[0];
         let canonical_trajectory = trajectory
-            .canonicalize()
+            .canonicalize_simplified()
             .expect("XTC fixture should canonicalize");
         let canonical_topology = topology
-            .canonicalize()
+            .canonicalize_simplified()
             .expect("PDB topology should canonicalize");
         let docking_request = document
             .docking_request
@@ -2211,14 +2250,14 @@ pub(crate) mod document_open_tests {
         assert_eq!(
             docking_request.receptor_path,
             topology
-                .canonicalize()
+                .canonicalize_simplified()
                 .expect("PDB topology should canonicalize")
                 .to_string_lossy()
         );
         assert_eq!(
             docking_request.ligand_paths,
             vec![trajectory
-                .canonicalize()
+                .canonicalize_simplified()
                 .expect("XTC fixture should canonicalize")
                 .to_string_lossy()
                 .to_string()]
@@ -2429,7 +2468,10 @@ pub(crate) mod document_open_tests {
             .expect("preview config should be written");
 
         assert!(config.contains("\"format\":\"gro\""));
-        assert!(config.contains(&gro.to_string_lossy().to_string()));
+        // The receptor path is canonicalized, which on Windows also expands 8.3
+        // short names such as the CI runner's temp folder.
+        let gro_json = serde_json::to_string(&gro.canonicalize_simplified().unwrap()).unwrap();
+        assert!(config.contains(gro_json.trim_matches('"')));
         assert!(!config.contains("\"format\":\"tpr\""));
         remove_runtime_artifacts(&document.runtime_path);
         let _ = fs::remove_dir_all(directory);
@@ -2810,7 +2852,10 @@ Atoms # charge
             assert_eq!(config["trajectoryFrameCount"], 2);
             assert_eq!(
                 config["xyzrenderAnimationSourcePath"],
-                path.canonicalize().unwrap().to_string_lossy().as_ref()
+                path.canonicalize_simplified()
+                    .unwrap()
+                    .to_string_lossy()
+                    .as_ref()
             );
             assert!(input.contains("second frame"));
             assert!(!input.contains("first frame"));
@@ -3111,7 +3156,10 @@ f_m_ct {
             .expect("runtime HTML should be written");
         let config = fs::read_to_string(runtime_dir.join("preview-config.js"))
             .expect("preview config should be written");
-        assert!(config.contains(r#""rdkitWasmPath":"asset://localhost/"#));
+        assert!(config.contains(&format!(
+            r#""rdkitWasmPath":"{}"#,
+            crate::preview::runtime_utils::asset_url(Path::new(""))
+        )));
         assert!(config.contains("RDKit_minimal.wasm"));
         assert!(html.contains("rdkit-wasm-data.js"));
         assert!(html.contains("RDKit_minimal.js"));
