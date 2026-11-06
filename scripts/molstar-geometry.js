@@ -6,8 +6,9 @@ import { Coordinates, Time } from '@molstar/model/model/structure/coordinates';
 import { IndexPairBonds } from '@molstar/model/formats/structure/property/bonds/index-pair';
 
 // Keep the scene branch and original bond candidates while coordinates move.
-// Recheck candidates against element-based distance thresholds on every frame,
-// so stretched bonds disappear and return without introducing H–H angle artifacts.
+// XYZ candidates are rechecked against element-based distance thresholds on every
+// frame, so stretched bonds disappear and return without H–H angle artifacts.
+// MOL/SDF (bonds: null) keep the file's own bond table unconditionally.
 const GeometryModel = PluginStateTransform.BuiltIn({
   name: 'burette-geometry-model', display: { name: 'Geometry' },
   from: SO.Molecule.Model, to: SO.Molecule.Model, isDecorator: true,
@@ -21,8 +22,14 @@ const GeometryModel = PluginStateTransform.BuiltIn({
       y: Float32Array.from(rows, row => Number(row[2])),
       z: Float32Array.from(rows, row => Number(row[3])) };
     const model = Model.trajectoryFromModelAndCoordinates(a.data, Coordinates.create([frame], Time(1, 'step'), Time(0, 'step'))).representative;
-    const pairs = Object.fromEntries(Object.entries(params.bonds).map(([key, values]) => [key, { toArray: () => values }]));
-    IndexPairBonds.Provider.set(model, IndexPairBonds.fromData({ count: rows.length, pairs }, { maxDistance: -1 }));
+    if (params.bonds) {
+      const pairs = Object.fromEntries(Object.entries(params.bonds).map(([key, values]) => [key, { toArray: () => values }]));
+      IndexPairBonds.Provider.set(model, IndexPairBonds.fromData({ count: rows.length, pairs }, { maxDistance: -1 }));
+    } else {
+      const declared = IndexPairBonds.Provider.get(a.data);
+      if (!declared) throw new Error('Geometry lost the declared bonds.');
+      IndexPairBonds.Provider.set(model, declared);
+    }
     return new SO.Molecule.Model(model, { label: a.label, description: a.description });
   },
 });
@@ -43,25 +50,56 @@ function xyz(text) {
   });
 }
 
+const formats = { 'trajectory-from-xyz': 'xyz', 'trajectory-from-mol': 'mol', 'trajectory-from-sdf': 'sdf' };
+// Shortest decimal that parses back to the same float32 coordinate.
+function coordinate(value) {
+  const target = Math.fround(value);
+  for (let digits = 1; digits < 10; digits++) {
+    const text = target.toPrecision(digits);
+    if (Math.fround(Number(text)) === target) return String(Number(text));
+  }
+  return String(target);
+}
+
+// MOL/SDF baselines are a single XYZ frame of the model atoms in source order.
+function modelXyz(model, format) {
+  const { atoms, atomSourceIndex } = model.atomicHierarchy, { x, y, z } = model.atomicConformation;
+  const count = atoms._rowCount, lines = [String(count), `Burette live geometry (${format})`];
+  for (let i = 0; i < count; i++) {
+    const symbol = String(atoms.type_symbol.value(i));
+    if (atomSourceIndex.value(i) !== i || !/^[A-Za-z][A-Za-z0-9]*$/u.test(symbol)) throw new Error('Live Geometry requires one atom per source row.');
+    lines.push(`${symbol[0].toUpperCase()}${symbol.slice(1).toLowerCase()} ${coordinate(x[i])} ${coordinate(y[i])} ${coordinate(z[i])}`);
+  }
+  return `${lines.join('\n')}\n`;
+}
+const baselines = new WeakMap();
+function baseline(found) {
+  if (found.format === 'xyz') return found.raw.obj.data;
+  const model = found.base.obj.data;
+  if (!baselines.has(model)) baselines.set(model, modelXyz(model, found.format));
+  return baselines.get(model);
+}
+
 function source(plugin) {
   const roots = plugin?.managers.structure.hierarchy.current.structures;
   if (plugin?.disposed || roots?.length !== 1) throw stale();
   const root = roots[0].cell, cells = plugin.state.data.cells;
   const structure = root.obj?.data;
   if (root.status !== 'ok' || structure?.models.length !== 1 || structure.units.length !== 1 || structure.units[0].kind !== 0) throw new Error('Geometry requires a single atomic unit.');
-  let base, trajectory, raw, geometry;
+  let base, trajectory, raw, geometry, format;
   for (let cell = root; cell;) {
     const id = cell.transform.transformer.id;
     if (id === GeometryModel.id) geometry = cell;
     if (id.endsWith('model-from-trajectory')) base = cell;
-    if (id.endsWith('trajectory-from-xyz')) trajectory = cell;
+    const parser = !trajectory && Object.keys(formats).find(name => id.endsWith(name));
+    if (parser) { trajectory = cell; format = formats[parser]; }
     if (trajectory && id.endsWith('raw-data')) { raw = cell; break; }
     const parent = cell.transform.parent;
     if (parent === cell.transform.ref) break;
     cell = cells.get(parent);
   }
-  if (!base || !trajectory || !raw || trajectory.obj.data.frameCount !== 1) throw new Error('Live Geometry requires a single XYZ frame.');
-  return { root, base, trajectory, raw, geometry };
+  if (!base || !trajectory || !raw || trajectory.obj.data.frameCount !== 1) throw new Error('Live Geometry requires a single XYZ, MOL or SDF model.');
+  return { root, base, trajectory, raw, geometry, format };
 }
 
 function geometryIdentity(cell) {
@@ -99,7 +137,7 @@ function check(plugin, token, rootVersion = token.owner.versions[0], geometry = 
 }
 
 async function apply(plugin, text, token) {
-  const before = check(plugin, token), rows = xyz(text), original = xyz(before.raw.obj.data);
+  const before = check(plugin, token), rows = xyz(text), original = xyz(baseline(before));
   if (rows.length !== original.length || rows.some((row, i) => row[0] !== original[i][0])) throw new Error('Live Geometry cannot change atom identities.');
   if (before.geometry?.transform.params.text === text) return;
   const state = plugin.state.data;
@@ -109,6 +147,8 @@ async function apply(plugin, text, token) {
   if (before.geometry) {
     ref = before.geometry.transform.ref;
     builder.to(before.geometry).update({ ...before.geometry.transform.params, text });
+  } else if (before.format !== 'xyz') {
+    ref = builder.to(before.base).insert(GeometryModel, { text, bonds: null }).ref;
   } else {
     const unit = before.root.obj.data.units[0], graph = unit.bonds;
     const bonds = { indexA: [], indexB: [], order: [], flag: [] };
@@ -146,29 +186,43 @@ async function apply(plugin, text, token) {
 
 export const BuretteGeometry = {
   capture,
+  coordinate,
   binding(plugin, isCurrent) {
     const token = capture(plugin, isCurrent), found = check(plugin, token);
-    const text = found.geometry?.transform.params.text ?? found.raw.obj.data;
+    const text = found.geometry?.transform.params.text ?? baseline(found);
     xyz(text);
     check(plugin, token);
     return { lease: token.owner.lease, text };
   },
-  update(plugin, text, token = capture(plugin)) {
+  // A passive update never supersedes a queued one: that item applies the pin too.
+  update(plugin, text, token = capture(plugin), { passive = false } = {}) {
     const queue = queues.get(plugin);
-    return new Promise((resolve, reject) => {
-      if (queue.pending) queue.pending.reject(stale());
-      queue.pending = { text, token, resolve, reject };
-      if (queue.running) return;
+    if (passive && queue.pending) return queue.pending.settled;
+    let item;
+    const result = new Promise((resolve, reject) => { item = { text, token, resolve, reject }; });
+    item.settled = result.then(() => {}, () => {});
+    if (queue.pending) queue.pending.reject(stale());
+    queue.pending = item;
+    if (!queue.running) {
       queue.running = true;
       void (async () => {
         try {
           while (queue.pending) {
-            const item = queue.pending; queue.pending = null;
-            try { await apply(plugin, item.text, item.token); item.resolve({ ok: true }); }
-            catch (error) { item.reject(error); }
+            const next = queue.pending; queue.pending = null;
+            try { await apply(plugin, queue.pin ? queue.pin(next.text) : next.text, next.token); next.resolve({ ok: true }); }
+            catch (error) { next.reject(error); }
           }
         } finally { queue.running = false; }
       })();
-    });
+    }
+    return result;
+  },
+  // While an atom drag holds atoms, every applied text (host or drag) is rewritten
+  // by `patch` right before it is applied. Returns the release function.
+  pin(plugin, patch, token = capture(plugin)) {
+    const queue = queues.get(plugin);
+    if (queue?.owner !== token.owner) throw stale();
+    queue.pin = patch;
+    return () => { if (queue.pin === patch) queue.pin = null; };
   },
 };
