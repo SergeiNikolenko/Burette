@@ -28,8 +28,17 @@ function response(request) {
       ...(velocities ? { velocity: [1, 2, 3] } : {}), force: [4, 5, 6],
     })) };
 }
+// A scan page: atom i of frame f sits at x = i * (1 + f / 1000), so atoms 1 and 3 are 2 + f / 500 apart.
+function scanPage(request) {
+  if (request.expected.sourceId !== sourceId) throw new Error("The displayed trajectory changed. Scan again.");
+  const frames = Array.from({ length: Math.max(0, Math.min(request.limit, 10000 - request.offset)) }, (_, at) => {
+    const frame = request.offset + at;
+    return { frameIndex: frame, time: { value: frame * 0.5, unit: "ps" }, positions: request.atoms.map(atom => [atom * (1 + frame / 1000), 0, 0]) };
+  });
+  return { sourceId, frameCount: 10000, offset: request.offset, frames };
+}
 mock.module("../apps/desktop/src/lib/viewer-bridge", () => ({ ...bridge, requestViewerAction: async (_id, request, _timeout, signal) => {
-  requests.push(request); await beforeRead(request); signal?.throwIfAborted(); return response(request);
+  requests.push(request); await beforeRead(request); signal?.throwIfAborted(); return request.type === "indexed_trajectory_scan" ? scanPage(request) : response(request);
 } }));
 const { createRoot } = await import("react-dom/client");
 const { IndexedPlotsPanel } = await import("../apps/desktop/src/components/workbench/indexed-plots-panel");
@@ -217,5 +226,27 @@ test("the Plots dock routes a displayed indexed trajectory to its frame panel", 
     assert.equal(view.host.querySelector("output").textContent, "plots");
     assert.ok(view.host.querySelector('[aria-label="Max force per frame"]'));
     assert.equal(button(view.host, "Export frame").disabled, false);
+  } finally { await view.unmount(); }
+});
+
+test("Scan all frames measures every frame of the displayed source without moving the scene and exports it", async () => {
+  const view = await mount();
+  try {
+    await view.show(3);
+    const input = view.host.querySelector('[aria-label="Atom numbers to measure"]');
+    await act(async () => { Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set.call(input, "1 3"); input.dispatchEvent(new window.Event("input", { bubbles: true })); });
+    await click(button(view.host, "Scan all frames"));
+    for (let i = 0; i < 200 && !button(view.host, "Export CSV"); i++) await act(async () => new Promise(resolve => setTimeout(resolve, 5)));
+    const scans = requests.filter(item => item.type === "indexed_trajectory_scan");
+    assert.deepEqual([scans.length, scans[0], scans.at(-1).offset], [50, { type: "indexed_trajectory_scan", atoms: [0, 2], offset: 0, limit: 200, expected: { sourceId } }, 9800]);
+    assert.deepEqual(view.seeks, [], "a scan reads frames without seeking");
+    assert.equal(view.host.querySelector('[role="slider"][aria-label="Distance, Å frame"]').getAttribute("aria-valuemax"), "10000");
+    await click(button(view.host, "Export CSV"));
+    const rows = view.saved[0].text.trim().split("\n");
+    assert.equal(view.saved[0].title, "trajectory-distance-1-3.csv");
+    assert.deepEqual([rows.length, rows[0], rows[1], rows[10000]], [10001, "frame,time_ps,distance_angstrom", "1,0,2", `10000,4999.5,${2 * (1 + 9999 / 1000)}`]);
+    // Other atoms are a new measurement.
+    await act(async () => { Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set.call(input, "1 2"); input.dispatchEvent(new window.Event("input", { bubbles: true })); });
+    assert.ok(button(view.host, "Scan all frames"));
   } finally { await view.unmount(); }
 });
