@@ -321,6 +321,10 @@ pub fn run() {
                 commands::avogadro_plugins::avogadro_plugin_run,
                 commands::avogadro_plugins::avogadro_plugin_options,
                 commands::avogadro_plugins::avogadro_plugin_cancel,
+                commands::energy_models::energy_models_list,
+                commands::energy_models::energy_model_open,
+                commands::energy_models::energy_model_evaluate,
+                commands::energy_models::energy_model_close,
                 commands::shell::existing_paths,
                 commands::shell::watch_project_roots,
                 commands::shell::open_new_workspace_window,
@@ -420,6 +424,7 @@ pub fn run() {
                 menu::request_quit(app);
             }
         }
+        RunEvent::Exit => commands::energy_models::close_all(),
         _ => {}
     });
 }

@@ -1,0 +1,35 @@
+[project]
+name = "avogadro-harmonic-energy"
+version = "0.1.0"
+description = "Test fixture: a harmonic energy model for the Avogadro script energy protocol"
+
+[project.scripts]
+avogadro-harmonic-energy = "harmonic_energy:main"
+
+[tool.avogadro]
+minimum-avogadro-version = "1.103"
+
+[[tool.avogadro.energy-models]]
+identifier = "harmonic-text"
+model-name = "Harmonic (text)"
+description = "E = sum |r|^2 + charge, kJ/mol"
+input-format = "xyz"
+support.gradients = true
+support.elements = "1-118"
+support.ions = true
+support.radicals = false
+
+[[tool.avogadro.energy-models]]
+identifier = "harmonic-binary"
+model-name = "Harmonic (binary)"
+description = "E = sum |r|^2 + charge, kJ/mol"
+input-format = "cjson"
+protocol = "binary-v1"
+support.gradients = true
+support.elements = "1-118"
+support.ions = true
+support.radicals = false
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["osx-arm64", "linux-64"]
