@@ -28,8 +28,10 @@ frame.addEventListener('load', () => {
 });
 // ?deepLink=/example/caffeine opens the app the way a Codex deep link does.
 const deepLink = new URLSearchParams(location.search).get('deepLink');
+// ?hostBackground=rgb(17,17,17) sends the computed surface color Codex shares with apps.
+const hostBackground = new URLSearchParams(location.search).get('hostBackground');
 const bridge = new AppBridge(null, { name: 'Burette test host', version: '1.0.0' }, { serverTools: {}, updateModelContext: { text: {}, image: {} }, message: { text: {} } }, {
-  hostContext: { displayMode: 'inline', availableDisplayModes: ['inline', 'fullscreen'], theme, ...(deepLink ? { 'openai/deepLink': { url: deepLink } } : {}) },
+  hostContext: { displayMode: 'inline', availableDisplayModes: ['inline', 'fullscreen'], theme, ...(hostBackground ? { styles: { variables: { '--color-background-primary': hostBackground } } } : {}), ...(deepLink ? { 'openai/deepLink': { url: deepLink } } : {}) },
 });
 bridge.onupdatemodelcontext = async context => {
   let output = document.getElementById('selection-context');

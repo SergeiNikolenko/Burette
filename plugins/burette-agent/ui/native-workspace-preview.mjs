@@ -42,7 +42,7 @@ function startPreview(installTooltipLayout) {
   const syncTheme = () => {
     const themeTokens = { ...window.BuretteConfig?.themeTokens };
     for (const mode of ['light', 'dark']) if (bridge.backgrounds?.[mode]) {
-      themeTokens[mode] = { ...themeTokens[mode], background: bridge.backgrounds[mode] };
+      themeTokens[mode] = { ...themeTokens[mode], background: bridge.backgrounds[mode], resolved: true };
     }
     if (window.BuretteConfig) { window.BuretteConfig.theme = bridge.theme; window.BuretteConfig.themeTokens = themeTokens; }
     window.postMessage({ source: 'burette-host', body: { type: 'setViewerTheme', value: bridge.theme, themeTokens } }, '*');
