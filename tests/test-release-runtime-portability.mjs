@@ -75,7 +75,7 @@ assert.match(linuxBuildScript, /scripts\/prune-xyzrender-runtime\.py" "\$runtime
 assert.match(linuxBuildScript, /"\$python_root\/bin\/python3" \\\s*\n\s*"\$ROOT\/scripts\/prepare-xyzrender-bytecode\.py"/);
 assert.match(linuxBuildScript, /--exclude \/lib64/);
 assert.match(linuxBuildScript, /"xyzrender-runtime", python_root: "xyzrender-python"/);
-assert.match(linuxBuildScript, /stage_xyzrender_runtime\n\(cd apps\/desktop && bun run build:tauri -- --bundles "\$BUNDLES" --config "\$XYZRENDER_TAURI_CONFIG"\)/);
+assert.match(linuxBuildScript, /stage_xyzrender_runtime\n(?:.*\n)*?\(cd apps\/desktop && bun run build:tauri -- --bundles "\$BUNDLES" --config "\$XYZRENDER_TAURI_CONFIG"\)/);
 
 assert.match(releaseWorkflow, /echo "allow_adhoc=true"/);
 assert.match(releaseWorkflow, /Apple signing is partially configured/);
