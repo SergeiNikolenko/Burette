@@ -37,9 +37,12 @@
   const extract = name => viewerSource.match(new RegExp("\\n  (?:async )?function " + name + "\\([\\s\\S]*?\\n  \\}", "u"))[0];
   const unavailable = () => { throw new Error("Unexpected script load"); };
   const viewer = { plugin: target };
+  // Snapshots serialize through the scene file actions, which the viewer has loaded by then.
+  const sceneWindow = {};
+  new Function("window", sceneFilesSource)(sceneWindow);
   const execute = new Function("window", "activeMolstarViewer", "activeConfig", "document", "runtimeURL", "loadScript",
     extract("bytesToBase64") + "\n" + extract("executeBuretteAgentAction") + "\nreturn executeBuretteAgentAction;")
-    ({}, () => viewer, { renderer: "molstar" }, document, unavailable, unavailable);
+    (sceneWindow, () => viewer, { renderer: "molstar" }, document, unavailable, unavailable);
   assert.equal(target.state.snapshotParams.value.behavior, false);
   const exported = await execute({ type: "workspace_scene_snapshot" });
   assert.equal(exported.ok, true);

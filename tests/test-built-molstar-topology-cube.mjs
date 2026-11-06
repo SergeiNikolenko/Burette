@@ -18,6 +18,7 @@ const context = vm.createContext({ console, assert, document: dom.document, wind
   HTMLElement: dom.HTMLElement, HTMLCanvasElement: dom.HTMLCanvasElement, HTMLImageElement: dom.HTMLImageElement,
   Image: dom.Image, Event: dom.Event, CustomEvent: dom.CustomEvent, AbortController, AbortSignal,
   viewerSource: readFileSync(viewerPath, "utf8"), lane,
+  sceneFilesSource: readFileSync(new URL("../PreviewExtension/Web/scene-file-actions.js", import.meta.url), "utf8"),
 });
 try {
  const bytes = readFileSync(bundlePath);

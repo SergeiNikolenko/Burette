@@ -459,6 +459,17 @@ current one has open code or acceptance items.
   structures command, so a compressed copy reopens there through `open`; check
   the picker in browser-dev. POSCAR and CJSON of a CIF crystal print the
   1e-16 residue of its cell vectors.
+- **Full `test:ui` sweep (2026-11-06, Gauss, step by step):** 25 of 499 steps
+  fail; 24 fail at `a5f7303cd` too. Ten `vp run` steps and
+  `test:browser-source-close-dialog` (`/usr/bin/trash`) need the Mac
+  toolchain. The rest are real: `test-perf-trajectory-proof`,
+  `test-trajectory-hover`, `test:measurement-runtime`,
+  `test:science-native-consumers`, `test:structure-edit-panel`,
+  `test:molx-ordinary-chooser`, `test:xyz-measurement-transfer`,
+  `test:native-behavior-scene-export`, `test:native-scene-info`,
+  `test:retained-plots`, `test:powder-xrd`, `test:builder-agent`,
+  `test:metal-complex`. The one regression, `test:built-topology-cube`,
+  stubbed the scene file actions that snapshots now serialize through.
 - **Done when:** every stage scenario above passes at 1400 and 900 px in both
   themes on the browser shell, and the stage 1–4 scenarios pass in the packaged
   macOS app.
