@@ -1297,7 +1297,7 @@ const SESSION_VIEWER_ACTION_TYPES = [
   'apply_mesoscale_preset', 'color_xtb_charges', 'color_xtb_fukui', 'label_selection', 'contacts',
   'reset_camera', 'observe_scene', 'query_atoms', 'query_groups', 'named_selection', 'select_atoms',
   'measure_geometry', 'list_scene_layers', 'patch_scene_layers', 'capture_scene', 'replace_document',
-  'set_scene_motion', 'set_scene_wiggle', 'rotate_camera', 'hide_waters', 'show_waters',
+  'set_scene_motion', 'set_scene_wiggle', 'rotate_camera', 'set_camera_projection', 'view_axis', 'hide_waters', 'show_waters',
   'show_surface', 'color_by_chain', 'render_panel', 'apply_scene', 'load_mvs', 'observe_story', 'control_story',
   'export_session', 'screenshot', 'export_image', 'describe_region', 'annotation_snapshot',
   'raw_burette_agent',

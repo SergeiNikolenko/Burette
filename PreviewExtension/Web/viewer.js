@@ -1161,7 +1161,7 @@
     if (type === 'describe_region') return describeAgentRegion(action);
     if (type === 'annotation_snapshot') return annotationSnapshot(action);
     if (type === 'replace_document') return replaceMolecularDocument(action);
-    if (['set_scene_motion', 'set_scene_wiggle', 'rotate_camera'].includes(type)) return controlViewportFromAction(action);
+    if (['set_scene_motion', 'set_scene_wiggle', 'rotate_camera', 'set_camera_projection', 'view_axis'].includes(type)) return controlViewportFromAction(action);
     if (type === 'hide_waters') {
       return window.BuretteSceneActions?.hideWaters?.() || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.hideWaters is unavailable.');
     }
@@ -11394,7 +11394,7 @@ SOFTWARE.
         };
       })));
     return {
-      camera: snapshot ? { position: snapshot.position, target: snapshot.target, up: snapshot.up, radius: snapshot.radius } : null,
+      camera: snapshot ? { mode: snapshot.mode, position: snapshot.position, target: snapshot.target, up: snapshot.up, radius: snapshot.radius } : null,
       exactSelection: window.BuretteAgent?.selectionState?.() ?? null,
       motion: viewportMotionState(),
       wiggle: wiggle ? { name: wiggle.name, animation: Object.fromEntries(VIEWPORT_WIGGLE_SLIDERS.map(spec => [spec.name, Number(wiggle.animation[spec.name]) || 0])) } : null,
@@ -11419,6 +11419,16 @@ SOFTWARE.
         if (!['off', 'even', 'uncertainty'].includes(action.mode)) throw new Error('Wiggle mode must be off, even or uncertainty.');
         await setViewportWiggleKind(action.mode);
         refreshViewportWiggleControls();
+      } else if (action.type === 'set_camera_projection') {
+        // The camera menu's Perspective and Orthographic.
+        if (!['perspective', 'orthographic'].includes(action.mode)) throw new Error('Camera projection must be perspective or orthographic.');
+        plugin.canvas3d.setProps({ camera: { mode: action.mode } });
+      } else if (action.type === 'view_axis') {
+        // The camera menu's View from ±X/Y/Z, without its animation.
+        const index = ['+x', '-x', '+y', '-y', '+z', '-z'].indexOf(String(action.axis).toLowerCase());
+        if (index < 0) throw new Error('View axis must be +x, -x, +y, -y, +z or -z.');
+        const [, direction, up] = VIEWPORT_AXIS_VIEWS[index];
+        requestMolstarStructureFocus(activeMolstarViewer(), { direction, up, durationMs: 0 });
       } else {
         const axis = action.axis;
         if (!Array.isArray(axis) || axis.length !== 3 || !axis.every(Number.isFinite) || !Number.isFinite(Math.hypot(...axis)) || Math.hypot(...axis) === 0 || !Number.isFinite(action.angleDegrees)) {

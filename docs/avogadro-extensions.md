@@ -314,6 +314,8 @@ and every run stay user gestures.
   [3D view camera](keyboard-shortcuts.md#3d-view-camera). The focused 3D view
   takes Shift+arrow rotation and Q/E, W/S, A/D, R/F steps. Plain arrows keep pose
   and ligand stepping, which no longer react to Shift.
+  Agents use `set_camera_projection` (`perspective`, `orthographic`) and
+  `view_axis` (`+x` … `-z`); `observe_scene` reports the camera `mode`.
 - **Active frame.** Info, Plots, Vibrations and the spectra panels read one
   frame store (`useTrajectoryFrame` in `lib/workbench/source.ts`). It keeps the
   segment index, global index, segment start and source path from the viewer's
@@ -329,5 +331,3 @@ Remaining:
   three.js chemical-space view keep their own camera controls, without the
   projection toggle, axis views or keyboard steps.
 - The 3D context menu has no Edit, Geometry or Properties entry.
-- Agents cannot set the projection or an axis view; `rotate_camera` rotates
-  about a world axis.
