@@ -40,6 +40,18 @@ directory explicitly. To resolve a later snapshot, update `source.json`, build
 and review the wheel, then regenerate the dependency lock using the command in
 `docs/releasing.md`. Do not describe a snapshot version as a released version.
 
+Linux x86_64 bundles use `bootstrap-linux-x86_64.json` (the same CPython and
+uv releases, Linux assets) and `requirements-linux-x86_64.txt`, which pins the
+same versions as the macOS lock; only macOS-only packages are absent.
+`scripts/prepare-xyzrender-runtime.py` picks the files for the host. After
+changing the macOS lock, regenerate the Linux lock on Linux from the
+repository root, constrained to the macOS versions:
+
+```bash
+grep -E '^[a-z0-9][a-z0-9._-]*==' config/xyzrender/requirements.txt | sed 's/ \\$//' > build/xyzrender-darwin-pins.txt
+uv pip compile --no-config --default-index https://pypi.org/simple --python-version 3.13.13 --python-platform x86_64-manylinux_2_28 --generate-hashes --only-binary :all: -c build/xyzrender-darwin-pins.txt config/xyzrender/requirements.in -o config/xyzrender/requirements-linux-x86_64.txt
+```
+
 Run scientific regressions with the prepared environment's Python:
 
 ```bash
