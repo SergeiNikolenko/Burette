@@ -62,12 +62,18 @@ PY
   # lib64 -> lib alias, its interpreter links and console scripts (they point
   # into the temporary source), uv markers, the pruned notebook kernel's share/,
   # and the interpreter's aliases, headers and libpython (the standalone
-  # python3 is statically linked; nothing on Linux embeds Python).
+  # python3 is statically linked; nothing on Linux embeds Python). Tcl/Tk and
+  # tkinter go too: xyzrender renders headless, and the AppImage bundler fails
+  # on _tkinter because it cannot resolve the bundled libtcl.
   rsync -aL --delete --exclude /lib64 --exclude '/bin/*' --exclude /share \
     --exclude /.lock --exclude /.gitignore --exclude /CACHEDIR.TAG \
     "$source_env/" "$runtime/"
   rsync -aL --delete --include /bin/python3 --exclude '/bin/*' --exclude /include \
     --exclude /share --exclude /lib/pkgconfig --exclude '/lib/libpython*' \
+    --exclude '/lib/lib*tcl*' --exclude '/lib/tcl*' --exclude '/lib/tk*' \
+    --exclude '/lib/itcl*' --exclude '/lib/thread*' --exclude 'lib-dynload/_tkinter*' \
+    --exclude '/lib/python3*/tkinter' --exclude '/lib/python3*/turtledemo' \
+    --exclude '/lib/python3*/turtle.py' \
     "$(cd -P "$python_home/.." && pwd -P)/" "$python_root/"
   if [[ "${BURETTE_KEEP_FULL_XYZRENDER_RUNTIME:-0}" != "1" ]]; then
     PYTHONDONTWRITEBYTECODE=1 "$source_env/bin/python3" \
@@ -125,6 +131,8 @@ node scripts/linux-desktop-metadata.mjs --check
 bun install --frozen-lockfile --ignore-scripts
 bun run build:agent-shell
 stage_xyzrender_runtime
+# The bundler reuses Burette.AppDir and keeps older packages next to new ones.
+rm -rf "$TARGET_DIR/release/bundle"
 (cd apps/desktop && bun run build:tauri -- --bundles "$BUNDLES" --config "$XYZRENDER_TAURI_CONFIG")
 
 rm -rf "$OUTPUT"
