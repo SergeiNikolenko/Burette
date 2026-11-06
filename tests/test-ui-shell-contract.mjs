@@ -8270,7 +8270,7 @@ assert.match(appGridConformerMessagesHook, /reply\("gridGenerate3DStarted", \{ j
 assert.match(appGridConformerMessagesHook, /reply\("gridGenerate3DError"/);
 assert.match(appGridConformerMessagesHook, /setConformerJobs\(\(previous\) => \[pendingJob, \.\.\.previous\]/);
 assert.match(appGridConformerMessagesHook, /progress: "Submitted to the compute coordinator"/);
-assert.match(appGridConformerMessagesHook, /updateGridJob\(\{ durableJobId: job\.jobId, cancelable: true, progress, backend: "nativeMetal" \}\)/);
+assert.match(appGridConformerMessagesHook, /updateGridJob\(\{ durableJobId: job\.jobId, cancelable: true, progress \}\)/);
 assert.match(appGridConformerMessagesHook, /status: errors\.length \? "recovered" : "success"/);
 assert.match(app, /openDockTab\("bottom", "jobs"\)/);
 assert.match(app, /setConformerJobs,/);

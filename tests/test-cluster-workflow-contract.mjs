@@ -67,6 +67,10 @@ for (const method of ["Umap", "Tmap", "Tsne", "Pacmap", "Localmap", "Trimap", "D
 assert.match(chemicalSpace, /cluster_chemical_space_from_fingerprints/);
 assert.match(chemicalSpace, /build_graph_profiled/);
 assert.match(chemicalSpace, /butina_clusters/);
+// Builds without Metal run every chemical-space step on the CPU reference.
+assert.match(chemicalSpace, /ChemicalSpaceBackend::ReferenceCpu => reference_knn\(fingerprints, knn_options\)/);
+assert.match(chemicalSpace, /optimize_embedding\(&graph, umap_options, request\.method\.into\(\)\)/);
+assert.match(chemicalSpace, /build_tanimoto_graph\(fingerprints, cutoff, graph_options\)/);
 assert.match(
   chemicalSpacePanel,
   /\{ value: "umap", label: "UMAP" \},\s*\{ value: "tmap", label: "TMAP" \}/,

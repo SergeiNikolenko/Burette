@@ -23,7 +23,7 @@ import {
   type MolecularComputeOperation,
 } from "../lib/standalone-compute";
 import { isTauriRuntime } from "../lib/tauri";
-import { nativeComputeLabel } from "../lib/platform";
+import { isMacPlatform, nativeComputeLabel } from "../lib/platform";
 import type { ActiveViewerIframeForDocument } from "../lib/viewer-bridge";
 import type { ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "../types";
 
@@ -280,10 +280,10 @@ export function useAppGenerate3DConformer({
           openTextDocumentsInActiveTab([report]);
         }
         const converged = result.rows.filter((row) => row.converged).length;
-        if (result.backend !== "nativeMetalScfHybrid") {
+        if (isMacPlatform() && result.backend !== "nativeMetalScfHybrid") {
           throw new Error("Metal-only RM1 workflow rejected a non-Metal result.");
         }
-        pushStatus(`RM1 converged for ${converged.toLocaleString()} structure${converged === 1 ? "" : "s"} via ${nativeComputeLabel("Metal SCF kernels")}; opened the report.`, converged === result.rows.length ? "success" : "error");
+        pushStatus(`RM1 converged for ${converged.toLocaleString()} structure${converged === 1 ? "" : "s"} via ${result.backend === "nativeMetalScfHybrid" ? "Metal SCF kernels" : "the CPU reference"}; opened the report.`, converged === result.rows.length ? "success" : "error");
         return;
       }
       pushStatus(isTauriRuntime()

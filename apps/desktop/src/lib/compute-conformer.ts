@@ -162,10 +162,11 @@ export async function runConformerWorkflow(
   if (!documentId.trim() || normalizedIndexes.length === 0) {
     throw new Error("Native conformer generation requires a Grid document and selected molecules.");
   }
-  // The native side applies the same Settings override; mirroring it here keeps
-  // the Metal-only result check below from rejecting a requested CPU run.
+  // The native side applies the same Settings override and runs on the CPU
+  // where Metal does not exist; mirroring it here keeps the Metal-only result
+  // check below from rejecting those runs.
   const computeBackend = useSettingsStore.getState().preferences.computeBackend;
-  const backendPolicy = computeBackend === "cpu" ? "referenceCpu"
+  const backendPolicy = computeBackend === "cpu" || !isMacPlatform() ? "referenceCpu"
     : computeBackend === "metal" ? "gpuRequired"
       : options.backendPolicy ?? "gpuRequired";
   const request = {
@@ -311,5 +312,6 @@ class ConformerExtractionWorkerClient {
 }
 import { invoke } from "@tauri-apps/api/core";
 import { useSettingsStore } from "../stores/settings-store";
+import { isMacPlatform } from "./platform";
 
 const EXTRACTION_TIMEOUT_MS = 120_000;

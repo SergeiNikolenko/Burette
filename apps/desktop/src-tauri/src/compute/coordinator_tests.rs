@@ -35,7 +35,34 @@ fn helper_attestation_is_a_real_sha256_digest() {
 }
 
 #[test]
-fn semiempirical_grid_workflow_fails_closed_without_native_metal_runtime() {
+fn capability_report_without_metal_names_the_host_platform() {
+    let compute_root = std::fs::canonicalize(std::env::temp_dir())
+        .expect("canonical temp root")
+        .join(format!("burette-capability-{}", Uuid::new_v4()));
+    let viewer_root =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../PreviewExtension/Web");
+    let coordinator = ComputeCoordinator::initialize(compute_root.clone(), None, Some(viewer_root));
+    let report = coordinator.capability_report().expect("capability report");
+    assert_eq!(report.availability, ComputeAvailability::Unavailable);
+    let (os_name, reason) = if cfg!(target_os = "macos") {
+        ("macOS", CapabilityReasonCode::RuntimeMissing)
+    } else {
+        (
+            std::env::consts::OS,
+            CapabilityReasonCode::UnsupportedOperatingSystem,
+        )
+    };
+    assert_eq!(report.platform.os_name, os_name);
+    assert_eq!(report.reasons[0].code, reason);
+    assert_ne!(report.platform.os_version, "");
+    drop(coordinator);
+    std::fs::remove_dir_all(compute_root).expect("remove compute fixture");
+}
+
+/// macOS keeps semi-empirical GPU-required; builds without Metal run it on the
+/// CPU reference path instead of failing admission.
+#[test]
+fn semiempirical_grid_workflow_without_metal_follows_the_platform_policy() {
     let fixture_id = Uuid::new_v4();
     let temp_root = std::fs::canonicalize(std::env::temp_dir()).expect("canonical temp root");
     let compute_root = temp_root.join(format!("burette-semi-durable-{fixture_id}"));
@@ -59,25 +86,32 @@ fn semiempirical_grid_workflow_fails_closed_without_native_metal_runtime() {
     let viewer_root =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../PreviewExtension/Web");
     let coordinator = ComputeCoordinator::initialize(compute_root.clone(), None, Some(viewer_root));
-    let error = coordinator
-        .evaluate_grid_semiempirical(
-            "main",
-            &GridSemiempiricalRequest {
-                document_id: "semi-durable".into(),
-                source_indexes: vec![0],
-                method: "RM1".into(),
-            },
-            registry
-                .acquire_snapshot_lease("main:semi-durable")
-                .expect("lease Grid fixture"),
-            &|_| {},
-        )
-        .expect_err("semiempirical workflow must not fall back without Metal");
-    assert!(matches!(
-        error,
-        ComputeCoordinatorError::Unavailable(message)
-            if message.contains("gpuRequired compute admission failed")
-    ));
+    let result = coordinator.evaluate_grid_semiempirical(
+        "main",
+        &GridSemiempiricalRequest {
+            document_id: "semi-durable".into(),
+            source_indexes: vec![0],
+            method: "RM1".into(),
+        },
+        registry
+            .acquire_snapshot_lease("main:semi-durable")
+            .expect("lease Grid fixture"),
+        &|_| {},
+    );
+    if cfg!(target_os = "macos") {
+        let error = result.expect_err("semiempirical workflow must not fall back without Metal");
+        assert!(matches!(
+            error,
+            ComputeCoordinatorError::Unavailable(message)
+                if message.contains("gpuRequired compute admission failed")
+        ));
+    } else {
+        let result = result.expect("semiempirical workflow runs on the CPU reference path");
+        assert_eq!(result.backend, "nativeCpuReference");
+        assert_eq!(result.gpu_time_ms, 0);
+        assert!(result.rows.iter().all(|row| row.error.is_none()));
+        assert!(result.artifact_id.is_some());
+    }
     drop(coordinator);
     std::fs::remove_dir_all(compute_root).expect("remove compute fixture");
     std::fs::remove_dir_all(grid_root).expect("remove Grid fixture");
