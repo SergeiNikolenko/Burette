@@ -345,7 +345,7 @@
     "check:native-scene-info": "tsc --noEmit -p tests/tsconfig.native-scene-info.json",
     "test:browser-source-close-dialog": "bun test tests/test-browser-source-close-dialog.test.tsx",
     "check:browser-source-close-dialog": "tsc --noEmit -p tests/tsconfig.browser-source-close-dialog.json",
-    "test:indexed-trajectory-runtime": "bun tests/test-indexed-trajectory.mjs && bun tests/test-browser-trr.mjs",
+    "test:indexed-trajectory-runtime": "bun tests/test-indexed-trajectory.mjs && bun tests/test-browser-trr.mjs && bun tests/test-browser-xtc-dcd.mjs",
     "test:trajectory-frame-pages": "bun test tests/test-indexed-trajectory-frame-bridge.test.ts",
     "check:trajectory-frame-pages": "tsc --noEmit -p tests/tsconfig.trajectory-frame-pages.json",
     "test:built-indexed-trajectory": "bun tests/test-built-indexed-trajectory.mjs && bun tests/test-built-indexed-trajectory.mjs PreviewExtension/Web/molstar.js auto reordered",

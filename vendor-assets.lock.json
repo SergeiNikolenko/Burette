@@ -44,8 +44,8 @@
     {
       "path": "PreviewExtension/Web/molstar.js",
       "package": "molstar",
-      "bytes": 5539158,
-      "sha256": "sha256-lWmE8PjE3V4Y21j4WZEQWB/vfU8bRcc9v9Aw6isr2bk="
+      "bytes": 5543223,
+      "sha256": "sha256-elgV+vdzki1OsCkxoyFx6rVMgxqFWXa/rq/BQ4hhuxI="
     },
     {
       "path": "scripts/mvs-schema-validator.mjs",

@@ -741,6 +741,11 @@
       if (!indexed) throw new Error('Trajectory frame data is unavailable in this runtime.');
       return { ok: true, result: indexed.readActiveFrame(activeMolstarViewer(), action) };
     }
+    if (type === 'indexed_trajectory_scan') {
+      const indexed = window.molstar?.BuretteIndexedTrajectory;
+      if (!indexed?.scanPositions) throw new Error('Trajectory scans are unavailable in this runtime.');
+      return { ok: true, result: await indexed.scanPositions(activeMolstarViewer(), action) };
+    }
     if (type === 'scene_science_binding') {
       if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
       return { ok: true, result: await window.BuretteSceneFiles.science.bindingReport(activeMolstarViewer(), action.sourceExtension) };
@@ -19750,10 +19755,14 @@ SOFTWARE.
       if (pair.synthetic) await applyMolstarUniformRepresentation(viewer, molstarDerivedTopologyRepresentation());
       return !!options.representationPreset;
     }
-    if (normalizeFormat(pair.coordinateEntry.format) === 'trr') {
+    // Raw TRR, XTC and DCD are read frame by frame, which the Plots dock samples;
+    // an XTC or DCD beyond that budget still loads whole.
+    const rawFormat = normalizeFormat(pair.coordinateEntry.format);
+    const rawLimit = window.molstar?.BuretteIndexedTrajectory?.rawByteLimit ?? 0;
+    if (rawFormat === 'trr' || (['xtc', 'dcd'].includes(rawFormat) && pair.coordinateEntry.data?.byteLength <= rawLimit)) {
       const indexed = window.molstar?.BuretteIndexedTrajectory;
-      if (!indexed?.loadRawTrr) throw new Error('TRR trajectory support is unavailable in this runtime.');
-      await indexed.loadRawTrr(viewer, pair, options);
+      if (!indexed?.loadRaw) throw new Error('Trajectory support is unavailable in this runtime.');
+      await indexed.loadRaw(viewer, pair, rawFormat, options);
       if (pair.synthetic) await applyMolstarUniformRepresentation(viewer, molstarDerivedTopologyRepresentation());
       return !!options.representationPreset;
     }

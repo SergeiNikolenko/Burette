@@ -1,6 +1,7 @@
 import { readActiveTrajectoryFrame } from './trajectory-frame-data.mjs';
 import { decodeTrrFrame } from './trr-frame.mjs';
-import { indexTrrFrames } from './trr-index.mjs';
+import { BROWSER_TRR_LIMITS, indexTrrFrames } from './trr-index.mjs';
+import { indexDcdFrames, indexXtcFrames } from './xtc-dcd-index.mjs';
 import { Task } from '@molstar/core/task';
 import { PluginStateObject, PluginStateTransform } from '@molstar/plugin/state/objects';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
@@ -140,9 +141,16 @@ function createTrajectory(template, descriptor, first, requestFrame, releaseRead
     } finally { release(); }
   };
   const sourceId = `${identityPrefix}-source-${++identitySequence}`;
+  // Any frame for a scan, without moving the scene: the cache, then one serialized read.
+  const read = async (index, signal) => {
+    if (disposed || !Number.isInteger(index) || index < 0 || index >= descriptor.frameCount) throw new Error('Trajectory frame is unavailable.');
+    const cached = cache.get(index);
+    if (cached) { await requestFrame(index, signal, true); return cached; }
+    return Task.create('Scan trajectory frame', ctx => fetch(index, ctx, signal)).run();
+  };
   const modelFor = (frame, index) => {
     const model = Model.trajectoryFromModelAndCoordinates(template, coordinates(frame)).representative;
-    model._dynamicPropertyData[HELD_FRAME] = { frame, index, descriptor, isAlive: () => !disposed, sourceId, modelId: `${sourceId}-model-${++identitySequence}` };
+    model._dynamicPropertyData[HELD_FRAME] = { frame, index, descriptor, read, isAlive: () => !disposed, sourceId, modelId: `${sourceId}-model-${++identitySequence}` };
     model.modelNum = index;
     Model.TrajectoryInfo.set(model, { index, size: descriptor.frameCount });
     return model;
@@ -255,34 +263,44 @@ const IndexedTrajectory = PluginStateTransform.BuiltIn({
   dispose({ b }) { b?.data.dispose(); }
 });
 
-// Raw browser TRR uses ordinary snapshot-owned Binary data, so restoring a scene
-// recreates the index without an external reader or a second copy of every frame.
-const BrowserTrrTrajectory = PluginStateTransform.BuiltIn({
+// Raw browser TRR, XTC and DCD use ordinary snapshot-owned Binary data, so restoring
+// a scene recreates the index without an external reader or a second copy of every
+// frame. Scenes saved before XTC and DCD carry no format and are TRR.
+const RAW_INDEXERS = { trr: indexTrrFrames, xtc: indexXtcFrames, dcd: indexDcdFrames };
+const RAW_LABELS = { trr: 'TRR trajectory', xtc: 'XTC trajectory', dcd: 'DCD trajectory' };
+const BrowserRawTrajectory = PluginStateTransform.BuiltIn({
   name: 'burette-browser-trr-trajectory',
-  display: { name: 'TRR trajectory' },
+  display: { name: 'Trajectory' },
   from: PluginStateObject.Root,
   to: PluginStateObject.Molecule.Trajectory,
-  params: { modelRef: PD.Text(''), dataRef: PD.Text(''), segmentIndex: PD.Numeric(0) }
+  params: { modelRef: PD.Text(''), dataRef: PD.Text(''), segmentIndex: PD.Numeric(0), format: PD.Select('trr', [['trr', 'TRR'], ['xtc', 'XTC'], ['dcd', 'DCD']]) }
 })({
   getDependencies: params => [params.modelRef, params.dataRef],
   apply({ params, dependencies }) {
-    return Task.create('Open TRR trajectory', async ctx => {
+    const format = params.format ?? 'trr', label = RAW_LABELS[format];
+    return Task.create(`Open ${label}`, async ctx => {
       let bytes = dependencies[params.dataRef]?.data;
-      const indexed = indexTrrFrames(bytes);
-      const descriptor = { format: 'trr', atomCount: indexed.atomCount, frameCount: indexed.frames.length, segmentIndex: params.segmentIndex };
+      const indexed = RAW_INDEXERS[format](bytes);
+      const descriptor = { format, atomCount: indexed.atomCount, frameCount: indexed.frames.length, segmentIndex: params.segmentIndex };
       const request = async (index, signal, validateOnly) => {
-        if (!bytes || signal?.aborted) throw Task.Aborted('TRR trajectory was closed.');
+        if (!bytes || signal?.aborted) throw Task.Aborted(`${label} was closed.`);
         const frame = indexed.frames[index];
-        if (!frame) throw new Error('TRR frame is unavailable.');
-        return validateOnly ? {} : { bytes: bytes.subarray(frame.offset, frame.offset + frame.length), timePs: frame.timePs };
+        if (!frame) throw new Error(`${label} frame is unavailable.`);
+        if (validateOnly) return {};
+        const range = bytes.subarray(frame.offset, frame.offset + frame.length);
+        if (!indexed.header) return { bytes: range, timePs: frame.timePs };
+        // A DCD frame is decoded behind the header that describes it.
+        const framed = new Uint8Array(indexed.header.length + range.length);
+        framed.set(indexed.header); framed.set(range, indexed.header.length);
+        return { bytes: framed, timePs: frame.timePs };
       };
-      const first = await decodeFrame('trr', (await request(0)).bytes, indexed.frames[0].timePs, ctx);
+      const first = await decodeFrame(format, (await request(0)).bytes, indexed.frames[0].timePs, ctx);
       const object = dependencies[params.modelRef];
       const initial = object.type === PluginStateObject.Molecule.Topology.type
         ? await Model.trajectoryFromTopologyAndCoordinates(object.data, coordinates(first)).runInContext(ctx)
         : Model.trajectoryFromModelAndCoordinates(object.data, coordinates(first));
       const trajectory = createTrajectory(initial.representative, descriptor, first, request, () => { bytes = undefined; });
-      return new PluginStateObject.Molecule.Trajectory(trajectory, { label: 'TRR trajectory', description: `${trajectory.frameCount} frames` });
+      return new PluginStateObject.Molecule.Trajectory(trajectory, { label, description: `${trajectory.frameCount} frames` });
     });
   },
   dispose({ b }) { b?.data.dispose(); }
@@ -333,17 +351,44 @@ export const BuretteIndexedTrajectory = {
       units: { position: 'angstrom', ...(frame.velocities ? { velocity: 'angstrom/ps' } : {}), ...(frame.forces ? { force: 'kcal/mol/angstrom' } : {}) },
       offset, total: frame.elementCount, atoms };
   },
-  async loadRawTrr(viewer, pair, options = {}) {
+  /** Positions of 2–4 atoms (model order) in up to 200 frames from `offset`, read without
+   * seeking: the page belongs to the displayed source `expected.sourceId`. */
+  async scanPositions(viewer, { atoms, offset, limit, expected } = {}) {
+    if (!Array.isArray(atoms) || atoms.length < 2 || atoms.length > 4 || !atoms.every(atom => Number.isSafeInteger(atom) && atom >= 0)
+      || !Number.isSafeInteger(offset) || offset < 0 || !Number.isInteger(limit) || limit < 1 || limit > 200
+      || typeof expected?.sourceId !== 'string') throw new Error('Invalid trajectory scan request.');
+    const held = (viewer?.plugin?.managers?.structure?.hierarchy?.current?.structures ?? [])
+      .flatMap(structure => structure.cell?.obj?.data?.models ?? []).map(model => ({ model, held: model?._dynamicPropertyData?.[HELD_FRAME] }))
+      .filter(item => item.held?.isAlive());
+    if (held.length !== 1 || held[0].held.sourceId !== expected.sourceId) throw new Error('The displayed trajectory changed. Scan again.');
+    const { model, held: { read, descriptor, frame } } = held[0];
+    const sourceIndex = model.atomicHierarchy?.atomSourceIndex;
+    const sources = atoms.map(atom => {
+      const source = atom < frame.elementCount ? (sourceIndex ? sourceIndex.value(atom) : atom) : -1;
+      if (!Number.isInteger(source) || source < 0 || source >= frame.elementCount) throw new Error('Invalid trajectory atom.');
+      return source;
+    });
+    const frames = [];
+    for (let index = offset; index < Math.min(descriptor.frameCount, offset + limit); index++) {
+      const current = await read(index);
+      frames.push({ frameIndex: index, time: { ...current.time }, positions: sources.map(atom => [current.x[atom], current.y[atom], current.z[atom]]) });
+    }
+    return { sourceId: expected.sourceId, frameCount: descriptor.frameCount, offset, frames };
+  },
+  /** The largest raw file read frame by frame; larger XTC and DCD load whole. */
+  rawByteLimit: BROWSER_TRR_LIMITS.bytes,
+  /** Raw TRR, XTC or DCD bytes paired with a model or topology. */
+  async loadRaw(viewer, pair, format, options = {}) {
     const plugin = viewer.plugin;
     // Validate all frame boundaries before publishing any part of the trajectory.
-    indexTrrFrames(pair.coordinateEntry.data);
+    RAW_INDEXERS[format](pair.coordinateEntry.data);
     const data = await plugin.builders.data.rawData({ data: pair.modelEntry.data, label: pair.modelEntry.label });
     const model = pair.modelKind === 'model-data'
       ? await plugin.builders.structure.createModel(await plugin.builders.structure.parseTrajectory(data, pair.modelEntry.format))
       : (await plugin.dataFormats.get(pair.modelEntry.format).parse(plugin, data)).topology;
     const raw = await plugin.builders.data.rawData({ data: pair.coordinateEntry.data, label: pair.coordinateEntry.label });
-    const trajectory = await plugin.build().toRoot().apply(BrowserTrrTrajectory, {
-      modelRef: model.ref, dataRef: raw.ref, segmentIndex: pair.coordinateEntry.segmentIndex ?? 0,
+    const trajectory = await plugin.build().toRoot().apply(BrowserRawTrajectory, {
+      modelRef: model.ref, dataRef: raw.ref, segmentIndex: pair.coordinateEntry.segmentIndex ?? 0, format,
     }, { dependsOn: [model.ref, raw.ref] }).commit();
     await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default', options);
   },

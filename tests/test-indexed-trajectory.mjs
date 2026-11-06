@@ -5,7 +5,8 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { Window } from 'happy-dom';
 import { decodeTrrFrame } from '../scripts/trr-frame.mjs';
-import { indexTrrFrames } from '../scripts/trr-index.mjs';
+import { BROWSER_TRR_LIMITS, indexTrrFrames } from '../scripts/trr-index.mjs';
+import { indexDcdFrames, indexXtcFrames } from '../scripts/xtc-dcd-index.mjs';
 import { readActiveTrajectoryFrame } from '../scripts/trajectory-frame-data.mjs';
 import { Task } from '@molstar/core/task';
 import { Coordinates, Time } from '@molstar/model/model/structure/coordinates';
@@ -27,9 +28,9 @@ class ObservedMap extends Map {
   constructor(entries) { super(entries); if (entries) observedCaches.push(this); }
 }
 class TrajectoryObject { constructor(data) { this.data = data; } }
-const context = vm.createContext({ indexTrrFrames, readActiveTrajectoryFrame, decodeTrrFrame, Task, Coordinates, Time, Cell, Vec3, parseXtc, DataView, Float32Array, AbortController, Map: ObservedMap,
+const context = vm.createContext({ indexTrrFrames, indexXtcFrames, indexDcdFrames, BROWSER_TRR_LIMITS, readActiveTrajectoryFrame, decodeTrrFrame, Task, Coordinates, Time, Cell, Vec3, parseXtc, DataView, Float32Array, AbortController, Map: ObservedMap,
   PluginStateTransform: { BuiltIn: () => definition => definition }, PluginStateObject: { Root: {}, Molecule: { Trajectory: TrajectoryObject, Topology: { type: 'topology' } } },
-  PD: { Text: () => ({}), Value: () => ({}), Numeric: () => ({}) },
+  PD: { Text: () => ({}), Value: () => ({}), Numeric: () => ({}), Select: () => ({}) },
   // Like Mol*, every frame model gets fresh dynamic property data.
   Model: { trajectoryFromModelAndCoordinates: (_template, coords) => ({ representative: { ..._template, frame: coords.frames[0], _dynamicPropertyData: Object.create(null) } }), TrajectoryInfo: { set: (model, info) => { model.info = info; } } }
 });
