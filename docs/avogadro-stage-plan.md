@@ -132,6 +132,11 @@ current one has open code or acceptance items.
 - **How:** a worker session runs chunks sized to ~33 ms of work
   (`adaptChunkIterations`) on a persistent minimizer; viewer.js gains atom drag
   that sends positions to the session, which restarts its state on each move.
+- **Viewer side (done):** `geometry_binding`/`update_geometry` also cover
+  single-model MOL/SDF through a generated XYZ baseline, and `atom_drag` with
+  `atom-drag` events implements the drag (see
+  [Atom dragging](renderer-support.md#atom-dragging)); the host API is
+  `lib/atom-drag.ts`. Check: `test:atom-drag`, `test:geometry-update-runtime`.
 
 ## Stage 3D. External energy models
 

@@ -650,3 +650,34 @@ before reading, and constructs the editing model from that same text. Every
 not acquire a new owner for an already computed edit. Verified own coordinate
 updates retain the lease; renderer StateTree Undo, source replacement and MOLX restoration
 invalidate it. Both actions remain private to the desktop and outside CLI/MCP.
+
+The binding covers one structure with one model and one atomic unit from a
+single-frame XYZ, a MOL or a one-record SDF. For XYZ the baseline is the source
+text. For MOL/SDF it is a generated single-frame XYZ of the model atoms in source
+order (element symbol and the shortest decimal that keeps each float32
+coordinate); the MOL/SDF bytes are never rewritten. `update_geometry` refuses a
+changed atom count or element order, keeps the file's declared bonds (XYZ bonds
+are still rechecked against distance) and keeps the camera.
+
+### Atom dragging
+
+`atom_drag` `{ enabled, lease }` turns drag mode on or off for the structure
+behind a Geometry lease; enabling fails once the lease no longer owns the scene.
+The viewer loads `atom-drag.js` on first use. In drag mode a plain left press on
+an atom moves that atom, or the whole selection when the atom is selected, in the
+camera plane through it. Presses on empty space or with Shift, Ctrl, Alt or Cmd
+reach Mol* unchanged, so the camera still rotates and selection bindings still
+work. Escape, `pointercancel` or a lost focus cancels the drag and restores the
+text read at the press.
+
+The viewer applies the moved coordinates itself through the same Geometry queue,
+so dragging works without an optimizer. It posts
+`{ type: 'atom-drag', phase: 'start' | 'move' | 'end' | 'cancel', lease, atoms, positions }`
+to the host: `atoms` are zero-based source atom indices, `positions` their
+coordinates in Å, equal to the decimals written into the Geometry text. `move`
+is posted at most once per animation frame; `cancel` carries the restored start
+positions. While a drag holds atoms, every applied `update_geometry` text has the
+held atoms' rows replaced by the pointer positions, so an optimizer can move the
+other atoms without pulling the dragged ones back; drag frames never supersede a
+queued host update. A stale lease ends drag mode at the next press, and a drag
+whose lease goes stale posts `cancel`. The host side is `lib/atom-drag.ts`.
