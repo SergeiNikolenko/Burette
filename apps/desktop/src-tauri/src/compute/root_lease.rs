@@ -1293,11 +1293,21 @@ mod windows_tests {
             .expect("reopen snapshots capability");
         assert_eq!(reopened.identity, identity);
 
-        fs::rename(&compute_root, parent.join("displaced")).expect("displace held root");
-        fs::create_dir(&compute_root).expect("create replacement root");
-        reopened
-            .verify()
-            .expect_err("replacement root must fail closed");
+        // NTFS refuses to move a directory while handles to entries inside it
+        // are open, so the held root normally cannot be displaced at all.
+        // Where a filesystem allows it (Wine), the replacement must be detected.
+        match fs::rename(&compute_root, parent.join("displaced")) {
+            Err(error) => {
+                assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+                reopened.verify().expect("undisplaced root stays valid");
+            }
+            Ok(()) => {
+                fs::create_dir(&compute_root).expect("create replacement root");
+                reopened
+                    .verify()
+                    .expect_err("replacement root must fail closed");
+            }
+        }
 
         drop((reopened, lease));
         let _ = fs::remove_dir_all(parent);
