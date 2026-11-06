@@ -99,7 +99,7 @@ test("Run on lists enabled SSH connections and remembers the chosen host", async
     const trigger=container.querySelector<HTMLButtonElement>('button')!;
     await act(async()=>{trigger.dispatchEvent(new MouseEvent("pointerdown",{bubbles:true,button:0})); trigger.click();});
     const select=document.querySelector<HTMLSelectElement>('select[aria-label="Run on"]')!;
-    expect([...select.options].map(option=>[option.value,option.textContent])).toEqual([["this-mac","This Computer"],["gauss","Gauss"]]); // happy-dom is not a Mac platform
+    expect([...select.options].map(option=>[option.value,option.textContent])).toEqual([["this-mac","This Mac"],["gauss","Gauss"]]);
     select.value="gauss";
     await act(async()=>{select.dispatchEvent(new Event("change",{bubbles:true}));});
     expect(localStorage.getItem("burette.compute-host.v1")).toBe("gauss");

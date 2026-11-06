@@ -192,6 +192,8 @@ mod tests {
             Listener,
         };
 
+        // Pin HOME before resolving app_data_dir; see isolated_test_home.
+        crate::preview::runtime::document_open_tests::isolated_test_home();
         let app = mock_builder().build(mock_context(noop_assets())).unwrap();
         let source = tauri::WebviewWindowBuilder::new(&app, "main", tauri::WebviewUrl::default())
             .build()
@@ -245,6 +247,8 @@ mod tests {
     #[test]
     fn recovery_descriptor_preserves_original_identity_and_dirty_state() {
         use tauri::test::{mock_builder, mock_context, noop_assets};
+        // Pin HOME before resolving app_data_dir; see isolated_test_home.
+        crate::preview::runtime::document_open_tests::isolated_test_home();
         let app = mock_builder().build(mock_context(noop_assets())).unwrap();
         let root = app.path().app_data_dir().unwrap().join("popout-scenes");
         fs::create_dir_all(&root).unwrap();
@@ -292,6 +296,8 @@ mod tests {
     #[test]
     fn sheet_recheckpoint_reads_recovery_when_original_is_missing() {
         use tauri::test::{mock_builder, mock_context, noop_assets};
+        // Pin HOME before resolving app_data_dir; see isolated_test_home.
+        crate::preview::runtime::document_open_tests::isolated_test_home();
         let app = mock_builder().build(mock_context(noop_assets())).unwrap();
         let root = app.path().app_data_dir().unwrap().join("popout-scenes");
         fs::create_dir_all(&root).unwrap();
@@ -348,6 +354,8 @@ mod tests {
     #[test]
     fn sheet_recheckpoint_rejects_unrelated_recovery_sources() {
         use tauri::test::{mock_builder, mock_context, noop_assets};
+        // Pin HOME before resolving app_data_dir; see isolated_test_home.
+        crate::preview::runtime::document_open_tests::isolated_test_home();
         let app = mock_builder().build(mock_context(noop_assets())).unwrap();
         let root = app.path().app_data_dir().unwrap().join("popout-scenes");
         fs::create_dir_all(&root).unwrap();

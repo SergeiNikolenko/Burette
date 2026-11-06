@@ -1812,7 +1812,7 @@ fn default_renderer_mode_for_document<'a>(
 }
 
 #[cfg(test)]
-mod document_open_tests {
+pub(crate) mod document_open_tests {
     use super::{
         default_dark_accent, default_dark_background, default_dark_contrast,
         default_dark_foreground, default_dark_translucent, default_light_accent,
@@ -1846,7 +1846,7 @@ mod document_open_tests {
     /// `resolve_xyzrender_executable` skips the HOME candidate and falls
     /// through to PATH, which is where the fake executable is injected. It also
     /// keeps the tests out of the real user cache.
-    fn isolated_test_home() -> &'static Path {
+    pub(crate) fn isolated_test_home() -> &'static Path {
         static TEST_HOME: OnceLock<PathBuf> = OnceLock::new();
         TEST_HOME.get_or_init(|| {
             let home =
