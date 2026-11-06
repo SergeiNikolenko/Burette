@@ -25,6 +25,7 @@ import { ActivityIndicator } from "./activity-indicator";
 import { OpenInEditorMenu } from "./open-in-editor-menu";
 import { QuickLookPreview } from "./quick-look-preview";
 import { Sidebar } from "./sidebar";
+import { useSidebarPeek } from "./sidebar/use-sidebar-peek";
 import { ShortcutTooltip } from "./shortcut-tooltip";
 import { FileDropFeedback } from "./file-drop-feedback";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle, type PanelImperativeHandle } from "./ui/resizable";
@@ -51,6 +52,8 @@ const CHROME_HEIGHT = 44;
 // min-size would scroll inside the panel instead of being clipped by it. The
 // caller's `style` is merged after the library's, so this restores clipping.
 const CLIPPED_PANEL_STYLE: CSSProperties = { overflow: "hidden" };
+// A peeking sidebar overlays the content from inside its collapsed panel.
+const PEEK_PANEL_STYLE: CSSProperties = { overflow: "visible" };
 
 function clampSidebarWidth(width: number, maxSidebarWidth: number) {
   return Math.max(240, Math.min(maxSidebarWidth, Math.round(width)));
@@ -292,6 +295,13 @@ function WorkspaceAppLayout({
   const sidebarWidth = clampSidebarWidth(state.sidebarWidth, maxSidebarWidth);
   const sidebarLayoutWidth = sidebarVisible ? sidebarWidth : 0;
   const layoutState = sidebarWidth === state.sidebarWidth ? state : { ...state, sidebarWidth };
+  const sidebarShellRef = useRef<HTMLDivElement | null>(null);
+  const sidebarPeek = useSidebarPeek({
+    enabled: chromeVisible && !heroEmbed && !window.BuretteMcpWorkspace && !sidebarVisible,
+    panelRef: sidebarShellRef,
+    closeKey: state.activeTabId,
+  });
+  const sidebarPeeking = sidebarPeek !== "closed";
   const compactLeadingChrome = !tauriRuntime || windowFullscreen;
   // How far the leading window controls reach: the tab strip starts past them
   // when the sidebar is narrower than they are (or closed). The sidebar's own
@@ -412,6 +422,7 @@ function WorkspaceAppLayout({
       data-drop-active={state.dropActive || undefined}
       data-structure-drag-active={state.structureDragActive ? "true" : undefined}
       data-sidebar-open={sidebarVisible ? "true" : "false"}
+      data-sidebar-peek={sidebarPeeking ? sidebarPeek : undefined}
       onDragEnterCapture={hostedMcpWidget || heroEmbed ? undefined : onDragEnter}
       onDragOverCapture={hostedMcpWidget || heroEmbed ? undefined : onDragOver}
       onDragLeave={hostedMcpWidget || heroEmbed ? undefined : onDragLeave}
@@ -461,6 +472,7 @@ function WorkspaceAppLayout({
                 <ToolbarButton
                   type="button"
                   className="sidebar-toggle-root"
+                  data-sidebar-peek-area={window.BuretteMcpWorkspace ? undefined : "sidebar"}
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={window.BuretteMcpWorkspace ? () => setNativeNavigationOpen(open => !open) : onToggleSidebar}
                   disabled={Boolean(window.BuretteMcpWorkspace && !nativeExpanded)}
@@ -519,7 +531,7 @@ function WorkspaceAppLayout({
           <ResizablePanel
             id="sidebar"
             className="workspace-sidebar-panel"
-            style={CLIPPED_PANEL_STYLE}
+            style={sidebarPeeking ? PEEK_PANEL_STYLE : CLIPPED_PANEL_STYLE}
             elementRef={sidebarElementRef}
             panelRef={sidebarPanelRef}
             collapsible
@@ -529,8 +541,8 @@ function WorkspaceAppLayout({
             maxSize={`${maxSidebarWidth}px`}
             groupResizeBehavior="preserve-pixel-size"
           >
-            <div className="sidebar-shell-inner">
-              {window.BuretteMcpWorkspace ? <NativeWorkspaceSidebar state={layoutState} actions={actions} onToggleSidebar={() => setNativeNavigationOpen(false)} /> : <Sidebar state={layoutState} actions={actions} open={sidebarVisible} />}
+            <div className="sidebar-shell-inner" ref={sidebarShellRef}>
+              {window.BuretteMcpWorkspace ? <NativeWorkspaceSidebar state={layoutState} actions={actions} onToggleSidebar={() => setNativeNavigationOpen(false)} /> : <Sidebar state={layoutState} actions={actions} open={sidebarVisible || sidebarPeek === "open"} />}
             </div>
           </ResizablePanel>
           {chromeVisible && (!window.BuretteMcpWorkspace || nativeExpanded) ? (

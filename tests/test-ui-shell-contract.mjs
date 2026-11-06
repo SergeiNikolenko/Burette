@@ -1473,7 +1473,7 @@ assert.match(appLayout, /"--chrome-height": hostedMcpWidget \? "0px" : undefined
 assert.match(appLayout, /\{chromeVisible && \(!window\.BuretteMcpWorkspace \|\| nativeWorkspaceChrome\) && \(/);
 assert.match(appLayout, /const activePageKind = state\.activeTab\?\.location\.kind \?\? null/);
 assert.match(appLayout, /data-active-page-kind=\{activePageKind \?\? undefined\}/);
-assert.match(appLayout, /<Sidebar state=\{layoutState\} actions=\{actions\} open=\{sidebarVisible\} \/>/);
+assert.match(appLayout, /<Sidebar state=\{layoutState\} actions=\{actions\} open=\{sidebarVisible \|\| sidebarPeek === "open"\} \/>/);
 assert.doesNotMatch(appLayout, /state\.sidebarOpen && <Sidebar/);
 assert.doesNotMatch(appLayout, /instance-badge/);
 assert.doesNotMatch(appLayout, /statusbar/);
