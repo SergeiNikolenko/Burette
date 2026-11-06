@@ -230,8 +230,21 @@ current one has open code or acceptance items.
   Restore `docs/scientific-format-coverage.md`, which the evidence links to.
 - **Done when:** an Avogadro-written CJSON with frequencies and MOs → Vibrations
   animate, an orbital surface shows → Save scene → reopen preserves both.
-- **Checks:** `test:cjson-graph`, `test:cjson-import`, `test:science-codec`,
-  `test:quantum-science-session`, `test:gaussian-log-orbitals`.
+- **Done (2026-11-06, part 1):** `cjson-science.ts` reads Avogadro's
+  `vibrations` (flat or per conformer; zero-padded eigenvectors), `basisSet`
+  (shell types 0…±4, contractions renormalized) and `orbitals` (closed and open
+  shell, eV → Eh, occupations from `electronCount` when absent). A `unitCell`
+  (cell vectors or a…γ, fractional coordinates) opens as extended XYZ with its
+  Lattice. Vibrations animate live on CJSON scenes. The LUMO of avogadrodata's
+  formaldehyde.cjson matches the cube Avogadro saved (correlation 1.000000);
+  vibrations and orbitals survive the MOLX v4 codec; browser check on Gauss:
+  1527 cm⁻¹ animates, the LUMO surface shows. Gaussian optimization logs with a
+  basis already open on their final geometry with orbitals.
+- **Open (part 2):** a coordinate-set selector that writes the chosen CJSON set
+  to the graph; `docs/scientific-format-coverage.md`.
+- **Checks:** `test:cjson-graph` (`test-cjson-science`), `test:cjson-graph-codec`,
+  `test:cjson-import`, `test:science-codec`, `test:quantum-science-session`,
+  `test:gaussian-log-orbitals`.
 
 ## Stage 6. Orbitals and fields: multi-field Cube and colours
 

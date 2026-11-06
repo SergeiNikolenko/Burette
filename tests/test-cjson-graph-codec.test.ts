@@ -8,6 +8,7 @@ import { molstarMolV3000Plugin } from "../scripts/molstar-mol-v3000.mjs";
 import { molstarV3000ChargesPlugin } from "../scripts/molstar-v3000-charges.mjs";
 import { readCjsonGraph } from "../apps/desktop/src/lib/molecular-workbench/cjson-graph";
 import type { ScientificDocument } from "../apps/desktop/src/lib/molecular-workbench/scientific-types";
+import { parseScientificFile } from "../apps/desktop/src/lib/molecular-workbench/quantum";
 import { encodeScienceSession, decodeScienceSession, SCIENCE_MANIFEST_ASSET_ID, type EncodedScienceSession, type ScienceSessionContent } from "../apps/desktop/src/lib/science-session/codec";
 import { sha256Hex } from "../apps/desktop/src/lib/source-editing/source-identity";
 installPlugin(molstarMolV3000Plugin); installPlugin(molstarV3000ChargesPlugin);
@@ -24,10 +25,8 @@ function content(name = "nmr.cjson"): ScienceSessionContent {
     input.atoms.coords["3dSetsActive"] = 1;
   }
   const bytes = new TextEncoder().encode("\uFEFF" + JSON.stringify(input, null, 2).replaceAll("\n", "\r\n"));
-  const parsed = readCjsonGraph(name, new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes));
-  const science: ScientificDocument = { format: "cjson", atoms: parsed.structure.atoms,
-    frames: parsed.coordinateSets.map(atoms => ({ atoms })), modes: [], orbitals: [],
-    graph: { molfile: parsed.structure.molfile, activeFrameIndex: parsed.activeSet }, ...(parsed.spectra ? { spectra: parsed.spectra } : {}) };
+  const text = new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes);
+  const parsed = readCjsonGraph(name, text), science: ScientificDocument = parseScientificFile(name, text);
   return { documentUuid: uuid, source: { extension: "mol", text: parsed.structure.molfile }, atomIds: parsed.structure.atoms.map((_, i) => `atom-${i}`),
     binding: { ...binding, atomCount: parsed.structure.atoms.length }, science, original: { name, file: new Blob([bytes], { type: "chemical/x-cjson" }) } };
 }
@@ -80,8 +79,9 @@ test("real MolStar MOL snapshot/reopen retains source graph, CJSON active set, a
   }
 });
 
-test("producer L/D source-order stereo graph bytes and scientific identity survive repeated codec roundtrips", async () => {
-  for (const name of ["L-alanine.cjson", "D-alanine.cjson"]) {
+test("producer source-order stereo graphs, vibrations and orbitals survive repeated codec roundtrips", async () => {
+  // Avogadro's own files add vibrations, a Gaussian basis and orbitals to the graph.
+  for (const name of ["L-alanine.cjson", "D-alanine.cjson", "avogadro-formaldehyde-orbitals.cjson", "avogadro-formaldehyde-raman.cjson"]) {
     const original = content(name); let current = original;
     for (let i = 0; i < 2; i++) {
       const encoded = await encodeScienceSession(current); expect(encoded.manifest.version).toBe(4);

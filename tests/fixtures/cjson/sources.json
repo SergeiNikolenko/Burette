@@ -17,6 +17,30 @@
       "originalSha256": "ec0d4e0b803ed5ee95ffd4e5855f2a8a5b30d238073be54b427964b87c570e05",
       "graphExtractSha256": "77d29ca9b1fe18452243b35378172c03aaf9f4baa271639fc429603bf7bbd231",
       "extraction": "Exact elements,3d coordinates,formalCharges and complete bonds; unrelated vibrations/partial charges/properties omitted from the test graph extract only."
+    },
+    {
+      "path": "avogadro-formaldehyde-orbitals.cjson",
+      "upstream": "data/cjson/formaldehyde.cjson",
+      "commit": "4a1de2f591796e190b5789463e0195c3100097fa",
+      "originalSha256": "332386ee315eee4abc9b5780bd7e079d2ada0f95e11e3789b6ef9da0e0b7acb0",
+      "extractSha256": "9e331aafb56bcb650b8dcf71c2701edad2f61f7d3a44b251c72d528e3ce98e5c",
+      "extraction": "Avogadro's cube cache, layer settings, partial charges, view matrices and file name removed; coordinates, bonds, basis, orbitals, vibrations and properties kept exactly."
+    },
+    {
+      "path": "avogadro-formaldehyde-raman.cjson",
+      "upstream": "data/cjson/raman.cjson",
+      "commit": "4a1de2f591796e190b5789463e0195c3100097fa",
+      "originalSha256": "3ace18c7e18fb691ed44199e35d19a9752733d63d168933b89b94cbaeb4706fe",
+      "extractSha256": "57137e855a7964f61ebd06fb5feb4738690f39313cd042462360663bf91667ff",
+      "extraction": "Avogadro's cube cache, layer settings, partial charges, view matrices, file name and empty orbitals removed; coordinates, bonds, vibrations and properties kept exactly."
+    },
+    {
+      "path": "avogadro-rutile.cjson",
+      "upstream": "data/cjson/rutile.cjson",
+      "commit": "4a1de2f591796e190b5789463e0195c3100097fa",
+      "originalSha256": "e797b04299ac22f023051645a72e6b8582923a13ec4083d6b1c956889f194fe1",
+      "extractSha256": "e797b04299ac22f023051645a72e6b8582923a13ec4083d6b1c956889f194fe1",
+      "extraction": "Unchanged."
     }
   ]
 }

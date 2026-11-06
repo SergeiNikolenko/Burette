@@ -20,6 +20,8 @@ export function VibrationsDockContent({ document, actions }: { document: ViewerD
   if (!document || !science || !(vibrationalModes(science.modes).length || science.frames.some(frame => vibrationalModes(frame.modes).length))) return null;
   const lines = text?.replace(/\r\n?/gu, "\n").trimEnd().split("\n") ?? [];
   // Private Geometry leases belong to MolStar; the external renderer keeps its own vibration controls.
-  const liveAnimation = document.renderer === "molstar" && sourceExtension(document) === "xyz" && lines.length === Number(lines[0]) + 2;
+  // A CJSON scene shows its active coordinate set as one MOL model, which the lease binds like an SDF.
+  const liveAnimation = document.renderer === "molstar"
+    && (science.format === "cjson" || (sourceExtension(document) === "xyz" && lines.length === Number(lines[0]) + 2));
   return <Suspense fallback={null}><VibrationsPanel key={`${document.id}:${scienceId(science)}`} document={document} actions={actions} science={science} liveAnimation={liveAnimation} /></Suspense>;
 }

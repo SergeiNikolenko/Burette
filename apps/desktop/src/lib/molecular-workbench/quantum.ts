@@ -16,7 +16,7 @@ import { parseOrcaProperty } from "./quantum/orca-property";
 import { readOrcaVcdTables } from "./orca-circular-spectra";
 import { withOrcaSourceSpectra, type OrcaSourceSpectrum } from "./orca-source-spectra";
 import { validateParsedSpectra } from "./parsed-spectral-document";
-import { readCjsonGraph } from "./cjson-graph";
+import { readCjsonCrystal, readCjsonGraph } from "./cjson-graph";
 import { parseQcschema } from "./quantum/qcschema";
 import { parseFchk } from "./fchk";
 import { parseMolden } from "./gaussian";
@@ -75,8 +75,17 @@ export function parseScientificFile(name: string, text: string): ScientificDocum
     return { ...empty("zmat", atoms), internalCoordinates };
   }
   if (/\.cjson$/i.test(name)) {
+    // A crystal opens as extended XYZ, whose Lattice the Crystal and Symmetry tools read.
+    const crystal = readCjsonCrystal(text);
+    if (crystal) return { ...empty("xyz", crystal.atoms), frames: [{ atoms: crystal.atoms, comment: `Lattice="${crystal.cell.flat().join(" ")}" Properties=species:S:1:pos:R:3` }] };
     const parsed = readCjsonGraph(name, text);
-    return { format: "cjson", atoms: parsed.structure.atoms, frames: parsed.coordinateSets.map(atoms => ({ atoms })), modes: [], orbitals: [],
+    // The active set's modes describe the scene atoms; other sets keep their own on their frame.
+    const frames = parsed.coordinateSets.map((atoms, index) => {
+      const modes = index === parsed.activeSet ? undefined : parsed.modes.get(index);
+      return { atoms, ...(modes?.length ? { modes } : {}) };
+    });
+    return { format: "cjson", atoms: parsed.structure.atoms, frames, modes: parsed.modes.get(parsed.activeSet) ?? [], orbitals: parsed.orbitals,
+      ...(parsed.basis ? { basis: parsed.basis } : {}),
       graph: { molfile: parsed.structure.molfile, activeFrameIndex: parsed.activeSet }, ...(parsed.spectra ? { spectra: parsed.spectra } : {}) };
   }
   if (/\.(?:qcschema|json)$/i.test(name)) return parseQcschema(text, name);

@@ -1,8 +1,11 @@
+import { cellFromParameters, fractionalToCartesian, validateCell } from "./crystal";
 import { elementSymbol } from "./elements";
 import { checkMoleculeSize, parseMolecule, type MolecularStructure } from "./molecular-graph";
 import { readCjsonSpectra } from "./scientific-spectra-inputs";
 import type { ScientificSpectra } from "./scientific-spectra";
-import type { MolecularAtom, MolecularBond } from "./types";
+import { readCjsonBasis, readCjsonOrbitals, readCjsonVibrations } from "./cjson-science";
+import type { GaussianShell, MolecularOrbital, VibrationalMode } from "./scientific-types";
+import type { MolecularAtom, MolecularBond, UnitCell, Vec3 } from "./types";
 
 /** Explicit graph source prerequisite; it is not an XYZ ScientificDocument. */
 export type CjsonGraphDocument = {
@@ -11,6 +14,10 @@ export type CjsonGraphDocument = {
   coordinateSets: MolecularAtom[][];
   activeSet: number;
   spectra?: ScientificSpectra;
+  /** Vibrational modes by coordinate-set index. */
+  modes: Map<number, VibrationalMode[]>;
+  basis?: GaussianShell[];
+  orbitals: MolecularOrbital[];
 };
 
 type RecordValue = Record<string, unknown>;
@@ -28,12 +35,49 @@ function integer(value: unknown, minimum: number, maximum: number): number {
   return value;
 }
 
-/** Coordinates and connection tables remain in CJSON source atom order. */
-export function readCjsonGraph(name: string, text: string): CjsonGraphDocument {
+function readInput(text: string) {
   if (text.length > 16 * 1024 * 1024 || new TextEncoder().encode(text).byteLength > 16 * 1024 * 1024 || text.includes("\0")) fail("source exceeds 16 MiB or contains binary data.");
   const input = object(JSON.parse(text.replace(/^\uFEFF/u, "")));
   const version = input.chemicalJson ?? input["chemical json"];
   if (version !== 0 && version !== 1) fail("expected Chemical JSON version 0 or 1.");
+  return input;
+}
+const finite = (value: unknown) => {
+  if (typeof value !== "number" || !Number.isFinite(value) || Math.abs(value) > 1e6) fail("coordinates must be finite and within 1000000 Å.");
+  return value;
+};
+
+/** The atoms and lattice of a periodic Chemical JSON, as Avogadro reads them: `cellVectors`
+ * (Å, a then b then c) or a, b, c, α, β, γ, and fractional coordinates over Cartesian ones.
+ * Null for a molecule. */
+export function readCjsonCrystal(text: string): { atoms: MolecularAtom[]; cell: UnitCell } | null {
+  const input = readInput(text), source = input.unitCell ?? input["unit cell"];
+  if (source == null) return null;
+  const value = object(source);
+  let cell: UnitCell;
+  if (value.cellVectors !== undefined) {
+    const v = array(value.cellVectors, 9).map(finite);
+    cell = [v.slice(0, 3), v.slice(3, 6), v.slice(6, 9)] as UnitCell;
+    validateCell(cell);
+  } else {
+    const [a, b, c, alpha, beta, gamma] = ["a", "b", "c", "alpha", "beta", "gamma"].map(key => finite(value[key]));
+    cell = cellFromParameters({ a, b, c, alpha, beta, gamma });
+  }
+  const atoms = object(input.atoms), coords = object(atoms.coords);
+  const numbers = array(object(atoms.elements).number).map(number => integer(number, 1, 118));
+  checkMoleculeSize(numbers.length);
+  const fractional = coords["3dFractional"] ?? coords["3d fractional"];
+  const flat = array(fractional ?? coords["3d"], numbers.length * 3).map(finite);
+  return { cell, atoms: numbers.map((number, i) => {
+    const point: Vec3 = [flat[3 * i], flat[3 * i + 1], flat[3 * i + 2]];
+    const [x, y, z] = fractional === undefined ? point : fractionalToCartesian(point, cell);
+    return { element: elementSymbol(number), x, y, z };
+  }) };
+}
+
+/** Coordinates and connection tables remain in CJSON source atom order; a cell is read by readCjsonCrystal. */
+export function readCjsonGraph(name: string, text: string): CjsonGraphDocument {
+  const input = readInput(text);
   const atoms = object(input.atoms), coords = object(atoms.coords);
   if (input.unitCell != null || input["unit cell"] != null || coords["3dFractional"] !== undefined || coords["3d fractional"] !== undefined) {
     fail("periodic and fractional sources require a cell-preserving graph representation.");
@@ -83,5 +127,9 @@ export function readCjsonGraph(name: string, text: string): CjsonGraphDocument {
     "M  V30 END BOND", "M  V30 END CTAB", "M  END", ""].join("\n");
   const structure = { ...parseMolecule(molfile, "mol"), molfile, title, bonds };
   const spectra = readCjsonSpectra(input.spectra, { format: "cjson", scope: "file", name }, numbers);
-  return { format: "cjson", structure, coordinateSets, activeSet, ...(spectra ? { spectra } : {}) };
+  const properties = input.properties === undefined ? {} : object(input.properties);
+  const multiplicity = properties.totalSpinMultiplicity === undefined ? 1 : integer(properties.totalSpinMultiplicity, 1, 101);
+  const basis = readCjsonBasis(input.basisSet, count);
+  return { format: "cjson", structure, coordinateSets, activeSet, ...(spectra ? { spectra } : {}),
+    modes: readCjsonVibrations(input.vibrations, count, activeSet), ...(basis ? { basis } : {}), orbitals: readCjsonOrbitals(input.orbitals, basis, multiplicity) };
 }

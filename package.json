@@ -277,7 +277,7 @@
     "check:scientific-spectra-panel": "tsc --noEmit -p tests/tsconfig.scientific-spectra-panel.json",
     "test:scientific-spectra-activation": "bun test tests/test-scientific-spectra-activation.test.tsx",
     "check:scientific-spectra-activation": "tsc --noEmit -p tests/tsconfig.scientific-spectra-activation.json",
-    "test:cjson-graph": "bun test tests/test-cjson-graph.test.ts",
+    "test:cjson-graph": "bun test tests/test-cjson-graph.test.ts tests/test-cjson-science.test.ts",
     "check:cjson-graph": "tsc --noEmit -p tests/tsconfig.cjson-graph.json",
     "test:cjson-graph-codec": "bun test tests/test-cjson-graph-codec.test.ts",
     "check:cjson-graph-codec": "tsc --noEmit -p tests/tsconfig.cjson-graph-codec.json",
