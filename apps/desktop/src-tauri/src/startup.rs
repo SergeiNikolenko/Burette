@@ -238,7 +238,7 @@ pub(crate) fn flush_external_open_documents<R: Runtime>(app: &tauri::AppHandle<R
     let mut batches = std::collections::BTreeMap::<String, Vec<String>>::new();
     let mut focus_label = None;
     for path in paths {
-        let path = std::fs::canonicalize(&path)
+        let path = dunce::canonicalize(&path)
             .map(|path| path.to_string_lossy().into_owned())
             .unwrap_or(path);
         let owner = registry

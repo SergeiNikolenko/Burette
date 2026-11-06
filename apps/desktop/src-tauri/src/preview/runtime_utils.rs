@@ -19,20 +19,126 @@ struct RuntimeOwner {
 }
 
 /// Folders above `executable` that may hold Burette's bundled runtimes: the
-/// macOS app's `Contents/Resources` (a flat `Resources` in development builds)
-/// and `lib/Burette`, which the deb, rpm and AppImage bundles place beside
-/// `bin`.
+/// macOS app's `Contents/Resources` (a flat `Resources` in development builds),
+/// `lib/Burette`, which the deb, rpm and AppImage bundles place beside `bin`,
+/// and on Windows the install folder itself, where the installer puts
+/// resources next to `Burette.exe`.
 pub(crate) fn bundled_resource_dirs(executable: &Path) -> Vec<PathBuf> {
     executable
         .ancestors()
         .flat_map(|ancestor| {
             [
+                #[cfg(windows)]
+                ancestor.to_path_buf(),
                 ancestor.join("Resources"),
                 ancestor.join("Contents").join("Resources"),
                 ancestor.join("lib").join("Burette"),
             ]
         })
         .collect()
+}
+
+/// The user's home folder: `HOME` (which tests repoint), or the profile folder
+/// on Windows, where `HOME` is usually unset.
+pub(crate) fn home_dir() -> Option<PathBuf> {
+    std::env::var_os("HOME")
+        .filter(|home| !home.is_empty())
+        .or_else(|| {
+            cfg!(windows)
+                .then(|| std::env::var_os("USERPROFILE"))
+                .flatten()
+        })
+        .map(PathBuf::from)
+}
+
+/// `canonicalize` without the `\\?\` prefix Windows adds to every result.
+/// Paths reach the UI, external editors and the asset protocol, and must
+/// compare equal to the `C:\...` paths the system dialogs return. Elsewhere it
+/// is `Path::canonicalize`.
+pub(crate) trait SimplifiedCanonicalize {
+    fn canonicalize_simplified(&self) -> std::io::Result<PathBuf>;
+}
+
+impl SimplifiedCanonicalize for Path {
+    fn canonicalize_simplified(&self) -> std::io::Result<PathBuf> {
+        dunce::canonicalize(self)
+    }
+}
+
+/// A command for a console tool. The app runs in the Windows GUI subsystem,
+/// so without `CREATE_NO_WINDOW` each console child would open its own
+/// console window.
+pub(crate) fn background_command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
+    #[allow(unused_mut)]
+    let mut command = std::process::Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    command
+}
+
+/// curl ships with Windows 10 and later in System32.
+pub(crate) fn curl_program() -> PathBuf {
+    if cfg!(windows) {
+        std::env::var_os("SystemRoot")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(r"C:\Windows"))
+            .join("System32")
+            .join("curl.exe")
+    } else {
+        PathBuf::from("/usr/bin/curl")
+    }
+}
+
+/// `name` with the platform's executable suffix (`.exe` on Windows), for
+/// searching PATH and tool folders.
+pub(crate) fn executable_name(name: &str) -> String {
+    format!("{name}{}", std::env::consts::EXE_SUFFIX)
+}
+
+/// Burette's per-user folder for runtimes and models it installs on demand:
+/// `~/Library/Application Support/Burette` on macOS, `$XDG_DATA_HOME/Burette`
+/// (`~/.local/share/Burette`) on Linux. On Windows `%LOCALAPPDATA%\Burette` is
+/// where the installer puts the app itself, so this is the app's local data
+/// folder, `%LOCALAPPDATA%\com.local.BuretteV10`, which the uninstaller offers
+/// to delete.
+pub(crate) fn user_support_dir() -> Option<PathBuf> {
+    if cfg!(windows) {
+        return std::env::var_os("LOCALAPPDATA")
+            .map(|local| PathBuf::from(local).join("com.local.BuretteV10"));
+    }
+    let base = if cfg!(target_os = "macos") {
+        home_dir().map(|home| home.join("Library").join("Application Support"))
+    } else {
+        std::env::var_os("XDG_DATA_HOME")
+            .filter(|path| Path::new(path).is_absolute())
+            .map(PathBuf::from)
+            .or_else(|| home_dir().map(|home| home.join(".local").join("share")))
+    };
+    base.map(|base| base.join("Burette"))
+}
+
+/// The interpreter of a virtual environment: `bin/python3` on Unix,
+/// `Scripts\python.exe` on Windows.
+pub(crate) fn venv_python(root: &Path) -> PathBuf {
+    if cfg!(windows) {
+        root.join("Scripts").join("python.exe")
+    } else {
+        root.join("bin").join("python3")
+    }
+}
+
+/// The interpreter of a relocatable python-build-standalone tree: `bin/python3`
+/// on Unix, `python.exe` at the root on Windows.
+pub(crate) fn standalone_python(root: &Path) -> PathBuf {
+    if cfg!(windows) {
+        root.join("python.exe")
+    } else {
+        root.join("bin").join("python3")
+    }
 }
 
 /// Retain runtime files for the process lifetime, including cold tabs and view

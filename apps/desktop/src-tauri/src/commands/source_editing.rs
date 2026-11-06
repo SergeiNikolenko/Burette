@@ -1095,6 +1095,7 @@ fn source_error_with_details(code: &str, message: &str, details: Value) -> Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::preview::runtime_utils::SimplifiedCanonicalize;
     use std::thread::sleep;
     use std::time::Duration;
 
@@ -1298,7 +1299,10 @@ mod tests {
         let pointer = root.join("run_trj/clickme.dtr");
         fs::write(&pointer, b"").unwrap();
         let effective = crate::preview::runtime::document_identity_path(&pointer);
-        assert_eq!(effective, root.join("run-out.cms").canonicalize().unwrap());
+        assert_eq!(
+            effective,
+            root.join("run-out.cms").canonicalize_simplified().unwrap()
+        );
         let id = crate::preview::runtime_utils::stable_id(&effective);
         let sources = OpenedSourceRegistry::default();
         let edits = SourceEditRegistry::default();

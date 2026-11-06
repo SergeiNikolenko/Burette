@@ -2,7 +2,7 @@ use serde_json::Value;
 use std::env;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use tauri::ipc::{Channel, JavaScriptChannelId};
 use tauri::{Manager, Runtime, WebviewWindow};
 
@@ -43,7 +43,7 @@ fn run_mdsmooth_blocking<R: Runtime>(
     let payload = serde_json::to_vec(&request)
         .map_err(|error| format!("Could not serialize the MDSmooth request: {error}"))?;
     let uv = resolve_uv_executable()?;
-    let mut command = Command::new(&uv);
+    let mut command = crate::preview::runtime_utils::background_command(&uv);
     command.arg("run");
     for dependency in RUNNER_DEPENDENCIES {
         command.args(["--with", dependency]);
@@ -172,11 +172,12 @@ fn resolve_uv_executable() -> Result<PathBuf, String> {
     if let Some(path) = env::var_os("BURETTE_UV") {
         candidates.push(PathBuf::from(path));
     }
-    if let Some(home) = env::var_os("HOME") {
-        candidates.push(PathBuf::from(home).join(".local/bin/uv"));
+    let uv = crate::preview::runtime_utils::executable_name("uv");
+    if let Some(home) = crate::preview::runtime_utils::home_dir() {
+        candidates.push(home.join(".local/bin").join(&uv));
     }
     if let Some(path) = env::var_os("PATH") {
-        candidates.extend(env::split_paths(&path).map(|directory| directory.join("uv")));
+        candidates.extend(env::split_paths(&path).map(|directory| directory.join(&uv)));
     }
     candidates.extend([
         PathBuf::from("/opt/homebrew/bin/uv"),

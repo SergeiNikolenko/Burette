@@ -4,7 +4,6 @@ use std::{
     collections::HashMap,
     fs::{self, Metadata},
     io::Write,
-    os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt},
     path::{Path, PathBuf},
     sync::{LazyLock, Mutex},
 };
@@ -24,7 +23,9 @@ struct Header {
     unchanged: bool,
 }
 
+#[cfg(unix)]
 fn local_version(metadata: &Metadata) -> (u64, u64, i64, i64, i64, i64) {
+    use std::os::unix::fs::MetadataExt;
     (
         metadata.ino(),
         metadata.len(),
@@ -32,6 +33,20 @@ fn local_version(metadata: &Metadata) -> (u64, u64, i64, i64, i64, i64) {
         metadata.mtime_nsec(),
         metadata.ctime(),
         metadata.ctime_nsec(),
+    )
+}
+/// Windows has no inode or change time on stable std; the creation time stands
+/// in for the identity a replaced file would lose.
+#[cfg(windows)]
+fn local_version(metadata: &Metadata) -> (u64, u64, i64, i64, i64, i64) {
+    use std::os::windows::fs::MetadataExt;
+    (
+        0,
+        metadata.len(),
+        metadata.last_write_time() as i64,
+        0,
+        metadata.creation_time() as i64,
+        0,
     )
 }
 fn intact(entry: &Entry) -> bool {
@@ -129,18 +144,17 @@ fn store(cache: &Path, remote_path: &str, bytes: &[u8]) -> Result<PathBuf, Strin
         );
     }
     let directory = cache.join(uuid::Uuid::new_v4().to_string());
-    fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(&directory)
-        .map_err(|e| e.to_string())?;
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    builder.create(&directory).map_err(|e| e.to_string())?;
     let path = directory.join(name);
-    let mut file = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(&path)
-        .map_err(|e| e.to_string())?;
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    let mut file = options.open(&path).map_err(|e| e.to_string())?;
     file.write_all(bytes).map_err(|e| e.to_string())?;
     Ok(path)
 }

@@ -106,8 +106,8 @@ fn configured_path(value: &str) -> Option<PathBuf> {
         return None;
     }
     if let Some(rest) = value.strip_prefix("~/") {
-        if let Some(home) = env::var_os("HOME") {
-            return Some(PathBuf::from(home).join(rest));
+        if let Some(home) = crate::preview::runtime_utils::home_dir() {
+            return Some(home.join(rest));
         }
     }
     Some(PathBuf::from(value))
@@ -153,7 +153,7 @@ pub(crate) struct ToolPathDefaults {
 /// The executables Burette finds when no path is configured.
 #[tauri::command]
 pub(crate) fn tool_path_defaults() -> ToolPathDefaults {
-    let home = env::var_os("HOME").map(PathBuf::from);
+    let home = crate::preview::runtime_utils::home_dir();
     let python = find_executable(
         &["python3"],
         &[
@@ -165,7 +165,13 @@ pub(crate) fn tool_path_defaults() -> ToolPathDefaults {
     );
     let uv_home: Vec<PathBuf> = home
         .iter()
-        .flat_map(|home| [home.join(".local/bin/uv"), home.join(".cargo/bin/uv")])
+        .flat_map(|home| {
+            let uv = crate::preview::runtime_utils::executable_name("uv");
+            [
+                home.join(".local/bin").join(&uv),
+                home.join(".cargo/bin").join(uv),
+            ]
+        })
         .collect();
     let uv = find_executable(
         &["uv"],
@@ -186,7 +192,11 @@ fn find_executable(
     let mut candidates = Vec::new();
     if let Some(path) = env::var_os("PATH") {
         for directory in env::split_paths(&path) {
-            candidates.extend(names.iter().map(|name| directory.join(name)));
+            candidates.extend(
+                names.iter().map(|name| {
+                    directory.join(crate::preview::runtime_utils::executable_name(name))
+                }),
+            );
         }
     }
     candidates.extend(extra.unwrap_or_default().iter().cloned());

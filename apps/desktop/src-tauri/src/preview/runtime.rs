@@ -18,6 +18,7 @@ use super::runtime_viewer::{create_docking_runtime, create_runtime, DockingRunti
 use super::synthetic_topology::{synthetic_topology_for_trajectory, SYNTHETIC_TOPOLOGY_EXTENSIONS};
 use super::text_xyz::converted_data_from_text;
 use super::trace::{append_preview_trace, elapsed_ms, preview_error_code, PreviewTraceEvent};
+use crate::preview::runtime_utils::SimplifiedCanonicalize;
 
 pub(crate) const MAX_STRUCTURE_FILE_SIZE: u64 = 75 * 1024 * 1024;
 const DEFAULT_DESKTOP_PREVIEW_LIMIT_MIB: u64 = 1024;
@@ -600,7 +601,7 @@ impl ViewerDocument {
         preferences: &ViewerPreferences,
     ) -> Result<Self, String> {
         let canonical = path
-            .canonicalize()
+            .canonicalize_simplified()
             .map_err(|error| format!("{}: {error}", path.display()))?;
         let metadata = fs::metadata(&canonical).map_err(|error| error.to_string())?;
         if !metadata.is_file() {
@@ -851,7 +852,7 @@ fn open_document_with_grid_options_inner<R: Runtime>(
     source_epoch: Option<&crate::commands::source_editing::SourceRegistrationEpoch>,
 ) -> Result<ViewerDocument, String> {
     let canonical = path
-        .canonicalize()
+        .canonicalize_simplified()
         .map_err(|err| format!("{}: {err}", path.display()))?;
     let metadata = fs::metadata(&canonical).map_err(|err| err.to_string())?;
     if !metadata.is_file() {
@@ -1215,7 +1216,7 @@ pub(crate) fn document_identity_path(path: &Path) -> PathBuf {
         if let Some(bundle) = resolve_desmond_file_bundle(path, "dtr") {
             return bundle
                 .primary_path
-                .canonicalize()
+                .canonicalize_simplified()
                 .unwrap_or(bundle.primary_path);
         }
     }
@@ -1675,7 +1676,7 @@ fn is_coordinate_trajectory_format(format: &str) -> bool {
 
 fn renderable_docking_receptor_path(path: &str) -> String {
     let requested = PathBuf::from(path);
-    let canonical = requested.canonicalize().unwrap_or(requested);
+    let canonical = requested.canonicalize_simplified().unwrap_or(requested);
     let extension = structure_path_extension(&canonical);
     if extension == "tpr" {
         if let Some(companion) = visual_coordinate_companion_for_topology(&canonical, &extension) {
@@ -1695,7 +1696,7 @@ fn normalized_docking_scene_mode(value: Option<&str>) -> Option<&'static str> {
 
 fn read_docking_source(path: &str) -> Result<DockingRuntimeSource, String> {
     let canonical = PathBuf::from(path)
-        .canonicalize()
+        .canonicalize_simplified()
         .map_err(|err| format!("{path}: {err}"))?;
     let metadata = fs::metadata(&canonical).map_err(|err| err.to_string())?;
     if !metadata.is_file() {
@@ -1751,7 +1752,7 @@ fn read_trajectory_source<R: Runtime>(
     path: &str,
 ) -> Result<DockingRuntimeSource, String> {
     let canonical = PathBuf::from(path)
-        .canonicalize()
+        .canonicalize_simplified()
         .map_err(|error| error.to_string())?;
     let extension = structure_path_extension(&canonical);
     if let Some(bundle) = resolve_desmond_file_bundle(&canonical, &extension) {
@@ -1824,6 +1825,7 @@ pub(crate) mod document_open_tests {
     use crate::commands::documents::open_documents_for_window_label;
     use crate::commands::source_editing::OpenedSourceRegistry;
     use crate::preview::grid_store::GridRuntimeRegistry;
+    use crate::preview::runtime_utils::SimplifiedCanonicalize;
     use base64::Engine;
     use std::collections::BTreeMap;
     use std::fs;
@@ -1854,7 +1856,9 @@ pub(crate) mod document_open_tests {
             fs::create_dir_all(&home).expect("test home should be created");
             // macOS temp_dir is a symlink (/var -> /private/var); tests compare
             // canonical app_data_dir paths against stored ones.
-            let home = home.canonicalize().expect("test home should resolve");
+            let home = home
+                .canonicalize_simplified()
+                .expect("test home should resolve");
             std::env::set_var("HOME", &home);
             home
         })
@@ -1875,8 +1879,8 @@ pub(crate) mod document_open_tests {
         assert_eq!(
             json,
             serde_json::json!({
-                "id": super::stable_id(&path.canonicalize().unwrap()),
-                "path": path.canonicalize().unwrap().to_string_lossy(),
+                "id": super::stable_id(&path.canonicalize_simplified().unwrap()),
+                "path": path.canonicalize_simplified().unwrap().to_string_lossy(),
                 "title": "large.pdb", "extension": "pdb", "renderer": "molstar",
                 "runtimePath": "", "runtimeDeferred": true,
                 "byteCount": 100 * 1024 * 1024, "viewerProfile": "structure",
@@ -2104,7 +2108,11 @@ pub(crate) mod document_open_tests {
         assert!(request.receptor_path.ends_with(".gro"));
         assert_eq!(
             request.ligand_paths,
-            vec![path.canonicalize().unwrap().to_string_lossy().to_string()]
+            vec![path
+                .canonicalize_simplified()
+                .unwrap()
+                .to_string_lossy()
+                .to_string()]
         );
         if let Some(parent) = path.parent() {
             let _ = fs::remove_dir_all(parent);
@@ -2138,10 +2146,10 @@ pub(crate) mod document_open_tests {
         assert_eq!(result.documents.len(), 1);
         let document = &result.documents[0];
         let canonical_trajectory = trajectory
-            .canonicalize()
+            .canonicalize_simplified()
             .expect("XTC fixture should canonicalize");
         let canonical_topology = topology
-            .canonicalize()
+            .canonicalize_simplified()
             .expect("PDB topology should canonicalize");
         let docking_request = document
             .docking_request
@@ -2211,14 +2219,14 @@ pub(crate) mod document_open_tests {
         assert_eq!(
             docking_request.receptor_path,
             topology
-                .canonicalize()
+                .canonicalize_simplified()
                 .expect("PDB topology should canonicalize")
                 .to_string_lossy()
         );
         assert_eq!(
             docking_request.ligand_paths,
             vec![trajectory
-                .canonicalize()
+                .canonicalize_simplified()
                 .expect("XTC fixture should canonicalize")
                 .to_string_lossy()
                 .to_string()]
@@ -2810,7 +2818,10 @@ Atoms # charge
             assert_eq!(config["trajectoryFrameCount"], 2);
             assert_eq!(
                 config["xyzrenderAnimationSourcePath"],
-                path.canonicalize().unwrap().to_string_lossy().as_ref()
+                path.canonicalize_simplified()
+                    .unwrap()
+                    .to_string_lossy()
+                    .as_ref()
             );
             assert!(input.contains("second frame"));
             assert!(!input.contains("first frame"));

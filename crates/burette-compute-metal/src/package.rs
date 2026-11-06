@@ -494,7 +494,8 @@ fn integrity<T>(message: impl Into<String>) -> Result<T, MetalRuntimeError> {
     Err(MetalRuntimeError::Integrity(message.into()))
 }
 
-#[cfg(test)]
+// The fixtures exercise symlink rejection, which needs Unix symlinks.
+#[cfg(all(test, unix))]
 mod tests {
     use std::{fs, os::unix::fs::symlink, path::PathBuf};
 

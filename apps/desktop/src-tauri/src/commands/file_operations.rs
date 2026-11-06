@@ -132,7 +132,7 @@ fn regular_folder(path: &str) -> Result<PathBuf, String> {
             .any(|part| part == std::path::Component::ParentDir)
         || path.parent().is_none()
         || !metadata.file_type().is_dir()
-        || fs::canonicalize(&path)
+        || dunce::canonicalize(&path)
             .map_err(|error| error.to_string())?
             .parent()
             .is_none()
@@ -293,8 +293,8 @@ fn operate(request: FileOperation) -> Result<Option<String>, String> {
             {
                 return Err("Choose an absolute path to move.".into());
             }
-            let parent = fs::canonicalize(parent).map_err(|error| error.to_string())?;
-            let real_folder = fs::canonicalize(&folder).map_err(|error| error.to_string())?;
+            let parent = dunce::canonicalize(parent).map_err(|error| error.to_string())?;
+            let real_folder = dunce::canonicalize(&folder).map_err(|error| error.to_string())?;
             if parent == real_folder {
                 return Ok(Some(path));
             }
@@ -336,14 +336,20 @@ fn move_into(
     }
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
 fn move_into(
     source: &Path,
     _metadata: &fs::Metadata,
     _folder: &Path,
     target: &Path,
 ) -> Result<(), String> {
-    rename_new(source, target).map_err(|error| error.to_string())
+    const ERROR_NOT_SAME_DEVICE: i32 = 17;
+    match rename_new(source, target) {
+        Err(error) if error.raw_os_error() == Some(ERROR_NOT_SAME_DEVICE) => {
+            copy_item(source, target)
+        }
+        result => result.map_err(|error| error.to_string()),
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -387,7 +393,7 @@ fn copy_tree(source: &Path, target: &Path) -> io::Result<()> {
     let metadata = fs::symlink_metadata(source)?;
     let kind = metadata.file_type();
     if kind.is_symlink() {
-        std::os::unix::fs::symlink(fs::read_link(source)?, target)
+        copy_symlink(source, target)
     } else if kind.is_dir() {
         fs::create_dir(target)?;
         for entry in fs::read_dir(source)? {
@@ -397,6 +403,22 @@ fn copy_tree(source: &Path, target: &Path) -> io::Result<()> {
         fs::set_permissions(target, metadata.permissions())
     } else {
         copy_new(source, target)
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn copy_symlink(source: &Path, target: &Path) -> io::Result<()> {
+    std::os::unix::fs::symlink(fs::read_link(source)?, target)
+}
+
+/// Windows links are typed: a link to a folder must be recreated as one.
+#[cfg(windows)]
+fn copy_symlink(source: &Path, target: &Path) -> io::Result<()> {
+    let link = fs::read_link(source)?;
+    if fs::metadata(source).is_ok_and(|metadata| metadata.is_dir()) {
+        std::os::windows::fs::symlink_dir(link, target)
+    } else {
+        std::os::windows::fs::symlink_file(link, target)
     }
 }
 
@@ -442,11 +464,31 @@ fn rename_new(source: &Path, target: &Path) -> io::Result<()> {
     Ok(())
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
 fn rename_new(source: &Path, target: &Path) -> io::Result<()> {
     use rustix::fs::{renameat_with, RenameFlags, CWD};
     // RENAME_NOREPLACE closes the exists-check/rename race without replacing files.
     renameat_with(CWD, source, CWD, target, RenameFlags::NOREPLACE).map_err(io::Error::from)
+}
+
+/// Without MOVEFILE_REPLACE_EXISTING, MoveFileExW fails when the target exists
+/// (std::fs::rename passes that flag and would replace it).
+#[cfg(windows)]
+fn rename_new(source: &Path, target: &Path) -> io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::MoveFileExW;
+    let wide = |path: &Path| {
+        path.as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect::<Vec<u16>>()
+    };
+    let (source, target) = (wide(source), wide(target));
+    // SAFETY: both buffers are NUL-terminated UTF-16 paths that outlive the call.
+    if unsafe { MoveFileExW(source.as_ptr(), target.as_ptr(), 0) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
 }
 
 #[cfg(target_os = "macos")]
@@ -472,10 +514,17 @@ fn trash_file(path: &Path) -> Result<(), String> {
 }
 
 /// The freedesktop.org Trash, which GNOME Files, Dolphin and the other Linux
-/// file managers share.
+/// file managers share, or the Windows Recycle Bin.
 #[cfg(not(target_os = "macos"))]
 fn trash_file(path: &Path) -> Result<(), String> {
-    trash::delete(path).map_err(|error| format!("Could not move the item to Trash: {error}"))
+    trash::delete(path).map_err(|error| {
+        let bin = if cfg!(windows) {
+            "Recycle Bin"
+        } else {
+            "Trash"
+        };
+        format!("Could not move the item to the {bin}: {error}")
+    })
 }
 
 #[cfg(test)]

@@ -12,6 +12,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, Manager, Runtime, State, WebviewWindow};
 
 use crate::commands::action_journal::{action_journal_archive_name, ACTION_JOURNAL_NAME};
+use crate::preview::runtime_utils::SimplifiedCanonicalize;
 use crate::preview::trace::PREVIEW_TRACE_FILE;
 use crate::windows;
 
@@ -109,7 +110,7 @@ pub(crate) fn open_logs_folder<R: Runtime>(app: tauri::AppHandle<R>) -> Result<(
 #[tauri::command]
 pub(crate) fn reveal_path(path: String) -> Result<(), String> {
     let target = PathBuf::from(&path)
-        .canonicalize()
+        .canonicalize_simplified()
         .map_err(|err| format!("{path}: {err}"))?;
     tauri_plugin_opener::reveal_item_in_dir(target).map_err(|err| err.to_string())
 }
@@ -142,7 +143,8 @@ pub(crate) fn watch_project_roots<R: Runtime>(
         .map(|root| {
             (
                 root.to_string_lossy().replace('\\', "/"),
-                root.canonicalize().unwrap_or_else(|_| root.clone()),
+                root.canonicalize_simplified()
+                    .unwrap_or_else(|_| root.clone()),
             )
         })
         .collect::<Vec<_>>();
@@ -380,7 +382,7 @@ pub(crate) fn close_workspace_window<R: Runtime>(
 #[tauri::command]
 pub(crate) fn read_external_preview_svg(runtime_path: String) -> Result<String, String> {
     let index_path = PathBuf::from(&runtime_path)
-        .canonicalize()
+        .canonicalize_simplified()
         .map_err(|err| format!("{runtime_path}: {err}"))?;
     let runtime_directory = index_path
         .parent()
@@ -420,7 +422,7 @@ pub(crate) fn read_viewer_runtime_file_base64(
     relative_path: String,
 ) -> Result<String, String> {
     let index_path = PathBuf::from(&runtime_path)
-        .canonicalize()
+        .canonicalize_simplified()
         .map_err(|err| format!("{runtime_path}: {err}"))?;
     let runtime_directory = index_path
         .parent()
@@ -428,7 +430,7 @@ pub(crate) fn read_viewer_runtime_file_base64(
     let normalized = normalize_runtime_relative_path(&relative_path)?;
     let file_path = runtime_directory.join(normalized);
     let file_path = file_path
-        .canonicalize()
+        .canonicalize_simplified()
         .map_err(|err| format!("{}: {err}", file_path.display()))?;
     if !file_path.starts_with(runtime_directory) {
         return Err("Runtime file path is outside the preview runtime directory".into());

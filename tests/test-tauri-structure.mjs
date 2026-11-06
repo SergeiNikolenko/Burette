@@ -1141,7 +1141,7 @@ assert.match(previewXyzrenderPool, /fn worker_capacity/);
 assert.match(previewXyzrenderPool, /const WORKER_IDLE_TIMEOUT/);
 assert.match(previewXyzrenderPool, /fn reap_idle_workers/);
 assert.match(previewXyzrender, /fn bundled_xyzrender_python_launch/);
-assert.match(previewXyzrender, /join\("xyzrender-python"\)\s*\.join\("bin"\)\s*\.join\("python3"\)/);
+assert.match(previewXyzrender, /standalone_python\(&resources\.join\("xyzrender-python"\)\)/);
 assert.match(previewXyzrender, /\("PYTHONPATH", site_packages\.display\(\)\.to_string\(\)\)/);
 assert.match(previewXyzrender, /surface_mode/);
 assert.match(previewXyzrender, /paired_nci_surface_cube_path/);

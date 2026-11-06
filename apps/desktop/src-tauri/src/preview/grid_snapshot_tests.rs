@@ -6,6 +6,7 @@ use std::{
     sync::{Arc, Barrier},
 };
 
+use crate::preview::runtime_utils::SimplifiedCanonicalize;
 use burette_compute_protocol::{
     AllGridScope, AnalysisFilter, CapabilityMaturity, DescriptorFilter, FilteredGridScope,
     GridScope, GridTextQuery, MolecularSnapshotRecordV1, RepresentativePolicy, SelectedGridScope,
@@ -34,7 +35,7 @@ use super::{
 
 fn temporary_root(label: &str) -> std::path::PathBuf {
     std::env::temp_dir()
-        .canonicalize()
+        .canonicalize_simplified()
         .expect("resolve physical temporary root")
         .join(format!("burette-{label}-{}", Uuid::new_v4()))
 }

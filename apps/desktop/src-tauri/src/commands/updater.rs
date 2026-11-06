@@ -1067,12 +1067,15 @@ fn launch_installer(
         &log,
     )?;
     fs::write(&script, body).map_err(|err| err.to_string())?;
-    let mut permissions = fs::metadata(&script)
-        .map_err(|err| err.to_string())?
-        .permissions();
-    use std::os::unix::fs::PermissionsExt;
-    permissions.set_mode(0o755);
-    fs::set_permissions(&script, permissions).map_err(|err| err.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = fs::metadata(&script)
+            .map_err(|err| err.to_string())?
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&script, permissions).map_err(|err| err.to_string())?;
+    }
 
     Command::new("/bin/bash")
         .arg(&script)

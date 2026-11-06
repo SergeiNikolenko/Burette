@@ -3,6 +3,7 @@
 //! folder into the local run folder when it ends, and reattaches to unfinished
 //! jobs after a restart. See docs/remote-jobs.md.
 use super::{run, run_worker, validate, Request};
+use crate::preview::runtime_utils::SimplifiedCanonicalize;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -74,8 +75,16 @@ pub(crate) struct RemoteOutcome {
 
 impl RemoteOutcome {
     pub(crate) fn exit_status(&self) -> std::process::ExitStatus {
-        use std::os::unix::process::ExitStatusExt;
-        std::process::ExitStatus::from_raw(self.exit_code << 8)
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::ExitStatusExt;
+            std::process::ExitStatus::from_raw(self.exit_code << 8)
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::ExitStatusExt;
+            std::process::ExitStatus::from_raw(self.exit_code as u32)
+        }
     }
 }
 
@@ -203,14 +212,14 @@ fn call(host: &str, payload: Value, timeout: Duration) -> Result<Value, String> 
 /// elsewhere into it, so the same command runs inside the remote `work/` folder.
 pub(crate) fn stage_args(args: &[String], work_dir: &Path) -> Result<Vec<String>, String> {
     let work_dir = work_dir
-        .canonicalize()
+        .canonicalize_simplified()
         .map_err(|e| format!("{}: {e}", work_dir.display()))?;
     args.iter()
         .map(|arg| {
             let path = Path::new(arg);
             let Some(path) = path
                 .is_absolute()
-                .then(|| path.canonicalize().ok())
+                .then(|| path.canonicalize_simplified().ok())
                 .flatten()
                 .filter(|path| path.is_file())
             else {
@@ -365,7 +374,19 @@ fn fetch(job: &RemoteJob) -> Result<(), String> {
         .arg(&archive)
         .arg(work_dir)
         .status();
-    #[cfg(not(target_os = "macos"))]
+    // Windows 10 and later ship bsdtar, which reads zip archives.
+    #[cfg(windows)]
+    let unpacked = Command::new(
+        Path::new(&std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into()))
+            .join("System32")
+            .join("tar.exe"),
+    )
+    .arg("-xf")
+    .arg(&archive)
+    .arg("-C")
+    .arg(work_dir)
+    .status();
+    #[cfg(target_os = "linux")]
     let unpacked = Command::new("unzip")
         .args(["-o", "-q"])
         .arg(&archive)

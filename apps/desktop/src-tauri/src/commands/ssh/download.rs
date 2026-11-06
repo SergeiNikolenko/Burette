@@ -1,6 +1,6 @@
 use super::{run, validate, Request};
 use serde::Deserialize;
-use std::{fs, io::Write, os::unix::fs::OpenOptionsExt, path::Path};
+use std::{fs, io::Write, path::Path};
 use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
 
@@ -35,12 +35,11 @@ fn save_download(
             format!("{stem} ({index}){extension}")
         };
         let output = directory.join(candidate);
-        let mut file = match fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&output)
-        {
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        let mut file = match options.open(&output) {
             Ok(file) => file,
             Err(error)
                 if error.kind() == std::io::ErrorKind::AlreadyExists
@@ -129,11 +128,15 @@ mod tests {
             std::env::temp_dir().join(format!("burette-download-test-{}", uuid::Uuid::new_v4()));
         fs::create_dir(&directory).unwrap();
         fs::write(directory.join("molecule.sdf"), b"existing").unwrap();
+        #[cfg(unix)]
         std::os::unix::fs::symlink(
             directory.join("molecule.sdf"),
             directory.join("molecule (1).sdf"),
         )
         .unwrap();
+        // Creating a symlink on Windows needs Developer Mode or elevation.
+        #[cfg(windows)]
+        fs::write(directory.join("molecule (1).sdf"), b"existing").unwrap();
         let bytes = b"\0binary\xff\r\n";
         let output =
             save_download(&directory, "molecule.sdf", bytes, Destination::Desktop).unwrap();

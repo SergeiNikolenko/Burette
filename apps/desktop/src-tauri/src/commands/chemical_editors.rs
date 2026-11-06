@@ -1,3 +1,4 @@
+use crate::preview::runtime_utils::SimplifiedCanonicalize;
 #[cfg(target_os = "macos")]
 use plist::Value;
 use serde::Serialize;
@@ -11,6 +12,7 @@ use tauri::{Manager, Runtime};
 struct EditorProfile {
     id: &'static str,
     name: &'static str,
+    #[cfg_attr(windows, allow(dead_code))]
     bundle_ids: &'static [&'static str],
     app_names: &'static [&'static str],
     rank: u16,
@@ -195,7 +197,7 @@ pub(crate) fn default_application_icon_path<R: Runtime>(
     path: String,
 ) -> Result<Option<String>, String> {
     let target_path = PathBuf::from(&path)
-        .canonicalize()
+        .canonicalize_simplified()
         .map_err(|err| format!("{path}: {err}"))?;
     let Some(application_path) = default_application_path(&target_path) else {
         return Ok(None);
@@ -214,7 +216,7 @@ pub(crate) fn open_in_chemical_editor<R: Runtime>(
     target_id: String,
 ) -> Result<(), String> {
     let target_path = PathBuf::from(&path)
-        .canonicalize()
+        .canonicalize_simplified()
         .map_err(|err| format!("{path}: {err}"))?;
     let extensions = active_extensions(&path);
     if extensions.is_empty() {
@@ -471,6 +473,7 @@ fn is_wildcard_extension(extension: &str) -> bool {
     extension == "*" || extension == "****" || extension.contains('?')
 }
 
+#[cfg_attr(windows, allow(dead_code))]
 fn has_generic_chemical_extension(extensions: &[String]) -> bool {
     extensions
         .iter()
@@ -595,14 +598,43 @@ fn default_application_path(path: &Path) -> Option<PathBuf> {
     desktop_entries::default_application(path)
 }
 
+/// Application names carry vendor prefixes and versions ("UCSF ChimeraX",
+/// "Avogadro2"), so the longest profile name contained in the name wins.
+#[cfg(not(target_os = "macos"))]
+fn profile_for_name(name: &str) -> Option<&'static EditorProfile> {
+    let name = normalized_name(name);
+    EDITOR_PROFILES
+        .iter()
+        .flat_map(|profile| {
+            profile
+                .app_names
+                .iter()
+                .map(|app_name| app_name.trim_end_matches(".app"))
+                .chain([profile.name])
+                .map(move |app_name| (profile, normalized_name(app_name)))
+        })
+        .filter(|(_, app_name)| app_name.len() >= 4 && name.contains(app_name))
+        .max_by_key(|(_, app_name)| app_name.len())
+        .map(|(profile, _)| profile)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn normalized_name(value: &str) -> String {
+    value
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .map(|character| character.to_ascii_lowercase())
+        .collect()
+}
+
 /// Linux applications come from freedesktop desktop entries, read through GIO
 /// so `Exec` field codes, `TryExec` and the user's default handlers follow the
 /// same rules as the file manager.
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
 mod desktop_entries {
     use super::{
-        has_generic_chemical_extension, stable_editor_id, EditorProfile, InstalledEditor,
-        EDITOR_PROFILES,
+        has_generic_chemical_extension, profile_for_name, stable_editor_id, EditorProfile,
+        InstalledEditor, EDITOR_PROFILES,
     };
     use gtk::gio::{self, prelude::*};
     use std::path::{Path, PathBuf};
@@ -675,34 +707,6 @@ mod desktop_entries {
                 .iter()
                 .any(|bundle_id| bundle_id.eq_ignore_ascii_case(desktop_id))
         })
-    }
-
-    /// Desktop entry names carry vendor prefixes and versions ("UCSF ChimeraX",
-    /// "Avogadro2"), so the longest application name contained in the entry
-    /// wins.
-    fn profile_for_name(name: &str) -> Option<&'static EditorProfile> {
-        let name = normalized(name);
-        EDITOR_PROFILES
-            .iter()
-            .flat_map(|profile| {
-                profile
-                    .app_names
-                    .iter()
-                    .map(|app_name| app_name.trim_end_matches(".app"))
-                    .chain([profile.name])
-                    .map(move |app_name| (profile, normalized(app_name)))
-            })
-            .filter(|(_, app_name)| app_name.len() >= 4 && name.contains(app_name))
-            .max_by_key(|(_, app_name)| app_name.len())
-            .map(|(profile, _)| profile)
-    }
-
-    fn normalized(value: &str) -> String {
-        value
-            .chars()
-            .filter(char::is_ascii_alphanumeric)
-            .map(|character| character.to_ascii_lowercase())
-            .collect()
     }
 
     pub(super) fn launch(desktop_file: &Path, target: &Path) -> Result<(), String> {
@@ -787,6 +791,139 @@ mod desktop_entries {
                 Some("datawarrior")
             );
         }
+    }
+}
+/// Windows has no registry of chemistry viewers to ask, so known editors are
+/// found by their install folders under Program Files and the per-user
+/// Programs folder, one vendor level deep ("Schrodinger\PyMOL2").
+#[cfg(windows)]
+mod desktop_entries {
+    use super::{profile_for_name, stable_editor_id, InstalledEditor};
+    use std::os::windows::process::CommandExt;
+    use std::path::{Path, PathBuf};
+    use std::process::{Command, Stdio};
+
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+    fn install_roots() -> Vec<PathBuf> {
+        let mut roots: Vec<PathBuf> = ["ProgramFiles", "ProgramFiles(x86)", "ProgramW6432"]
+            .into_iter()
+            .filter_map(std::env::var_os)
+            .map(PathBuf::from)
+            .collect();
+        if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+            roots.push(PathBuf::from(local).join("Programs"));
+        }
+        roots.sort();
+        roots.dedup();
+        roots
+    }
+
+    fn child_dirs(root: &Path) -> Vec<PathBuf> {
+        std::fs::read_dir(root)
+            .map(|entries| {
+                entries
+                    .flatten()
+                    .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+                    .map(|entry| entry.path())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    pub(super) fn installed_editors() -> Vec<InstalledEditor> {
+        let mut editors = Vec::new();
+        for root in install_roots() {
+            for folder in child_dirs(&root) {
+                if let Some(editor) = editor_in(&folder) {
+                    editors.push(editor);
+                    continue;
+                }
+                editors.extend(
+                    child_dirs(&folder)
+                        .iter()
+                        .filter_map(|inner| editor_in(inner)),
+                );
+            }
+        }
+        editors
+    }
+
+    /// An install folder named after an editor profile, holding an executable
+    /// named after the same profile, directly or in `bin`.
+    fn editor_in(folder: &Path) -> Option<InstalledEditor> {
+        let profile = profile_for_name(folder.file_name()?.to_str()?)?;
+        let executable = [folder.to_path_buf(), folder.join("bin")]
+            .iter()
+            .flat_map(|directory| std::fs::read_dir(directory).into_iter().flatten().flatten())
+            .map(|entry| entry.path())
+            .find(|path| {
+                path.extension()
+                    .is_some_and(|extension| extension.eq_ignore_ascii_case("exe"))
+                    && path
+                        .file_stem()
+                        .and_then(|stem| stem.to_str())
+                        .and_then(profile_for_name)
+                        .is_some_and(|found| found.id == profile.id)
+            })?;
+        Some(InstalledEditor {
+            id: stable_editor_id(profile.id, &executable.to_string_lossy()),
+            name: profile.name.to_string(),
+            bundle_id: None,
+            app_path: executable,
+            document_extensions: Vec::new(),
+            profile: Some(profile),
+        })
+    }
+
+    pub(super) fn launch(executable: &Path, target: &Path) -> Result<(), String> {
+        Command::new(executable)
+            .arg(target)
+            .creation_flags(CREATE_NO_WINDOW)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
+
+    /// The executable the shell runs for "Open" on the file's extension.
+    pub(super) fn default_application(path: &Path) -> Option<PathBuf> {
+        use windows_sys::Win32::UI::Shell::{AssocQueryStringW, ASSOCF_NONE, ASSOCSTR_EXECUTABLE};
+        let extension = format!(".{}", path.extension()?.to_str()?);
+        let extension: Vec<u16> = extension.encode_utf16().chain([0]).collect();
+        let verb: Vec<u16> = "open".encode_utf16().chain([0]).collect();
+        let mut buffer = vec![0u16; 1024];
+        let mut length = buffer.len() as u32;
+        // SAFETY: both inputs are NUL-terminated UTF-16 strings and `length`
+        // holds the capacity of `buffer` in characters.
+        let result = unsafe {
+            AssocQueryStringW(
+                ASSOCF_NONE,
+                ASSOCSTR_EXECUTABLE,
+                extension.as_ptr(),
+                verb.as_ptr(),
+                buffer.as_mut_ptr(),
+                &mut length,
+            )
+        };
+        if result != 0 || length == 0 {
+            return None;
+        }
+        let path = PathBuf::from(String::from_utf16_lossy(&buffer[..length as usize - 1]));
+        path.is_file().then_some(path)
+    }
+
+    pub(super) fn file_manager() -> Option<PathBuf> {
+        let explorer = PathBuf::from(std::env::var_os("SystemRoot")?).join("explorer.exe");
+        explorer.is_file().then_some(explorer)
+    }
+
+    /// Executable icons need a GDI round trip to become PNG; the menu falls
+    /// back to its generic glyph.
+    pub(super) fn icon_path(_executable: &Path, _cache_dir: &Path, _id: &str) -> Option<PathBuf> {
+        None
     }
 }
 

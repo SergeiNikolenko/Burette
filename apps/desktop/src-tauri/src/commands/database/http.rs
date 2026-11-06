@@ -6,7 +6,6 @@
 //! place means the SSRF guard, the timeout and the response ceiling are applied to
 //! every provider rather than remembered per provider.
 
-use std::process::Command;
 use std::time::{Duration, Instant};
 
 use burette_core::bounded_process::{self, Limits};
@@ -130,7 +129,9 @@ fn run_curl(
     }
     // curl treats zero as unlimited. The pipe supervisor uses the exact deadline.
     let timeout = format!("{:.3}", remaining.as_secs_f64().max(0.001));
-    let mut command = Command::new("/usr/bin/curl");
+    let mut command = crate::preview::runtime_utils::background_command(
+        crate::preview::runtime_utils::curl_program(),
+    );
     // No ambient curlrc/proxy may replace the validated destination.
     command.args(["--disable", "--noproxy", "*"]);
     if let Some(pin) = curl_address_pin(target, &addresses) {
