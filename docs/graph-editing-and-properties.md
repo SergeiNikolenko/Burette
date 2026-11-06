@@ -80,9 +80,15 @@ Burette finds for its xTB jobs, and each model an installed Avogadro package
 declares under `[[tool.avogadro.energy-models]]` (named by the package). They
 run Cartesian optimizations with the same methods, constraints, convergence,
 live steps, Cancel and Undo, and Calculate Energy reports their energy. A model
-is disabled with its reason when its package is not set up, it provides no
-gradients, it reads an input format Burette does not write, it lacks an element,
-or the structure has a charge or unpaired electrons it does not accept. Their
+is disabled with its reason when its package is not set up, it reads an input
+format Burette does not write, it lacks an element, or the structure has a
+charge or unpaired electrons it does not accept. A model that provides no
+gradients is differenced from its energies, as Avogadro does, for up to 64
+atoms; frozen atoms are skipped, and a model that evaluates batches answers each
+point's shifts in one request. A periodic structure (an extended XYZ with a
+`Lattice`) reaches only models that declare unit-cell support and read CJSON or
+XYZ; among the built-in fields only Lennard-Jones has periodic terms (minimum
+images), so MMFF94 and UFF refuse a cell. Their
 energies are absolute (an xTB water molecule is about −3182 kcal/mol), so only
 differences compare with the force fields. External models never run Auto
 Optimize, which stays in the browser worker, and the browser shell lists none.

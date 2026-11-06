@@ -727,3 +727,40 @@ Still open: external models in agent jobs; models without gradients; unit
 cells and `pdb` input; coupled Z-matrix optimization with external models; the
 packaged desktop acceptance (Optimize and Cancel with GFN2-xTB and a set-up
 avogadro-xtb-energy in the app).
+
+### External models: agent jobs, no gradients, unit cells, Z-matrix (2026-11-06)
+
+- **No gradients:** Avogadro's `EnergyCalculator::gradient` falls back to
+  `finiteGradient` (central, 2.2e-6). Burette differences with 1e-4 Å, since
+  text-v1 energies carry few digits, skips frozen atoms and caps the run at 64
+  atoms. A binary-v1 model with `support.batch` (`FLAG_BATCH_MODE` 0x0002, a
+  `uint32` count then the coordinate sets) answers the point and its 6N shifts
+  in one `energy_model_evaluate_batch` request; others take them one by one.
+- **Unit cells:** `ScriptEnergy::setMolecule` refuses a cell unless the model
+  declares `support.unit-cell`; Burette does the same and sends the cell as
+  CJSON `unitCell` or an XYZ `Lattice`, refusing other input formats. Avogadro's
+  LJ and UFF wrap nonbonded pairs with `UnitCell::minimumImage`; Burette's
+  Lennard-Jones does, while MMFF94 and UFF (RDKit, without periodic terms)
+  refuse a cell, and Automatic picks Lennard-Jones only for unbonded atoms.
+- **Coupled Z-matrix:** Avogadro has no coupled Z-matrix optimization. External
+  models run it with one evaluation per point: the Cartesian gradient times the
+  differenced Jacobian of the placed atoms (`optimizeZmatrixAsync`, gradient
+  `chain-rule`), where the worker path needs 2n + 1 energies.
+- **Agent jobs:** `energy`, `energy_forces`, `frame_energy_forces` and
+  `optimize` accept `xtb:gfn2|gfn1|gfnff` and `avogadro:<package>/<id>`, one
+  session per job or frame page. Workbench reads and jobs now also run in
+  `desktop-app` sessions, the only runtime that lists external models.
+
+Checks: `cargo test --lib energy_models` on this Mac (11 passed, 1 ignored,
+including the fixture batch model). On Gauss: `bun run typecheck`;
+`test:workbench-physics` (27, with `test-periodic-energy`);
+`test:external-energy-models` (7); `test:energy-agent` (19, with a
+differenced batch model in a desktop session); `test:zmatrix-coupled-core`
+(39, with `test-zmatrix-chain-rule`); `test:geometry-ui` (58);
+`test:properties-agent`; `test:workbench-automation-jobs` (28);
+`test:crystal-agent`; `tests/test-burette-agent-cli.mjs`;
+`tests/test-tauri-structure.mjs`; `tests/test-ui-shell-contract.mjs`;
+`tests/test-packaged-plugin-mirror.mjs`; `tests/test-burette-agent-plugin.mjs`.
+
+Still open: `pdb` input, and the packaged desktop acceptance with real xTB and
+Avogadro packages, including an agent job in a desktop session.

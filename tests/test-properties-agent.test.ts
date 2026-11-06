@@ -39,8 +39,8 @@ test("incomplete XYZ and multiple SDF records remain unavailable rather than add
     expect((await f.ok({ operation: "jobs" })).total).toBe(0);
   }
 });
-test("properties keeps desktop and widget computation disabled before source reads", async () => {
-  for (const runtime of ["desktop-app", "plugin-widget"] as const) {
+test("properties keeps widget computation disabled before source reads", async () => {
+  for (const runtime of ["plugin-widget"] as const) {
     const controller = createWorkbenchAgentController({ runtime, draftsVisible: false, documents: () => [], activeDocument: () => null,
       readSource: async () => { throw new Error("Unsupported surfaces must not read molecular data"); } }); controllers.push(controller);
     expect(await controller.execute({ type: "workbench", operation: "submit", operationId: "unsupported", expectedSourceRevision: `sha256-${"a".repeat(64)}`, job: { kind: "properties", params: {} } }))

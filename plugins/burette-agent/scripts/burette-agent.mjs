@@ -1279,14 +1279,14 @@ function assertSessionActionSupported(action) {
 }
 
 // Workbench requests are validated against the shared contract before queueing.
-// Reads and jobs run only in browser agent shells; capabilities answers anywhere.
+// Reads and jobs run in browser agent shells and the desktop app; capabilities answers anywhere.
 // An export needs a waiting caller that takes its artifact off the action log.
 function assertWorkbenchAction(action, session, waitMs) {
   const validated = validateWorkbenchRequest(action);
   if (!validated.ok) fail(validated.error.code, validated.error.message, 2, validated.error.details ?? null);
   const { request } = validated;
-  if (request.operation !== 'capabilities' && session?.mode !== 'browser-dev-shell') {
-    fail('SURFACE_UNSUPPORTED', `Workbench ${request.operation} runs only in browser-agent-shell workspaces; this session is ${session?.mode || 'unknown'}. The capabilities operation describes any session.`, 2, { mode: session?.mode ?? null });
+  if (request.operation !== 'capabilities' && !['browser-dev-shell', 'desktop-app'].includes(session?.mode)) {
+    fail('SURFACE_UNSUPPORTED', `Workbench ${request.operation} runs only in browser-agent-shell and desktop-app workspaces; this session is ${session?.mode || 'unknown'}. The capabilities operation describes any session.`, 2, { mode: session?.mode ?? null });
   }
   if (request.operation === 'export' && !(waitMs > 0)) fail('INVALID_ARGS', 'A workbench export must wait for its artifact; pass --wait-ms.', 2);
   return request;

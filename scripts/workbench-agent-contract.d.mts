@@ -52,7 +52,7 @@ export type WorkbenchCoordinateAlign = { originAtom: number; axisAtom?: number; 
 export type WorkbenchJobParams<K extends WorkbenchJobKind> = Extract<WorkbenchJobRequest, { kind: K }>['params'];
 export type WorkbenchJobKindDescription = { operation: 'submit' | 'build'; engine: string; requires: string; params: Record<string, unknown>; artifacts: string[] };
 export const WORKBENCH_JOB_KINDS: Readonly<Record<WorkbenchJobKind, WorkbenchJobKindDescription>>;
-export const WORKBENCH_RUNTIMES: readonly ['browser-agent-shell'];
+export const WORKBENCH_RUNTIMES: readonly ['browser-agent-shell', 'desktop-app'];
 
 export type WorkbenchJobRequest =
   | { kind: 'energy'; params: { forceField: WorkbenchEnergyModel } }

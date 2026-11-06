@@ -791,7 +791,7 @@ export function validateWorkbenchRequest(action) {
 }
 
 /** Runtimes that run workbench operations other than `capabilities`. */
-export const WORKBENCH_RUNTIMES = Object.freeze(['browser-agent-shell']);
+export const WORKBENCH_RUNTIMES = Object.freeze(['browser-agent-shell', 'desktop-app']);
 
 /** Static part of the `capabilities` answer, shared with documentation and clients. */
 export function workbenchContractSummary() {

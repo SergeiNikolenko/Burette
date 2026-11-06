@@ -174,11 +174,23 @@ current one has open code or acceptance items.
   `avogadro:<package>/<identifier>` for `energy`, `energy_forces`,
   `frame_energy_forces` and `optimize`; the runner drives the native sessions
   (one per frame page) and refuses missing, unavailable or browser-shell models.
-- **Open:** a desktop workbench runtime (jobs run only in `browser-agent-shell`,
-  which lists no external models), models without gradients (Avogadro differences them), unit cells,
-  `pdb` input, and the packaged desktop acceptance.
+  Workbench reads and jobs run in `desktop-app` sessions as well as
+  `browser-agent-shell`, so the desktop's models reach agents.
+- **Done (models without gradients):** as Avogadro's
+  `EnergyCalculator::finiteGradient`, they are differenced from energies
+  (central, 1e-4 Å, frozen atoms skipped, up to 64 atoms); a binary-v1 model
+  with `support.batch` answers the point and its 6N shifts in one
+  `energy_model_evaluate_batch` request.
+- **Done (unit cells):** an extended XYZ `Lattice` reaches the structure;
+  Lennard-Jones takes minimum images as Avogadro's LJ and UFF do; MMFF94 and
+  UFF here refuse a cell (no periodic terms), and Automatic picks
+  Lennard-Jones only for unbonded atoms. External models get the cell only
+  with `support.unit-cell`, as CJSON `unitCell` or an XYZ `Lattice`.
+- **Open:** `pdb` input, and the packaged desktop acceptance with real xTB and
+  Avogadro packages.
 - **Checks:** `test:minimizer-core`, `test:workbench-physics`
-  (`test-external-energy-models`), `test:energy-agent`, and in
+  (`test-external-energy-models`, `test-periodic-energy`), `test:energy-agent`,
+  `test:zmatrix-coupled-core` (`test-zmatrix-chain-rule`), and in
   `apps/desktop/src-tauri` `cargo test --lib energy_models` (the real
   avogadro-xtb-energy test is `--ignored`).
 

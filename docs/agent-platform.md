@@ -622,7 +622,7 @@ The generated root must be owned by the current user and not writable by others.
 ## Orbital Cube jobs through the browser shell
 
 The repository CLI exposes `orbital_cube` in
-`browser-agent-shell` sessions. Import an FCHK or Molden file into a single final
+`browser-agent-shell` and `desktop-app` sessions. Import an FCHK or Molden file into a single final
 geometry document through the scientific importer. Its generated XYZ document
 retains the original Gaussian basis and orbitals. The shell's raw-file allowlist
 is unchanged; this command does not open raw FCHK/Molden files itself.
@@ -689,7 +689,7 @@ Python client, are described in
 ### Crystal and molecular symmetry jobs
 
 The same `workbench` contract runs the Crystal and Symmetry panels' calculations
-in `browser-agent-shell` sessions. `observe` reports `crystal` (format, atom count
+in `browser-agent-shell` and `desktop-app` sessions. `observe` reports `crystal` (format, atom count
 and lattice vectors) for a small-molecule CIF, a POSCAR/CONTCAR or an extended XYZ
 with a `Lattice`, and the availability of each job:
 
@@ -825,9 +825,7 @@ same native sessions as its Optimize and Calculate Energy commands: the job
 lists the models again and fails with `xtb:gfn2 is not available in this
 Burette.`, the model's own reason (for example a package that is not set up),
 or, in the browser shell, `External energy models run only in the Burette
-desktop app.` Workbench sessions are still limited to the runtimes listed in
-`capabilities.runtimes` (today `browser-agent-shell`), so external ids are
-refused there until a desktop runtime is listed. They need 3D coordinates (a flat drawing is refused before
+desktop app.` They need 3D coordinates (a flat drawing is refused before
 queueing) but no bond graph, and take charge and multiplicity from the
 structure's formal charges and electron count. The summary `method`/`model`
 is the model's display name; forces are the negated model gradient, reported

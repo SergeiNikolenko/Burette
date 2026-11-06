@@ -9,18 +9,25 @@ let calls: [string, Args | undefined][] = [];
 let finite = true;
 const sessions = new Map<string, Args>();
 const listed = [
-  { id: "xtb:gfn2", name: "GFN2-xTB", description: "", source: "xtb", inputFormat: null, gradients: true, ions: true, radicals: true, unitCell: false,
+  { id: "xtb:gfn2", name: "GFN2-xTB", description: "", source: "xtb", inputFormat: null, gradients: true, ions: true, radicals: true, batch: false, unitCell: false,
     elements: Array.from({ length: 86 }, (_, i) => i + 1), unavailable: null },
-  { id: "avogadro:pending/model", name: "Pending", description: "", source: "pending", inputFormat: "xyz", gradients: true, ions: true, radicals: true, unitCell: false,
+  { id: "avogadro:pending/model", name: "Pending", description: "", source: "pending", inputFormat: "xyz", gradients: true, ions: true, radicals: true, batch: false, unitCell: false,
     elements: [1, 6, 8], unavailable: "Set up pending in Settings › Extensions first" },
+  { id: "avogadro:well/energy", name: "Energy well", description: "", source: "well", inputFormat: "xyz", gradients: false, ions: true, radicals: true, batch: true, unitCell: false,
+    elements: [1, 8], unavailable: null },
 ];
+const energy = (x: number[]) => x.reduce((sum, v) => sum + v * v, 0);
 async function native(command: string, args?: Args): Promise<unknown> {
   calls.push([command, args]);
   if (command === "energy_models_list") return listed;
   if (command === "energy_model_open") { const id = `session-${calls.length}`; sessions.set(id, args!.request); return id; }
   if (command === "energy_model_close") { sessions.delete(args!.session); return null; }
   const x: number[] = args!.coordinates;
-  return finite ? { energy: x.reduce((sum, v) => sum + v * v, 0), gradient: x.map(v => 2 * v) } : { energy: null, gradient: null };
+  if (command === "energy_model_evaluate_batch") {
+    const width = 3 * sessions.get(args!.session)!.elements.length;
+    return Array.from({ length: x.length / width }, (_, i) => energy(x.slice(i * width, (i + 1) * width)));
+  }
+  return finite ? { energy: energy(x), gradient: x.map(v => 2 * v) } : { energy: null, gradient: null };
 }
 const tauri = await import("@tauri-apps/api/core");
 mock.module("@tauri-apps/api/core", () => ({ ...tauri, invoke: native }));
@@ -34,9 +41,9 @@ const fixture = (name: string) => readFileSync(new URL(`./fixtures/automation/${
 const commands = () => calls.map(([command]) => command);
 const well = (atoms: { x: number; y: number; z: number }[]) => atoms.reduce((sum, atom) => sum + atom.x ** 2 + atom.y ** 2 + atom.z ** 2, 0);
 
-function workspace(text: string, extension: string) {
+function workspace(text: string, extension: string, runtime: "browser-agent-shell" | "desktop-app" = "desktop-app") {
   const document: ViewerDocument = { id: crypto.randomUUID(), title: `fixture.${extension}`, path: `/fixture.${extension}`, extension, renderer: "molstar", runtimePath: "/viewer", byteCount: text.length };
-  const controller = createWorkbenchAgentController({ runtime: "browser-agent-shell", draftsVisible: true, documents: () => [document], activeDocument: () => document, readSource: async () => ({ text, origin: "file" }) });
+  const controller = createWorkbenchAgentController({ runtime, draftsVisible: true, documents: () => [document], activeDocument: () => document, readSource: async () => ({ text, origin: "file" }) });
   controllers.push(controller);
   const execute = (value: Record<string, unknown>) => controller.execute({ type: "workbench", ...value });
   async function ok(value: Record<string, unknown>): Promise<Record<string, any>> { const result = await execute(value); if (!result.ok) throw new Error(JSON.stringify(result.error)); return result.result; }
@@ -57,10 +64,10 @@ function workspace(text: string, extension: string) {
   const exported = async (jobId: string, artifact: string) => (await ok({ operation: "export", jobId, artifact })).artifact.content as string;
   return { submit, run, exported };
 }
-const water = () => workspace(fixture("water-trajectory.xyz").split("3\nwater frame 1")[0], "xyz");
+const water = (runtime?: "browser-agent-shell") => workspace(fixture("water-trajectory.xyz").split("3\nwater frame 1")[0], "xyz", runtime);
 
 test("the browser shell lists no external models and refuses them without opening a session", async () => {
-  const job = await water().run("energy", { forceField: "xtb:gfn2" });
+  const job = await water("browser-agent-shell").run("energy", { forceField: "xtb:gfn2" });
   expect(job).toMatchObject({ status: "failed", summary: null, error: { message: "External energy models run only in the Burette desktop app." } });
   expect(commands()).not.toContain("energy_model_open");
 });
@@ -82,6 +89,16 @@ test("energy and forces evaluate once over their own session; forces are the neg
   expect(vectors).toEqual(atoms.map(atom => [atom.x, atom.y, atom.z].map(value => expect.closeTo(-2 * value, 9))));
   expect(commands()).toEqual(["energy_model_open", "energy_model_evaluate", "energy_model_close"]);
   expect(sessions.size).toBe(0);
+
+  // A model without gradients is differenced: the point and its 18 shifts in one batch request.
+  calls = [];
+  const differenced = await f.run("energy_forces", { forceField: "avogadro:well/energy" });
+  expect(differenced.summary).toMatchObject({ forceField: "avogadro:well/energy", method: "Energy well, central difference", atomCount: 3 });
+  expect(differenced.summary.energy).toBeCloseTo(well(atoms), 9);
+  const differencedForces = JSON.parse(await f.exported(differenced.jobId, "forces")).atoms.map((atom: { force: number[] }) => atom.force);
+  expect(differencedForces).toEqual(atoms.map(atom => [atom.x, atom.y, atom.z].map(value => expect.closeTo(-2 * value, 6))));
+  expect(commands()).toEqual(["energy_model_open", "energy_model_evaluate_batch", "energy_model_close"]);
+  expect(calls[1][1]!.coordinates).toHaveLength(19 * 9);
 });
 
 test("a frame page runs in one session that is closed after success and after a failed evaluation", async () => {
