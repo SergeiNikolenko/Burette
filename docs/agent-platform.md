@@ -863,7 +863,9 @@ constraints are harmonic restraints of 10⁴·Δ² kcal/mol (Δ in Å or radians
 
 The optimize summary reports `method`, `gradient` (`analytic` or
 `central-difference`), `initialEnergy`, `energy`, `iterations` (accepted steps),
-`stopReason` (`converged`, `iterations`, `line-search`, `no-variables`),
+`stopReason` (`converged`, `iterations`, `line-search`, `stalled`, `no-variables`;
+`stalled` means quasi-Newton steps reached the energy's numerical noise floor
+after one restart from steepest descent),
 `maxGradient`, `frameSampling` (`steps`), `frameCount`, `frozenAtoms` and
 `constraintResiduals` (kind, atoms, target, value, signed error, unit).
 `converged` requires both the solver's gradient threshold and residuals within
