@@ -48,7 +48,9 @@ if (!existsSync(path.join(root, '.git'))) {
   try {
     const archive = path.join(scratch, 'widget.tar');
     git(['archive', '--format=tar', `--output=${archive}`, pin.commit, 'plugins/burette-agent']);
-    execFileSync('tar', ['-xf', archive, '-C', scratch]);
+    // Git Bash puts GNU tar first on Windows, which reads `D:\...` as a remote host.
+    const tar = process.platform === 'win32' ? path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
+    execFileSync(tar, ['-xf', archive, '-C', scratch]);
     const staged = path.join(scratch, 'plugins/burette-agent');
     verify(staged);
     writeFileSync(path.join(staged, '.native-widget-source.json'), JSON.stringify(pin) + '\n');
