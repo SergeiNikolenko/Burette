@@ -23,6 +23,7 @@ import {
   type MolecularComputeOperation,
 } from "../lib/standalone-compute";
 import { isTauriRuntime } from "../lib/tauri";
+import { nativeComputeLabel } from "../lib/platform";
 import type { ActiveViewerIframeForDocument } from "../lib/viewer-bridge";
 import type { ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "../types";
 
@@ -123,7 +124,7 @@ export function useAppGenerate3DConformer({
     }
     pushStatus(isTauriRuntime()
       ? `Starting native ${conformerGenerationTaskLabel(mode)} workflow...`
-      : `Generating ${conformerGenerationTaskLabel(mode)} with the native Metal backend...`);
+      : `Generating ${conformerGenerationTaskLabel(mode)} with the ${nativeComputeLabel("native Metal")} backend...`);
     try {
       const text = readBrowserDevVirtualTextDocument(document.path) ?? await readStructureText(document.path);
       if (isTauriRuntime()) {
@@ -132,7 +133,7 @@ export function useAppGenerate3DConformer({
           (phase) => {
             const labels = {
               extracting: "Preparing molecular constraints...",
-              embedding: mode === "ensemble" ? "Generating and optimizing conformer ensemble on Metal..." : "Generating and optimizing 3D geometry...",
+              embedding: mode === "ensemble" ? `Generating and optimizing conformer ensemble on ${nativeComputeLabel()}...` : "Generating and optimizing 3D geometry...",
               stereo: "Validating stereochemistry...",
               validation: "Checking CPU reference parity...",
               publishing: "Publishing conformer artifact...",
@@ -236,7 +237,7 @@ export function useAppGenerate3DConformer({
       const source = { title: document.title, extension: document.extension, text };
       if (operation === "optimizeGeometry") {
         if (!isTauriRuntime()) {
-          pushStatus("Optimizing the current 3D geometry with MMFF94s on Metal...");
+          pushStatus(`Optimizing the current 3D geometry with MMFF94s on ${nativeComputeLabel()}...`);
           const optimized = await generateBrowserDev3DConformer({
             ...source,
             operation: "optimize",
@@ -253,7 +254,7 @@ export function useAppGenerate3DConformer({
           pushStatus(`Optimized the structure with ${optimized.method}.`, "success");
           return;
         }
-        pushStatus("Optimizing the current 3D geometry with MMFF94s on Metal...");
+        pushStatus(`Optimizing the current 3D geometry with MMFF94s on ${nativeComputeLabel()}...`);
         const result = await runStandaloneConformerWorkflow(source, (phase) => {
           if (phase === "validation") pushStatus("Checking optimized geometry against the CPU reference...");
         }, { initialization: "inputGeometry", conformersPerMolecule: 1 });
@@ -265,7 +266,7 @@ export function useAppGenerate3DConformer({
       if (operation === "semiempiricalRm1") {
         pushStatus(isTauriRuntime()
           ? "Calculating RM1 energy and charges..."
-          : "Calculating RM1 energy and charges with the native Metal dev backend...");
+          : `Calculating RM1 energy and charges with the ${nativeComputeLabel("native Metal")} dev backend...`);
         const result = isTauriRuntime()
           ? await runStandaloneSemiempirical(source, "RM1")
           : await runBrowserDevSemiempirical(source);
@@ -282,12 +283,12 @@ export function useAppGenerate3DConformer({
         if (result.backend !== "nativeMetalScfHybrid") {
           throw new Error("Metal-only RM1 workflow rejected a non-Metal result.");
         }
-        pushStatus(`RM1 converged for ${converged.toLocaleString()} structure${converged === 1 ? "" : "s"} via Metal SCF kernels; opened the report.`, converged === result.rows.length ? "success" : "error");
+        pushStatus(`RM1 converged for ${converged.toLocaleString()} structure${converged === 1 ? "" : "s"} via ${nativeComputeLabel("Metal SCF kernels")}; opened the report.`, converged === result.rows.length ? "success" : "error");
         return;
       }
       pushStatus(isTauriRuntime()
-        ? "Aligning and scoring the pose ensemble on Metal..."
-        : "Aligning and scoring the pose ensemble with the native Metal dev backend...");
+        ? `Aligning and scoring the pose ensemble on ${nativeComputeLabel()}...`
+        : `Aligning and scoring the pose ensemble with the ${nativeComputeLabel("native Metal")} dev backend...`);
       const result = isTauriRuntime()
         ? await runStandaloneAlignment(source)
         : await runBrowserDevAlignment(source);
@@ -306,7 +307,7 @@ export function useAppGenerate3DConformer({
           );
       openDocumentsInActiveTab([alignedDocument]);
       rememberRecentStructures([alignedDocument]);
-      pushStatus(`Aligned and scored ${result.scores.length.toLocaleString()} poses via native Metal; opened the aligned ensemble.`, "success");
+      pushStatus(`Aligned and scored ${result.scores.length.toLocaleString()} poses via ${nativeComputeLabel("native Metal")}; opened the aligned ensemble.`, "success");
     } catch (error) {
       pushErrorStatus(error, "Molecular compute failed");
     }

@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { isMacPlatform } from "./platform";
 
 import type { ViewerDocument, ViewerPreferences } from "../types";
 
@@ -169,7 +170,7 @@ export const DATABASE_PROVIDERS: Record<DatabaseProvider, DatabaseProviderDescri
   chemspace: {
     provider: "chemspace",
     title: "Search ChemSpace",
-    description: "The ChemSpace catalogue. Needs an API key from ChemSpace, which is kept in your login keychain.",
+    description: `The ChemSpace catalogue. Needs an API key from ChemSpace, which is kept in ${isMacPlatform() ? "your login keychain" : "the system keyring"}.`,
     needsStructure: true,
     supportsSearchMode: true,
     textLabel: null,

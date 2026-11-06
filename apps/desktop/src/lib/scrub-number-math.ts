@@ -1,3 +1,5 @@
+import { isLinuxPlatform, isMacPlatform } from "./platform"
+
 export type DisplayFormat = {
   alwaysShowSign: boolean
 }
@@ -27,17 +29,6 @@ export type ModifierKeys = {
 }
 
 const DEFAULT_SCRUB_THRESHOLD = 3
-
-export function isMacPlatform() {
-  if (typeof navigator === "undefined") {
-    return false
-  }
-
-  const platform = navigator.platform ?? ""
-  const userAgent = navigator.userAgent ?? ""
-
-  return /Mac|iPhone|iPad|iPod/.test(platform) || /Mac OS X/.test(userAgent)
-}
 
 export function isModifierKeyPressed(event: ModifierKeys, key: ModifierKey) {
   const getState = event.getModifierState?.bind(event)
@@ -138,7 +129,7 @@ export function getModifierLabel(key: ModifierKey) {
     case "alt":
       return "Alt"
     case "meta":
-      return "Cmd"
+      return isMacPlatform() ? "Cmd" : isLinuxPlatform() ? "Super" : "Win"
   }
 }
 

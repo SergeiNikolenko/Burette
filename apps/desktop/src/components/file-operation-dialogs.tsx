@@ -1,5 +1,6 @@
 import { useId } from "react";
 import { basename } from "../lib/sidebar-projects";
+import { isMacPlatform } from "../lib/platform";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Input } from "./ui/input";
@@ -58,7 +59,7 @@ export function TrashFilesDialog({ paths, completed, error, busy, onDismiss, onR
   return <Dialog open={paths.length > 0} onOpenChange={open => { if (!open && !busy) onDismiss(); }}>
     <DialogContent variant="form" size="narrow" className="overscroll-contain" showCloseButton={!busy} onEscapeKeyDown={event => { if (busy) event.preventDefault(); }}>
       <DialogHeader><DialogTitle>Move {paths.length} {paths.length === 1 ? "File" : "Files"} to Trash</DialogTitle>
-        <DialogDescription>You can restore these files in Finder.</DialogDescription>
+        <DialogDescription>{isMacPlatform() ? "You can restore these files in Finder." : "You can restore them from the Trash."}</DialogDescription>
       </DialogHeader>
       <ul aria-label="Files to move" className="grid min-w-0 max-h-[min(40dvh,280px)] gap-2 overflow-y-auto overscroll-contain break-words text-sm">
         {paths.map(path => <li key={path} className="[content-visibility:auto] [contain-intrinsic-size:auto_24px]">{basename(path)}</li>)}

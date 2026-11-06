@@ -4,6 +4,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 
 import type { BuildInfo } from "../components/types";
 import { isTauriRuntime } from "../lib/tauri";
+import { isMacPlatform } from "../lib/platform";
 import {
   checkForUpdates as requestUpdateCheck,
   clearDismissedUpdate,
@@ -179,7 +180,7 @@ export function useAppUpdates({ enabled = true, pushErrorStatus, pushStatus }: U
         isChecking: false,
         availableRelease: release,
         statusText: release
-          ? "Update available: " + release.displayName + " (" + release.tagName + ")." + (release.installAsset ? "" : " No downloadable app archive is attached to this release.")
+          ? "Update available: " + release.displayName + " (" + release.tagName + ")." + (release.installAsset ? "" : isMacPlatform() ? " No downloadable app archive is attached to this release." : " Open the release page to download it.")
           : "Burette is up to date on " + channel + ".",
       }));
       if (automatic) markAutomaticCheck(true);
