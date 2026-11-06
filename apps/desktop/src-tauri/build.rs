@@ -23,6 +23,9 @@ fn main() {
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("windows-app-manifest.xml");
         println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
         println!("cargo:rustc-link-arg=/MANIFESTINPUT:{}", manifest.display());
+        // Windows gives the main thread 1 MiB of stack where macOS and Linux
+        // give 8 MiB, and app startup overflowed it.
+        println!("cargo:rustc-link-arg-bins=/STACK:8388608");
         attributes = attributes
             .windows_attributes(tauri_build::WindowsAttributes::new_without_app_manifest());
     }

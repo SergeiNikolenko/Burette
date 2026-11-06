@@ -25,13 +25,18 @@ function Save-Screen([string]$name) {
   $bitmap.Dispose()
 }
 
+$stderr = Join-Path $output 'burette-stderr.log'
 function Assert-Running {
   $running = Get-Process -Name 'Burette' -ErrorAction SilentlyContinue
-  if (-not $running) { throw 'Burette exited during the smoke test.' }
+  if (-not $running) {
+    if (Test-Path $stderr) { Get-Content $stderr -Tail 40 | Write-Host }
+    throw 'Burette exited during the smoke test.'
+  }
 }
 
 try {
-  Start-Process -FilePath $app -ArgumentList "`"$(Join-Path $root 'samples/structures/proteins/1htb.pdb')`""
+  Start-Process -FilePath $app -ArgumentList "`"$(Join-Path $root 'samples/structures/proteins/1htb.pdb')`"" `
+    -RedirectStandardError $stderr -RedirectStandardOutput (Join-Path $output 'burette-stdout.log')
   Start-Sleep -Seconds 40
   Assert-Running
   Save-Screen '01-protein.png'
