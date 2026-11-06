@@ -137,6 +137,17 @@ current one has open code or acceptance items.
   `atom-drag` events implements the drag (see
   [Atom dragging](renderer-support.md#atom-dragging)); the host API is
   `lib/atom-drag.ts`. Check: `test:atom-drag`, `test:geometry-update-runtime`.
+- **Where:** `lib/molecular-workbench/auto-optimize-worker.ts` and
+  `auto-optimize-client.ts`, `components/workbench/auto-optimize.tsx`
+  (`useAutoOptimize`: session, status, drag mode while it runs), wired into
+  `geometry-panel.tsx` and `structure-edit-panel.tsx`, which reads a Geometry
+  binding for the SDF/MOL scene only while a session runs.
+- **Done:** Ar₆ XYZ in Geometry and a water trimer SDF in Edit → Auto Optimize
+  → the view relaxes with ΔE in the toolbar → an atom dragged in the 3D view
+  stays under the pointer while the others follow → Stop publishes one edit →
+  Undo restores the start (browser shell on Gauss, 2026-11-06).
+- **Checks:** `test:workbench-physics` (`test-auto-optimize`),
+  `test:geometry-ui` (`test-geometry-auto-optimize`), `test:atom-drag`.
 
 ## Stage 3D. External energy models
 
