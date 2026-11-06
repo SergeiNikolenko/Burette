@@ -125,7 +125,7 @@ print(json.dumps({
   "unavailable": code(lambda: wb.run("optimize", {"constraints": [{"kind": "freeze", "atoms": [99]}]})),
   "unknown": code(lambda: wb.submit("molecular_dynamics", {}, expected_source_revision=doc["sourceRevision"])),
 }))`);
-  expect(report.jobs).toEqual(["properties", "energy", "energy_forces", "frame_energy_forces", "optimize", "prepare_3d", "conformers", "metadata_edit", "measurement_set", "coordinate_align", "pair_distribution", "point_group", "space_group", "powder_xrd", "crystal_transform", "orbital_cube", "insert_fragment", "hydrogens", "polymer", "smiles", "nucleic_acid", "metal_complex", "peptide"]);
+  expect(report.jobs).toEqual(["properties", "energy", "energy_forces", "frame_energy_forces", "optimize", "prepare_3d", "conformers", "metadata_edit", "measurement_set", "coordinate_align", "spectrum", "vibrational_spectrum", "pair_distribution", "point_group", "space_group", "powder_xrd", "crystal_transform", "orbital_cube", "insert_fragment", "hydrogens", "polymer", "smiles", "nucleic_acid", "metal_complex", "peptide"]);
   expect([report.structure.atomCount, report.atoms.map((atom: any) => atom.element)]).toEqual([9, source.atoms.map(atom => atom.element)]);
   report.atoms.forEach((atom: any, i: number) => expect([atom.x, atom.y, atom.z]).toEqual([source.atoms[i].x, source.atoms[i].y, source.atoms[i].z]));
   expect(report.job).toMatchObject({ status: "succeeded", binding: "current", params: { method: "lbfgs" }, summary: { method: "lbfgs", forceField: "UFF", converged: true, frozenAtoms: [0], frameSampling: "steps" } });

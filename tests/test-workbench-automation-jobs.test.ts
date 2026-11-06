@@ -53,7 +53,7 @@ test("the contract resolves explicit optimizer defaults and rejects malformed ty
     ["metadata_edit", {}], ["metadata_edit", { atoms: [{ index: 0 }] }], ["pair_distribution", { rMax: 100, binWidth: 0.001 }],
   ] as const) expect(params(kind, value)).toBe("INVALID_ARGS");
   expect(validateWorkbenchRequest(submitRequest("molecular_dynamics"))).toMatchObject({ ok: false, error: { code: "UNSUPPORTED_WORKBENCH_JOB" } });
-  expect(Object.keys(workbenchContractSummary().jobs)).toEqual(["properties", "energy", "energy_forces", "frame_energy_forces", "optimize", "prepare_3d", "conformers", "metadata_edit", "measurement_set", "coordinate_align", "pair_distribution", "point_group", "space_group", "powder_xrd", "crystal_transform", "orbital_cube", "insert_fragment", "hydrogens", "polymer", "smiles", "nucleic_acid", "metal_complex", "peptide"]);
+  expect(Object.keys(workbenchContractSummary().jobs)).toEqual(["properties", "energy", "energy_forces", "frame_energy_forces", "optimize", "prepare_3d", "conformers", "metadata_edit", "measurement_set", "coordinate_align", "spectrum", "vibrational_spectrum", "pair_distribution", "point_group", "space_group", "powder_xrd", "crystal_transform", "orbital_cube", "insert_fragment", "hydrogens", "polymer", "smiles", "nucleic_acid", "metal_complex", "peptide"]);
 });
 
 test("optimize jobs reach the RDKit minimum, export source-ordered artifacts and an energy-per-step trajectory", async () => {
