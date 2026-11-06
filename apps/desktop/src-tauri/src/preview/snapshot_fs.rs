@@ -991,6 +991,8 @@ mod platform {
     ) -> Result<(), String> {
         let metadata = fstat(directory)
             .map_err(|error| format!("Cannot inspect snapshot {label}: {error}"))?;
+        // `st_nlink` is u16 on macOS and u64 on Linux.
+        #[allow(clippy::useless_conversion)]
         let observed = u64::from(metadata.st_nlink);
         let platform_count = if cfg!(target_os = "macos") {
             entry_count

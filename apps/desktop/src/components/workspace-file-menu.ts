@@ -4,6 +4,7 @@ import type { MenuItemSpec } from "./menu-types";
 import type { ShellActions, ShellViewState } from "./types";
 import type { useWorkspaceFileActions } from "../hooks/use-workspace-file-actions";
 import { isTauriRuntime } from "../lib/tauri";
+import { fileManagerName } from "../lib/platform";
 import { menuItem as item, submenu, menuSections, fileCapabilities } from "./workspace-menu-items";
 import { requestContextualGuide } from "./onboarding/request";
 
@@ -46,7 +47,7 @@ export function workspaceFileMenu(paths: string[], state: ShellViewState, action
     ]),
     ...submenu("add-scene", "Add to scene", workflows.sceneTargets(paths).map((target, index) =>
       command(`add-scene-${index}`, target.title, () => workflows.addToScene(paths, target)))),
-    ...(single && local ? [command("open-finder", "Finder", () => actions.revealPath(path))] : []),
+    ...(single && local ? [command("open-finder", fileManagerName(), () => actions.revealPath(path))] : []),
     ...(single && local && isTauriRuntime() ? submenu("open-external", "External app", [
       command("open-default-app", "Default application", () => actions.openPathWithDefaultApp(path)),
     ]) : []),

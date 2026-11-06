@@ -668,6 +668,10 @@ mod tests {
     }
 
     fn mock_recent_app() -> tauri::App<tauri::test::MockRuntime> {
+        // app_data_dir derives from HOME, which the preview tests repoint once
+        // while other tests run; pin it first so every queued update in a test
+        // resolves the same storage file.
+        crate::preview::runtime::document_open_tests::isolated_test_home();
         let mut context = tauri::test::mock_context(tauri::test::noop_assets());
         context.config_mut().identifier = format!(
             "com.local.BuretteRecentQueueTest.{}",

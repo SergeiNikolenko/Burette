@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useMoleculeStore } from "../../stores/molecule-store";
 import { canStartNativeFileDrag } from "../../lib/native-file-drag";
+import { isTauriRuntime } from "../../lib/tauri";
 import { canTransferNativeGridTab, transferNativeGridTab } from "../workspace-panes/native-grid-window";
 import { openNativePageWindow } from "../workspace-panes/native-page-window";
 import { nativePopoutReason, popOutNativeScene } from "../workspace-panes/native-scene-window";
@@ -14,7 +15,8 @@ type NativeTabDrop =
 
 export function canTransferNativeTab(tabId: string) {
   const tab = useMoleculeStore.getState().tabs.find(tab => tab.id === tabId);
-  return canStartNativeFileDrag() && Boolean(tab && (
+  // Moving works in every desktop window; only the drag gesture needs AppKit.
+  return isTauriRuntime() && Boolean(tab && (
     !nativePopoutReason(tab) || canTransferNativeGridTab(tabId)
     || (tab.location.kind !== "file" && tab.location.kind !== "settings" && tab.location.kind !== "document")
   ));
@@ -23,7 +25,7 @@ export function canTransferNativeTab(tabId: string) {
 export async function transferNativeTab(tabId: string, cancelled: () => boolean = () => false): Promise<boolean> {
   const store = useMoleculeStore.getState();
   const tab = store.tabs.find(tab => tab.id === tabId);
-  if (!tab || !canTransferNativeTab(tabId)) return false;
+  if (!tab || !canStartNativeFileDrag() || !canTransferNativeTab(tabId)) return false;
   const location = tab.location;
   const document = location.kind === "file" ? store.documents.find(document => document.id === location.documentId) : undefined;
   const drop = await invoke<NativeTabDrop>("start_tab_drag", { tabId, title: tab.title ?? document?.title ?? "Tab" });

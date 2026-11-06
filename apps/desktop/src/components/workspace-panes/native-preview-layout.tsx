@@ -8,6 +8,7 @@ import { ChevronDown, Expand, Minus, Undo, X } from "../ui/app-icons";
 import { ToolbarButton } from "../ui/toolbar-button";
 import "./workspace-panes.css";
 import { buildThemeStyle, resolveThemeMode, useSystemThemeMode } from "../../lib/theme";
+import { desktopPlatform } from "../../lib/platform";
 import { ViewerArea } from "../editor-area";
 import type { ShellActions, ShellViewState } from "../types";
 import "./native-preview-layout.css";
@@ -29,7 +30,7 @@ export function NativePreviewLayout({ state, actions }: {
   const systemTheme = useSystemThemeMode();
   const theme = resolveThemeMode(state.preferences.theme, systemTheme);
   const style = buildThemeStyle(state.preferences, systemTheme);
-  return <main className="app-shell native-preview-shell" data-runtime="tauri"
+  return <main className="app-shell native-preview-shell" data-runtime="tauri" data-platform={desktopPlatform()}
     data-theme={theme} data-effective-theme={theme} style={style}>
     <header className="floating-pane-header native-preview-title" data-tauri-drag-region>
       <ToolbarButton aria-label="Close preview" title="Close preview" onClick={() => void getCurrentWindow().close()}><X size={16} aria-hidden /></ToolbarButton>

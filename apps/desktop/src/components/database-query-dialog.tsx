@@ -10,6 +10,7 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { NativeSelect } from "./ui/native-select";
 import { ScrubNumberField } from "./ui/scrub-number-input";
+import { isMacPlatform } from "../lib/platform";
 
 /**
  * One dialog for every Database provider: which fields it shows is decided by the
@@ -130,7 +131,7 @@ export function DatabaseQueryDialog({
                     onChange={(event) => update({ apiKey: event.target.value })}
                   />
                   <span className="text-xs text-(--color-text-secondary)">
-                    Stored in your login keychain. Leave empty to use the saved key.
+                    Stored in {isMacPlatform() ? "your login keychain" : "the system keyring"}. Leave empty to use the saved key.
                   </span>
                 </div>
               ) : null}
@@ -224,7 +225,7 @@ export function DatabaseQueryDialog({
                         onChange={(event) => update({ sqlPassword: event.target.value })}
                       />
                       <span className="text-xs text-(--color-text-secondary)">
-                        Stored in your login keychain, not in settings. Leave empty to use the saved password.
+                        Stored in {isMacPlatform() ? "your login keychain" : "the system keyring"}, not in settings. Leave empty to use the saved password.
                       </span>
                     </div>
                   ) : null}

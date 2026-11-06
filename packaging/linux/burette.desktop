@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name={{name}}
+Comment=View molecular structures, trajectories and chemical tables
+Exec={{exec}} %U
+Icon={{icon}}
+StartupWMClass={{exec}}
+Terminal=false
+Categories=Science;Chemistry;Education;
+Keywords=molecule;protein;PDB;mmCIF;SDF;trajectory;chemistry;
+MimeType=application/graphml+xml;application/vnd.burette.mesoscale+zip;application/vnd.molstar.molj+json;application/vnd.molstar.molx;application/vnd.molstar.mvsj+json;application/vnd.molstar.mvsx;application/x-burette-bcif;application/x-burette-gro;application/x-burette-mmtf;application/x-burette-molecular-dynamics;application/x-burette-openmm-coordinate-artifact;application/x-burette-pharmacophore-model;application/x-burette-reflection-data;application/x-burette-schrodinger;application/x-burette-spectrum;application/x-burette-volume-map;application/x-burette-xyzrender-input;chemical/x-cif;chemical/x-cjson;chemical/x-datawarrior;chemical/x-daylight-smiles;chemical/x-mdl-molfile;chemical/x-mdl-rxnfile;chemical/x-mdl-sdfile;chemical/x-mmcif;chemical/x-mol2;chemical/x-pdb;chemical/x-xyz;text/csv;text/tab-separated-values;x-scheme-handler/burette;

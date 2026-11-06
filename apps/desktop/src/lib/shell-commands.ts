@@ -1,5 +1,6 @@
 import type { ShellActions, ShellViewState } from "../components/types";
 import { parsePdbFetchCommand, parseSmilesCommand } from "./structure-fetch";
+import { isMacPlatform, revealInFileManagerLabel } from "./platform";
 import type { ViewerPreferences } from "../types";
 
 export type ShellCommand = {
@@ -181,8 +182,8 @@ export function buildShellCommands(
     {
       id: "reveal-active",
       group: "Active structure",
-      label: "Reveal in Finder",
-      description: "Show the active structure in Finder",
+      label: revealInFileManagerLabel(),
+      description: isMacPlatform() ? "Show the active structure in Finder" : "Show the active structure in the file manager",
       run: actions.revealActiveDocument,
     },
     {
@@ -213,13 +214,14 @@ export function buildShellCommands(
       description: "Save the active external SVG preview",
       run: actions.exportActivePreviewAsSvg,
     },
-    {
+    // Quick Look exists only on macOS.
+    ...(isMacPlatform() ? [{
       id: "reset-quicklook",
       group: "Suggested",
       label: "Reset Quick Look",
       description: "Refresh Finder preview registration",
       run: actions.resetQuickLook,
-    },
+    }] : []),
     {
       id: "open-logs",
       group: "Suggested",

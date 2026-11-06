@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { StructureDragPayload } from "./structure-drag";
+import { isMacPlatform } from "./platform";
 import { isTauriRuntime } from "./tauri";
 
 // Sidebar rows and file tabs start an AppKit drag so Finder receives real files.
@@ -8,7 +9,7 @@ import { isTauriRuntime } from "./tauri";
 let activeDrag: { entries: string[]; payload: StructureDragPayload; tabId: string | null } | null = null;
 
 export function canStartNativeFileDrag() {
-  return isTauriRuntime() && typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
+  return isTauriRuntime() && isMacPlatform();
 }
 
 type NativeFileDragOutcome = {

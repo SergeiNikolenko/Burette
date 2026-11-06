@@ -33,6 +33,8 @@ import type { ShellActions, ShellViewState } from "./types";
 import type { FileDropPreview } from "../lib/drop-preview";
 import { createDragCommit, type DragCommit } from "../lib/drag-commit";
 import { isTauriRuntime } from "../lib/tauri";
+import { desktopPlatform } from "../lib/platform";
+import { defaultShortcutLabel } from "../lib/keyboard-shortcuts";
 import { buildThemeStyle, resolveThemeMode, useSystemThemeMode } from "../lib/theme";
 import { isHostedKetcherWidget, isHostedMcpWidget } from "../lib/hosted-mcp-widget";
 import { HostedKetcherViewSwitch } from "./hosted-ketcher-view-switch";
@@ -302,7 +304,9 @@ function WorkspaceAppLayout({
     closeKey: state.activeTabId,
   });
   const sidebarPeeking = sidebarPeek !== "closed";
-  const compactLeadingChrome = !tauriRuntime || windowFullscreen;
+  const platform = desktopPlatform();
+  // Linux windows carry native decorations, so no traffic lights sit in the page.
+  const compactLeadingChrome = !tauriRuntime || windowFullscreen || platform === "linux";
   // How far the leading window controls reach: the tab strip starts past them
   // when the sidebar is narrower than they are (or closed). The sidebar's own
   // edge comes from `--sidebar-edge`, measured rather than stored.
@@ -393,6 +397,7 @@ function WorkspaceAppLayout({
         data-theme={window.BuretteMcpWorkspace ? effectiveTheme : state.preferences.theme}
         data-effective-theme={effectiveTheme}
         data-runtime={isTauriRuntime() ? "tauri" : "browser"}
+        data-platform={platform}
         data-quicklook-debug="true"
         style={shellStyle}
       >
@@ -414,6 +419,7 @@ function WorkspaceAppLayout({
       data-effective-theme={effectiveTheme}
       data-active-page-kind={activePageKind ?? undefined}
       data-runtime={tauriRuntime ? "tauri" : "browser"}
+      data-platform={platform}
       data-window-fullscreen={windowFullscreen ? "true" : undefined}
       data-hosted-mcp-widget={hostedMcpWidget ? "true" : undefined}
       data-native-workspace-chrome={window.BuretteMcpWorkspace && nativeWorkspaceChrome ? "true" : undefined}
@@ -443,7 +449,7 @@ function WorkspaceAppLayout({
           {!hostedMcpWidget ? (
             <div className="chrome-leading-controls" data-tauri-drag-region>
               <div className="tab-history-controls" aria-label="Navigation history">
-                <ShortcutTooltip label="Back" shortcut="⌘[">
+                <ShortcutTooltip label="Back" shortcut={defaultShortcutLabel("view.navigate-back")}>
                   <ToolbarButton
                     type="button"
                     className="tab-history-button"
@@ -455,7 +461,7 @@ function WorkspaceAppLayout({
                     <ArrowLeft size={16} aria-hidden />
                   </ToolbarButton>
                 </ShortcutTooltip>
-                <ShortcutTooltip label="Forward" shortcut="⌘]">
+                <ShortcutTooltip label="Forward" shortcut={defaultShortcutLabel("view.navigate-forward")}>
                   <ToolbarButton
                     type="button"
                     className="tab-history-button"
@@ -468,7 +474,7 @@ function WorkspaceAppLayout({
                   </ToolbarButton>
                 </ShortcutTooltip>
               </div>
-              <ShortcutTooltip label="Toggle sidebar" shortcut="⌘B">
+              <ShortcutTooltip label="Toggle sidebar" shortcut={defaultShortcutLabel("view.toggle-sidebar")}>
                 <ToolbarButton
                   type="button"
                   className="sidebar-toggle-root"

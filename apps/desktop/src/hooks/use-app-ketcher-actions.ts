@@ -23,6 +23,7 @@ import {
 } from "../lib/window-mutation-barrier";
 import type { MoleculeTab } from "../stores/molecule-store";
 import { useMoleculeStore } from "../stores/molecule-store";
+import { nativeComputeLabel } from "../lib/platform";
 import type {
   TextFileDocument,
   ViewerDocument,
@@ -419,7 +420,7 @@ export function useAppKetcherActions({
           : { title: request.title, extension: request.extension, text: request.text };
         if (!isTauriRuntime()) {
           if (request.target === "semiempiricalRm1") {
-            pushStatus("Calculating RM1 energy and charges with the native Metal dev backend...");
+            pushStatus(`Calculating RM1 energy and charges with the ${nativeComputeLabel("native Metal")} dev backend...`);
             const result = await runBrowserDevSemiempirical(source);
             const report = browserDevComputeReportDocument(
               `${source.title.replace(/\.[^.]+$/u, "")}-rm1-report.json`,
@@ -433,8 +434,8 @@ export function useAppKetcherActions({
           const ensemble = request.target === "generateEnsemble";
           const optimize = request.target === "optimizeGeometry";
           pushStatus(optimize
-            ? "Optimizing current 3D geometry with MMFF94s on Metal..."
-            : ensemble ? "Generating conformer ensemble on Metal..." : "Generating 3D geometry on Metal...");
+            ? `Optimizing current 3D geometry with MMFF94s on ${nativeComputeLabel()}...`
+            : ensemble ? `Generating conformer ensemble on ${nativeComputeLabel()}...` : `Generating 3D geometry on ${nativeComputeLabel()}...`);
           const generated = await generateBrowserDev3DConformer({
             ...source,
             operation: optimize ? "optimize" : "generate",
@@ -472,7 +473,7 @@ export function useAppKetcherActions({
         });
         void openTextDocuments([result.reportPath], { background: true });
         await openDocuments([result.primaryOpenPath], {}, effectivePreferences, { inActiveTab: true });
-        pushStatus(`${optimize ? "Optimized" : "Generated"} ${result.passedCount.toLocaleString()} validated structure${result.passedCount === 1 ? "" : "s"} via Metal GPU.`, result.failedCount ? "error" : "success");
+        pushStatus(`${optimize ? "Optimized" : "Generated"} ${result.passedCount.toLocaleString()} validated structure${result.passedCount === 1 ? "" : "s"} via ${nativeComputeLabel("Metal GPU")}.`, result.failedCount ? "error" : "success");
         return;
       }
 

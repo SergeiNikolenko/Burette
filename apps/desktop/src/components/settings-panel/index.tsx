@@ -9,6 +9,7 @@ import { CURRENT_VERSION, defaultUpdatePreferences } from "../../update";
 import { settingsSectionLabel, type SettingsSectionId } from "../../lib/settings-sections";
 import { defaultPreferences } from "../../stores/settings-store";
 import { isTauriRuntime } from "../../lib/tauri";
+import { fileManagerName, isMacPlatform } from "../../lib/platform";
 import { XTB_METHOD_LABELS, XTB_OPT_LEVEL_LABELS, XTB_SOLVATION_LABELS, XTB_SOLVENT_LABELS, XTB_SOLVENT_OPTIONS } from "../../lib/chemistry-settings";
 import { useFinderIconUrl } from "../../hooks/use-finder-icon-url";
 import { AgentIntegrationPanel } from "../agent-integration-panel";
@@ -249,8 +250,8 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
                 <SettingsSection
                   title="System"
                   rows={[
-                    actionRow("Quick Look", "Refresh Finder preview registration and cache.", "Reset", () => void actions.resetQuickLook(), false, true),
-                    actionRow("Logs", "Open the Quick Look extension log folder.", "Open", () => void actions.openLogs()),
+                    ...(isMacPlatform() ? [actionRow("Quick Look", "Refresh Finder preview registration and cache.", "Reset", () => void actions.resetQuickLook(), false, true)] : []),
+                    actionRow("Logs", isMacPlatform() ? "Open the Quick Look extension log folder." : "Open the Burette log folder.", "Open", () => void actions.openLogs()),
                     actionRow("Diagnostics", "Export logs, environment, size report, performance marks, and recent errors.", "Export", () => void actions.exportDiagnostics()),
                     actionRow("Runtime doctor", "Check external runtime availability for molecular workflows.", "Run", () => void actions.runExternalRuntimeDoctor()),
                     ...maintenanceCacheRows,
@@ -471,7 +472,7 @@ function openDestinationOptions(
   finderIconUrl: string | null,
 ): OpenDestinationOption[] {
   const options: OpenDestinationOption[] = [
-    { value: "finder", label: "Finder", iconText: "FI", iconUrl: finderIconUrl ?? undefined },
+    { value: "finder", label: fileManagerName(), iconText: "FI", iconUrl: finderIconUrl ?? undefined },
     { value: "default-app", label: "Default app", iconText: "DA" },
     ...targets.map((target) => ({
       value: `editor:${target.id}` as OpenInDefaultDestination,

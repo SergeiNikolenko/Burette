@@ -225,6 +225,7 @@ impl ViewerDefaults {
 
     /// The `UserDefaults` keys `MoleculeGridFileSupport` in the Quick Look
     /// extension reads from the containing app's preferences domain.
+    #[cfg(any(target_os = "macos", test))]
     pub(crate) fn quick_look_grid_support(&self) -> [(&'static str, bool); 4] {
         [
             ("gridPreviewSupportsSDF", self.quick_look_grid_sdf),
@@ -1811,7 +1812,7 @@ fn default_renderer_mode_for_document<'a>(
 }
 
 #[cfg(test)]
-mod document_open_tests {
+pub(crate) mod document_open_tests {
     use super::{
         default_dark_accent, default_dark_background, default_dark_contrast,
         default_dark_foreground, default_dark_translucent, default_light_accent,
@@ -1845,12 +1846,15 @@ mod document_open_tests {
     /// `resolve_xyzrender_executable` skips the HOME candidate and falls
     /// through to PATH, which is where the fake executable is injected. It also
     /// keeps the tests out of the real user cache.
-    fn isolated_test_home() -> &'static Path {
+    pub(crate) fn isolated_test_home() -> &'static Path {
         static TEST_HOME: OnceLock<PathBuf> = OnceLock::new();
         TEST_HOME.get_or_init(|| {
             let home =
                 std::env::temp_dir().join(format!("burette-test-home-{}", uuid::Uuid::new_v4()));
             fs::create_dir_all(&home).expect("test home should be created");
+            // macOS temp_dir is a symlink (/var -> /private/var); tests compare
+            // canonical app_data_dir paths against stored ones.
+            let home = home.canonicalize().expect("test home should resolve");
             std::env::set_var("HOME", &home);
             home
         })

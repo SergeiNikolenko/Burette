@@ -43,11 +43,49 @@ class RuntimePreparationTests(unittest.TestCase):
         self.assertEqual(list((self.root / 'build').iterdir()), [])
 
     def test_wrong_platform_does_not_download_or_create_runtime(self):
-        with patch.object(prepare.sys, 'platform', 'linux'), patch.object(prepare.urllib.request, 'urlopen') as download:
-            with self.assertRaisesRegex(RuntimeError, 'macOS arm64'):
-                prepare.prepare()
-            download.assert_not_called()
+        for host, machine in (('linux', 'aarch64'), ('darwin', 'x86_64'), ('win32', 'AMD64')):
+            with self.subTest(host=host, machine=machine), patch.object(prepare.sys, 'platform', host), \
+                    patch.object(prepare.platform, 'machine', return_value=machine), \
+                    patch.object(prepare.urllib.request, 'urlopen') as download:
+                with self.assertRaisesRegex(RuntimeError, 'macOS arm64 or Linux x86_64'):
+                    prepare.prepare()
+                download.assert_not_called()
         self.assertFalse((self.root / 'build').exists())
+
+    def test_linux_runtime_uses_its_own_bootstrap_lock_and_platform(self):
+        (self.locks / 'bootstrap-linux-x86_64.json').write_text(json.dumps(self.metadata))
+        (self.locks / 'requirements-linux-x86_64.txt').write_text('fixture==1 --hash=sha256:456\n')
+        # Reading the macOS bootstrap on Linux would fail here.
+        (self.locks / 'bootstrap.json').write_text('not json')
+        calls = []
+        with patch.object(prepare.sys, 'platform', 'linux'), patch.object(prepare.platform, 'machine', return_value='x86_64'), \
+                patch.object(prepare.subprocess, 'run', side_effect=lambda command, **kwargs: calls.append((command, kwargs))):
+            environment = prepare.prepare()
+        self.assertEqual(environment.name, 'venv')
+        extracts = [command for command, _ in calls if '-xzf' in command]
+        self.assertEqual(len(extracts), 2)
+        self.assertTrue(all(command[:2] == ['tar', '--no-same-owner'] for command in extracts))
+        [(sync, options)] = [(command, kwargs) for command, kwargs in calls if 'sync' in command]
+        self.assertEqual(sync[sync.index('--python-platform') + 1], 'x86_64-manylinux_2_28')
+        self.assertEqual(sync[-1], str(self.locks / 'requirements-linux-x86_64.txt'))
+        self.assertIn('--require-hashes', sync)
+        self.assertNotIn('MACOSX_DEPLOYMENT_TARGET', options['env'])
+
+    def test_linux_lock_matches_reviewed_darwin_versions(self):
+        locks = Path(__file__).resolve().parents[1] / 'config/xyzrender'
+        def pins(name):
+            lines = (locks / name).read_text().splitlines()
+            return {line.split(' ', 1)[0]: next(entry.strip() for entry in lines[index + 1:] if '--hash' in entry)
+                    for index, line in enumerate(lines) if line and not line.startswith(('#', ' '))}
+        darwin, linux = pins('requirements.txt'), pins('requirements-linux-x86_64.txt')
+        # Only macOS-specific packages may be absent; versions must not drift.
+        self.assertEqual(set(darwin) - set(linux), {'appnope==1.0.0'})
+        self.assertEqual(set(linux) - set(darwin), set())
+        wheel = next(name for name in darwin if name.endswith('.whl'))
+        self.assertEqual(linux[wheel], darwin[wheel], 'Both locks must install the same vendored wheel')
+        bootstraps = [json.loads((locks / name).read_text()) for name in ('bootstrap.json', 'bootstrap-linux-x86_64.json')]
+        for tool, marker in (('python', 'cpython-3.13.13%2B20260414-'), ('uv', '/download/0.11.7/')):
+            self.assertTrue(all(marker in bootstrap[tool]['url'] for bootstrap in bootstraps), tool)
 
     def test_fresh_runtime_ignores_untrusted_installer_environment(self):
         calls = []

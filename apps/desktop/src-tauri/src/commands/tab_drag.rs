@@ -6,6 +6,8 @@ use tauri::Manager;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "outcome", rename_all = "camelCase")]
+// Only the AppKit drag session reports drops; other platforms always cancel.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) enum TabDragOutcome {
     Cancelled,
     Window {

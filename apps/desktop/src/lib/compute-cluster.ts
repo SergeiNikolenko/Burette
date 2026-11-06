@@ -159,11 +159,13 @@ export type ChemicalSpaceResult = {
   neighbors: number;
   successfulRecords: number;
   failedRecords: number;
-  backend: "nativeMetal";
+  backend: "nativeMetal" | "referenceCpu";
   tanimotoGpuTimeMs: number;
+  tanimotoHostTimeMs: number;
   representationTimeMs?: number;
   similarityGpuTimeMs?: number;
   embeddingGpuTimeMs: number;
+  embeddingHostTimeMs: number;
   layoutHostTimeMs: number;
   hostTimeMs: number;
 };
@@ -173,7 +175,9 @@ export type ChemicalSpaceClusterResult = {
   clusterIds: number[];
   representativeSourceRecordIds: number[];
   clusterCount: number;
+  backend: "nativeMetal" | "referenceCpu";
   similarityGpuTimeMs: number;
+  similarityHostTimeMs: number;
 };
 
 export type ChemicalSpaceProgress = {

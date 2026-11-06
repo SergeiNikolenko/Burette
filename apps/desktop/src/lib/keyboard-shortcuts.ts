@@ -12,6 +12,8 @@
 // - "browser": matched by the webview handler in the browser runtime only.
 // - "fixed": shown for reference and used for conflict checks, not editable.
 
+import { isLinuxPlatform, isMacPlatform } from "./platform";
+
 export type ShortcutScope = "menu" | "webview" | "browser" | "fixed";
 
 type ShortcutDefinitionShape = {
@@ -28,6 +30,9 @@ type ShortcutDefinitionShape = {
   readonly allowsBareKey?: boolean;
 };
 
+// formatAccelerator's prefix for CmdOrCtrl; its parser tables are not
+// initialised yet while this registry is built.
+const PRIMARY_KEY_CAP = isMacPlatform() ? "⌘" : "Ctrl+";
 const ONE_TO_NINE = ["1", "2", "3", "4", "5", "6", "7", "8", "9"] as const;
 
 export const SHORTCUT_DEFINITIONS = [
@@ -60,7 +65,7 @@ export const SHORTCUT_DEFINITIONS = [
   { id: "app.quit", label: "Quit Burette", description: "Quit after the exit preflight completes (desktop app).", scope: "menu", defaultAccelerator: "CmdOrCtrl+Q" },
   { id: "window.next-tab", label: "Select next tab", description: "Move to the next tab in the current window.", scope: "menu", defaultAccelerator: isMacPlatform() ? "CmdOrCtrl+Shift+]" : "Ctrl+Tab" },
   { id: "window.previous-tab", label: "Select previous tab", description: "Move to the previous tab in the current window.", scope: "menu", defaultAccelerator: isMacPlatform() ? "CmdOrCtrl+Shift+[" : "Ctrl+Shift+Tab" },
-  { id: "file.reveal-active", label: "Reveal in Finder", description: "Show the active structure file in Finder.", scope: "menu", defaultAccelerator: "CmdOrCtrl+Shift+R" },
+  { id: "file.reveal-active", label: isMacPlatform() ? "Reveal in Finder" : "Show in File Manager", description: isMacPlatform() ? "Show the active structure file in Finder." : "Show the active structure file in the file manager.", scope: "menu", defaultAccelerator: "CmdOrCtrl+Shift+R" },
   { id: "file.copy-active-path", label: "Copy active path", description: "Copy the active structure file path.", scope: "menu", defaultAccelerator: "CmdOrCtrl+Shift+C" },
   { id: "file.show-active-metadata", label: "Get Info", description: "Show renderer, format, path, and file size for the active structure.", scope: "menu", defaultAccelerator: "CmdOrCtrl+I" },
   { id: "file.export-preview-png", label: "Export preview as PNG", description: "Save the active external preview as a PNG file.", scope: "menu", defaultAccelerator: "CmdOrCtrl+Shift+E" },
@@ -68,11 +73,11 @@ export const SHORTCUT_DEFINITIONS = [
   {
     id: "view.jump-to-structure",
     label: "Jump to structure",
-    description: "Open the numbered sidebar structure, or the matching tab when the sidebar is hidden. Hold ⌘ to show the numbers.",
+    description: `Open the numbered sidebar structure, or the matching tab when the sidebar is hidden. Hold ${isMacPlatform() ? "⌘" : "Ctrl"} to show the numbers.`,
     scope: "fixed",
     defaultAccelerator: "CmdOrCtrl+1",
     fixedAccelerators: ONE_TO_NINE.map((digit) => `CmdOrCtrl+${digit}`),
-    displayKeys: ["⌘1", "⌘2", "…", "⌘9"],
+    displayKeys: [`${PRIMARY_KEY_CAP}1`, `${PRIMARY_KEY_CAP}2`, "…", `${PRIMARY_KEY_CAP}9`],
   },
 ] as const satisfies readonly ShortcutDefinitionShape[];
 
@@ -171,11 +176,6 @@ export function isAssignableAccelerator(definition: ShortcutDefinition, accelera
 // Accelerator parsing, matching, and display.
 
 type ParsedAccelerator = { meta: boolean; ctrl: boolean; alt: boolean; shift: boolean; key: string };
-
-export function isMacPlatform() {
-  if (typeof navigator === "undefined") return true;
-  return /Mac|iPhone|iPad|iPod/u.test(navigator.platform ?? "") || /Mac OS X/u.test(navigator.userAgent ?? "");
-}
 
 const KEY_ALIASES: Record<string, string> = {
   ESC: "Escape", ESCAPE: "Escape", SPACE: "Space", TAB: "Tab", ENTER: "Enter", RETURN: "Enter",
@@ -289,7 +289,16 @@ export function formatAccelerator(accelerator: string): string {
   if (isMacPlatform()) {
     return `${parsed.ctrl ? "⌃" : ""}${parsed.alt ? "⌥" : ""}${parsed.shift ? "⇧" : ""}${parsed.meta ? "⌘" : ""}${MAC_KEY_GLYPHS[parsed.key] ?? parsed.key}`;
   }
-  return [parsed.ctrl && "Ctrl", parsed.meta && "Win", parsed.alt && "Alt", parsed.shift && "Shift", parsed.key].filter(Boolean).join("+");
+  return [parsed.ctrl && "Ctrl", parsed.meta && metaKeyName(), parsed.alt && "Alt", parsed.shift && "Shift", parsed.key].filter(Boolean).join("+");
+}
+
+function metaKeyName() {
+  return isLinuxPlatform() ? "Super" : "Win";
+}
+
+/** Key-cap label of a shortcut's default accelerator, for tooltips and hints. */
+export function defaultShortcutLabel(id: ShortcutId): string {
+  return formatAccelerator(resolveShortcutAccelerator(id, {}));
 }
 
 /** Modifier glyphs currently held, for the recorder's live prompt. */
@@ -297,7 +306,7 @@ export function formatHeldModifiers(event: KeyEventLike): string {
   if (isMacPlatform()) {
     return `${event.ctrlKey ? "⌃" : ""}${event.altKey ? "⌥" : ""}${event.shiftKey ? "⇧" : ""}${event.metaKey ? "⌘" : ""}`;
   }
-  return [event.ctrlKey && "Ctrl", event.metaKey && "Win", event.altKey && "Alt", event.shiftKey && "Shift"].filter(Boolean).map((part) => `${part}+`).join("");
+  return [event.ctrlKey && "Ctrl", event.metaKey && metaKeyName(), event.altKey && "Alt", event.shiftKey && "Shift"].filter(Boolean).map((part) => `${part}+`).join("");
 }
 
 export function shortcutDisplayKeys(definition: ShortcutDefinition, overrides: ShortcutOverrides): string[] {
