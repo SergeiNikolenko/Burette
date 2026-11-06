@@ -10,10 +10,12 @@ import { useGeometryBinding } from "../../hooks/use-geometry-binding";
 import { useGeometryLivePreview } from "../../hooks/use-geometry-live-preview";
 import { downloadTextFile } from "../../lib/file-export";
 import { INTERNAL_COORDINATE_KINDS, formatInternalCoordinate, internalCoordinateUnit, type InternalCoordinateKind } from "../../lib/geometry-editing";
-import { isExternalEnergyModelId, resolveEnergyModel, type EnergyModelChoice } from "../../lib/molecular-workbench/energy-models";
+import type { EnergyModelChoice } from "../../lib/molecular-workbench/energy-models";
 import { energyModelName } from "../../lib/molecular-workbench/external-energy-models";
+import { optimizeZmatrixWithEnergyModel } from "../../lib/molecular-workbench/optimize-with-model";
 import { optimizerTolerances } from "../../lib/workbench/optimizer-settings";
-import { runChemistryTask, type ChemistryResults } from "../../lib/molecular-workbench/compute-client";
+import { runChemistryTask } from "../../lib/molecular-workbench/compute-client";
+import type { CoupledZmatrixOptimizationResult } from "../../lib/workbench/zmatrix-coupled-problem";
 import type { OptimizationMethod, OptimizationProgress } from "../../lib/molecular-workbench/optimization";
 import type { ScientificDocument } from "../../lib/molecular-workbench/quantum";
 import { serializeXyz } from "../../lib/molecular-workbench/xyz";
@@ -60,9 +62,9 @@ type HeldConstraints = { key: string; frozen: ReadonlySet<number>; locked: Reado
  * renamed and removed, coordinates bound to them and measured from other earlier rows.
  * Atoms and reference points are appended as rows, moved and removed; an edit that changes
  * the atoms or their order reloads the scene at the same camera, and its revision leaves
- * out data indexed by the previous atoms. Optimize minimizes the real atoms with MMFF94,
- * holding frozen atoms and fixed coordinates (never one a reference point carries), and
- * writes the result back through the same rows as one revision.
+ * out data indexed by the previous atoms. Optimize minimizes the real atoms with the chosen
+ * model, built-in or external, holding frozen atoms and fixed coordinates (never one a
+ * reference point carries), and writes the result back through the same rows as one revision.
  */
 export function ZmatrixPanel({ document, actions, science, text }: {
   document: ViewerDocument; actions: ShellActions; science: ScientificDocument & { internalCoordinates: ZmatrixDocument }; text: string;
@@ -375,9 +377,9 @@ export function ZmatrixPanel({ document, actions, science, text }: {
     return { locked: next };
   });
   const currentAtoms = () => science.atoms.map(({ element, x, y, z }) => ({ element, position: [x, y, z] }));
-  // MMFF94 minimization of the real atoms, frozen rows and fixed coordinates held. The
-  // optimized atoms are written back through the same rows; the result is one revision,
-  // applied only to the source text it started from.
+  // Minimization of the real atoms with the chosen model, frozen rows and fixed coordinates
+  // held. The optimized atoms are written back through the same rows; the result is one
+  // revision, applied only to the source text it started from.
   const optimize = async (method: OptimizationMethod, choice: EnergyModelChoice, maxIterations: number) => {
     if (!binding) return;
     if (applying || optimizeJob.current || applyingDocuments.has(document.id)) return;
@@ -389,14 +391,11 @@ export function ZmatrixPanel({ document, actions, science, text }: {
     setProgress(null);
     setError(null);
     setNotice(null);
-    let result: ChemistryResults["optimize-zmatrix"];
+    let result: CoupledZmatrixOptimizationResult;
     try {
       const molecule = await runChemistryTask({ action: "parse", source: serializeXyz(science.atoms, "Z-matrix"), format: "xyz" }, { signal: controller.signal });
-      const forceField = resolveEnergyModel(choice, molecule);
-      // Coupled rows difference the energy per variable; external models run Cartesian optimizations only.
-      if (isExternalEnergyModelId(forceField)) throw new Error("External energy models optimize Cartesian coordinates; use Geometry or Edit.");
-      result = await runChemistryTask({ action: "optimize-zmatrix", molecule, definition, options: { frozenRows: [...constraints.frozen], lockedCoordinates: [...constraints.locked], forceField, method, maxIterations, ...optimizerTolerances() } }, {
-        signal: controller.signal, timeoutMs: 300_000, onProgress: (step) => { if (optimizeJob.current?.controller === controller) setProgress(step); },
+      result = await optimizeZmatrixWithEnergyModel(molecule, definition, choice, { frozenRows: [...constraints.frozen], lockedCoordinates: [...constraints.locked], method, maxIterations, ...optimizerTolerances() }, {
+        signal: controller.signal, onProgress: (step) => { if (optimizeJob.current?.controller === controller) setProgress(step); },
       });
     } catch (caught) {
       if (started === lifetime.current) {
