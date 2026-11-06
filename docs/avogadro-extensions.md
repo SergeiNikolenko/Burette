@@ -226,9 +226,42 @@ atom/bond labels a notice); `selectedAtoms` becomes the viewer selection;
 `message`, `warning` and `error` become notices. Burette never replaces or
 appends to the active molecule, unlike Avogadro's undoable in-place replace;
 closing the result document is the undo. Other feature kinds in the index
-(`file-formats`, `input-generators`, `energy-models`, `electrostatic-models`)
-are listed but not yet wired to Burette's reader, input-export, optimizer or
-charge routes.
+(`file-formats`, `input-generators`, `electrostatic-models`) are listed but not
+yet wired to Burette's reader, input-export or charge routes.
+
+### Energy models
+
+On the desktop, each `[[tool.avogadro.energy-models]]` entry of a set-up package
+becomes an optimizer model (`src-tauri/src/commands/energy_models`), following
+`qtplugins/forcefield/scriptenergy.cpp` (avogadrolibs
+`cb0e94852889da9f7288bd1e58241e69990935a7`). The manifest supplies the
+identifier, console script, input format, protocol (`binary-v1` for anything
+starting with `binary`, otherwise `text-v1`) and `support` (`gradients`, `ions`,
+`radicals`, `unit-cells`, `elements` as atomic numbers or ranges); the webview
+names a model only by id. A run starts `<script> <identifier> [--protocol
+binary-v1] --lang en` with the package's environment, sends one JSON line
+(`charge`, `spin`, `selectedAtoms`, `options` and the molecule under its format
+key, CJSON as an object), waits until the process has read that line, then sends
+coordinates per evaluation: `x y z` lines answered by `AvogadroEnergy:` and
+`AvogadroGradient:` lines, or `AVB1` frames answered by an energy-and-gradient
+frame or an error frame. Energies are kJ/mol and become kcal/mol. The process
+lives for one optimization and dies with it, its window or the app.
+
+Bounds: 256 atoms, 8 open sessions, a 4 MiB start line, 1 MiB per reply, the
+last 16 KiB of stderr for messages, 300 s for the first reply (start-up and
+model loading) and 120 s for the next ones. An error frame refuses only that
+evaluation; Cancel, a timeout, an exit or a malformed reply ends the session.
+Burette writes `cjson`, `cml`, `mdl`, `mol`, `sdf` and `xyz`; models without
+gradients, with other input formats or for unit cells are listed as
+unavailable. Unlike Avogadro, plugin models are never chosen automatically.
+
+The verified package is `avogadro-xtb-energy` (ghutchis,
+`287e8093f65bca5b9d27fbf517a8719ae319d108`, `pixi install`): GFN2 over binary-v1
+gives the xtb 6.7.1 water energy (−3181.7057 kcal/mol), and GFN-FF answers too.
+At that commit its binary gradients are a factor of bohr² (0.28) too small
+(`_HARTREE_TO_KJ_MOL / _ANG_TO_BOHR` instead of the product); Burette passes
+replies on unchanged, so minima and directions are right but convergence on
+the gradient is looser than configured.
 
 The verified package is `avogadro-rdkit` 0.3.0
 (`82498e3a3cedc2d465ccdcd93cabec1b2505dc5a`, archive SHA-256

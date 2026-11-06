@@ -157,6 +157,23 @@ current one has open code or acceptance items.
 - **How:** an asynchronous objective drives the same chunked minimizer; plugin
   processes stay alive per session; the agent contract and job runner accept
   graph-free models.
+- **Done (desktop core):** `minimizerSteps` is one generator driven by `drive`
+  and `driveAsync`, so `optimizeCartesianAsync` takes the steps of
+  `optimizeCartesian` over the shared `cartesianProblem`. Native sessions
+  (`commands/energy_models`: `energy_models_list`, `energy_model_open`,
+  `energy_model_evaluate`, `energy_model_close`) run `xtb --grad` or keep one
+  plugin process per run, owned by the window. `optimizeWithEnergyModel` and
+  `useEnergyModelOptions` put the models into Optimize, Configure, Calculate
+  Energy, Edit, Geometry and Properties; Auto Optimize and coupled Z-matrix runs
+  refuse them with a reason. Agent jobs accept `LJ` for `energy`,
+  `energy_forces`, `frame_energy_forces` and `optimize`.
+- **Open:** external models in agent jobs (the job runner lives in the browser
+  worker), models without gradients (Avogadro differences them), unit cells,
+  `pdb` input, and the packaged desktop acceptance.
+- **Checks:** `test:minimizer-core`, `test:workbench-physics`
+  (`test-external-energy-models`), `test:energy-agent`, and in
+  `apps/desktop/src-tauri` `cargo test --lib energy_models` (the real
+  avogadro-xtb-energy test is `--ignored`).
 
 ## Stage 4. Quantum input export from any structure
 

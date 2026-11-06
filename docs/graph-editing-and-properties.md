@@ -74,6 +74,20 @@ follows; each move restarts the minimizer from the new geometry. The same
 command or **Stop** ends the session and keeps the relaxed geometry as one Undo
 step; any other edit ends it without a change.
 
+On the desktop the same Optimize menu and Configure dialog also list external
+energy models: **GFN2-xTB**, **GFN1-xTB** and **GFN-FF** through the xTB program
+Burette finds for its xTB jobs, and each model an installed Avogadro package
+declares under `[[tool.avogadro.energy-models]]` (named by the package). They
+run Cartesian optimizations with the same methods, constraints, convergence,
+live steps, Cancel and Undo, and Calculate Energy reports their energy. A model
+is disabled with its reason when its package is not set up, it provides no
+gradients, it reads an input format Burette does not write, it lacks an element,
+or the structure has a charge or unpaired electrons it does not accept. Their
+energies are absolute (an xTB water molecule is about −3182 kcal/mol), so only
+differences compare with the force fields. External models never run Auto
+Optimize, which stays in the browser worker, nor coupled Z-matrix variables,
+and the browser shell lists none.
+
 In the Edit panel of an SDF/MOL structure, **Freeze** keeps the selected atoms
 in place and **Hold distance/angle/dihedral** restrains two, three or four
 selected atoms to a target, which starts at the current value and can be

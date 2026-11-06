@@ -35,6 +35,8 @@ Quick Look, iPhone or hosted acceptance from either.
 
 [Optimization now chooses its force field automatically and offers Avogadro's Lennard-Jones model](avogadro-parity-evidence/stage-03-10-optimization-automation.md#automatic-energy-model-lennard-jones-and-avogadros-chunked-optimizer-state-2026-11-06), with the minimizer keeping its state across chunks and stopping stalled quasi-Newton runs after one restart; browser runs on a tin SDF and an Ar cluster XYZ pass; agent jobs and native surfaces remain open.
 
+[Desktop optimization now runs xTB and Avogadro energy plugins](avogadro-parity-evidence/stage-03-10-optimization-automation.md#external-energy-models-xtb-and-avogadro-energy-plugins-2026-11-06) through native sessions on the shared minimizer, and agent jobs accept Lennard-Jones; native tests against real xtb and avogadro-xtb-energy pass; packaged desktop acceptance and external models in agent jobs remain open.
+
 Latest focused evidence includes [Generate 3D camera fitting, Undo/Redo and
 MOLX round trip](avogadro-parity-evidence/stage-01-02-09-editing-io.md#generate-3d-camera-framing-and-scene-round-trip-2026-11-03)
 and [manual Undo/Apply with a clean saved source](avogadro-parity-evidence/stage-01-02-09-editing-io.md#manual-undo-keeps-apply-available-2026-11-03).

@@ -116,7 +116,10 @@ SHA-256 from its own index copy, verifies the bytes and unpacks them with a
 validating reader into a private folder below app data; installing never runs
 package code. Package code runs only after the user confirms `Set up`
 (`pixi install`) and then chooses a command; each run is a bounded,
-cancellable Jobs entry. The browser shell has no install or run route. See
+cancellable Jobs entry. A declared energy model runs only from an explicit
+Optimize or Calculate Energy with that model: one process per run, owned by the
+window, killed with its process group on Cancel, close, window close or quit,
+with bounded input, replies and stderr. The browser shell has no install or run route. See
 [Avogadro extension contracts](avogadro-extensions.md#command-and-script-extensions-by-surface).
 
 ## Compute Data Root

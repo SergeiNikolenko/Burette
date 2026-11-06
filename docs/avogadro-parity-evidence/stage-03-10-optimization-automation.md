@@ -666,3 +666,64 @@ and console errors equal the earlier baseline.
 Still open: RDKit UFF refuses metals in bonding its typer does not recognize
 (tetrahedral Pt), where Avogadro's own UFF typer succeeds; the agent job
 contract still accepts only MMFF94, MMFF94s and UFF (Stage 3D).
+
+### External energy models: xTB and Avogadro energy plugins (2026-11-06)
+
+Avogadro optimizes with energy models in other processes (`calc/` energy
+plugins and `qtplugins/forcefield/scriptenergy.cpp`, avogadrolibs
+`cb0e94852889da9f7288bd1e58241e69990935a7`); Burette's optimizer only knew the
+worker's force fields.
+
+- **Minimizer:** `minimizerSteps` is the one stepping core, a generator that
+  yields trial points; `createMinimizer` drives it synchronously and
+  `createAsyncMinimizer` awaits each evaluation, so both take identical steps.
+  `cartesianProblem(molecule, constraints)` (`initial`, `movable`, `frozen`,
+  `restraints`, `unpack`, `objective`, `physicalEnergy`) is shared by
+  `optimizeCartesian` and `optimizeCartesianAsync`, which accept the same
+  `gradientTolerance` and `energyTolerance` and report `atoms` with each step.
+- **Native sessions:** `energy_models_list`, `energy_model_open`,
+  `energy_model_evaluate` and `energy_model_close` (permissions in
+  `permissions/burette.toml`). xTB runs `xtb input.xyz --gfn 2|1 / --gfnff --grad
+  --chrg --uhf` per evaluation in a private 0700 folder and reads
+  `input.engrad` (CODATA 2018 hartree and bohr). Plugins keep one process per
+  run over text-v1 or binary-v1; see
+  [Energy models](../avogadro-extensions.md#energy-models) for the protocol and
+  bounds. Sessions belong to the opening window and close with it or the app.
+- **UI:** `optimizeWithEnergyModel` routes built-in models to the worker and
+  external ones to a session; `energyWithModel` does the same for Calculate
+  Energy; `useEnergyModelOptions` lists both kinds in the Optimize menu and the
+  Configure dialog with each model's reason. Auto Optimize refuses external
+  models ("Auto Optimize runs MMFF94, MMFF94s, UFF or Lennard-Jones; …") and
+  coupled Z-matrix optimization hides them.
+- **Agent jobs:** `energy`, `energy_forces`, `frame_energy_forces` and `optimize`
+  accept `LJ`, which runs without a bond graph.
+- **Found on the way:** avogadro-xtb-energy reads its start line with Python's
+  text-mode `sys.stdin.readline()`, which reads ahead and swallows a binary
+  frame already in the pipe; the process then waits forever. Avogadro escapes it
+  only because evaluation starts long after set-up. Burette holds the first
+  request until a probe of the stdin pipe shows the line was read. The same
+  package's binary gradients are bohr² too small (see the extensions doc).
+
+Checks (Rust on this Mac, `nice -n 10 cargo test -j 2`, in
+`apps/desktop/src-tauri`): `cargo test --lib energy_models -- --include-ignored`
+with `BURETTE_AVOGADRO_XTB_ENERGY` set: 11 passed, including the fixture
+package `tests/fixtures/avogadro/energy-plugin` over both protocols (persistent
+process, kcal conversion, error frame keeps the session, exit reports stderr,
+window ownership), real xtb 6.7.1 GFN2 water (−5.070370761845 Eh, dE/dz(O)
+0.002940222116 Eh/bohr) and the real avogadro-xtb-energy GFN2/GFN-FF over
+binary-v1; `cargo test --lib avogadro_plugins` 11 passed; `cargo clippy --lib
+--tests` without warnings; `cargo fmt --check`. On Gauss after rebasing onto
+`parity/integration-main`: `bun run typecheck`, `test:minimizer-core` (14),
+`test:workbench-physics` (17 + 5 external-model tests: listing, an optimization
+over one session with a frozen atom, radical refusal, Cancel closing the
+session, Calculate Energy and the saved external choice, start-line formats),
+`test:optimization-reference` (21), `test:structure-edit-controls`,
+`test:properties-consumer`, `test:energy-agent` (Ar₂ LJ energy, forces and
+optimization at −100/4.184 kcal/mol), `test-geometry-auto-optimize`,
+`test-workbench-zmatrix-optimize`, `test:geometry-ui`,
+`tests/test-tauri-structure.mjs`, `tests/test-packaged-plugin-mirror.mjs`.
+
+Still open: external models in agent jobs; models without gradients; unit
+cells and `pdb` input; coupled Z-matrix optimization with external models; the
+packaged desktop acceptance (Optimize and Cancel with GFN2-xTB and a set-up
+avogadro-xtb-energy in the app).
