@@ -1175,12 +1175,14 @@ mod tests {
     /// Collects every path under `assets` that the HTML references, whether as
     /// an eager `<script src>` / `<link href>` or as a lazy `window.*URL` global.
     fn referenced_asset_paths(html: &str, assets: &Path) -> Vec<String> {
-        let prefix = format!("{}%2F", super::asset_url(assets));
+        // Asset names are joined to `assets` with the platform separator.
+        let separator = if cfg!(windows) { "%5C" } else { "%2F" };
+        let prefix = format!("{}{separator}", super::asset_url(assets));
         html.match_indices(&prefix)
             .map(|(index, _)| {
                 let rest = &html[index + prefix.len()..];
                 let end = rest.find('"').expect("asset URL should be quoted");
-                rest[..end].replace("%2F", "/")
+                rest[..end].replace("%2F", "/").replace("%5C", "/")
             })
             .collect()
     }

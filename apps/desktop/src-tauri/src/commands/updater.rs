@@ -2109,10 +2109,20 @@ mod tests {
 
     #[test]
     fn terminates_and_reaps_a_running_installer_helper() {
-        let mut child = Command::new("/bin/sleep")
-            .arg("30")
-            .spawn()
-            .expect("spawn sleep helper");
+        // `ping -n 30` is the stock Windows way to wait about 30 seconds.
+        let mut child = if cfg!(windows) {
+            let mut command = Command::new("ping");
+            command
+                .args(["-n", "30", "127.0.0.1"])
+                .stdout(Stdio::null());
+            command
+        } else {
+            let mut command = Command::new("/bin/sleep");
+            command.arg("30");
+            command
+        }
+        .spawn()
+        .expect("spawn sleep helper");
 
         terminate_installer_helper(&mut child).expect("terminate helper");
         assert!(child.try_wait().expect("query helper").is_some());
@@ -2120,9 +2130,15 @@ mod tests {
 
     #[test]
     fn accepts_an_installer_helper_that_already_exited() {
-        let mut child = Command::new("/usr/bin/true")
-            .spawn()
-            .expect("spawn completed helper");
+        let mut child = if cfg!(windows) {
+            let mut command = Command::new("cmd");
+            command.args(["/C", "exit", "0"]);
+            command
+        } else {
+            Command::new("/usr/bin/true")
+        }
+        .spawn()
+        .expect("spawn completed helper");
         child.wait().expect("wait for completed helper");
 
         terminate_installer_helper(&mut child).expect("reap completed helper");

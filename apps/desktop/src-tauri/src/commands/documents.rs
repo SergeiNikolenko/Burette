@@ -1608,10 +1608,8 @@ fn conformer_python_candidates() -> Vec<PythonCommand> {
 fn bundled_conformer_python_candidates_from_executable(executable: &Path) -> Vec<PythonCommand> {
     let mut candidates = Vec::new();
     for resources in crate::preview::runtime_utils::bundled_resource_dirs(executable) {
-        let python = resources
-            .join("xyzrender-python")
-            .join("bin")
-            .join("python3");
+        let python =
+            crate::preview::runtime_utils::standalone_python(&resources.join("xyzrender-python"));
         if !python.is_file() || !is_executable(&python) {
             continue;
         }
@@ -3713,10 +3711,16 @@ mod tests {
     fn bundled_conformer_python_candidate_uses_runtime_site_packages() {
         let directory =
             std::env::temp_dir().join(format!("burette-conformer-python-{}", uuid::Uuid::new_v4()));
-        let app_executable = directory.join("Burette.app/Contents/MacOS/burette");
-        let python = directory.join("Burette.app/Contents/Resources/xyzrender-python/bin/python3");
-        let site_packages = directory
-            .join("Burette.app/Contents/Resources/xyzrender-runtime/lib/python3.13/site-packages");
+        let contents = directory.join("Burette.app").join("Contents");
+        let resources = contents.join("Resources");
+        let app_executable = contents.join("MacOS").join("burette");
+        let python =
+            crate::preview::runtime_utils::standalone_python(&resources.join("xyzrender-python"));
+        let site_packages = resources
+            .join("xyzrender-runtime")
+            .join("lib")
+            .join("python3.13")
+            .join("site-packages");
         fs::create_dir_all(app_executable.parent().expect("app executable parent")).unwrap();
         fs::create_dir_all(python.parent().expect("python parent")).unwrap();
         fs::create_dir_all(&site_packages).unwrap();

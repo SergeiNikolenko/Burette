@@ -1950,6 +1950,7 @@ pub(crate) mod document_open_tests {
         target
     }
 
+    #[cfg(unix)]
     fn prepend_fake_xyzrender_environment(script: &str) -> PathBuf {
         let root =
             std::env::temp_dir().join(format!("burette-open-document-{}", uuid::Uuid::new_v4()));
@@ -1957,46 +1958,58 @@ pub(crate) mod document_open_tests {
         fs::create_dir_all(&bin_dir).expect("fake xyzrender bin dir should be created");
         let executable = bin_dir.join("xyzrender");
         fs::write(&executable, script).expect("fake xyzrender should be written");
-        #[cfg(unix)]
-        {
-            let mut permissions = fs::metadata(&executable)
-                .expect("fake xyzrender metadata should be readable")
-                .permissions();
-            permissions.set_mode(0o755);
-            fs::set_permissions(&executable, permissions)
-                .expect("fake xyzrender should be executable");
-        }
+        let mut permissions = fs::metadata(&executable)
+            .expect("fake xyzrender metadata should be readable")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&executable, permissions).expect("fake xyzrender should be executable");
         root
     }
 
     fn with_fake_xyzrender<T>(run: impl FnOnce() -> T) -> T {
-        with_fake_xyzrender_script(
-            concat!(
-                "#!/bin/sh\n",
-                "out=\"\"\n",
-                "while [ \"$#\" -gt 0 ]; do\n",
-                "  if [ \"$1\" = \"-o\" ]; then\n",
-                "    out=\"$2\"\n",
-                "    shift 2\n",
-                "    continue\n",
-                "  fi\n",
-                "  shift\n",
-                "done\n",
-                "printf '%s\\n' '<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>' > \"$out\"\n"
-            ),
-            run,
-        )
+        #[cfg(windows)]
+        let script = concat!(
+            "@echo off\r\n",
+            "set \"out=\"\r\n",
+            ":next\r\n",
+            "if \"%~1\"==\"\" goto write\r\n",
+            "if \"%~1\"==\"-o\" set \"out=%~2\"\r\n",
+            "shift\r\n",
+            "goto next\r\n",
+            ":write\r\n",
+            "> \"%out%\" echo ^<svg xmlns=\"http://www.w3.org/2000/svg\"^>^</svg^>\r\n"
+        );
+        #[cfg(unix)]
+        let script = concat!(
+            "#!/bin/sh\n",
+            "out=\"\"\n",
+            "while [ \"$#\" -gt 0 ]; do\n",
+            "  if [ \"$1\" = \"-o\" ]; then\n",
+            "    out=\"$2\"\n",
+            "    shift 2\n",
+            "    continue\n",
+            "  fi\n",
+            "  shift\n",
+            "done\n",
+            "printf '%s\\n' '<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>' > \"$out\"\n"
+        );
+        with_fake_xyzrender_script(script, run)
     }
 
     fn with_failing_fake_xyzrender<T>(run: impl FnOnce() -> T) -> T {
-        with_fake_xyzrender_script(
-            concat!(
-                "#!/bin/sh\n",
-                "printf '%s\\n' 'fake xyzrender failure' >&2\n",
-                "exit 1\n"
-            ),
-            run,
-        )
+        #[cfg(windows)]
+        let script = concat!(
+            "@echo off\r\n",
+            ">&2 echo fake xyzrender failure\r\n",
+            "exit /b 1\r\n"
+        );
+        #[cfg(unix)]
+        let script = concat!(
+            "#!/bin/sh\n",
+            "printf '%s\\n' 'fake xyzrender failure' >&2\n",
+            "exit 1\n"
+        );
+        with_fake_xyzrender_script(script, run)
     }
 
     fn with_fake_xyzrender_script<T>(script: &str, run: impl FnOnce() -> T) -> T {
@@ -2004,27 +2017,45 @@ pub(crate) mod document_open_tests {
             .lock()
             .expect("env lock should not be poisoned");
         // HOME stays pinned to the shared test home: the fake executable is
-        // injected through PATH alone, so nothing a parallel test depends on
-        // moves while this test runs.
+        // injected through PATH (or the bundled runtime folder on Windows)
+        // alone, so nothing a parallel test depends on moves while this test runs.
         isolated_test_home();
-        let fake_bin_root = prepend_fake_xyzrender_environment(script);
-        let old_path = std::env::var_os("PATH");
-        let mut joined_path = vec![fake_bin_root.join(".local").join("bin")];
-        if let Some(path) = &old_path {
-            joined_path.extend(std::env::split_paths(path));
-        }
-        let joined_path =
-            std::env::join_paths(joined_path).expect("fake xyzrender path should be valid");
-
-        std::env::set_var("PATH", &joined_path);
+        #[cfg(unix)]
+        let (fake_root, old_path) = {
+            let fake_bin_root = prepend_fake_xyzrender_environment(script);
+            let old_path = std::env::var_os("PATH");
+            let mut joined_path = vec![fake_bin_root.join(".local").join("bin")];
+            if let Some(path) = &old_path {
+                joined_path.extend(std::env::split_paths(path));
+            }
+            let joined_path =
+                std::env::join_paths(joined_path).expect("fake xyzrender path should be valid");
+            std::env::set_var("PATH", &joined_path);
+            (fake_bin_root, old_path)
+        };
+        // PATH is searched only for `xyzrender.exe` on Windows, so the fake
+        // wrapper goes where an installed Burette keeps its bundled one:
+        // `xyzrender-runtime\bin\xyzrender.cmd` beside the executable.
+        #[cfg(windows)]
+        let fake_root = {
+            let root = std::env::current_exe()
+                .expect("test executable should resolve")
+                .with_file_name("xyzrender-runtime");
+            let bin_dir = root.join("bin");
+            fs::create_dir_all(&bin_dir).expect("fake xyzrender bin dir should be created");
+            fs::write(bin_dir.join("xyzrender.cmd"), script)
+                .expect("fake xyzrender should be written");
+            root
+        };
 
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(run));
 
+        #[cfg(unix)]
         match old_path {
             Some(value) => std::env::set_var("PATH", value),
             None => std::env::remove_var("PATH"),
         }
-        let _ = fs::remove_dir_all(fake_bin_root);
+        let _ = fs::remove_dir_all(fake_root);
 
         match result {
             Ok(value) => value,
@@ -2437,7 +2468,8 @@ pub(crate) mod document_open_tests {
             .expect("preview config should be written");
 
         assert!(config.contains("\"format\":\"gro\""));
-        assert!(config.contains(&gro.to_string_lossy().to_string()));
+        let gro_json = serde_json::to_string(&gro).unwrap();
+        assert!(config.contains(gro_json.trim_matches('"')));
         assert!(!config.contains("\"format\":\"tpr\""));
         remove_runtime_artifacts(&document.runtime_path);
         let _ = fs::remove_dir_all(directory);
@@ -3122,7 +3154,10 @@ f_m_ct {
             .expect("runtime HTML should be written");
         let config = fs::read_to_string(runtime_dir.join("preview-config.js"))
             .expect("preview config should be written");
-        assert!(config.contains(r#""rdkitWasmPath":"asset://localhost/"#));
+        assert!(config.contains(&format!(
+            r#""rdkitWasmPath":"{}"#,
+            crate::preview::runtime_utils::asset_url(Path::new(""))
+        )));
         assert!(config.contains("RDKit_minimal.wasm"));
         assert!(html.contains("rdkit-wasm-data.js"));
         assert!(html.contains("RDKit_minimal.js"));

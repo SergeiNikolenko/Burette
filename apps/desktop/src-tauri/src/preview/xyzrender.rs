@@ -2195,12 +2195,12 @@ mod tests {
             "burette-xyzrender-batch-python-{}",
             uuid::Uuid::new_v4()
         ));
-        let runtime_bin = directory.join("Resources/xyzrender-runtime/bin");
-        let site_packages =
-            directory.join("Resources/xyzrender-runtime/lib/python3.13/site-packages");
-        let python = crate::preview::runtime_utils::standalone_python(
-            &directory.join("Resources/xyzrender-python"),
-        );
+        let resources = directory.join("Resources");
+        let runtime = resources.join("xyzrender-runtime");
+        let runtime_bin = runtime.join("bin");
+        let site_packages = runtime.join("lib").join("python3.13").join("site-packages");
+        let python =
+            crate::preview::runtime_utils::standalone_python(&resources.join("xyzrender-python"));
         fs::create_dir_all(&runtime_bin).expect("runtime bin should be created");
         fs::create_dir_all(&site_packages).expect("site-packages should be created");
         fs::create_dir_all(python.parent().unwrap()).expect("python bin should be created");

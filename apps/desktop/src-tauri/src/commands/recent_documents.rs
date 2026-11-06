@@ -641,10 +641,18 @@ mod tests {
     use std::sync::{Arc, Barrier};
     use std::thread;
 
+    /// An absolute path on the host; `/tmp/...` is relative on Windows.
+    fn abs(name: &str) -> String {
+        Path::new(if cfg!(windows) { r"C:\tmp" } else { "/tmp" })
+            .join(name)
+            .to_string_lossy()
+            .into_owned()
+    }
+
     fn document(path: &str, opened_at: u64) -> RecentDocument {
         RecentDocument {
             path: path.to_string(),
-            title: path.rsplit('/').next().unwrap_or(path).to_string(),
+            title: path.rsplit(['/', '\\']).next().unwrap_or(path).to_string(),
             extension: "sdf".to_string(),
             renderer: "grid2d".to_string(),
             byte_count: 42,
@@ -688,21 +696,21 @@ mod tests {
     fn startup_snapshots_merge_until_the_first_mutation() {
         let registry = RecentDocumentsRegistry::default();
         let first = registry
-            .initialize(vec![document("/tmp/window-a.sdf", 10)], 40, None)
+            .initialize(vec![document(&abs("window-a.sdf"), 10)], 40, None)
             .expect("first startup snapshot should initialize");
         let second = registry
-            .initialize(vec![document("/tmp/window-b.sdf", 20)], 40, None)
+            .initialize(vec![document(&abs("window-b.sdf"), 20)], 40, None)
             .expect("second startup snapshot should merge");
 
         assert!(second.revision > first.revision);
         assert_eq!(
             paths(&second),
-            vec!["/tmp/window-b.sdf", "/tmp/window-a.sdf"]
+            vec![abs("window-b.sdf"), abs("window-a.sdf")]
         );
 
         let cleared = registry.clear(None).expect("clear should succeed");
         let stale = registry
-            .initialize(vec![document("/tmp/window-a.sdf", 10)], 40, None)
+            .initialize(vec![document(&abs("window-a.sdf"), 10)], 40, None)
             .expect("late startup snapshot should be ignored");
         assert_eq!(stale, cleared);
     }
@@ -715,25 +723,25 @@ mod tests {
             .expect("registry should initialize");
         let barrier = Arc::new(Barrier::new(3));
 
-        let merge_from = |path: &'static str,
+        let merge_from = |path: String,
                           opened_at,
                           registry: Arc<RecentDocumentsRegistry>,
                           barrier: Arc<Barrier>| {
             thread::spawn(move || {
                 barrier.wait();
                 registry
-                    .merge(vec![document(path, opened_at)], None)
+                    .merge(vec![document(&path, opened_at)], None)
                     .expect("window merge should succeed")
             })
         };
         let window_a = merge_from(
-            "/tmp/window-a.sdf",
+            abs("window-a.sdf"),
             10,
             Arc::clone(&registry),
             Arc::clone(&barrier),
         );
         let window_b = merge_from(
-            "/tmp/window-b.sdf",
+            abs("window-b.sdf"),
             20,
             Arc::clone(&registry),
             Arc::clone(&barrier),
@@ -747,7 +755,7 @@ mod tests {
         let current = snapshot(&registry.lock().expect("registry should remain readable"));
         assert_eq!(
             paths(&current),
-            vec!["/tmp/window-b.sdf", "/tmp/window-a.sdf"]
+            vec![abs("window-b.sdf"), abs("window-a.sdf")]
         );
     }
 
@@ -760,7 +768,7 @@ mod tests {
         let storage_path = directory.join(RECENT_DOCUMENTS_FILE);
         let registry = Arc::new(RecentDocumentsRegistry::default());
         let barrier = Arc::new(Barrier::new(3));
-        let workers: Vec<_> = ["/tmp/window-a.sdf", "/tmp/window-b.sdf"]
+        let workers: Vec<_> = [abs("window-a.sdf"), abs("window-b.sdf")]
             .into_iter()
             .enumerate()
             .map(|(index, path)| {
@@ -770,7 +778,7 @@ mod tests {
                 thread::spawn(move || {
                     barrier.wait();
                     registry
-                        .merge(vec![document(path, index as u64)], Some(&storage_path))
+                        .merge(vec![document(&path, index as u64)], Some(&storage_path))
                         .unwrap()
                 })
             })
@@ -786,7 +794,7 @@ mod tests {
             .initialize(Vec::new(), 0, Some(&storage_path))
             .unwrap();
         assert_eq!(restored, expected);
-        assert_eq!(paths(&restored), ["/tmp/window-b.sdf", "/tmp/window-a.sdf"]);
+        assert_eq!(paths(&restored), [abs("window-b.sdf"), abs("window-a.sdf")]);
         let _ = fs::remove_dir_all(directory);
     }
 
@@ -812,7 +820,7 @@ mod tests {
                 started.send(()).unwrap();
                 worker_release.recv_timeout(Duration::from_secs(5)).unwrap();
                 merge_registry.merge(
-                    vec![document("/tmp/older-merge.sdf", 10)],
+                    vec![document(&abs("older-merge.sdf"), 10)],
                     Some(&merge_path),
                 )
             })
@@ -828,7 +836,7 @@ mod tests {
         let mut initialize_response = registry
             .enqueue(move || {
                 initialize_registry.initialize(
-                    vec![document("/tmp/stale-startup.sdf", 1)],
+                    vec![document(&abs("stale-startup.sdf"), 1)],
                     90,
                     Some(&initialize_path),
                 )
@@ -888,15 +896,15 @@ mod tests {
             (
                 "merge_recent_documents",
                 serde_json::json!({"documents": [{
-                    "path": "/tmp/queued-source.sdf", "title": "queued-source.sdf", "extension": "sdf",
+                    "path": abs("queued-source.sdf"), "title": "queued-source.sdf", "extension": "sdf",
                     "renderer": "grid2d", "byteCount": 42, "openedAt": 30
                 }]}),
             ),
             (
                 "prune_recent_documents",
                 serde_json::json!({
-                    "checkedDocuments": [{"path": "/tmp/queued-source.sdf", "openedAt": 30}],
-                    "existingPaths": ["/tmp/queued-source.sdf"]
+                    "checkedDocuments": [{"path": abs("queued-source.sdf"), "openedAt": 30}],
+                    "existingPaths": [abs("queued-source.sdf")]
                 }),
             ),
             ("clear_recent_documents", serde_json::json!({})),
@@ -907,7 +915,14 @@ mod tests {
                     cmd: command.into(),
                     callback: tauri::ipc::CallbackFn(0),
                     error: tauri::ipc::CallbackFn(1),
-                    url: "tauri://localhost".parse().unwrap(),
+                    // The app origin Tauri treats as local on this platform.
+                    url: if cfg!(windows) {
+                        "http://tauri.localhost"
+                    } else {
+                        "tauri://localhost"
+                    }
+                    .parse()
+                    .unwrap(),
                     body: body.into(),
                     headers: Default::default(),
                     invoke_key: tauri::test::INVOKE_KEY.into(),
@@ -933,11 +948,11 @@ mod tests {
         assert_eq!(snapshots["initialize_recent_documents"].revision, 21);
         assert_eq!(
             paths(&snapshots["merge_recent_documents"]),
-            ["/tmp/queued-source.sdf"]
+            [abs("queued-source.sdf")]
         );
         assert_eq!(
             paths(&snapshots["prune_recent_documents"]),
-            ["/tmp/queued-source.sdf"]
+            [abs("queued-source.sdf")]
         );
         let cleared = &snapshots["clear_recent_documents"];
         assert_eq!((cleared.revision, &cleared.documents), (24, &Vec::new()));
@@ -961,7 +976,7 @@ mod tests {
         let path = recent_documents_path(app.handle()).unwrap();
         let previous = RecentDocumentsSnapshot {
             revision: 7,
-            documents: vec![document("/tmp/previous.sdf", 1)],
+            documents: vec![document(&abs("previous.sdf"), 1)],
         };
         persist_snapshot(&path, &previous).unwrap();
         tauri::async_runtime::block_on(async {
@@ -981,7 +996,7 @@ mod tests {
                     blocked.recv_timeout(Duration::from_secs(5)).unwrap();
                     worker_app
                         .state::<RecentDocumentsRegistry>()
-                        .merge(vec![document("/tmp/accepted.sdf", 2)], Some(&worker_path))
+                        .merge(vec![document(&abs("accepted.sdf"), 2)], Some(&worker_path))
                 })
                 .unwrap();
             let mut drain = Box::pin(pause_and_drain(app.handle()));
@@ -997,7 +1012,7 @@ mod tests {
                 serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
             assert_eq!(
                 paths(&persisted),
-                ["/tmp/accepted.sdf", "/tmp/previous.sdf"]
+                [abs("accepted.sdf"), abs("previous.sdf")]
             );
             drop(pause);
             assert!(
@@ -1028,7 +1043,7 @@ mod tests {
                 let path = recent_documents_path(&worker_app)?;
                 worker_app
                     .state::<RecentDocumentsRegistry>()
-                    .merge(vec![document("/tmp/accepted.sdf", 2)], Some(&path))
+                    .merge(vec![document(&abs("accepted.sdf"), 2)], Some(&path))
             })
             .unwrap();
         worker_started.recv_timeout(Duration::from_secs(5)).unwrap();
@@ -1076,34 +1091,34 @@ mod tests {
     fn stale_prune_preserves_a_later_unchecked_document() {
         let registry = RecentDocumentsRegistry::default();
         registry
-            .initialize(vec![document("/tmp/old.sdf", 10)], 0, None)
+            .initialize(vec![document(&abs("old.sdf"), 10)], 0, None)
             .expect("registry should initialize");
 
         registry
-            .merge(vec![document("/tmp/later.sdf", 20)], None)
+            .merge(vec![document(&abs("later.sdf"), 20)], None)
             .expect("later window merge should succeed");
         let pruned = registry
-            .prune(vec![checked("/tmp/old.sdf", 10)], Vec::new(), None)
+            .prune(vec![checked(&abs("old.sdf"), 10)], Vec::new(), None)
             .expect("stale prune should succeed");
 
-        assert_eq!(paths(&pruned), vec!["/tmp/later.sdf"]);
+        assert_eq!(paths(&pruned), vec![abs("later.sdf")]);
     }
 
     #[test]
     fn stale_prune_preserves_a_reopened_checked_path() {
         let registry = RecentDocumentsRegistry::default();
         registry
-            .initialize(vec![document("/tmp/reopened.sdf", 10)], 0, None)
+            .initialize(vec![document(&abs("reopened.sdf"), 10)], 0, None)
             .expect("registry should initialize");
 
         registry
-            .merge(vec![document("/tmp/reopened.sdf", 20)], None)
+            .merge(vec![document(&abs("reopened.sdf"), 20)], None)
             .expect("path should be reopened");
         let pruned = registry
-            .prune(vec![checked("/tmp/reopened.sdf", 10)], Vec::new(), None)
+            .prune(vec![checked(&abs("reopened.sdf"), 10)], Vec::new(), None)
             .expect("stale prune should succeed");
 
-        assert_eq!(paths(&pruned), vec!["/tmp/reopened.sdf"]);
+        assert_eq!(paths(&pruned), vec![abs("reopened.sdf")]);
         assert_eq!(pruned.documents[0].opened_at, 20);
     }
 
@@ -1121,7 +1136,7 @@ mod tests {
         let registry = RecentDocumentsRegistry::default();
         let persisted = registry
             .merge(
-                vec![document("/tmp/persisted.sdf", 30)],
+                vec![document(&abs("persisted.sdf"), 30)],
                 Some(&storage_path),
             )
             .expect("recent document should persist");
@@ -1131,7 +1146,7 @@ mod tests {
             .expect("persisted snapshot should restore");
 
         assert_eq!(restored.revision, persisted.revision);
-        assert_eq!(paths(&restored), vec!["/tmp/persisted.sdf"]);
+        assert_eq!(paths(&restored), vec![abs("persisted.sdf")]);
         let _ = fs::remove_dir_all(runtime_dir);
     }
 
@@ -1146,7 +1161,7 @@ mod tests {
                 .as_nanos()
         ));
         let storage_path = runtime_dir.join(RECENT_DOCUMENTS_FILE);
-        let stale_document = document("/tmp/stale-after-clear.sdf", 10);
+        let stale_document = document(&abs("stale-after-clear.sdf"), 10);
         let registry = RecentDocumentsRegistry::default();
         registry
             .merge(vec![stale_document.clone()], Some(&storage_path))
@@ -1176,7 +1191,7 @@ mod tests {
             .contains("absolute path"));
 
         let too_many = (0..=MAX_RECENT_DOCUMENTS)
-            .map(|index| document(&format!("/tmp/{index}.sdf"), index as u64))
+            .map(|index| document(&abs(&format!("{index}.sdf")), index as u64))
             .collect();
         assert!(registry
             .merge(too_many, None)
