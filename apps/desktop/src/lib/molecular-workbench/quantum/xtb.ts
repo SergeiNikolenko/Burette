@@ -3,6 +3,7 @@ import type { MolecularAtom, Vec3 } from '../types';
 import type { MolecularOrbital, ScientificDocument } from '../scientific-types';
 import { BOHR, coordinate, MAX_ATOMS, numeric } from './reader-values';
 import { DEBYE_PER_AU, OutputHistory, outputLines } from './output-history';
+import { readThermochemistryLine } from './thermochemistry';
 
 
 function symbol(token: string) {
@@ -66,6 +67,7 @@ export function parseXtbOutput(text: string): ScientificDocument {
     if (/GEOMETRY OPTIMIZATION CONVERGED/u.test(line)) converged = true;
     if (/FAILED TO CONVERGE GEOMETRY OPTIMIZATION|convergence criteria cannot be satisfied/u.test(line)) converged = false;
     if (!history.frames.length) continue;
+    if (readThermochemistryLine('xtb', lines, i, history.frames.at(-1))) continue;
     const energy = line.match(/^\s*\|\s*TOTAL ENERGY\s+(\S+)\s+Eh\s*\|\s*$/u);
     if (energy) { history.scfEnergy(numeric(energy[1])); continue; }
     if (/^\s*\* Orbital Energies and Occupations\s*$/u.test(line)) {

@@ -13,6 +13,7 @@ import { parsePsi4Log } from "./quantum/psi4-log";
 import { parseXtbOutput, parseXtbTrajectory } from "./quantum/xtb";
 import { GAMESS_SIGNATURE, MOLPRO_SIGNATURE, NWCHEM_SIGNATURE, ORCA_BANNER, ORCA_PROPERTY_SIGNATURE, PSI4_SIGNATURE, QCHEM_SIGNATURE, XTB_SIGNATURE, XTB_TRAJECTORY_SIGNATURE } from "./quantum/signatures";
 import { parseOrcaProperty } from "./quantum/orca-property";
+import { readOrcaLogProperty } from "./quantum/orca-log-properties";
 import { readOrcaVcdTables } from "./orca-circular-spectra";
 import { withOrcaSourceSpectra, type OrcaSourceSpectrum } from "./orca-source-spectra";
 import { validateParsedSpectra } from "./parsed-spectral-document";
@@ -152,6 +153,8 @@ function parseOrca(name: string, text: string): ScientificDocument {
     }
     const energy = lines[i]?.match(/FINAL SINGLE POINT ENERGY\s+([^\s]+)/);
     if (energy && frames.length) frames[frames.length - 1].energyHartree = number(energy[1]);
+    const end = frames.length && i < lines.length ? readOrcaLogProperty(lines, i, frames[frames.length - 1]) : -1;
+    if (end >= 0) i = end;
   }
   checkFrames(frames);
   const result = { ...empty("orca", frames.at(-1)!.atoms), referenceFrameIndex: frames.length - 1, frames };

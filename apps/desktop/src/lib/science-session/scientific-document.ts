@@ -129,6 +129,11 @@ export function validateScientificDocument(value: unknown, sourceFrames: readonl
         || set.values.some((charge) => Math.abs(charge) > 200))) fail(`frames[${index}].charges do not match the atoms.`);
     }
     if (frame.dipoleDebye !== undefined && (!isVec3(frame.dipoleDebye) || (frame.dipoleDebye as number[]).some((value) => Math.abs(value) > 1e6))) fail(`frames[${index}].dipoleDebye is not a vector.`);
+    const thermochemistry = frame.thermochemistry;
+    if (thermochemistry !== undefined) {
+      if (!isRecord(thermochemistry) || typeof thermochemistry.temperatureKelvin !== "number" || !(thermochemistry.temperatureKelvin > 0 && thermochemistry.temperatureKelvin < 1e5)) fail(`frames[${index}].thermochemistry has no temperature.`);
+      optionalNumbers(thermochemistry, ["zeroPointHartree", "enthalpyHartree", "gibbsHartree", "entropyCalMolKelvin"], `frames[${index}].thermochemistry`);
+    }
     const hessian = frame.hessian;
     if (hessian !== undefined) {
       if (!isRecord(hessian) || hessian.units !== HESSIAN_UNITS || !(hessian.values instanceof Float64Array)

@@ -4,6 +4,7 @@ import type { MolecularOrbital, ScientificDocument, VibrationalMode } from '../s
 import { hessianFromSquare } from '../hessian';
 import { BOHR, coordinate, numeric } from './reader-values';
 import { DEBYE_PER_AU, OutputHistory, orbitalTable, outputLines } from './output-history';
+import { readThermochemistryLine } from './thermochemistry';
 
 const GEOMETRY = /^\s*Geometry \(in (Angstrom|Bohr)\), charge = -?\d+, multiplicity = \d+:\s*$/u;
 const SCF_ENERGY = /^\s*@\S*?(?:RHF|UHF|ROHF|CUHF|RKS|UKS|ROKS) Final Energy:\s+(\S+)\s*$/u;
@@ -76,6 +77,7 @@ export function parsePsi4Log(text: string): ScientificDocument {
       if (atomMasses.length === atoms.length) masses.set(frame, atomMasses);
       continue;
     }
+    if (readThermochemistryLine('psi4', lines, i, history.frames.at(-1))) continue;
     let match = line.match(SCF_ENERGY);
     if (match) { history.scfEnergy(numeric(match[1])); continue; }
     match = line.match(CORRELATED_ENERGY) ?? (energyBox ? line.match(/^\s*Total Energy\s*=\s*(-\d+\.\d+) \[Eh\]\s*$/u) : null);

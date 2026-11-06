@@ -20,6 +20,19 @@ export interface ScientificFrame {
   charges?: AtomicChargeSet[];
   /** Producer-printed total dipole moment of this geometry, in debye, in the frame's Cartesian axes. */
   dipoleDebye?: Vec3;
+  /** Producer-printed ideal-gas thermochemistry of this geometry's frequency calculation. */
+  thermochemistry?: Thermochemistry;
+}
+/**
+ * Energies are per particle in Hartree: the zero-point correction, and the absolute enthalpy and
+ * Gibbs energy at the temperature, electronic energy included. G is H − T·S where a program prints no G.
+ */
+export interface Thermochemistry {
+  temperatureKelvin: number;
+  zeroPointHartree?: number;
+  enthalpyHartree?: number;
+  gibbsHartree?: number;
+  entropyCalMolKelvin?: number;
 }
 export const ATOMIC_CHARGE_MODELS = ["mulliken", "lowdin", "hirshfeld", "cm5", "npa", "esp", "chelpg", "eeq", "gasteiger"] as const;
 export interface AtomicChargeSet { model: typeof ATOMIC_CHARGE_MODELS[number]; values: number[] }

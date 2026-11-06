@@ -10,6 +10,7 @@ BSD-3-Clause (`../cclib-LICENSE.txt`).
 | `cclib-C_bigbasis-trimmed.out` | HF/aug-cc-pVQZ `pop=full gfinput` (5D, 7F) | pure d, f and g components |
 | `cclib-dvb_un_sp.log` | UB3LYP `pop=full` without `gfinput` | alpha/beta eigenvalues, `Mulliken charges and spin densities` |
 | `cclib-dvb_gopt.out` | B3LYP optimization | population analysis at the first and final geometry, dipole |
+| `cclib-dvb_ir.out` | B3LYP/STO-3G `freq=hpmodes` | high-precision mode table before the standard one, thermochemistry |
 | `cclib-water_mp2.log` | MP2 `Density Pop=(Full,NaturalOrbitals)` | MP2 total energy supersedes SCF; no SCF orbital table |
 
 All files are byte-identical except `cclib-C_bigbasis-trimmed.out`, which removes the printed
@@ -36,4 +37,5 @@ SHA-256:
     f4e280b32b0d9f25ac7a21cfe47e810fe5cecb8b669e8d9751329a0ffded260d  cclib-dvb_gopt.out
     682ccce14c07e99e8cdbab7e20e1d7038ca56b5d6d553223595314f3ebaa0ca7  cclib-dvb_sp.out
     01481bda7970cf007666aa150460c16939d78b6811658555d5572c7f13df20ce  cclib-dvb_un_sp.log
+    bc1a21de15ada135d5188b11d44226389022d92488ddfa8163ba7d4d713e5061  cclib-dvb_ir.out
     9a93eac63dba161d4973494df296ff4e62bd1f3c97da6e519df97df172bade74  cclib-water_mp2.log

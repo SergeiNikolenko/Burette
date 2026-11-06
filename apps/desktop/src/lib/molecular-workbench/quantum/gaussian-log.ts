@@ -4,6 +4,7 @@ import type { ScientificDocument, ScientificFrame, VibrationalMode } from '../sc
 import { checkIdentity, coordinate, MAX_ATOMS, MAX_FRAMES, MAX_VALUES, numeric } from './reader-values';
 import { gaussianOrbitals, readGeneralBasis, readMoCoefficients, type GaussianMoSet } from './gaussian-log-orbitals';
 import { orbitalTable } from './output-history';
+import { readThermochemistryLine } from './thermochemistry';
 
 const ORIENTATION = /^\s*(Standard|Input|Z-Matrix) orientation:\s*$/;
 const DASH = /^\s*-{5,}\s*$/;
@@ -61,6 +62,7 @@ export function parseGaussianLog(text: string): ScientificDocument {
       continue;
     }
     eigenvaluesOpen = false;
+    if (readThermochemistryLine('gaussian', lines, i, frame)) continue;
     if (/^\s*AO basis set in the form of general basis input/u.test(lines[i])) {
       const section = readGeneralBasis(lines, i + 1);
       if (section.end >= lines.length) break;
@@ -114,7 +116,8 @@ export function parseGaussianLog(text: string): ScientificDocument {
     }
     if (/Optimization completed\./.test(lines[i])) converged = true;
     if (/Optimization stopped\.|Convergence failure/.test(lines[i])) converged = false;
-    if (/^\s*Frequencies\s+--/.test(lines[i])) {
+    // freq=hpmodes prints a `---` table of the same modes before the standard one.
+    if (/^\s*Frequencies\s+--(?!-)/.test(lines[i])) {
       if (!frame) throw new Error('Gaussian frequencies have no associated geometry.');
       const frequencies = lines[i].split('--')[1].trim().split(/\s+/).map(numeric);
       if (!frequencies.length || frequencies.length > 3) throw new Error('Unsupported Gaussian frequency block.');

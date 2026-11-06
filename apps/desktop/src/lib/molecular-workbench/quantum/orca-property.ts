@@ -4,6 +4,7 @@ import type { AtomicChargeSet, ScientificDocument, ScientificFrame, VibrationalM
 import type { MolecularAtom, Vec3 } from '../types';
 import { DEBYE_PER_AU, outputLines } from './output-history';
 import { BOHR, checkIdentity, coordinate, MAX_ATOMS, MAX_FRAMES, MAX_VALUES, numeric } from './reader-values';
+import { thermochemistry, type Printed } from './thermochemistry';
 
 const HARTREE_KCAL_MOL = 627.5094740631;
 
@@ -20,6 +21,8 @@ interface Geometry {
   hessian?: Float64Array;
   modes?: { values: Float64Array; count: number };
   frequencies?: number[];
+  /** The thermochemistry print; its entropy is T·S in Hartree. */
+  thermochemistry?: Partial<Record<Printed, number>>;
   failed?: boolean;
 }
 type Geometries = Map<number, Geometry>;
@@ -168,6 +171,8 @@ function keyedBlock(name: string, entries: Entries, geometry: Geometry) {
   } else if (name === 'thermochemistry_energies') {
     const frequencies = keyedArray(entries, 'freq', keyedScalar(entries, 'numoffreqs'), 1);
     if (frequencies) geometry.frequencies = Array.from(frequencies);
+    geometry.thermochemistry = { temperature: keyedScalar(entries, 'temperature'), zeroPoint: keyedScalar(entries, 'zpe'), enthalpy: keyedScalar(entries, 'enthalpyh'),
+      entropyTerm: keyedScalar(entries, 'entropys'), gibbs: keyedScalar(entries, 'freeenergyg') };
   }
 }
 
@@ -220,6 +225,8 @@ function readListed(lines: string[], geometries: Geometries) {
     } else if (name === 'THERMOCHEMISTRY_Energies') {
       const frequencies = table(/Vibrational frequencies\s*:/, count(text.match(/Number of frequencies\s*:\s*(\d+)/)?.[1], 3 * atomCount), 1);
       if (frequencies) geometry.frequencies = Array.from(frequencies);
+      geometry.thermochemistry = { temperature: value(/Temperature \(Kelvin\)\s*:\s*(\S+)/), zeroPoint: value(/Zero Point Energy \(Hartree\)\s*:\s*(\S+)/),
+        enthalpy: value(/Enthalpy \(Hartree\)\s*:\s*(\S+)/), entropyTerm: value(/^\s*Entropy\s*:\s*(\S+)/m), gibbs: value(/Gibbs Energy \(Hartree\)\s*:\s*(\S+)/) };
     }
   }
 }
@@ -249,6 +256,8 @@ export function parseOrcaProperty(text: string): ScientificDocument {
     const energy = geometry.final ?? (geometry.scf === undefined ? undefined : geometry.scf + (geometry.vdw ?? 0));
     if (energy !== undefined) frame.energyHartree = energy;
     if (geometry.charges.length) frame.charges = geometry.charges;
+    const thermo = geometry.thermochemistry && thermochemistry(geometry.thermochemistry, energy);
+    if (thermo) frame.thermochemistry = thermo;
     if (geometry.dipoleAu) frame.dipoleDebye = geometry.dipoleAu.map(value => value * DEBYE_PER_AU) as Vec3;
     if (geometry.gradient) frame.forcesKcalMolAngstrom = atoms.map((_, i) => geometry.gradient!.slice(3 * i, 3 * i + 3).map(value => -value * HARTREE_KCAL_MOL / BOHR) as Vec3);
     if (geometry.hessian) frame.hessian = hessianFromSquare(geometry.hessian, n, 'orca-property');

@@ -4,6 +4,7 @@ import type { MolecularOrbital, ScientificDocument, VibrationalMode } from '../s
 import { hessianFromLowerTriangle } from '../hessian';
 import { BOHR, coordinate, numeric } from './reader-values';
 import { DEBYE_PER_AU, OutputHistory, orbitalTable, outputLines } from './output-history';
+import { readThermochemistryLine } from './thermochemistry';
 
 const ELEMENT = /^([A-Za-z]{1,2})/u;
 const SCF_ENERGY = /^\s*Total (?:SCF|DFT) energy\s*=\s*(\S+)/u;
@@ -99,6 +100,7 @@ export function parseNwchemLog(text: string): ScientificDocument {
       }
       continue;
     }
+    if (readThermochemistryLine('nwchem', lines, i, history.frames.at(-1))) continue;
     let match = line.match(SCF_ENERGY);
     if (match) { history.scfEnergy(numeric(match[1])); continue; }
     match = line.match(CORRELATED_ENERGY);

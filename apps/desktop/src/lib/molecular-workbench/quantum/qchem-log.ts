@@ -2,6 +2,7 @@ import type { MolecularAtom, Vec3 } from '../types';
 import type { AtomicChargeSet, MolecularOrbital, ScientificDocument, VibrationalMode } from '../scientific-types';
 import { coordinate, numeric } from './reader-values';
 import { OutputHistory, orbitalTable, outputLines } from './output-history';
+import { readThermochemistryLine } from './thermochemistry';
 
 const CHARGE_TABLES: [RegExp, AtomicChargeSet['model']][] = [
   [/^\s*Ground-State Mulliken Net Atomic Charges\s*$/u, 'mulliken'],
@@ -70,6 +71,7 @@ export function parseQchemLog(text: string): ScientificDocument {
       i = j;
       continue;
     }
+    if (readThermochemistryLine('qchem', lines, i, history.frames.at(-1))) continue;
     let match = line.match(/^\s*Total energy in the final basis set\s*=\s*(\S+)\s*$/u);
     if (match) { history.scfEnergy(numeric(match[1])); models = new Set(); continue; }
     match = line.match(CORRELATED_ENERGY);
