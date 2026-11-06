@@ -33,7 +33,7 @@ export function snapshotMolecule(mol: Molecule, title = '', graphSource: Molecul
   const indices = atomMap ?? Array.from({ length: mol.getAllAtoms() }, (_, i) => i);
   const atoms = indices.map(i => ({ element: mol.getAtomLabel(i), x: mol.getAtomX(i), y: mol.getAtomY(i), z: mol.getAtomZ(i) }));
   if (atoms.some(a => ![a.x, a.y, a.z].every(Number.isFinite))) throw new Error('Invalid molecular coordinates.');
-  const bonds = Array.from({ length: mol.getAllBonds() }, (_, i) => ({ a: indices.indexOf(mol.getBondAtom(0, i)), b: indices.indexOf(mol.getBondAtom(1, i)), order: mol.isAromaticBond(i) ? 1.5 : mol.getBondOrder(i) }));
+  const bonds = Array.from({ length: mol.getAllBonds() }, (_, i) => ({ a: indices.indexOf(mol.getBondAtom(0, i)), b: indices.indexOf(mol.getBondAtom(1, i)), order: mol.isAromaticBond(i) ? 1.5 : mol.getBondType(i) === Molecule.cBondTypeMetalLigand ? 9 : mol.getBondOrder(i) }));
   return { atoms, bonds, molfile: serializePhysicalMolfile(mol), title, graphSource, graphComplete, ...(atomMap ? { atomMap } : {}) };
 }
 export function parseMolecule(source: string, format: 'xyz' | 'sdf' | 'mol'): MolecularStructure {

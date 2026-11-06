@@ -5,16 +5,21 @@ import { readUnspecifiedMolfileStereo, retainUnknownStereo } from './molecule-st
 import { atomicNumber } from './elements';
 import type { Vec3 } from './types';
 
+/** 9 is the MDL dative (coordination) bond: a metal–donor edge that does not count towards valence. */
+export type BondOrder = 1 | 2 | 3 | 9;
+const BOND_TYPES: Record<BondOrder, number> = { 1: Molecule.cBondTypeSingle, 2: Molecule.cBondTypeDouble, 3: Molecule.cBondTypeTriple, 9: Molecule.cBondTypeMetalLigand };
+const isBondOrder = (order: number): order is BondOrder => [1, 2, 3, 9].includes(order);
+
 export type GraphEdit =
   | { kind: 'add-atom'; element: string; position: Vec3 }
   | { kind: 'update-atom'; index: number; element?: string; charge?: number; isotope?: number; position?: Vec3 }
   | { kind: 'delete-atoms'; indices: number[] }
-  | { kind: 'set-bond'; a: number; b: number; order: 0 | 1 | 2 | 3 }
+  | { kind: 'set-bond'; a: number; b: number; order: 0 | BondOrder }
   | { kind: 'reorder-atoms'; order: number[] }
   | FragmentGraphEdit;
 /** New atoms are numbered after the existing ones (n, n + 1, ...); each bond joins at least one new atom.
  * `replace` is an existing atom, such as the hydrogen an attached group substitutes, deleted in the same edit. */
-export type FragmentGraphEdit = { kind: 'add-fragment'; atoms: { element: string; position: Vec3; charge?: number }[]; bonds: { a: number; b: number; order: 1 | 2 | 3 }[]; replace?: number };
+export type FragmentGraphEdit = { kind: 'add-fragment'; atoms: { element: string; position: Vec3; charge?: number }[]; bonds: { a: number; b: number; order: BondOrder }[]; replace?: number };
 export type GraphEditResult = MolecularStructure & { sourceAtomIndices: number[] };
 
 /** Edits a private graph copy. A rejected edit never mutates the input. */
@@ -76,13 +81,10 @@ export function editGraph(structure: MolecularStructure, edit: GraphEdit): Graph
     }
     case 'set-bond': {
       const a = index(edit.a), b = index(edit.b);
-      if (a === b || ![0, 1, 2, 3].includes(edit.order)) throw new Error('Choose two distinct atoms and a valid bond order.');
+      if (a === b || (edit.order !== 0 && !isBondOrder(edit.order))) throw new Error('Choose two distinct atoms and a valid bond order.');
       const bond = mol.getBond(a, b);
       if (edit.order === 0) { if (bond < 0) throw new Error('These atoms have no bond.'); mol.deleteBond(bond); }
-      else {
-        const type = [0, Molecule.cBondTypeSingle, Molecule.cBondTypeDouble, Molecule.cBondTypeTriple][edit.order];
-        if (bond < 0) mol.setBondType(mol.addBond(a, b), type); else mol.setBondType(bond, type);
-      }
+      else mol.setBondType(bond < 0 ? mol.addBond(a, b) : bond, BOND_TYPES[edit.order]);
       break;
     }
     case 'add-fragment': {
@@ -99,9 +101,9 @@ export function editGraph(structure: MolecularStructure, edit: GraphEdit): Graph
       const pairs = new Set<string>();
       for (const bond of edit.bonds) {
         const a = resolve(bond.a), b = resolve(bond.b), key = [a, b].sort((x, y) => x - y).join(':');
-        if (a === b || (bond.a < n && bond.b < n) || bond.a === edit.replace || bond.b === edit.replace || pairs.has(key) || ![1, 2, 3].includes(bond.order)) throw new Error('The fragment has an invalid bond graph.');
+        if (a === b || (bond.a < n && bond.b < n) || bond.a === edit.replace || bond.b === edit.replace || pairs.has(key) || !isBondOrder(bond.order)) throw new Error('The fragment has an invalid bond graph.');
         pairs.add(key);
-        mol.setBondType(mol.addBond(a, b), [0, Molecule.cBondTypeSingle, Molecule.cBondTypeDouble, Molecule.cBondTypeTriple][bond.order]);
+        mol.setBondType(mol.addBond(a, b), BOND_TYPES[bond.order]);
       }
       if (edit.replace !== undefined) {
         const j = index(edit.replace);

@@ -1,12 +1,13 @@
 import { useState } from "react";
 import type { FragmentSource } from "../../lib/molecular-workbench/fragment-source";
+import type { BondOrder } from "../../lib/molecular-workbench/graph-edit";
 import { structureEditAvailable } from "../../lib/workbench/graph-draft";
 import type { ViewerDocument } from "../../types";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { useGraphDraft } from "./use-graph-draft";
 
-type BuiltGraph = { atoms: { element: string; x: number; y: number; z: number; charge: number }[]; bonds: { a: number; b: number; order: 1 | 2 | 3 }[] };
+type BuiltGraph = { atoms: { element: string; x: number; y: number; z: number; charge: number }[]; bonds: { a: number; b: number; order: BondOrder }[] };
 
 /**
  * Inserts a builder's output into an editable MOL/SDF document as a separate molecule: one Undo step in

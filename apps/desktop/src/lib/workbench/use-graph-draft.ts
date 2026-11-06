@@ -201,7 +201,8 @@ export function useGraphDraft(document: ViewerDocument | null, computeAdvanced?:
       const atomIds = previous.metadata ? null : operation.kind === "positions" || operation.kind === "optimize" ? previous.atomIds : remapAtomIds(previous.atomIds, result.structure.sourceAtomIndices, previous.structure.atoms.length, result.structure.atoms.length);
       if (atomIds && atomIds.length !== result.structure.atoms.length) throw new Error("The graph edit has incomplete atom provenance.");
       const next = snapshot(result.structure, graphDraftText(history.origin, sourceExtension(document!), result.structure.molfile, metadata), result.outcome, metadata, atomIds);
-      if (operation.kind === "prepare-3d") next.view = "fit";
+      // A separate molecule is placed beside the structure, so the view widens to show it.
+      if (operation.kind === "prepare-3d" || (operation.kind === "insert-fragment" && operation.target === null)) next.view = "fit";
       // An atom reorder keeps the graph; measurements follow their atoms to the new rows.
       const reorder = operation.kind === "edits" && operation.edits.every(edit => edit.kind === "reorder-atoms");
       const pair = (operation.kind === "positions" || operation.kind === "metadata" || reorder) && ["sdf", "sd", "mol"].includes(sourceExtension(document))

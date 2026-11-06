@@ -8,7 +8,7 @@ import { Button } from "../../ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../ui/dropdown-menu";
 import { SegmentedControl, SegmentedControlItem } from "../../ui/segmented-control";
 import { AtomFields } from "./atom-fields";
-import { BOND_ORDERS, label } from "./values";
+import { bondOrderChoices, label } from "./values";
 
 /**
  * Avogadro's Align tool on the selection, in pick order: the first atom moves to the origin and
@@ -78,8 +78,8 @@ export function SelectionEditor({ structure, annotations, atoms, disabled, onApp
       </div>
       {atoms.length === 2 ? (
         <SegmentedControl aria-label="Bond order" value={bond && bond.order !== 1.5 ? String(bond.order) : bond ? "" : "0"}
-          onValueChange={(value) => { if (value) onApply([{ kind: "set-bond", a: atoms[0], b: atoms[1], order: Number(value) as 0 | 1 | 2 | 3 }]); }}>
-          {BOND_ORDERS.map(([value, name]) => <SegmentedControlItem key={value} value={value} disabled={disabled}>{name}</SegmentedControlItem>)}
+          onValueChange={(value) => { if (value) onApply([{ kind: "set-bond", a: atoms[0], b: atoms[1], order: Number(value) as 0 | 1 | 2 | 3 | 9 }]); }}>
+          {bondOrderChoices(atoms.map(atom => structure.atoms[atom].element), bond?.order).map(([value, name]) => <SegmentedControlItem key={value} value={value} disabled={disabled}>{name}</SegmentedControlItem>)}
         </SegmentedControl>
       ) : null}
     </section>

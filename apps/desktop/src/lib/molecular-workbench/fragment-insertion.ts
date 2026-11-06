@@ -1,9 +1,9 @@
-import type { FragmentGraphEdit } from './graph-edit';
+import type { BondOrder, FragmentGraphEdit } from './graph-edit';
 import type { MolecularAtom, MolecularBond, Vec3 } from './types';
 
 /** A rigid 3D fragment. `attachment` is the placeholder atom (a dummy or a marked hydrogen) that stands
  * for the attachment partner; it is bonded to exactly one fragment atom and never becomes an atom itself. */
-export type FragmentTemplate = { atoms: MolecularAtom[]; bonds: { a: number; b: number; order: 1 | 2 | 3 }[]; charges: readonly number[]; attachment: number | null };
+export type FragmentTemplate = { atoms: MolecularAtom[]; bonds: { a: number; b: number; order: BondOrder }[]; charges: readonly number[]; attachment: number | null };
 /** Where a group attaches: an existing anchor atom and the positions of the hydrogens it may replace.
  * `atom` names an existing hydrogen; a free-valence position without one carries no `atom`. */
 export type AttachmentSite = { anchor: number; leaving: { position: Vec3; atom?: number }[] };

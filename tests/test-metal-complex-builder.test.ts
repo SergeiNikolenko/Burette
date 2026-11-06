@@ -109,7 +109,7 @@ test("Burette's OpenChemLib reader and Mol* read the coordination bonds and form
   for (const [id, { options }] of entries) {
     const complex = buildMetalComplex(options), text = sample(id), parsed = parseMolecule(text, "sdf");
     expect(parsed.atoms.map(atom => atom.element), id).toEqual(complex.atoms.map(atom => atom.element));
-    expect(parsed.bonds.filter(bond => bond.order === 0).map(bond => [bond.a, bond.b].sort((a, b) => a - b).join("-")).sort(), id)
+    expect(parsed.bonds.filter(bond => bond.order === 9).map(bond => [bond.a, bond.b].sort((a, b) => a - b).join("-")).sort(), id)
       .toEqual(complex.coordination.map(edge => [0, edge.a].join("-")).sort());
     const ocl = Molecule.fromMolfile(parsed.molfile);
     expect(Array.from({ length: ocl.getAllAtoms() }, (_, i) => ocl.getAtomCharge(i)).reduce((a, b) => a + b, 0), id).toBe(complex.charge);

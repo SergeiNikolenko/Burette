@@ -7,7 +7,7 @@ import "./workbench-layout.css";
 
 const Body = lazy(() => import("./metal-complex-builder").then(module => ({ default: module.MetalComplexBuilderBody })));
 
-/** Owns only the metal-complex request (`{ kind: "builder", builder: "metal" }`); the complex always opens as a new document. */
+/** Owns only the metal-complex request (`{ kind: "builder", builder: "metal" }`); the complex opens as a new document or inserts into the request's editable MOL/SDF. */
 export function MetalComplexBuilderDialogHost({ actions }: { actions: Pick<ShellActions, "openStructureRecords"> }) {
   const request = useWorkbenchDialogRequest();
   const [lifetime, setLifetime] = useState({ request, revision: 0 });
@@ -18,7 +18,7 @@ export function MetalComplexBuilderDialogHost({ actions }: { actions: Pick<Shell
   return <Dialog open={Boolean(metal)} onOpenChange={open => { if (!open) close(); }}>
     {metal ? <DialogContent aria-describedby={undefined} variant="form" size="wide" className="flex max-h-[88vh] flex-col gap-4 overflow-y-auto overscroll-contain">
       <Suspense fallback={<Spinner aria-label="Opening metal complex builder" />}>
-        <Body key={lifetime.revision} actions={actions} isCurrent={current} onDone={close} />
+        <Body key={lifetime.revision} actions={actions} document={metal.document} isCurrent={current} onDone={close} />
       </Suspense>
     </DialogContent> : null}
   </Dialog>;

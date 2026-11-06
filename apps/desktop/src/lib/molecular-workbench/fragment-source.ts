@@ -1,7 +1,7 @@
 import { ConformerGenerator, Molecule, Resources } from 'openchemlib';
 import resources from '../../../../../node_modules/openchemlib/dist/resources.json';
 import { appendHydrogens } from './hydrogen-geometry';
-import { editGraph, type GraphEditResult } from './graph-edit';
+import { editGraph, type BondOrder, type GraphEditResult } from './graph-edit';
 import { checkMoleculeSize, type MolecularStructure } from './molecular-graph';
 import { elementSymbol } from './elements';
 import { placeFragment, type AttachmentSite, type FragmentTemplate } from './fragment-insertion';
@@ -11,7 +11,7 @@ import type { MolecularAtom, Vec3 } from './types';
  * In SMILES, one `*` marks the attachment point; without it the first atom attaches through one of its hydrogens.
  * A built graph (a peptide or nucleic acid from its builder) has no attachment point and inserts as a separate molecule. */
 export type FragmentSource = { source: 'library'; id: string } | { source: 'smiles'; smiles: string }
-  | { source: 'graph'; name: string; atoms: (MolecularAtom & { charge?: number })[]; bonds: { a: number; b: number; order: 1 | 2 | 3 }[] };
+  | { source: 'graph'; name: string; atoms: (MolecularAtom & { charge?: number })[]; bonds: { a: number; b: number; order: BondOrder }[] };
 export type FragmentInsertion = { structure: GraphEditResult; name: string; anchor: number | null; replaced: number | null; bondLength: number | null; addedAtoms: number };
 type LibraryEntry = { id: string; category: string; name: string; elements: number[]; coords: number[]; bonds: number[]; charges?: number[] };
 

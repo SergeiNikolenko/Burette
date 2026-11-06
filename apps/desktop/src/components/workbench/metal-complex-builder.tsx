@@ -6,6 +6,8 @@ import { openGeneratedStructure } from "../../lib/workbench/generated-document-o
 import { resolveThemeMode, useSystemThemeMode } from "../../lib/theme";
 import { useSettingsStore } from "../../stores/settings-store";
 import type { ShellActions } from "../types";
+import type { ViewerDocument } from "../../types";
+import { InsertBuiltStructureButton } from "./insert-built-structure";
 import GridMolecule3D from "../grid-molecule-3d";
 import { Button } from "../ui/button";
 import { DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
@@ -34,8 +36,10 @@ function release(sites: SiteChoice[], site: number) {
   if (partner !== undefined) sites[partner] = { ligand: FILL };
 }
 
-export function MetalComplexBuilderBody({ actions, isCurrent, onDone }: {
-  actions: Pick<ShellActions, "openStructureRecords">; isCurrent: () => boolean; onDone: () => void;
+export function MetalComplexBuilderBody({ actions, document, isCurrent, onDone }: {
+  actions: Pick<ShellActions, "openStructureRecords">;
+  /** The active document: an editable MOL/SDF also offers Insert into it. */
+  document: ViewerDocument | null; isCurrent: () => boolean; onDone: () => void;
 }) {
   const [metal, setMetal] = useState("Pt");
   const [oxidationState, setOxidationState] = useState(2);
@@ -98,6 +102,14 @@ export function MetalComplexBuilderBody({ actions, isCurrent, onDone }: {
     } finally { if (submission.current === own) submission.current = null; }
   };
   const cancel = () => { submission.current = null; job.cancel(); };
+  // Insert reuses the preview of the current request, or builds it and shows it.
+  // Coordination edges insert as dative bonds, as the SDF writes them.
+  const built = async () => {
+    const result = currentPreview ?? await runMetalComplexTask(request);
+    if (latest.current === request) setPreview({ request, result });
+    const { atoms, bonds, coordination } = result.graph;
+    return { atoms, bonds: [...bonds, ...coordination.map(({ a, b }) => ({ a, b, order: 9 as const }))] };
+  };
   return <>
     <DialogHeader><DialogTitle>Build metal complex</DialogTitle></DialogHeader>
     <fieldset disabled={Boolean(job.running)} className="workbench-form min-w-0 border-0 p-0">
@@ -145,6 +157,7 @@ export function MetalComplexBuilderBody({ actions, isCurrent, onDone }: {
       {job.running ? <span className="workbench-status" role="status" aria-live="polite"><Spinner aria-label={job.running} />{job.running}</span> : null}
       <Button type="button" variant="outline" onClick={() => { if (job.running) cancel(); else onDone(); }}>Cancel</Button>
       <Button type="button" variant="outline" disabled={Boolean(job.running)} onClick={() => { void build(false); }}>Preview</Button>
+      <InsertBuiltStructureButton document={document} name={currentPreview?.name ?? "Metal complex"} disabled={Boolean(job.running)} build={built} />
       <Button type="button" disabled={Boolean(job.running)} onClick={() => { void build(true); }}>Create</Button>
     </DialogFooter>
   </>;
