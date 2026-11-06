@@ -38,9 +38,10 @@
     let binding;
     try { binding = await science.graphBinding(viewer); }
     catch { fail('Coordinate editing needs a single MOL or SDF structure.'); }
-    // graphBinding also identifies XYZ sources, which carry no bond graph to move fragments along.
-    if (!['mol', 'sdf'].includes(binding.sourceFormat)) fail('Coordinate editing needs a single MOL or SDF structure.');
-    if (binding.atomCount > 256 || binding.frameCount !== 1 || binding.frameIndex !== 0) fail('Coordinate editing needs one MOL or SDF record of up to 256 atoms.');
+    // XYZ sources carry no bond graph to move fragments along; the host edits them in Geometry rows.
+    if (!['mol', 'sdf', 'xyz'].includes(binding.sourceFormat)) fail('Coordinate editing needs a single MOL, SDF or XYZ structure.');
+    if (binding.frameCount !== 1 || binding.frameIndex !== 0) fail('Coordinate editing needs a single geometry.');
+    if (binding.sourceFormat !== 'xyz' && binding.atomCount > 256) fail('Coordinate editing needs one MOL or SDF record of up to 256 atoms.');
     if (viewer.plugin.state.data.cells.get(target.transform.ref) !== target || String(points(viewer, target, kind)) !== String(atoms)) fail('The measurement changed. Open it again.');
     const { structureRef, modelRef, trajectoryRef, frameIndex, frameCount, atomCount, sourceSha256, sourceFormat } = binding;
     return { kind, atoms, structureRef, modelRef, trajectoryRef, frameIndex, frameCount, atomCount, sourceSha256, sourceFormat };

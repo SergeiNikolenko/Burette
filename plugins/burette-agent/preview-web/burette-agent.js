@@ -988,6 +988,7 @@
     } catch (error) {
       if (science && /scientific attachments/.test(error?.message || '')) throw coded('BUSY', 'The scene is being saved. Export the session again.');
       if (science && error?.message === 'Wait for the scene to finish opening.') throw coded('BUSY', 'The scene is opening. Export the session again.');
+      if (science && error?.message === 'Wait for the frame comparison to finish.') throw coded('BUSY', 'The frame comparison is being updated. Export the session again.');
       throw error;
     }
     const requestedMaxBytes = Number(args.maxBytes);

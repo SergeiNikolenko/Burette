@@ -123,6 +123,17 @@
   const SCIENCE_BYTE_LIMIT = 21 * 1024 * 1024;
   const SCIENCE_ATOM_LIMIT = 10000;
   const scienceSessions = new WeakMap();
+  const scienceImportListeners = new WeakMap();
+  function scienceImportPending(plugin) {
+    const session = scienceSessions.get(plugin);
+    return Boolean(session?.importLoading || (session?.importToken && !session.lastManifestSha256
+      && plugin?.managers?.asset?.assets?.some(({ asset }) => String(asset?.id).startsWith(SCIENCE_PREFIX))));
+  }
+  function notifyScienceImport(plugin) {
+    for (const listener of scienceImportListeners.get(plugin) || []) {
+      try { listener(); } catch (error) { console.error(error); }
+    }
+  }
   function scienceSession(plugin) {
     let session = scienceSessions.get(plugin);
     if (!session) {
@@ -131,15 +142,171 @@
     }
     return session;
   }
-  // The one structure a scientific source describes: its refs, frame, atoms in source order.
+  // Comparison roots explicitly name their scientific owner. This marker persists
+  // in MOLX, but is not sufficient by itself: every root must share the exact
+  // trajectory and complete source atom ordering. Unrelated roots remain invalid.
+  const SCIENCE_COMPARISON_TAG = 'burette-trajectory-comparison-v1:';
+  const TRAJECTORY_ALL_TAG = 'burette-trajectory-all-v1:';
+  const comparisonJobs = new WeakSet();
+
+  // Preserve the source model and authored comparisons. Only additions owned by
+  // this operation are removed when leaving All; edits commit as one transaction.
+  async function setTrajectoryComparisons(viewer, enabled, represent, signal) {
+    const plugin = viewer?.plugin;
+    if (comparisonJobs.has(plugin)) throw new Error('Wait for the frame comparison to finish.');
+    if (scienceSessions.get(plugin)?.exporting) throw new Error('The scene is already being saved.');
+    if (scienceImportPending(plugin)) throw new Error('Wait for scientific data to finish restoring.');
+    const owner = scienceBinding(viewer);
+    const state = plugin.state.data;
+    const roots = plugin.managers.structure.hierarchy.current.structures;
+    const marker = TRAJECTORY_ALL_TAG + owner.structureRef;
+    const owned = roots.filter(root => root.cell.transform.tags?.includes(marker));
+    const checkCancelled = () => signal?.throwIfAborted();
+    checkCancelled();
+    if (enabled && typeof represent !== 'function') throw new Error('Frame comparison representations are unavailable.');
+    const present = new Set(roots.map(root => scienceBindingOfRoot(viewer, root.cell).frameIndex));
+    if (enabled && owner.frameCount > 256) throw new Error('This comparison would exceed the 256-structure scene limit.');
+    const missing = Array.from({ length: enabled ? owner.frameCount : 0 }, (_, index) => index).filter(index => !present.has(index));
+    if (enabled && roots.length + missing.length > 256) throw new Error('This comparison would exceed the 256-structure scene limit.');
+    comparisonJobs.add(plugin);
+    try {
+      await plugin.dataTransaction(async () => {
+        if (enabled) {
+          for (const index of missing) {
+            checkCancelled();
+            const model = await plugin.builders.structure.createModel(owner.trajectoryRef, { modelIndex: index });
+            const structure = await plugin.builders.structure.createStructure(model);
+            const frame = scienceBindingOfRoot(viewer, state.cells.get(structure.ref));
+            if (frame.frameIndex !== index || frame.atomCount !== owner.atomCount
+              || frame.elements.some((element, atom) => element !== owner.elements[atom])
+              || !frame.positions.every(Number.isFinite)) throw new Error(`Frame ${index + 1} does not preserve the source atom ordering and finite coordinates.`);
+            await state.build().to(structure).tag([SCIENCE_COMPARISON_TAG + owner.structureRef, marker]).commit();
+            await represent(structure, index);
+          }
+        } else {
+          const refs = new Set(owned.map(root => root.cell.transform.ref));
+          const update = state.build();
+          const removedModels = new Set();
+          for (const root of owned) {
+            const report = scienceBindingOfRoot(viewer, root.cell);
+            const children = Array.from(state.tree.children.get(report.modelRef) || []);
+            // A model can also own an authored sibling: do not delete that sibling.
+            if (children.length && children.every(ref => refs.has(ref))) {
+              if (!removedModels.has(report.modelRef)) update.delete(report.modelRef);
+              removedModels.add(report.modelRef);
+            } else update.delete(root.cell.transform.ref);
+          }
+          await update.commit();
+        }
+        checkCancelled();
+      }, { rethrowErrors: true });
+    } finally {
+      comparisonJobs.delete(plugin);
+    }
+    // Mol* can roll back a failed state update without throwing. Verify the
+    // committed graph rather than reporting the requested state as successful.
+    const current = scienceBinding(viewer);
+    const committed = plugin.managers.structure.hierarchy.current.structures;
+    if (current.structureRef !== owner.structureRef || current.modelRef !== owner.modelRef || current.frameIndex !== owner.frameIndex
+      || (enabled ? new Set(committed.map(root => scienceBindingOfRoot(viewer, root.cell).frameIndex)).size !== owner.frameCount
+        : committed.some(root => root.cell.transform.tags?.includes(marker)))) throw new Error('The frame comparison could not be committed.');
+    return { frameCount: owner.frameCount, structureCount: committed.length };
+  }
+  // Align fits every comparison onto the source's displayed frame by source atom
+  // order. Matrices live in tagged conformation transforms between each comparison
+  // and its representations, so they persist in MOLX while comparison coordinates,
+  // the source structure and its science stay untouched. The caller supplies the
+  // rigid fit and Mol* transformer to keep this module independent of the viewer.
+  const TRAJECTORY_ALIGN_TAG = 'burette-trajectory-align-v1:';
+  async function setTrajectoryComparisonAlignment(viewer, enabled, fit, transformer) {
+    const plugin = viewer?.plugin;
+    if (comparisonJobs.has(plugin)) throw new Error('Wait for the frame comparison to finish.');
+    if (scienceSessions.get(plugin)?.exporting) throw new Error('The scene is already being saved.');
+    if (scienceImportPending(plugin)) throw new Error('Wait for scientific data to finish restoring.');
+    if (!transformer) throw new Error('Mol* conformation transforms are unavailable.');
+    if (enabled && typeof fit !== 'function') throw new Error('Frame alignment is unavailable.');
+    const owner = scienceBinding(viewer);
+    const state = plugin.state.data;
+    const tag = TRAJECTORY_ALIGN_TAG + owner.structureRef;
+    const comparisons = plugin.managers.structure.hierarchy.current.structures.filter(root => root.cell.transform.ref !== owner.structureRef);
+    if (enabled && !comparisons.length) throw new Error('Show all frames before aligning them.');
+    const reference = Array.from({ length: owner.atomCount }, (_, atom) => Array.from(owner.positions.subarray(atom * 3, atom * 3 + 3)));
+    const update = state.build();
+    let rmsdTotal = 0;
+    for (const root of comparisons) {
+      const existing = root.transform?.cell;
+      if (existing && !existing.transform.tags?.includes(tag)) throw new Error('A frame comparison already has another transform.');
+      if (!enabled) {
+        if (existing) update.delete(existing.transform.ref);
+        continue;
+      }
+      const frame = scienceBindingOfRoot(viewer, root.cell);
+      const moving = Array.from({ length: frame.atomCount }, (_, atom) => Array.from(frame.positions.subarray(atom * 3, atom * 3 + 3)));
+      const result = fit(moving, reference);
+      if (!result?.matrix || result.matrix.length !== 16 || !Array.from(result.matrix).every(Number.isFinite) || !Number.isFinite(result.rmsd)) {
+        throw new Error(`Frame ${frame.frameIndex + 1} could not be aligned.`);
+      }
+      const params = { transform: { name: 'matrix', params: { data: Array.from(result.matrix), transpose: false } } };
+      if (existing) update.to(existing).update(params);
+      else update.to(root.cell).insert(transformer, params, { tags: tag });
+      rmsdTotal += result.rmsd;
+    }
+    await plugin.runTask(state.updateTree(update, { revertOnError: true, revertIfAborted: true }));
+    const mode = trajectoryComparisonMode(viewer);
+    if (!mode || mode.aligned !== Boolean(enabled)) throw new Error('The frame alignment could not be committed.');
+    return { aligned: mode.aligned, structureCount: comparisons.length, rmsd: enabled ? rmsdTotal / comparisons.length : null };
+  }
+  // The toolbar state of a scientific trajectory scene, or null for other scenes.
+  function trajectoryComparisonMode(viewer) {
+    let owner;
+    try { owner = scienceBinding(viewer); } catch (_) { return null; }
+    if (owner.frameCount < 2) return null;
+    const roots = viewer.plugin.managers.structure.hierarchy.current.structures;
+    const comparisons = roots.filter(root => root.cell.transform.ref !== owner.structureRef);
+    const alignTag = TRAJECTORY_ALIGN_TAG + owner.structureRef;
+    return {
+      frameIndex: owner.frameIndex,
+      frameCount: owner.frameCount,
+      // Stepping under All can show one frame twice: N + 1 roots within the 256 limit.
+      available: owner.frameCount < 256,
+      all: roots.some(root => root.cell.transform.tags?.includes(TRAJECTORY_ALL_TAG + owner.structureRef)),
+      // Stepping the source away from its frame leaves that frame unshown.
+      complete: new Set(roots.map(root => root.model?.cell?.transform.params?.modelIndex ?? 0)).size === owner.frameCount,
+      aligned: comparisons.length > 0 && comparisons.every(root => root.transform?.cell?.transform.tags?.includes(alignTag)),
+    };
+  }
   function scienceBinding(viewer) {
     const plugin = viewer?.plugin;
     const session = scienceSessions.get(plugin);
     if (session?.importLoading || appendOwners.has(plugin)) throw new Error('Wait for the scene to finish opening.');
     const roots = plugin?.managers?.structure?.hierarchy?.current?.structures;
-    if (!Array.isArray(roots) || roots.length !== 1) throw new Error('Scientific data is saved with scenes of exactly one structure.');
-    const structureCell = roots[0].cell;
-    if (appendedStructureRefs.get(plugin)?.has(structureCell?.transform.ref)) throw Object.assign(new Error('The original scientific structure was removed from this scene.'), { code: 'SCIENCE_SOURCE_REMOVED' });
+    const invalid = () => { throw new Error('Scientific data is saved with one source structure and its validated trajectory comparisons.'); };
+    if (!Array.isArray(roots) || !roots.length || roots.length > 256) return invalid();
+    const marked = roots.map(root => ({ root, tags: (root.cell?.transform.tags || []).filter(tag => tag.startsWith(SCIENCE_COMPARISON_TAG)) }));
+    const owners = marked.filter(entry => !entry.tags.length);
+    if (owners.length !== 1) return invalid();
+    const owner = owners[0].root;
+    if (appendedStructureRefs.get(plugin)?.has(owner.cell?.transform.ref)) throw Object.assign(new Error('The original scientific structure was removed from this scene.'), { code: 'SCIENCE_SOURCE_REMOVED' });
+    const report = scienceBindingOfRoot(viewer, owner.cell);
+    for (const entry of marked) {
+      if (entry.root === owner) continue;
+      if (entry.tags.length !== 1 || entry.tags[0] !== SCIENCE_COMPARISON_TAG + report.structureRef) return invalid();
+      const comparison = scienceBindingOfRoot(viewer, entry.root.cell);
+      const model = plugin.state.data.cells.get(comparison.modelRef);
+      if (comparison.trajectoryRef !== report.trajectoryRef || comparison.modelRef === report.modelRef
+        || comparison.frameCount !== report.frameCount || comparison.frameCount < 2
+        || model?.transform.params?.modelIndex !== comparison.frameIndex
+        || comparison.frameIndex >= comparison.frameCount
+        || comparison.atomCount !== report.atomCount
+        || comparison.elements.some((element, index) => element !== report.elements[index])
+        || entry.root.cell.obj.data.units.some(unit => unit.model !== model.obj.data)) return invalid();
+    }
+    return report;
+  }
+  // Its refs, selected frame and atom coordinates in source order.
+  function scienceBindingOfRoot(viewer, structureCell) {
+    const plugin = viewer.plugin;
+    const session = scienceSessions.get(plugin);
     const structure = structureCell?.obj?.data;
     if (!structure) throw new Error('Wait for the scene to load.');
     const cells = plugin.state.data.cells;
@@ -224,7 +391,24 @@
     for (let index = 0; index < positions.length; index++) if (!(Math.abs(positions[index] - current.positions[index]) <= 1e-3)) return false;
     return true;
   }
+  async function serializeSceneExclusively(plugin, run) {
+    const session = scienceSession(plugin);
+    while (session.exporting) await session.exporting;
+    if (comparisonJobs.has(plugin)) throw new Error('Wait for the frame comparison to finish.');
+    if (session.importLoading) throw new Error('Wait for the scene to finish opening.');
+    let release;
+    session.exporting = new Promise(resolve => { release = resolve; });
+    session.publicExporting = true;
+    try {
+      return await run();
+    } finally {
+      session.publicExporting = false;
+      session.exporting = null;
+      release();
+    }
+  }
   async function serializeScience(viewer, request, params) {
+    if (comparisonJobs.has(viewer?.plugin)) throw new Error('Wait for the frame comparison to finish.');
     const plugin = viewer?.plugin;
     const manager = plugin?.managers?.asset;
     const assets = request?.assets;
@@ -281,12 +465,14 @@
     session.lastManifestSha256 = null;
     session.lastSourceSha256 = null;
     session.present = false;
+    notifyScienceImport(plugin);
     return session.importToken;
   }
   function completeScienceImport(plugin, token) {
     const session = scienceSessions.get(plugin);
     if (!session || session.importToken !== token) return false;
     session.importLoading = false;
+    notifyScienceImport(plugin);
     return true;
   }
   // Transfer imported assets only after the host validated the same archive manifest.
@@ -348,6 +534,7 @@
       session.lastManifestSha256 = receipt;
       session.lastSourceSha256 = document.source?.extension === 'sdf' ? document.source.sha256 : null;
       session.present = true;
+      notifyScienceImport(plugin);
       return true;
     } finally {
       session.exporting = null;
@@ -374,6 +561,10 @@
     science: {
       prefix: SCIENCE_PREFIX,
       binding: scienceBinding,
+      setTrajectoryComparisons,
+      setTrajectoryComparisonAlignment,
+      trajectoryComparisonMode,
+      comparisonPending: plugin => comparisonJobs.has(plugin),
       bindingReport: scienceBindingReport,
       sdfBinding: sdfSourceBinding,
       graphBinding: graphSourceBinding,
@@ -382,22 +573,23 @@
       completeImport: completeScienceImport,
       adoptValidated: adoptValidatedScience,
       present: plugin => Boolean(scienceSessions.get(plugin)?.present),
-      // Another serialization (an agent session export) runs alone and sees no attachments.
+      importPending: scienceImportPending,
+      subscribeImport(plugin, listener) {
+        let listeners = scienceImportListeners.get(plugin);
+        if (!listeners) scienceImportListeners.set(plugin, listeners = new Set());
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      // Full scene saves preserve existing attachments.
+      serializeSnapshot(plugin, params) {
+        return serializeSceneExclusively(plugin, () => plugin.managers.snapshot.serialize(params));
+      },
+      // Bounded agent session exports must not include scientific attachments.
       async exclusive(plugin, run) {
-        const session = scienceSession(plugin);
-        while (session.exporting) await session.exporting;
-        if (session.importLoading) throw new Error('Wait for the scene to finish opening.');
-        if (plugin?.managers?.asset?.assets?.some(({ asset }) => String(asset?.id).startsWith(SCIENCE_PREFIX))) throw new Error('The scene holds scientific attachments.');
-        let release;
-        session.exporting = new Promise(resolve => { release = resolve; });
-        session.publicExporting = true;
-        try {
-          return await run();
-        } finally {
-          session.publicExporting = false;
-          session.exporting = null;
-          release();
-        }
+        return serializeSceneExclusively(plugin, () => {
+          if (plugin?.managers?.asset?.assets?.some(({ asset }) => String(asset?.id).startsWith(SCIENCE_PREFIX))) throw new Error('The scene holds scientific attachments.');
+          return run();
+        });
       },
     },
     sequence(viewer) {
