@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import type { InputConstraint, MolecularAtom } from "../molecular-workbench/types";
 import type { ViewerDocument } from "../../types";
 import type { MeasurementDialogRequest } from "./measurement-request";
+import type { ZmatrixDocument } from "../../../../../scripts/zmatrix-document.mjs";
 
 export type WorkbenchDialogKind = "builder" | "supercell" | "assembly" | "input" | "properties" | "smiles" | "symmetry" | "measurement";
 export type BuilderKind = "polymer" | "peptide" | "nucleic" | "metal";
@@ -13,6 +14,8 @@ export type WorkbenchDialogRequest = {
   /** Geometry tab state handed to input export: the edited atoms and their constraints. */
   atoms?: MolecularAtom[];
   constraints?: InputConstraint[];
+  /** The Z-matrix panel's definition of those atoms, for a Z-matrix input file. */
+  definition?: ZmatrixDocument;
   smiles?: string;
   /** Builder tab the builder dialog opens on. */
   builder?: BuilderKind;

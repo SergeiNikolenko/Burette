@@ -1,15 +1,42 @@
 import type { MolecularAtom, UnitCell, InputConstraint } from "./types";
 import { ELEMENT_SYMBOLS as elements } from "./elements";
 import { cartesianToFractional } from "./crystal";
+import { resolveZmatrixDocument, type ZmatrixDocument } from "../../../../../scripts/zmatrix-document.mjs";
+import { zmatrixDocumentFromAtoms } from "../../../../../scripts/zmatrix-export.mjs";
 
 export type QuantumEngine = "orca" | "gaussian" | "psi4" | "cp2k";
+export type CoordinateStyle = "cartesian" | "zmatrix";
 export type { InputConstraint } from "./types";
 export type QuantumInputOptions = {
   engine: QuantumEngine; charge: number; multiplicity: number; method: string; basis: string;
   task?: "energy" | "optimize" | "frequencies"; constraints?: InputConstraint[]; cell?: UnitCell;
+  coordinates?: CoordinateStyle;
+  /** The Z-matrix the user wrote for these atoms; without it one is built in atom order. */
+  definition?: ZmatrixDocument;
 };
+/** Programs whose geometry can be a Z-matrix: Gaussian and Psi4 natively, ORCA as `* gzmt`. */
+export const ZMATRIX_ENGINES: readonly QuantumEngine[] = ["orca", "gaussian", "psi4"];
 
 const number = (value: number) => value.toFixed(8);
+
+/** Z-matrix rows of the structure, as Avogadro's `$$zmat$$` block writes them: one
+ * row per atom in atom order, references by row number. Gaussian and Psi4 keep the
+ * definition's shared variables; ORCA reads numbers only. */
+function zmatrixGeometry(atoms: MolecularAtom[], options: QuantumInputOptions, constraints: InputConstraint[]) {
+  const definition = options.definition ?? zmatrixDocumentFromAtoms(atoms.map(atom => ({ element: atom.element, position: [atom.x, atom.y, atom.z] })));
+  const real = definition.rows.filter(row => row.element !== "X");
+  if (real.length !== atoms.length || real.some((row, i) => row.element !== atoms[i].element)) throw new Error("The Z-matrix does not match the structure's atoms.");
+  // A dummy point shifts the row numbers that constraints would have to name.
+  if (real.length !== definition.rows.length && constraints.length) throw new Error("This geometry needs a dummy point in its Z-matrix; export constraints with Cartesian coordinates.");
+  const variables = options.engine !== "orca" ? definition.variables : [];
+  const rows: { element: string; refs: number[]; values: (number | string)[] }[] = variables.length ? definition.rows : resolveZmatrixDocument(definition);
+  const dummy = options.engine === "orca" ? "DA" : "X";
+  const lines = rows.map(row => [row.element === "X" ? dummy : row.element, ...row.refs.flatMap((ref, i) => {
+    const value = row.values[i];
+    return [ref + 1, typeof value === "number" ? number(value) : value];
+  })].join(" ")).join("\n");
+  return { lines, variables: variables.map(({ name, value }) => `${name}=${number(value)}`) };
+}
 
 // Input-file generation only: these strings do not run a quantum-chemistry engine.
 // Constraints freeze the current coordinate, using each engine's documented index convention.
@@ -27,15 +54,19 @@ export function generateQuantumInput(atoms: MolecularAtom[], options: QuantumInp
     if (!count || constraint.atoms.length !== count || new Set(constraint.atoms).size !== count || constraint.atoms.some(index => !Number.isInteger(index) || index < 0 || index >= atoms.length)) throw new Error("A constraint references invalid atom indices.");
   }
   const coordinates = atoms.map(atom => `${atom.element} ${number(atom.x)} ${number(atom.y)} ${number(atom.z)}`).join("\n");
+  if (options.coordinates === "zmatrix" && !ZMATRIX_ENGINES.includes(engine)) throw new Error("CP2K reads Cartesian coordinates only.");
+  const zmatrix = options.coordinates === "zmatrix" ? zmatrixGeometry(atoms, options, constraints) : null;
   if (engine === "orca") {
     const keywords = { energy: "SP", optimize: "Opt", frequencies: "Freq" }[task];
     const lines = constraints.map(constraint => `    { ${{ freeze: "C", distance: "B", angle: "A", dihedral: "D" }[constraint.kind]} ${constraint.atoms.join(" ")} C }`);
-    return { extension: "inp", text: `! ${method} ${basis} ${keywords}\n${lines.length ? `%geom\n  Constraints\n${lines.join("\n")}\n  end\nend\n` : ""}\n* xyz ${charge} ${multiplicity}\n${coordinates}\n*\n` };
+    return { extension: "inp", text: `! ${method} ${basis} ${keywords}\n${lines.length ? `%geom\n  Constraints\n${lines.join("\n")}\n  end\nend\n` : ""}\n* ${zmatrix ? "gzmt" : "xyz"} ${charge} ${multiplicity}\n${zmatrix?.lines ?? coordinates}\n*\n` };
   }
   if (engine === "gaussian") {
     const keywords = { energy: "SP", optimize: constraints.length ? "Opt=ModRedundant" : "Opt", frequencies: "Freq" }[task];
     const lines = constraints.map(constraint => `${{ freeze: "X", distance: "B", angle: "A", dihedral: "D" }[constraint.kind]} ${constraint.atoms.map(index => index + 1).join(" ")} F`);
-    return { extension: "gjf", text: `#p ${method}/${basis} ${keywords}\n\nBurette calculation\n\n${charge} ${multiplicity}\n${coordinates}\n\n${lines.length ? `${lines.join("\n")}\n\n` : ""}` };
+    // Variables follow the geometry after a blank line, then the ModRedundant section.
+    const variables = zmatrix?.variables.length ? `${zmatrix.variables.join("\n")}\n\n` : "";
+    return { extension: "gjf", text: `#p ${method}/${basis} ${keywords}\n\nBurette calculation\n\n${charge} ${multiplicity}\n${zmatrix?.lines ?? coordinates}\n\n${variables}${lines.length ? `${lines.join("\n")}\n\n` : ""}` };
   }
   if (engine === "psi4") {
     const settings = new Map<string, string[]>();
@@ -45,7 +76,8 @@ export function generateQuantumInput(atoms: MolecularAtom[], options: QuantumInp
     }
     const frozen = [...settings].map(([key, entries]) => `  ${key} = "${entries.join(" ")}"`).join("\n");
     const action = { energy: "energy", optimize: "optimize", frequencies: "frequency" }[task];
-    return { extension: "dat", text: `molecule molecule {\n${charge} ${multiplicity}\n${coordinates}\nunits angstrom\nno_com\nno_reorient\nsymmetry c1\n}\n\nset {\n  basis ${basis}\n  reference ${multiplicity === 1 ? "rhf" : "uhf"}\n}\n${frozen ? `\nset optking {\n${frozen}\n}\n` : ""}\n${action}('${method}')\n` };
+    const geometry = zmatrix ? [zmatrix.lines, ...zmatrix.variables.map(assignment => assignment.replace("=", " = "))].join("\n") : coordinates;
+    return { extension: "dat", text: `molecule molecule {\n${charge} ${multiplicity}\n${geometry}\nunits angstrom\nno_com\nno_reorient\nsymmetry c1\n}\n\nset {\n  basis ${basis}\n  reference ${multiplicity === 1 ? "rhf" : "uhf"}\n}\n${frozen ? `\nset optking {\n${frozen}\n}\n` : ""}\n${action}('${method}')\n` };
   }
   if (constraints.some(constraint => constraint.kind !== "freeze")) throw new Error("CP2K export currently supports frozen atoms only.");
   if (!["PBE", "BLYP"].includes(method.toUpperCase())) throw new Error("CP2K export supports PBE and BLYP with matching GTH pseudopotentials.");

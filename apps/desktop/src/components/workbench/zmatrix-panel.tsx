@@ -444,7 +444,7 @@ export function ZmatrixPanel({ document, actions, science, text }: {
   const exportInput = () => {
     try {
       const inputConstraints = zmatrixConstraints(definition, constraints.frozen, constraints.locked, labels);
-      openWorkbenchDialog({ kind: "input", document, atoms: science.atoms.map((atom) => ({ ...atom })), constraints: inputConstraints.map(({ kind, atoms }) => ({ kind, atoms })) });
+      openWorkbenchDialog({ kind: "input", document, atoms: science.atoms.map((atom) => ({ ...atom })), constraints: inputConstraints.map(({ kind, atoms }) => ({ kind, atoms })), definition });
     } catch (caught) {
       setError(message(caught));
     }

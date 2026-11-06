@@ -13,6 +13,21 @@ ORCA, Gaussian and Psi4 support frozen atoms, distances, angles and dihedrals he
 CP2K supports frozen atoms and the PBE/BLYP functionals with GTH pseudopotentials.
 Unsupported CP2K constraints or functionals fail explicitly.
 
+**Export input file…** opens from the command palette for SDF, MOL, PDB, CIF,
+POSCAR, XYZ and the scientific coordinate formats, from the Edit panel's More
+actions (with the unsaved draft and its held constraints), and from Geometry and
+Z-matrix. PDB atoms come from the first model's ATOM and HETATM records, first
+alternate location only.
+
+ORCA, Gaussian and Psi4 take a **Coordinates** choice, as Avogadro's generators
+do with their `Coordinates` option and `$$zmat$$` block. The Z-matrix keeps the
+atom order: one row per atom, references by row number, so constraint numbers
+stay those of the atoms. Opened from the Z-matrix panel, the file keeps that
+definition's references and shared variables (Gaussian's variable section, Psi4
+assignments; ORCA's `* gzmt` gets the values). A geometry whose first atoms lie
+on one line gets one dummy point (`X`, ORCA `DA`); that shifts row numbers, so
+constraints then need Cartesian coordinates. CP2K reads Cartesian only.
+
 An explicit CP2K cell retains its three lattice vectors and Cartesian positions.
 An isolated molecule is centered in a box with six angstroms of padding on each
 side; both the cell and electrostatics are nonperiodic, using the Wavelet solver.
@@ -39,7 +54,9 @@ For example, ORCA's `Freq` route requires a supported analytical Hessian method.
 vp run test:quantum-input-export
 ```
 
-The tests cover all twelve engine/task routes, nonsequential atom indices for each
+The tests cover all twelve engine/task routes, Z-matrix files that place the
+same atoms again for Gaussian, ORCA and Psi4, kept variables, the dummy point,
+PDB reading, nonsequential atom indices for each
 constraint arity, coordinate order, periodic cells and deliberate rejection paths.
 They validate generated input, without executing a quantum-chemistry engine.
 The export dialog's source readiness, clipboard lifecycle and file saving have

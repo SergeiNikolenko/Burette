@@ -16,7 +16,7 @@ export function InputExportDialogHost({ actions }: { actions: ShellActions }) {
   return (
     <Dialog open={Boolean(input)} onOpenChange={(open) => { if (!open && input) closeWorkbenchDialog(); }}>
       {input ? <DialogContent variant="form" size="wide" className="flex max-h-[88vh] flex-col gap-4 overflow-y-auto" aria-describedby={undefined}>
-        <InputExportDialogBody key={lifetime.revision} document={input.document!} actions={actions} atoms={input.atoms} constraints={input.constraints} />
+        <InputExportDialogBody key={lifetime.revision} document={input.document!} actions={actions} atoms={input.atoms} constraints={input.constraints} definition={input.definition} />
       </DialogContent> : null}
     </Dialog>
   );

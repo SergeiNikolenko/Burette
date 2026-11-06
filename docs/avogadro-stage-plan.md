@@ -208,6 +208,12 @@ current one has open code or acceptance items.
   using the definition or coordinate-block presets, excluding dummy rows.
 - **Done when:** SDF → Export input file → Gaussian Z-matrix and ORCA Cartesian
   → both files parse back to the same geometry with real atom numbering.
+- **Done (2026-11-06):** the palette, Edit's More actions, Geometry and Z-matrix
+  open the dialog; PDB reads its first model. Gaussian and Psi4 write Z-matrix
+  rows in atom order (the Z-matrix panel's variables kept), ORCA `* gzmt`.
+  Browser check on Gauss: ethanol SDF from the palette and from Edit, light and
+  dark; the saved Gaussian Z-matrix places the atoms again within 6e-9 Å and the
+  ORCA Cartesian file keeps them; `mini.pdb` exports from the palette.
 - **Checks:** `test:quantum-input-export`, `test:input-export`.
 
 ## Stage 5. Scientific readers: complete CJSON and multi-frame orbitals

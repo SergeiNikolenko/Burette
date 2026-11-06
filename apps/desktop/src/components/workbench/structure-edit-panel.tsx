@@ -9,6 +9,7 @@ import { flatDepiction, resolveConstraints, type GeometryConstraint, type Optimi
 import type { EnergyModelChoice } from "../../lib/molecular-workbench/energy-models";
 import { energyModelName } from "../../lib/molecular-workbench/external-energy-models";
 import { useViewerAtomSelection } from "../../lib/workbench/selection";
+import { openWorkbenchDialog } from "../../lib/workbench/dialog-store";
 import { useLogicalSource } from "../../lib/science-session/state";
 import { useWorkspaceMenus } from "../workspace-menus";
 import { useSourceEditing } from "../../lib/source-editing/context";
@@ -343,6 +344,8 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
             <DropdownMenuItem onSelect={() => setAdjustingPh(true)}>Adjust hydrogens for pH…</DropdownMenuItem>
             {flatDepiction(structure)
               ? <DropdownMenuItem onSelect={() => void renumbering({ kind: "prepare-3d" })}>Generate 3D coordinates</DropdownMenuItem> : null}
+            <DropdownMenuItem onSelect={() => openWorkbenchDialog({ kind: "input", document, atoms: structure.atoms.map((atom) => ({ ...atom })),
+              constraints: constraints.map(({ kind, atoms: indices }) => ({ kind, atoms: indices })) })}>Export input file…</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
         {auto.status}

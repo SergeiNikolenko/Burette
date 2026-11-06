@@ -1,5 +1,6 @@
 import { polymerSourceFormat } from "./workbench/polymer-tool";
 import { openWorkbenchDialog } from "./workbench/dialog-store";
+import { inputExportSupportsDocument } from "./workbench/structure";
 import type { ShellActions, ShellViewState } from "../components/types";
 import { parsePdbFetchCommand, parseSmilesCommand } from "./structure-fetch";
 import type { ViewerPreferences } from "../types";
@@ -58,6 +59,10 @@ export function buildShellCommands(
       id: "workbench-nucleic", group: "Suggested", label: "Build DNA or RNA…", description: "Create a DNA or RNA helix",
       run: () => openWorkbenchDialog({ kind: "builder", builder: "nucleic", document: state.activeDocument }),
     },
+    ...(inputExportSupportsDocument(state.activeDocument) ? [{
+      id: "workbench-input-export", group: "Suggested", label: "Export input file…", description: "",
+      run: () => openWorkbenchDialog({ kind: "input", document: state.activeDocument }),
+    }] : []),
     {
       id: "workbench-assembly", group: "Suggested", label: "Build biological assembly…", description: "",
       run: () => openWorkbenchDialog({ kind: "assembly", document: state.activeDocument }),

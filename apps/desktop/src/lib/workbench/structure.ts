@@ -1,4 +1,5 @@
 import { periodicCrystalFormat } from "../molecular-workbench/crystal-io";
+import { ELEMENT_SYMBOLS } from "../molecular-workbench/elements";
 import { readUnitCell } from "../molecular-workbench/crystal";
 import type { MolecularStructure } from "../molecular-workbench/chemistry";
 import { runChemistryTask } from "../molecular-workbench/compute-client";
@@ -54,6 +55,38 @@ export async function readWorkbenchSource(document: ViewerDocument, text: string
   const scientific = await runReaderTask({ action: "parse", name: `${title}.${extension}`, text }, { signal });
   const atoms = extension === "xyz" ? scientific.frames[0].atoms : scientific.atoms;
   return { atoms, cell: readCell(text), title, graphText: serializeXyz(atoms, title), graphFormat: "xyz" };
+}
+
+const PDB_FORMATS = new Set(["pdb", "ent"]);
+
+/** Documents a quantum input file can be written for: the workbench formats and PDB. */
+export function inputExportSupportsDocument(document: ViewerDocument | null): document is ViewerDocument {
+  if (!document) return false;
+  const workbench: boolean = workbenchSupportsDocument(document);
+  return workbench || (document.renderer === "molstar" && !document.mergedCollection && !document.dockingRequest && PDB_FORMATS.has(sourceExtension(document)));
+}
+
+export const isPdbDocument = (document: ViewerDocument) => PDB_FORMATS.has(sourceExtension(document));
+
+/** ATOM and HETATM records of the first model, first alternate location only, with
+ * the element from columns 77–78 or, without one, from the atom name. */
+export function readPdbAtoms(text: string): MolecularAtom[] {
+  const atoms: MolecularAtom[] = [];
+  let altLoc: string | null = null;
+  for (const line of text.split(/\r?\n/u)) {
+    if (line.startsWith("ENDMDL")) break;
+    if (!line.startsWith("ATOM  ") && !line.startsWith("HETATM")) continue;
+    const alt = line[16]?.trim() ?? "";
+    if (alt && (altLoc ??= alt) !== alt) continue;
+    const name = line.slice(12, 16);
+    const raw = line.slice(76, 78).trim() || (name[0] === " " || /\d/u.test(name[0]) ? name.trim().replace(/^\d+/u, "")[0] : name.trim().slice(0, 2)) || "";
+    const element = raw.length > 1 ? raw[0].toUpperCase() + raw.slice(1).toLowerCase() : raw.toUpperCase();
+    const [x, y, z] = [line.slice(30, 38), line.slice(38, 46), line.slice(46, 54)].map(Number);
+    if (!ELEMENT_SYMBOLS.includes(element) || ![x, y, z].every(Number.isFinite)) throw new Error(`PDB atom ${atoms.length + 1} has no element or coordinates.`);
+    atoms.push({ element, x, y, z });
+  }
+  if (!atoms.length) throw new Error("The PDB file has no atoms.");
+  return atoms;
 }
 
 /** Chemical graph for force-field and property calculations. */

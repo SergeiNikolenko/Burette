@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { generateQuantumInput, type InputConstraint, type QuantumEngine } from "../../lib/molecular-workbench/input-export";
+import { generateQuantumInput, ZMATRIX_ENGINES, type CoordinateStyle, type InputConstraint, type QuantumEngine } from "../../lib/molecular-workbench/input-export";
 import type { MolecularAtom } from "../../lib/molecular-workbench/types";
+import type { ZmatrixDocument } from "../../../../../scripts/zmatrix-document.mjs";
+import { useStructureSourceText } from "../../lib/source-editing/use-structure-source-text";
+import { isPdbDocument, readPdbAtoms } from "../../lib/workbench/structure";
 import { readUnitCell } from "../../lib/molecular-workbench/crystal";
 import { safeExportFileName } from "../../lib/file-export";
 import { fileStem } from "../../lib/workbench/formats";
@@ -28,15 +31,25 @@ const DEFAULTS: Record<QuantumEngine, { method: string; basis: string }> = {
 const NO_CONSTRAINTS: InputConstraint[] = [];
 const CONSTRAINT_LABELS: Record<InputConstraint["kind"], string> = { freeze: "Frozen atom", distance: "Distance", angle: "Angle", dihedral: "Dihedral" };
 
-export function InputExportDialogBody({ document, actions, atoms: editedAtoms, constraints: requestedConstraints = NO_CONSTRAINTS }: {
+export function InputExportDialogBody({ document, actions, atoms: editedAtoms, constraints: requestedConstraints = NO_CONSTRAINTS, definition }: {
   document: ViewerDocument;
   actions: ShellActions;
   atoms?: MolecularAtom[];
   constraints?: InputConstraint[];
+  /** The Z-matrix panel's definition, written as is in the Z-matrix style. */
+  definition?: ZmatrixDocument;
 }) {
   // The Geometry tab hands over its edited atoms; the source still supplies the cell.
   const source = useWorkbenchSource(document);
-  const atoms = editedAtoms ?? source.source?.atoms ?? null;
+  const pdbText = useStructureSourceText(isPdbDocument(document) && !editedAtoms ? document : null);
+  const pdb = useMemo(() => {
+    if (pdbText.text === null) return { atoms: null, error: pdbText.error };
+    try { return { atoms: readPdbAtoms(pdbText.text), error: null }; }
+    catch (error) { return { atoms: null, error: error instanceof Error ? error.message : String(error) }; }
+  }, [pdbText.text, pdbText.error]);
+  const atoms = editedAtoms ?? source.source?.atoms ?? pdb.atoms;
+  const readingPdb = isPdbDocument(document) && !editedAtoms && pdbText.text === null && !pdbText.error;
+  const sourceError = source.error ?? pdb.error;
   const cellRead = useMemo(() => {
     try { return { cell: source.source?.cell ?? readUnitCell(source.source?.graphText ?? ""), error: null }; }
     catch { return { cell: null, error: "The source cell is invalid. Turn off Periodic cell from file to export an isolated structure." }; }
@@ -50,6 +63,8 @@ export function InputExportDialogBody({ document, actions, atoms: editedAtoms, c
   const [multiplicity, setMultiplicity] = useState(1);
   const [useConstraints, setUseConstraints] = useState(requestedConstraints.length > 0);
   const [useCell, setUseCell] = useState(true);
+  const [coordinates, setCoordinates] = useState<CoordinateStyle>(definition ? "zmatrix" : "cartesian");
+  const zmatrixEngine = ZMATRIX_ENGINES.includes(engine);
   const [copied, setCopied] = useState(false);
   const [saving, setSaving] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -59,11 +74,12 @@ export function InputExportDialogBody({ document, actions, atoms: editedAtoms, c
   const generated = useMemo(() => {
     if (!atoms || awaitingCell) return null;
     try {
-      return { result: generateQuantumInput(atoms, { engine, task, method: method.trim(), basis: basis.trim(), charge, multiplicity, constraints, cell: engine === "cp2k" && useCell && cell ? cell : undefined }), error: null };
+      return { result: generateQuantumInput(atoms, { engine, task, method: method.trim(), basis: basis.trim(), charge, multiplicity, constraints, cell: engine === "cp2k" && useCell && cell ? cell : undefined,
+        coordinates: zmatrixEngine ? coordinates : "cartesian", definition }), error: null };
     } catch (error) {
       return { result: null, error: error instanceof Error ? error.message : String(error) };
     }
-  }, [atoms, engine, task, method, basis, charge, multiplicity, constraints, useCell, cell, awaitingCell]);
+  }, [atoms, engine, task, method, basis, charge, multiplicity, constraints, useCell, cell, awaitingCell, coordinates, zmatrixEngine, definition]);
   const currentOutput = useRef(generated?.result);
   currentOutput.current = generated?.result;
   useEffect(() => { setCopied(false); setExportError(null); }, [generated]);
@@ -115,6 +131,15 @@ export function InputExportDialogBody({ document, actions, atoms: editedAtoms, c
             <ScrubNumberField aria-label="Spin multiplicity" value={multiplicity} min={1} max={101} step={1} formatValue={(value) => String(Math.round(value))}
               onValueChange={(value) => setMultiplicity(Math.round(value))} onValueCommitted={(value) => setMultiplicity(Math.round(value))} />
           </label>
+          {zmatrixEngine ? (
+            <label className="workbench-field">
+              <span>Coordinates</span>
+              <NativeSelect size="sm" aria-label="Coordinates" value={coordinates} onChange={(event) => setCoordinates(event.target.value as CoordinateStyle)}>
+                <NativeSelectOption value="cartesian">Cartesian</NativeSelectOption>
+                <NativeSelectOption value="zmatrix">Z-matrix</NativeSelectOption>
+              </NativeSelect>
+            </label>
+          ) : null}
         </div>
         {requestedConstraints.length ? (
           <label className="workbench-switch" title={task === "optimize" ? undefined : "Constraints apply to geometry optimizations"}>
@@ -132,8 +157,8 @@ export function InputExportDialogBody({ document, actions, atoms: editedAtoms, c
           <Textarea readOnly className="workbench-code" aria-label={`${fileName} contents`} value={generated.result.text} rows={12} wrap="off" spellCheck={false} />
         ) : null}
       </div>
-      {(!atoms || awaitingCell) && source.loading ? <span role="status" className="workbench-status"><Spinner aria-hidden className="size-3" />Reading structure</span> : null}
-      {source.error ?? (engine === "cp2k" && useCell ? cellRead.error : null) ?? generated?.error ?? exportError ? <p role="alert" className="workbench-error">{source.error ?? (engine === "cp2k" && useCell ? cellRead.error : null) ?? generated?.error ?? exportError}</p> : null}
+      {(!atoms || awaitingCell) && (source.loading || readingPdb) ? <span role="status" className="workbench-status"><Spinner aria-hidden className="size-3" />Reading structure</span> : null}
+      {sourceError ?? (engine === "cp2k" && useCell ? cellRead.error : null) ?? generated?.error ?? exportError ? <p role="alert" className="workbench-error">{sourceError ?? (engine === "cp2k" && useCell ? cellRead.error : null) ?? generated?.error ?? exportError}</p> : null}
       <DialogFooter>
         <Button type="button" variant="secondary" disabled={!generated?.result} onClick={() => {
           if (!generated?.result) return;
