@@ -3079,8 +3079,8 @@ assert.match(tabWorkspaceStore, /payload: \{ paths: \[path\], records: \[\] \}/)
 assert.match(tabWorkspaceStore, /payload: \{ paths: \[\], records: \[record\] \}/);
 assert.match(dockPanel, /className="dock-panel-inner"/);
 assert.match(dockPanel, /readBrowserDevVirtualTextDocument/);
-assert.match(dockPanel, /const virtualText = readBrowserDevVirtualTextDocument\(activeDocument\.path\);/);
-assert.match(dockPanel, /const documentPromise = virtualText === null[\s\S]*readStructureTextDocument\(activeDocument\.path,[\s\S]*textDocumentFromVirtualText\(activeDocument, virtualText\)/);
+assert.match(dockPanel, /const virtualText = logical\?\.text \?\? readBrowserDevVirtualTextDocument\(activeDocument\.path\);/);
+assert.match(dockPanel, /const documentPromise = virtualText === null[\s\S]*readStructureTextDocument\(activeDocument\.path,[\s\S]*textDocumentFromVirtualText\(activeDocument, virtualText, logical\?\.extension\)/);
 assert.match(styles, /--dock-divider-color: var\(--line-subtler\)/);
 assert.doesNotMatch(styles, /\.app-shell\[data-effective-theme="dark"\] \.dock-panel \{[\s\S]*--dock-divider-color:/);
 assert.match(styles, /\.app-shell\[data-effective-theme="dark"\] \.dock-panel \{/);
