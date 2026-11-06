@@ -1384,25 +1384,10 @@ fn resolve_uv_executable() -> Result<PathBuf, String> {
 }
 
 fn bundled_descriptor_python_candidates(executable: &Path) -> Vec<PathBuf> {
-    let mut candidates = Vec::new();
-    for ancestor in executable.ancestors() {
-        candidates.push(
-            ancestor
-                .join("Resources")
-                .join("descriptor-python")
-                .join("bin")
-                .join("python3"),
-        );
-        candidates.push(
-            ancestor
-                .join("Contents")
-                .join("Resources")
-                .join("descriptor-python")
-                .join("bin")
-                .join("python3"),
-        );
-    }
-    candidates
+    crate::preview::runtime_utils::bundled_resource_dirs(executable)
+        .into_iter()
+        .map(|resources| resources.join("descriptor-python/bin/python3"))
+        .collect()
 }
 
 #[cfg(unix)]

@@ -225,6 +225,7 @@ impl ViewerDefaults {
 
     /// The `UserDefaults` keys `MoleculeGridFileSupport` in the Quick Look
     /// extension reads from the containing app's preferences domain.
+    #[cfg(any(target_os = "macos", test))]
     pub(crate) fn quick_look_grid_support(&self) -> [(&'static str, bool); 4] {
         [
             ("gridPreviewSupportsSDF", self.quick_look_grid_sdf),
