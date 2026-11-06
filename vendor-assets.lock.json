@@ -124,6 +124,7 @@
     "desktop-molstar": [
       "geometry-preview.js",
       "polymer-pick.js",
+      "atom-drag.js",
       "molstar.js",
       "molstar.css",
       "viewer-runtime.css",
@@ -170,6 +171,7 @@
     "quicklook-molstar": [
       "geometry-preview.js",
       "polymer-pick.js",
+      "atom-drag.js",
       "molstar.js",
       "molstar.css",
       "viewer-runtime.css",
@@ -210,6 +212,7 @@
     "external-artifact": [
       "geometry-preview.js",
       "polymer-pick.js",
+      "atom-drag.js",
       "native-viewer-menus.js",
       "viewer-runtime.css",
       "viewer-shell.js",

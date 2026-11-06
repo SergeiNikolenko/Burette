@@ -108,11 +108,11 @@ try {
   assert.equal(sequence.status, 200);
   assert.match(sequence.headers.get('content-type'), /^text\/javascript/);
   assert.match(await sequence.text(), /BuretteSequencePanel/);
-  for (const path of ['/__burette/runtime/polymer-pick.js', '/@fs/workspace/PreviewExtension/Web/polymer-pick.js']) {
+  for (const name of ['polymer-pick.js', 'atom-drag.js']) for (const path of [`/__burette/runtime/${name}`, `/@fs/workspace/PreviewExtension/Web/${name}`]) {
     const response = await fetch(`${base}${path}`, { headers });
     assert.equal(response.status, 200);
     assert.match(response.headers.get('content-type'), /^text\/javascript/);
-    assert.equal(await response.text(), await readFile('PreviewExtension/Web/polymer-pick.js', 'utf8'));
+    assert.equal(await response.text(), await readFile(`PreviewExtension/Web/${name}`, 'utf8'));
   }
   assert.equal((await fetch(`${base}/__burette/runtime/not-a-runtime-asset.js`, { headers })).status, 404);
   for (const [path, method] of [['observe.json', 'GET'], ['actions.json', 'PUT']]) {

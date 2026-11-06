@@ -49,6 +49,7 @@ const requiredPreviewAssets = [
   'scene-file-actions.js',
   'geometry-preview.js',
   'polymer-pick.js',
+  'atom-drag.js',
   'measurement-coordinate.js',
   'sdf-collection-scene.js',
   'molstar.js',

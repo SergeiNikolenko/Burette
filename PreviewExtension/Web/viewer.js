@@ -707,7 +707,7 @@
 
   let geometryPreviewRequest = 0;
   let scalarFieldRequest = 0, scalarBindingRequest = 0;
-  let geometryPreviewLoading = null;
+  let geometryPreviewLoading = null, atomDragLoading = null;
   async function executeBuretteAgentAction(action, requestOwner) {
     const type = String(action?.type || '');
     if (type === 'workspace_scene_snapshot') {
@@ -899,6 +899,15 @@
         await geometryPreviewLoading;
       }
       return window.BuretteGeometryPreview.update(viewer, action, owner);
+    }
+    if (type === 'atom_drag') {
+      const viewer = activeMolstarViewer();
+      if (!window.BuretteAtomDrag) {
+        atomDragLoading ||= loadScript(runtimeURL('BuretteAtomDragURL', './atom-drag.js'), 'atom dragging', 10000).finally(() => { atomDragLoading = null; });
+        await atomDragLoading;
+      }
+      if (viewer !== activeMolstarViewer()) throw new Error('The structure changed. Read the current Geometry again.');
+      return { ok: true, result: window.BuretteAtomDrag.set(viewer, action, activeMolstarViewer, postHostMessage) };
     }
     if (type === 'show_scalar_field' || type === 'scalar_field_binding' || type === 'scalar_field_validate') {
       const viewer = activeMolstarViewer();

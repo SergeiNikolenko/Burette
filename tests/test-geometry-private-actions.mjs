@@ -15,6 +15,7 @@ try {
   for (const action of [
     { type: 'geometry_binding', label: 'Geometry', notify: false },
     { type: 'update_geometry', text: '1\n\nH 0 0 0\n', lease: 'foreign', label: 'Geometry', notify: false },
+    { type: 'atom_drag', enabled: true, lease: 'foreign', label: 'Atom drag', notify: false },
   ]) {
     const result = cli('act', '--session-dir', session, JSON.stringify(action));
     assert.notEqual(result.status, 0);
@@ -22,7 +23,7 @@ try {
     assert.match(result.body.error.message, /Unsupported workspace action type:/);
     assert.equal(await readFile(actions, 'utf8'), before, 'private actions never enter public session history');
   }
-  console.log('Private Geometry read/write actions remain outside the public CLI contract.');
+  console.log('Private Geometry read/write and atom drag actions remain outside the public CLI contract.');
 } finally {
   const result = spawnSync('/usr/bin/trash', [session], { encoding: 'utf8', timeout: 30_000 });
   assert.equal(result.status, 0, result.stderr);
