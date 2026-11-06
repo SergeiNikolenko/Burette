@@ -139,6 +139,7 @@ export function MetalComplexBuilderBody({ actions, document, isCurrent, onDone }
       <div role="group" aria-label="Coordination sites" className="workbench-form">
         {sites.map((choice, site) => {
           const label = siteLabel(geometry, site), count = ligandSiteCount(choice.ligand), haptic = Boolean(METAL_LIGANDS[choice.ligand].centroid);
+          const sets = choice.group ? setsAt(choice.ligand, geometry, site) : [];
           return <div key={site} className="workbench-row">
             <span className="w-24 shrink-0 self-center">{label}</span>
             <NativeSelect aria-label={`${label} ligand`} name={`site-${site + 1}-ligand`} size="sm" className="min-w-0 flex-1" value={choice.ligand}
@@ -147,9 +148,9 @@ export function MetalComplexBuilderBody({ actions, document, isCurrent, onDone }
                 {LIGAND_IDS.filter(member).map(id => <NativeSelectOption key={id} value={id} disabled={!reachable[site].has(id)}>{METAL_LIGANDS[id].label}</NativeSelectOption>)}
               </NativeSelectOptGroup>)}
             </NativeSelect>
-            {choice.group ? <NativeSelect aria-label={`${label} other sites`} name={`site-${site + 1}-sites`} size="sm" className="w-32" value={choice.group.join(",")}
+            {choice.group && sets.length > 1 ? <NativeSelect aria-label={`${label} other sites`} name={`site-${site + 1}-sites`} size="sm" className="w-32" value={choice.group.join(",")}
               onChange={event => changeGroup(site, event.target.value.split(",").map(Number))}>
-              {setsAt(choice.ligand, geometry, site).map(set => <NativeSelectOption key={set.join(",")} value={set.join(",")}>{`With ${set.filter(other => other !== site).map(other => other + 1).join(", ")}`}</NativeSelectOption>)}
+              {sets.map(set => <NativeSelectOption key={set.join(",")} value={set.join(",")}>{`With ${set.filter(other => other !== site).map(other => other + 1).join(", ")}`}</NativeSelectOption>)}
             </NativeSelect> : null}
             {count < 3 ? <ScrubNumberField aria-label={`${label} metal–${haptic ? "centroid" : "donor"} distance, angstrom`} name={`site-${site + 1}-distance`} autoComplete="off" className="w-24"
               value={choice.distance ?? defaultDonorDistance(metal, choice.ligand)} min={METAL_DONOR_DISTANCE_LIMITS.min} max={METAL_DONOR_DISTANCE_LIMITS.max} step={.01}

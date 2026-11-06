@@ -129,6 +129,11 @@ test("an overlapping choice shows the reason, keeps the form, and a corrected ge
     for (let site = 1; site <= 6; site++) await select(`${site <= 4 ? "Equatorial" : "Axial"} ${site} ligand`, "trimethylphosphane");
     await click("Create"); await wait(() => alert() !== null, "overlap error");
     expect(alert()).toContain("overlap"); expect(f.opened).toEqual([]); expect(dialog()).not.toBeNull();
+    // edta has one way to wrap an octahedron, so there are no other sites to choose.
+    await select("Equatorial 1 ligand", "edta");
+    expect({ ligands: [1, 2, 3, 4].map(site => value("select", `Equatorial ${site} ligand`)), sites: dialog()!.querySelectorAll('select[aria-label$="other sites"]').length })
+      .toEqual({ ligands: Array(4).fill("edta"), sites: 0 });
+    for (let site = 1; site <= 6; site++) await select(`${site <= 4 ? "Equatorial" : "Axial"} ${site} ligand`, "trimethylphosphane");
     await select("Geometry", "tetrahedral");
     expect([1, 2, 3, 4].map(site => value("select", `Site ${site} ligand`))).toEqual(Array(4).fill("trimethylphosphane"));
     expect([...dialog()!.querySelectorAll('select[aria-label="Site 1 ligand"] optgroup')].map(group => (group as HTMLOptGroupElement).label))
