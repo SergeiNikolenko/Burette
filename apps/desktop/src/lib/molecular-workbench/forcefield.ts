@@ -6,7 +6,8 @@ import { createUffWasmEvaluator } from './uff-wasm';
 import type { MolecularForceField } from './types';
 export type { MolecularForceField } from './types';
 
-/** Use the toolkit's actual parameter set; never substitute a different field. */
+/** Use the toolkit's actual parameter set; never substitute a different field.
+ * Lennard-Jones has no graph field; energy-models.ts evaluates it. */
 export function createForceField(molecule: Molecule, model: MolecularForceField = 'MMFF94') {
   if (model !== 'MMFF94' && model !== 'MMFF94s' && model !== 'UFF') throw new Error('Unsupported molecular force field.');
   molecule.ensureHelperArrays(Molecule.cHelperNeighbours);

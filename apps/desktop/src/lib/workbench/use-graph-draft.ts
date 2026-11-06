@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
 import type { MolecularAtom, Vec3, MolecularForceField } from "../molecular-workbench/types";
+import type { EnergyModelChoice } from "../molecular-workbench/energy-models";
 import type { ConstraintResidual, GeometryConstraint, OptimizationMethod, OptimizationProgress } from "../molecular-workbench/optimization";
 import { runGraphTask } from "../molecular-workbench/graph-compute-client";
 import type { GraphEdit, GraphEditResult } from "../molecular-workbench/graph-edit";
@@ -41,7 +42,7 @@ export type GraphOperation =
 // `prepare-3d` embeds a flat depiction with hydrogens and relaxes it; source atoms keep their indices.
 export type GraphAdvancedOperation = { kind: "add-hydrogens" } | { kind: "prepare-3d" }
   // Constraint atom indices refer to the current snapshot; the atoms keep their indices.
-  | { kind: "optimize"; method: OptimizationMethod; forceField: MolecularForceField; maxIterations?: number; constraints?: GeometryConstraint[] }
+  | { kind: "optimize"; method: OptimizationMethod; forceField: EnergyModelChoice; maxIterations?: number; constraints?: GeometryConstraint[] }
   // One rigid fragment bonded to `target` in place of a hydrogen, or a separate molecule when `target` is null.
   | { kind: "insert-fragment"; fragment: FragmentSource; target: number | null }
   // Protonation states for `pH`, then every hydrogen explicit; heavy atoms keep their indices and coordinates.

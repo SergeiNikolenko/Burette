@@ -44,7 +44,8 @@ mock.module("../apps/desktop/src/lib/source-editing/context", () => ({ useSource
 // The panel's contract with the optimizer: same atoms back, new positions and energies.
 const optimizedAtoms = [{ element: "O", x: 0, y: 0, z: 0 }, { element: "H", x: 0.97, y: 0, z: 0 }, { element: "H", x: -0.25, y: 0.94, z: 0 }];
 mock.module("../apps/desktop/src/lib/molecular-workbench/compute-client", () => ({
-  runChemistryTask: async (request) => (request.action === "parse" ? { atoms: [] } : {
+  // The parsed water has a complete bond graph, so Automatic runs MMFF94.
+  runChemistryTask: async (request) => (request.action === "parse" ? { atoms: optimizedAtoms, bonds: [{ a: 0, b: 1, order: 1 }, { a: 0, b: 2, order: 1 }], graphComplete: true } : {
     molecule: { atoms: optimizedAtoms },
     initialEnergy: 0.15, energy: 0, converged: true, forceField: "MMFF94", method: "lbfgs", iterations: 12, frameSampling: "steps",
     frames: [0.15, 0.05, 0].map((energy) => ({ atoms: optimizedAtoms, energy })),

@@ -10,7 +10,7 @@ import { useGeometryBinding } from "../../hooks/use-geometry-binding";
 import { useGeometryLivePreview } from "../../hooks/use-geometry-live-preview";
 import { downloadTextFile } from "../../lib/file-export";
 import { INTERNAL_COORDINATE_KINDS, formatInternalCoordinate, internalCoordinateUnit, type InternalCoordinateKind } from "../../lib/geometry-editing";
-import type { MolecularForceField } from "../../lib/molecular-workbench/chemistry";
+import { energyModel, resolveEnergyModel, type EnergyModelChoice } from "../../lib/molecular-workbench/energy-models";
 import { runChemistryTask, type ChemistryResults } from "../../lib/molecular-workbench/compute-client";
 import type { OptimizationMethod, OptimizationProgress } from "../../lib/molecular-workbench/optimization";
 import type { ScientificDocument } from "../../lib/molecular-workbench/quantum";
@@ -376,7 +376,7 @@ export function ZmatrixPanel({ document, actions, science, text }: {
   // MMFF94 minimization of the real atoms, frozen rows and fixed coordinates held. The
   // optimized atoms are written back through the same rows; the result is one revision,
   // applied only to the source text it started from.
-  const optimize = async (method: OptimizationMethod, forceField: MolecularForceField, maxIterations: number) => {
+  const optimize = async (method: OptimizationMethod, choice: EnergyModelChoice, maxIterations: number) => {
     if (!binding) return;
     if (applying || optimizeJob.current || applyingDocuments.has(document.id)) return;
     const controller = new AbortController();
@@ -390,6 +390,7 @@ export function ZmatrixPanel({ document, actions, science, text }: {
     let result: ChemistryResults["optimize-zmatrix"];
     try {
       const molecule = await runChemistryTask({ action: "parse", source: serializeXyz(science.atoms, "Z-matrix"), format: "xyz" }, { signal: controller.signal });
+      const forceField = resolveEnergyModel(choice, molecule);
       result = await runChemistryTask({ action: "optimize-zmatrix", molecule, definition, options: { frozenRows: [...constraints.frozen], lockedCoordinates: [...constraints.locked], forceField, method, maxIterations } }, {
         signal: controller.signal, timeoutMs: 300_000, onProgress: (step) => { if (optimizeJob.current?.controller === controller) setProgress(step); },
       });
@@ -482,14 +483,14 @@ export function ZmatrixPanel({ document, actions, science, text }: {
           </>
         ) : (
           <TooltipProvider><Tooltip><TooltipTrigger asChild>
-            <span><OptimizeButton atomCount={science.atoms.length} constraintCount={constraintCount} coupled size="xs" variant="secondary" disabled={busy} onOptimize={(method, forceField, maxIterations) => void optimize(method, forceField, maxIterations)} /></span>
+            <span><OptimizeButton atomCount={science.atoms.length} elements={science.atoms.map((atom) => atom.element)} constraintCount={constraintCount} coupled size="xs" variant="secondary" disabled={busy} onOptimize={(method, forceField, maxIterations) => void optimize(method, forceField, maxIterations)} /></span>
           </TooltipTrigger><TooltipContent>{constraintCount ? `Optimize with ${constraintCount} constraint${constraintCount === 1 ? "" : "s"}` : "Optimize geometry"}</TooltipContent></Tooltip></TooltipProvider>
         )}
       </div>
       {error || bindingError ? <p role="alert" className="geometry-panel-error">{error || bindingError}</p> : null}
       {result ? (
         <p className="geometry-panel-result" role="status">
-          {result.forceField ?? "MMFF94"}, {optimizerLabel(result.method)} {result.initialEnergy.toFixed(2)} → {result.energy.toFixed(2)} kcal/mol
+          {energyModel(result.forceField ?? "MMFF94").name}, {optimizerLabel(result.method)} {result.initialEnergy.toFixed(2)} → {result.energy.toFixed(2)} kcal/mol
           {`, ${result.iterations} step${result.iterations === 1 ? "" : "s"}`}
           {result.residual ? ` · residual ${[result.residual.distance === null ? null : `${result.residual.distance.toFixed(3)} Å`, result.residual.angle === null ? null : `${result.residual.angle.toFixed(2)}°`].filter(Boolean).join(", ")}` : ""}
           {" · "}<span data-status={result.converged ? "success" : "failure"} className="workbench-value">{result.converged ? "Converged" : "Not converged"}</span>

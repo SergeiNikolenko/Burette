@@ -56,7 +56,8 @@ mock.module("../apps/desktop/src/lib/molecular-workbench/compute-client", () => 
   runChemistryTask: (request, options = {}) => {
     if (request.action === "parse") {
       parsed.push(request);
-      return Promise.resolve({ source: request.source });
+      // A complete bond graph, so Automatic runs MMFF94.
+      return Promise.resolve({ source: request.source, atoms: [], bonds: [{ a: 0, b: 1, order: 1 }], graphComplete: true });
     }
     return new Promise((resolve, reject) => {
       jobs.push({ request, options, resolve, reject });

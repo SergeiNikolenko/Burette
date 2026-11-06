@@ -4,7 +4,8 @@ export type MolecularAtom = { element: string; x: number; y: number; z: number }
 export type UnitCell = [Vec3, Vec3, Vec3];
 export type MolecularBond = { a: number; b: number; order: number };
 
-export type MolecularForceField = 'MMFF94' | 'MMFF94s' | 'UFF';
+/** Energy models; see energy-models.ts for their elements and recommendation order. */
+export type MolecularForceField = 'MMFF94' | 'MMFF94s' | 'UFF' | 'LJ';
 
 export type MinimizerMethod = 'bfgs' | 'lbfgs' | 'fire' | 'abc-fire' | 'hybrid';
 

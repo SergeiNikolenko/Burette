@@ -89,6 +89,59 @@ current one has open code or acceptance items.
 - **Checks:** `test:structure-edit-controls`, `test:geometry-ui`,
   `test:minimizer-core`, `test:optimization-reference`, `test:zmatrix-draft`.
 
+## Stage 3A. Energy models and Avogadro's chunked optimizer
+
+- **User gets:** an **Automatic** force-field choice that picks MMFF94, then UFF,
+  for the structure's elements, and Lennard-Jones only for structures without
+  bonds (clusters, noble gases); models without parameters for an element are
+  disabled with the element named.
+- **Where:** `lib/molecular-workbench/minimizer.ts`, `energy-models.ts`,
+  `chemistry.ts`, `components/workbench/optimize-button.tsx`.
+- **How:** the minimizer keeps FIRE, quasi-Newton, stall and energy-window state
+  between `run(count)` calls (Avogadro `OptimizerState`); quasi-Newton steps at
+  the noise floor restart once from steepest descent and then stop as
+  `stalled`. A registry describes each model's elements and whether it needs the
+  bond graph; Lennard-Jones follows `calc/lennardjones.cpp`.
+- **Done when:** a tetramethyltin SDF and an Ar cluster XYZ → Automatic picks
+  UFF and Lennard-Jones → optimize → the Ar pairs sit at the summed Alvarez radii.
+- **Checks:** `test:minimizer-core`, `test:workbench-physics`,
+  `test:structure-edit-controls`, `test:optimization-reference`.
+
+## Stage 3B. Optimize Geometry command
+
+- **User gets:** Avogadro's **Optimize Geometry** (⌥⌘O) in the command palette,
+  the Edit menu and the native Structure menu, applying steps to the 3D view as
+  they run with energy and Cancel, and one Undo for the whole run; **Calculate
+  Energy** and **Configure…** (model, energy and gradient convergence, step
+  limit); **Freeze/Unfreeze Selected Atoms**. The xTB job keeps its own name
+  (**Optimize with xTB**).
+- **Where:** `optimize-button.tsx`, `structure-edit-panel.tsx`,
+  `geometry-panel.tsx`, `command-palette`, `src-tauri/src/menu/build.rs`,
+  `use-app-native-menu.ts`, `compute-worker.ts`.
+- **How:** worker progress carries coordinates at most every 100 ms; the panel
+  pushes them through `update_geometry` and publishes one edit at the end or
+  restores the start on Cancel.
+- **Done when:** SDF → ⌥⌘O → the view moves while the energy falls → Cancel
+  restores → ⌥⌘O → Undo returns to the start in one step.
+
+## Stage 3C. Auto Optimize tool
+
+- **User gets:** **Auto Optimize**: the structure relaxes continuously while
+  atoms are dragged in the 3D view, with a live ΔE readout, Start/Stop and one
+  Undo per session.
+- **How:** a worker session runs chunks sized to ~33 ms of work
+  (`adaptChunkIterations`) on a persistent minimizer; viewer.js gains atom drag
+  that sends positions to the session, which restarts its state on each move.
+
+## Stage 3D. External energy models
+
+- **User gets:** xTB GFN-FF/GFN2 and Avogadro Python energy plugins (text-v1 and
+  binary-v1 protocols from `[[tool.avogadro.energy-models]]`) as models in the
+  same menu on desktop; agent jobs accept every model.
+- **How:** an asynchronous objective drives the same chunked minimizer; plugin
+  processes stay alive per session; the agent contract and job runner accept
+  graph-free models.
+
 ## Stage 4. Quantum input export from any structure
 
 - **User gets:** **Export input file…** (ORCA, Gaussian, Psi4, CP2K) for MOL,

@@ -28,9 +28,22 @@ history. See [Scientific scene format](scientific-scene-format.md) for MOLX.
 Properties includes formula, masses, graph counts, charge, hydrogen-bond
 counts, rotatable bonds, polar surface area and cLogP. Gasteiger charge CSV
 preserves atom order. Energy and force export require a supported force field
-and finite results. The optimization controls offer MMFF94, MMFF94s and UFF,
-with BFGS, L-BFGS, FIRE, ABC-FIRE and FIRE followed by L-BFGS, and a step limit
-of 100, 250 (the default), 500 or 1000 accepted steps. Every method holds the
+and finite results. The optimization controls offer **Automatic** (the
+default), MMFF94, MMFF94s, UFF and Lennard-Jones, with BFGS, L-BFGS, FIRE,
+ABC-FIRE and FIRE followed by L-BFGS, and a step limit of 100, 250 (the
+default), 500 or 1000 accepted steps. Automatic takes the first of MMFF94 and
+UFF with parameters for every element of a complete bond graph, and
+Lennard-Jones for a structure without bonds; a bonded XYZ structure without a
+complete graph is refused with that reason. It is resolved on the structure
+that runs, and the result names the model used. A model without parameters for
+an element is disabled and names the element; UFF can still refuse an atom
+whose bonding its typer does not recognize (square-planar Pt, for example).
+Lennard-Jones is Avogadro's model: every atom pair, bonded or not, has its
+minimum of −100 kJ/mol at the sum of the Alvarez van der Waals radii, so it
+suits clusters and noble gases, not covalent geometry.
+Quasi-Newton runs that stop lowering the energy at its numerical noise floor
+restart once from steepest descent and then end as stalled instead of spending
+the step limit. Every method holds the
 same constraints and records every step; the checked method is the one that
 runs. Optimize is disabled with its reason when the structure is outside the
 shared bounds (256 atoms, 64 constraints, 64 atoms for coupled Z-matrix

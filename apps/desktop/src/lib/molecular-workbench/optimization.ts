@@ -66,7 +66,7 @@ function sine(atoms: MolecularAtom[], [a, b, c]: number[]) {
 /** The documented default when no method is named: BFGS for an unconstrained MMFF
  * run, otherwise L-BFGS. Results always report the method used. */
 export function defaultOptimizationMethod(forceField: MolecularForceField, constrained: boolean): OptimizationMethod {
-  return forceField === 'UFF' || constrained ? 'lbfgs' : 'bfgs';
+  return forceField.startsWith('MMFF') && !constrained ? 'bfgs' : 'lbfgs';
 }
 
 /** Why an optimization of this size cannot run, or null. Every method and field share these bounds. */

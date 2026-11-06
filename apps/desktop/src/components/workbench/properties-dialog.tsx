@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { runChemistryTask, type ChemistryResults } from "../../lib/molecular-workbench/compute-client";
-import type { MolecularForceField } from "../../lib/molecular-workbench/forcefield";
+import { energyModel, resolveEnergyModel, type EnergyModelChoice } from "../../lib/molecular-workbench/energy-models";
 import { CONFORMER_LIMITS, flatDepiction, type OptimizationMethod } from "../../lib/molecular-workbench/optimization";
 import { HARTREE_KCAL_MOL, conformerSdfRecord, fileStem, forcesCsv, sdfRecord } from "../../lib/workbench/formats";
 import { openGeneratedStructure, openScientificDocument } from "../../lib/workbench/generated-document-open";
@@ -78,22 +78,22 @@ export function PropertiesDialogBody({ document, actions, onDone }: { document: 
     return () => controller.abort();
   }, [structure]);
 
-  const runOperation = async (operation: Operation, method: OptimizationMethod = "bfgs", forceField: MolecularForceField = "MMFF94", maxIterations?: number) => {
+  const runOperation = async (operation: Operation, method: OptimizationMethod = "bfgs", choice: EnergyModelChoice = "MMFF94", maxIterations?: number) => {
     if (!structure) return;
     const result = await job.run(OPERATION_LABELS[operation], async (signal) => {
       if (operation === "optimize" || operation === "prepare-3d") {
         const optimized = operation === "optimize"
-          ? await runChemistryTask({ action: "optimize", molecule: structure, options: { method, forceField, maxIterations } }, { signal, timeoutMs: 300_000 })
+          ? await runChemistryTask({ action: "optimize", molecule: structure, options: { method, forceField: resolveEnergyModel(choice, structure), maxIterations } }, { signal, timeoutMs: 300_000 })
           : await runChemistryTask({ action: "prepare-3d", molecule: structure, options: {} }, { signal, timeoutMs: 300_000 });
         const steps = optimized.iterations === null ? "" : `, ${optimized.iterations} step${optimized.iterations === 1 ? "" : "s"}`;
-        return { molfile: optimized.molecule.molfile, frames: optimized.frameSampling === "steps" ? optimized.frames : undefined, title: operation === "optimize" ? `${optimized.forceField} optimization` : "3D coordinates",
-          note: `${optimized.forceField}, ${optimizerLabel(optimized.method)}: ${optimized.initialEnergy.toFixed(2)} → ${optimized.energy.toFixed(2)} kcal/mol${steps}${optimized.converged ? "" : ", not converged"}` };
+        return { suffix: operation === "optimize" ? optimized.forceField.toLowerCase() : OPERATION_SUFFIX[operation], molfile: optimized.molecule.molfile, frames: optimized.frameSampling === "steps" ? optimized.frames : undefined, title: operation === "optimize" ? `${energyModel(optimized.forceField).name} optimization` : "3D coordinates",
+          note: `${energyModel(optimized.forceField).name}, ${optimizerLabel(optimized.method)}: ${optimized.initialEnergy.toFixed(2)} → ${optimized.energy.toFixed(2)} kcal/mol${steps}${optimized.converged ? "" : ", not converged"}` };
       }
       const changed = await runChemistryTask({ action: operation, molecule: structure }, { signal });
-      return { molfile: changed.molfile, frames: undefined, title: null, note: null };
+      return { suffix: OPERATION_SUFFIX[operation], molfile: changed.molfile, frames: undefined, title: null, note: null };
     });
     if (!result) return;
-    const stem = `${fileStem(document.title)}-${operation === "optimize" ? forceField.toLowerCase() : OPERATION_SUFFIX[operation]}`;
+    const stem = `${fileStem(document.title)}-${result.suffix}`;
     // Numerical minimizers report every step; the steps open as a trajectory the Plots tab can chart.
     const frames = result.frames;
     if (result.note) toast.add({ title: result.title, description: result.note, ...(frames && frames.length > 1 ? { actionProps: {
@@ -188,7 +188,7 @@ export function PropertiesDialogBody({ document, actions, onDone }: { document: 
               onClick={() => void (inPlace ? runInPlace({ kind: "remove-hydrogens" }) : runOperation("remove-hydrogens"))}>Remove hydrogens</Button>
             <Button type="button" variant="secondary" disabled={!ready}
               onClick={() => void (inPlace ? runInPlace({ kind: "add-hydrogens" }) : runOperation("add-hydrogens"))}>Add hydrogens</Button>
-            <OptimizeButton atomCount={structure?.atoms.length ?? 0} disabled={!ready}
+            <OptimizeButton atomCount={structure?.atoms.length ?? 0} elements={structure?.atoms.map((atom) => atom.element)} disabled={!ready}
               onOptimize={(method, forceField, maxIterations) => void (inPlace ? runInPlace({ kind: "optimize", method, forceField, maxIterations }) : runOperation("optimize", method, forceField, maxIterations))} />
           </>
         )}

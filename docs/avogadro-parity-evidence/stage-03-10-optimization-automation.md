@@ -614,3 +614,55 @@ built before this change.
 Still open: keyboard-only and screen-reader passes of the constraint controls,
 constraints surviving Undo/Redo, angle and dihedral holds in the browser (covered
 by `test-optimization-reference`), MOL files, and native/Quick Look surfaces.
+
+### Automatic energy model, Lennard-Jones and Avogadro's chunked optimizer state (2026-11-06)
+
+Optimization offered three hard-coded fields and fell back to nothing for
+elements MMFF94 cannot type, and the minimizer kept its FIRE and quasi-Newton
+state only inside one call. Following Avogadro (avogadrolibs
+`cb0e94852889da9f7288bd1e58241e69990935a7`):
+
+- **Minimizer:** `createMinimizer(...).run(count)` keeps FIRE velocity and time
+  step, the L-BFGS pairs or BFGS inverse, the stall counters and the energy
+  window between calls, as `OptimizerState` does in `calc/energyoptimizer.cpp`; a
+  run cut into chunks of 1–7 steps takes exactly the steps of one run. Three
+  successive quasi-Newton steps that move no coordinate by 1e-10 Å or lower the
+  energy by less than 1e-14 of its magnitude restart once from steepest descent
+  and then stop as `stalled` (also after a failed line search with history).
+  An optional energy tolerance ends a run when the mean change over at least ten
+  steps falls below it (`qtplugins/forcefield/energywindow.h`).
+- **Energy models:** `energy-models.ts` lists MMFF94, MMFF94s, UFF and
+  Lennard-Jones with their elements and whether they type the bond graph.
+  Lennard-Jones is `calc/lennardjones.cpp` (every pair, ε = 100 kJ/mol, minimum
+  at the summed Alvarez radii from `core/elementdata.h`, r clamped at 0.1 Å) in
+  kcal/mol with its analytic gradient, and it relaxes XYZ input without bond
+  orders. **Automatic** (the new default) resolves on the parsed structure:
+  MMFF94, then UFF, for a complete graph whose elements they cover, and
+  Lennard-Jones only for a structure without bonds, since it would push bonded
+  atoms apart. Models lacking an element are disabled in the menu with the
+  element named. Avogadro also recommends LJ for bonded molecules no other model
+  accepts; this is the deliberate difference.
+
+Checks on Gauss: `bun run typecheck`, `test:minimizer-core` (chunk equivalence
+for all five methods, noise-floor stall at E ≈ 10⁶, energy window),
+`test:workbench-physics` (new `test-energy-models`: Ar₃ pair minima, gradient
+against central differences with a Pt–Cl–H set, Automatic on SMILES and XYZ
+input), `test:optimization-reference` (21 RDKit references unchanged),
+`test:structure-edit-controls`, `test:geometry-ui`,
+`test:geometry-source-lifecycle`, `test:zmatrix-controls`,
+`test:zmatrix-coupled-core`, `test:zmatrix-draft`, `test:physics-worker-core`,
+`test:properties-consumer`, `test:properties-info`, `test:properties-agent`,
+`test:workbench-prepare-conformers-ui`. `test:structure-edit-panel` keeps the
+same three failures as before this change (element field and metadata).
+
+Browser scenario on Gauss with the rebuilt agent shell: a tetramethyltin SDF in
+Edit shows Automatic checked and MMFF94/MMFF94s disabled with "has no
+parameters for Sn", and Optimize reports "UFF, L-BFGS 1.54 → −2.14 kcal/mol,
+170 steps, Converged". A four-atom Ar XYZ in Geometry runs Lennard-Jones:
+"−118.49 → −143.40 kcal/mol, 12 steps, Converged", every distance 3.6600 Å,
+every angle 60.00° and the dihedral −70.53°, a regular tetrahedron at −6ε. Page
+and console errors equal the earlier baseline.
+
+Still open: RDKit UFF refuses metals in bonding its typer does not recognize
+(tetrahedral Pt), where Avogadro's own UFF typer succeeds; the agent job
+contract still accepts only MMFF94, MMFF94s and UFF (Stage 3D).

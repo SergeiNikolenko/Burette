@@ -3,7 +3,7 @@ import type { GraphEdit, GraphEditResult } from "../../lib/molecular-workbench/g
 import { moveAtomOrder } from "../../lib/molecular-workbench/atom-order";
 import type { Vec3 } from "../../lib/molecular-workbench/types";
 import { flatDepiction, resolveConstraints, type GeometryConstraint, type OptimizationMethod } from "../../lib/molecular-workbench/optimization";
-import type { MolecularForceField } from "../../lib/molecular-workbench/types";
+import { energyModel, type EnergyModelChoice } from "../../lib/molecular-workbench/energy-models";
 import { useViewerAtomSelection } from "../../lib/workbench/selection";
 import { useLogicalSource } from "../../lib/science-session/state";
 import { useWorkspaceMenus } from "../workspace-menus";
@@ -164,7 +164,7 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
     try { resolveConstraints(structure.atoms, constraints); }
     catch (caught) { constraintError = caught instanceof Error ? caught.message : String(caught); }
   }
-  const optimize = async (operation: { method: OptimizationMethod; forceField: MolecularForceField; maxIterations: number }) => {
+  const optimize = async (operation: { method: OptimizationMethod; forceField: EnergyModelChoice; maxIterations: number }) => {
     setInputError(null);
     const result = await draft.apply({ kind: "optimize", ...operation, constraints });
     if (result) { setSelection((current) => ({ atoms: selectedAtoms(current, structure), from: current.from, structure: result })); keepConstraints(result); }
@@ -249,7 +249,7 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
             <Button type="submit" variant="secondary" size="xs" disabled={busy}><Plus aria-hidden />Add</Button>
           </ShortcutTooltip>
         </form>
-        <OptimizeButton atomCount={structure.atoms.length} constraintCount={constraints.length} unavailableReason={constraintError} size="xs" variant="secondary" disabled={busy}
+        <OptimizeButton atomCount={structure.atoms.length} elements={structure.atoms.map((atom) => atom.element)} constraintCount={constraints.length} unavailableReason={constraintError} size="xs" variant="secondary" disabled={busy}
           onOptimize={(method, forceField, maxIterations) => void optimize({ method, forceField, maxIterations })} />
         <DropdownMenu>
           <ShortcutTooltip label="More actions">
@@ -320,7 +320,7 @@ function OptimizationOutcome({ outcome, structure, actions, document }: { outcom
   return (
     <div className="geometry-panel-result" role="status">
       <p className="structure-edit-outcome">
-        <span>{outcome.forceField ?? "MMFF94"}, {outcome.method} {outcome.initialEnergy.toFixed(2)} → {outcome.energy.toFixed(2)} kcal/mol{steps}</span>
+        <span>{energyModel(outcome.forceField ?? "MMFF94").name}, {outcome.method} {outcome.initialEnergy.toFixed(2)} → {outcome.energy.toFixed(2)} kcal/mol{steps}</span>
         <span className="workbench-value" data-status={outcome.converged ? "success" : "failure"}>{outcome.converged ? "Converged" : "Not converged"}</span>
         {outcome.frameSampling === "steps" ? <OpenStepsButton actions={actions} document={document} frames={outcome.frames} /> : null}
       </p>

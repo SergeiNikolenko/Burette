@@ -7,7 +7,8 @@ import { ArrowCurvedRight, CompareArrows, Copy, Download, FileBlank, FileCode, U
 import { measureGeometry } from "../../../../scripts/molecular-geometry.js";
 import { readCoordinateInterchange, writeCoordinateInterchange } from "../../../../scripts/coordinate-interchange.mjs";
 import { runChemistryTask } from "../lib/molecular-workbench/compute-client";
-import type { GeometryConstraint, MolecularForceField } from "../lib/molecular-workbench/chemistry";
+import type { GeometryConstraint } from "../lib/molecular-workbench/chemistry";
+import { energyModel, resolveEnergyModel, type EnergyModelChoice } from "../lib/molecular-workbench/energy-models";
 import { parseXyz } from "../lib/molecular-workbench/xyz";
 import { openWorkbenchDialog } from "../lib/workbench/dialog-store";
 import { isAbortError } from "../lib/viewer-errors";
@@ -350,7 +351,7 @@ function CartesianGeometryPanel({ document, actions, convert }: {
     try { resolveConstraints(parseXyz(geometryText(editor.frame, editor.rows)).atoms, constraints); }
     catch (error) { constraintError = error instanceof Error ? error.message : String(error); }
   }
-  const optimize = async (method: OptimizationMethod, forceField: MolecularForceField, maxIterations: number) => {
+  const optimize = async (method: OptimizationMethod, choice: EnergyModelChoice, maxIterations: number) => {
     optimizeJob.current?.abort();
     const controller = new AbortController();
     optimizeJob.current = controller;
@@ -362,6 +363,7 @@ function CartesianGeometryPanel({ document, actions, convert }: {
     try {
       const text = geometryText(started.frame, started.rows);
       const molecule = await runChemistryTask({ action: "parse", source: text, format: "xyz" }, { signal: controller.signal });
+      const forceField = resolveEnergyModel(choice, molecule);
       const result = await runChemistryTask({ action: "optimize", molecule, options: { constraints, forceField, method, maxIterations } }, {
         signal: controller.signal, timeoutMs: 300_000, onProgress: (step) => { if (optimizeJob.current === controller) setProgress(step); },
       });
@@ -489,7 +491,7 @@ function CartesianGeometryPanel({ document, actions, convert }: {
           </>
         ) : (
           <TooltipProvider><Tooltip><TooltipTrigger asChild>
-            <span><OptimizeButton atomCount={editor.rows.length} constraintCount={constraints.length} unavailableReason={constraintError} size="xs" variant="secondary" disabled={applying} onOptimize={(method, forceField, maxIterations) => void optimize(method, forceField, maxIterations)} /></span>
+            <span><OptimizeButton atomCount={editor.rows.length} elements={editor.rows.map((row) => row.element)} constraintCount={constraints.length} unavailableReason={constraintError} size="xs" variant="secondary" disabled={applying} onOptimize={(method, forceField, maxIterations) => void optimize(method, forceField, maxIterations)} /></span>
           </TooltipTrigger><TooltipContent>{constraints.length ? `Optimize with ${constraints.length} constraint${constraints.length === 1 ? "" : "s"}` : "Optimize geometry"}</TooltipContent></Tooltip></TooltipProvider>
         )}
         {session?.dirty ? (
@@ -505,7 +507,7 @@ function CartesianGeometryPanel({ document, actions, convert }: {
       {optimization ? (
         <div className="geometry-panel-result" role="status">
           <p>
-            {optimization.forceField}, {optimizerLabel(optimization.method)} {optimization.initialEnergy.toFixed(2)} → {optimization.energy.toFixed(2)} kcal/mol
+            {energyModel(optimization.forceField ?? "MMFF94").name}, {optimizerLabel(optimization.method)} {optimization.initialEnergy.toFixed(2)} → {optimization.energy.toFixed(2)} kcal/mol
             {optimization.iterations === null ? "" : `, ${optimization.iterations} step${optimization.iterations === 1 ? "" : "s"}`}
             {" · "}<span data-status={optimization.converged ? "success" : "failure"} className="workbench-value">{optimization.converged ? "Converged" : "Not converged"}</span>
             {steps?.summary === optimization ? <OpenStepsButton actions={actions} document={document} frames={steps.frames} /> : null}

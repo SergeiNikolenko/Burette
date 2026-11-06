@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { MolecularForceField } from "../../lib/molecular-workbench/forcefield";
+import { ENERGY_MODELS, energyModel, energyModelUnavailable, recommendedEnergyModel, type EnergyModelChoice } from "../../lib/molecular-workbench/energy-models";
 import { OPTIMIZATION_LIMITS, OPTIMIZATION_METHODS, RESIDUAL_TOLERANCE, defaultOptimizationMethod, optimizationUnavailable, type ConstraintResidual, type OptimizationFrame, type OptimizationMethod, type OptimizationProgress } from "../../lib/molecular-workbench/optimization";
 import { HARTREE_KCAL_MOL, fileStem } from "../../lib/workbench/formats";
 import { openScientificDocument } from "../../lib/workbench/generated-document-open";
@@ -13,7 +14,8 @@ import { Spinner } from "../ui/spinner";
 import "./geometry.css";
 
 const LABELS: Record<OptimizationMethod, string> = { bfgs: "BFGS", lbfgs: "L-BFGS", fire: "FIRE", "abc-fire": "ABC-FIRE", hybrid: "FIRE, then L-BFGS" };
-const FORCE_FIELDS: MolecularForceField[] = ["MMFF94", "MMFF94s", "UFF"];
+// "auto" picks the first model in the recommendation order that accepts the structure.
+const FORCE_FIELDS = ["auto", ...ENERGY_MODELS.map((model) => model.id)] as const;
 const METHOD_KEY = "burette.workbench.optimizer";
 const FIELD_KEY = "burette.workbench.force-field";
 const STEPS_KEY = "burette.workbench.optimizer-steps";
@@ -73,36 +75,44 @@ export function OptimizingStatus({ progress }: { progress: OptimizationProgress 
 /**
  * Optimize with an explicit method; the menu beside it picks the force field and method.
  * The checked method is the one that runs. `coupled` optimizations move shared Z-matrix
- * variables by differencing the energy, which bounds their size.
+ * variables by differencing the energy, which bounds their size. Automatic is passed on
+ * as "auto": the caller resolves it once the structure's bond graph is known.
  */
-export function OptimizeButton({ atomCount, constraintCount = 0, coupled = false, unavailableReason, disabled, size = "default", variant = "default", onOptimize }: {
-  atomCount: number; constraintCount?: number; coupled?: boolean; unavailableReason?: string | null;
+export function OptimizeButton({ atomCount, elements = [], constraintCount = 0, coupled = false, unavailableReason, disabled, size = "default", variant = "default", onOptimize }: {
+  atomCount: number; elements?: readonly string[]; constraintCount?: number; coupled?: boolean; unavailableReason?: string | null;
   disabled?: boolean; size?: "default" | "xs"; variant?: "default" | "secondary";
-  onOptimize: (method: OptimizationMethod, forceField: MolecularForceField, maxIterations: number) => void;
+  onOptimize: (method: OptimizationMethod, forceField: EnergyModelChoice, maxIterations: number) => void;
 }) {
   const [preferred, setPreferred] = useState(() => stored(METHOD_KEY, OPTIMIZATION_METHODS));
-  const [forceField, setForceField] = useState<MolecularForceField>(() => stored(FIELD_KEY, FORCE_FIELDS) ?? "MMFF94");
+  const [choice, setChoice] = useState(() => stored(FIELD_KEY, FORCE_FIELDS) ?? "auto");
   const [steps, setSteps] = useState(() => stored(STEPS_KEY, STEP_LIMITS) ?? "250");
+  const atoms = elements.map((element) => ({ element }));
+  // Automatic is resolved on the parsed structure; its likely field only picks the default method here.
+  const forceField: MolecularForceField = choice === "auto" ? recommendedEnergyModel(atoms) : choice;
   const method = preferred ?? defaultOptimizationMethod(forceField, constraintCount > 0 || coupled);
-  const blocked = unavailableReason ?? optimizationUnavailable(atomCount, constraintCount)
+  const blocked = unavailableReason ?? optimizationUnavailable(atomCount, constraintCount) ?? (choice === "auto" ? null : energyModelUnavailable(choice, atoms))
     ?? (coupled && atomCount > OPTIMIZATION_LIMITS.numericalAtoms ? `Coupled Z-matrix optimization supports up to ${OPTIMIZATION_LIMITS.numericalAtoms} atoms; this structure has ${atomCount}.` : null);
   return (
     <ButtonGroup>
-      <Button type="button" variant={variant} size={size} disabled={disabled || Boolean(blocked)} title={blocked ?? `${forceField}, ${LABELS[method]}, up to ${steps} steps`}
-        onClick={() => onOptimize(method, forceField, Number(steps))}>Optimize</Button>
+      <Button type="button" variant={variant} size={size} disabled={disabled || Boolean(blocked)} title={blocked ?? `${choice === "auto" ? "Automatic" : energyModel(choice).name}, ${LABELS[method]}, up to ${steps} steps`}
+        onClick={() => onOptimize(method, choice, Number(steps))}>Optimize</Button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button type="button" variant={variant} size={size === "xs" ? "icon-xs" : "icon"} disabled={disabled} aria-label={`Optimization method: ${LABELS[method]}, ${forceField}`}>
+          <Button type="button" variant={variant} size={size === "xs" ? "icon-xs" : "icon"} disabled={disabled} aria-label={`Optimization method: ${LABELS[method]}, ${choice === "auto" ? "Automatic" : energyModel(choice).name}`}>
             <ChevronDown aria-hidden />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuLabel>Force field</DropdownMenuLabel>
-          <DropdownMenuRadioGroup value={forceField} onValueChange={(value) => {
-            if (!FORCE_FIELDS.includes(value as MolecularForceField)) return;
-            setForceField(value as MolecularForceField); remember(FIELD_KEY, value);
+          <DropdownMenuRadioGroup value={choice} onValueChange={(value) => {
+            if (!FORCE_FIELDS.includes(value as typeof FORCE_FIELDS[number])) return;
+            setChoice(value as typeof FORCE_FIELDS[number]); remember(FIELD_KEY, value);
           }}>
-            {FORCE_FIELDS.map((field) => <DropdownMenuRadioItem key={field} value={field}>{field}</DropdownMenuRadioItem>)}
+            <DropdownMenuRadioItem value="auto">Automatic</DropdownMenuRadioItem>
+            {ENERGY_MODELS.map((model) => {
+              const reason = energyModelUnavailable(model.id, atoms);
+              return <DropdownMenuRadioItem key={model.id} value={model.id} disabled={Boolean(reason)} title={reason ?? undefined}>{model.name}</DropdownMenuRadioItem>;
+            })}
           </DropdownMenuRadioGroup>
           <DropdownMenuSeparator />
           <DropdownMenuLabel>Minimizer</DropdownMenuLabel>

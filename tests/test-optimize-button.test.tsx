@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
 import React, { act } from "react";
 import { mount, button, click } from "./structure-controls-dom";
-import type { MolecularForceField } from "../apps/desktop/src/lib/molecular-workbench/types";
+import type { EnergyModelChoice } from "../apps/desktop/src/lib/molecular-workbench/energy-models";
 import type { OptimizationMethod } from "../apps/desktop/src/lib/molecular-workbench/optimization";
 const { OptimizeButton } = await import("../apps/desktop/src/components/workbench/optimize-button");
-type Call = [OptimizationMethod, MolecularForceField];
+type Call = [OptimizationMethod, EnergyModelChoice];
 async function openMenu(host: ParentNode) {
   const trigger = host.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!;
   await act(async () => { trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
@@ -25,16 +25,16 @@ test("every force field and method is explicit, remembered across remounts, and 
   const view = await mount(render(3));
   try {
     await click(button(view.host, "Optimize"));
-    expect(calls.pop()).toEqual(["bfgs", "MMFF94"]);
+    expect(calls.pop()).toEqual(["bfgs", "auto"]);
     for (const [label, method] of [["L-BFGS", "lbfgs"], ["FIRE", "fire"], ["ABC-FIRE", "abc-fire"], ["FIRE, then L-BFGS", "hybrid"], ["BFGS", "bfgs"]] as const) {
       await openMenu(view.host); await choose(label); await click(button(view.host, "Optimize"));
-      expect(calls.pop()).toEqual([method, "MMFF94"]);
+      expect(calls.pop()).toEqual([method, "auto"]);
     }
     await openMenu(view.host); await choose("MMFF94s"); await click(button(view.host, "Optimize"));
     expect(calls.pop()).toEqual(["bfgs", "MMFF94s"]);
     // Every method runs under every field: the remembered BFGS runs under UFF, checked.
     await openMenu(view.host); await choose("UFF"); await openMenu(view.host);
-    expect(menuState().slice(3, 5)).toEqual([["BFGS", true, null], ["L-BFGS", false, null]]);
+    expect(menuState().slice(5, 7)).toEqual([["BFGS", true, null], ["L-BFGS", false, null]]);
     await closeMenu(); await click(button(view.host, "Optimize")); expect(calls.pop()).toEqual(["bfgs", "UFF"]);
     expect(view.host.querySelector('[aria-haspopup="menu"]')!.getAttribute("aria-label")).toBe("Optimization method: BFGS, UFF");
     await openMenu(view.host); await choose("ABC-FIRE");
@@ -48,10 +48,10 @@ test("constraints and coupled Z-matrix variables default to L-BFGS and keep ever
   const calls: Call[] = [];
   const view = await mount(<OptimizeButton atomCount={9} constraintCount={2} onOptimize={(method, field) => calls.push([method, field])} />);
   try {
-    await click(button(view.host, "Optimize")); expect(calls.pop()).toEqual(["lbfgs", "MMFF94"]);
+    await click(button(view.host, "Optimize")); expect(calls.pop()).toEqual(["lbfgs", "auto"]);
     await openMenu(view.host);
     expect(menuState().every(item => item[2] === null)).toBe(true);
-    await choose("BFGS"); await click(button(view.host, "Optimize")); expect(calls.pop()).toEqual(["bfgs", "MMFF94"]);
+    await choose("BFGS"); await click(button(view.host, "Optimize")); expect(calls.pop()).toEqual(["bfgs", "auto"]);
     // Coupled variables difference the energy, which bounds their size; the button says so.
     await view.render(<OptimizeButton atomCount={70} coupled onOptimize={(method, field) => calls.push([method, field])} />);
     expect([button(view.host, "Optimize").disabled, button(view.host, "Optimize").title]).toEqual([true, "Coupled Z-matrix optimization supports up to 64 atoms; this structure has 70."]);
@@ -85,7 +85,30 @@ test("the step limit is chosen in the menu, remembered, and passed with every ru
     expect(menuState().slice(-4)).toEqual([["100", false, null], ["250", true, null], ["500", false, null], ["1000", false, null]]);
     await choose("1000"); await click(button(view.host, "Optimize")); expect(limits.pop()).toBe(1000);
     await view.render(null); await view.render(render());
-    expect(button(view.host, "Optimize").title).toBe("MMFF94, BFGS, up to 1000 steps");
+    expect(button(view.host, "Optimize").title).toBe("Automatic, BFGS, up to 1000 steps");
     await click(button(view.host, "Optimize")); expect(limits).toEqual([1000]);
+  } finally { await view.close(); localStorage.clear(); }
+});
+
+test("Automatic is passed on for the structure to resolve, and models without parameters for an element say why", async () => {
+  localStorage.clear();
+  const calls: Call[] = [];
+  const render = (elements: string[]) => <OptimizeButton atomCount={elements.length} elements={elements} onOptimize={(method, field) => calls.push([method, field])} />;
+  const view = await mount(render(["C", "O", "H"]));
+  try {
+    await click(button(view.host, "Optimize")); expect(calls.pop()).toEqual(["bfgs", "auto"]);
+    expect(button(view.host, "Optimize").title).toBe("Automatic, BFGS, up to 250 steps");
+    await view.render(render(["Pt", "Cl", "Cl"]));
+    await click(button(view.host, "Optimize")); expect(calls.pop()).toEqual(["lbfgs", "auto"]);
+    expect(button(view.host, "Optimize").title).toBe("Automatic, L-BFGS, up to 250 steps");
+    await openMenu(view.host);
+    expect(menuState().slice(0, 5)).toEqual([["Automatic", true, null], ["MMFF94", false, "MMFF94 has no parameters for Pt."], ["MMFF94s", false, "MMFF94s has no parameters for Pt."], ["UFF", false, null], ["Lennard-Jones", false, null]]);
+    await choose("Lennard-Jones"); await click(button(view.host, "Optimize")); expect(calls.pop()).toEqual(["lbfgs", "LJ"]);
+    expect(button(view.host, "Optimize").title).toBe("Lennard-Jones, L-BFGS, up to 250 steps");
+    // A remembered model that cannot describe the next structure blocks Optimize with its reason.
+    await openMenu(view.host); await choose("UFF");
+    await view.render(render(["Og", "Og"]));
+    expect([button(view.host, "Optimize").disabled, button(view.host, "Optimize").title]).toEqual([true, "UFF has no parameters for Og."]);
+    expect(calls).toEqual([]);
   } finally { await view.close(); localStorage.clear(); }
 });
