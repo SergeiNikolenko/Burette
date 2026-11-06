@@ -24,7 +24,7 @@ import { optimizationUnavailable } from "../lib/molecular-workbench/optimization
 import { resolveConstraints, type ConstraintResidual, type OptimizationMethod, type OptimizationProgress, type OptimizationResult } from "../lib/molecular-workbench/optimization";
 import { fileStem } from "../lib/workbench/formats";
 import { downloadTextFile } from "../lib/file-export";
-import { MEASUREMENT_NOUNS, consumeGeometryFocus, measurementCell, useGeometryFocusRequest } from "../lib/workbench/geometry-focus";
+import { consumeGeometryFocus, focusCellSelector, focusNoun, measurementCell, useGeometryFocusRequest } from "../lib/workbench/geometry-focus";
 import { CoordinateEditor } from "./workbench/coordinate-editor";
 import { SegmentedControl, SegmentedControlItem } from "./ui/segmented-control";
 import type { MolecularAtom, Vec3 } from "../lib/molecular-workbench/types";
@@ -170,14 +170,14 @@ function CartesianGeometryPanel({ document, actions, convert }: {
     consumeGeometryFocus(focusRequest.id);
     const cell = measurementCell(editor.rows, focusRequest.atoms);
     if (!cell) {
-      setEditError(`This ${MEASUREMENT_NOUNS[focusRequest.atoms.length - 2]} is not a Geometry row.`);
+      setEditError(`This ${focusNoun(focusRequest.atoms)} is not a Geometry row.`);
       return;
     }
     setEditError(null);
     setView("internal");
     // The table renders after switching back from the Cartesian view.
     requestAnimationFrame(() => {
-      const field = table.current?.querySelector<HTMLElement>(`[data-geometry-atom="${cell.row}"] [data-geometry-slot="${cell.slot}"] :is(input, [role="spinbutton"])`);
+      const field = table.current?.querySelector<HTMLElement>(focusCellSelector(cell, 'input, [role="spinbutton"]'));
       field?.scrollIntoView({ block: "nearest" });
       field?.focus();
     });

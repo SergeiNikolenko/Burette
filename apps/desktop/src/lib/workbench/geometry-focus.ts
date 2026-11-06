@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-/** A 3D measurement the Geometry panel should bring into view, in source atom order. */
+/** A 3D measurement (or one atom) the Geometry panel should bring into view, in source atom order. */
 export type GeometryFocusRequest = { documentId: string; atoms: number[]; id: number };
 
 let current: GeometryFocusRequest | null = null;
@@ -16,7 +16,9 @@ export function requestGeometryFocus(documentId: string, atoms: number[]) {
  * The row and column that hold a measurement, read in either direction: a distance,
  * angle or dihedral is the row of one end measured from the following atoms.
  */
-export function measurementCell(rows: readonly { refs: readonly number[]; values: readonly unknown[] }[], atoms: readonly number[]) {
+export function measurementCell(rows: readonly { refs: readonly number[]; values: readonly unknown[] }[], atoms: readonly number[]): { row: number; slot: number | null } | null {
+  // One atom is its whole row, as the 3D context menu's Edit geometry asks for it.
+  if (atoms.length === 1) return rows[atoms[0]] ? { row: atoms[0], slot: null } : null;
   const slot = atoms.length - 2;
   for (const [atom, ...refs] of [atoms, [...atoms].reverse()]) {
     const row = rows[atom];
@@ -25,7 +27,11 @@ export function measurementCell(rows: readonly { refs: readonly number[]; values
   return null;
 }
 
-export const MEASUREMENT_NOUNS = ["distance", "angle", "dihedral"] as const;
+const MEASUREMENT_NOUNS = ["distance", "angle", "dihedral"] as const;
+export const focusNoun = (atoms: readonly number[]) => atoms.length === 1 ? "atom" : MEASUREMENT_NOUNS[atoms.length - 2];
+/** The first control of a focused cell, or of the row when the request names one atom. */
+export const focusCellSelector = (cell: { row: number; slot: number | null }, controls: string) =>
+  `[data-geometry-atom="${cell.row}"] ${cell.slot === null ? "" : `[data-geometry-slot="${cell.slot}"] `}:is(${controls})`;
 
 /** A handled request is dropped, so reopening Geometry later does not jump again. */
 export function consumeGeometryFocus(id: number) {

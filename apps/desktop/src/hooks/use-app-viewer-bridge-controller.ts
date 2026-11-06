@@ -281,6 +281,7 @@ export function useAppViewerBridgeController({
   const { handleXyzrenderSheetMessage } = useAppXyzrenderSheetMessages({
     documents,
     postMessageToViewerSource,
+    openDockTab,
   });
   const { handleViewerRuntimeMessage, markViewerFirstRenderMessage } = useAppViewerRuntimeMessages({
     documents,

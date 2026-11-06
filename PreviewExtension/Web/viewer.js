@@ -28116,7 +28116,9 @@ SOFTWARE.
     };
     const items = molstarNativeMenuEntries(session, { ...target, pickingLevel: mode }, mode);
     molstarNativeMenuPending = session;
-    if (postHostMessage({ type: 'molstarContextMenu', requestId: session.requestId, ...point, items })) return true;
+    // The host adds its editing tools; Edit geometry opens at the picked atom's row.
+    const atomIndex = !target.selectionBased && Number.isInteger(target.atom?.atomIndex) ? target.atom.atomIndex : undefined;
+    if (postHostMessage({ type: 'molstarContextMenu', requestId: session.requestId, ...point, items, atomIndex })) return true;
     molstarNativeMenuPending = null;
     return false;
   }

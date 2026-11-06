@@ -29,7 +29,7 @@ import { admitCoordinateSourceRevision, scientificStateFor, subscribeImports } f
 import { recordImportedRevision, revisionIndex, useImportedOriginal, useImportedRevisions, type ImportedRevision } from "../../lib/workbench/source";
 import { isReferencePoint, nextVariableName, sameDefinition, variableUses, withReference, withRowValue, withVariable, zmatrixOptimizedRevision, zmatrixRevision, zmatrixRowLabels, zmatrixRowsRevision } from "../../lib/workbench/zmatrix-draft";
 import { zmatrixAtomIndices, zmatrixConstraints, zmatrixLockKey, zmatrixRowStructure } from "../../lib/workbench/zmatrix-optimization";
-import { MEASUREMENT_NOUNS, consumeGeometryFocus, measurementCell, useGeometryFocusRequest } from "../../lib/workbench/geometry-focus";
+import { consumeGeometryFocus, focusCellSelector, focusNoun, measurementCell, useGeometryFocusRequest } from "../../lib/workbench/geometry-focus";
 import type { ViewerDocument } from "../../types";
 import type { ShellActions } from "../types";
 import { ArrowCurvedRight, Copy, Download, FileCode, Undo } from "../ui/app-icons";
@@ -113,11 +113,11 @@ export function ZmatrixPanel({ document, actions, science, text }: {
     const atomRows = zmatrixAtomIndices(definition);
     const cell = measurementCell(definition.rows, focusRequest.atoms.map((atom) => atomRows.indexOf(atom)));
     if (!cell) {
-      setError(`This ${MEASUREMENT_NOUNS[focusRequest.atoms.length - 2]} is not a Z-matrix row.`);
+      setError(`This ${focusNoun(focusRequest.atoms)} is not a Z-matrix row.`);
       return;
     }
     setError(null);
-    const field = table.current?.querySelector<HTMLElement>(`[data-geometry-atom="${cell.row}"] [data-geometry-slot="${cell.slot}"] :is(input, [role="spinbutton"], button)`);
+    const field = table.current?.querySelector<HTMLElement>(focusCellSelector(cell, 'input, [role="spinbutton"], button'));
     field?.scrollIntoView({ block: "nearest" });
     field?.focus();
   }, [focusRequest, definition]);

@@ -324,10 +324,13 @@ and every run stay user gestures.
   follow trajectory frames.
 - **Property editing.** Edit (MOL/SDF) and Geometry (XYZ) also open from the
   command palette (**Edit atoms and bonds**, **Edit geometry**). Properties
-  opens from Info → Tools.
+  opens from Info → Tools. The 3D context menu lists the same tools the
+  document has, after its title: **Edit atoms and bonds**, **Edit geometry**
+  (focused on the right-clicked atom's row) and **Properties…**. The viewer
+  sends the picked atom's model index with the menu; the host adds the rows
+  (`components/molstar-tool-menu.ts`).
 
 Remaining:
 - The mesoscale viewer, Mol* preset previews, Ketcher's Miew view and the
   three.js chemical-space view keep their own camera controls, without the
   projection toggle, axis views or keyboard steps.
-- The 3D context menu has no Edit, Geometry or Properties entry.
