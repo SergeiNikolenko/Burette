@@ -1,7 +1,7 @@
-use std::{fs, sync::Barrier, thread};
+use std::{sync::Barrier, thread};
 
 #[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
+use std::{fs, os::unix::fs::PermissionsExt};
 
 use burette_compute_protocol::{ComputeErrorCode, ComputeFailure, JobState, OwnerSurface};
 use rusqlite::Connection;

@@ -22,6 +22,7 @@ mod fingerprint_session;
 mod job_factory;
 mod job_lifecycle;
 mod molfile_coordinates;
+pub(crate) mod platform_fs;
 mod representative_export;
 #[allow(
     dead_code,
@@ -29,10 +30,18 @@ mod representative_export;
 )]
 mod root_lease;
 mod semiempirical_workflow;
+#[cfg(unix)]
 pub(crate) mod service;
+#[cfg(not(unix))]
+#[path = "service_unavailable.rs"]
+pub(crate) mod service;
+#[cfg(unix)]
 mod service_conformer;
+#[cfg(unix)]
 mod service_etk;
+#[cfg(unix)]
 mod service_mmff;
+#[cfg(unix)]
 mod service_stereo;
 mod similarity_artifact;
 pub(crate) use root_lease::ComputeRootChildDirectory;
