@@ -14,6 +14,10 @@ import { useSourceEditing } from "../lib/source-editing/context";
 import { captureWorkspaceSceneSnapshot } from "./workspace-scene-snapshot";
 import { useScienceSessionRestore } from "../lib/science-session/restore";
 import type { ShellActions, ShellViewState } from "../components/types";
+import type { StructureExportFormat } from "../lib/workbench/structure-export";
+import { downloadBlobFile } from "../lib/file-export";
+import { arrayBufferToBase64 } from "../lib/preview-image-export";
+import { logicalSourceFor } from "../lib/science-session/state";
 import type { ViewerDocument } from "../types";
 
 export function useWorkspaceFileActions(state: ShellViewState, actions: ShellActions) {
@@ -133,7 +137,18 @@ export function useWorkspaceFileActions(state: ShellViewState, actions: ShellAct
     await focusViewer(document);
     await requestViewerAction(document.id, { type: "align_scene_files" });
   };
-  const exportStructure = async (document: ViewerDocument, format: "pdb" | "mmcif" | "sdf") => {
+  // The text the document shows: its unsaved draft, a restored scene's source or the file.
+  const currentSource = async (document: ViewerDocument) => {
+    const { readWorkbenchAgentSource } = await import("../lib/workbench/agent-source");
+    return (await readWorkbenchAgentSource(document, current => sourceEditing?.sessionForDocument(current)?.content ?? null)).text;
+  };
+  const stem = (document: ViewerDocument) => document.title.replace(/\.[^.]+$/, "");
+  const exportStructure = async (document: ViewerDocument, format: "pdb" | "mmcif" | "sdf" | StructureExportFormat) => {
+    if (format === "xyz" || format === "mol" || format === "cjson") {
+      const [{ structureExportText }, text] = await Promise.all([import("../lib/workbench/structure-export"), currentSource(document)]);
+      await actions.saveKetcherExportFile({ title: `${stem(document)}.${format}`, extension: format, text: await structureExportText(document, text, format) });
+      return;
+    }
     if (format === "sdf") {
       const snapshot = await captureWorkspaceSceneSnapshot(document, { sourceEditing, sceneFileCount: scenePaths(document).length, scientificData: "require" });
       if (snapshot.source?.extension !== "sdf") throw new Error("This scene has no validated SDF source to export.");
@@ -145,6 +160,16 @@ export function useWorkspaceFileActions(state: ShellViewState, actions: ShellAct
     const result = await requestViewerAction(document.id, { type: "export_scene_structure", format });
     if (typeof result.text !== "string") throw new Error("No structure was returned.");
     await actions.saveKetcherExportFile({ title: String(result.name || document.title), extension: format === "mmcif" ? "cif" : format, text: result.text });
+  };
+  // A gzip copy of the current text, named after the format inside it (caffeine.sdf.gz).
+  const exportCompressedCopy = async (document: ViewerDocument) => {
+    const [{ encodeCompressedBlob }, text] = await Promise.all([import("../lib/compressed-files/task"), currentSource(document)]);
+    const blob = await encodeCompressedBlob("gzip", text);
+    const extension = logicalSourceFor(document.id)?.extension ?? document.extension.replace(/^\./u, "");
+    const name = `${stem(document)}.${extension}.gz`;
+    if (!isTauriRuntime()) { downloadBlobFile(name, blob); return; }
+    const outputPath = await save({ title: "Export Compressed Copy", defaultPath: name, filters: [{ name: "Gzip", extensions: ["gz"] }] });
+    if (outputPath) await invoke("write_base64_file", { request: { outputPath, contentsBase64: arrayBufferToBase64(await blob.arrayBuffer()) } });
   };
   const copySequence = async (document: ViewerDocument) => {
     await focusViewer(document);
@@ -165,5 +190,5 @@ export function useWorkspaceFileActions(state: ShellViewState, actions: ShellAct
     }
   };
   const copyNames = (paths: string[]) => writeClipboardText(paths.map(path => path.split('/').pop() || path).join('\n'));
-  return { isCombinedScene: (document: ViewerDocument) => scenePaths(document).length > 1, sceneTargets, addToScene, addRecordsToScene, mergeTargets, mergeScene, gridView, saveScene, copyNames, focusViewer, openRecordScene, openTogether, openPoses, openAligned, exportStructure, copySequence, exportImage };
+  return { isCombinedScene: (document: ViewerDocument) => scenePaths(document).length > 1, sceneTargets, addToScene, addRecordsToScene, mergeTargets, mergeScene, gridView, saveScene, copyNames, focusViewer, openRecordScene, openTogether, openPoses, openAligned, exportStructure, exportCompressedCopy, copySequence, exportImage };
 }

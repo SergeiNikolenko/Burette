@@ -1,5 +1,5 @@
 import { cellFromParameters, fractionalToCartesian, validateCell } from "./crystal";
-import { elementSymbol } from "./elements";
+import { atomicNumber, elementSymbol } from "./elements";
 import { checkMoleculeSize, parseMolecule, type MolecularStructure } from "./molecular-graph";
 import { readCjsonSpectra } from "./scientific-spectra-inputs";
 import type { ScientificSpectra } from "./scientific-spectra";
@@ -73,6 +73,25 @@ export function readCjsonCrystal(text: string): { atoms: MolecularAtom[]; cell: 
     const [x, y, z] = fractional === undefined ? point : fractionalToCartesian(point, cell);
     return { element: elementSymbol(number), x, y, z };
   }) };
+}
+
+/**
+ * Chemical JSON v1 as Avogadro writes it: Cartesian coordinates in atom order, the bond
+ * table and, for a crystal, the cell vectors. CJSON has no dative order; a dative bond
+ * (MDL 9) is written as a single bond, as Avogadro stores one.
+ */
+export function writeCjson({ title, atoms, bonds = [], cell = null }: { title?: string; atoms: readonly MolecularAtom[]; bonds?: readonly MolecularBond[]; cell?: UnitCell | null }) {
+  return {
+    chemicalJson: 1,
+    ...(title ? { name: title } : {}),
+    atoms: {
+      elements: { number: atoms.map(atom => atomicNumber(atom.element)) },
+      coords: { "3d": atoms.flatMap(atom => [atom.x, atom.y, atom.z]) },
+    },
+    // Plugin scripts read `bonds` unconditionally, so an atoms-only document keeps an empty table.
+    bonds: { connections: { index: bonds.flatMap(bond => [bond.a, bond.b]) }, order: bonds.map(bond => bond.order === 9 ? 1 : bond.order) },
+    ...(cell ? { unitCell: { cellVectors: cell.flat() } } : {}),
+  };
 }
 
 /** Coordinates and connection tables remain in CJSON source atom order; a cell is read by readCjsonCrystal. */

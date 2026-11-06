@@ -5,9 +5,8 @@
  * one JSON object. Burette never replaces the active molecule with the result;
  * a returned molecule opens as a new document.
  */
-import { readCjsonGraph } from "../molecular-workbench/cjson-graph";
+import { readCjsonGraph, writeCjson } from "../molecular-workbench/cjson-graph";
 import type { MolecularStructure } from "../molecular-workbench/molecular-graph";
-import { atomicNumber } from "../molecular-workbench/elements";
 import { serializeXyz } from "../molecular-workbench/xyz";
 import type { PluginCommand } from "./avogadro-plugin-manifest";
 
@@ -54,24 +53,13 @@ export function readCommandOptions(text: string): CommandOption[] {
   return options;
 }
 
-function cjson(structure: MolecularStructure) {
-  return {
-    chemicalJson: 1,
-    atoms: {
-      elements: { number: structure.atoms.map(atom => atomicNumber(atom.element)) },
-      coords: { "3d": structure.atoms.flatMap(atom => [atom.x, atom.y, atom.z]) },
-    },
-    bonds: { connections: { index: structure.bonds.flatMap(bond => [bond.a, bond.b]) }, order: structure.bonds.map(bond => bond.order) },
-  };
-}
-
 /** The stdin document for one command run. */
 export function commandInput(command: PluginCommand, structure: MolecularStructure, options: Record<string, CommandOptionValue>, selectedAtoms: readonly number[] = []): string {
   const molfile = structure.molfile.endsWith("$$$$\n") ? structure.molfile : `${structure.molfile.replace(/\n?$/u, "\n")}$$$$\n`;
   const text = command.inputFormat === "xyz" ? serializeXyz([...structure.atoms], structure.title)
     : command.inputFormat === "sdf" || command.inputFormat === "mol" ? molfile : undefined;
   return JSON.stringify({
-    ...(command.inputFormat === "cjson" || command.inputCjson ? { cjson: cjson(structure) } : {}),
+    ...(command.inputFormat === "cjson" || command.inputCjson ? { cjson: writeCjson({ atoms: structure.atoms, bonds: structure.bonds }) } : {}),
     ...(text !== undefined ? { [command.inputFormat]: text } : {}),
     inputMoleculeFormat: command.inputFormat,
     selectedAtoms: [...selectedAtoms],

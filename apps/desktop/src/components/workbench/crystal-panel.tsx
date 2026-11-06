@@ -4,17 +4,23 @@ import type { CrystalEdit } from "../../lib/molecular-workbench/crystal-edit";
 import { cellParametersOf, signedVolume, SCALE_VOLUME_LIMITS, SUPERCELL_LIMITS, type CoordinatePolicy } from "../../lib/molecular-workbench/crystal-operations";
 import type { UnitCell } from "../../lib/molecular-workbench/types";
 import { useSourceEditing } from "../../lib/source-editing/context";
+import { writeCjson } from "../../lib/molecular-workbench/cjson-graph";
+import { writeCrystalCif, writeExtendedXyz, type CrystalDocument } from "../../lib/molecular-workbench/crystal-io";
+import { writePoscar } from "../../lib/molecular-workbench/poscar";
+import { fileStem } from "../../lib/workbench/formats";
 import { openGeneratedStructure } from "../../lib/workbench/open";
 import { useCrystalDraft, type CrystalRevision } from "../../lib/workbench/use-crystal-draft";
 import type { ViewerDocument } from "../../types";
 import type { ShellActions } from "../types";
-import { ArrowCurvedRight, Grid, Undo } from "../ui/app-icons";
+import { ArrowCurvedRight, ChevronDown, Grid, Undo } from "../ui/app-icons";
 import { Button } from "../ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import { CollapsibleSection } from "../ui/collapsible-section";
 import { PanelEmptyState } from "../ui/panel-empty-state";
 import { ScrubNumberField } from "../ui/scrub-number-input";
 import { SegmentedControl, SegmentedControlItem } from "../ui/segmented-control";
 import { Spinner } from "../ui/spinner";
+import { toast } from "../ui/toast";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { PairDistributionSection } from "./pair-distribution-section";
 import { PowderXrdSection } from "./powder-xrd-section";
@@ -30,6 +36,13 @@ export const CRYSTAL_EDIT_LABELS: Record<CrystalEdit["kind"], string> = {
 };
 const AXES = ["a", "b", "c"] as const;
 const ANGLES = [["alpha", "α"], ["beta", "β"], ["gamma", "γ"]] as const;
+// The current cell in each crystal format, atom order kept; Export never changes the source.
+const EXPORTS = [
+  ["CIF", "cif", (crystal: CrystalDocument, title: string) => writeCrystalCif(crystal, title)],
+  ["POSCAR", "vasp", (crystal: CrystalDocument, title: string) => writePoscar({ title, atoms: crystal.atoms, cell: crystal.cell, selectiveDynamics: crystal.selectiveDynamics })],
+  ["Extended XYZ", "xyz", (crystal: CrystalDocument, title: string) => writeExtendedXyz(crystal.atoms, crystal.cell, title)],
+  ["CJSON", "cjson", (crystal: CrystalDocument, title: string) => `${JSON.stringify(writeCjson({ title, atoms: crystal.atoms, cell: crystal.cell }), null, 2)}\n`],
+] as const;
 const plural = (count: number, one: string) => `${count.toLocaleString("en-US")} ${one}${count === 1 ? "" : "s"}`;
 
 type Field = { label: string; value: number; onChange: (value: number) => void; min?: number; max?: number; step: number; digits: number; disabled?: boolean };
@@ -77,9 +90,28 @@ export function CrystalPanel({ document, actions }: { document: ViewerDocument |
             <Button type="button" variant="ghost" size="xs" onClick={draft.cancel}>Cancel</Button>
           </>
         ) : null}
+        <span className="ml-auto" />
+        {current ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild><Button type="button" size="xs" variant="ghost" disabled={draft.busy}>Export<ChevronDown aria-hidden /></Button></DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {EXPORTS.map(([label, extension, write]) => (
+                <DropdownMenuItem key={extension} onSelect={() => {
+                  const title = fileStem(document.title);
+                  let text: string;
+                  try { text = write(current.value, title); } catch (error) {
+                    toast.add({ title: `Could not export ${label}`, description: error instanceof Error ? error.message : String(error), type: "error" });
+                    return;
+                  }
+                  void actions.saveKetcherExportFile({ title: `${title}.${extension}`, extension, text });
+                }}>{label}</DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
         {session?.dirty ? (
           <TooltipProvider><Tooltip><TooltipTrigger asChild>
-            <span className="ml-auto">
+            <span>
               <Button type="button" variant="secondary" size="xs" disabled={draft.busy || Boolean(session.saveDisabledReason) || session.saving}
                 onClick={() => void sourceEditing?.save(document)}>{session.saveLabel ?? "Save"}</Button>
             </span>

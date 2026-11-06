@@ -110,6 +110,9 @@ export function crystalView(document: CrystalDocument): CrystalDocument {
 }
 
 const number = (value: number) => (Object.is(value, -0) ? "0" : String(value));
+// CIF fractions to 1e-12, far below any CIF's precision: 0.25 rather than the 0.24999999999999992 of a
+// Cartesian round trip. Cell vectors stay exact, so POSCAR and extended XYZ edits keep their coordinates.
+const fraction = (value: number) => number(Math.round(value * 1e12) / 1e12);
 const cifLabel = (value: string) => value.replace(/[^A-Za-z0-9_.()+-]/gu, "").slice(0, 28) || "X";
 const cifQuoted = (value: string) => `'${value.replace(/'/gu, "")}'`;
 
@@ -161,7 +164,7 @@ export function writeCrystalCif(sites: CrystalSites, title: string, operations: 
     "_atom_site_fract_y",
     "_atom_site_fract_z",
     "_atom_site_occupancy",
-    ...sites.atoms.map((atom, index) => [labels[index], sites.species[index], ...cartesianToFractional([atom.x, atom.y, atom.z], sites.cell).map(number), "1"].join(" ")),
+    ...sites.atoms.map((atom, index) => [labels[index], sites.species[index], ...cartesianToFractional([atom.x, atom.y, atom.z], sites.cell).map(fraction), "1"].join(" ")),
   ];
   return `${lines.join("\n")}\n`;
 }

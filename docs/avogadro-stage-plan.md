@@ -379,8 +379,29 @@ current one has open code or acceptance items.
   add an `export_scene_model` viewer action.
 - **Done when:** one SDF exported to each format and reopened with the same
   atoms; a gzip copy reopens through the picker.
-- **Checks:** `test:coordinate-source-writers`, `test:coordinate-export`,
-  `test:compressed-sources`, `test:scene-export`.
+- **Done (2026-11-06):** Export → Structure adds MOL, XYZ and CJSON for every
+  single-file document the workbench reads (MOL and CJSON not for PDB/mmCIF
+  proteins), written from the current source with its draft: MOL of an SDF is
+  its first record as written, XYZ and CJSON of a crystal keep the cell, and an
+  SDF collection refuses XYZ and CJSON with the workbench's one-record message.
+  The Crystal tab gets Export → CIF, POSCAR, Extended XYZ and CJSON of the
+  current cell, because the file menu cannot tell a crystal CIF from a PDB
+  entry without reading it. Export → Compressed Copy… writes a gzip of the
+  current text named after the format inside (`caffeine.sdf.gz`). CIF
+  fractions are written to 1e-12, so a supercell no longer prints
+  0.24999999999999992; cell vectors stay exact, which the POSCAR and extended
+  XYZ round-trip tests require. The CJSON writer moved from the Avogadro
+  command bridge to `cjson-graph.ts` next to its reader. Agents get the
+  `export_scene_model` viewer action and `burette-agent export-model`
+  (glTF binary by default; PLY, OBJ, X3D, VRML, POV-Ray; 16 MiB), which writes
+  the file and keeps the bytes out of `actions.json`. Browser check on Gauss,
+  both themes: formaldehyde SDF → MOL, XYZ, CJSON, mmCIF and the gzip copy, each
+  reopened with 4 atoms; RDKit reads the MOL as C=O; the gzip decompresses to
+  the source bytes; rutile → POSCAR and CJSON with the cell; `export-model`
+  wrote a 3,144-vertex glTF and the same mesh as OBJ.
+- **Checks:** `test:structure-export` (new, in `test:ui`),
+  `test:coordinate-source-writers`, `test:coordinate-export`,
+  `test:compressed-sources`, `test:scene-export`, `test-burette-agent-cli`.
 
 ## Stage 11. Automation counterparts for UI actions
 
@@ -431,6 +452,13 @@ current one has open code or acceptance items.
   lifecycle. Failing at HEAD before stage 8 on Gauss: the tris-en-cobalt exact
   bytes in `test:metal-complex` and the metal sample in `test:builder-agent`
   (`-0.0000` coordinates), and three `test:structure-edit-panel` cases.
+- **Stage 10 leftovers:** failing before stage 10 as well: the P1 case of
+  `test:powder-xrd` (relative intensity 100.00000000000001) and
+  `tests/test-workspace-file-menu.mjs`, which is outside `test:ui` and expects
+  an icon on Open → Bottom panel. The browser agent shell has no Open
+  structures command, so a compressed copy reopens there through `open`; check
+  the picker in browser-dev. POSCAR and CJSON of a CIF crystal print the
+  1e-16 residue of its cell vectors.
 - **Done when:** every stage scenario above passes at 1400 and 900 px in both
   themes on the browser shell, and the stage 1–4 scenarios pass in the packaged
   macOS app.

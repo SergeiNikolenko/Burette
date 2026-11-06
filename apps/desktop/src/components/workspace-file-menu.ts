@@ -7,6 +7,7 @@ import { isTauriRuntime } from "../lib/tauri";
 import { menuItem as item, submenu, menuSections, fileCapabilities } from "./workspace-menu-items";
 import { requestContextualGuide } from "./onboarding/request";
 import { sourceExtension } from "../lib/science-session/state";
+import { inputExportSupportsDocument, workbenchSupportsDocument } from "../lib/workbench/structure";
 
 type Workflows = ReturnType<typeof useWorkspaceFileActions>;
 export function workspaceFileMenu(paths: string[], state: ShellViewState, actions: ShellActions, workflows: Workflows,
@@ -19,6 +20,9 @@ export function workspaceFileMenu(paths: string[], state: ShellViewState, action
   const caps = paths.map(fileCapabilities);
   const local = paths.every(path => path.startsWith("/"));
   const document = single ? state.documents.find(document => document.path === path) : null;
+  // Coordinate formats are written from the document's own source; a combined scene has several.
+  const ownSource = document && !workflows.isCombinedScene(document) ? document : null;
+  const coordinates = workbenchSupportsDocument(ownSource), molecule = coordinates && !caps[0].protein;
   // The native menu has no anchor, so the comparison opens over the file the user chose to view.
   const openAs = (rendererMode: "molstar" | "xyzrender-external") => async () => {
     await actions.openStructurePaths(paths, { rendererMode });
@@ -74,12 +78,16 @@ export function workspaceFileMenu(paths: string[], state: ShellViewState, action
     ], "plus.square.on.square"),
     ...submenu("file-export", "Export", [
       ...take("save-file-copy").map(entry => ({ ...entry, text: single ? "File Copy…" : "Selected Files…" })),
+      ...(ownSource && inputExportSupportsDocument(ownSource) ? [command("export-compressed", "Compressed Copy…", () => workflows.exportCompressedCopy(ownSource))] : []),
       ...(document?.renderer === "grid2d" ? [command("export-table", "Collection…", () => actions.saveMoleculeCollectionAs(document.id))] : []),
       ...(document?.renderer === "molstar" ? [
         command("save-scene", "Scene…", () => workflows.saveScene(document)),
         ...submenu("export-structure", "Structure", [
           ...(["sdf", "sd"].includes(sourceExtension(document)) && !workflows.isCombinedScene(document)
             ? [command("export-sdf", "SDF…", () => workflows.exportStructure(document, "sdf"))] : []),
+          ...(molecule ? [command("export-mol", "MOL…", () => workflows.exportStructure(document, "mol"))] : []),
+          ...(coordinates ? [command("export-xyz", "XYZ…", () => workflows.exportStructure(document, "xyz"))] : []),
+          ...(molecule ? [command("export-cjson", "CJSON…", () => workflows.exportStructure(document, "cjson"))] : []),
           command("export-cif", "mmCIF…", () => workflows.exportStructure(document, "mmcif")),
           ...(caps[0].protein ? [command("export-pdb", "PDB…", () => workflows.exportStructure(document, "pdb"))] : []),
         ]),
