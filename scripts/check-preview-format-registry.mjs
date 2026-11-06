@@ -238,4 +238,7 @@ assert.match(previewContentType, /mae\.gz/);
 assert.match(previewContentType, /registry\.quickLook\.contentTypes\.includes\(format\.contentType\)/);
 assert.doesNotMatch(previewContentType, /pdb\|PDB\|ent\|ENT/);
 
+// The Linux desktop entry and shared-mime-info package follow the same registry.
+execFileSync(process.execPath, ['scripts/linux-desktop-metadata.mjs', '--check'], { stdio: 'inherit' });
+
 console.log('preview format registry check passed');

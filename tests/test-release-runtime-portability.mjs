@@ -65,6 +65,18 @@ assert.match(
   /prepare_bundled_python_for_signing "\$TAURI_BUILT_APP\/Contents\/Resources\/xyzrender-python"/,
 );
 
+// Linux bundles stage the same locked renderer as Tauri resources.
+const linuxBuildScript = source("scripts/build-linux.sh");
+const wrapper = (script) => script.match(/cat >"\$runtime\/bin\/xyzrender" <<'EOF'\n([\s\S]*?)\nEOF\n/)?.[1];
+assert.ok(wrapper(buildScript), "macOS xyzrender wrapper not found");
+assert.equal(wrapper(linuxBuildScript), wrapper(buildScript), "Linux and macOS must ship the same xyzrender wrapper");
+assert.match(linuxBuildScript, /scripts\/prepare-xyzrender-runtime\.py/);
+assert.match(linuxBuildScript, /scripts\/prune-xyzrender-runtime\.py" "\$runtime" "\$python_root"/);
+assert.match(linuxBuildScript, /"\$python_root\/bin\/python3" \\\s*\n\s*"\$ROOT\/scripts\/prepare-xyzrender-bytecode\.py"/);
+assert.match(linuxBuildScript, /--exclude \/lib64/);
+assert.match(linuxBuildScript, /"xyzrender-runtime", python_root: "xyzrender-python"/);
+assert.match(linuxBuildScript, /stage_xyzrender_runtime\n\(cd apps\/desktop && bun run build:tauri -- --bundles "\$BUNDLES" --config "\$XYZRENDER_TAURI_CONFIG"\)/);
+
 assert.match(releaseWorkflow, /echo "allow_adhoc=true"/);
 assert.match(releaseWorkflow, /Apple signing is partially configured/);
 assert.match(releaseWorkflow, /environment: release/);
