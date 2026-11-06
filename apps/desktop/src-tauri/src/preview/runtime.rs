@@ -2468,7 +2468,9 @@ pub(crate) mod document_open_tests {
             .expect("preview config should be written");
 
         assert!(config.contains("\"format\":\"gro\""));
-        let gro_json = serde_json::to_string(&gro).unwrap();
+        // The receptor path is canonicalized, which on Windows also expands 8.3
+        // short names such as the CI runner's temp folder.
+        let gro_json = serde_json::to_string(&gro.canonicalize_simplified().unwrap()).unwrap();
         assert!(config.contains(gro_json.trim_matches('"')));
         assert!(!config.contains("\"format\":\"tpr\""));
         remove_runtime_artifacts(&document.runtime_path);
