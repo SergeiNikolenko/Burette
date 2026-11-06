@@ -86,6 +86,11 @@ availability. Submit with that revision and a stable `operationId`, poll
 - `prepare_3d` for flat SDF/MOL drawings; `conformers` for distinct minima;
   `frame_energy_forces` for trajectories and SDF ensembles, paging with
   `offset` until `nextOffset` is null.
+- `forceField` of `energy`, `energy_forces`, `frame_energy_forces` and
+  `optimize` also takes an external model id (`xtb:gfn2`, `xtb:gfn1`,
+  `xtb:gfnff`, `avogadro:<package>/<identifier>`). These run only in the
+  Burette desktop app with that model available; elsewhere the job fails with
+  that reason. Report it instead of silently switching to a built-in field.
 - `JOB_UNAVAILABLE` and `REVISION_CONFLICT` are answers, not transient errors:
   report the reason or observe again instead of retrying with other parameters.
 - For notebooks, use `python/burette_workbench.py` (`Workbench.run`,

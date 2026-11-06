@@ -262,6 +262,9 @@ class Workbench:
     def iter_frame_energy_forces(self, force_field: str = "MMFF94", *, batch_size: Optional[int] = None, offset: int = 0, document_id: Optional[str] = None, expected_source_revision: Optional[str] = None, operation_prefix: Optional[str] = None) -> Iterator[Dict[str, Any]]:
         """Energies and forces of every trajectory frame or SDF record, one bounded job per batch.
 
+        ``force_field`` is a built-in field (``MMFF94``, ``MMFF94s``, ``UFF``, ``LJ``) or an
+        external model id (``xtb:gfn2``, ``xtb:gfn1``, ``xtb:gfnff``,
+        ``avogadro:<package>/<identifier>``), which runs only in the desktop app.
         Yields ``{"frameIndex", "energy", "forces", "energyUnit", "forceUnit"}`` per frame.
         Every batch is pinned to the first revision, so an edit while iterating raises
         ``REVISION_CONFLICT``. Batch jobs use ``<operation_prefix>-<offset>`` operation ids,
