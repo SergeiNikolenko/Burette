@@ -33,7 +33,9 @@ export type StructureViewerAction =
   | { type: "select_source_atom"; sourceSha256: string; frameIndex: number; frameCount: number; atomIndex: number; label: string; notify: false }
   | { type: "scalar_field_binding"; expected: ScalarSourceIdentity; label: string; notify: false }
   | { type: "scalar_field_validate"; lease: string; label: string; notify: false }
-  | { type: "show_scalar_field"; lease: string; label: string; cube: string; isovalue: number; signed: boolean; alpha?: number; notify: false }
+  | { type: "show_scalar_field"; lease: string; label: string; cube: string; isovalue: number; signed: boolean; alpha?: number;
+      /** 0xRRGGBB of the positive and negative lobes; blue and red when absent. */
+      positiveColor?: number; negativeColor?: number; notify: false }
   | { type: "geometry_binding"; label: string; notify: false }
   | { type: "geometry_topology_scene_capture"; label: string; notify: false; lease: string }
   | { type: "geometry_topology_scene_validate"; label: string; notify: false; lease: string; receipt: string }

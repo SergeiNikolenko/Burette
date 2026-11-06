@@ -262,7 +262,7 @@
     "check:scalar-action-status": "tsc --noEmit -p tests/tsconfig.retired-geometry-status.json",
     "test:scalar-source-binding": "bun test tests/test-scalar-source-binding.test.ts",
     "check:scalar-source-binding": "tsc --noEmit -p tests/tsconfig.scalar-source.json",
-    "test:orbitals-owner": "bun test tests/test-orbitals-owner.test.tsx && bun test tests/test-orbitals-binding-owner.test.tsx && bun test tests/review-orbitals-runtime-owner.test.tsx && bun test tests/review-orbitals-initial-pose.test.tsx && bun test tests/review-orbitals-real-cube.test.tsx",
+    "test:orbitals-owner": "bun test tests/test-orbitals-owner.test.tsx && bun test tests/test-orbitals-cube-fields.test.tsx && bun test tests/test-orbitals-binding-owner.test.tsx && bun test tests/review-orbitals-runtime-owner.test.tsx && bun test tests/review-orbitals-initial-pose.test.tsx && bun test tests/review-orbitals-real-cube.test.tsx",
     "check:orbitals-owner": "tsc --noEmit -p tests/tsconfig.orbitals-owner.json",
     "test:peptide-geometry": "bun test tests/test-peptide-geometry.test.ts",
     "check:peptide-geometry": "tsc --noEmit -p tests/tsconfig.peptide-geometry.json",

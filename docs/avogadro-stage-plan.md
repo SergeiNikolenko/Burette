@@ -262,8 +262,18 @@ current one has open code or acceptance items.
   field identity and export name; add colour props to the viewer action.
 - **Done when:** a multi-orbital Cube → switch datasets → recolour → Export Cube
   → reopen; values checked against PySCF or the producer's own Cube.
-- **Checks:** `test:orbitals-owner`, `test:molstar-cube-datasets`,
-  `test:cube-worker`, `test:orbital-agent`.
+- **Done (2026-11-06):** a multi-field Cube offers its fields (orbital numbers
+  from the header) in a Field select; the scalar binding expects the file's
+  field count (it refused every multi-field Cube before) and the scene's first
+  field. Positive and negative lobe colours (Avogadro's blue and red by default)
+  resend the same grid without recomputing; the export is named after the field.
+  A field binds the exact displayed geometry, so it refuses another frame.
+  Browser check on Gauss with a PySCF formaldehyde HOMO/LUMO Cube: LUMO →
+  green/purple → Export Cube matches PySCF's own MO 9 cube in all 120 000 points
+  (max |Δ| 1e-8, the file precision); HOMO keeps the colours.
+- **Checks:** `test:orbitals-owner` (`test-orbitals-cube-fields`),
+  `test:molstar-cube-datasets`, `test:cube-worker`, `test:orbital-agent`,
+  `test:scalar-source-binding`.
 
 ## Stage 7. Trajectory plots for XTC and DCD in the browser
 

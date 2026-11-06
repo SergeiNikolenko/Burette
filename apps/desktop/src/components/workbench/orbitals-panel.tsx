@@ -9,6 +9,7 @@ import { captureViewerActionTarget, type ViewerActionTarget } from "../../lib/vi
 import type { ShellActions } from "../types";
 import type { ViewerDocument } from "../../types";
 import { Button } from "../ui/button";
+import { ColorPalette } from "../ui/color-palette";
 import { NativeSelect, NativeSelectOption } from "../ui/native-select";
 import { ScrubNumberField } from "../ui/scrub-number-input";
 import { SegmentedControl, SegmentedControlItem } from "../ui/segmented-control";
@@ -22,6 +23,12 @@ const FIELD_LABELS: Record<FieldKind, string> = { orbital: "Orbital", density: "
 const FIELD_UNITS: Record<FieldKind, string> = { orbital: "a.u.", density: "e/bohr³", "spin-density": "e/bohr³", file: "" };
 const DEFAULT_ISOVALUE: Record<FieldKind, number> = { orbital: 0.03, density: 0.02, "spin-density": 0.005, file: 0.02 };
 const SPACINGS = [0.2, 0.3, 0.4, 0.5];
+// Avogadro draws positive lobes blue and negative ones red; either can be changed.
+const LOBE_COLORS = [
+  { label: "blue", value: "#3b82f6" }, { label: "red", value: "#ef4444" }, { label: "green", value: "#22c55e" }, { label: "purple", value: "#a855f7" },
+];
+const rgb = (hex: string) => Number.parseInt(hex.slice(1), 16);
+const slug = (label: string) => label.toLowerCase().replace(/[^a-z0-9]+/gu, "-").replace(/^-|-$/gu, "") || "field";
 
 // Worker selection uses array positions; source ids may be sparse or repeat across spin channels.
 function frontierOrbitals(orbitals: MolecularOrbital[]) {
@@ -65,6 +72,10 @@ export function OrbitalsPanel({ document, actions, science, sourceText, sourceKi
   const [fieldKind, setFieldKind] = useState<FieldKind>(fieldKinds[0] ?? "orbital");
   const [isovalue, setIsovalue] = useState(DEFAULT_ISOVALUE[fieldKind]);
   const [spacing, setSpacing] = useState(0.3);
+  // Every field of a multi-field Cube, on one grid; a single-field Cube is its grid.
+  const datasets = science.gridDatasets ?? (science.grid ? [{ label: FIELD_LABELS.file, grid: science.grid }] : []);
+  const [dataset, setDataset] = useState(0);
+  const [colors, setColors] = useState({ positive: LOBE_COLORS[0].value, negative: LOBE_COLORS[1].value });
   const [shown, setShown] = useState<{ key: string; cube: string; lease: string; target: ViewerActionTarget; document: ViewerDocument; science: ScientificDocument } | null>(null);
   const [computing, setComputing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,17 +91,20 @@ export function OrbitalsPanel({ document, actions, science, sourceText, sourceKi
   const currentShown = shown?.document === document && shown.science === science ? shown : null;
   const [saving, setSaving] = useState(false);
 
-  const fieldKey = fieldKind === "orbital" ? `orbital:${selected}:${spacing}` : `${fieldKind}:${spacing}`;
+  const fieldKey = fieldKind === "orbital" ? `orbital:${selected}:${spacing}` : fieldKind === "file" ? `file:${dataset}` : `${fieldKind}:${spacing}`;
   const selectedOrbital = selected === null ? null : science.orbitals[selected];
-  const label = fieldKind === "orbital" && selectedOrbital ? `Orbital ${selectedOrbital.index + 1}` : FIELD_LABELS[fieldKind];
+  const label = fieldKind === "orbital" && selectedOrbital ? `Orbital ${selectedOrbital.index + 1}` : fieldKind === "file" ? datasets[dataset]?.label ?? FIELD_LABELS.file : FIELD_LABELS[fieldKind];
+  const signed = fieldKind !== "density";
   const orbitalFileName = selectedOrbital ? `${science.orbitals.some((orbital, index) => index !== selected && orbital.index === selectedOrbital.index) ? `${selectedOrbital.spin}-` : ""}orbital-${selectedOrbital.index + 1}` : "orbital";
 
-  // Isovalue last sent with a visible field; a debounced resend is skipped when it already matches.
-  const sentIsovalue = useRef<number | null>(null);
-  const send = (cube: string, value: number, target: ViewerActionTarget, lease: string, signal?: AbortSignal) => {
-    sentIsovalue.current = cube ? value : null;
+  // Isovalue and colours last sent with a visible field; a debounced resend is skipped when they already match.
+  const style = `${isovalue}:${colors.positive}:${colors.negative}`;
+  const sentStyle = useRef<string | null>(null);
+  const send = (cube: string, target: ViewerActionTarget, lease: string, signal?: AbortSignal) => {
+    sentStyle.current = cube ? style : null;
     sceneTarget.current = cube ? { target, lease } : null;
-    return sender.current(document, { type: "show_scalar_field", lease, label, cube, isovalue: value, signed: fieldKind !== "density", notify: false }, { target, signal });
+    return sender.current(document, { type: "show_scalar_field", lease, label, cube, isovalue, signed,
+      positiveColor: rgb(colors.positive), negativeColor: rgb(colors.negative), notify: false }, { target, signal });
   };
 
   // Clear through the retained frame; never acquire a new scene for an old computed grid.
@@ -134,12 +148,12 @@ export function OrbitalsPanel({ document, actions, science, sourceText, sourceKi
         }
         if (controller.signal.aborted || !sourceCurrent() || !target.isCurrent()) return;
         const grid = fieldKind === "file"
-          ? science.grid!
+          ? datasets[dataset].grid
           : await computeQuantumGrid(science, fieldKind === "orbital" ? { kind: "orbital", orbitalIndex: selected ?? 0 } : { kind: fieldKind }, { spacingAngstrom: spacing }, controller.signal);
         await sender.current(document, { type: "scalar_field_validate", lease, label, notify: false }, { target, signal: controller.signal });
         const cube = await serializeCube(grid, science.atoms, { signal: controller.signal });
         if (controller.signal.aborted || !sourceCurrent() || !target.isCurrent()) return;
-        await send(cube, isovalue, target, lease, controller.signal);
+        await send(cube, target, lease, controller.signal);
         if (!controller.signal.aborted && sourceCurrent() && target.isCurrent()) setShown({ key: fieldKey, cube, lease, target, document, science });
       } catch (caught) {
         if (!isAbortError(caught) && !controller.signal.aborted && sourceCurrent()) {
@@ -161,23 +175,23 @@ export function OrbitalsPanel({ document, actions, science, sourceText, sourceKi
     setWanted(false);
     setShown(null);
     const target = sceneTarget.current;
-    if (target) void Promise.resolve(send("", isovalue, target.target, target.lease)).catch((caught) => { if (sourceCurrent() && !isAbortError(caught)) setError(caught instanceof Error ? caught.message : String(caught)); });
+    if (target) void Promise.resolve(send("", target.target, target.lease)).catch((caught) => { if (sourceCurrent() && !isAbortError(caught)) setError(caught instanceof Error ? caught.message : String(caught)); });
   };
 
-  // The isovalue reuses the calculated grid. Hide, a new field or unmount cancels a
+  // The isovalue and colours reuse the calculated grid. Hide, a new field or unmount cancels a
   // pending resend, and the timer re-checks the live state before it sends.
   const live = useRef({ wanted, shown: currentShown, fieldKey });
   live.current = { wanted, shown: currentShown, fieldKey };
   useEffect(() => {
-    if (!wanted || !currentShown || currentShown.key !== fieldKey || sentIsovalue.current === isovalue) return undefined;
+    if (!wanted || !currentShown || currentShown.key !== fieldKey || sentStyle.current === style) return undefined;
     const target = currentShown;
     const timer = window.setTimeout(() => {
       const current = live.current;
       if (!sourceCurrent() || !target.target.isCurrent() || !current.wanted || current.shown !== target || current.fieldKey !== target.key) return;
-      void Promise.resolve(send(target.cube, isovalue, target.target, target.lease)).catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)));
+      void Promise.resolve(send(target.cube, target.target, target.lease)).catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)));
     }, 120);
     return () => window.clearTimeout(timer);
-  }, [isovalue, wanted, shown, fieldKey]);
+  }, [style, wanted, shown, fieldKey]);
 
   const exportCube = async () => {
     const value = currentShown;
@@ -188,7 +202,7 @@ export function OrbitalsPanel({ document, actions, science, sourceText, sourceKi
       // A later native edit while the ACK or save dialog is pending does not relabel the export.
       await sender.current(document, { type: "scalar_field_validate", lease: value.lease, label, notify: false }, { target: value.target });
       if (!sourceCurrent() || !value.target.isCurrent()) return;
-      const result = await actions.saveKetcherExportFile({ title: `${fileStem(document.title)}-${fieldKind === "orbital" ? orbitalFileName : fieldKind}.cube`, extension: "cube", text: value.cube });
+      const result = await actions.saveKetcherExportFile({ title: `${fileStem(document.title)}-${fieldKind === "orbital" ? orbitalFileName : fieldKind === "file" && science.gridDatasets ? slug(label) : fieldKind}.cube`, extension: "cube", text: value.cube });
       if (sourceCurrent() && result.status === "failed") setError(result.message);
     } catch (caught) { if (sourceCurrent()) setError(caught instanceof Error ? caught.message : String(caught)); }
     finally { if (sourceCurrent()) setSaving(false); }
@@ -217,6 +231,14 @@ export function OrbitalsPanel({ document, actions, science, sourceText, sourceKi
                 step={0.005} smallStep={0.0005} largeStep={0.05} formatValue={(value) => value.toPrecision(3)}
                 onValueChange={setIsovalue} onValueCommitted={setIsovalue} />
             </label>
+            {fieldKind === "file" && datasets.length > 1 ? (
+              <label className="workbench-field">
+                <span>Field</span>
+                <NativeSelect size="sm" aria-label="Cube field" value={String(dataset)} onChange={(event) => setDataset(Number(event.target.value))}>
+                  {datasets.map((item, index) => <NativeSelectOption key={index} value={String(index)}>{item.label}</NativeSelectOption>)}
+                </NativeSelect>
+              </label>
+            ) : null}
             {fieldKind !== "file" ? (
               <label className="workbench-field">
                 <span>Grid, Å</span>
@@ -238,6 +260,20 @@ export function OrbitalsPanel({ document, actions, science, sourceText, sourceKi
                 <Button type="button" size="xs" disabled={fieldKind === "orbital" && selected === null} onClick={() => setWanted(true)}>Show surface</Button>
               )}
             </div>
+          </div>
+          <div className="workbench-row">
+            <div className="workbench-field">
+              <span>{signed ? "Positive" : "Colour"}</span>
+              <ColorPalette aria-label={signed ? "Positive lobe colour" : "Surface colour"} colors={LOBE_COLORS} value={colors.positive}
+                onValueChange={(value) => setColors((current) => ({ ...current, positive: value }))} />
+            </div>
+            {signed ? (
+              <div className="workbench-field">
+                <span>Negative</span>
+                <ColorPalette aria-label="Negative lobe colour" colors={LOBE_COLORS} value={colors.negative}
+                  onValueChange={(value) => setColors((current) => ({ ...current, negative: value }))} />
+              </div>
+            ) : null}
           </div>
           {error ? <p role="alert" className="workbench-error">{error}</p> : null}
         </div>

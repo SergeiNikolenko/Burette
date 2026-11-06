@@ -159,8 +159,9 @@
         type: { name: 'isosurface', params: { isoValue: { kind: 'absolute', absoluteValue: value }, alpha } },
         colorTheme: { name: 'uniform', params: { value: color } }, sizeTheme: { name: 'uniform', params: { value: 1 } },
       });
-      surface(action.isovalue, 0x3b82f6);
-      if (action.signed !== false) surface(-action.isovalue, 0xef4444);
+      const color = (value, fallback) => Number.isInteger(value) && value >= 0 && value <= 0xffffff ? value : fallback;
+      surface(action.isovalue, color(action.positiveColor, 0x3b82f6));
+      if (action.signed !== false) surface(-action.isovalue, color(action.negativeColor, 0xef4444));
       try {
         await commit(builder);
         assertCurrent();
@@ -221,6 +222,7 @@
       } else {
         const grid = data.grid, dimensions = grid?.cells?.space?.dimensions;
         if (data.sourceData?.kind !== 'cube' || !expected.decodedSourceSha256 || !sha(expected.valuesSha256)
+          || (expected.datasetCount !== undefined && !(Number.isSafeInteger(expected.datasetCount) && expected.datasetCount > 1 && expected.datasetCount <= 1000))
           || !Array.isArray(expected.dimensions) || expected.dimensions.length !== 3
           || !expected.dimensions.every(value => Number.isSafeInteger(value) && value > 0)
           || expected.dimensions.reduce((a, b) => a * b, 1) > 1000000
@@ -232,7 +234,8 @@
           || await digest(floatBytes(grid.cells.data)) !== expected.valuesSha256) fail('The displayed Cube grid differs from the scientific source.');
         const header = data.sourceData.data.header;
         if (await digest(new TextEncoder().encode(JSON.stringify([expected.dimensions, expected.matrix]))) !== expected.geometrySha256
-          || header.dataSetIds.length !== 1) fail('The scalar source grid identity is invalid.');
+          // A multi-field Cube shows its first field; the panel serializes the one it draws.
+          || header.dataSetIds.length !== (expected.datasetCount ?? 1)) fail('The scalar source grid identity is invalid.');
       }
       if (!owner.current()) throw sourceChanged();
       const binding = { lease: crypto.randomUUID(), current: owner.current, dispose: owner.dispose };
