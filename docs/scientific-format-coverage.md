@@ -1,0 +1,106 @@
+# Scientific reader coverage
+
+`parseScientificFile(name, text)` in
+`apps/desktop/src/lib/molecular-workbench/quantum.ts` turns a scientific text
+source into a `ScientificDocument`. This audit lists every reader it dispatches
+to, what each reader keeps, where it refuses, and the tests and fixtures that
+cover it. Reader paths are relative to `apps/desktop/src/lib/molecular-workbench/`;
+test and fixture paths are relative to `tests/` and `tests/fixtures/`.
+
+## Dispatch and shared bounds
+
+Before any reader runs, the dispatcher refuses text over 16 MiB (as characters
+or UTF-8 bytes) and text containing NUL, so binary checkpoints never reach a
+reader. File names route first, in this order: `.xyz`, `.zmat` or `.zmatrix`
+carrying a `BURETTE_INTERNAL_COORDINATES_V` marker; `.zmat`/`.zmatrix`; `.cjson`;
+`.qcschema`/`.json`; `.fchk`/`.fch`; `.cube`/`.cub`; `.xyz`;
+`.molden`/`.molf`/`molden.input`; `.hess`. Other text starting with `{` is
+QCSchema. The rest is matched by program banner within its first 64 KiB
+(`quantum/signatures.ts`): ORCA property file (also any `.property.txt` or
+`_property.txt` name), NWChem, Psi4, GAMESS, Q-Chem, Molpro, xtb trajectory,
+then xtb output unless the ORCA banner is also present. Looser markers follow:
+Gaussian banner or orientation table, `[Molden Format]`,
+`$vibrational_frequencies`, and ORCA's `CARTESIAN COORDINATES (ANGSTROEM)`.
+Anything else fails with the list of supported inputs.
+
+Shared bounds (`quantum.ts`, `quantum/reader-values.ts`,
+`quantum/output-history.ts`): 10,000 atoms, 2,000 frames, 2,000,000 retained
+coordinate or mode values, 10,000 orbitals per table and one million grid
+values. Coordinates are finite and within ±10⁶ Å. Atom count and element order
+may not change between frames. The text-log readers attach energies, charges,
+dipoles and orbitals to the geometry printed before them. Properties printed
+after an unprinted line-search trial are dropped. A correlated total energy
+replaces the SCF energy of the same geometry. File-level orbitals and modes
+belong to the last geometry.
+
+Routing as a whole is covered by `test-scientific-dispatch.test.ts`,
+`test-scientific-format-routing.test.ts` and
+`test-scientific-import-formats.test.ts` (fixtures in `quantum/dispatcher/`).
+
+## Program outputs
+
+| Reader | Yields | Limits and refusals | Tests (fixtures) |
+| --- | --- | --- | --- |
+| Gaussian log (`quantum/gaussian-log.ts`) | Orientation frames (a Standard table replaces the uncomputed Input table of its step); SCF and MP/CC energies; modes with symmetry, reduced mass, force constant, IR, Raman activity and both depolarization ratios; Mulliken charges; dipole; convergence. Orbitals with coefficients and basis need `pop=full` with `gfinput` on the last geometry; otherwise eigenvalues give energies and occupations only. | Frequency blocks of more than three modes are refused. Malformed orientation, Mulliken, dipole, orbital and normal-coordinate rows fail. xtb's Gaussian-format frequency output is tagged `xtb` and keeps only frequencies, reduced masses, IR and displacements. | `test-direct-quantum-readers`, `test-scientific-dispatch-readers`, `test-gaussian-log-orbitals`, `test-xtb-reader` (`quantum/gaussian-water-optimization.log`, `quantum/gaussian/`, `quantum/xtb/*-g98.out`) |
+| ORCA output (`parseOrca` in `quantum.ts`) | One frame per coordinate block with its `FINAL SINGLE POINT ENERGY`; orbital energies and occupations of the last `ORBITAL ENERGIES` table; convergence; each frequency block's modes on its own geometry, with symmetry, displacements, IR (km/mol, or T² for older tables), Raman activity and depolarization; VCD, NMR shielding and absorption/CD spectra scoped to their frame. | No orbital coefficients. IR and Raman rows must match their mode within 0.02 cm⁻¹; negative strengths, duplicate indices and an unknown Raman header are refused. | `test-scientific-dispatch`, `test-workbench-orca-frame-modes`, `test-orca-line-endings`, `test-orca-nmr-spectra`, `test-orca-optical-spectra`, `test-orca-circular-spectra`, `test-orca-vcd-section-boundary` (`quantum/dispatcher/two-step-orca.out`, `quantum/spectra-orca-*.out`) |
+| ORCA Hessian (`parseHessian` in `quantum.ts`) | One frame: `$atoms` (bohr, masses), `$hessian` in Hartree/bohr², modes from `$vibrational_frequencies` and `$normal_modes`, `$ir_spectrum` (five columns: T²; six: km/mol) and `$raman_spectrum`. | `$atoms` and `$vibrational_frequencies` are required. Duplicate sections, dimension mismatches, mixed row widths and depolarization outside 0–1 are refused. | `test-orca-hessian-parser`, `test-scientific-dispatch`, `test-normal-modes` (`quantum/dispatcher/*.hess`, `quantum/orca-3.0.2-methane.hess`, `quantum/orca-property/pyepfd-co2-opt-freq.hess`) |
+| ORCA property file (`quantum/orca-property.ts`) | ORCA 6 keyed blocks and the ORCA 5 `!PROPERTIES!` listing: one frame per geometry index with final (or SCF plus dispersion) energy, Mulliken and Löwdin charges, dipole, gradient as forces, Hessian (ORCA 6 only) and modes including rigid motions; `converged: false` on abnormal status. | No orbitals and no masses. ORCA 6 coordinates must be in Bohr; geometry indices must run contiguously from 1; modes without matching frequencies are refused. | `test-orca-property-reader` (`quantum/orca-property/`) |
+| NWChem (`quantum/nwchem-log.ts`) | Geometries in Å or a.u.; SCF/DFT and MP2/CC/CI energies; orbital energies, occupations and symmetry; Mulliken charges; dipole; the mass-weighted Hessian converted with the printed masses; modes (projected replaces unprojected) with IR in km/mol. | No basis or coefficients. `bq` ghost centres are refused; a DFT vector window that does not start at vector 1 yields no orbitals; an IR table not in KM/mol is refused. | `test-nwchem-reader` (`quantum/nwchem/`) |
+| GAMESS, Firefly, PC GAMESS (`quantum/gamess-log.ts`) | Bohr input and Å optimizer geometries; final SCF energy (an unconverged placeholder is dropped) and MP/CC energies; Mulliken and Löwdin charges; dipole; force-constant Hessian with atomic weights; modes with symmetry, reduced mass, IR (converted to km/mol), Raman and depolarization, rigid motions dropped; Cartesian basis and orbitals for RHF, UHF and ROHF. | Orbitals need the `ATOMIC BASIS SET` print, an RHF, UHF or ROHF `SCFTYP` and the final SCF of the last geometry. Ghost and dummy centres are refused. | `test-gamess-reader` (`quantum/gamess/`) |
+| Psi4 (`quantum/psi4-log.ts`) | Geometries; SCF and post-HF energies; orbital energies with irreps and occupations; Mulliken and Löwdin charges; dipole; `Total Hessian (Symmetry 0)` with the geometry's masses; modes with signed imaginary frequencies, irrep, reduced mass, force constant, IR and displacements. | No basis or coefficients. `Gh(...)` ghost atoms are refused. | `test-psi4-reader` (`quantum/psi4/`) |
+| Q-Chem (`quantum/qchem-log.ts`) | Standard Nuclear Orientation frames; SCF and post-HF energies; orbital energies (0.001 Eh) with symmetry; Mulliken, ChElPG, Hirshfeld, CM5 and Merz–Kollman charges; dipole; modes with force constant, reduced mass, IR, Raman and depolarization (dropped for Raman-inactive modes). | MO coefficients are not read: printed to five decimals, they are left to the job's FCHK or Molden file. Ghost atoms are refused. | `test-qchem-reader` (`quantum/qchem/`) |
+| Molpro (`quantum/molpro-log.ts`) | Bohr `ATOMIC COORDINATES` and the final Å `Current geometry`; SCF and correlated energies; dipole; orbital energies and occupations in energy order; Mulliken charges; Hessian from force constants or mass-weighted second derivatives; modes with symmetry and IR in km/mol. | Coefficients over symmetry-adapted functions are not read (`put,molden` writes a readable Molden file). Intermediate optimizer steps are only in Molpro's `.log`. Ghost and dummy centres are refused. | `test-molpro-reader` (`quantum/molpro/`) |
+| xtb output (`parseXtbOutput` in `quantum/xtb.ts`) | The `final structure` geometry (XYZ or `$coord`); total energy; the printed orbital window with source numbering; charges (Mulliken for GFN-xTB, EEQ for GFN-FF); dipole; convergence. | Output without a printed geometry is refused and points at `xtbopt.xyz`, `xtbopt.log` or the input. | `test-xtb-reader` (`quantum/xtb/`) |
+| xtb trajectory (`parseXtbTrajectory`) | Every `xtbopt.log` frame with its `energy:` comment energy. | Every frame needs that comment; a frame cut while being written is dropped. | `test-xtb-reader` (`quantum/xtb/water-opt-xtbopt.log`, `water-unconverged-xtbopt.log`) |
+| QCSchema (`quantum/qcschema.ts`, `quantum/qcschema-wavefunction.ts`) | Molecule v2; atomic result v1 for the energy, gradient (as forces), Hessian and properties drivers; optimization result v1 with initial, kept and final geometries and per-step energies under every `protocols.trajectory`; wavefunction basis and orbitals; excited-state and NMR spectra scoped to their frame. | Bohr only; `success` must be true; ghost atoms, unsupported versions and drivers, disagreeing energies or gradients, ECPs for orbital fields and angular momentum above i are refused. | `test-direct-quantum-readers`, `test-scientific-dispatch-readers`, `test-qcschema-wavefunction`, `test-scientific-spectra-readers` (`quantum/qcschema-water-gradient.json`, `quantum/qcschema/`) |
+
+## Wavefunction and field files
+
+| Reader | Yields | Limits and refusals | Tests (fixtures) |
+| --- | --- | --- | --- |
+| FCHK (`fchk.ts`, `fchk-vibrations.ts`) | Geometry, total energy, packed Cartesian force constants with `Vib-AtMass` or atomic weights, modes from `Vib-E2`/`Vib-Modes`, s–i shells with sp contractions, alpha and beta orbitals; restricted open shells get separate alpha and beta occupations. | IR and Raman stay unknown unless their derivative tensors are present or a value is nonzero. At most 2,000 basis functions; partial-molecule vibrations (`Vib-NDim`) and beta without alpha orbitals are refused. | `test-fchk-readers`, `test-workbench-gaussian-conventions`, `test-normal-modes` (`quantum/gaussian16-water-raman.fchk`) |
+| Molden (`parseMolden` in `gaussian.ts`) | `[Atoms]` in Angs or AU, `[GTO]` s/p/sp/d/f/g with the `[5D]`, `[7F]`, `[9G]` flags, `[MO]` with symmetry, energy, spin and occupation; `orca_2mkl` normalization and sign conventions are undone. | `[STO]` Slater bases, shells above g and files without `[GTO]` or `[MO]` are refused; at most 2,000 functions and 2,000,000 coefficients. One frame, no modes. | `test-molden-fields`, `test-molden-orca`, `test-scientific-dispatch` (`quantum/dispatcher/hydrogen.molden`, `quantum/molden/`) |
+| Cube (`parseCube` in `quantum.ts`) | Atoms and a scalar grid in bohr or Å (by the sign of the axis counts), oblique axes allowed. A negative atom count adds orbital datasets (`Orbital n`); `NVAL` > 1 adds interleaved fields (`Field k`); all go in `gridDatasets`, the first also in `grid`. | Atom-free cubes, orbital datasets combined with `NVAL` > 1, mixed axis units, zero-volume axes and corners beyond 10⁶ Å are refused; all fields together hold at most one million values. | `test-scientific-dispatch`, `test-molstar-cube-datasets`, `test-molstar-cube-units`, `test-quantum-science-session`, `test-cube-ui-history` (`oblique-angstrom-3fields.cube`, `cube-ui-history/three-fields.cube`) |
+
+## Coordinate files
+
+| Reader | Yields | Limits and refusals | Tests (fixtures) |
+| --- | --- | --- | --- |
+| XYZ and extended XYZ (`parseXyzTrajectory`, `trajectory-metadata.ts`) | Every frame; energy, time and temperature from `key=value` comments with explicit units; extended `Properties` columns with velocities and forces; `Lattice` stays in the frame comment, where the Crystal and Symmetry tools read it. | Unitless values are ignored. Extended XYZ needs `species:S:1` and `pos:R:3`; vector columns need a declared unit. A `.xyz` name without the internal-coordinate marker takes this reader before any content signature. | `test-scientific-dispatch`, `test-direct-quantum-readers`, `test-built-molstar-xyz-lattice.mjs` (`xyz-lattice/`) |
+| Z-matrix (`scripts/zmatrix-document.mjs`, `scripts/coordinate-interchange.mjs`) | Rows with references and values or named variables (`name = value`, or Gaussian's `Variables:` section); `X` rows are reference points only; a marker restores the saved atom/definition pair. | 1 MiB, 512 rows and 1,536 variables. Gaussian `Constants` sections, expressions and mixed Cartesian rows are refused; dihedrals must lie within ±360°. A marker that disagrees with the rows is refused, never ignored. | `test-scientific-dispatch`, `test-coordinate-interchange-reader`, `test-coordinate-interchange`, `test-zmatrix-reference` (`zmatrix-reference/`) |
+| Chemical JSON (`cjson-graph.ts`, `cjson-science.ts`) | Versions 0 and 1: explicit bonds, formal charges and isotopes as a source-ordered MOL graph; every `3dSets` entry as a frame; vibrations with IR, Raman activity and eigenvectors (zero padding past 3N allowed), by set through `conformers` or for the active set; Avogadro `basisSet` and orbitals (energies eV to Hartree, occupations or aufbau from `electronCount` and multiplicity); electronic, ECD and NMR spectra scoped to the file. | 1–256 atoms, at most 2,000 sets and 2,000,000 coordinates. Bond orders 4–6, self or duplicate bonds, more than 3N vibrations, shells other than s/p/d/f/g and unnormalized primitives are refused. A periodic file (`cellVectors` or a, b, c, α, β, γ, with Cartesian or `3dFractional` coordinates) opens as extended XYZ with its lattice. | `test-cjson-graph`, `test-cjson-science`, `test-cjson-graph-codec`, `test-cjson-import` (`cjson/`, `quantum/spectra-native-nmr.cjson`) |
+
+## CJSON coordinate sets
+
+A multi-set CJSON opens on its active set: `3dSetsActive`, or set 0 when it is
+absent, even if a separate `3d` block holds another geometry. Each set is a
+frame of the document; the MOL source holds the active set's positions. The
+Info dock's Coordinate set card
+(`apps/desktop/src/components/workbench/coordinate-set-card.tsx`) appears for a
+MOL source with at least two sets. Choosing a set writes its positions into
+that MOL source as one revision (`apps/desktop/src/lib/workbench/cjson-coordinate-set.ts`);
+Undo returns to the previous set, and choosing a set shown before reuses its
+revision. Modes travel with their set: the chosen set's modes become the
+document's and the previous set's return to its frame. Orbitals and basis stay
+with the set they were computed for, so another set's revision has none and
+returning to the file's own set restores them. `test-cjson-graph-codec`
+covers the revision and its save and reopen
+(`cjson/avogadro-formaldehyde-raman.cjson`).
+
+## Known gaps
+
+- ORCA, NWChem, Psi4, Q-Chem, Molpro and xtb text outputs give orbital
+  energies and occupations only; their coefficients, and so orbital fields,
+  come from FCHK, Molden, QCSchema or CJSON files.
+- ORCA output keeps no charges, dipoles or Hessian; the ORCA property file
+  keeps no orbitals or masses.
+- QCSchema results carry no modes; a Hessian result keeps only the matrix.
+- CJSON `properties` other than `totalSpinMultiplicity` (energies, dipole) and
+  `atoms.forces` are not read. A periodic CJSON keeps only atoms and cell: no
+  bonds, vibrations, orbitals or spectra.
+- Ghost and dummy centres are refused wherever a reader can meet them.
+- xtb output keeps only its final structure; Molpro output keeps no
+  intermediate optimizer steps.
+- Gaussian frequency blocks wider than three modes, FCHK vibrations of part of
+  the molecule, Molden Slater bases and shells above g, and Cubes with both
+  orbital datasets and several values per point are refused.

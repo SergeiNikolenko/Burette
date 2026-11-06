@@ -11,6 +11,7 @@ import type { ScientificDocument } from "../apps/desktop/src/lib/molecular-workb
 import { parseScientificFile } from "../apps/desktop/src/lib/molecular-workbench/quantum";
 import { encodeScienceSession, decodeScienceSession, SCIENCE_MANIFEST_ASSET_ID, type EncodedScienceSession, type ScienceSessionContent } from "../apps/desktop/src/lib/science-session/codec";
 import { sha256Hex } from "../apps/desktop/src/lib/source-editing/source-identity";
+import { cjsonCoordinateSetRevision } from "../apps/desktop/src/lib/workbench/cjson-coordinate-set";
 installPlugin(molstarMolV3000Plugin); installPlugin(molstarV3000ChargesPlugin);
 const { PluginContext } = await import("@molstar/plugin");
 const { DefaultPluginSpec } = await import("@molstar/plugin/default-spec");
@@ -90,6 +91,21 @@ test("producer source-order stereo graphs, vibrations and orbitals survive repea
       expect(new Uint8Array(await current.original!.file.arrayBuffer())).toEqual(new Uint8Array(await original.original!.file.arrayBuffer()));
     }
   }
+});
+
+test("a chosen coordinate set becomes the graph's source and survives the codec; the file's own set returns its exact text", async () => {
+  const original = content("avogadro-formaldehyde-raman.cjson"), science = original.science!;
+  const chosen = cjsonCoordinateSetRevision(science, original.source.text, 5);
+  // Modes travel with their geometry; orbitals stay with the set they were computed for.
+  expect([chosen.document.graph!.activeFrameIndex, chosen.document.modes, chosen.document.frames[0].modes, chosen.document.orbitals]).toEqual([5, [], science.modes, []]);
+  expect(chosen.document.atoms.map(({ x, y, z }) => [x, y, z])).toEqual(science.frames[5].atoms.map(({ x, y, z }) => [x, y, z]));
+  const saved = { ...original, source: { extension: "mol", text: chosen.text }, science: chosen.document };
+  const reopened = (await decodeScienceSession(archive(await encodeScienceSession(saved))))!;
+  expect([reopened.source, reopened.science]).toEqual([saved.source, chosen.document]);
+  const back = cjsonCoordinateSetRevision(chosen.document, chosen.text, 0);
+  expect(back.text).toBe(original.source.text);
+  expect(back.document.modes).toEqual(science.modes);
+  expect(() => cjsonCoordinateSetRevision(science, original.source.text, 21)).toThrow("not in the file");
 });
 
 test("checksum-valid graph/science substitution, wrong active set and legacy version claims are refused", async () => {

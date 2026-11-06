@@ -240,8 +240,13 @@ current one has open code or acceptance items.
   vibrations and orbitals survive the MOLX v4 codec; browser check on Gauss:
   1527 cm⁻¹ animates, the LUMO surface shows. Gaussian optimization logs with a
   basis already open on their final geometry with orbitals.
-- **Open (part 2):** a coordinate-set selector that writes the chosen CJSON set
-  to the graph; `docs/scientific-format-coverage.md`.
+- **Done (2026-11-06, part 2):** the Info dock's Coordinate set card
+  (`coordinate-set-card.tsx`, `lib/workbench/cjson-coordinate-set.ts`) writes the
+  chosen set's positions to the MOL source as one revision; modes travel with
+  their set, orbitals and basis stay with the file's own set, and choosing a set
+  shown before returns to that revision. The chosen set survives the MOLX v4
+  codec. `docs/scientific-format-coverage.md` lists every reader, what it yields,
+  its limits and its tests.
 - **Checks:** `test:cjson-graph` (`test-cjson-science`), `test:cjson-graph-codec`,
   `test:cjson-import`, `test:science-codec`, `test:quantum-science-session`,
   `test:gaussian-log-orbitals`.

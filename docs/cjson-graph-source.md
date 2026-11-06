@@ -28,8 +28,9 @@ comes from the graph and coordinates. The real L/D-alanine fixtures retain S/R
 configuration through MOL export/reopen, including their leading explicit H.
 
 CJSON orders 4–6 are not MDL aromatic/query orders and are explicitly refused.
-Periodic cells and fractional coordinates are also refused until a cell-bearing
-graph representation is wired. No such file is silently flattened into XYZ.
+The graph reader refuses periodic cells and fractional coordinates. The
+scientific open path reads them first: a CJSON with a `unitCell` opens as
+extended XYZ with its `Lattice`, which the Crystal and Symmetry tools read.
 The three-dimensional graph extracts in `tests/fixtures/cjson` come from pinned,
 BSD-licensed producer files; hashes, extraction scope and license are adjacent.
 The existing reduced NMR fixture is a numerical/structural extract, not a claim
@@ -54,10 +55,14 @@ all retained sets, spectra and Original through the version 4 MOLX contract.
 JSON scalar coordinates use ordinary JSON number semantics (signed zero becomes
 zero); the Original preserves its literal source spelling.
 
-Energy, vibrational, orbital, periodic and display metadata outside this result
-remain in the input source and require their own consumers. Coordinate-set
-switching is not activated. Native content-type registration and Finder Quick
-Look routing are separate; no registration metadata changes in this stage.
+`cjson-science.ts` reads Avogadro's `vibrations`, `basisSet` and `orbitals`
+into the scientific document; the active set's modes are the document's and
+every other set keeps its own on its frame. The Info dock's Coordinate set card
+writes another set's positions to the MOL source as one revision: modes travel
+with their set, orbitals and basis stay with the set the file computed them
+for. Energy and display metadata remain in the input source. Native
+content-type registration and Finder Quick Look routing are separate. Readers
+and limits are listed in [scientific-format-coverage.md](scientific-format-coverage.md).
 
 `test:cjson-graph` uses real OCL, RDKit and native MolStar data/model parsers.
 `check:cjson-graph` checks the module and tests with the app's actual Vite types.

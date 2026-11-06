@@ -37,7 +37,8 @@ import { ScrubNumberField } from "@/components/ui/scrub-number-input";
 import { Item, ItemContent, ItemDescription, ItemGroup } from "@/components/ui/item";
 import { InspectorToolRow } from "./inspector-tool-row";
 import { PropertiesToolRow } from "./workbench/properties-entrypoint";
-import { useTrajectoryFrame, type TrajectoryFrameState } from "../lib/workbench/source";
+import { sourceExtension, useTrajectoryFrame, type TrajectoryFrameState } from "../lib/workbench/source";
+import { CoordinateSetCard } from "./workbench/coordinate-set-card";
 import { CollapsibleSection } from "./ui/collapsible-section";
 import { Field, FieldGroup, FieldTitle, FieldLabel, FieldDescription, FieldSet, FieldLegend } from "./ui/field";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
@@ -540,6 +541,8 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
         ) : null}
 
       </> : null}
+
+      {sourceExtension(document) === "mol" ? <CoordinateSetCard document={document} /> : null}
 
       {derivedTopology ? (
         <DerivedTopologyCard document={document} isBrowserDev={isBrowserDev} actions={actions} />
