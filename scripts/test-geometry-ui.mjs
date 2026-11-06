@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 for (const file of [
   "tests/test-geometry-kinetic.test.tsx",
   "tests/test-geometry-optimization-result.test.tsx",
+  "tests/test-geometry-auto-optimize.test.tsx",
   "tests/test-workbench-zmatrix.test.tsx",
   "tests/test-workbench-zmatrix-source-session.test.tsx",
   "tests/test-workbench-zmatrix-definition.test.tsx",

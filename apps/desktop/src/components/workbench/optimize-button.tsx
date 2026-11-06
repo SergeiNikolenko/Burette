@@ -85,12 +85,14 @@ export function useEnergyCalculation(current: object | null | undefined) {
  * variables by differencing the energy, which bounds their size. Automatic is passed on
  * as "auto": the caller resolves it once the structure's bond graph is known.
  */
-export function OptimizeButton({ atomCount, elements = [], constraintCount = 0, coupled = false, unavailableReason, disabled, size = "default", variant = "default", configureOpen, onConfigureOpenChange, onOptimize }: {
+export function OptimizeButton({ atomCount, elements = [], constraintCount = 0, coupled = false, unavailableReason, disabled, size = "default", variant = "default", configureOpen, onConfigureOpenChange, onOptimize, onAutoOptimize }: {
   atomCount: number; elements?: readonly string[]; constraintCount?: number; coupled?: boolean; unavailableReason?: string | null;
   disabled?: boolean; size?: "default" | "xs"; variant?: "default" | "secondary";
   /** Configure Optimization… is open; a panel controls it to open the dialog from a command. */
   configureOpen?: boolean; onConfigureOpenChange?: (open: boolean) => void;
   onOptimize: (method: OptimizationMethod, forceField: EnergyModelChoice, maxIterations: number) => void;
+  /** Avogadro's continuous relaxation; the item shows only where a panel supports it. */
+  onAutoOptimize?: () => void;
 }) {
   const settings = useOptimizerSettings(), choice = settings.model, steps = String(settings.steps);
   const [ownConfigureOpen, setOwnConfigureOpen] = useState(false);
@@ -129,6 +131,7 @@ export function OptimizeButton({ atomCount, elements = [], constraintCount = 0, 
             {STEP_LIMITS.map((item) => <DropdownMenuRadioItem key={item} value={item}>{item}</DropdownMenuRadioItem>)}
           </DropdownMenuRadioGroup>
           <DropdownMenuSeparator />
+          {onAutoOptimize ? <DropdownMenuItem disabled={Boolean(blocked)} onSelect={onAutoOptimize}>Auto Optimize</DropdownMenuItem> : null}
           <DropdownMenuItem onSelect={() => setConfiguring(true)}>Configure…</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

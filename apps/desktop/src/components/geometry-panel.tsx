@@ -25,7 +25,8 @@ import { downloadTextFile } from "../lib/file-export";
 import { MEASUREMENT_NOUNS, consumeGeometryFocus, measurementCell, useGeometryFocusRequest } from "../lib/workbench/geometry-focus";
 import { CoordinateEditor } from "./workbench/coordinate-editor";
 import { SegmentedControl, SegmentedControlItem } from "./ui/segmented-control";
-import type { Vec3 } from "../lib/molecular-workbench/types";
+import type { MolecularAtom, Vec3 } from "../lib/molecular-workbench/types";
+import { useAutoOptimize } from "./workbench/auto-optimize";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { useSourceEditing } from "../lib/source-editing/context";
 import { captureLogicalSourceOwner } from "../lib/science-session/state";
@@ -187,6 +188,12 @@ function CartesianGeometryPanel({ document, actions, convert }: {
     error => setEditError(error instanceof Error ? error.message : String(error)));
   const [configuring, setConfiguring] = useState(false);
   const energy = useEnergyCalculation(editor?.frame);
+  const auto = useAutoOptimize();
+  // The geometry Auto Optimize started from; any other change to the editor ends the session.
+  const autoBase = useRef<Editor | null>(null);
+  useEffect(() => {
+    if (autoBase.current && autoBase.current !== editor) { autoBase.current = null; auto.stop(); }
+  }, [editor]);
   const viewerSelection = useViewerAtomSelection(document.id);
   // Optimize Geometry, Calculate Energy and the other Calculate commands from menus and the palette.
   const command = useRef<(command: OptimizationCommand) => void>(() => {});
@@ -401,6 +408,32 @@ function CartesianGeometryPanel({ document, actions, convert }: {
     }
   };
   const cancelOptimize = () => { optimizeJob.current?.abort(); optimizeJob.current = null; setOptimizing(false); live.cancel(); };
+  const positionsOf = (atoms: MolecularAtom[]): Vec3[] => atoms.map((atom) => [atom.x, atom.y, atom.z]);
+  auto.handlers.current = {
+    frame: (atoms) => { const base = autoBase.current; if (base) live.preview(textAt(base.frame, positionsOf(atoms)), base.binding.text); },
+    finish: (atoms) => {
+      const base = autoBase.current;
+      autoBase.current = null;
+      if (base !== editor) { live.cancel(); return; }
+      const positions = positionsOf(atoms), rows = rowsAt(editor.rows, positions);
+      void apply(rows, [...editor.history, snapshot()].slice(-HISTORY_LIMIT), { ...geometryBase(textAt(editor.frame, positions)), rows });
+    },
+    cancel: () => { autoBase.current = null; live.cancel(); },
+  };
+  // Avogadro's Auto Optimize is a toggle: the same command stops it and keeps the result.
+  const toggleAutoOptimize = async () => {
+    if (auto.running) { auto.stop(); return; }
+    const blocked = optimizing || applying ? "Wait for the current edit to finish." : constraintError ?? optimizationUnavailable(editor.rows.length, constraints.length);
+    if (blocked) { setEditError(blocked); return; }
+    setEditError(null);
+    const started = editor;
+    try {
+      const molecule = await runChemistryTask({ action: "parse", source: geometryText(started.frame, started.rows), format: "xyz" });
+      if (editorRef.current !== started) return;
+      autoBase.current = started;
+      auto.start(molecule, constraints);
+    } catch (error) { setEditError(error instanceof Error ? error.message : String(error)); }
+  };
   command.current = (name) => {
     if (name === "configure") { setConfiguring(true); return; }
     if (name === "freeze" || name === "unfreeze") {
@@ -414,6 +447,7 @@ function CartesianGeometryPanel({ document, actions, convert }: {
       void runChemistryTask({ action: "parse", source: geometryText(editor.frame, editor.rows), format: "xyz" }).then((molecule) => energy.calculate(molecule, editor.frame), (error) => setEditError(error instanceof Error ? error.message : String(error)));
       return;
     }
+    if (name === "auto-optimize") { void toggleAutoOptimize(); return; }
     if (name !== "optimize") return;
     const blocked = optimizing || applying ? "Wait for the current edit to finish." : constraintError ?? optimizationUnavailable(editor.rows.length, constraints.length);
     if (blocked) { setEditError(blocked); return; }
@@ -519,16 +553,16 @@ function CartesianGeometryPanel({ document, actions, convert }: {
         <IconAction label="Copy Z-matrix" onClick={copyZmatrix}><Copy aria-hidden /></IconAction>
         <IconAction label="Export Z-matrix" onClick={exportZmatrix}><Download aria-hidden /></IconAction>
         <IconAction label="Export input file" onClick={exportInput}><FileCode aria-hidden /></IconAction>
-        {optimizing ? (
+        {auto.status ?? (optimizing ? (
           <>
             <OptimizingStatus progress={progress} />
             <Button type="button" variant="ghost" size="xs" onClick={cancelOptimize}>Cancel</Button>
           </>
         ) : (
           <TooltipProvider><Tooltip><TooltipTrigger asChild>
-            <span><OptimizeButton atomCount={editor.rows.length} elements={editor.rows.map((row) => row.element)} constraintCount={constraints.length} unavailableReason={constraintError} size="xs" variant="secondary" disabled={applying} configureOpen={configuring} onConfigureOpenChange={setConfiguring} onOptimize={(method, forceField, maxIterations) => void optimize(method, forceField, maxIterations)} /></span>
+            <span><OptimizeButton atomCount={editor.rows.length} elements={editor.rows.map((row) => row.element)} constraintCount={constraints.length} unavailableReason={constraintError} size="xs" variant="secondary" disabled={applying} configureOpen={configuring} onConfigureOpenChange={setConfiguring} onOptimize={(method, forceField, maxIterations) => void optimize(method, forceField, maxIterations)} onAutoOptimize={() => void toggleAutoOptimize()} /></span>
           </TooltipTrigger><TooltipContent>{constraints.length ? `Optimize with ${constraints.length} constraint${constraints.length === 1 ? "" : "s"}` : "Optimize geometry"}</TooltipContent></Tooltip></TooltipProvider>
-        )}
+        ))}
         {session?.dirty ? (
           <TooltipProvider><Tooltip><TooltipTrigger asChild>
             <span className="ml-auto">
@@ -538,7 +572,7 @@ function CartesianGeometryPanel({ document, actions, convert }: {
           </TooltipTrigger>{session.saveDisabledReason ? <TooltipContent>{session.saveDisabledReason}</TooltipContent> : null}</Tooltip></TooltipProvider>
         ) : null}
       </div>
-      {editError ? <p role="alert" className="geometry-panel-error">{editError}</p> : null}
+      {editError ?? auto.error ? <p role="alert" className="geometry-panel-error">{editError ?? auto.error}</p> : null}
       {energy.line}
       {optimization ? (
         <div className="geometry-panel-result" role="status">
