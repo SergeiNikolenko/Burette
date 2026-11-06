@@ -2753,10 +2753,14 @@ fn parse_rxn_batch(text: &str, cursor: GridCursor, start_index: usize) -> Parsed
     let records = if cursor.offset > 0 {
         Vec::new()
     } else {
-        let lines: Vec<String> = text
-            .split_inclusive(['\n', '\r'])
-            .map(|line| line.trim_end_matches(['\n', '\r']).to_string())
-            .collect();
+        // `line_at` treats CRLF as one break; splitting on either character
+        // would put an empty line after every line and shift the name line.
+        let mut lines = Vec::new();
+        let mut offset = 0;
+        while let Some((line, next_offset)) = line_at(text, offset) {
+            lines.push(line.to_string());
+            offset = next_offset;
+        }
         // A .rxn file opens with `$RXN`. Without this check any text file that
         // happens to carry the extension would become one row holding a molblock
         // that no renderer can read, which reads as a broken reaction rather than
@@ -5144,6 +5148,20 @@ mod tests {
         assert!(molblock.starts_with("$RXN"), "row keeps the reaction block");
         assert_eq!(molblock.matches("$MOL").count(), 3);
         assert_eq!(page.rows[0].smiles, None);
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn reads_the_name_of_a_crlf_reaction_file() {
+        let runtime_dir = temp_runtime_dir();
+        let rxn = AMIDATION_RXN.replace('\n', "\r\n");
+
+        let (database_path, _) = build_store(&runtime_dir, "rxn", rxn.as_bytes());
+        let page = reaction_page(&database_path);
+        assert_eq!(page.rows[0].name, "Amidation");
+        let molblock = page.rows[0].molblock.as_deref().unwrap_or_default();
+        assert_eq!(molblock.matches("$MOL").count(), 3);
 
         let _ = std::fs::remove_dir_all(&runtime_dir);
     }
