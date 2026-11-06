@@ -31,6 +31,10 @@ const MAX_ATOMS: usize = 256;
 /// Each session may hold a running process.
 const MAX_SESSIONS: usize = 8;
 const MAX_BOOTSTRAP_BYTES: usize = 4 * 1024 * 1024;
+/// A batch covers the central differences of the 64 atoms the optimizer
+/// differentiates numerically (6 · 64 sets) with room to spare.
+const MAX_BATCH_SETS: usize = 1024;
+const MAX_BATCH_BYTES: usize = 4 * 1024 * 1024;
 const XTB_PREFIX: &str = "xtb:";
 const AVOGADRO_PREFIX: &str = "avogadro:";
 
@@ -56,6 +60,8 @@ pub(crate) struct ExternalModel {
     ions: bool,
     radicals: bool,
     unit_cell: bool,
+    /// Energies of many coordinate sets in one request.
+    batch: bool,
     /// Supported atomic numbers.
     elements: Vec<u8>,
     /// Why the model cannot run yet.
@@ -74,6 +80,7 @@ fn xtb_model(method: XtbMethod) -> ExternalModel {
         // GFN-FF has no open-shell treatment.
         radicals: method != XtbMethod::Gfnff,
         unit_cell: false,
+        batch: false,
         elements: (1..=86).collect(),
         unavailable: None,
     }
@@ -94,6 +101,7 @@ fn plugin_model(
         ions: model.ions,
         radicals: model.radicals,
         unit_cell: model.unit_cell,
+        batch: model.batch,
         elements: model.elements.clone(),
         unavailable,
     }
@@ -158,6 +166,8 @@ enum Backend {
 struct Session {
     owner: String,
     atoms: usize,
+    /// The model answers binary-v1 batch requests.
+    batch: bool,
     cancel: AtomicBool,
     backend: Mutex<Backend>,
 }
@@ -190,12 +200,13 @@ fn validate(request: &OpenRequest) -> Result<(), String> {
     Ok(())
 }
 
-/// Starts the model `request` names, resolving everything it runs natively.
+/// Starts the model `request` names, resolving everything it runs natively;
+/// also whether it answers batch requests.
 fn open_backend(
     request: OpenRequest,
     xtb: impl FnOnce() -> Result<std::path::PathBuf, String>,
     plugins: &std::path::Path,
-) -> Result<Backend, String> {
+) -> Result<(Backend, bool), String> {
     validate(&request)?;
     if let Some(method) = request.model.strip_prefix(XTB_PREFIX) {
         let method = XtbMethod::ALL
@@ -209,7 +220,7 @@ fn open_backend(
             request.charge,
             request.multiplicity,
         )
-        .map(Backend::Xtb);
+        .map(|session| (Backend::Xtb(session), false));
     }
     let (package, identifier) = request
         .model
@@ -247,10 +258,14 @@ fn open_backend(
         &bootstrap,
         request.elements.len(),
     )
-    .map(Backend::Script)
+    .map(|session| (Backend::Script(session), model.batch))
 }
 
-fn register(owner: &str, atoms: usize, backend: Backend) -> Result<String, String> {
+fn register(
+    owner: &str,
+    atoms: usize,
+    (backend, batch): (Backend, bool),
+) -> Result<String, String> {
     let mut sessions = SESSIONS
         .lock()
         .map_err(|_| "The energy model registry is unavailable".to_string())?;
@@ -264,6 +279,7 @@ fn register(owner: &str, atoms: usize, backend: Backend) -> Result<String, Strin
         Arc::new(Session {
             owner: owner.into(),
             atoms,
+            batch,
             cancel: AtomicBool::new(false),
             backend: Mutex::new(backend),
         }),
@@ -292,6 +308,35 @@ fn evaluate(owner: &str, id: &str, coordinates: &[f64]) -> Result<Evaluation, St
     match &mut *backend {
         Backend::Xtb(xtb) => xtb.evaluate(coordinates, &session.cancel),
         Backend::Script(script) => script.evaluate(coordinates, &session.cancel),
+    }
+}
+
+/// Energies of `coordinates.len() / (3 · atoms)` coordinate sets in one request,
+/// for models that declare batch support.
+fn evaluate_batch(owner: &str, id: &str, coordinates: &[f64]) -> Result<Vec<f64>, String> {
+    let session = session(owner, id)?;
+    if !session.batch {
+        return Err("This energy model does not evaluate batches".into());
+    }
+    let size = 3 * session.atoms;
+    let sets = coordinates.len() / size;
+    if coordinates.is_empty()
+        || coordinates.len() % size != 0
+        || sets > MAX_BATCH_SETS
+        || 8 * coordinates.len() > MAX_BATCH_BYTES
+        || !coordinates.iter().all(|v| v.is_finite())
+    {
+        return Err(
+            "Batch coordinates must be finite, match the structure and fit one request".into(),
+        );
+    }
+    let mut backend = session
+        .backend
+        .lock()
+        .map_err(|_| "This energy model session failed".to_string())?;
+    match &mut *backend {
+        Backend::Script(script) => script.evaluate_energies(coordinates, sets, &session.cancel),
+        Backend::Xtb(_) => Err("This energy model does not evaluate batches".into()),
     }
 }
 
@@ -340,6 +385,22 @@ pub(crate) fn energy_model_evaluate<R: Runtime>(
     coordinates: Vec<f64>,
 ) -> Result<Evaluation, String> {
     evaluate(window.label(), &session, &coordinates)
+}
+
+/// `coordinates` holds the sets one after another, x y z per atom in Å; each
+/// energy is kcal/mol, or `null` when it is not finite.
+#[tauri::command(async)]
+pub(crate) fn energy_model_evaluate_batch<R: Runtime>(
+    window: tauri::WebviewWindow<R>,
+    session: String,
+    coordinates: Vec<f64>,
+) -> Result<Vec<Option<f64>>, String> {
+    evaluate_batch(window.label(), &session, &coordinates).map(|energies| {
+        energies
+            .into_iter()
+            .map(|e| e.is_finite().then_some(e))
+            .collect()
+    })
 }
 
 #[tauri::command]

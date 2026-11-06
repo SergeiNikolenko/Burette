@@ -8,7 +8,7 @@ import { isTauriRuntime } from '../tauri';
 import { ELEMENT_SYMBOLS, ENERGY_MODELS, energyModel, energyModelUnavailable, isExternalEnergyModelId } from './energy-models';
 import { MODEL_INPUT_FORMATS, chargeAndMultiplicity, modelBootstrap, type ModelInputFormat } from './external-energy-input';
 import type { MolecularStructure } from './molecular-graph';
-import type { AsyncEnergyEvaluator } from './optimization';
+import { OPTIMIZATION_LIMITS, type AsyncEnergyEvaluator } from './optimization';
 import type { EnergyModelId, ExternalEnergyModelId, MolecularAtom, Vec3 } from './types';
 
 type Call = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
@@ -21,6 +21,8 @@ export type ExternalEnergyModel = {
   /** The molecule format an Avogadro model reads at start-up. */
   inputFormat?: string;
   gradients: boolean; ions: boolean; radicals: boolean;
+  /** Energies of many coordinate sets per request (binary-v1 `support.batch`). */
+  batch: boolean;
   elements: ReadonlySet<string>;
   /** Why it cannot run yet, such as a package that is not set up. */
   unavailable?: string;
@@ -65,7 +67,7 @@ export function energyModelName(id: EnergyModelId): string {
  * once the structure is known, by `openExternalEnergyEvaluator`. */
 export function externalModelUnavailable(model: ExternalEnergyModel, atoms: readonly Pick<MolecularAtom, 'element'>[]): string | null {
   if (model.unavailable) return model.unavailable;
-  if (!model.gradients) return `${model.name} provides no gradients.`;
+  if (!model.gradients && atoms.length > OPTIMIZATION_LIMITS.numericalAtoms) return `${model.name} gives no gradients; numerical optimization supports up to ${OPTIMIZATION_LIMITS.numericalAtoms} atoms.`;
   if (model.inputFormat && !MODEL_INPUT_FORMATS.includes(model.inputFormat)) return `${model.name} reads ${model.inputFormat.toUpperCase()}, which Burette does not write.`;
   const missing = [...new Set(atoms.map(atom => atom.element))].filter(element => !model.elements.has(element));
   return missing.length ? `${model.name} has no parameters for ${missing.join(', ')}.` : null;
@@ -83,7 +85,15 @@ export function useEnergyModelOptions(elements: readonly string[], { external = 
   ];
 }
 
-/** Opens a native session for `structure`; dispose closes it, ending its process. */
+/** Central-difference step, Å. Avogadro differences with 2.2e-6 Å
+ * (EnergyCalculator::finiteGradient); text-protocol models print energies with
+ * few digits, which that step turns into noise, while 1e-4 Å keeps the
+ * truncation error near 1e-8 of the gradient. */
+const STEP = 1e-4;
+
+/** Opens a native session for `structure`; dispose closes it, ending its process.
+ * A model without gradients is differenced from energies, as Avogadro does; a
+ * batch model answers the whole difference stencil in one request. */
 export async function openExternalEnergyEvaluator(model: ExternalEnergyModel, structure: MolecularStructure, native: Call = call): Promise<AsyncEnergyEvaluator> {
   const reason = externalModelUnavailable(model, structure.atoms);
   if (reason) throw new Error(reason);
@@ -94,12 +104,32 @@ export async function openExternalEnergyEvaluator(model: ExternalEnergyModel, st
   const elements = structure.atoms.map(atom => atom.element);
   const session = await native<string>('energy_model_open', { request: { model: model.id, elements, charge, multiplicity, ...(bootstrap ? { bootstrap } : {}) } });
   let closed = false;
+  const single = (coordinates: number[]) =>
+    native<{ energy: number | null; gradient: (number | null)[] | null }>('energy_model_evaluate', { session, coordinates });
+  const energies = async (sets: number[][]): Promise<number[]> => {
+    if (model.batch) return (await native<(number | null)[]>('energy_model_evaluate_batch', { session, coordinates: sets.flat() })).map(e => e ?? Number.NaN);
+    // One at a time: the session answers in order, and closing it stops the rest.
+    const values: number[] = [];
+    for (const set of sets) values.push((await single(set)).energy ?? Number.NaN);
+    return values;
+  };
   return {
-    async evaluate(atoms) {
+    numerical: !model.gradients,
+    async evaluate(atoms, frozen = []) {
       if (atoms.length !== elements.length || atoms.some((atom, i) => atom.element !== elements[i])) throw new Error('Energy coordinates must preserve molecular atom identities.');
-      const value = await native<{ energy: number | null; gradient: (number | null)[] | null }>('energy_model_evaluate', { session, coordinates: atoms.flatMap(atom => [atom.x, atom.y, atom.z]) });
-      const gradient = value.gradient?.length === 3 * atoms.length ? value.gradient.map(v => v ?? Number.NaN) : atoms.flatMap(() => [Number.NaN, Number.NaN, Number.NaN]);
-      return { energy: value.energy ?? Number.NaN, gradient: atoms.map((_, i): Vec3 => [gradient[3 * i], gradient[3 * i + 1], gradient[3 * i + 2]]) };
+      const x = atoms.flatMap(atom => [atom.x, atom.y, atom.z]);
+      if (model.gradients) {
+        const value = await single(x);
+        const gradient = value.gradient?.length === x.length ? value.gradient.map(v => v ?? Number.NaN) : x.map(() => Number.NaN);
+        return { energy: value.energy ?? Number.NaN, gradient: atoms.map((_, i): Vec3 => [gradient[3 * i], gradient[3 * i + 1], gradient[3 * i + 2]]) };
+      }
+      // The point itself, then x ± h for every coordinate of every atom that moves.
+      const fixed = new Set(frozen), stencil = x.flatMap((_, k) => fixed.has(Math.floor(k / 3)) ? [] : [k]);
+      const shifted = (k: number, h: number) => x.map((v, j) => j === k ? v + h : v);
+      const values = await energies([x, ...stencil.flatMap(k => [shifted(k, STEP), shifted(k, -STEP)])]);
+      const gradient = x.map(() => 0);
+      stencil.forEach((k, i) => { gradient[k] = (values[1 + 2 * i] - values[2 + 2 * i]) / (2 * STEP); });
+      return { energy: values[0], gradient: atoms.map((_, i): Vec3 => [gradient[3 * i], gradient[3 * i + 1], gradient[3 * i + 2]]) };
     },
     async dispose() {
       if (closed) return;

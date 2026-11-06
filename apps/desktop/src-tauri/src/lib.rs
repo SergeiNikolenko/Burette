@@ -324,6 +324,7 @@ pub fn run() {
                 commands::energy_models::energy_models_list,
                 commands::energy_models::energy_model_open,
                 commands::energy_models::energy_model_evaluate,
+                commands::energy_models::energy_model_evaluate_batch,
                 commands::energy_models::energy_model_close,
                 commands::shell::existing_paths,
                 commands::shell::watch_project_roots,

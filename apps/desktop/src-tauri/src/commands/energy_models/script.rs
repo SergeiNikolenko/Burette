@@ -13,6 +13,9 @@
 //!   atom count, payload bytes) and float64 coordinates; the reply frame holds
 //!   the energy and gradient, or a UTF-8 message with the error flag.
 //!
+//! - binary-v1 batch (`support.batch`): the batch flag, a uint32 count before
+//!   the coordinate sets, and a reply with the count and one energy per set.
+//!
 //! Energies are kJ/mol and gradients kJ/(mol·Å). Avogadro reads whatever text
 //! the first readable chunk holds and treats a missing energy as zero; Burette
 //! waits for a complete reply within the deadline instead, and discards
@@ -33,6 +36,7 @@ use super::{Evaluation, CANCELLED, KJ_PER_KCAL};
 
 const MAGIC: &[u8; 4] = b"AVB1";
 const VERSION: u16 = 1;
+const FLAG_BATCH_MODE: u16 = 0x0002;
 const FLAG_REQUEST_ENERGY_AND_GRADIENT: u16 = 0x0004;
 const FLAG_RESPONSE_ERROR: u16 = 0x8000;
 const HEADER_BYTES: usize = 16;
@@ -238,22 +242,62 @@ impl ScriptSession {
         coordinates: &[f64],
         cancel: &AtomicBool,
     ) -> Result<Evaluation, String> {
-        if let Some(broken) = &self.broken {
-            return Err(broken.clone());
+        let (atoms, gradients) = (self.atoms, self.gradients);
+        let parse: fn(&[u8], usize, bool) -> Parsed = match self.protocol {
+            Protocol::TextV1 => parse_text,
+            Protocol::BinaryV1 => parse_binary,
+        };
+        let request = self.request(coordinates);
+        match self.round_trip(
+            request,
+            Duration::ZERO,
+            |bytes| parse(bytes, atoms, gradients),
+            cancel,
+        )? {
+            Parsed::Answer(energy, gradient) => Ok(Evaluation {
+                energy: energy / KJ_PER_KCAL,
+                gradient: gradient.map(|g| g.into_iter().map(|v| v / KJ_PER_KCAL).collect()),
+            }),
+            _ => unreachable!("round_trip returns answers only"),
         }
-        let result = self.exchange(coordinates, cancel);
-        if let Err(Failure::Broken(message)) = &result {
-            self.broken = Some(format!("{message}; start the optimization again"));
-        }
-        result.map_err(|(Failure::Refused(message) | Failure::Broken(message))| message)
     }
 
-    fn exchange(
+    /// Energies (kcal/mol) of `sets` coordinate sets concatenated in `coordinates`,
+    /// in one binary-v1 batch request.
+    pub(crate) fn evaluate_energies(
         &mut self,
         coordinates: &[f64],
+        sets: usize,
         cancel: &AtomicBool,
-    ) -> Result<Evaluation, Failure> {
-        let request = match self.protocol {
+    ) -> Result<Vec<f64>, String> {
+        let mut frame = Vec::with_capacity(HEADER_BYTES + 4 + 8 * coordinates.len());
+        frame.extend_from_slice(MAGIC);
+        frame.extend_from_slice(&VERSION.to_le_bytes());
+        frame.extend_from_slice(&FLAG_BATCH_MODE.to_le_bytes());
+        frame.extend_from_slice(&(self.atoms as u32).to_le_bytes());
+        frame.extend_from_slice(&((4 + 8 * coordinates.len()) as u32).to_le_bytes());
+        frame.extend_from_slice(&(sets as u32).to_le_bytes());
+        coordinates
+            .iter()
+            .for_each(|value| frame.extend_from_slice(&value.to_le_bytes()));
+        let atoms = self.atoms;
+        // As Avogadro's evaluateBatchBinary, the deadline grows with the batch.
+        let allowance = Duration::from_secs(sets as u64);
+        match self.round_trip(
+            frame,
+            allowance,
+            |bytes| parse_batch(bytes, atoms, sets),
+            cancel,
+        )? {
+            Parsed::Energies(energies) => {
+                Ok(energies.into_iter().map(|e| e / KJ_PER_KCAL).collect())
+            }
+            _ => unreachable!("round_trip returns answers only"),
+        }
+    }
+
+    fn request(&self, coordinates: &[f64]) -> Vec<u8> {
+        match self.protocol {
             Protocol::TextV1 => coordinates
                 .chunks(3)
                 .map(|p| {
@@ -283,29 +327,49 @@ impl ScriptSession {
                     .for_each(|value| frame.extend_from_slice(&value.to_le_bytes()));
                 frame
             }
-        };
+        }
+    }
+
+    /// Sends `request` and waits for the reply `parse` accepts. A broken reply
+    /// stream refuses every later request.
+    fn round_trip(
+        &mut self,
+        request: Vec<u8>,
+        allowance: Duration,
+        parse: impl Fn(&[u8]) -> Parsed,
+        cancel: &AtomicBool,
+    ) -> Result<Parsed, String> {
+        if let Some(broken) = &self.broken {
+            return Err(broken.clone());
+        }
+        let result = self.exchange(request, allowance, parse, cancel);
+        if let Err(Failure::Broken(message)) = &result {
+            self.broken = Some(format!("{message}; start the optimization again"));
+        }
+        result.map_err(|(Failure::Refused(message) | Failure::Broken(message))| message)
+    }
+
+    fn exchange(
+        &mut self,
+        request: Vec<u8>,
+        allowance: Duration,
+        parse: impl Fn(&[u8]) -> Parsed,
+        cancel: &AtomicBool,
+    ) -> Result<Parsed, Failure> {
         self.buffer.clear();
         self.send(request).map_err(Failure::Broken)?;
-        let deadline = Instant::now() + if self.answered { REPLY } else { FIRST_REPLY };
+        let deadline = Instant::now() + allowance + if self.answered { REPLY } else { FIRST_REPLY };
         loop {
-            let parsed = match self.protocol {
-                Protocol::TextV1 => parse_text(&self.buffer, self.atoms, self.gradients),
-                Protocol::BinaryV1 => parse_binary(&self.buffer, self.atoms, self.gradients),
-            };
-            match parsed {
+            match parse(&self.buffer) {
                 Parsed::Pending => {}
-                Parsed::Answer(energy, gradient) => {
-                    self.buffer.clear();
-                    self.answered = true;
-                    return Ok(Evaluation {
-                        energy: energy / KJ_PER_KCAL,
-                        gradient: gradient
-                            .map(|g| g.into_iter().map(|v| v / KJ_PER_KCAL).collect()),
-                    });
-                }
                 Parsed::Failed(failure) => {
                     self.buffer.clear();
                     return Err(failure);
+                }
+                answer => {
+                    self.buffer.clear();
+                    self.answered = true;
+                    return Ok(answer);
                 }
             }
             if self.buffer.len() > MAX_REPLY_BYTES {
@@ -352,6 +416,7 @@ enum Failure {
 enum Parsed {
     Pending,
     Answer(f64, Option<Vec<f64>>),
+    Energies(Vec<f64>),
     Failed(Failure),
 }
 
@@ -409,46 +474,79 @@ fn parse_text(bytes: &[u8], atoms: usize, gradients: bool) -> Parsed {
     Parsed::Pending
 }
 
-/// A binary-v1 reply frame once it is complete.
-fn parse_binary(bytes: &[u8], atoms: usize, gradients: bool) -> Parsed {
+/// A complete binary-v1 frame: its flags, atom count and payload, or the
+/// reply to return while it is incomplete, malformed or an error.
+fn binary_frame(bytes: &[u8]) -> Result<(u16, usize, &[u8]), Parsed> {
     if bytes.len() < HEADER_BYTES {
-        return Parsed::Pending;
+        return Err(Parsed::Pending);
     }
     let u16_at = |at: usize| u16::from_le_bytes([bytes[at], bytes[at + 1]]);
     let u32_at = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap()) as usize;
     if &bytes[..4] != MAGIC {
-        return broken("Invalid binary response magic");
+        return Err(broken("Invalid binary response magic"));
     }
     if u16_at(4) != VERSION {
-        return broken("Unsupported binary response version");
+        return Err(broken("Unsupported binary response version"));
     }
     let (flags, count, payload) = (u16_at(6), u32_at(8), u32_at(12));
     if payload > MAX_REPLY_BYTES {
-        return broken("The energy model's reply is too large");
+        return Err(broken("The energy model's reply is too large"));
     }
     let total = HEADER_BYTES + payload;
     if bytes.len() < total {
-        return Parsed::Pending;
+        return Err(Parsed::Pending);
     }
     if bytes.len() > total {
-        return broken("Binary response contained trailing bytes");
+        return Err(broken("Binary response contained trailing bytes"));
     }
     let body = &bytes[HEADER_BYTES..];
     if flags & FLAG_RESPONSE_ERROR != 0 {
         let message = String::from_utf8_lossy(&body[..body.len().min(2048)]);
-        return Parsed::Failed(Failure::Refused(format!(
+        return Err(Parsed::Failed(Failure::Refused(format!(
             "The energy model reported an error: {message}"
-        )));
+        ))));
     }
-    let expected = 8 + if gradients { 24 * atoms } else { 0 };
-    if count != atoms || payload != expected {
-        return broken("The energy model's reply does not match the structure");
-    }
-    let values: Vec<f64> = body
+    Ok((flags, count, body))
+}
+
+fn doubles(bytes: &[u8]) -> Vec<f64> {
+    bytes
         .chunks_exact(8)
         .map(|chunk| f64::from_le_bytes(chunk.try_into().unwrap()))
-        .collect();
+        .collect()
+}
+
+/// A binary-v1 reply frame once it is complete.
+fn parse_binary(bytes: &[u8], atoms: usize, gradients: bool) -> Parsed {
+    let (_, count, body) = match binary_frame(bytes) {
+        Ok(frame) => frame,
+        Err(parsed) => return parsed,
+    };
+    let expected = 8 + if gradients { 24 * atoms } else { 0 };
+    if count != atoms || body.len() != expected {
+        return broken("The energy model's reply does not match the structure");
+    }
+    let values = doubles(body);
     Parsed::Answer(values[0], gradients.then(|| values[1..].to_vec()))
+}
+
+/// A binary-v1 batch reply: the batch flag, the set count, then one energy per set.
+fn parse_batch(bytes: &[u8], atoms: usize, sets: usize) -> Parsed {
+    let (flags, count, body) = match binary_frame(bytes) {
+        Ok(frame) => frame,
+        Err(parsed) => return parsed,
+    };
+    let batch = body
+        .get(..4)
+        .map(|n| u32::from_le_bytes(n.try_into().unwrap()) as usize);
+    if flags & FLAG_BATCH_MODE == 0
+        || count != atoms
+        || batch != Some(sets)
+        || body.len() != 4 + 8 * sets
+    {
+        return broken("The energy model's batch reply does not match the request");
+    }
+    Parsed::Energies(doubles(&body[4..]))
 }
 
 #[cfg(test)]

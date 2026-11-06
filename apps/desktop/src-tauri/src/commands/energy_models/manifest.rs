@@ -39,6 +39,8 @@ pub(crate) struct DeclaredModel {
     pub(crate) ions: bool,
     pub(crate) radicals: bool,
     pub(crate) unit_cell: bool,
+    /// `support.batch` on a binary-v1 model: many coordinate sets per request.
+    pub(crate) batch: bool,
     /// Atomic numbers from `support.elements`; none means no element is supported.
     pub(crate) elements: Vec<u8>,
 }
@@ -191,6 +193,8 @@ fn model(entry: &HashMap<String, Value>) -> Option<DeclaredModel> {
         ions: flag("support.ions"),
         radicals: flag("support.radicals"),
         unit_cell: flag("support.unit-cell"),
+        // Avogadro batches only over the binary protocol (ScriptEnergy::valueBatch).
+        batch: protocol == Protocol::BinaryV1 && flag("support.batch"),
         elements: match entry.get("support.elements") {
             Some(Value::Text(spec)) => elements(spec),
             _ => Vec::new(),

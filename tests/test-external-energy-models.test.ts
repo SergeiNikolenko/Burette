@@ -8,14 +8,20 @@ let delay = 0;
 const sessions = new Map<string, Args>();
 const listed = [
   { id: 'avogadro:avogadro-harmonic-energy/harmonic-binary', name: 'Harmonic (binary)', description: '', source: 'avogadro-harmonic-energy', inputFormat: 'cjson',
-    gradients: true, ions: true, radicals: false, unitCell: false, elements: [1, 6, 7, 8], unavailable: null },
-  { id: 'xtb:gfn2', name: 'GFN2-xTB', description: '', source: 'xtb', inputFormat: null, gradients: true, ions: true, radicals: true, unitCell: false,
+    gradients: true, ions: true, radicals: false, unitCell: false, batch: false, elements: [1, 6, 7, 8], unavailable: null },
+  { id: 'xtb:gfn2', name: 'GFN2-xTB', description: '', source: 'xtb', inputFormat: null, gradients: true, ions: true, radicals: true, unitCell: false, batch: false,
     elements: Array.from({ length: 86 }, (_, i) => i + 1), unavailable: null },
-  { id: 'avogadro:pending/model', name: 'Pending', description: '', source: 'pending', inputFormat: 'xyz', gradients: true, ions: true, radicals: true, unitCell: false,
+  { id: 'avogadro:pending/model', name: 'Pending', description: '', source: 'pending', inputFormat: 'xyz', gradients: true, ions: true, radicals: true, unitCell: false, batch: false,
     elements: [6], unavailable: 'Set up pending in Settings › Extensions first' },
-  { id: 'avogadro:pending/energy-only', name: 'Energy only', description: '', source: 'pending', inputFormat: 'pdb', gradients: false, ions: true, radicals: true, unitCell: false,
+  { id: 'avogadro:pending/energy-only', name: 'Energy only', description: '', source: 'pending', inputFormat: 'pdb', gradients: false, ions: true, radicals: true, unitCell: false, batch: false,
     elements: [6], unavailable: null },
+  // Energies only, one coordinate set or a whole batch per request.
+  { id: 'avogadro:avogadro-harmonic-energy/harmonic-energy', name: 'Harmonic (energy)', description: '', source: 'avogadro-harmonic-energy', inputFormat: 'xyz',
+    gradients: false, ions: true, radicals: false, unitCell: false, batch: false, elements: [1, 6, 7, 8], unavailable: null },
+  { id: 'avogadro:avogadro-harmonic-energy/harmonic-batch', name: 'Harmonic (batch)', description: '', source: 'avogadro-harmonic-energy', inputFormat: 'cjson',
+    gradients: false, ions: true, radicals: false, unitCell: false, batch: true, elements: [1, 6, 7, 8], unavailable: null },
 ];
+const harmonic = (x: number[]) => x.reduce((sum, v) => sum + v * v, 0);
 async function native(command: string, args?: Args): Promise<unknown> {
   calls.push([command, args]);
   if (command === 'energy_models_list') return listed;
@@ -23,7 +29,11 @@ async function native(command: string, args?: Args): Promise<unknown> {
   if (command === 'energy_model_close') { sessions.delete(args!.session); return null; }
   if (delay) await new Promise(resolve => setTimeout(resolve, delay));
   const x: number[] = args!.coordinates;
-  return { energy: x.reduce((sum, v) => sum + v * v, 0), gradient: x.map(v => 2 * v) };
+  if (command === 'energy_model_evaluate_batch') {
+    const size = 3 * sessions.get(args!.session)!.elements.length;
+    return Array.from({ length: x.length / size }, (_, i) => harmonic(x.slice(i * size, (i + 1) * size)));
+  }
+  return { energy: harmonic(x), gradient: x.map(v => 2 * v) };
 }
 mock.module('@tauri-apps/api/core', () => ({ invoke: native }));
 
@@ -42,7 +52,10 @@ test('listed external models carry names, element symbols and the reason they ca
   expect([...harmonic.elements]).toEqual(['H', 'C', 'N', 'O']);
   const carbon = [{ element: 'C' }];
   expect(models.externalModelUnavailable(models.externalEnergyModel('avogadro:pending/model')!, carbon)).toContain('Set up pending');
-  expect(models.externalModelUnavailable(models.externalEnergyModel('avogadro:pending/energy-only')!, carbon)).toBe('Energy only provides no gradients.');
+  expect(models.externalModelUnavailable(models.externalEnergyModel('avogadro:pending/energy-only')!, carbon)).toBe('Energy only reads PDB, which Burette does not write.');
+  const energyOnly = models.externalEnergyModel('avogadro:avogadro-harmonic-energy/harmonic-energy')!;
+  expect(models.externalModelUnavailable(energyOnly, carbon)).toBeNull();
+  expect(models.externalModelUnavailable(energyOnly, Array.from({ length: 65 }, () => ({ element: 'C' })))).toBe('Harmonic (energy) gives no gradients; numerical optimization supports up to 64 atoms.');
   expect(models.externalModelUnavailable(harmonic, [{ element: 'Sn' }])).toBe('Harmonic (binary) has no parameters for Sn.');
   expect(models.externalModelUnavailable(models.externalEnergyModel('xtb:gfn2')!, [{ element: 'Sn' }])).toBeNull();
 });
@@ -69,6 +82,25 @@ test('external optimization runs the shared minimizer over one native session an
   expect(bootstrap.cjson.atoms.elements.number).toEqual(ethanol.atoms.map(atom => ({ C: 6, O: 8, H: 1 })[atom.element]));
   expect(bootstrap.cjson.bonds.order).toHaveLength(ethanol.bonds.length);
   expect(calls.filter(([command]) => command === 'energy_model_close')).toHaveLength(1);
+  expect(sessions.size).toBe(0);
+});
+
+test('models without gradients are differenced from energies, skipping frozen atoms, and a batch model takes one request per point', async () => {
+  await models.refreshExternalEnergyModels(native as never);
+  const ethanol = generateFromSmiles('CCO'), n = ethanol.atoms.length;
+  for (const [id, command] of [['avogadro:avogadro-harmonic-energy/harmonic-energy', 'energy_model_evaluate'], ['avogadro:avogadro-harmonic-energy/harmonic-batch', 'energy_model_evaluate_batch']] as const) {
+    calls = [];
+    const result = await optimizeWithEnergyModel(ethanol, id, { method: 'lbfgs', maxIterations: 200, constraints: [{ kind: 'freeze', atoms: [0] }] });
+    expect([result.gradient, result.converged]).toEqual(['central-difference', true]);
+    expect(result.molecule.atoms[0]).toEqual(ethanol.atoms[0]);
+    expect(result.energy).toBeCloseTo(harmonic([ethanol.atoms[0].x, ethanol.atoms[0].y, ethanol.atoms[0].z]), 6);
+    const requests = calls.filter(([name]) => name.startsWith('energy_model_evaluate'));
+    expect(new Set(requests.map(([name]) => name))).toEqual(new Set([command]));
+    // Each point costs the point and ± steps of the 3(n − 1) moving coordinates.
+    const points = command === 'energy_model_evaluate' ? requests.length / (1 + 6 * (n - 1)) : requests.length;
+    expect(Number.isInteger(points) && points > 1).toBe(true);
+    if (command === 'energy_model_evaluate_batch') expect(requests.every(([, args]) => args!.coordinates.length === 3 * n * (1 + 6 * (n - 1)))).toBe(true);
+  }
   expect(sessions.size).toBe(0);
 });
 

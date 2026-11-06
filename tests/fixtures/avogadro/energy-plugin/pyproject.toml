@@ -30,6 +30,14 @@ support.elements = "1-118"
 support.ions = true
 support.radicals = false
 
+[[tool.avogadro.energy-models]]
+identifier = "harmonic-batch"
+model-name = "Harmonic (batch)"
+description = "E = sum |r|^2 + charge, kJ/mol, energies only"
+input-format = "cjson"
+protocol = "binary-v1"
+support = { gradients = false, batch = true, elements = "1-118", ions = true, radicals = false }
+
 [tool.pixi.workspace]
 channels = ["conda-forge"]
 platforms = ["osx-arm64", "linux-64"]

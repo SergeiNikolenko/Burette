@@ -51,7 +51,7 @@ fn installed_fixture(prepared: bool) -> PathBuf {
 
 fn request(model: &str, charge: i32) -> OpenRequest {
     let xyz = "2\nfixture\nAr 1 2 3\nAr 0 0 1\n";
-    let bootstrap = if model.ends_with("binary") {
+    let bootstrap = if model.ends_with("binary") || model.ends_with("batch") {
         serde_json::json!({ "charge": charge, "spin": 1, "selectedAtoms": [], "options": {},
             "cjson": { "atoms": { "elements": { "number": [18, 18] }, "coords": { "3d": [1, 2, 3, 0, 0, 1] } } } })
     } else {
@@ -78,11 +78,18 @@ fn installed_packages_list_their_declared_models_and_setup_state() {
         models.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
         [
             "avogadro:avogadro-harmonic-energy/harmonic-text",
-            "avogadro:avogadro-harmonic-energy/harmonic-binary"
+            "avogadro:avogadro-harmonic-energy/harmonic-binary",
+            "avogadro:avogadro-harmonic-energy/harmonic-batch"
         ]
     );
     assert_eq!(models[1].input_format.as_deref(), Some("cjson"));
     assert!(models[0].gradients && models[0].ions && !models[0].radicals);
+    // Batches need the binary protocol; the text and gradient models declare none.
+    assert_eq!(
+        models.iter().map(|m| m.batch).collect::<Vec<_>>(),
+        [false, false, true]
+    );
+    assert!(!models[2].gradients);
     assert_eq!(models[0].elements.len(), 118);
     assert!(models[0].unavailable.as_deref().unwrap().contains("Set up"));
     std::fs::remove_dir_all(root).unwrap();
@@ -94,7 +101,8 @@ fn both_protocols_return_kcal_energies_and_gradients_from_a_persistent_process()
     assert!(plugin_models(&root).iter().all(|m| m.unavailable.is_none()));
     for model in ["harmonic-text", "harmonic-binary"] {
         let id = format!("{AVOGADRO_PREFIX}{PACKAGE}/{model}");
-        let Backend::Script(mut session) = open_backend(request(&id, 2), no_xtb, &root).unwrap()
+        let (Backend::Script(mut session), false) =
+            open_backend(request(&id, 2), no_xtb, &root).unwrap()
         else {
             panic!("a script session");
         };
@@ -195,6 +203,53 @@ fn sessions_belong_to_their_window_and_close_with_it() {
     std::fs::remove_dir_all(root).unwrap();
 }
 
+#[test]
+fn batch_models_answer_many_energies_in_one_request() {
+    let root = installed_fixture(true);
+    let window = format!("workspace-{}", uuid::Uuid::new_v4());
+    let open = |model: &str| {
+        let id = format!("{AVOGADRO_PREFIX}{PACKAGE}/{model}");
+        register(
+            &window,
+            2,
+            open_backend(request(&id, 2), no_xtb, &root).unwrap(),
+        )
+        .unwrap()
+    };
+    let batch = open("harmonic-batch");
+    // Without gradients a single request returns the energy alone.
+    let single = evaluate(&window, &batch, &[1.0, 2.0, 3.0, 0.0, 0.0, 1.0]).unwrap();
+    assert_eq!(single.gradient, None);
+    assert!((single.energy - 17.0 / KJ_PER_KCAL).abs() < 1e-12);
+    let sets = [
+        [1.0, 2.0, 3.0, 0.0, 0.0, 1.0],
+        [0.0; 6],
+        [0.5, 0.0, 0.0, 0.0, 0.0, 0.0],
+    ]
+    .concat();
+    let energies = evaluate_batch(&window, &batch, &sets).unwrap();
+    let expected = [17.0, 2.0, 2.25].map(|e| e / KJ_PER_KCAL);
+    assert!(
+        energies
+            .iter()
+            .zip(expected)
+            .all(|(a, b)| (a - b).abs() < 1e-12),
+        "{energies:?}"
+    );
+    assert!(evaluate_batch(&window, &batch, &sets[..5])
+        .unwrap_err()
+        .contains("match the structure"));
+    assert!(evaluate_batch(&window, &batch, &[]).is_err());
+    // A model that declares no batch support is never sent one.
+    let binary = open("harmonic-binary");
+    assert_eq!(
+        evaluate_batch(&window, &binary, &[0.0; 6]).unwrap_err(),
+        "This energy model does not evaluate batches"
+    );
+    window_destroyed(&window);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
 /// The real avogadro-xtb-energy package (ghutchis/avogadro-xtb-energy@287e8093)
 /// after `pixi install`: `BURETTE_AVOGADRO_XTB_ENERGY=<package folder> cargo test
 /// --lib real_avogadro_xtb_energy -- --ignored`. Its GFN2 and GFN-FF models speak
@@ -239,8 +294,8 @@ fn real_avogadro_xtb_energy_plugin_matches_the_xtb_program() {
             bootstrap: Some(bootstrap.to_string()),
         };
         match open_backend(request, no_xtb, &root).unwrap() {
-            Backend::Script(session) => session,
-            Backend::Xtb(_) => panic!("a script session"),
+            (Backend::Script(session), _) => session,
+            (Backend::Xtb(_), _) => panic!("a script session"),
         }
     };
     let cancel = AtomicBool::new(false);

@@ -139,6 +139,7 @@ commands.allow = [
   "energy_models_list",
   "energy_model_open",
   "energy_model_evaluate",
+  "energy_model_evaluate_batch",
   "energy_model_close",
   "existing_paths",
   "watch_project_roots",

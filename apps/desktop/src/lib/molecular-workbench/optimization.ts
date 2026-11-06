@@ -245,19 +245,26 @@ export function optimizeCartesian(molecule: MolecularStructure, evaluator: Energ
 }
 
 /** An energy model that answers asynchronously, such as an external program: energy
- * in kcal/mol and its analytic gradient in kcal/(mol·Å) for every atom. */
-export type AsyncEnergyEvaluator = { evaluate(atoms: MolecularAtom[]): Promise<{ energy: number; gradient: Vec3[] }>; dispose(): void | Promise<void> };
+ * in kcal/mol and its gradient in kcal/(mol·Å) for every atom. `numerical` marks a
+ * gradient differenced from energies; it skips the `frozen` atoms (zero rows) and
+ * is bounded by OPTIMIZATION_LIMITS.numericalAtoms. */
+export type AsyncEnergyEvaluator = {
+  evaluate(atoms: MolecularAtom[], frozen?: readonly number[]): Promise<{ energy: number; gradient: Vec3[] }>;
+  dispose(): void | Promise<void>;
+  numerical?: boolean;
+};
 
 /** `optimizeCartesian` with an asynchronous evaluator: the same variables, restraints,
  * minimizer steps and result. Each point is evaluated once; aborting `signal` stops
  * before the next evaluation. The caller disposes the evaluator. */
 export async function optimizeCartesianAsync(molecule: Pick<MolecularStructure, 'atoms'>, evaluator: AsyncEnergyEvaluator, method: MinimizerMethod, forceField: OptimizationResult['forceField'], options: CartesianOptions,
   onProgress?: (progress: OptimizationProgress) => void, signal?: AbortSignal): Promise<CartesianResult> {
-  const maxIterations = checkCartesian(molecule.atoms.length, options), problem = cartesianProblem(molecule, options.constraints);
+  const n = molecule.atoms.length, maxIterations = checkCartesian(n, options), problem = cartesianProblem(molecule, options.constraints);
+  if (evaluator.numerical && n > OPTIMIZATION_LIMITS.numericalAtoms) throw new Error(`This model gives no gradients; numerical optimization supports up to ${OPTIMIZATION_LIMITS.numericalAtoms} atoms and this structure has ${n}.`);
   const evaluate = async (atoms: MolecularAtom[]) => {
     signal?.throwIfAborted();
     // An abort may fail the evaluation in flight; report it as the abort.
-    const value = await evaluator.evaluate(atoms).catch(error => { signal?.throwIfAborted(); throw error; });
+    const value = await evaluator.evaluate(atoms, problem.frozen).catch(error => { signal?.throwIfAborted(); throw error; });
     signal?.throwIfAborted();
     return value;
   };
@@ -281,5 +288,5 @@ export async function optimizeCartesianAsync(molecule: Pick<MolecularStructure, 
   }
   const atoms = run ? problem.unpack(run.x) : molecule.atoms.map(a => ({ ...a }));
   const energy = run ? problem.physicalEnergy(run.energy, atoms) : initial.energy;
-  return cartesianResult(problem, run, frames, atoms, energy, { forceField, method, gradient: 'analytic' });
+  return cartesianResult(problem, run, frames, atoms, energy, { forceField, method, gradient: evaluator.numerical ? 'central-difference' : 'analytic' });
 }
