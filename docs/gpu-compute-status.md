@@ -31,6 +31,26 @@ Acceptance contract:
 Upstream ledger:
 [mlxmolkit Provenance and Adaptation Ledger](third-party/mlxmolkit-provenance.md)
 
+## Builds without Metal (Linux, 2026-11-06)
+
+Linux builds link the Metal stub (`crates/burette-compute-metal/src/platform/stub.rs`)
+and ship neither the metallib nor the compute service. The capability report
+says `unavailable` with `UnsupportedOperatingSystem`, and the Auto backend
+setting resolves every request to `referenceCpu`; an explicit Metal setting
+still fails visibly. Clustering, find-similar, conformers, semiempirical SCF
+(`nativeCpuReference`), pose alignment (`align_and_score`) and every Chemical
+Space method run on the CPU in the app process. Chemical Space uses an exact
+multithreaded Tanimoto kNN and `crates/burette-compute-core/src/embedding.rs`,
+a CPU port of `umap.v1.metal` with the same initialization, epochs, negative
+sampling and method phases; CPU results report host wall times
+(`tanimotoHostTimeMs`, `embeddingHostTimeMs`, `similarityHostTimeMs`) because
+there are no GPU timers. Maps match the Metal optimizer on a shared graph
+(within 1.1e-5 of the embedding extent after 10 epochs) but not bit for bit
+end to end, since Metal similarities differ by a few ULP and shift graph
+cutoffs. The kNN stays O(N²) and the Butina graph is single-threaded; large-set
+CPU throughput has not been measured. The browser-dev helper remains
+Metal-only. The same CPU paths serve the CPU setting on macOS.
+
 ## Collection compute reliability (2026-09-23)
 
 Native collection calculations resolve the complete selected index set against a
