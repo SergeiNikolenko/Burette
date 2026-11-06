@@ -28,7 +28,7 @@ function Save-Screen([string]$name) {
 $stderr = Join-Path $output 'burette-stderr.log'
 # CI runners have no GPU, and WebView2 no longer falls back to software WebGL
 # on its own; this only affects the app started by this script.
-$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--enable-unsafe-swiftshader'
+$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist'
 $shell = New-Object -ComObject WScript.Shell
 # Escape dismisses the first-run welcome so the screenshots show the documents.
 function Dismiss-Welcome {
