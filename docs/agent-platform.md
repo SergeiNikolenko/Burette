@@ -811,10 +811,29 @@ job lifecycle as Properties. `params.forceField` accepts `MMFF94` (default),
 `MMFF94s`, `UFF` or `LJ` (Avogadro's Lennard-Jones); unknown options fail before
 queueing. Energy supports 1–256 atoms and forces 1–64, with the same
 complete-graph policy for the graph fields; `LJ` needs only coordinates, so an
-XYZ without a perceived graph still runs it. The desktop's external models
-(xTB, Avogadro energy plugins) are not offered to agent jobs, which run in the
-chemistry worker. Explicit
+XYZ without a perceived graph still runs it. Explicit
 hydrogens are required; parameter failures never substitute another field.
+
+`energy`, `energy_forces`, `frame_energy_forces` and `optimize` also accept an
+external model id: exactly `xtb:gfn2`, `xtb:gfn1` or `xtb:gfnff`, or
+`avogadro:<package>/<identifier>` with a package of 1–64 lowercase letters,
+digits, `.`, `_` or `-` (starting with a letter or digit) and an identifier of
+1–64 letters, digits, `.`, `_` or `-` (starting with a letter or digit). Any
+other id fails validation; `prepare_3d`, `conformers` and `smiles` stay on the
+built-in fields. External models run only in the Burette desktop app, over the
+same native sessions as its Optimize and Calculate Energy commands: the job
+lists the models again and fails with `xtb:gfn2 is not available in this
+Burette.`, the model's own reason (for example a package that is not set up),
+or, in the browser shell, `External energy models run only in the Burette
+desktop app.` Workbench sessions are still limited to the runtimes listed in
+`capabilities.runtimes` (today `browser-agent-shell`), so external ids are
+refused there until a desktop runtime is listed. They need 3D coordinates (a flat drawing is refused before
+queueing) but no bond graph, and take charge and multiplicity from the
+structure's formal charges and electron count. The summary `method`/`model`
+is the model's display name; forces are the negated model gradient, reported
+as `analytic`. A `frame_energy_forces` page runs in one session; SDF records
+must repeat the first record's atoms in order. The 120-second job deadline
+bounds the whole run.
 Neither job adds atoms, relaxes coordinates or changes the source document.
 
 Energy returns a summary in `kcal/mol` with its model and no artifact. Forces
@@ -843,10 +862,10 @@ forces kcal/(mol·Å). No job modifies the open document.
 
 | Kind | Parameters | Artifacts |
 | --- | --- | --- |
-| `optimize` | `forceField` (`MMFF94`, `MMFF94s`, `UFF`, `LJ`), `method` (`bfgs`, `lbfgs`, `fire`, `abc-fire`, `hybrid`), `maxIterations` 1–1000 (250), `constraints` | `structure` (SDF), `xyz`, `trajectory` |
+| `optimize` | `forceField` (`MMFF94`, `MMFF94s`, `UFF`, `LJ`, or an external model id on desktop), `method` (`bfgs`, `lbfgs`, `fire`, `abc-fire`, `hybrid`), `maxIterations` 1–1000 (250), `constraints` | `structure` (SDF), `xyz`, `trajectory` |
 | `prepare_3d` | `forceField`, `method`, `seed` 0–2147483639 (1), `maxIterations` | `structure`, `xyz`, `trajectory` |
 | `conformers` | `forceField`, `count` 1–32 samples (8), `seed` | `conformers` (multi-record SDF) |
-| `frame_energy_forces` | `forceField` (also `LJ`), `offset` (0), `count` 1–64 | `forces` (JSON), `extxyz` |
+| `frame_energy_forces` | `forceField` (also `LJ` and external model ids on desktop), `offset` (0), `count` 1–64 | `forces` (JSON), `extxyz` |
 | `metadata_edit` | `atoms` (index, `atomName`, `residue`), `conformerLabel` | `structure` |
 | `spectrum` | `kind` (`vcd`, `mcd`, `nmr`, `electronic`, `ecd`, `dos`), `source` (`file`, `frame`, `companion`), explicit `frameIndex` for frame/companion; NMR `atomicNumber`; optional `scale`, `offset`, `fwhm`, `axisStart`, `axisEnd` | `source` (JSON), `source_csv`, `display` (CSV), `settings` (JSON) |
 | `pair_distribution` | `rMax` 1–100 Å (10), `binWidth` 0.001–1 Å (0.1), `centre`, `neighbour` | `distribution` (JSON), `csv` |

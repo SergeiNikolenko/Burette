@@ -3,6 +3,8 @@ import { runChemistryTask } from "../molecular-workbench/compute-client";
 import { runGraphTask } from "../molecular-workbench/graph-compute-client";
 import type { MolecularStructure } from "../molecular-workbench/molecular-graph";
 import type { EnergyForces } from "../molecular-workbench/energy-forces";
+import { isExternalEnergyModelId } from "../molecular-workbench/energy-models";
+import { energyModelName } from "../molecular-workbench/external-energy-models";
 import { flatDepiction, optimizationUnavailable, resolveConstraints, type OptimizationResult } from "../molecular-workbench/optimization";
 import type { MolecularAtom } from "../molecular-workbench/types";
 import { serializeXyz } from "../molecular-workbench/xyz";
@@ -11,9 +13,10 @@ import { hasGraphMetadata, readGraphMetadata, remapGraphMetadata } from "./graph
 import { conformerSdfRecord, multiFrameXyz, sdfFromGraph } from "./formats";
 import { sdfRecords, type Snapshot } from "./agent-source";
 import type { AgentJobContext, AgentJobRunner } from "./agent-jobs";
+import { externalEnergy, externalFrameForces, externalOptimize, externalRecordFrames } from "./agent-external-energy";
 
 const NUMERICAL_ATOMS = 64;
-const label = (forceField: string) => forceField === "UFF" ? "UFF (RDKit)" : forceField === "LJ" ? "Lennard-Jones (Avogadro parameters)" : `${forceField} (OpenChemLib)`;
+const label = (forceField: string) => isExternalEnergyModelId(forceField) ? energyModelName(forceField) : forceField === "UFF" ? "UFF (RDKit)" : forceField === "LJ" ? "Lennard-Jones (Avogadro parameters)" : `${forceField} (OpenChemLib)`;
 
 function structureUnavailable(snapshot: Snapshot): string | null {
   return snapshot.structure ? null : snapshot.structureError ?? snapshot.sourceError ?? "The chemical graph could not be read.";
@@ -23,8 +26,13 @@ function graphUnavailable(snapshot: Snapshot): string | null {
   return structureUnavailable(snapshot) ?? (snapshot.structure!.graphComplete ? null : "This source has no complete bond orders or charges. Open an SDF or MOL version of the structure, or use forceField LJ.");
 }
 
-/** Lennard-Jones reads only coordinates; the graph force fields need complete bond orders. */
-const modelUnavailable = (snapshot: Snapshot, { forceField }: { forceField: string }) => forceField === "LJ" ? null : graphUnavailable(snapshot);
+/** Lennard-Jones and external models read only coordinates (external ones need them in 3D);
+ * the graph force fields need complete bond orders. */
+function modelUnavailable(snapshot: Snapshot, { forceField }: { forceField: string }) {
+  if (forceField === "LJ") return null;
+  if (isExternalEnergyModelId(forceField)) return flatDepiction(snapshot.structure!) ? "External energy models need 3D coordinates; run prepare_3d first." : null;
+  return graphUnavailable(snapshot);
+}
 
 /**
  * A result graph as SDF in source atom order. Explicit graphs keep the source record's
@@ -102,14 +110,17 @@ export const graphJobs: { [K in "properties" | "energy" | "energy_forces" | "fra
     unavailable: structureUnavailable,
     paramsUnavailable: modelUnavailable,
     async run(input, { forceField }, { signal, timeoutMs }) {
-      return { summary: { method: label(forceField), forceField, energy: await runChemistryTask({ action: "energy", molecule: input.structure!, forceField }, { signal, timeoutMs }), unit: "kcal/mol" }, artifacts: [] };
+      const energy = isExternalEnergyModelId(forceField) ? await externalEnergy(input.structure!, forceField, signal)
+        : await runChemistryTask({ action: "energy", molecule: input.structure!, forceField }, { signal, timeoutMs });
+      return { summary: { method: label(forceField), forceField, energy, unit: "kcal/mol" }, artifacts: [] };
     },
   },
   energy_forces: {
     unavailable: snapshot => structureUnavailable(snapshot) ?? (snapshot.structure!.atoms.length > NUMERICAL_ATOMS ? "Forces support at most 64 atoms." : null),
     paramsUnavailable: modelUnavailable,
     async run(input, { forceField }, { signal, timeoutMs, stem, artifact }) {
-      const molecule = input.structure!, result = await runChemistryTask({ action: "energy-forces", molecule, forceField }, { signal, timeoutMs });
+      const molecule = input.structure!, result = isExternalEnergyModelId(forceField) ? (await externalFrameForces(molecule, [molecule.atoms], forceField, signal, timeoutMs))[0]
+        : await runChemistryTask({ action: "energy-forces", molecule, forceField }, { signal, timeoutMs });
       const magnitudes = result.forces.map((force) => Math.hypot(...force));
       const forces = JSON.stringify({ forceField, unit: result.forceUnit, energy: result.energy, energyUnit: result.energyUnit, method: result.method, stepAngstrom: result.stepAngstrom, atoms: molecule.atoms.map((atom, index) => ({ index, element: atom.element, force: result.forces[index] })) }, null, 1);
       return {
@@ -127,7 +138,7 @@ export const graphJobs: { [K in "properties" | "energy" | "energy_forces" | "fra
     },
     paramsUnavailable(snapshot, { forceField, offset, count }) {
       const batch = batchSource(snapshot)!;
-      if (batch.kind === "frames" && forceField !== "LJ") { const reason = graphUnavailable(snapshot); if (reason) return reason; }
+      if (batch.kind === "frames") { const reason = modelUnavailable(snapshot, { forceField }); if (reason) return reason; }
       if (offset >= batch.count) return `offset must be below the ${batch.count} frames of this source.`;
       const atoms = batchAtoms(snapshot, batch);
       return count !== undefined && count * atoms > WORKBENCH_LIMITS.batchAtomFrames ? `${count} frames of ${atoms} atoms exceed ${WORKBENCH_LIMITS.batchAtomFrames} atom-frames; request at most ${Math.floor(WORKBENCH_LIMITS.batchAtomFrames / atoms)}.` : null;
@@ -137,7 +148,13 @@ export const graphJobs: { [K in "properties" | "energy" | "energy_forces" | "fra
       const size = count ?? Math.max(1, Math.min(WORKBENCH_LIMITS.batchFrames, Math.floor(WORKBENCH_LIMITS.batchAtomFrames / batchAtoms(input, batch))));
       const end = Math.min(batch.count, offset + size), options = { signal, timeoutMs };
       let frames: { atoms: MolecularAtom[]; result: EnergyForces }[];
-      if (records) {
+      if (isExternalEnergyModelId(forceField)) {
+        // One native session evaluates the page; records must repeat the first one's atoms.
+        const { reference, frames: atoms } = records ? await externalRecordFrames(records, offset, end, options)
+          : { reference: input.structure!, frames: input.scientific?.frames.length ? input.scientific.frames.slice(offset, end).map(frame => frame.atoms) : [input.structure!.atoms] };
+        const results = await externalFrameForces(reference, atoms, forceField, signal, timeoutMs);
+        frames = results.map((result, i) => ({ atoms: atoms[i], result }));
+      } else if (records) {
         // Every page is checked against the graph of the first record.
         const results = await runChemistryTask({ action: "record-forces", reference: records[0], records: records.slice(offset, end), firstIndex: offset, forceField }, options);
         frames = results.map(({ atoms, ...result }) => ({ atoms, result }));
@@ -173,7 +190,9 @@ export const graphJobs: { [K in "properties" | "energy" | "energy_forces" | "fra
       return null;
     },
     async run(input, params, context) {
-      const result = await runChemistryTask({ action: "optimize", molecule: input.structure!, options: params }, { signal: context.signal, timeoutMs: context.timeoutMs });
+      const { forceField, ...options } = params;
+      const result = isExternalEnergyModelId(forceField) ? await externalOptimize(input.structure!, forceField, options, context.signal, context.timeoutMs)
+        : await runChemistryTask({ action: "optimize", molecule: input.structure!, options: { ...options, forceField } }, { signal: context.signal, timeoutMs: context.timeoutMs });
       return { summary: optimizationSummary(result), artifacts: await optimizationArtifacts(await structureSdf(input, result.molecule, context.signal), result, `${context.stem}-optimized`, context) };
     },
   },
