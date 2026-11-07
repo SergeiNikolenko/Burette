@@ -57,7 +57,7 @@ test("SDF scene source binds the actual parser text and refuses same-position gr
   const viewer = await realSdfViewer(text);
   const report = await science.sdfBinding(viewer.viewer);
   expect(report.sourceSha256).toBe(await sha256Hex(text));
-  expect(report.elements).toEqual(readSdfSource(text).elements.map(value => value.toUpperCase()));
+  expect(report.elements).toEqual((await readSdfSource(text)).elements.map(value => value.toUpperCase()));
   const changed = text.replace("M  V30 1 1 1 2", "M  V30 1 2 1 2");
   expect(changed).not.toBe(text);
   viewer.viewer.plugin.state.data.cells.get("raw").obj.data = changed;

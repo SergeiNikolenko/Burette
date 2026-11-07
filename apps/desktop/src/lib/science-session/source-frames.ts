@@ -46,8 +46,8 @@ export function readXyzFrames(text: string): XyzFrame[] {
 }
 
 /** Graph sources have one frame; XYZ retains its existing multi-frame contract. */
-export function readSceneSourceFrames(text: string, extension: Exclude<SceneSourceExtension, CrystalSceneExtension> = "xyz"): XyzFrame[] {
-  if (extension === "sdf" || extension === "mol") return [readGraphSource(text, extension)];
+export async function readSceneSourceFrames(text: string, extension: Exclude<SceneSourceExtension, CrystalSceneExtension> = "xyz"): Promise<XyzFrame[]> {
+  if (extension === "sdf" || extension === "mol") return [await readGraphSource(text, extension)];
   if (extension === "xyz") return readXyzFrames(text);
   return fail("source", "The scene source format is unsupported.");
 }

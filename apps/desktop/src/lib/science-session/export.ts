@@ -92,16 +92,16 @@ export async function prepareSceneScienceExport(document: ViewerDocument, option
     // malformed response is not evidence that the scientific source is absent.
     throw error;
   }
-  let frames: ReturnType<typeof checkSceneShowsSource>;
+  let frames: Awaited<ReturnType<typeof checkSceneShowsSource>>;
   try {
     const shown = await shownSceneSource(text, extension);
-    frames = checkSceneShowsSource(report, shown.text, shown.extension);
+    frames = await checkSceneShowsSource(report, shown.text, shown.extension);
     if (graph && report.sourceSha256 !== await sha256Hex(text)) throw new ScienceSessionError("binding", "The scene does not show the current graph source yet. Wait for it to update, then save again.");
   } catch (error) {
     if (!carriesScience) return null;
     throw error;
   }
-  const atomIds = extension === "sdf" ? readSdfSource(text).atomIds : extension === "mol" ? graphAtomIds(document.id, text, frames[0].elements.length) : state.revisions
+  const atomIds = extension === "sdf" ? (await readSdfSource(text)).atomIds : extension === "mol" ? graphAtomIds(document.id, text, frames[0].elements.length) : state.revisions
     ? atomIdsAlong(state.revisions, state.position, (index) => state.revisions![index].document.atoms.length)
     : plainAtomIds(document.id, frames[0].elements);
   const binding: ScienceSceneBinding = {

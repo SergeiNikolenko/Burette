@@ -72,7 +72,7 @@ export async function restoreScienceSession(document: ViewerDocument, dependenci
     }
     const shown = await shownSceneSource(content.source.text, content.source.extension);
     if (!isCurrent()) return "cancelled";
-    const frames = checkSceneShowsSource(report, shown.text, shown.extension);
+    const frames = await checkSceneShowsSource(report, shown.text, shown.extension);
     if (graph && report.sourceSha256 !== await sha256Hex(content.source.text)) throw new ScienceSessionError("binding", "The scene graph does not match its saved source.");
     if (!isCurrent()) return "cancelled";
     if (!report.importToken) throw new ScienceSessionError("binding", "The scene did not report its import identity.");

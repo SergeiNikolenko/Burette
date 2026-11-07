@@ -1,9 +1,8 @@
-import { parseMolecule } from "../molecular-workbench/molecular-graph";
 import { hasGraphMetadata, readGraphMetadata } from "../workbench/graph-metadata";
 import { ScienceSessionError, SCIENCE_SESSION_LIMITS } from "./contracts";
 
 /** One explicit graph in source atom order. Its exact text carries bonds, stereo and metadata. */
-export function readGraphSource(text: string, extension: "sdf" | "mol") {
+export async function readGraphSource(text: string, extension: "sdf" | "mol") {
   if (new TextEncoder().encode(text).byteLength > SCIENCE_SESSION_LIMITS.sourceBytes) throw new ScienceSessionError("source", "The scene source exceeds 16 MiB.");
   // A MOL connection table has no SDF delimiter or data-item tail. Validate without
   // rewriting the parser input: BOM, line endings and all graph bytes remain exact.
@@ -12,6 +11,8 @@ export function readGraphSource(text: string, extension: "sdf" | "mol") {
     const end = lines.findIndex((line, index) => index >= 4 && /^M  END\s*$/u.test(line));
     if (text.includes("\0") || end < 0 || lines.slice(end + 1).some(line => line.trim())) throw new ScienceSessionError("source", "The MOL source must contain one connection table without SDF data.");
   }
+  // The molfile reader brings the chemistry toolkit, which nothing needs before a graph scene is checked.
+  const { parseMolecule } = await import("../molecular-workbench/molecular-graph");
   const structure = parseMolecule(text, extension);
   if (structure.atoms.length > 256) throw new ScienceSessionError("limit", "Graph scenes support at most 256 atoms.");
   const lines = text.replace(/\r\n?/gu, "\n").split("\n");

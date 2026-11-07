@@ -24,36 +24,36 @@ test("raw identity includes BOM, line endings and the exact byte view; positions
   expect(positionsMatch([0], [0, 1])).toBe(false);
 });
 
-test("shared frames and binding preserve source order and the reported frame, with one error class", () => {
+test("shared frames and binding preserve source order and the reported frame, with one error class", async () => {
   const frames = readXyzFrames(xyz);
   expect(frames).toEqual([
     { elements: ["C", "O"], positions: Float64Array.of(0, 0, 0, 1, 0, 0) },
     { elements: ["C", "O"], positions: Float64Array.of(0, 1, 0, 1, 1, 0) },
   ]);
   const report = checkBindingReport({ ...refs, atomCount: 2, frameCount: 2, frameIndex: 1, elements: ["c", "8"], positions: Array.from(frames[1].positions) });
-  expect(checkSceneShowsSource(report, xyz)).toEqual(frames);
+  expect(await checkSceneShowsSource(report, xyz)).toEqual(frames);
   for (const changed of [{ ...report, frameIndex: 0 }, { ...report, frameCount: 1 }, { ...report, elements: ["O", "C"] }]) {
-    try { checkSceneShowsSource(changed, xyz); throw new Error("accepted stale binding"); }
+    try { await checkSceneShowsSource(changed, xyz); throw new Error("accepted stale binding"); }
     catch (error) { expect(error).toBeInstanceOf(ScienceSessionError); expect((error as ScienceSessionError).code).toBe("binding"); }
   }
   expect(() => readXyzFrames(xyz.replace("8 1 1 0", "N 1 1 0"))).toThrow("changes its atoms");
   expect(() => checkBindingReport({ ...report, positions: [NaN, 0, 0, 0, 0, 0] })).toThrow(ScienceSessionError);
 });
 
-test("SDF uses the explicit graph reader and still validates reserved metadata before binding", () => {
+test("SDF uses the explicit graph reader and still validates reserved metadata before binding", async () => {
   const metadata = readGraphMetadata("", 3), tagged = sdf.replace("$$$$", graphMetadataData("", metadata) + "\n\n$$$$");
-  const source = readSdfSource(tagged), frames = readSceneSourceFrames(tagged, "sdf");
+  const source = await readSdfSource(tagged), frames = await readSceneSourceFrames(tagged, "sdf");
   expect(source.atomIds).toEqual(metadata.atoms.map(atom => atom.id));
   expect(frames[0]).toEqual(source);
   const report = checkBindingReport({ ...refs, atomCount: 3, frameCount: 1, frameIndex: 0, elements: source.elements, positions: source.positions });
-  expect(checkSceneShowsSource(report, tagged, "sdf")).toEqual(frames);
+  expect(await checkSceneShowsSource(report, tagged, "sdf")).toEqual(frames);
   const malformed = tagged.replace(metadata.atoms[1].id, metadata.atoms[0].id);
-  expect(() => readSceneSourceFrames(malformed, "sdf")).toThrow("metadata");
-  expect(() => checkSceneShowsSource(report, sdf + sdf, "sdf")).toThrow("one SDF record");
+  await expect(readSceneSourceFrames(malformed, "sdf")).rejects.toThrow("metadata");
+  await expect(checkSceneShowsSource(report, sdf + sdf, "sdf")).rejects.toThrow("one SDF record");
 });
 
 test("measurement checks keep exact raw hashes, refs, frame, order, coordinates and both explicit formats", async () => {
-  const source = readSdfSource(sdf);
+  const source = await readSdfSource(sdf);
   for (const format of ["sdf", "mol"] as const) {
     const text = format === "sdf" ? sdf : sdf.split("$$$$")[0];
     const report = { ...refs, atomCount: 3, frameCount: 1, frameIndex: 0, elements: source.elements, positions: source.positions,

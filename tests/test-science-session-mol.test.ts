@@ -87,7 +87,7 @@ test("MOL codec rejects checksum-valid SDF tails, second tables, absent terminat
     await expect(decodeScienceSession(archive(encoded))).rejects.toMatchObject({ code: "source" });
   }
   const large = new Molecule(257, 0); for (let i = 0; i < 257; i++) large.addAtom(6);
-  expect(() => readGraphSource(large.toMolfile(), "mol")).toThrow(/256/);
+  await expect(readGraphSource(large.toMolfile(), "mol")).rejects.toThrow(/256/);
   await expect(encodeScienceSession({ ...content, science: waterScience() })).rejects.toMatchObject({ code: "science" });
   await expect(encodeScienceSession({ ...content, binding: { ...binding, frameCount: 2 } })).rejects.toMatchObject({ code: "binding" });
 });

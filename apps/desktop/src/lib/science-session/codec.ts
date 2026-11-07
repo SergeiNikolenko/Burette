@@ -69,9 +69,9 @@ function fail(code: ScienceSessionErrorCode, message: string): never {
   throw new ScienceSessionError(code, message);
 }
 
-function checkGraphSourceIds(text: string, extension: SceneSourceExtension, ids: readonly string[] | null) {
+async function checkGraphSourceIds(text: string, extension: SceneSourceExtension, ids: readonly string[] | null) {
   if (extension !== "sdf") return;
-  const expected = readSdfSource(text).atomIds;
+  const expected = (await readSdfSource(text)).atomIds;
   if (expected && (!ids || expected.some((id, index) => id !== ids[index]))) fail("source", "Graph atom ids do not match the source metadata.");
 }
 
@@ -186,7 +186,7 @@ const attachmentId = (index: number) => `${SCIENCE_ASSET_PREFIX}attachment-${ind
 /** Manifest and attachment assets for one acknowledged revision; nothing is written. */
 export async function encodeScienceSession(content: ScienceSessionContent): Promise<EncodedScienceSession> {
   const frames = await sceneSourceFrames(content.source.text, content.source.extension);
-  checkGraphSourceIds(content.source.text, content.source.extension, content.atomIds);
+  await checkGraphSourceIds(content.source.text, content.source.extension, content.atomIds);
   if (content.source.extension !== "xyz" && content.science && !(content.source.extension === "mol" && content.science.format === "cjson")) fail("science", "Graph scenes require explicit CJSON scientific ownership.");
   const graphScience = content.source.extension === "mol" && content.science?.format === "cjson";
   if (graphScience && (!content.original || content.companions?.length)) fail("science", "CJSON graph science requires its Original and cannot carry companion Originals.");
@@ -381,7 +381,7 @@ export async function decodeScienceSession(archive: Uint8Array): Promise<Decoded
     return fail("source", "The scene source is not UTF-8 text.");
   }
   const frames = await sceneSourceFrames(text, manifest.source.extension);
-  checkGraphSourceIds(text, manifest.source.extension, manifest.atoms.ids);
+  await checkGraphSourceIds(text, manifest.source.extension, manifest.atoms.ids);
   if (manifest.source.extension !== "xyz" && manifest.science && manifest.version !== 4) fail("science", "Graph scientific data requires version 4.");
   const elements = frames[0].elements;
   if (elements.length !== manifest.atoms.count || frames.length !== manifest.binding.frameCount) fail("binding", "The scene source does not match its structure binding.");

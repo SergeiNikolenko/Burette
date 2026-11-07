@@ -2,7 +2,6 @@ import type { MeasurementCoordinateEdit } from "../molecular-workbench/measureme
 import { normalizeElement } from "../science-session/contracts";
 import { positionsMatch, sha256Hex } from "../source-editing/source-identity";
 import { checkBindingReport, checkSceneShowsSource } from "../science-session/scene-binding";
-import { parseMolecule } from "../molecular-workbench/molecular-graph";
 
 export type MeasurementRequest = Pick<MeasurementCoordinateEdit, "kind" | "atoms"> & {
   structureRef: string; modelRef: string; trajectoryRef: string;
@@ -45,8 +44,10 @@ export async function checkMeasurementSource(request: MeasurementRequest, text: 
     || !([...refs, "frameIndex", "frameCount", "atomCount"] as const).every(key => report[key] === request[key])) {
     throw new Error("The structure changed. Open the measurement again.");
   }
-  if (request.sourceFormat === "sdf") checkSceneShowsSource(report, text, "sdf");
+  if (request.sourceFormat === "sdf") await checkSceneShowsSource(report, text, "sdf");
   else {
+    // The molfile reader reaches the chemistry toolkit, which the viewer message path never needs.
+    const { parseMolecule } = await import("../molecular-workbench/molecular-graph");
     const { atoms } = parseMolecule(text, "mol");
     if (atoms.length !== report.atomCount || atoms.some((atom, index) => normalizeElement(atom.element) !== normalizeElement(report.elements[index]))
       || !positionsMatch(atoms.flatMap(atom => [atom.x, atom.y, atom.z]), report.positions)) throw new Error("The structure changed. Open the measurement again.");

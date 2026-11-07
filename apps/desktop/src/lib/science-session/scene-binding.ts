@@ -37,8 +37,8 @@ export function checkBindingReport(value: Record<string, unknown>): SceneScience
 
 /** The scene shows `text` at the reported frame: same atoms, same order, same positions. */
 /** `text` is what the scene shows: for a crystal, its `shownSceneSource`. */
-export function checkSceneShowsSource(report: SceneScienceBindingReport, text: string, extension: Exclude<SceneSourceExtension, CrystalSceneExtension> = "xyz") {
-  const frames = readSceneSourceFrames(text, extension);
+export async function checkSceneShowsSource(report: SceneScienceBindingReport, text: string, extension: Exclude<SceneSourceExtension, CrystalSceneExtension> = "xyz") {
+  const frames = await readSceneSourceFrames(text, extension);
   const frame = frames[report.frameIndex];
   if (report.frameCount !== frames.length || !frame || frame.elements.length !== report.atomCount
     || frame.elements.some((element, index) => element !== normalizeElement(report.elements[index])) || !positionsMatch(frame.positions, report.positions)) {
