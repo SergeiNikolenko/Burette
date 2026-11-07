@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { measureGeometry } from "../../../../../scripts/molecular-geometry.js";
 import { editMeasurementCoordinate } from "../../lib/molecular-workbench/measurement-coordinate";
 import { checkMeasurementSource, type MeasurementDialogRequest } from "../../lib/workbench/measurement-request";
-import { closeWorkbenchDialog, isWorkbenchDialogRequestCurrent, useWorkbenchDialogRequest } from "../../lib/workbench/dialog-store";
 import { activeViewerIframeForDocument, isReadOnlyViewerMessageSource, requestViewerAction } from "../../lib/viewer-bridge";
 import { checkBindingReport } from "../../lib/science-session/scene-binding";
 import { positionsMatch } from "../../lib/source-editing/source-identity";
@@ -11,7 +10,7 @@ import { useSourceEditing } from "../../lib/source-editing/context";
 import { useGraphDraft, type GraphSnapshot } from "../../lib/workbench/use-graph-draft";
 import type { ViewerDocument } from "../../types";
 import { Button } from "../ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
+import { DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { NativeSelect, NativeSelectOption } from "../ui/native-select";
 import { ScrubNumberField } from "../ui/scrub-number-input";
 import { label } from "./structure-edit/values";
@@ -19,20 +18,6 @@ import "./workbench-layout.css";
 
 const TITLES = { distance: "Distance", angle: "Angle", dihedral: "Dihedral" };
 type Side = "smaller" | "first" | "last";
-
-/** Opened from a 3D measurement; owns one request until it is applied, dismissed or replaced. */
-export function MeasurementCoordinateDialogHost() {
-  const request = useWorkbenchDialogRequest();
-  const measurement = request?.kind === "measurement" && request.document && request.measurement ? request : null;
-  const close = () => { if (measurement && isWorkbenchDialogRequestCurrent(measurement)) closeWorkbenchDialog(); };
-  return <Dialog open={Boolean(measurement)} onOpenChange={open => { if (!open) close(); }}>
-    {measurement ? <DialogContent variant="form" size="compact" className="flex flex-col gap-4" aria-describedby={undefined}>
-      {/* The request object is the lifetime: a same-measurement reopen starts fresh. */}
-      <MeasurementCoordinateDialogBody key={measurement.measurement!.requestId} document={measurement.document!}
-        request={measurement.measurement!} isCurrent={() => isWorkbenchDialogRequestCurrent(measurement)} onDone={close} />
-    </DialogContent> : null}
-  </Dialog>;
-}
 
 export function MeasurementCoordinateDialogBody({ document, request, isCurrent: requestCurrent = () => true, onDone }: {
   document: ViewerDocument; request: MeasurementDialogRequest; isCurrent?: () => boolean; onDone: () => void;

@@ -7,6 +7,9 @@ import {
   type CoordinateAtom,
   type ZmatrixRow,
 } from "../../../../scripts/internal-coordinates.mjs";
+import { isBrowserDraftSource } from "./browser-dev-documents";
+import { sourceExtension } from "./science-session/state";
+import type { ViewerDocument } from "../types";
 
 export type { ZmatrixRow };
 export { zmatrixText };
@@ -27,6 +30,11 @@ const UNCHANGED_POSITION_A = 1e-12;
 
 export function geometryEditableExtension(extension: string) {
   return extension.replace(/^\./u, "").toLowerCase() === "xyz";
+}
+
+export function geometryPanelAvailable(document: ViewerDocument | null): document is ViewerDocument {
+  return Boolean(document && document.renderer === "molstar" && geometryEditableExtension(sourceExtension(document))
+    && (!document.virtual || isBrowserDraftSource(document)) && !document.dockingRequest && !document.mergedCollection);
 }
 
 export function geometryBase(text: string): GeometryBase {

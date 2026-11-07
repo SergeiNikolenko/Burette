@@ -71,6 +71,12 @@ const { InputExportDialogHost } = await import("../apps/desktop/src/components/w
 const { geometryBase } = await import("../apps/desktop/src/lib/geometry-editing");
 
 
+// The panel and the dialog body load on first use.
+const until = async (ready) => {
+  for (let i = 0; i < 300 && !ready(); i++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+  assert.ok(ready());
+};
+
 test("Geometry Dock renders the complete editor and opens one input export host", async () => {
   Object.defineProperty(globalThis, "NodeFilter", { configurable: true, value: window.NodeFilter });
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
@@ -83,13 +89,14 @@ test("Geometry Dock renders the complete editor and opens one input export host"
   const actions = { setStructureDragActive() {}, runStructureViewerAction: async () => {} };
   try {
     await act(async () => root.render(<><DockPanel area="right" state={state} actions={actions} /><InputExportDialogHost actions={actions} /></>));
-    assert.ok(host.querySelector('[role="spinbutton"][aria-label="Bond of H2, Å"]'));
+    await until(() => host.querySelector('[role="spinbutton"][aria-label="Bond of H2, Å"]'));
     assert.ok(host.querySelector('[aria-label="Copy Z-matrix"]'));
     assert.ok(host.querySelector('[aria-label="Keep bond of H2 fixed"]'));
     // Each header is one text run, so assistive tech reads "Bond, Å" rather than "Bond ,  Å".
     assert.deepEqual([...host.querySelectorAll('thead th')].map((th) => [...th.childNodes].map((node) => node.textContent)),
       [["Atom"], ["Bond, Å"], ["Angle, °"], ["Dihedral, °"]]);
     await act(async () => host.querySelector('[aria-label="Export input file"]').click());
+    await until(() => document.querySelector('[role="dialog"]')?.textContent.includes('Export input file'));
     assert.equal(document.querySelectorAll('[role="dialog"]').length, 1);
     assert.ok(document.querySelector('[role="dialog"]').textContent.includes('Export input file'));
   } finally { await act(async () => root.unmount()); ownedFrame.remove(); host.remove(); }

@@ -27,7 +27,7 @@ import {
 import type { DerivedColumnKind } from "../lib/derived-columns";
 import { nativeMenuAccelerators } from "../lib/keyboard-shortcuts";
 import { structureEditAvailable } from "../lib/workbench/graph-draft";
-import { geometryPanelAvailable } from "../components/geometry-panel";
+import { geometryPanelAvailable } from "../lib/geometry-editing";
 import { requestOptimizationCommand, type OptimizationCommand } from "../lib/workbench/optimization-commands";
 import { useSettingsStore } from "../stores/settings-store";
 import { isTauriRuntime, trackTauriListener } from "../lib/tauri";

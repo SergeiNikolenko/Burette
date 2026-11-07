@@ -7,7 +7,7 @@ import { openVibrations, useVibrationsAvailable, VIBRATIONS_COMMAND } from "../.
 import { CRYSTAL_COMMAND, openSymmetryTool, SYMMETRY_COMMAND, useSymmetryAvailable } from "../../lib/workbench/symmetry-tools";
 import { useCrystalAvailable } from "../../lib/workbench/use-crystal-draft";
 import { structureEditAvailable } from "../../lib/workbench/graph-draft";
-import { geometryPanelAvailable } from "../geometry-panel";
+import { geometryPanelAvailable } from "../../lib/geometry-editing";
 import { OPTIMIZATION_COMMANDS, requestOptimizationCommand } from "../../lib/workbench/optimization-commands";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {

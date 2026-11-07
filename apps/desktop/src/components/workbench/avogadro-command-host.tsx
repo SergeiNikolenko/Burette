@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { readCommandOptions, type CommandOption, type CommandOptionValue } from "../../lib/extensions/avogadro-command-io";
+import type { CommandOption, CommandOptionValue } from "../../lib/extensions/avogadro-command-io";
 import { avogadroPluginRunner } from "../../lib/extensions/avogadro-plugin-runner";
 import { requestAvogadroCommand, runAvogadroCommand, useAvogadroCommandRequest, type AvogadroCommandRequest } from "../../lib/extensions/avogadro-commands";
 import type { ShellActions } from "../types";
@@ -60,7 +60,7 @@ export function AvogadroCommandHost({ actions, runner }: { actions: Actions; run
     }
     let live = true;
     (runner ?? avogadroPluginRunner()).readOptions(request.entry.plugin.name, path)
-      .then(text => readCommandOptions(text, path))
+      .then(async text => (await import("../../lib/extensions/avogadro-command-io")).readCommandOptions(text, path))
       .then(fields => { if (live) { setOptions({ request, fields }); setValues(Object.fromEntries(fields.map(field => [field.key, field.value]))); } },
         () => { if (live) setOptions({ request, error: true }); });
     return () => { live = false; };

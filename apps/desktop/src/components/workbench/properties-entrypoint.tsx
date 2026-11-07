@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import type { ViewerDocument } from "../../types";
 import type { ShellActions } from "../types";
 import { useLogicalSource } from "../../lib/science-session/state";
 import { workbenchSupportsDocument } from "../../lib/workbench/structure";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogTrigger } from "../ui/dialog";
-import { PropertiesDialogBody } from "./properties-dialog";
+import { Spinner } from "../ui/spinner";
+const PropertiesDialogBody = lazy(() => import("./properties-dialog").then(module => ({ default: module.PropertiesDialogBody })));
 
 /** Info owns this dialog; replacing the document closes its previous lifetime. */
 export function PropertiesToolRow({ document, actions }: { document: ViewerDocument; actions: ShellActions }) {
@@ -21,7 +22,7 @@ export function PropertiesToolRow({ document, actions }: { document: ViewerDocum
         <DialogTrigger asChild><Button type="button" variant="secondary" size="xs" aria-label="Calculate properties">Calculate</Button></DialogTrigger>
       </div>
       <DialogContent variant="form" size="wide" className="flex max-h-[88vh] flex-col gap-4 overflow-y-auto" aria-describedby={undefined}>
-        {open ? <PropertiesDialogBody document={document} actions={actions} onDone={() => setOpened(null)} /> : null}
+        {open ? <Suspense fallback={<Spinner aria-label="Opening properties" />}><PropertiesDialogBody document={document} actions={actions} onDone={() => setOpened(null)} /></Suspense> : null}
       </DialogContent>
     </Dialog>
   );

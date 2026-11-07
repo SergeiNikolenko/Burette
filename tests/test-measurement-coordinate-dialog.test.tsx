@@ -36,7 +36,7 @@ const { useSourceEditingController } = await import("../apps/desktop/src/hooks/u
 const { useGraphDraft } = await import("../apps/desktop/src/lib/workbench/use-graph-draft");
 const { useAppViewerStateMessages } = await import("../apps/desktop/src/hooks/use-app-viewer-state-messages");
 const { closeWorkbenchDialog, useWorkbenchDialogRequest } = await import("../apps/desktop/src/lib/workbench/dialog-store");
-const { MeasurementCoordinateDialogHost } = await import("../apps/desktop/src/components/workbench/measurement-coordinate-dialog");
+const { MeasurementCoordinateDialogHost } = await import("../apps/desktop/src/components/workbench/measurement-coordinate-host");
 const { parseMolecule } = await import("../apps/desktop/src/lib/molecular-workbench/molecular-graph");
 const code = readFileSync(new URL("../PreviewExtension/Web/viewer.js", import.meta.url), "utf8");
 const extract = (name: string) => code.match(new RegExp(`\n  (?:async )?function ${name}\\([\\s\\S]*?\n  \\}`, "u"))![0];

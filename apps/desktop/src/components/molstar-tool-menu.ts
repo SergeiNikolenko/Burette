@@ -1,7 +1,7 @@
 import type { MenuItemSpec } from "./menu-types";
 import type { ViewerDocument } from "../types";
 import type { DockTabKind } from "../lib/dock";
-import { geometryPanelAvailable } from "./geometry-panel";
+import { geometryPanelAvailable } from "../lib/geometry-editing";
 import { structureEditAvailable } from "../lib/workbench/graph-draft";
 import { workbenchSupportsDocument } from "../lib/workbench/structure";
 import { requestGeometryFocus } from "../lib/workbench/geometry-focus";

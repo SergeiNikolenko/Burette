@@ -12,7 +12,7 @@ import {
 } from "../../../../../scripts/workbench-agent-contract.mjs";
 import { fileStem } from "./formats";
 import { createAgentSourceOwner, WorkbenchError, sha256, type Snapshot } from "./agent-source";
-import { AGENT_BUILDS, AGENT_JOBS, type AgentArtifact, type AgentBuildRunner, type AgentJobRunner } from "./agent-jobs";
+import type { AgentArtifact, AgentBuildRunner, AgentJobRunner } from "./agent-jobs";
 import type { ViewerDocument } from "../../types";
 export { readWorkbenchAgentSource } from "./agent-source";
 
@@ -123,10 +123,12 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
   const sourceOwner = createAgentSourceOwner(environment, lifetime.signal);
   const { snapshotOf, assertOpen } = sourceOwner;
 
-  const runner = <K extends WorkbenchSubmitJobKind>(kind: K) => AGENT_JOBS[kind] as AgentJobRunner<K>;
+  // The runners reach every builder, crystal and spectrum module; load them with the first request.
+  let registry: typeof import("./agent-jobs") | null = null;
+  const runner = <K extends WorkbenchSubmitJobKind>(kind: K) => registry!.AGENT_JOBS[kind] as AgentJobRunner<K>;
   type SubmitJob = Extract<WorkbenchJobRequest, { kind: WorkbenchSubmitJobKind }>;
   type BuildJob = Extract<WorkbenchJobRequest, { kind: WorkbenchBuildJobKind }>;
-  const isBuild = (job: WorkbenchJobRequest): job is BuildJob => Object.hasOwn(AGENT_BUILDS, job.kind);
+  const isBuild = (job: WorkbenchJobRequest): job is BuildJob => Object.hasOwn(registry!.AGENT_BUILDS, job.kind);
   function jobUnavailable(snapshot: Snapshot, job: SubmitJob): string | null {
     const definition = runner(job.kind);
     return definition.unavailable(snapshot) ?? definition.paramsUnavailable?.(snapshot, job.params as WorkbenchJobParams<typeof job.kind>) ?? null;
@@ -136,7 +138,7 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
     const snapshot = await snapshotOf(request);
     const base = { documentId: snapshot.document.id, sourceRevision: snapshot.revision, sourceTextSha256: snapshot.sourceTextSha256 };
     if (request.operation === "observe") {
-      const jobs = Object.fromEntries((Object.keys(AGENT_JOBS) as WorkbenchSubmitJobKind[]).map(kind => {
+      const jobs = Object.fromEntries((Object.keys(registry!.AGENT_JOBS) as WorkbenchSubmitJobKind[]).map(kind => {
         const reason = runner(kind).unavailable(snapshot);
         return [kind, reason ? { available: false, reason } : { available: true }];
       }));
@@ -248,7 +250,7 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
 
   function runJob(job: Job, signal: AbortSignal) {
     const { input, request } = job, context = { signal, timeoutMs: WORKBENCH_LIMITS.jobTimeoutMs, artifact };
-    if (isBuild(request)) return (AGENT_BUILDS[request.kind] as AgentBuildRunner<typeof request.kind>).run(request.params as WorkbenchJobParams<typeof request.kind>, context);
+    if (isBuild(request)) return (registry!.AGENT_BUILDS[request.kind] as AgentBuildRunner<typeof request.kind>).run(request.params as WorkbenchJobParams<typeof request.kind>, context);
     return runner(request.kind).run(input!, request.params as WorkbenchJobParams<typeof request.kind>, { ...context, stem: fileStem(input!.document.title) });
   }
 
@@ -409,6 +411,7 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
   async function dispatch(request: WorkbenchRequest): Promise<Record<string, unknown>> {
     if (request.operation === "capabilities") return capabilities();
     if (!enabled) throw new WorkbenchError("SURFACE_UNSUPPORTED", limitations()[0], { runtime: environment.runtime });
+    registry ??= await import("./agent-jobs");
     switch (request.operation) {
       case "submit":
         return submit(request);

@@ -1,18 +1,11 @@
-import { PlotsDockContent } from "./workbench/plots-dock-content";
 import { plotsDockArea, usePlotsAvailable } from "../lib/workbench/plots-tool";
-import { ScientificSpectraDockContent } from "./workbench/scientific-spectra-dock-content";
 import { useScientificSpectraAvailable } from "../lib/workbench/scientific-spectra-tool";
-import { OrbitalsDockContent } from "./workbench/orbitals-dock-content";
 import { useOrbitalsAvailable } from "../lib/workbench/orbitals-tool";
 import { useScientificSourceLifetime } from "../lib/workbench/scientific-source-lifetime";
-import { VibrationsDockContent } from "./workbench/vibrations-dock-content";
 import { useVibrationsAvailable } from "../lib/workbench/vibrations-tool";
 import { useCrystalAvailable } from "../lib/workbench/use-crystal-draft";
-import { CrystalPanel } from "./workbench/crystal-panel";
-import { SymmetryPanel } from "./workbench/symmetry-panel";
 import { useSymmetryAvailable } from "../lib/workbench/symmetry-tools";
-import { GeometryPanel, geometryPanelAvailable } from "./geometry-panel";
-import { StructureEditPanel } from "./workbench/structure-edit-panel";
+import { geometryPanelAvailable } from "../lib/geometry-editing";
 import { structureEditAvailable } from "../lib/workbench/graph-draft";
 import { dockScreenLocation, openDockScreen } from "./workspace-panes/dock-screen";
 import { chemicalSpaceDocument as resolveCollection, chemicalSpaceSourceMatches } from "../lib/chemical-space-documents";
@@ -71,6 +64,15 @@ import { MesoscaleInfoPanel } from "./mesoscale/mesoscale-info-panel";
 const ChemicalSpacePanel = lazy(() => import("./chemical-space-panel").then((module) => ({
   default: module.ChemicalSpacePanel,
 })));
+// The tool panels pull charts, chemistry and parsers that a plain structure never needs.
+const OrbitalsDockContent = lazy(() => import("./workbench/orbitals-dock-content").then(module => ({ default: module.OrbitalsDockContent })));
+const PlotsDockContent = lazy(() => import("./workbench/plots-dock-content").then(module => ({ default: module.PlotsDockContent })));
+const ScientificSpectraDockContent = lazy(() => import("./workbench/scientific-spectra-dock-content").then(module => ({ default: module.ScientificSpectraDockContent })));
+const VibrationsDockContent = lazy(() => import("./workbench/vibrations-dock-content").then(module => ({ default: module.VibrationsDockContent })));
+const GeometryPanel = lazy(() => import("./geometry-panel").then(module => ({ default: module.GeometryPanel })));
+const SymmetryPanel = lazy(() => import("./workbench/symmetry-panel").then(module => ({ default: module.SymmetryPanel })));
+const CrystalPanel = lazy(() => import("./workbench/crystal-panel").then(module => ({ default: module.CrystalPanel })));
+const StructureEditPanel = lazy(() => import("./workbench/structure-edit-panel").then(module => ({ default: module.StructureEditPanel })));
 
 type DockPanelProps = {
   area: DockArea;
@@ -486,22 +488,20 @@ export function DockPanelContent({
       />
     );
   }
-  if (activeTabKind === "orbitals") return <OrbitalsDockContent document={dockStructureDocument} actions={actions} />;
-  if (activeTabKind === "plots") return <PlotsDockContent document={dockStructureDocument} actions={actions} />;
-  if (activeTabKind === "scientific-spectra") return <ScientificSpectraDockContent document={dockStructureDocument} actions={actions} />;
-  if (activeTabKind === "vibrations") return <VibrationsDockContent document={dockStructureDocument} actions={actions} />;
-  if (activeTabKind === "geometry") {
-    return geometryPanelAvailable(dockStructureDocument)
+  const toolPanel = activeTabKind === "orbitals" ? <OrbitalsDockContent document={dockStructureDocument} actions={actions} />
+    : activeTabKind === "plots" ? <PlotsDockContent document={dockStructureDocument} actions={actions} />
+    : activeTabKind === "scientific-spectra" ? <ScientificSpectraDockContent document={dockStructureDocument} actions={actions} />
+    : activeTabKind === "vibrations" ? <VibrationsDockContent document={dockStructureDocument} actions={actions} />
+    : activeTabKind === "geometry" ? geometryPanelAvailable(dockStructureDocument)
       ? <GeometryPanel key={dockStructureDocument.id} document={dockStructureDocument} actions={actions} />
-      : <DockEmptyState title="No molecule selected" />;
-  }
-  if (activeTabKind === "symmetry") return <SymmetryPanel key={dockStructureDocument?.id ?? ""} document={dockStructureDocument} actions={actions} />;
-  if (activeTabKind === "crystal") return <CrystalPanel key={dockStructureDocument?.id ?? ""} document={dockStructureDocument} actions={actions} />;
-  if (activeTabKind === "structure-edit") {
-    return structureEditAvailable(dockStructureDocument)
+      : <DockEmptyState title="No molecule selected" />
+    : activeTabKind === "symmetry" ? <SymmetryPanel key={dockStructureDocument?.id ?? ""} document={dockStructureDocument} actions={actions} />
+    : activeTabKind === "crystal" ? <CrystalPanel key={dockStructureDocument?.id ?? ""} document={dockStructureDocument} actions={actions} />
+    : activeTabKind === "structure-edit" ? structureEditAvailable(dockStructureDocument)
       ? <StructureEditPanel key={dockStructureDocument.id} document={dockStructureDocument} actions={actions} />
-      : <DockEmptyState title="No molecule selected" />;
-  }
+      : <DockEmptyState title="No molecule selected" />
+    : null;
+  if (toolPanel) return <Suspense fallback={null}>{toolPanel}</Suspense>;
   if (activeTabKind === "chemical-space") {
     return (
       <Suspense fallback={null}>

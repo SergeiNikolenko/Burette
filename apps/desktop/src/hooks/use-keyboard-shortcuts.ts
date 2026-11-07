@@ -14,7 +14,7 @@ import { useSettingsStore } from "../stores/settings-store";
 import { isAgentPluginSurface } from "../lib/native-mcp-workspace";
 import { reopenClosedTab } from "../components/workspace-panes/pane-actions";
 import { structureEditAvailable } from "../lib/workbench/graph-draft";
-import { geometryPanelAvailable } from "../components/geometry-panel";
+import { geometryPanelAvailable } from "../lib/geometry-editing";
 import { requestOptimizationCommand } from "../lib/workbench/optimization-commands";
 
 function isEditableTarget(target: EventTarget | null) {

@@ -8,7 +8,7 @@ import { rememberViewerAtomSelection } from "../lib/workbench/selection";
 import { openWorkbenchDialog } from "../lib/workbench/dialog-store";
 import { readMeasurementRequest, readXyzMeasurementAtoms } from "../lib/workbench/measurement-request";
 import { requestGeometryFocus } from "../lib/workbench/geometry-focus";
-import { geometryPanelAvailable } from "../components/geometry-panel";
+import { geometryPanelAvailable } from "../lib/geometry-editing";
 import { structureEditAvailable } from "../lib/workbench/graph-draft";
 import { sourceExtension } from "../lib/science-session/state";
 import { isViewerFrameVisible } from "../lib/viewer-frame-visibility";

@@ -2,10 +2,9 @@ import { useMemo, useSyncExternalStore } from "react";
 import type { ShellActions } from "../../components/types";
 import type { ViewerDocument } from "../../types";
 import { isTauriRuntime } from "../tauri";
-import { readWorkbenchAgentSource } from "../workbench/agent-source";
 import { viewerAtomSelection } from "../workbench/selection";
 import { readMolecularStructure, readWorkbenchSource, workbenchSupportsDocument } from "../workbench/structure";
-import { commandInput, readCommandOutput, type CommandOptionValue } from "./avogadro-command-io";
+import type { CommandOptionValue } from "./avogadro-command-io";
 import { readPluginManifest, type PluginCommand } from "./avogadro-plugin-manifest";
 import { avogadroPluginRunner, type InstalledAvogadroPlugin } from "./avogadro-plugin-runner";
 
@@ -69,6 +68,8 @@ export async function runAvogadroCommand(request: AvogadroCommandRequest, option
   const { entry, document, selectedAtoms } = request;
   const title = entry.path.join(" › ");
   const selectionNotice: CommandNotice[] = request.selectionTruncated ? [{ kind: "warning", title: "The selection is too large to pass on, so the command used the whole structure." }] : [];
+  // Command I/O reaches the CJSON graph and chemistry; menus only need the entries.
+  const [{ readWorkbenchAgentSource }, { commandInput, readCommandOutput }] = await Promise.all([import("../workbench/agent-source"), import("./avogadro-command-io")]);
   let structure;
   try {
     const source = await readWorkbenchSource(document, (await readWorkbenchAgentSource(document)).text);

@@ -1,5 +1,5 @@
 import { PolymerBuilderDialogHost } from "./components/workbench/polymer-builder-host";
-import { MeasurementCoordinateDialogHost } from "./components/workbench/measurement-coordinate-dialog";
+import { MeasurementCoordinateDialogHost } from "./components/workbench/measurement-coordinate-host";
 import { AssemblyDialogHost } from "./components/workbench/assembly-dialog-host";
 import { AvogadroCommandHost } from "./components/workbench/avogadro-command-host";
 import { PeptideBuilderDialogHost } from "./components/workbench/peptide-builder-host";

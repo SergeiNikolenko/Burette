@@ -36,13 +36,12 @@ import { rendererXyzText } from "../lib/geometry-source-text";
 import type { GeometryBinding } from "../lib/geometry-binding";
 import { observeGeometryBinding } from "../lib/geometry-binding-readiness";
 import { useGeometryLivePreview } from "../hooks/use-geometry-live-preview";
-import { isBrowserDraftSource, readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
+import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { readStructureText } from "../lib/structure-text";
 import {
   INTERNAL_COORDINATE_KINDS,
   formatInternalCoordinate,
   geometryBase,
-  geometryEditableExtension,
   geometryText,
   internalCoordinateUnit,
   withInternalCoordinate,
@@ -92,11 +91,6 @@ type OptimizationSummary = Pick<OptimizationResult, "forceField" | "method" | "i
 // Only the latest run keeps its step frames; Undo history keeps summaries, not trajectories.
 type OptimizationSteps = { summary: OptimizationSummary; frames: OptimizationResult["frames"] };
 const HISTORY_LIMIT = 100;
-
-export function geometryPanelAvailable(document: ViewerDocument | null): document is ViewerDocument {
-  return Boolean(document && document.renderer === "molstar" && geometryEditableExtension(sourceExtension(document))
-    && (!document.virtual || isBrowserDraftSource(document)) && !document.dockingRequest && !document.mergedCollection);
-}
 
 // `base` is the source the draft started from (its exact text means "reverted").
 // `frame` is the Cartesian geometry the rows are placed against; it changes only
