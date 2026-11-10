@@ -1,0 +1,14 @@
+:root{--burette-embed-background-light:#ffffff;--burette-embed-background-dark:#181818}
+/* The desktop viewer document paints the page with the theme background before
+   the runtime starts (theme.ts previewBackgroundStyle). The build prepends the
+   two background variables from Burette's defaults, so the frame never flashes
+   another colour while Mol* loads. */
+html { color-scheme: light dark; background: var(--burette-embed-background-dark); }
+@media (prefers-color-scheme: light) { html { background: var(--burette-embed-background-light); } }
+html[data-burette-theme="light"] { color-scheme: light; background: var(--burette-embed-background-light); }
+html[data-burette-theme="dark"] { color-scheme: dark; background: var(--burette-embed-background-dark); }
+html, body { margin: 0; height: 100%; overflow: hidden; }
+body { background: inherit; }
+
+/* These controls switch to other documents in the desktop or Quick Look host. */
+[data-buret-action="sdf-grid"] { display: none !important; }
