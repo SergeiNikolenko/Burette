@@ -3,39 +3,30 @@ import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import ts from "typescript-compiler-api";
 
-// Exercise the actual transfer loop with a delayed chemical service. A local
-// MOL import must paint even while that service is still unavailable.
+// Exercise the actual transfer loop with a delayed editor. The shared frame
+// loads MOL directly and a reaction is ready only after its own import paints.
 const source = readFileSync("apps/desktop/src/components/ketcher-page.tsx", "utf8");
 const start = source.indexOf("async function importKetcherStructure(");
 const end = source.indexOf("async function loadKetcherImportCandidate(", start);
 const code = ts.transpileModule(source.slice(start, end), {
   compilerOptions: { target: ts.ScriptTarget.ES2022 },
 }).outputText;
-let releaseService;
-const serviceReady = new Promise((resolve) => { releaseService = resolve; });
+let releaseReaction;
+const reactionReady = new Promise((resolve) => { releaseReaction = resolve; });
 const events = [];
 const transfer = runInNewContext(code + "\nimportKetcherStructure", {
-  looksLikeMolBlock: (text) => text.includes("M  END"),
-  looksLikeReactionBlock: (text) => text.startsWith("$RXN"),
-  waitForKetcherStructServiceReady: async () => {
-    events.push("wait-service");
-    await serviceReady;
-  },
   loadKetcherImportCandidate: (candidate, load) => load(candidate),
   waitForKetcherCanvasUpdate: async () => { events.push("paint"); },
 });
+const reaction = transfer({}, ["$RXN\nM  END"], async () => {
+  await reactionReady;
+  events.push("load-reaction");
+});
 await transfer({}, ["M  END"], async () => { events.push("load-mol"); });
 assert.deepEqual(events, ["load-mol", "paint"]);
-events.length = 0;
-const reaction = transfer({}, ["$RXN\nM  END"], async () => { events.push("load-reaction"); });
-await Promise.resolve();
-assert.deepEqual(events, ["wait-service"]);
-releaseService();
+releaseReaction();
 await reaction;
-assert.deepEqual(events, ["wait-service", "load-reaction", "paint"]);
-events.length = 0;
-await transfer({}, ["CCO"], async () => { events.push("load-smiles"); });
-assert.deepEqual(events, ["wait-service", "load-smiles", "paint"]);
+assert.deepEqual(events, ["load-mol", "paint", "load-reaction", "paint"]);
 console.log("Ketcher import readiness tests passed");
 
 const editor = readFileSync("apps/desktop/src/components/ketcher-editor.tsx", "utf8");

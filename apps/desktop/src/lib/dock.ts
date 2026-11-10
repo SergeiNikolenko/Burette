@@ -276,7 +276,7 @@ export function dockFileEntries({
       key: `tool:${tool}`,
       kind: "tool",
       tool,
-      title: tool === "ketcher" ? "Ketcher" : tool,
+      title: tool === "ketcher" ? "Molecular editor" : tool,
       detail: "Tool",
     });
   };

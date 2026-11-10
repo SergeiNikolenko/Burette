@@ -8,6 +8,7 @@ import { Spinner } from "@/components/ui/spinner";
 import "ketcher-react/dist/index.css";
 
 export type KetcherEditorApi = {
+  cancelPendingImports?: () => void;
   addFragment: Ketcher["addFragment"];
   addMolfileFragment: (molfile: string) => Promise<void>;
   containsReaction: Ketcher["containsReaction"];

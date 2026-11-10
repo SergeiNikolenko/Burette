@@ -43,6 +43,7 @@ const page = ts.createSourceFile(pagePath, readFileSync(new URL(`../${pagePath}`
 const helpers = page.statements.filter(node => ts.isFunctionDeclaration(node) && ['isBlankKetcherMolfile', 'isMolfileCountsLine', 'isBlankKetcherKet'].includes(node.name.text)).map(node => node.getText(page)).join('\n');
 const runtime = vm.createContext({
   draftExportSerialRef: { current: 0 }, restoredDraftRef: { current: '' }, tabId: 'owner',
+  draftRestoreBlockedRef: { current: false },
   withKetcherTimeout: promise => promise,
   saveKetcherDraft: request => saved.push(request), setHasSketch: value => { hasSketch = value; }, setPreserved3dSource() {},
 });
@@ -56,6 +57,10 @@ runtime.ketcher = {
   getKet: () => { const value = deferred(); pending.push(value); return value.promise; },
 };
 const persist = vm.runInContext(callback(pagePath, 'persistDraft'), runtime);
+runtime.draftRestoreBlockedRef.current = true;
+await persist();
+assert.equal(pending.length, 0, 'An unsupported saved draft must not be overwritten by autosave');
+runtime.draftRestoreBlockedRef.current = false;
 const oldSave = persist();
 const newSave = persist();
 pending[2].resolve('latest MOL'); pending[3].resolve('{"root":{"nodes":[{"$ref":"latest"}]}}');
@@ -90,7 +95,9 @@ runtime.location = { kind: 'ketcher', draftKet: saved[1].ket, draftMolfile: save
 runtime.panelMode = null;
 runtime.liveImportDirty = false;
 runtime.restoreKetcherDraft = async () => { restores++; };
-runtime.setOutput = runtime.setPanelMode = runtime.setStatus = () => {};
+runtime.selectImportEditor = async editor => editor;
+runtime.activateEditor = () => {};
+runtime.setOutput = runtime.setPanelMode = runtime.setStatus = runtime.setDraftRestoreError = () => {};
 runtime.restoredDraftRef.current = JSON.stringify({ draftKet: saved[1].ket, draftMolfile: saved[1].molfile });
 const restore = vm.runInContext(callback(pagePath, 'restoreDraft'), runtime);
 assert.equal(await restore(runtime.ketcher), false, 'Publishing an autosave must not re-import its own KET');
@@ -98,6 +105,10 @@ assert.equal(restores, 0);
 runtime.restoredDraftRef.current = '';
 assert.equal(await restore(runtime.ketcher), true, 'A remounted editor must restore its persisted KET-only snapshot');
 assert.equal(restores, 1);
+runtime.restoredDraftRef.current = '';
+runtime.restoreKetcherDraft = async () => { throw new Error('Unsupported saved drawing'); };
+assert.equal(await restore(runtime.ketcher), false);
+assert.equal(runtime.draftRestoreBlockedRef.current, true, 'A failed restore keeps autosave blocked');
 console.log('PASS: actual restore callback restores KET-only drafts without re-importing self-autosaves');
 
 globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };

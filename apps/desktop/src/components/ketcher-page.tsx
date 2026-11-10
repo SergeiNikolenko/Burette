@@ -15,7 +15,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import ligandProLogo from "../assets/short-logo-ligandpro.svg";
 import { collectionExtension, collectionFamily as collectionFamilyForExtension, type CollectionFamily } from "../lib/collection-documents";
-import { detectKetcherImportFormat, normalizeKetcherSmilesImport } from "../lib/ketcher-import-format";
+import { detectKetcherImportFormat, isReactionDrawing, normalizeKetcherSmilesImport } from "../lib/ketcher-import-format";
 import { readStructureText } from "../lib/structure-text";
 import { prepareKetcherPdbImport } from "../lib/ketcher-pdb-import";
 import { isTauriRuntime } from "../lib/tauri";
@@ -80,13 +80,6 @@ const KETCHER_IMPORT_INSTANCE_RETRY_DELAYS_MS = [0, 250, 750, 1500, 2500] as con
 const KETCHER_IMPORT_REQUEST_RETRY_MS = 5000;
 const KETCHER_NARROW_SHELL_WIDTH = 864;
 type KetcherImportResult = "success" | "transient-failure" | "failure";
-const IS_KETCHER_WEB_DEMO = import.meta.env.VITE_BURETTE_WEB_DEMO === "1";
-let ketcherStructServiceReady = false;
-if (typeof window !== "undefined") {
-  window.addEventListener("struct-service-initialized", () => {
-    ketcherStructServiceReady = true;
-  }, { once: true });
-}
 const KETCHER_TOOLTIP_ATTRIBUTE = "data-burette-ketcher-tooltip";
 const KETCHER_TOOLTIP_SELECTOR = [
   '[data-testid="top-toolbar"] button',
@@ -132,11 +125,11 @@ const KETCHER_TOOLTIP_LABELS: Record<string, string> = {
   "polymer-toggler": "Switch between molecule and macromolecule modes",
   "molecules_mode": "Use molecule drawing mode",
   "macromolecules_mode": "Use macromolecule editor mode",
-  "settings-button": "Open Ketcher settings",
-  "help-button": "Open Ketcher help",
-  "about-button": "Show Ketcher information",
+  "settings-button": "Open molecular editor settings",
+  "help-button": "Open molecular editor help",
+  "about-button": "Show molecular editor information",
   "fullscreen-mode-button": "Toggle fullscreen mode",
-  "zoom-selector": "Open Ketcher zoom controls",
+  "zoom-selector": "Open molecular editor zoom controls",
   "zoom-out": "Zoom out",
   "zoom-in": "Zoom in",
   "zoom-default": "Reset zoom to 100%",
@@ -357,6 +350,12 @@ export function KetcherPage({
 }) {
   const [ketcher, setKetcher] = useState<KetcherEditorApi | null>(null);
   const ketcherAgentControllerRef = useRef<ReturnType<typeof registerKetcherAgentController> | null>(null);
+  const molecularEditorRef = useRef<KetcherEditorApi | null>(null);
+  const reactionEditorRef = useRef<KetcherEditorApi | null>(null);
+  const activeEditorRef = useRef<KetcherEditorApi | null>(null);
+  const reactionEditorWaiters = useRef<Array<{ resolve: (editor: KetcherEditorApi) => void; reject: (error: Error) => void }>>([]);
+  const [reactionEditorKey, setReactionEditorKey] = useState(0);
+  const [showReactionEditor, setShowReactionEditor] = useState(false);
   const [status, setStatus] = useState("Loading editor");
   const [output, setOutput] = useState("");
   const [panelMode, setPanelMode] = useState<KetcherPanelMode | null>(null);
@@ -382,6 +381,8 @@ export function KetcherPage({
   const nextImportRetryAtRef = useRef(0);
   const sketchDragRecordRef = useRef<StructureDragRecord | null>(null);
   const restoredDraftRef = useRef("");
+  const draftRestoreBlockedRef = useRef(false);
+  const [draftRestoreError, setDraftRestoreError] = useState("");
   const cleanDraftSignatureRef = useRef("");
   const editorShellRef = useRef<HTMLDivElement | null>(null);
   const shouldMountEditor = isActive || editorHasActivated;
@@ -440,13 +441,39 @@ export function KetcherPage({
   }, [editorHasActivated, isActive]);
 
   const applyDefaultKetcherZoom = useCallback((instance: KetcherEditorApi) => {
-    const applyZoom = () => {
-      instance.setZoom(DEFAULT_KETCHER_ZOOM);
-      setKetcherZoom(DEFAULT_KETCHER_ZOOM);
-    };
-    applyZoom();
-    window.setTimeout(applyZoom, 180);
+    setKetcherZoom(normalizeKetcherZoom(instance.getZoom()));
   }, []);
+
+  const handleReactionReady = useCallback((instance: KetcherEditorApi) => {
+    instance.switchToMoleculesMode();
+    reactionEditorRef.current = instance;
+    for (const waiter of reactionEditorWaiters.current.splice(0)) waiter.resolve(instance);
+  }, []);
+
+  const handleReactionLoadError = useCallback((error: Error) => {
+    for (const waiter of reactionEditorWaiters.current.splice(0)) waiter.reject(error);
+  }, []);
+
+  const selectImportEditor = useCallback((instance: KetcherEditorApi, texts: string[]) => {
+    if (!texts.some(isReactionDrawing)) {
+      const editor = texts.some(text => text.trim()) ? molecularEditorRef.current ?? instance : instance;
+      return Promise.resolve(editor);
+    }
+    if (reactionEditorRef.current) return Promise.resolve(reactionEditorRef.current);
+    return new Promise<KetcherEditorApi>((resolve, reject) => {
+      if (!reactionEditorWaiters.current.length) setReactionEditorKey(key => key + 1);
+      reactionEditorWaiters.current.push({ resolve, reject });
+    });
+  }, []);
+
+  const activateEditor = useCallback((instance: KetcherEditorApi) => {
+    if (activeEditorRef.current === instance && ketcherAgentControllerRef.current) return;
+    activeEditorRef.current = instance;
+    setShowReactionEditor(instance === reactionEditorRef.current);
+    setKetcher(instance);
+    applyDefaultKetcherZoom(instance);
+    if (!draftRestoreBlockedRef.current) ketcherAgentControllerRef.current = registerKetcherAgentController(tabId, instance);
+  }, [applyDefaultKetcherZoom, tabId]);
 
   const restoreDraft = useCallback((instance: KetcherEditorApi) => {
     if (location.importRequest) return Promise.resolve(false);
@@ -457,8 +484,13 @@ export function KetcherPage({
     const draftKey = JSON.stringify({ draftKet: draftKet.trim(), draftMolfile: draftMolfile.trimEnd() });
     if (restoredDraftRef.current === draftKey) return Promise.resolve(false);
     restoredDraftRef.current = draftKey;
-    return restoreKetcherDraft(instance, { ket: draftKet, molfile: draftMolfile })
-      .then(() => {
+    draftRestoreBlockedRef.current = true;
+    return selectImportEditor(instance, [draftKet, draftMolfile])
+      .then(editor => restoreKetcherDraft(editor, { ket: draftKet, molfile: draftMolfile }).then(() => editor))
+      .then((editor) => {
+        draftRestoreBlockedRef.current = false;
+        activateEditor(editor);
+        setDraftRestoreError("");
         setOutput("");
         setPanelMode(null);
         setHasSketch(true);
@@ -468,27 +500,34 @@ export function KetcherPage({
       })
       .catch((error) => {
         restoredDraftRef.current = "";
-        setStatus("Ketcher restore failed: " + (error instanceof Error ? error.message : String(error)));
+        setDraftRestoreError(error instanceof Error ? error.message : String(error));
+        setStatus("molecular editor restore failed: " + (error instanceof Error ? error.message : String(error)));
         return false;
       });
-  }, [liveImportDirty, location.draftKet, location.draftMolfile, location.importRequest, panelMode]);
+  }, [activateEditor, liveImportDirty, location.draftKet, location.draftMolfile, location.importRequest, panelMode, selectImportEditor]);
 
   const saveKetcherDraft = actions.saveKetcherDraft;
-  const persistDraft = useCallback(async (molfile?: string, ket?: string) => {
-    if (!ketcher) return;
+  const persistDraft = useCallback(async (molfile?: string, ket?: string, editor?: KetcherEditorApi) => {
+    const instance = editor ?? ketcher;
+    if (!instance || (!editor && draftRestoreBlockedRef.current)) return;
     const serial = ++draftExportSerialRef.current;
     // KET retains macromolecules, reactions and annotations that MOL cannot.
     // Read both formats from the same editor; a failed MOL export must not
     // prevent saving a valid macromolecule KET.
     const [molResult, ketResult] = await Promise.allSettled([
-      molfile === undefined ? withKetcherTimeout(ketcher.getMolfile("v2000"), "Sketch draft export") : Promise.resolve(molfile),
-      ket === undefined ? withKetcherTimeout(ketcher.getKet(), "Sketch KET draft export") : Promise.resolve(ket),
+      molfile === undefined ? withKetcherTimeout(instance.getMolfile("v2000"), "Sketch draft export") : Promise.resolve(molfile),
+      ket === undefined ? withKetcherTimeout(instance.getKet(), "Sketch KET draft export") : Promise.resolve(ket),
     ]);
     if (serial !== draftExportSerialRef.current) return;
     if (molResult.status === "rejected" && ketResult.status === "rejected") throw ketResult.reason;
     const draftMolfile = molResult.status === "fulfilled" ? molResult.value : "";
     const draftKet = ketResult.status === "fulfilled" ? ketResult.value : undefined;
     const hasCurrentSketch = !isBlankKetcherMolfile(draftMolfile) || Boolean(draftKet && !isBlankKetcherKet(draftKet));
+    if (editor && !hasCurrentSketch) return;
+    if (draftRestoreBlockedRef.current) {
+      draftRestoreBlockedRef.current = false;
+      setDraftRestoreError("");
+    }
     const savedMolfile = hasCurrentSketch ? draftMolfile : "";
     const savedKet = hasCurrentSketch ? draftKet : "";
     // Mark this snapshot before publishing it, so the restore effect does not
@@ -504,31 +543,34 @@ export function KetcherPage({
     if (!seed) return;
     const key = `${seed.surfaceId ?? ""}:${seed.format}:${seed.content}`;
     if (hostedSeedKeyRef.current === key) return;
-    if (seed.format === "mol") await instance.setMolfile(seed.content);
-    else await instance.setMolecule(seed.content, { needZoom: true });
+    const editor = await selectImportEditor(instance, [seed.content]);
+    if (seed.format === "mol") await editor.setMolfile(seed.content);
+    else await editor.setMolecule(seed.content, { needZoom: true });
+    activateEditor(editor);
     hostedSeedKeyRef.current = key;
     setOutput("");
     setPanelMode(null);
     setHasSketch(Boolean(seed.content.trim()));
     setStatus("Ready");
-  }, []);
+  }, [activateEditor, selectImportEditor]);
 
   const handleReady = useCallback((instance: KetcherEditorApi) => {
     instance.switchToMoleculesMode();
-    setKetcher(instance);
+    molecularEditorRef.current = instance;
     void restoreDraft(instance).then(async () => {
       if (isHostedKetcherWidget()) {
         try {
           await applyHostedSeed(instance, hostedKetcherSeedFromWindow());
         } catch (error) {
-          setStatus("Ketcher seed failed: " + (error instanceof Error ? error.message : String(error)));
+          setStatus("molecular editor seed failed: " + (error instanceof Error ? error.message : String(error)));
         }
       }
-      ketcherAgentControllerRef.current = registerKetcherAgentController(tabId, instance);
-    }).finally(() => applyDefaultKetcherZoom(instance));
-  }, [applyDefaultKetcherZoom, applyHostedSeed, restoreDraft, tabId]);
+      if (!activeEditorRef.current) activateEditor(instance);
+    });
+  }, [activateEditor, applyHostedSeed, restoreDraft]);
 
   useEffect(() => () => {
+    for (const waiter of reactionEditorWaiters.current.splice(0)) waiter.reject(new DOMException("The editor was closed", "AbortError"));
     unregisterKetcherAgentController(tabId, ketcherAgentControllerRef.current ?? undefined);
     ketcherAgentControllerRef.current = null;
   }, [tabId]);
@@ -554,7 +596,7 @@ export function KetcherPage({
     if (!ketcher || !isHostedKetcherWidget()) return undefined;
     const handleSeed = () => {
       void applyHostedSeed(ketcher, hostedKetcherSeedFromWindow()).catch((error) => {
-        setStatus("Ketcher seed failed: " + (error instanceof Error ? error.message : String(error)));
+        setStatus("molecular editor seed failed: " + (error instanceof Error ? error.message : String(error)));
       });
     };
     window.addEventListener("burette-ketcher-seed", handleSeed);
@@ -581,6 +623,9 @@ export function KetcherPage({
   }, [isActive, ketcher, restoreDraft]);
 
   const retryEditorLoad = useCallback(() => {
+    activeEditorRef.current = null;
+    molecularEditorRef.current = null;
+    restoredDraftRef.current = "";
     setKetcher(null);
     setHasSketch(Boolean(location.draftKet?.trim() || location.draftMolfile?.trim()));
     setStatus("Loading editor");
@@ -693,23 +738,22 @@ export function KetcherPage({
       setStatus(`Loading ${label}`);
       const format = panelMode.format === "auto" ? detectKetcherImportFormat(output) : panelMode.format;
       const importText = normalizeKetcherImportText(output, format);
-      if (IS_KETCHER_WEB_DEMO && ketcherImportUsesStructService(format)) await waitForKetcherStructServiceReady();
-      await withKetcherTimeout(loadInteractiveKetcherImport(ketcher, importText, format), "Sketch import");
+      const editor = await selectImportEditor(ketcher, [importText]);
+      await withKetcherTimeout(loadInteractiveKetcherImport(editor, importText, format), "Sketch import");
       await waitForKetcherCanvasUpdate();
-      const molfile = await withKetcherTimeout(ketcher.getMolfile("v2000"), "Sketch import verification");
-      if (isBlankKetcherMolfile(molfile)) {
-        setHasSketch(false);
-        setStatus("Ketcher loaded an empty sketch");
+      const saved = await persistDraft(undefined, undefined, editor);
+      if (!saved?.molfile && !saved?.ket) {
+        setStatus("molecular editor loaded an empty sketch");
         return;
       }
-      await persistDraft(molfile);
       setPreserved3dSource(null);
-      setHasSketch(true);
+      activateEditor(editor);
+      if (editor !== ketcher) setLiveImportDirty(false);
       setStatus("Ready");
     } catch (error) {
-      setStatus("Ketcher import failed: " + (error instanceof Error ? error.message : String(error)));
+      setStatus("molecular editor import failed: " + (error instanceof Error ? error.message : String(error)));
     }
-  }, [ketcher, output, panelMode, persistDraft]);
+  }, [activateEditor, ketcher, output, panelMode, persistDraft, selectImportEditor]);
 
   useEffect(() => {
     if (!ketcher || panelMode?.purpose !== "import" || !liveImportDirty) return;
@@ -723,10 +767,9 @@ export function KetcherPage({
         if (liveImportSerialRef.current !== serial) return;
         try {
           setStatus(importText ? `Loading ${label}` : "Clearing sketch");
-          if (IS_KETCHER_WEB_DEMO && importText && ketcherImportUsesStructService(format)) {
-            await waitForKetcherStructServiceReady();
-          }
-          await withKetcherTimeout(loadInteractiveKetcherImport(ketcher, importText, format), `${label} import`);
+          const editor = await selectImportEditor(ketcher, [importText]);
+          if (liveImportSerialRef.current !== serial) return;
+          await withKetcherTimeout(loadInteractiveKetcherImport(editor, importText, format), `${label} import`);
           await waitForKetcherCanvasUpdate();
           if (liveImportSerialRef.current !== serial) return;
           if (!importText) {
@@ -736,16 +779,15 @@ export function KetcherPage({
             setStatus("Ready");
             return;
           }
-          const molfile = await withKetcherTimeout(ketcher.getMolfile("v2000"), `${label} import verification`);
+          const saved = await persistDraft(undefined, undefined, editor);
           if (liveImportSerialRef.current !== serial) return;
-          if (isBlankKetcherMolfile(molfile)) {
-            setHasSketch(false);
+          if (!saved?.molfile && !saved?.ket) {
             setStatus(`${label} did not produce a sketch`);
             return;
           }
-          await persistDraft(molfile);
           setPreserved3dSource(null);
-          setHasSketch(true);
+          activateEditor(editor);
+          if (editor !== ketcher) setLiveImportDirty(false);
           setStatus("Ready");
         } catch (error) {
           if (liveImportSerialRef.current !== serial) return;
@@ -753,8 +795,12 @@ export function KetcherPage({
         }
       })();
     }, 220);
-    return () => window.clearTimeout(timer);
-  }, [detectedImportFormat, ketcher, liveImportDirty, output, panelMode, persistDraft]);
+    return () => {
+      window.clearTimeout(timer);
+      liveImportSerialRef.current += 1;
+      ketcher.cancelPendingImports?.();
+    };
+  }, [activateEditor, detectedImportFormat, ketcher, liveImportDirty, output, panelMode, persistDraft, selectImportEditor]);
 
   const openSketch = useCallback(async (target: KetcherSketchTarget, collectionTargetPath?: string | null) => {
     if (!ketcher || exportingSketch) return;
@@ -861,7 +907,7 @@ export function KetcherPage({
       return;
     }
     actions.setStructureDragActive(true);
-    setStatus("Dragging Ketcher sketch");
+    setStatus("Dragging molecular editor sketch");
   }, [actions]);
 
   const addSketchToCollection = useCallback((collectionPath: string | null) => {
@@ -906,7 +952,7 @@ export function KetcherPage({
 
   const importStructures = useCallback(async (paths: string[], fragments: NonNullable<KetcherImportRequest["fragments"]> = []): Promise<KetcherImportResult> => {
     if (!ketcher) {
-      setStatus("Ketcher is not ready");
+      setStatus("molecular editor is not ready");
       return "transient-failure";
     }
     const cleanPaths = Array.from(new Set(paths.map((path) => path.trim()).filter(Boolean)));
@@ -923,24 +969,14 @@ export function KetcherPage({
           ? cleanFragments[0]?.source ?? null
           : null;
         let source3d: KetcherSource3D | null = null;
-        let hasImportedStructure = false;
-        const addStructure = async (text: string) => {
-          const candidates = ketcherImportCandidates(text);
-          if (candidates.length === 0) return;
-          if (hasImportedStructure) {
-            await importKetcherStructure(ketcher, candidates, (candidate) => loadAdditionalKetcherImportCandidate(ketcher, candidate));
-          } else {
-            await importKetcherStructure(ketcher, candidates, (candidate) => loadInitialKetcherImportCandidate(ketcher, candidate));
-            hasImportedStructure = true;
-          }
-        };
+        const texts: string[] = [];
         for (const path of cleanPaths) {
           const original = await readStructureText(path);
           const text = await prepareKetcherPdbImport(original);
           if (itemCount === 1) {
             source3d = { title: fileName(path), extension: text !== original ? "sdf" : fileExtension(path) || "sdf", text };
           }
-          await addStructure(text);
+          texts.push(text);
         }
         for (const fragment of cleanFragments) {
           const text = await prepareKetcherPdbImport(fragment.text);
@@ -951,15 +987,20 @@ export function KetcherPage({
               text: fragment.text,
             };
           }
-          await addStructure(text);
+          texts.push(text);
         }
-        if (hasImportedStructure) {
-          const molfile = await withKetcherTimeout(ketcher.getMolfile("v2000"), "Imported sketch export");
-          const saved = isBlankKetcherMolfile(molfile) ? undefined : await persistDraft(molfile);
-          if (saved) cleanDraftSignatureRef.current = ketcherDraftSignature(saved);
-          setHasSketch(true);
-          setPreserved3dSource(source3d);
+        const candidatesByStructure = texts.map(ketcherImportCandidates).filter(candidates => candidates.length > 0);
+        if (!candidatesByStructure.length) return "failure";
+        const editor = await selectImportEditor(ketcher, texts);
+        for (const [index, candidates] of candidatesByStructure.entries()) {
+          const loadCandidate = index === 0 ? loadInitialKetcherImportCandidate : loadAdditionalKetcherImportCandidate;
+          await importKetcherStructure(editor, candidates, candidate => loadCandidate(editor, candidate));
         }
+        const saved = await persistDraft(undefined, undefined, editor);
+        if (!saved?.molfile && !saved?.ket) throw new Error("The editor did not return a drawing.");
+        cleanDraftSignatureRef.current = ketcherDraftSignature(saved);
+        activateEditor(editor);
+        setPreserved3dSource(editor.containsReaction() ? null : source3d);
         setPanelMode(null);
         setGridEditSource(editSource);
         setOutput("");
@@ -967,22 +1008,21 @@ export function KetcherPage({
         return "success";
       } catch (error) {
         if (attempt === 0 && isKetcherInstanceError(error)) {
-          setStatus("Waiting for Ketcher editor");
+          setStatus("Waiting for molecular editor editor");
           await waitForMs(2000);
           continue;
         }
         if (isKetcherInstanceError(error)) {
-          setStatus("Waiting for Ketcher editor");
-          setKetcher(null);
-          setEditorReloadKey((key) => key + 1);
+          setStatus("Waiting for molecular editor editor");
+          retryEditorLoad();
           return "transient-failure";
         }
-        setStatus("Ketcher import failed: " + (error instanceof Error ? error.message : String(error)));
+        setStatus("molecular editor import failed: " + (error instanceof Error ? error.message : String(error)));
         return "failure";
       }
     }
     return "failure";
-  }, [ketcher, persistDraft]);
+  }, [activateEditor, ketcher, persistDraft, retryEditorLoad, selectImportEditor]);
 
   const applyGridEdit = useCallback(() => {
     if (!ketcher || !gridEditSource || exportingSketch) return Promise.resolve();
@@ -1086,7 +1126,7 @@ export function KetcherPage({
       nextImportRetryAtRef.current = 0;
       takeQueuedKetcherImportRequest(request.id);
       actions.clearKetcherImportRequest(request.id);
-      setStatus("Ketcher import failed: " + (error instanceof Error ? error.message : String(error)));
+      setStatus("molecular editor import failed: " + (error instanceof Error ? error.message : String(error)));
     }).finally(() => {
       if (inFlightImportRequestIdRef.current === request.id) {
         inFlightImportRequestIdRef.current = null;
@@ -1165,7 +1205,7 @@ export function KetcherPage({
     <section
       className="ketcher-page"
       data-ketcher-fullscreen-container
-      aria-label="Ketcher"
+      aria-label="Molecular editor"
       data-narrow={ketcherNarrow || undefined}
       data-drop-active={dropActive || undefined}
       onDragOverCapture={handleDragOver}
@@ -1187,7 +1227,7 @@ export function KetcherPage({
           >
             <KetcherLogo />
           </span>
-          <h1>Ketcher</h1>
+          <h1>{showReactionEditor ? "Reaction editor" : "Molecular editor"}</h1>
         </div>
         <TooltipProvider>
         <div className="ketcher-page-actions" aria-label="Sketch actions">
@@ -1322,7 +1362,7 @@ export function KetcherPage({
                 variant="default"
                 size="sm"
                 data-slot="button"
-                aria-label="Save Ketcher edits back to collection"
+                aria-label="Save molecular editor edits back to collection"
                 disabled={!ketcher || exportingSketch || !hasSketch}
                 onClick={() => void applyGridEdit()}
               >
@@ -1372,10 +1412,10 @@ export function KetcherPage({
           </Tooltip>}
         </div>
         <div className="ketcher-page-display-actions flex shrink-0 items-center gap-1.5">
-          <div className="ketcher-scale-control flex shrink-0 items-center" role="group" aria-label="Ketcher scale">
+          <div className="ketcher-scale-control flex shrink-0 items-center" role="group" aria-label="molecular editor scale">
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button type="button" variant="ghost" size="icon-toolbar" aria-label="Decrease Ketcher scale" disabled={!ketcher || ketcherZoomIndex === 0} onClick={decreaseKetcherScale}>
+                <Button type="button" variant="ghost" size="icon-toolbar" aria-label="Decrease molecular editor scale" disabled={!ketcher || ketcherZoomIndex === 0} onClick={decreaseKetcherScale}>
                   <Minus aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
@@ -1384,7 +1424,7 @@ export function KetcherPage({
             <span className="min-w-10 text-center text-sm text-(--color-text-tertiary) tabular-nums">{ketcherZoomPercent}%</span>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button type="button" variant="ghost" size="icon-toolbar" aria-label="Increase Ketcher scale" disabled={!ketcher || ketcherZoomIndex === KETCHER_ZOOM_LEVELS.length - 1} onClick={increaseKetcherScale}>
+                <Button type="button" variant="ghost" size="icon-toolbar" aria-label="Increase molecular editor scale" disabled={!ketcher || ketcherZoomIndex === KETCHER_ZOOM_LEVELS.length - 1} onClick={increaseKetcherScale}>
                   <Plus aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
@@ -1413,7 +1453,7 @@ export function KetcherPage({
           className="ketcher-editor-shell"
           data-drop-active={dropActive || undefined}
         >
-          <div className="ketcher-editor-scale-frame">
+          <div className={cn("ketcher-editor-scale-frame", showReactionEditor && "invisible")} inert={Boolean(draftRestoreError) || showReactionEditor}>
             {shouldMountEditor ? (
               <KetcherErrorBoundary>
                 <KetcherEditorLoader
@@ -1428,6 +1468,27 @@ export function KetcherPage({
               <div className="ketcher-loading"><Spinner aria-label="Loading editor" /></div>
             )}
           </div>
+          {reactionEditorKey > 0 && (
+            <div className={cn("ketcher-editor-scale-frame", !showReactionEditor && "invisible")} inert={Boolean(draftRestoreError) || !showReactionEditor}>
+              <KetcherErrorBoundary>
+                <KetcherEditorLoader
+                  key={reactionEditorKey}
+                  reaction
+                  onReady={handleReactionReady}
+                  onStatus={setStatus}
+                  onOpenFile={chooseKetcherFiles}
+                  onRetry={retryEditorLoad}
+                  onLoadError={handleReactionLoadError}
+                />
+              </KetcherErrorBoundary>
+            </div>
+          )}
+          {draftRestoreError && (
+            <Alert className="absolute inset-x-4 top-4" variant="destructive">
+              <AlertTitle>Could not restore this drawing</AlertTitle>
+              <AlertDescription>{draftRestoreError} The saved draft is preserved.</AlertDescription>
+            </Alert>
+          )}
           {dropActive && (
             <div className="ketcher-drop-overlay">
               <div>Add to Ketcher</div>
@@ -1536,7 +1597,7 @@ function normalizeKetcherMolfileTitle(molfile: string) {
   const lines = molfile.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
   const titleIndex = lines.findIndex((line) => line.trim().length > 0);
   if (titleIndex >= 0 && /^Ketcher\b/u.test(lines[titleIndex].trim())) {
-    lines[titleIndex] = "Ketcher sketch";
+    lines[titleIndex] = "molecular editor sketch";
   }
   normalizeKetcherMolfileHeader(lines);
   return lines.join("\n");
@@ -1577,6 +1638,11 @@ function isBlankKetcherKet(ket: string) {
 }
 
 async function restoreKetcherDraft(instance: KetcherEditorApi, draft: { ket?: string; molfile?: string }) {
+  const reaction = [draft.ket, draft.molfile].find(text => text && isReactionDrawing(text));
+  if (reaction) {
+    await importKetcherStructure(instance, [reaction], candidate => loadInitialKetcherImportCandidate(instance, candidate));
+    return;
+  }
   const candidates = Array.from(new Set([
     draft.ket?.trim(),
     draft.molfile?.trimEnd(),
@@ -1605,7 +1671,7 @@ async function ketcherCollectionRecord(ketcher: KetcherEditorApi, molfile: strin
   }
 
   const smiles = (await withKetcherTimeout(ketcher.getSmiles(), "Sketch SMILES export")).trim();
-  if (!smiles) throw new Error("Ketcher did not return SMILES for this sketch.");
+  if (!smiles) throw new Error("molecular editor did not return SMILES for this sketch.");
   if (family === "smiles") {
     return {
       title: "ketcher-sketch.smi",
@@ -1646,9 +1712,9 @@ function withKetcherTimeout<T>(operation: Promise<T>, label: string): Promise<T>
 function ketcherExportErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   if (/timed out/i.test(message)) {
-    return "Ketcher did not return a sketch. Draw a molecule first or try again.";
+    return "molecular editor did not return a sketch. Draw a molecule first or try again.";
   }
-  return "Ketcher export failed: " + message;
+  return "molecular editor export failed: " + message;
 }
 
 function isKetcherInstanceError(error: unknown) {
@@ -1684,18 +1750,15 @@ async function importKetcherStructure(
   let lastError: unknown = null;
   for (const candidate of candidates) {
     try {
-      // MOL imports use the local serializer and do not need Indigo to start.
-      if (!looksLikeMolBlock(candidate) || looksLikeReactionBlock(candidate)) {
-        await waitForKetcherStructServiceReady();
-      }
       await loadKetcherImportCandidate(candidate, loadCandidate);
       await waitForKetcherCanvasUpdate();
       return;
     } catch (error) {
       lastError = error;
+      if (error instanceof Error && ['UnsupportedMolecularDocumentError', 'AbortError'].includes(error.name)) throw error;
     }
   }
-  throw lastError instanceof Error ? lastError : new Error(String(lastError || "Ketcher import failed"));
+  throw lastError instanceof Error ? lastError : new Error(String(lastError || "molecular editor import failed"));
 }
 
 async function loadKetcherImportCandidate(candidate: string, loadCandidate: (candidate: string) => Promise<void>) {
@@ -1703,14 +1766,14 @@ async function loadKetcherImportCandidate(candidate: string, loadCandidate: (can
   for (const delayMs of KETCHER_IMPORT_INSTANCE_RETRY_DELAYS_MS) {
     if (delayMs > 0) await waitForMs(delayMs);
     try {
-      await withKetcherTimeout(loadCandidate(candidate), "Ketcher import");
+      await withKetcherTimeout(loadCandidate(candidate), "molecular editor import");
       return;
     } catch (error) {
       lastError = error;
       if (!isKetcherInstanceError(error)) break;
     }
   }
-  throw lastError instanceof Error ? lastError : new Error(String(lastError || "Ketcher import failed"));
+  throw lastError instanceof Error ? lastError : new Error(String(lastError || "molecular editor import failed"));
 }
 
 function loadInitialKetcherImportCandidate(instance: KetcherEditorApi, candidate: string) {
@@ -1726,7 +1789,7 @@ function loadAdditionalKetcherImportCandidate(instance: KetcherEditorApi, candid
 }
 
 function loadInteractiveKetcherImport(instance: KetcherEditorApi, text: string, format: KetcherTextFormat) {
-  return ketcherImportUsesStructService(format)
+  return ketcherImportUsesStructService(format) || isReactionDrawing(text)
     ? instance.setMolecule(text, { needZoom: true })
     : instance.setMolfile(firstMolBlock(text));
 }
@@ -1742,27 +1805,6 @@ function firstMolBlock(text: string) {
 function waitForKetcherCanvasUpdate() {
   return new Promise<void>((resolve) => {
     requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-  });
-}
-
-function waitForKetcherStructServiceReady() {
-  if (ketcherStructServiceReady) return Promise.resolve();
-  return new Promise<void>((resolve) => {
-    let settled = false;
-    let fallbackId = 0;
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      window.removeEventListener("struct-service-initialized", markReady);
-      window.clearTimeout(fallbackId);
-      resolve();
-    };
-    const markReady = () => {
-      ketcherStructServiceReady = true;
-      finish();
-    };
-    window.addEventListener("struct-service-initialized", markReady, { once: true });
-    if (!IS_KETCHER_WEB_DEMO) fallbackId = window.setTimeout(finish, 750);
   });
 }
 
@@ -1817,15 +1859,19 @@ function KetcherLogo() {
 }
 
 function KetcherEditorLoader({
+  reaction = false,
   onReady,
   onStatus,
   onOpenFile,
   onRetry,
+  onLoadError,
 }: {
+  reaction?: boolean;
   onReady: (api: KetcherEditorApi) => void;
   onStatus: (status: string) => void;
   onOpenFile: () => void;
   onRetry: () => void;
+  onLoadError?: (error: Error) => void;
 }) {
   const [EditorComponent, setEditorComponent] = useState<KetcherEditorComponent | null>(null);
   const [loadError, setLoadError] = useState<Error | null>(null);
@@ -1836,22 +1882,26 @@ function KetcherEditorLoader({
     setLoadError(null);
     setEditorComponent(null);
 
-    void import("./ketcher-editor")
-      .then((module) => {
+    const editor = reaction
+      ? import("./ketcher-editor").then(module => module.KetcherEditor)
+      : import("./molecular-editor").then(module => module.MolecularEditorView);
+    void editor
+      .then((view) => {
         if (cancelled) return;
-        setEditorComponent(() => module.KetcherEditor);
+        setEditorComponent(() => view);
       })
       .catch((error: unknown) => {
         if (cancelled) return;
         const normalizedError = error instanceof Error ? error : new Error(String(error));
         setLoadError(normalizedError);
-        onStatus("Ketcher failed to load");
+        onLoadError?.(normalizedError);
+        onStatus("molecular editor failed to load");
       });
 
     return () => {
       cancelled = true;
     };
-  }, [onStatus]);
+  }, [onLoadError, onStatus, reaction]);
 
   if (loadError) {
     return <KetcherErrorPanel error={loadError} onRetry={onRetry} />;
@@ -1861,7 +1911,7 @@ function KetcherEditorLoader({
     return <div className="ketcher-loading"><Spinner aria-label="Loading editor" /></div>;
   }
 
-  return <EditorComponent onReady={onReady} onStatus={onStatus} onOpenFile={onOpenFile} onLoadError={setLoadError} />;
+  return <EditorComponent onReady={onReady} onStatus={onStatus} onOpenFile={onOpenFile} onLoadError={onLoadError ?? setLoadError} />;
 }
 
 function KetcherErrorPanel({ error, onRetry }: { error: Error; onRetry: () => void }) {

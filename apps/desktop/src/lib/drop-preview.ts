@@ -87,7 +87,7 @@ function previewTargetLabel(target: DropPreviewTarget) {
     return target.area === "right" ? "Right dock" : "Bottom dock";
   }
   if (target.kind === "fep-setup") return "FEP setup";
-  if (target.kind === "ketcher") return "Ketcher";
+  if (target.kind === "ketcher") return "Molecular editor";
   if (target.kind === "sidebar") return "Sidebar";
   if (target.kind === "tab-strip") return "Tab bar";
   return "Workspace";

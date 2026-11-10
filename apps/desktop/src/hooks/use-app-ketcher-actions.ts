@@ -193,7 +193,7 @@ export function useAppKetcherActions({
       pushStatus(`Saved ${basename(savedPath)}`);
       return { status: "saved", path: savedPath };
     } catch (error) {
-      pushErrorStatus(error, "Save Ketcher export failed");
+      pushErrorStatus(error, "Save molecular editor export failed");
       return { status: "failed", message: error instanceof Error ? error.message : String(error) };
     }
   }, [pushErrorStatus, pushStatus]);
@@ -276,7 +276,7 @@ export function useAppKetcherActions({
         closeTab(ketcherTabId);
       }, 0);
     }
-    pushStatus("Saving Ketcher edit to collection...");
+    pushStatus("Saving molecular editor edit to collection...");
   }, [closeTab, pushStatus, setActiveDocument, tabs, updateDirtyGridDocument]);
 
   const clearKetcherImportRequest = useCallback((id: number) => {
@@ -333,7 +333,7 @@ export function useAppKetcherActions({
         : "auto";
     const reloadOptions = request.target === "collection" ? undefined : {};
     const effectivePreferences = { ...preferences, rendererMode };
-    pushStatus("Opening Ketcher sketch...");
+    pushStatus("Opening molecular editor sketch...");
     try {
       if (request.target === "collection" && request.collectionTargetPath) {
         if (isTauriRuntime()) {
@@ -499,7 +499,7 @@ export function useAppKetcherActions({
         `Opened Ketcher sketch in ${request.target === "grid" ? "grid" : request.target === "molstar" ? "Molstar" : "xyzrender"}`,
       );
     } catch (error) {
-      pushErrorStatus(error, "Open Ketcher sketch failed");
+      pushErrorStatus(error, "Open molecular editor sketch failed");
       throw error;
     }
   }, [addDocuments, documents, isDirtyGridDocument, openDocuments, openDocumentsInActiveTab, openTextDocuments, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
