@@ -61,6 +61,11 @@ const requiredPreviewAssets = [
   'rdkit/RDKit_minimal.wasm',
 ];
 
+if (process.argv.includes('--provenance-only')) {
+  await writeBuildProvenance();
+  process.exit(0);
+}
+
 if (!mcpOnly) {
 await run('bun', ['run', 'build:molecular-frame'], { cwd: appRoot });
 await rm(shellDist, { recursive: true, force: true });
@@ -150,15 +155,27 @@ await run('bun', ['run', 'build'], {
 });
 
 await run('bun', [resolve(repoRoot, 'scripts/build-native-workspace.mjs'), '--app-root', appRoot, '--frame-staged']);
+await writeBuildProvenance();
+}
+
+async function writeBuildProvenance() {
 const pluginManifest = JSON.parse(await readFile(resolve(pluginRoot, '.codex-plugin/plugin.json'), 'utf8'));
 const molecularFrame = JSON.parse(await readFile(resolve(appRoot, 'apps/desktop/public/molecular-frame/manifest.json'), 'utf8'));
 const nativeManifest = await readFile(resolve(pluginRoot, 'assets/native-workspace/manifest.json'));
+const previewAssets = {};
+for (const asset of requiredPreviewAssets) {
+  const source = await readFile(resolve(appRoot, 'PreviewExtension/Web', asset));
+  const packaged = await readFile(resolve(previewWeb, asset));
+  if (!source.equals(packaged)) throw new Error(`Packaged preview differs from application source: ${asset}`);
+  previewAssets[asset] = createHash('sha256').update(source).digest('hex');
+}
 await writeFile(resolve(pluginRoot, 'build-provenance.json'), JSON.stringify({
   pluginVersion: pluginManifest.version,
   applicationSource: appRoot,
   transportSource: repoRoot,
   molecularFrameVersion: molecularFrame.version,
   nativeManifestSha256: createHash('sha256').update(nativeManifest).digest('hex'),
+  previewAssets,
 }, null, 2) + '\n');
 }
 

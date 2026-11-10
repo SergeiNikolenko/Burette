@@ -1,7 +1,27 @@
 {
   "pluginVersion": "0.2.78-molecular-frame.20261110",
-  "applicationSource": "/home/nikolenko/work/Experiments/Burette/2026-11/molecular-plugin-source",
-  "transportSource": "/home/nikolenko/work/Experiments/Burette/2026-11/molecular-plugin-transport",
+  "applicationSource": "/Users/nikolenko/.codex/worktrees/b1d6/Burette",
+  "transportSource": "/Users/nikolenko/Documents/Worktrees/Burette/molecular-plugin",
   "molecularFrameVersion": "f79f17f4a33e",
-  "nativeManifestSha256": "78780aad6de4d5073d06019e303f53df44590abf5b8d8fb3e0bd06661cb565ee"
+  "nativeManifestSha256": "78780aad6de4d5073d06019e303f53df44590abf5b8d8fb3e0bd06661cb565ee",
+  "previewAssets": {
+    "viewer.js": "06cdacd983a3c85db9704a974922a217ad502f47ea3a2bfa178f74d48def9059",
+    "viewer-bootstrap.js": "e93c2c98104f10ac7a69930e1a48781f95da802fdb96f248c09947af01128c56",
+    "viewer-shell.js": "8ae219770eb803168ee9f3b538784fde9096c245585cb788c964ed0cc2c53f88",
+    "viewer-runtime.css": "954f8d3d5438b2fd5dc56a851d774e7d5fd31e0e3b15b067dd79dcc1e944ff50",
+    "trajectory-smoothing.js": "6ccd7883bb66a3ff96973c03c67746b3b646239374ee7684762441b422181048",
+    "molstar-preset-preview-controller.js": "5fdc0296ae5d2e678b4dc5b0a0fc19a6b9c27d2088d8a46168fe9f0ee56e5b1e",
+    "superposition-panel.js": "551afabf108a6b26fc18ef3e9ed3ef42675126b7429f93268171dc6d68f6b793",
+    "molstar.js": "9c1384940952024d50c89455033c91221fc83a411578aadd0e11211a155a0330",
+    "molstar.css": "bef46e4da8a4f4798bc7812b8e39f34d91ea5556dd91b8813522f409af421c3f",
+    "mesoscale.js": "5a00ca9b0814879c11b4004c59f64cb14685c3d4a4bb01d9ad1c40fc4a69611a",
+    "mesoscale.css": "f6a24e1b5c29a7833a6892b67f69e1c6f6707baca4c236c8afbed70d8ec7d89b",
+    "burette-agent.js": "f10b4bc80a127fbc4897acb8cf0424f8068a552d5d2a7e0afff8a5168e8c1931",
+    "grid-viewer.js": "6f4901ad6d4637fd6c15746e38c0f71bc5f699eb979bf0ee923c482c6951b065",
+    "grid-ui.js": "c31b89672cd36bee4fa1b3b8cb34270884d0c0cd3406c0f1c2878bda72e99e4b",
+    "grid.css": "43ed30896f73437c7c5254825372c8a1a03721c86b03eaa67cf362f7b2f5f6fa",
+    "openchemlib/openchemlib.js": "4eeaf0d576b66a0d3e7464cc78a117e25d2b5c206ed9b1e32e9ed0f3696c2b58",
+    "rdkit/RDKit_minimal.js": "339ec5a6031f2e0e3f04bcad3ee7991a9f9ae18f8926c1f8a6e19cc06a3daf1b",
+    "rdkit/RDKit_minimal.wasm": "f5981af4cf5bdcef861ffdf7410330bf9887f1195e39fbf9901b3a2f134ace2e"
+  }
 }

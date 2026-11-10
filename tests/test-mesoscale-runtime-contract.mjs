@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 
 const read = (path) => readFile(path, "utf8");
 const registry = JSON.parse(await read("config/preview-formats.json"));
@@ -146,10 +147,21 @@ assert.match(mobile, /mesoscaleInlineHTML/);
 
 const sourceBundle = await readFile("PreviewExtension/Web/mesoscale.js");
 const pluginBundle = await readFile("plugins/burette-agent/preview-web/mesoscale.js");
-assert.deepEqual(pluginBundle, sourceBundle, "packaged plugin must mirror the Mesoscale bundle");
 const sourceStyle = await readFile("PreviewExtension/Web/mesoscale.css");
 const pluginStyle = await readFile("plugins/burette-agent/preview-web/mesoscale.css");
-assert.deepEqual(pluginStyle, sourceStyle, "packaged plugin must mirror the themed Mesoscale stylesheet");
+const provenance = JSON.parse(await read("plugins/burette-agent/build-provenance.json"));
+if (provenance.applicationSource !== provenance.transportSource) {
+  // --app-root deliberately builds the UI from a separate application checkout.
+  // Its source hashes are verified against packaged bytes during that build.
+  for (const [name, bytes] of [["mesoscale.js", pluginBundle], ["mesoscale.css", pluginStyle]]) {
+    assert.match(provenance.previewAssets?.[name] ?? "", /^[a-f0-9]{64}$/);
+    assert.equal(createHash("sha256").update(bytes).digest("hex"), provenance.previewAssets[name],
+      `packaged ${name} must match the selected application source`);
+  }
+} else {
+  assert.deepEqual(pluginBundle, sourceBundle, "packaged plugin must mirror the Mesoscale bundle");
+  assert.deepEqual(pluginStyle, sourceStyle, "packaged plugin must mirror the themed Mesoscale stylesheet");
+}
 assert.match(sourceStyle.toString("utf8"), /--buret-meso-panel/);
 
 const fixtureListing = execFileSync("unzip", ["-Z1", "tests/fixtures/mesoscale/basic.mesozip"], { encoding: "utf8" });
