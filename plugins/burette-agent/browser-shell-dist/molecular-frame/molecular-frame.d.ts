@@ -7,6 +7,7 @@ export interface MolecularSnapshot {
     zoom: number;
     selection: number;
     selectedAtoms: number[];
+    selectedBonds: number[];
     empty: boolean;
     canUndo: boolean;
     canRedo: boolean;
@@ -22,6 +23,8 @@ export interface MolecularEditor {
     load(text: string): boolean;
     insert(text: string): void;
     highlightAtoms(indexes: number[]): void;
+    setSelection(atoms: number[], bonds: number[]): void;
+    getSelectionMolfile(): string;
     getSmiles(): string;
     getMolfile(): string;
     getMolfile3d(): string;
@@ -44,5 +47,5 @@ export interface MolecularEditor {
   on(name: 'error', listener: (value: { message: string }) => void): () => void;
   destroy(): void;
 }
-export function createMolecularEditor(container: HTMLElement, options?: { base?: string | URL; title?: string }): MolecularEditor;
+export function createMolecularEditor(container: HTMLElement, options?: { base?: string | URL; title?: string; onOpenFile?: () => void }): MolecularEditor;
 export function readMolecularAppearance(container: HTMLElement): { theme: 'light' | 'dark'; locale: string; variables: Record<string, string> };

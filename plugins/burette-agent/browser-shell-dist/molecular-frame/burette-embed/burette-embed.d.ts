@@ -1,5 +1,6 @@
 export type BuretteTheme = 'light' | 'dark' | 'auto';
 export interface BuretteAppearance {
+  locale?: string;
   background?: string;
   foreground?: string;
   accent?: string;

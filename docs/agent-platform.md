@@ -26,10 +26,12 @@ For server/CLI-only updates use
 `bun scripts/build-agent-shell-plugin.mjs --mcp-only`. This refreshes packaged
 CLI scripts and the MCP bundle while preserving the previously built UI.
 Changes to viewer or shell source still require a full native workspace build.
-Build provenance records hashes of preview assets from the selected `--app-root`.
+Build provenance records the complete preview file list and SHA-256 hashes from
+the selected `--app-root` (`previewManifestVersion: 1`). Package validation checks
+both the file list and every digest, including builds from a separate checkout.
 `bun scripts/build-agent-shell-plugin.mjs --provenance-only --app-root <checkout>`
 refreshes this metadata for an existing package only after verifying that every
-required preview asset matches that checkout. It does not rebuild the UI.
+preview file matches that checkout and no files are missing or extra. It does not rebuild the UI.
 The recovered UI has not been forward-ported wholesale onto current main;
 in particular, PR #777's shared theme changes require reconciliation, not an
 overwrite with this historical viewer.

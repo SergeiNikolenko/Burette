@@ -16,9 +16,6 @@ const previewWeb = resolve(pluginRoot, 'preview-web');
 const mcpLibDir = resolve(pluginRoot, 'mcp/lib');
 const mcpOnly = process.argv.includes('--mcp-only');
 const exampleAssets = resolve(pluginRoot, 'assets/examples');
-await mkdir(exampleAssets, { recursive: true });
-await cp(resolve(appRoot, 'samples/structures/proteins/1htb.pdb'), resolve(exampleAssets, '1htb.pdb'));
-await cp(resolve(appRoot, 'apps/burette-public-plugin/public/demo-library/Quantum/caffeine.xyz'), resolve(exampleAssets, 'caffeine.xyz'));
 const runtimeScripts = [
   'amber_nc_preview_extract.py',
   'agent-preview.mjs',
@@ -65,6 +62,10 @@ if (process.argv.includes('--provenance-only')) {
   await writeBuildProvenance();
   process.exit(0);
 }
+
+await mkdir(exampleAssets, { recursive: true });
+await cp(resolve(appRoot, 'samples/structures/proteins/1htb.pdb'), resolve(exampleAssets, '1htb.pdb'));
+await cp(resolve(appRoot, 'apps/burette-public-plugin/public/demo-library/Quantum/caffeine.xyz'), resolve(exampleAssets, 'caffeine.xyz'));
 
 if (!mcpOnly) {
 await run('bun', ['run', 'build:molecular-frame'], { cwd: appRoot });
@@ -163,7 +164,15 @@ const pluginManifest = JSON.parse(await readFile(resolve(pluginRoot, '.codex-plu
 const molecularFrame = JSON.parse(await readFile(resolve(appRoot, 'apps/desktop/public/molecular-frame/manifest.json'), 'utf8'));
 const nativeManifest = await readFile(resolve(pluginRoot, 'assets/native-workspace/manifest.json'));
 const previewAssets = {};
+const sourceFiles = await previewFiles(resolve(appRoot, 'PreviewExtension/Web'));
+const packagedFiles = await previewFiles(previewWeb);
+if (JSON.stringify(sourceFiles) !== JSON.stringify(packagedFiles)) {
+  throw new Error('Packaged preview file list differs from application source');
+}
 for (const asset of requiredPreviewAssets) {
+  if (!sourceFiles.includes(asset)) throw new Error(`Missing required preview runtime asset: ${asset}`);
+}
+for (const asset of sourceFiles) {
   const source = await readFile(resolve(appRoot, 'PreviewExtension/Web', asset));
   const packaged = await readFile(resolve(previewWeb, asset));
   if (!source.equals(packaged)) throw new Error(`Packaged preview differs from application source: ${asset}`);
@@ -175,8 +184,20 @@ await writeFile(resolve(pluginRoot, 'build-provenance.json'), JSON.stringify({
   transportSource: repoRoot,
   molecularFrameVersion: molecularFrame.version,
   nativeManifestSha256: createHash('sha256').update(nativeManifest).digest('hex'),
+  previewManifestVersion: 1,
   previewAssets,
 }, null, 2) + '\n');
+}
+
+async function previewFiles(directory, prefix = '') {
+  const files = [];
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const name = prefix + entry.name;
+    if (entry.isDirectory()) files.push(...await previewFiles(resolve(directory, entry.name), `${name}/`));
+    else if (entry.isFile()) files.push(name);
+    else throw new Error(`Unsupported preview entry: ${name}`);
+  }
+  return files.sort();
 }
 
 function run(command, args, options) {

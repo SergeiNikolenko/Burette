@@ -1,4 +1,4 @@
-const VERSION = "dbee1c119fda";
+const VERSION = "961d29148c4b";
 const LOAD_TIMEOUT_MS = 60_000;
 const COMMAND_TIMEOUT_MS = 30_000;
 const MAX_SCENE_BYTES = 100 * 1024 * 1024;
@@ -61,7 +61,8 @@ function downloadExport({ name, mimeType, text, base64 }) {
 export function createBuretteViewer(container, options = {}) {
   const base = new URL(options.base ?? DEFAULT_BASE, document.baseURI);
   const transport = window.BuretteMcpWorkspace;
-  const frameOrigin = transport ? window.origin : base.origin;
+  const sameHost = base.protocol === location.protocol && base.host === location.host;
+  const frameOrigin = transport || sameHost ? window.origin : base.origin;
   if (!base.pathname.endsWith('/')) base.pathname += '/';
   const listeners = new Map([...EVENTS].map(name => [name, new Set()]));
   const pending = new Map();
@@ -126,7 +127,7 @@ export function createBuretteViewer(container, options = {}) {
     current.controller.signal.throwIfAborted();
     const id = `c${++serial}`;
     return waitFor(id, timeout, type, () => {
-      current.element.contentWindow.postMessage({ source: 'burette-embed-host', id, type, ...payload }, frameOrigin);
+      current.element.contentWindow.postMessage({ source: 'burette-embed-host', id, type, ...payload }, frameOrigin === 'null' ? '*' : frameOrigin);
     });
   }
 

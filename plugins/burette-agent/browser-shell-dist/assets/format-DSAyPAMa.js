@@ -1,0 +1,1 @@
+function e(e){return e===`xyzrender-external`?`3D render`:e===`grid2d`?`Grid`:e===`spectrum`?`Spectrum`:e===`image`?`Image`:e===`text`?`Text`:e===`not-renderable`?`Preview`:`Interactive 3D`}function t(e){return e<1024?e+` B`:e<1048576?(e/1024).toFixed(1)+` KB`:(e/1024/1024).toFixed(1)+` MB`}export{e as n,t};

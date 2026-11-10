@@ -29,6 +29,7 @@ async function filesUnder(dir, base = dir) {
     const full = join(dir, entry.name);
     if (entry.isDirectory()) out.push(...await filesUnder(full, base));
     else if (entry.isFile()) out.push(relative(base, full));
+    else assert.fail(`Unsupported preview entry: ${full}`);
   }
   return out.sort();
 }
@@ -51,7 +52,13 @@ async function assertSameFile(sourcePath, copyPath, what) {
 // must hold the same files and nothing else.
 const webSource = join(root, "PreviewExtension/Web");
 const webCopy = join(root, "plugins/burette-agent/preview-web");
-const sourceFiles = await filesUnder(webSource);
+const provenance = JSON.parse(await readFile(join(root, "plugins/burette-agent/build-provenance.json"), "utf8"));
+const separateApplication = provenance.applicationSource !== provenance.transportSource;
+if (separateApplication) {
+  assert.equal(provenance.previewManifestVersion, 1, "A separate application checkout requires a complete preview manifest");
+  assert.ok(provenance.previewAssets && typeof provenance.previewAssets === "object");
+}
+const sourceFiles = separateApplication ? Object.keys(provenance.previewAssets).sort() : await filesUnder(webSource);
 const copyFiles = await filesUnder(webCopy);
 assert.ok(sourceFiles.length > 0, "PreviewExtension/Web is empty - the check would pass vacuously");
 assert.deepEqual(
@@ -61,7 +68,13 @@ assert.deepEqual(
     + "Run `bun run build:agent-shell`."
 );
 for (const file of sourceFiles) {
-  await assertSameFile(join("PreviewExtension/Web", file), join("plugins/burette-agent/preview-web", file), "preview runtime");
+  if (separateApplication) {
+    assert.match(provenance.previewAssets[file], /^[a-f0-9]{64}$/);
+    assert.equal(await digest(join(webCopy, file)), provenance.previewAssets[file],
+      `Packaged preview differs from selected application source: ${file}`);
+  } else {
+    await assertSameFile(join("PreviewExtension/Web", file), join("plugins/burette-agent/preview-web", file), "preview runtime");
+  }
 }
 
 // The copied scripts. The list is read out of the build script rather than

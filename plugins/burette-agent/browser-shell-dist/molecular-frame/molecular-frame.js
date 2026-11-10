@@ -23,7 +23,8 @@ export function readMolecularAppearance(container) {
 export function createMolecularEditor(container, options = {}) {
   const base = new URL(options.base ?? './', import.meta.url);
   const transport = window.BuretteMcpWorkspace;
-  const frameOrigin = transport ? window.origin : base.origin;
+  const sameHost = base.protocol === location.protocol && base.host === location.host;
+  const frameOrigin = transport || sameHost ? window.origin : base.origin;
   const element = document.createElement('iframe');
   element.title = options.title ?? 'Molecular editor';
   element.allow = 'fullscreen; clipboard-read; clipboard-write';
@@ -44,13 +45,14 @@ export function createMolecularEditor(container, options = {}) {
       const id = ++sequence;
       const timeout = setTimeout(() => { pending.delete(id); reject(new Error('The molecular editor did not respond')); }, 30_000);
       pending.set(id, { resolve, reject, timeout });
-      element.contentWindow.postMessage({ source: 'burette-molecular-host', id, command, value }, frameOrigin);
+      element.contentWindow.postMessage({ source: 'burette-molecular-host', id, command, value }, frameOrigin === 'null' ? '*' : frameOrigin);
     });
   }
   function receive(event) {
     const message = event.data;
     if (event.source !== element.contentWindow || event.origin !== frameOrigin || message?.source !== 'burette-molecular-frame') return;
-    if (message.type === 'ready') { loaded = true; clearTimeout(timer); resolveReady(); }
+    if (message.type === 'openFile') { options.onOpenFile?.(); }
+    else if (message.type === 'ready') { loaded = true; clearTimeout(timer); resolveReady(); }
     else if (message.type === 'result') {
       const item = pending.get(message.value?.id);
       if (!item) return;
@@ -71,7 +73,7 @@ export function createMolecularEditor(container, options = {}) {
     element.src = url.href;
     container.append(element);
   }
-  const syncAppearance = () => request('appearance', readMolecularAppearance(container));
+  const syncAppearance = () => request('appearance', { ...readMolecularAppearance(container), openFile: Boolean(options.onOpenFile) });
   const observer = new MutationObserver(() => { if (loaded) void syncAppearance().catch(() => {}); });
   for (let ancestor = container; ancestor; ancestor = ancestor.parentElement) observer.observe(ancestor, { attributes: true, attributeFilter: ['class', 'style', 'lang'] });
   const ready = mounted.then(syncAppearance);

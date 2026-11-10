@@ -5,7 +5,7 @@
   'use strict';
 
   // Replaced by scripts/build.mjs: runtime file hashes and Burette's viewer defaults.
-  const MANIFEST = {"version":"dbee1c119fda","files":{"viewer-runtime.css":"954f8d3d5438b2fd5dc56a851d774e7d5fd31e0e3b15b067dd79dcc1e944ff50","molstar.css":"bef46e4da8a4f4798bc7812b8e39f34d91ea5556dd91b8813522f409af421c3f","viewer-shell.js":"8ae219770eb803168ee9f3b538784fde9096c245585cb788c964ed0cc2c53f88","viewer-bootstrap.js":"e93c2c98104f10ac7a69930e1a48781f95da802fdb96f248c09947af01128c56","molstar.js":"9c1384940952024d50c89455033c91221fc83a411578aadd0e11211a155a0330","burette-agent.js":"f10b4bc80a127fbc4897acb8cf0424f8068a552d5d2a7e0afff8a5168e8c1931","trajectory-smoothing.js":"6ccd7883bb66a3ff96973c03c67746b3b646239374ee7684762441b422181048","molstar-preset-preview-controller.js":"5fdc0296ae5d2e678b4dc5b0a0fc19a6b9c27d2088d8a46168fe9f0ee56e5b1e","superposition-panel.js":"551afabf108a6b26fc18ef3e9ed3ef42675126b7429f93268171dc6d68f6b793","molecule-preview-interactions.js":"5b891b45c9a60cc196a243aaaf2965b768cfb26cd7a63056375ee440cba5ae9e","renderer-view-state.js":"97cb02ee8efbcaa1d57a2275c9c5e05943cf5e57649563c67b9b82cf886ecc41","color-picker.js":"2f117fda2171d55f79512982aa5458390485a324805371dd445e73709aff5732","sequence-panel.js":"2d0728cb8320fe176eb37739520d96d1dbf5cac927923fa017b6a54cbfdcda55","native-viewer-menus.js":"2b9a228c19902a013db3d13faa61519f59aa77a974e150ebff77120312a15fc0","scene-file-actions.js":"25f361758d92d6b35059db68b26209dff0bc6b09d2816ec73203804bc345c7e0","sdf-collection-scene.js":"590a31a4b07dcbee1bcbc011fb7f57941cc777397aa7f11f8c78108890347347","svg-sanitizer.js":"fada3acccd5943a6e5e7cc5394e6d13133aa117414c9e485aa82cb0c8c84b520","svg-sanitizer.LICENSE":"cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30","viewer.js":"06cdacd983a3c85db9704a974922a217ad502f47ea3a2bfa178f74d48def9059","rdkit/RDKit_minimal.js":"339ec5a6031f2e0e3f04bcad3ee7991a9f9ae18f8926c1f8a6e19cc06a3daf1b","rdkit/RDKit_minimal.wasm":"f5981af4cf5bdcef861ffdf7410330bf9887f1195e39fbf9901b3a2f134ace2e","rdkit/LICENSE":"01c94cf021015183787810769b8006d0575e96e727b9533d6caffd2be58ea6f1"}};
+  const MANIFEST = {"version":"961d29148c4b","files":{"viewer-runtime.css":"954f8d3d5438b2fd5dc56a851d774e7d5fd31e0e3b15b067dd79dcc1e944ff50","molstar.css":"bef46e4da8a4f4798bc7812b8e39f34d91ea5556dd91b8813522f409af421c3f","viewer-shell.js":"8ae219770eb803168ee9f3b538784fde9096c245585cb788c964ed0cc2c53f88","viewer-bootstrap.js":"e93c2c98104f10ac7a69930e1a48781f95da802fdb96f248c09947af01128c56","molstar.js":"9c1384940952024d50c89455033c91221fc83a411578aadd0e11211a155a0330","burette-agent.js":"f10b4bc80a127fbc4897acb8cf0424f8068a552d5d2a7e0afff8a5168e8c1931","trajectory-smoothing.js":"6ccd7883bb66a3ff96973c03c67746b3b646239374ee7684762441b422181048","molstar-preset-preview-controller.js":"5fdc0296ae5d2e678b4dc5b0a0fc19a6b9c27d2088d8a46168fe9f0ee56e5b1e","superposition-panel.js":"551afabf108a6b26fc18ef3e9ed3ef42675126b7429f93268171dc6d68f6b793","molecule-preview-interactions.js":"5b891b45c9a60cc196a243aaaf2965b768cfb26cd7a63056375ee440cba5ae9e","renderer-view-state.js":"97cb02ee8efbcaa1d57a2275c9c5e05943cf5e57649563c67b9b82cf886ecc41","color-picker.js":"2f117fda2171d55f79512982aa5458390485a324805371dd445e73709aff5732","sequence-panel.js":"2d0728cb8320fe176eb37739520d96d1dbf5cac927923fa017b6a54cbfdcda55","native-viewer-menus.js":"5add1be94da9fe34965e01549c551be89fe4607d70a5198aed8acfdb6b75f320","scene-file-actions.js":"25f361758d92d6b35059db68b26209dff0bc6b09d2816ec73203804bc345c7e0","sdf-collection-scene.js":"590a31a4b07dcbee1bcbc011fb7f57941cc777397aa7f11f8c78108890347347","svg-sanitizer.js":"fada3acccd5943a6e5e7cc5394e6d13133aa117414c9e485aa82cb0c8c84b520","svg-sanitizer.LICENSE":"cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30","viewer.js":"06cdacd983a3c85db9704a974922a217ad502f47ea3a2bfa178f74d48def9059","rdkit/RDKit_minimal.js":"339ec5a6031f2e0e3f04bcad3ee7991a9f9ae18f8926c1f8a6e19cc06a3daf1b","rdkit/RDKit_minimal.wasm":"f5981af4cf5bdcef861ffdf7410330bf9887f1195e39fbf9901b3a2f134ace2e","rdkit/LICENSE":"01c94cf021015183787810769b8006d0575e96e727b9533d6caffd2be58ea6f1"}};
   const DEFAULTS = {"molstarStyle":"illustrative","canvasBackground":"auto","themeTokens":{"light":{"accent":"#339cff","background":"#ffffff","foreground":"#1a1c1f","uiFont":"-apple-system-body, ui-sans-serif, -apple-system, system-ui, \"Segoe UI\", Helvetica, \"Apple Color Emoji\", Arial, sans-serif, \"Segoe UI Emoji\", \"Segoe UI Symbol\"","editorFont":"-apple-system-body, ui-sans-serif, -apple-system, system-ui, \"Segoe UI\", Helvetica, \"Apple Color Emoji\", Arial, sans-serif, \"Segoe UI Emoji\", \"Segoe UI Symbol\"","translucent":30,"contrast":45},"dark":{"accent":"#339cff","background":"#181818","foreground":"#ffffff","uiFont":"-apple-system-body, ui-sans-serif, -apple-system, system-ui, \"Segoe UI\", Helvetica, \"Apple Color Emoji\", Arial, sans-serif, \"Segoe UI Emoji\", \"Segoe UI Symbol\"","editorFont":"-apple-system-body, ui-sans-serif, -apple-system, system-ui, \"Segoe UI\", Helvetica, \"Apple Color Emoji\", Arial, sans-serif, \"Segoe UI Emoji\", \"Segoe UI Symbol\"","translucent":20,"contrast":60}},"viewerDefaults":{"screenshotResolution":"viewport","screenshotFormat":"png","screenshotTransparent":false,"gridViewMode":"cards","gridCardRenderer":"rdkit","gridCardSize":0,"hydrogenDisplay":"none"}};
 
   const STRUCTURE_FORMATS = {
@@ -25,17 +25,34 @@
   let opened = false;
   let ready = false;
   let lastPose;
+  let poseMode = 'single';
   let docking = false;
+  let sdfPosePager = false;
   let resolveRender;
   let rejectRender;
   let commandsInOrder = Promise.resolve();
   let appearance = {};
 
   function themeTokens(value = {}) {
-    const valid = {};
+    document.documentElement.lang = typeof value.locale === 'string' && /^[a-z]{2}(?:-[A-Za-z0-9]+)*$/.test(value.locale) ? value.locale : 'en';
+    const valid = { locale: document.documentElement.lang };
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 1;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
     for (const key of ['background', 'foreground', 'accent', 'uiFont']) {
       const text = value[key];
-      if (typeof text === 'string' && text.length <= 256 && CSS.supports(key === 'uiFont' ? 'font-family' : 'color', text)) valid[key] = text;
+      if (typeof text !== 'string' || text.length > 256 || !CSS.supports(key === 'uiFont' ? 'font-family' : 'color', text)) continue;
+      if (key === 'uiFont') {
+        valid[key] = text;
+        continue;
+      }
+      // The native theme resolver consumes sRGB hex, while host CSS may use
+      // rgb(), oklch() or named colours. Resolve those in the browser once.
+      context.clearRect(0, 0, 1, 1);
+      context.fillStyle = text;
+      context.fillRect(0, 0, 1, 1);
+      const rgba = context.getImageData(0, 0, 1, 1).data;
+      if (rgba[3] === 255) valid[key] = '#' + Array.from(rgba.subarray(0, 3), byte => byte.toString(16).padStart(2, '0')).join('');
     }
     appearance = valid;
     if (valid.background) {
@@ -43,7 +60,7 @@
     } else {
       for (const mode of ['light', 'dark']) document.documentElement.style.removeProperty(`--burette-embed-background-${mode}`);
     }
-    return Object.fromEntries(['light', 'dark'].map(mode => [mode, { ...DEFAULTS.themeTokens[mode], ...valid }]));
+    return Object.fromEntries(['light', 'dark'].map(mode => [mode, { ...DEFAULTS.themeTokens[mode], ...valid, preserveColors: true }]));
   }
 
   function setBackground(theme) {
@@ -54,12 +71,15 @@
 
   const versioned = name => `${name}?v=${MANIFEST.files[name]?.slice(0, 12) || MANIFEST.version}`;
   const toHost = message => {
-    window.parent.postMessage({ source: 'burette-embed', ...message }, hostOrigin || '*');
+    window.parent.postMessage({ source: 'burette-embed', ...message }, hostOrigin && hostOrigin !== 'null' ? hostOrigin : '*');
   };
 
-  async function loadScript(name) {
-    const source = window.BuretteResolveRuntimeAsset
-      ? await window.BuretteResolveRuntimeAsset(name) : versioned(name);
+  function resolveScript(name) {
+    return window.BuretteResolveRuntimeAsset
+      ? window.BuretteResolveRuntimeAsset(name) : versioned(name);
+  }
+
+  function loadScript(name, source) {
     return new Promise((resolve, reject) => {
       const script = document.createElement('script');
       script.src = source;
@@ -150,6 +170,13 @@
     return config;
   }
 
+  function publishPose(index, sourceRecordId, count, mode) {
+    if (lastPose?.index === index && lastPose.sourceRecordId === sourceRecordId
+      && lastPose.count === count && lastPose.mode === mode) return;
+    lastPose = { type: 'pose', index, sourceRecordId, count, mode };
+    toHost(lastPose);
+  }
+
   function onViewerMessage(body) {
     if (!body || typeof body !== 'object') return;
     if (body.type === 'status' && String(body.message || '').startsWith('[web] Rendered ') && !ready) {
@@ -160,11 +187,13 @@
       if (!ready) rejectRender(new Error(message));
       else toHost({ type: 'error', message });
     } else if (body.type === 'dockingPoseChanged') {
-      lastPose = { type: 'pose', index: body.activePose, sourceRecordId: body.sourceRecordId, count: body.poseCount, mode: body.poseMode };
-      toHost(lastPose);
-    } else if (body.type === 'structureOverlayModeChanged' && lastPose) {
-      lastPose = { ...lastPose, mode: body.mode };
-      toHost(lastPose);
+      publishPose(body.activePose, body.sourceRecordId, body.poseCount, body.poseMode);
+    } else if (body.type === 'trajectoryFrameChanged' && sdfPosePager) {
+      // Standalone SDF controls report the original record as a frame index.
+      publishPose(body.globalFrameIndex, body.globalFrameIndex, body.frameCount, poseMode);
+    } else if (body.type === 'structureOverlayModeChanged') {
+      poseMode = body.mode;
+      if (lastPose) publishPose(lastPose.index, lastPose.sourceRecordId, lastPose.count, poseMode);
     } else if (body.type === 'selectionChanged') {
       toHost({ type: 'selection', selection: body.selection ?? null });
     } else if (body.type === 'exportText' || body.type === 'exportData') {
@@ -180,6 +209,7 @@
     docking = !!poses;
     if (structure.bytes.length + (poses?.bytes.length || 0) > MAX_SCENE_BYTES) throw new Error('The scene is larger than 100 MB.');
     const config = viewerConfig(scene, structure, poses);
+    sdfPosePager = config.sdfPosePager;
     setBackground(config.theme);
     jsonElement('burette-runtime-config', config);
     jsonElement('burette-runtime-data', poses ? base64(new Uint8Array([10])) : base64(structure.bytes));
@@ -196,14 +226,17 @@
     });
     window.BuretteRDKitJSURL = versioned('rdkit/RDKit_minimal.js');
     window.BuretteRDKitWasmURL = versioned('rdkit/RDKit_minimal.wasm');
-    await loadScript('viewer-shell.js');
-    await loadScript('viewer-bootstrap.js');
+    await loadScript('viewer-shell.js', await resolveScript('viewer-shell.js'));
+    await loadScript('viewer-bootstrap.js', await resolveScript('viewer-bootstrap.js'));
     window.__mqlPost = (type, message, payload) => onViewerMessage({ type, message: message || '', ...(payload || {}) });
     const rendered = new Promise((resolve, reject) => {
       resolveRender = resolve;
       rejectRender = reject;
     });
-    await Promise.all([rendered, ...RUNTIME_SCRIPTS.map(loadScript)]);
+    // Asset resolution can finish out of order in an MCP host. Resolve in
+    // parallel first, then insert scripts in their required execution order.
+    const sources = await Promise.all(RUNTIME_SCRIPTS.map(resolveScript));
+    await Promise.all([rendered, ...RUNTIME_SCRIPTS.map((name, index) => loadScript(name, sources[index]))]);
   }
 
   async function run(action) {
