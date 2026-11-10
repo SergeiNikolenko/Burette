@@ -125,7 +125,7 @@
     "shiki": "^4.5.0",
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.7.0",
-    "three": "0.186.1",
+    "three": "0.187.0",
     "tslib": "2.8.1",
     "zustand": "^5.0.15"
   },
@@ -141,7 +141,7 @@
     "@types/node": "22.20.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "@types/three": "0.186.0",
+    "@types/three": "0.187.0",
     "@types/webxr": "0.5.24",
     "@vitejs/plugin-react": "^6.1.1",
     "babel-plugin-react-compiler": "^1.0.0",
