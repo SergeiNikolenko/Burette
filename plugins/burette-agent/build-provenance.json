@@ -1,7 +1,7 @@
 {
-  "pluginVersion": "0.2.76-molecular-frame.20261110",
+  "pluginVersion": "0.2.77-molecular-frame.20261110",
   "applicationSource": "/home/nikolenko/work/Experiments/Burette/2026-11/molecular-plugin-source",
   "transportSource": "/home/nikolenko/work/Experiments/Burette/2026-11/molecular-plugin-transport",
-  "molecularFrameVersion": "26ecec755717",
-  "nativeManifestSha256": "29e6ac73f01691eeabf67e5fc8fcb743042185a30d578031e4d8070e4873fdc0"
+  "molecularFrameVersion": "5829a7252add",
+  "nativeManifestSha256": "8c029e0a54b8e862562a5fcb17037f84771e8b7ea5a7877c4877889b1029db97"
 }

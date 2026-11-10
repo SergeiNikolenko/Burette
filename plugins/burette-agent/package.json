@@ -1,6 +1,6 @@
 {
   "name": "burette-agent-plugin",
-  "version": "0.2.76-molecular-frame.20261110",
+  "version": "0.2.77-molecular-frame.20261110",
   "private": true,
   "type": "module",
   "files": [
