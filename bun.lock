@@ -37,7 +37,7 @@
         "immutable": "5.1.9",
         "io-ts": "2.2.22",
         "mediabunny": "1.61.3",
-        "mutative": "1.3.0",
+        "mutative": "2.0.2",
         "openchemlib": "9.25.0",
         "plotly.js-basic-dist-min": "^4.1.1",
         "pngjs": "7.0.0",
@@ -2133,7 +2133,7 @@
 
     "ms": ["ms@2.1.3", "", {}, "sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA=="],
 
-    "mutative": ["mutative@1.3.0", "", {}, "sha512-8MJj6URmOZAV70dpFe1YnSppRTKC4DsMkXQiBDFayLcDI4ljGokHxmpqaBQuDWa4iAxWaJJ1PS8vAmbntjjKmQ=="],
+    "mutative": ["mutative@2.0.2", "", {}, "sha512-9mlCkp5FQ6eZ5LuKWVEgcrfhcm5P13jqPebLimb2OKGoziBOUzes8D3spqZ4WIOugAv9ZQMDNwh0LBueVGoYEg=="],
 
     "nanoid": ["nanoid@3.3.19", "", { "bin": { "nanoid": "bin/nanoid.cjs" } }, "sha512-Y2tUNy4ouw6tq5oDSKeQYGOyhkUBhNOcGV/02KC+6kd9eDGqdZd++mjMiIDilrBYvjEnCYvVtsuHCuP+okSfug=="],
 
