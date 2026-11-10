@@ -136,7 +136,7 @@
     "@modelcontextprotocol/server": "^2.1.0",
     "@rolldown/plugin-babel": "^0.2.4",
     "@tailwindcss/vite": "^4.3.3",
-    "@tauri-apps/cli": "^2.12.0",
+    "@tauri-apps/cli": "^2.12.4",
     "@types/bun": "^1.4.2",
     "@types/node": "22.20.1",
     "@types/react": "^19.3.0",
