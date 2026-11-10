@@ -20,6 +20,14 @@ const outputRoot = join(root, 'plugins/burette-agent/assets/native-workspace');
 try {
   let manifest;
   if (!bootstrapOnly) {
+  await new Promise((resolveStage, rejectStage) => {
+    const staged = process.argv.includes('--frame-staged');
+    const child = spawn(staged ? 'node' : 'bun', staged
+      ? [join(appRoot, 'apps/molecular-frame/scripts/stage.mjs')]
+      : ['run', 'build:molecular-frame'], { cwd: appRoot, stdio: 'inherit' });
+    child.on('error', rejectStage);
+    child.on('exit', code => code === 0 ? resolveStage() : rejectStage(new Error(`Molecular frame staging failed: ${code}`)));
+  });
   await new Promise((resolve, reject) => {
     const child = spawn(join(appRoot, 'node_modules/.bin/vp'), ['build'], {
       cwd: join(appRoot, 'apps/desktop'), stdio: 'inherit', env: {

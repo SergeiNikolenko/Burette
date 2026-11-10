@@ -4,6 +4,32 @@ import { randomBytes, createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { createWorkspaceAssets } from '../plugins/burette-agent/ui/native-workspace-assets.mjs';
 
+test('frame module preparation includes the full graph for every document', async () => {
+  const previous = globalThis.window;
+  globalThis.window = { fetch };
+  const packedFiles = new Map();
+  const entries = {};
+  for (const [name, dependencies] of [['shell/frame.js', ['shell/shared.js']], ['shell/shared.js', []]]) {
+    const bytes = Buffer.from(`export const name = ${JSON.stringify(name)};`);
+    const packed = gzipSync(bytes);
+    packedFiles.set(name, packed);
+    entries[name] = { mimeType: 'text/javascript', packedBytes: packed.length, byteCount: bytes.length,
+      sha256: createHash('sha256').update(bytes).digest('hex'), dependencies };
+  }
+  let reads = 0;
+  const assets = createWorkspaceAssets({ manifest: { assets: entries }, isClosed: () => false,
+    exchange: async ({ asset: { path } }) => { reads++; return { dataBase64: packedFiles.get(path).toString('base64'), nextOffset: null }; },
+  });
+  try {
+    const first = await assets.prepareModule('shell/frame.js');
+    const second = await assets.prepareModule('shell/frame.js');
+    assert.deepEqual(Object.keys(first.imports).sort(), ['burette:shell/frame.js', 'burette:shell/shared.js']);
+    assert.deepEqual(first, second);
+    assert.equal(reads, 2);
+    await assert.rejects(assets.prepareModule('shell/missing.js'), /Unknown workspace module/);
+  } finally { assets.dispose(); globalThis.window = previous; }
+});
+
 for (const omitTerminalCursor of [false, true]) test(`workspace asset chunks verify final bytes with omitted terminal cursor=${omitTerminalCursor}`, async () => {
   const previous = globalThis.window;
   globalThis.window = { fetch };

@@ -9,7 +9,6 @@
     const viewportHeight = Math.max(1, Number(value.viewportHeight) || 1);
     const margin = Math.max(0, Number(value.margin) || 0);
     const gap = Math.max(0, Number(value.gap) || 0);
-    const minimumMenuHeight = Math.max(0, Number(value.minimumMenuHeight) || 0);
     const menuRect = value.menuRect || {};
     const itemRect = value.itemRect || {};
     const previewWidth = Math.min(Math.max(1, Number(value.previewWidth) || 1), Math.max(1, viewportWidth - margin * 2));
@@ -23,15 +22,18 @@
     if (rightCandidate + previewWidth <= viewportWidth - margin) {
       return { placement: 'right', left: rightCandidate, top: alignedTop };
     }
-    const menuTop = margin + previewHeight + gap;
-    const menuMaxHeight = viewportHeight - margin - menuTop;
-    if (menuMaxHeight < minimumMenuHeight) return { placement: 'hidden' };
+    const spaceAbove = Number(menuRect.top || 0) - margin - gap;
+    const belowTop = Number(menuRect.bottom || 0) + gap;
+    const spaceBelow = viewportHeight - margin - belowTop;
+    const above = spaceAbove > spaceBelow;
+    const availableHeight = Math.max(spaceAbove, spaceBelow);
+    if (availableHeight < 80) return { placement: 'hidden' };
+    const scale = Math.min(1, availableHeight / previewHeight);
     return {
       placement: 'stacked',
-      left: Math.max(margin, Math.min(viewportWidth - margin - previewWidth, Number(menuRect.left || 0))),
-      top: margin,
-      menuTop,
-      menuMaxHeight,
+      left: Math.max(margin, Math.min(viewportWidth - margin - previewWidth * scale, Number(menuRect.left || 0))),
+      top: above ? Math.max(margin, Number(menuRect.top) - gap - previewHeight * scale) : belowTop,
+      scale,
     };
   }
 

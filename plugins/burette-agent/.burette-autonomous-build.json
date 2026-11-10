@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "version": "0.2.72-viewerfix.20261105",
+  "sourceCommit": "de9a63c12aa09f76ed96ba1e9ac0daf95e9acee4",
+  "basePluginVersion": "0.2.70-viewerfix.20261104",
+  "nativeAssetManifestSha256": "e251fa07834a4675f4fff9bd993460425c61f49fa81f59abbd8f83fb381120e0",
+  "composition": "Existing native/browser/preview UI with rebuilt autonomous molecular backend",
+  "createdAt": "2026-11-05T04:17:27.078Z"
+}

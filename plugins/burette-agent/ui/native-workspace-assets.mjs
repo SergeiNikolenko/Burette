@@ -71,26 +71,29 @@ export function createWorkspaceAssets({ manifest, exchange, isClosed, onProgress
     })().catch(error => { assets.delete(path); throw error; }));
     return assets.get(path);
   }
+  async function prepareModule(path) {
+    assertOpen();
+    const needed = new Set();
+    const visit = name => {
+      if (needed.has(name)) return;
+      const entry = manifest.assets[name];
+      if (!entry || entry.mimeType !== 'text/javascript') throw new Error(`Unknown workspace module: ${name}`);
+      needed.add(name);
+      entry.dependencies.forEach(visit);
+    };
+    visit(path);
+    const imports = {};
+    await Promise.all([...needed].map(async name => { imports[`burette:${name}`] = await asset(name); }));
+    assertOpen();
+    return { url: await asset(path), imports };
+  }
   async function importModule(path) {
     // Serialize import-map extension, but not module evaluation: a module may
     // itself await a lazy import while being evaluated.
     const prepare = moduleQueue.then(async () => {
-      assertOpen();
-      const needed = new Set();
-      const visit = name => {
-        if (needed.has(name) || mapped.has(name)) return;
-        const entry = manifest.assets[name];
-        if (!entry || entry.mimeType !== 'text/javascript') throw new Error(`Unknown workspace module: ${name}`);
-        needed.add(name);
-        entry.dependencies.forEach(visit);
-      };
-      visit(path);
-      const imports = {};
-      // readChunk owns the workspace-wide concurrency limit. Do not leave its
-      // slots idle while a slow member of an arbitrary four-module batch ends.
-      const names = [...needed];
-      await Promise.all(names.map(async name => { imports[`burette:${name}`] = await asset(name); }));
-      assertOpen();
+      const prepared = await prepareModule(path);
+      const imports = Object.fromEntries(Object.entries(prepared.imports).filter(([name]) => !mapped.has(name)));
+      const names = Object.keys(imports);
       if (names.length) {
         const map = document.createElement('script');
         map.type = 'importmap';
@@ -98,13 +101,13 @@ export function createWorkspaceAssets({ manifest, exchange, isClosed, onProgress
         document.head.appendChild(map);
         names.forEach(name => mapped.add(name));
       }
-      return asset(path);
+      return prepared.url;
     });
     moduleQueue = prepare.catch(() => {});
     return import(await prepare);
   }
   return {
-    asset, importModule, resolve,
+    asset, importModule, prepareModule, resolve,
     importModuleAt: (base, path) => importModule(resolve(path, base)),
     moduleBase: path => `https://burette.invalid/${path}`,
     response: async path => originalFetch(await asset(path)),

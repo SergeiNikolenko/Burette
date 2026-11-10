@@ -11,8 +11,9 @@
   const dark = preferences.theme === "dark" || (preferences.theme !== "light" &&
     window.matchMedia("(prefers-color-scheme: dark)").matches);
   const savedBackground = preferences[dark ? "themeDarkBackground" : "themeLightBackground"];
-  const background = typeof savedBackground === "string" && /^#[0-9a-f]{6}$/i.test(savedBackground)
-    ? savedBackground : dark ? "#111111" : "#ffffff";
+  const background = typeof savedBackground === "string" && /^#[0-9a-f]{6}$/i.test(savedBackground) &&
+    savedBackground.toLowerCase() !== "#111111"
+    ? savedBackground : dark ? "#181818" : "#ffffff";
   let pendingOverlay = null;
   let mounted = false;
 

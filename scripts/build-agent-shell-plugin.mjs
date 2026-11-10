@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -61,6 +62,7 @@ const requiredPreviewAssets = [
 ];
 
 if (!mcpOnly) {
+await run('bun', ['run', 'build:molecular-frame'], { cwd: appRoot });
 await rm(shellDist, { recursive: true, force: true });
 await rm(previewWeb, { recursive: true, force: true });
 await mkdir(resolve(pluginRoot, 'scripts'), { recursive: true });
@@ -147,7 +149,17 @@ await run('bun', ['run', 'build'], {
   },
 });
 
-await run('bun', [resolve(repoRoot, 'scripts/build-native-workspace.mjs'), '--app-root', appRoot]);
+await run('bun', [resolve(repoRoot, 'scripts/build-native-workspace.mjs'), '--app-root', appRoot, '--frame-staged']);
+const pluginManifest = JSON.parse(await readFile(resolve(pluginRoot, '.codex-plugin/plugin.json'), 'utf8'));
+const molecularFrame = JSON.parse(await readFile(resolve(appRoot, 'apps/desktop/public/molecular-frame/manifest.json'), 'utf8'));
+const nativeManifest = await readFile(resolve(pluginRoot, 'assets/native-workspace/manifest.json'));
+await writeFile(resolve(pluginRoot, 'build-provenance.json'), JSON.stringify({
+  pluginVersion: pluginManifest.version,
+  applicationSource: appRoot,
+  transportSource: repoRoot,
+  molecularFrameVersion: molecularFrame.version,
+  nativeManifestSha256: createHash('sha256').update(nativeManifest).digest('hex'),
+}, null, 2) + '\n');
 }
 
 function run(command, args, options) {

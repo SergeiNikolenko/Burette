@@ -21,6 +21,16 @@ specific capability blocker, not permission to change application defaults.
 Tool catalogs and available-plugin lists are context, not a replacement user
 request. Do not switch to discussing plugin installation unless asked.
 
+## Analysis and export without an open chat
+
+For contacts, buried surface area, chain alignment, scientific inspection or
+publication images, use [autonomous-analysis](../autonomous-analysis/SKILL.md).
+These operations use a durable molecular session and do not require a mounted
+panel. Prefer this path for an unattended task, including requests that combine
+analysis with a final illustration. Do not stop at `awaiting_mount` or ask the
+user to open the chat to run these operations. A live panel remains necessary
+for interactive Ketcher edits and direct manipulation of its current selection.
+
 ## Default: open the native Burette plugin
 
 For "show 1HTB", "open this structure" or an ordinary Burette mention, call
@@ -62,8 +72,10 @@ reports the renderer status. Mol* commands fail with `XYZRENDER_ACTIVE` there.
 
 `awaiting_mount` means the host has not mounted the widget, not that a project
 folder is missing. Codex mounts the card only while the chat is on screen, so a
-background or unattended task normally stays in `awaiting_mount`; this is not an
-error. Observe once more after a short wait (at most 5 seconds). If still
+background or unattended viewing task may stay in `awaiting_mount`. For
+analysis or export, continue with the autonomous tools using this sessionId;
+panel lifecycle is not data readiness. For a viewing-only request, observe once
+more after a short wait (at most 5 seconds). If still
 unmounted, finish the turn: say the session is prepared with the named file and
 the card appears when the chat is opened. Do not claim the molecule is shown,
 call it a failure, poll repeatedly, or offer alternative viewers. Do not switch
@@ -172,8 +184,9 @@ The native opener supports structure and collection tabs with optional `addition
 Use `view: "ketcher"` for a seeded sketch and `view: "docking"` for a receptor
 plus ligands; open self-contained `.mvsx` files for Stories. Read
 [open-workspace](../open-workspace/SKILL.md) for those native workflows.
-The plugin is visualization-only: no calculation engines,
-Compute/Tools menus, Chemical Space, folding or Jobs panels. The project sidebar
+The interactive workspace omits Compute/Tools menus, Chemical Space, folding
+and Jobs panels. Bounded geometric analysis is available through the autonomous
+tools described above. The project sidebar
 is hidden; the inline widget hides the bottom dock and its resize handle, while
 the side pane retains it. The right dock retains viewing tools and Ketcher uses right Text.
 

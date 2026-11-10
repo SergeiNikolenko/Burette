@@ -10,6 +10,7 @@
   const TABLE_COLUMN_WIDTHS_STORAGE_KEY = 'buret.grid.tableColumnWidths';
   const CARD_RENDERER_STORAGE_KEY = 'buret.grid.cardRenderer';
   const HOVER_PREVIEW_SVG_LIMIT = 512_000;
+  const XYZRENDER_USE_3D_COORDS_STORAGE_KEY = 'buret.grid.xyzrenderUse3DCoords';
   const RDKIT_USE_INPUT_COORDS_STORAGE_KEY = 'buret.grid.rdkitUseInputCoords';
   // The toolbar H toggle. Values match the xyzrender display option: 'none'
   // folds hydrogens into heteroatom labels (OH, NH2), 'all' draws every H.
@@ -56,7 +57,10 @@
   const XYZRENDER_CARD_ROOT_MARGIN = '600px 0px';
   const XYZRENDER_CARD_BATCH_SIZE = 12;
   const XYZRENDER_CARD_BATCH_MIN_CONCURRENCY = 1;
-  const XYZRENDER_CARD_BATCH_TIMEOUT_MS = 60000;
+  // The native pool allows a cold worker 60 s to start and each card 20 s, and
+  // always answers per card. Wait past that bound so a slow first start
+  // still delivers its drawings instead of timing out the whole batch.
+  const XYZRENDER_CARD_BATCH_TIMEOUT_MS = 120000;
   const XYZRENDER_CARD_BATCH_DELAY_MS = 16;
   const XYZRENDER_CARD_PREFETCH_DELAY_MS = 200;
   const RDKIT_CARD_FRAME_BATCH = 6;
@@ -64,6 +68,9 @@
   const GRID_WINDOW_OVERSCAN_ROWS = 4;
   const GRID_MAX_WINDOW_ROWS = 18;
   const GRID_MIN_ESTIMATED_ROW_HEIGHT = 190;
+  // An auto-width trailing cell takes the width the fixed columns leave, so the
+  // table spans the pane like its totals bar without stretching any column.
+  const TABLE_FILL_CELL = '<td class="buret-grid-table-fill" aria-hidden="true"></td>';
   const GRID_EDIT_HISTORY_LIMIT = 50;
   const GRID_RAIL_ITEM_SIZE = 10;
   const GRID_RAIL_PILL_WIDTH = 12;
@@ -77,7 +84,11 @@
   const TABLE_COLUMN_MIN_WIDTH = 64;
   const TABLE_COLUMN_MAX_WIDTH = 640;
   const TABLE_COLUMN_OVERSCAN_PX = 360;
-  const RDKIT_SVG_CACHE_LIMIT = 220;
+  // Above the row count of a typical SDF, so a re-windowed grid redraws from
+  // cache instead of queueing RDKit layout again for every card.
+  const RDKIT_SVG_CACHE_LIMIT = 2000;
+  const RDKIT_SVG_CACHE_BYTES = 32 * 1024 * 1024;
+  const RDKIT_SVG_ENTRY_BYTES = 2 * 1024 * 1024;
   const XYZRENDER_CARD_CACHE_LIMIT = 1500;
   const STRUCTURE_DRAG_MIME = 'application/x-burette-structure-paths';
   let activeStructureDrag = false;
@@ -107,6 +118,7 @@
     smarts: '',
     smartsError: '',
     smartsMatches: new Map(),
+    sourceAtomHighlight: null,
     sort: 'index',
     descriptorFilters: [],
     descriptorSort: null,
@@ -135,6 +147,7 @@
     tableFilterTimer: 0,
     cardRenderer: storedCardRenderer(),
     xyzrenderPreset: null,
+    xyzrenderUse3DCoords: storedBoolean(XYZRENDER_USE_3D_COORDS_STORAGE_KEY, true),
     rdkitUseInputCoords: storedBoolean(RDKIT_USE_INPUT_COORDS_STORAGE_KEY, false),
     hydrogenDisplay: storedChoice(HYDROGEN_DISPLAY_STORAGE_KEY, HYDROGEN_DISPLAY_MODES, 'none'),
     cardMin: storedOptionalInteger(CARD_MIN_STORAGE_KEY, MIN_CARD_MIN, MAX_CARD_MIN),
@@ -153,7 +166,7 @@
     editingText: false,
     textFocusListenersInstalled: false,
     textFocusUpdateTimer: 0,
-    svgCache: new Map(),
+    svgCache: createRdkitSvgCache(),
     rdkitCardQueue: [],
     rdkitCardRendering: false,
     rdkitCardPending: new Map(),
@@ -162,6 +175,7 @@
     rdkitCardLazyJobs: new WeakMap(),
     rdkitCardLazyTargets: [],
     xyzrenderCardCache: new Map(),
+    xyzrenderInitialPrefetched: false,
     xyzrenderCardQueue: [],
     xyzrenderCardsRunning: 0,
     xyzrenderBatchesRunning: 0,
@@ -199,6 +213,7 @@
     loadObserver: null,
     scrollHandler: null,
     resizeHandler: null,
+    resizeTimer: 0,
     virtualFrame: 0,
     lastPerfMetricAt: 0,
     windowStart: 0,
@@ -229,6 +244,7 @@
     pendingGridRailPosition: null,
     menuStateSignature: '',
     chemicalSpaceHoverToken: 0,
+    chemicalSpaceOpenToken: 0,
   };
 
   function post(type, message, payload = {}) {
@@ -245,6 +261,16 @@
         window.parent?.postMessage({ source: 'burette-grid', body }, '*');
         window.webkit?.messageHandlers?.burette?.postMessage(body);
       }
+    } catch (_) {}
+  }
+
+  // One-time contextual guides live in the app shell, which places the card by
+  // this frame-relative rect and drops repeats once the guide has been shown.
+  function requestContextualGuide(id, element, cfg) {
+    if (cfg?.appViewer !== true || window.parent === window || !element) return;
+    const { left, top, width, height } = element.getBoundingClientRect();
+    try {
+      window.parent.postMessage({ type: 'burette:contextual-guide', id, rect: { left, top, width, height } }, '*');
     } catch (_) {}
   }
 
@@ -353,7 +379,10 @@
 
   function postGridRowHover(index, cfg) {
     const row = Number.isSafeInteger(index) && index >= 0 ? gridRowByIndex(index) : null;
-    const match = row ? state.smartsMatches.get(Number(row.index)) : null;
+    const smartsMatch = row ? state.smartsMatches.get(Number(row.index)) : null;
+    // Drawn-atom indices: the inspector applies the same H display before using them.
+    const sourceMatch = row && state.sourceAtomHighlight?.index === index ? state.sourceAtomHighlight.drawn : null;
+    const match = sourceMatch || smartsMatch;
     state.hoveredGridRowIndex = row ? index : null;
     if (row) state.lastGridRowIndex = index;
     let previewSvg = '';
@@ -382,6 +411,8 @@
             smiles: String(row.smiles || ''),
             molblock: String(row.molblock || ''),
             cardRenderer: state.cardRenderer,
+            hydrogenDisplay: state.hydrogenDisplay,
+            highlightSmarts: smartsMatch && !sourceMatch ? state.smarts.slice(0, 4096) : '',
             previewSvg,
             useInputCoords: state.rdkitUseInputCoords && hasMolblockInputCoordinates(row.molblock),
             highlightAtoms: Array.isArray(match?.atoms) ? match.atoms.slice(0, 256) : [],
@@ -651,13 +682,42 @@
       }
       if (!data || (data.source !== 'burette-grid-host' && data.source !== 'burette-host')) return;
       const body = data.body || {};
+      if (body.type === 'gridRestoreViewMode') {
+        if (event.source !== window.parent || state.hostViewModeSession) return;
+        state.hostViewModeSession = true;
+        if (typeof body.snapshot === 'string' && body.snapshot) {
+          void restoreGridPresentation(body.snapshot);
+          return;
+        }
+        if (body.value === 'cards' || body.value === 'table') {
+          const cfg = config();
+          setGridViewMode(effectiveMolecularGrid(cfg) ? body.value : 'table', cfg);
+        }
+        notifyGridMenuState(config());
+        return;
+      }
+      if (body.type === 'gridWindowCapture' || body.type === 'gridWindowRestore' || body.type === 'gridWindowReady') {
+        if (event.source !== window.parent || typeof body.requestId !== 'string' || body.requestId.length > 120) return;
+        void handleGridWindowTransfer(body);
+        return;
+      }
       // Applied in place like the structure viewer: the config already carries
       // the token sets for both themes, so a theme change never reopens the grid.
       if (body.type === 'setViewerTheme') {
+        if (event.source !== window.parent) return;
         const cfg = safeConfig();
         if (!cfg) return;
+        if (body.themeTokens && typeof body.themeTokens === 'object') cfg.themeTokens = body.themeTokens;
+        if (body.canvasBackground !== undefined) {
+          cfg.canvasBackground = normalizeCanvasBackground(body.canvasBackground);
+          cfg.transparentBackground = cfg.canvasBackground === 'transparent';
+        }
         cfg.theme = body.value === 'light' || body.value === 'dark' ? body.value : 'auto';
         applyTheme(cfg);
+        return;
+      }
+      if (Object.hasOwn(GRID_APP_DEFAULT_MESSAGES, body.type)) {
+        setGridAppDefault(GRID_APP_DEFAULT_MESSAGES[body.type], body.value);
         return;
       }
       if (body.type === 'gridSetColumnFilter') {
@@ -718,6 +778,7 @@
         return;
       }
       if (body.type === 'chemicalSpaceSelectionChanged') {
+        state.chemicalSpaceOpenToken += 1;
         const indexes = Array.isArray(body.sourceRecordIds)
           ? body.sourceRecordIds
             .slice(0, GRID_SELECTION_BRIDGE_LIMIT)
@@ -734,6 +795,25 @@
         if (Number.isSafeInteger(focusIndex) && indexes.includes(focusIndex)) {
           void Promise.resolve(refreshed).then(() => revealChemicalSpaceRow(focusIndex, cfg, token));
         }
+        return;
+      }
+      if (body.type === 'gridSourceAtomSelection') {
+        applySourceAtomSelection(body, config());
+        return;
+      }
+      if (body.type === 'chemicalSpaceOpenMolecule') {
+        if (state.closeTransitionActive || state.saveAsPending || !capabilities(config()).molstarOpen) return;
+        const index = body.sourceRecordId;
+        if (!Number.isSafeInteger(index) || index < 0) return;
+        const token = state.dataToken;
+        const openToken = ++state.chemicalSpaceOpenToken;
+        const isCurrent = () => token === state.dataToken && openToken === state.chemicalSpaceOpenToken;
+        void chemicalSpaceRow(index).then(row => {
+          if (!row || !isCurrent()) return;
+          return requestSingleMolstarDocument(row, config(), 'active-tab', {
+            documentId: body.navigationDocumentId, isCurrent
+          });
+        }).catch(() => setStatus('[grid] Could not open the selected molecule.', 'error'));
         return;
       }
       if (body.type === 'chemicalSpaceRequestState') {
@@ -1251,6 +1331,7 @@
 
   function notifyGridMenuState(cfg) {
     if (cfg?.appViewer !== true) return;
+    publishGridPresentation();
     const undoEntry = state.undoStack[state.undoStack.length - 1] || null;
     const redoEntry = state.redoStack[state.redoStack.length - 1] || null;
     const caps = capabilities(cfg);
@@ -1713,6 +1794,74 @@
     try { window.localStorage?.removeItem(key); } catch (_) {}
   }
 
+  // App Settings own the starting view, card drawing, card size and hydrogens
+  // (cfg.viewerDefaults). A toolbar change still persists, but only against the
+  // app default it was made under: once Settings change that default, the old
+  // override is dropped so every grid follows the new setting.
+  const GRID_APP_DEFAULTS = {
+    gridViewMode: { key: GRID_VIEW_MODE_STORAGE_KEY, normalize: value => (value === 'table' ? 'table' : 'cards') },
+    gridCardRenderer: { key: CARD_RENDERER_STORAGE_KEY, normalize: value => (value === 'xyzrender' ? 'xyzrender' : 'rdkit') },
+    gridCardSize: {
+      key: CARD_MIN_STORAGE_KEY,
+      normalize: value => (Number(value) > 0 ? clampInteger(value, MIN_CARD_MIN, MAX_CARD_MIN, DEFAULT_CARD_MIN) : null)
+    },
+    hydrogenDisplay: { key: HYDROGEN_DISPLAY_STORAGE_KEY, normalize: value => (HYDROGEN_DISPLAY_MODES.includes(value) ? value : 'none') }
+  };
+  const GRID_APP_DEFAULT_MESSAGES = {
+    setGridViewModeDefault: 'gridViewMode',
+    setGridCardRendererDefault: 'gridCardRenderer',
+    setGridCardSizeDefault: 'gridCardSize',
+    setGridHydrogenDisplayDefault: 'hydrogenDisplay'
+  };
+
+  // Returns true when no toolbar override survives, so the app default applies.
+  function adoptGridAppDefault(key, value) {
+    const stampKey = `${key}.appDefault`;
+    const stamp = value == null ? 'auto' : String(value);
+    try {
+      const previous = window.localStorage?.getItem(stampKey);
+      // The first stamp keeps an override made before Settings owned the default.
+      if (previous != null && previous !== stamp) window.localStorage?.removeItem(key);
+      if (previous !== stamp) window.localStorage?.setItem(stampKey, stamp);
+      return window.localStorage?.getItem(key) == null;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  function applyGridAppDefaults(cfg) {
+    const defaults = cfg?.viewerDefaults;
+    if (!defaults || typeof defaults !== 'object') return;
+    const fields = { gridViewMode: 'viewMode', gridCardRenderer: 'cardRenderer', gridCardSize: 'cardMin', hydrogenDisplay: 'hydrogenDisplay' };
+    for (const [name, { key, normalize }] of Object.entries(GRID_APP_DEFAULTS)) {
+      const value = normalize(defaults[name]);
+      if (adoptGridAppDefault(key, value)) state[fields[name]] = value;
+    }
+  }
+
+  // Settings changed while this grid is open: adopt the new default in place.
+  function setGridAppDefault(name, rawValue) {
+    const cfg = safeConfig();
+    const entry = GRID_APP_DEFAULTS[name];
+    if (!cfg || !entry) return;
+    const value = entry.normalize(rawValue);
+    cfg.viewerDefaults = { ...(cfg.viewerDefaults || {}), [name]: rawValue };
+    adoptGridAppDefault(entry.key, value);
+    if (name === 'gridViewMode') {
+      setGridViewMode(value, cfg);
+      normalizeGridViewMode(cfg);
+    } else if (name === 'gridCardRenderer') {
+      setCardRenderer(value, cfg);
+    } else if (name === 'hydrogenDisplay') {
+      setHydrogenDisplay(value, cfg);
+    } else if (state.cardMin !== value) {
+      state.cardMin = value;
+      applyGridPreferences(cfg);
+    }
+    // The setters persist their value; drop it again so it stays the default.
+    removeStored(entry.key);
+  }
+
   function applyTheme(cfg) {
     const theme = resolveTheme(cfg.theme);
     const canvasBackground = resolveCanvasBackground(theme, cfg.canvasBackground);
@@ -1724,15 +1873,18 @@
     document.body.classList.toggle('burette-transparent-background', transparent);
     document.body.classList.toggle('burette-opaque-background', !transparent);
     applyThemeTokens(cfg, theme);
-    document.documentElement.style.setProperty('--buret-grid-canvas-background', canvasBackgroundCSS(canvasBackground));
+    const themed = window.BuretteGridUI.themeColors(cfg.themeTokens?.[theme], theme).background;
+    const background = normalizeCanvasBackground(cfg.canvasBackground) === 'auto' ? themed : canvasBackgroundCSS(canvasBackground);
+    document.documentElement.style.backgroundColor = background;
+    document.documentElement.style.setProperty('--buret-grid-canvas-background', background);
+    window.dispatchEvent(new Event('burette-grid-theme-changed'));
   }
 
   function applyThemeTokens(cfg, theme) {
     const tokens = cfg.themeTokens && cfg.themeTokens[theme];
     if (!tokens || typeof tokens !== 'object') return;
-    const accent = typeof tokens.accent === 'string' ? tokens.accent : '#AF52DE';
-    const background = typeof tokens.background === 'string' ? tokens.background : (theme === 'light' ? '#FFFFFF' : '#111111');
-    const foreground = typeof tokens.foreground === 'string' ? tokens.foreground : (theme === 'light' ? '#0D0D0D' : '#FCFCFC');
+    // Resolve legacy and missing colors the way the Codex surfaces do.
+    const { accent, background, foreground } = window.BuretteGridUI.themeColors(tokens, theme);
     const uiFont = typeof tokens.uiFont === 'string' ? tokens.uiFont : '';
     const opacity = 1 - (clampThemeNumber(tokens.translucent, theme === 'light' ? 10 : 20) / 100) * 0.95;
     const contrast = 0.2 + (clampThemeNumber(tokens.contrast, theme === 'light' ? 20 : 16) / 100) * 0.8;
@@ -1867,6 +2019,7 @@
       selectedInput3d: selectedRowsHaveInput3dCoordinates(),
       ...gridEditState(),
       sortOptions: propertyOptionList(cfg),
+      searchQuery: state.query,
       onSearchInput(value) {
         scheduleSearch(value || '', cfg);
       },
@@ -1878,13 +2031,6 @@
       onShowProperties() {
         state.showProperties = !state.showProperties;
         applyGridPreferences(cfg);
-      },
-      onClearSmarts() {
-        setUnifiedSearchQuery('', cfg);
-        const input = document.getElementById('search');
-        if (input) input.value = '';
-        refresh(cfg);
-        input?.focus();
       },
       onSelectAll() { selectAllRows(cfg); },
       onClearSelection() { clearSelection(cfg); },
@@ -1898,7 +2044,10 @@
       onUndoGridEdit() { undoLastGridEdit(cfg); },
       onExportSmiles() { exportSmiles(cfg); },
       onExportCSV() { exportCSV(cfg); },
-      onViewModeChange(value) { setGridViewMode(value, cfg); },
+      onViewModeChange(value) {
+        setGridViewMode(value, cfg);
+        requestContextualGuide('grid', document.querySelector('[aria-label="Grid view mode"]'), cfg);
+      },
       onToggleTableColumns() { toggleTableColumnPanel(cfg); },
       onToggleTableFilters() { toggleTableFilters(cfg); },
       onSetCardRenderer(value) { setCardRenderer(value, cfg); },
@@ -1927,10 +2076,20 @@
       onCalculateSelectedDescriptors() { requestSelectedDescriptorCalculation(cfg); },
       onRendererSwitch(value) { requestRendererSwitch(value, cfg); },
       onRdkitUseInputCoordsChange(checked) {
+        if (state.cardRenderer === 'xyzrender') {
+          state.xyzrenderUse3DCoords = checked === true;
+          store(XYZRENDER_USE_3D_COORDS_STORAGE_KEY, String(state.xyzrenderUse3DCoords));
+          resetXyzrenderCardObserver();
+          resetCardRenderQueues();
+          render(cfg);
+          repostInspectorRow(cfg);
+          return;
+        }
         state.rdkitUseInputCoords = checked === true;
         store(RDKIT_USE_INPUT_COORDS_STORAGE_KEY, state.rdkitUseInputCoords ? 'true' : 'false');
         state.svgCache.clear();
         render(cfg);
+        post('chemicalSpaceMoleculePreviewsStale', '', {});
       }
     });
     const sortControl = document.getElementById('sort');
@@ -2090,7 +2249,11 @@
     if (currentXyzrenderPreset(cfg) === next) return;
     state.xyzrenderPreset = next;
     resetXyzrenderCardObserver();
-    state.xyzrenderCardCache.clear();
+    // Preset is part of the cache key; keep finished images for switching back.
+    // Failed renders can be retried by returning to the preset.
+    for (const [key, cached] of state.xyzrenderCardCache) {
+      if (cached.error) state.xyzrenderCardCache.delete(key);
+    }
     resetCardRenderQueues();
     refreshGridControls(cfg);
     applyGridPreferences(cfg);
@@ -2395,13 +2558,16 @@
     const control = document.getElementById('rdkit-use-input-coords-control');
     const toggle = document.getElementById('rdkit-use-input-coords');
     if (!control || !toggle) return;
-    const hasInputCoordinates = hasInputCoordinateRows();
-    control.hidden = state.cardRenderer !== 'rdkit' || !hasInputCoordinates;
-    toggle.disabled = !hasInputCoordinates;
-    toggle.title = hasInputCoordinates ? 'Use coordinates embedded in the file' : 'No file coordinates in this grid';
-    toggle.setAttribute('aria-pressed', hasInputCoordinates && state.rdkitUseInputCoords ? 'true' : 'false');
+    const xyzrender = state.cardRenderer === 'xyzrender';
+    const hasInputCoordinates = !xyzrender && hasInputCoordinateRows();
+    const use3D = xyzrender ? state.xyzrenderUse3DCoords : hasInputCoordinates && state.rdkitUseInputCoords;
+    control.hidden = !xyzrender && !hasInputCoordinates;
+    toggle.disabled = xyzrender ? !state.rdkit : !hasInputCoordinates;
+    toggle.title = xyzrender ? 'Switch between 2D and 3D coordinates' : hasInputCoordinates ? 'Use coordinates embedded in the file' : 'No file coordinates in this grid';
+    toggle.setAttribute('aria-label', xyzrender ? '2D/3D coordinates' : 'Use file coords');
+    toggle.setAttribute('aria-pressed', use3D ? 'true' : 'false');
     const label = toggle.querySelector('[data-coordinate-mode]');
-    if (label) label.textContent = hasInputCoordinates && state.rdkitUseInputCoords ? '3D' : '2D';
+    if (label) label.textContent = use3D ? '3D' : '2D';
   }
 
   function hasInputCoordinateRows() {
@@ -2470,13 +2636,15 @@
       // header block down one line and losing the molecule names.
       textBase64: textToBase64(records.join('')),
       controlLabel: 'Molecule',
+      sourceRecordIds: records.length === rows.length ? rows.map(row => Number(row.index)) : null,
       receptorPath: receptorPath || null
     });
     setStatus(`[grid] Opening ${records.length.toLocaleString()} selected molecule${records.length === 1 ? '' : 's'} in Molstar.`);
   }
 
-  async function requestSingleMolstarDocument(row, cfg, openTarget = 'new-tab') {
+  async function requestSingleMolstarDocument(row, cfg, openTarget = 'new-tab', navigation = null) {
     const records = await sdfRecordTextsForMolstar([row]);
+    if (navigation && !navigation.isCurrent()) return;
     const record = records[0] || null;
     const label = row?.name || `Molecule ${Number(row?.index) + 1 || 1}`;
     if (!record) {
@@ -2492,6 +2660,8 @@
       extension: 'sdf',
       textBase64: textToBase64(record),
       controlLabel: 'Molecule',
+      sourceRecordIds: [Number(row.index)],
+      navigationDocumentId: navigation?.documentId ?? null,
       receptorPath: receptorPath || null
     });
     setStatus(`[grid] Opening ${label} in Molstar.`);
@@ -3102,6 +3272,23 @@
     return xyzrenderFragmentText(record);
   }
 
+  // Generate a new flat layout only for the displayed card. File coordinates
+  // and exported records remain intact; returning to 3D reuses the original pose.
+  function xyzrenderCardInput(row, record) {
+    if (state.xyzrenderUse3DCoords && (!row.molblock || hasMolblockInput3DCoordinates(row.molblock))) {
+      return { text: xyzrenderCardInputText(row, record), extension: record.inputExtension };
+    }
+    const mol = state.rdkit?.get_mol(row.molblock || row.smiles || xyzrenderFragmentText(record));
+    if (!mol) throw new Error('Could not prepare molecule coordinates');
+    try {
+      if (state.xyzrenderUse3DCoords) return { text: mol.get_smiles() + '\n', extension: 'smi' };
+      mol.set_new_coords();
+      return { text: mol.get_molblock() + '\n$$$$\n', extension: 'sdf' };
+    } finally {
+      mol.delete();
+    }
+  }
+
   function normalizeRenderer(renderer) {
     const value = String(renderer || 'molstar').toLowerCase();
     return value === 'xyzrender-external' || value === 'xyzrender' ? 'xyzrender-external' : 'molstar';
@@ -3136,15 +3323,20 @@
   }
 
   function scheduleSearch(value, cfg) {
-    const wasPending = Boolean(state.searchTimer);
     clearTimeout(state.searchTimer);
     setUnifiedSearchQuery(value, cfg);
     // Obsolete page/SMARTS requests must stop applying while the user types,
     // rather than remaining valid until the debounce expires.
     state.token += 1;
     state.dataToken += 1;
-    state.searchTimer = setTimeout(() => refresh(cfg), 120);
-    if (!wasPending) refreshGridControls(cfg);
+    state.searchTimer = setTimeout(async () => {
+      await refresh(cfg);
+      // Anchored under the whole toolbar so the card never covers the query.
+      if (state.smarts.trim() && state.smartsMatches.size) {
+        requestContextualGuide('smarts-search', document.getElementById('grid-controls'), cfg);
+      }
+    }, 120);
+    refreshGridControls(cfg);
   }
 
   function normalizedSearchText(row) {
@@ -3453,17 +3645,27 @@
     state.scrollHandler = () => handleGridScroll(cfg);
     window.addEventListener('scroll', state.scrollHandler, { passive: true });
     if (state.resizeHandler) window.removeEventListener('resize', state.resizeHandler);
+    if (state.resizeTimer) window.clearTimeout(state.resizeTimer);
+    state.resizeTimer = 0;
+    // CSS keeps the toolbar and existing cards responsive during a panel drag.
+    // Re-windowing walks the cards and can redraw structures, so measure only
+    // after the gesture settles rather than competing with each pointer frame.
     state.resizeHandler = () => {
-      updateVirtualGridMetrics();
-      scheduleVirtualWindowRender(cfg);
-      updateGridRailActive();
-      updateTableHeaderStick();
-      maybeLoadMore(cfg);
+      if (state.resizeTimer) window.clearTimeout(state.resizeTimer);
+      state.resizeTimer = window.setTimeout(() => {
+        state.resizeTimer = 0;
+        updateVirtualGridMetrics();
+        scheduleVirtualWindowRender(cfg);
+        updateGridRailActive();
+        updateTableHeaderStick();
+        maybeLoadMore(cfg);
+      }, 120);
     };
     window.addEventListener('resize', state.resizeHandler, { passive: true });
   }
 
   function handleGridScroll(cfg) {
+    scheduleGridPresentation();
     updateGridToolbarCondensed();
     scheduleVirtualWindowRender(cfg);
     maybeLoadMore(cfg);
@@ -3487,7 +3689,7 @@
     if (!rect || rect.top <= window.innerHeight + GRID_LOAD_AHEAD_PX) loadMore(cfg);
   }
 
-  async function render(cfg) {
+  async function render(cfg, { visibleCount } = {}) {
     const token = ++state.token;
     const grid = document.getElementById('grid');
     cancelVirtualWindowRender();
@@ -3499,7 +3701,9 @@
     state.renderedCount = 0;
     state.windowStart = 0;
     state.windowEnd = 0;
-    state.visibleCount = state.remoteMode ? Math.min(loadBatchSize(cfg), state.rows.length) : state.rows.length;
+    state.visibleCount = Number.isSafeInteger(visibleCount) && visibleCount >= 0
+      ? Math.min(visibleCount, state.rows.length)
+      : state.remoteMode ? Math.min(loadBatchSize(cfg), state.rows.length) : state.rows.length;
     if (!state.rows.length) {
       grid.innerHTML = '<div class="buret-empty">No molecules match this search.</div>';
       updateChrome(cfg);
@@ -3510,6 +3714,7 @@
   }
 
   async function loadMore(cfg) {
+    if (state.restoringGridPresentation) return;
     if (state.remoteMode) {
       await loadMoreRemote(cfg);
       return;
@@ -3694,6 +3899,22 @@
     }
   }
 
+  function prefetchInitialXyzrenderCards(cfg) {
+    if (state.xyzrenderInitialPrefetched || !state.rows.length
+      || cfg.appViewer !== true || cfg.gridDataMode !== 'bridge'
+      || !effectiveMolecularGrid(cfg)
+      || (state.viewMode === 'cards' && state.cardRenderer === 'xyzrender')) return;
+    state.xyzrenderInitialPrefetched = true;
+    // Prepare only the initial screen, not the collection. The normal queue and
+    // content/style keys let an immediate switch join the same in-flight work.
+    // Foreground requests keep priority over these unmounted targets.
+    for (const row of state.rows.slice(0, 24)) {
+      const record = gridDragRecord(row);
+      if (!record || record.inputExtension === 'rxn') continue;
+      enqueueXyzrenderCard(row, cfg, record, xyzrenderCardKey(row, record), null);
+    }
+  }
+
   function pumpXyzrenderCardQueue() {
     const cfg = config();
     if (cfg.appViewer === true && cfg.gridDataMode === 'bridge') {
@@ -3748,6 +3969,7 @@
   }
 
   function takeXyzrenderCardBatchJobs() {
+    sortXyzrenderCardQueue();
     const visible = [];
     const deferred = [];
     for (const job of state.xyzrenderCardQueue) {
@@ -3877,6 +4099,7 @@
     const next = Math.max(0, Math.round(wrapper.scrollLeft || 0));
     if (next === state.tableScrollLeft) return;
     state.tableScrollLeft = next;
+    scheduleGridPresentation();
     if (state.tableColumnScrollFrame || state.rendering || !state.rows.length) return;
     state.tableColumnScrollFrame = window.requestAnimationFrame(() => {
       state.tableColumnScrollFrame = 0;
@@ -3997,6 +4220,7 @@
           });
           return;
         }
+        prefetchInitialXyzrenderCards(cfg);
         if (state.pendingLoad) {
           state.pendingLoad = false;
           loadMore(cfg);
@@ -4067,7 +4291,15 @@
     const viewportTop = Math.max(0, scrollTop() - gridTop);
     const viewportBottom = viewportTop + viewportHeight();
     const rowHeight = estimatedRowStride();
-    const firstGridRow = Math.max(0, Math.floor(viewportTop / rowHeight) - GRID_WINDOW_OVERSCAN_ROWS);
+    // A wider pane packs the rows into fewer grid rows while the scroll offset
+    // still points into the old, taller layout. Clamping keeps the last screen
+    // of cards in the window; otherwise it lands past the end, renders nothing,
+    // and the top spacer holds the page height so the scroll never clamps back.
+    const tailGridRows = Math.ceil(viewportHeight() / rowHeight) + GRID_WINDOW_OVERSCAN_ROWS;
+    const firstGridRow = Math.min(
+      Math.max(0, totalGridRows - tailGridRows),
+      Math.max(0, Math.floor(viewportTop / rowHeight) - GRID_WINDOW_OVERSCAN_ROWS)
+    );
     const lastGridRow = Math.min(
       totalGridRows,
       Math.ceil(viewportBottom / rowHeight) + GRID_WINDOW_OVERSCAN_ROWS
@@ -4154,10 +4386,8 @@
         ? `Indexing ${included.toLocaleString()}${state.recordsTotalHint ? ` / ${state.recordsTotalHint.toLocaleString()}` : ''} ${effectiveMolecularGrid(cfg) ? 'molecules' : 'rows'}`
         : '';
     }
-    const clearSMARTS = document.getElementById('clear-smarts');
-    if (clearSMARTS) clearSMARTS.hidden = !state.query.trim();
     const searchInput = document.getElementById('search');
-    if (searchInput) searchInput.classList.toggle('invalid', !!state.smartsError);
+    if (searchInput) searchInput.setAttribute('aria-invalid', String(!!state.smartsError));
     syncGridClusterControls();
     syncRdkitCoordinatesControl();
     syncGridEditControls();
@@ -4247,7 +4477,9 @@
     const ticks = root.querySelector('[data-buret-grid-rail-ticks]');
     if (!rail || !ticks) return;
     const rows = state.rows || [];
-    rail.hidden = gridRailTotalRows() < 2;
+    // Nothing to navigate when every molecule already fits on screen.
+    const contentHeight = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
+    rail.hidden = gridRailTotalRows() < 2 || (!hasMoreRows() && contentHeight <= viewportHeight() + 1);
     if (rail.hidden) return;
     const railRows = gridRailRows(rows).filter(({ row }) => !row || cardViewRows([row]).length > 0);
     ticks.innerHTML = railRows.map(({ row, position }, markerIndex) => {
@@ -4947,13 +5179,13 @@
       ${state.tableColumnPanelOpen ? tableColumnPanelHTML(catalog, allColumns) : ''}
       <table class="buret-grid-table">
         <thead>
-          <tr>${tableHeaderCellsHTML(columnWindow, searchColumns)}</tr>
+          <tr>${tableHeaderCellsHTML(columnWindow, searchColumns)}${TABLE_FILL_CELL.replaceAll('td', 'th')}</tr>
           ${''/* Filters live in the rail beside the table, not in this header. */}
         </thead>
         <tbody>
-          ${range.topHeight > 0 ? `<tr class="buret-grid-table-spacer" aria-hidden="true"><td colspan="${columnSpan}" style="height:${Math.max(0, Math.round(range.topHeight))}px"></td></tr>` : ''}
+          ${range.topHeight > 0 ? `<tr class="buret-grid-table-spacer" aria-hidden="true"><td colspan="${columnSpan + 1}" style="height:${Math.max(0, Math.round(range.topHeight))}px"></td></tr>` : ''}
           ${rows.map(row => tableRowHTML(row, columns, cfg)).join('')}
-          ${range.bottomHeight > 0 ? `<tr class="buret-grid-table-spacer" aria-hidden="true"><td colspan="${columnSpan}" style="height:${Math.max(0, Math.round(range.bottomHeight))}px"></td></tr>` : ''}
+          ${range.bottomHeight > 0 ? `<tr class="buret-grid-table-spacer" aria-hidden="true"><td colspan="${columnSpan + 1}" style="height:${Math.max(0, Math.round(range.bottomHeight))}px"></td></tr>` : ''}
         </tbody>
       </table>
       ${tableTotalsHTML(state.rows, columnWindow)}`;
@@ -5371,7 +5603,7 @@
           const searchMatch = tableColumnMatchesSearch(row, column) || (column.id === 'molecule' && rowSearchMatch);
           const searchClass = searchMatch ? ' class="buret-grid-table-search-match"' : '';
           return `<td data-column="${escapeHTML(column.id)}"${tableNumericAttr(column)}${searchClass}${tableColumnWidthStyle(column)}>${tableCellHTML(row, column, cfg)}</td>`;
-        }).join('')}
+        }).join('')}${TABLE_FILL_CELL}
       </tr>`;
   }
 
@@ -6205,6 +6437,59 @@
     return props;
   }
 
+  function renameGridRow(row, value, cfg) {
+    if (state.closeTransitionActive || state.saveAsPending || !capabilities(cfg).editing) return false;
+    const name = String(value ?? '').trim();
+    if (!name || name.length > 160 || /[\r\n\u0000]/u.test(name)) return false;
+    const current = state.rows.find(candidate => Number(candidate.index) === Number(row.index));
+    if (!current || current.name === name) return false;
+    const props = { ...current.props };
+    // Name takes precedence over the molfile title when an SDF is reopened.
+    // Keep identifiers (ID, compound_id, etc.) independent of the display name.
+    for (const key of Object.keys(props)) {
+      if (key.toLowerCase() === 'name') props[key] = name;
+    }
+    const molblock = current.molblock
+      ? String(current.molblock).replace(/^[^\r\n]*/u, () => name)
+      : current.molblock;
+    pushUndoSnapshot('Rename Molecule');
+    return replaceGridRow(current, { ...current, name, props, molblock }, cfg, { undo: false });
+  }
+
+  function beginGridRowRename(row, cfg) {
+    if (state.closeTransitionActive || state.saveAsPending || !capabilities(cfg).editing) return;
+    const rowElement = root.querySelector(`[data-index="${Number(row.index)}"]`);
+    const target = rowElement?.querySelector('td[data-column="name"], .buret-card-body h2')
+      || rowElement?.querySelector('td[data-column]');
+    if (!target || target.querySelector('input')) return;
+    const previous = [...target.childNodes];
+    const input = document.createElement('input');
+    input.className = 'buret-grid-name-input';
+    input.setAttribute('aria-label', 'Compound name');
+    input.maxLength = 160;
+    input.value = row.name || '';
+    target.replaceChildren(input);
+    let finished = false;
+    const finish = (commit, restoreFocus = false) => {
+      if (finished) return;
+      finished = true;
+      target.replaceChildren(...previous);
+      if (commit) renameGridRow(row, input.value, cfg);
+      if (restoreFocus) rowElement.focus({ preventScroll: true });
+    };
+    input.addEventListener('blur', () => finish(true));
+    input.addEventListener('keydown', event => {
+      event.stopPropagation();
+      if (event.isComposing) return;
+      if (event.key === 'Enter' || event.key === 'Escape') {
+        event.preventDefault();
+        finish(event.key === 'Enter', true);
+      }
+    });
+    input.focus();
+    input.select();
+  }
+
   function replaceGridRow(row, patch, cfg, options = {}) {
     if (state.closeTransitionActive || state.saveAsPending) return false;
     if (!capabilities(cfg).editing) return false;
@@ -6506,26 +6791,31 @@
     });
   }
 
+  async function chemicalSpaceRow(index) {
+    const localPool = state.remoteMode ? state.rows : state.all;
+    let row = localPool.find(candidate => Number(candidate?.index) === index) || null;
+    if (!row && state.remoteMode) {
+      const result = await hostRequest('gridFetchPage', {
+        query: '',
+        sort: 'index',
+        columnFilters: [],
+        descriptorFilters: [],
+        analysisFilters: [],
+        descriptorSort: null,
+        offset: index,
+        limit: 1
+      });
+      row = Array.isArray(result.rows)
+        ? result.rows.find(candidate => Number(candidate?.index) === index) || null
+        : null;
+    }
+    return row;
+  }
+
   async function postChemicalSpaceMoleculePreview(index, cfg) {
     const token = ++state.chemicalSpaceHoverToken;
     try {
-      const localPool = state.remoteMode ? state.rows : state.all;
-      let row = localPool.find(candidate => Number(candidate?.index) === index) || null;
-      if (!row && state.remoteMode) {
-        const result = await hostRequest('gridFetchPage', {
-          query: '',
-          sort: 'index',
-          columnFilters: [],
-          descriptorFilters: [],
-          analysisFilters: [],
-          descriptorSort: null,
-          offset: index,
-          limit: 1
-        });
-        row = Array.isArray(result.rows)
-          ? result.rows.find(candidate => Number(candidate?.index) === index) || null
-          : null;
-      }
+      const row = await chemicalSpaceRow(index);
       if (token !== state.chemicalSpaceHoverToken || !row) return;
       const input = String(row.molblock || row.smiles || '').trim();
       let svg = '';
@@ -6534,7 +6824,14 @@
         let molecule = null;
         try {
           molecule = rdkit.get_mol(input);
-          if (molecule) svg = molecule.get_svg(240, 160);
+          if (molecule) {
+            // The map's hover card draws the molecule the way its grid card does.
+            applyHydrogenDisplay(molecule, null);
+            if (!(state.rdkitUseInputCoords && hasMolblockInputCoordinates(row.molblock))) {
+              try { molecule.set_new_coords?.(); } catch (_) {}
+            }
+            svg = molecule.get_svg(240, 160);
+          }
         } finally {
           molecule?.delete?.();
         }
@@ -6769,6 +7066,10 @@
     if (event instanceof MouseEvent && event.button !== 0) return;
     event.preventDefault();
     hideMoleculeContextMenu();
+    if (capabilities(cfg).editing && event.target?.closest?.('td[data-column="name"], .buret-card-body h2')) {
+      beginGridRowRename(row, cfg);
+      return;
+    }
     showMoleculeDetail(row, cfg);
     setStatus(`[grid] Opened ${row.name || `Molecule ${Number(row.index) + 1}`}.`);
   }
@@ -7079,6 +7380,194 @@
       recordsTotal,
       sourceRevision: state.sourceRevision
     });
+  }
+
+  async function handleGridWindowTransfer(body) {
+    const cfg = config();
+    try {
+      if (body.type === 'gridWindowReady') {
+        if (collectionIndexReady() && !state.remoteLoading && !state.restoringGridPresentation) post('gridWindowResult', '', { requestId: body.requestId, ok: true });
+        return;
+      }
+      if (!collectionIndexReady() || state.remoteLoading || state.restoringGridPresentation || state.searchTimer || state.tableFilterTimer || state.saveAsPending
+        || state.clustering || state.generating3d || state.aligningPoses || state.evaluatingSemiempirical || state.findingSimilar || state.exportingClusterRepresentatives) {
+        throw new Error('Wait for the collection to finish its current operation.');
+      }
+      if (body.type === 'gridWindowCapture') {
+        if (!state.closeTransitionActive) throw new Error('The collection is not locked for transfer.');
+        post('gridWindowResult', '', { requestId: body.requestId, ok: true, snapshot: captureGridWindowState() });
+      } else {
+        if (state.lastGridWindowRestoreId !== body.requestId) {
+          const scrollY = restoreGridWindowState(body.snapshot);
+          refreshGridControls(cfg);
+          applyGridPreferences(cfg);
+          await render(cfg, { visibleCount: state.visibleCount });
+          window.scrollTo({ top: scrollY, behavior: 'instant' });
+          state.lastGridWindowRestoreId = body.requestId;
+        }
+        notifyGridMenuState(cfg);
+        post('gridWindowResult', '', { requestId: body.requestId, ok: true });
+      }
+    } catch (error) {
+      post('gridWindowResult', '', { requestId: body.requestId, ok: false, error: String(error?.message || error) });
+    }
+  }
+
+  function captureGridWindowState() {
+    const encode = value => JSON.parse(JSON.stringify(value, (_key, entry) => entry instanceof Set
+      ? { collection: 'set', entries: [...entry] }
+      : entry instanceof Map ? { collection: 'map', entries: [...entry] } : entry));
+    const view = {};
+    for (const key of gridWindowViewKeys()) view[key] = state[key];
+    const snapshot = JSON.stringify({ version: 1, scrollY: scrollTop(), visibleCount: state.visibleCount, edit: encode(snapshotGridEditState()),
+      undo: encode(state.undoStack), redo: encode(state.redoStack), view: encode(view) });
+    if (new TextEncoder().encode(snapshot).length > 1500 * 1024) throw new Error('This collection is too large to move with its edits. Keep it in this window.');
+    return snapshot;
+  }
+
+  function gridWindowViewKeys() {
+    return ['query', 'smarts', 'sort', 'descriptorFilters', 'descriptorSort', 'showProperties', 'viewMode',
+      'tableHiddenColumns', 'tablePinnedColumns', 'tableColumnWidths', 'tableColumnFilters', 'tableScrollLeft',
+      'remoteDescriptorIds', 'remoteAnalysisColumns', 'cardRenderer', 'xyzrenderPreset', 'xyzrenderUse3DCoords',
+      'rdkitUseInputCoords', 'hydrogenDisplay', 'cardMin', 'chemicalSpaceFilterActive', 'selectionAnchorIndex'];
+  }
+
+  // Restart checkpoints contain presentation only. Rows, edits and undo history
+  // belong to the transfer protocol, never to the persisted tab location.
+  function gridPresentationKeys() {
+    return gridWindowViewKeys().filter(key => key !== 'remoteDescriptorIds' && key !== 'remoteAnalysisColumns');
+  }
+
+  function captureGridPresentation() {
+    if (state.visibleCount > 100000 || state.selected.size > 100000) return '';
+    const view = {};
+    for (const key of gridPresentationKeys()) view[key] = state[key] instanceof Set ? [...state[key]]
+      : state[key] instanceof Map ? Object.fromEntries(state[key]) : state[key];
+    const snapshot = JSON.stringify({ version: 1, view, selected: [...state.selected],
+      scrollY: scrollTop(), visibleCount: state.visibleCount });
+    // Empty checkpoints explicitly invalidate a previous, now stale selection.
+    return snapshot.length <= 32768 ? snapshot : '';
+  }
+
+  function readGridPresentation(serialized) {
+    if (typeof serialized !== 'string' || serialized.length > 32768) return null;
+    try {
+      const saved = JSON.parse(serialized);
+      if (saved?.version !== 1 || !saved.view || typeof saved.view !== 'object'
+        || !Number.isFinite(saved.scrollY) || saved.scrollY < 0 || saved.scrollY > 1e9
+        || !Number.isSafeInteger(saved.visibleCount) || saved.visibleCount < 0 || saved.visibleCount > 100000
+        || !Array.isArray(saved.selected) || !saved.selected.every(index => Number.isSafeInteger(index) && index >= 0)
+        || !['cards', 'table'].includes(saved.view.viewMode)) return null;
+      for (const key of gridPresentationKeys()) {
+        const value = saved.view[key], current = state[key];
+        if (current instanceof Set ? !Array.isArray(value) || !value.every(item => typeof item === 'string')
+          : Array.isArray(current) ? !Array.isArray(value)
+          : current !== null ? typeof value !== typeof current || value === null
+          : value !== null && typeof value !== 'object' && typeof value !== 'number' && typeof value !== 'string') return null;
+      }
+      if (!Number.isFinite(saved.view.tableScrollLeft) || saved.view.tableScrollLeft < 0) return null;
+      const view = saved.view;
+      const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+      const optionalNumber = value => value === undefined || Number.isFinite(value);
+      if (!record(view.tableColumnWidths) || !Object.values(view.tableColumnWidths).every(value => Number.isFinite(value) && value > 0 && value <= 10000)
+        || !record(view.tableColumnFilters) || !Object.values(view.tableColumnFilters).every(filter => record(filter)
+          && Object.values(filter).every(value => typeof value === 'string' || typeof value === 'boolean' || Number.isFinite(value)))
+        || !view.descriptorFilters.every(filter => record(filter) && typeof filter.id === 'string' && optionalNumber(filter.min) && optionalNumber(filter.max))
+        || (view.descriptorSort !== null && (!record(view.descriptorSort) || typeof view.descriptorSort.id !== 'string' || !['asc', 'desc'].includes(view.descriptorSort.direction)))
+        || (view.selectionAnchorIndex !== null && (!Number.isSafeInteger(view.selectionAnchorIndex) || view.selectionAnchorIndex < 0))
+        || (view.cardMin !== null && (!Number.isSafeInteger(view.cardMin) || view.cardMin < 0 || view.cardMin > 4096))
+        || !['none', 'all'].includes(view.hydrogenDisplay) || !['rdkit', 'xyzrender'].includes(view.cardRenderer)) return null;
+      return saved;
+    } catch { return null; }
+  }
+
+  function publishGridPresentation() {
+    if (!state.hostViewModeSession || !state.gridPresentationReady || state.restoringGridPresentation) return;
+    post('gridViewModeChanged', '', { value: state.viewMode, snapshot: captureGridPresentation() });
+  }
+
+  function scheduleGridPresentation() {
+    if (state.gridPresentationTimer) return;
+    state.gridPresentationTimer = window.setTimeout(() => {
+      state.gridPresentationTimer = 0;
+      publishGridPresentation();
+    }, 100);
+  }
+
+  async function restoreGridPresentation(serialized) {
+    const generation = state.gridPresentationGeneration || 0;
+    const cancelled = () => generation !== (state.gridPresentationGeneration || 0);
+    state.restoringGridPresentation = true;
+    try {
+      await state.gridPresentationInitialization;
+      if (cancelled()) return;
+      const saved = readGridPresentation(serialized);
+      if (!saved) return;
+      for (const key of gridPresentationKeys()) state[key] = state[key] instanceof Set ? new Set(saved.view[key])
+        : state[key] instanceof Map ? new Map(Object.entries(saved.view[key])) : saved.view[key];
+      state.selected = new Set(saved.selected);
+      const cfg = config();
+      if (!effectiveMolecularGrid(cfg)) state.viewMode = 'table';
+      const search = document.getElementById('search');
+      if (search) search.value = state.query;
+      refreshGridControls(cfg);
+      applyGridPreferences(cfg);
+      const refreshing = refresh(cfg);
+      // Capture the refresh generation before yielding: a newer query may
+      // replace its result set while the initial page is still loading.
+      const token = state.dataToken;
+      await refreshing;
+      if (cancelled() || token !== state.dataToken) return;
+      while (state.remoteMode && state.visibleCount < saved.visibleCount && hasMoreRows()) {
+        const before = state.visibleCount;
+        await loadMoreRemote(cfg);
+        if (cancelled() || token !== state.dataToken) return;
+        if (state.visibleCount <= before) break;
+      }
+      if (token !== state.dataToken) return;
+      await render(cfg, { visibleCount: saved.visibleCount });
+      if (cancelled()) return;
+      window.scrollTo({ top: saved.scrollY, behavior: 'instant' });
+      await renderVirtualWindow(cfg, state.token, { force: true });
+    } catch (error) {
+      setStatus(error?.message || String(error), 'error');
+    } finally {
+      state.restoringGridPresentation = false;
+      publishGridPresentation();
+    }
+  }
+
+  function restoreGridWindowState(serialized) {
+    if (typeof serialized !== 'string' || new TextEncoder().encode(serialized).length > 1500 * 1024) throw new Error('Invalid collection transfer.');
+    const snapshot = JSON.parse(serialized, (_key, entry) => {
+      if (entry?.collection === 'set' && Array.isArray(entry.entries)) return new Set(entry.entries);
+      if (entry?.collection === 'map' && Array.isArray(entry.entries) && entry.entries.every(pair => Array.isArray(pair) && pair.length === 2)) return new Map(entry.entries);
+      return entry;
+    });
+    const validEdit = edit => edit && ['rows', 'all', 'insertedRows'].every(key => Array.isArray(edit[key]) && edit[key].every(row => row && typeof row === 'object' && Number.isSafeInteger(row.index)))
+      && ['hiddenRows', 'selected', 'deletedPropColumns'].every(key => edit[key] instanceof Set)
+      && ['rowPatches', 'columnValueRanges'].every(key => edit[key] instanceof Map)
+      && typeof edit.dirty === 'boolean' && typeof edit.dirtyReason === 'string'
+      && Number.isFinite(edit.totalRows) && (edit.recordsTotalHint === null || Number.isFinite(edit.recordsTotalHint));
+    const validHistory = history => Array.isArray(history) && history.length <= GRID_EDIT_HISTORY_LIMIT
+      && history.every(entry => typeof entry.label === 'string' && validEdit(entry.snapshot));
+    if (snapshot?.version !== 1 || !Number.isFinite(snapshot.scrollY) || snapshot.scrollY < 0 || !validEdit(snapshot.edit) || !validHistory(snapshot.undo) || !validHistory(snapshot.redo) || !snapshot.view || typeof snapshot.view !== 'object') throw new Error('Invalid collection transfer.');
+    if (snapshot.visibleCount !== undefined && (!Number.isSafeInteger(snapshot.visibleCount) || snapshot.visibleCount < 0 || snapshot.visibleCount > snapshot.edit.rows.length)) throw new Error('Invalid collection visible row count.');
+    for (const key of gridWindowViewKeys()) {
+      const value = snapshot.view[key], current = state[key];
+      if (current instanceof Set ? !(value instanceof Set) : current instanceof Map ? !(value instanceof Map)
+        : Array.isArray(current) ? !Array.isArray(value) : current !== null && typeof value !== typeof current) throw new Error('Invalid collection view.');
+    }
+    restoreGridEditState(snapshot.edit);
+    state.visibleCount = snapshot.visibleCount ?? state.rows.length;
+    state.undoStack = snapshot.undo;
+    state.redoStack = snapshot.redo;
+    for (const key of gridWindowViewKeys()) state[key] = snapshot.view[key];
+    state.searchTextCache = new WeakMap();
+    state.smartsMatches.clear();
+    const search = document.getElementById('search');
+    if (search) search.value = state.query;
+    return snapshot.scrollY;
   }
 
   function snapshotGridEditState() {
@@ -7510,7 +7999,10 @@
   function moleculeContextMenuAction(action, row) {
     const cfg = config();
     const label = row.name || `Molecule ${Number(row.index) + 1}`;
-    if (action === 'open') {
+    if (action === 'rename') {
+      hideMoleculeContextMenu();
+      beginGridRowRename(row, cfg);
+    } else if (action === 'open') {
       hideMoleculeContextMenu();
       showMoleculeDetail(row, cfg);
       setStatus(`[grid] Opened ${label}.`);
@@ -7555,8 +8047,9 @@
     const editing = capabilities(cfg).editing;
     const actions = [
       ['open', 'Preview molecule'],
-      ['molstar', 'Open in Mol*'],
+      ['molstar', 'Open in 3D'],
       ...(editing ? [
+        ['rename', 'Rename…'],
         ['ketcher', 'Edit in Ketcher'],
         ['duplicate', 'Duplicate'],
         ['remove', 'Delete from collection']
@@ -7962,8 +8455,88 @@
 
   function rdkitCardKey(row) {
     const match = state.smartsMatches.get(Number(row.index));
+    const source = sourceAtomHighlightFor(row);
     const useInputCoords = state.rdkitUseInputCoords && hasMolblockInputCoordinates(row.molblock);
-    return `${row.index}|${row.smiles || ''}|${hash(row.molblock || '')}|${state.smarts}|${useInputCoords ? 'file-coords' : 'new-coords'}|H:${state.hydrogenDisplay}|${match ? `${match.atoms.join(',')}:${match.bonds.join(',')}` : ''}`;
+    return `${row.index}|${row.smiles || ''}|${hash(row.molblock || '')}|${state.smarts}|${useInputCoords ? 'file-coords' : 'new-coords'}|H:${state.hydrogenDisplay}|${match ? `${match.atoms.join(',')}:${match.bonds.join(',')}` : ''}${source ? `|text:${source.atoms.join(',')}` : ''}`;
+  }
+
+  function sourceAtomHighlightFor(row) {
+    const source = state.sourceAtomHighlight;
+    return source && source.index === Number(row?.index) ? source : null;
+  }
+
+  // Atoms selected in the file's text mark their record's card. The card is
+  // selected and revealed, and the inspector follows it; an empty list clears.
+  function applySourceAtomSelection(body, cfg) {
+    const index = Number(body.record);
+    const atoms = Array.isArray(body.atoms)
+      ? [...new Set(body.atoms.slice(0, 256).map(Number).filter(atom => Number.isSafeInteger(atom) && atom >= 0))]
+      : [];
+    if (!Number.isSafeInteger(index) || index < 0 || !atoms.length) {
+      if (!state.sourceAtomHighlight) return;
+      state.sourceAtomHighlight = null;
+      render(cfg);
+      repostInspectorRow(cfg);
+      return;
+    }
+    state.sourceAtomHighlight = { index, atoms, drawn: null };
+    state.selected = new Set([index]);
+    state.selectionAnchorIndex = index;
+    state.lastGridRowIndex = index;
+    const token = state.dataToken;
+    void Promise.resolve(render(cfg)).then(() => {
+      repostInspectorRow(cfg);
+      return revealChemicalSpaceRow(index, cfg, token);
+    });
+  }
+
+  // RDKit keeps a molblock's explicit H and H removal keeps the remaining atoms
+  // in order, so a file atom is drawn at its rank among the atoms still present.
+  function sourceAtomMatch(mol, fileAtoms, atomicNumbers) {
+    const drawn = JSON.parse(mol.get_json() || '{}').molecules?.[0] || {};
+    const count = Array.isArray(drawn.atoms) ? drawn.atoms.length : 0;
+    let heavyCount = 0;
+    const heavyRank = atomicNumbers.map(z => (z === 1 ? null : heavyCount++));
+    let drawnIndex;
+    if (count >= atomicNumbers.length) drawnIndex = index => index;
+    else if (count === heavyCount) drawnIndex = index => heavyRank[index];
+    else return null;
+    const atoms = fileAtoms.filter(index => index < atomicNumbers.length).map(drawnIndex).filter(Number.isInteger);
+    const marked = new Set(atoms);
+    const bonds = (Array.isArray(drawn.bonds) ? drawn.bonds : []).flatMap((bond, index) => (
+      Array.isArray(bond?.atoms) && bond.atoms.every(atom => marked.has(atom)) ? [index] : []
+    ));
+    return atoms.length ? { atoms, bonds } : null;
+  }
+
+  function createRdkitSvgCache() {
+    let retainedBytes = 0;
+    // UTF-16 key + value payload is conservative for JS strings. Entry/object
+    // overhead is additionally bounded by the unchanged entry-count limit.
+    const bytes = (key, html) => 2 * (key.length + html.length);
+    return new class extends Map {
+      get retainedBytes() { return retainedBytes; }
+      set(key, html) {
+        this.delete(key);
+        const size = bytes(key, html);
+        if (size > RDKIT_SVG_ENTRY_BYTES || size > RDKIT_SVG_CACHE_BYTES) return this;
+        while (this.size >= RDKIT_SVG_CACHE_LIMIT || retainedBytes + size > RDKIT_SVG_CACHE_BYTES) {
+          this.delete(this.keys().next().value);
+        }
+        super.set(key, html);
+        retainedBytes += size;
+        return this;
+      }
+      delete(key) {
+        if (!super.has(key)) return false;
+        retainedBytes -= bytes(key, super.get(key));
+        return super.delete(key);
+      }
+      clear() {
+        super.clear();
+        retainedBytes = 0;
+      }
+    }();
   }
 
   function drawRdkitPlaceholder(row) {
@@ -8030,7 +8603,6 @@
       try { rxn?.delete?.(); } catch (_) {}
     }
     state.svgCache.set(key, html);
-    while (state.svgCache.size > RDKIT_SVG_CACHE_LIMIT) state.svgCache.delete(state.svgCache.keys().next().value);
     return html;
   }
 
@@ -8046,7 +8618,8 @@
       if (state.svgCache.has(reactionKey)) return state.svgCache.get(reactionKey);
       return drawRdkitReaction(row, reactionText, reactionKey);
     }
-    let match = state.smartsMatches.get(Number(row.index));
+    const source = sourceAtomHighlightFor(row);
+    let match = source ? null : state.smartsMatches.get(Number(row.index));
     const useInputCoords = state.rdkitUseInputCoords && hasMolblockInputCoordinates(row.molblock);
     const key = rdkitCardKey(row);
     if (state.svgCache.has(key)) return state.svgCache.get(key);
@@ -8059,7 +8632,9 @@
         omitInvalidCard(row);
         return '';
       }
+      const atomicNumbers = source ? JSON.parse(mol.get_json() || '{}').molecules?.[0]?.atoms?.map(atom => atom.z ?? 6) ?? [] : null;
       match = applyHydrogenDisplay(mol, match);
+      if (source) match = source.drawn = sourceAtomMatch(mol, source.atoms, atomicNumbers);
       try {
         if (!useInputCoords) {
           try { mol.set_new_coords?.(); } catch (_) {}
@@ -8092,7 +8667,6 @@
       try { mol?.delete?.(); } catch {}
     }
     state.svgCache.set(key, html);
-    while (state.svgCache.size > RDKIT_SVG_CACHE_LIMIT) state.svgCache.delete(state.svgCache.keys().next().value);
     return html;
   }
 
@@ -8321,7 +8895,7 @@
   }
 
   function cardRenderPriority(target) {
-    if (!target || typeof target.getBoundingClientRect !== 'function') return Number.MAX_SAFE_INTEGER;
+    if (!target || target.isConnected === false || typeof target.getBoundingClientRect !== 'function') return Number.MAX_SAFE_INTEGER;
     const rect = target.getBoundingClientRect();
     const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
     if (!Number.isFinite(rect.top) || !Number.isFinite(rect.bottom)) return Number.MAX_SAFE_INTEGER;
@@ -8366,7 +8940,7 @@
   }
 
   function xyzrenderCardKey(row, record) {
-    return `${row.index}|${record.inputExtension}|${currentXyzrenderPreset(config())}|H:${state.hydrogenDisplay}|${hash(xyzrenderCardInputText(row, record))}|${state.smarts}`;
+    return `${row.index}|${record.inputExtension}|${currentXyzrenderPreset(config())}|H:${state.hydrogenDisplay}|${state.xyzrenderUse3DCoords ? '3D' : '2D'}|${hash(xyzrenderCardInputText(row, record))}|${state.smarts}`;
   }
 
   function scheduleXyzrenderCard(card, row, cfg) {
@@ -8433,7 +9007,10 @@
   function resetCardRenderQueues() {
     state.rdkitCardQueue = [];
     state.rdkitCardPending.clear();
-    for (const job of state.xyzrenderCardQueue) state.xyzrenderCardCache.delete(job.key);
+    for (const job of state.xyzrenderCardQueue) {
+      if (!job.target) state.xyzrenderInitialPrefetched = false;
+      state.xyzrenderCardCache.delete(job.key);
+    }
     state.xyzrenderCardQueue = [];
     if (state.xyzrenderBatchTimer) {
       window.clearTimeout(state.xyzrenderBatchTimer);
@@ -8444,6 +9021,7 @@
   function resetDocumentRuntimeState() {
     cancelVirtualWindowRender();
     state.dataToken += 1;
+    state.xyzrenderInitialPrefetched = false;
     state.remoteLoadToken += 1;
     state.remoteLoading = false;
     window.clearTimeout(state.searchTimer);
@@ -8505,9 +9083,15 @@
 
   function enqueueXyzrenderCard(row, cfg, record, key, target) {
     const cached = state.xyzrenderCardCache.get(key);
-    if (cached?.html || cached?.error) return;
+    // A render may finish after this placeholder was mounted but before its
+    // observer runs. Consume that result instead of leaving an empty tile.
+    if (cached?.html || cached?.error) {
+      updateXyzrenderCard(key, drawXyzrenderCard(row, cfg));
+      return;
+    }
     if (cached?.pending) {
       cached.target = target || cached.target;
+      cached.job.target = cached.target;
       return;
     }
     const job = { row, cfg, record, key, target, seq: state.xyzrenderCardSeq++ };
@@ -8520,12 +9104,13 @@
     const endpoint = String(cfg.xyzrenderEndpoint || '/__burette/xyzrender');
     const startedAt = nowMs();
     try {
+      const input = xyzrenderCardInput(row, record);
       const request = {
         path: record.path,
         preset: currentXyzrenderPreset(cfg),
         controls: xyzrenderCardControls(),
-        inputDataBase64: textToBase64(xyzrenderCardInputText(row, record)),
-        inputExtension: record.inputExtension
+        inputDataBase64: textToBase64(input.text),
+        inputExtension: input.extension
       };
       let payload;
       if (cfg.appViewer === true && cfg.gridDataMode === 'bridge') {
@@ -8574,19 +9159,36 @@
     const cfg = jobs[0].cfg;
     const startedAt = nowMs();
     try {
-      const payload = await hostRequest('renderXyzrenderCards', {
-        items: jobs.map(job => ({
-          id: job.key,
-          path: job.record.path,
-          preset: currentXyzrenderPreset(job.cfg),
-          controls: xyzrenderCardControls(),
-          inputDataBase64: textToBase64(xyzrenderCardInputText(job.row, job.record)),
-          inputExtension: job.record.inputExtension
-        }))
-      }, XYZRENDER_CARD_BATCH_TIMEOUT_MS);
+      const items = [];
+      jobs = jobs.filter(job => {
+        try {
+          const input = xyzrenderCardInput(job.row, job.record);
+          items.push({
+            id: job.key,
+            path: job.record.path,
+            preset: currentXyzrenderPreset(job.cfg),
+            controls: xyzrenderCardControls(),
+            inputDataBase64: textToBase64(input.text),
+            inputExtension: input.extension
+          });
+          return true;
+        } catch (error) {
+          markXyzrenderCardError(job, error?.message || String(error));
+          return false;
+        }
+      });
+      if (!items.length) return;
+      const payload = await hostRequest('renderXyzrenderCards', { items }, XYZRENDER_CARD_BATCH_TIMEOUT_MS);
       const results = Array.isArray(payload?.items) ? payload.items : [];
       const byId = new Map(results.map(item => [String(item?.id || ''), item]));
+      let frameStartedAt = nowMs();
       for (const job of jobs) {
+        // SVG sanitization and DOM insertion share the UI thread with scrolling.
+        // Yield between expensive cards, including when the native cache is hot.
+        if (nowMs() - frameStartedAt >= RDKIT_CARD_FRAME_BUDGET_MS) {
+          await new Promise(resolve => window.setTimeout(resolve, 0));
+          frameStartedAt = nowMs();
+        }
         const item = byId.get(job.key);
         if (!item) {
           markXyzrenderCardError(job, 'xyzrender batch returned no result');
@@ -8625,6 +9227,12 @@
   }
 
   function markXyzrenderCardError(job, message) {
+    // Speculative failures must not poison the first explicit 3D request (for
+    // example, if the runtime was unavailable while the table was opening).
+    if (!job.target) {
+      state.xyzrenderCardCache.delete(job.key);
+      return;
+    }
     state.xyzrenderCardCache.set(job.key, { error: message });
     updateXyzrenderCard(job.key, `<div class="buret-molecule-error"><strong>${escapeHTML(job.row.name || `Molecule ${Number(job.row.index) + 1}`)}</strong><span>${escapeHTML(message)}</span></div>`);
     emitGridPerfMetric(job.cfg, 'xyzrender-card-error', nowMs(), {
@@ -8649,6 +9257,15 @@
   function prepareXyzrenderCardSVG(svg) {
     let html = sanitizeSVG(String(svg || ''));
     html = stripSVGClipping(html);
+    // The card surface supplies the white paper. Remove only the renderer's full-
+    // canvas white rectangle, not white atoms, gradients or molecular geometry.
+    const doc = new DOMParser().parseFromString(html, 'image/svg+xml');
+    if (!doc.querySelector('parsererror')) {
+      for (const rect of doc.documentElement.querySelectorAll(':scope > rect[width="100%"][height="100%"]')) {
+        if (/^(#fff(?:fff)?|white)$/i.test(rect.getAttribute('fill') || '')) rect.remove();
+      }
+      html = new XMLSerializer().serializeToString(doc.documentElement);
+    }
     html = markSVGForFitting(html, 'data-buret-xyzrender-svg');
     return html;
   }
@@ -9064,7 +9681,7 @@
   async function exportCSV(cfg) {
     const rows = await collectExportRows(cfg);
     if (!rows) return;
-    download(serializeDelimitedRows(rows, ','), baseName(cfg.label) + '.csv', 'text/csv');
+    download(serializeDelimitedRows(rows, ',', true), baseName(cfg.label) + '.csv', 'text/csv');
   }
 
   async function saveGridAs(cfg) {
@@ -9195,7 +9812,7 @@
     }).join('\n') + '\n';
   }
 
-  function serializeDelimitedRows(rows, separator) {
+  function serializeDelimitedRows(rows, separator, spreadsheet = false) {
     rows = withSarProperties(rows);
     const props = [...new Set(rows.flatMap(row => Object.keys(row.props || {})))];
     const data = [
@@ -9209,7 +9826,17 @@
         ...props.map(prop => (row.props || {})[prop] ?? '')
       ])
     ];
-    return data.map(row => row.map(value => gridDelimitedCell(value, separator)).join(separator)).join('\n') + '\n';
+    return data.map(row => row.map(value => gridDelimitedCell(
+      spreadsheet ? spreadsheetCell(String(value ?? '')) : value, separator
+    )).join(separator)).join('\n') + '\n';
+  }
+
+  function spreadsheetCell(value) {
+    const significant = value.replace(/^[\s\u0000-\u001f\u007f-\u009f]*/u, '');
+    if (!/^[=+\-@＝＋－＠]/u.test(significant)) return value;
+    const number = significant.replace(/[\s\u0000-\u001f\u007f-\u009f]*$/u, '');
+    if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/u.test(number)) return value;
+    return "'" + value;
   }
 
   function gridDelimitedCell(value, separator) {
@@ -9373,6 +10000,8 @@
   }
 
   async function main() {
+    let finishPresentationInitialization;
+    state.gridPresentationInitialization = new Promise(resolve => { finishPresentationInitialization = resolve; });
     try {
       const cfg = config();
       resetDocumentRuntimeState();
@@ -9383,24 +10012,26 @@
       applyTheme(cfg);
       installThemeListener(cfg);
       installHostMessageListener();
+      applyGridAppDefaults(cfg);
       normalizeCardRenderer(cfg);
       normalizeGridViewMode(cfg);
       buildUI(cfg);
+      post('gridViewModeReady', '', {});
       installGridTextFocusListeners();
       installRowHoverPreview(cfg);
-      refresh(cfg);
+      await refresh(cfg);
       try {
         await initRDKit();
         pumpRdkitCardQueue();
         const filledSmiles = !state.remoteMode && fillMissingSmilesFromMolblocks();
         if (state.cardRenderer === 'rdkit') {
           if (state.remoteMode) {
-            if (state.rows.length) void renderVirtualWindow(cfg, state.token, { force: true });
+            if (state.rows.length) await renderVirtualWindow(cfg, state.token, { force: true });
           } else {
-            render(cfg);
+            await render(cfg);
           }
         } else if (filledSmiles) {
-          refresh(cfg);
+          await refresh(cfg);
         }
       } catch {
         // initRDKit already recorded the failure and reported it; the queue
@@ -9410,8 +10041,19 @@
     } catch (error) {
       const message = error?.message || String(error);
       setStatus(message, 'error');
+    } finally {
+      state.gridPresentationReady = true;
+      finishPresentationInitialization();
+      publishGridPresentation();
     }
   }
+
+  window.addEventListener('pagehide', publishGridPresentation);
+  for (const type of ['pointerdown', 'keydown', 'wheel']) window.addEventListener(type, event => {
+    if (event.isTrusted && state.restoringGridPresentation) {
+      state.gridPresentationGeneration = (state.gridPresentationGeneration || 0) + 1;
+    }
+  }, { capture: true, passive: true });
 
   window.addEventListener('beforeunload', event => {
     if (!state.dirty) return;

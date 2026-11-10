@@ -41,7 +41,7 @@ export async function snapshotMcpDocuments(files, workspace, existing = []) {
 
 // The model-facing open_files action authorizes new paths. The app-only source
 // exchange never does. Serialize catalog updates across MCP server processes.
-export async function appendMcpDocuments(sessionDir, files) {
+export async function appendMcpDocuments(sessionDir, files, { allowClosedPanel = false } = {}) {
   const lockPath = join(sessionDir, 'documents.lock');
   const deadline = Date.now() + 5000;
   let lock;
@@ -54,7 +54,7 @@ export async function appendMcpDocuments(sessionDir, files) {
     }
   }
   try {
-    if (await stat(join(sessionDir, 'closed.json')).then(() => true, error => {
+    if (!allowClosedPanel && await stat(join(sessionDir, 'closed.json')).then(() => true, error => {
       if (error.code === 'ENOENT') return false;
       throw error;
     })) throw new Error('Viewer is closed.');

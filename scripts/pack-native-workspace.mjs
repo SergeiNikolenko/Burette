@@ -11,6 +11,7 @@ const testRequire = createRequire(viteRequire.resolve('vitest/package.json'));
 const { init, parse } = await import(testRequire.resolve('es-module-lexer'));
 await init;
 const types = { '.js': 'text/javascript', '.css': 'text/css', '.wasm': 'application/wasm', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.avif': 'image/avif', '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf' };
+types['.html'] = 'text/html';
 
 export function rewriteWorkspaceModule(code, path) {
   const dependencies = [];
@@ -60,6 +61,8 @@ export async function packNativeWorkspace({ shellRoot, runtimeRoot, outputRoot, 
       else if (item.isFile() && types[extname(item.name)]) {
         const path = `${prefix}/${item.name}`;
         let bytes = await readFile(join(directory, item.name));
+        if (path.endsWith('/burette-embed/molstar.js')) bytes = Buffer.from(molstar);
+        if (path.endsWith('/burette-embed/rdkit/RDKit_minimal.js')) bytes = Buffer.from(rewriteEmbindForCsp(bytes.toString('utf8')));
         let dependencies = [];
         let resources = [];
         if (path.startsWith('shell/') && item.name.endsWith('.css')) {

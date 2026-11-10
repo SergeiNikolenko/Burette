@@ -2,6 +2,14 @@
 
 Development and no-restart verification: [Native widget development](../../docs/native-widget-development.md).
 
+For contacts, buried surface area, TM-align and publication PNGs, use the
+[autonomous workflow](skills/autonomous-analysis/SKILL.md). It runs through
+durable source snapshots and an on-demand worker without an open chat or panel.
+Rendering additionally needs installed Chromium; the pinned driver is bundled,
+and operations never download a browser. Jobs serialize across chats and all
+compute/render processes exit when work finishes. See
+[architecture and resource limits](../../docs/autonomous-molecular-sessions.md).
+
 UI selections (including whole structures and chains) are reported in the active
 document's `observe.scene.selection`. Selection context is capped at 24 KiB;
 atom identity samples are capped at 96 and

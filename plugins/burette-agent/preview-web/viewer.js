@@ -54,7 +54,8 @@
     { value: 'ball-and-stick', label: 'Ball+Stick' },
     { value: 'spacefill', label: 'Spacefill' },
     { value: 'line', label: 'Line' },
-    { value: 'molecular-surface', label: 'Surface' }
+    { value: 'molecular-surface', label: 'Surface' },
+    { value: 'blob-surface', label: 'Envelope' }
   ];
   const MOLSTAR_APPEARANCE_OPTIONS = [
     { value: 'default', label: 'Default' },
@@ -66,6 +67,7 @@
     { value: 'ball-and-stick', label: 'Ball & Stick', group: 'Burette', legacyStyle: 'ball-and-stick' },
     { value: 'spacefill', label: 'Spacefill by Element', group: 'Burette', legacyStyle: 'spacefill' },
     { value: 'line', label: 'Line', group: 'Burette', legacyStyle: 'line' },
+    { value: 'blob-surface', label: 'Envelope', group: 'Burette', legacyStyle: 'blob-surface' },
     { value: 'atomic-detail', label: 'Atomic Detail', group: 'Basic', provider: 'preset-structure-representation-atomic-detail' },
     { value: 'polymer-cartoon', label: 'Polymer Cartoon', group: 'Basic', provider: 'preset-structure-representation-polymer-cartoon' },
     { value: 'polymer-ligand', label: 'Polymer & Ligand', group: 'Basic', provider: 'preset-structure-representation-polymer-and-ligand' },
@@ -165,7 +167,8 @@
     line: { type: 'line', typeParams: { sizeFactor: 0.08 }, color: 'element-symbol' },
     'ball-and-stick': { type: 'ball-and-stick', typeParams: { sizeFactor: 0.16 }, color: 'element-symbol' },
     spacefill: { type: 'spacefill', typeParams: { sizeFactor: 0.45 }, color: 'element-symbol' },
-    'molecular-surface': { type: 'molecular-surface', typeParams: { alpha: 0.72 }, color: 'element-symbol' }
+    'molecular-surface': { type: 'molecular-surface', typeParams: { alpha: 0.72 }, color: 'element-symbol' },
+    'blob-surface': { type: 'blob-surface', color: 'chain-id' }
   };
   // `Illustrative` keeps the scene as authored and only flattens the shading, so
   // it is not a representation of its own - but `ignoreLight` lives on each
@@ -223,6 +226,8 @@
   let molstarPreviewRdkit = null;
   let molstarPreviewRdkitPromise = null;
   const molstarPreviewSvgCache = new Map();
+  let molstarShowHydrogens = true;
+  let molstarHydrogensPending = false;
   const molstarEditUndoStack = [];
   const molstarEditRedoStack = [];
   let activeDockingPrepared = null;
@@ -267,6 +272,19 @@
     } catch (_) {
       return false;
     }
+  }
+
+  // One-time contextual guides live in the app shell, which decides eligibility.
+  // The frame only reports the control the user reached, in its own viewport;
+  // Quick Look and the iPhone host have no shell to show them.
+  let sceneComposeGuideTimer = 0;
+  function requestContextualGuide(id, element) {
+    if (!window.parent || window.parent === window || window.webkit?.messageHandlers?.burette) return false;
+    if (isQuickLookHost() || document.body?.classList.contains('burette-mobile-host')) return false;
+    const box = element?.getBoundingClientRect?.();
+    if (!box || !(box.width > 0) || !(box.height > 0)) return false;
+    window.parent.postMessage({ type: 'burette:contextual-guide', id, rect: { left: box.left, top: box.top, width: box.width, height: box.height } }, '*');
+    return true;
   }
 
   async function reportMolstarCapabilities() {
@@ -331,11 +349,20 @@
     if (window.__buretteMolstarControlTooltipsInstalled) return;
     window.__buretteMolstarControlTooltipsInstalled = true;
     document.body.classList.add('buret-control-tooltips');
+    let hoveredControl = null;
     document.addEventListener('pointerover', event => {
       const control = molstarTooltipControlFromEvent(event);
+      hoveredControl = control;
       if (control) showMolstarControlTooltip(control);
     }, true);
+    // Controllers relabel buttons by resetting `title` after a click. While the
+    // pointer stays on that control the native tooltip would come back, so the
+    // fresh title moves into the hint as well.
+    new MutationObserver(records => {
+      if (hoveredControl && records.some(record => record.target === hoveredControl)) stashMolstarControlTitle(hoveredControl);
+    }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['title'] });
     document.addEventListener('pointerout', event => {
+      if (hoveredControl && !(event.relatedTarget && hoveredControl.contains(event.relatedTarget))) hoveredControl = null;
       if (!molstarControlTooltipTarget) return;
       if (event.relatedTarget && molstarControlTooltipTarget.contains(event.relatedTarget)) return;
       hideMolstarControlTooltip();
@@ -364,8 +391,9 @@
       '.msp-plugin select[aria-label], .msp-plugin select[title], ' +
       '.msp-plugin input[aria-label], .msp-plugin input[title]'
     );
-    if (!control || control.closest('.buret-preview-dock, .buret-generate-3d-control')) return null;
-    if (control.closest('.msp-hover-box-wrapper, .buret-seq-header, .buret-seq-footer')) return null;
+    if (!control || control.closest('.buret-preview-dock, .buret-generate-3d-control') || control.matches('[data-tooltip-trigger]')) return null;
+    if (control.closest('.msp-hover-box-wrapper, .buret-seq-header, .buret-seq-footer, .buret-docking-pose-files')) return null;
+    if (control.matches('.buret-docking-pose-current')) return null;
     return control;
   }
 
@@ -379,6 +407,7 @@
     if (molstarControlTooltip) return molstarControlTooltip;
     molstarControlTooltip = document.createElement('div');
     molstarControlTooltip.className = 'buret-molstar-tooltip';
+    molstarControlTooltip.id = 'buret-shared-control-tooltip';
     molstarControlTooltip.setAttribute('role', 'tooltip');
     molstarControlTooltip.setAttribute('aria-hidden', 'true');
     if (typeof molstarControlTooltip.showPopover === 'function') molstarControlTooltip.setAttribute('popover', 'manual');
@@ -386,19 +415,29 @@
     return molstarControlTooltip;
   }
 
+  // The top-layer hint replaces both the local bubble and the native title.
+  function stashMolstarControlTitle(control) {
+    if (!control.hasAttribute('title')) return;
+    control.dataset.buretHint = control.getAttribute('title');
+    control.removeAttribute('title');
+  }
+
   function showMolstarControlTooltip(control) {
     const label = molstarTooltipLabel(control);
-    // The top-layer hint replaces both the local bubble and the native title.
-    if (control.hasAttribute('title')) {
-      control.dataset.buretHint = control.getAttribute('title');
-      control.removeAttribute('title');
-    }
-    if (!label) {
+    stashMolstarControlTitle(control);
+    // An open menu already names what its button does and the hint would cover it.
+    // The controls grip reports its expanded panel, not an open menu.
+    if (!label || (control.getAttribute('aria-expanded') === 'true' && !control.matches('[data-drag-handle]'))) {
       hideMolstarControlTooltip();
       return;
     }
     const tooltip = ensureMolstarControlTooltip();
+    if (molstarControlTooltipTarget !== control) hideMolstarControlTooltip();
     molstarControlTooltipTarget = control;
+    window.BuretteNativeViewerMenus?.styleTooltip?.(tooltip, activeConfig?.themeTokens, resolveViewerTheme());
+    const descriptions = new Set((control.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean));
+    descriptions.add(tooltip.id);
+    control.setAttribute('aria-describedby', [...descriptions].join(' '));
     tooltip.textContent = label;
     tooltip.classList.add('visible');
     tooltip.setAttribute('aria-hidden', 'false');
@@ -424,6 +463,11 @@
   }
 
   function hideMolstarControlTooltip() {
+    if (molstarControlTooltipTarget) {
+      const descriptions = (molstarControlTooltipTarget.getAttribute('aria-describedby') || '').split(/\s+/).filter(id => id && id !== molstarControlTooltip?.id);
+      if (descriptions.length) molstarControlTooltipTarget.setAttribute('aria-describedby', descriptions.join(' '));
+      else molstarControlTooltipTarget.removeAttribute('aria-describedby');
+    }
     molstarControlTooltipTarget = null;
     if (!molstarControlTooltip) return;
     molstarControlTooltip.classList.remove('visible');
@@ -432,6 +476,7 @@
   }
 
   installMolstarControlTooltips();
+  window.BuretteViewerSelectMenus?.install({ checkIcon: () => sceneTreeIconElement(APP_ICON_DATA.Check) });
 
   function installDownloadExportBridge() {
     if (window.__buretteDownloadExportBridgeInstalled) return;
@@ -459,7 +504,11 @@
     const response = await fetch(href);
     if (!response.ok) throw new Error(`Could not read export blob: HTTP ${response.status}`);
     const blob = await response.blob();
-    const mimeType = blob.type || response.headers.get('content-type') || 'application/octet-stream';
+    return exportBlobToHost(blob, name);
+  }
+
+  async function exportBlobToHost(blob, name) {
+    const mimeType = blob.type || 'application/octet-stream';
     let posted = false;
     if (shouldExportBlobAsText(name, mimeType)) {
       posted = postHostMessage({
@@ -646,8 +695,29 @@
 
   async function executeBuretteAgentAction(action) {
     const type = String(action?.type || '');
+    if (type === 'workspace_scene_snapshot') {
+      if ((activeConfig || window.BuretteConfig || {}).renderer === 'xyzrender-external') {
+        const items = Array.from(document.querySelectorAll('.buret-xyzrender-sheet-item'));
+        if (!items.length || items.length > 200) throw new Error('Wait for the sheet to load.');
+        const sheet = { version: 1, view: externalArtifactViewSnapshot?.(), items: items.map(item => ({
+          ...xyzrenderItemPayload(item, activeConfig || window.BuretteConfig || {}),
+          svg: item.querySelector('.buret-xyzrender-sheet-item-body > svg')?.outerHTML,
+          animation: xyzrenderPopoutAnimation(item),
+          geometry: { left: item.offsetLeft, top: item.offsetTop, width: item.offsetWidth, height: item.offsetHeight, rotation: Number(item.dataset.rotation || 0) },
+          selected: item.classList.contains('selected'), zIndex: item.style.zIndex,
+        })) };
+        if (sheet.items.some(item => !item.svg)) throw new Error('Wait for every structure to finish rendering.');
+        if (new TextEncoder().encode(JSON.stringify(sheet)).length > 24 * 1024 * 1024) throw new Error('The sheet is too large to move.');
+        return { ok: true, result: { sheet } };
+      }
+      const plugin = activeMolstarViewer()?.plugin;
+      if (!plugin) throw new Error('Wait for the scene to load.');
+      const archive = await plugin.managers.snapshot.serialize({ type: 'molx', params: { structureSelection: true, cameraTransition: { name: 'instant', params: {} } } });
+      if (archive.size > 24 * 1024 * 1024) throw new Error('The scene is too large to move.');
+      return { ok: true, result: { dataBase64: bytesToBase64(new Uint8Array(await archive.arrayBuffer())) } };
+    }
     if (type === 'workspace_scene_state') {
-      return { ok: true, result: { ready: Boolean(activeMolstarViewer()?.plugin?.managers?.structure?.hierarchy?.current?.structures?.length) } };
+      return { ok: true, result: { ready: Boolean(activeMolstarViewer()?.plugin?.managers?.structure?.hierarchy?.current?.structures?.length || (document.querySelector('.buret-external-artifact-root .buret-xyzrender-sheet-item-body > svg') && !document.querySelector('[data-buret-popout-animation=loading], [data-buret-popout-animation=failed]'))) } };
     }
     if (type === 'align_scene_files') {
       if (!activeStructureAlignmentControl) throw new Error('This scene does not support structure alignment.');
@@ -663,11 +733,22 @@
       if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
       return { ok: true, result: { text: window.BuretteSceneFiles.sequence(activeMolstarViewer()) } };
     }
+    if (type === 'scene_source_paths') {
+      if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
+      const paths = Array.isArray(action.paths) ? action.paths.filter(path => typeof path === 'string').slice(0, 200) : [];
+      return { ok: true, result: { paths: window.BuretteSceneFiles.livePaths(activeMolstarViewer(), paths) } };
+    }
     if (type === 'append_scene_files') {
       if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
-      return window.BuretteSceneFiles.append(activeMolstarViewer(), action, {
+      const appended = await window.BuretteSceneFiles.append(activeMolstarViewer(), action, {
         load: loadMolstarEntry, capture: captureMolstarCameraSnapshot, restore: restoreMolstarCameraSnapshotNow
       });
+      // "In one scene" appends a batch one file at a time; guide once it settles.
+      clearTimeout(sceneComposeGuideTimer);
+      if (appended?.result?.paths?.length > 1) {
+        sceneComposeGuideTimer = setTimeout(() => requestContextualGuide('scene-compose', document.getElementById('buret-scene-tree-toggle')), 1500);
+      }
+      return appended;
     }
     if (type === 'story_observe') {
       return molstarStoryResult('story_observe');
@@ -691,6 +772,12 @@
       return agentActionFailure(type, 'NO_VIEWER', 'BuretteAgent is not available in this viewer runtime.');
     }
     if (type === 'focus_ligand') {
+      if (action.dockingPose === true) {
+        const structureId = activeDockingPoseCollectionState?.activeRefs?.[0]
+          || activeMolstarPrepared?.activeLigandRefs?.[0];
+        if (!structureId) return agentActionFailure(type, 'NO_POSES', 'The active docking pose is not available.');
+        action = { ...action, selector: { kind: 'ligand', structureId } };
+      }
       const previewTarget = molstarMoleculePreviewTargetForAction(action);
       const result = await window.BuretteAgent.run({
         command: 'focusLigand',
@@ -711,22 +798,27 @@
       return window.BuretteAgent.run({ command: 'showLigands', args: action.args || {} });
     }
     if (type === 'hide_components') {
-      return window.BuretteSceneActions?.hideComponents?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.hideComponents is unavailable.');
+      return withMolstarDrawHold(activeViewer, async () => (await window.BuretteSceneActions?.hideComponents?.(action))
+        || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.hideComponents is unavailable.'));
     }
     if (type === 'show_components') {
-      return window.BuretteSceneActions?.showComponents?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.showComponents is unavailable.');
+      return withMolstarDrawHold(activeViewer, async () => (await window.BuretteSceneActions?.showComponents?.(action))
+        || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.showComponents is unavailable.'));
     }
     if (type === 'edit_components') {
-      return window.BuretteSceneActions?.editComponents?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'Component editing is unavailable.');
+      return withMolstarDrawHold(activeViewer, async () => (await window.BuretteSceneActions?.editComponents?.(action))
+        || agentActionFailure(type, 'NOT_IMPLEMENTED', 'Component editing is unavailable.'));
     }
     if (type === 'open_components_menu') {
       return openCompositionSceneMenu(action);
     }
     if (type === 'remove_components') {
-      return window.BuretteSceneActions?.removeComponents?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.removeComponents is unavailable.');
+      return withMolstarDrawHold(activeViewer, async () => (await window.BuretteSceneActions?.removeComponents?.(action))
+        || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.removeComponents is unavailable.'));
     }
     if (type === 'create_component') {
-      return window.BuretteSceneActions?.createComponent?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.createComponent is unavailable.');
+      return withMolstarDrawHold(activeViewer, async () => (await window.BuretteSceneActions?.createComponent?.(action))
+        || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.createComponent is unavailable.'));
     }
     if (type === 'select_residues') {
       const previewTarget = molstarMoleculePreviewTargetForAction(action);
@@ -1416,6 +1508,8 @@
   function observeMolstarStoryState(viewer) {
     molstarStoryStateCleanup?.();
     molstarStoryStateCleanup = null;
+    // Ordinary scene snapshots must retain their authored canvas presentation.
+    if (activeMolstarPrepared?.kind !== 'mvs') return;
     const manager = viewer?.plugin?.managers?.snapshot;
     detachMolstarStoryPresentation(manager);
     setMolstarStoryTransition(manager, MOLSTAR_STORY_TRANSITION_MS);
@@ -1800,14 +1894,21 @@
   const resizeState = {
     viewer: null,
     frame: 0,
-    timer: 0,
     // Container size the last resize was performed for. The window event and the
     // container observer both report the same change, a beat apart, so without
     // this the viewer redrew about twice per resize step.
     appliedSize: '',
-    appliedViewer: null
+    appliedViewer: null,
+    hasDrawn: null,
+    standaloneWindowViewer: null
   };
   let hostViewerVisible = true;
+  let hostComputeAnchorRequested = false;
+  let lastHostComputeAnchor = '';
+  // Explicit host gestures keep the shared buffer hold alive even when the
+  // pointer pauses. Discrete layout changes draw at their actual bounds.
+  let hostLayoutGestureActive = false;
+  const hostLayoutGestureViewers = new Set();
 
   function viewerContainerSize(viewer) {
     const container = viewer?.plugin?.canvas3dContext?.canvas?.parentElement;
@@ -1838,41 +1939,90 @@
     return true;
   }
 
-  function scheduleViewerResize(viewer, delayMs = 80) {
+  function deferViewerResize(target) {
+    if (target && hostLayoutGestureActive) hostLayoutGestureViewers.add(target);
+    return window.molstar?.BuretteResizeInteraction?.touch(target, (stats, restoreStartedAt) => {
+      if (resizeState.standaloneWindowViewer === target) resizeState.standaloneWindowViewer = null;
+      if (viewerCanvasIsVisible(target)) applyViewerResize(target, viewerContainerSize(target));
+      else if (resizeState.appliedViewer === target) {
+        // A hidden tab must catch up when it becomes visible again.
+        resizeState.appliedSize = '';
+      }
+      window.parent?.postMessage({ source: 'burette-viewer', body: { type: 'resizeStats', ...stats, restoreMs: performance.now() - restoreStartedAt } }, '*');
+    }, hostLayoutGestureActive);
+  }
+
+  function retainViewerBuffer(viewer) {
+    return hostLayoutGestureActive || (resizeState.hasDrawn === viewer
+      && (resizeState.standaloneWindowViewer === viewer
+        || document.querySelector('#buret-sequence-resize [data-separator="active"]')));
+  }
+
+  function applyViewerResize(target, size) {
+    resizeState.appliedViewer = target;
+    resizeState.appliedSize = size;
+    let handled = false;
+    try {
+      // Use PluginContext to apply geometry without broadcasting a UI update.
+      if (typeof target.plugin?.handleResize === 'function') {
+        target.plugin.handleResize();
+        // Updating canvas.width/height clears the buffer. Draw before WebKit
+        // can present that empty buffer, without ticking or resuming playback.
+        target.plugin.canvas3d?.draw?.({ force: true, isSynchronous: true });
+        handled = true;
+      } else if (typeof target.handleResize === 'function') {
+        target.handleResize();
+        handled = true;
+      }
+    } catch (_) {}
+    if (!handled) {
+      try { target.plugin?.layout?.events?.updated?.next?.(); } catch (_) {}
+    }
+    resizeState.hasDrawn = target;
+  }
+
+  function flushViewerResize(target) {
+    if (!target || !viewerCanvasIsVisible(target)) return;
+    const size = viewerContainerSize(target);
+    if (target === resizeState.appliedViewer && size && size === resizeState.appliedSize) return;
+    const interaction = window.molstar?.BuretteResizeInteraction;
+    const startedAt = performance.now();
+    if (retainViewerBuffer(target) && deferViewerResize(target)) {
+      resizeState.appliedViewer = target;
+      resizeState.appliedSize = size;
+      interaction.record(target, performance.now() - startedAt);
+      return;
+    }
+    if (resizeState.standaloneWindowViewer === target) resizeState.standaloneWindowViewer = null;
+    // A discrete change can interrupt the idle period after a Sequence drag.
+    // Restore the canvas style and draw exactly once at the new bounds.
+    if (!interaction?.release(target)) applyViewerResize(target, size);
+  }
+
+  function scheduleViewerResize(viewer, beforePaint = false) {
     if (!viewer) return;
     if (!viewerCanvasIsVisible(viewer)) return;
     resizeState.viewer = viewer;
+    const retainBuffer = retainViewerBuffer(viewer);
+    if (beforePaint && !retainBuffer && resizeState.hasDrawn === viewer) {
+      flushViewerResize(viewer);
+      return;
+    }
+    // ResizeObserver runs before paint, but its requested animation frame can
+    // land after that paint. Center the retained projection now, otherwise one
+    // frame keeps the old left edge and the next jumps back to the new center.
+    if (retainBuffer && resizeState.hasDrawn === viewer && viewerContainerSize(viewer) !== resizeState.appliedSize) {
+      deferViewerResize(viewer);
+    }
     if (resizeState.frame) return;
     resizeState.frame = requestAnimationFrame(() => {
       resizeState.frame = 0;
-      clearTimeout(resizeState.timer);
-      resizeState.timer = setTimeout(() => {
-        const target = resizeState.viewer;
-        if (!target) return;
-        if (!viewerCanvasIsVisible(target)) return;
-        const size = viewerContainerSize(target);
-        if (target === resizeState.appliedViewer && size && size === resizeState.appliedSize) return;
-        resizeState.appliedViewer = target;
-        resizeState.appliedSize = size;
-        let handled = false;
-        try {
-          if (typeof target.handleResize === 'function') {
-            target.handleResize();
-            handled = true;
-          }
-        } catch (_) {}
-        if (!handled) {
-          try { target.plugin?.layout?.events?.updated?.next?.(); } catch (_) {}
-        }
-      }, delayMs);
+      flushViewerResize(resizeState.viewer);
     });
   }
 
-  // Mol* commits a layout change a frame or two after the toggle, so a resize on a
-  // fixed delay measures the container it had *before* the change and is thrown
-  // away; the canvas then catches up on Mol*'s own schedule, well after the panels
-  // have moved. Watching the container fires exactly when it has settled, which is
-  // both earlier and correct, and costs one resize instead of two.
+  // Mol* can commit a layout change after the toggle. Observe its actual bounds
+  // so both the moving viewport and its final size reach the same frame scheduler.
   let viewerResizeObserver = null;
   function installViewerResizeObserver(viewer) {
     const container = viewer?.plugin?.canvas3dContext?.canvas?.parentElement;
@@ -1885,11 +2035,9 @@
       const size = rect ? `${Math.round(rect.width)}x${Math.round(rect.height)}` : '';
       if (size === lastSize) return;
       lastSize = size;
-      // Goes through the shared scheduler rather than resizing straight away:
-      // a window resize reaches the viewer through this observer, the window
-      // handler and the host's BuretteHandleResize at once, which measured at
-      // roughly 2.5 handleResize calls per resize step.
-      scheduleViewerResize(viewer, 40);
+      // The actual canvas bounds have changed. A discrete resize must draw
+      // before paint, even when the same notification already queued a frame.
+      scheduleViewerResize(viewer, true);
     });
     observer.observe(container);
     viewerResizeObserver = { observer, container };
@@ -1919,6 +2067,8 @@
   let xyzFrameAlignment = null;
   let sdfCollectionAlignment = null;
   let activeDockingPoseCollectionState = null;
+  // Poses kept on screen while other poses are browsed, for the open docking set.
+  let dockingPinnedPoseState = { key: '', indices: new Set(), selected: new Set(), references: new Set(), activeHidden: false };
   let activeDockingSceneVisibilityState = null;
   let activeMolstarCacheBuster = null;
   let molstarStyleApplySerial = 0;
@@ -1985,6 +2135,7 @@
     document.body.classList.toggle('burette-transparent-background', transparentBackground);
     document.body.classList.toggle('burette-opaque-background', !transparentBackground);
     applyViewerThemeTokens(resolvedTheme);
+    document.documentElement.style.backgroundColor = canvasBackgroundCSS();
     document.documentElement.style.setProperty('--buret-canvas-background', canvasBackgroundCSS());
     document.documentElement.style.setProperty('--buret-overlay-opacity', overlayOpacity.toFixed(2));
     document.documentElement.style.setProperty('--buret-overlay-strong-opacity', Math.min(overlayOpacity + 0.06, 0.99).toFixed(2));
@@ -2016,7 +2167,7 @@
     // config still asking for the legacy `cartoon` style means.
     if (normalized === 'cartoon') return 'polymer-cartoon';
     if (['ball-and-stick', 'spacefill', 'line', 'illustrative-surface'].includes(normalized)) return normalized;
-    if (normalized === 'molecular-surface') return 'molecular-surface';
+    if (normalized === 'molecular-surface' || normalized === 'blob-surface') return normalized;
     return DEFAULT_MOLSTAR_PRESET;
   }
 
@@ -2049,7 +2200,7 @@
 
   function normalizeSdfCollectionContextStyle(value) {
     const normalized = String(value || '').trim().toLowerCase();
-    if (['line', 'ball-and-stick', 'cartoon', 'spacefill', 'molecular-surface', 'match'].includes(normalized)) return normalized;
+    if (['line', 'ball-and-stick', 'cartoon', 'spacefill', 'molecular-surface', 'blob-surface', 'match'].includes(normalized)) return normalized;
     return 'match';
   }
 
@@ -2087,60 +2238,51 @@
     return value === 'gray' ? 'gray' : 'colored';
   }
 
+  // WKWebView asset origins can deny localStorage. Keep the current choices
+  // available to subsequent style/color/opacity actions in the same viewer.
+  const sceneContextPreferences = new Map();
+  function readSceneContextPreference(key) {
+    if (sceneContextPreferences.has(key)) return sceneContextPreferences.get(key);
+    try { return window.localStorage?.getItem(key); } catch (_) { return null; }
+  }
+
+  function writeSceneContextPreference(key, value) {
+    sceneContextPreferences.set(key, value);
+    try { window.localStorage?.setItem(key, value); } catch (_) {}
+  }
+
   function readSdfCollectionContextStyle(config) {
-    try {
-      return normalizeSdfCollectionContextStyle(window.localStorage?.getItem(sdfCollectionContextStyleStorageKey(config)));
-    } catch (_) {
-      return 'match';
-    }
+    return normalizeSdfCollectionContextStyle(readSceneContextPreference(sdfCollectionContextStyleStorageKey(config)));
   }
 
   function setSdfCollectionContextStyle(style) {
     const value = normalizeSdfCollectionContextStyle(style);
-    try {
-      window.localStorage?.setItem(sdfCollectionContextStyleStorageKey(activeConfig || window.BuretteConfig || {}), value);
-    } catch (_) {}
+    writeSceneContextPreference(sdfCollectionContextStyleStorageKey(activeConfig || window.BuretteConfig || {}), value);
     return value;
   }
 
   function readSdfCollectionContextOpacity(config) {
-    try {
-      return normalizeSdfCollectionContextOpacity(window.localStorage?.getItem(sdfCollectionContextOpacityStorageKey(config)));
-    } catch (_) {
-      return 0.4;
-    }
+    return normalizeSdfCollectionContextOpacity(readSceneContextPreference(sdfCollectionContextOpacityStorageKey(config)));
   }
 
   function setSdfCollectionContextOpacity(opacity) {
     const value = normalizeSdfCollectionContextOpacity(opacity);
-    try {
-      window.localStorage?.setItem(sdfCollectionContextOpacityStorageKey(activeConfig || window.BuretteConfig || {}), value.toFixed(2));
-    } catch (_) {}
+    writeSceneContextPreference(sdfCollectionContextOpacityStorageKey(activeConfig || window.BuretteConfig || {}), value.toFixed(2));
     return value;
   }
 
   function readSdfCollectionContextColor(config) {
-    try {
-      return normalizeSdfCollectionContextColor(window.localStorage?.getItem(sdfCollectionContextColorStorageKey(config)));
-    } catch (_) {
-      return 'colored';
-    }
+    return normalizeSdfCollectionContextColor(readSceneContextPreference(sdfCollectionContextColorStorageKey(config)));
   }
 
   function readXyzFrameContextColor(config) {
-    try {
-      const stored = window.localStorage?.getItem(sdfCollectionContextColorStorageKey(config));
-      return stored === 'colored' ? 'colored' : 'gray';
-    } catch (_) {
-      return 'gray';
-    }
+    const stored = readSceneContextPreference(sdfCollectionContextColorStorageKey(config));
+    return stored === 'colored' ? 'colored' : 'gray';
   }
 
   function setSdfCollectionContextColor(color) {
     const value = normalizeSdfCollectionContextColor(color);
-    try {
-      window.localStorage?.setItem(sdfCollectionContextColorStorageKey(activeConfig || window.BuretteConfig || {}), value);
-    } catch (_) {}
+    writeSceneContextPreference(sdfCollectionContextColorStorageKey(activeConfig || window.BuretteConfig || {}), value);
     return value;
   }
 
@@ -2174,18 +2316,41 @@
   }
 
   function applyViewerThemeTokens(resolvedTheme = resolveViewerTheme()) {
+    document.querySelectorAll('.buret-atlas-surface.atlas-button').forEach(button => {
+      window.BuretteNativeViewerMenus?.styleButton?.(button, activeConfig?.themeTokens, resolvedTheme);
+    });
+    document.querySelectorAll('.buret-atlas-menu').forEach(menu => {
+      window.BuretteNativeViewerMenus?.styleMenu?.(menu, activeConfig?.themeTokens, resolvedTheme);
+    });
+    document.querySelectorAll('.buret-atlas-surface.atlas-popover-surface').forEach(popover => {
+      window.BuretteNativeViewerMenus?.stylePopover?.(popover, activeConfig?.themeTokens, resolvedTheme);
+    });
+    const selectionBar = document.getElementById('buret-selection-bar');
+    if (selectionBar) window.BuretteNativeViewerMenus?.styleControls?.(selectionBar, activeConfig?.themeTokens, resolvedTheme);
+    // Desktop and the Codex widget share capsule tokens (viewer-runtime.css).
+    document.querySelectorAll('#buret-viewport-rail, .buret-viewport-tooltip, #buret-toolbar, #buret-scene-tree-toggle').forEach(surface => {
+      window.BuretteNativeViewerMenus?.styleControls?.(surface, activeConfig?.themeTokens, resolvedTheme);
+    });
+    if (molstarControlTooltip) window.BuretteNativeViewerMenus?.styleTooltip?.(molstarControlTooltip, activeConfig?.themeTokens, resolvedTheme);
     const tokens = themeTokensFor(resolvedTheme);
     if (!tokens || !document.body) return;
-    const accent = typeof tokens.accent === 'string' ? tokens.accent : '#AF52DE';
-    const background = typeof tokens.background === 'string' ? tokens.background : (resolvedTheme === 'light' ? '#FFFFFF' : '#111111');
-    const foreground = typeof tokens.foreground === 'string' ? tokens.foreground : (resolvedTheme === 'light' ? '#0D0D0D' : '#FCFCFC');
+    // Resolve legacy and missing colors the way the Codex surfaces do.
+    const { accent, background, foreground } = window.BuretteNativeViewerMenus?.themeColors?.(tokens, resolvedTheme) ?? {
+      accent: '#3a83f7', background: resolvedTheme === 'light' ? '#ffffff' : '#181818', foreground: resolvedTheme === 'light' ? '#1a1c1f' : '#ffffff',
+    };
     const uiFont = typeof tokens.uiFont === 'string' ? tokens.uiFont : '';
     const opacity = 1 - (clampThemeNumber(tokens.translucent, resolvedTheme === 'light' ? 10 : 20) / 100) * 0.95;
     const contrast = 0.2 + (clampThemeNumber(tokens.contrast, resolvedTheme === 'light' ? 20 : 16) / 100) * 0.8;
-    const root = document.documentElement;
+    // In the dark theme the floating controls sit a shade below the canvas, so
+    // they read as islands over the structure rather than holes in it.
+    const islands = resolvedTheme === 'dark' ? `color-mix(in srgb, ${background} 72%, #000)` : background;
+    // Set on <body>: body.buret-theme-* in viewer-runtime.css carries the legacy
+    // fallbacks, and those beat anything inherited from <html>.
+    const root = document.body;
     root.style.setProperty('--buret-shell-background', `color-mix(in srgb, ${background} ${Math.round(opacity * 100)}%, transparent)`);
-    root.style.setProperty('--buret-panel-background', `color-mix(in srgb, ${background} ${Math.round(Math.min(opacity + 0.08, 1) * 100)}%, transparent)`);
-    root.style.setProperty('--buret-toolbar-background', `color-mix(in srgb, ${background} ${Math.round(Math.min(opacity + 0.08, 1) * 100)}%, transparent)`);
+    root.style.setProperty('--buret-panel-background', `color-mix(in srgb, ${islands} ${Math.round(Math.min(opacity + 0.08, 1) * 100)}%, transparent)`);
+    root.style.setProperty('--buret-toolbar-solid-background', islands);
+    root.style.setProperty('--buret-toolbar-background', `color-mix(in srgb, ${islands} ${Math.round(Math.min(opacity + 0.08, 1) * 100)}%, transparent)`);
     root.style.setProperty('--buret-toolbar-border', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 24)}%, transparent)`);
     root.style.setProperty('--buret-toolbar-hover', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 28)}%, transparent)`);
     root.style.setProperty('--buret-toolbar-color', `color-mix(in srgb, ${foreground} 94%, transparent)`);
@@ -2277,19 +2442,27 @@
     return canvasBackground;
   }
 
+  // "Match theme" paints the canvas with the app's own background, so the
+  // structure sits on the same surface as the window around it.
+  function themeCanvasHex() {
+    const theme = resolveViewerTheme();
+    const tokens = themeTokensFor(theme);
+    const value = window.BuretteNativeViewerMenus?.themeColors?.(tokens, theme)?.background ?? tokens?.background;
+    return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value : theme === 'light' ? '#ffffff' : '#181818';
+  }
+
   function canvasBackgroundCSS() {
     const background = resolvedCanvasBackground();
+    if (background === 'transparent') return 'transparent';
+    if (canvasBackground === 'auto') return themeCanvasHex();
     if (background === 'white') return '#ffffff';
     if (background === 'graphite') return '#111111';
-    if (background === 'transparent') return 'transparent';
     return '#000000';
   }
 
   function canvasBackgroundColor() {
-    const background = resolvedCanvasBackground();
-    if (background === 'white') return 0xffffff;
-    if (background === 'graphite') return 0x111111;
-    return 0x000000;
+    const css = canvasBackgroundCSS();
+    return css === 'transparent' ? 0x000000 : Number.parseInt(css.slice(1), 16);
   }
 
   function resolveInitialViewerScale(config) {
@@ -2330,16 +2503,50 @@
     }
   }
 
+  function viewerHasLightBackground() {
+    // A customized theme can have a light canvas in dark mode, or vice versa.
+    // Transparent scenes inherit that same theme surface from their host.
+    const hex = transparentBackground ? themeCanvasHex() : canvasBackgroundCSS();
+    const [r, g, b] = [1, 3, 5].map(offset => {
+      const channel = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
+      return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+    });
+    return r * 0.2126 + g * 0.7152 + b * 0.0722 > 0.179;
+  }
+
+  // Mol*'s orientation gizmo in the Codex palette: coloured, labelled arms on a
+  // neutral origin, without the grey plane tiles. Mol* keeps it interactive —
+  // clicking an arm looks down that axis, clicking the origin resets the view.
+  function cameraAxesParams(lightBackground = viewerHasLightBackground()) {
+    const [x, y, z] = lightBackground ? [0xe02e2a, 0x00a240, 0x0169cc] : [0xff6764, 0x40c977, 0x339cff];
+    const neutral = lightBackground ? 0x8f8f8f : 0x5d5d5d;
+    return {
+      alpha: 1, colorX: x, colorY: y, colorZ: z, scale: 0.33,
+      location: 'bottom-left', locationOffsetX: 4, locationOffsetY: 4,
+      originColor: neutral, radiusScale: 0.05,
+      showPlanes: false, planeColorXY: neutral, planeColorXZ: neutral, planeColorYZ: neutral,
+      showLabels: true, labelX: 'X', labelY: 'Y', labelZ: 'Z',
+      labelColorX: x, labelColorY: y, labelColorZ: z, labelOpacity: 1, labelScale: 0.25
+    };
+  }
+
+  function applyCameraAxesStyle(canvas3d, lightBackground) {
+    const axes = canvas3d?.props?.camera?.helper?.axes;
+    if (axes?.name !== 'on') return;
+    const params = cameraAxesParams(lightBackground);
+    if (axes.params?.showPlanes === false && axes.params?.colorX === params.colorX) return;
+    canvas3d.setProps({ camera: { helper: { axes: { name: 'on', params } } } });
+  }
+
   function applyViewerBackground(viewer = activeViewer) {
     applyDocumentBackground();
     applyStaticRendererTheme();
+    const lightBackground = viewerHasLightBackground();
     // Mol* draws measurement/atom labels in WebGL, so CSS theme tokens cannot
     // recolour them. Its manager updates existing labels and defaults for new
     // distances, angles, dihedrals and labels without rebuilding the scene.
     const measurements = viewer?.plugin?.managers?.structure?.measurement;
     if (measurements) {
-      const lightBackground = transparentBackground
-        ? resolveViewerTheme() === 'light' : resolvedCanvasBackground() === 'white';
       const textColor = lightBackground ? 0x0d0d0d : 0xfcfcfc;
       const { options, distances, angles, dihedrals, labels } = measurements.state;
       // Background refreshes also happen after Story state updates. Avoid
@@ -2358,6 +2565,7 @@
       } else {
         canvas3d.setProps({ transparentBackground: false, renderer: { backgroundColor: canvasBackgroundColor() } });
       }
+      applyCameraAxesStyle(canvas3d, lightBackground);
     } catch (error) {
       debug('canvas3d background mode failed: ' + (error && error.message || String(error)));
     }
@@ -2366,16 +2574,9 @@
 
   function setViewerTheme(theme, viewer = activeViewer, persist = true) {
     viewerTheme = normalizeViewerTheme(theme);
-    if (viewerTheme === 'dark') {
-      canvasBackground = 'black';
-      transparentBackground = false;
-    } else if (viewerTheme === 'light') {
-      canvasBackground = 'white';
-      transparentBackground = false;
-    } else {
-      canvasBackground = 'auto';
-      transparentBackground = false;
-    }
+    // The canvas keeps its own setting: "Match theme" already follows viewerTheme,
+    // and forcing black/white here left a dark viewer off the app's surface colour.
+    transparentBackground = canvasBackground === 'transparent';
     if (persist) {
       try {
         window.localStorage && window.localStorage.setItem(VIEWER_THEME_STORAGE_KEY, viewerTheme);
@@ -2384,7 +2585,7 @@
     applyBackgroundMode();
     applyViewerBackground(viewer);
     updateThemeButton();
-    scheduleViewerResize(viewer, 40);
+    scheduleViewerResize(viewer);
     scheduleVisibleMolstarPresetPreviewRefresh();
   }
 
@@ -2507,6 +2708,7 @@
     const molstarPresetSlot = toolbar.querySelector('[data-buret-molstar-preset-slot]');
     const molstarPresetTrigger = toolbar.querySelector('[data-buret-molstar-preset-trigger]');
     molstarPresetSlot?.classList.toggle('visible', renderer === 'molstar');
+    toolbar.querySelector('[data-buret-action="hydrogens"]')?.classList.toggle('hidden', renderer !== 'molstar');
     if (renderer !== 'molstar') hideMolstarPresetMenu();
     if (molstarPresetTrigger) {
       molstarPresetTrigger.disabled = renderer !== 'molstar';
@@ -2555,7 +2757,7 @@
           if (operationButton.disabled) return;
           const selectedOperation = String(operationButton.dataset.buretComputeOperation || 'generate3d');
           const mode = selectedOperation === 'generateEnsemble' ? 'ensemble' : 'single';
-          hideGenerate3DMenu();
+          hideGenerate3DMenu({ restoreFocus: true });
           requestMolecularCompute(selectedOperation, { mode });
         });
       }
@@ -2938,6 +3140,7 @@
     if (!menu || !anchor || anchor.classList.contains('hidden') || anchor.disabled) return;
     hideMolstarPresetMenu();
     closeViewportMenu();
+    window.BuretteNativeViewerMenus?.styleMenu?.(menu, activeConfig?.themeTokens, resolveViewerTheme());
     menu.classList.remove('hidden');
     positionGenerate3DMenu(anchor);
     anchor.setAttribute('aria-expanded', 'true');
@@ -2999,6 +3202,7 @@
     button.classList.toggle('generating', generate3dPending);
     button.setAttribute('aria-busy', generate3dPending ? 'true' : 'false');
     button.disabled = !canGenerate3d || generate3dPending;
+    window.BuretteNativeViewerMenus?.styleButton?.(button, config.themeTokens, resolveViewerTheme());
     if (label) {
       label.textContent = generate3dPending
         ? (generate3dPendingMode === 'ensemble' ? 'Generating set...' : 'Generating 3D...')
@@ -3015,29 +3219,19 @@
   document.addEventListener('keydown', event => {
     const menu = document.querySelector('[data-buret-generate-3d-menu]');
     if (!menu || menu.classList.contains('hidden')) return;
-    if (event.key === 'Escape') {
+    if (event.key === 'Escape' || event.key === 'Tab') {
       event.preventDefault();
       hideGenerate3DMenu({ restoreFocus: true });
       return;
     }
-    const items = Array.from(menu.querySelectorAll('[role="menuitem"]')).filter(item => !item.disabled);
-    const currentIndex = items.indexOf(document.activeElement);
-    let nextIndex = -1;
-    if (event.key === 'ArrowDown') nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % items.length;
-    if (event.key === 'ArrowUp') nextIndex = currentIndex < 0 ? items.length - 1 : (currentIndex - 1 + items.length) % items.length;
-    if (event.key === 'Home') nextIndex = 0;
-    if (event.key === 'End') nextIndex = items.length - 1;
-    if (nextIndex >= 0 && items[nextIndex]) {
-      event.preventDefault();
-      items[nextIndex].focus();
-    }
+    window.BuretteNativeViewerMenus?.moveMenuFocus?.(menu, event);
   });
 
   function requestMolecularCompute(operation = 'generate3d', options = {}) {
     const config = activeConfig || window.BuretteConfig || {};
-    // MCP widgets have no native-compute transport. Do not advertise or send
-    // desktop compute actions just because the document happens to be an SDF.
-    if (config.hostedMcpWidgetBootstrap === true || config.visualizationOnly === true) return;
+    // Widgets, Finder Quick Look and the mobile preview have no compute host.
+    // An SDF document alone does not imply that this transport is available.
+    if (config.hostedMcpWidgetBootstrap === true || config.visualizationOnly === true || config.quickLookViewer === true) return;
     const format = normalizeFormat(config.sourceExtension || config.molstarFormat || config.format);
     if (!['sdf', 'sd', 'mol'].includes(format)) {
       setStatus('Native molecular compute supports SDF and MOL structures in Molstar.', 'error');
@@ -3069,7 +3263,7 @@
   }
 
   function canGenerate3DConformerFromConfig(config, renderer) {
-    if (config?.hostedMcpWidgetBootstrap === true || config?.visualizationOnly === true) return false;
+    if (config?.hostedMcpWidgetBootstrap === true || config?.visualizationOnly === true || config?.quickLookViewer === true) return false;
     const format = normalizeFormat(config?.sourceExtension || config?.molstarFormat || config?.format);
     return renderer === 'molstar' && ['sdf', 'sd', 'mol'].includes(format);
   }
@@ -3082,10 +3276,50 @@
     return (config?.sdfPosePager === true && configuredPoseCount > 1) || preparedPoseCount > 1;
   }
 
+  function xyzrenderPopoutAnimation(item) {
+    const content = item.querySelector('.buret-xyzrender-sheet-item-body');
+    // Inspector previews are still editable drafts held by the owning window.
+    // Applying or cancelling them leaves the item's durable GIF or drawing.
+    if (content?.querySelector('.buret-xyzrender-animation-canvas')) throw new Error('Apply or cancel the animation preview before moving this sheet.');
+    const image = content?.querySelector('.buret-xyzrender-animation-image');
+    if (!image) return null;
+    const data = image.getAttribute('src');
+    if (typeof data !== 'string' || data.length > 24000000 || !/^data:image\/(png|gif);base64,[A-Za-z0-9+/=]+$/.test(data)) throw new Error('The animation could not be moved.');
+    if (!image.complete || !image.naturalWidth) throw new Error('Wait for the animation to finish loading.');
+    return data;
+  }
+
+  function restoreXyzrenderPopoutAnimation(item, data) {
+    if (typeof data !== 'string' || data.length > 24000000 || !/^data:image\/(png|gif);base64,[A-Za-z0-9+/=]+$/.test(data)) throw new Error('The saved animation is invalid.');
+    const content = item.querySelector('.buret-xyzrender-sheet-item-body');
+    const image = document.createElement('img');
+    image.className = 'buret-xyzrender-animation-image';
+    image.alt = 'Molecular animation';
+    image.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:inherit;pointer-events:none';
+    image.dataset.buretPopoutAnimation = 'loading';
+    image.addEventListener('load', () => { image.dataset.buretPopoutAnimation = 'ready'; }, { once: true });
+    image.addEventListener('error', () => { image.dataset.buretPopoutAnimation = 'failed'; }, { once: true });
+    content.querySelector('svg')?.style.setProperty('visibility', 'hidden');
+    content.append(image);
+    // The same encoded GIF retains every frame, its timing and transparency.
+    // A new image starts its loop at the beginning; img exposes no seek position.
+    image.src = data;
+  }
+
   window.addEventListener('message', event => {
     const data = event.data || {};
     const body = data.source === 'burette-host' ? data.body : null;
     if (!body) return;
+    if (event.source === window.parent && body.documentId === activeConfig?.documentId) {
+      if (body.type === 'chemicalSpaceRequestSelection') {
+        notifyChemicalSpaceMolecule();
+        return;
+      }
+      if (body.type === 'chemicalSpaceFocusMolecule') {
+        void focusChemicalSpaceMolecule(body);
+        return;
+      }
+    }
     if (event.source === window.parent && body.type === 'openXyzrenderEditor') {
       if (body.documentId === (activeConfig || window.BuretteConfig || {}).documentId) void openXyzrender3DEditor();
       return;
@@ -3183,10 +3417,43 @@
       }
       return;
     }
+    if (event.source === window.parent && body.type === 'sceneComputeAnchorRequest'
+      && body.documentId === window.BuretteConfig?.documentId) {
+      hostComputeAnchorRequested = true;
+      lastHostComputeAnchor = '';
+      scheduleFloatingLayoutRefresh();
+      return;
+    }
     if (body.type === 'viewerVisibilityChanged') {
       hostViewerVisible = body.visible !== false;
       activeTrajectoryPlaybackControl?.visibilityChanged?.();
-      if (hostViewerVisible && activeViewer) scheduleViewerResize(activeViewer, 0);
+      // Retained file panels keep their camera, but must not tick a hidden
+      // WebGL scene (including spin/rock animations).
+      const loop = activeViewer?.plugin?.animationLoop;
+      if (hostViewerVisible) {
+        if (loop && !loop.isAnimating) loop.start();
+      } else loop?.stop({ noDraw: true });
+      if (hostViewerVisible && activeViewer) scheduleViewerResize(activeViewer);
+      return;
+    }
+    if (event.source === window.parent && body.type === 'captureRendererViewState') {
+      if (typeof body.requestId !== 'string' || body.requestId.length > 128) return;
+      const camera = activeViewer?.plugin?.canvas3d?.camera;
+      postHostMessage({ type: 'rendererViewStateCaptured', requestId: body.requestId,
+        viewState: { camera: captureMolstarCameraSnapshot(activeViewer) },
+        viewport: camera ? { width: camera.viewport.width, height: camera.viewport.height } : null });
+      return;
+    }
+    if (event.source === window.parent && body.type === 'hostLayoutGesture') {
+      hostLayoutGestureActive = body.active === true;
+      if (hostLayoutGestureActive) deferViewerResize(activeViewer);
+      else {
+        // A load or tab activation can replace activeViewer while a gesture is
+        // held. Release every owner, including a now-hidden previous viewer.
+        for (const viewer of hostLayoutGestureViewers) window.molstar?.BuretteResizeInteraction?.release(viewer);
+        hostLayoutGestureViewers.clear();
+        if (activeViewer) scheduleViewerResize(activeViewer);
+      }
       return;
     }
     if (body.type === 'workspaceHistoryCommand') {
@@ -3196,7 +3463,21 @@
     // Applied in place so a theme change never costs a viewer rebuild: the runtime
     // already carries the token sets for both themes.
     if (body.type === 'setViewerTheme') {
+      if (event.source !== window.parent) return;
       const nextTheme = normalizeViewerTheme(body.value);
+      if (body.themeTokens && typeof body.themeTokens === 'object') {
+        if (activeConfig) activeConfig.themeTokens = body.themeTokens;
+        if (window.BuretteConfig) window.BuretteConfig.themeTokens = body.themeTokens;
+      }
+      if (body.canvasBackground !== undefined) {
+        canvasBackground = normalizeCanvasBackground(body.canvasBackground);
+        for (const config of [activeConfig, window.BuretteConfig]) {
+          if (config) {
+            config.canvasBackground = canvasBackground;
+            config.transparentBackground = canvasBackground === 'transparent';
+          }
+        }
+      }
       if (activeConfig) activeConfig.theme = nextTheme;
       if (window.BuretteConfig) window.BuretteConfig.theme = nextTheme;
       setViewerTheme(nextTheme, activeViewer);
@@ -3208,6 +3489,18 @@
       const style = normalizeMolstarStyle(body.value);
       if (style === 'default' || style === 'illustrative') void requestMolstarAppearance(style);
       else requestMolstarStyle(style);
+      return;
+    }
+    if (body.type === 'setScreenshotResolutionDefault') {
+      setViewportScreenshotDefault('screenshotResolution', body.value);
+      return;
+    }
+    if (body.type === 'setScreenshotFormatDefault') {
+      setViewportScreenshotDefault('screenshotFormat', body.value);
+      return;
+    }
+    if (body.type === 'setScreenshotTransparentDefault') {
+      setViewportScreenshotDefault('screenshotTransparent', body.value === true);
       return;
     }
     if (body.type === 'setXyzrenderControls') {
@@ -3569,11 +3862,11 @@
       const direction = Array.isArray(options.direction) && options.direction.length >= 3
         ? options.direction
         : [0.85, -0.38, 0.92];
-      const fitted = fittedMolstarStructureFocus(viewer, camera, direction, up);
+      const fitted = options.mode === 'orthographic' ? null : fittedMolstarStructureFocus(viewer, camera, direction, up);
       const snapshot = fitted || (typeof camera.getFocus === 'function'
         ? camera.getFocus(target, Math.max(0.1, safeRadius * radiusScale), up, direction)
         : null);
-      if (snapshot) snapshot.mode = 'perspective';
+      if (snapshot) snapshot.mode = options.mode || 'perspective';
       canvas3d.requestCameraReset({
         snapshot: snapshot || undefined,
         durationMs: Number.isFinite(Number(options.durationMs)) ? Number(options.durationMs) : 160,
@@ -3639,6 +3932,8 @@
 
   function setSdfPoseMode(mode) {
     activeSdfPoseMode = mode === 'all' ? 'all' : 'single';
+    // Entering or leaving All shows the stepper's pose again.
+    dockingPinnedPoseState.activeHidden = false;
     try {
       const storageKey = poseModeStorageKey(activeConfig);
       window.localStorage?.setItem(storageKey, activeSdfPoseMode);
@@ -3782,13 +4077,14 @@
       const poseCount = Number(activeMolstarPrepared.poseCount || 0);
       const activePose = readTrajectoryControlIndex(activeConfig, activeMolstarPrepared, poseCount || 1);
       await applyDockingSceneVisibility(activeViewer, activeMolstarPrepared, activePose, { focus: false });
-      await activeStructureAlignmentControl?.restoreAfterSceneReload?.();
+      await activeStructureAlignmentControl?.restoreAfterSceneReload?.(activeViewer, activeMolstarPrepared);
       return;
     }
     if (activeMolstarPrepared?.kind === 'docking' && activeMolstarPrepared?.sdfPoseOverlayAvailable === true) {
       const poseCount = Number(activeMolstarPrepared.poseCount || 0);
       const activePose = readTrajectoryControlIndex(activeConfig, activeMolstarPrepared, poseCount || 1);
       await applyDockingPoseCollectionVisibility(activeViewer, activeMolstarPrepared, activePose, { focus: false });
+      document.querySelector('.buret-docking-poses')?.dispatchEvent(new Event('buret-pose-selection-changed'));
       return;
     }
     await reloadActiveMolstarStructure();
@@ -3831,6 +4127,7 @@
       setStatus(`[web] Rendered ${config.label || 'structure'}`);
       setTimeout(() => hideStatus(molstarReadyPayload(config, prepared, {
         molstarStructureCount: currentMolstarStructureCount(viewer),
+        molstarVolumeCount: currentMolstarVolumeCount(viewer),
         poseCount,
         trajectoryFrameCount: Math.max(Number(config?.trajectoryFrameCount || 0), poseCount)
       })), isQuickLookHost() ? 0 : 700);
@@ -3904,6 +4201,7 @@
     const lassoButton = toolbar.querySelector('[data-buret-action="molstar-lasso"]');
     const external = normalized === 'xyzrender-external';
     molstarPresetSlot?.classList.toggle('visible', !external);
+    toolbar.querySelector('[data-buret-action="hydrogens"]')?.classList.toggle('hidden', normalized !== 'molstar');
     if (external) hideMolstarPresetMenu();
     if (molstarPresetTrigger) molstarPresetTrigger.disabled = external;
     const lassoAvailable = normalized === 'molstar' || external;
@@ -3925,14 +4223,14 @@
 
   function appendMolstarPresetMenuSeparator(menu) {
     const separator = document.createElement('div');
-    separator.className = 'buret-molstar-preset-menu-separator';
+    separator.className = 'atlas-menu-separator';
     separator.setAttribute('role', 'separator');
     menu.appendChild(separator);
   }
 
   function appendMolstarAppearanceMenu(menu) {
     const appearanceLabel = document.createElement('div');
-    appearanceLabel.className = 'buret-molstar-preset-menu-section';
+    appearanceLabel.className = 'atlas-menu-label';
     appearanceLabel.textContent = 'Appearance';
     menu.appendChild(appearanceLabel);
     const appearanceGroup = document.createElement('div');
@@ -3943,7 +4241,7 @@
     for (const appearanceOption of MOLSTAR_APPEARANCE_OPTIONS) {
       const appearance = document.createElement('button');
       appearance.type = 'button';
-      appearance.className = 'buret-molstar-appearance-item';
+      appearance.className = 'atlas-menu-item';
       appearance.dataset.buretMolstarAppearance = appearanceOption.value;
       appearance.setAttribute('role', 'menuitemradio');
       appearance.setAttribute('aria-checked', 'false');
@@ -3951,10 +4249,8 @@
       const itemLabel = document.createElement('span');
       itemLabel.className = 'buret-tree-menu-label';
       itemLabel.textContent = appearanceOption.label;
-      const indicator = document.createElement('span');
-      indicator.className = 'buret-molstar-appearance-indicator';
-      indicator.setAttribute('aria-hidden', 'true');
-      indicator.textContent = '✓';
+      const indicator = sceneTreeIconElement(APP_ICON_DATA.Check);
+      indicator.classList.add('atlas-menu-check');
       appearance.append(itemLabel, indicator);
       appearanceGroup.appendChild(appearance);
     }
@@ -3970,14 +4266,14 @@
       if (option.group && option.group !== currentGroup) {
         appendMolstarPresetMenuSeparator(menu);
         const heading = document.createElement('div');
-        heading.className = 'buret-molstar-preset-menu-section';
+        heading.className = 'atlas-menu-label';
         heading.textContent = option.group;
         menu.appendChild(heading);
         currentGroup = option.group;
       }
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = 'buret-tree-menu-item';
+      button.className = 'atlas-menu-item';
       button.dataset.buretMolstarPreset = option.value;
       button.setAttribute('role', 'menuitemradio');
       button.setAttribute('aria-checked', 'false');
@@ -3985,9 +4281,8 @@
       const label = document.createElement('span');
       label.className = 'buret-tree-menu-label';
       label.textContent = option.label;
-      const current = document.createElement('span');
-      current.className = 'buret-molstar-preset-current';
-      current.textContent = 'Current';
+      const current = sceneTreeIconElement(APP_ICON_DATA.Check);
+      current.classList.add('atlas-menu-check');
       button.append(label, current);
       menu.appendChild(button);
     }
@@ -4012,7 +4307,8 @@
     populateMolstarPresetMenu(menu);
     if (label) label.textContent = `Style: ${option.value === 'automatic' ? 'Auto' : option.label}`;
     if (trigger) {
-      trigger.dataset.buretHint = `Mol* preset: ${option.label}`;
+      trigger.dataset.buretHint = `Style: ${option.label}`;
+      setTooltipLabel(trigger, trigger.dataset.buretHint);
       if (window.__buretteMolstarControlTooltipsInstalled) trigger.removeAttribute('title');
       else trigger.title = trigger.dataset.buretHint;
     }
@@ -4043,7 +4339,15 @@
     const spaceBelow = window.innerHeight - margin - belowTop;
     const spaceAbove = anchorRect.top - gap - margin;
     const openAbove = spaceBelow < Math.min(menu.scrollHeight, 260) && spaceAbove > spaceBelow;
-    const availableHeight = Math.max(120, openAbove ? spaceAbove : spaceBelow);
+    let availableHeight = Math.max(120, openAbove ? spaceAbove : spaceBelow);
+    // Reserve preview space before exposing the menu. Hovering or rendering a
+    // different molecular aspect ratio must never move the user's click target.
+    const previewWidth = Math.min(240, window.innerWidth - margin * 2);
+    const hasSideRoom = left - 8 - previewWidth >= margin
+      || left + menuWidth + 8 + previewWidth <= window.innerWidth - margin;
+    if (!hasSideRoom && availableHeight >= 248) {
+      availableHeight -= Math.min(240, Math.floor(availableHeight * 0.45)) + 8;
+    }
     menu.style.left = `${Math.round(left)}px`;
     menu.style.top = `${Math.round(openAbove
       ? Math.max(margin, anchorRect.top - gap - Math.min(menu.scrollHeight, availableHeight))
@@ -4060,7 +4364,6 @@
       image: preview?.querySelector('[data-buret-molstar-preset-preview-image]'),
       stage: preview?.querySelector('[data-buret-molstar-preset-preview-stage]'),
       label: preview?.querySelector('[data-buret-molstar-preset-preview-label]'),
-      caption: preview?.querySelector('[data-buret-molstar-preset-preview-caption]'),
       state: preview?.querySelector('[data-buret-molstar-preset-preview-state]')
     };
   }
@@ -4102,8 +4405,7 @@
       previewWidth,
       previewHeight,
       margin,
-      gap,
-      minimumMenuHeight: 120
+      gap
     });
     if (!placement || placement.placement === 'hidden') {
       preview.classList.add('viewport-constrained');
@@ -4112,18 +4414,15 @@
     }
     preview.style.left = `${Math.round(placement.left)}px`;
     preview.style.top = `${Math.round(placement.top)}px`;
+    preview.style.transformOrigin = 'top left';
+    preview.style.transform = `scale(${placement.scale || 1})`;
     preview.dataset.placement = placement.placement;
-    if (placement.placement === 'stacked') {
-      menu.style.top = `${Math.round(placement.menuTop)}px`;
-      menu.style.maxHeight = `${Math.floor(placement.menuMaxHeight)}px`;
-      menu.dataset.placement = 'stacked';
-    }
   }
 
   function sizeMolstarPresetPreview(preview) {
     if (!preview) return;
     const { stage } = molstarPresetPreviewElements();
-    const sourceCanvas = activeViewer?.plugin?.canvas3d?.webgl?.gl?.canvas || document.querySelector('#app canvas');
+    const sourceCanvas = activeViewer?.plugin?.canvas3dContext?.canvas || document.querySelector('#app canvas');
     const sourceRect = sourceCanvas?.getBoundingClientRect?.();
     const sourceWidth = Number(sourceRect?.width);
     const sourceHeight = Number(sourceRect?.height);
@@ -4229,7 +4528,7 @@
   }
 
   function molstarPresetPreviewViewportKey() {
-    const sourceCanvas = activeViewer?.plugin?.canvas3d?.webgl?.gl?.canvas || document.querySelector('#app canvas');
+    const sourceCanvas = activeViewer?.plugin?.canvas3dContext?.canvas || document.querySelector('#app canvas');
     const sourceRect = sourceCanvas?.getBoundingClientRect?.();
     const width = Math.max(1, Number(sourceRect?.width) || 1);
     const height = Math.max(1, Number(sourceRect?.height) || 1);
@@ -4262,7 +4561,7 @@
   function restoreCachedMolstarPresetPreview(item, preset) {
     const cached = molstarPresetPreviewCache;
     if (!cached || cached.viewer !== activeViewer || cached.key !== molstarPresetPreviewCacheKey(preset)) return false;
-    const { preview, image, caption } = molstarPresetPreviewElements();
+    const { preview, image } = molstarPresetPreviewElements();
     if (!preview || !image) return false;
     image.width = cached.canvas.width;
     image.height = cached.canvas.height;
@@ -4276,7 +4575,6 @@
     preview.classList.remove('loading');
     preview.classList.add('ready');
     preview.removeAttribute('aria-busy');
-    if (caption) caption.textContent = 'Click to apply';
     positionMolstarPresetPreview(item);
     return true;
   }
@@ -4290,12 +4588,13 @@
       const structure = entry?.cell?.obj?.data || entry?.obj?.data || entry;
       return total + Math.max(0, Number(structure?.elementCount) || 0);
     }, 0);
-    if (elementCount > 250000) return 'Preview is disabled for structures larger than 250,000 elements.';
+    // Building a preview blocks the main thread for about a second per 20,000 elements.
+    if (elementCount > 50000) return 'Preview is disabled for structures larger than 50,000 elements.';
     return '';
   }
 
   function molstarPresetPreviewPixelScale() {
-    const source = activeViewer?.plugin?.canvas3d?.webgl?.gl?.canvas;
+    const source = activeViewer?.plugin?.canvas3dContext?.canvas;
     const rect = source?.getBoundingClientRect?.();
     const cssWidth = Number(rect?.width);
     const backingWidth = Number(source?.width);
@@ -4359,7 +4658,7 @@
   }
 
   async function captureMolstarPresetPreview(item, viewer, serial) {
-    const source = viewer?.plugin?.canvas3d?.webgl?.gl?.canvas;
+    const source = viewer?.plugin?.canvas3dContext?.canvas;
     if (!source || !(Number(source.width) > 0) || !(Number(source.height) > 0)) {
       throw new Error('Mol* preview viewport is unavailable.');
     }
@@ -4369,10 +4668,10 @@
   }
 
   function showMolstarPresetPreviewShell(item, option) {
-    const { preview, image, label, caption, state } = molstarPresetPreviewElements();
+    const { preview, image, label, state } = molstarPresetPreviewElements();
     if (!preview) return;
+    window.BuretteNativeViewerMenus?.stylePopover?.(preview, activeConfig?.themeTokens, resolveViewerTheme());
     if (label) label.textContent = option.label;
-    if (caption) caption.textContent = 'Rendering…';
     if (state) state.textContent = 'Rendering preview…';
     preview.classList.remove('hidden', 'ready', 'error', 'applying');
     preview.classList.add('loading');
@@ -4420,6 +4719,7 @@
     const { stage } = molstarPresetPreviewElements();
     if (!stage || !window.molstar?.Viewer) throw new Error('Mol* preview renderer is unavailable.');
     const viewer = await withTimeout(window.molstar.Viewer.create(stage, {
+      graphicsBackend: 'webgl',
       layoutIsExpanded: false,
       layoutShowControls: false,
       layoutShowRemoteState: false,
@@ -4487,6 +4787,9 @@
       const sourcePlugin = activeViewer?.plugin;
       const sourceCamera = captureMolstarCameraSnapshot(activeViewer);
       if (typeof sourcePlugin?.state?.data?.getSnapshot !== 'function') throw new Error('Current Mol* scene cannot be copied.');
+      // Two frames let the loading shell paint before the build blocks.
+      await waitForAnimationFrame();
+      await waitForAnimationFrame();
       if (serial !== molstarPresetPreviewSerial) return;
       const snapshot = sourcePlugin.state.data.getSnapshot();
       await viewer.plugin.runTask(viewer.plugin.state.data.setSnapshot(snapshot));
@@ -4507,11 +4810,10 @@
       if (serial !== molstarPresetPreviewSerial) return;
       await captureMolstarPresetPreview(item, viewer, serial);
       if (serial !== molstarPresetPreviewSerial) return;
-      const { preview, caption } = molstarPresetPreviewElements();
+      const { preview } = molstarPresetPreviewElements();
       preview?.classList.remove('loading');
       preview?.classList.add('ready');
       preview?.removeAttribute('aria-busy');
-      if (caption) caption.textContent = 'Click to apply';
     } catch (error) {
       hideFailedMolstarPresetPreview(error, serial);
     }
@@ -4523,6 +4825,7 @@
     cancelMolstarPresetPreviewClose();
     if (preset === molstarPresetPreviewPreset) return;
     molstarPresetPreviewPreset = preset;
+    const serial = ++molstarPresetPreviewSerial;
     showMolstarPresetPreviewShell(item, molstarPresetOption(preset));
     const { preview: previewShell } = molstarPresetPreviewElements();
     if (previewShell?.classList.contains('viewport-constrained')) return;
@@ -4532,7 +4835,6 @@
       return;
     }
     if (restoreCachedMolstarPresetPreview(item, preset)) return;
-    const serial = ++molstarPresetPreviewSerial;
     const controller = ensureMolstarPresetPreviewController();
     if (!controller) {
       hideFailedMolstarPresetPreview(new Error('Preset preview controller is unavailable.'), serial);
@@ -4609,6 +4911,7 @@
     closeViewportMenu();
     populateMolstarPresetMenu(menu);
     updateMolstarPresetControl(document.getElementById('buret-toolbar'), configuredMolstarPreset(activeConfig || window.BuretteConfig || {}));
+    window.BuretteNativeViewerMenus?.styleMenu?.(menu, activeConfig?.themeTokens, resolveViewerTheme());
     menu.classList.remove('hidden');
     anchor.setAttribute('aria-expanded', 'true');
     positionMolstarPresetMenu(anchor);
@@ -4923,11 +5226,18 @@
   async function requestMolstarPreset(preset, { preserveCamera = true } = {}) {
     const value = normalizeMolstarPreset(preset);
     const controller = ensureMolstarPresetPreviewController();
-    if (controller) {
+    beginMolstarBusy();
+    try {
+      await nextMolstarPaint();
       const id = preserveCamera ? `${value}:preserve-camera` : value;
-      return controller.requestApply({ id, preset: value, preserveCamera });
+      const result = controller
+        ? await controller.requestApply({ id, preset: value, preserveCamera })
+        : await applyMolstarPresetNow(value, { preserveCamera });
+      if (result === true) await resyncDockingSceneAfterRestyle(activeViewer);
+      return result;
+    } finally {
+      endMolstarBusy();
     }
-    return applyMolstarPresetNow(value, { preserveCamera });
   }
 
   async function applyMolstarPresetNow(preset, { preserveCamera = false } = {}) {
@@ -5018,6 +5328,7 @@
       if (applied) fadeMolstarTransitionFrame(transitionFrame);
       else removeMolstarTransitionFrame(transitionFrame);
     }
+    return applied;
   }
 
   async function applyConfiguredMolstarPreset(viewer, config) {
@@ -5288,7 +5599,7 @@
     const selectedAtoms = xyzrenderAtomSetFromSelector(
       xyzrenderAtomSelectorForElements(item, selectedBefore),
     );
-    body.innerHTML = svg;
+    body.innerHTML = window.BuretteSanitizeArtwork(svg);
     cleanupXyzrenderSelectionSet();
     if (selectedAtoms.size > 0) {
       for (const element of xyzrenderSelectableElements(item)) {
@@ -5848,6 +6159,7 @@
   function initBuretToolbar(viewer) {
     const toolbar = document.getElementById('buret-toolbar');
     if (!toolbar) return;
+    window.BuretteNativeViewerMenus.styleToolbar(toolbar, activeConfig?.themeTokens, resolveViewerTheme());
 
     if (toolbar.dataset.panelTogglesBound !== '1') {
       toolbar.querySelectorAll('[data-buret-toggle]').forEach(button => {
@@ -6126,8 +6438,6 @@
         cancelMolstarPresetPreviewClose();
         preview.classList.add('applying');
         preview.setAttribute('aria-busy', 'true');
-        const caption = preview.querySelector('[data-buret-molstar-preset-preview-caption]');
-        if (caption) caption.textContent = 'Applying…';
         void requestMolstarPreset(preset, { preserveCamera: true });
         hideMolstarPresetMenu({ restoreFocus: true, pointerFocus: event.type === 'click' && event.detail > 0 });
       };
@@ -6245,6 +6555,45 @@
     else setMolstarLassoEnabled(!molstarLassoEnabled);
   }
 
+  // Display state belongs to the viewer document, including its pose changes.
+  // The structure and export entries are never modified by this control.
+  function updateMolstarHydrogenButtons() {
+    for (const button of document.querySelectorAll('[data-buret-hydrogens]')) {
+      button.setAttribute('aria-pressed', String(molstarShowHydrogens));
+      button.classList.toggle('active', molstarShowHydrogens);
+      button.disabled = molstarHydrogensPending;
+      const label = molstarShowHydrogens ? 'Hide hydrogens' : 'Show hydrogens';
+      button.setAttribute('aria-label', label);
+      button.title = label;
+      button.dataset.buretHint = label;
+      setTooltipLabel(button, label);
+    }
+  }
+
+  async function toggleMolstarHydrogens() {
+    const manager = activeMolstarViewer()?.plugin?.managers.structure.component;
+    if (!manager || molstarHydrogensPending) return;
+    const restoreFocus = document.activeElement?.matches('[data-buret-molecule-preview-action="hydrogens"]');
+    molstarHydrogensPending = true;
+    updateMolstarHydrogenButtons();
+    try {
+      await manager.setOptions({ ...manager.state.options, hydrogens: molstarShowHydrogens ? 'hide-all' : 'all' });
+      molstarShowHydrogens = !molstarShowHydrogens;
+      if (molstarMoleculePreviewTarget) showMolstarMoleculePreview(molstarMoleculePreviewTarget);
+    } catch (error) {
+      setStatus('Could not change hydrogen visibility: ' + (error?.message || error), 'error');
+    } finally {
+      molstarHydrogensPending = false;
+      updateMolstarHydrogenButtons();
+      if (restoreFocus) molstarMoleculePreview?.querySelector('[data-buret-hydrogens]')?.focus();
+    }
+  }
+
+  function molstarHydrogenRepresentation(representation) {
+    return { ...representation, typeParams: { ...representation.typeParams,
+      ignoreHydrogens: !molstarShowHydrogens, ignoreHydrogensVariant: 'all' } };
+  }
+
   function installMolstarToolbarActionDelegates() {
     if (window.__buretteMolstarToolbarActionDelegatesInstalled) return;
     window.__buretteMolstarToolbarActionDelegatesInstalled = true;
@@ -6263,6 +6612,7 @@
     document.addEventListener('click', event => {
       const target = event.target instanceof Element ? event.target : null;
       if (!target) return;
+      if (target.closest('[data-buret-action="hydrogens"]')) void toggleMolstarHydrogens();
       if (target.closest('[data-buret-action="molstar-lasso"]') && Date.now() < molstarLassoSuppressClickUntil) {
         event.preventDefault();
         event.stopPropagation();
@@ -6442,7 +6792,7 @@
     if (persist || collapsed) toolbar.dataset.defaultPosition = '1';
     repositionToolbar(toolbar);
     updateFloatingLayoutOffsets();
-    scheduleViewerResize(viewer, 40);
+    scheduleViewerResize(viewer);
   }
 
   function activateToolbarGrip(toolbar, viewer) {
@@ -6455,11 +6805,11 @@
         toolbar.dataset.defaultPosition = '1';
         repositionToolbar(toolbar);
         updateFloatingLayoutOffsets();
-        scheduleViewerResize(viewer, 40);
+        scheduleViewerResize(viewer);
       }
       return;
     }
-    setToolbarCollapsed(toolbar, !toolbar.classList.contains('collapsed'), viewer);
+    morphViewerChrome(() => setToolbarCollapsed(toolbar, !toolbar.classList.contains('collapsed'), viewer));
   }
 
   function initToolbarDrag(toolbar) {
@@ -6508,7 +6858,9 @@
       event.stopPropagation();
       if (ignoreNextGripClick) {
         ignoreNextGripClick = false;
-        return;
+        // Pointer capture can retarget the click to the toolbar, leaving this
+        // guard pending. A later keyboard activation must still work.
+        if (event.detail !== 0) return;
       }
       activateToolbarGrip(toolbar, resizeState.viewer);
     });
@@ -6646,12 +6998,12 @@
     const width = toolbar.offsetWidth || toolbar.getBoundingClientRect().width || 320;
     // On narrow panes reserve the first row for the scene-tree control.
     const top = Math.max(defaultToolbarTop(), bounds.top + TOOLBAR_MARGIN) + (bounds.width < width + 64 ? 44 : 0);
-    const rightEdge = bounds.right;
-    const left = Math.max(bounds.left + TOOLBAR_MARGIN, Math.round(rightEdge - width - TOOLBAR_MARGIN));
     delete toolbar.dataset.dockCorner;
     toolbar.dataset.defaultPosition = '1';
-    toolbar.style.left = left + 'px';
-    toolbar.style.right = 'auto';
+    // Keep the default anchor in CSS so it follows the frame even before the
+    // observer runs. A pixel left offset lags behind a shrinking host pane.
+    toolbar.style.left = 'auto';
+    toolbar.style.right = Math.max(TOOLBAR_MARGIN, window.innerWidth - bounds.right + TOOLBAR_MARGIN) + 'px';
     toolbar.style.top = top + 'px';
     updateFloatingLayoutOffsets();
   }
@@ -6752,6 +7104,11 @@
     const content = toolbar.querySelector('[data-buret-toolbar-content]');
     if (content) {
       content.style.maxWidth = Math.max(0, availableWidth - TOOLBAR_MARGIN * 2 - 36) + 'px';
+      // A pane narrower than the toolbar wraps its buttons onto a second row
+      // instead of clipping them under the grip.
+      toolbar.classList.remove('buret-toolbar-wrapped');
+      toolbar.classList.toggle('buret-toolbar-wrapped', !toolbar.classList.contains('collapsed')
+        && content.scrollWidth > content.clientWidth + 1);
     }
   }
 
@@ -6862,7 +7219,39 @@
       Math.max(toolbarSafeTop(), window.innerHeight - viewportRailHeight - TOOLBAR_MARGIN)
     );
     root.style.setProperty('--buret-viewport-rail-top', viewportRailTop + 'px');
+    // The desktop menu belongs to the host, but only the iframe knows when
+    // Sequence or a wrapped toolbar has moved the controls below it.
+    if (hostComputeAnchorRequested && hostViewerVisible && !panelState.open) {
+      const top = Math.ceil(Math.max(
+        toolbarSafeTop(),
+        !toolbarRect || toolbarRect.top < window.innerHeight / 2 ? toolbarBottom : 0,
+        (selectionToolbarRect?.bottom ?? 0) + FLOATING_LAYOUT_GAP,
+      ));
+      const right = railRect && railHorizontal === 'right'
+        ? Math.ceil(window.innerWidth - viewportRailLeft + FLOATING_LAYOUT_GAP)
+        : TOOLBAR_MARGIN;
+      // Host chrome paints above the iframe, so it yields while a viewer menu is open.
+      const covered = Array.from(document.querySelectorAll('.buret-atlas-menu, .atlas-popover-surface')).some(isVisible);
+      const key = `${top}:${right}:${covered}`;
+      if (key !== lastHostComputeAnchor) {
+        lastHostComputeAnchor = key;
+        postHostMessage({ type: 'sceneComputeAnchor', top, right, covered });
+      }
+    }
     repositionDockingPoseControlsForLayout(mainRect);
+
+    const computeRect = visibleRect('[data-buret-action="generate-3d-conformer"]');
+    const posesRect = visibleRect('.buret-docking-poses');
+    let computeTop = viewportControlsTop;
+    if (computeRect && posesRect && rectsOverlapX(computeRect, posesRect, FLOATING_LAYOUT_GAP)
+      && computeTop < posesRect.bottom + FLOATING_LAYOUT_GAP
+      && computeTop + computeRect.height > posesRect.top - FLOATING_LAYOUT_GAP) {
+      const below = posesRect.bottom + FLOATING_LAYOUT_GAP;
+      computeTop = below + computeRect.height <= window.innerHeight - TOOLBAR_MARGIN
+        ? below : Math.max(TOOLBAR_MARGIN, posesRect.top - FLOATING_LAYOUT_GAP - computeRect.height);
+    }
+    root.style.setProperty('--buret-compute-control-top', `${Math.ceil(computeTop)}px`);
+    positionGenerate3DMenu();
 
     const bottomLimit = visibleRectTop('.msp-plugin .msp-layout-bottom') || window.innerHeight;
     const panelMaxHeight = Math.max(160, Math.floor(bottomLimit - viewportControlsViewportTop - FLOATING_LAYOUT_GAP));
@@ -6909,6 +7298,8 @@
     window.addEventListener('resize', scheduleFloatingLayoutRefresh);
     document.addEventListener('click', () => setTimeout(scheduleFloatingLayoutRefresh, 0), true);
     scheduleFloatingLayoutRefresh();
+    // Enable cosmetic feedback after initialization; geometry stays immediate.
+    setTimeout(() => document.documentElement.classList.add('buret-chrome-settled'), 800);
   }
 
   function scheduleFloatingLayoutRefresh() {
@@ -7248,8 +7639,18 @@
   function updateToolbarButtons() {
     const toolbar = document.getElementById('buret-toolbar');
     if (!toolbar) return;
-    toolbar.querySelector('[data-buret-toggle="left"]')?.classList.toggle('active', layoutState.left === 'full');
-    toolbar.querySelector('[data-buret-toggle="right"]')?.classList.toggle('active', layoutState.right === 'full');
+    for (const [side, icon] of [['left', 'SidebarLeft'], ['right', 'SidebarRight']]) {
+      const button = toolbar.querySelector(`[data-buret-toggle="${side}"]`);
+      if (!button) continue;
+      const open = layoutState[side] === 'full';
+      button.classList.toggle('active', open);
+      const slot = button.querySelector('[data-buret-mode-icon]');
+      const name = open ? icon : `${icon}Hidden`;
+      if (slot && slot.dataset.buretModeIcon !== name) {
+        slot.dataset.buretModeIcon = name;
+        slot.replaceChildren(sceneTreeIconElement(APP_ICON_DATA[name]));
+      }
+    }
     toolbar.querySelector('[data-buret-toggle="sequence"]')?.classList.toggle('active', layoutState.top === 'full');
     toolbar.querySelector('[data-buret-toggle="log"]')?.classList.toggle('active', layoutState.bottom === 'full');
   }
@@ -7270,7 +7671,7 @@
     Behavior: '#b07cc6'
   };
   // BEGIN GENERATED APPS SDK ICONS
-  /*! @openai/apps-sdk-ui@0.2.2; additional geometry: @hugeicons/core-free-icons@4.2.3 (MIT)
+  /*! @openai/apps-sdk-ui@0.2.2; additional geometry: Codex app icons (InterfaceAtlas snapshot)@26.1007 (OpenAI), Codex app icons (InterfaceAtlas snapshot)@26.1027 (OpenAI), lucide (InterfaceAtlas snapshot)@26.1007 (ISC)
 Copyright 2025 OpenAI
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -7292,7 +7693,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 // Generated by scripts/sync-app-icons.mjs. Source: config/icons/apps-sdk.json.
-  const APP_ICON_DATA = {"Annotate":[["path",{"d":"M3.5 9V7A3.5 3.5 0 0 1 7 3.5H9M15 3.5H17A3.5 3.5 0 0 1 20.5 7V9M3.5 15V17A3.5 3.5 0 0 0 7 20.5H9","stroke":"currentColor","strokeLinecap":"round","strokeLinejoin":"round","strokeWidth":"1.5"}],["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M12.2223 14.1998C11.789 12.9718 12.9717 11.7892 14.1997 12.2224L22.0006 14.9754C23.2684 15.4231 23.3907 17.1424 22.2537 17.783L22.1398 17.8417L19.3117 19.1617C19.2622 19.1847 19.2198 19.2204 19.1888 19.2646L19.1615 19.3118L17.8416 22.14C17.2547 23.3977 15.4374 23.3094 14.9753 22.0007L12.2223 14.1998ZM13.7874 13.3921C13.5418 13.3054 13.3053 13.5419 13.392 13.7875L16.1451 21.5878C16.2375 21.8494 16.6004 21.8671 16.7179 21.6156L18.0378 18.7875L18.1008 18.6664C18.2592 18.3925 18.4987 18.1726 18.7874 18.0379L21.6155 16.718C21.867 16.6006 21.8493 16.2377 21.5877 16.1452L13.7874 13.3921Z","fill":"currentColor","stroke":"none"}]],"SidebarFolder":[["path",{"d":"M8 7H16.75C18.8567 7 19.91 7 20.6667 7.50559C20.9943 7.72447 21.2755 8.00572 21.4944 8.33329C22 9.08996 22 10.1433 22 12.25C22 15.7612 22 17.5167 21.1573 18.7779C20.7926 19.3238 20.3238 19.7926 19.7779 20.1573C18.5167 21 16.7612 21 13.25 21H12C7.28595 21 4.92893 21 3.46447 19.5355C2 18.0711 2 15.714 2 11V7.94427C2 6.1278 2 5.21956 2.38032 4.53806C2.65142 4.05227 3.05227 3.65142 3.53806 3.38032C4.21956 3 5.1278 3 6.94427 3C8.10802 3 8.6899 3 9.19926 3.19101C10.3622 3.62712 10.8418 4.68358 11.3666 5.73313L12 7","stroke":"currentColor","strokeLinecap":"round","strokeWidth":"1.5"}]],"SidebarFolderOpen":[["path",{"d":"M2 19V7.54902C2 6.10516 2 5.38322 2.24332 4.81647C2.5467 4.10985 3.10985 3.5467 3.81647 3.24332C4.38322 3 5.09805 3 6.54902 3H7.04311C7.64819 3 8.22075 3.27394 8.60041 3.74509L10.4175 6M10.4175 6H16C17.4001 6 18.1002 6 18.635 6.27248C19.1054 6.51217 19.4878 6.89462 19.7275 7.36502C20 7.8998 20 8.59987 20 10V11M10.4175 6H7","stroke":"currentColor","strokeLinecap":"round","strokeLinejoin":"round","strokeWidth":"1.5"}],["path",{"d":"M3.15802 15.5144L3.45643 14.7717C4.19029 12.9449 4.55723 12.0316 5.3224 11.5158C6.08757 11 7.07557 11 9.05157 11H17.1119C19.8004 11 21.1446 11 21.7422 11.8787C22.3397 12.7575 21.8405 14.0002 20.842 16.4856L20.5436 17.2283C19.8097 19.0551 19.4428 19.9684 18.6776 20.4842C17.9124 21 16.9244 21 14.9484 21H6.88812C4.19961 21 2.85535 21 2.25782 20.1213C1.66029 19.2425 2.15953 17.9998 3.15802 15.5144Z","stroke":"currentColor","strokeLinejoin":"round","strokeWidth":"1.5"}]],"SidebarGlobe":[["circle",{"cx":"12","cy":"12","r":"10","stroke":"currentColor","strokeWidth":"1.5"}],["path",{"d":"M8 12C8 18 12 22 12 22C12 22 16 18 16 12C16 6 12 2 12 2C12 2 8 6 8 12Z","stroke":"currentColor","strokeLinejoin":"round","strokeWidth":"1.5"}],["path",{"d":"M21 15H3","stroke":"currentColor","strokeLinecap":"round","strokeLinejoin":"round","strokeWidth":"1.5"}],["path",{"d":"M21 9H3","stroke":"currentColor","strokeLinecap":"round","strokeLinejoin":"round","strokeWidth":"1.5"}]],"Agent":[["path",{"d":"M11 7.5C11 8.32843 10.3284 9 9.5 9C8.67157 9 8 8.32843 8 7.5C8 6.67157 8.67157 6 9.5 6C10.3284 6 11 6.67157 11 7.5Z","fill":"currentColor","stroke":"none"}],["path",{"d":"M14.5 9C15.3284 9 16 8.32843 16 7.5C16 6.67157 15.3284 6 14.5 6C13.6716 6 13 6.67157 13 7.5C13 8.32843 13.6716 9 14.5 9Z","fill":"currentColor","stroke":"none"}],["path",{"d":"M12 1C12.5523 1 13 1.44772 13 2V2.5L15.8708 2.5C16.3832 2.49998 16.8252 2.49997 17.1896 2.52892C17.574 2.55947 17.9568 2.62688 18.3269 2.80938C18.9192 3.10147 19.3985 3.58084 19.6906 4.17313C19.8731 4.54322 19.9405 4.92598 19.9711 5.31042C20 5.6748 20 6.1168 20 6.62913V6.70824C20 7.76163 20 8.61129 19.9453 9.29994C19.889 10.0088 19.77 10.6322 19.4844 11.2114C18.9976 12.1986 18.1986 12.9975 17.2114 13.4844C16.6322 13.77 16.0088 13.889 15.2999 13.9453C14.6113 14 13.7616 14 12.7082 14H11.2918C10.2384 14 9.38872 14 8.70006 13.9453C7.99117 13.889 7.36777 13.77 6.78856 13.4844C5.8014 12.9976 5.00246 12.1986 4.51564 11.2114C4.23001 10.6322 4.11104 10.0088 4.05471 9.29995C3.99999 8.61131 3.99999 7.76169 4 6.70834V6.62922C3.99998 6.11688 3.99997 5.67481 4.02893 5.31042C4.05948 4.92598 4.12688 4.54322 4.30938 4.17313C4.60147 3.58084 5.08084 3.10147 5.67313 2.80938C6.04322 2.62688 6.42598 2.55947 6.81042 2.52892C7.17482 2.49997 7.61685 2.49998 8.12922 2.5L11 2.5V2C11 1.44772 11.4477 1 12 1ZM6.96885 4.52264C6.7044 4.54365 6.60587 4.57938 6.55771 4.60313C6.36028 4.70049 6.20049 4.86028 6.10313 5.05771C6.07938 5.10587 6.04366 5.2044 6.02264 5.46885C6.00074 5.7445 6 6.10631 6 6.66667C6 7.77136 6.00074 8.54142 6.04843 9.14152C6.09522 9.73042 6.18251 10.0696 6.30939 10.3269C6.60148 10.9192 7.08084 11.3985 7.67314 11.6906C7.93042 11.8175 8.26959 11.9048 8.85849 11.9516C9.45858 11.9993 10.2286 12 11.3333 12H12.6667C13.7714 12 14.5414 11.9993 15.1415 11.9516C15.7304 11.9048 16.0696 11.8175 16.3269 11.6906C16.9192 11.3985 17.3985 10.9192 17.6906 10.3269C17.8175 10.0696 17.9048 9.73042 17.9516 9.14152C17.9993 8.54142 18 7.77136 18 6.66667C18 6.1063 17.9993 5.7445 17.9774 5.46885C17.9563 5.20439 17.9206 5.10587 17.8969 5.05771C17.7995 4.86028 17.6397 4.70049 17.4423 4.60313C17.3941 4.57938 17.2956 4.54365 17.0312 4.52264C16.7555 4.50074 16.3937 4.5 15.8333 4.5H8.16667C7.60631 4.5 7.2445 4.50074 6.96885 4.52264Z","fill":"currentColor","stroke":"none"}],["path",{"d":"M6 21C6 20.0261 6.55099 19.05 7.63152 18.2782C8.71012 17.5078 10.2515 17 12 17C13.7486 17 15.2899 17.5078 16.3685 18.2782C17.449 19.05 18 20.0261 18 21C18 21.5523 18.4477 22 19 22C19.5523 22 20 21.5523 20 21C20 19.2125 18.984 17.6886 17.531 16.6507C16.0761 15.6115 14.1174 15 12.0001 15C9.88267 15 7.92397 15.6115 6.46905 16.6507C5.01605 17.6886 4 19.2125 4 21C4 21.5523 4.44772 22 5 22C5.55229 22 6 21.5523 6 21Z","fill":"currentColor","stroke":"none"}]],"ArrowCurvedRight":[["path",{"d":"M5 6C5.55228 6 6 6.44772 6 7V11C6 11.5523 6.44772 12 7 12H16.5858L14.2929 9.70711C13.9024 9.31658 13.9024 8.68342 14.2929 8.29289C14.6834 7.90237 15.3166 7.90237 15.7071 8.29289L19.7071 12.2929C20.0976 12.6834 20.0976 13.3166 19.7071 13.7071L15.7071 17.7071C15.3166 18.0976 14.6834 18.0976 14.2929 17.7071C13.9024 17.3166 13.9024 16.6834 14.2929 16.2929L16.5858 14H7C5.34315 14 4 12.6569 4 11V7C4 6.44772 4.44772 6 5 6Z","fill":"currentColor","stroke":"none"}]],"ArrowLeft":[["path",{"fill-rule":"evenodd","d":"M5.293 12.707a1 1 0 0 1 0-1.414l5-5a1 1 0 1 1 1.414 1.414L8.414 11H18a1 1 0 1 1 0 2H8.414l3.293 3.293a1 1 0 0 1-1.414 1.414l-5-5Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"ArrowRight":[["path",{"fill-rule":"evenodd","d":"M18.707 12.707a1 1 0 0 0 0-1.414l-5-5a1 1 0 1 0-1.414 1.414L15.586 11H6a1 1 0 1 0 0 2h9.586l-3.293 3.293a1 1 0 0 0 1.414 1.414l5-5Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"ArrowRotateCcw":[["path",{"d":"M4.47192 2.5C5.02421 2.5 5.47192 2.94772 5.47192 3.5V5.07196C7.17065 3.47759 9.45675 2.5 11.9719 2.5C17.2186 2.5 21.4719 6.75329 21.4719 12C21.4719 17.2467 17.2186 21.5 11.9719 21.5C7.10262 21.5 3.0902 17.8375 2.53692 13.1164C2.47264 12.5679 2.8652 12.0711 3.41373 12.0068C3.96226 11.9425 4.45904 12.3351 4.52333 12.8836C4.95991 16.6089 8.12901 19.5 11.9719 19.5C16.1141 19.5 19.4719 16.1421 19.4719 12C19.4719 7.85786 16.1141 4.5 11.9719 4.5C9.75153 4.5 7.75552 5.46469 6.38146 7H9.00003C9.55232 7 10 7.44772 10 8C10 8.55228 9.55232 9 9.00003 9H4.47192C3.93256 9 3.49293 8.57299 3.47265 8.03859C3.47175 8.01771 3.47151 7.99677 3.47192 7.9758V3.5C3.47192 2.94772 3.91964 2.5 4.47192 2.5Z","fill":"currentColor","stroke":"none"}]],"ArrowRotateCw":[["path",{"d":"M2.55823 12C2.55823 6.75329 6.81152 2.5 12.0582 2.5C14.5734 2.5 16.8595 3.47759 18.5582 5.07197V3.5C18.5582 2.94772 19.0059 2.5 19.5582 2.5C20.1105 2.5 20.5582 2.94772 20.5582 3.5V7.97591C20.5586 7.99622 20.5584 8.01651 20.5576 8.03674C20.5382 8.572 20.0982 9 19.5582 9H15.0582C14.5059 9 14.0582 8.55228 14.0582 8C14.0582 7.44772 14.5059 7 15.0582 7H17.6487C16.2746 5.46469 14.2786 4.5 12.0582 4.5C7.91609 4.5 4.55823 7.85786 4.55823 12C4.55823 16.1421 7.91609 19.5 12.0582 19.5C15.9011 19.5 19.0702 16.6089 19.5068 12.8836C19.5711 12.3351 20.0679 11.9425 20.6164 12.0068C21.165 12.0711 21.5575 12.5679 21.4932 13.1164C20.94 17.8375 16.9275 21.5 12.0582 21.5C6.81152 21.5 2.55823 17.2467 2.55823 12Z","fill":"currentColor","stroke":"none"}]],"ArrowUp":[["path",{"fill-rule":"evenodd","d":"M11.293 5.293a1 1 0 0 1 1.414 0l5 5a1 1 0 0 1-1.414 1.414L13 8.414V18a1 1 0 1 1-2 0V8.414l-3.293 3.293a1 1 0 0 1-1.414-1.414l5-5Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"Atom":[["path",{"d":"M6.286 4.75c.602-.004 1.374.158 2.28.52.53.213 1.09.487 1.667.82a25.428 25.428 0 0 0-2.19 1.954 25.428 25.428 0 0 0-1.953 2.19 13.144 13.144 0 0 1-.82-1.669c-.362-.905-.524-1.677-.52-2.279.004-.596.167-.95.376-1.16.21-.21.564-.372 1.16-.376ZM12 4.825a16.157 16.157 0 0 0-2.692-1.411c-1.055-.422-2.092-.67-3.035-.664-.95.006-1.873.274-2.561.962s-.956 1.612-.962 2.56c-.006.944.242 1.981.664 3.036.346.865.821 1.773 1.41 2.692a16.234 16.234 0 0 0-1.41 2.692c-.422 1.055-.67 2.092-.664 3.035.006.95.274 1.873.962 2.561s1.612.956 2.56.962c.944.006 1.981-.242 3.036-.664A16.152 16.152 0 0 0 12 19.176c.92.589 1.827 1.065 2.692 1.41 1.055.422 2.092.67 3.035.664.95-.006 1.873-.274 2.561-.962s.956-1.612.962-2.56c.006-.944-.242-1.981-.664-3.036A16.152 16.152 0 0 0 19.176 12a16.158 16.158 0 0 0 1.41-2.692c.422-1.055.67-2.092.664-3.035-.006-.95-.274-1.873-.962-2.561s-1.612-.956-2.56-.962c-.944-.006-1.981.242-3.036.664-.865.346-1.773.821-2.692 1.41Zm0 2.43a23.013 23.013 0 0 1 2.542 2.203A23.014 23.014 0 0 1 16.745 12a23.015 23.015 0 0 1-2.203 2.542A23.015 23.015 0 0 1 12 16.745a23.014 23.014 0 0 1-2.542-2.203A23.013 23.013 0 0 1 7.255 12a23.012 23.012 0 0 1 2.203-2.542A23.012 23.012 0 0 1 12 7.255Zm5.91 2.978a25.42 25.42 0 0 0-1.954-2.19 25.432 25.432 0 0 0-2.19-1.953 13.142 13.142 0 0 1 1.669-.82c.905-.362 1.677-.524 2.279-.52.596.004.95.167 1.16.376.21.21.372.564.376 1.16.004.602-.159 1.374-.52 2.28a13.23 13.23 0 0 1-.82 1.667Zm0 3.534c.333.577.607 1.137.82 1.668.361.905.524 1.677.52 2.279-.004.596-.167.95-.376 1.16-.21.21-.564.372-1.16.376-.602.004-1.374-.159-2.28-.52a13.23 13.23 0 0 1-1.667-.82 25.424 25.424 0 0 0 2.19-1.954 25.424 25.424 0 0 0 1.953-2.19Zm-7.677 4.143c-.577.333-1.137.607-1.668.82-.905.361-1.677.524-2.279.52-.596-.004-.95-.167-1.16-.376-.21-.21-.372-.564-.376-1.16-.004-.602.158-1.374.52-2.28.213-.53.487-1.09.82-1.667.587.74 1.24 1.476 1.954 2.19a25.418 25.418 0 0 0 2.19 1.953Z","fill":"currentColor","stroke":"none"}]],"BarChart":[["path",{"d":"M11.33 5H12.66C13.2123 5 13.66 5.44771 13.66 6V19H10.33V6C10.33 5.44772 10.7777 5 11.33 5ZM15.66 19V9H18C18.5523 9 19 9.44772 19 10V18C19 18.5523 18.5523 19 18 19H15.66ZM15.66 7V6C15.66 4.34315 14.3169 3 12.66 3H11.33C9.67315 3 8.33 4.34315 8.33 6V11H6C4.34314 11 3 12.3431 3 14V18C3 19.6569 4.34315 21 6 21H18C19.6569 21 21 19.6569 21 18V10C21 8.34315 19.6569 7 18 7H15.66ZM8.33 13V19H6C5.44772 19 5 18.5523 5 18V14C5 13.4477 5.44771 13 6 13H8.33Z","fill":"currentColor","stroke":"none"}]],"Camera":[["path",{"fill-rule":"evenodd","d":"M12 4a3 3 0 0 0-2.6 1.5 1 1 0 0 1-.865.5H5a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-3.535a1 1 0 0 1-.866-.5A2.998 2.998 0 0 0 12 4ZM8 4a4.993 4.993 0 0 1 4-2 4.99 4.99 0 0 1 4 2h3a3 3 0 0 1 3 3v11a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3h3Zm4 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm-4 2a4 4 0 1 1 8 0 4 4 0 0 1-8 0Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"CameraPhoto":[["path",{"d":"M12 4C10.8908 4 9.92091 4.60141 9.40069 5.50073C9.22194 5.80972 8.89205 6 8.53508 6H7.8C6.94342 6 6.36113 6.00078 5.91104 6.03755C5.47262 6.07337 5.24842 6.1383 5.09202 6.21799C4.7157 6.40973 4.40973 6.71569 4.21799 7.09202C4.1383 7.24842 4.07337 7.47262 4.03755 7.91104C4.00078 8.36113 4 8.94342 4 9.8V15.2C4 16.0566 4.00078 16.6389 4.03755 17.089C4.07337 17.5274 4.1383 17.7516 4.21799 17.908C4.40973 18.2843 4.7157 18.5903 5.09202 18.782C5.24842 18.8617 5.47262 18.9266 5.91104 18.9624C6.36113 18.9992 6.94342 19 7.8 19H16.2C17.0566 19 17.6389 18.9992 18.089 18.9624C18.5274 18.9266 18.7516 18.8617 18.908 18.782C19.2843 18.5903 19.5903 18.2843 19.782 17.908C19.8617 17.7516 19.9266 17.5274 19.9624 17.089C19.9992 16.6389 20 16.0566 20 15.2V9.8C20 8.94342 19.9992 8.36113 19.9624 7.91104C19.9266 7.47262 19.8617 7.24842 19.782 7.09202C19.5903 6.71569 19.2843 6.40973 18.908 6.21799C18.7516 6.1383 18.5274 6.07337 18.089 6.03755C17.6389 6.00078 17.0566 6 16.2 6H15.4648C15.1079 6 14.778 5.80972 14.5992 5.50073C14.079 4.60141 13.1091 4 12 4ZM7.99973 4C8.91084 2.78702 10.363 2 12 2C13.6369 2 15.0891 2.78702 16.0002 4L16.2413 4C17.0463 3.99999 17.7106 3.99998 18.2518 4.04419C18.8139 4.09012 19.3306 4.18868 19.816 4.43597C20.5686 4.81947 21.1805 5.43139 21.564 6.18404C21.8113 6.66937 21.9099 7.18608 21.9558 7.74817C22 8.28936 22 8.95372 22 9.75868V15.2413C22 16.0463 22 16.7106 21.9558 17.2518C21.9099 17.8139 21.8113 18.3306 21.564 18.816C21.1805 19.5686 20.5686 20.1805 19.816 20.564C19.3306 20.8113 18.8139 20.9099 18.2518 20.9558C17.7106 21 17.0463 21 16.2413 21H7.75868C6.95372 21 6.28936 21 5.74817 20.9558C5.18608 20.9099 4.66937 20.8113 4.18404 20.564C3.43139 20.1805 2.81947 19.5686 2.43597 18.816C2.18868 18.3306 2.09012 17.8139 2.04419 17.2518C1.99998 16.7106 1.99999 16.0463 2 15.2413V9.7587C1.99999 8.95373 1.99998 8.28937 2.04419 7.74817C2.09012 7.18608 2.18868 6.66937 2.43597 6.18404C2.81947 5.43139 3.43139 4.81947 4.18404 4.43597C4.66937 4.18868 5.18608 4.09012 5.74817 4.04419C6.28937 3.99998 6.95373 3.99999 7.7587 4L7.99973 4ZM12 10C10.7573 10 9.74995 11.0074 9.74995 12.25C9.74995 13.4926 10.7573 14.5 12 14.5C13.2426 14.5 14.25 13.4926 14.25 12.25C14.25 11.0074 13.2426 10 12 10ZM7.74995 12.25C7.74995 9.90279 9.65274 8 12 8C14.3472 8 16.25 9.90279 16.25 12.25C16.25 14.5972 14.3472 16.5 12 16.5C9.65274 16.5 7.74995 14.5972 7.74995 12.25Z","fill":"currentColor","stroke":"none"}]],"Chart":[["path",{"d":"M11.33 5h1.33a1 1 0 0 1 1 1v13h-3.33V6a1 1 0 0 1 1-1Zm4.33 14V9H18a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1h-2.34Zm0-12V6a3 3 0 0 0-3-3h-1.33a3 3 0 0 0-3 3v5H6a3 3 0 0 0-3 3v4a3 3 0 0 0 3 3h12a3 3 0 0 0 3-3v-8a3 3 0 0 0-3-3h-2.34Zm-7.33 6v6H6a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h2.33Z","fill":"currentColor","stroke":"none"}]],"Check":[["path",{"fill-rule":"evenodd","d":"M18.063 5.674a1 1 0 0 1 .263 1.39l-7.5 11a1 1 0 0 1-1.533.143l-4.5-4.5a1 1 0 1 1 1.414-1.414l3.647 3.647 6.82-10.003a1 1 0 0 1 1.39-.263Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"CheckCircle":[["path",{"d":"M12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20C16.4183 20 20 16.4183 20 12C20 7.58172 16.4183 4 12 4ZM2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12ZM16.0755 7.93219C16.5272 8.25003 16.6356 8.87383 16.3178 9.32549L11.5678 16.0755C11.3931 16.3237 11.1152 16.4792 10.8123 16.4981C10.5093 16.517 10.2142 16.3973 10.0101 16.1727L7.51006 13.4227C7.13855 13.014 7.16867 12.3816 7.57733 12.0101C7.98598 11.6386 8.61843 11.6687 8.98994 12.0773L10.6504 13.9039L14.6822 8.17451C15 7.72284 15.6238 7.61436 16.0755 7.93219Z","fill":"currentColor","stroke":"none"}]],"ChevronDown":[["path",{"fill-rule":"evenodd","d":"M4.293 8.293a1 1 0 0 1 1.414 0L12 14.586l6.293-6.293a1 1 0 1 1 1.414 1.414l-7 7a1 1 0 0 1-1.414 0l-7-7a1 1 0 0 1 0-1.414Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"ChevronRight":[["path",{"fill-rule":"evenodd","d":"M8.293 4.293a1 1 0 0 1 1.414 0l7 7a1 1 0 0 1 0 1.414l-7 7a1 1 0 0 1-1.414-1.414L14.586 12 8.293 5.707a1 1 0 0 1 0-1.414Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"ChevronUp":[["path",{"fill-rule":"evenodd","d":"M12 8a1 1 0 0 1 .707.293l7 7a1 1 0 0 1-1.414 1.414L12 10.414l-6.293 6.293a1 1 0 0 1-1.414-1.414l7-7A1 1 0 0 1 12 8Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"ChevronUpDown":[["path",{"d":"M11.3415 4.74742C11.7185 4.41753 12.2815 4.41753 12.6585 4.74742L16.6585 8.24742C17.0741 8.61111 17.1162 9.24287 16.7526 9.6585C16.3889 10.0741 15.7571 10.1163 15.3415 9.75258L12 6.82877L8.65849 9.75258C8.24285 10.1163 7.61109 10.0741 7.24741 9.6585C6.88373 9.24287 6.92584 8.61111 7.34148 8.24742L11.3415 4.74742ZM7.24603 14.3578C7.60885 13.9414 8.24052 13.8979 8.65692 14.2608L12 17.1737L15.3431 14.2608C15.7594 13.8979 16.3911 13.9414 16.7539 14.3578C17.1167 14.7742 17.0733 15.4058 16.6569 15.7687L12.6569 19.2539C12.2804 19.582 11.7196 19.582 11.3431 19.2539L7.34305 15.7687C6.92666 15.4058 6.88322 14.7742 7.24603 14.3578Z","fill":"currentColor","stroke":"none"}]],"Circle":[["rect",{"width":"24","height":"24","rx":"12","fill":"currentColor","stroke":"none"}]],"Clip":[["path",{"fill-rule":"evenodd","d":"M9 7a5 5 0 0 1 10 0v8a7 7 0 1 1-14 0V9a1 1 0 0 1 2 0v6a5 5 0 0 0 10 0V7a3 3 0 1 0-6 0v8a1 1 0 1 0 2 0V9a1 1 0 1 1 2 0v6a3 3 0 1 1-6 0V7Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"Clipboard":[["path",{"fill-rule":"evenodd","d":"M12 4a2 2 0 0 0-2 2h4a2 2 0 0 0-2-2ZM8.535 4A3.998 3.998 0 0 1 12 2c1.48 0 2.773.804 3.465 2H17a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3h1.535ZM8 6H7a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-1a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"Collapse":[["path",{"d":"M12.659 9.753a1 1 0 0 1-1.318 0l-4-3.5A1 1 0 1 1 8.66 4.747L12 7.671l3.341-2.924a1 1 0 1 1 1.318 1.506l-4 3.5Zm-4.002 9.501a1 1 0 1 1-1.314-1.508l4-3.485a1 1 0 0 1 1.314 0l4 3.485a1 1 0 1 1-1.314 1.508L12 16.34l-3.343 2.913Z","fill":"currentColor","stroke":"none"}]],"ColorTheme":[["path",{"d":"M8.25 13.25C9.07843 13.25 9.75 13.9216 9.75 14.75C9.75 15.5784 9.07843 16.25 8.25 16.25C7.42157 16.25 6.75 15.5784 6.75 14.75C6.75 13.9216 7.42157 13.25 8.25 13.25Z","fill":"currentColor","stroke":"none"}],["path",{"d":"M7.5 8.5C8.32843 8.5 9 9.17157 9 10C9 10.8284 8.32843 11.5 7.5 11.5C6.67157 11.5 6 10.8284 6 10C6 9.17157 6.67157 8.5 7.5 8.5Z","fill":"currentColor","stroke":"none"}],["path",{"d":"M15.75 7.25C16.5784 7.25 17.25 7.92157 17.25 8.75C17.25 9.57843 16.5784 10.25 15.75 10.25C14.9216 10.25 14.25 9.57843 14.25 8.75C14.25 7.92157 14.9216 7.25 15.75 7.25Z","fill":"currentColor","stroke":"none"}],["path",{"d":"M11.25 5.5C12.0784 5.5 12.75 6.17157 12.75 7C12.75 7.82843 12.0784 8.5 11.25 8.5C10.4216 8.5 9.75 7.82843 9.75 7C9.75 6.17157 10.4216 5.5 11.25 5.5Z","fill":"currentColor","stroke":"none"}],["path",{"d":"M12 2C17.5228 2 22 6.47715 22 12C22 14.03 20.3542 15.6758 18.3242 15.6758H14.3672C14.0151 15.6758 13.7295 15.9614 13.7295 16.3135C13.7295 16.4527 13.7751 16.5884 13.8594 16.6992L14.7617 17.8857C15.0515 18.267 15.2089 18.733 15.209 19.2119C15.209 20.7515 13.9605 22 12.4209 22H12C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2ZM12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20H12.4209C12.8559 20 13.209 19.6469 13.209 19.2119C13.2089 19.1703 13.195 19.1299 13.1699 19.0967L12.2676 17.9092C11.9188 17.4503 11.7295 16.8898 11.7295 16.3135C11.7295 14.8568 12.9106 13.6758 14.3672 13.6758H18.3242C19.2497 13.6758 20 12.9255 20 12C20 7.58172 16.4183 4 12 4Z","fill":"currentColor","stroke":"none"}]],"Compare":[["path",{"d":"M9.29297 3.29297C9.68349 2.90244 10.3165 2.90244 10.707 3.29297L12.707 5.29297C13.0731 5.65908 13.0957 6.23809 12.7754 6.63086L12.707 6.70703L10.707 8.70703L10.6309 8.77539C10.2381 9.09574 9.65908 9.07315 9.29297 8.70703C8.92685 8.34092 8.90426 7.76191 9.22461 7.36914L9.29297 7.29297L9.58594 7H7.5C6.94772 7 6.5 7.44772 6.5 8V14.9072C7.80556 15.329 8.75 16.554 8.75 18C8.75 19.7949 7.29493 21.25 5.5 21.25C3.70507 21.25 2.25 19.7949 2.25 18C2.25 16.554 3.19444 15.329 4.5 14.9072V8C4.5 6.34315 5.84315 5 7.5 5H9.58594L9.29297 4.70703C8.90244 4.31651 8.90244 3.68349 9.29297 3.29297ZM5.5 16.75C4.80964 16.75 4.25 17.3096 4.25 18C4.25 18.6904 4.80964 19.25 5.5 19.25C6.19036 19.25 6.75 18.6904 6.75 18C6.75 17.3096 6.19036 16.75 5.5 16.75Z","fill":"currentColor","stroke":"none"}],["path",{"d":"M18.5 2.75C20.2949 2.75 21.75 4.20507 21.75 6C21.75 7.44586 20.8054 8.66989 19.5 9.0918V16C19.5 17.6568 18.1568 19 16.5 19H14.4141L14.707 19.293C15.0976 19.6835 15.0976 20.3165 14.707 20.707C14.3165 21.0976 13.6835 21.0976 13.293 20.707L11.293 18.707C10.9269 18.3409 10.9043 17.7619 11.2246 17.3691L11.293 17.293L13.293 15.293L13.3691 15.2246C13.7619 14.9043 14.3409 14.9269 14.707 15.293C15.0731 15.6591 15.0957 16.2381 14.7754 16.6309L14.707 16.707L14.4141 17H16.5C17.0523 17 17.5 16.5523 17.5 16V9.0918C16.1946 8.66989 15.25 7.44586 15.25 6C15.25 4.20507 16.7051 2.75 18.5 2.75ZM18.5 4.75C17.8096 4.75 17.25 5.30964 17.25 6C17.25 6.69036 17.8096 7.25 18.5 7.25C19.1904 7.25 19.75 6.69036 19.75 6C19.75 5.30964 19.1904 4.75 18.5 4.75Z","fill":"currentColor","stroke":"none"}]],"CompareArrows":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M5.70243 1.16073C6.02787 0.835297 6.55551 0.835297 6.88094 1.16073L9.79761 4.0774C10.123 4.40284 10.123 4.93048 9.79761 5.25591L6.88094 8.17258C6.55551 8.49802 6.02787 8.49802 5.70243 8.17258C5.37699 7.84714 5.37699 7.3195 5.70243 6.99407L7.19651 5.49999H1.50002C1.03978 5.49999 0.666687 5.12689 0.666687 4.66666C0.666687 4.20642 1.03978 3.83332 1.50002 3.83332H7.19651L5.70243 2.33925C5.37699 2.01381 5.37699 1.48617 5.70243 1.16073Z","fill":"currentColor","stroke":"none"}],["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M12.2976 14.8392C11.9722 15.1647 11.4445 15.1647 11.1191 14.8392L8.20243 11.9226C7.87699 11.5971 7.87699 11.0695 8.20243 10.7441L11.1191 7.8274C11.4445 7.50196 11.9722 7.50196 12.2976 7.8274C12.623 8.15284 12.623 8.68048 12.2976 9.00591L10.8035 10.5H16.5C16.9603 10.5 17.3334 10.8731 17.3334 11.3333C17.3334 11.7936 16.9603 12.1667 16.5 12.1667H10.8035L12.2976 13.6607C12.623 13.9862 12.623 14.5138 12.2976 14.8392Z","fill":"currentColor","stroke":"none"}]],"Copy":[["path",{"d":"M12.7587 2H16.2413C17.0463 1.99999 17.7106 1.99998 18.2518 2.04419C18.8139 2.09012 19.3306 2.18868 19.816 2.43597C20.5686 2.81947 21.1805 3.43139 21.564 4.18404C21.8113 4.66937 21.9099 5.18608 21.9558 5.74817C22 6.28936 22 6.95372 22 7.75868V11.2413C22 12.0463 22 12.7106 21.9558 13.2518C21.9099 13.8139 21.8113 14.3306 21.564 14.816C21.1805 15.5686 20.5686 16.1805 19.816 16.564C19.3306 16.8113 18.8139 16.9099 18.2518 16.9558C17.8906 16.9853 17.4745 16.9951 16.9984 16.9984C16.9951 17.4745 16.9853 17.8906 16.9558 18.2518C16.9099 18.8139 16.8113 19.3306 16.564 19.816C16.1805 20.5686 15.5686 21.1805 14.816 21.564C14.3306 21.8113 13.8139 21.9099 13.2518 21.9558C12.7106 22 12.0463 22 11.2413 22H7.75868C6.95372 22 6.28936 22 5.74818 21.9558C5.18608 21.9099 4.66937 21.8113 4.18404 21.564C3.43139 21.1805 2.81947 20.5686 2.43597 19.816C2.18868 19.3306 2.09012 18.8139 2.04419 18.2518C1.99998 17.7106 1.99999 17.0463 2 16.2413V12.7587C1.99999 11.9537 1.99998 11.2894 2.04419 10.7482C2.09012 10.1861 2.18868 9.66937 2.43597 9.18404C2.81947 8.43139 3.43139 7.81947 4.18404 7.43598C4.66937 7.18868 5.18608 7.09012 5.74817 7.04419C6.10939 7.01468 6.52548 7.00487 7.00162 7.00162C7.00487 6.52548 7.01468 6.10939 7.04419 5.74817C7.09012 5.18608 7.18868 4.66937 7.43598 4.18404C7.81947 3.43139 8.43139 2.81947 9.18404 2.43597C9.66937 2.18868 10.1861 2.09012 10.7482 2.04419C11.2894 1.99998 11.9537 1.99999 12.7587 2ZM9.00176 7L11.2413 7C12.0463 6.99999 12.7106 6.99998 13.2518 7.04419C13.8139 7.09012 14.3306 7.18868 14.816 7.43598C15.5686 7.81947 16.1805 8.43139 16.564 9.18404C16.8113 9.66937 16.9099 10.1861 16.9558 10.7482C17 11.2894 17 11.9537 17 12.7587V14.9982C17.4455 14.9951 17.7954 14.9864 18.089 14.9624C18.5274 14.9266 18.7516 14.8617 18.908 14.782C19.2843 14.5903 19.5903 14.2843 19.782 13.908C19.8617 13.7516 19.9266 13.5274 19.9624 13.089C19.9992 12.6389 20 12.0566 20 11.2V7.8C20 6.94342 19.9992 6.36113 19.9624 5.91104C19.9266 5.47262 19.8617 5.24842 19.782 5.09202C19.5903 4.7157 19.2843 4.40973 18.908 4.21799C18.7516 4.1383 18.5274 4.07337 18.089 4.03755C17.6389 4.00078 17.0566 4 16.2 4H12.8C11.9434 4 11.3611 4.00078 10.911 4.03755C10.4726 4.07337 10.2484 4.1383 10.092 4.21799C9.7157 4.40973 9.40973 4.7157 9.21799 5.09202C9.1383 5.24842 9.07337 5.47262 9.03755 5.91104C9.01357 6.20463 9.00489 6.55447 9.00176 7ZM5.91104 9.03755C5.47262 9.07337 5.24842 9.1383 5.09202 9.21799C4.7157 9.40973 4.40973 9.7157 4.21799 10.092C4.1383 10.2484 4.07337 10.4726 4.03755 10.911C4.00078 11.3611 4 11.9434 4 12.8V16.2C4 17.0566 4.00078 17.6389 4.03755 18.089C4.07337 18.5274 4.1383 18.7516 4.21799 18.908C4.40973 19.2843 4.7157 19.5903 5.09202 19.782C5.24842 19.8617 5.47262 19.9266 5.91104 19.9624C6.36113 19.9992 6.94342 20 7.8 20H11.2C12.0566 20 12.6389 19.9992 13.089 19.9624C13.5274 19.9266 13.7516 19.8617 13.908 19.782C14.2843 19.5903 14.5903 19.2843 14.782 18.908C14.8617 18.7516 14.9266 18.5274 14.9624 18.089C14.9992 17.6389 15 17.0566 15 16.2V12.8C15 11.9434 14.9992 11.3611 14.9624 10.911C14.9266 10.4726 14.8617 10.2484 14.782 10.092C14.5903 9.7157 14.2843 9.40973 13.908 9.21799C13.7516 9.1383 13.5274 9.07337 13.089 9.03755C12.6389 9.00078 12.0566 9 11.2 9H7.8C6.94342 9 6.36113 9.00078 5.91104 9.03755Z","fill":"currentColor","stroke":"none"}]],"Cube":[["path",{"fill-rule":"evenodd","d":"M12.5 3.444a1 1 0 0 0-1 0l-6.253 3.61 6.768 3.807 6.955-3.682-6.47-3.735Zm7.16 5.632L13 12.602v7.666l6.16-3.556a1 1 0 0 0 .5-.867V9.076ZM11 20.268v-7.683L4.34 8.839v7.006a1 1 0 0 0 .5.867L11 20.268Zm-.5-18.557a3 3 0 0 1 3 0l6.66 3.846a3 3 0 0 1 1.5 2.598v7.69a3 3 0 0 1-1.5 2.598L13.5 22.29a3 3 0 0 1-3 0l-6.66-3.846a3 3 0 0 1-1.5-2.598v-7.69a3 3 0 0 1 1.5-2.598L10.5 1.71Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"Delete":[["path",{"fill-rule":"evenodd","d":"M10.556 4a1 1 0 0 0-.97.751l-.292 1.14h5.421l-.293-1.14A1 1 0 0 0 13.453 4h-2.897Zm6.224 1.892-.421-1.639A3 3 0 0 0 13.453 2h-2.897A3 3 0 0 0 7.65 4.253l-.421 1.639H4a1 1 0 1 0 0 2h.1l1.215 11.425A3 3 0 0 0 8.3 22h7.4a3 3 0 0 0 2.984-2.683l1.214-11.425H20a1 1 0 1 0 0-2h-3.22Zm1.108 2H6.112l1.192 11.214A1 1 0 0 0 8.3 20h7.4a1 1 0 0 0 .995-.894l1.192-11.214ZM10 10a1 1 0 0 1 1 1v5a1 1 0 1 1-2 0v-5a1 1 0 0 1 1-1Zm4 0a1 1 0 0 1 1 1v5a1 1 0 1 1-2 0v-5a1 1 0 0 1 1-1Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"DotsHorizontal":[["path",{"d":"M3 12a2 2 0 1 1 4 0 2 2 0 0 1-4 0Zm7 0a2 2 0 1 1 4 0 2 2 0 0 1-4 0Zm7 0a2 2 0 1 1 4 0 2 2 0 0 1-4 0Z","fill":"currentColor","stroke":"none"}]],"Download":[["path",{"d":"M12 3C12.5523 3 13 3.44772 13 4V12.5858L15.2929 10.2929C15.6834 9.90237 16.3166 9.90237 16.7071 10.2929C17.0976 10.6834 17.0976 11.3166 16.7071 11.7071L12.7071 15.7071C12.3166 16.0976 11.6834 16.0976 11.2929 15.7071L7.29289 11.7071C6.90237 11.3166 6.90237 10.6834 7.29289 10.2929C7.68342 9.90237 8.31658 9.90237 8.70711 10.2929L11 12.5858V4C11 3.44772 11.4477 3 12 3ZM4 14C4.55229 14 5 14.4477 5 15V15.2C5 16.0566 5.00078 16.6389 5.03755 17.089C5.07337 17.5274 5.1383 17.7516 5.21799 17.908C5.40973 18.2843 5.7157 18.5903 6.09202 18.782C6.24842 18.8617 6.47262 18.9266 6.91104 18.9624C7.36113 18.9992 7.94342 19 8.8 19H15.2C16.0566 19 16.6389 18.9992 17.089 18.9624C17.5274 18.9266 17.7516 18.8617 17.908 18.782C18.2843 18.5903 18.5903 18.2843 18.782 17.908C18.8617 17.7516 18.9266 17.5274 18.9624 17.089C18.9992 16.6389 19 16.0566 19 15.2V15C19 14.4477 19.4477 14 20 14C20.5523 14 21 14.4477 21 15V15.2413C21 16.0463 21 16.7106 20.9558 17.2518C20.9099 17.8139 20.8113 18.3306 20.564 18.816C20.1805 19.5686 19.5686 20.1805 18.816 20.564C18.3306 20.8113 17.8139 20.9099 17.2518 20.9558C16.7106 21 16.0463 21 15.2413 21H8.75868C7.95372 21 7.28936 21 6.74817 20.9558C6.18608 20.9099 5.66937 20.8113 5.18404 20.564C4.43139 20.1805 3.81947 19.5686 3.43597 18.816C3.18868 18.3306 3.09012 17.8139 3.04419 17.2518C2.99998 16.7106 2.99999 16.0463 3 15.2413L3 15C3 14.4477 3.44772 14 4 14Z","fill":"currentColor","stroke":"none"}]],"Email":[["path",{"d":"M6.95984 4.00006H17.0402C17.706 4.00005 18.2656 4.00003 18.7234 4.03744C19.2022 4.07656 19.6571 4.1615 20.089 4.38154C20.7475 4.7171 21.283 5.25253 21.6185 5.9111C21.8386 6.34295 21.9235 6.79791 21.9626 7.27664C22 7.7345 22 8.29402 22 8.95988V15.0402C22 15.7061 22 16.2656 21.9626 16.7235C21.9235 17.2022 21.8386 17.6572 21.6185 18.089C21.283 18.7476 20.7475 19.283 20.089 19.6186C19.6571 19.8386 19.2021 19.9236 18.7234 19.9627C18.2656 20.0001 17.706 20.0001 17.0402 20.0001H6.95982C6.29396 20.0001 5.73444 20.0001 5.27657 19.9627C4.79785 19.9236 4.34289 19.8386 3.91103 19.6186C3.25247 19.283 2.71704 18.7476 2.38148 18.089C2.16144 17.6572 2.0765 17.2022 2.03738 16.7235C1.99997 16.2656 1.99999 15.7061 2 15.0402V8.9599C1.99999 8.29403 1.99997 7.73451 2.03738 7.27664C2.0765 6.79791 2.16144 6.34295 2.38148 5.9111C2.71704 5.25253 3.25247 4.7171 3.91103 4.38154C4.34289 4.1615 4.79785 4.07656 5.27657 4.03744C5.73445 4.00003 6.29397 4.00005 6.95984 4.00006ZM5.43944 6.0308C5.0844 6.05981 4.92194 6.11111 4.81902 6.16355C4.53677 6.30736 4.3073 6.53683 4.16349 6.81908C4.12649 6.89169 4.09006 6.99394 4.06163 7.17255C4.06673 7.17601 4.07181 7.17953 4.07686 7.18309L11.4235 12.369C11.7692 12.613 12.2311 12.613 12.5769 12.369L19.9235 7.18309C19.9284 7.1796 19.9334 7.17616 19.9384 7.17277C19.91 6.99402 19.8735 6.89172 19.8365 6.81908C19.6927 6.53683 19.4632 6.30736 19.181 6.16355C19.0781 6.11111 18.9156 6.05981 18.5606 6.0308C18.1939 6.00084 17.7166 6.00006 17 6.00006H7C6.28344 6.00006 5.80615 6.00084 5.43944 6.0308ZM20 9.57717L13.7302 14.0029C12.693 14.735 11.3073 14.735 10.2701 14.0029L4 9.57692V15.0001C4 15.7166 4.00078 16.1939 4.03074 16.5606C4.05975 16.9157 4.11105 17.0781 4.16349 17.181C4.3073 17.4633 4.53677 17.6928 4.81902 17.8366C4.92194 17.889 5.0844 17.9403 5.43944 17.9693C5.80615 17.9993 6.28343 18.0001 7 18.0001H17C17.7166 18.0001 18.1939 17.9993 18.5606 17.9693C18.9156 17.9403 19.0781 17.889 19.181 17.8366C19.4632 17.6928 19.6927 17.4633 19.8365 17.181C19.889 17.0781 19.9403 16.9157 19.9693 16.5606C19.9992 16.1939 20 15.7166 20 15.0001V9.57717Z","fill":"currentColor","stroke":"none"}]],"Expand":[["path",{"fill-rule":"evenodd","d":"M12 7a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v4a1 1 0 1 1-2 0V8h-3a1 1 0 0 1-1-1Zm-5 5a1 1 0 0 1 1 1v3h3a1 1 0 1 1 0 2H7a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"ExternalLink":[["path",{"fill-rule":"evenodd","d":"M15 5a1 1 0 1 1 0-2h5a1 1 0 0 1 1 1v5a1 1 0 1 1-2 0V6.414l-5.293 5.293a1 1 0 0 1-1.414-1.414L17.586 5H15ZM4 7a3 3 0 0 1 3-3h3a1 1 0 1 1 0 2H7a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3a1 1 0 1 1 2 0v3a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"Eye":[["path",{"d":"M5.91456 7.59106C4.34202 9.04124 3.28878 10.7415 2.77064 11.6971C2.66597 11.8902 2.66597 12.1098 2.77064 12.3029C3.28878 13.2585 4.34202 14.9588 5.91456 16.4089C7.48207 17.8545 9.50584 19 12.0001 19C14.4944 19 16.5182 17.8545 18.0857 16.4089C19.6582 14.9588 20.7114 13.2585 21.2296 12.3029C21.3343 12.1098 21.3343 11.8902 21.2296 11.6971C20.7114 10.7415 19.6582 9.04124 18.0857 7.59105C16.5182 6.1455 14.4944 5 12.0001 5C9.50584 5 7.48207 6.1455 5.91456 7.59106ZM4.5587 6.1208C6.36071 4.45899 8.84593 3 12.0001 3C15.1543 3 17.6395 4.45899 19.4415 6.1208C21.2385 7.77798 22.4153 9.68799 22.9878 10.7438C23.4149 11.5315 23.4149 12.4685 22.9878 13.2562C22.4153 14.312 21.2385 16.222 19.4415 17.8792C17.6395 19.541 15.1543 21 12.0001 21C8.84593 21 6.36071 19.541 4.5587 17.8792C2.76171 16.222 1.5849 14.312 1.01244 13.2562C0.585372 12.4685 0.585371 11.5315 1.01244 10.7438C1.5849 9.688 2.76171 7.77798 4.5587 6.1208ZM12.0001 9.5C10.6194 9.5 9.50011 10.6193 9.50011 12C9.50011 13.3807 10.6194 14.5 12.0001 14.5C13.3808 14.5 14.5001 13.3807 14.5001 12C14.5001 10.6193 13.3808 9.5 12.0001 9.5ZM7.50011 12C7.50011 9.51472 9.51483 7.5 12.0001 7.5C14.4854 7.5 16.5001 9.51472 16.5001 12C16.5001 14.4853 14.4854 16.5 12.0001 16.5C9.51483 16.5 7.50011 14.4853 7.50011 12Z","fill":"currentColor","stroke":"none"}]],"EyeOff":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M2.29285 2.29289C2.68337 1.90237 3.31654 1.90237 3.70706 2.29289L21.7071 20.2929C22.0976 20.6834 22.0976 21.3166 21.7071 21.7071C21.3165 22.0976 20.6834 22.0976 20.2928 21.7071L17.7784 19.1927C16.2039 20.2404 14.274 21 12 21C8.84578 21 6.36056 19.541 4.55854 17.8792C2.76156 16.222 1.58474 14.312 1.01229 13.2562C0.585014 12.4681 0.585717 11.5305 1.01263 10.7432C1.59034 9.67778 2.79199 7.72646 4.63582 6.05008L2.29285 3.70711C1.90232 3.31658 1.90232 2.68342 2.29285 2.29289ZM6.05186 7.46612C4.40718 8.93862 3.30712 10.7074 2.77079 11.6965C2.66592 11.8899 2.66602 12.1102 2.77049 12.3029C3.28862 13.2585 4.34187 14.9588 5.9144 16.4089C7.48191 17.8545 9.50568 19 12 19C13.6494 19 15.0899 18.5001 16.3303 17.7445L14.396 15.8102C12.6574 16.9057 10.3323 16.6963 8.81797 15.182C7.30363 13.6676 7.09422 11.3425 8.18971 9.60397L6.05186 7.46612ZM9.67217 11.0864L12.9135 14.3278C12.0164 14.6793 10.9571 14.4927 10.2322 13.7678C9.50728 13.0429 9.32061 11.9836 9.67217 11.0864Z","fill":"currentColor","stroke":"none"}],["path",{"d":"M10.2233 5.19987C10.7835 5.07151 11.3752 5 12 5C14.4942 5 16.518 6.1455 18.0855 7.59105C19.6581 9.04124 20.7113 10.7415 21.2294 11.6971C21.3334 11.8889 21.3338 12.1105 21.2284 12.3047C20.9449 12.8276 20.496 13.5829 19.8836 14.4005C19.5525 14.8426 19.6425 15.4693 20.0845 15.8004C20.5265 16.1315 21.1533 16.0415 21.4844 15.5995C22.1677 14.6872 22.6678 13.8459 22.9865 13.2582C23.4131 12.4717 23.4154 11.5327 22.9876 10.7438C22.4152 9.68799 21.2384 7.77798 19.4414 6.1208C17.6394 4.45899 15.1541 3 12 3C11.221 3 10.4794 3.08934 9.77657 3.25041C9.23825 3.37379 8.90186 3.9102 9.02523 4.44853C9.1486 4.98686 9.68502 5.32325 10.2233 5.19987Z","fill":"currentColor","stroke":"none"}]],"FileBlank":[["path",{"d":"M3.5 15.7002V8.29981C3.5 7.47632 3.49898 6.79843 3.54395 6.24805C3.58988 5.686 3.68827 5.16891 3.93555 4.6836L4.08985 4.40821C4.47414 3.7817 5.02513 3.2711 5.6836 2.93555L5.86719 2.84962C6.29892 2.66443 6.7562 2.58414 7.24805 2.54395C7.79843 2.49898 8.47632 2.50001 9.29981 2.50001H13.5117C14.1979 2.50001 14.7043 2.49341 15.1914 2.61036L15.4941 2.6963C15.7926 2.79335 16.0794 2.92547 16.3477 3.08985L16.5049 3.19239C16.8652 3.44372 17.1889 3.7748 17.6133 4.19923L18.8008 5.38673L19.1426 5.7295C19.4613 6.05339 19.7139 6.3322 19.9102 6.65235L20.0645 6.92676C20.207 7.20655 20.3162 7.50257 20.3897 7.8086L20.4277 7.99317C20.5048 8.42563 20.5 8.88807 20.5 9.48829V15.7002C20.5 16.5237 20.501 17.2016 20.4561 17.752C20.4159 18.2438 20.3356 18.7011 20.1504 19.1328L20.0645 19.3164C19.7289 19.9749 19.2183 20.5259 18.5918 20.9102L18.3164 21.0645C17.8311 21.3117 17.314 21.4101 16.752 21.4561C16.2016 21.501 15.5237 21.5 14.7002 21.5H9.29981C8.47632 21.5 7.79843 21.501 7.24805 21.4561C6.7562 21.4159 6.29892 21.3356 5.86719 21.1504L5.6836 21.0645C5.02513 20.7289 4.47414 20.2183 4.08985 19.5918L3.93555 19.3164C3.68827 18.8311 3.58988 18.314 3.54395 17.752C3.49898 17.2016 3.5 16.5237 3.5 15.7002ZM15.334 7.29005L15.3467 7.37696C15.4275 7.80509 15.779 8.13572 16.2188 8.18458L18.4717 8.43458L18.4443 8.2754C18.4076 8.12258 18.3534 7.9747 18.2822 7.83497L18.2051 7.69727C18.1231 7.56363 18.0144 7.43719 17.7324 7.14942L17.3867 6.80079L16.1992 5.61329C15.7849 5.19901 15.5881 5.00666 15.4404 4.89063L15.3027 4.79493C15.2288 4.74961 15.1512 4.71007 15.0723 4.67481L15.334 7.29005ZM5.5 15.7002C5.5 16.5566 5.50035 17.1388 5.53711 17.5889C5.57293 18.0273 5.63809 18.2518 5.71778 18.4082L5.79492 18.5459C5.98707 18.8592 6.26256 19.1145 6.5918 19.2822L6.72461 19.3389C6.87418 19.3924 7.08253 19.4361 7.41113 19.4629C7.86117 19.4997 8.44342 19.5 9.29981 19.5H14.7002C15.5566 19.5 16.1388 19.4997 16.5889 19.4629C17.0273 19.4271 17.2518 19.3619 17.4082 19.2822L17.5459 19.2051C17.8592 19.0129 18.1145 18.7374 18.2822 18.4082L18.3389 18.2754C18.3924 18.1258 18.436 17.9175 18.4629 17.5889C18.4997 17.1388 18.5 16.5566 18.5 15.7002V10.4502L15.998 10.1729C14.6792 10.0263 13.6246 9.03393 13.3818 7.75001L13.3438 7.48926L13.0449 4.50001H9.29981C8.44342 4.50001 7.86117 4.50036 7.41113 4.53712C7.08253 4.56396 6.87418 4.60763 6.72461 4.66114L6.5918 4.71778C6.26256 4.88555 5.98707 5.14086 5.79492 5.45411L5.71778 5.5918C5.63809 5.7482 5.57293 5.97272 5.53711 6.41114C5.50035 6.86118 5.5 7.44342 5.5 8.29981V15.7002Z","fill":"currentColor","stroke":"none"}]],"FileCode":[["path",{"d":"M14.4472 7.10558C14.9412 7.35257 15.1414 7.95324 14.8944 8.44722L10.8944 16.4472C10.6474 16.9412 10.0468 17.1414 9.55279 16.8944C9.05881 16.6474 8.85858 16.0468 9.10557 15.5528L13.1056 7.55279C13.3526 7.05881 13.9532 6.85859 14.4472 7.10558ZM6.6 7.20001C7.04183 7.53138 7.13137 8.15818 6.8 8.60001L4.25 12L6.8 15.4C7.13137 15.8418 7.04183 16.4686 6.6 16.8C6.15817 17.1314 5.53137 17.0418 5.2 16.6L2.2 12.6C1.93333 12.2444 1.93333 11.7556 2.2 11.4L5.2 7.40001C5.53137 6.95818 6.15817 6.86863 6.6 7.20001ZM17.4 7.20001C17.8418 6.86863 18.4686 6.95818 18.8 7.40001L21.8 11.4C22.0667 11.7556 22.0667 12.2444 21.8 12.6L18.8 16.6C18.4686 17.0418 17.8418 17.1314 17.4 16.8C16.9582 16.4686 16.8686 15.8418 17.2 15.4L19.75 12L17.2 8.60001C16.8686 8.15818 16.9582 7.53138 17.4 7.20001Z","fill":"currentColor","stroke":"none"}]],"FileDocument":[["path",{"d":"M3.5 15.7002V8.29981C3.5 7.47632 3.49898 6.79843 3.54395 6.24805C3.58988 5.686 3.68827 5.16891 3.93555 4.6836L4.08985 4.40821C4.47414 3.7817 5.02513 3.2711 5.6836 2.93555L5.86719 2.84962C6.29892 2.66443 6.7562 2.58414 7.24805 2.54395C7.79843 2.49898 8.47632 2.50001 9.29981 2.50001H13.5117C14.1979 2.50001 14.7043 2.49341 15.1914 2.61036L15.4941 2.6963C15.7926 2.79335 16.0794 2.92547 16.3477 3.08985L16.5049 3.19239C16.8652 3.44372 17.1889 3.7748 17.6133 4.19923L18.8008 5.38673L19.1426 5.7295C19.4613 6.05339 19.7139 6.3322 19.9102 6.65235L20.0645 6.92676C20.207 7.20655 20.3162 7.50257 20.3897 7.8086L20.4277 7.99317C20.5048 8.42563 20.5 8.88807 20.5 9.48829V15.7002C20.5 16.5237 20.501 17.2016 20.4561 17.752C20.4159 18.2438 20.3356 18.7011 20.1504 19.1328L20.0645 19.3164C19.7289 19.9749 19.2183 20.5259 18.5918 20.9102L18.3164 21.0645C17.8311 21.3117 17.314 21.4101 16.752 21.4561C16.2016 21.501 15.5237 21.5 14.7002 21.5H9.29981C8.47632 21.5 7.79843 21.501 7.24805 21.4561C6.7562 21.4159 6.29892 21.3356 5.86719 21.1504L5.6836 21.0645C5.02513 20.7289 4.47414 20.2183 4.08985 19.5918L3.93555 19.3164C3.68827 18.8311 3.58988 18.314 3.54395 17.752C3.49898 17.2016 3.5 16.5237 3.5 15.7002ZM13 13C13.5523 13 14 13.4477 14 14C14 14.5523 13.5523 15 13 15H9C8.44772 15 8 14.5523 8 14C8 13.4477 8.44772 13 9 13H13ZM15 9.00001C15.5523 9.00001 16 9.44772 16 10C16 10.5523 15.5523 11 15 11H9C8.44772 11 8 10.5523 8 10C8 9.44772 8.44772 9.00001 9 9.00001H15ZM5.5 15.7002C5.5 16.5566 5.50035 17.1388 5.53711 17.5889C5.57293 18.0273 5.63809 18.2518 5.71778 18.4082L5.79492 18.5459C5.98707 18.8592 6.26256 19.1145 6.5918 19.2822L6.72461 19.3389C6.87418 19.3924 7.08253 19.4361 7.41113 19.4629C7.86117 19.4997 8.44342 19.5 9.29981 19.5H14.7002C15.5566 19.5 16.1388 19.4997 16.5889 19.4629C17.0273 19.4271 17.2518 19.3619 17.4082 19.2822L17.5459 19.2051C17.8592 19.0129 18.1145 18.7374 18.2822 18.4082L18.3389 18.2754C18.3924 18.1258 18.436 17.9175 18.4629 17.5889C18.4997 17.1388 18.5 16.5566 18.5 15.7002V9.48829C18.5 8.9025 18.496 8.62789 18.4736 8.44141L18.4443 8.2754C18.4076 8.12258 18.3534 7.9747 18.2822 7.83497L18.2051 7.69727C18.1231 7.56363 18.0144 7.43719 17.7324 7.14942L17.3867 6.80079L16.1992 5.61329C15.7849 5.19901 15.5881 5.00666 15.4404 4.89063L15.3027 4.79493C15.1686 4.71275 15.0252 4.64619 14.876 4.59766L14.7246 4.55567C14.5212 4.50684 14.2931 4.50001 13.5117 4.50001H9.29981C8.44342 4.50001 7.86117 4.50036 7.41113 4.53712C7.08253 4.56396 6.87418 4.60763 6.72461 4.66114L6.5918 4.71778C6.26256 4.88555 5.98707 5.14086 5.79492 5.45411L5.71778 5.5918C5.63809 5.7482 5.57293 5.97272 5.53711 6.41114C5.50035 6.86118 5.5 7.44342 5.5 8.29981V15.7002Z","fill":"currentColor","stroke":"none"}]],"FileImage":[["path",{"d":"M9.83357 5C9.0972 5 8.50024 5.59695 8.50024 6.33333C8.50024 7.06971 9.0972 7.66667 9.83357 7.66667C10.57 7.66667 11.1669 7.06971 11.1669 6.33333C11.1669 5.59695 10.57 5 9.83357 5ZM6.50024 6.33333C6.50024 4.49238 7.99263 3 9.83357 3C11.6745 3 13.1669 4.49238 13.1669 6.33333C13.1669 8.17428 11.6745 9.66667 9.83357 9.66667C7.99263 9.66667 6.50024 8.17428 6.50024 6.33333ZM13.3793 11.4215C14.3771 9.89157 16.6253 9.91327 17.5933 11.4622L20.6857 16.41C21.9346 18.4081 20.4981 21 18.1417 21H5.78797C3.24001 21 1.85205 18.0244 3.4894 16.0722L6.21761 12.8193C7.13833 11.7215 8.79145 11.6206 9.83889 12.5982L11.3452 14.0041C11.4587 14.11 11.6403 14.0879 11.7252 13.9579L13.3793 11.4215ZM15.8973 12.5222C15.7037 12.2124 15.2541 12.208 15.0545 12.514L13.4004 15.0504C12.6369 16.221 11.0022 16.4197 9.98054 15.4662L8.47425 14.0603C8.26476 13.8648 7.93414 13.885 7.75 14.1045L5.02178 17.3574C4.476 18.0081 4.93866 19 5.78797 19H18.1417C18.9272 19 19.406 18.136 18.9897 17.47L15.8973 12.5222Z","fill":"currentColor","stroke":"none"}]],"FileSpreadsheet":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M6 5C5.44772 5 5 5.44772 5 6V9H9V5H6ZM6 3C4.34315 3 3 4.34315 3 6V18C3 19.6569 4.34315 21 6 21H18C19.6569 21 21 19.6569 21 18V6C21 4.34315 19.6569 3 18 3H6ZM11 5V9H19V6C19 5.44771 18.5523 5 18 5H11ZM19 11H11V19H18C18.5523 19 19 18.5523 19 18V11ZM9 19V11H5V18C5 18.5523 5.44772 19 6 19H9Z","fill":"currentColor","stroke":"none"}]],"FileUpload":[["path",{"fill-rule":"evenodd","d":"M18.032 5.024C17.75 5 17.377 5 16.8 5h-5.3c-.2 1-.401 1.911-.61 2.854-.131.596-.247 1.119-.523 1.56a2.998 2.998 0 0 1-.953.954c-.441.275-.964.39-1.56.522l-.125.028-2.512.558A1.003 1.003 0 0 1 5 11.5v5.3c0 .577 0 .949.024 1.232.022.272.06.372.085.422a1 1 0 0 0 .437.437c.05.025.15.063.422.085C6.25 19 6.623 19 7.2 19H10a1 1 0 1 1 0 2H7.161c-.527 0-.981 0-1.356-.03-.395-.033-.789-.104-1.167-.297a3 3 0 0 1-1.311-1.311c-.193-.378-.264-.772-.296-1.167A17.9 17.9 0 0 1 3 16.838V11c0-2.075 1.028-4.067 2.48-5.52C6.933 4.028 8.925 3 11 3h5.838c.528 0 .982 0 1.357.03.395.033.789.104 1.167.297a3 3 0 0 1 1.311 1.311c.193.378.264.772.296 1.167.031.375.031.83.031 1.356V10a1 1 0 1 1-2 0V7.2c0-.577 0-.949-.024-1.232-.022-.272-.06-.373-.085-.422a1 1 0 0 0-.437-.437c-.05-.025-.15-.063-.422-.085ZM5.28 9.414l2.015-.448c.794-.177.948-.225 1.059-.294a1 1 0 0 0 .318-.318c.069-.11.117-.265.294-1.059l.447-2.015c-.903.313-1.778.874-2.518 1.615-.741.74-1.302 1.615-1.615 2.518ZM17 15a1 1 0 1 1 2 0v2h2a1 1 0 1 1 0 2h-2v2a1 1 0 1 1-2 0v-2h-2a1 1 0 1 1 0-2h2v-2Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"Filter":[["path",{"d":"M3 6C3 4.34315 4.34315 3 6 3H18C19.6569 3 21 4.34315 21 6V7.11526C21 7.96049 20.6434 8.76651 20.018 9.33508L15.8273 13.1448C15.6189 13.3343 15.5 13.603 15.5 13.8847V19.882C15.5 21.3687 13.9354 22.3357 12.6056 21.6708L9.60557 20.1708C8.92801 19.832 8.5 19.1395 8.5 18.382V13.8847C8.5 13.603 8.38115 13.3343 8.17267 13.1448L3.98198 9.33508C3.35656 8.76651 3 7.96049 3 7.11526V6ZM6 5C5.44772 5 5 5.44772 5 6V7.11526C5 7.397 5.11885 7.66568 5.32733 7.8552L9.51802 11.6649C10.1434 12.2335 10.5 13.0395 10.5 13.8847V18.382L13.5 19.882V13.8847C13.5 13.0395 13.8566 12.2335 14.482 11.6649L18.6727 7.8552C18.8811 7.66568 19 7.39701 19 7.11526V6C19 5.44772 18.5523 5 18 5H6Z","fill":"currentColor","stroke":"none"}]],"Flask":[["path",{"d":"M19 17.3291C19 16.7824 18.8324 16.2506 18.5225 15.8047L18.3809 15.6191L17.957 15.1113C16.6208 15.6807 15.5035 15.9364 14.4863 15.9893C13.3603 16.0477 12.418 15.8547 11.5576 15.6602C10.6846 15.4627 9.91127 15.2691 8.96289 15.2197C8.07087 15.1733 7.0006 15.2579 5.59863 15.6445C5.21177 16.1204 5 16.7151 5 17.3291C5.00002 18.8042 6.19581 20 7.6709 20H16.3291C17.8042 20 19 18.8042 19 17.3291ZM14 4H10V9.27637C9.9999 9.89032 9.8119 10.4875 9.46387 10.9883L9.30469 11.1963L7.59473 13.248C8.11969 13.204 8.6075 13.1977 9.06738 13.2217C10.222 13.2818 11.1784 13.5244 11.999 13.71C12.8321 13.8983 13.548 14.0356 14.3828 13.9922C15.0021 13.96 15.7207 13.8249 16.6123 13.4961L14.6953 11.1963C14.2462 10.6573 14.0001 9.97796 14 9.27637V4ZM16 9.27637C16.0001 9.51005 16.0819 9.73645 16.2314 9.91602L19.917 14.3389L20.0449 14.499C20.6633 15.3109 21 16.3048 21 17.3291C21 19.9088 18.9088 22 16.3291 22H7.6709C5.09124 22 3.00002 19.9088 3 17.3291C3 16.2364 3.38348 15.1783 4.08301 14.3389L7.76855 9.91602L7.82129 9.84668C7.93724 9.67985 7.9999 9.48091 8 9.27637V4C7.44772 4 7 3.55228 7 3C7 2.44772 7.44772 2 8 2H16C16.5523 2 17 2.44772 17 3C17 3.55228 16.5523 4 16 4V9.27637Z","fill":"currentColor","stroke":"none"}]],"Folder":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M1.66669 5C1.66669 3.61929 2.78598 2.5 4.16669 2.5H7.643C8.30604 2.5 8.94192 2.76339 9.41077 3.23223L10.1011 3.92259C10.2574 4.07887 10.4694 4.16667 10.6904 4.16667H15.8334C17.2141 4.16667 18.3334 5.28595 18.3334 6.66667V15C18.3334 16.3807 17.2141 17.5 15.8334 17.5H4.16669C2.78598 17.5 1.66669 16.3807 1.66669 15V5ZM4.16669 4.16667C3.70645 4.16667 3.33335 4.53976 3.33335 5V8.33333H16.6667V6.66667C16.6667 6.20643 16.2936 5.83333 15.8334 5.83333H10.6904C10.0273 5.83333 9.39145 5.56994 8.92261 5.1011L8.23225 4.41074C8.07597 4.25446 7.86401 4.16667 7.643 4.16667H4.16669ZM16.6667 10H3.33335V15C3.33335 15.4602 3.70645 15.8333 4.16669 15.8333H15.8334C16.2936 15.8333 16.6667 15.4602 16.6667 15V10Z","fill":"currentColor","stroke":"none"}]],"FolderOpen":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M8.36575 5.00294C8.31789 5.00035 8.26519 5 8.08579 5H7.3C6.44342 5 5.86113 5.00078 5.41104 5.03755C4.97262 5.07337 4.74842 5.1383 4.59202 5.21799C4.2157 5.40974 3.90973 5.7157 3.71799 6.09202C3.6383 6.24842 3.57337 6.47263 3.53755 6.91104C3.50078 7.36113 3.5 7.94342 3.5 8.8V13.3338C4.10345 12.2477 4.92627 11.2786 6.03229 10.4584C6.46262 10.1392 6.97003 10 7.45416 10H19.4995C19.4981 9.54872 19.4929 9.20759 19.4738 8.92661C19.4487 8.55915 19.4031 8.36814 19.3478 8.23464C19.1448 7.74458 18.7554 7.35523 18.2654 7.15224C18.1319 7.09695 17.9409 7.0513 17.5734 7.02623C17.197 7.00054 16.7126 7 16 7L12.8908 7.00001C12.7448 7.00002 12.6347 7.00003 12.5259 6.99413C11.6159 6.94474 10.75 6.58609 10.0717 5.97756C9.99052 5.90478 9.91272 5.82696 9.80953 5.72375L9.7929 5.70711C9.66604 5.58025 9.62853 5.54323 9.59285 5.51123C9.25366 5.20696 8.82074 5.02764 8.36575 5.00294ZM21.4996 10H21.6958C23.2725 10 24.218 11.7333 23.3868 13.0603C22.2267 14.9122 21.6207 15.9779 21.2984 17.3273C20.8483 19.2122 19.3008 21 17.0719 21H7.25868C7.23455 21 7.21056 21 7.18669 21H6.07372C5.95032 21 5.8274 20.9941 5.70538 20.9825C5.54408 20.9762 5.3918 20.9675 5.24817 20.9558C4.68608 20.9099 4.16937 20.8113 3.68404 20.564C2.93139 20.1805 2.31947 19.5686 1.93597 18.816C1.68868 18.3306 1.59012 17.8139 1.54419 17.2518C1.49998 16.7106 1.49999 16.0463 1.5 15.2413V8.7587C1.49999 7.95373 1.49998 7.28937 1.54419 6.74818C1.59012 6.18608 1.68868 5.66938 1.93597 5.18404C2.31947 4.43139 2.93139 3.81947 3.68404 3.43598C4.16937 3.18869 4.68608 3.09012 5.24817 3.0442C5.78937 2.99998 6.45373 2.99999 7.2587 3L8.10922 3C8.25524 2.99999 8.36528 2.99997 8.47414 3.00588C9.38412 3.05527 10.25 3.41391 10.9283 4.02245C11.0095 4.09525 11.0873 4.17306 11.1905 4.27632L11.2071 4.2929C11.334 4.41975 11.3715 4.45678 11.4072 4.48878C11.7463 4.79305 12.1793 4.97237 12.6343 4.99706C12.6821 4.99966 12.7348 5 12.9142 5L16.0343 5C16.7041 4.99999 17.2569 4.99999 17.7095 5.03087C18.1788 5.06289 18.6129 5.13142 19.0307 5.30449C20.0108 5.71046 20.7895 6.48916 21.1955 7.46927C21.3686 7.88708 21.4371 8.32118 21.4691 8.79047C21.4925 9.1336 21.4982 9.53436 21.4996 10ZM17.0719 19C18.1001 19 19.0467 18.1456 19.3531 16.8627C19.7604 15.1572 20.5385 13.8397 21.691 12H7.45416C7.34602 12 7.26903 12.0312 7.22363 12.0648C5.55547 13.3019 4.68121 14.9804 4.2774 17.1283C4.11717 17.9806 4.77661 18.8636 5.82444 18.9857C6.20963 18.9996 6.68386 19 7.3 19H17.0719Z","fill":"currentColor","stroke":"none"}]],"FolderPlus":[["path",{"d":"M15 11.25C15 10.8358 14.6642 10.5 14.25 10.5C13.8358 10.5 13.5 10.8358 13.5 11.25V12.75H12C11.5858 12.75 11.25 13.0858 11.25 13.5C11.25 13.9142 11.5858 14.25 12 14.25H13.5V15.75C13.5 16.1642 13.8358 16.5 14.25 16.5C14.6642 16.5 15 16.1642 15 15.75V14.25H16.5C16.9142 14.25 17.25 13.9142 17.25 13.5C17.25 13.0858 16.9142 12.75 16.5 12.75H15V11.25Z","fill":"currentColor","stroke":"none"}],["path",{"d":"M16.4669 6.56113C16.5 6.96703 16.5 7.46529 16.5 8.06901V8.25C16.5 8.66421 16.1642 9 15.75 9L3 9V11.4C3 12.0424 3.00058 12.4792 3.02816 12.8167C3.05503 13.1455 3.10372 13.3137 3.16349 13.431C3.3073 13.7132 3.53677 13.9427 3.81902 14.0865C3.93632 14.1463 4.10447 14.195 4.43328 14.2218C4.77085 14.2494 5.20757 14.25 5.85 14.25H9C9.41421 14.25 9.75 14.5858 9.75 15C9.75 15.4142 9.41421 15.75 9 15.75H5.81901C5.21529 15.75 4.71702 15.75 4.31113 15.7169C3.88956 15.6824 3.50203 15.6085 3.13803 15.423C2.57354 15.1354 2.1146 14.6765 1.82698 14.112C1.64151 13.748 1.56759 13.3604 1.53315 12.9389C1.49998 12.533 1.49999 12.0347 1.5 11.431V6.56903C1.49999 5.96531 1.49998 5.46703 1.53315 5.06113C1.56759 4.63956 1.64151 4.25203 1.82698 3.88803C2.1146 3.32355 2.57354 2.8646 3.13803 2.57698C3.50203 2.39152 3.88956 2.31759 4.31113 2.28315C4.71703 2.24999 5.2153 2.24999 5.81903 2.25L6.45692 2.25C6.56639 2.24999 6.64898 2.24998 6.7306 2.25441C7.41309 2.29145 8.06248 2.56044 8.57126 3.01684C8.63212 3.07143 8.69047 3.12979 8.76789 3.20723L8.78033 3.21967C8.87548 3.31482 8.90361 3.34259 8.93036 3.36659C9.18475 3.59479 9.50945 3.72928 9.85069 3.7478C9.88658 3.74975 9.92611 3.75 10.0607 3.75L12.181 3.75C12.7847 3.74999 13.283 3.74999 13.6889 3.78315C14.1104 3.81759 14.498 3.89152 14.862 4.07698C15.4265 4.3646 15.8854 4.82355 16.173 5.38803C16.3585 5.75203 16.4324 6.13956 16.4669 6.56113ZM7.56964 4.13342C7.31525 3.90522 6.99056 3.77073 6.64931 3.75221C6.61342 3.75026 6.5739 3.75 6.43934 3.75H5.85C5.20757 3.75 4.77085 3.75059 4.43328 3.77817C4.10447 3.80503 3.93632 3.85373 3.81902 3.91349C3.53677 4.0573 3.3073 4.28677 3.16349 4.56902C3.10372 4.68632 3.05503 4.85447 3.02816 5.18328C3.00058 5.52085 3 5.95757 3 6.6V7.5H14.9987C14.9963 7.16586 14.9898 6.90348 14.9718 6.68328C14.945 6.35447 14.8963 6.18632 14.8365 6.06902C14.6927 5.78678 14.4632 5.5573 14.181 5.41349C14.0637 5.35373 13.8955 5.30503 13.5667 5.27817C13.2292 5.25059 12.7924 5.25 12.15 5.25L10.0431 5.25001C9.93357 5.25002 9.85104 5.25003 9.7694 5.2456C9.08691 5.20855 8.43753 4.93957 7.92874 4.48317C7.86788 4.42857 7.80953 4.37021 7.73211 4.29277L7.71967 4.28033C7.62453 4.18519 7.5964 4.15742 7.56964 4.13342Z","fill":"currentColor","stroke":"none"}]],"Grid":[["path",{"d":"M6.75 4.5a2.25 2.25 0 1 0 0 4.5 2.25 2.25 0 0 0 0-4.5ZM2.5 6.75a4.25 4.25 0 1 1 8.5 0 4.25 4.25 0 0 1-8.5 0ZM17.25 4.5a2.25 2.25 0 1 0 0 4.5 2.25 2.25 0 0 0 0-4.5ZM13 6.75a4.25 4.25 0 1 1 8.5 0 4.25 4.25 0 0 1-8.5 0ZM6.75 15a2.25 2.25 0 1 0 0 4.5 2.25 2.25 0 0 0 0-4.5ZM2.5 17.25a4.25 4.25 0 1 1 8.5 0 4.25 4.25 0 0 1-8.5 0ZM17.25 15a2.25 2.25 0 1 0 0 4.5 2.25 2.25 0 0 0 0-4.5ZM13 17.25a4.25 4.25 0 1 1 8.5 0 4.25 4.25 0 0 1-8.5 0Z","fill":"currentColor","stroke":"none"}]],"History":[["path",{"fill-rule":"evenodd","d":"M2.954 7.807A1 1 0 0 0 3.968 9c.064.002.13-.003.196-.014l3-.5a1 1 0 0 0-.328-1.972l-.778.13a8 8 0 1 1-2.009 6.247 1 1 0 0 0-1.988.219C2.614 18.11 6.852 22 12 22c5.523 0 10-4.477 10-10S17.523 2 12 2a9.975 9.975 0 0 0-7.434 3.312l-.08-.476a1 1 0 0 0-1.972.328l.44 2.643ZM12 7a1 1 0 0 1 1 1v3.586l2.207 2.207a1 1 0 0 1-1.414 1.414l-2.5-2.5A1 1 0 0 1 11 12V8a1 1 0 0 1 1-1Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"InfoCircle":[["path",{"d":"M13 12C13 11.4477 12.5523 11 12 11C11.4477 11 11 11.4477 11 12V16C11 16.5523 11.4477 17 12 17C12.5523 17 13 16.5523 13 16V12Z","fill":"currentColor","stroke":"none"}],["path",{"d":"M12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2ZM4 12C4 7.58172 7.58172 4 12 4C16.4183 4 20 7.58172 20 12C20 16.4183 16.4183 20 12 20C7.58172 20 4 16.4183 4 12Z","fill":"currentColor","stroke":"none"}],["path",{"d":"M12 9.30005C12.6351 9.30005 13.15 8.78518 13.15 8.15005C13.15 7.51492 12.6351 7.00005 12 7.00005C11.3649 7.00005 10.85 7.51492 10.85 8.15005C10.85 8.78518 11.3649 9.30005 12 9.30005Z","fill":"currentColor","stroke":"none"}]],"Keyboard":[["path",{"fill-rule":"evenodd","d":"M2 7a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V7Zm3-1a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1H5Zm4 8a1 1 0 0 1 1-1h4a1 1 0 1 1 0 2h-4a1 1 0 0 1-1-1Zm-2.46-2.89a1.11 1.11 0 1 0 0-2.22 1.11 1.11 0 0 0 0 2.22Zm3.64 0a1.11 1.11 0 1 0 0-2.22 1.11 1.11 0 0 0 0 2.22ZM14.93 10a1.11 1.11 0 1 1-2.22 0 1.11 1.11 0 0 1 2.22 0Zm2.53 1.11a1.11 1.11 0 1 0 0-2.22 1.11 1.11 0 0 0 0 2.22ZM7.65 14a1.11 1.11 0 1 1-2.22 0 1.11 1.11 0 0 1 2.22 0Zm10.92 0a1.11 1.11 0 1 1-2.22 0 1.11 1.11 0 0 1 2.22 0Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"Lightbulb":[["path",{"d":"M12 3c3.585 0 6.5 2.923 6.5 6.538A6.542 6.542 0 0 1 15.575 15h-7.15A6.542 6.542 0 0 1 5.5 9.538C5.5 5.923 8.415 3 12 3Zm2.865 14v1h-5.73v-1h5.73Zm-1.133 3a2 2 0 0 1-3.464 0h3.464Zm-5.606 0a4.002 4.002 0 0 0 7.748 0 1 1 0 0 0 .991-1v-2.46A8.54 8.54 0 0 0 20.5 9.539C20.5 4.828 16.7 1 12 1S3.5 4.828 3.5 9.538a8.54 8.54 0 0 0 3.635 7.003V19a1 1 0 0 0 .991 1Z","fill":"currentColor","stroke":"none"}]],"Link":[["path",{"d":"M18.2929 5.7071C16.4743 3.88849 13.5257 3.88849 11.7071 5.7071L10.7071 6.7071C10.3166 7.09763 9.68341 7.09763 9.29289 6.7071C8.90236 6.31658 8.90236 5.68341 9.29289 5.29289L10.2929 4.29289C12.8926 1.69322 17.1074 1.69322 19.7071 4.29289C22.3068 6.89255 22.3068 11.1074 19.7071 13.7071L18.7071 14.7071C18.3166 15.0976 17.6834 15.0976 17.2929 14.7071C16.9024 14.3166 16.9024 13.6834 17.2929 13.2929L18.2929 12.2929C20.1115 10.4743 20.1115 7.52572 18.2929 5.7071ZM15.7071 8.29289C16.0976 8.68341 16.0976 9.31658 15.7071 9.7071L9.7071 15.7071C9.31658 16.0976 8.68341 16.0976 8.29289 15.7071C7.90236 15.3166 7.90236 14.6834 8.29289 14.2929L14.2929 8.29289C14.6834 7.90236 15.3166 7.90236 15.7071 8.29289ZM6.7071 9.29289C7.09763 9.68341 7.09763 10.3166 6.7071 10.7071L5.7071 11.7071C3.88849 13.5257 3.88849 16.4743 5.7071 18.2929C7.52572 20.1115 10.4743 20.1115 12.2929 18.2929L13.2929 17.2929C13.6834 16.9024 14.3166 16.9024 14.7071 17.2929C15.0976 17.6834 15.0976 18.3166 14.7071 18.7071L13.7071 19.7071C11.1074 22.3068 6.89255 22.3068 4.29289 19.7071C1.69322 17.1074 1.69322 12.8926 4.29289 10.2929L5.29289 9.29289C5.68341 8.90236 6.31658 8.90236 6.7071 9.29289Z","fill":"currentColor","stroke":"none"}]],"Minus":[["path",{"d":"M6 12C6 11.4477 6.44772 11 7 11H17C17.5523 11 18 11.4477 18 12C18 12.5523 17.5523 13 17 13H7C6.44772 13 6 12.5523 6 12Z","fill":"currentColor","stroke":"none"}]],"Pin":[["path",{"d":"M12.8636 3.26026C13.9444 1.74705 16.1254 1.56655 17.4403 2.88148L21.1185 6.55971C22.4335 7.87464 22.2529 10.0556 20.7397 11.1364L16.4786 14.1801C16.1638 14.405 16 14.7305 16 15V17.5C16 18.9069 15.0409 19.9513 13.976 20.4104C12.9046 20.8724 11.4792 20.8468 10.4568 19.8243L8.02332 17.3909L3.70711 21.7071C3.31658 22.0976 2.68342 22.0976 2.29289 21.7071C1.90237 21.3166 1.90237 20.6834 2.29289 20.2929L6.60911 15.9767L4.17567 13.5432C3.1532 12.5208 3.12762 11.0954 3.58957 10.024C4.04871 8.95908 5.09306 8 6.5 8H9C9.26948 8 9.59505 7.8362 9.81994 7.52136L12.8636 3.26026ZM8.73001 15.2692C8.73015 15.2693 8.73029 15.2694 8.73043 15.2696C8.73057 15.2697 8.73071 15.2698 8.73084 15.27L11.871 18.4101C12.1769 18.716 12.6696 18.7957 13.1842 18.5739C13.7052 18.3492 14 17.9208 14 17.5V15C14 13.9717 14.5749 13.0821 15.3162 12.5526L19.5773 9.50895C20.0848 9.14643 20.1453 8.41495 19.7043 7.97392L16.0261 4.29569C15.5851 3.85467 14.8536 3.9152 14.491 4.42273L11.4474 8.68383C10.9179 9.42507 10.0283 10 9 10H6.5C6.07925 10 5.65079 10.2948 5.42615 10.8158C5.20431 11.3304 5.28397 11.8231 5.58988 12.129L8.73001 15.2692Z","fill":"currentColor","stroke":"none"}]],"Play":[["path",{"d":"M9.5 9.33165V14.6683C9.5 15.4595 10.3752 15.9373 11.0408 15.5095L15.1915 12.8412C15.8038 12.4475 15.8038 11.5524 15.1915 11.1588L11.0408 8.49047C10.3752 8.06265 9.5 8.54049 9.5 9.33165Z","fill":"currentColor","stroke":"none"}],["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2ZM4 12C4 7.58172 7.58172 4 12 4C16.4183 4 20 7.58172 20 12C20 16.4183 16.4183 20 12 20C7.58172 20 4 16.4183 4 12Z","fill":"currentColor","stroke":"none"}]],"PlayCircle":[["path",{"fill-rule":"evenodd","d":"M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2ZM9.5 9.332v5.336a1 1 0 0 0 1.54.841l4.152-2.668a1 1 0 0 0 0-1.682L11.04 8.49a1 1 0 0 0-1.541.842Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"Plus":[["path",{"fill-rule":"evenodd","d":"M12 5a1 1 0 0 1 1 1v5h5a1 1 0 1 1 0 2h-5v5a1 1 0 1 1-2 0v-5H6a1 1 0 1 1 0-2h5V6a1 1 0 0 1 1-1Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"Reload":[["path",{"fill-rule":"evenodd","d":"M4.5 2.5a1 1 0 0 1 1 1v1.572A9.5 9.5 0 1 1 12 21.5c-4.87 0-8.882-3.663-9.435-8.384a1 1 0 0 1 1.986-.232A7.501 7.501 0 0 0 19.5 12 7.5 7.5 0 0 0 6.41 7H9a1 1 0 0 1 0 2H4.5a1 1 0 0 1-1-1.024V3.5a1 1 0 0 1 1-1Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"Scissor":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M6.5 6C5.67157 6 5 6.67157 5 7.5C5 8.32843 5.67157 9 6.5 9C7.32843 9 8 8.32843 8 7.5C8 6.67157 7.32843 6 6.5 6ZM3 7.5C3 5.567 4.567 4 6.5 4C8.433 4 10 5.567 10 7.5C10 7.80866 9.96004 8.108 9.88502 8.3931L13.4 10.7897L19.4367 6.67377C19.893 6.36265 20.5151 6.48035 20.8262 6.93666C21.1374 7.39298 21.0196 8.0151 20.5633 8.32623L13.9826 12.8131C13.9701 12.8221 13.9574 12.8307 13.9445 12.8391L9.88502 15.6069C9.96004 15.892 10 16.1913 10 16.5C10 18.433 8.433 20 6.5 20C4.567 20 3 18.433 3 16.5C3 14.567 4.567 13 6.5 13C7.40012 13 8.22087 13.3398 8.841 13.8981L11.6249 12L8.841 10.1019C8.22087 10.6602 7.40012 11 6.5 11C4.567 11 3 9.433 3 7.5ZM6.5 15C5.67157 15 5 15.6716 5 16.5C5 17.3284 5.67157 18 6.5 18C7.32843 18 8 17.3284 8 16.5C8 15.6716 7.32843 15 6.5 15ZM15.8738 13.6867C16.1849 13.2304 16.807 13.1126 17.2633 13.4238L20.5633 15.6738C21.0196 15.9849 21.1374 16.607 20.8262 17.0633C20.5151 17.5196 19.893 17.6374 19.4367 17.3262L16.1367 15.0762C15.6804 14.7651 15.5626 14.143 15.8738 13.6867Z","fill":"currentColor","stroke":"none"}]],"Search":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M10.875 4.5C7.35418 4.5 4.5 7.35418 4.5 10.875C4.5 14.3958 7.35418 17.25 10.875 17.25C14.3958 17.25 17.25 14.3958 17.25 10.875C17.25 7.35418 14.3958 4.5 10.875 4.5ZM2.5 10.875C2.5 6.24962 6.24962 2.5 10.875 2.5C15.5004 2.5 19.25 6.24962 19.25 10.875C19.25 12.8273 18.582 14.6236 17.462 16.0478L21.2071 19.7929C21.5976 20.1834 21.5976 20.8166 21.2071 21.2071C20.8166 21.5976 20.1834 21.5976 19.7929 21.2071L16.0478 17.462C14.6236 18.582 12.8273 19.25 10.875 19.25C6.24962 19.25 2.5 15.5004 2.5 10.875Z","fill":"currentColor","stroke":"none"}]],"SettingsCog":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M11.6099 3.75C11.2549 3.75 10.9266 3.93813 10.7471 4.24434L9.99036 5.53548C9.45636 6.44657 8.48265 7.00978 7.42663 7.01839L5.94021 7.03051C5.58531 7.0334 5.25853 7.22419 5.08156 7.53183L4.6852 8.22082C4.50905 8.52702 4.50752 8.90345 4.68118 9.21107L5.42305 10.5252C5.93977 11.4405 5.93977 12.5595 5.42305 13.4748L4.68118 14.7889C4.50752 15.0966 4.50905 15.473 4.6852 15.7792L5.08156 16.4682C5.25853 16.7758 5.58531 16.9666 5.94021 16.9695L7.42665 16.9816C8.48266 16.9902 9.45637 17.5535 9.99037 18.4645L10.7471 19.7557C10.9266 20.0619 11.2549 20.25 11.6099 20.25H12.3901C12.7451 20.25 13.0734 20.0619 13.2529 19.7557L14.0096 18.4645C14.5436 17.5535 15.5173 16.9902 16.5734 16.9816L18.0599 16.9695C18.4148 16.9666 18.7416 16.7758 18.9185 16.4682L19.3149 15.7792C19.491 15.473 19.4926 15.0966 19.3189 14.7889L18.577 13.4748C18.0603 12.5595 18.0603 11.4405 18.577 10.5252L19.3189 9.21107C19.4926 8.90345 19.491 8.52702 19.3149 8.22082L18.9185 7.53183C18.7416 7.22419 18.4148 7.0334 18.0599 7.03051L16.5734 7.01839C15.5174 7.00978 14.5437 6.44657 14.0096 5.53548L13.2529 4.24434C13.0734 3.93813 12.7451 3.75 12.3901 3.75H11.6099ZM9.02167 3.23301C9.56009 2.31439 10.5451 1.75 11.6099 1.75H12.3901C13.4549 1.75 14.4399 2.31439 14.9783 3.23301L15.7351 4.52415C15.9131 4.82785 16.2377 5.01558 16.5897 5.01845L18.0762 5.03058C19.1409 5.03926 20.1212 5.61161 20.6521 6.53452L21.0485 7.22352C21.577 8.14213 21.5815 9.27141 21.0605 10.1943L20.3187 11.5084C20.1464 11.8135 20.1464 12.1865 20.3187 12.4916L21.0605 13.8057C21.5815 14.7286 21.577 15.8579 21.0485 16.7765L20.6521 17.4655C20.1212 18.3884 19.1409 18.9608 18.0762 18.9694L16.5897 18.9816C16.2377 18.9844 15.9131 19.1722 15.7351 19.4759L14.9783 20.767C14.4399 21.6856 13.4549 22.25 12.3901 22.25H11.6099C10.5451 22.25 9.56009 21.6856 9.02167 20.767L8.26491 19.4759C8.08691 19.1722 7.76234 18.9844 7.41034 18.9816L5.9239 18.9694C4.8592 18.9608 3.87888 18.3884 3.34795 17.4655L2.95159 16.7765C2.42314 15.8579 2.41856 14.7286 2.93954 13.8057L3.68141 12.4916C3.85365 12.1865 3.85365 11.8135 3.68141 11.5084L2.93954 10.1943C2.41856 9.27141 2.42314 8.14213 2.95159 7.22352L3.34795 6.53453C3.87888 5.61162 4.8592 5.03926 5.9239 5.03058L7.41032 5.01845C7.76233 5.01558 8.0869 4.82785 8.2649 4.52415L9.02167 3.23301Z","fill":"currentColor","stroke":"none"}],["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M12 10.5C11.1716 10.5 10.5 11.1716 10.5 12C10.5 12.8284 11.1716 13.5 12 13.5C12.8285 13.5 13.5 12.8284 13.5 12C13.5 11.1716 12.8285 10.5 12 10.5ZM8.50004 12C8.50004 10.067 10.067 8.5 12 8.5C13.933 8.5 15.5 10.067 15.5 12C15.5 13.933 13.933 15.5 12 15.5C10.067 15.5 8.50004 13.933 8.50004 12Z","fill":"currentColor","stroke":"none"}]],"SettingsSlider":[["path",{"d":"M14.5 5C13.3954 5 12.5 5.89543 12.5 7C12.5 8.10457 13.3954 9 14.5 9C15.6046 9 16.5 8.10457 16.5 7C16.5 5.89543 15.6046 5 14.5 5ZM10.626 6C11.0701 4.27477 12.6362 3 14.5 3C16.3638 3 17.9299 4.27477 18.374 6H20C20.5523 6 21 6.44772 21 7C21 7.55228 20.5523 8 20 8H18.374C17.9299 9.72523 16.3638 11 14.5 11C12.6362 11 11.0701 9.72523 10.626 8H4C3.44772 8 3 7.55228 3 7C3 6.44772 3.44772 6 4 6H10.626ZM9.5 15C8.39543 15 7.5 15.8954 7.5 17C7.5 18.1046 8.39543 19 9.5 19C10.6046 19 11.5 18.1046 11.5 17C11.5 15.8954 10.6046 15 9.5 15ZM5.62602 16C6.07006 14.2748 7.63616 13 9.5 13C11.3638 13 12.9299 14.2748 13.374 16H20C20.5523 16 21 16.4477 21 17C21 17.5523 20.5523 18 20 18H13.374C12.9299 19.7252 11.3638 21 9.5 21C7.63616 21 6.07006 19.7252 5.62602 18H4C3.44772 18 3 17.5523 3 17C3 16.4477 3.44772 16 4 16H5.62602Z","fill":"currentColor","stroke":"none"}]],"SettingsWrench":[["path",{"d":"M14.5 4C11.4625 4 9.00002 6.46243 9.00002 9.5C9.00002 10.2519 9.15033 10.9661 9.4216 11.6162C9.57772 11.9903 9.4925 12.4217 9.20583 12.7084L4.45713 17.4571C3.88115 18.0331 3.88115 18.9669 4.45713 19.5429C5.0331 20.1189 5.96694 20.1189 6.54291 19.5429L11.2916 14.7942C11.5783 14.5075 12.0097 14.4223 12.3838 14.5784C13.0339 14.8497 13.7481 15 14.5 15C17.5376 15 20 12.5376 20 9.5C20 9.47156 19.9998 9.44318 19.9994 9.41486L18.7071 10.7071C17.212 12.2022 14.788 12.2022 13.2929 10.7071C11.7978 9.21201 11.7978 6.78798 13.2929 5.29289L14.5852 4.00064C14.5568 4.00022 14.5285 4 14.5 4ZM7.00002 9.5C7.00002 5.35786 10.3579 2 14.5 2C15.3632 2 16.1943 2.14622 16.9687 2.41606C17.2937 2.52931 17.5376 2.80173 17.6144 3.13722C17.6912 3.47271 17.5901 3.82412 17.3468 4.06748L14.7071 6.70711C13.9931 7.42115 13.9931 8.57885 14.7071 9.29289C15.4212 10.0069 16.5789 10.0069 17.2929 9.29289L19.9325 6.65327C20.1759 6.4099 20.5273 6.30879 20.8628 6.38559C21.1983 6.46239 21.4707 6.70632 21.584 7.03132C21.8538 7.8057 22 8.63684 22 9.5C22 13.6421 18.6422 17 14.5 17C13.7195 17 12.9654 16.8805 12.256 16.6582L7.95713 20.9571C6.6001 22.3141 4.39994 22.3141 3.04291 20.9571C1.68589 19.6001 1.68589 17.3999 3.04291 16.0429L7.34178 11.744C7.11957 11.0346 7.00002 10.2805 7.00002 9.5Z","fill":"currentColor","stroke":"none"}]],"SidebarLeft":[["path",{"fill-rule":"evenodd","d":"M6 5a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h2V5H6Zm4 0v14h8a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-8ZM3 6a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"SidebarRight":[["path",{"fill-rule":"evenodd","d":"M18 5a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-2V5h2Zm-4 0v14H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h8Zm7 1a3 3 0 0 0-3-3H6a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3h12a3 3 0 0 0 3-3V6Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"Stack":[["path",{"d":"M4.94845 4.68299C5.32822 4.24896 5.87687 4 6.4536 4H17.5461C18.1228 4 18.6714 4.24896 19.0512 4.68299L22.5512 8.68299C23.6827 9.97616 22.7644 12 21.0461 12H2.9536C1.23528 12 0.316926 9.97616 1.44845 8.68299L4.94845 4.68299ZM17.5461 6L6.4536 6L2.9536 10H21.0461L17.5461 6ZM1.99983 15C1.99983 14.4477 2.44755 14 2.99983 14H20.9998C21.5521 14 21.9998 14.4477 21.9998 15C21.9998 15.5523 21.5521 16 20.9998 16H2.99983C2.44755 16 1.99983 15.5523 1.99983 15ZM2.99983 19C2.99983 18.4477 3.44755 18 3.99983 18H19.9998C20.5521 18 20.9998 18.4477 20.9998 19C20.9998 19.5523 20.5521 20 19.9998 20H3.99983C3.44755 20 2.99983 19.5523 2.99983 19Z","fill":"currentColor","stroke":"none"}]],"Stop":[["path",{"d":"M6 8C6 6.89543 6.89543 6 8 6H16C17.1046 6 18 6.89543 18 8V16C18 17.1046 17.1046 18 16 18H8C6.89543 18 6 17.1046 6 16V8Z","fill":"currentColor","stroke":"none"}]],"Stopwatch":[["path",{"d":"M8.5 2.5C8.5 1.94772 8.94772 1.5 9.5 1.5H14.5C15.0523 1.5 15.5 1.94772 15.5 2.5C15.5 3.05228 15.0523 3.5 14.5 3.5H9.5C8.94772 3.5 8.5 3.05228 8.5 2.5Z","fill":"currentColor","stroke":"none"}],["path",{"d":"M15.6402 11.5182C16.0645 11.1647 16.1218 10.5341 15.7682 10.1098C15.4147 9.68554 14.7841 9.62821 14.3598 9.98178L11.3598 12.4818C10.9355 12.8353 10.8782 13.4659 11.2318 13.8902C11.5853 14.3145 12.2159 14.3718 12.6402 14.0182L15.6402 11.5182Z","fill":"currentColor","stroke":"none"}],["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M3.28125 13.25C3.28125 8.43477 7.18477 4.53125 12 4.53125C16.8152 4.53125 20.7188 8.43477 20.7188 13.25C20.7188 18.0652 16.8152 21.9688 12 21.9688C7.18477 21.9688 3.28125 18.0652 3.28125 13.25ZM12 6.46875C8.25482 6.46875 5.21875 9.50482 5.21875 13.25C5.21875 16.9952 8.25482 20.0312 12 20.0312C15.7452 20.0312 18.7812 16.9952 18.7812 13.25C18.7812 9.50482 15.7452 6.46875 12 6.46875Z","fill":"currentColor","stroke":"none"}]],"Tag":[["path",{"fill-rule":"evenodd","d":"M4 5a1 1 0 0 1 1-1h6.172a1 1 0 0 1 .707.293l8 8a1 1 0 0 1 0 1.414l-6.172 6.172a1 1 0 0 1-1.414 0l-8-8A1 1 0 0 1 4 11.172V5Zm1-3a3 3 0 0 0-3 3v6.172a3 3 0 0 0 .879 2.12l8 8a3 3 0 0 0 4.242 0l6.172-6.17a3 3 0 0 0 0-4.243l-8-8A3 3 0 0 0 11.172 2H5Zm3 7a1 1 0 1 1 2 0 1 1 0 0 1-2 0Zm1-3a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"Undo":[["path",{"d":"M8.70711 2.29289C9.09763 2.68342 9.09763 3.31658 8.70711 3.70711L6.41421 6H14C17.866 6 21 9.13401 21 13C21 16.866 17.866 20 14 20H10C9.44772 20 9 19.5523 9 19C9 18.4477 9.44772 18 10 18H14C16.7614 18 19 15.7614 19 13C19 10.2386 16.7614 8 14 8H6.41421L8.70711 10.2929C9.09763 10.6834 9.09763 11.3166 8.70711 11.7071C8.31658 12.0976 7.68342 12.0976 7.29289 11.7071L3.29289 7.70711C2.90237 7.31658 2.90237 6.68342 3.29289 6.29289L7.29289 2.29289C7.68342 1.90237 8.31658 1.90237 8.70711 2.29289Z","fill":"currentColor","stroke":"none"}]],"Unpin":[["path",{"d":"M12.8636 3.26026C13.9444 1.74705 16.1254 1.56655 17.4403 2.88148L21.1185 6.55971C22.4334 7.87463 22.2529 10.0556 20.7397 11.1364L18.5812 12.6782C18.1318 12.9992 17.5073 12.8951 17.1863 12.4457C16.8653 11.9963 16.9693 11.3717 17.4188 11.0507L19.5773 9.50895C20.0848 9.14643 20.1453 8.41495 19.7043 7.97392L16.0261 4.29569C15.5851 3.85466 14.8536 3.9152 14.491 4.42273L12.8137 6.77098C12.4927 7.22039 11.8682 7.32448 11.4188 7.00347C10.9693 6.68246 10.8653 6.05791 11.1863 5.6085L12.8636 3.26026ZM3.29289 3.29289C3.68342 2.90237 4.31658 2.90237 4.70711 3.29289L20.7071 19.2929C21.0976 19.6834 21.0976 20.3166 20.7071 20.7071C20.3166 21.0976 19.6834 21.0976 19.2929 20.7071L16 17.4142V17.5C16 18.911 15.0378 19.9538 13.9717 20.4109C12.9007 20.8701 11.476 20.8435 10.4568 19.8243L8.02332 17.3909L3.70711 21.7071C3.31658 22.0976 2.68342 22.0976 2.29289 21.7071C1.90237 21.3166 1.90237 20.6834 2.29289 20.2929L6.60911 15.9767L4.17567 13.5432C3.16007 12.5276 3.13988 11.1018 3.5954 10.0346C4.04949 8.97072 5.08716 8 6.5 8H6.58579L3.29289 4.70711C2.90237 4.31658 2.90237 3.68342 3.29289 3.29289ZM8.58244 9.99665C8.55525 9.99887 8.52776 10 8.5 10H6.5C6.08527 10 5.65976 10.2928 5.43485 10.8197C5.21136 11.3433 5.29634 11.8355 5.58988 12.129L11.871 18.4101C12.1736 18.7127 12.6669 18.7943 13.1835 18.5727C13.705 18.3491 14 17.9224 14 17.5V15.5C14 15.4722 14.0011 15.4447 14.0033 15.4176L8.58244 9.99665Z","fill":"currentColor","stroke":"none"}]],"Warning":[["path",{"d":"M10.42 2.006a4 4 0 0 1 3.159 0c.674.29 1.188.822 1.667 1.456.474.627 1 1.473 1.653 2.523l3.542 5.696c.72 1.16 1.3 2.09 1.682 2.854.384.766.654 1.517.59 2.292a4 4 0 0 1-1.604 2.886c-.625.463-1.405.63-2.258.709-.85.078-1.945.078-3.311.078H8.46c-1.366 0-2.46 0-3.31-.078-.854-.078-1.634-.246-2.26-.71a4 4 0 0 1-1.603-2.885c-.064-.775.206-1.526.59-2.292.383-.764.961-1.694 1.682-2.854l3.542-5.696c.653-1.05 1.18-1.896 1.653-2.523.48-.634.993-1.166 1.667-1.456Zm2.37 1.838a2 2 0 0 0-1.58 0c-.192.083-.448.28-.86.825-.413.544-.891 1.312-1.577 2.415l-3.488 5.61c-.755 1.214-1.283 2.066-1.62 2.737-.34.678-.402 1.02-.385 1.232a2 2 0 0 0 .802 1.443c.171.127.494.255 1.25.324.748.069 1.75.07 3.18.07h6.976c1.43 0 2.432-.001 3.18-.07.756-.069 1.079-.197 1.25-.324a2 2 0 0 0 .802-1.443c.017-.212-.045-.554-.385-1.232-.337-.671-.865-1.523-1.62-2.737l-3.488-5.61c-.686-1.103-1.164-1.87-1.576-2.415-.413-.546-.67-.742-.861-.825","fill":"currentColor","stroke":"none"}],["path",{"d":"M12 7.5a1 1 0 0 1 1 1v3a1 1 0 1 1-2 0v-3a1 1 0 0 1 1-1M10.851 15a1.15 1.15 0 1 1 2.3 0 1.15 1.15 0 0 1-2.3 0","fill":"currentColor","stroke":"none"}]],"X":[["path",{"fill-rule":"evenodd","d":"M5.636 5.636a1 1 0 0 1 1.414 0l4.95 4.95 4.95-4.95a1 1 0 0 1 1.414 1.414L13.414 12l4.95 4.95a1 1 0 0 1-1.414 1.414L12 13.414l-4.95 4.95a1 1 0 0 1-1.414-1.414l4.95-4.95-4.95-4.95a1 1 0 0 1 0-1.414Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"XCircleCrossedClose":[["path",{"d":"M8.29289 8.29289C8.68342 7.90237 9.31658 7.90237 9.70711 8.29289L12 10.5858L14.2929 8.29289C14.6834 7.90237 15.3166 7.90237 15.7071 8.29289C16.0976 8.68342 16.0976 9.31658 15.7071 9.70711L13.4142 12L15.7071 14.2929C16.0976 14.6834 16.0976 15.3166 15.7071 15.7071C15.3166 16.0976 14.6834 16.0976 14.2929 15.7071L12 13.4142L9.70711 15.7071C9.31658 16.0976 8.68342 16.0976 8.29289 15.7071C7.90237 15.3166 7.90237 14.6834 8.29289 14.2929L10.5858 12L8.29289 9.70711C7.90237 9.31658 7.90237 8.68342 8.29289 8.29289Z","fill":"currentColor","stroke":"none"}],["path",{"d":"M12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20C16.4183 20 20 16.4183 20 12C20 7.58172 16.4183 4 12 4ZM2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12Z","fill":"currentColor","stroke":"none"}]],"PinFilled":[["path",{"d":"M12.8636 3.26029C13.9444 1.74708 16.1254 1.56658 17.4403 2.88151L21.1185 6.55974C22.4335 7.87467 22.2529 10.0556 20.7397 11.1364L16.4786 14.1801C16.1638 14.405 16 14.7306 16 15V17.5C16 18.907 15.0409 19.9513 13.976 20.4105C12.9046 20.8724 11.4792 20.8468 10.4568 19.8244L8.02332 17.3909L3.70711 21.7071C3.31658 22.0977 2.68342 22.0977 2.29289 21.7071C1.90237 21.3166 1.90237 20.6835 2.29289 20.2929L6.60911 15.9767L4.17567 13.5433C3.1532 12.5208 3.12762 11.0955 3.58957 10.024C4.04871 8.95911 5.09306 8.00003 6.5 8.00003H9C9.26948 8.00003 9.59505 7.83624 9.81994 7.52139L12.8636 3.26029Z","fill":"currentColor","stroke":"none"}]],"Edit":[["path",{"fill-rule":"evenodd","d":"M16.793 2.793a3.121 3.121 0 1 1 4.414 4.414l-8.5 8.5A1 1 0 0 1 12 16H9a1 1 0 0 1-1-1v-3a1 1 0 0 1 .293-.707l8.5-8.5Zm3 1.414a1.121 1.121 0 0 0-1.586 0L10 12.414V14h1.586l8.207-8.207a1.121 1.121 0 0 0 0-1.586ZM6 5a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-4a1 1 0 1 1 2 0v4a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3h4a1 1 0 1 1 0 2H6Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"ThemeLight":[["path",{"d":"M17 12C17 14.7614 14.7614 17 12 17C9.23858 17 7 14.7614 7 12C7 9.23858 9.23858 7 12 7C14.7614 7 17 9.23858 17 12Z","stroke":"currentColor","strokeWidth":"1.5"}],["path",{"d":"M12 2V3.5M12 20.5V22M19.0708 19.0713L18.0101 18.0106M5.98926 5.98926L4.9286 4.9286M22 12H20.5M3.5 12H2M19.0713 4.92871L18.0106 5.98937M5.98975 18.0107L4.92909 19.0714","stroke":"currentColor","strokeLinecap":"round","strokeWidth":"1.5"}]],"ThemeDark":[["path",{"d":"M21.5 14.0784C20.3003 14.7189 18.9301 15.0821 17.4751 15.0821C12.7491 15.0821 8.91792 11.2509 8.91792 6.52485C8.91792 5.06986 9.28105 3.69968 9.92163 2.5C5.66765 3.49698 2.5 7.31513 2.5 11.8731C2.5 17.1899 6.8101 21.5 12.1269 21.5C16.6849 21.5 20.503 18.3324 21.5 14.0784Z","stroke":"currentColor","strokeLinecap":"round","strokeLinejoin":"round","strokeWidth":"1.5"}]],"ThemeAuto":[["path",{"d":"M14 21H16M14 21C13.1716 21 12.5 20.3284 12.5 19.5V17L12 17M14 21H10M10 21H8M10 21C10.8284 21 11.5 20.3284 11.5 19.5V17L12 17M12 17V21","stroke":"currentColor","strokeLinecap":"round","strokeLinejoin":"round","strokeWidth":"1.5"}],["path",{"d":"M16 3H8C5.17157 3 3.75736 3 2.87868 3.87868C2 4.75736 2 6.17157 2 9V11C2 13.8284 2 15.2426 2.87868 16.1213C3.75736 17 5.17157 17 8 17H16C18.8284 17 20.2426 17 21.1213 16.1213C22 15.2426 22 13.8284 22 11V9C22 6.17157 22 4.75736 21.1213 3.87868C20.2426 3 18.8284 3 16 3Z","stroke":"currentColor","strokeLinecap":"round","strokeLinejoin":"round","strokeWidth":"1.5"}]]};
+  const APP_ICON_DATA = {"Annotate":[["path",{"d":"M3.5 9V7A3.5 3.5 0 0 1 7 3.5H9M15 3.5H17A3.5 3.5 0 0 1 20.5 7V9M3.5 15V17A3.5 3.5 0 0 0 7 20.5H9","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round","stroke-width":"1.5"}],["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M12.2223 14.1998C11.789 12.9718 12.9717 11.7892 14.1997 12.2224L22.0006 14.9754C23.2684 15.4231 23.3907 17.1424 22.2537 17.783L22.1398 17.8417L19.3117 19.1617C19.2622 19.1847 19.2198 19.2204 19.1888 19.2646L19.1615 19.3118L17.8416 22.14C17.2547 23.3977 15.4374 23.3094 14.9753 22.0007L12.2223 14.1998ZM13.7874 13.3921C13.5418 13.3054 13.3053 13.5419 13.392 13.7875L16.1451 21.5878C16.2375 21.8494 16.6004 21.8671 16.7179 21.6156L18.0378 18.7875L18.1008 18.6664C18.2592 18.3925 18.4987 18.1726 18.7874 18.0379L21.6155 16.718C21.867 16.6006 21.8493 16.2377 21.5877 16.1452L13.7874 13.3921Z","fill":"currentColor","stroke":"none"}]],"SidebarFolder":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M1.66669 5C1.66669 3.61929 2.78598 2.5 4.16669 2.5H7.643C8.30604 2.5 8.94192 2.76339 9.41077 3.23223L10.1011 3.92259C10.2574 4.07887 10.4694 4.16667 10.6904 4.16667H15.8334C17.2141 4.16667 18.3334 5.28595 18.3334 6.66667V15C18.3334 16.3807 17.2141 17.5 15.8334 17.5H4.16669C2.78598 17.5 1.66669 16.3807 1.66669 15V5ZM4.16669 4.16667C3.70645 4.16667 3.33335 4.53976 3.33335 5V8.33333H16.6667V6.66667C16.6667 6.20643 16.2936 5.83333 15.8334 5.83333H10.6904C10.0273 5.83333 9.39145 5.56994 8.92261 5.1011L8.23225 4.41074C8.07597 4.25446 7.86401 4.16667 7.643 4.16667H4.16669ZM16.6667 10H3.33335V15C3.33335 15.4602 3.70645 15.8333 4.16669 15.8333H15.8334C16.2936 15.8333 16.6667 15.4602 16.6667 15V10Z","fill":"currentColor","stroke":"none","transform":"scale(1.2)"}]],"SidebarFolderOpen":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M8.36575 5.00294C8.31789 5.00035 8.26519 5 8.08579 5H7.3C6.44342 5 5.86113 5.00078 5.41104 5.03755C4.97262 5.07337 4.74842 5.1383 4.59202 5.21799C4.2157 5.40974 3.90973 5.7157 3.71799 6.09202C3.6383 6.24842 3.57337 6.47263 3.53755 6.91104C3.50078 7.36113 3.5 7.94342 3.5 8.8V13.3338C4.10345 12.2477 4.92627 11.2786 6.03229 10.4584C6.46262 10.1392 6.97003 10 7.45416 10H19.4995C19.4981 9.54872 19.4929 9.20759 19.4738 8.92661C19.4487 8.55915 19.4031 8.36814 19.3478 8.23464C19.1448 7.74458 18.7554 7.35523 18.2654 7.15224C18.1319 7.09695 17.9409 7.0513 17.5734 7.02623C17.197 7.00054 16.7126 7 16 7L12.8908 7.00001C12.7448 7.00002 12.6347 7.00003 12.5259 6.99413C11.6159 6.94474 10.75 6.58609 10.0717 5.97756C9.99052 5.90478 9.91272 5.82696 9.80953 5.72375L9.7929 5.70711C9.66604 5.58025 9.62853 5.54323 9.59285 5.51123C9.25366 5.20696 8.82074 5.02764 8.36575 5.00294ZM21.4996 10H21.6958C23.2725 10 24.218 11.7333 23.3868 13.0603C22.2267 14.9122 21.6207 15.9779 21.2984 17.3273C20.8483 19.2122 19.3008 21 17.0719 21H7.25868C7.23455 21 7.21056 21 7.18669 21H6.07372C5.95032 21 5.8274 20.9941 5.70538 20.9825C5.54408 20.9762 5.3918 20.9675 5.24817 20.9558C4.68608 20.9099 4.16937 20.8113 3.68404 20.564C2.93139 20.1805 2.31947 19.5686 1.93597 18.816C1.68868 18.3306 1.59012 17.8139 1.54419 17.2518C1.49998 16.7106 1.49999 16.0463 1.5 15.2413V8.7587C1.49999 7.95373 1.49998 7.28937 1.54419 6.74818C1.59012 6.18608 1.68868 5.66938 1.93597 5.18404C2.31947 4.43139 2.93139 3.81947 3.68404 3.43598C4.16937 3.18869 4.68608 3.09012 5.24817 3.0442C5.78937 2.99998 6.45373 2.99999 7.2587 3L8.10922 3C8.25524 2.99999 8.36528 2.99997 8.47414 3.00588C9.38412 3.05527 10.25 3.41391 10.9283 4.02245C11.0095 4.09525 11.0873 4.17306 11.1905 4.27632L11.2071 4.2929C11.334 4.41975 11.3715 4.45678 11.4072 4.48878C11.7463 4.79305 12.1793 4.97237 12.6343 4.99706C12.6821 4.99966 12.7348 5 12.9142 5L16.0343 5C16.7041 4.99999 17.2569 4.99999 17.7095 5.03087C18.1788 5.06289 18.6129 5.13142 19.0307 5.30449C20.0108 5.71046 20.7895 6.48916 21.1955 7.46927C21.3686 7.88708 21.4371 8.32118 21.4691 8.79047C21.4925 9.1336 21.4982 9.53436 21.4996 10ZM17.0719 19C18.1001 19 19.0467 18.1456 19.3531 16.8627C19.7604 15.1572 20.5385 13.8397 21.691 12H7.45416C7.34602 12 7.26903 12.0312 7.22363 12.0648C5.55547 13.3019 4.68121 14.9804 4.2774 17.1283C4.11717 17.9806 4.77661 18.8636 5.82444 18.9857C6.20963 18.9996 6.68386 19 7.3 19H17.0719Z","fill":"currentColor","stroke":"none"}]],"SidebarGlobe":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12ZM11.9851 4.00291C11.9744 4.00615 11.953 4.01416 11.921 4.03356C11.7908 4.11248 11.5742 4.32444 11.325 4.77696C11.0839 5.21453 10.8521 5.8046 10.6514 6.53263C10.3148 7.75315 10.0844 9.29169 10.019 11H13.981C13.9156 9.29169 13.6852 7.75315 13.3486 6.53263C13.1479 5.8046 12.9161 5.21453 12.675 4.77696C12.4258 4.32444 12.2092 4.11248 12.079 4.03356C12.047 4.01416 12.0256 4.00615 12.0149 4.00291C12.0067 4.00046 12.001 4.00006 11.9996 4C11.9982 4.00006 11.9933 4.00046 11.9851 4.00291ZM8.01766 11C8.08396 9.13314 8.33431 7.41167 8.72334 6.00094C8.87366 5.45584 9.04762 4.94639 9.24523 4.48694C6.48462 5.49946 4.43722 7.9901 4.06189 11H8.01766ZM4.06189 13H8.01766C8.09487 15.1737 8.42177 17.1555 8.93 18.6802C9.02641 18.9694 9.13134 19.2483 9.24522 19.5131C6.48461 18.5005 4.43722 16.0099 4.06189 13ZM10.019 13C10.0955 14.9972 10.3973 16.7574 10.8274 18.0477C11.0794 18.8038 11.3575 19.3436 11.6177 19.6737C11.7455 19.8359 11.8494 19.9225 11.9186 19.9649C11.9515 19.9852 11.9736 19.9935 11.9847 19.9969C11.9948 20 11.9999 20 11.9999 20C11.9999 20 12.0049 20.0001 12.0153 19.9969C12.0264 19.9935 12.0485 19.9852 12.0814 19.9649C12.1506 19.9225 12.2545 19.8359 12.3823 19.6737C12.6425 19.3436 12.9206 18.8038 13.1726 18.0477C13.6027 16.7574 13.9045 14.9972 13.981 13H10.019ZM15.9823 13C15.9051 15.1737 15.5782 17.1555 15.07 18.6802C14.9736 18.9694 14.8687 19.2483 14.7548 19.5131C17.5154 18.5005 19.5628 16.0099 19.9381 13H15.9823ZM19.9381 11C19.5628 7.99009 17.5154 5.49946 14.7548 4.48694C14.9524 4.94639 15.1263 5.45584 15.2767 6.00094C15.6657 7.41167 15.916 9.13314 15.9823 11H19.9381Z","fill":"currentColor","stroke":"none"}]],"Agent":[["path",{"d":"M7.3335 4.82617C7.3335 5.37846 6.88578 5.82617 6.3335 5.82617C5.78121 5.82617 5.3335 5.37846 5.3335 4.82617C5.3335 4.27389 5.78121 3.82617 6.3335 3.82617C6.88578 3.82617 7.3335 4.27389 7.3335 4.82617Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M10.6665 4.82617C10.6665 5.37846 10.2188 5.82617 9.6665 5.82617C9.11422 5.82617 8.6665 5.37846 8.6665 4.82617C8.6665 4.27389 9.11422 3.82617 9.6665 3.82617C10.2188 3.82617 10.6665 4.27389 10.6665 4.82617Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M12.1416 4.27148C12.1416 3.90046 12.1411 3.65254 12.126 3.46191C12.1113 3.27711 12.0847 3.19065 12.0576 3.13574C11.9789 2.9763 11.8499 2.8472 11.6904 2.76855C11.6355 2.7415 11.5498 2.71586 11.3652 2.70117C11.1746 2.68603 10.9267 2.68555 10.5557 2.68555H5.44434C5.07327 2.68555 4.82539 2.68605 4.63477 2.70117C4.44996 2.71586 4.3635 2.74148 4.30859 2.76855C4.14916 2.84723 4.02008 2.97631 3.94141 3.13574C3.91433 3.19065 3.88871 3.27711 3.87402 3.46191C3.8589 3.65254 3.8584 3.90042 3.8584 4.27148C3.8584 5.00556 3.85829 5.52568 3.89062 5.93262C3.9225 6.33359 3.98329 6.58013 4.0791 6.77441C4.28764 7.19707 4.63003 7.53959 5.05273 7.74805C5.247 7.84376 5.49371 7.9037 5.89453 7.93555C6.30145 7.96785 6.82171 7.96875 7.55566 7.96875H8.44434C9.17841 7.96875 9.69853 7.96788 10.1055 7.93555C10.5064 7.90367 10.753 7.84386 10.9473 7.74805C11.37 7.53954 11.7124 7.19715 11.9209 6.77441C12.0167 6.58013 12.0765 6.33357 12.1084 5.93262C12.1407 5.52568 12.1416 5.00556 12.1416 4.27148ZM13.1914 4.27148C13.1914 4.98875 13.1917 5.55746 13.1553 6.01562C13.1184 6.47961 13.0414 6.87502 12.8623 7.23828C12.5516 7.86842 12.0413 8.3787 11.4111 8.68945C11.0479 8.86856 10.6525 8.94555 10.1885 8.98242C9.73031 9.01883 9.1616 9.01855 8.44434 9.01855H7.55566C6.8383 9.01855 6.26876 9.01883 5.81055 8.98242C5.34662 8.94553 4.95112 8.86858 4.58789 8.68945C3.95779 8.3787 3.44746 7.86839 3.13672 7.23828C2.95766 6.87505 2.88062 6.47957 2.84375 6.01562C2.80734 5.55745 2.80762 4.98875 2.80762 4.27148C2.80762 3.91701 2.80792 3.61985 2.82715 3.37793C2.84685 3.13033 2.88968 2.89564 3 2.67188C3.18093 2.30498 3.47783 2.00808 3.84473 1.82715C4.06849 1.71683 4.30318 1.674 4.55078 1.6543C4.7927 1.63507 5.08986 1.63477 5.44434 1.63477H10.5557C10.9099 1.63477 11.2064 1.63508 11.4482 1.6543C11.696 1.67399 11.9314 1.71674 12.1553 1.82715C12.522 2.0081 12.8191 2.30512 13 2.67188C13.1102 2.89557 13.1532 3.13041 13.1729 3.37793C13.1921 3.61985 13.1914 3.91701 13.1914 4.27148Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M7.47461 1.88477V1.33398C7.47461 1.04403 7.71005 0.808594 8 0.808594C8.28995 0.808594 8.52539 1.04403 8.52539 1.33398V1.88477C8.52531 2.17464 8.2899 2.40918 8 2.40918C7.7101 2.40918 7.47469 2.17464 7.47461 1.88477Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M7.99986 10.1309C10.4492 10.1309 12.535 11.6826 13.3309 13.8545C13.4305 14.1267 13.2906 14.4286 13.0184 14.5283C12.7463 14.6278 12.4443 14.4879 12.3446 14.2158C11.6954 12.4443 9.99461 11.1816 7.99986 11.1816C6.00516 11.1817 4.30429 12.4444 3.65513 14.2158C3.55532 14.4879 3.25345 14.628 2.9813 14.5283C2.70915 14.4286 2.56924 14.1267 2.6688 13.8545C3.46467 11.6827 5.55056 10.1309 7.99986 10.1309Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"ArrowCurvedRight":[["path",{"d":"M10.1865 2.34642C10.3914 2.14154 10.7237 2.14184 10.9287 2.34642L13.4131 4.83079C13.7483 5.16599 13.7483 5.70946 13.4131 6.04466L10.9287 8.52903C10.7237 8.73389 10.3915 8.73394 10.1865 8.52903C9.98198 8.32402 9.98178 7.99174 10.1865 7.78685L12.0088 5.9636H6.63281C4.76376 5.9636 3.24719 7.49289 3.24707 9.36888C3.24707 11.2373 4.76542 12.7585 6.63281 12.7585H9.57617C9.86592 12.7587 10.1005 12.9932 10.1006 13.2829C10.1006 13.5728 9.86596 13.8081 9.57617 13.8083H6.63281C4.18446 13.8083 2.19629 11.8162 2.19629 9.36888C2.19641 6.91996 4.17691 4.91282 6.63281 4.91282H12.0107L10.1865 3.0886C9.98195 2.88354 9.98165 2.55129 10.1865 2.34642Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"ArrowLeft":[["path",{"d":"M6.96231 2.96214C7.16727 2.7574 7.49953 2.75742 7.7045 2.96214C7.90913 3.16712 7.9092 3.49939 7.7045 3.70433L3.93301 7.47483H13.3334C13.6232 7.47501 13.8578 7.71038 13.8578 8.00022C13.8577 8.28999 13.6232 8.52544 13.3334 8.52562H3.93301L7.7045 12.2951C7.90924 12.5001 7.90909 12.8323 7.7045 13.0373C7.49953 13.2423 7.16735 13.2422 6.96231 13.0373L2.53067 8.60667L2.47208 8.54124C2.21571 8.22666 2.21566 7.77279 2.47208 7.45823L2.53067 7.3928L6.96231 2.96214Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"ArrowRight":[["path",{"d":"M8.29541 2.96214C8.50038 2.75742 8.83263 2.7574 9.0376 2.96214L13.4692 7.3928L13.5278 7.45823C13.7842 7.77279 13.7842 8.22666 13.5278 8.54124L13.4692 8.60667L9.0376 13.0373C8.83256 13.2422 8.50038 13.2423 8.29541 13.0373C8.09082 12.8323 8.09067 12.5001 8.29541 12.2951L12.0669 8.52562H2.6665C2.37676 8.52544 2.14218 8.28999 2.14209 8.00022C2.14209 7.71038 2.3767 7.47501 2.6665 7.47483H12.0669L8.29541 3.70433C8.09071 3.49939 8.09078 3.16712 8.29541 2.96214Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"ArrowRotateCcw":[["path",{"d":"M7.99976 1.64111C11.5112 1.64113 14.358 4.48806 14.3582 7.99951C14.3582 11.5111 11.5113 14.3579 7.99976 14.3579C4.97337 14.3578 2.4422 12.244 1.79956 9.4126C1.7354 9.12984 1.91231 8.84785 2.19507 8.78369C2.4778 8.71959 2.75884 8.89745 2.823 9.18018C3.35943 11.5439 5.47433 13.308 7.99976 13.3081C10.9314 13.3081 13.3083 10.9312 13.3083 7.99951C13.3082 5.06796 10.9313 2.69191 7.99976 2.69189C5.96105 2.69201 4.19199 3.84248 3.30249 5.53076H4.75952C5.04939 5.53086 5.28394 5.76626 5.28394 6.05615C5.28376 6.34589 5.04928 6.58047 4.75952 6.58057H2.16675C1.87691 6.58057 1.64153 6.34595 1.64136 6.05615V3.13916C1.64136 2.84921 1.8768 2.61377 2.16675 2.61377C2.4567 2.61377 2.69214 2.84921 2.69214 3.13916V4.50049C3.82929 2.77918 5.78081 1.64122 7.99976 1.64111Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"ArrowRotateCw":[["path",{"d":"M8.00024 1.64111C10.2192 1.64122 12.1707 2.77917 13.3079 4.50049V3.13916C13.3079 2.84921 13.5433 2.61377 13.8333 2.61377C14.1232 2.61379 14.3586 2.84922 14.3586 3.13916V6.05615C14.3585 6.34594 14.1231 6.58055 13.8333 6.58057H11.2405C10.9507 6.58047 10.7162 6.34589 10.7161 6.05615C10.7161 5.76626 10.9506 5.53086 11.2405 5.53076H12.6975C11.808 3.84247 10.039 2.69201 8.00024 2.69189C5.06864 2.69189 2.69183 5.06795 2.69165 7.99951C2.69165 10.9312 5.06853 13.3081 8.00024 13.3081C10.5257 13.308 12.6406 11.5439 13.177 9.18018C13.2412 8.89744 13.5222 8.71957 13.8049 8.78369C14.0877 8.84785 14.2646 9.12984 14.2004 9.4126C13.5578 12.244 11.0266 14.3578 8.00024 14.3579C4.48863 14.3579 1.64185 11.5111 1.64185 7.99951C1.64202 4.48805 4.48874 1.64111 8.00024 1.64111Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"ArrowUp":[["path",{"d":"M7.45819 2.4721C7.77271 2.21556 8.22656 2.2158 8.5412 2.4721L8.60663 2.53069L13.0373 6.96233C13.2423 7.16736 13.2423 7.49949 13.0373 7.70452C12.8322 7.90905 12.5 7.90938 12.2951 7.70452L8.52557 3.93401V13.3334C8.5254 13.6232 8.29002 13.8578 8.00018 13.8578C7.71034 13.8578 7.47497 13.6232 7.47479 13.3334V3.93206L3.70429 7.70452C3.49929 7.90915 3.16702 7.90927 2.9621 7.70452C2.75738 7.49959 2.75747 7.16732 2.9621 6.96233L7.39276 2.53069L7.45819 2.4721Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Atom":[["path",{"d":"M6.286 4.75c.602-.004 1.374.158 2.28.52.53.213 1.09.487 1.667.82a25.428 25.428 0 0 0-2.19 1.954 25.428 25.428 0 0 0-1.953 2.19 13.144 13.144 0 0 1-.82-1.669c-.362-.905-.524-1.677-.52-2.279.004-.596.167-.95.376-1.16.21-.21.564-.372 1.16-.376ZM12 4.825a16.157 16.157 0 0 0-2.692-1.411c-1.055-.422-2.092-.67-3.035-.664-.95.006-1.873.274-2.561.962s-.956 1.612-.962 2.56c-.006.944.242 1.981.664 3.036.346.865.821 1.773 1.41 2.692a16.234 16.234 0 0 0-1.41 2.692c-.422 1.055-.67 2.092-.664 3.035.006.95.274 1.873.962 2.561s1.612.956 2.56.962c.944.006 1.981-.242 3.036-.664A16.152 16.152 0 0 0 12 19.176c.92.589 1.827 1.065 2.692 1.41 1.055.422 2.092.67 3.035.664.95-.006 1.873-.274 2.561-.962s.956-1.612.962-2.56c.006-.944-.242-1.981-.664-3.036A16.152 16.152 0 0 0 19.176 12a16.158 16.158 0 0 0 1.41-2.692c.422-1.055.67-2.092.664-3.035-.006-.95-.274-1.873-.962-2.561s-1.612-.956-2.56-.962c-.944-.006-1.981.242-3.036.664-.865.346-1.773.821-2.692 1.41Zm0 2.43a23.013 23.013 0 0 1 2.542 2.203A23.014 23.014 0 0 1 16.745 12a23.015 23.015 0 0 1-2.203 2.542A23.015 23.015 0 0 1 12 16.745a23.014 23.014 0 0 1-2.542-2.203A23.013 23.013 0 0 1 7.255 12a23.012 23.012 0 0 1 2.203-2.542A23.012 23.012 0 0 1 12 7.255Zm5.91 2.978a25.42 25.42 0 0 0-1.954-2.19 25.432 25.432 0 0 0-2.19-1.953 13.142 13.142 0 0 1 1.669-.82c.905-.362 1.677-.524 2.279-.52.596.004.95.167 1.16.376.21.21.372.564.376 1.16.004.602-.159 1.374-.52 2.28a13.23 13.23 0 0 1-.82 1.667Zm0 3.534c.333.577.607 1.137.82 1.668.361.905.524 1.677.52 2.279-.004.596-.167.95-.376 1.16-.21.21-.564.372-1.16.376-.602.004-1.374-.159-2.28-.52a13.23 13.23 0 0 1-1.667-.82 25.424 25.424 0 0 0 2.19-1.954 25.424 25.424 0 0 0 1.953-2.19Zm-7.677 4.143c-.577.333-1.137.607-1.668.82-.905.361-1.677.524-2.279.52-.596-.004-.95-.167-1.16-.376-.21-.21-.372-.564-.376-1.16-.004-.602.158-1.374.52-2.28.213-.53.487-1.09.82-1.667.587.74 1.24 1.476 1.954 2.19a25.418 25.418 0 0 0 2.19 1.953Z","fill":"currentColor","stroke":"none"}]],"BarChart":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M8.99707 1.47461C9.8393 1.47461 10.5225 2.15777 10.5225 3V4.45703H13C13.8422 4.45703 14.5254 5.14019 14.5254 5.98242V12.6494C14.5252 13.6755 13.6931 14.5076 12.667 14.5078H10.125C10.0839 14.5181 10.0413 14.5254 9.99707 14.5254C9.95279 14.5254 9.91023 14.5181 9.86914 14.5078H6.125C6.08391 14.5181 6.04135 14.5254 5.99707 14.5254C5.95279 14.5254 5.91023 14.5181 5.86914 14.5078H3.33301C2.30694 14.5076 1.47479 13.6755 1.47461 12.6494V8.98242C1.47461 8.14019 2.15777 7.45703 3 7.45703H5.47168V3C5.47168 2.15777 6.15484 1.47461 6.99707 1.47461H8.99707ZM10.5225 13.457H12.667C13.1132 13.4569 13.4744 13.0956 13.4746 12.6494V5.98242C13.4746 5.72009 13.2623 5.50781 13 5.50781H10.5225V13.457ZM6.99707 2.52539C6.73474 2.52539 6.52246 2.73766 6.52246 3V13.457H9.47168V3C9.47168 2.73766 9.25941 2.52539 8.99707 2.52539H6.99707ZM3 8.50781C2.73766 8.50781 2.52539 8.72009 2.52539 8.98242V12.6494C2.52557 13.0956 2.88684 13.4569 3.33301 13.457H5.47168V8.50781H3Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Camera":[["path",{"d":"M8.00051 5.47437C9.61566 5.47458 10.9251 6.785 10.9253 8.40015C10.9251 10.0153 9.61564 11.3247 8.00051 11.325C6.38521 11.325 5.07494 10.0154 5.07473 8.40015C5.07491 6.78487 6.38519 5.47437 8.00051 5.47437ZM8.00051 6.52515C6.96509 6.52515 6.1257 7.36477 6.12551 8.40015C6.12573 9.4355 6.96511 10.2751 8.00051 10.2751C9.03574 10.2749 9.8753 9.43537 9.87551 8.40015C9.87533 7.3649 9.03576 6.52536 8.00051 6.52515Z","fill-rule":"evenodd","clip-rule":"evenodd","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M9.43118 1.89136C10.191 1.89145 10.8746 2.35485 11.1568 3.0603L11.356 3.55835H12.1333C13.4541 3.55835 14.5249 4.62916 14.5249 5.94995V11.5505C14.5247 12.8712 13.454 13.9421 12.1333 13.9421H3.87551C2.55054 13.9419 1.47782 12.8638 1.48391 11.5388L1.51028 5.93921C1.51633 4.62266 2.58533 3.55836 3.90188 3.55835H4.64505L4.84426 3.0603C5.12646 2.35479 5.80999 1.89137 6.56985 1.89136H9.43118ZM6.56985 2.94214C6.2394 2.94215 5.94262 3.14311 5.81985 3.44995L5.52981 4.17358C5.42478 4.43617 5.17007 4.60815 4.88723 4.60815H3.90188C3.1634 4.60817 2.56348 5.20551 2.56008 5.94409L2.53469 11.5437C2.53128 12.287 3.13238 12.8911 3.87551 12.8914H12.1333C12.8741 12.8914 13.4749 12.2913 13.4751 11.5505V5.94995C13.4751 5.209 12.8742 4.60815 12.1333 4.60815H11.1128C10.8301 4.60804 10.5762 4.43604 10.4712 4.17358L10.1812 3.44995C10.0585 3.14313 9.76157 2.94223 9.43118 2.94214H6.56985Z","fill-rule":"evenodd","clip-rule":"evenodd","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"CameraPhoto":[["path",{"d":"M10.0811 4.49951C11.1994 4.49951 12.1064 5.40653 12.1064 6.5249C12.1062 7.64305 11.1993 8.55029 10.0811 8.55029C8.96284 8.55029 8.05593 7.64305 8.05566 6.5249C8.05566 5.40653 8.96268 4.49951 10.0811 4.49951ZM10.0811 5.55029C9.54258 5.55029 9.10645 5.98642 9.10645 6.5249C9.10671 7.06316 9.54274 7.49951 10.0811 7.49951C10.6194 7.49951 11.0554 7.06316 11.0557 6.5249C11.0557 5.98642 10.6195 5.55029 10.0811 5.55029Z","fill-rule":"evenodd","clip-rule":"evenodd","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M11.8662 2.14111C13.3344 2.14111 14.5254 3.33214 14.5254 4.80029V11.1997C14.5254 12.6679 13.3344 13.8579 11.8662 13.8579H4.13379C2.66563 13.8579 1.47461 12.6679 1.47461 11.1997V4.80029C1.47461 3.33214 2.66563 2.14111 4.13379 2.14111H11.8662ZM4.13379 3.19189C3.24553 3.19189 2.52539 3.91203 2.52539 4.80029V9.58545L3.55371 8.55811C4.34438 7.76761 5.62617 7.76675 6.41699 8.55713L10.6699 12.8081H11.8662C12.7545 12.8081 13.4746 12.088 13.4746 11.1997V4.80029C13.4746 3.91204 12.7545 3.19189 11.8662 3.19189H4.13379ZM5.6748 9.30029C5.29407 8.91977 4.6766 8.91977 4.2959 9.30029L2.52539 11.0708V11.1997C2.52539 12.088 3.24553 12.8081 4.13379 12.8081H9.18457L5.6748 9.30029Z","fill-rule":"evenodd","clip-rule":"evenodd","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Chart":[["path",{"d":"M2.33398 1.80786C2.62393 1.80786 2.85938 2.0433 2.85938 2.33325V12.3333C2.85938 12.7796 3.22071 13.1417 3.66699 13.1418H13.667C13.9568 13.1418 14.1922 13.3765 14.1924 13.6663C14.1924 13.9562 13.9569 14.1917 13.667 14.1917H3.66699C2.64081 14.1915 1.80859 13.3595 1.80859 12.3333V2.33325C1.80859 2.0433 2.04403 1.80786 2.33398 1.80786Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M13.2393 3.36157C13.4078 3.12592 13.7358 3.07109 13.9717 3.2395C14.2073 3.40792 14.2618 3.73509 14.0938 3.97095L10.7607 8.63794C10.6787 8.75278 10.5535 8.83005 10.4141 8.85181C10.2745 8.87341 10.1316 8.83785 10.0186 8.75317L7.75781 7.05786L5.41016 9.99438C5.22903 10.2208 4.89829 10.2575 4.67188 10.0764C4.44551 9.89528 4.40873 9.56453 4.58984 9.33813L7.25684 6.00513L7.3291 5.93091C7.51229 5.77701 7.78291 5.76446 7.98145 5.91333L10.2178 7.59009L13.2393 3.36157Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Check":[["path",{"d":"M11.5625 4.0338C11.7255 3.79403 12.0522 3.73111 12.292 3.89415C12.5315 4.05717 12.5934 4.38398 12.4306 4.62364L7.53904 11.818C7.30088 12.1681 6.80224 12.215 6.50291 11.9156L3.62791 9.03478C3.42314 8.82953 3.42368 8.4964 3.62889 8.29161C3.83415 8.08683 4.16726 8.08733 4.37205 8.29259L6.92478 10.8512L11.5625 4.0338Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"CheckCircle":[["path",{"d":"M9.82617 5.80469C9.98754 5.56401 10.3139 5.49907 10.5547 5.66016C10.795 5.82162 10.8602 6.14803 10.6992 6.38867L7.98633 10.4346C7.70834 10.8488 7.11691 10.8958 6.77637 10.5312L5.35352 9.00684C5.15579 8.7949 5.16712 8.46247 5.37891 8.26465C5.59087 8.06696 5.92331 8.07818 6.12109 8.29004L7.30664 9.56152L9.82617 5.80469Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M8 1.47461C11.6037 1.47461 14.5254 4.39634 14.5254 8C14.5254 11.6037 11.6037 14.5254 8 14.5254C4.39634 14.5254 1.47461 11.6037 1.47461 8C1.47461 4.39634 4.39634 1.47461 8 1.47461ZM8 2.52539C4.97624 2.52539 2.52539 4.97624 2.52539 8C2.52539 11.0238 4.97624 13.4746 8 13.4746C11.0238 13.4746 13.4746 11.0238 13.4746 8C13.4746 4.97624 11.0238 2.52539 8 2.52539Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"ChevronDown":[["path",{"d":"M11.6289 6.29537C11.8339 6.09035 12.166 6.09035 12.3711 6.29537C12.5761 6.5004 12.5761 6.83253 12.3711 7.03756L8.60641 10.8022C8.27129 11.1369 7.72863 11.1369 7.39352 10.8022L3.62887 7.03756C3.42384 6.83253 3.42384 6.5004 3.62887 6.29537C3.83389 6.09035 4.16603 6.09035 4.37105 6.29537L7.99996 9.92428L11.6289 6.29537Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"ChevronRight":[["path",{"d":"M5.96236 11.6289C5.75734 11.8339 5.75734 12.166 5.96236 12.3711C6.16739 12.5761 6.49953 12.5761 6.70455 12.3711L10.4692 8.60641C10.8039 8.27129 10.8039 7.72863 10.4692 7.39351L6.70455 3.62887C6.49952 3.42384 6.16739 3.42384 5.96236 3.62887C5.75734 3.83389 5.75734 4.16603 5.96236 4.37105L9.59127 7.99996L5.96236 11.6289Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"ChevronUp":[["path",{"d":"M11.6289 9.70417C11.8339 9.9092 12.166 9.9092 12.3711 9.70417C12.5761 9.49915 12.5761 9.16701 12.3711 8.96199L8.60641 5.19734C8.27129 4.86261 7.72863 4.86261 7.39352 5.19734L3.62887 8.96199C3.42384 9.16701 3.42384 9.49915 3.62887 9.70417C3.83389 9.9092 4.16603 9.9092 4.37105 9.70417L7.99996 6.07527L11.6289 9.70417Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"ChevronUpDown":[["path",{"d":"M4.94855 9.82622C5.14017 9.60884 5.47125 9.58788 5.68879 9.77935L7.99543 11.8106L10.3118 9.78716C10.5302 9.59669 10.8614 9.61968 11.0521 9.83794C11.2427 10.0563 11.2206 10.3875 11.0023 10.5782L8.41047 12.8418L8.40851 12.8399C8.17103 13.0519 7.81381 13.0513 7.57746 12.8379L7.57648 12.8399L4.99543 10.5674C4.77802 10.3759 4.75739 10.0438 4.94855 9.82622Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M7.57746 3.33013C7.81397 3.1166 8.17103 3.11579 8.40851 3.32818L8.41047 3.32622L11.0023 5.5899C11.2205 5.78062 11.2427 6.11178 11.0521 6.33013C10.8614 6.54803 10.5301 6.57118 10.3118 6.38091L7.99543 4.35747L5.68879 6.38872C5.47129 6.57987 5.14011 6.559 4.94855 6.34185C4.75703 6.12436 4.77814 5.79231 4.99543 5.60064L7.57648 3.32818L7.57746 3.33013Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Circle":[["rect",{"width":"6","height":"6","rx":"3","fill":"currentColor","stroke":"none","transform":"scale(4)"}]],"Clip":[["path",{"d":"M6.1416 10.1663V4.50024C6.1416 2.70191 7.53472 1.30803 9.33301 1.30786C11.1487 1.30786 12.5526 2.71648 12.5527 4.53052V10.1575C12.5527 12.7348 10.5696 14.6916 7.99902 14.6917C5.43579 14.6917 3.47461 12.7291 3.47461 10.1663V5.83325C3.47461 5.5433 3.71005 5.30786 4 5.30786C4.28995 5.30786 4.52539 5.5433 4.52539 5.83325V10.1663C4.52539 12.1496 6.01605 13.6418 7.99902 13.6418C9.99647 13.6418 11.5029 12.1482 11.5029 10.1575V4.53052C11.5028 3.29473 10.5672 2.35864 9.33301 2.35864C8.11462 2.35881 7.19141 3.28181 7.19141 4.50024V10.1663C7.19141 10.6338 7.53247 10.9749 8 10.9749C8.46812 10.9749 8.80859 10.6344 8.80859 10.1663V5.83325C8.80859 5.54341 9.04321 5.30804 9.33301 5.30786C9.62296 5.30786 9.8584 5.5433 9.8584 5.83325V10.1663C9.8584 11.2143 9.04802 12.0247 8 12.0247C6.95257 12.0247 6.1416 11.2137 6.1416 10.1663Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Clipboard":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M9.90481 1.64111C10.0205 1.6506 10.1587 1.6735 10.2984 1.74463C10.4432 1.81842 10.568 1.9249 10.6626 2.05518L10.7466 2.19189L10.7915 2.29639C10.8284 2.39979 10.843 2.49952 10.8501 2.58643C10.854 2.63445 10.8521 2.68647 10.8531 2.74072C11.0373 2.75429 11.1998 2.77558 11.3511 2.81689C12.2809 3.07095 13.0081 3.79729 13.2622 4.72705C13.3633 5.09683 13.3579 5.53248 13.3579 6.19287V10.3921C13.3579 10.9995 13.3588 11.4872 13.3267 11.8804C13.294 12.2795 13.2249 12.6282 13.0611 12.9497C12.7998 13.4622 12.3832 13.8789 11.8706 14.1401C11.5491 14.304 11.2005 14.3731 10.8013 14.4058C10.4081 14.4379 9.9204 14.437 9.31302 14.437H6.68606C6.0789 14.437 5.59184 14.4379 5.19876 14.4058C4.79947 14.3731 4.45105 14.304 4.12942 14.1401C3.61686 13.879 3.20025 13.4622 2.93899 12.9497C2.77517 12.6282 2.70601 12.2795 2.67337 11.8804C2.64125 11.4872 2.64114 10.9995 2.64114 10.3921V6.19287C2.64114 5.53242 2.63676 5.09687 2.73782 4.72705C2.99194 3.79741 3.71834 3.07102 4.64798 2.81689C4.79929 2.77555 4.96181 2.75429 5.14602 2.74072C5.14723 2.68647 5.14601 2.63445 5.14993 2.58643C5.1594 2.47061 5.18223 2.33167 5.25345 2.19189C5.35165 1.99939 5.50821 1.84284 5.70071 1.74463C5.84048 1.67341 5.97943 1.65058 6.09524 1.64111C6.2049 1.63215 6.33505 1.63232 6.46634 1.63232H9.53274C9.66409 1.63232 9.7951 1.63215 9.90481 1.64111ZM10.8501 3.9917C10.8407 4.10752 10.8178 4.24645 10.7466 4.38623C10.6483 4.57895 10.4911 4.73528 10.2984 4.8335C10.1587 4.90463 10.0205 4.92753 9.90481 4.93701C9.7951 4.94598 9.66409 4.9458 9.53274 4.9458H6.46634C6.33505 4.9458 6.2049 4.94597 6.09524 4.93701C5.97943 4.92754 5.84048 4.90471 5.70071 4.8335C5.50821 4.73529 5.35165 4.57873 5.25345 4.38623C5.18223 4.24646 5.1594 4.10752 5.14993 3.9917C5.14493 3.93056 5.14598 3.86301 5.14505 3.79248C5.0573 3.80109 4.98826 3.81242 4.92532 3.82959C4.3538 3.98578 3.9067 4.43287 3.75052 5.00439C3.69605 5.20401 3.69192 5.46395 3.69192 6.19287V10.3921C3.69192 11.0168 3.69242 11.4539 3.72024 11.7944C3.74756 12.1288 3.79865 12.3242 3.87454 12.4731C4.03512 12.788 4.29107 13.0441 4.60598 13.2046C4.75494 13.2805 4.95033 13.3316 5.2847 13.3589C5.62507 13.3867 6.06182 13.3872 6.68606 13.3872H9.31302C9.93766 13.3872 10.3749 13.3867 10.7154 13.3589C11.0497 13.3316 11.2451 13.2805 11.3941 13.2046C11.7089 13.0441 11.965 12.788 12.1255 12.4731C12.2014 12.3242 12.2525 12.1288 12.2798 11.7944C12.3076 11.4539 12.3081 11.0168 12.3081 10.3921V6.19287C12.3081 5.46374 12.3031 5.20402 12.2486 5.00439C12.0924 4.43284 11.6463 3.98576 11.0747 3.82959C11.0115 3.81233 10.9422 3.8011 10.854 3.79248C10.8534 3.86301 10.8551 3.93056 10.8501 3.9917ZM6.19583 2.68701C6.19219 2.74305 6.19192 2.82148 6.19192 2.95752V3.62061C6.19192 3.75586 6.19225 3.83416 6.19583 3.89014C6.25187 3.89378 6.33025 3.89502 6.46634 3.89502H9.53274C9.66843 3.89502 9.74723 3.89374 9.80325 3.89014C9.80683 3.83416 9.80813 3.75589 9.80813 3.62061V2.95752C9.80813 2.82145 9.80689 2.74305 9.80325 2.68701C9.74723 2.68341 9.66837 2.68311 9.53274 2.68311H6.46634C6.3303 2.68311 6.25187 2.68338 6.19583 2.68701Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Collapse":[["path",{"d":"M6.16622 8.80776C6.73222 8.80776 7.19146 9.26719 7.19161 9.83315V12.6662C7.19161 12.9561 6.95617 13.1915 6.66622 13.1915C6.37644 13.1913 6.14083 12.956 6.14083 12.6662V10.5939L3.37228 13.3703C3.16754 13.5755 2.83441 13.5759 2.62911 13.3712C2.42414 13.1665 2.4237 12.8343 2.62813 12.629L5.39278 9.85756H3.33321C3.04354 9.85737 2.808 9.62283 2.80782 9.33315C2.80798 9.04345 3.04353 8.80796 3.33321 8.80776H6.16622Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M12.6281 2.62905C12.8326 2.42395 13.1649 2.42297 13.3703 2.6271C13.5757 2.83159 13.5766 3.16477 13.3723 3.37026L10.6125 6.14174H12.6662C12.9561 6.14174 13.1914 6.37636 13.1916 6.66616C13.1916 6.95608 12.9562 7.19155 12.6662 7.19155H9.83321C9.26719 7.19148 8.80785 6.73219 8.80782 6.16616V3.33315C8.80782 3.04324 9.04332 2.80783 9.33321 2.80776C9.62316 2.80776 9.8586 3.0432 9.8586 3.33315V5.4103L12.6281 2.62905Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"ColorTheme":[["path",{"d":"M5.73336 7.8997C5.73336 7.39137 5.32502 6.98303 4.81669 6.98303C4.30836 6.98303 3.90002 7.39137 3.90002 7.8997C3.90002 8.40803 4.30836 8.81637 4.81669 8.81637C5.32502 8.81637 5.73336 8.40803 5.73336 7.8997Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M9.84184 8.99146C10.3502 8.99146 10.7585 9.39979 10.7585 9.90812C10.7585 10.4165 10.3502 10.8248 9.84184 10.8248C9.3335 10.8248 8.92517 10.4165 8.92517 9.90812C8.92517 9.39979 9.3335 8.99146 9.84184 8.99146Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M11.4001 6.16638C11.9084 6.16638 12.3167 6.57472 12.3167 7.08305C12.3167 7.59138 11.9084 7.99972 11.4001 7.99972C10.8917 7.99972 10.4834 7.59138 10.4834 7.08305C10.4834 6.57472 10.8917 6.16638 11.4001 6.16638Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M9.77506 3.70813C10.2834 3.70813 10.6917 4.11646 10.6917 4.6248C10.6917 5.13313 10.2834 5.54146 9.77506 5.54146C9.26673 5.54146 8.8584 5.13313 8.8584 4.6248C8.8584 4.11646 9.26673 3.70813 9.77506 3.70813Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M6.67509 4.47473C7.18342 4.47473 7.59176 4.88306 7.59176 5.3914C7.59176 5.89973 7.18342 6.30806 6.67509 6.30806C6.16676 6.30806 5.75842 5.89973 5.75842 5.3914C5.75842 4.88306 6.16676 4.47473 6.67509 4.47473Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M13.4746 6.7168C13.4746 4.62274 11.9949 2.5752 9.33301 2.5752C5.61783 2.57537 2.52557 5.56345 2.52539 9.38281C2.52539 10.0177 2.61355 10.4622 2.74902 10.7285C2.81339 10.855 2.8795 10.9245 2.93652 10.9629C2.98988 10.9988 3.06038 11.0244 3.16699 11.0244C3.42394 11.0243 3.57363 10.901 3.87891 10.5957C4.15668 10.3179 4.5904 9.85853 5.33301 9.8584C5.52834 9.8584 5.72526 9.89834 5.90137 10.002C6.08057 10.1075 6.20268 10.2583 6.28027 10.4199C6.4226 10.7165 6.42067 11.0618 6.39844 11.3252C6.3749 11.6038 6.31647 11.9024 6.27148 12.1445C6.22204 12.4107 6.19141 12.5956 6.19141 12.7168C6.19147 13.0869 6.3058 13.2425 6.42969 13.3311C6.58897 13.4448 6.87348 13.5244 7.33301 13.5244C7.80353 13.5244 8.42853 13.3527 9.12109 12.999C9.80614 12.6492 10.5236 12.1382 11.1758 11.5059C12.4888 10.2326 13.4745 8.52713 13.4746 6.7168ZM14.5254 6.7168C14.5253 8.90612 13.344 10.8665 11.9072 12.2598C11.1845 12.9606 10.3812 13.5335 9.59766 13.9336C8.82154 14.3299 8.02909 14.5752 7.33301 14.5752C6.793 14.5752 6.24419 14.4881 5.82031 14.1855C5.36108 13.8575 5.14168 13.3461 5.1416 12.7168C5.1416 12.4792 5.19495 12.1917 5.23926 11.9531C5.28798 11.6908 5.33344 11.4511 5.35156 11.2363C5.36624 11.0623 5.35637 10.9608 5.34473 10.9092C5.34121 10.9091 5.33711 10.9082 5.33301 10.9082C5.07601 10.9083 4.92648 11.0325 4.62109 11.3379C4.34331 11.6157 3.90945 12.0751 3.16699 12.0752C2.86996 12.0752 2.59166 11.997 2.35059 11.835C2.11325 11.6754 1.93877 11.4523 1.8125 11.2041C1.56661 10.7205 1.47461 10.081 1.47461 9.38281C1.47479 4.97285 5.04869 1.52459 9.33301 1.52441C12.6712 1.52441 14.5254 4.14419 14.5254 6.7168Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Compare":[["path",{"d":"M9.29297 3.29297C9.68349 2.90244 10.3165 2.90244 10.707 3.29297L12.707 5.29297C13.0731 5.65908 13.0957 6.23809 12.7754 6.63086L12.707 6.70703L10.707 8.70703L10.6309 8.77539C10.2381 9.09574 9.65908 9.07315 9.29297 8.70703C8.92685 8.34092 8.90426 7.76191 9.22461 7.36914L9.29297 7.29297L9.58594 7H7.5C6.94772 7 6.5 7.44772 6.5 8V14.9072C7.80556 15.329 8.75 16.554 8.75 18C8.75 19.7949 7.29493 21.25 5.5 21.25C3.70507 21.25 2.25 19.7949 2.25 18C2.25 16.554 3.19444 15.329 4.5 14.9072V8C4.5 6.34315 5.84315 5 7.5 5H9.58594L9.29297 4.70703C8.90244 4.31651 8.90244 3.68349 9.29297 3.29297ZM5.5 16.75C4.80964 16.75 4.25 17.3096 4.25 18C4.25 18.6904 4.80964 19.25 5.5 19.25C6.19036 19.25 6.75 18.6904 6.75 18C6.75 17.3096 6.19036 16.75 5.5 16.75Z","fill":"currentColor","stroke":"none"}],["path",{"d":"M18.5 2.75C20.2949 2.75 21.75 4.20507 21.75 6C21.75 7.44586 20.8054 8.66989 19.5 9.0918V16C19.5 17.6568 18.1568 19 16.5 19H14.4141L14.707 19.293C15.0976 19.6835 15.0976 20.3165 14.707 20.707C14.3165 21.0976 13.6835 21.0976 13.293 20.707L11.293 18.707C10.9269 18.3409 10.9043 17.7619 11.2246 17.3691L11.293 17.293L13.293 15.293L13.3691 15.2246C13.7619 14.9043 14.3409 14.9269 14.707 15.293C15.0731 15.6591 15.0957 16.2381 14.7754 16.6309L14.707 16.707L14.4141 17H16.5C17.0523 17 17.5 16.5523 17.5 16V9.0918C16.1946 8.66989 15.25 7.44586 15.25 6C15.25 4.20507 16.7051 2.75 18.5 2.75ZM18.5 4.75C17.8096 4.75 17.25 5.30964 17.25 6C17.25 6.69036 17.8096 7.25 18.5 7.25C19.1904 7.25 19.75 6.69036 19.75 6C19.75 5.30964 19.1904 4.75 18.5 4.75Z","fill":"currentColor","stroke":"none"}]],"CompareArrows":[["path",{"d":"M9.77686 8.34154C9.97974 8.13456 10.3119 8.13094 10.5191 8.33373L12.9995 10.7615L13.0601 10.8269C13.3232 11.1435 13.323 11.6059 13.0601 11.9226L12.9995 11.988L10.5191 14.4167C10.3119 14.6194 9.97969 14.6158 9.77686 14.4089C9.57423 14.2018 9.57773 13.8696 9.78468 13.6667L11.5894 11.9001H3.70851C3.41856 11.9001 3.18311 11.6647 3.18311 11.3747C3.18331 11.085 3.41868 10.8494 3.70851 10.8494H11.5884L9.78468 9.08373C9.57762 8.88099 9.57435 8.54874 9.77686 8.34154Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M5.48097 1.66674C5.68804 1.46414 6.02032 1.46775 6.22315 1.67455C6.42562 1.88169 6.42224 2.21398 6.21534 2.41674L4.41065 4.18334H12.3755C12.6653 4.18354 12.9009 4.41891 12.9009 4.70873C12.9008 4.9985 12.6652 5.23392 12.3755 5.23412H4.41163L6.21534 6.99975C6.42224 7.20251 6.42563 7.5348 6.22315 7.74194C6.02035 7.94904 5.68814 7.95243 5.48097 7.74975L3.0005 5.32104L2.93995 5.25561C2.6771 4.9388 2.67673 4.4765 2.93995 4.1599L3.0005 4.09447L5.48097 1.66674Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Copy":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M12.001 1.43408C13.3951 1.43452 14.5254 2.56522 14.5254 3.95947V8.62646C14.5252 10.0206 13.395 11.1504 12.001 11.1509H11.1914V11.9604C11.191 13.3545 10.0611 14.4847 8.66699 14.4849H4C2.60575 14.4849 1.47505 13.3546 1.47461 11.9604V7.29346C1.47461 5.89894 2.60548 4.76807 4 4.76807H4.80859V3.95947C4.80859 2.56495 5.93947 1.43408 7.33398 1.43408H12.001ZM4 5.81885C3.18538 5.81885 2.52539 6.47884 2.52539 7.29346V11.9604C2.52583 12.7747 3.18565 13.4351 4 13.4351H8.66699C9.48119 13.4349 10.1412 12.7746 10.1416 11.9604V7.29346C10.1416 6.47895 9.48146 5.81902 8.66699 5.81885H4ZM7.33398 2.48486C6.51936 2.48486 5.85938 3.14485 5.85938 3.95947V4.76807H8.66699C10.0614 4.76824 11.1914 5.89905 11.1914 7.29346V10.1011H12.001C12.8151 10.1006 13.4754 9.44066 13.4756 8.62646V3.95947C13.4756 3.14512 12.8152 2.4853 12.001 2.48486H7.33398Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Cube":[["path",{"d":"M13.2271 10.5539C13.2271 10.8409 13.0742 11.1066 12.8257 11.2502L8.5249 13.7336V8.30679L13.2271 5.66226V10.5539ZM3.08936 4.80777C3.1164 4.78715 3.14441 4.76742 3.17432 4.75015L7.59814 2.19644C7.84673 2.05292 8.15327 2.05292 8.40186 2.19644L12.7671 4.71695L7.9917 7.4025L3.08936 4.80777ZM2.77295 5.8273L7.4751 8.31656V13.7336L3.17432 11.2502C2.92573 11.1066 2.77295 10.8409 2.77295 10.5539V5.8273ZM14.2769 5.44547C14.2767 4.78347 13.9234 4.17198 13.3501 3.84097L8.92627 1.28629C8.35289 0.955427 7.64608 0.955278 7.07275 1.28629L2.64893 3.84097C2.0758 4.17203 1.72233 4.7836 1.72217 5.44547V10.5539C1.72217 11.2159 2.07561 11.8282 2.64893 12.1593L7.07275 14.713C7.64618 15.0441 8.35283 15.0441 8.92627 14.713L13.3501 12.1593C13.9236 11.8282 14.2769 11.216 14.2769 10.5539V5.44547Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Delete":[["path",{"d":"M6.66724 6.80762C6.95696 6.80788 7.19263 7.04322 7.19263 7.33301V10.6729C7.19256 10.9626 6.95692 11.197 6.66724 11.1973C6.37733 11.1973 6.14192 10.9627 6.14185 10.6729V7.33301C6.14185 7.04306 6.37729 6.80762 6.66724 6.80762Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M9.33325 6.80762C9.6232 6.80762 9.85864 7.04306 9.85864 7.33301V10.6729C9.85857 10.9627 9.62316 11.1973 9.33325 11.1973C9.04335 11.1973 8.80793 10.9627 8.80786 10.6729V7.33301C8.80786 7.04306 9.0433 6.80762 9.33325 6.80762Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M8.00024 1.25391C9.66003 1.25407 11.0236 2.52186 11.177 4.1416H13.6663C13.9562 4.1416 14.1917 4.37704 14.1917 4.66699C14.1914 4.95672 13.956 5.19238 13.6663 5.19238H13.1692L12.6995 12.1787C12.6105 13.5045 11.5096 14.5349 10.1809 14.5352H5.8313C4.50407 14.535 3.40273 13.5068 3.31177 12.1826L2.83228 5.19238H2.33325C2.04347 5.19238 1.80813 4.95672 1.80786 4.66699C1.80786 4.37704 2.0433 4.1416 2.33325 4.1416H4.82251C4.976 2.52175 6.34031 1.25391 8.00024 1.25391ZM4.35962 12.1104C4.41275 12.8838 5.05604 13.4842 5.8313 13.4844H10.1809C10.957 13.4841 11.6006 12.8828 11.6526 12.1084L12.1165 5.19238H3.88403L4.35962 12.1104ZM8.00024 2.30469C6.92101 2.30469 6.03114 3.10331 5.88306 4.1416H10.1174C9.96932 3.10342 9.07933 2.30485 8.00024 2.30469Z","fill-rule":"evenodd","clip-rule":"evenodd","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"DotsHorizontal":[["path",{"d":"M3.33362 6.80811C3.99161 6.80828 4.52502 7.34246 4.52502 8.00049C4.52485 8.65837 3.9915 9.19172 3.33362 9.19189C2.67559 9.19189 2.14141 8.65848 2.14124 8.00049C2.14124 7.34235 2.67548 6.80811 3.33362 6.80811Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M8.00061 6.80811C8.65849 6.80841 9.19202 7.34254 9.19202 8.00049C9.19184 8.65829 8.65838 9.19159 8.00061 9.19189C7.34258 9.19189 6.8084 8.65848 6.80823 8.00049C6.80823 7.34235 7.34247 6.80811 8.00061 6.80811Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M12.6666 6.80811C13.3246 6.80828 13.858 7.34246 13.858 8.00049C13.8579 8.65837 13.3245 9.19172 12.6666 9.19189C12.0088 9.1917 11.4744 8.65836 11.4742 8.00049C11.4742 7.34247 12.0087 6.8083 12.6666 6.80811Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Download":[["path",{"d":"M13.3336 8.14209C13.6234 8.14227 13.858 8.37764 13.858 8.66748V11.2007C13.8578 12.6686 12.6678 13.8589 11.1998 13.8589H4.80042C3.33242 13.8589 2.1415 12.6686 2.14124 11.2007V8.66748C2.14124 8.37753 2.37668 8.14209 2.66663 8.14209C2.95658 8.14209 3.19202 8.37753 3.19202 8.66748V11.2007C3.19228 12.0887 3.91232 12.8091 4.80042 12.8091H11.1998C12.0879 12.8091 12.808 12.0887 12.8082 11.2007V8.66748C12.8082 8.37753 13.0437 8.14209 13.3336 8.14209Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M7.99963 2.14111C8.28958 2.14111 8.52502 2.37655 8.52502 2.6665V8.23291L10.4625 6.29541C10.6675 6.09069 10.9997 6.09069 11.2047 6.29541C11.4093 6.50038 11.4094 6.83266 11.2047 7.0376L8.60706 9.63525L8.54163 9.69385C8.22703 9.95044 7.77327 9.95034 7.45862 9.69385L7.39319 9.63525L4.79553 7.0376C4.59079 6.83261 4.59075 6.50037 4.79553 6.29541C5.0005 6.09069 5.33275 6.09069 5.53772 6.29541L7.47424 8.23193V2.6665C7.47424 2.37667 7.70984 2.14129 7.99963 2.14111Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Email":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M12.1338 2.58374C13.5787 2.58399 14.7499 3.75502 14.75 5.19995V10.8005C14.7498 12.2453 13.5786 13.4165 12.1338 13.4167H3.86621C2.42143 13.4165 1.25025 12.2453 1.25 10.8005V5.19995C1.25007 3.75502 2.42132 2.58399 3.86621 2.58374H12.1338ZM9.21094 9.39526C8.49348 9.92057 7.52125 9.93193 6.79102 9.42456L2.75 6.61499V10.8005C2.75025 11.4169 3.24985 11.9165 3.86621 11.9167H12.1338C12.7501 11.9165 13.2498 11.4169 13.25 10.8005V6.43628L9.21094 9.39526ZM3.86621 4.08374C3.37879 4.08393 2.96467 4.39632 2.8125 4.83179L7.64746 8.19312C7.85189 8.33483 8.12447 8.33232 8.3252 8.1853L13.0938 4.69116C13.1019 4.68521 13.1099 4.67916 13.1182 4.67358C12.9301 4.32263 12.5599 4.08391 12.1338 4.08374H3.86621Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Expand":[["path",{"d":"M2.66528 8.81445C2.95513 8.81454 3.19063 9.04999 3.19067 9.33984V12.082L5.9856 9.28711C6.19062 9.08208 6.52276 9.08208 6.72778 9.28711C6.93244 9.49216 6.93269 9.82439 6.72778 10.0293L3.94556 12.8115H6.66333C6.9532 12.8116 7.18872 13.047 7.18872 13.3369C7.18865 13.6268 6.95316 13.8622 6.66333 13.8623H2.76587C2.42086 13.8623 2.14115 13.5822 2.14087 13.2373V9.33984C2.14091 9.04999 2.37544 8.81454 2.66528 8.81445Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M13.2346 2.14355C13.5796 2.14364 13.8594 2.42361 13.8596 2.76855V6.66602C13.8596 6.95582 13.625 7.19123 13.3352 7.19141C13.0453 7.19141 12.8099 6.95593 12.8098 6.66602V3.9248L10.0149 6.71973C9.81001 6.92456 9.47775 6.92429 9.27271 6.71973C9.06786 6.5147 9.06777 6.18251 9.27271 5.97754L12.0559 3.19434H9.33716C9.04721 3.19434 8.81177 2.95889 8.81177 2.66895C8.81177 2.379 9.04721 2.14355 9.33716 2.14355H13.2346Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"ExternalLink":[["path",{"d":"M6.66699 2.47461C6.95676 2.47479 7.19136 2.7102 7.19141 3C7.19141 3.28984 6.95679 3.52521 6.66699 3.52539H5.33301C4.33458 3.52557 3.52562 4.33459 3.52539 5.33301V10.667C3.52557 11.6654 4.33455 12.4744 5.33301 12.4746H10.667C11.6654 12.4744 12.4744 11.6654 12.4746 10.667V9.33301C12.4748 9.04325 12.7102 8.80859 13 8.80859C13.2898 8.80859 13.5252 9.04325 13.5254 9.33301V10.667C13.5252 12.2453 12.2453 13.5252 10.667 13.5254H5.33301C3.75465 13.5252 2.47479 12.2453 2.47461 10.667V5.33301C2.47484 3.75469 3.75468 2.47479 5.33301 2.47461H6.66699Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M13.4072 1.81738C13.8352 1.81738 14.1816 2.16477 14.1816 2.59277L14.1826 5.87695C14.1825 6.16664 13.9479 6.40209 13.6582 6.40234C13.3683 6.40234 13.1329 6.1668 13.1328 5.87695V3.61621L9.21387 7.53516C9.00885 7.74017 8.67573 7.74015 8.4707 7.53516C8.26568 7.33013 8.26568 6.99702 8.4707 6.79199L12.3955 2.86719H10.123C9.83327 2.86714 9.59885 2.63251 9.59863 2.34277C9.59863 2.05285 9.83313 1.81743 10.123 1.81738H13.4072Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Eye":[["path",{"d":"M8.16885 4.80859C9.93137 4.80882 11.3603 6.23841 11.3603 8.00098C11.36 9.76328 9.93118 11.1922 8.16885 11.1924C6.40633 11.1924 4.97678 9.76342 4.97647 8.00098C4.97647 6.23827 6.40615 4.80859 8.16885 4.80859ZM8.16885 5.85938C6.98604 5.85938 6.02725 6.81817 6.02725 8.00098C6.02756 9.18352 6.98623 10.1426 8.16885 10.1426C9.35128 10.1424 10.3101 9.18339 10.3105 8.00098C10.3105 6.81831 9.35147 5.8596 8.16885 5.85938Z","fill-rule":"evenodd","clip-rule":"evenodd","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M8.16885 2.14258C11.3719 2.14283 13.9035 4.76035 15.1044 7.00391L15.1054 7.00293C15.4432 7.6258 15.4431 8.37514 15.1054 8.99805C13.9044 11.2416 11.3719 13.8591 8.16885 13.8594C4.96574 13.8593 2.43333 11.2416 1.23233 8.99805L1.17276 8.87988C0.895711 8.28202 0.915602 7.5869 1.23233 7.00293L1.23331 7.00391C2.43428 4.76029 4.9657 2.14266 8.16885 2.14258ZM8.16885 3.19238C5.53817 3.19246 3.28385 5.39481 2.15713 7.50098L2.15518 7.50391C1.98681 7.81461 1.98666 8.1874 2.15518 8.49805L2.15713 8.5C3.28385 10.6062 5.53817 12.8085 8.16885 12.8086C10.7995 12.8083 13.0539 10.6061 14.1806 8.5L14.1825 8.49805C14.3509 8.18746 14.3508 7.81453 14.1825 7.50391L14.1806 7.50098C13.0539 5.39486 10.7995 3.19264 8.16885 3.19238Z","fill-rule":"evenodd","clip-rule":"evenodd","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"EyeOff":[["path",{"d":"M1.62884 1.62815C1.83379 1.42339 2.16604 1.42347 2.37103 1.62815L14.371 13.6282C14.576 13.8331 14.5759 14.1653 14.371 14.3703C14.166 14.5754 13.8339 14.5754 13.6288 14.3703L11.9042 12.6457C10.8093 13.3696 9.52626 13.8586 8.1181 13.8586C6.42195 13.8586 4.90761 13.1503 3.68353 12.1741C2.46045 11.1985 1.4983 9.93344 0.894467 8.75608C0.650875 8.28105 0.650926 7.71941 0.894467 7.24437C1.44339 6.17396 2.28871 5.03111 3.35736 4.09886L1.62884 2.37034C1.4241 2.16529 1.42391 1.83308 1.62884 1.62815ZM4.1015 4.843C3.11734 5.68749 2.33237 6.74152 1.82904 7.72288C1.73967 7.89716 1.73967 8.10231 1.82904 8.27659C2.37189 9.33509 3.24237 10.479 4.33783 11.3528C5.4323 12.2258 6.72283 12.8078 8.1181 12.8078C9.20465 12.8078 10.2266 12.4538 11.1435 11.885L9.9013 10.6428C9.392 10.987 8.77951 11.1915 8.11908 11.1916C6.35637 11.1916 4.92669 9.76196 4.92669 7.99925C4.92679 7.33831 5.12921 6.72449 5.47357 6.21507L4.1015 4.843ZM6.23626 6.97776C6.07111 7.28137 5.97755 7.629 5.97747 7.99925C5.97747 9.18206 6.93627 10.1408 8.11908 10.1408C8.48906 10.1407 8.83529 10.0451 9.13861 9.88011L6.23626 6.97776Z","fill-rule":"evenodd","clip-rule":"evenodd","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M8.1181 2.14183C9.81458 2.14183 11.3294 2.84991 12.5536 3.8264C13.7768 4.80205 14.7379 6.06697 15.3417 7.24437C15.5853 7.71944 15.5854 8.28102 15.3417 8.75608C15.0629 9.2997 14.7093 9.85964 14.291 10.3996C14.1134 10.6286 13.7838 10.6707 13.5546 10.4934C13.3255 10.3159 13.2835 9.98625 13.4609 9.75706C13.8406 9.26693 14.1596 8.7613 14.4081 8.27659C14.4974 8.10235 14.4975 7.89711 14.4081 7.72288C13.8653 6.66439 12.9938 5.52049 11.8984 4.64671C10.8039 3.77384 9.51329 3.19163 8.1181 3.19163C7.66583 3.19165 7.22534 3.25264 6.79974 3.36448C6.51959 3.43787 6.23295 3.27049 6.15912 2.99046C6.08543 2.71008 6.2528 2.42261 6.53314 2.34886C7.04064 2.21549 7.57054 2.14185 8.1181 2.14183Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"FileBlank":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M9.50488 1.80786C10.1745 1.80786 10.8165 2.07457 11.29 2.5481L12.7852 4.04321C13.2587 4.51674 13.5254 5.1587 13.5254 5.82837V11.6663C13.5254 13.0608 12.3945 14.1917 11 14.1917H5C3.60548 14.1917 2.47461 13.0608 2.47461 11.6663V4.33325C2.47461 2.93873 3.60548 1.80786 5 1.80786H9.50488ZM5 2.85864C4.18538 2.85864 3.52539 3.51863 3.52539 4.33325V11.6663C3.52539 12.4809 4.18538 13.1418 5 13.1418H11C11.8146 13.1418 12.4746 12.4809 12.4746 11.6663V6.85864H10.666C9.64 6.8584 8.80779 6.02627 8.80762 5.00024V2.85864H5ZM9.8584 5.00024C9.85857 5.44637 10.2199 5.80762 10.666 5.80786H12.4736C12.4683 5.42409 12.3147 5.05718 12.043 4.7854L10.5479 3.29028C10.3563 3.09869 10.1171 2.96641 9.8584 2.90259V5.00024Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"FileCode":[["path",{"d":"M3.58126 5.02178C3.75323 4.78839 4.08222 4.73855 4.31564 4.91045C4.54904 5.08245 4.59894 5.4114 4.42696 5.64482L2.65353 8.05107L4.42404 10.4144C4.59781 10.6464 4.55063 10.9749 4.31857 11.1487C4.0865 11.3223 3.75792 11.2752 3.58419 11.0433L1.63888 8.44658C1.46519 8.21431 1.46404 7.89502 1.63595 7.66143L3.58126 5.02178Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M11.6887 4.91045C11.9221 4.73845 12.2511 4.78835 12.4231 5.02178L14.3684 7.66143C14.5405 7.89505 14.5392 8.21423 14.3654 8.44658L12.4201 11.0433C12.2463 11.2752 11.9178 11.3225 11.6858 11.1487C11.4538 10.975 11.4067 10.6464 11.5803 10.4144L13.3508 8.05107L11.5774 5.64482C11.4054 5.41147 11.4555 5.08249 11.6887 4.91045Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M8.85372 5.10185C8.98163 4.84174 9.2967 4.73483 9.55685 4.8626C9.81654 4.99067 9.92374 5.30479 9.79611 5.56475L7.14669 10.9515C7.0187 11.2115 6.70467 11.3186 6.44454 11.1907C6.18458 11.0627 6.07753 10.7487 6.20529 10.4886L8.85372 5.10185Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"FileDocument":[["path",{"d":"M10 10.1406C10.2899 10.1406 10.5254 10.3761 10.5254 10.666C10.5254 10.956 10.2899 11.1914 10 11.1914H6C5.71005 11.1914 5.47461 10.956 5.47461 10.666C5.47461 10.3761 5.71005 10.1406 6 10.1406H10Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M8.66699 7.47461C8.95679 7.47478 9.19141 7.71016 9.19141 8C9.19141 8.28984 8.95679 8.52522 8.66699 8.52539H6C5.71005 8.52539 5.47461 8.28995 5.47461 8C5.47461 7.71005 5.71005 7.47461 6 7.47461H8.66699Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M9.50488 1.80762C10.1745 1.80762 10.8165 2.07433 11.29 2.54785L12.7852 4.04297C13.2587 4.5165 13.5254 5.15846 13.5254 5.82812V11.666C13.5254 13.0605 12.3945 14.1914 11 14.1914H5C3.60548 14.1914 2.47461 13.0605 2.47461 11.666V4.33301C2.47461 2.93849 3.60548 1.80762 5 1.80762H9.50488ZM5 2.8584C4.18538 2.8584 3.52539 3.51839 3.52539 4.33301V11.666C3.52539 12.4806 4.18538 13.1416 5 13.1416H11C11.8146 13.1416 12.4746 12.4806 12.4746 11.666V6.85938H10.666C9.64006 6.85907 8.80779 6.02697 8.80762 5.00098V2.8584H5ZM9.8584 5.00098C9.85857 5.44707 10.22 5.80829 10.666 5.80859H12.4736C12.4686 5.42447 12.315 5.05716 12.043 4.78516L10.5479 3.29004C10.3563 3.09845 10.1171 2.96616 9.8584 2.90234V5.00098Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"FileImage":[["path",{"d":"M10.0811 4.49951C11.1994 4.49951 12.1064 5.40653 12.1064 6.5249C12.1062 7.64305 11.1993 8.55029 10.0811 8.55029C8.96284 8.55029 8.05593 7.64305 8.05566 6.5249C8.05566 5.40653 8.96268 4.49951 10.0811 4.49951ZM10.0811 5.55029C9.54258 5.55029 9.10645 5.98642 9.10645 6.5249C9.10671 7.06316 9.54274 7.49951 10.0811 7.49951C10.6194 7.49951 11.0554 7.06316 11.0557 6.5249C11.0557 5.98642 10.6195 5.55029 10.0811 5.55029Z","fill-rule":"evenodd","clip-rule":"evenodd","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M11.8662 2.14111C13.3344 2.14111 14.5254 3.33214 14.5254 4.80029V11.1997C14.5254 12.6679 13.3344 13.8579 11.8662 13.8579H4.13379C2.66563 13.8579 1.47461 12.6679 1.47461 11.1997V4.80029C1.47461 3.33214 2.66563 2.14111 4.13379 2.14111H11.8662ZM4.13379 3.19189C3.24553 3.19189 2.52539 3.91203 2.52539 4.80029V9.58545L3.55371 8.55811C4.34438 7.76761 5.62617 7.76675 6.41699 8.55713L10.6699 12.8081H11.8662C12.7545 12.8081 13.4746 12.088 13.4746 11.1997V4.80029C13.4746 3.91204 12.7545 3.19189 11.8662 3.19189H4.13379ZM5.6748 9.30029C5.29407 8.91977 4.6766 8.91977 4.2959 9.30029L2.52539 11.0708V11.1997C2.52539 12.088 3.24553 12.8081 4.13379 12.8081H9.18457L5.6748 9.30029Z","fill-rule":"evenodd","clip-rule":"evenodd","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"FileSpreadsheet":[["path",{"d":"M11.8662 2.14062C13.3344 2.14062 14.5254 3.33165 14.5254 4.7998V11.1992C14.5254 12.6674 13.3344 13.8574 11.8662 13.8574H4.13379C2.66563 13.8574 1.47461 12.6674 1.47461 11.1992V4.7998C1.47461 3.33165 2.66563 2.14062 4.13379 2.14062H11.8662ZM2.52539 7.19238V11.1992C2.52539 12.0875 3.24553 12.8076 4.13379 12.8076H5.47461V7.19238H2.52539ZM6.52539 7.19238V12.8076H11.8662C12.7545 12.8076 13.4746 12.0875 13.4746 11.1992V7.19238H6.52539ZM4.13379 3.19141C3.24553 3.19141 2.52539 3.91155 2.52539 4.7998V6.1416H5.47461V3.19141H4.13379ZM6.52539 6.1416H13.4746V4.7998C13.4746 3.91155 12.7545 3.19141 11.8662 3.19141H6.52539V6.1416Z","fill-rule":"evenodd","clip-rule":"evenodd","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"FileUpload":[["path",{"d":"M13.3337 8.14162C13.6235 8.14179 13.8582 8.37716 13.8582 8.66701V11.2002C13.8582 12.6684 12.6681 13.8584 11.2 13.8584H4.80054C3.33238 13.8584 2.14136 12.6684 2.14136 11.2002V8.66701C2.14136 8.37706 2.3768 8.14162 2.66675 8.14162C2.9567 8.14162 3.19214 8.37706 3.19214 8.66701V11.2002C3.19214 12.0885 3.91228 12.8086 4.80054 12.8086H11.2C12.0882 12.8086 12.8083 12.0885 12.8083 11.2002V8.66701C12.8083 8.37706 13.0438 8.14162 13.3337 8.14162Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M7.45874 2.47267C7.77339 2.21619 8.22716 2.21609 8.54175 2.47267L8.60718 2.53126L11.2048 5.12892C11.4097 5.33383 11.4095 5.66606 11.2048 5.87111C10.9998 6.07613 10.6677 6.07613 10.4626 5.87111L8.52515 3.93361V9.50001C8.52515 9.78996 8.28971 10.0254 7.99976 10.0254C7.70996 10.0252 7.47437 9.78986 7.47437 9.50001V3.93361L5.53784 5.87111C5.33282 6.07613 5.00068 6.07613 4.79565 5.87111C4.5908 5.66607 4.59069 5.33389 4.79565 5.12892L7.39331 2.53126L7.45874 2.47267Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Filter":[["path",{"d":"M10 11.4746C10.2899 11.4746 10.5254 11.7101 10.5254 12C10.5254 12.2899 10.2899 12.5254 10 12.5254H6C5.71005 12.5254 5.47461 12.2899 5.47461 12C5.47461 11.7101 5.71005 11.4746 6 11.4746H10Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M12 7.47461C12.2899 7.47461 12.5254 7.71005 12.5254 8C12.5254 8.28995 12.2899 8.52539 12 8.52539H4C3.71005 8.52539 3.47461 8.28995 3.47461 8C3.47461 7.71005 3.71005 7.47461 4 7.47461H12Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M14 3.47461C14.2899 3.47461 14.5254 3.71005 14.5254 4C14.5254 4.28995 14.2899 4.52539 14 4.52539H2C1.71005 4.52539 1.47461 4.28995 1.47461 4C1.47461 3.71005 1.71005 3.47461 2 3.47461H14Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Flask":[["path",{"d":"M11.3341 2.14062C11.6238 2.14093 11.8585 2.37626 11.8585 2.66602C11.8585 2.95578 11.6238 3.1911 11.3341 3.19141H10.5255V6.09473C10.5255 6.148 10.5404 6.20048 10.5694 6.24512L13.6251 10.9297C14.6331 12.4761 13.523 14.5244 11.6768 14.5244H4.32332C2.47728 14.5243 1.36714 12.4761 2.37508 10.9297L5.43075 6.24512C5.45983 6.20046 5.47469 6.14802 5.47469 6.09473V3.19141H4.66707C4.37713 3.19141 4.14168 2.95597 4.14168 2.66602C4.14168 2.37607 4.37713 2.14062 4.66707 2.14062H11.3341ZM3.25497 11.5029C2.70204 12.351 3.31095 13.4745 4.32332 13.4746H11.6768C12.6893 13.4746 13.2982 12.351 12.7452 11.5029L11.2384 9.19141H4.7618L3.25497 11.5029ZM6.52547 6.09473C6.52547 6.35172 6.45002 6.60309 6.30965 6.81836L5.44735 8.14062H10.5528L9.69051 6.81836C9.55017 6.6031 9.47469 6.35169 9.47469 6.09473V3.19141H6.52547V6.09473Z","fill-rule":"evenodd","clip-rule":"evenodd","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Folder":[["path",{"d":"M5.55957 2.14136C6.06503 2.14136 6.55801 2.30207 6.9668 2.59937L7.81836 3.21851C8.04765 3.38523 8.32392 3.47534 8.60742 3.47534H11.9668C13.2877 3.47534 14.3584 4.54606 14.3584 5.86694V11.4666C14.3584 12.7874 13.2877 13.8582 11.9668 13.8582H4.0332C2.71253 13.8579 1.6416 12.7873 1.6416 11.4666V4.53296C1.64185 3.21244 2.71268 2.1416 4.0332 2.14136H5.55957ZM2.69238 7.85913V11.4666C2.69238 12.2074 3.29243 12.8081 4.0332 12.8083H11.9668C12.7078 12.8083 13.3086 12.2075 13.3086 11.4666V7.85913H2.69238ZM4.0332 3.19214C3.29258 3.19238 2.69263 3.79234 2.69238 4.53296V6.80835H13.3086V5.86694C13.3086 5.12596 12.7078 4.52515 11.9668 4.52515H8.60742C8.10196 4.52515 7.60898 4.36541 7.2002 4.06812L6.34863 3.448C6.11941 3.28145 5.84292 3.19214 5.55957 3.19214H4.0332Z","fill-rule":"evenodd","clip-rule":"evenodd","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"FolderOpen":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M4.81201 2.14124C5.31747 2.14124 5.81045 2.30195 6.21924 2.59924L7.0708 3.21838C7.30005 3.38501 7.57645 3.47522 7.85986 3.47522H11.3862C12.0185 3.47532 12.5577 3.67505 12.9692 4.06604C13.3715 4.44832 13.6089 4.9722 13.73 5.54846C13.775 5.76289 13.8477 6.09046 13.9097 6.36682C13.9228 6.42541 13.9351 6.48168 13.9468 6.53381H14.1099C15.0509 6.53385 15.6585 7.52947 15.229 8.36682L13.2769 12.1725C12.8674 12.9704 12.0458 13.4733 11.1489 13.4733H3.49854C2.29874 13.4731 1.42701 12.5185 1.37354 11.4489L1.36963 11.4498L0.72998 4.58167L0.727051 4.55725V4.53284C0.727297 3.21232 1.79813 2.14148 3.11865 2.14124H4.81201ZM5.16357 7.58459C4.67855 7.5847 4.23107 7.8462 3.99365 8.26917L2.56104 10.8219C2.15931 11.5383 2.67708 12.4223 3.49854 12.4225H11.1489C11.6519 12.4225 12.1135 12.1414 12.3433 11.694L14.2954 7.88733C14.3662 7.74877 14.2655 7.58463 14.1099 7.58459H5.16357ZM3.11865 3.19202C2.38162 3.19226 1.78385 3.78642 1.77783 4.52209L2.22119 9.28088L3.07764 7.75549C3.50089 7.00144 4.29887 6.53392 5.16357 6.53381H12.8716C12.8128 6.27117 12.7458 5.96987 12.7026 5.76428C12.6101 5.32415 12.4475 5.01958 12.2456 4.82776C12.0532 4.64496 11.7843 4.52512 11.3862 4.52502H7.85986C7.35447 4.52502 6.86139 4.36522 6.45264 4.06799L5.60107 3.44788C5.37181 3.28123 5.09545 3.19202 4.81201 3.19202H3.11865Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"FolderPlus":[["path",{"d":"M12.667 9.47415C12.9568 9.47428 13.1924 9.70968 13.1924 9.99954V11.4742H14.667C14.9568 11.4743 15.1924 11.7097 15.1924 11.9995C15.1921 12.2892 14.9567 12.5248 14.667 12.5249H13.1924V13.9995C13.1921 14.2892 12.9567 14.5248 12.667 14.5249C12.3772 14.5249 12.1419 14.2893 12.1416 13.9995V12.5249H10.667C10.3772 12.5249 10.1419 12.2893 10.1416 11.9995C10.1416 11.7096 10.377 11.4742 10.667 11.4742H12.1416V9.99954C12.1416 9.70959 12.377 9.47415 12.667 9.47415Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M5.5459 2.14407C6.05385 2.14147 6.54952 2.30026 6.96094 2.59818L7.81738 3.21927C8.04621 3.38498 8.32196 3.47409 8.60449 3.47415H11.9697C13.2906 3.47415 14.3613 4.54489 14.3613 5.86575V6.56595C14.3611 7.03918 13.9782 7.42343 13.5049 7.42435L2.69727 7.4429V11.4771C2.69727 12.2206 3.30146 12.8224 4.04492 12.8189L6.49707 12.8072C6.78698 12.8058 7.02296 13.0397 7.02441 13.3296C7.02581 13.6196 6.7919 13.8556 6.50195 13.857L4.0498 13.8687C2.72456 13.8749 1.64648 12.8024 1.64648 11.4771V4.54349C1.6465 3.22751 2.7104 2.15878 4.02637 2.15189L5.5459 2.14407ZM4.03125 3.20169C3.29315 3.2057 2.69728 3.80535 2.69727 4.54349V6.3931L13.3115 6.37357V5.86575C13.3115 5.12479 12.7107 4.52396 11.9697 4.52396H8.60449C8.10078 4.5239 7.61012 4.36433 7.20215 4.06888L6.34473 3.44876C6.11393 3.2817 5.8357 3.19239 5.55078 3.19388L4.03125 3.20169Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Grid":[["path",{"d":"M6.20605 10.1348C6.20605 9.98298 6.0834 9.85952 5.93164 9.85938H2.79785C2.64606 9.85948 2.52344 9.98295 2.52344 10.1348V13.2676C2.52344 13.4194 2.64606 13.5429 2.79785 13.543H5.93164C6.0834 13.5428 6.20605 13.4194 6.20605 13.2676V10.1348ZM13.542 10.1338C13.542 9.98191 13.4185 9.8584 13.2666 9.8584H10.1338C9.98191 9.8584 9.8584 9.98191 9.8584 10.1338V13.2666C9.8584 13.4185 9.98191 13.542 10.1338 13.542H13.2666C13.4185 13.542 13.542 13.4185 13.542 13.2666V10.1338ZM6.20605 2.80078C6.20592 2.64911 6.08331 2.52651 5.93164 2.52637H2.79785C2.64615 2.52647 2.52358 2.64909 2.52344 2.80078V5.93457C2.52355 6.08629 2.64613 6.20888 2.79785 6.20898H5.93164C6.08333 6.20884 6.20595 6.08627 6.20605 5.93457V2.80078ZM13.542 2.7998C13.5419 2.64802 13.4184 2.52539 13.2666 2.52539H10.1338C9.98198 2.52539 9.8585 2.64802 9.8584 2.7998V5.93359C9.85854 6.08535 9.982 6.20801 10.1338 6.20801H13.2666C13.4184 6.20801 13.5419 6.08535 13.542 5.93359V2.7998ZM7.25684 13.2676C7.25684 13.9993 6.6633 14.5926 5.93164 14.5928H2.79785C2.06616 14.5927 1.47266 13.9993 1.47266 13.2676V10.1348C1.47266 9.40305 2.06616 8.80968 2.79785 8.80957H5.93164C6.6633 8.80971 7.25684 9.40307 7.25684 10.1348V13.2676ZM14.5918 13.2666C14.5918 13.9984 13.9984 14.5918 13.2666 14.5918H10.1338C9.40201 14.5918 8.80859 13.9984 8.80859 13.2666V10.1338C8.80859 9.40201 9.40201 8.80859 10.1338 8.80859H13.2666C13.9984 8.80859 14.5918 9.40201 14.5918 10.1338V13.2666ZM7.25684 5.93457C7.25673 6.66617 6.66323 7.25962 5.93164 7.25977H2.79785C2.06623 7.25966 1.47276 6.66619 1.47266 5.93457V2.80078C1.47279 2.06919 2.06625 1.47569 2.79785 1.47559H5.93164C6.66321 1.47573 7.2567 2.06921 7.25684 2.80078V5.93457ZM14.5918 5.93359C14.5917 6.66525 13.9983 7.25879 13.2666 7.25879H10.1338C9.4021 7.25879 8.80873 6.66525 8.80859 5.93359V2.7998C8.8087 2.06812 9.40208 1.47461 10.1338 1.47461H13.2666C13.9983 1.47461 14.5917 2.06812 14.5918 2.7998V5.93359Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"History":[["path",{"d":"M7.99951 1.64111C11.511 1.64111 14.3577 4.48805 14.3579 7.99951C14.3579 11.5111 11.5111 14.3579 7.99951 14.3579C4.97316 14.3577 2.44194 12.2439 1.79932 9.4126C1.73517 9.12987 1.91212 8.84789 2.19482 8.78369C2.47756 8.71957 2.75859 8.89745 2.82275 9.18018C3.35918 11.5439 5.47412 13.3079 7.99951 13.3081C10.9312 13.3081 13.3081 10.9312 13.3081 7.99951C13.3079 5.06795 10.9311 2.69189 7.99951 2.69189C5.96082 2.69204 4.19173 3.84247 3.30225 5.53076H4.75928C5.04914 5.53086 5.28369 5.76626 5.28369 6.05615C5.28352 6.34589 5.04904 6.58047 4.75928 6.58057H2.1665C1.87666 6.58057 1.64129 6.34595 1.64111 6.05615V3.13916C1.64111 2.84921 1.87655 2.61377 2.1665 2.61377C2.45645 2.61377 2.69189 2.84921 2.69189 3.13916V4.50146C3.82896 2.77976 5.78029 1.64125 7.99951 1.64111Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M7.99951 4.23389C8.28946 4.23389 8.5249 4.46933 8.5249 4.75928V8.00049C8.52478 8.13956 8.46895 8.27324 8.37061 8.37158L6.75049 9.9917C6.54548 10.1965 6.21327 10.1966 6.0083 9.9917C5.80341 9.78673 5.80348 9.45453 6.0083 9.24951L7.4751 7.78174V4.75928C7.4751 4.46946 7.70975 4.2341 7.99951 4.23389Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"InfoCircle":[["path",{"d":"M8 7.48633C8.28351 7.48633 8.51367 7.71649 8.51367 8V10.667C8.5135 10.9503 8.2834 11.1797 8 11.1797C7.7166 11.1797 7.4865 10.9503 7.48633 10.667V8C7.48633 7.71649 7.71649 7.48633 8 7.48633Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M8 4.90137C8.37814 4.9015 8.68544 5.20779 8.68555 5.58594C8.68528 5.96395 8.37804 6.27135 8 6.27148C7.62194 6.27138 7.31569 5.96396 7.31543 5.58594C7.31554 5.20778 7.62184 4.90147 8 4.90137Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M8 1.48633C11.5972 1.48633 14.5137 4.40279 14.5137 8C14.5137 11.5972 11.5972 14.5137 8 14.5137C4.40279 14.5137 1.48633 11.5972 1.48633 8C1.48633 4.40279 4.40279 1.48633 8 1.48633ZM8 2.51367C4.9698 2.51367 2.51367 4.9698 2.51367 8C2.51367 11.0302 4.9698 13.4863 8 13.4863C11.0302 13.4863 13.4863 11.0302 13.4863 8C13.4863 4.9698 11.0302 2.51367 8 2.51367Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Keyboard":[["path",{"d":"M11.3334 10.1416C11.6232 10.1418 11.8578 10.3772 11.8578 10.667C11.8578 10.9568 11.6232 11.1922 11.3334 11.1924H4.66638C4.37654 11.1923 4.14099 10.9569 4.14099 10.667C4.14099 10.3771 4.37654 10.1417 4.66638 10.1416H11.3334Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M5.22107 7.42871C5.61695 7.42871 5.93787 7.74963 5.93787 8.14551C5.93787 8.54138 5.61695 8.8623 5.22107 8.8623C4.82519 8.8623 4.50427 8.54138 4.50427 8.14551C4.50427 7.74963 4.82519 7.42871 5.22107 7.42871Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M7.90955 7.42871C8.30542 7.42871 8.62634 7.74963 8.62634 8.14551C8.62634 8.54138 8.30542 8.8623 7.90955 8.8623C7.51367 8.8623 7.19275 8.54138 7.19275 8.14551C7.19275 7.74963 7.51367 7.42871 7.90955 7.42871Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M10.5765 7.42871C10.9724 7.42871 11.2933 7.74963 11.2933 8.14551C11.2933 8.54138 10.9724 8.8623 10.5765 8.8623C10.1807 8.8623 9.85974 8.54138 9.85974 8.14551C9.85974 7.74963 10.1807 7.42871 10.5765 7.42871Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M4.09021 4.75C4.48609 4.75 4.80701 5.07092 4.80701 5.4668C4.80701 5.86267 4.48609 6.18359 4.09021 6.18359C3.69433 6.18359 3.37341 5.86267 3.37341 5.4668C3.37341 5.07092 3.69433 4.75 4.09021 4.75Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M6.77966 4.75C7.17554 4.75 7.49646 5.07092 7.49646 5.4668C7.49646 5.86267 7.17554 6.18359 6.77966 6.18359C6.38379 6.18359 6.06287 5.86267 6.06287 5.4668C6.06287 5.07092 6.38379 4.75 6.77966 4.75Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M9.44568 4.75C9.84155 4.75 10.1625 5.07092 10.1625 5.4668C10.1625 5.86267 9.84155 6.18359 9.44568 6.18359C9.0498 6.18359 8.72888 5.86267 8.72888 5.4668C8.72888 5.07092 9.0498 4.75 9.44568 4.75Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M12.1127 4.75C12.5085 4.75 12.8295 5.07092 12.8295 5.4668C12.8295 5.86267 12.5085 6.18359 12.1127 6.18359C11.7168 6.18359 11.3959 5.86267 11.3959 5.4668C11.3959 5.07092 11.7168 4.75 12.1127 4.75Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M12.8002 2.47461C14.1208 2.47468 15.1915 3.54558 15.1918 4.86621V11.1338C15.1915 12.4544 14.1208 13.5253 12.8002 13.5254H3.19958C1.87906 13.5251 0.80823 12.4543 0.807983 11.1338V4.86621C0.80823 3.54569 1.87907 2.47486 3.19958 2.47461H12.8002ZM3.19958 3.52539C2.45896 3.52564 1.85901 4.12559 1.85876 4.86621V11.1338C1.85901 11.8744 2.45896 12.4744 3.19958 12.4746H12.8002C13.5409 12.4745 14.1417 11.8745 14.142 11.1338V4.86621C14.1417 4.12548 13.5409 3.52546 12.8002 3.52539H3.19958Z","fill-rule":"evenodd","clip-rule":"evenodd","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Lightbulb":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M8.00049 1.30762C9.27676 1.30769 10.4907 1.71885 11.3921 2.52539C12.301 3.33871 12.8589 4.52574 12.8589 6C12.8588 7.48258 12.295 8.50236 11.7778 9.32129C11.5126 9.74131 11.2864 10.0687 11.1138 10.4092C10.9485 10.7351 10.8589 11.027 10.8589 11.333V12C10.8588 12.8062 10.5519 13.4932 10.0181 13.9736C9.49001 14.4488 8.77481 14.6913 8.00049 14.6914C7.22595 14.6914 6.51008 14.449 5.98193 13.9736C5.44812 13.4932 5.14217 12.8062 5.14209 12V11.333C5.14209 11.0269 5.05151 10.7352 4.88623 10.4092C4.71359 10.0687 4.48842 9.74131 4.22314 9.32129C3.7059 8.50231 3.14217 7.48275 3.14209 6C3.14209 4.5256 3.69987 3.33872 4.60889 2.52539C5.51038 1.71885 6.72415 1.30762 8.00049 1.30762ZM6.19189 11.6924V12C6.19197 12.5268 6.38567 12.9229 6.68506 13.1924C6.99025 13.4671 7.44169 13.6416 8.00049 13.6416C8.55913 13.6415 9.01079 13.467 9.31592 13.1924C9.6151 12.9229 9.80803 12.5266 9.80811 12V11.6924H6.19189ZM8.00049 2.3584C6.94354 2.3584 5.98994 2.69756 5.30811 3.30762C4.63394 3.91095 4.19189 4.80789 4.19189 6C4.19197 7.18338 4.62823 7.99659 5.11084 8.76074C5.34557 9.13239 5.62039 9.53546 5.82275 9.93457C5.93502 10.156 6.03141 10.3907 6.09814 10.6416H9.90186C9.96884 10.3907 10.0659 10.1561 10.1782 9.93457C10.3806 9.53547 10.6544 9.13239 10.8892 8.76074C11.3718 7.99656 11.808 7.18344 11.8081 6C11.8081 4.80779 11.3662 3.91095 10.6919 3.30762C10.0101 2.69762 9.0573 2.35847 8.00049 2.3584Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Link":[["path",{"d":"M3.69541 6.25121C3.89761 6.04427 4.22909 6.03985 4.43662 6.24145C4.64426 6.44372 4.64953 6.77691 4.44736 6.98461L3.61338 7.84008L3.6085 7.84496C2.42952 9.02432 2.40771 10.9534 3.72666 12.2727C5.04612 13.5922 6.97593 13.5702 8.15537 12.3909L8.16025 12.386L9.01572 11.553C9.22335 11.3509 9.55562 11.3553 9.75791 11.5627C9.96017 11.7704 9.9566 12.1036 9.74912 12.3059L8.89365 13.1389C7.28179 14.7455 4.68893 14.7213 2.9835 13.0159C1.27845 11.3104 1.25498 8.71842 2.86143 7.10668L3.69541 6.25121Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M9.629 5.62914C9.83403 5.42415 10.1662 5.42413 10.3712 5.62914C10.5761 5.83417 10.5761 6.16634 10.3712 6.37133L6.37119 10.3713C6.16621 10.5763 5.83404 10.5762 5.629 10.3713C5.42398 10.1663 5.42398 9.83417 5.629 9.62914L9.629 5.62914Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M7.10654 2.86157C8.71829 1.25511 11.3103 1.27855 13.0157 2.98364C14.7212 4.68907 14.7453 7.28193 13.1388 8.89379L12.3058 9.74926C12.1034 9.95672 11.7702 9.96029 11.5626 9.75805C11.3552 9.55576 11.3507 9.22349 11.5528 9.01586L12.3858 8.16039L12.3907 8.15551C13.5701 6.97606 13.592 5.04626 12.2726 3.7268C10.9532 2.40781 9.02419 2.42965 7.84482 3.60864L7.83994 3.61352L6.98447 4.4475C6.77678 4.64965 6.44358 4.64438 6.24131 4.43676C6.03972 4.22923 6.04415 3.89775 6.25107 3.69555L7.10654 2.86157Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Minus":[["path",{"d":"M13 8.52539H3C2.71005 8.52539 2.47461 8.28995 2.47461 8C2.47461 7.71005 2.71005 7.47461 3 7.47461H13C13.2899 7.47461 13.5254 7.71005 13.5254 8C13.5254 8.28995 13.2899 8.52539 13 8.52539Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Pin":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M8.69891 2.27357C9.31186 1.3608 10.5517 1.22764 11.3727 1.86732L11.5309 2.00599L11.5339 2.00794L13.9772 4.42298L13.9792 4.42494C14.4059 4.8517 14.5371 5.42193 14.4782 5.9308C14.42 6.43249 14.171 6.93184 13.7595 7.24915L13.7526 7.25501L13.7448 7.26087L11.3298 8.98548C11.1639 9.10413 11.0484 9.28174 11.0075 9.48158L10.4782 12.0724L10.4753 12.089L10.4714 12.1046C10.2782 12.8194 9.76642 13.4028 9.10614 13.63C8.42298 13.8649 7.65884 13.691 7.05731 13.0451L5.36395 11.3771L2.37079 14.3712C2.16573 14.5759 1.8335 14.5761 1.6286 14.3712C1.42386 14.1663 1.424 13.834 1.6286 13.629L4.61591 10.6408L3.0202 9.06947C2.43193 8.49821 2.23267 7.72098 2.42841 7.02747C2.62488 6.33222 3.20203 5.77719 4.03485 5.61439L6.51532 5.04212C6.71041 4.99699 6.88227 4.88121 6.99677 4.71693L8.69891 2.27357ZM10.7253 2.69447C10.3542 2.4054 9.817 2.48584 9.56708 2.86341L9.56024 2.87415L7.85809 5.31654C7.59479 5.69446 7.20041 5.96185 6.75165 6.06556L4.27118 6.63783L4.26044 6.63978L4.2497 6.64271C3.7797 6.73015 3.52398 7.01265 3.43915 7.31263C3.36345 7.5807 3.41094 7.90777 3.64227 8.19642L3.7536 8.31751L3.75653 8.32142L7.79462 12.297L7.80438 12.3068L7.81415 12.3175C8.1577 12.6942 8.50017 12.7281 8.76532 12.6369C9.05794 12.5359 9.33935 12.2518 9.4538 11.841L9.97919 9.27064C10.0732 8.81103 10.3377 8.40376 10.7194 8.13099L13.1218 6.41419C13.2772 6.2924 13.4052 6.06827 13.4352 5.8097C13.4645 5.55713 13.396 5.32744 13.239 5.16908L10.7975 2.75697L10.7253 2.69447Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Play":[["path",{"d":"M4.33594 2.33289C4.80057 2.10819 5.39866 2.08949 5.90332 2.39735L12.9395 6.67957L13.0352 6.74207C13.9964 7.41933 13.9651 8.91629 12.9414 9.5409L12.9336 9.54579L5.89648 13.6639L5.89551 13.663C5.39251 13.9659 4.79815 13.9461 4.33594 13.7225C3.86641 13.4954 3.47443 13.0257 3.47461 12.3954V3.66004C3.47443 3.02975 3.8664 2.56008 4.33594 2.33289ZM4.52539 12.3954C4.52535 12.549 4.61423 12.6918 4.79297 12.7782C4.97639 12.8669 5.19331 12.8628 5.35742 12.7626L5.36621 12.7577L12.3945 8.64442C12.7798 8.40935 12.7791 7.81131 12.3936 7.57704L5.3584 3.29383L5.35742 3.29286C5.19331 3.1926 4.97638 3.1895 4.79297 3.27821C4.61448 3.36467 4.52535 3.50652 4.52539 3.66004V12.3954Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"PlayCircle":[["path",{"d":"M6.21484 5.98047C6.21492 5.50762 6.70311 5.20832 7.11621 5.39355L7.19824 5.43652L10.4844 7.49805C10.8851 7.74962 10.8852 8.33356 10.4844 8.58496L7.19727 10.6426C6.76993 10.91 6.21488 10.6027 6.21484 10.0986V5.98047Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M8 1.47461C11.6037 1.47461 14.5254 4.39634 14.5254 8C14.5254 11.6037 11.6037 14.5254 8 14.5254C4.39634 14.5254 1.47461 11.6037 1.47461 8C1.47461 4.39634 4.39634 1.47461 8 1.47461ZM8 2.52539C4.97624 2.52539 2.52539 4.97624 2.52539 8C2.52539 11.0238 4.97624 13.4746 8 13.4746C11.0238 13.4746 13.4746 11.0238 13.4746 8C13.4746 4.97624 11.0238 2.52539 8 2.52539Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Plus":[["path",{"d":"M8 2.47461C8.28995 2.47461 8.52539 2.71005 8.52539 3V7.47461H13C13.2899 7.47461 13.5254 7.71005 13.5254 8C13.5254 8.28995 13.2899 8.52539 13 8.52539H8.52539V13C8.52539 13.2899 8.28995 13.5254 8 13.5254C7.71005 13.5254 7.47461 13.2899 7.47461 13V8.52539H3C2.71005 8.52539 2.47461 8.28995 2.47461 8C2.47461 7.71005 2.71005 7.47461 3 7.47461H7.47461V3C7.47461 2.71005 7.71005 2.47461 8 2.47461Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Reload":[["path",{"d":"M14.0219 8.22363C14.3094 8.25975 14.5128 8.52209 14.477 8.80957C14.0729 12.0322 11.311 14.5222 7.96723 14.5225C6.11053 14.5225 4.40157 13.752 3.19184 12.5146V13.9961C3.19184 14.286 2.9564 14.5215 2.66645 14.5215C2.37668 14.5213 2.14106 14.2859 2.14106 13.9961V11.4961C2.14122 10.9303 2.60064 10.4709 3.16645 10.4707H5.66645C5.9563 10.4707 6.19167 10.7063 6.19184 10.9961C6.19184 11.286 5.9564 11.5215 5.66645 11.5215H3.70356C4.72588 12.7119 6.27317 13.4717 7.96723 13.4717C10.7796 13.4715 13.0975 11.3782 13.436 8.67871C13.4724 8.39145 13.7345 8.18763 14.0219 8.22363Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M13.3334 1.47461C13.6234 1.47461 13.8588 1.71005 13.8588 2V4.5C13.8588 5.06609 13.3995 5.52539 12.8334 5.52539H10.3334C10.0435 5.52534 9.80805 5.28992 9.80805 5C9.80805 4.71008 10.0435 4.47466 10.3334 4.47461H12.2905C11.2691 3.28567 9.72356 2.52743 8.03168 2.52734C5.22176 2.52746 2.90507 4.61922 2.56684 7.31738C2.53053 7.60481 2.26843 7.80851 1.9809 7.77246C1.69351 7.73623 1.48997 7.47397 1.52582 7.18652C1.9297 3.96546 4.69011 1.47668 8.03168 1.47656C9.88918 1.47665 11.5991 2.24798 12.8081 3.4873V2C12.8081 1.71008 13.0435 1.47466 13.3334 1.47461Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Scissor":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M6.5 6C5.67157 6 5 6.67157 5 7.5C5 8.32843 5.67157 9 6.5 9C7.32843 9 8 8.32843 8 7.5C8 6.67157 7.32843 6 6.5 6ZM3 7.5C3 5.567 4.567 4 6.5 4C8.433 4 10 5.567 10 7.5C10 7.80866 9.96004 8.108 9.88502 8.3931L13.4 10.7897L19.4367 6.67377C19.893 6.36265 20.5151 6.48035 20.8262 6.93666C21.1374 7.39298 21.0196 8.0151 20.5633 8.32623L13.9826 12.8131C13.9701 12.8221 13.9574 12.8307 13.9445 12.8391L9.88502 15.6069C9.96004 15.892 10 16.1913 10 16.5C10 18.433 8.433 20 6.5 20C4.567 20 3 18.433 3 16.5C3 14.567 4.567 13 6.5 13C7.40012 13 8.22087 13.3398 8.841 13.8981L11.6249 12L8.841 10.1019C8.22087 10.6602 7.40012 11 6.5 11C4.567 11 3 9.433 3 7.5ZM6.5 15C5.67157 15 5 15.6716 5 16.5C5 17.3284 5.67157 18 6.5 18C7.32843 18 8 17.3284 8 16.5C8 15.6716 7.32843 15 6.5 15ZM15.8738 13.6867C16.1849 13.2304 16.807 13.1126 17.2633 13.4238L20.5633 15.6738C21.0196 15.9849 21.1374 16.607 20.8262 17.0633C20.5151 17.5196 19.893 17.6374 19.4367 17.3262L16.1367 15.0762C15.6804 14.7651 15.5626 14.143 15.8738 13.6867Z","fill":"currentColor","stroke":"none"}]],"Search":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M6.99658 2.47168C9.49567 2.47168 11.522 4.49798 11.522 6.99707C11.522 8.0627 11.1521 9.04119 10.5356 9.81445L13.02 12.2988C13.225 12.5038 13.225 12.836 13.02 13.041C12.815 13.246 12.4829 13.246 12.2778 13.041L9.7915 10.5547C9.02184 11.1602 8.05175 11.5225 6.99658 11.5225C4.49749 11.5225 2.47119 9.49616 2.47119 6.99707C2.47119 4.49798 4.49749 2.47168 6.99658 2.47168ZM6.99658 3.52246C5.07739 3.52246 3.52197 5.07788 3.52197 6.99707C3.52197 8.91626 5.07739 10.4717 6.99658 10.4717C8.91577 10.4717 10.4712 8.91626 10.4712 6.99707C10.4712 5.07788 8.91577 3.52246 6.99658 3.52246Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"SettingsCog":[["path",{"d":"M8.00062 5.2793C9.50689 5.2793 10.7289 6.50063 10.7291 8.00684C10.7289 9.51311 9.50693 10.7354 8.00062 10.7354C6.49463 10.735 5.27328 9.51288 5.27308 8.00684C5.27335 6.50086 6.49467 5.27967 8.00062 5.2793ZM8.00062 6.33008C7.07457 6.33045 6.32413 7.08076 6.32386 8.00684C6.32406 8.93298 7.07453 9.68421 8.00062 9.68458C8.92703 9.68458 9.67816 8.93321 9.67836 8.00684C9.67809 7.08053 8.92699 6.33008 8.00062 6.33008Z","fill-rule":"evenodd","clip-rule":"evenodd","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M8.59633 1.24024C9.07592 1.24041 9.51987 1.49643 9.75941 1.91309C9.97218 2.28352 10.2906 2.83779 10.5465 3.28223C10.5982 3.37176 10.694 3.42675 10.7985 3.42676L12.3795 3.42774C12.8587 3.42793 13.3021 3.68368 13.5416 4.09864L14.1295 5.11719C14.3672 5.52926 14.3684 6.03653 14.1334 6.4502L13.2536 8.00098L14.1334 9.54786C14.3685 9.96173 14.3675 10.4706 14.1295 10.8828L13.5416 11.9014C13.302 12.3162 12.8586 12.5721 12.3795 12.5723L10.7975 12.5713C10.6934 12.5715 10.5981 12.6276 10.5465 12.7168C10.2906 13.1614 9.97118 13.7156 9.75844 14.0859C9.51881 14.5027 9.07511 14.7588 8.59535 14.7588C8.17471 14.7588 7.8383 14.7578 7.40492 14.7578C6.92515 14.7578 6.48146 14.5027 6.24183 14.0859C6.02905 13.7155 5.70972 13.1614 5.45375 12.7168C5.40213 12.6273 5.3062 12.5713 5.20179 12.5713H3.62172C3.14243 12.5713 2.69927 12.3155 2.45961 11.9004L1.87172 10.8818C1.63401 10.4698 1.63199 9.96251 1.86683 9.54883L2.74769 7.99903L1.86683 6.4502C1.63181 6.03636 1.63375 5.52838 1.87172 5.11622L2.45961 4.09864C2.69922 3.68389 3.14176 3.42795 3.62074 3.42774H5.20179C5.30622 3.42774 5.4021 3.37172 5.45375 3.28223C5.70967 2.83774 6.0281 2.28351 6.24086 1.91309C6.48037 1.49635 6.92432 1.24044 7.40394 1.24024C7.83772 1.24023 8.1753 1.24023 8.59633 1.24024ZM7.40492 2.29004C7.2999 2.29005 7.20281 2.34636 7.15101 2.43653C6.93819 2.80705 6.62008 3.3617 6.3639 3.80665C6.12441 4.22231 5.6814 4.47732 5.20277 4.47754H3.62172C3.51764 4.47754 3.42093 4.533 3.36879 4.62305L2.7809 5.64161C2.72924 5.73111 2.72899 5.84174 2.77992 5.93165L3.80629 7.73926C3.84008 7.79878 3.86295 7.86417 3.87172 7.93165L3.87562 7.99903C3.87565 8.06763 3.86231 8.13613 3.83656 8.19922L3.80629 8.25977L2.77894 10.0674C2.72805 10.1573 2.72924 10.2679 2.7809 10.3574L3.36879 11.376C3.42092 11.4661 3.51761 11.5215 3.62172 11.5215H5.20179C5.68071 11.5215 6.12432 11.7765 6.3639 12.1924C6.62013 12.6374 6.93914 13.1919 7.15199 13.5625C7.20372 13.6524 7.29923 13.7088 7.40394 13.709C7.83771 13.709 8.17531 13.708 8.59633 13.708C8.70115 13.7078 8.79754 13.6525 8.84926 13.5625C9.06202 13.1921 9.38023 12.6382 9.63636 12.1934C9.87592 11.7773 10.3195 11.5215 10.7985 11.5215H12.3795C12.4834 11.5213 12.5794 11.4658 12.6315 11.376L13.2194 10.3574C13.271 10.2679 13.2714 10.1573 13.2203 10.0674L12.193 8.25977C12.1481 8.18049 12.1256 8.09011 12.1256 7.99903C12.1257 7.9079 12.149 7.81751 12.194 7.73829L13.2203 5.93165C13.2712 5.84187 13.2708 5.73203 13.2194 5.64258L12.6315 4.62403C12.5794 4.53379 12.4828 4.47754 12.3786 4.47754L10.7985 4.47852C10.3197 4.47852 9.87697 4.22238 9.63734 3.80665C9.38106 3.36152 9.0621 2.80612 8.84926 2.43555C8.79741 2.3456 8.70021 2.29005 8.59535 2.29004C8.17471 2.29004 7.8383 2.29004 7.40492 2.29004Z","fill-rule":"evenodd","clip-rule":"evenodd","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"SettingsSlider":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M6.33374 8.97461C7.54786 8.97484 8.56163 9.83236 8.80347 10.9746H13.3337C13.6235 10.9749 13.8591 11.2102 13.8591 11.5C13.8591 11.7898 13.6235 12.0251 13.3337 12.0254H8.80347C8.56163 13.1676 7.54786 14.0252 6.33374 14.0254C5.11907 14.0254 4.10455 13.1673 3.86304 12.0244L2.66675 12.0254C2.37691 12.0253 2.14138 11.7899 2.14136 11.5C2.14136 11.2102 2.37693 10.9748 2.66675 10.9746H3.86304C4.10491 9.83221 5.11941 8.97461 6.33374 8.97461ZM6.33374 10.0254C5.51912 10.0254 4.85913 10.6854 4.85913 11.5C4.85913 12.3146 5.51912 12.9746 6.33374 12.9746C7.14814 12.9743 7.80835 12.3145 7.80835 11.5C7.80835 10.6855 7.14814 10.0257 6.33374 10.0254Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M9.66675 1.97461C10.881 1.97461 11.8935 2.83236 12.1355 3.97461H13.3328C13.6227 3.97459 13.8581 4.21005 13.8582 4.5C13.8581 4.78993 13.6227 5.02537 13.3328 5.02539H12.1365C11.8946 6.16774 10.881 7.02539 9.66675 7.02539C8.45245 7.02539 7.43893 6.16774 7.19702 5.02539H2.66675C2.3768 5.02539 2.14136 4.78995 2.14136 4.5C2.14136 4.21005 2.3768 3.97461 2.66675 3.97461H7.19702C7.43893 2.83226 8.45245 1.97461 9.66675 1.97461ZM9.66675 3.02539C8.85213 3.02539 8.19214 3.68538 8.19214 4.5C8.19214 5.31462 8.85213 5.97461 9.66675 5.97461C10.4814 5.97461 11.1414 5.31462 11.1414 4.5C11.1414 3.68538 10.4814 3.02539 9.66675 3.02539Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"SettingsWrench":[["path",{"d":"M13.1892 6.42285C13.1892 6.3181 13.1833 6.21463 13.1746 6.1123L12.1755 7.1123C11.2673 8.0205 9.79467 8.0205 8.88647 7.1123C7.97881 6.20423 7.97886 4.73233 8.88647 3.82422L9.88549 2.82422C9.78382 2.81562 9.68096 2.81056 9.5769 2.81055C7.58161 2.81055 5.96375 4.42759 5.96362 6.42285C5.96362 6.49883 5.96585 6.57473 5.97045 6.64941C5.99355 7.0245 6.01126 7.31602 6.01928 7.5332C6.02666 7.73304 6.0298 7.92789 6.00073 8.07715C5.98214 8.17244 5.96215 8.2721 5.92358 8.37402C5.88497 8.47599 5.83314 8.56372 5.78393 8.64746C5.65778 8.86199 5.43743 9.07599 5.15405 9.35938L3.10424 11.4102C2.69418 11.8204 2.69405 12.4853 3.10424 12.8955C3.51444 13.3056 4.17936 13.3055 4.58959 12.8955L6.64037 10.8447C6.92364 10.5615 7.13779 10.3409 7.35229 10.2148C7.43595 10.1657 7.52386 10.1147 7.62573 10.0762C7.72761 10.0376 7.82734 10.0176 7.9226 9.99902C8.07189 9.96998 8.26671 9.97211 8.46655 9.97949C8.68377 9.98751 8.97514 10.0062 9.35033 10.0293C9.42502 10.0339 9.50092 10.0361 9.5769 10.0361C11.5721 10.0359 13.1892 8.41807 13.1892 6.42285ZM14.239 6.42285C14.239 8.99797 12.152 11.0857 9.5769 11.0859C9.47938 11.0859 9.38204 11.0831 9.28588 11.0771C8.90478 11.0537 8.62864 11.0367 8.42748 11.0293C8.32751 11.0256 8.25313 11.0242 8.19799 11.0254C8.1435 11.0266 8.1228 11.0303 8.1228 11.0303C8.01936 11.0504 8.00361 11.056 7.99682 11.0586C7.98976 11.0613 7.97312 11.068 7.88451 11.1201C7.81649 11.1601 7.71987 11.2506 7.38256 11.5879L5.33276 13.6377C4.51249 14.458 3.18236 14.4579 2.36205 13.6377C1.54175 12.8174 1.54175 11.4873 2.36205 10.667L4.41186 8.61719C4.74904 8.28001 4.83866 8.18325 4.87865 8.11523C4.93228 8.02398 4.93858 8.00875 4.94115 8.00195C4.94376 7.99504 4.94943 7.97877 4.96948 7.87598C4.96995 7.87212 4.97233 7.85074 4.97338 7.80176C4.97457 7.74656 4.97415 7.67145 4.97045 7.57129C4.96302 7.37021 4.94605 7.09457 4.9226 6.71387C4.91668 6.61771 4.91381 6.52037 4.91381 6.42285C4.91394 3.84769 7.00171 1.75977 9.5769 1.75977C9.92933 1.7598 10.2732 1.79952 10.6042 1.87402C10.6613 1.88687 10.7462 1.90563 10.8191 1.93066C10.8809 1.95189 10.9676 1.98777 11.0515 2.05664L11.1335 2.13672L11.1794 2.19727C11.2786 2.34284 11.3221 2.52561 11.2966 2.7002C11.2723 2.86677 11.1889 2.98428 11.1365 3.04883C11.0875 3.10896 11.0245 3.17149 10.9792 3.2168L9.62963 4.56641C9.13148 5.06456 9.13148 5.87197 9.62963 6.37012C10.1278 6.86817 10.9352 6.86823 11.4333 6.37012L12.783 5.02051C12.8284 4.97508 12.8906 4.91128 12.9509 4.8623C13.0155 4.80986 13.133 4.72744 13.2996 4.70312L13.3747 4.69629C13.5257 4.69117 13.6777 4.73527 13.8025 4.82031L13.863 4.86621L13.9431 4.94824C14.0117 5.03186 14.0478 5.11799 14.0691 5.17969C14.0941 5.25247 14.1129 5.33745 14.1257 5.39453C14.2003 5.72573 14.239 6.07023 14.239 6.42285Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"SidebarLeft":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M11.5 2.30762C13.1707 2.30762 14.5254 3.66235 14.5254 5.33301V10.666C14.5254 12.3367 13.1707 13.6914 11.5 13.6914H4.5C2.82934 13.6914 1.47461 12.3367 1.47461 10.666V5.33301C1.47461 3.66235 2.82934 2.30762 4.5 2.30762H11.5ZM6.52539 12.6416H11.5C12.5908 12.6416 13.4746 11.7568 13.4746 10.666V5.33301C13.4746 4.24225 12.5908 3.3584 11.5 3.3584H6.52539V12.6416ZM4.5 3.3584C3.40924 3.3584 2.52539 4.24225 2.52539 5.33301V10.666C2.52539 11.7568 3.40924 12.6416 4.5 12.6416H5.47461V3.3584H4.5Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"SidebarRight":[["path",{"d":"M11.5 2.30762C13.1707 2.30762 14.5254 3.66235 14.5254 5.33301V10.666C14.5254 12.3367 13.1707 13.6914 11.5 13.6914H4.5C2.82934 13.6914 1.47461 12.3367 1.47461 10.666V5.33301C1.47461 3.66235 2.82934 2.30762 4.5 2.30762H11.5ZM6.52539 12.6416H11.5C12.5908 12.6416 13.4746 11.7568 13.4746 10.666V5.33301C13.4746 4.24225 12.5908 3.3584 11.5 3.3584H6.52539V12.6416ZM4.5 3.3584C3.40924 3.3584 2.52539 4.24225 2.52539 5.33301V10.666C2.52539 11.7568 3.40924 12.6416 4.5 12.6416H5.47461V3.3584H4.5Z","fill-rule":"evenodd","clip-rule":"evenodd","fill":"currentColor","stroke":"none","transform":"translate(24 24) rotate(180) scale(1.5)"}]],"SidebarLeftHidden":[["path",{"d":"M4.66699 4.80859C4.95683 4.80873 5.19238 5.04412 5.19238 5.33398V10.667C5.19238 10.9569 4.95683 11.1923 4.66699 11.1924C4.37704 11.1924 4.1416 10.9569 4.1416 10.667V5.33398C4.1416 5.04403 4.37704 4.80859 4.66699 4.80859Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M11.5 2.30762C13.1707 2.30762 14.5254 3.66235 14.5254 5.33301V10.666C14.5254 12.3367 13.1707 13.6914 11.5 13.6914H4.5C2.82934 13.6914 1.47461 12.3367 1.47461 10.666V5.33301C1.47461 3.66235 2.82934 2.30762 4.5 2.30762H11.5ZM4.5 3.3584C3.40924 3.3584 2.52539 4.24225 2.52539 5.33301V10.666C2.52539 11.7568 3.40924 12.6416 4.5 12.6416H11.5C12.5908 12.6416 13.4746 11.7568 13.4746 10.666V5.33301C13.4746 4.24225 12.5908 3.3584 11.5 3.3584H4.5Z","fill-rule":"evenodd","clip-rule":"evenodd","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"SidebarRightHidden":[["path",{"d":"M4.66699 4.80859C4.95683 4.80873 5.19238 5.04412 5.19238 5.33398V10.667C5.19238 10.9569 4.95683 11.1923 4.66699 11.1924C4.37704 11.1924 4.1416 10.9569 4.1416 10.667V5.33398C4.1416 5.04403 4.37704 4.80859 4.66699 4.80859Z","fill":"currentColor","stroke":"none","transform":"translate(24 24) rotate(180) scale(1.5)"}],["path",{"d":"M11.5 2.30762C13.1707 2.30762 14.5254 3.66235 14.5254 5.33301V10.666C14.5254 12.3367 13.1707 13.6914 11.5 13.6914H4.5C2.82934 13.6914 1.47461 12.3367 1.47461 10.666V5.33301C1.47461 3.66235 2.82934 2.30762 4.5 2.30762H11.5ZM4.5 3.3584C3.40924 3.3584 2.52539 4.24225 2.52539 5.33301V10.666C2.52539 11.7568 3.40924 12.6416 4.5 12.6416H11.5C12.5908 12.6416 13.4746 11.7568 13.4746 10.666V5.33301C13.4746 4.24225 12.5908 3.3584 11.5 3.3584H4.5Z","fill-rule":"evenodd","clip-rule":"evenodd","fill":"currentColor","stroke":"none","transform":"translate(24 24) rotate(180) scale(1.5)"}]],"Stack":[["path",{"d":"M12.6663 12.1409C12.9562 12.1409 13.1916 12.3764 13.1916 12.6663C13.1916 12.9563 12.9562 13.1917 12.6663 13.1917H3.33324C3.04341 13.1916 2.80785 12.9562 2.80785 12.6663C2.80785 12.3764 3.04341 12.141 3.33324 12.1409H12.6663Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M13.6663 9.4749C13.9562 9.4749 14.1916 9.71034 14.1916 10.0003C14.1916 10.2902 13.9562 10.5257 13.6663 10.5257H2.33324C2.04341 10.5255 1.80785 10.2902 1.80785 10.0003C1.80785 9.71042 2.04341 9.47503 2.33324 9.4749H13.6663Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M11.3948 2.8079C11.9303 2.80811 12.4405 3.03971 12.7932 3.44267L14.927 5.88212C15.6011 6.65264 15.0543 7.85771 14.0305 7.85771H1.96899C0.945389 7.85747 0.398492 6.65256 1.0725 5.88212L3.20727 3.44169C3.55937 3.03946 4.06803 2.80866 4.60278 2.8079C6.86678 2.80556 9.13157 2.80703 11.3948 2.8079ZM4.60473 3.85771C4.3724 3.85804 4.15049 3.95816 3.99731 4.1331L1.86254 6.57353C1.78267 6.66506 1.84754 6.80767 1.96899 6.8079H14.0305C14.1522 6.8079 14.217 6.66513 14.137 6.57353L12.0032 4.13408C11.8497 3.95892 11.6277 3.8578 11.3948 3.85771C9.13096 3.85683 6.86773 3.85537 4.60473 3.85771Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Stop":[["path",{"d":"M10.4664 3.14111C11.7872 3.14111 12.8578 4.21204 12.858 5.53271V10.4663C12.858 11.7872 11.7873 12.8579 10.4664 12.8579H5.53284C4.21217 12.8577 3.14124 11.787 3.14124 10.4663V5.53271C3.14148 4.2122 4.21232 3.14136 5.53284 3.14111H10.4664Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Stopwatch":[["path",{"d":"M9.66357 6.75098C9.88621 6.56554 10.2172 6.59595 10.4028 6.81836C10.5884 7.0411 10.5582 7.37202 10.3354 7.55762L8.33545 9.22461C8.11274 9.40987 7.78173 9.37976 7.59619 9.15723C7.41093 8.93454 7.4411 8.60352 7.66357 8.41797L9.66357 6.75098Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M7.99951 3.11719C11.1497 3.11719 13.7034 5.67119 13.7036 8.82129C13.7033 11.9713 11.1496 14.5254 7.99951 14.5254C4.84957 14.5252 2.29567 11.9712 2.29541 8.82129C2.29559 5.6713 4.84952 3.11736 7.99951 3.11719ZM7.99951 4.16797C5.42942 4.16814 3.34637 6.25119 3.34619 8.82129C3.34646 11.3913 5.42947 13.4754 7.99951 13.4756C10.5697 13.4756 12.6535 11.3914 12.6538 8.82129C12.6536 6.25109 10.5698 4.16797 7.99951 4.16797Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M9.6665 1.1416C9.95634 1.14173 10.1919 1.37712 10.1919 1.66699C10.1919 1.95686 9.95634 2.19225 9.6665 2.19238H6.3335C6.04355 2.19238 5.80811 1.95694 5.80811 1.66699C5.80811 1.37704 6.04355 1.1416 6.3335 1.1416H9.6665Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Tag":[["path",{"d":"M10.5903 4.16311C11.2269 4.16315 11.7426 4.67987 11.7427 5.31643C11.7426 5.95306 11.227 6.46873 10.5903 6.46877C9.95369 6.46875 9.43707 5.95308 9.43703 5.31643C9.43716 4.67985 9.95375 4.16313 10.5903 4.16311Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M11.4019 1.47463C11.6413 1.47463 11.8427 1.47229 12.0376 1.51662C12.22 1.55817 12.3949 1.6299 12.5532 1.72951C12.7225 1.83605 12.8624 1.98109 13.0318 2.15041L13.814 2.93264C13.9833 3.10197 14.1284 3.24188 14.2349 3.41115C14.3345 3.56952 14.4062 3.74435 14.4478 3.92678C14.4921 4.12179 14.4898 4.32306 14.4898 4.56252V6.81838C14.4898 7.29004 14.4927 7.60755 14.4234 7.91213C14.3568 8.20441 14.2412 8.48358 14.0816 8.73733C13.9152 9.00176 13.6886 9.22408 13.355 9.55764L10.1333 12.7783C9.73818 13.1735 9.42089 13.4916 9.14406 13.7285C8.86291 13.9692 8.59079 14.1556 8.27492 14.2666C7.70485 14.4668 7.08328 14.4668 6.5132 14.2666C6.19731 14.1557 5.92522 13.9692 5.64406 13.7285C5.36722 13.4916 5.04995 13.1735 4.6548 12.7783L3.18605 11.3096C2.7909 10.9144 2.47282 10.5972 2.23586 10.3203C1.9952 10.0391 1.80874 9.76711 1.69777 9.45119C1.49755 8.88106 1.49755 8.25961 1.69777 7.68948C1.80874 7.37356 1.9952 7.10152 2.23586 6.82033C2.47281 6.54349 2.79091 6.22622 3.18605 5.83108L6.40675 2.6094C6.74031 2.27584 6.96264 2.04919 7.22707 1.88283C7.4808 1.72325 7.76001 1.60761 8.05226 1.54104C8.3568 1.47175 8.67444 1.47463 9.14601 1.47463H11.4019ZM9.14601 2.52541C8.62724 2.52541 8.44842 2.52843 8.28566 2.56545C8.10883 2.60572 7.94016 2.67593 7.78664 2.77248C7.64527 2.86142 7.51607 2.98543 7.14894 3.35256L3.92824 6.57326C3.52158 6.97993 3.23799 7.2643 3.03371 7.50295C2.8332 7.73723 2.73798 7.89495 2.688 8.03713C2.56687 8.38207 2.56687 8.7586 2.688 9.10354C2.73798 9.24572 2.8332 9.40344 3.03371 9.63772C3.238 9.87637 3.52156 10.1607 3.92824 10.5674L5.39699 12.0362C5.80367 12.4428 6.08802 12.7264 6.32668 12.9307C6.56091 13.1311 6.71869 13.2264 6.86086 13.2764C7.20574 13.3975 7.58239 13.3975 7.92726 13.2764C8.06941 13.2264 8.22723 13.1311 8.46144 12.9307C8.70009 12.7264 8.98448 12.4428 9.39113 12.0362L12.6118 8.81545C12.979 8.44832 13.103 8.31912 13.1919 8.17776C13.2885 8.02422 13.3587 7.85558 13.3989 7.67873C13.436 7.51593 13.439 7.33731 13.439 6.81838V4.56252C13.439 4.27558 13.4365 4.21248 13.4243 4.1592C13.4091 4.09248 13.3826 4.02867 13.3462 3.97073C13.3171 3.92448 13.2746 3.87768 13.0718 3.67483L12.2896 2.8926C12.0868 2.68988 12.0399 2.64728 11.9937 2.61819C11.9358 2.58178 11.8719 2.5553 11.8052 2.54006C11.7519 2.52793 11.6887 2.52541 11.4019 2.52541H9.14601Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Undo":[["path",{"d":"M4.96785 2.29515C5.17276 2.09034 5.50502 2.0905 5.71003 2.29515C5.91503 2.50014 5.91496 2.8323 5.71003 3.03733L3.88875 4.85862H9.33894C11.82 4.85862 13.8584 6.86166 13.8585 9.35179C13.8585 11.8441 11.8292 13.8655 9.33894 13.8655H6.63875C6.34891 13.8653 6.11338 13.6299 6.11336 13.3401C6.11336 13.0502 6.34889 12.8148 6.63875 12.8147H9.33894C11.2513 12.8147 12.8077 11.2621 12.8077 9.35179C12.8077 7.45057 11.2492 5.9094 9.33894 5.9094H3.99226L5.71003 7.62815C5.91497 7.83309 5.9148 8.1653 5.71003 8.37034C5.50501 8.57537 5.17287 8.57537 4.96785 8.37034L2.47761 5.88108C2.17544 5.57851 2.17542 5.08794 2.47761 4.78538L4.96785 2.29515Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Unpin":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M2.30145 2.30173C2.50648 2.0967 2.83862 2.09671 3.04364 2.30173L13.6989 12.956C13.9039 13.1611 13.9039 13.4942 13.6989 13.6992C13.494 13.9038 13.1617 13.9037 12.9567 13.6992L10.6179 11.3603L10.4792 12.0693L10.4714 12.1045C10.2782 12.8193 9.76646 13.4026 9.10614 13.6299C8.42299 13.8647 7.65884 13.6908 7.05731 13.0449L5.36395 11.3769L2.37079 14.3711C2.16573 14.5757 1.8335 14.576 1.6286 14.3711C1.42386 14.1661 1.424 13.8339 1.6286 13.6289L4.61591 10.6406L3.0202 9.06931C2.43194 8.49803 2.23263 7.72082 2.42841 7.02731C2.62426 6.33393 3.19893 5.78174 4.02802 5.61716L4.70575 5.44821L2.30145 3.04392C2.09651 2.83897 2.09667 2.50677 2.30145 2.30173ZM4.27899 6.63571L4.26434 6.63962L4.2497 6.64255C3.77961 6.73001 3.52392 7.01242 3.43915 7.31247C3.36344 7.58054 3.41095 7.9076 3.64227 8.19626L3.7536 8.31735L3.75653 8.32126L7.79462 12.2968L7.80438 12.3066L7.81415 12.3174C8.15769 12.694 8.50018 12.7289 8.76532 12.6377C9.05738 12.5371 9.33782 12.2532 9.45282 11.8437L9.72528 10.4677L5.57391 6.31638L4.27899 6.63571Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M8.70477 2.26462C9.31963 1.35984 10.5533 1.22989 11.3718 1.86716L11.5309 2.00583L11.5329 2.00778L13.9763 4.42282L13.9792 4.42478C14.8094 5.25522 14.619 6.60002 13.7556 7.25192L13.7458 7.25974L12.2975 8.30173C12.0623 8.47102 11.7335 8.41776 11.5641 8.18259C11.3948 7.94724 11.4489 7.61854 11.6843 7.44919L13.1227 6.41403C13.5222 6.1126 13.5761 5.51039 13.239 5.16989L10.7946 2.75485C10.4244 2.39649 9.83299 2.46141 9.56708 2.86325L9.55341 2.88278L8.42548 4.43259C8.25486 4.66695 7.92648 4.71836 7.69208 4.54782C7.45767 4.37718 7.40523 4.04884 7.57587 3.81442L8.70477 2.26462Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Warning":[["path",{"d":"M8.08418 10.0542C8.49587 10.0964 8.81746 10.4439 8.81758 10.8667C8.81758 11.3179 8.45132 11.6838 8.0002 11.6841C7.57726 11.684 7.22966 11.3626 7.1877 10.9507L7.18281 10.8667L7.1877 10.7837C7.22943 10.3716 7.57709 10.0494 8.0002 10.0493L8.08418 10.0542Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M8.0002 5.80713C8.29003 5.80726 8.52559 6.04265 8.52559 6.33252V8.49951C8.52515 8.78901 8.28976 9.0238 8.0002 9.02393C7.71052 9.02393 7.47524 8.78909 7.47481 8.49951V6.33252C7.47481 6.04257 7.71025 5.80713 8.0002 5.80713Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M6.41426 2.92041C7.13894 1.73491 8.86056 1.73481 9.58516 2.92041L14.5412 11.0298C15.2977 12.2681 14.4064 13.8579 12.9553 13.8579H3.04316C1.59251 13.8574 0.702069 12.2678 1.4582 11.0298L6.41426 2.92041ZM8.68965 3.46826C8.37446 2.95249 7.62496 2.95249 7.30977 3.46826L2.35371 11.5776C2.0252 12.116 2.4125 12.8066 3.04316 12.8071H12.9553C13.5864 12.8071 13.9736 12.1162 13.6447 11.5776L8.68965 3.46826Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"X":[["path",{"d":"M10.9621 4.29539C11.167 4.09057 11.4992 4.09076 11.7043 4.29539C11.9093 4.50039 11.9092 4.83255 11.7043 5.03758L8.74235 7.99949L11.7052 10.9624C11.9098 11.1673 11.9097 11.4996 11.7052 11.7046C11.5003 11.9095 11.1681 11.9093 10.9631 11.7046L8.00016 8.74168L5.03727 11.7046C4.83222 11.9093 4.5 11.9095 4.29509 11.7046C4.09054 11.4996 4.09051 11.1673 4.29509 10.9624L7.25798 7.99949L4.29606 5.03758C4.09107 4.83255 4.09105 4.5004 4.29606 4.29539C4.50111 4.09079 4.83336 4.09054 5.03825 4.29539L8.00016 7.2573L10.9621 4.29539Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"XCircleCrossedClose":[["path",{"d":"M9.63184 5.625C9.83687 5.42002 10.17 5.41999 10.375 5.625C10.5798 5.83003 10.5799 6.1632 10.375 6.36816L8.74219 7.99902L10.375 9.63184C10.5798 9.83688 10.5799 10.1701 10.375 10.375C10.1701 10.5799 9.83785 10.5797 9.63281 10.375L8 8.74219L6.36719 10.375C6.16214 10.5797 5.82991 10.5789 5.625 10.374C5.42038 10.1691 5.41943 9.83679 5.62402 9.63184L7.25586 7.99902L5.625 6.36816C5.42004 6.16315 5.42004 5.83001 5.625 5.625C5.83001 5.41999 6.16314 5.42002 6.36816 5.625L7.99902 7.25586L9.63184 5.625Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M8 1.47461C11.6037 1.47461 14.5254 4.39634 14.5254 8C14.5254 11.6037 11.6037 14.5254 8 14.5254C4.39634 14.5254 1.47461 11.6037 1.47461 8C1.47461 4.39634 4.39634 1.47461 8 1.47461ZM8 2.52539C4.97624 2.52539 2.52539 4.97624 2.52539 8C2.52539 11.0238 4.97624 13.4746 8 13.4746C11.0238 13.4746 13.4746 11.0238 13.4746 8C13.4746 4.97624 11.0238 2.52539 8 2.52539Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"PinFilled":[["path",{"d":"M9.18848 2.22305C9.73096 1.43702 10.8485 1.30525 11.541 1.99746L14.0869 4.54336C14.7793 5.23581 14.6482 6.35429 13.8623 6.89688L11.165 8.85293L11.1572 8.85879C10.993 8.97331 10.8762 9.14515 10.8311 9.34024L10.1641 12.2309L10.1621 12.2397C9.98302 12.9545 9.50501 13.4639 8.9043 13.6518C8.3039 13.8394 7.63712 13.6863 7.14649 13.1957L5.3457 11.3949L2.37109 14.3705C2.16616 14.5754 1.83395 14.5753 1.62891 14.3705C1.42404 14.1655 1.42394 13.8333 1.62891 13.6283L4.60352 10.6527L2.88867 8.93789C2.39816 8.44722 2.24494 7.78047 2.43262 7.18008C2.62047 6.57944 3.13007 6.10141 3.84473 5.92227L3.85352 5.92032L6.74414 5.25332C6.93924 5.20821 7.11108 5.09144 7.22559 4.92715L7.23145 4.91934L9.1875 2.22207L9.18848 2.22305Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Edit":[["path",{"d":"M9.41506 2.54535C10.5566 1.516 12.2884 1.57105 13.3399 2.64105C14.4597 3.72222 14.4959 5.5405 13.3467 6.68988L7.75588 12.2797C7.18583 12.8809 6.45561 13.2881 5.6924 13.4653H5.69045L2.59767 14.1762L2.5967 14.1743C2.4644 14.2058 2.19674 14.2328 1.98342 14.02C1.76937 13.8062 1.79632 13.5371 1.82814 13.4047L2.5381 10.3188C2.71723 9.5224 3.12639 8.8269 3.68752 8.26703L9.30568 2.64887L9.41506 2.54535ZM4.4297 9.01019C3.99658 9.44234 3.69398 9.96492 3.56252 10.5512L3.56154 10.5541L2.99513 13.0063L5.45607 12.4418C6.02206 12.3102 6.56957 12.0068 6.99513 11.558L7.00392 11.5483L11.5254 7.02582L8.96877 4.46918L4.4297 9.01019ZM12.5986 3.38422C11.9258 2.69135 10.7787 2.66298 10.0479 3.39203L10.0469 3.39105L9.71193 3.72602L12.2686 6.28266L12.6045 5.94769C13.3406 5.21146 13.3067 4.06829 12.6113 3.39691L12.5986 3.38422Z","fill-rule":"evenodd","clip-rule":"evenodd","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"ThemeLight":[["path",{"fill-rule":"evenodd","d":"M12 1a1 1 0 0 1 1 1v1a1 1 0 1 1-2 0V2a1 1 0 0 1 1-1ZM1 12a1 1 0 0 1 1-1h1a1 1 0 1 1 0 2H2a1 1 0 0 1-1-1Zm19 0a1 1 0 0 1 1-1h1a1 1 0 1 1 0 2h-1a1 1 0 0 1-1-1Zm-8 8a1 1 0 0 1 1 1v1a1 1 0 1 1-2 0v-1a1 1 0 0 1 1-1Zm0-12a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm-6 4a6 6 0 1 1 12 0 6 6 0 0 1-12 0Zm-.364-7.778a1 1 0 1 0-1.414 1.414l.707.707A1 1 0 0 0 6.343 4.93l-.707-.707ZM4.222 18.364a1 1 0 1 0 1.414 1.414l.707-.707a1 1 0 1 0-1.414-1.414l-.707.707ZM17.657 4.929a1 1 0 1 0 1.414 1.414l.707-.707a1 1 0 0 0-1.414-1.414l-.707.707Zm1.414 12.728a1 1 0 1 0-1.414 1.414l.707.707a1 1 0 0 0 1.414-1.414l-.707-.707Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"ThemeDark":[["path",{"fill-rule":"evenodd","d":"M12.784 2.47a1 1 0 0 1 .047.975A8 8 0 0 0 20 15h.057a1 1 0 0 1 .902 1.445A10 10 0 0 1 12 22C6.477 22 2 17.523 2 12c0-5.499 4.438-9.961 9.928-10a1 1 0 0 1 .856.47ZM10.41 4.158a8 8 0 1 0 7.942 12.707C13.613 16.079 10 11.96 10 7c0-.986.143-1.94.41-2.842Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"ThemeAuto":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M13.138 0.873086C13.6819 0.968989 14.045 1.48765 13.9491 2.03154L13.7036 3.42427C13.6077 3.96816 13.089 4.33133 12.5451 4.23543C12.0012 4.13953 11.638 3.62087 11.7339 3.07698L11.9795 1.68425C12.0754 1.14035 12.5941 0.777183 13.138 0.873086ZM19.7083 4.29263C20.0988 4.68316 20.0988 5.31632 19.7083 5.70685L18.7083 6.70685C18.3178 7.09737 17.6846 7.09737 17.2941 6.70685C16.9036 6.31632 16.9036 5.68316 17.2941 5.29263L18.2941 4.29263C18.6846 3.90211 19.3178 3.90211 19.7083 4.29263ZM8.58703 5.29288C8.87031 5.57615 8.95719 6.00115 8.80781 6.37287C8.49458 7.15228 8.32172 8.00431 8.32172 8.89916C8.32172 12.6432 11.3568 15.6783 15.1008 15.6783C15.9957 15.6783 16.8477 15.5054 17.6271 15.1922C17.9988 15.0428 18.4238 15.1297 18.7071 15.4129C18.9904 15.6962 19.0773 16.1212 18.9279 16.4929C17.6313 19.7192 14.4728 22 10.7791 22C5.93054 22 2 18.0694 2 13.2209C2 9.52722 4.28075 6.36866 7.50704 5.07211C7.87876 4.92272 8.30376 5.0096 8.58703 5.29288ZM6.35949 8.08012C4.91423 9.32388 4 11.1662 4 13.2209C4 16.9649 7.03511 20 10.7791 20C12.8337 20 14.6761 19.0858 15.9199 17.6405C15.6501 17.6655 15.3769 17.6783 15.1008 17.6783C10.2523 17.6783 6.32172 13.7477 6.32172 8.89916C6.32172 8.62311 6.33449 8.3499 6.35949 8.08012ZM11 6.99998C11 6.4477 11.4477 5.99998 12 5.99998C15.3137 5.99998 18 8.68628 18 12C18 12.5523 17.5523 13 17 13C16.4477 13 16 12.5523 16 12C16 9.79084 14.2091 7.99998 12 7.99998C11.4477 7.99998 11 7.55227 11 6.99998ZM23.1278 10.8612C23.2237 11.4051 22.8606 11.9238 22.3167 12.0197L20.924 12.2653C20.3801 12.3612 19.8614 11.998 19.7655 11.4541C19.6696 10.9102 20.0328 10.3916 20.5767 10.2956L21.9694 10.0501C22.5133 9.95417 23.0319 10.3173 23.1278 10.8612Z","fill":"currentColor","stroke":"none"}]],"Orbit":[["circle",{"cx":"12","cy":"12","r":"3","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}],["circle",{"cx":"19","cy":"5","r":"2","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}],["circle",{"cx":"5","cy":"19","r":"2","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}],["path",{"d":"M10.4 21.9a10 10 0 0 0 9.941-15.416","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}],["path",{"d":"M13.5 2.1a10 10 0 0 0-9.841 15.416","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}]],"Focus":[["circle",{"cx":"12","cy":"12","r":"3","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}],["path",{"d":"M3 7V5a2 2 0 0 1 2-2h2","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}],["path",{"d":"M17 3h2a2 2 0 0 1 2 2v2","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}],["path",{"d":"M21 17v2a2 2 0 0 1-2 2h-2","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}],["path",{"d":"M7 21H5a2 2 0 0 1-2-2v-2","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}]],"GripVertical":[["circle",{"cx":"9","cy":"12","r":"1","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}],["circle",{"cx":"9","cy":"5","r":"1","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}],["circle",{"cx":"9","cy":"19","r":"1","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}],["circle",{"cx":"15","cy":"12","r":"1","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}],["circle",{"cx":"15","cy":"5","r":"1","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}],["circle",{"cx":"15","cy":"19","r":"1","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}]],"GripHorizontal":[["circle",{"cx":"12","cy":"9","r":"1","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}],["circle",{"cx":"19","cy":"9","r":"1","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}],["circle",{"cx":"5","cy":"9","r":"1","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}],["circle",{"cx":"12","cy":"15","r":"1","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}],["circle",{"cx":"19","cy":"15","r":"1","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}],["circle",{"cx":"5","cy":"15","r":"1","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}]],"Move":[["path",{"d":"M12 2v20","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}],["path",{"d":"m15 19-3 3-3-3","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}],["path",{"d":"m19 9 3 3-3 3","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}],["path",{"d":"M2 12h20","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}],["path",{"d":"m5 9-3 3 3 3","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}],["path",{"d":"m9 5 3-3 3 3","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}]],"MoveHorizontal":[["path",{"d":"m18 8 4 4-4 4","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}],["path",{"d":"M2 12h20","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}],["path",{"d":"m6 8-4 4 4 4","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}]],"MoveVertical":[["path",{"d":"M12 2v20","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}],["path",{"d":"m8 18 4 4 4-4","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}],["path",{"d":"m8 6 4-4 4 4","stroke":"currentColor","stroke-linecap":"round","stroke-linejoin":"round"}]],"Percent":[["path",{"d":"M11.2803 8.98242C12.3432 8.98263 13.2051 9.84519 13.2051 10.9082C13.2049 11.971 12.3431 12.8328 11.2803 12.833C10.2173 12.833 9.3547 11.9712 9.35449 10.9082C9.35449 9.84506 10.2171 8.98242 11.2803 8.98242ZM11.2803 10.0332C10.797 10.0332 10.4053 10.425 10.4053 10.9082C10.4055 11.3913 10.7972 11.7832 11.2803 11.7832C11.7632 11.783 12.1551 11.3911 12.1553 10.9082C12.1553 10.4251 11.7633 10.0334 11.2803 10.0332Z","fill-rule":"evenodd","clip-rule":"evenodd","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M10.5625 3.58496C10.733 3.35048 11.0614 3.29825 11.2959 3.46875C11.5301 3.63936 11.5816 3.96776 11.4111 4.20215L5.43848 12.416C5.26798 12.6502 4.93949 12.7014 4.70508 12.5312C4.47061 12.3607 4.41838 12.0323 4.58887 11.7979L10.5625 3.58496Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M4.7207 3.16797C5.78367 3.16818 6.64551 4.03073 6.64551 5.09375C6.6453 6.15659 5.78354 7.01834 4.7207 7.01855C3.65769 7.01855 2.79513 6.15672 2.79492 5.09375C2.79492 4.0306 3.65755 3.16797 4.7207 3.16797ZM4.7207 4.21875C4.23745 4.21875 3.8457 4.6105 3.8457 5.09375C3.84591 5.57682 4.23758 5.96875 4.7207 5.96875C5.20364 5.96854 5.59549 5.57669 5.5957 5.09375C5.5957 4.61063 5.20377 4.21896 4.7207 4.21875Z","fill-rule":"evenodd","clip-rule":"evenodd","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"KeystrokeSearch":[["rect",{"x":"3.75","y":"3.75","width":"16.5","height":"16.5","rx":"3","stroke":"currentColor","stroke-width":"2","fill":"none"}],["path",{"d":"M8.5835 12.7043L12.0316 8.0023C12.3544 7.56216 13.0483 7.8838 12.9211 8.41456L12.4211 10.5H15.0133C15.4228 10.5 15.6587 10.9654 15.4165 11.2957L11.9684 15.9977C11.6456 16.4378 10.9517 16.1162 11.0789 15.5854L11.5789 13.5H8.9867C8.57715 13.5 8.34131 13.0346 8.5835 12.7043Z","fill":"currentColor","stroke":"none"}]],"ExclamationCircle":[["path",{"d":"M8.08398 9.30859C8.49579 9.35064 8.81726 9.69822 8.81738 10.1211C8.81738 10.5724 8.45123 10.9383 8 10.9385C7.57705 10.9384 7.22945 10.617 7.1875 10.2051L7.18262 10.1211L7.1875 10.0381C7.22923 9.62595 7.57689 9.30383 8 9.30371L8.08398 9.30859Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M8 5.06152C8.28995 5.06152 8.52539 5.29696 8.52539 5.58691V7.75391C8.52522 8.04371 8.28984 8.27832 8 8.27832C7.71016 8.27832 7.47478 8.04371 7.47461 7.75391V5.58691C7.47461 5.29696 7.71005 5.06152 8 5.06152Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M8 1.47461C11.6037 1.47461 14.5254 4.39634 14.5254 8C14.5254 11.6037 11.6037 14.5254 8 14.5254C4.39634 14.5254 1.47461 11.6037 1.47461 8C1.47461 4.39634 4.39634 1.47461 8 1.47461ZM8 2.52539C4.97624 2.52539 2.52539 4.97624 2.52539 8C2.52539 11.0238 4.97624 13.4746 8 13.4746C11.0238 13.4746 13.4746 11.0238 13.4746 8C13.4746 4.97624 11.0238 2.52539 8 2.52539Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]],"Sun":[["path",{"d":"M7.99976 13.1406C8.28971 13.1406 8.52515 13.3761 8.52515 13.666V14.666C8.52515 14.956 8.28971 15.1914 7.99976 15.1914C7.70992 15.1913 7.47437 14.9559 7.47437 14.666V13.666C7.47437 13.3761 7.70992 13.1408 7.99976 13.1406Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M11.739 11.7324C11.9439 11.5276 12.2762 11.5268 12.4812 11.7314L13.0906 12.3418C13.2955 12.5468 13.2954 12.879 13.0906 13.084C12.8855 13.289 12.5524 13.289 12.3474 13.084L11.738 12.4746C11.5333 12.2696 11.5341 11.9373 11.739 11.7324Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M3.52515 11.7305C3.73018 11.5258 4.06338 11.5256 4.26831 11.7305C4.47324 11.9354 4.47304 12.2686 4.26831 12.4736L3.65796 13.084C3.45289 13.2884 3.1206 13.2878 2.91577 13.083C2.71099 12.8782 2.71037 12.5459 2.91479 12.3408L3.52515 11.7305Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M7.99976 4.14258C10.1304 4.14271 11.858 5.87031 11.8582 8.00098C11.8582 10.1318 10.1305 11.8592 7.99976 11.8594C5.86901 11.8592 4.14136 10.1318 4.14136 8.00098C4.14153 5.87034 5.86912 4.14275 7.99976 4.14258ZM7.99976 5.19336C6.44901 5.19354 5.19231 6.45023 5.19214 8.00098C5.19214 9.55187 6.44891 10.8094 7.99976 10.8096C9.55064 10.8094 10.8083 9.5519 10.8083 8.00098C10.8082 6.45021 9.55054 5.19349 7.99976 5.19336Z","fill-rule":"evenodd","clip-rule":"evenodd","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M2.33667 7.47363C2.62657 7.47366 2.86201 7.70817 2.86206 7.99805C2.86203 8.28798 2.6266 8.52344 2.33667 8.52344H1.33667C1.04674 8.52341 0.811279 8.28797 0.811279 7.99805C0.811308 7.70811 1.04674 7.47266 1.33667 7.47266L2.33667 7.47363Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M14.6697 7.47363C14.9596 7.47366 15.195 7.70817 15.1951 7.99805C15.195 8.28798 14.9596 8.52344 14.6697 8.52344H13.6697C13.3799 8.52328 13.1443 8.28789 13.1443 7.99805C13.1443 7.7082 13.3799 7.47279 13.6697 7.47266L14.6697 7.47363Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M12.3435 2.91211C12.5485 2.70739 12.8817 2.70723 13.0867 2.91211C13.2916 3.11704 13.2914 3.45022 13.0867 3.65527L12.4763 4.26562C12.2712 4.47007 11.939 4.46948 11.7341 4.26465C11.5293 4.05981 11.5287 3.72752 11.7332 3.52246L12.3435 2.91211Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M2.92065 2.91211C3.12558 2.70728 3.45783 2.70648 3.66284 2.91113L4.27222 3.52148C4.47712 3.72648 4.47709 4.05867 4.27222 4.26367C4.06718 4.46866 3.73406 4.46868 3.52905 4.26367L2.91968 3.6543C2.71499 3.44924 2.71575 3.11702 2.92065 2.91211Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}],["path",{"d":"M7.99976 0.808594C8.28971 0.808594 8.52515 1.04403 8.52515 1.33398V2.33398C8.52515 2.62393 8.28971 2.85938 7.99976 2.85938C7.70992 2.85924 7.47437 2.62385 7.47437 2.33398V1.33398C7.47437 1.04412 7.70992 0.808726 7.99976 0.808594Z","fill":"currentColor","stroke":"none","transform":"scale(1.5)"}]]};
   // END GENERATED APPS SDK ICONS
   const SCENE_TREE_ICON = {
     chevron: APP_ICON_DATA.ChevronRight,
@@ -7307,12 +7708,14 @@ SOFTWARE.
     collapseAll: APP_ICON_DATA.Collapse,
     expandAll: APP_ICON_DATA.Expand
   };
-  // Keep quick tints and the shade palette in the same muted colour families.
-  const SCENE_TREE_UNIFORM_COLORS = window.BuretteColorPicker?.presets || [
-    { label: 'Lavender', value: 0xa58abd }, { label: 'Blue', value: 0x7da5c7 },
-    { label: 'Teal', value: 0x75aaa3 }, { label: 'Sage', value: 0x94ad7c },
-    { label: 'Sand', value: 0xc6af73 }, { label: 'Clay', value: 0xc7997d },
-    { label: 'Rose', value: 0xbf8a9a }, { label: 'Stone', value: 0xaaa9a5 }
+  // Quick tints are a compact, saturated palette; full shade lists stay in the picker.
+  const SCENE_TREE_UNIFORM_COLORS = window.BuretteColorPicker?.quickPresets || [
+    { label: 'Red', value: 0xef4444 }, { label: 'Orange', value: 0xf97316 },
+    { label: 'Yellow', value: 0xeab308 }, { label: 'Green', value: 0x22c55e },
+    { label: 'Cyan', value: 0x06b6d4 }, { label: 'Blue', value: 0x3b82f6 },
+    { label: 'Violet', value: 0x8b5cf6 }, { label: 'Pink', value: 0xec4899 },
+    { label: 'White', value: 0xffffff }, { label: 'Gray', value: 0x808080 },
+    { label: 'Black', value: 0x000000 }
   ];
   const sceneTreeExpandedRefs = new Set();
   const sceneTreeKnownRefs = new Set();
@@ -7408,10 +7811,10 @@ SOFTWARE.
     'dashLength', 'color', 'arcScale', 'sectorOpacity', 'borderWidth'
   ]);
 
-  function sceneTreeMeasurementTargets(viewer, ref) {
+  function sceneTreeMeasurementTargets(viewer, ref, children) {
     const state = viewer?.plugin?.state?.data;
     if (!state?.cells?.has(ref)) return [];
-    return sceneTreeSubtreeRefs(state, ref)
+    return sceneTreeSubtreeRefs(state, ref, children)
       .map(targetRef => state.cells.get(targetRef))
       .filter(cell => {
         const params = cell?.transform?.params;
@@ -7571,6 +7974,11 @@ SOFTWARE.
       for (const [index, entry] of scene.poseCache || []) {
         if (index !== scene.activeIndex) cachedRoots.add(entry.raw.ref);
       }
+      for (const layer of scene.layers?.values() || []) {
+        for (const [index, entry] of layer.poseCache || []) {
+          if (index !== layer.activeIndex) cachedRoots.add(entry.raw.ref);
+        }
+      }
     }
     const { children, rootRef } = sceneTreeChildRefs(state);
     if (rootRef === null) return [];
@@ -7598,21 +8006,28 @@ SOFTWARE.
           const cell = state.cells.get(childRef);
           if (!cell || isSceneTreeDecorator(cell)) continue;
           // Mol* hides ghost and pending cells but keeps showing their children.
-          if (cell.state?.isGhost === true || !cell.obj) {
+          if (cell.state?.isGhost === true || !cell.obj || cell.obj.type?.typeClass === 'Null') {
             nodes.push(...build(decoratorChain(childRef)));
             continue;
           }
           if (cell.transform.tags?.includes('measurement-group') && !(children.get(childRef)?.length)) continue;
           const chain = decoratorChain(childRef);
-          // Story imports expose parser/model plumbing as several identical
-          // nested rows. Keep the file and meaningful components, not those
-          // implementation nodes. This changes presentation, never Mol* state.
+          // Collapse only redundant single-model plumbing. Multiple models,
+          // assemblies and components remain separate, addressable rows.
           const objectName = cell.obj.type?.name;
-          const childRefs = chain.flatMap(ref => children.get(ref) || []);
-          if (molstarStoryState().available && (
+          const childRefs = chain.flatMap(ref => children.get(ref) || [])
+            .filter(ref => !isSceneTreeDecorator(state.cells.get(ref)) && state.cells.get(ref)?.obj?.type?.typeClass !== 'Null');
+          const siblings = (children.get(cell.transform.parent) || [])
+            .filter(ref => state.cells.get(ref)?.obj?.type?.name === objectName);
+          const singleTrajectory = objectName === 'Trajectory' && cell.obj.data?.frameCount === 1 && childRefs.length === 1;
+          const singleModel = objectName === 'Model' && siblings.length === 1 && childRefs.length === 1
+            && state.cells.get(cell.transform.parent)?.obj?.data?.frameCount === 1;
+          const plainStructure = cell.transform.transformer?.id === 'ms-plugin.structure-from-model'
+            && siblings.length === 1 && cell.obj.label === 'Model' && childRefs.length > 0;
+          if (singleTrajectory || singleModel || plainStructure || (molstarStoryState().available && (
             (['Trajectory', 'Model'].includes(objectName) && childRefs.length === 1)
             || cell.transform.transformer?.id === 'ms-plugin.structure-from-model'
-          )) {
+          ))) {
             nodes.push(...build(chain));
             continue;
           }
@@ -7620,7 +8035,7 @@ SOFTWARE.
           const nodeRef = chain[chain.length - 1];
           const nodeCell = state.cells.get(nodeRef) || cell;
           const components = colorTargets.get(nodeRef) || null;
-          const measurementEditable = sceneTreeMeasurementTargets(viewer, nodeRef).length > 0;
+          const measurementEditable = sceneTreeMeasurementTargets(viewer, nodeRef, children).length > 0;
           const rawLabel = String(cell.obj.label || 'Node');
           const display = sceneTreeRowLabel(cell, rawLabel);
           const label = display.label;
@@ -7801,6 +8216,9 @@ SOFTWARE.
     if (sceneTreeRenderHandle) return;
     sceneTreeRenderHandle = window.setTimeout(() => {
       sceneTreeRenderHandle = 0;
+      // Surface tasks yield inside a state commit. The isUpdating subscription
+      // schedules the completed tree; avoid rebuilding its intermediate states.
+      if (activeMolstarViewer()?.plugin?.behaviors?.state?.isUpdating?.value) return;
       renderSceneTree();
       reportMolstarCompositionVisibility();
     }, 0);
@@ -7849,6 +8267,9 @@ SOFTWARE.
       updateViewportCornerLayout();
       return;
     }
+    // Keep availability/selection current, but build rows only when visible.
+    // Opening the panel below renders the latest completed state.
+    if (panel.classList.contains('hidden')) return;
     const root = document.createElement('div');
     root.className = 'buret-tree';
     const highlight = document.createElement('div');
@@ -7867,7 +8288,19 @@ SOFTWARE.
     } else {
       for (const node of nodes) root.appendChild(sceneTreeNodeElement(node));
     }
-    body.replaceChildren(root);
+    const segmentation = window.molstar?.BuretteVolumeSegmentation?.panel(activeMolstarViewer().plugin, {
+      download: downloadBlob,
+      canExport: !document.body?.classList.contains('burette-mobile-host'),
+      onError: error => setStatus(`[web] Map operation failed.\n\n${error?.message || String(error)}`, 'error')
+    });
+    if (segmentation?.parentElement === body) {
+      // Keep the live map controls attached so scene updates retain their focus.
+      for (const child of [...body.children]) if (child !== segmentation) child.remove();
+      body.prepend(root);
+    } else {
+      body.replaceChildren(root, ...(segmentation ? [segmentation] : []));
+    }
+    document.querySelector('.buret-docking-poses')?.dispatchEvent(new Event('buret-scene-tree-rendered'));
     updateSceneTreeStoryCaption();
     requestAnimationFrame(() => root.classList.add('buret-tree-animate'));
     const hovered = sceneTreeHoverRef
@@ -7912,7 +8345,9 @@ SOFTWARE.
       // it stays open, it does not become the panel's new home.
       panel.style.removeProperty('left');
       panel.style.removeProperty('top');
+      renderSceneTree();
     } else {
+      window.molstar?.BuretteVolumeSegmentation?.cancelDrawing(activeMolstarViewer()?.plugin);
       moveSceneTreeHighlight(null);
       closeSceneTreeMenu();
     }
@@ -7966,8 +8401,7 @@ SOFTWARE.
 
   // Mol* hides a cell by walking its subtree, so a representation stays hidden
   // while its component is hidden and comes back with it.
-  function sceneTreeSubtreeRefs(state, ref) {
-    const { children } = sceneTreeChildRefs(state);
+  function sceneTreeSubtreeRefs(state, ref, children = sceneTreeChildRefs(state).children) {
     const refs = [];
     const stack = [ref];
     while (stack.length) {
@@ -8071,7 +8505,8 @@ SOFTWARE.
 
   function focusSceneTreeNode(ref) {
     const plugin = activeMolstarViewer()?.plugin;
-    const data = plugin?.state?.data?.cells?.get(ref)?.obj?.data;
+    const state = plugin?.state?.data;
+    const data = state?.cells?.get(ref)?.obj?.data;
     if (Array.isArray(data)) {
       const loci = data.map(selection => selection?.loci).filter(Boolean);
       if (loci.length && typeof plugin?.managers?.camera?.focusLoci === 'function') {
@@ -8079,12 +8514,21 @@ SOFTWARE.
       }
       return;
     }
-    // A Mol* Structure carries its extent on `boundary`, not `boundingSphere`;
-    // representation cells keep theirs one level down on the structure they draw.
-    const sphere = data?.boundary?.sphere || data?.sourceData?.boundary?.sphere;
-    if (!sphere || typeof plugin?.managers?.camera?.focusSphere !== 'function') return;
+    if (!state?.cells || typeof plugin?.managers?.camera?.focusSpheres !== 'function') return;
+    const { children } = sceneTreeChildRefs(state);
+    // File and model rows have no extent of their own. Resolve the structures
+    // beneath that row, without including sibling files or duplicating components.
+    const spheres = targetRef => {
+      const cell = state.cells.get(targetRef);
+      const childRefs = children.get(targetRef) || [];
+      const decorators = childRefs.filter(childRef => isSceneTreeDecorator(state.cells.get(childRef)));
+      if (decorators.length === 1) return spheres(decorators[0]);
+      const target = cell?.obj?.data;
+      const sphere = target?.boundary?.sphere || target?.sourceData?.boundary?.sphere;
+      return sphere ? [sphere] : childRefs.flatMap(spheres);
+    };
     try {
-      plugin.managers.camera.focusSphere(sphere, { durationMs: 250 });
+      plugin.managers.camera.focusSpheres(spheres(ref), sphere => sphere, { durationMs: 250 });
     } catch (error) {
       debug('scene tree focus failed: ' + (error && error.message || String(error)));
     }
@@ -8094,7 +8538,7 @@ SOFTWARE.
   // Everything else keeps its element colours and only the carbons take the pick,
   // which is what the default Mol* colouring does with its own carbon palette.
   const SCENE_TREE_FLAT_REPRESENTATIONS = new Set([
-    'cartoon', 'backbone', 'putty', 'molecular-surface', 'gaussian-surface', 'gaussian-volume'
+    'cartoon', 'backbone', 'putty', 'molecular-surface', 'blob-surface', 'gaussian-surface', 'gaussian-volume'
   ]);
 
   function sceneTreeTintParams(value) {
@@ -8214,6 +8658,50 @@ SOFTWARE.
     scheduleSceneTreeRender();
   }
 
+  // Floating menus grow from where they were opened and leave the same way. A
+  // menu opened from another menu slides out of that menu's edge, so the two read
+  // as one surface. A closing menu drops its id at once: code looking for the
+  // open menu, or a replacement opening in its place, never meets the fading copy.
+  const FLOATING_MENU_EASE = 'cubic-bezier(0.23, 1, 0.32, 1)';
+  // Chrome that changes shape (the toolbar folding into its grip, the pose
+  // controls opening or folding a row) morphs between its two layouts.
+  function morphViewerChrome(update) {
+    if (typeof document.startViewTransition !== 'function'
+      || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      update();
+      return;
+    }
+    document.startViewTransition(update);
+  }
+  function floatingMenuMotion(menu) {
+    return typeof menu?.animate === 'function'
+      && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  }
+  function floatingMenuFrames(menu) {
+    return menu.dataset.motion === 'side'
+      ? [{ opacity: 0, transform: 'translateX(-10px)', clipPath: 'inset(0 100% 0 0 round 20px)' },
+        { opacity: 1, transform: 'none', clipPath: 'inset(0 0 0 0 round 20px)' }]
+      : [{ opacity: 0, transform: 'scale(0.96)' }, { opacity: 1, transform: 'none' }];
+  }
+  function revealFloatingMenu(menu, { origin = 'top left', side = false } = {}) {
+    if (side) menu.dataset.motion = 'side';
+    if (!floatingMenuMotion(menu)) return;
+    menu.style.transformOrigin = origin;
+    menu.animate(floatingMenuFrames(menu), { duration: side ? 220 : 180, easing: FLOATING_MENU_EASE });
+  }
+  function dismissFloatingMenu(menu) {
+    if (!menu?.isConnected) return;
+    if (!floatingMenuMotion(menu) || menu.style.visibility === 'hidden') {
+      menu.remove();
+      return;
+    }
+    menu.removeAttribute('id');
+    menu.inert = true;
+    menu.style.pointerEvents = 'none';
+    const exit = menu.animate(floatingMenuFrames(menu).reverse(), { duration: 140, easing: 'ease-out', fill: 'forwards' });
+    exit.onfinish = exit.oncancel = () => menu.remove();
+  }
+
   function closeSceneTreeMenu() {
     sceneTreeMenuRef = '';
     const menu = document.getElementById('buret-scene-tree-menu');
@@ -8222,7 +8710,7 @@ SOFTWARE.
     for (const list of menu?.querySelectorAll('[data-scene-tree-picker-list]') || []) {
       closeSceneTreePicker(list, { restore: true });
     }
-    menu?.remove();
+    dismissFloatingMenu(menu);
   }
 
   function sceneTreeNodeByRef(nodes, ref) {
@@ -8253,11 +8741,13 @@ SOFTWARE.
 
   function sceneTreeMenuSection(menu, title) {
     const divider = document.createElement('div');
-    divider.className = 'buret-tree-menu-divider';
+    const atlas = menu.classList.contains('atlas-menu-content') || menu.classList.contains('buret-animate-menu');
+    divider.className = atlas ? 'atlas-menu-separator' : 'buret-tree-menu-divider';
+    divider.setAttribute('role', 'separator');
     menu.appendChild(divider);
     if (!title) return;
     const heading = document.createElement('div');
-    heading.className = 'buret-tree-menu-title';
+    heading.className = atlas ? 'atlas-menu-label' : 'buret-tree-menu-title';
     heading.textContent = title;
     menu.appendChild(heading);
   }
@@ -8581,7 +9071,7 @@ SOFTWARE.
     }
     if (!Array.isArray(types)) return [];
     return types
-      .map(entry => ({ name: String(entry?.[0] || ''), label: String(entry?.[1] || entry?.[0] || '') }))
+      .map(entry => ({ name: String(entry?.[0] || ''), label: entry?.[0] === 'blob-surface' ? 'Envelope' : String(entry?.[1] || entry?.[0] || '') }))
       .filter(entry => entry.name);
   }
 
@@ -8845,6 +9335,11 @@ SOFTWARE.
     ['sizeFactor', 'Scale'],
     ['sizeAspectRatio', 'Bond thickness'],
     ['probeRadius', 'Probe radius'],
+    ['blobSize', 'Envelope size'],
+    ['radiusOffset', 'Radius offset'],
+    ['smoothness', 'Surface smoothness'],
+    ['adjustResolution', 'Automatic detail'],
+    ['solidInterior', 'Solid cut surface'],
     ['resolution', 'Detail'],
     ['aspectRatio', 'Ribbon width'],
     ['thicknessFactor', 'Ribbon thickness'],
@@ -9135,7 +9630,7 @@ SOFTWARE.
     sceneTreeAdvancedSection(menu, viewer, target);
   }
 
-  function openSceneTreeMenu(ref, clientX, clientY) {
+  function openSceneTreeMenu(ref, clientX, clientY, options = {}) {
     closeSceneTreeMenu();
     const viewer = activeMolstarViewer();
     const node = sceneTreeNodeByRef(sceneTreeNodes(viewer), ref);
@@ -9241,6 +9736,7 @@ SOFTWARE.
     menu.style.left = `${Math.round(left)}px`;
     menu.style.top = `${Math.round(top)}px`;
     initViewportPanelDrag(menu);
+    revealFloatingMenu(menu, { side: options.side === true, origin: `${Math.round(clientX - left)}px ${Math.round(clientY - top)}px` });
     queueMicrotask(() => showNativeViewerMenu(menu, clientX, clientY, closeSceneTreeMenu));
   }
 
@@ -9446,6 +9942,7 @@ SOFTWARE.
       } else {
         closeSceneTreePicker(list, { restore: true });
       }
+      if (menu._buretTrigger) moleculeMenuPositionSubmenu(menu, menu._buretTrigger);
       return;
     }
     const picked = event.target.closest?.('[data-scene-tree-picker-value]');
@@ -9562,6 +10059,10 @@ SOFTWARE.
       // move it; re-place it whenever it still sits where we put it.
       const toolbar = document.getElementById('buret-toolbar');
       if (toolbar?.dataset.defaultPosition === '1') applyDefaultToolbarPosition(toolbar);
+      // The trajectory controls clamp to the viewport, which just moved too.
+      for (const controls of document.querySelectorAll('.buret-docking-poses')) {
+        if (controls.getClientRects().length) repositionDockingPoseControls(controls);
+      }
     }
 
     const leftPanel = document.querySelector('.msp-layout-region.msp-layout-left');
@@ -9669,7 +10170,7 @@ SOFTWARE.
       onExpand() { toggleLayoutRegion('sequence', activeMolstarViewer()); },
       onResize() {
         updateViewportCornerLayout();
-        scheduleViewerResize(activeMolstarViewer(), 40);
+        scheduleViewerResize(activeMolstarViewer());
       },
       onCommit(height) {
         try { window.localStorage.setItem('buret.sequence.height', String(height)); } catch (_) {}
@@ -9711,7 +10212,10 @@ SOFTWARE.
   // selection row asks you to tell four near-identical circles apart. Both are
   // hidden in CSS and rebuilt here as a four-button rail and one labelled bar,
   // driving the very same managers Mol*'s own controls drive.
+  // None is ours: Mol* has no such granularity, so it keeps the residue level for
+  // menu actions and switches the selection and hover marking off instead.
   const VIEWPORT_GRANULARITIES = [
+    ['none', 'None'],
     ['element', 'Atom'],
     ['residue', 'Residue'],
     ['chain', 'Chain'],
@@ -9787,26 +10291,45 @@ SOFTWARE.
   ];
   let selectionQueryModifier = 'set';
   let viewportControlsDisposers = [];
+  let viewportMenuControls = null;
+  let viewportSelectionControls = null;
+  let viewportRailControls = null;
+  let viewportScreenshotDefaultsApplied = new WeakSet();
 
   function viewportPlugin() {
     return activeMolstarViewer()?.plugin || null;
   }
 
-  function closeViewportMenu() {
-    document.getElementById('buret-viewport-menu')?.remove();
+  function closeViewportMenu({ restoreFocus = false } = {}) {
+    viewportMenuControls?.dispose();
+    viewportMenuControls = null;
+    dismissFloatingMenu(document.getElementById('buret-viewport-menu'));
     for (const trigger of document.querySelectorAll('#buret-viewport-rail [aria-expanded], #buret-selection-bar [aria-expanded], .buret-seq-footer [aria-expanded]')) {
+      if (restoreFocus && trigger.getAttribute('aria-expanded') === 'true') trigger.focus();
       trigger.setAttribute('aria-expanded', 'false');
     }
   }
 
-  function positionOpenViewportMenu(rail = document.getElementById('buret-viewport-rail')) {
+  function positionOpenViewportMenu() {
     const menu = document.getElementById('buret-viewport-menu');
-    const trigger = rail?.querySelector('[aria-expanded="true"]');
+    const trigger = document.querySelector('#buret-viewport-rail [aria-expanded="true"], #buret-selection-bar [aria-expanded="true"], .buret-seq-footer [aria-expanded="true"]');
+    const rail = trigger?.closest('#buret-viewport-rail, #buret-selection-bar, .buret-seq-footer');
     if (!menu || !trigger) return;
     const anchor = trigger.getBoundingClientRect();
     const rect = menu.getBoundingClientRect();
     // Keep the portalled menu attached to its rail button while the rail moves or
     // the host resizes the preview viewport.
+    const bounds = rail.getBoundingClientRect();
+    if (bounds.height > bounds.width) {
+      // A vertical rail opens its popovers beside it, level with the button, so
+      // the remaining rail buttons stay reachable.
+      const beside = rail.dataset.horizontalPlacement === 'right'
+        ? bounds.left - rect.width - 6
+        : bounds.right + 6;
+      menu.style.left = `${Math.round(Math.max(6, Math.min(beside, window.innerWidth - rect.width - 6)))}px`;
+      menu.style.top = `${Math.round(Math.max(6, Math.min(anchor.top - 4, window.innerHeight - rect.height - 6)))}px`;
+      return;
+    }
     const preferredLeft = rail.dataset.horizontalPlacement === 'right'
       ? anchor.right - rect.width
       : anchor.left;
@@ -9830,84 +10353,105 @@ SOFTWARE.
     menu.setAttribute('aria-label', label);
     build(menu);
     document.body.appendChild(menu);
+    trigger.setAttribute('aria-haspopup', menu.getAttribute('role'));
     trigger.setAttribute('aria-expanded', 'true');
-    positionOpenViewportMenu(trigger.closest('#buret-viewport-rail, .buret-seq-footer'));
+    positionOpenViewportMenu();
+    const triggerRect = trigger.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    revealFloatingMenu(menu, { origin: `${Math.round(triggerRect.left + triggerRect.width / 2 - menuRect.left)}px ${Math.round(triggerRect.top + triggerRect.height / 2 - menuRect.top)}px` });
+    if (menu.getAttribute('role') === 'dialog') (menu.querySelector('input') || menu.querySelector('button[aria-checked="true"], button:not(:disabled)'))?.focus();
+    else if (menu.classList.contains('atlas-menu-content')) menu.querySelector('[role="menuitem"]:not(:disabled)')?.focus();
   }
 
   function viewportMenuItem(menu, label, action, options = {}) {
+    const atlas = !!menu.closest('.atlas-menu-content, .buret-animate-menu');
     const button = document.createElement('button');
     button.type = 'button';
-    button.setAttribute('role', 'menuitem');
-    button.className = `buret-tree-menu-item${options.destructive ? ' buret-tree-menu-item-destructive' : ''}`;
+    if (!menu.classList.contains('buret-animate-menu')) button.setAttribute('role', 'menuitem');
+    button.className = atlas
+      ? 'atlas-menu-item' : `buret-tree-menu-item${options.destructive ? ' buret-tree-menu-item-destructive' : ''}`;
     button.dataset.buretViewportMenu = action;
     Object.assign(button.dataset, options.data || {});
     if (options.disabled) button.disabled = true;
     if (options.title) button.title = options.title;
     const icon = document.createElement('span');
-    icon.className = 'buret-tree-menu-icon';
+    icon.className = atlas ? 'atlas-menu-icon' : 'buret-tree-menu-icon';
+    icon.setAttribute('aria-hidden', 'true');
     if (options.icon) icon.appendChild(sceneTreeIconElement(options.icon));
     const text = document.createElement('span');
     text.className = 'buret-tree-menu-label';
     text.textContent = label;
-    button.append(icon, text);
+    if (options.icon || !atlas) button.append(icon);
+    button.append(text);
+    if (atlas && options.checked !== undefined) {
+      const check = sceneTreeIconElement(APP_ICON_DATA.Check);
+      check.classList.add('atlas-menu-check');
+      button.append(check);
+    }
     (options.parent || menu).appendChild(button);
     return button;
   }
 
-  function viewportMenuSelect(menu, label, name, options, placeholder) {
-    const row = document.createElement('label');
-    row.className = 'buret-tree-menu-field';
-    const caption = document.createElement('span');
-    caption.textContent = label;
-    const control = document.createElement('select');
-    control.className = 'buret-select';
-    control.dataset.buretViewportSelect = name;
-    const prompt = document.createElement('option');
-    prompt.value = '';
-    prompt.textContent = placeholder;
-    control.appendChild(prompt);
-    for (const option of options) {
-      const item = document.createElement('option');
-      item.value = option.name;
-      item.textContent = option.label;
-      control.appendChild(item);
-    }
-    control.value = '';
-    row.append(caption, control);
-    menu.appendChild(row);
-  }
-
-  function viewportMenuSwatches(menu, action) {
-    const swatches = document.createElement('div');
-    swatches.className = 'buret-tree-swatches';
-    for (const entry of SCENE_TREE_UNIFORM_COLORS) {
-      const swatch = document.createElement('button');
-      swatch.type = 'button';
-      swatch.className = 'buret-tree-swatch';
-      swatch.dataset.buretViewportMenu = action;
-      swatch.dataset.viewportColor = String(entry.value);
-      swatch.style.background = sceneTreeColorHex(entry.value);
-      swatch.setAttribute('aria-label', `Paint the selection ${entry.label.toLowerCase()}`);
-      swatch.title = entry.label;
-      swatches.appendChild(swatch);
-    }
-    menu.appendChild(swatches);
-  }
-
   function viewportCameraMenu(menu) {
+    menu.classList.remove('buret-tree-menu');
+    window.BuretteNativeViewerMenus?.styleMenu?.(menu, activeConfig?.themeTokens, resolveViewerTheme());
     viewportMenuItem(menu, 'Reset zoom', 'camera-reset', { icon: SCENE_TREE_ICON.focus });
     viewportMenuItem(menu, 'Lay flat', 'camera-orient', { icon: VIEWPORT_ICON.layFlat });
     viewportMenuItem(menu, 'Reset axes', 'camera-axes', { icon: SCENE_TREE_ICON.restore });
   }
 
   function viewportScreenshotHelper() {
-    return viewportPlugin()?.helpers?.viewportScreenshot || null;
+    const helper = viewportPlugin()?.helpers?.viewportScreenshot || null;
+    if (helper && !viewportScreenshotDefaultsApplied.has(helper)) {
+      viewportScreenshotDefaultsApplied.add(helper);
+      applyViewportScreenshotDefaults(helper);
+    }
+    return helper;
+  }
+
+  // App Settings choose the resolution, format and transparency each viewer's
+  // screenshot starts from (config.viewerDefaults); the menu then changes them
+  // for this session only.
+  function viewportScreenshotDefaults() {
+    const defaults = (activeConfig || window.BuretteConfig || {}).viewerDefaults || {};
+    const pick = (entries, value) => (entries.some(([entry]) => entry === value) ? value : entries[0][0]);
+    return {
+      resolution: pick(VIEWPORT_SCREENSHOT_RESOLUTIONS, defaults.screenshotResolution),
+      format: pick(VIEWPORT_SCREENSHOT_FORMATS, defaults.screenshotFormat),
+      transparent: defaults.screenshotTransparent === true
+    };
+  }
+
+  function applyViewportScreenshotDefaults(helper) {
+    const values = helper.values || {};
+    const defaults = viewportScreenshotDefaults();
+    helper.behaviors?.values?.next({
+      ...values,
+      resolution: values.resolution?.name === defaults.resolution
+        ? values.resolution
+        : { name: defaults.resolution, params: viewportMappedDefaults(helper, 'resolution', defaults.resolution) },
+      format: values.format?.name === defaults.format
+        ? values.format
+        : { name: defaults.format, params: viewportMappedDefaults(helper, 'format', defaults.format) },
+      transparent: defaults.transparent
+    });
+  }
+
+  function setViewportScreenshotDefault(name, value) {
+    const config = activeConfig || window.BuretteConfig;
+    if (config) config.viewerDefaults = { ...(config.viewerDefaults || {}), [name]: value };
+    if (window.BuretteConfig && window.BuretteConfig !== config) {
+      window.BuretteConfig.viewerDefaults = { ...(window.BuretteConfig.viewerDefaults || {}), [name]: value };
+    }
+    // Every viewer adopts the new default on its next screenshot, the visible one now.
+    viewportScreenshotDefaultsApplied = new WeakSet();
+    viewportScreenshotHelper();
   }
 
   // A radio row inside one of the screenshot menu's folded groups. The group keeps
   // the chosen entry in its summary, so the settings read at a glance while folded.
   function viewportScreenshotChoice(group, action, value, label, current) {
-    const item = viewportMenuItem(group, label, action, { parent: group, data: { viewportValue: value } });
+    const item = viewportMenuItem(group, label, action, { checked: value === current, data: { viewportValue: value } });
     item.setAttribute('role', 'menuitemradio');
     item.setAttribute('aria-checked', value === current ? 'true' : 'false');
     return item;
@@ -9915,23 +10459,32 @@ SOFTWARE.
 
   function viewportScreenshotGroup(menu, title, action, entries, current) {
     const disclosure = document.createElement('details');
-    disclosure.className = 'buret-tree-menu-actions buret-screenshot-group';
+    disclosure.className = 'buret-screenshot-group';
     disclosure.dataset.buretScreenshotGroup = action;
     const summary = document.createElement('summary');
+    summary.className = 'atlas-menu-item';
+    summary.setAttribute('role', 'menuitem');
+    summary.setAttribute('aria-expanded', 'false');
+    disclosure.addEventListener('toggle', () => {
+      summary.setAttribute('aria-expanded', String(disclosure.open));
+      positionOpenViewportMenu();
+    });
     const name = document.createElement('span');
     name.className = 'buret-tree-menu-label';
     name.textContent = title;
     const value = document.createElement('span');
     value.className = 'buret-screenshot-group-value';
     value.textContent = entries.find(([entry]) => entry === current)?.[1] || '';
-    summary.append(name, value);
+    const chevron = sceneTreeIconElement(APP_ICON_DATA.ChevronDown);
+    chevron.classList.add('buret-screenshot-chevron');
+    summary.append(name, value, chevron);
     disclosure.appendChild(summary);
-    for (const [entry, label] of entries) viewportScreenshotChoice(disclosure, action, entry, label, current);
     menu.appendChild(disclosure);
+    for (const [entry, label] of entries) viewportScreenshotChoice(disclosure, action, entry, label, current);
   }
 
   function viewportScreenshotToggle(menu, label, action, checked) {
-    const item = viewportMenuItem(menu, label, action, { icon: checked ? SCENE_TREE_ICON.eye : null });
+    const item = viewportMenuItem(menu, label, action, { checked });
     item.setAttribute('role', 'menuitemcheckbox');
     item.setAttribute('aria-checked', checked ? 'true' : 'false');
     return item;
@@ -9943,6 +10496,9 @@ SOFTWARE.
   function viewportScreenshotMenu(menu) {
     const helper = viewportScreenshotHelper();
     if (!helper) return;
+    menu.classList.remove('buret-tree-menu');
+    menu.classList.add('buret-screenshot-menu');
+    window.BuretteNativeViewerMenus?.styleMenu?.(menu, activeConfig?.themeTokens, resolveViewerTheme());
     const values = helper.values || {};
     viewportMenuItem(menu, 'Save image', 'screenshot-save', { icon: VIEWPORT_ICON.download });
     // Clipboard writes need a secure context; the item is dropped rather than
@@ -9950,12 +10506,12 @@ SOFTWARE.
     if (window.isSecureContext && navigator.clipboard) {
       viewportMenuItem(menu, 'Copy to clipboard', 'screenshot-copy', { icon: VIEWPORT_ICON.clipboard });
     }
-    sceneTreeMenuSection(menu, 'Image');
+    sceneTreeMenuSection(menu);
     viewportScreenshotGroup(menu, 'Resolution', 'screenshot-resolution',
       VIEWPORT_SCREENSHOT_RESOLUTIONS, values.resolution?.name || 'viewport');
     viewportScreenshotGroup(menu, 'Format', 'screenshot-format',
       VIEWPORT_SCREENSHOT_FORMATS, values.format?.name || 'png');
-    sceneTreeMenuSection(menu, 'Options');
+    sceneTreeMenuSection(menu);
     viewportScreenshotToggle(menu, 'Transparent background', 'screenshot-transparent', values.transparent === true);
     viewportScreenshotToggle(menu, 'Show axes', 'screenshot-axes', values.axes?.name === 'on');
     viewportScreenshotToggle(menu, 'Crop to content', 'screenshot-crop', helper.cropParams?.auto === true);
@@ -9964,7 +10520,21 @@ SOFTWARE.
   // Motion and wiggle are always explicit. A task animation appears only when the
   // active document supplies its context, currently a trajectory with frames.
   function viewportAnimateMenu(menu) {
-    viewportMotionControls(menu);
+    menu.classList.remove('buret-tree-menu');
+    menu.classList.add('buret-animate-menu');
+    menu.setAttribute('role', 'dialog');
+    window.BuretteNativeViewerMenus.stylePopover(menu, activeConfig?.themeTokens, resolveViewerTheme());
+    const panel = document.createElement('div');
+    panel.className = 'buret-animation-panel';
+    menu.appendChild(panel);
+    viewportMenuControls = window.BuretteNativeViewerMenus.mountAnimationControls(panel, {
+      read: () => ({ motion: viewportMotionState(), wiggle: viewportWiggleState() }),
+      motions: VIEWPORT_MOTIONS, speeds: VIEWPORT_MOTION_SPEEDS,
+      wiggles: VIEWPORT_WIGGLES, modes: VIEWPORT_WIGGLE_MODES, sliders: VIEWPORT_WIGGLE_SLIDERS,
+      motion: setViewportMotion, wiggle: runViewportWiggleAction,
+      slider: (name, value) => { void streamViewportWiggleOption(name, value); },
+      resize: positionOpenViewportMenu
+    });
     const plugin = viewportPlugin();
     const manager = plugin?.managers?.animation;
     const playing = manager?.state?.animationState === 'playing'
@@ -9985,7 +10555,6 @@ SOFTWARE.
       sceneTreeMenuSection(menu, 'Running');
       viewportMenuItem(menu, 'Stop', 'animation-stop', { icon: VIEWPORT_ICON.stop });
     }
-    viewportWiggleControls(menu);
     if (!animations.length) return;
     sceneTreeMenuSection(menu, 'Animations');
     for (const entry of animations) {
@@ -10054,95 +10623,9 @@ SOFTWARE.
     return { name: moving ? 'even' : 'off', animation };
   }
 
-  function viewportWiggleSliderRow(menu, spec, state) {
-    const row = document.createElement('label');
-    row.className = 'buret-tree-menu-field buret-tree-menu-slider';
-    row.dataset.buretViewportWiggleSlider = spec.name;
-    const caption = document.createElement('span');
-    caption.textContent = spec.label;
-    const control = document.createElement('input');
-    control.type = 'range';
-    control.className = 'buret-tree-menu-range';
-    control.dataset.buretViewportSlider = `wiggle-${spec.name}`;
-    control.min = String(spec.min);
-    control.max = String(spec.max);
-    control.step = String(spec.step);
-    const readout = document.createElement('span');
-    readout.className = 'buret-tree-menu-slider-value';
-    row.append(caption, control, readout);
-    menu.appendChild(row);
-    updateViewportWiggleSlider(row, spec, state);
-    return row;
-  }
-
-  function updateViewportWiggleSlider(row, spec, state) {
-    const value = Number(state?.animation?.[spec.name]) || 0;
-    row.hidden = state?.name === 'off' || (spec.needs && !(Number(state?.animation?.[spec.needs]) > 0));
-    row.querySelector('input').value = String(value);
-    row.querySelector('.buret-tree-menu-slider-value').textContent = value.toFixed(spec.digits) + (spec.unit || '');
-  }
-
-  function viewportWiggleControls(menu) {
-    const state = viewportWiggleState();
-    if (!state) return;
-    sceneTreeMenuSection(menu, 'Wiggle');
-    const segment = document.createElement('div');
-    segment.className = 'buret-viewport-segment';
-    segment.setAttribute('role', 'group');
-    segment.setAttribute('aria-label', 'Structure wiggle');
-    for (const [name, label] of VIEWPORT_WIGGLES) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'buret-viewport-segment-button';
-      button.dataset.buretViewportMenu = 'wiggle-kind';
-      button.dataset.wiggle = name;
-      button.setAttribute('aria-pressed', name === state.name ? 'true' : 'false');
-      button.textContent = label;
-      segment.appendChild(button);
-    }
-    menu.appendChild(segment);
-    for (const spec of VIEWPORT_WIGGLE_SLIDERS) viewportWiggleSliderRow(menu, spec, state);
-
-    const modes = document.createElement('div');
-    modes.className = 'buret-viewport-segment';
-    modes.dataset.buretViewportWiggleModes = '1';
-    modes.setAttribute('role', 'group');
-    modes.setAttribute('aria-label', 'Wiggle noise');
-    modes.hidden = state.name === 'off';
-    for (const [name, label, description] of VIEWPORT_WIGGLE_MODES) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'buret-viewport-segment-button';
-      button.dataset.buretViewportMenu = 'wiggle-mode';
-      button.dataset.wiggleMode = name;
-      button.title = description;
-      button.setAttribute('aria-pressed', name === state.animation.wiggleMode ? 'true' : 'false');
-      button.textContent = label;
-      modes.appendChild(button);
-    }
-    menu.appendChild(modes);
-  }
-
-  // The rows read the scene rather than their own last write, so a preset that
-  // moves three values at once lands on every slider in the open menu.
+  // Refresh from the scene after a preset or an external action changes it.
   function refreshViewportWiggleControls() {
-    const menu = document.getElementById('buret-viewport-menu');
-    const state = viewportWiggleState();
-    if (!menu || !state) return;
-    for (const button of menu.querySelectorAll('[data-buret-viewport-menu="wiggle-kind"]')) {
-      button.setAttribute('aria-pressed', button.dataset.wiggle === state.name ? 'true' : 'false');
-    }
-    for (const spec of VIEWPORT_WIGGLE_SLIDERS) {
-      const row = menu.querySelector(`[data-buret-viewport-wiggle-slider="${spec.name}"]`);
-      if (row) updateViewportWiggleSlider(row, spec, state);
-    }
-    const modes = menu.querySelector('[data-buret-viewport-wiggle-modes]');
-    if (modes) {
-      modes.hidden = state.name === 'off';
-      for (const button of modes.children) {
-        button.setAttribute('aria-pressed', button.dataset.wiggleMode === state.animation.wiggleMode ? 'true' : 'false');
-      }
-    }
+    viewportMenuControls?.refresh?.();
     positionOpenViewportMenu();
   }
 
@@ -10250,18 +10733,18 @@ SOFTWARE.
   }
 
   // Wiggle is judged by watching it, so every one of these keeps the menu up.
-  function runViewportWiggleAction(action, control) {
+  function runViewportWiggleAction(action, value) {
     const fail = error => setStatus(`[web] Wiggle failed. ${error?.message || error}`, 'error');
     const done = message => {
       refreshViewportWiggleControls();
       if (message) setStatus(message);
     };
     if (action === 'mode') {
-      setViewportWiggleOptions({ wiggleMode: control.dataset.wiggleMode })
+      setViewportWiggleOptions({ wiggleMode: value })
         .then(() => done()).catch(fail);
       return true;
     }
-    const kind = control.dataset.wiggle;
+    const kind = value;
     if (kind === 'even') {
       clearViewportWiggleLayers()
         .then(() => setViewportWiggleOptions({ wiggleSpeed: 7, wiggleAmplitude: 1, wiggleFrequency: 0.2 }))
@@ -10363,74 +10846,27 @@ SOFTWARE.
 
   // The button carries whatever is moving - a running animation or the trackball -
   // because a still frame cannot tell you the scene is in motion.
-  function updateViewportAnimateState() {
+  function viewportRailState() {
     const plugin = viewportPlugin();
     const playing = plugin?.managers?.animation?.state?.animationState === 'playing'
       || activeTrajectoryPlaybackControl?.isPlaying() === true;
     const motion = viewportMotionState().name;
-    const state = playing ? 'playing' : (motion !== 'off' ? motion : (viewportWiggleState()?.name === 'off' ? 'off' : 'wiggle'));
-    document.querySelector('[data-buret-viewport-action="animate"]')
-      ?.setAttribute('data-motion', state);
+    return {
+      motion: playing ? 'playing' : (motion !== 'off' ? motion : (viewportWiggleState()?.name === 'off' ? 'off' : 'wiggle')),
+      illumination: plugin?.canvas3d?.props?.illumination?.enabled === true,
+      selectionMode: plugin?.selectionMode === true,
+      hasSelection: Number(plugin?.managers?.structure?.selection?.stats?.elementCount) > 0
+    };
+  }
+
+  function updateViewportAnimateState() {
+    viewportRailControls?.refresh();
   }
 
   function viewportMotionState() {
     const animate = viewportPlugin()?.canvas3d?.props?.trackball?.animate;
     const name = VIEWPORT_MOTION_SPEEDS[animate?.name] ? animate.name : 'off';
     return { name, speed: Number(animate?.params?.speed) };
-  }
-
-  function viewportMotionControls(menu) {
-    const state = viewportMotionState();
-    sceneTreeMenuSection(menu, 'Motion');
-    const segment = document.createElement('div');
-    segment.className = 'buret-viewport-segment';
-    segment.setAttribute('role', 'group');
-    segment.setAttribute('aria-label', 'Scene motion');
-    for (const [name, label] of VIEWPORT_MOTIONS) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'buret-viewport-segment-button';
-      button.dataset.buretViewportMenu = 'camera-motion';
-      button.dataset.motion = name;
-      button.setAttribute('aria-pressed', name === state.name ? 'true' : 'false');
-      button.textContent = label;
-      segment.appendChild(button);
-    }
-    menu.appendChild(segment);
-
-    const row = document.createElement('label');
-    row.className = 'buret-tree-menu-field buret-tree-menu-slider';
-    row.dataset.buretViewportMotionSpeed = '1';
-    const caption = document.createElement('span');
-    caption.textContent = 'Speed';
-    const control = document.createElement('input');
-    control.type = 'range';
-    control.className = 'buret-tree-menu-range';
-    control.dataset.buretViewportSlider = 'motion-speed';
-    const readout = document.createElement('span');
-    readout.className = 'buret-tree-menu-slider-value';
-    row.append(caption, control, readout);
-    menu.appendChild(row);
-    // The menu is still detached at this point, so the row has to be handed over
-    // rather than looked up in the document.
-    updateViewportMotionSpeed(state, row);
-  }
-
-  // Spin and rock do not share a speed range, so the slider is re-scaled to the
-  // running animation and hidden altogether once motion is off.
-  function updateViewportMotionSpeed(state, target) {
-    const row = target || document.querySelector('[data-buret-viewport-motion-speed]');
-    const limits = VIEWPORT_MOTION_SPEEDS[state.name];
-    if (!row) return;
-    row.hidden = !limits;
-    if (!limits) return;
-    const speed = Number.isFinite(state.speed) ? state.speed : limits.value;
-    const control = row.querySelector('input');
-    control.min = String(limits.min);
-    control.max = String(limits.max);
-    control.step = String(limits.step);
-    control.value = String(speed);
-    row.querySelector('.buret-tree-menu-slider-value').textContent = `${speed.toFixed(2)}/s`;
   }
 
   function setViewportMotion(name, speed) {
@@ -10514,98 +10950,56 @@ SOFTWARE.
   }
 
   function viewportQueryMenu(menu) {
+    menu.classList.remove('buret-tree-menu');
+    menu.classList.add('buret-selection-query');
+    menu.setAttribute('role', 'dialog');
+    window.BuretteNativeViewerMenus.stylePopover(menu, activeConfig?.themeTokens, resolveViewerTheme());
     const queries = viewportPlugin()?.query?.structure?.registry?.list || [];
-    sceneTreeMenuSection(menu, 'Mode');
-    const segment = document.createElement('div');
-    segment.className = 'buret-viewport-segment';
-    segment.setAttribute('role', 'group');
-    segment.setAttribute('aria-label', 'Selection mode');
-    for (const [name, label] of SELECTION_MODIFIERS) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'buret-viewport-segment-button';
-      button.dataset.buretViewportMenu = 'modifier';
-      button.dataset.modifier = name;
-      button.setAttribute('aria-pressed', name === selectionQueryModifier ? 'true' : 'false');
-      button.textContent = label;
-      segment.appendChild(button);
-    }
-    menu.appendChild(segment);
-
-    // Seventy queries do not fit a menu, and category headings only help if you
-    // already know which category a thing lives in. Typing narrows the whole list
-    // at once, so "lig", "helix" or "surround" get there without the hunt.
-    const search = document.createElement('input');
-    search.type = 'search';
-    search.className = 'buret-input buret-viewport-search';
-    search.placeholder = 'Filter…';
-    search.setAttribute('aria-label', 'Filter selections');
-    search.dataset.buretViewportSearch = 'query';
-    menu.appendChild(search);
-
-    const groups = new Map();
-    queries.forEach((query, index) => {
-      if (query?.isHidden || !query?.label) return;
-      const category = String(query.category || 'Common');
-      if (!groups.has(category)) groups.set(category, []);
-      groups.get(category).push({ label: query.label, index });
+    viewportMenuControls = window.BuretteNativeViewerMenus.mountQueryControls(menu, {
+      mode: selectionQueryModifier, modes: SELECTION_MODIFIERS,
+      queries: queries.flatMap((query, index) => query?.isHidden || !query?.label ? []
+        : [{ index, label: query.label, category: String(query.category || 'Common') }]),
+      onMode: mode => { selectionQueryModifier = mode; },
+      onQuery: index => {
+        // Preserve Mol*'s exact query: picking granularity must not widen a ligand
+        // query into its whole chain.
+        const query = queries[index];
+        if (query) viewportPlugin()?.managers.structure.selection.fromSelectionQuery(selectionQueryModifier, query, false);
+        closeViewportMenu({ restoreFocus: true });
+      },
+      resize: positionOpenViewportMenu
     });
-    for (const [category, entries] of groups) {
-      // Twenty amino acids and seven bases fold away; the groups people actually
-      // reach for — Type, secondary structure, "around the selection" — stay open.
-      if (entries.length > 12) {
-        sceneTreeMenuSection(menu);
-        const disclosure = document.createElement('details');
-        disclosure.className = 'buret-tree-menu-actions';
-        const summary = document.createElement('summary');
-        summary.textContent = category;
-        disclosure.appendChild(summary);
-        for (const entry of entries) {
-          viewportMenuItem(menu, entry.label, 'query', {
-            data: { queryIndex: String(entry.index) }, parent: disclosure
-          });
-        }
-        menu.appendChild(disclosure);
-        continue;
-      }
-      sceneTreeMenuSection(menu, category);
-      for (const entry of entries) {
-        viewportMenuItem(menu, entry.label, 'query', { data: { queryIndex: String(entry.index) } });
-      }
-    }
   }
 
   function viewportApplyMenu(menu) {
+    menu.classList.remove('buret-tree-menu');
+    menu.classList.add('buret-selection-apply');
+    menu.setAttribute('role', 'dialog');
+    window.BuretteNativeViewerMenus.stylePopover(menu, activeConfig?.themeTokens, resolveViewerTheme());
     const plugin = viewportPlugin();
-    const empty = !(plugin?.managers?.structure?.selection?.stats?.elementCount > 0);
-    sceneTreeMenuSection(menu, 'Colour');
-    viewportMenuSwatches(menu, 'selection-color');
-    viewportMenuItem(menu, 'Reset colour', 'selection-color-reset', {
-      icon: VIEWPORT_ICON.paint, disabled: empty
-    });
-
-    sceneTreeMenuSection(menu, 'Component');
     const types = typeof plugin?.managers?.structure?.component?.constructor?.getRepresentationTypes === 'function'
       ? plugin.managers.structure.component.constructor
         .getRepresentationTypes(plugin, plugin.managers.structure.hierarchy.current.structures[0])
-        .map(entry => ({ name: String(entry?.[0] || ''), label: String(entry?.[1] || entry?.[0] || '') }))
+        .map(entry => ({ name: String(entry?.[0] || ''), label: entry?.[0] === 'blob-surface' ? 'Envelope' : String(entry?.[1] || entry?.[0] || '') }))
         .filter(entry => entry.name)
       : [];
-    if (types.length) viewportMenuSelect(menu, 'Add as', 'component-representation', types, 'Representation…');
-    viewportMenuItem(menu, 'Cut out of components', 'selection-subtract', {
-      icon: VIEWPORT_ICON.scissors, disabled: empty
-    });
-
-    sceneTreeMenuSection(menu);
-    viewportMenuItem(menu, 'Undo', 'undo', {
-      icon: VIEWPORT_ICON.undo,
-      disabled: !molstarEditUndoStack.length && plugin?.state?.data?.canUndo !== true
-    });
-    viewportMenuItem(menu, 'Redo', 'redo', {
-      icon: VIEWPORT_ICON.redo, disabled: !molstarEditRedoStack.length
-    });
-    viewportMenuItem(menu, 'Clear selection', 'selection-clear', {
-      icon: SCENE_TREE_ICON.trash, destructive: true, disabled: empty
+    viewportMenuControls = window.BuretteNativeViewerMenus.mountSelectionActions(menu, {
+      read: () => ({
+        empty: !(viewportPlugin()?.managers?.structure?.selection?.stats?.elementCount > 0),
+        canUndo: !!molstarEditUndoStack.length || viewportPlugin()?.state?.data?.canUndo === true,
+        canRedo: !!molstarEditRedoStack.length
+      }),
+      representations: types,
+      colors: SCENE_TREE_UNIFORM_COLORS.map(entry => ({ label: entry.label, value: sceneTreeColorHex(entry.value) })),
+      onColor: color => paintViewportSelection(Number.parseInt(color.slice(1), 16)),
+      onRepresentation: representation => {
+        addViewportSelectionComponent(representation);
+        closeViewportMenu({ restoreFocus: true });
+      },
+      onAction: action => {
+        if (!runViewportMenuAction(action)) closeViewportMenu({ restoreFocus: true });
+      },
+      resize: positionOpenViewportMenu
     });
   }
 
@@ -10662,8 +11056,20 @@ SOFTWARE.
     const helper = viewportScreenshotHelper();
     if (!helper) return false;
     if (action === 'save') {
-      Promise.resolve(helper.download())
-        .then(() => setStatus('[web] Screenshot saved.'))
+      // Mol* dispatches its download on a detached anchor, so the document's
+      // export interceptor cannot see it. Reuse the existing host export path.
+      const capture = canUseDownloadExportBridge()
+        ? helper.getImageDataUri().then(dataUri => {
+          // WKWebView does not fetch data: URLs under the asset protocol's CSP.
+          const [header, base64] = String(dataUri).split(',');
+          const mimeType = /^data:(image\/(?:png|jpeg|webp));base64$/.exec(header)?.[1];
+          if (!mimeType || !base64) throw new Error('No image was returned.');
+          if (!postHostMessage({ type: 'exportData', name: safeDownloadFileName(helper.getFilename(helper.extension)), mimeType, base64 })) {
+            throw new Error('The export host bridge is unavailable.');
+          }
+        })
+        : helper.download();
+      Promise.resolve(capture)
         .catch(error => setStatus(`[web] Screenshot failed. ${error?.message || error}`, 'error'));
       return false;
     }
@@ -10690,7 +11096,7 @@ SOFTWARE.
       const axes = checked ? 'on' : 'off';
       helper.behaviors.values.next(action === 'transparent'
         ? { ...values, transparent: checked }
-        : { ...values, axes: { name: axes, params: viewportMappedDefaults(helper, 'axes', axes) } });
+        : { ...values, axes: { name: axes, params: { ...viewportMappedDefaults(helper, 'axes', axes), ...(checked ? cameraAxesParams() : {}) } } });
       control.setAttribute('aria-checked', checked ? 'true' : 'false');
       return true;
     }
@@ -10710,38 +11116,14 @@ SOFTWARE.
     if (action === 'camera-reset') plugin.canvas3d?.requestCameraReset?.({ durationMs: 250 });
     else if (action === 'camera-orient') plugin.managers.camera.orientAxes(undefined, 250);
     else if (action === 'camera-axes') plugin.managers.camera.resetAxes(250);
-    else if (action === 'camera-motion') {
-      setViewportMotion(control.dataset.motion);
-      for (const button of control.parentElement?.children || []) {
-        button.setAttribute('aria-pressed', button === control ? 'true' : 'false');
-      }
-      updateViewportMotionSpeed(viewportMotionState());
-      // Motion is judged by watching it, so the menu stays up to be adjusted.
-      return true;
-    } else if (action.startsWith('screenshot-')) {
+    else if (action.startsWith('screenshot-')) {
       return runViewportScreenshotAction(action.slice('screenshot-'.length), control);
-    } else if (action === 'wiggle-kind' || action === 'wiggle-mode') {
-      return runViewportWiggleAction(action.slice('wiggle-'.length), control);
     } else if (action === 'animation-play') {
       playViewportAnimation(Number(control.dataset.animationIndex));
     } else if (action === 'animation-stop') {
       plugin.managers.animation.stop();
       activeTrajectoryPlaybackControl?.stop();
       updateViewportAnimateState();
-    } else if (action === 'modifier') {
-      selectionQueryModifier = control.dataset.modifier || 'set';
-      for (const button of control.parentElement?.children || []) {
-        button.setAttribute('aria-pressed', button === control ? 'true' : 'false');
-      }
-      return true;
-    } else if (action === 'query') {
-      const query = plugin.query.structure.registry.list[Number(control.dataset.queryIndex)];
-      // Mol* applies its own query buttons without the picking level, so a "Ligand"
-      // pick stays a ligand instead of being widened to whole chains.
-      if (query) plugin.managers.structure.selection.fromSelectionQuery(selectionQueryModifier, query, false);
-    } else if (action === 'selection-color') {
-      paintViewportSelection(Number(control.dataset.viewportColor));
-      return true;
     } else if (action === 'selection-color-reset') paintViewportSelection(null);
     else if (action === 'selection-subtract') subtractViewportSelection();
     else if (action === 'undo') {
@@ -10777,11 +11159,10 @@ SOFTWARE.
     } else if (action === 'illumination') {
       const enabled = plugin.canvas3d?.props?.illumination?.enabled !== true;
       plugin.canvas3d?.setProps({ illumination: { enabled } });
-      control.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+      viewportRailControls?.refresh();
     } else if (action === 'select-mode') {
       const enabled = plugin.selectionMode !== true;
       plugin.selectionMode = enabled;
-      control.setAttribute('aria-pressed', enabled ? 'true' : 'false');
       closeViewportMenu();
       updateSelectionBar();
       setStatus(`[web] Selection mode ${enabled ? 'enabled' : 'disabled'}.`);
@@ -10789,7 +11170,6 @@ SOFTWARE.
       clearMolstarPersistentMoleculePreview();
       Promise.resolve(clearMolstarSelection())
         .then(() => {
-          control.classList.add('hidden');
           hideMolstarContextMenu();
           closeViewportMenu();
           updateSelectionBar();
@@ -10819,22 +11199,17 @@ SOFTWARE.
     const wasHidden = bar.classList.contains('hidden');
     bar.classList.toggle('hidden', !active);
     const changed = wasHidden !== bar.classList.contains('hidden');
-    rail.querySelector('[data-buret-viewport-action="select-mode"]')
-      ?.setAttribute('aria-pressed', active ? 'true' : 'false');
     // Leaving selection mode takes the selection bar's menus with it. This runs on
     // every structure-state tick though, so it fires on the transition rather than
     // the state - otherwise any menu action that touches the scene closes the menu
     // it was pressed in.
-    if (!active && changed) closeViewportMenu();
-    const stats = plugin?.managers?.structure?.selection?.stats;
-    const hasSelection = Number(stats?.elementCount) > 0;
-    rail.querySelector('[data-buret-viewport-action="clear-selection"]')
-      ?.classList.toggle('hidden', !hasSelection);
-    const count = document.querySelector('[data-buret-selection-count]');
-    if (count) count.textContent = stats?.elementCount ? stats.label : 'Nothing selected';
-    const level = document.querySelector('[data-buret-selection-level]');
-    const granularity = plugin?.managers?.interactivity?.props?.granularity;
-    if (level && granularity && level.value !== granularity) level.value = granularity;
+    if (!active && changed) {
+      closeViewportMenu();
+      window.BuretteViewerSelectMenus?.closeWithin?.(bar);
+    }
+    viewportRailControls?.refresh();
+    viewportSelectionControls?.refresh();
+    viewportMenuControls?.refresh?.();
     if (changed) updateFloatingLayoutOffsets();
   }
 
@@ -10915,23 +11290,22 @@ SOFTWARE.
     if (rail.dataset.viewportControlsBound !== '1') {
       rail.dataset.viewportControlsBound = '1';
       initViewportRailDrag(rail, document.getElementById('buret-toolbar'));
-      const level = bar.querySelector('[data-buret-selection-level]');
-      for (const [name, label] of VIEWPORT_GRANULARITIES) {
-        const option = document.createElement('option');
-        option.value = name;
-        option.textContent = label;
-        level?.appendChild(option);
-      }
-      level?.addEventListener('change', () => {
-        viewportPlugin()?.managers?.interactivity?.setProps({ granularity: level.value });
+      viewportRailControls?.dispose();
+      viewportRailControls = window.BuretteNativeViewerMenus.mountViewportToolbar(rail, {
+        read: viewportRailState,
+        onAction: runViewportRailAction,
+        styleSurface: element => window.BuretteNativeViewerMenus.styleControls(element, activeConfig?.themeTokens, resolveViewerTheme())
       });
-      rail.addEventListener('click', event => {
-        const control = event.target.closest('[data-buret-viewport-action]');
-        if (control) runViewportRailAction(control.dataset.buretViewportAction, control);
-      });
-      bar.addEventListener('click', event => {
-        const control = event.target.closest('[data-buret-selection-action]');
-        if (control) runSelectionBarAction(control.dataset.buretSelectionAction, control);
+      viewportSelectionControls?.dispose();
+      window.BuretteNativeViewerMenus.styleControls(bar, activeConfig?.themeTokens, resolveViewerTheme());
+      viewportSelectionControls = window.BuretteNativeViewerMenus.mountSelectionToolbar(bar, {
+        read: () => {
+          const stats = viewportPlugin()?.managers?.structure?.selection?.stats;
+          return { level: molstarSelectionLevel(), label: stats?.elementCount ? stats.label : 'Nothing selected' };
+        },
+        levels: VIEWPORT_GRANULARITIES,
+        onLevel: level => { setMolstarSelectionLevel(level); updateSelectionBar(); },
+        onAction: runSelectionBarAction
       });
       // The menu is portalled to <body> so the bar cannot clip it, which puts both
       // its clicks and its dismissal on the document.
@@ -10940,66 +11314,25 @@ SOFTWARE.
         if (!menu) return;
         const control = event.target.closest?.('[data-buret-viewport-menu]');
         if (control && menu.contains(control)) {
-          // Swatches and the mode switch are meant to be tried in place, so they
-          // leave the menu standing; every other item is a one-shot.
-          if (!runViewportMenuAction(control.dataset.buretViewportMenu, control)) closeViewportMenu();
+          // Actions that return true keep their panel open for further changes.
+          if (!runViewportMenuAction(control.dataset.buretViewportMenu, control)) closeViewportMenu({ restoreFocus: event.detail === 0 });
           return;
         }
-        if (!menu.contains(event.target) && !event.target.closest?.('[aria-haspopup="menu"]')) closeViewportMenu();
       });
-      document.addEventListener('change', event => {
-        const select = event.target.closest('[data-buret-viewport-select="component-representation"]');
-        if (!select?.value) return;
-        addViewportSelectionComponent(select.value);
-        closeViewportMenu();
+      // Radix Select moves focus and hit targets on pointerdown. Its trailing
+      // click can land on body; dismiss from the original pointer target instead.
+      document.addEventListener('pointerdown', event => {
+        const menu = document.getElementById('buret-viewport-menu');
+        if (menu && !menu.contains(event.target) && !event.target.closest?.('[aria-haspopup]')) closeViewportMenu();
       });
       document.addEventListener('keydown', event => {
-        if (event.key === 'Escape' && document.getElementById('buret-viewport-menu')) closeViewportMenu();
-      });
-      // While filtering, the headings and the fold-away groups get in the way, so
-      // the menu flattens to just what matched and restores itself when cleared.
-      document.addEventListener('input', event => {
-        const slider = event.target.closest('[data-buret-viewport-slider="motion-speed"]');
-        if (slider) {
-          const speed = Number(slider.value);
-          setViewportMotion(viewportMotionState().name, speed);
-          const readout = slider.parentElement?.querySelector('.buret-tree-menu-slider-value');
-          if (readout) readout.textContent = `${speed.toFixed(2)}/s`;
-          return;
-        }
-        const wiggle = event.target.closest('[data-buret-viewport-slider^="wiggle-"]');
-        if (wiggle) {
-          const name = wiggle.dataset.buretViewportSlider.slice('wiggle-'.length);
-          const spec = VIEWPORT_WIGGLE_SLIDERS.find(entry => entry.name === name);
-          const value = Number(wiggle.value);
-          void streamViewportWiggleOption(name, value);
-          const readout = wiggle.parentElement?.querySelector('.buret-tree-menu-slider-value');
-          if (readout && spec) readout.textContent = value.toFixed(spec.digits) + (spec.unit || '');
-          // Tumble's shaping rows appear the moment it has an amplitude to shape.
-          if (name === 'tumbleAmplitude') refreshViewportWiggleControls();
-          return;
-        }
-        const search = event.target.closest('[data-buret-viewport-search]');
-        const menu = search?.closest('#buret-viewport-menu');
-        if (!menu) return;
-        const query = search.value.trim().toLowerCase();
-        menu.dataset.filtering = query ? 'true' : 'false';
-        for (const item of menu.querySelectorAll('[data-buret-viewport-menu="query"]')) {
-          const matches = !query || item.textContent.toLowerCase().includes(query);
-          item.classList.toggle('buret-tree-menu-item-filtered', !matches);
-          const group = matches && query ? item.closest('details') : null;
-          if (group && !group.open) {
-            group.open = true;
-            group.dataset.filterOpened = 'true';
-          }
-        }
-        // A group the filter pulled open belongs closed again once the field is
-        // cleared, or clearing leaves the menu longer than it was to begin with.
-        if (!query) {
-          for (const group of menu.querySelectorAll('details[data-filter-opened]')) {
-            group.open = false;
-            delete group.dataset.filterOpened;
-          }
+        const menu = document.getElementById('buret-viewport-menu');
+        if (!menu || event.defaultPrevented) return;
+        if (event.key === 'Escape' || (event.key === 'Tab' && menu.classList.contains('atlas-menu-content'))) {
+          event.preventDefault();
+          closeViewportMenu({ restoreFocus: true });
+        } else if (menu.classList.contains('atlas-menu-content')) {
+          window.BuretteNativeViewerMenus?.moveMenuFocus?.(menu, event);
         }
       });
     }
@@ -11019,8 +11352,6 @@ SOFTWARE.
     if (subscriptions.length) {
       viewportControlsDisposers.push(() => subscriptions.forEach(item => item?.unsubscribe?.()));
     }
-    rail.querySelector('[data-buret-viewport-action="illumination"]')
-      ?.setAttribute('aria-pressed', plugin?.canvas3d?.props?.illumination?.enabled === true ? 'true' : 'false');
     updateViewportAnimateState();
     updateSelectionBar();
   }
@@ -11264,8 +11595,11 @@ SOFTWARE.
           return;
         }
         if (event.key !== 'Escape') return;
-        if (document.getElementById('buret-scene-tree-menu')) closeSceneTreeMenu();
-        else if (!panel.classList.contains('hidden')) setSceneTreeOpen(false);
+        if (document.getElementById('buret-scene-tree-menu')) {
+          // The menu may hang off the pose picker, which closes on a later Escape.
+          event.preventDefault();
+          closeSceneTreeMenu();
+        } else if (!panel.classList.contains('hidden')) setSceneTreeOpen(false);
       });
     }
     sceneTreeStateDisposer?.();
@@ -11293,8 +11627,8 @@ SOFTWARE.
     const tooltip = button.querySelector('.buret-tooltip');
     const icon = viewerTheme === 'light' ? APP_ICON_DATA.ThemeLight
       : viewerTheme === 'dark' ? APP_ICON_DATA.ThemeDark : APP_ICON_DATA.ThemeAuto;
-    button.replaceChildren(sceneTreeIconElement(icon));
-    if (tooltip) button.append(tooltip);
+    (button.querySelector('.atlas-button-inner') || button).replaceChildren(sceneTreeIconElement(icon));
+    if (tooltip && !button.contains(tooltip)) button.append(tooltip);
     button.dataset.theme = viewerTheme;
     button.setAttribute('aria-label', label);
     button.setAttribute('title', label);
@@ -11366,6 +11700,7 @@ SOFTWARE.
     return previewReadyPayload(config, {
       renderer: 'molstar',
       molstarStructureCount: Number(extra.molstarStructureCount || 0),
+      molstarVolumeCount: Number(extra.molstarVolumeCount || 0),
       poseCount: Number.isFinite(poseCount) ? poseCount : 0,
       trajectoryFrameCount: Math.max(Number(config?.trajectoryFrameCount || 0), Number.isFinite(poseCount) ? poseCount : 0),
       ...extra
@@ -11378,6 +11713,12 @@ SOFTWARE.
     } catch (_) {
       return 0;
     }
+  }
+
+  function currentMolstarVolumeCount(viewer = activeViewer) {
+    const volumes = viewer?.plugin?.managers?.volume?.hierarchy?.current?.volumes || [];
+    return Array.from(volumes).filter(volume => volume.cell?.status === 'ok'
+      && volume.representations?.some(representation => representation.cell?.status === 'ok' && representation.cell?.obj)).length;
   }
 
   function assertMolstarLoadReady(viewer, prepared) {
@@ -11560,6 +11901,52 @@ SOFTWARE.
       }
     });
   }
+
+  function requestTrajectoryFrameFromNative(frameIndex, segmentIndex, signal, validateOnly = false, restoredTrajectory) {
+    installNativeRuntimeFileBridge();
+    return new Promise((resolve, reject) => {
+      const requestToken = 'trajectory-frame-' + Math.random().toString(36).slice(2);
+      let settled = false;
+      const finish = (fn, value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        window.removeEventListener('BuretteNativeRuntimeFileReady', onReady);
+        signal?.removeEventListener('abort', onAbort);
+        fn(value);
+      };
+      const onAbort = () => finish(reject, new DOMException('Trajectory request cancelled', 'AbortError'));
+      const onReady = event => {
+        const payload = event.detail || {};
+        if (payload.requestToken !== requestToken) return;
+        if (payload.error) finish(reject, new Error(String(payload.error)));
+        else if (payload.valid === true) finish(resolve, { valid: true });
+        else finish(resolve, { bytes: base64ToBytes(payload.base64), timePs: payload.timePs, cellBasis: payload.cellBasis });
+      };
+      const timeout = setTimeout(() => finish(reject, new Error('Timed out reading trajectory frame.')), 15000);
+      window.addEventListener('BuretteNativeRuntimeFileReady', onReady);
+      signal?.addEventListener('abort', onAbort, { once: true });
+      if (signal?.aborted) { onAbort(); return; }
+      try { window.__mqlPost('requestTrajectoryFrame', 'requestTrajectoryFrame', { requestToken, frameIndex, segmentIndex, validateOnly, restoredTrajectory }); }
+      catch (error) { finish(reject, error); }
+    });
+  }
+
+  // Undo and MOLX restore recreate transforms after disposing the original
+  // tree. Scene documents may restore a durable source binding; native checks
+  // its saved revision and rebuilds missing indexes before returning coordinates.
+  function requestIndexedTrajectoryFrameFromNative(indexKey, segmentIndex, frameIndex, signal, validateOnly, descriptor) {
+    const config = activeConfig || window.BuretteConfig || {};
+    const source = config.docking?.ligands?.[segmentIndex]?.indexedTrajectory;
+    if (source && source.indexKey !== indexKey) {
+      return Promise.reject(new Error('Trajectory source is no longer open. Reopen the trajectory.'));
+    }
+    if (!source && (!['molx', 'molj'].includes(config.format) || descriptor?.indexKey !== indexKey || !descriptor.source)) {
+      return Promise.reject(new Error('Trajectory source is no longer open. Reopen the trajectory.'));
+    }
+    return requestTrajectoryFrameFromNative(frameIndex, segmentIndex, signal, validateOnly, source ? undefined : descriptor);
+  }
+  window.BuretteReadIndexedTrajectoryFrame = requestIndexedTrajectoryFrameFromNative;
 
   function loadArrayBufferViaXHR(url) {
     return new Promise((resolve, reject) => {
@@ -12214,6 +12601,122 @@ SOFTWARE.
     return molecules.every(molecule => sdfCollectionBondSignature(molecule) === signature);
   }
 
+  // Collections of different molecules (a congeneric series, conformers with
+  // renumbered atoms) superimpose on what they share: every molecule is matched
+  // to the first by growing a connected common substructure of heavy atoms, and
+  // the rigid fit uses only the matched pairs. Labels refined over three bond
+  // shells rank which atoms look alike, and among equally large matches the one
+  // with the lowest RMSD wins, so symmetric rings do not flip.
+  function sdfMoleculeMatchGraph(molecule, labelIds) {
+    const atoms = molecule?.atoms || [];
+    const heavy = atoms.map(atom => String(atom.element || '').toUpperCase() !== 'H');
+    const neighbors = atoms.map(() => []);
+    for (const bond of molecule?.bonds || []) {
+      const a = bond.a - 1;
+      const b = bond.b - 1;
+      if (heavy[a] && heavy[b]) { neighbors[a].push(b); neighbors[b].push(a); }
+    }
+    const intern = text => {
+      if (!labelIds.has(text)) labelIds.set(text, labelIds.size);
+      return labelIds.get(text);
+    };
+    let labels = atoms.map((atom, index) => intern(`${atom.element}:${neighbors[index].length}`));
+    const rounds = [labels];
+    for (let round = 0; round < 3; round += 1) {
+      const previous = labels;
+      labels = previous.map((label, index) => intern(`${label}|${neighbors[index].map(other => previous[other]).sort((x, y) => x - y).join(',')}`));
+      rounds.push(labels);
+    }
+    return { atoms, heavy, neighbors, rounds };
+  }
+
+  function sdfMatchSimilarity(reference, moving, a, b) {
+    let score = 0;
+    while (score < reference.rounds.length && reference.rounds[score][a] === moving.rounds[score][b]) score += 1;
+    return score;
+  }
+
+  // The strict pass pairs atoms of the same element; the loose pass, used when
+  // that finds fewer than three atoms, pairs any heavy atoms.
+  function sdfAtomsCompatible(reference, moving, a, b, anyElement) {
+    return anyElement || reference.atoms[a].element === moving.atoms[b].element;
+  }
+
+  function growSdfAtomMatch(reference, moving, seedA, seedB, anyElement) {
+    const matched = new Map([[seedA, seedB]]);
+    const used = new Set([seedB]);
+    const queue = [seedA];
+    for (let head = 0; head < queue.length; head += 1) {
+      const a = queue[head];
+      const b = matched.get(a);
+      const candidates = [];
+      for (const nextA of reference.neighbors[a]) {
+        if (matched.has(nextA)) continue;
+        for (const nextB of moving.neighbors[b]) {
+          if (used.has(nextB) || !sdfAtomsCompatible(reference, moving, nextA, nextB, anyElement)) continue;
+          candidates.push([sdfMatchSimilarity(reference, moving, nextA, nextB), nextA, nextB]);
+        }
+      }
+      candidates.sort((x, y) => y[0] - x[0]);
+      for (const [, nextA, nextB] of candidates) {
+        if (matched.has(nextA) || used.has(nextB)) continue;
+        // Every bond to an already matched atom must exist on both sides.
+        const bonded = reference.neighbors[nextA].filter(atom => matched.has(atom));
+        if (bonded.some(atom => !moving.neighbors[nextB].includes(matched.get(atom)))) continue;
+        if (moving.neighbors[nextB].some(atom => used.has(atom) && !bonded.some(other => matched.get(other) === atom))) continue;
+        matched.set(nextA, nextB);
+        used.add(nextB);
+        queue.push(nextA);
+      }
+    }
+    return [...matched];
+  }
+
+  function sdfCollectionAtomMatch(reference, moving) {
+    const point = atom => [atom.x, atom.y, atom.z];
+    const search = anyElement => {
+      const seeds = [];
+      for (let a = 0; a < reference.atoms.length; a += 1) {
+        if (!reference.heavy[a]) continue;
+        for (let b = 0; b < moving.atoms.length; b += 1) {
+          if (moving.heavy[b] && sdfAtomsCompatible(reference, moving, a, b, anyElement)) {
+            seeds.push([sdfMatchSimilarity(reference, moving, a, b), reference.neighbors[a].length, a, b]);
+          }
+        }
+      }
+      seeds.sort((x, y) => y[0] - x[0] || y[1] - x[1]);
+      let best = null;
+      for (const [, , a, b] of seeds.slice(0, 12)) {
+        const pairs = growSdfAtomMatch(reference, moving, a, b, anyElement);
+        if (pairs.length < 3 || (best && pairs.length < best.pairs.length)) continue;
+        const fit = pdbRigidAlignment(pairs.map(([, atom]) => point(moving.atoms[atom])), pairs.map(([atom]) => point(reference.atoms[atom])));
+        if (fit && (!best || pairs.length > best.pairs.length || fit.rmsd < best.rmsd)) best = { pairs, rmsd: fit.rmsd };
+      }
+      return best?.pairs || null;
+    };
+    return search(false) || search(true);
+  }
+
+  function sdfCollectionMatchable(molecules) {
+    return Array.isArray(molecules) && molecules.length > 1
+      && (molecules[0]?.atoms || []).filter(atom => String(atom.element || '').toUpperCase() !== 'H').length >= 3;
+  }
+
+  async function sdfCollectionAtomPairs(molecules, signal) {
+    const labelIds = new Map();
+    const reference = sdfMoleculeMatchGraph(molecules[0], labelIds);
+    const pairs = [null];
+    for (let index = 1; index < molecules.length; index += 1) {
+      if (index % 16 === 0) {
+        setStatus(`[web] Matching molecules: ${index + 1} / ${molecules.length}`);
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+      if (signal?.aborted) throw new DOMException('Alignment cancelled', 'AbortError');
+      pairs.push(sdfCollectionAtomMatch(reference, sdfMoleculeMatchGraph(molecules[index], labelIds)));
+    }
+    return pairs;
+  }
+
   const XYZ_ALIGNMENT_GAIN_THRESHOLD = 0.5;
 
   function xyzFrameAlignmentGain(frames) {
@@ -12234,13 +12737,16 @@ SOFTWARE.
     return best;
   }
 
-  async function alignXyzFramesToFirst(frames, signal) {
+  // Without atomPairs every frame is fitted by atom order; with them, frame i
+  // is fitted on its [referenceAtom, frameAtom] pairs and left in place when
+  // it has none.
+  async function alignXyzFramesToFirst(frames, signal, atomPairs = null) {
     const owner = activeMolstarPrepared;
     const assertCurrent = () => {
       if (signal?.aborted || activeMolstarPrepared !== owner) throw new DOMException('Alignment cancelled', 'AbortError');
     };
     assertCurrent();
-    if (!xyzFramesAlignable(frames)) throw new Error('Alignment needs every structure to list the same atoms in the same order.');
+    if (!atomPairs && !xyzFramesAlignable(frames)) throw new Error('Alignment needs every structure to list the same atoms in the same order.');
     const referencePoints = frames[0].atoms.map(atom => [atom.x, atom.y, atom.z]);
     const source = `${largestEigenvectorSymmetric4.toString()}; ${pdbRigidAlignment.toString()};
       self.onmessage = ({ data }) => {
@@ -12252,12 +12758,16 @@ SOFTWARE.
     const workerUrl = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
     let worker;
     let rmsdTotal = 0;
+    let alignedCount = 0;
+    let matchedTotal = 0;
     const aligned = [frames[0]];
     try {
       worker = new Worker(workerUrl);
       for (let index = 1; index < frames.length; index++) {
         assertCurrent();
         const frame = frames[index];
+        const pairs = atomPairs?.[index];
+        if (atomPairs && !pairs) { aligned.push(frame); continue; }
         const result = await new Promise((resolve, reject) => {
           const cleanup = () => { clearInterval(watch); signal?.removeEventListener('abort', cancel); };
           const fail = error => { cleanup(); reject(error); };
@@ -12266,7 +12776,9 @@ SOFTWARE.
           signal?.addEventListener('abort', cancel, { once: true });
           worker.onmessage = ({ data }) => { cleanup(); data.error ? reject(new Error(data.error)) : resolve(data); };
           worker.onerror = event => fail(new Error(event.message || 'Alignment worker failed'));
-          worker.postMessage({ moving: frame.atoms.map(atom => [atom.x, atom.y, atom.z]), reference: referencePoints });
+          worker.postMessage(pairs
+            ? { moving: pairs.map(([, atom]) => [frame.atoms[atom].x, frame.atoms[atom].y, frame.atoms[atom].z]), reference: pairs.map(([atom]) => referencePoints[atom]) }
+            : { moving: frame.atoms.map(atom => [atom.x, atom.y, atom.z]), reference: referencePoints });
         });
         assertCurrent();
         const matrix = result.matrix;
@@ -12280,11 +12792,18 @@ SOFTWARE.
             z: matrix[2] * atom.x + matrix[6] * atom.y + matrix[10] * atom.z + matrix[14] });
         }
         rmsdTotal += result.rmsd;
+        alignedCount += 1;
+        matchedTotal += pairs ? pairs.length : frame.atoms.length;
         aligned.push({ ...frame, atoms });
         setStatus(`[web] Aligning structures: ${index + 1} / ${frames.length}`);
       }
       assertCurrent();
-      return { frames: aligned, averageRmsd: rmsdTotal / Math.max(1, frames.length - 1), atomCount: frames[0].atoms.length };
+      return {
+        frames: aligned,
+        averageRmsd: rmsdTotal / Math.max(1, alignedCount),
+        atomCount: Math.round(matchedTotal / Math.max(1, alignedCount)),
+        skipped: frames.length - 1 - alignedCount
+      };
     } finally { worker?.terminate(); URL.revokeObjectURL(workerUrl); }
   }
 
@@ -12380,17 +12899,35 @@ SOFTWARE.
     return `burette.trajectoryControl.fallback-${stableTextHash(fallback)}`;
   }
 
+  // Asset-origin storage may be unavailable. Keep the latest selection across
+  // appearance updates/reparsing without retaining document or molecule objects.
+  const trajectoryControlIndices = new Map();
+  function writeTrajectoryControlIndex(config, prepared, index) {
+    const key = trajectoryControlStorageKey(config, prepared);
+    trajectoryControlIndices.delete(key);
+    trajectoryControlIndices.set(key, index);
+    if (trajectoryControlIndices.size > 32) trajectoryControlIndices.delete(trajectoryControlIndices.keys().next().value);
+    try { sessionStorage.setItem(key, String(index)); } catch (_) {}
+  }
+
   function readTrajectoryControlIndex(config, prepared, poseCount) {
     if (prepared?.kind === 'docking') return readDockingPoseIndex(config, poseCount);
+    if (prepared?.kind === 'session' && prepared.nativeTrajectoryControls === true) {
+      const value = Number(readNativeTrajectoryPosition(poseCount)?.index ?? prepared.activePose ?? 0);
+      return Math.max(0, Math.min(poseCount - 1, Number.isFinite(value) ? Math.trunc(value) : 0));
+    }
     if (prepared?.sdfPoseMode === 'single' && prepared?.nativeTrajectoryControls === true) {
       const value = Number(prepared?.activePose || 0);
       return Math.max(0, Math.min(poseCount - 1, Number.isFinite(value) ? Math.trunc(value) : 0));
     }
-    let value = Number(config?.activeModel || 0);
-    try {
-      const stored = sessionStorage.getItem(trajectoryControlStorageKey(config, prepared));
-      if (stored !== null) value = Number(stored);
-    } catch (_) {}
+    const key = trajectoryControlStorageKey(config, prepared);
+    let value = trajectoryControlIndices.get(key) ?? Number(config?.activeModel || 0);
+    if (!trajectoryControlIndices.has(key)) {
+      try {
+        const stored = sessionStorage.getItem(key);
+        if (stored !== null) value = Number(stored);
+      } catch (_) {}
+    }
     if (!Number.isFinite(value)) value = 0;
     return Math.max(0, Math.min(poseCount - 1, Math.trunc(value)));
   }
@@ -12419,6 +12956,125 @@ SOFTWARE.
     const delay = Number(delayMs);
     if (!Number.isFinite(delay) || delay <= 0) return DEFAULT_TRAJECTORY_LOOP_FPS;
     return Math.max(1000 / delay, 0.1);
+  }
+
+  // A Kinetic scrub field, as in the LigandPro Atlas number fields: drag
+  // sideways to change the value (Shift x10, Alt x0.1), click to type, arrows
+  // step. Digits roll in the direction of the change and the field shakes when
+  // pushed against a bound. The input stays the control and the value source.
+  function installScrubNumberField(input, { min = -Infinity, max = Infinity, format = String } = {}) {
+    const field = input.parentElement;
+    const box = document.createElement('span');
+    box.className = 'buret-scrub-box';
+    const display = document.createElement('span');
+    display.className = 'buret-scrub-value';
+    display.setAttribute('aria-hidden', 'true');
+    display.append(Object.assign(document.createElement('span'), { textContent: input.value }));
+    input.replaceWith(box);
+    box.append(input, display);
+    field.classList.add('buret-scrub-field');
+    let shown = input.value;
+    let shaking = false;
+    let drag = null;
+    const motion = () => !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const roll = (text, direction = 0) => {
+      if (text === shown) return;
+      shown = text;
+      const previous = display.lastElementChild;
+      const next = Object.assign(document.createElement('span'), { textContent: text });
+      display.append(next);
+      if (!direction || !motion() || typeof next.animate !== 'function') {
+        previous?.remove();
+        return;
+      }
+      const timing = { duration: 180, easing: 'cubic-bezier(0.23, 1, 0.32, 1)' };
+      next.animate([{ transform: `translateY(${direction * 70}%)`, opacity: 0 }, { transform: 'none', opacity: 1 }], timing);
+      const exit = previous?.animate([{ transform: 'none', opacity: 1 }, { transform: `translateY(${direction * -70}%)`, opacity: 0 }], { ...timing, fill: 'forwards' });
+      if (exit) exit.onfinish = exit.oncancel = () => previous.remove();
+    };
+    const shake = () => {
+      if (shaking || !motion() || typeof box.animate !== 'function') return;
+      shaking = true;
+      const animation = box.animate([{ transform: 'none' }, { transform: 'translateX(3px)' }, { transform: 'translateX(-3px)' },
+        { transform: 'translateX(1px)' }, { transform: 'none' }], { duration: 280, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' });
+      animation.onfinish = animation.oncancel = () => { shaking = false; };
+    };
+    const valueOf = () => {
+      const value = Number(input.value);
+      return Number.isFinite(value) ? value : min;
+    };
+    const set = (value, { commit = false } = {}) => {
+      const previous = valueOf();
+      const clamped = Math.min(max, Math.max(min, Math.round(value * 10) / 10));
+      if (clamped !== value) shake();
+      if (clamped === previous) return;
+      input.value = format(clamped);
+      roll(input.value, clamped > previous ? 1 : -1);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      if (commit) input.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    const stepFor = event => event.shiftKey ? 10 : event.altKey ? 0.1 : 1;
+    input.addEventListener('pointerdown', event => {
+      if (event.button !== 0 || document.activeElement === input) return;
+      event.preventDefault();
+      input.setPointerCapture?.(event.pointerId);
+      drag = { x: event.clientX, carry: 0, moved: false, start: valueOf() };
+    });
+    input.addEventListener('pointermove', event => {
+      if (!drag) return;
+      const delta = event.clientX - drag.x;
+      if (!drag.moved && Math.abs(delta) < 3) return;
+      if (!drag.moved) field.classList.add('buret-scrubbing');
+      drag.moved = true;
+      drag.x = event.clientX;
+      // Four pixels per step keeps a short drag precise.
+      drag.carry += delta / 4;
+      const steps = Math.trunc(drag.carry);
+      if (!steps) return;
+      drag.carry -= steps;
+      set(valueOf() + steps * stepFor(event));
+    });
+    const endDrag = (event) => {
+      if (!drag) return;
+      const { moved, start } = drag;
+      drag = null;
+      field.classList.remove('buret-scrubbing');
+      if (moved) {
+        if (valueOf() !== start) input.dispatchEvent(new Event('change', { bubbles: true }));
+      } else if (event.type === 'pointerup') {
+        input.focus();
+      }
+    };
+    input.addEventListener('pointerup', endDrag);
+    input.addEventListener('pointercancel', endDrag);
+    let editStart = input.value;
+    input.addEventListener('focus', () => {
+      editStart = input.value;
+      field.classList.add('buret-scrub-editing');
+      input.select();
+    });
+    input.addEventListener('blur', () => {
+      field.classList.remove('buret-scrub-editing');
+      roll(input.value);
+    });
+    input.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        input.value = editStart;
+        event.preventDefault();
+        event.stopPropagation();
+        input.blur();
+      } else if (event.key === 'Enter') {
+        event.preventDefault();
+        input.blur();
+      } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+        event.preventDefault();
+        set(valueOf() + (event.key === 'ArrowUp' ? 1 : -1) * stepFor(event), { commit: true });
+        input.select();
+      }
+    });
+    // Restores and the change handler's normalising write update the digits too.
+    input.addEventListener('input', () => { if (document.activeElement !== input) roll(input.value); });
+    input.addEventListener('change', () => queueMicrotask(() => roll(input.value)));
   }
 
   function formatTrajectoryFps(value) {
@@ -12495,7 +13151,8 @@ SOFTWARE.
         nativeTrajectoryControls: false,
         ligandLabel: prepared?.ligandLabel || activeConfig?.label || 'Docking poses',
         controlLabel: prepared?.controlLabel || 'Pose',
-        sdfPoseOverlayAvailable: true
+        sdfPoseOverlayAvailable: true,
+        poseGroups: prepared?.poseGroups || []
       };
     }
     if (prepared?.sdfPoseMode === 'all' || prepared?.pdbModelMode === 'all') {
@@ -12643,6 +13300,8 @@ SOFTWARE.
               data: `${record}\n$$$$\n`,
               format: 'sdf',
               label: `${source.label || `Ligand ${ligandIndex + 1}`} pose ${poseIndex + 1}`,
+              fileLabel: source.label || `Ligand ${ligandIndex + 1}`,
+              score: dockingPoseScore(record),
               sourcePath: source.path || '',
               ligandIndex,
               poseIndex,
@@ -12656,12 +13315,16 @@ SOFTWARE.
         data,
         format,
         label: source.label || `Ligand ${ligandIndex + 1}`,
-        sourcePath: source.path || ''
+        sourcePath: source.path || '',
+        indexedTrajectory: source.indexedTrajectory || null,
+        segmentIndex: ligandIndex
       });
       poses.push({
         data,
         format,
         label: source.label || `Ligand ${ligandIndex + 1}`,
+        fileLabel: source.label || `Ligand ${ligandIndex + 1}`,
+        score: format === 'sdf' ? dockingPoseScore(data) : null,
         sourcePath: source.path || '',
         ligandIndex,
         poseIndex: 0,
@@ -12730,6 +13393,7 @@ SOFTWARE.
       controlLabel: 'Pose',
       nativeTrajectoryControls: false,
       sdfPoseOverlayAvailable: poses.length > 1,
+      poseGroups: ligandSources.length > 1 && poses.length > ligandSources.length ? dockingPoseGroups(poses) : [],
       receptorEntry,
       poses,
       entries: [
@@ -12737,6 +13401,120 @@ SOFTWARE.
         poses[activePose]
       ]
     };
+  }
+
+  // Docking engines store their score as an SD tag: smina, gnina and Matcha write
+  // minimizedAffinity, Glide writes r_i_docking_score. Both are kcal/mol.
+  const DOCKING_SCORE_TAGS = ['minimizedAffinity', 'r_i_docking_score'];
+
+  function dockingPoseScore(record) {
+    const text = String(record || '');
+    for (const tag of DOCKING_SCORE_TAGS) {
+      const match = text.match(new RegExp(`^>.*<${tag}>.*\\r?\\n\\s*(-?\\d+(?:\\.\\d+)?)`, 'm'));
+      if (match) return { tag, value: Number(match[1]) };
+    }
+    return null;
+  }
+
+  // One group per ligand file, so the stepper walks the poses of one docking run
+  // and the list switches runs; poses from different files never interleave.
+  function dockingPoseGroups(poses) {
+    const groups = [];
+    poses.forEach((pose, index) => {
+      let group = groups[groups.length - 1];
+      if (!group || group.ligandIndex !== pose.ligandIndex) {
+        group = { ligandIndex: pose.ligandIndex, label: pose.fileLabel, sourcePath: pose.sourcePath, startFrame: index, endFrame: index, frameCount: 0, poses: [] };
+        groups.push(group);
+      }
+      group.endFrame = index;
+      group.frameCount += 1;
+      group.poses.push({ label: `Pose ${pose.poseIndex + 1}`, score: pose.score });
+    });
+    return groups;
+  }
+
+  const DOCKING_REFERENCE_FILE_PATTERN = /(^|[^a-z])(crystal|xtal|native|ref|reference|cocrystal)([^a-z]|$)/i;
+  const DOCKING_REFERENCE_CARBON_COLOR = 0xf97316;
+  // Each ligand file gets one hue clear of the green receptor and of the orange
+  // reference; its poses are shades of that hue, the first pose deepest. The
+  // tree's colour dot reads and edits the same carbon tint.
+  const DOCKING_POSE_SET_HUES = [212, 272, 328, 44, 2, 190, 246, 300];
+  function dockingPoseSetColor(setIndex, offset, count) {
+    const hue = DOCKING_POSE_SET_HUES[setIndex % DOCKING_POSE_SET_HUES.length];
+    const lightness = 0.46 + (count > 1 ? 0.28 * offset / (count - 1) : 0);
+    const chroma = (1 - Math.abs(2 * lightness - 1)) * 0.7;
+    const channel = (n) => {
+      const k = (n + hue / 30) % 12;
+      return Math.round(255 * (lightness - chroma / 2 * Math.max(-1, Math.min(k - 3, 9 - k, 1))));
+    };
+    return (channel(0) << 16) | (channel(8) << 8) | channel(4);
+  }
+  function dockingPoseCarbonColor(prepared, index) {
+    const groups = prepared?.poseGroups || [];
+    const setIndex = groups.findIndex(group => index >= group.startFrame && index <= group.endFrame);
+    if (setIndex < 0) return dockingPoseSetColor(0, 0, 1);
+    const group = groups[setIndex];
+    return dockingPoseSetColor(setIndex, index - group.startFrame, group.frameCount);
+  }
+
+  // Pins live per docking set. A fresh set pins its single-pose reference
+  // files (crystal/native ligand) so they stay visible next to every pose.
+  function dockingPinnedPoseIndices(prepared) {
+    const groups = Array.isArray(prepared?.poseGroups) ? prepared.poseGroups : [];
+    const key = [activeConfig?.documentId || '', ...groups.map(group => `${group.label}:${group.frameCount}`)].join('|');
+    if (dockingPinnedPoseState.key !== key) {
+      const references = groups.length > 1
+        ? groups.filter(group => group.frameCount === 1 && DOCKING_REFERENCE_FILE_PATTERN.test(group.label || ''))
+        : [];
+      const starts = references.map(group => group.startFrame);
+      dockingPinnedPoseState = { key, indices: new Set(starts), selected: new Set(), references: new Set(starts), activeHidden: false };
+    }
+    return dockingPinnedPoseState.indices;
+  }
+
+  // The poses on screen: the stepper's pose unless the user hid it, pinned
+  // poses, poses shown for now, and in All the stepper's whole file.
+  function dockingVisiblePoseIndices(prepared, activeIndex) {
+    const visible = new Set([...dockingPinnedPoseIndices(prepared), ...dockingPinnedPoseState.selected]);
+    const group = activeSdfPoseMode === 'all'
+      ? (prepared?.poseGroups || []).find(entry => activeIndex >= entry.startFrame && activeIndex <= entry.endFrame)
+      : null;
+    if (group) for (let index = group.startFrame; index <= group.endFrame; index += 1) visible.add(index);
+    else if (!dockingPinnedPoseState.activeHidden) visible.add(activeIndex);
+    return visible;
+  }
+
+  function dockingSelectedPoseIndices(prepared) {
+    dockingPinnedPoseIndices(prepared);
+    return dockingPinnedPoseState.selected;
+  }
+
+  // Crystal and native ligands keep their reference colour.
+  function dockingReferencePoseIndices(prepared) {
+    dockingPinnedPoseIndices(prepared);
+    return dockingPinnedPoseState.references;
+  }
+
+  // The scene tree row that colours one displayed pose layer.
+  function dockingPoseTreeNode(viewer, refs, nodes = sceneTreeNodes(viewer)) {
+    const cells = viewer?.plugin?.state?.data?.cells;
+    if (!cells) return null;
+    const owned = ref => {
+      for (let current = ref; current && cells.has(current); current = cells.get(current).transform.parent) {
+        if (refs.includes(current)) return true;
+        if (current === cells.get(current).transform.parent) break;
+      }
+      return false;
+    };
+    const find = nodes => {
+      for (const node of nodes) {
+        if (node.colorable && owned(node.ref)) return node;
+        const child = find(node.children);
+        if (child) return child;
+      }
+      return null;
+    };
+    return find(nodes);
   }
 
   function normalizeRenderer(renderer) {
@@ -12754,6 +13532,9 @@ SOFTWARE.
     const sceneEntries = structureSceneEntriesFromConfig(config);
     if (sceneEntries.length > 1) {
       return prepareStagedStructureScene(config, sceneEntries);
+    }
+    if (normalized === 'molj' || normalized === 'molx') {
+      return { kind: 'session', format: normalized, data: rawStructureData(config), label: config.label };
     }
     if (isMolViewSpecFormat(normalized)) {
       const data = rawStructureData(config);
@@ -12944,9 +13725,10 @@ SOFTWARE.
   }
 
   async function startExternalArtifact(config) {
+    const restoredView = window.BuretteRendererViewState?.restoreFromHost(config.documentId, postHostMessage);
     disposeExternalArtifactInteractions();
     const artifact = config.externalArtifact;
-    const inlineSvg = artifact?.inlineSvg || (artifact?.inlineSvgBase64 ? base64ToText(artifact.inlineSvgBase64) : '');
+    let inlineSvg = artifact?.inlineSvg || (artifact?.inlineSvgBase64 ? base64ToText(artifact.inlineSvgBase64) : '');
     if (!artifact || (!artifact.path && !inlineSvg)) {
       throw new Error('External xyzrender renderer was selected, but no externalArtifact payload was provided.');
     }
@@ -12955,15 +13737,19 @@ SOFTWARE.
     const container = document.getElementById('app');
     const preset = artifact.preset ? ` · ${escapeHTML(artifact.preset)}` : '';
     const elapsed = Number.isFinite(Number(artifact.elapsedMs)) ? ` · ${Number(artifact.elapsedMs)} ms` : '';
-    const content = inlineSvg
-      ? `<div class="buret-external-artifact-stage">${externalArtifactSheetHTML(externalArtifactBaseItemHTML(inlineSvg, config.label || 'xyzrender artifact'))}</div>`
-      : `<div class="buret-external-artifact-stage">${externalArtifactSheetHTML(externalArtifactObjectHTML(artifact.path, config.label || 'xyzrender artifact'))}</div>`;
+    if (!inlineSvg) {
+      const response = await fetch(safeRelativeArtifactPath(artifact.path));
+      if (!response.ok) throw new Error(`Could not read xyzrender SVG: HTTP ${response.status}`);
+      inlineSvg = await response.text();
+    }
+    const content = `<div class="buret-external-artifact-stage">${externalArtifactSheetHTML(externalArtifactBaseItemHTML(inlineSvg, config.label || 'xyzrender artifact'))}</div>`;
     container.innerHTML = `
       <div class="buret-external-artifact-root">
         ${content}
         <a class="buret-xyz-badge" href="https://github.com/aligfellow/xyzrender" target="_blank" rel="noopener noreferrer" title="xyzrender — project and authors"><strong>xyzrender ↗</strong><span>SVG${preset}${elapsed}</span></a>
       </div>`;
     const root = container.querySelector('.buret-external-artifact-root');
+    await restoredView;
     if (root) installExternalArtifactInteractions(root);
     initStaticRendererToolbar();
     setStatus(`[web] Rendered ${config.label || 'structure'} with external xyzrender`);
@@ -12977,6 +13763,7 @@ SOFTWARE.
   function initStaticRendererToolbar() {
     const toolbar = document.getElementById('buret-toolbar');
     if (!toolbar) return;
+    window.BuretteNativeViewerMenus.styleToolbar(toolbar, activeConfig?.themeTokens, resolveViewerTheme());
     toolbar.querySelectorAll('.buret-panel-toggle').forEach(button => { button.classList.add('hidden'); });
     bindThemeButton(toolbar, null);
     bindMolstarLassoButton(toolbar);
@@ -13001,7 +13788,7 @@ SOFTWARE.
     return `
       <div class="buret-xyzrender-sheet-item buret-xyzrender-sheet-item-large buret-xyzrender-sheet-item-base" aria-label="${safeLabel}">
         <div class="buret-xyzrender-sheet-item-background"></div>
-        <div class="buret-xyzrender-sheet-item-body">${content}</div>
+        <div class="buret-xyzrender-sheet-item-body">${window.BuretteSanitizeArtwork(content)}</div>
         ${rotatableArtifactControlsHTML()}
       </div>`;
   }
@@ -13034,13 +13821,6 @@ SOFTWARE.
         <span class="buret-xyzrender-rotate-handle-dot"></span>
         <span class="buret-xyzrender-rotate-handle-degree">0°</span>
       </div>`;
-  }
-
-  function externalArtifactObjectHTML(path, label) {
-    return externalArtifactBaseItemHTML(
-      `<object class="buret-external-artifact-object" data="${safeRelativeArtifactPath(path)}" type="image/svg+xml" aria-label="${escapeHTML(label || 'xyzrender artifact')}"></object>`,
-      label
-    );
   }
 
   function sheetItemExportLabel(item) {
@@ -13076,6 +13856,13 @@ SOFTWARE.
   }
 
   function downloadBlob(blob, name) {
+    if (canUseDownloadExportBridge()) {
+      // WKWebView asset pages cannot fetch their opaque-origin blob URLs.
+      // We already own the bytes, so send them directly to the save bridge.
+      return exportBlobToHost(blob, safeDownloadFileName(name)).catch(error => {
+        setStatus(`[web] Export failed.\n\n${error?.message || String(error)}`, 'error');
+      });
+    }
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -14247,7 +15034,7 @@ SOFTWARE.
     const fallbackY = rect.height / scale * (0.42 + (Math.floor((serial - 1) / 4) % 4) * 0.06);
     item.style.left = `${Number.isFinite(point?.x) ? point.x : fallbackX}px`;
     item.style.top = `${Number.isFinite(point?.y) ? point.y : fallbackY}px`;
-    item.innerHTML = `<div class="buret-xyzrender-sheet-item-background"></div><div class="buret-xyzrender-sheet-item-body">${svg}</div>${rotatableArtifactControlsHTML()}<div class="buret-xyzrender-sheet-item-label">${escapeHTML(path.split('/').pop() || path)}</div>`;
+    item.innerHTML = `<div class="buret-xyzrender-sheet-item-background"></div><div class="buret-xyzrender-sheet-item-body">${window.BuretteSanitizeArtwork(svg)}</div>${rotatableArtifactControlsHTML()}<div class="buret-xyzrender-sheet-item-label">${escapeHTML(path.split('/').pop() || path)}</div>`;
     sheet.appendChild(item);
     if (!point) layoutAddedXyzrenderSheetItems(sheet, scale);
     else item.dataset.buretSheetPositioned = 'true';
@@ -14990,15 +15777,45 @@ SOFTWARE.
     installExternalArtifactBaseItemInteractions(root, () => scale);
     const sheetCleanup = installExternalArtifactSheet(root, stage, toStagePoint, () => scale);
     const baseItem = root.querySelector('.buret-xyzrender-sheet-item-base');
-    if (baseItem && savedView?.item) {
+    if (baseItem && savedView?.item) setSheetItemRotation(baseItem, savedView.item.rotation);
+    if (baseItem && savedView?.item && !savedView.responsive) {
       for (const key of ['left', 'top', 'width', 'height']) baseItem.style[key] = `${savedView.item[key]}px`;
-      setSheetItemRotation(baseItem, savedView.item.rotation);
+      baseItem.dataset.buretSheetPositioned = 'true';
     }
-    const viewportCleanup = window.BuretteRendererViewState?.observeSheetViewport(root, savedView?.viewport);
+    const restoredSheet = activeConfig?.popoutSheet;
+    const sheetCheckpointApplied = restoredSheet?.version === 1 && Array.isArray(restoredSheet.items);
+    if (sheetCheckpointApplied) {
+      const sheet = ensureXyzrenderSheet(stage);
+      root.querySelectorAll('.buret-xyzrender-sheet-item').forEach(item => item.remove());
+      for (const saved of restoredSheet.items) {
+        const item = addXyzrenderSheetItem(sheet, saved.svg, saved.path, { x: saved.geometry.left, y: saved.geometry.top }, 1, () => scale, saved);
+        for (const key of ['left', 'top', 'width', 'height']) item.style[key] = `${saved.geometry[key]}px`;
+        setSheetItemRotation(item, saved.geometry.rotation);
+        item.style.zIndex = saved.zIndex || '';
+        item.classList.toggle('selected', saved.selected === true);
+        item.dataset.buretXyzrenderPreset = saved.preset;
+        item.dataset.buretXyzrenderControls = JSON.stringify(saved.controls || {});
+        setXyzrenderSheetItemRegions(item, saved.controls?.regions);
+        setXyzrenderSheetItemVdwAtoms(item, saved.controls?.vdwAtoms);
+        if (saved.orientationRef) item.dataset.buretXyzrenderOrientationRef = saved.orientationRef;
+        if (saved.orientationBaseRef) item.dataset.buretXyzrenderOrientationBase = saved.orientationBaseRef;
+        if (saved.angles) item.dataset.buretXyzrenderOrientationAngles = JSON.stringify(saved.angles);
+        if (saved.animation) restoreXyzrenderPopoutAnimation(item, saved.animation);
+      }
+      scale = restoredSheet.view?.scale || 1;
+      translateX = restoredSheet.view?.x || 0;
+      translateY = restoredSheet.view?.y || 0;
+      // A checkpoint is applied once; changing styles must not replay old items.
+      delete activeConfig.popoutSheet;
+    }
+    // Item geometry and its reference viewport must come from the same snapshot.
+    const viewportCleanup = window.BuretteRendererViewState?.observeSheetViewport(root,
+      sheetCheckpointApplied ? restoredSheet.view?.viewport : savedView?.responsive ? null : savedView?.viewport);
     externalArtifactViewSnapshot = () => ({
       scale, x: translateX, y: translateY,
+      responsive: Boolean(baseItem?.isConnected && baseItem.dataset.buretSheetPositioned !== 'true'),
       viewport: { width: root.clientWidth, height: root.clientHeight },
-      item: baseItem ? {
+      item: baseItem?.isConnected ? {
         left: baseItem.offsetLeft, top: baseItem.offsetTop,
         width: baseItem.offsetWidth, height: baseItem.offsetHeight,
         rotation: Number(baseItem.dataset.rotation || 0)
@@ -15150,17 +15967,26 @@ SOFTWARE.
     const lines = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
     const records = [];
     let current = [];
+    const appendRecord = () => {
+      // Some writers add blank separators after $$$$. Keep the three molfile
+      // header lines: Mol* reads the counts on line four, unlike our grid parser.
+      const countsIndex = current.findIndex(line => /V(?:2000|3000)\s*$/.test(line));
+      const separatorLines = countsIndex - 3;
+      if (separatorLines > 0 && current.slice(0, separatorLines).every(line => !line.trim())) {
+        current = current.slice(separatorLines);
+      }
+      const record = current.join('\n').trimEnd();
+      if (record.trim()) records.push(record);
+      current = [];
+    };
     for (const line of lines) {
       if (line.trim() === '$$$$') {
-        const record = current.join('\n').trimEnd();
-        if (record.trim()) records.push(record);
-        current = [];
+        appendRecord();
       } else {
         current.push(line);
       }
     }
-    const tail = current.join('\n').trimEnd();
-    if (tail.trim()) records.push(tail);
+    appendRecord();
     return records;
   }
 
@@ -15327,7 +16153,7 @@ SOFTWARE.
     return { data: lines.join('\n'), residues, singlePdbs, molecules };
   }
 
-  function spreadSdfCollectionMolecules(molecules) {
+  function spreadSdfCollectionMolecules(molecules, hostCells = null) {
     const columns = Math.ceil(Math.sqrt(molecules.length));
     const rows = Math.ceil(molecules.length / columns);
     // Alignment replaces coordinates; parsed bounds can describe the old pose.
@@ -15339,9 +16165,15 @@ SOFTWARE.
       return { centerX: (minX + maxX) / 2, centerY: (minY + maxY) / 2, size: Math.max(maxX - minX, maxY - minY) };
     });
     const spacing = Math.max(3, ...bounds.map(bound => bound.size)) + SDF_GRID_PADDING;
+    // A host that already arranges these molecules, such as a ligand network,
+    // names each one's cell so the spread scene keeps that arrangement.
+    const cells = Array.isArray(hostCells) && hostCells.length === molecules.length
+      && hostCells.every(cell => Array.isArray(cell) && Number.isFinite(cell[0]) && Number.isFinite(cell[1]))
+      ? hostCells
+      : null;
     return molecules.map((molecule, index) => {
-      const x = (index % columns - (columns - 1) / 2) * spacing;
-      const y = ((rows - 1) / 2 - Math.floor(index / columns)) * spacing;
+      const x = cells ? cells[index][0] * spacing : (index % columns - (columns - 1) / 2) * spacing;
+      const y = cells ? cells[index][1] * spacing : ((rows - 1) / 2 - Math.floor(index / columns)) * spacing;
       return {
         ...molecule,
         atoms: molecule.atoms.map(atom => ({
@@ -15570,7 +16402,7 @@ SOFTWARE.
     return molstarRefsStillLoaded(viewer, state.backgroundRefs);
   }
 
-  function sdfCollectionStateKey(prepared, style, allMode, contextStyle, contextOpacity, contextColor) {
+  function sdfCollectionStateKey(prepared, style, allMode) {
     return [
       activeConfig?.documentId || '',
       prepared?.label || '',
@@ -15578,7 +16410,6 @@ SOFTWARE.
       style,
       allMode ? 'all' : 'single',
       allMode ? activeSdfCollectionLayout : 'overlap',
-      contextStyle,
     ].join('|');
   }
 
@@ -15824,15 +16655,83 @@ SOFTWARE.
   // representations. Every externally triggered rebuild (context style/opacity/
   // color actions, pose stepping, toolbar toggles) is serialized through this
   // queue; callers that already run inside a rebuild use the *Now variants.
+  // A batch edit commits one Mol* state update per structure. Holding the draw
+  // loop keeps the previous frame on screen until the whole batch has landed,
+  // so a scene of many structures changes at once instead of one by one.
+  // The held frame gives no sign that work is under way, so a ring marks it.
+  // Geometry builds block the main thread for seconds on a large scene: the
+  // ring has to be painted before they start, and its delayed fade-in and
+  // rotation are compositor animations that keep running through the block.
+  let molstarBusyDepth = 0;
+  function beginMolstarBusy() {
+    if (molstarBusyDepth++ > 0) return;
+    const ring = document.createElement('span');
+    ring.className = 'buret-busy-ring';
+    ring.setAttribute('role', 'status');
+    ring.setAttribute('aria-label', 'Loading');
+    document.body.appendChild(ring);
+  }
+
+  function endMolstarBusy() {
+    if (--molstarBusyDepth > 0) return;
+    document.querySelectorAll('.buret-busy-ring').forEach(ring => ring.remove());
+  }
+
+  // Resolves after the next paint, or shortly after when nothing paints (a
+  // hidden pane never runs animation frames).
+  function nextMolstarPaint() {
+    return new Promise(resolve => {
+      const finish = () => {
+        window.clearTimeout(timer);
+        window.cancelAnimationFrame(frame);
+        resolve();
+      };
+      const timer = window.setTimeout(finish, 80);
+      let frame = window.requestAnimationFrame(() => {
+        frame = window.requestAnimationFrame(finish);
+      });
+    });
+  }
+
+  let molstarDrawHoldDepth = 0;
+  let molstarDrawHoldEndedAt = 0;
+  async function withMolstarDrawHold(viewer, run) {
+    const canvas3d = viewer?.plugin?.canvas3d;
+    if (typeof canvas3d?.pause !== 'function' || typeof canvas3d?.resume !== 'function') return run();
+    const outermost = molstarDrawHoldDepth++ === 0;
+    if (outermost) canvas3d.pause(true);
+    beginMolstarBusy();
+    try {
+      // Back-to-back holds are playback or a dragged slider; waiting for a
+      // paint before each of those would cap their rate.
+      if (outermost && performance.now() - molstarDrawHoldEndedAt > 300) await nextMolstarPaint();
+      return await run();
+    } finally {
+      endMolstarBusy();
+      if (--molstarDrawHoldDepth === 0) {
+        molstarDrawHoldEndedAt = performance.now();
+        if (viewer.plugin?.canvas3d === canvas3d) {
+          try {
+            canvas3d.commit?.(true);
+          } finally {
+            // PluginAnimationLoop already owns ticking. animate() would start
+            // a second independent rAF loop for the same canvas.
+            canvas3d.resume();
+          }
+        }
+      }
+    }
+  }
+
   let molstarSceneRebuildChain = Promise.resolve();
   const pendingSceneAppearance = new Map();
-  function queueMolstarSceneRebuild(run, appearanceKey = null) {
+  function queueMolstarSceneRebuild(run, appearanceKey = null, holdDraw = true) {
     const pending = appearanceKey && pendingSceneAppearance.get(appearanceKey);
     if (pending) { pending.run = run; return pending.job; }
     const entry = { run, job: null };
     const execute = () => {
       if (appearanceKey) pendingSceneAppearance.delete(appearanceKey);
-      return entry.run();
+      return holdDraw ? withMolstarDrawHold(activeViewer, () => entry.run()) : entry.run();
     };
     entry.job = molstarSceneRebuildChain.then(execute, execute);
     if (appearanceKey) pendingSceneAppearance.set(appearanceKey, entry);
@@ -15850,6 +16749,20 @@ SOFTWARE.
     if (cameraSnapshot) canvas3d.setProps({ camera: { manualReset: true } });
     try {
       state.poseCache ||= new Map();
+      let cached = state.poseCache.get(index);
+      if (!cached || !plugin.state.data.cells.has(cached.raw.ref)) {
+        const normalized = normalizeFormat(entry.format);
+        const payload = normalized === 'cifCore' ? { data: coreCifToPdb(entry.data), format: 'pdb' } : { data: entry.data, format: normalized };
+        const raw = await plugin.builders.data.rawData({ data: payload.data, label: entry.label });
+        try {
+          const trajectories = await parseMolstarStructureTrajectories(plugin, raw, payload.format);
+          if (!trajectories.length || trajectories.some(trajectory => !trajectory?.ref)) throw new Error('Mol* could not parse the selected pose.');
+          cached = { raw, trajectories, sourceBytes: (payload.data?.length || 0) * 2 };
+        } catch (error) {
+          await plugin.state.data.build().delete(raw.ref).commit();
+          throw error;
+        }
+      }
       const previous = state.poseCache.get(state.activeIndex);
       if (previous) {
         // Retain parsed trajectories, never inactive structures: full exports and
@@ -15860,18 +16773,20 @@ SOFTWARE.
         }
         await remove.commit();
       }
-      let cached = state.poseCache.get(index);
-      if (!cached || !plugin.state.data.cells.has(cached.raw.ref)) {
-        const normalized = normalizeFormat(entry.format);
-        const payload = normalized === 'cifCore' ? { data: coreCifToPdb(entry.data), format: 'pdb' } : { data: entry.data, format: normalized };
-        const raw = await plugin.builders.data.rawData({ data: payload.data, label: entry.label });
-        cached = { raw, trajectories: await parseMolstarStructureTrajectories(plugin, raw, payload.format), sourceBytes: (payload.data?.length || 0) * 2 };
-      }
       state.poseCache.delete(index);
       state.poseCache.set(index, cached);
       const before = molstarStructureCellRefs(viewer);
-      for (const trajectory of cached.trajectories) await plugin.builders.structure.hierarchy.applyPreset(trajectory, entry.loadPreset || 'default', { representationPreset: 'empty' });
-      const structures = Array.from(molstarCurrentStructures(viewer)).filter(structure => !before.has(structure.cell.transform.ref));
+      const presetCells = [];
+      for (const trajectory of cached.trajectories) {
+        const result = await plugin.builders.structure.hierarchy.applyPreset(trajectory, entry.loadPreset || 'default', { representationPreset: 'empty' });
+        for (const selector of [result?.structure, ...(result?.structures || [])]) {
+          const cell = selector?.ref && plugin.state.data.cells.get(selector.ref);
+          if (cell) presetCells.push(cell);
+        }
+      }
+      let structures = Array.from(molstarCurrentStructures(viewer)).filter(structure => !before.has(structure.cell.transform.ref));
+      // Inside a data transaction the hierarchy syncs only once it ends.
+      if (!structures.length) structures = presetCells.map(cell => ({ cell, components: [] }));
       await applyStyle(structures);
       state.activeRefs = molstarStructureRefsOf(structures);
       state.activeIndex = index;
@@ -15895,9 +16810,122 @@ SOFTWARE.
     }
   }
 
+  const sdfCollectionAppearanceUpdates = new WeakMap();
+
+  // Each builder call commits separately and every Mol* commit has a fixed
+  // cost, so a pose took about six commits and showing a 100-pose file took
+  // ten seconds. Build all new SDF/MOL pose layers in two commits instead:
+  // data through components, then representations. Returns the items that
+  // still need the per-pose path.
+  async function addDockingPoseLayers(viewer, items) {
+    const plugin = viewer.plugin;
+    const transforms = window.molstar?.lib?.plugin?.StateTransforms;
+    const representationBuilder = plugin.builders?.structure?.representation;
+    if (!transforms?.Model?.StructureComponent || !representationBuilder?.buildRepresentation) return items;
+    const parsers = { sdf: transforms.Model.TrajectoryFromSDF, mol: transforms.Model.TrajectoryFromMOL };
+    const batch = [];
+    const rest = [];
+    for (const item of items) {
+      const cached = item.layer.poseCache?.get(item.index);
+      const reusable = cached?.trajectories.length === 1 && plugin.state.data.cells.has(cached.raw.ref) ? cached : null;
+      const parser = parsers[normalizeFormat(item.entry.format)];
+      if ((item.entry.loadPreset || 'default') !== 'default' || (!reusable && !parser)) rest.push(item);
+      else batch.push({ ...item, cached: reusable, parser });
+    }
+    if (!batch.length) return rest;
+    const created = [];
+    try {
+      const data = plugin.state.data.build();
+      for (const item of batch) {
+        item.representations = sdfCollectionRepresentationPlan(...item.appearance);
+        let trajectory;
+        if (item.cached) {
+          trajectory = data.to(item.cached.trajectories[0].ref);
+        } else {
+          const raw = data.toRoot().apply(transforms.Data.RawData, { data: item.entry.data, label: item.entry.label });
+          trajectory = raw.apply(item.parser);
+          item.cached = { raw: { ref: raw.ref }, trajectories: [{ ref: trajectory.ref }], sourceBytes: (item.entry.data?.length || 0) * 2 };
+          created.push(raw.ref);
+        }
+        const structure = trajectory
+          .apply(transforms.Model.ModelFromTrajectory, { modelIndex: 0 })
+          .apply(transforms.Model.StructureFromModel, { type: { name: 'model', params: {} } });
+        item.structureRef = structure.ref;
+        const kinds = item.representations.length > 1 ? ['polymer', 'ligand', 'ion'] : ['all'];
+        item.components = kinds.map(kind => ({
+          role: kind === 'polymer' ? 0 : item.representations.length - 1,
+          ref: structure.apply(transforms.Model.StructureComponent,
+            { type: { name: 'static', params: kind }, nullIfEmpty: true, label: '' },
+            { tags: [`structure-component-static-${kind}`] }).ref
+        }));
+      }
+      await data.commit({ revertOnError: true });
+      const cells = plugin.state.data.cells;
+      const representations = plugin.state.data.build();
+      const added = [];
+      for (const item of batch) {
+        item.added = [];
+        for (const component of item.components) {
+          if (!cells.get(component.ref)?.obj?.data?.elementCount) {
+            representations.delete(component.ref);
+            continue;
+          }
+          const representation = item.representations[component.role];
+          const selector = representationBuilder.buildRepresentation(representations, component.ref, molstarHydrogenRepresentation(representation));
+          if (selector) item.added.push({ ref: selector.ref, representation, role: component.role });
+        }
+        // Unusual structures keep their parsed data and take the builders.
+        if (item.added.length) added.push(item);
+        else representations.delete(item.structureRef);
+      }
+      await representations.commit({ revertOnError: true });
+      for (const item of batch) {
+        item.layer.poseCache ||= new Map();
+        item.layer.poseCache.set(item.index, item.cached);
+        if (!added.includes(item)) {
+          rest.push(item);
+          continue;
+        }
+        const structureCell = cells.get(item.structureRef);
+        for (const { ref, representation, role } of item.added) recordCollectionRepresentation(plugin, structureCell, ref, representation, role);
+        collectionRepresentations.get(structureCell).layout = item.representations.length;
+        item.layer.activeRefs = [item.structureRef];
+        item.layer.activeIndex = item.index;
+      }
+      return rest;
+    } catch (error) {
+      debug('Batched pose loading failed: ' + (error?.message || String(error)));
+      const remove = plugin.state.data.build();
+      for (const ref of [...created, ...batch.map(item => item.structureRef)]) {
+        if (ref && plugin.state.data.cells.has(ref)) remove.delete(ref);
+      }
+      await remove.commit();
+      for (const item of batch) if (created.includes(item.cached?.raw.ref)) item.layer.poseCache?.delete(item.index);
+      return items;
+    }
+  }
+
   function applySdfCollectionVisibility(viewer, prepared, activePose = 0, options = {}) {
-    return queueMolstarSceneRebuild(() => applySdfCollectionVisibilityNow(viewer, prepared, activePose, options),
-      options.contextOpacity != null || options.contextColor != null ? prepared : null);
+    const appearanceOnly = options.contextStyle != null || options.contextOpacity != null || options.contextColor != null;
+    if (!appearanceOnly) return queueMolstarSceneRebuild(() => applySdfCollectionVisibilityNow(viewer, prepared, activePose, options));
+    sdfCollectionAppearanceUpdates.get(prepared)?.abort();
+    const controller = new AbortController();
+    sdfCollectionAppearanceUpdates.set(prepared, controller);
+    // Keep drawing and input live. Pending changes coalesce; an in-flight
+    // obsolete style stops between bounded representation commits.
+    return queueMolstarSceneRebuild(async () => {
+      const canvas = viewer?.plugin?.canvas3d;
+      const manualReset = canvas?.props?.camera?.manualReset === true;
+      canvas?.setProps({ camera: { manualReset: true } });
+      try {
+        await applySdfCollectionVisibilityNow(viewer, prepared, activePose, { ...options, signal: controller.signal });
+      } catch (error) {
+        if (!controller.signal.aborted) throw error;
+      } finally {
+        canvas?.setProps({ camera: { manualReset } });
+        if (sdfCollectionAppearanceUpdates.get(prepared) === controller) sdfCollectionAppearanceUpdates.delete(prepared);
+      }
+    }, prepared, false);
   }
 
   function applySdfCollectionAlignmentLayers(prepared, layers) {
@@ -15933,7 +16961,7 @@ SOFTWARE.
     }
     const allMode = activeSdfPoseMode === 'all';
     const spreadCollection = allMode && activeSdfCollectionLayout === 'spread'
-      ? sdfMoleculesToPdbCollection(spreadSdfCollectionMolecules(prepared.collectionMolecules), prepared.label)
+      ? sdfMoleculesToPdbCollection(spreadSdfCollectionMolecules(prepared.collectionMolecules, activeConfig?.sdfCollectionSpreadCells), prepared.label)
       : null;
     const singlePdbs = spreadCollection?.singlePdbs || (Array.isArray(prepared.collectionSinglePdbs) ? prepared.collectionSinglePdbs : []);
     const activeIndex = Math.max(0, Math.min(singlePdbs.length - 1, Math.trunc(Number(activePose) || 0)));
@@ -15943,7 +16971,32 @@ SOFTWARE.
     const contextStyle = options.contextStyle ?? readSdfCollectionContextStyle(activeConfig);
     const contextOpacity = options.contextOpacity ?? readSdfCollectionContextOpacity(activeConfig);
     const contextColor = options.contextColor ?? readSdfCollectionContextColor(activeConfig);
-    const stateKey = sdfCollectionStateKey(prepared, style, allMode, contextStyle, contextOpacity, contextColor);
+    const foreground = sdfCollectionRepresentationForStyle(style, 1, 'colored');
+    const background = sdfCollectionRepresentationForStyle(contextStyle === 'match' ? style : contextStyle, contextOpacity, contextColor);
+    // Atom/bond representations can batch models without changing their meaning.
+    // Surfaces retain independent per-molecule construction and its style path.
+    const batchedTypes = ['ball-and-stick', 'line', 'spacefill'];
+    if (batchedTypes.includes(foreground.type) && (!allMode || batchedTypes.includes(background.type))) {
+      if (!window.BuretteSdfCollection) {
+        await loadScript(runtimeURL('BuretteSdfCollectionURL', './sdf-collection-scene.js'), 'collection scene', 10000);
+      }
+      await window.BuretteSdfCollection.show(plugin, {
+        molecules: prepared.collectionMolecules, index: activeIndex, all: allMode,
+        spread: allMode && activeSdfCollectionLayout === 'spread',
+        spreadCells: activeConfig?.sdfCollectionSpreadCells,
+        spreadMolecules: spreadSdfCollectionMolecules, foreground, background
+      });
+      resetSdfCollectionVisibilityState(viewer);
+      resetXyzFrameOverlayState(viewer);
+      resetDockingPoseCollectionState(viewer);
+      resetDockingSceneVisibilityState(viewer);
+      await applyMolstarAppearance(viewer, configuredMolstarAppearance(activeConfig || window.BuretteConfig || {}));
+      updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
+      if (options.focus === true) scheduleMolstarStructureFocus(viewer, { reason: 'sdf-collection', durationMs: 180 });
+      return;
+    }
+    window.BuretteSdfCollection?.reset(plugin);
+    const stateKey = sdfCollectionStateKey(prepared, style, allMode);
     let state = activeSdfCollectionVisibilityState;
     if (!state || state.key !== stateKey || !sdfCollectionVisibilityStateStillLoaded(viewer, state)) {
       resetXyzFrameOverlayState(viewer);
@@ -15977,19 +17030,20 @@ SOFTWARE.
         allRefsByIndex,
         activeRefs: allMode ? allRefsByIndex[activeIndex] : [],
         activeIndex: allMode ? activeIndex : -1,
-        appearanceKey: allMode ? `${contextOpacity}|${contextColor}` : undefined
+        appearanceKey: allMode ? `${contextStyle}|${contextOpacity}|${contextColor}` : undefined
       };
       activeSdfCollectionVisibilityState = state;
     }
 
-    const appearanceKey = `${contextOpacity}|${contextColor}`;
+    const appearanceKey = `${contextStyle}|${contextOpacity}|${contextColor}`;
     if (state.appearanceKey !== appearanceKey) {
-      const background = molstarStructuresByRefs(viewer, state.backgroundRefs);
-      if (background.length) await applySdfCollectionMolstarStyle(viewer, contextStyle === 'match' ? style : contextStyle, background, contextOpacity, contextColor);
-      if (allMode) {
-        const selected = molstarStructuresByRefs(viewer, state.allRefsByIndex[activeIndex]);
-        await applySdfCollectionMolstarStyle(viewer, style, selected, 1, 'colored');
-      }
+      // The foreground has a different representation and opacity. Including it
+      // would invalidate reuse for every background molecule on every slider tick.
+      const selectedRefs = new Set(state.activeRefs);
+      const background = molstarStructuresByRefs(viewer, state.backgroundRefs.filter(ref => !selectedRefs.has(ref)));
+      state.appearanceKey = null;
+      if (background.length) await applySdfCollectionMolstarStyle(viewer, contextStyle === 'match' ? style : contextStyle, background, contextOpacity, contextColor, options.signal);
+      options.signal?.throwIfAborted();
       state.appearanceKey = appearanceKey;
     }
 
@@ -16025,7 +17079,7 @@ SOFTWARE.
     if (options.focus !== false) scheduleMolstarStructureFocus(viewer, { reason: 'sdf-collection', durationMs: 180 });
   }
 
-  function dockingPoseCollectionStateKey(prepared, style, allMode, contextStyle, contextOpacity, contextColor) {
+  function dockingPoseCollectionStateKey(prepared) {
     const receptor = prepared?.receptorEntry || {};
     const poses = Array.isArray(prepared?.poses) ? prepared.poses : [];
     const firstPose = poses[0] || {};
@@ -16038,9 +17092,6 @@ SOFTWARE.
       poses.length,
       firstPose.sourcePath || firstPose.label || '',
       lastPose.sourcePath || lastPose.label || '',
-      style,
-      allMode ? 'all' : 'single',
-      contextStyle,
     ].join('|');
   }
 
@@ -16054,7 +17105,7 @@ SOFTWARE.
     if (!state || state.viewer !== viewer) return false;
     return molstarRefsStillLoaded(viewer, [
       ...(state.receptorRefs || []),
-      ...(state.backgroundRefs || []),
+      ...[...(state.layers?.values() || [])].flatMap(layer => layer.activeRefs),
       ...(state.activeRefs || [])
     ]);
   }
@@ -16077,11 +17128,28 @@ SOFTWARE.
     if (!activeEntry) throw new Error('Docking pose data is unavailable.');
     const style = configuredMolstarStyle(activeConfig);
     const allMode = activeSdfPoseMode === 'all' && prepared.sdfPoseOverlayAvailable === true;
+    // With several ligand files, All overlays the active file's poses only.
+    const allGroup = allMode
+      ? (prepared.poseGroups || []).find(group => activeIndex >= group.startFrame && activeIndex <= group.endFrame)
+      : null;
+    const pinned = dockingPinnedPoseIndices(prepared);
+    const references = dockingReferencePoseIndices(prepared);
+    const selected = new Set([...pinned, ...dockingSelectedPoseIndices(prepared)]);
+    if (allMode || !dockingPinnedPoseState.activeHidden) selected.add(activeIndex);
     const contextStyle = options.contextStyle ?? readSdfCollectionContextStyle(activeConfig);
     const resolvedContextStyle = dockingSceneBackgroundStyle(contextStyle, style);
     const contextOpacity = options.contextOpacity ?? readSdfCollectionContextOpacity(activeConfig);
     const contextColor = options.contextColor ?? readSdfCollectionContextColor(activeConfig);
-    const stateKey = dockingPoseCollectionStateKey(prepared, style, allMode, resolvedContextStyle, contextOpacity, contextColor);
+    const wanted = new Map();
+    if (allMode) {
+      for (let index = allGroup?.startFrame ?? 0; index <= (allGroup?.endFrame ?? poses.length - 1); index += 1) {
+        wanted.set(index, [resolvedContextStyle, contextOpacity, contextColor === 'gray' ? contextColor : dockingPoseCarbonColor(prepared, index)]);
+      }
+    }
+    for (const index of selected) {
+      if (poses[index]) wanted.set(index, [style, 1, references.has(index) ? 'reference' : dockingPoseCarbonColor(prepared, index)]);
+    }
+    const stateKey = dockingPoseCollectionStateKey(prepared);
     let state = activeDockingPoseCollectionState;
     if (!state || state.key !== stateKey || !dockingPoseCollectionStateStillLoaded(viewer, state)) {
       resetXyzFrameOverlayState(viewer);
@@ -16090,47 +17158,106 @@ SOFTWARE.
       const receptorStructures = prepared.receptorEntry
         ? await loadMolstarEntryWithStructureRefs(viewer, prepared.receptorEntry)
         : [];
-      if (receptorStructures.length) {
-        await applySdfCollectionMolstarStyle(viewer, style, receptorStructures, 1, 'colored');
-      }
-      const backgroundStructures = [];
-      if (allMode) {
-        for (const entry of poses) {
-          backgroundStructures.push(...await loadMolstarEntryWithStructureRefs(viewer, entry, { representationPreset: 'empty' }));
-        }
-        if (backgroundStructures.length) {
-          await applySdfCollectionMolstarStyle(viewer, resolvedContextStyle, backgroundStructures, contextOpacity, contextColor);
-        }
-      }
-      state = {
-        viewer,
-        key: stateKey,
-        receptorRefs: molstarStructureRefsOf(receptorStructures),
-        backgroundRefs: molstarStructureRefsOf(backgroundStructures),
-        activeRefs: [],
-        activeIndex: -1
-      };
+      if (receptorStructures.length) await applySdfCollectionMolstarStyle(viewer, style, receptorStructures, 1, 'colored');
+      state = { viewer, key: stateKey, receptorRefs: molstarStructureRefsOf(receptorStructures),
+        layers: new Map(), activeRefs: [], activeIndex: -1 };
       activeDockingPoseCollectionState = state;
     }
 
-    const appearanceKey = `${contextOpacity}|${contextColor}`;
-    if (state.appearanceKey !== appearanceKey) {
-      const background = molstarStructuresByRefs(viewer, state.backgroundRefs);
-      if (background.length) await applySdfCollectionMolstarStyle(viewer, resolvedContextStyle, background, contextOpacity, contextColor);
-      state.appearanceKey = appearanceKey;
-    }
-
-    if (state.activeIndex === activeIndex && dockingPoseCollectionStateStillLoaded(viewer, state)) {
+    // Selection changes touch ligand layers only. Keep the receptor, authored
+    // representations, visibility, and the live camera input intact.
+    const canvas = plugin.canvas3d;
+    const preserveCamera = state.activeIndex >= 0;
+    const manualReset = canvas?.props?.camera?.manualReset === true;
+    if (preserveCamera) canvas?.setProps({ camera: { manualReset: true } });
+    try {
+      // Load additions before removing anything. A failed addition leaves the
+      // previous visible set available for rollback without clearing the scene.
+      let restyled = false;
+      // One transaction lets Mol* re-sync the scene hierarchy once for all
+      // layer restyles and additions instead of after every commit.
+      const addLayers = async () => {
+        const additions = [];
+        for (const [index, appearance] of wanted) {
+          let layer = state.layers.get(index);
+          if (!layer) {
+            layer = { activeIndex: -1, activeRefs: [] };
+            state.layers.set(index, layer);
+          }
+          const appearanceKey = JSON.stringify(appearance);
+          if (!layer.activeRefs.length) {
+            additions.push({ index, layer, appearance, entry: poses[index] });
+          } else if (layer.appearanceKey !== appearanceKey) {
+            layer.appearanceKey = null;
+            await applySdfCollectionMolstarRepresentations(viewer, appearance[0], molstarStructuresByRefs(viewer, layer.activeRefs), appearance[1], appearance[2]);
+            layer.appearanceKey = appearanceKey;
+            restyled = true;
+          }
+        }
+        if (!additions.length) return;
+        const remaining = new Set((await addDockingPoseLayers(viewer, additions)).map(item => item.index));
+        for (const { index, layer, appearance, entry } of additions) {
+          if (remaining.has(index)) {
+            try {
+              await switchCachedPoseLayer(viewer, layer, index, entry, structures =>
+                applySdfCollectionMolstarRepresentations(viewer, appearance[0], structures, appearance[1], appearance[2]));
+            } catch (error) {
+              // Dispose partial builders too; they must not leak into exports.
+              for (const cached of layer.poseCache?.values() || []) await plugin.state.data.build().delete(cached.raw.ref).commit();
+              state.layers.delete(index);
+              throw error;
+            }
+          }
+          layer.appearanceKey = JSON.stringify(appearance);
+        }
+        restyled = true;
+      };
+      if (plugin.dataTransaction) await plugin.dataTransaction(addLayers);
+      else await addLayers();
+      if (restyled) await applyMolstarAppearance(viewer, configuredMolstarAppearance(activeConfig || window.BuretteConfig || {}));
+      const remove = plugin.state.data.build();
+      const removed = [];
+      for (const [index, layer] of state.layers) {
+        if (wanted.has(index) || !layer.activeRefs.length) continue;
+        for (const cached of layer.poseCache.values()) {
+          for (const trajectory of cached.trajectories) {
+            for (const child of plugin.state.data.tree.children.get(trajectory.ref) || []) remove.delete(child);
+          }
+        }
+        removed.push(layer);
+      }
+      if (removed.length) await remove.commit();
+      for (const layer of removed) {
+        layer.activeRefs = [];
+        layer.activeIndex = -1;
+      }
+      // Only parsed data is cached off screen; inactive structures never appear
+      // in exports or selections. Bound the reusable cache independently of the
+      // number of poses deliberately displayed by the user.
+      const inactive = [...state.layers].filter(([index]) => !wanted.has(index));
+      let bytes = inactive.reduce((sum, [, layer]) => sum + [...layer.poseCache.values()].reduce((n, entry) => n + entry.sourceBytes, 0), 0);
+      const evict = plugin.state.data.build();
+      let evicted = false;
+      while (inactive.length > 4 || bytes > 16 * 1024 * 1024) {
+        const [index, layer] = inactive.shift();
+        for (const cached of layer.poseCache.values()) {
+          evict.delete(cached.raw.ref);
+          bytes -= cached.sourceBytes;
+          evicted = true;
+        }
+        state.layers.delete(index);
+      }
+      if (evicted) await evict.commit();
+      state.activeIndex = activeIndex;
+      state.activeRefs = state.layers.get(activeIndex)?.activeRefs || [];
       updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
-      if (options.focus === true) scheduleMolstarStructureFocus(viewer, { reason: 'docking-poses', durationMs: 180 });
-      return;
+    } finally {
+      if (preserveCamera) {
+        try { canvas?.commit(true); }
+        finally { canvas?.setProps({ camera: { manualReset } }); }
+      }
     }
-
-    await switchCachedPoseLayer(viewer, state, activeIndex, activeEntry,
-      structures => applySdfCollectionMolstarStyle(viewer, style, structures, 1, 'colored'));
-    updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
-    await applyMolstarWaterLineRepresentation(viewer);
-    if (options.focus !== false) scheduleMolstarStructureFocus(viewer, { reason: 'docking-poses', durationMs: 180 });
+    if (options.focus === true) scheduleMolstarStructureFocus(viewer, { reason: 'docking-poses', durationMs: 180 });
   }
 
   async function applyXyzFrameOverlayVisibility(viewer, prepared, activePose = 0, options = {}) {
@@ -16278,13 +17405,13 @@ SOFTWARE.
 
   function xyzFrameRepresentationStyle(style) {
     const normalized = normalizeMolstarStyle(style);
-    if (normalized === 'line' || normalized === 'ball-and-stick' || normalized === 'spacefill' || normalized === 'molecular-surface') return normalized;
+    if (normalized === 'line' || normalized === 'ball-and-stick' || normalized === 'spacefill' || normalized === 'molecular-surface' || normalized === 'blob-surface') return normalized;
     return 'line';
   }
 
   function xyzFrameForegroundStyle(style) {
     const normalized = normalizeMolstarStyle(style);
-    if (normalized === 'line' || normalized === 'ball-and-stick' || normalized === 'spacefill' || normalized === 'molecular-surface') return normalized;
+    if (normalized === 'line' || normalized === 'ball-and-stick' || normalized === 'spacefill' || normalized === 'molecular-surface' || normalized === 'blob-surface') return normalized;
     return 'ball-and-stick';
   }
 
@@ -16362,48 +17489,57 @@ SOFTWARE.
     return (poseRefs || []).map(refs => refs.map(ref => byRef.get(ref)).filter(Boolean));
   }
 
-  async function styleDockingSceneOverlay(viewer, structuresByPose, activeIndex, params) {
-    if (params.uniform) {
-      const everything = structuresByPose.flat();
-      if (everything.length) await applySdfCollectionMolstarStyle(viewer, params.resolvedContextStyle, everything, 1, 'colored');
-      return;
-    }
-    const background = structuresByPose.filter((_, index) => index !== activeIndex).flat();
-    if (background.length) {
-      await applySdfCollectionMolstarStyle(viewer, params.resolvedContextStyle, background, params.contextOpacity, params.contextColor);
-    }
-    const active = structuresByPose[activeIndex] || [];
-    if (active.length) {
-      await applySdfCollectionMolstarStyle(viewer, normalizeMolstarStyle(params.style), active, 1, 'colored');
+  // These styles keep the representations Mol* built while loading, so only a
+  // reload brings them back once a backdrop replaced them.
+  function dockingSceneStyleNeedsReload(style) {
+    const normalized = normalizeMolstarStyle(style);
+    return normalized === 'default' || normalized === 'illustrative' || normalized === 'illustrative-surface';
+  }
+
+  // `wanted[index]` is '' for the scene style, a backdrop key for the faded All
+  // context, and undefined to leave the pose alone. Only poses whose look
+  // changes are rebuilt, so stepping through a backdrop restyles two poses.
+  async function styleDockingScenePoses(viewer, state, wanted, params) {
+    const structuresByPose = dockingSceneStructuresByPose(viewer, state.poseRefs);
+    const plain = [];
+    const backdrop = [];
+    const changed = [];
+    wanted.forEach((key, index) => {
+      if (key === undefined || state.poseStyles[index] === key) return;
+      (key ? backdrop : plain).push(...(structuresByPose[index] || []));
+      changed.push(index);
+    });
+    if (!plain.length && !backdrop.length) return;
+    // A failed build may already have changed some representations. Invalidate
+    // visibility now, but cache styles only once the entire update succeeds.
+    state.visible = null;
+    try {
+      if (backdrop.length) {
+        await applySdfCollectionMolstarStyle(viewer, params.resolvedContextStyle, backdrop, params.contextOpacity, params.contextColor);
+      }
+      if (plain.length) await applySdfCollectionMolstarStyle(viewer, normalizeMolstarStyle(params.style), plain, 1, 'colored');
+      await applyMolstarWaterLineRepresentation(viewer);
+      for (const index of changed) state.poseStyles[index] = wanted[index];
+    } catch (error) {
+      // Force a clean reload on retry, including partially changed poses that
+      // the next request might otherwise mistake for unchanged scene styles.
+      state.key = null;
+      throw error;
     }
   }
 
-  async function applyDockingSceneOverlayPoses(viewer, prepared, activePose, options) {
+  // Loads every pose once with its own representations. The single and All
+  // views then differ only in which structures are hidden, so switching between
+  // them parses and rebuilds nothing. A translucent All backdrop restyles those
+  // loaded structures in place and is tracked per pose by `poseStyles`.
+  async function ensureDockingSceneState(viewer, prepared, style, discardBackdrop) {
     const plugin = viewer.plugin;
     const poses = Array.isArray(prepared.poses) ? prepared.poses : [];
-    const activeIndex = Math.max(0, Math.min(poses.length - 1, Math.trunc(Number(activePose) || 0)));
-    if (!poses[activeIndex]) return false;
-    const style = configuredMolstarStyle(activeConfig);
-    const resolvedContextStyle = dockingSceneBackgroundStyle(readSdfCollectionContextStyle(activeConfig), style);
-    const uniform = resolvedContextStyle === 'default' || resolvedContextStyle === 'illustrative';
-    const contextOpacity = uniform ? 1 : readSdfCollectionContextOpacity(activeConfig);
-    const contextColor = uniform ? 'colored' : readSdfCollectionContextColor(activeConfig);
-    const params = { style, resolvedContextStyle, contextOpacity, contextColor, uniform };
-    const stateKey = [dockingSceneStateKey(prepared, style), 'all', resolvedContextStyle].join('|');
-    const appearanceKey = `${contextOpacity}|${contextColor}`;
-    const state = activeDockingSceneVisibilityState;
-    if (state && state.key === stateKey && dockingSceneVisibilityStateStillLoaded(viewer, state)) {
-      if ((state.activeIndex !== activeIndex || state.appearanceKey !== appearanceKey) && !uniform) {
-        const structuresByPose = dockingSceneStructuresByPose(viewer, state.poseRefs);
-        await styleDockingSceneOverlay(viewer, structuresByPose, activeIndex, params);
-        await applyMolstarWaterLineRepresentation(viewer);
-      }
-      state.activeIndex = activeIndex;
-      state.appearanceKey = appearanceKey;
-      updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
-      if (options.focus === true) scheduleMolstarStructureFocus(viewer, { reason: 'docking-scene', durationMs: 180 });
-      return true;
-    }
+    const stateKey = dockingSceneStateKey(prepared, style);
+    let state = activeDockingSceneVisibilityState;
+    let loaded = Boolean(state) && state.key === stateKey && dockingSceneVisibilityStateStillLoaded(viewer, state);
+    if (loaded && discardBackdrop && dockingSceneStyleNeedsReload(style)) loaded = false;
+    if (loaded) return { state, rebuilt: false };
     resetXyzFrameOverlayState(viewer);
     resetSdfCollectionVisibilityState(viewer);
     resetDockingPoseCollectionState(viewer);
@@ -16412,62 +17548,101 @@ SOFTWARE.
     const poseRefs = [];
     for (const entry of poses) {
       const before = molstarStructureCellRefs(viewer);
-      await loadMolstarEntry(viewer, entry, { representationPreset: 'empty' });
+      await loadMolstarEntry(viewer, entry);
       poseRefs.push(Array.from(molstarStructureCellRefs(viewer)).filter(ref => !before.has(ref)));
     }
     if (!poseRefs.every(refs => refs.length)) {
       activeDockingSceneVisibilityState = null;
-      return false;
+      return null;
     }
-    await styleDockingSceneOverlay(viewer, dockingSceneStructuresByPose(viewer, poseRefs), activeIndex, params);
+    await applyMolstarStyle(viewer, style);
     await applyMolstarWaterLineRepresentation(viewer);
-    activeDockingSceneVisibilityState = { viewer, key: stateKey, poseRefs, activeIndex, appearanceKey };
-    updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
-    scheduleMolstarStructureFocus(viewer, { reason: 'docking-scene', durationMs: 180 });
-    return true;
+    state = { viewer, key: stateKey, poseRefs, activeIndex: -1, visible: null, poseStyles: poseRefs.map(() => '') };
+    activeDockingSceneVisibilityState = state;
+    try {
+      await activeStructureAlignmentControl?.restoreAfterSceneReload?.(viewer, prepared);
+    } catch (error) {
+      state.key = null;
+      throw error;
+    }
+    return { state, rebuilt: true };
   }
 
-  async function applyDockingSceneSinglePose(viewer, prepared, activePose, options) {
-    const plugin = viewer.plugin;
-    if (typeof plugin?.state?.data?.updateCellState !== 'function') return false;
+  // A preset restyles every loaded pose in place and builds the new
+  // representations visible. The scene adopts that style instead of reloading,
+  // and visibility is applied again so hidden poses stay hidden.
+  async function resyncDockingSceneAfterRestyle(viewer) {
+    const prepared = activeMolstarPrepared;
+    if (prepared?.kind !== 'docking') return;
+    if (!prepared.dockingSceneMode) {
+      const state = activeDockingPoseCollectionState;
+      if (!dockingPoseCollectionStateStillLoaded(viewer, state)) return;
+      state.key = dockingPoseCollectionStateKey(prepared);
+      for (const layer of state.layers.values()) layer.appearanceKey = null;
+      await applyDockingPoseCollectionVisibility(viewer, prepared, state.activeIndex, { focus: false });
+      return;
+    }
+    const state = activeDockingSceneVisibilityState;
+    if (!dockingSceneVisibilityStateStillLoaded(viewer, state)) return;
+    state.key = dockingSceneStateKey(prepared, configuredMolstarStyle(activeConfig));
+    state.poseStyles.fill('');
+    state.visible = null;
+    const activePose = readTrajectoryControlIndex(activeConfig, prepared, Number(prepared.poseCount || 0) || 1);
+    await applyDockingSceneVisibility(viewer, prepared, activePose, { focus: false });
+  }
+
+  // `activeIndex` null shows every pose.
+  function showDockingScenePoses(viewer, state, activeIndex) {
+    const target = activeIndex == null ? 'all' : activeIndex;
+    if (state.visible === target) return;
+    if (target !== 'all' && typeof state.visible === 'number') {
+      setDockingSceneRefsHidden(viewer, state.poseRefs[state.visible] || [], true);
+      setDockingSceneRefsHidden(viewer, state.poseRefs[target] || [], false);
+    } else {
+      state.poseRefs.forEach((refs, index) => setDockingSceneRefsHidden(viewer, refs, target !== 'all' && index !== target));
+    }
+    state.visible = target;
+  }
+
+  async function applyDockingSceneOverlayPoses(viewer, prepared, activePose, options) {
+    if (typeof viewer.plugin?.state?.data?.updateCellState !== 'function') return false;
     const poses = Array.isArray(prepared.poses) ? prepared.poses : [];
     const activeIndex = Math.max(0, Math.min(poses.length - 1, Math.trunc(Number(activePose) || 0)));
     if (!poses[activeIndex]) return false;
     const style = configuredMolstarStyle(activeConfig);
-    const stateKey = dockingSceneStateKey(prepared, style);
-    let state = activeDockingSceneVisibilityState;
-    let rebuilt = false;
-    if (!state || state.key !== stateKey || !dockingSceneVisibilityStateStillLoaded(viewer, state)) {
-      resetXyzFrameOverlayState(viewer);
-      resetSdfCollectionVisibilityState(viewer);
-      resetDockingPoseCollectionState(viewer);
-      resetDockingSceneVisibilityState(viewer);
-      if (typeof plugin.clear === 'function') await plugin.clear();
-      const poseRefs = [];
-      for (const entry of poses) {
-        const before = molstarStructureCellRefs(viewer);
-        await loadMolstarEntry(viewer, entry);
-        poseRefs.push(Array.from(molstarStructureCellRefs(viewer)).filter(ref => !before.has(ref)));
-      }
-      if (!poseRefs.every(refs => refs.length)) {
-        activeDockingSceneVisibilityState = null;
-        return false;
-      }
-      await applyMolstarStyle(viewer, style);
-      await applyMolstarWaterLineRepresentation(viewer);
-      state = { viewer, key: stateKey, poseRefs, activeIndex: -1 };
-      activeDockingSceneVisibilityState = state;
-      rebuilt = true;
-    }
-    if (state.activeIndex !== activeIndex) {
-      if (state.activeIndex < 0) {
-        state.poseRefs.forEach((refs, index) => setDockingSceneRefsHidden(viewer, refs, index !== activeIndex));
-      } else {
-        setDockingSceneRefsHidden(viewer, state.poseRefs[state.activeIndex] || [], true);
-        setDockingSceneRefsHidden(viewer, state.poseRefs[activeIndex] || [], false);
-      }
-      state.activeIndex = activeIndex;
-    }
+    const resolvedContextStyle = dockingSceneBackgroundStyle(readSdfCollectionContextStyle(activeConfig), style);
+    const uniform = resolvedContextStyle === 'default' || resolvedContextStyle === 'illustrative';
+    const ensured = await ensureDockingSceneState(viewer, prepared, style,
+      uniform && Boolean(activeDockingSceneVisibilityState?.poseStyles?.some(Boolean)));
+    if (!ensured) return false;
+    const { state, rebuilt } = ensured;
+    const contextOpacity = readSdfCollectionContextOpacity(activeConfig);
+    const contextColor = readSdfCollectionContextColor(activeConfig);
+    const backdropKey = uniform ? '' : [resolvedContextStyle, contextOpacity, contextColor].join('|');
+    await styleDockingScenePoses(viewer, state, poses.map((_, index) => index === activeIndex ? '' : backdropKey),
+      { style, resolvedContextStyle, contextOpacity, contextColor });
+    showDockingScenePoses(viewer, state, null);
+    state.activeIndex = activeIndex;
+    updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
+    if (rebuilt || options.focus === true) scheduleMolstarStructureFocus(viewer, { reason: 'docking-scene', durationMs: 180 });
+    return true;
+  }
+
+  async function applyDockingSceneSinglePose(viewer, prepared, activePose, options) {
+    if (typeof viewer.plugin?.state?.data?.updateCellState !== 'function') return false;
+    const poses = Array.isArray(prepared.poses) ? prepared.poses : [];
+    const activeIndex = Math.max(0, Math.min(poses.length - 1, Math.trunc(Number(activePose) || 0)));
+    if (!poses[activeIndex]) return false;
+    const style = configuredMolstarStyle(activeConfig);
+    const ensured = await ensureDockingSceneState(viewer, prepared, style,
+      Boolean(activeDockingSceneVisibilityState?.poseStyles?.[activeIndex]));
+    if (!ensured) return false;
+    const { state, rebuilt } = ensured;
+    const wanted = [];
+    wanted[activeIndex] = '';
+    await styleDockingScenePoses(viewer, state, wanted, { style });
+    showDockingScenePoses(viewer, state, activeIndex);
+    state.activeIndex = activeIndex;
     updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
     if (rebuilt || options.focus === true) scheduleMolstarStructureFocus(viewer, { reason: 'docking-scene', durationMs: 180 });
     return true;
@@ -16554,21 +17729,37 @@ SOFTWARE.
       .filter(structure => !before.has(structure?.cell?.transform?.ref));
   }
 
-  async function applySdfCollectionMolstarStyle(viewer, style, structures = null, alpha = 1, colorMode = 'gray') {
-    const normalized = normalizeMolstarStyle(style);
+  async function applySdfCollectionMolstarStyle(viewer, style, structures = null, alpha = 1, colorMode = 'gray', signal) {
+    await applySdfCollectionMolstarRepresentations(viewer, style, structures, alpha, colorMode, signal);
+    signal?.throwIfAborted();
+    // Pose replacement changes geometry, not the separately chosen appearance.
+    await applyMolstarAppearance(viewer, configuredMolstarAppearance(activeConfig || window.BuretteConfig || {}));
+  }
+
+  // Appearance options update every component in the scene, so callers adding
+  // many layers style each one here and apply the appearance once afterwards.
+  async function applySdfCollectionMolstarRepresentations(viewer, style, structures = null, alpha = 1, colorMode = 'gray', signal) {
     const targets = Array.isArray(structures) && structures.length ? structures : Array.from(molstarCurrentStructures(viewer));
-    if (normalized === 'default' || normalized === 'illustrative' || normalized === 'cartoon' || normalized === 'polymer-ligand') {
-      await applyMolstarPolymerLigandRepresentationToStructures(
-        viewer,
-        targets,
-        sdfCollectionCartoonRepresentation(alpha),
-        sdfCollectionLigandRepresentationForStyle(normalized, alpha, colorMode)
-      );
+    const representations = sdfCollectionRepresentationPlan(style, alpha, colorMode);
+    if (representations.length === 1) {
+      await applyMolstarRepresentationsToStructures(viewer, targets, representations[0], signal);
+    } else if (activeMolstarPrepared?.kind === 'sdf-collection' && targets.every(target => target.cell?.obj?.data?.polymerResidueCount === 0)) {
+      // SDF collection entries with no polymer use the ligand style throughout;
+      // retain their whole-molecule component when entering/leaving Match.
+      await applyMolstarRepresentationsToStructures(viewer, targets, representations[1], signal);
     } else {
-      await applyMolstarRepresentationsToStructures(viewer, targets, sdfCollectionRepresentationForStyle(normalized, alpha, colorMode));
+      await applyMolstarPolymerLigandRepresentationToStructures(viewer, targets, ...representations, signal);
     }
-    if (normalized === 'illustrative') await applyMolstarIllustrativePostprocessing(viewer);
-    else await applyMolstarNonIllustrativePostprocessing(viewer);
+  }
+
+  // Polymer styles use a polymer representation (role 0) and a ligand one
+  // (role 1); every other style draws the whole structure with role 0.
+  function sdfCollectionRepresentationPlan(style, alpha = 1, colorMode = 'gray') {
+    const normalized = normalizeMolstarStyle(style);
+    if (normalized === 'default' || normalized === 'illustrative' || normalized === 'cartoon' || normalized === 'polymer-ligand') {
+      return [sdfCollectionCartoonRepresentation(alpha), sdfCollectionLigandRepresentationForStyle(normalized, alpha, colorMode)];
+    }
+    return [sdfCollectionRepresentationForStyle(normalized, alpha, colorMode)];
   }
 
   function sdfCollectionAlphaHelpers(alpha = 1, colorMode = 'gray', minAlpha = 0.04) {
@@ -16577,10 +17768,14 @@ SOFTWARE.
       const value = Number(alpha);
       return ghost ? { ...params, alpha: Math.max(minAlpha, Math.min(value, 1)), transparentBackfaces: 'on' } : params;
     };
-    const color = normalizeSdfCollectionContextColor(colorMode) === 'colored' ? 'element-symbol' : 'uniform';
+    // A number is an explicit carbon tint; references keep a fixed one.
+    const carbon = colorMode === 'reference' ? DOCKING_REFERENCE_CARBON_COLOR : Number.isFinite(colorMode) ? colorMode : null;
+    const color = carbon !== null || normalizeSdfCollectionContextColor(colorMode) === 'colored' ? 'element-symbol' : 'uniform';
     const colorParams = color === 'uniform' ? { value: 0x6f7886 } : undefined;
     const themed = (representation) => colorParams ? { ...representation, color, colorParams } : { ...representation, color };
-    return { ghost, withAlpha, themed };
+    if (carbon === null) return { ghost, withAlpha, themed };
+    const carbonParams = { carbonColor: { name: 'uniform', params: { value: carbon } } };
+    return { ghost, withAlpha, themed: (representation) => ({ ...representation, color, colorParams: carbonParams }) };
   }
 
   function sdfCollectionRepresentationForStyle(style, alpha = 1, colorMode = 'gray', minAlpha = 0.04) {
@@ -16591,6 +17786,9 @@ SOFTWARE.
     }
     if (normalized === 'spacefill') {
       return themed({ type: 'spacefill', typeParams: withAlpha({ sizeFactor: ghost ? 0.28 : 0.45 }) });
+    }
+    if (normalized === 'blob-surface') {
+      return themed({ type: 'blob-surface', typeParams: withAlpha({}) });
     }
     if (normalized === 'molecular-surface') {
       // A translucent background surface over a whole collection is re-sorted
@@ -16619,52 +17817,125 @@ SOFTWARE.
     });
   }
 
+  // Representations this viewer built per collection structure, each tagged
+  // with the index (`role`) of the style it was built from. An opacity or
+  // colour change restyles them in bounded state updates instead of removing
+  // and rebuilding every structure's geometry.
   const collectionRepresentations = new WeakMap();
-  async function applyMolstarRepresentationsToStructures(viewer, structures, representation) {
+  async function updateCollectionRepresentations(plugin, structures, representations, signal) {
+    const state = plugin.state.data;
+    const cached = (structures || []).map(structure => collectionRepresentations.get(structure.cell));
+    const reusable = cached.length > 0 && cached.every(entries => entries?.layout === representations.length && entries.length && entries.every(entry =>
+      representations[entry.role] && state.cells.has(entry.ref)
+    ));
+    if (!reusable) return false;
+    const { registry, themes } = plugin.representation.structure;
+    const entries = cached.flat();
+    // Bound each commit: Mol* tasks for these small molecules can otherwise
+    // complete entirely in microtasks, starving pointer and tab events.
+    const batchSize = entries.some(entry => entry.type !== representations[entry.role].type) ? 8 : 32;
+    for (let offset = 0; offset < entries.length; offset += batchSize) {
+      signal?.throwIfAborted();
+      const update = state.build();
+      const batch = entries.slice(offset, offset + batchSize);
+      for (const entry of batch) {
+        const representation = molstarHydrogenRepresentation(representations[entry.role]);
+        const provider = registry.get(representation.type);
+        const defaults = entry.type === representation.type ? entry.defaults : provider.defaultValues;
+        const color = themes.colorThemeRegistry.get(representation.color);
+        const size = themes.sizeThemeRegistry.get(provider.defaultSizeTheme.name);
+        update.to(entry.ref).update(old => ({ ...old,
+          type: { name: representation.type, params: {
+            ...defaults,
+            ...Object.fromEntries(['ignoreLight', 'ignoreHydrogens', 'ignoreHydrogensVariant', 'quality', 'material', 'clip', 'interior', 'animation']
+              .filter(key => key in old.type.params).map(key => [key, old.type.params[key]])),
+            ...representation.typeParams
+          } },
+          colorTheme: { name: color.name, params: { ...color.defaultValues, ...representation.colorParams } },
+          sizeTheme: { name: size.name, params: { ...size.defaultValues, ...provider.defaultSizeTheme.props } }
+        }));
+      }
+      await update.commit();
+      for (const entry of batch) {
+        const representation = representations[entry.role];
+        if (entry.type !== representation.type) {
+          entry.defaults = { ...registry.get(representation.type).defaultValues };
+          entry.type = representation.type;
+        }
+      }
+      if (offset + batchSize < entries.length) await new Promise(resolve => setTimeout(resolve, 0));
+    }
+    return true;
+  }
+
+  async function addCollectionRepresentation(plugin, structure, component, representation, role) {
+    if (!component) return false;
+    const result = await plugin.builders.structure.representation.addRepresentation(component.cell || component, molstarHydrogenRepresentation(representation));
+    if (!result) throw new Error('Mol* could not build this representation.');
+    if (result.ref && structure.cell) recordCollectionRepresentation(plugin, structure.cell, result.ref, representation, role);
+    return true;
+  }
+
+  function recordCollectionRepresentation(plugin, structureCell, ref, representation, role) {
+    const params = plugin.state.data.cells.get(ref)?.transform?.params?.type?.params || {};
+    const entries = collectionRepresentations.get(structureCell) || [];
+    entries.push({ ref, role, type: representation.type,
+      defaults: { ...params, alpha: 1, transparentBackfaces: 'off' } });
+    collectionRepresentations.set(structureCell, entries);
+  }
+
+  async function clearCollectionRepresentations(viewer, structures) {
+    await clearMolstarMainRepresentationsForStructures(viewer, structures);
+    for (const structure of structures || []) {
+      if (structure.cell) collectionRepresentations.delete(structure.cell);
+    }
+  }
+
+  async function applyMolstarRepresentationsToStructures(viewer, structures, representation, signal) {
     const plugin = viewer?.plugin;
     if (!plugin) return;
-    const state = plugin.state.data;
-    const reusable = (structures || []).map(structure => collectionRepresentations.get(structure.cell));
-    if (reusable.length && reusable.every(entry => entry && state.cells.has(entry.ref)
-        && entry.type === representation.type && entry.color === representation.color)) {
-      const update = state.build();
-      for (const entry of reusable) update.to(entry.ref).update(old => ({ ...old,
-        type: { ...old.type, params: { ...entry.defaults, ...representation.typeParams } },
-        colorTheme: { ...old.colorTheme, params: { ...old.colorTheme.params, ...representation.colorParams } }
-      }));
-      await update.commit();
-      return;
-    }
-    await clearMolstarMainRepresentationsForStructures(viewer, structures);
+    signal?.throwIfAborted();
+    if (await updateCollectionRepresentations(plugin, structures, [representation], signal)) return;
+    await clearCollectionRepresentations(viewer, structures);
     let created = 0;
     for (const structure of structures || []) {
+      signal?.throwIfAborted();
       const component = await tryCreateMolstarComponent(plugin, structure, 'all');
-      if (!component) continue;
-      const result = await plugin.builders.structure.representation.addRepresentation(component.cell || component, representation);
-      if (result?.ref && structure.cell) {
-        const params = state.cells.get(result.ref)?.transform?.params?.type?.params || {};
-        collectionRepresentations.set(structure.cell, { ref: result.ref, type: representation.type,
-          color: representation.color, defaults: { ...params, alpha: 1, transparentBackfaces: 'off' } });
+      if (!await addCollectionRepresentation(plugin, structure, component, representation, 0)) {
+        throw new Error('Mol* could not create a component for this style.');
       }
-      if (result) created += 1;
+      const entries = collectionRepresentations.get(structure.cell);
+      if (entries) entries.layout = 1;
+      created += 1;
+      if (created % 4 === 0) await new Promise(resolve => setTimeout(resolve, 0));
     }
     if (created === 0) throw new Error('Mol* could not create a component for this style.');
   }
 
-  async function applyMolstarPolymerLigandRepresentationToStructures(viewer, structures, polymerRepresentation, ligandRepresentation) {
+  async function applyMolstarPolymerLigandRepresentationToStructures(viewer, structures, polymerRepresentation, ligandRepresentation, signal) {
     const plugin = viewer?.plugin;
     if (!plugin) return;
-    await clearMolstarMainRepresentationsForStructures(viewer, structures);
-    let created = 0;
+    signal?.throwIfAborted();
+    if (await updateCollectionRepresentations(plugin, structures, [polymerRepresentation, ligandRepresentation], signal)) return;
+    await clearCollectionRepresentations(viewer, structures);
+    let processed = 0;
     for (const structure of structures || []) {
+      signal?.throwIfAborted();
+      let created = 0;
       const polymer = await tryCreateMolstarComponent(plugin, structure, 'polymer');
-      if (await addMolstarRepresentation(plugin, polymer, polymerRepresentation)) created += 1;
+      if (await addCollectionRepresentation(plugin, structure, polymer, polymerRepresentation, 0)) created += 1;
       for (const kind of ['ligand', 'ion']) {
         const component = await tryCreateMolstarComponent(plugin, structure, kind);
-        if (await addMolstarRepresentation(plugin, component, ligandRepresentation)) created += 1;
+        if (await addCollectionRepresentation(plugin, structure, component, ligandRepresentation, 1)) created += 1;
       }
+      if (created === 0) {
+        await applyMolstarRepresentationsToStructures(viewer, [structure], ligandRepresentation, signal);
+        for (const entry of collectionRepresentations.get(structure.cell) || []) entry.role = 1;
+      }
+      const entries = collectionRepresentations.get(structure.cell);
+      if (entries) entries.layout = 2;
+      if (++processed % 4 === 0) await new Promise(resolve => setTimeout(resolve, 0));
     }
-    if (created === 0) await applyMolstarRepresentationsToStructures(viewer, structures, ligandRepresentation);
   }
 
   async function clearMolstarMainRepresentationsForStructures(viewer, structures) {
@@ -16698,7 +17969,7 @@ SOFTWARE.
   async function addMolstarRepresentation(plugin, component, representation) {
     if (!component) return false;
     try {
-      await plugin.builders.structure.representation.addRepresentation(component.cell || component, representation);
+      await plugin.builders.structure.representation.addRepresentation(component.cell || component, molstarHydrogenRepresentation(representation));
       return true;
     } catch (error) {
       debug('Mol* representation failed: ' + (error && error.message || String(error)));
@@ -17280,7 +18551,7 @@ SOFTWARE.
     }
     const edit = operation === 'edit' ? action.edit : null;
     if (operation === 'edit' && !(edit && (
-      (edit.operation === 'representation' && ['cartoon', 'backbone', 'ball-and-stick', 'spacefill', 'line', 'molecular-surface'].includes(edit.value))
+      (edit.operation === 'representation' && ['cartoon', 'backbone', 'ball-and-stick', 'spacefill', 'line', 'molecular-surface', 'blob-surface'].includes(edit.value))
       || (edit.operation === 'opacity' && Number.isFinite(edit.value) && edit.value >= 0 && edit.value <= 1)
       || (edit.operation === 'color' && /^#[0-9a-f]{6}$/i.test(edit.value))
     ))) return sceneActionFailure(command, 'INVALID_ARGUMENT', 'Unsupported component edit.');
@@ -17756,6 +19027,8 @@ SOFTWARE.
     ));
     // Retain Mol*'s single-block CCD handling when no coordinate block is present.
     if (indices.length === 0) indices.push(0);
+    if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
+    window.BuretteSceneFiles.checkTrajectoryCount(indices.length);
     const trajectories = [];
     for (const blockIndex of indices) {
       const trajectory = await plugin.state.data.build().to(cif)
@@ -17784,6 +19057,30 @@ SOFTWARE.
   }
 
   async function loadPreparedStructure(viewer, prepared) {
+    if (prepared.kind === 'session') {
+      activeMolstarPrepared = prepared;
+      activeDockingPrepared = null;
+      let snapshot;
+      if (prepared.format === 'molx') {
+        const manager = viewer.plugin.managers.snapshot;
+        await manager.open(new File([prepared.data], 'scene.molx'));
+        snapshot = manager.getEntry(manager.state.current)?.snapshot;
+      } else {
+        const session = JSON.parse(prepared.data);
+        prepared.fitSessionCamera = session.burettePreview === true;
+        snapshot = await viewer.plugin.managers.snapshot.setStateSnapshot(session);
+      }
+      prepared.hasSessionCamera = Number(snapshot?.camera?.current?.radius) > 0;
+      if (!prepared.hasSessionCamera) viewer.plugin.managers.camera.reset();
+      const trajectory = nativeTrajectoryModelTransform();
+      const position = trajectory?.frameCount > 1 ? readNativeTrajectoryPosition(trajectory.frameCount) : null;
+      prepared.poseCount = position?.total || 0;
+      prepared.activePose = position?.index || 0;
+      prepared.nativeTrajectoryControls = Boolean(position);
+      prepared.controlLabel = 'Frame';
+      installDockingPoseControls(viewer, position ? prepared : null);
+      return;
+    }
     cancelScheduledMolstarWaterRepresentation();
     activeMolstarPrepared = prepared;
     updateSdfPoseButton(prepared);
@@ -17798,7 +19095,7 @@ SOFTWARE.
       return;
     }
     if (prepared.kind === 'docking') {
-      await loadDockingPreparedStructure(viewer, prepared);
+      await withMolstarDrawHold(viewer, () => loadDockingPreparedStructure(viewer, prepared));
       return;
     }
     if (prepared.kind === 'mvs') {
@@ -17852,48 +19149,37 @@ SOFTWARE.
       await applyXyzFrameOverlayVisibilityNow(viewer, prepared, readTrajectoryControlIndex(activeConfig, prepared, prepared.poseCount || prepared.xyzFrameCount));
       return;
     }
-    if (prepared.loadPreset === 'all-models') {
-      const plugin = viewer.plugin;
-      const data = await plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
-      for (const trajectory of await parseMolstarStructureTrajectories(plugin, data, prepared.format)) {
-        await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'all-models', {
-          useDefaultIfSingleModel: activeConfig?.hostedMcpWidgetBootstrap !== true
-        });
-      }
+    if (prepared.loadPreset === 'all-models' || prepared.loadPreset === 'preset-trajectory-all-models') {
+      await loadMolstarEntry(viewer, prepared, {
+        useDefaultIfSingleModel: activeConfig?.hostedMcpWidgetBootstrap !== true
+      });
       if (prepared.keepDefaultMolstarStyle !== true) await applyMolstarStyle(viewer, prepared.molstarStyleOverride || configuredMolstarStyle(activeConfig));
       await applyMolstarWaterLineRepresentation(viewer);
       installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
       return;
     }
-    const plugin = viewer.plugin;
     if (activeConfig?.hostedMcpWidgetBootstrap !== true && prepared.format !== 'mmcif' && prepared.keepDefaultMolstarStyle === true && typeof viewer.loadStructureFromData === 'function') {
       await viewer.loadStructureFromData(prepared.data, prepared.format, { dataLabel: prepared.label });
       installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
       return;
     }
-    const data = await plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
-    for (const trajectory of await parseMolstarStructureTrajectories(plugin, data, prepared.format)) {
-      // Hosted counts and author-residue selectors describe the supplied
-      // coordinates, not automatically generated biological-assembly copies.
-      const presetOptions = activeConfig?.hostedMcpWidgetBootstrap === true
-        ? { structure: { name: 'model', params: {} } } : undefined;
-      await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default', presetOptions);
-    }
+    // Hosted counts and author-residue selectors describe the supplied
+    // coordinates, not automatically generated biological-assembly copies.
+    const presetOptions = activeConfig?.hostedMcpWidgetBootstrap === true
+      ? { structure: { name: 'model', params: {} } } : undefined;
+    await loadMolstarEntry(viewer, { ...prepared, loadPreset: 'default' }, presetOptions);
     if (prepared.keepDefaultMolstarStyle !== true) await applyMolstarStyle(viewer, prepared.molstarStyleOverride || configuredMolstarStyle(activeConfig));
     await applyMolstarWaterLineRepresentation(viewer);
     installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
   }
 
-  async function loadMolstarEntry(viewer, entry, presetOptions = undefined) {
-    const plugin = viewer.plugin;
+  async function loadMolstarEntry(viewer, entry, presetOptions = undefined, appendOwner = undefined) {
     const normalized = normalizeFormat(entry.format);
     const payload = normalized === 'cifCore'
       ? { data: coreCifToPdb(entry.data), format: 'pdb' }
       : { data: entry.data, format: normalized };
-    const data = await plugin.builders.data.rawData({ data: payload.data, label: entry.label });
-    for (const trajectory of await parseMolstarStructureTrajectories(plugin, data, payload.format)) {
-      await plugin.builders.structure.hierarchy.applyPreset(trajectory, entry.loadPreset || 'default', presetOptions);
-    }
+    if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
+    await window.BuretteSceneFiles.loadModels(viewer, { ...entry, ...payload }, parseMolstarStructureTrajectories, presetOptions, appendOwner);
   }
 
   async function loadMolstarEntryWithStructureRefs(viewer, entry, presetOptions = undefined) {
@@ -17931,6 +19217,14 @@ SOFTWARE.
   }
 
   async function loadDockingTrajectoryPair(viewer, pair, options = {}) {
+    if (pair.coordinateEntry.indexedTrajectory) {
+      const indexed = window.molstar?.BuretteIndexedTrajectory;
+      if (!indexed) throw new Error('File-backed trajectory support is unavailable in this runtime.');
+      const segmentIndex = pair.coordinateEntry.segmentIndex;
+      await indexed.load(viewer, pair, options, (frame, signal, validateOnly) => requestTrajectoryFrameFromNative(frame, segmentIndex, signal, validateOnly));
+      if (pair.synthetic) await applyMolstarUniformRepresentation(viewer, molstarDerivedTopologyRepresentation());
+      return !!options.representationPreset;
+    }
     if (typeof viewer.loadTrajectory !== 'function') {
       throw new Error('Mol* trajectory pairing is unavailable in this viewer runtime.');
     }
@@ -18160,7 +19454,8 @@ SOFTWARE.
     }
     for (const entry of prepared.entries) {
       if (isDockingTrajectoryPairEntry(entry, prepared.trajectoryPair)) continue;
-      await loadMolstarEntry(viewer, entry);
+      const structures = await loadMolstarEntryWithStructureRefs(viewer, entry);
+      if (entry === prepared.poses?.[prepared.activePose]) prepared.activeLigandRefs = molstarStructureRefsOf(structures);
     }
     // A derived topology has coordinates but no chemical identity. Keep its
     // point representation intact instead of applying chemistry-dependent
@@ -18292,7 +19587,6 @@ SOFTWARE.
       : entries.filter(entry => entry !== reference).map(entry => entry.id);
     const moving = movingIds.map(id => superpositionEntry(entries, id)).filter(Boolean).filter(entry => entry !== reference);
     if (!moving.length) throw new Error('Choose at least one moving structure.');
-    if (moving.length > 8) throw new Error('Interactive superposition supports at most eight moving structures at a time.');
     return { reference, moving, ordered: [reference, ...moving] };
   }
 
@@ -18370,6 +19664,55 @@ SOFTWARE.
         };
       }),
       warnings: [],
+    };
+  }
+
+  // Plans every moving structure on its own so one structure without a usable
+  // chain (a ligand-only file, an unrelated protein) no longer blocks aligning
+  // the rest. Automatic requests also fall back to Mol* chain alignment and
+  // TM-align before a structure is skipped.
+  async function bestEffortSuperpositionPlan(entries, request, prepared) {
+    const selected = selectedSuperpositionEntries(entries, request);
+    const method = String(request.method || 'auto');
+    const attempts = method === 'auto' ? ['auto', 'chains', 'tm-align'] : [method];
+    const plans = [];
+    const skipped = [];
+    let lastYield = performance.now();
+    for (const moving of selected.moving) {
+      // Each structure is planned synchronously; hand the thread back between
+      // slow ones so input and the busy ring stay alive on a large scene.
+      if (performance.now() - lastYield > 30) {
+        await new Promise(resolve => window.setTimeout(resolve, 0));
+        lastYield = performance.now();
+      }
+      let lastError = null;
+      for (const attempt of attempts) {
+        try {
+          const plan = nativeSuperpositionPlan(entries, { ...request, method: attempt, movingIds: [moving.id] }, prepared);
+          if (!plan.pairs.length) throw new Error(`No transform was produced for ${moving.label}.`);
+          plans.push(plan);
+          lastError = null;
+          break;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      if (lastError) skipped.push(`${moving.label}: ${lastError?.message || String(lastError)}`);
+    }
+    if (!plans.length) throw new Error(skipped.join('\n'));
+    const methods = new Set(plans.map(plan => plan.method));
+    const methodLabels = new Set(plans.map(plan => plan.methodLabel));
+    return {
+      method: methods.size === 1 ? plans[0].method : method,
+      methodLabel: methodLabels.size === 1 ? plans[0].methodLabel : 'Automatic',
+      referenceIndex: selected.reference.poseIndex,
+      referenceLabel: selected.reference.label,
+      pairs: plans.flatMap(plan => plan.pairs),
+      warnings: [
+        ...plans.flatMap(plan => plan.warnings || []),
+        ...skipped.map(reason => `Skipped ${reason}`),
+      ],
+      skippedCount: skipped.length,
     };
   }
 
@@ -18511,6 +19854,7 @@ SOFTWARE.
     };
 
     const setBusy = value => {
+      if (Boolean(value) !== busy) (value ? beginMolstarBusy : endMolstarBusy)();
       busy = Boolean(value);
       panel?.setBusy(busy);
       sync();
@@ -18624,15 +19968,17 @@ SOFTWARE.
     const apply = async (request = {}) => {
       setBusy(true);
       try {
+        await nextMolstarPaint();
         await ensureEntries();
-        const plan = nativeSuperpositionPlan(entries, request, prepared);
+        const plan = await bestEffortSuperpositionPlan(entries, request, prepared);
         const undo = captureMolstarSceneUndoSnapshot(`superposition by ${plan.methodLabel}`);
         await commitSuperpositionPlan(viewer, entries, plan);
         result = plan;
         if (undo) pushMolstarEditUndoSnapshot(undo);
         sync();
         const averageRmsd = plan.pairs.reduce((sum, pair) => sum + Number(pair.rmsdAngstrom || 0), 0) / Math.max(1, plan.pairs.length);
-        setStatus(`[web] ${plan.methodLabel}: aligned ${plan.pairs.length} structure${plan.pairs.length === 1 ? '' : 's'} to ${plan.referenceLabel} (average RMSD ${averageRmsd.toFixed(2)} Å).`);
+        const skipped = plan.skippedCount ? ` Skipped ${plan.skippedCount} that could not be aligned.` : '';
+        setStatus(`[web] ${plan.methodLabel}: aligned ${plan.pairs.length} structure${plan.pairs.length === 1 ? '' : 's'} to ${plan.referenceLabel} (average RMSD ${averageRmsd.toFixed(2)} Å).${skipped}`);
         setTimeout(hideStatus, 2600);
         return plan;
       } catch (error) {
@@ -18661,7 +20007,10 @@ SOFTWARE.
       }
     };
 
-    const restoreAfterSceneReload = async () => {
+    const restoreAfterSceneReload = async (targetViewer = viewer, targetPrepared = prepared) => {
+      // A new scene can load before its controls replace the previous ones.
+      // Never carry an old alignment into another viewer or prepared scene.
+      if (targetViewer !== viewer || targetPrepared !== prepared) return false;
       if (!result) return false;
       await refreshEntries();
       await commitSuperpositionPlan(viewer, entries, result);
@@ -18729,10 +20078,16 @@ SOFTWARE.
       if (!isDockingPoseInteractiveTarget(event.target)) return;
       event.stopPropagation();
     };
-    const isolateWheel = (event) => {
-      if (!root.contains(event.target)) return;
+    const isolateContextMenu = (event) => {
+      // Pose rows open their own menus; nothing here exposes WebKit's iframe menu.
       event.preventDefault();
       event.stopPropagation();
+    };
+    const isolateWheel = (event) => {
+      if (!root.contains(event.target)) return;
+      event.stopPropagation();
+      // A long pose list scrolls; the wheel never zooms the scene behind it.
+      if (!(event.target instanceof Element && event.target.closest('.buret-docking-pose-files'))) event.preventDefault();
     };
     const isolateKeys = (event) => {
       if (!isDockingPoseInteractiveTarget(event.target)) return;
@@ -18743,11 +20098,13 @@ SOFTWARE.
     };
     const pointerEvents = ['pointerdown', 'pointerup', 'pointercancel', 'mousedown', 'mouseup', 'click', 'dblclick', 'touchstart', 'touchmove', 'touchend'];
     pointerEvents.forEach(eventName => root.addEventListener(eventName, isolatePointer));
+    root.addEventListener('contextmenu', isolateContextMenu);
     root.addEventListener('wheel', isolateWheel, { passive: false });
     root.addEventListener('keydown', isolateKeys);
     root.addEventListener('keyup', isolateKeys);
     return () => {
       pointerEvents.forEach(eventName => root.removeEventListener(eventName, isolatePointer));
+      root.removeEventListener('contextmenu', isolateContextMenu);
       root.removeEventListener('wheel', isolateWheel);
       root.removeEventListener('keydown', isolateKeys);
       root.removeEventListener('keyup', isolateKeys);
@@ -18788,10 +20145,13 @@ SOFTWARE.
     const clearedRight = viewportRailRect
       ? Math.min(right, Math.floor(viewportRailRect.left - FLOATING_LAYOUT_GAP))
       : right;
+    // The sequence panel pushes the viewport down; the controls stay inside the
+    // viewport instead of covering the sequence header.
+    const viewportTop = mainRect ? Math.max(margin, Math.ceil(mainRect.top + margin)) : margin;
     return {
       left: clearedLeft,
       right: Math.max(clearedLeft, clearedRight),
-      top: margin,
+      top: viewportTop,
       bottom: window.innerHeight - margin
     };
   }
@@ -18816,6 +20176,34 @@ SOFTWARE.
     root.style.top = clampedTop + 'px';
     root.style.right = 'auto';
     root.style.bottom = 'auto';
+    syncSceneTreeClearance(root);
+  }
+
+  // The scene tree opens under the corner toggle. When the pose controls share
+  // that column (a narrow viewport, or the playback row reaching down), the tree
+  // starts below them. Size changes follow frame by frame, so the tree moves
+  // with the controls as their playback row opens or closes.
+  let sceneTreeClearanceRoot = null;
+  const sceneTreeClearanceObserver = typeof ResizeObserver === 'function'
+    ? new ResizeObserver(() => syncSceneTreeClearance(sceneTreeClearanceRoot))
+    : null;
+  function syncSceneTreeClearance(root) {
+    if (root !== sceneTreeClearanceRoot) {
+      sceneTreeClearanceObserver?.disconnect();
+      sceneTreeClearanceRoot = root;
+      if (root) sceneTreeClearanceObserver?.observe(root);
+    }
+    const corner = visibleRect('#buret-viewport-corner');
+    const rect = root?.isConnected ? root.getBoundingClientRect() : null;
+    let clearance = 0;
+    if (corner && rect?.width) {
+      const treeTop = corner.bottom + FLOATING_LAYOUT_GAP;
+      const treeRight = corner.left + (document.getElementById('buret-scene-tree')?.offsetWidth || 272);
+      const sharesColumn = rect.left < treeRight && rect.right > corner.left;
+      const reachesTree = rect.top < treeTop + FLOATING_LAYOUT_GAP && rect.bottom + FLOATING_LAYOUT_GAP > treeTop;
+      if (sharesColumn && reachesTree) clearance = Math.ceil(rect.bottom + FLOATING_LAYOUT_GAP - treeTop);
+    }
+    document.documentElement.style.setProperty('--buret-scene-tree-clearance', `${clearance}px`);
   }
 
   function saveDockingPoseControlsPosition(root) {
@@ -19138,6 +20526,38 @@ SOFTWARE.
     return () => subscription?.unsubscribe?.();
   }
 
+  function notifyChemicalSpaceMolecule(index) {
+    const prepared = activeMolstarPrepared;
+    if (!prepared || !(prepared.kind === 'docking' || prepared.sdfPoseRecordCount > 0)) return;
+    const activePose = index ?? readTrajectoryControlIndex(activeConfig, prepared, prepared.poseCount || 1);
+    const pose = prepared.kind === 'docking' ? prepared.poses?.[activePose] : null;
+    postHostMessage({
+      type: 'chemicalSpaceMoleculeChanged',
+      sourcePath: pose?.sourcePath || activeConfig?.sourcePath || '',
+      sourceRecordId: pose?.poseIndex ?? activePose,
+    });
+  }
+
+  async function focusChemicalSpaceMolecule(body) {
+    const prepared = activeMolstarPrepared;
+    const sourceRecordId = body.sourceRecordId;
+    if (!Number.isSafeInteger(sourceRecordId) || sourceRecordId < 0 || !prepared) return;
+    const index = prepared.kind === 'docking'
+      ? prepared.poses.findIndex(pose => pose.sourcePath === body.sourcePath
+        && (pose.poseIndex ?? 0) === sourceRecordId)
+      : prepared.sdfPoseRecordCount > 0 && activeConfig?.sourcePath === body.sourcePath
+        ? sourceRecordId : -1;
+    if (index < 0 || index >= prepared.poseCount) return;
+    if (prepared.poseCount === 1) {
+      notifyChemicalSpaceMolecule(0);
+      return;
+    }
+    if (!activeStructurePoseSetter) return;
+    setSdfPoseMode('single');
+    notifyStructureOverlayModeChanged(prepared);
+    await activeStructurePoseSetter(index);
+  }
+
   function notifyDockingPoseChanged(activePose, prepared) {
     if (prepared?.kind !== 'docking') return;
     const poses = Array.isArray(prepared?.poses) ? prepared.poses : [];
@@ -19146,6 +20566,7 @@ SOFTWARE.
     postHostMessage({
       type: 'dockingPoseChanged',
       activePose: index,
+      sourceRecordId: pose?.poseIndex ?? index,
       poseCount: poses.length,
       poseMode: activeSdfPoseMode === 'all' ? 'all' : 'single',
       sourcePath: pose?.sourcePath || ''
@@ -19168,7 +20589,7 @@ SOFTWARE.
       if (activeSdfCollectionPoseSetter) {
         await activeSdfCollectionPoseSetter(index);
       } else {
-        try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(index)); } catch (_) {}
+        writeTrajectoryControlIndex(activeConfig, prepared, index);
         await applySdfCollectionVisibility(activeViewer, prepared, index);
       }
       return {
@@ -19334,6 +20755,29 @@ SOFTWARE.
     }
   }
 
+  // The first model of a multi-model PDB or the first frame of an XYZ file: the
+  // topology a binary smoothing result is replayed over. Atom order is the file's
+  // own, which is also the order the coordinates were written in.
+  function trajectorySmoothingTopologyEntry(prepared) {
+    const format = String(prepared.format || '').toLowerCase();
+    if (typeof prepared.data !== 'string' || (format !== 'pdb' && format !== 'xyz')) return null;
+    let data = prepared.data;
+    if (format === 'pdb') {
+      const end = data.indexOf('\nENDMDL');
+      if (end >= 0) data = `${data.slice(0, end)}\nENDMDL\nEND\n`;
+    } else {
+      const atomCount = Math.trunc(Number(data.slice(0, data.indexOf('\n')).trim()));
+      if (!(atomCount > 0)) return null;
+      let end = -1;
+      for (let line = 0; line < atomCount + 2; line += 1) {
+        end = data.indexOf('\n', end + 1);
+        if (end < 0) { end = data.length; break; }
+      }
+      data = `${data.slice(0, end)}\n`;
+    }
+    return { data, format, label: prepared.label || 'Trajectory', sourcePath: prepared.sourcePath || '' };
+  }
+
   async function applyExternalTrajectorySmoothingFromAction(action = {}) {
     const originalPrepared = trajectorySmoothingState?.view === 'smoothed'
       ? trajectorySmoothingState.originalPrepared
@@ -19343,7 +20787,10 @@ SOFTWARE.
     }
     try {
       const binaryCoordinates = action.sourceFormat === 'dcd';
-      if (binaryCoordinates && !originalPrepared.trajectoryPair) {
+      const singleFileTopology = binaryCoordinates && !originalPrepared.trajectoryPair
+        ? trajectorySmoothingTopologyEntry(originalPrepared)
+        : null;
+      if (binaryCoordinates && !originalPrepared.trajectoryPair && !singleFileTopology) {
         throw new Error('Binary smoothing needs the original paired topology.');
       }
       const bytes = await loadPayloadBytes(String(action.sourceUrl));
@@ -19371,7 +20818,16 @@ SOFTWARE.
         trajectorySegments: [],
         smoothingSourcePath: String(action.sourcePath || '')
       };
-      if (binaryCoordinates) {
+      if (singleFileTopology) {
+        const coordinateEntry = { data, format: 'dcd', label: `${singleFileTopology.label} - smoothed`,
+          sourcePath: action.sourcePath || '' };
+        Object.assign(smoothedPrepared, {
+          kind: 'docking', data: originalPrepared.data, format: originalPrepared.format,
+          entries: [singleFileTopology, coordinateEntry],
+          trajectoryPair: { modelEntry: singleFileTopology, modelKind: 'model-data', coordinateEntry,
+            coordinateEntries: [coordinateEntry], trajectorySegments: [], synthetic: false }
+        });
+      } else if (binaryCoordinates) {
         const originalPair = originalPrepared.trajectoryPair;
         const coordinateEntry = { ...originalPair.coordinateEntry, data, format: 'dcd',
           label: `${originalPair.coordinateEntry.label} - smoothed`, sourcePath: action.sourcePath || '' };
@@ -19466,12 +20922,29 @@ SOFTWARE.
     }
   }
 
+  // The inspector keeps its own copy of the background choices and sends its
+  // actions with notify: false. Other callers (agents) change them only here,
+  // so report the full set or the panel shows a stale style.
+  function postSdfCollectionContextChanged() {
+    postHostMessage({
+      type: 'sdfContextChanged',
+      documentId: activeConfig?.documentId || '',
+      style: readSdfCollectionContextStyle(activeConfig),
+      opacity: readSdfCollectionContextOpacity(activeConfig),
+      color: readSdfCollectionContextColor(activeConfig)
+    });
+  }
+
   async function setSdfCollectionContextStyleFromAction(action = {}) {
     const prepared = activeMolstarPrepared;
     if (!activeViewer || (prepared?.kind !== 'sdf-collection' && !prepared?.dockingSceneMode && prepared?.sdfPoseOverlayAvailable !== true && prepared?.xyzFrameOverlayAvailable !== true)) {
       return agentActionFailure('set_sdf_context_style', 'NO_SCENE_CONTEXT', 'The active Mol* viewer does not expose scene background controls.');
     }
-    const style = setSdfCollectionContextStyle(action.style);
+    const requestedStyle = String(action.style || '').trim().toLowerCase();
+    if (normalizeSdfCollectionContextStyle(requestedStyle) !== requestedStyle) {
+      return agentActionFailure('set_sdf_context_style', 'INVALID_STYLE', 'Background style must be line, ball-and-stick, cartoon, spacefill, molecular-surface, blob-surface or match.');
+    }
+    const style = setSdfCollectionContextStyle(requestedStyle);
     try {
       if (prepared.dockingSceneMode) {
         const poseCount = Number(prepared.poseCount || 0);
@@ -19490,6 +20963,7 @@ SOFTWARE.
         const activePose = readTrajectoryControlIndex(activeConfig, prepared, poseCount || 1);
         await applySdfCollectionVisibility(activeViewer, prepared, activePose, { contextStyle: style, focus: false });
       }
+      if (action.notify !== false) postSdfCollectionContextChanged();
       return {
         ok: true,
         command: 'set_sdf_context_style',
@@ -19504,6 +20978,9 @@ SOFTWARE.
     const prepared = activeMolstarPrepared;
     if (!activeViewer || (prepared?.kind !== 'sdf-collection' && !prepared?.dockingSceneMode && prepared?.sdfPoseOverlayAvailable !== true && prepared?.xyzFrameOverlayAvailable !== true)) {
       return agentActionFailure('set_sdf_context_opacity', 'NO_SCENE_CONTEXT', 'The active Mol* viewer does not expose scene background controls.');
+    }
+    if (typeof action.opacity !== 'number' || !Number.isFinite(action.opacity)) {
+      return agentActionFailure('set_sdf_context_opacity', 'INVALID_OPACITY', 'Background opacity must be a number from 0.04 to 1.');
     }
     const opacity = setSdfCollectionContextOpacity(action.opacity);
     try {
@@ -19524,6 +21001,7 @@ SOFTWARE.
         const activePose = readTrajectoryControlIndex(activeConfig, prepared, poseCount || 1);
         await applySdfCollectionVisibility(activeViewer, prepared, activePose, { contextOpacity: opacity, focus: false });
       }
+      if (action.notify !== false) postSdfCollectionContextChanged();
       return {
         ok: true,
         command: 'set_sdf_context_opacity',
@@ -19538,6 +21016,9 @@ SOFTWARE.
     const prepared = activeMolstarPrepared;
     if (!activeViewer || (prepared?.kind !== 'sdf-collection' && !prepared?.dockingSceneMode && prepared?.sdfPoseOverlayAvailable !== true && prepared?.xyzFrameOverlayAvailable !== true)) {
       return agentActionFailure('set_sdf_context_color', 'NO_SCENE_CONTEXT', 'The active Mol* viewer does not expose scene background controls.');
+    }
+    if (action.color !== 'gray' && action.color !== 'colored') {
+      return agentActionFailure('set_sdf_context_color', 'INVALID_COLOR', 'Background color must be gray or colored.');
     }
     const color = setSdfCollectionContextColor(action.color);
     try {
@@ -19558,6 +21039,7 @@ SOFTWARE.
         const activePose = readTrajectoryControlIndex(activeConfig, prepared, poseCount || 1);
         await applySdfCollectionVisibility(activeViewer, prepared, activePose, { contextColor: color, focus: false });
       }
+      if (action.notify !== false) postSdfCollectionContextChanged();
       return {
         ok: true,
         command: 'set_sdf_context_color',
@@ -19595,17 +21077,24 @@ SOFTWARE.
     if (!activeViewer || !Number.isFinite(poseCount) || poseCount <= 0) {
       return agentActionFailure('set_sdf_pose_index', 'NO_POSES', 'The active Mol* viewer has no selectable poses.');
     }
-    const index = Math.trunc(Number(action.index) || 0);
+    const index = action.sourceRecordId == null ? Math.trunc(Number(action.index) || 0)
+      : prepared.kind === 'docking' ? prepared.poses.findIndex(pose => pose.poseIndex === action.sourceRecordId) : -1;
     const outOfRange = agentFrameIndexFailure('set_sdf_pose_index', index, poseCount);
     if (outOfRange) return outOfRange;
+    if (prepared.kind === 'docking' && poseCount === 1 && !prepared.nativeTrajectoryControls) {
+      notifyDockingPoseChanged(0, prepared);
+      return { ok: true, command: 'set_sdf_pose_index', result: { index: 0, poseCount } };
+    }
     try {
       if (activeSdfPoseMode === 'all' && structureOverlayAvailable(prepared)) {
         setSdfPoseMode('single');
         notifyStructureOverlayModeChanged(prepared);
         updateSdfPoseButton(prepared);
       }
-      try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(index)); } catch (_) {}
-      if (prepared.nativeTrajectoryControls && activeSdfPoseMode !== 'all' && !xyzSingleFrameSceneActive(activeViewer)) {
+      writeTrajectoryControlIndex(activeConfig, prepared, index);
+      if (activeStructurePoseSetter) {
+        await activeStructurePoseSetter(index, { throwOnError: true });
+      } else if (prepared.nativeTrajectoryControls && activeSdfPoseMode !== 'all' && !xyzSingleFrameSceneActive(activeViewer)) {
         const switched = await setNativeTrajectoryPose(index, poseCount);
         if (!switched) throw new Error('Mol* trajectory controls are not available.');
       } else if (prepared.xyzFrameOverlayAvailable === true) {
@@ -19617,7 +21106,7 @@ SOFTWARE.
       } else {
         await reloadActiveMolstarStructure();
       }
-      notifyDockingPoseChanged(index, prepared);
+      if (!activeStructurePoseSetter) notifyDockingPoseChanged(index, prepared);
       return {
         ok: true,
         command: 'set_sdf_pose_index',
@@ -19980,6 +21469,7 @@ SOFTWARE.
 
   function installDockingPoseControls(viewer, prepared) {
     document.querySelector('.buret-docking-poses')?.remove();
+    syncSceneTreeClearance(null);
     activeStructureAlignmentControl?.destroy?.();
     if (dockingPoseKeydownDisposer) {
       dockingPoseKeydownDisposer();
@@ -19997,7 +21487,10 @@ SOFTWARE.
     if (!prepared) return;
     const overlayAvailable = structureOverlayAvailable(prepared);
     const overlayToggleAvailable = structureOverlayToggleAvailable(prepared);
-    if (prepared.poseCount <= 1 && !overlayAvailable) return;
+    if (prepared.poseCount <= 1 && !overlayAvailable) {
+      if (prepared.poseCount === 1) notifyDockingPoseChanged(0, prepared);
+      return;
+    }
     document.body.classList.add('buret-docking-pose-controls-active');
     const root = document.createElement('div');
     root.className = 'buret-docking-poses';
@@ -20007,6 +21500,15 @@ SOFTWARE.
       : [];
     const hasTrajectorySegments = trajectorySegments.length > 1;
     if (hasTrajectorySegments) root.classList.add('buret-docking-poses-trajectory-segments');
+    // Poses from several ligand files step like trajectory segments: the arrows stay
+    // inside one file and the list below switches files or jumps to a pose.
+    const poseGroups = !hasTrajectorySegments && Array.isArray(prepared.poseGroups) && prepared.poseGroups.length > 1
+      ? prepared.poseGroups
+      : [];
+    const hasPoseGroups = poseGroups.length > 0;
+    if (hasPoseGroups) root.classList.add('buret-docking-poses-pose-groups');
+    const segments = hasPoseGroups ? poseGroups : trajectorySegments;
+    const hasSegments = hasTrajectorySegments || hasPoseGroups;
     const controlLabel = String(prepared.controlLabel || 'Pose');
     const controlLabelLower = controlLabel.toLowerCase();
     root.setAttribute('aria-label', `${controlLabel} controls`);
@@ -20058,7 +21560,8 @@ SOFTWARE.
       return;
     }
     if (prepared.poseCount <= 1) return;
-    const playbackRestore = pendingTrajectoryPlaybackRestore;
+    const restoredSession = prepared.kind === 'session' && prepared.nativeTrajectoryControls === true;
+    const playbackRestore = restoredSession ? null : pendingTrajectoryPlaybackRestore;
     pendingTrajectoryPlaybackRestore = null;
     let activePose = playbackRestore
       ? Math.max(0, Math.min(prepared.poseCount - 1, playbackRestore.frameIndex))
@@ -20086,7 +21589,8 @@ SOFTWARE.
     mainRow.className = 'buret-docking-pose-main';
     const animationRow = document.createElement('div');
     animationRow.className = 'buret-docking-pose-animation';
-    const hasFileList = prepared.dockingSceneMode || hasTrajectorySegments;
+    const hasFileList = prepared.dockingSceneMode || hasSegments;
+    const poseCompareGuide = !hasPoseGroups && prepared.kind === 'docking' && !prepared.nativeTrajectoryControls && prepared.dockingSceneMode !== 'structureAll';
     root.classList.toggle('buret-docking-poses-frames', !hasFileList);
     const listEntries = prepared.dockingSceneMode ? prepared.poses : trajectorySegments;
     const label = hasFileList ? document.createElement('button') : document.createElement('span');
@@ -20096,7 +21600,7 @@ SOFTWARE.
     if (currentName && currentIndex) {
       label.type = 'button';
       label.className = 'buret-docking-pose-current';
-      label.setAttribute('aria-haspopup', 'listbox');
+      label.setAttribute('aria-haspopup', hasPoseGroups ? 'menu' : 'listbox');
       label.setAttribute('aria-expanded', 'false');
       currentName.className = 'buret-docking-pose-current-name';
       currentIndex.className = 'buret-docking-pose-current-index';
@@ -20116,10 +21620,207 @@ SOFTWARE.
       label.addEventListener('pointerenter', measureNameMarquee);
       label.addEventListener('focus', measureNameMarquee);
     }
-    label.title = prepared.ligandLabel || '';
     const fileList = hasFileList ? document.createElement('div') : null;
     const fileButtons = [];
-    if (fileList) {
+    const groupControls = [];
+    const poseDots = [];
+    const posePins = [];
+    // Menus the picker opens sit beside it and slide out of its edge, as if the
+    // picker grew another column. A shown pose opens its molecule menu; a hidden
+    // pose and a file open their visibility actions.
+    const openPickerMenu = (anchor, target) => {
+      closeSceneTreeMenu();
+      const x = fileList.getBoundingClientRect().right + 6;
+      const y = anchor.getBoundingClientRect().top - 6;
+      if (typeof target === 'string') {
+        openSceneTreeMenu(target, x, y, { side: true });
+        return;
+      }
+      const menu = document.createElement('div');
+      menu.id = 'buret-scene-tree-menu';
+      menu.className = 'buret-tree-menu buret-docking-pose-actions';
+      menu.setAttribute('role', 'menu');
+      menu.setAttribute('aria-label', `${target.title} actions`);
+      const header = document.createElement('div');
+      header.className = 'buret-tree-menu-header';
+      const heading = document.createElement('span');
+      heading.className = 'buret-tree-menu-heading';
+      heading.textContent = target.title;
+      header.append(heading);
+      menu.append(header);
+      for (const [text, icon, run] of target.items) {
+        const item = sceneTreeMenuItem(text, '', { icon });
+        delete item.dataset.sceneTreeAction;
+        item.addEventListener('click', () => {
+          closeSceneTreeMenu();
+          run();
+        });
+        menu.append(item);
+      }
+      document.body.append(menu);
+      const rect = menu.getBoundingClientRect();
+      menu.style.left = `${Math.round(Math.max(6, Math.min(x, window.innerWidth - rect.width - 6)))}px`;
+      menu.style.top = `${Math.round(Math.max(6, Math.min(y, window.innerHeight - rect.height - 6)))}px`;
+      revealFloatingMenu(menu, { side: true });
+      menu.querySelector('button')?.focus({ preventScroll: true });
+    };
+    const poseActions = (indices, title) => {
+      const visible = selectedPoseIndices();
+      const pins = dockingPinnedPoseIndices(prepared);
+      const shown = indices.every(index => visible.has(index));
+      const pinned = indices.every(index => pins.has(index));
+      const many = indices.length > 1;
+      return {
+        title,
+        items: [
+          [shown ? (many ? 'Hide all' : 'Hide') : (many ? 'Show all' : 'Show'), shown ? SCENE_TREE_ICON.eyeOff : SCENE_TREE_ICON.eye, () => editPoseVisibility('toggle', indices)],
+          [pinned ? (many ? 'Unpin all' : 'Unpin') : (many ? 'Pin all' : 'Pin'), APP_ICON_DATA.Pin, () => editPoseVisibility('pin', indices)],
+          [many ? 'Show only this file' : 'Show only this pose', SCENE_TREE_ICON.isolate, () => editPoseVisibility('only', indices)],
+        ]
+      };
+    };
+    // Every pose carries its colour: filled while the pose is on screen and an
+    // outline while hidden. The dot shows or hides the pose next to the current
+    // one; right-clicking a shown pose opens its molecule menu.
+    const createPoseDot = (index, name) => {
+      const dot = document.createElement('button');
+      dot.type = 'button';
+      dot.className = 'buret-tree-dot buret-docking-pose-dot';
+      dot.setAttribute('aria-label', `Colour ${name}`);
+      dot.style.setProperty('--buret-pose-color', sceneTreeColorHex(dockingPoseCarbonColor(prepared, index)));
+      dot.addEventListener('click', () => editPoseVisibility('toggle', index));
+      poseDots.push({ dot, index });
+      return dot;
+    };
+    // A pin keeps a pose, or a whole file, on screen while stepping.
+    const createPosePin = (indices, name) => {
+      const pin = document.createElement('button');
+      pin.type = 'button';
+      pin.className = 'buret-docking-pose-pin';
+      pin.setAttribute('aria-pressed', 'false');
+      pin.setAttribute('aria-label', `Pin ${name}`);
+      pin.append(sceneTreeIconElement(APP_ICON_DATA.Pin));
+      pin.addEventListener('click', () => editPoseVisibility('pin', indices));
+      posePins.push({ pin, indices, name });
+      return pin;
+    };
+    // The pose each list row jumps to, parallel to fileButtons.
+    const fileTargets = [];
+    if (fileList && hasPoseGroups) {
+      fileList.className = 'buret-docking-pose-files';
+      fileList.setAttribute('role', 'menu');
+      fileList.setAttribute('aria-label', 'Poses by file');
+      // One block slides between rows, as in the scene tree, instead of each
+      // row painting its own hover fill.
+      const highlight = document.createElement('div');
+      highlight.className = 'buret-tree-highlight buret-docking-pose-highlight';
+      fileList.append(highlight);
+      const moveHighlight = (row) => {
+        if (!row) {
+          highlight.classList.remove('buret-tree-highlight-active');
+          return;
+        }
+        const listRect = fileList.getBoundingClientRect();
+        const rowRect = row.getBoundingClientRect();
+        const instant = !highlight.classList.contains('buret-tree-highlight-active');
+        highlight.classList.toggle('buret-tree-highlight-instant', instant);
+        highlight.style.width = `${rowRect.width}px`;
+        highlight.style.height = `${rowRect.height}px`;
+        highlight.style.transform = `translate(${rowRect.left - listRect.left - fileList.clientLeft}px, ${rowRect.top - listRect.top - fileList.clientTop + fileList.scrollTop}px)`;
+        highlight.classList.add('buret-tree-highlight-active');
+        if (instant) requestAnimationFrame(() => highlight.classList.remove('buret-tree-highlight-instant'));
+      };
+      fileList.addEventListener('pointermove', event => moveHighlight(event.target.closest('.buret-docking-pose-row')));
+      fileList.addEventListener('pointerleave', () => moveHighlight(null));
+      fileList.addEventListener('focusin', event => moveHighlight(event.target.closest('.buret-docking-pose-row')));
+      fileList.addEventListener('contextmenu', event => {
+        const row = event.target.closest('.buret-docking-pose-row');
+        if (!row?.dataset.poseIndices) return;
+        event.preventDefault();
+        const indices = row.dataset.poseIndices.split(',').map(Number);
+        const ref = indices.length === 1 ? poseDots.find(entry => entry.index === indices[0])?.dot.dataset.ref : '';
+        openPickerMenu(row, ref || poseActions(indices, row.dataset.poseTitle));
+      });
+      poseGroups.forEach(group => {
+        const section = document.createElement('div');
+        section.className = 'buret-docking-pose-group';
+        section.setAttribute('role', 'group');
+        section.setAttribute('aria-label', group.label);
+        const indices = group.poses.map((_, offset) => group.startFrame + offset);
+        const heading = document.createElement('div');
+        heading.className = 'buret-docking-pose-row buret-docking-pose-group-label';
+        heading.dataset.poseIndices = indices.join(',');
+        heading.dataset.poseTitle = group.label;
+        // The chevron folds the file; the rest of the row shows or hides it.
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'buret-docking-pose-group-toggle';
+        const expanded = activePose >= group.startFrame && activePose < group.startFrame + group.frameCount;
+        toggle.setAttribute('aria-expanded', String(expanded));
+        toggle.setAttribute('aria-label', `${expanded ? 'Collapse' : 'Expand'} ${group.label}`);
+        toggle.append(sceneTreeIconElement(APP_ICON_DATA.ChevronRight));
+        const poses = document.createElement('div');
+        poses.id = `buret-docking-pose-group-${group.startFrame}`;
+        poses.className = 'buret-docking-pose-group-content';
+        poses.classList.toggle('expanded', expanded);
+        poses.inert = !expanded;
+        const poseRows = document.createElement('div');
+        poses.append(poseRows);
+        toggle.setAttribute('aria-controls', poses.id);
+        toggle.addEventListener('click', () => {
+          const expanded = toggle.getAttribute('aria-expanded') !== 'true';
+          poses.classList.toggle('expanded', expanded);
+          poses.inert = !expanded;
+          toggle.setAttribute('aria-expanded', String(expanded));
+          toggle.setAttribute('aria-label', `${expanded ? 'Collapse' : 'Expand'} ${group.label}`);
+        });
+        const show = document.createElement('button');
+        show.type = 'button';
+        show.className = 'atlas-menu-item buret-docking-pose-group-show';
+        show.setAttribute('role', 'menuitemcheckbox');
+        const swatch = document.createElement('span');
+        swatch.className = 'buret-docking-pose-swatch';
+        swatch.setAttribute('aria-hidden', 'true');
+        swatch.style.background = sceneTreeColorHex(dockingPoseSetColor(poseGroups.indexOf(group), 0, 1));
+        const name = document.createElement('span');
+        name.className = 'buret-docking-pose-file-name';
+        name.textContent = group.label;
+        const count = document.createElement('span');
+        count.className = 'buret-docking-pose-file-meta';
+        show.append(swatch, name, count);
+        show.addEventListener('click', () => editPoseVisibility('toggle', indices));
+        groupControls.push({ select: show, count, indices, name: group.label });
+        heading.append(toggle, show, createPosePin(indices, group.label));
+        section.append(heading, poses);
+        group.poses.forEach((pose, offset) => {
+          const index = group.startFrame + offset;
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'atlas-menu-item buret-docking-pose-file buret-docking-pose-group-pose';
+          button.setAttribute('role', 'menuitemradio');
+          const poseName = document.createElement('span');
+          poseName.className = 'buret-docking-pose-file-name';
+          poseName.textContent = pose.label;
+          button.append(poseName);
+          if (pose.score) {
+            const score = document.createElement('span');
+            score.className = 'buret-docking-pose-file-meta';
+            score.textContent = pose.score.value.toFixed(2);
+            button.setAttribute('aria-label', `${pose.label}, ${pose.score.value.toFixed(2)} kcal/mol`);
+            button.append(score);
+          }
+          fileButtons.push(button);
+          fileTargets.push(index);
+          const row = document.createElement('div');
+          row.className = 'buret-docking-pose-row';
+          row.dataset.poseIndices = String(index);
+          row.dataset.poseTitle = `${group.label}, ${pose.label}`;
+          row.append(button, createPoseDot(index, `${group.label}, ${pose.label}`), createPosePin([index], `${group.label}, ${pose.label}`));
+          poseRows.append(row);
+        });
+        fileList.append(section);
+      });
+    } else if (fileList) {
       fileList.className = 'buret-docking-pose-files';
       fileList.setAttribute('role', 'listbox');
       fileList.setAttribute('aria-label', hasTrajectorySegments ? 'Trajectory segments' : 'Open structures');
@@ -20130,9 +21831,8 @@ SOFTWARE.
         button.setAttribute('role', 'option');
         const fallbackLabel = hasTrajectorySegments ? `Trajectory segment ${index + 1}` : `Structure ${index + 1}`;
         const entryLabel = entry.label || fallbackLabel;
-        button.title = hasTrajectorySegments
-          ? `${entryLabel} · frames ${entry.startFrame + 1}–${entry.endFrame + 1}`
-          : entryLabel;
+        // A structure row already shows its whole label; only segments add a frame range.
+        if (hasTrajectorySegments) button.title = `${entryLabel} · frames ${entry.startFrame + 1}–${entry.endFrame + 1}`;
         const number = document.createElement('span');
         number.className = 'buret-docking-pose-file-number';
         number.textContent = String(index + 1).padStart(2, '0');
@@ -20147,27 +21847,30 @@ SOFTWARE.
           button.append(frameCount);
         }
         fileButtons.push(button);
+        fileTargets.push(hasTrajectorySegments ? entry.startFrame : index);
         fileList.append(button);
       });
     }
     const animation = document.createElement('button');
     animation.type = 'button';
     animation.className = 'buret-docking-pose-animation-button';
-    animation.textContent = '⏯';
-    const animationControlLabel = hasTrajectorySegments ? 'Toggle trajectory playback options' : 'Select Molstar animation';
+    animation.append(sceneTreeIconElement(APP_ICON_DATA.Play));
+    const animationControlLabel = hasTrajectorySegments ? 'Toggle trajectory playback options' : 'Choose animation';
     animation.setAttribute('aria-label', animationControlLabel);
     animation.setAttribute('aria-expanded', 'false');
     animation.title = hasTrajectorySegments ? 'Playback options' : 'Select animation';
     const previous = document.createElement('button');
     previous.type = 'button';
     previous.className = 'buret-docking-pose-previous';
-    previous.textContent = 'Prev';
+    previous.append(sceneTreeIconElement(APP_ICON_DATA.ChevronRight));
     previous.setAttribute('aria-label', `Previous ${controlLabelLower}`);
+    previous.title = `Previous ${controlLabelLower}`;
     const next = document.createElement('button');
     next.type = 'button';
     next.className = 'buret-docking-pose-next';
-    next.textContent = 'Next';
+    next.append(sceneTreeIconElement(APP_ICON_DATA.ChevronRight));
     next.setAttribute('aria-label', `Next ${controlLabelLower}`);
+    next.title = `Next ${controlLabelLower}`;
     const xyzAlignSignature = prepared.xyzFrameOverlayAvailable === true
       ? xyzFrameOverlayRawSignature(rawStructureData(activeConfig))
       : '';
@@ -20192,6 +21895,11 @@ SOFTWARE.
         atoms: (molecule.atoms || []).map(atom => ({ symbol: atom.element, x: atom.x, y: atom.y, z: atom.z }))
       }))
       : null;
+    const sdfAlignByOrder = Boolean(sdfCollectionAlignFrames)
+      && xyzFramesAlignable(sdfCollectionAlignFrames) && sdfCollectionTopologyUniform(sdfAlignTarget.collectionMolecules);
+    const sdfAlignTitle = sdfAlignByOrder
+      ? 'Superimpose every molecule onto the first one by atom order'
+      : 'Superimpose every molecule onto the first one by their shared substructure';
     const align = prepared.dockingSceneMode || xyzAlignFrames || sdfCollectionAlignFrames ? document.createElement('button') : null;
     const storyAvailable = structureSceneStoryAvailable(prepared);
     const story = storyAvailable ? document.createElement('button') : null;
@@ -20253,7 +21961,7 @@ SOFTWARE.
     const alignmentSupported = Boolean(align) && (xyzAlignFrames
       ? xyzFramesAlignable(xyzAlignFrames)
       : sdfCollectionAlignFrames
-        ? xyzFramesAlignable(sdfCollectionAlignFrames) && sdfCollectionTopologyUniform(sdfAlignTarget.collectionMolecules)
+        ? sdfAlignByOrder || sdfCollectionMatchable(sdfAlignTarget.collectionMolecules)
         : Boolean(prepared.dockingSceneMode)
           && prepared.poses.length > 1
           && window.molstar?.BuretteSuperposition?.version === 1);
@@ -20271,12 +21979,12 @@ SOFTWARE.
         ? (xyzAlignFrames
           ? 'Alignment needs every structure to list the same atoms in the same order'
           : sdfCollectionAlignFrames
-            ? 'Alignment needs every molecule to list the same atoms in the same order'
+            ? 'Alignment needs a first molecule with at least three heavy atoms'
             : 'Superposition needs two or more loaded structures')
         : xyzAlignFrames
           ? 'Superimpose every structure onto the first one by atom order'
           : sdfCollectionAlignFrames
-            ? 'Superimpose every molecule onto the first one by atom order'
+            ? sdfAlignTitle
             : 'Automatically superimpose every structure onto the first one';
       align.hidden = !alignmentSupported;
       align.disabled = !alignmentSupported;
@@ -20303,8 +22011,18 @@ SOFTWARE.
     speed.min = '0.1';
     speed.step = '0.1';
     speed.inputMode = 'decimal';
-    speed.value = playbackRestore?.fps || formatTrajectoryFps(readTrajectoryLoopFps(activeConfig, prepared));
+    // The field shows the rate the loop can actually reach.
+    const maxLoopFps = minimumTrajectoryLoopDelay(prepared) > 0 ? trajectoryDelayToFps(minimumTrajectoryLoopDelay(prepared), prepared) : 240;
+    speed.value = playbackRestore?.fps || formatTrajectoryFps(Math.min(maxLoopFps, readTrajectoryLoopFps(activeConfig, prepared)));
     speed.title = 'Target source frames per second; under load frames may be skipped and speed is capped, not guaranteed redraw FPS';
+    // The rate carries its unit, so a bare number never reads as a stray count.
+    const speedField = document.createElement('label');
+    speedField.className = 'buret-docking-pose-speed-field';
+    const speedUnit = document.createElement('span');
+    speedUnit.className = 'buret-docking-pose-speed-unit';
+    speedUnit.textContent = 'fps';
+    speedField.append(speed, speedUnit);
+    installScrubNumberField(speed, { min: 0.1, max: Math.round(maxLoopFps * 100) / 100, format: formatTrajectoryFps });
     const slider = document.createElement('input');
     slider.className = 'buret-docking-pose-slider';
     slider.type = 'range';
@@ -20314,7 +22032,7 @@ SOFTWARE.
     slider.setAttribute('aria-label', `${controlLabel} slider`);
     const refreshNativeTrajectoryStandalonePreview = () => {
       if (!prepared.nativeTrajectoryControls || !activeConfig) return;
-      try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(activePose)); } catch (_) {}
+      writeTrajectoryControlIndex(activeConfig, prepared, activePose);
     };
     const supportsLivePoseInput = () => (
       prepared.nativeTrajectoryControls ||
@@ -20323,12 +22041,12 @@ SOFTWARE.
       (prepared.kind === 'docking' && prepared.sdfPoseOverlayAvailable === true)
     );
     const activeTrajectorySegment = (poseIndex) => {
-      if (!hasTrajectorySegments) return { index: -1, segment: null };
-      const index = trajectorySegments.findIndex(segment => (
+      if (!hasSegments) return { index: -1, segment: null };
+      const index = segments.findIndex(segment => (
         poseIndex >= segment.startFrame && poseIndex <= segment.endFrame
       ));
-      const resolvedIndex = index >= 0 ? index : trajectorySegments.length - 1;
-      return { index: resolvedIndex, segment: trajectorySegments[resolvedIndex] };
+      const resolvedIndex = index >= 0 ? index : segments.length - 1;
+      return { index: resolvedIndex, segment: segments[resolvedIndex] };
     };
     const trajectoryControlBounds = (poseIndex) => {
       const active = activeTrajectorySegment(poseIndex);
@@ -20341,6 +22059,17 @@ SOFTWARE.
         count: active.segment.frameCount
       };
     };
+    // Stepping and the loop walk every pose of every file in turn; the slider
+    // and the counter stay within the current file.
+    const stepBounds = (poseIndex) => hasPoseGroups
+      ? { start: 0, end: prepared.poseCount - 1, count: prepared.poseCount }
+      : trajectoryControlBounds(poseIndex);
+    // A running loop wraps, so its ends never disable the step buttons.
+    const syncStepButtons = () => {
+      const ends = stepBounds(activePose);
+      previous.disabled = !loopActive && activePose <= ends.start;
+      next.disabled = !loopActive && activePose >= ends.end;
+    };
     // Every frame step relabels the control, but within a segment the name does not
     // change. Rewriting the text node anyway relaid the line and cut short the hover
     // slide that walks a long name, so it only lands when the name actually differs.
@@ -20352,32 +22081,65 @@ SOFTWARE.
         label.textContent = trajectoryPoseLabel(prepared, controlLabel, poseIndex);
         return;
       }
-      if (hasTrajectorySegments) {
+      if (hasSegments) {
         const current = activeTrajectorySegment(poseIndex);
         setCurrentName(current.segment?.label || `${controlLabel} ${poseIndex + 1}`);
-        currentIndex.textContent = `${poseIndex - current.segment.startFrame + 1}/${current.segment.frameCount} · ${current.index + 1}/${trajectorySegments.length}`;
+        currentIndex.textContent = `${poseIndex - current.segment.startFrame + 1}/${current.segment.frameCount}`;
         return;
       }
       setCurrentName(prepared?.poses?.[poseIndex]?.label || `${controlLabel} ${poseIndex + 1}`);
       currentIndex.textContent = `${poseIndex + 1}/${prepared.poseCount}`;
     };
+    const selectedPoseIndices = () => dockingVisiblePoseIndices(prepared, activePose);
+    // Dots follow the live colours, so the tree's colour menu updates them too.
+    // The scene tree is read once per refresh and only while the menu is open.
+    const updatePoseDots = (selected) => {
+      if (!root.classList.contains('buret-docking-poses-files-open')) return;
+      const molstarViewer = activeMolstarViewer();
+      const nodes = sceneTreeNodes(molstarViewer);
+      const layers = activeDockingPoseCollectionState?.layers;
+      for (const { dot, index } of poseDots) {
+        const refs = selected.has(index) ? layers?.get(index)?.activeRefs : null;
+        const node = refs?.length ? dockingPoseTreeNode(molstarViewer, refs, nodes) : null;
+        const shown = Boolean(node && node.value !== null);
+        dot.classList.toggle('buret-docking-pose-dot-shown', shown);
+        dot.dataset.ref = shown ? node.ref : '';
+        dot.style.background = shown ? sceneTreeColorHex(node.value) : '';
+        dot.setAttribute('aria-pressed', String(selected.has(index)));
+        dot.setAttribute('aria-label', `${selected.has(index) ? 'Hide' : 'Show'} ${dot.closest('.buret-docking-pose-row')?.dataset.poseTitle || 'pose'}`);
+      }
+    };
     const updateControls = () => {
       const controlBounds = trajectoryControlBounds(activePose);
       applyLabel(activePose);
-      label.title = hasTrajectorySegments
-        ? activeTrajectorySegment(activePose).segment?.label || prepared.ligandLabel || ''
-        : prepared?.poses?.[activePose]?.label || prepared.ligandLabel || '';
-      previous.disabled = activePose <= controlBounds.start;
-      next.disabled = activePose >= controlBounds.end;
+      syncStepButtons();
       slider.max = String(controlBounds.count);
       slider.value = String(activePose - controlBounds.start + 1);
       slider.dataset.globalFrameIndex = String(activePose);
       const activeSegmentIndex = activeTrajectorySegment(activePose).index;
+      const selected = hasPoseGroups ? selectedPoseIndices() : null;
       fileButtons.forEach((button, index) => {
-        const active = hasTrajectorySegments ? index === activeSegmentIndex : index === activePose;
+        // Pose rows mark the stepper's pose; their dots carry visibility.
+        const active = hasTrajectorySegments && !hasPoseGroups ? index === activeSegmentIndex : fileTargets[index] === activePose;
         button.classList.toggle('active', active);
-        button.setAttribute('aria-selected', active ? 'true' : 'false');
+        button.setAttribute(hasPoseGroups ? 'aria-checked' : 'aria-selected', active ? 'true' : 'false');
+        if (selected) button.dataset.shown = String(selected.has(fileTargets[index]));
       });
+      if (selected) {
+        for (const { select, count: counter, indices, name } of groupControls) {
+          const count = indices.filter(index => selected.has(index)).length;
+          select.setAttribute('aria-checked', count === indices.length ? 'true' : count ? 'mixed' : 'false');
+          select.setAttribute('aria-label', `${count === indices.length ? 'Hide' : 'Show'} all poses in ${name}`);
+          if (counter) counter.textContent = count ? `${count}/${indices.length}` : String(indices.length);
+        }
+        const pins = dockingPinnedPoseIndices(prepared);
+        for (const { pin, indices, name } of posePins) {
+          const pinned = indices.every(index => pins.has(index));
+          pin.setAttribute('aria-pressed', String(pinned));
+          pin.setAttribute('aria-label', `${pinned ? 'Unpin' : 'Pin'} ${name}`);
+        }
+        updatePoseDots(selected);
+      }
       if (storyStep && storyTitle && storySummary) {
         const storyPayload = structureStoryPayload();
         storyStep.textContent = `Step ${storyPayload.stepIndex + 1} of ${storyPayload.stepCount}`;
@@ -20386,6 +22148,7 @@ SOFTWARE.
         postHostMessage({ type: 'structureStoryChanged', ...storyPayload });
       }
       refreshNativeTrajectoryStandalonePreview();
+      notifyChemicalSpaceMolecule(activePose);
       const activeSegment = activeTrajectorySegment(activePose);
       postHostMessage({
         type: 'trajectoryFrameChanged',
@@ -20399,8 +22162,14 @@ SOFTWARE.
       });
       updateViewportAnimateState();
     };
+    root.addEventListener('buret-pose-selection-changed', updateControls);
     const setFileListOpen = (open) => {
       if (!fileList) return;
+      if (open && hasPoseGroups) {
+        // The pose picker is the same Atlas menu as Style and the 3D menu.
+        window.BuretteNativeViewerMenus?.styleMenu?.(fileList, activeConfig?.themeTokens, resolveViewerTheme());
+        updateControls();
+      }
       if (open) {
         const rootRect = root.getBoundingClientRect();
         const triggerLeft = Math.round(label.offsetLeft);
@@ -20412,6 +22181,13 @@ SOFTWARE.
       }
       root.classList.toggle('buret-docking-poses-files-open', Boolean(open));
       label.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (open && hasPoseGroups) {
+        updatePoseDots(selectedPoseIndices());
+        const active = fileButtons[fileTargets.indexOf(activePose)];
+        if (!active?.closest('[inert]')) active?.scrollIntoView({ block: 'nearest' });
+      }
+      // Menus that slid out of the picker close with it.
+      if (!open && document.querySelector('#buret-scene-tree-menu[data-motion="side"]')) closeSceneTreeMenu();
     };
     const isFileListOpen = () => root.classList.contains('buret-docking-poses-files-open');
     const setAnimationOptionsOpen = (open) => {
@@ -20434,6 +22210,7 @@ SOFTWARE.
         loopStepMs = 0;
       }
       loop.classList.toggle('active', Boolean(active));
+      syncStepButtons();
       loop.textContent = active ? 'Stop' : 'Loop';
       loop.setAttribute('aria-label', active ? `Stop ${controlLabelLower} loop` : `Play ${controlLabelLower} loop`);
       if (active) setAnimationOptionsOpen(true);
@@ -20511,7 +22288,7 @@ SOFTWARE.
       return stride;
     };
     const loopTargetIndex = () => {
-      const loopBounds = trajectoryControlBounds(activePose);
+      const loopBounds = stepBounds(activePose);
       return loopBounds.start + ((activePose - loopBounds.start + loopStride(loopBounds)) % loopBounds.count);
     };
     const loopNextDelay = () => {
@@ -20610,13 +22387,17 @@ SOFTWARE.
     const performSetPose = async (index, options = {}) => {
       const nextIndex = Math.max(0, Math.min(prepared.poseCount - 1, index));
       const previousIndex = activePose;
+      const selection = hasPoseGroups ? dockingSelectedPoseIndices(prepared) : null;
+      const previousSelection = selection ? [...selection] : [];
+      const previousActiveHidden = dockingPinnedPoseState.activeHidden;
+      // A step replaces poses shown for now and always shows the new pose.
+      selection?.clear();
+      if (selection) dockingPinnedPoseState.activeHidden = false;
       const shouldFocus = options.focus === true;
       // A normal step keeps the user's view. Cancel delayed focus retries from
       // an earlier load/selection before replacing any scene layers.
       if (!shouldFocus) molstarStructureFocusSerial += 1;
-      try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(nextIndex)); } catch (_) {}
-      previous.disabled = true;
-      next.disabled = true;
+      writeTrajectoryControlIndex(activeConfig, prepared, nextIndex);
       applyLabel(nextIndex);
       const xyzOverlayFrames = prepared.xyzFrameOverlayAvailable === true
         && (prepared.kind === 'xyz-frame-overlay' || xyzSingleFrameSceneActive(viewer));
@@ -20658,39 +22439,146 @@ SOFTWARE.
         }
         if (shouldFocus) scheduleMolstarStructureFocus(viewer, { reason: 'pose-selection', durationMs: 180, force: true });
         notifyDockingPoseChanged(activePose, prepared);
+        // Only a committed switch outside the open list can request a guide.
+        if (options.userStep === true && poseCompareGuide && !isFileListOpen()) requestContextualGuide('pose-compare', label);
       } catch (error) {
-        try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(previousIndex)); } catch (_) {}
+        writeTrajectoryControlIndex(activeConfig, prepared, previousIndex);
         activePose = previousIndex;
+        for (const index of previousSelection) selection.add(index);
+        if (selection) dockingPinnedPoseState.activeHidden = previousActiveHidden;
         updateControls();
         // Stepping frames is the most repeated action here and a loop retries it on a
         // timer, so a failed step stays in the console: the label and buttons have
         // already rolled back to the frame still on screen, which is the honest report.
         // eslint-disable-next-line no-console
         console.error(error);
+        if (options.throwOnError === true) throw error;
       }
+    };
+    // Dots and files show or hide poses until the next step; a pin keeps a pose
+    // on screen while stepping. The stepper's whole file on screen is the All view, so the
+    // file row, the menu and the All button act as one control.
+    const editPoseVisibility = (action, target) => {
+      setLoopActive(false);
+      poseUpdateQueue = poseUpdateQueue.then(async () => {
+        if (activeStructurePoseSetter !== setPose) return;
+        const indices = Array.isArray(target) ? target : [target];
+        const pins = dockingPinnedPoseIndices(prepared);
+        const state = dockingPinnedPoseState;
+        const selection = state.selected;
+        const before = { pins: [...pins], selection: [...selection], activePose, activeHidden: state.activeHidden, mode: activeSdfPoseMode };
+        const visible = selectedPoseIndices();
+        const fileOf = index => poseGroups.find(group => index >= group.startFrame && index < group.startFrame + group.frameCount);
+        const activeFile = fileOf(activePose);
+        const fileIndices = file => Array.from({ length: file?.frameCount || 0 }, (_, offset) => file.startFrame + offset);
+        // Editing part of All keeps the rest of the file as poses shown for now.
+        const leaveAll = () => {
+          if (activeSdfPoseMode !== 'all' || !indices.some(index => fileOf(index) === activeFile)) return;
+          setSdfPoseMode('single');
+          for (const index of fileIndices(activeFile)) if (index !== activePose) selection.add(index);
+        };
+        const show = (index) => {
+          if (index === activePose) state.activeHidden = false;
+          else selection.add(index);
+        };
+        if (action === 'pin') {
+          const unpin = indices.every(index => pins.has(index));
+          for (const index of indices) {
+            if (unpin) {
+              pins.delete(index);
+              if (index !== activePose) selection.add(index);
+            } else {
+              pins.add(index);
+              selection.delete(index);
+              if (index === activePose) state.activeHidden = false;
+            }
+          }
+        } else if (action === 'only') {
+          // Only these poses stay, next to the crystal or native reference.
+          const references = dockingReferencePoseIndices(prepared);
+          for (const index of [...pins]) if (!references.has(index)) pins.delete(index);
+          selection.clear();
+          activePose = indices[0];
+          const wholeFile = indices.length > 1 && indices.length === fileOf(indices[0])?.frameCount;
+          setSdfPoseMode(wholeFile ? 'all' : 'single');
+          if (!wholeFile) for (const index of indices.slice(1)) selection.add(index);
+        } else if (indices.every(index => visible.has(index))) {
+          leaveAll();
+          for (const index of indices) {
+            pins.delete(index);
+            selection.delete(index);
+            if (index === activePose) state.activeHidden = true;
+          }
+        } else {
+          const hidden = indices.filter(index => !visible.has(index));
+          // With nothing current on screen, the stepper moves to the first pose shown.
+          if (state.activeHidden && activeSdfPoseMode !== 'all') {
+            activePose = hidden[0];
+            state.activeHidden = false;
+          }
+          const file = fileOf(activePose);
+          if (indices.length > 1 && fileOf(indices[0]) === file && indices.length === file.frameCount) {
+            setSdfPoseMode('all');
+            for (const index of indices) selection.delete(index);
+          } else {
+            for (const index of hidden) show(index);
+          }
+        }
+        updateControls();
+        molstarStructureFocusSerial += 1;
+        try {
+          await applyDockingPoseCollectionVisibility(viewer, activeMolstarPrepared || prepared, activePose, { focus: false });
+          try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(activePose)); } catch (_) {}
+          notifyDockingPoseChanged(activePose, prepared);
+          notifyStructureOverlayModeChanged(activeMolstarPrepared || prepared);
+        } catch (error) {
+          pins.clear();
+          for (const index of before.pins) pins.add(index);
+          selection.clear();
+          for (const index of before.selection) selection.add(index);
+          activePose = before.activePose;
+          setSdfPoseMode(before.mode);
+          state.activeHidden = before.activeHidden;
+          try {
+            await applyDockingPoseCollectionVisibility(viewer, activeMolstarPrepared || prepared, activePose, { focus: false });
+          } catch (restoreError) { console.error(restoreError); }
+          setStatus(`[web] Could not change pose selection.\n\n${error?.message || String(error)}`, 'error');
+        }
+        updateControls();
+      }).catch(error => console.error(error));
     };
     if (fileList) {
       label.addEventListener('click', () => {
         setFileListOpen(!isFileListOpen());
       });
+      if (hasPoseGroups) root.addEventListener('buret-scene-tree-rendered', () => updatePoseDots(selectedPoseIndices()));
       fileButtons.forEach((button, index) => {
         button.addEventListener('pointerenter', (event) => {
-          const targetPose = hasTrajectorySegments ? trajectorySegments[index].startFrame : index;
-          // Segments preview on hover like poses do: every frame is already in the one
-          // trajectory, so jumping to a segment's first frame is a model-index change,
-          // not a reload. Touch has no hover, and it would fire on the way to a tap.
-          if (event.pointerType === 'touch' || targetPose === activePose) return;
+          const targetPose = fileTargets[index];
+          // Trajectory segments retain hover preview. Grouped docking poses commit
+          // only on selection, so moving through the menu cannot change the scene.
+          if (hasPoseGroups || event.pointerType === 'touch' || targetPose === activePose) return;
           scheduleSliderInputPose(targetPose);
         });
         button.addEventListener('click', () => {
+          if (hasPoseGroups) {
+            // A row goes to its pose, like the step buttons; the current pose
+            // comes back on screen if it was hidden.
+            const targetPose = fileTargets[index];
+            if (targetPose !== activePose) void setPose(targetPose, { userStep: true });
+            else if (dockingPinnedPoseState.activeHidden && activeSdfPoseMode !== 'all') editPoseVisibility('toggle', targetPose);
+            return;
+          }
           setFileListOpen(false);
-          const targetPose = hasTrajectorySegments ? trajectorySegments[index].startFrame : index;
+          label.focus();
+          const targetPose = fileTargets[index];
           if (targetPose !== activePose) scheduleSliderInputPose(targetPose);
         });
       });
       const onOutsidePointerDown = (event) => {
         if (!isFileListOpen()) return;
         if (event.target instanceof Node && root.contains(event.target)) return;
+        if (event.target instanceof Element && event.target.closest('#buret-scene-tree-menu')) return;
         setFileListOpen(false);
       };
       window.addEventListener('pointerdown', onOutsidePointerDown, true);
@@ -20740,6 +22628,7 @@ SOFTWARE.
             if (result) {
               align.title = `Superimposed onto the first structure by atom order · ${result.atomCount} atoms · average RMSD ${result.averageRmsd.toFixed(2)} Å`;
               setStatus(`[web] Aligned ${xyzAlignFrames.length} structures onto the first one by atom order (${result.atomCount} atoms, average RMSD ${result.averageRmsd.toFixed(2)} Å).`);
+              requestContextualGuide('trajectory', align);
             } else {
               align.title = 'Superimpose every structure onto the first one by atom order';
               setStatus('[web] Restored original structure coordinates.');
@@ -20772,7 +22661,8 @@ SOFTWARE.
         try {
           let result = null;
           if (enabling) {
-            result = await alignXyzFramesToFirst(sdfCollectionAlignFrames, alignmentAbortController.signal);
+            const atomPairs = sdfAlignByOrder ? null : await sdfCollectionAtomPairs(sdfAlignTarget.collectionMolecules, alignmentAbortController.signal);
+            result = await alignXyzFramesToFirst(sdfCollectionAlignFrames, alignmentAbortController.signal, atomPairs);
             const alignedMolecules = sdfAlignTarget.collectionMolecules.map((molecule, index) => ({
               ...molecule,
               atoms: (molecule.atoms || []).map((atom, atomIndex) => {
@@ -20806,10 +22696,12 @@ SOFTWARE.
             align.classList.toggle('active', enabling);
             align.setAttribute('aria-pressed', enabling ? 'true' : 'false');
             if (result) {
-              align.title = `Superimposed onto the first molecule by atom order · ${result.atomCount} atoms · average RMSD ${result.averageRmsd.toFixed(2)} Å`;
-              setStatus(`[web] Aligned ${sdfCollectionAlignFrames.length} molecules onto the first one by atom order (${result.atomCount} atoms, average RMSD ${result.averageRmsd.toFixed(2)} Å).`);
+              const matchedBy = sdfAlignByOrder ? 'by atom order' : 'by their shared substructure';
+              const unmatched = result.skipped ? `, ${result.skipped} without a match kept in place` : '';
+              align.title = `Superimposed onto the first molecule ${matchedBy} · ${result.atomCount} atoms · average RMSD ${result.averageRmsd.toFixed(2)} Å`;
+              setStatus(`[web] Aligned ${sdfCollectionAlignFrames.length} molecules onto the first one ${matchedBy} (${result.atomCount} atoms, average RMSD ${result.averageRmsd.toFixed(2)} Å${unmatched}).`);
             } else {
-              align.title = 'Superimpose every molecule onto the first one by atom order';
+              align.title = sdfAlignTitle;
               setStatus('[web] Restored original molecule coordinates.');
             }
             setTimeout(hideStatus, 2200);
@@ -20876,7 +22768,7 @@ SOFTWARE.
     };
     const repeatPoseStep = (direction) => {
       if (poseRepeatBusy) return;
-      const controlBounds = trajectoryControlBounds(activePose);
+      const controlBounds = stepBounds(activePose);
       const nextIndex = activePose + direction;
       const wrappedIndex = nextIndex < controlBounds.start
         ? controlBounds.end
@@ -20940,19 +22832,18 @@ SOFTWARE.
       setFileListOpen(false);
       setAnimationOptionsOpen(false);
     };
+    // Click opens and closes the playback row; right-click folds the controls
+    // to this button. Each change morphs the island between its shapes.
     animation.addEventListener('contextmenu', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      setControlsCollapsed(!root.classList.contains('buret-docking-poses-collapsed'));
+      morphViewerChrome(() => setControlsCollapsed(!root.classList.contains('buret-docking-poses-collapsed')));
     });
     animation.addEventListener('click', () => {
-      if (root.classList.contains('buret-docking-poses-collapsed')) {
-        setControlsCollapsed(false);
-        return;
-      }
-      const open = !isAnimationOptionsOpen();
-      setAnimationOptionsOpen(open);
-
+      morphViewerChrome(() => {
+        if (root.classList.contains('buret-docking-poses-collapsed')) setControlsCollapsed(false);
+        else setAnimationOptionsOpen(!isAnimationOptionsOpen());
+      });
     });
     bindPoseStepButton(previous, -1);
     bindPoseStepButton(next, 1);
@@ -21002,20 +22893,50 @@ SOFTWARE.
       if (isDockingPoseKeyboardTarget(event.target)) return;
       if (event.key === 'Escape' && fileList && isFileListOpen()) {
         event.preventDefault();
+        if (document.querySelector('#buret-scene-tree-menu[data-motion="side"]')) {
+          closeSceneTreeMenu();
+          return;
+        }
         setFileListOpen(false);
         label.focus();
         return;
       }
+      if (hasPoseGroups && fileList && (isFileListOpen() || event.target === label)) {
+        if (event.key === 'Tab') { setFileListOpen(false); return; }
+        if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+          event.preventDefault();
+          setFileListOpen(true);
+          // Arrows walk the menu rows; the context menu key opens a row's pin
+          // and colour actions.
+          const items = [...fileList.querySelectorAll('button.atlas-menu-item')].filter(item => !item.hidden && !item.closest('[inert]'));
+          const current = items.indexOf(document.activeElement);
+          const index = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+            : event.key === 'ArrowDown' ? (current + 1) % items.length : current < 0 ? items.length - 1 : (current - 1 + items.length) % items.length;
+          items[index]?.focus();
+          return;
+        }
+        if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+          event.preventDefault();
+          const group = event.target.closest('.buret-docking-pose-group');
+          const toggle = group?.querySelector('.buret-docking-pose-group-toggle');
+          const expand = event.key === 'ArrowRight';
+          if (toggle && (toggle.getAttribute('aria-expanded') === 'true') !== expand) toggle.click();
+          if (!expand) toggle?.focus();
+          return;
+        }
+      }
       if (event.key === 'ArrowLeft') {
         event.preventDefault();
-        if (activePose > trajectoryControlBounds(activePose).start) void setPose(activePose - 1, { userStep: true });
+        if (activePose > stepBounds(activePose).start) void setPose(activePose - 1, { userStep: true });
       } else if (event.key === 'ArrowRight') {
         event.preventDefault();
-        if (activePose < trajectoryControlBounds(activePose).end) void setPose(activePose + 1, { userStep: true });
+        if (activePose < stepBounds(activePose).end) void setPose(activePose + 1, { userStep: true });
       }
     };
+    root.addEventListener('keydown', onKeyDown);
     window.addEventListener('keydown', onKeyDown);
     dockingPoseKeydownDisposer = () => {
+      root.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keydown', onKeyDown);
     };
     mainRow.append(animation, previous, label, next);
@@ -21032,7 +22953,7 @@ SOFTWARE.
       if (align) mainRow.append(align);
       if (spread) mainRow.append(spread);
       if (all) mainRow.append(all);
-      animationRow.append(speed, loop, slider);
+      animationRow.append(speedField, loop, slider);
       if (smoothAvailable) animationRow.append(smooth);
     }
     root.append(mainRow);
@@ -21062,7 +22983,7 @@ SOFTWARE.
           notifyDockingPoseChanged(activePose, prepared);
         })
       : null;
-    if (prepared.nativeTrajectoryControls && initialPose > 0) {
+    if (prepared.nativeTrajectoryControls && initialPose > 0 && !restoredSession) {
       void setPose(initialPose).finally(() => {
         if (!playbackRestore?.playing || activeStructurePoseSetter !== setPose) return;
         setLoopActive(true);
@@ -22101,7 +24022,7 @@ SOFTWARE.
     if (!snapshot) return;
     const body = snapshot.item?.querySelector?.('.buret-xyzrender-sheet-item-body');
     if (body && typeof snapshot.bodyHtml === 'string') {
-      body.innerHTML = snapshot.bodyHtml;
+      body.innerHTML = window.BuretteSanitizeArtwork(snapshot.bodyHtml);
       restoreNullableAttribute(snapshot.item, 'data-buret-xyzrender-regions', snapshot.regions);
       restoreNullableAttribute(snapshot.item, 'data-buret-xyzrender-preset', snapshot.preset);
       body.querySelectorAll('[data-buret-xyzrender-selected="true"]').forEach(element => {
@@ -22755,7 +24676,7 @@ SOFTWARE.
   }
 
   function molstarContextPickingLevelLoci(target, pickingLevel) {
-    const level = pickingLevel === 'element' ? 'atom' : pickingLevel;
+    const level = pickingLevel === 'element' ? 'atom' : pickingLevel === 'none' ? 'residue' : pickingLevel;
     const pickedLoci = target?.atomLoci || target?.loci || molstarContextMenuPick?.loci;
     if (level === 'atom') return target?.atomLoci || pickedLoci;
     if (level === 'residue' && target?.atom) {
@@ -22982,7 +24903,7 @@ SOFTWARE.
     return 'selection';
   }
 
-  function molstarContextSourceEntryForActiveConfig() {
+  function molstarContextSourceEntryForActiveConfig(structureRef = null) {
     if (!activeConfig || activeConfig.docking) return null;
     const format = normalizeFormat(activeConfig.molstarFormat || activeConfig.format);
     if (format !== 'pdb' && format !== 'pdbqt' && format !== 'sdf') return null;
@@ -22990,7 +24911,23 @@ SOFTWARE.
       const data = rawStructureData({ ...activeConfig, format, binary: false });
       if (format === 'sdf') {
         const records = splitSdfRecords(data);
-        const activePose = Math.max(0, Math.min(records.length - 1, Number(activeMolstarPrepared?.activePose) || 0));
+        // A collection's prepared.activePose is its load-time value. Resolve the
+        // displayed/picked layer, including a background molecule in All mode.
+        const state = activeSdfCollectionVisibilityState;
+        const ownsScene = activeMolstarPrepared?.kind === 'sdf-collection'
+          && state?.viewer === activeViewer
+          && state.key === sdfCollectionStateKey(activeMolstarPrepared, configuredMolstarStyle(activeConfig), activeSdfPoseMode === 'all');
+        let activePose = ownsScene ? state.activeIndex
+          : readTrajectoryControlIndex(activeConfig, activeMolstarPrepared, records.length);
+        if (structureRef && activeMolstarPrepared?.kind === 'sdf-collection') {
+          if (!ownsScene) return null;
+          const ref = structureRef.cell?.transform?.ref;
+          const index = state.allRefsByIndex?.findIndex(refs => refs.includes(ref)) ?? -1;
+          activePose = index >= 0 ? index : state.activeRefs?.includes(ref) ? state.activeIndex : -1;
+          // A discarded layer/document must not silently borrow another record.
+          if (activePose < 0) return null;
+        }
+        activePose = Math.max(0, Math.min(records.length - 1, Number(activePose) || 0));
         return {
           data: records[activePose] || data,
           format: 'sdf',
@@ -23018,7 +24955,10 @@ SOFTWARE.
         : 0;
       let data = null;
       if (format === 'sdf') {
-        const record = splitSdfRecords(text)[0] || String(text || '');
+        const records = splitSdfRecords(text);
+        const record = config === activeConfig
+          ? molstarContextSourceEntryForActiveConfig()?.data || ''
+          : records[readTrajectoryControlIndex(config, activeMolstarPrepared, records.length)] || '';
         if (!record.trim()) return null;
         data = `${record.trimEnd()}\n$$$$\n`;
       } else if (format === 'pdb' || format === 'pdbqt' || format === 'mmcif' || format === 'cifCore' || format === 'xyz') {
@@ -23034,6 +24974,9 @@ SOFTWARE.
       return {
         label,
         scope: 'ligand',
+        ...((format === 'pdb' || format === 'pdbqt') ? {
+          sourceEntry: { data: modelTexts[activeModel] || text, format: 'pdb', label }
+        } : {}),
         ligand: {
           data,
           format: 'sdf',
@@ -23212,7 +25155,7 @@ SOFTWARE.
         };
       }
     }
-    const sourceEntry = molstarContextSourceEntryForActiveConfig();
+    const sourceEntry = molstarContextSourceEntryForActiveConfig(targetStructure);
     return {
       structures: targetStructures,
       structure: targetStructure,
@@ -23347,15 +25290,19 @@ SOFTWARE.
     const { lines, compId, chainId, seqId } = residue;
     const firstAtom = parsePdbAtomLine(lines[0]);
     const resolvedCompId = compId || firstAtom?.compId || 'Ligand';
+    const serials = new Set(lines.map(line => parsePdbAtomLine(line).serial));
+    const conect = String(receptor.data || '').split(/\r?\n/u)
+      .filter(line => line.startsWith('CONECT'))
+      .map(line => filteredPdbConectLine(line, serials)).filter(Boolean);
     return {
-      data: ['HEADER    BURETTE PICKED SELECTION', ...lines, 'END', ''].join('\n'),
+      data: ['HEADER    BURETTE PICKED SELECTION', ...lines, ...conect, 'END', ''].join('\n'),
       format: 'pdb',
       label: [resolvedCompId, chainId, seqId].filter(Boolean).join(' ')
     };
   }
 
   function pdbConectPairsForSerials(pdbData, includedSerials) {
-    const pairs = new Set();
+    const directed = new Map();
     for (const line of String(pdbData || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')) {
       if (!line.startsWith('CONECT')) continue;
       const source = Number(line.slice(6, 11).trim());
@@ -23363,15 +25310,18 @@ SOFTWARE.
       for (let offset = 11; offset + 5 <= line.length; offset += 5) {
         const target = Number(line.slice(offset, offset + 5).trim());
         if (!Number.isFinite(target) || !includedSerials.has(target) || target === source) continue;
-        const a = Math.min(source, target);
-        const b = Math.max(source, target);
-        pairs.add(`${a}:${b}`);
+        const key = `${source}:${target}`;
+        directed.set(key, (directed.get(key) || 0) + 1);
       }
     }
-    return Array.from(pairs).map(pair => {
-      const [a, b] = pair.split(':').map(Number);
-      return { a, b };
-    });
+    const pairs = new Map();
+    for (const [key, count] of directed) {
+      const [source, target] = key.split(':').map(Number);
+      const a = Math.min(source, target), b = Math.max(source, target);
+      const pair = `${a}:${b}`;
+      pairs.set(pair, { a, b, order: Math.min(3, Math.max(count, pairs.get(pair)?.order || 0)) });
+    }
+    return Array.from(pairs.values());
   }
 
   function pdbLigandSdfEntryForResidue(receptor, atom) {
@@ -23387,7 +25337,7 @@ SOFTWARE.
     const firstAtom = parsedAtoms[0];
     const label = [residue.compId || firstAtom.compId || 'Ligand', residue.chainId, residue.seqId].filter(Boolean).join(' ');
     const sdfBonds = bonds.length
-      ? bonds.map(bond => ({ a: serialToSdfIndex.get(bond.a), b: serialToSdfIndex.get(bond.b) }))
+      ? bonds.map(bond => ({ a: serialToSdfIndex.get(bond.a), b: serialToSdfIndex.get(bond.b), order: bond.order }))
       : inferStandalonePreviewBonds(parsedAtoms);
     if (sdfBonds.length > 999) return null;
     return {
@@ -23402,7 +25352,7 @@ SOFTWARE.
           z: current.z,
           tail: ` ${String(current.element || 'C').padEnd(3, ' ')} 0  0  0  0  0  0  0  0  0  0  0  0`
         }, current.x, current.y, current.z)),
-        ...sdfBonds.map(bond => `${padSdfInt(bond.a)}${padSdfInt(bond.b)}  1  0  0  0  0`),
+        ...sdfBonds.map(bond => `${padSdfInt(bond.a)}${padSdfInt(bond.b)}${padSdfInt(bond.order || 1)}  0  0  0  0`),
         'M  END',
         '$$$$',
         ''
@@ -23468,7 +25418,7 @@ SOFTWARE.
       };
     }
     if (target?.scope === 'ligand' && target.selectedEntry && target.sourceEntry) {
-      const ligandEntry = pdbLigandSdfEntryForResidue(target.sourceEntry, target.atom) || target.selectedEntry;
+      const ligandEntry = pdbEntryForResidue(target.sourceEntry, target.atom) || target.selectedEntry;
       return {
         label: ligandEntry.label || target.label || 'Ligand',
         entries: [
@@ -23497,6 +25447,134 @@ SOFTWARE.
       };
     }
     return null;
+  }
+
+  const MOLSTAR_OPEN_IN_ACTION = 'open-in';
+  const MOLSTAR_OPEN_IN_TAB_ACTION = 'open-in:tab';
+  const MOLSTAR_OPEN_IN_POPOUT_ACTION = 'open-in:popout';
+  const MOLSTAR_OPEN_IN_GRID_ACTION = 'open-in:grid';
+  const MOLSTAR_OPEN_IN_MAX_MOLECULES = 200;
+  const MOLSTAR_OPEN_IN_MAX_ATOMS = 20000;
+
+  // The molecules an "Open in" row carries. A right click inside the selection
+  // takes everything selected across the scene's structures; a click elsewhere
+  // takes only what was clicked. A non-polymer residue is one molecule and
+  // selected polymer residues of one chain join into one.
+  function molstarOpenInMolecules(target) {
+    const sources = [];
+    const targetSelection = target?.structure ? molstarContextSelectionLociForStructure(target.structure) : null;
+    if (target?.selectionBased || (target?.atom && molstarContextLociContainsAtom(targetSelection, target.atom))) {
+      for (const structureRef of molstarContextStructures()) {
+        const loci = molstarContextSelectionLociForStructure(structureRef);
+        if (loci) sources.push({ loci, structureRef });
+      }
+    } else if (target?.atom) {
+      sources.push({ loci: molstarContextSelectionLoci(target), structureRef: target.structure });
+    }
+    const molecules = new Map();
+    let atomCount = 0;
+    for (let sourceIndex = 0; sourceIndex < sources.length; sourceIndex++) {
+      const { loci, structureRef } = sources[sourceIndex];
+      const elementLoci = loci?.kind === 'element-loci' ? loci : molstarContextElementLoci(loci);
+      const source = molstarContextTargetLabel(structureRef ? [structureRef] : []);
+      const residueMolecules = new Map();
+      for (const { unit, indices } of Array.isArray(elementLoci?.elements) ? elementLoci.elements : []) {
+        const segments = unit?.model?.atomicHierarchy?.residueAtomSegments;
+        if (!segments || !unit.elements?.length) continue;
+        molstarContextOrderedSetForEach(indices, index => {
+          if (++atomCount > MOLSTAR_OPEN_IN_MAX_ATOMS) return false;
+          const atomIndex = unit.elements[index];
+          const residueKey = `${unit.id}:${segments.index[atomIndex]}`;
+          let molecule = residueMolecules.get(residueKey);
+          if (!molecule) {
+            const atom = molstarContextAtomFromModelIndex(unit.model, atomIndex);
+            const polymer = molstarContextScopeForAtom(atom) === 'residue';
+            const key = `${sourceIndex}:${polymer ? `chain:${unit.id}:${atom?.chainIndex}` : residueKey}`;
+            molecule = molecules.get(key);
+            if (!molecule) {
+              molecule = {
+                atom,
+                atoms: [],
+                source,
+                label: polymer ? molstarContextChainLabel(atom) : molstarContextResidueLabel(atom)
+              };
+              molecules.set(key, molecule);
+            }
+            residueMolecules.set(residueKey, molecule);
+          }
+          molecule.atoms.push({ unit, index });
+        });
+      }
+    }
+    if (atomCount > MOLSTAR_OPEN_IN_MAX_ATOMS || molecules.size > MOLSTAR_OPEN_IN_MAX_MOLECULES) return [];
+    return Array.from(molecules.values()).filter(molecule => molecule.atoms.length <= 999);
+  }
+
+  // One SDF record written from the loaded model, so it does not depend on the
+  // source format: coordinates as shown, bonds and their orders as Mol* holds them.
+  function molstarMoleculeSdfRecord(molecule) {
+    const serials = new Map(molecule.atoms.map((atom, i) => [`${atom.unit.id}:${atom.index}`, i + 1]));
+    const atomLines = [];
+    const bondLines = [];
+    const charges = [];
+    for (const { unit, index } of molecule.atoms) {
+      const element = unit.elements[index];
+      const columns = unit.model.atomicHierarchy.atoms;
+      const symbol = cleanElement(molstarContextValueAt(columns.type_symbol, element) || 'C');
+      const x = unit.conformation.x(element);
+      const y = unit.conformation.y(element);
+      const z = unit.conformation.z(element);
+      if (![x, y, z].every(Number.isFinite)) return null;
+      atomLines.push(formatSdfAtomLine({ tail: ` ${symbol.padEnd(3, ' ')} 0  0  0  0  0  0  0  0  0  0  0  0` }, x, y, z));
+      const charge = Math.trunc(Number(molstarContextValueAt(columns.pdbx_formal_charge, element)) || 0);
+      if (charge) charges.push([serials.get(`${unit.id}:${index}`), charge]);
+      const bonds = unit.bonds;
+      if (!bonds?.offset || !bonds.b) continue;
+      for (let edge = bonds.offset[index]; edge < bonds.offset[index + 1]; edge++) {
+        const other = bonds.b[edge];
+        const otherSerial = serials.get(`${unit.id}:${other}`);
+        if (other <= index || !otherSerial) continue;
+        const order = Math.min(3, Math.max(1, Math.trunc(Number(bonds.edgeProps?.order?.[edge]) || 1)));
+        bondLines.push(`${padSdfInt(serials.get(`${unit.id}:${index}`))}${padSdfInt(otherSerial)}${padSdfInt(order)}  0  0  0  0`);
+      }
+    }
+    if (!atomLines.length || bondLines.length > 999) return null;
+    const chargeLines = [];
+    for (let i = 0; i < charges.length; i += 8) {
+      const chunk = charges.slice(i, i + 8);
+      chargeLines.push(`M  CHG${padSdfInt(chunk.length)}${chunk.map(([serial, charge]) => ` ${padSdfInt(serial)} ${padSdfInt(charge)}`).join('')}`);
+    }
+    const field = (name, value) => (value == null || value === '' ? [] : [`> <${name}>`, String(value).replace(/\s+/g, ' ').trim(), '']);
+    const atom = molecule.atom;
+    const label = String(molecule.label || 'Molecule').slice(0, 80);
+    return {
+      label,
+      source: molecule.source,
+      data: [
+        label,
+        '  Burette',
+        '',
+        formatSdfCountsLine(atomLines.length, bondLines.length),
+        ...atomLines,
+        ...bondLines,
+        ...chargeLines,
+        'M  END',
+        ...field('Source', molecule.source),
+        ...field('Chain', atom?.auth_asym_id || atom?.label_asym_id),
+        ...field('Residue', atom?.auth_seq_id ?? atom?.label_seq_id),
+        '$$$$',
+        ''
+      ].join('\n')
+    };
+  }
+
+  function molstarOpenInDocumentPayload(records) {
+    if (!records.length) return null;
+    return {
+      label: records.length === 1 ? records[0].label : `${records.length} molecules`,
+      entries: records.map(record => ({ role: 'ligand', label: record.label, source: record.source, format: 'sdf', data: record.data })),
+      context: { scope: 'ligand' }
+    };
   }
 
   function molstarRuntime() {
@@ -23607,7 +25685,7 @@ SOFTWARE.
     if (!Array.isArray(structures)) return [];
     const lib = molstarExportLib();
     const unit = lib.Unit || {};
-    return structures.map((structureRef, index) => {
+    return structures.flatMap((structureRef, index) => {
       const source = molstarStructureFromRef(structureRef);
       if (!source || !Array.isArray(source.units) || source.elementCount <= 0) return null;
       const componentStructures = molstarComponentStructuresForExport(structureRef);
@@ -23615,6 +25693,17 @@ SOFTWARE.
       if (!structure || structure.elementCount <= 0) return null;
       if (typeof unit.isAtomic === 'function' && structure.units.some(currentUnit => !unit.isAtomic(currentUnit))) {
         return null;
+      }
+      if (structureRef.cell?.transform?.tags?.includes('burette-sdf-ensemble')) {
+        // The mmCIF writer requires one model per input structure. Use live subsets so
+        // selection, transforms and edits survive, including restored scenes.
+        return structure.models.map(model => {
+          const builder = structure.subsetBuilder(true);
+          for (const unit of structure.units) {
+            if (unit.model === model) builder.setUnit(unit.id, Array.from(unit.elements));
+          }
+          return { name: model.label.replace(/[^A-Za-z0-9_]/g, '_'), structure: builder.getStructure() };
+        });
       }
       return {
         name: molstarExportStructureName(structureRef, index),
@@ -23743,6 +25832,9 @@ SOFTWARE.
   }
 
   function molstarContextSdfEntryForExport(target) {
+    if (target?.scope === 'ligand' && target.structure && activeMolstarPrepared?.kind === 'sdf-collection') {
+      return molstarContextSourceEntryForActiveConfig(target.structure);
+    }
     if (target?.scope === 'ligand' && normalizeFormat(target.sourceEntry?.format) === 'sdf') {
       return target.sourceEntry;
     }
@@ -23753,7 +25845,7 @@ SOFTWARE.
       if (ligandFormat === 'sdf') return target.ligand;
     }
     if (target?.scope === 'ligand' && target.selectedEntry && target.sourceEntry) {
-      const ligandEntry = pdbLigandSdfEntryForResidue(target.sourceEntry, target.atom) || target.selectedEntry;
+      const ligandEntry = pdbEntryForResidue(target.sourceEntry, target.atom) || target.selectedEntry;
       if (normalizeFormat(ligandEntry?.format) === 'sdf') return ligandEntry;
     }
     if (target?.scope === 'ligand' && normalizeFormat(target.selectedEntry?.format) === 'sdf') {
@@ -24387,7 +26479,11 @@ SOFTWARE.
     plugin.selectionMode = true;
     document.addEventListener('keydown', session.onKeyDown, true);
     session.subscription = clicks.subscribe(event => {
-      const loci = molstarContextElementLoci(event?.current?.loci);
+      const picked = molstarContextElementLoci(event?.current?.loci);
+      // Picks use component-local indices; measurement bundles are resolved on
+      // the root structure. Remap before retaining a point so both refer to the
+      // same atom, including ligands and other filtered components.
+      const loci = picked ? Loci.normalize(picked, 'element') : null;
       const atomCount = loci ? window.molstar?.lib?.structure?.StructureElement?.Loci?.size?.(loci) : 0;
       if (!loci || molstarLociIsEmpty(loci) || (atomCount !== undefined && atomCount !== 1)) {
         plugin.managers.structure.selection.clear();
@@ -24462,13 +26558,36 @@ SOFTWARE.
     return ['chain', 'entity', 'model', 'operator', 'structure', 'chainInstances'].includes(mode);
   }
 
+  let molstarMarkingStrengths = null;
+
   function molstarSelectionLevel() {
+    if (molstarMarkingStrengths) return 'none';
     return String(activeMolstarViewer()?.plugin?.managers?.interactivity?.props?.granularity || 'residue');
   }
 
   function setMolstarSelectionLevel(level) {
-    const interactivity = activeMolstarViewer()?.plugin?.managers?.interactivity;
+    const plugin = activeMolstarViewer()?.plugin;
+    const interactivity = plugin?.managers?.interactivity;
     if (typeof interactivity?.setProps !== 'function') return false;
+    const canvas = plugin.canvas3d;
+    if (level === 'none') {
+      if (!molstarMarkingStrengths && canvas) {
+        const renderer = canvas.props?.renderer || {};
+        molstarMarkingStrengths = {
+          highlightStrength: renderer.highlightStrength,
+          selectStrength: renderer.selectStrength
+        };
+        canvas.setProps({ renderer: { highlightStrength: 0, selectStrength: 0 } });
+      }
+      plugin.managers.interactivity.lociSelects?.deselectAll?.();
+      plugin.managers.interactivity.lociHighlights?.clearHighlights?.();
+      interactivity.setProps({ granularity: 'residue' });
+      return true;
+    }
+    if (molstarMarkingStrengths) {
+      canvas?.setProps({ renderer: molstarMarkingStrengths });
+      molstarMarkingStrengths = null;
+    }
     interactivity.setProps({ granularity: level });
     return true;
   }
@@ -25007,7 +27126,7 @@ SOFTWARE.
     if (name.startsWith('align')) return APP_ICON_DATA.CompareArrows;
     if (name.startsWith('colour:')) return APP_ICON_DATA.ColorTheme;
     if (name.startsWith('select')) return APP_ICON_DATA.CheckCircle;
-    if (name === 'molstar') {
+    if (name === 'molstar' || name === MOLSTAR_OPEN_IN_ACTION) {
       return APP_ICON_DATA.ExternalLink;
     }
     return null;
@@ -25040,7 +27159,14 @@ SOFTWARE.
     if (activeStructureAlignmentControl) {
       actions.push(...activeStructureAlignmentControl.contextActions(target, mode));
     }
-    if (molstarContextDocumentPayload(target)) actions.push(['molstar', 'Open in new tab']);
+    const mobileHost = document.body?.classList.contains('burette-mobile-host') === true;
+    if (!mobileHost && molstarOpenInMolecules(target).length) {
+      actions.push(moleculeMenuNestedAction(MOLSTAR_OPEN_IN_ACTION, 'Open in', [
+        [MOLSTAR_OPEN_IN_TAB_ACTION, 'New Tab'],
+        [MOLSTAR_OPEN_IN_GRID_ACTION, 'New Grid'],
+        ...(molstarOpenInMolecules(target).length === 1 ? [[MOLSTAR_OPEN_IN_POPOUT_ACTION, 'Popout']] : [])
+      ]));
+    } else if (molstarContextDocumentPayload(target)) actions.push(['molstar', 'Open in new tab']);
     // The desktop overlay carries the scene-tree powers into the 3D right click.
     // These stay off the mobile host, which renders its own native sheet.
     if (document.body?.classList.contains('burette-mobile-host') !== true) {
@@ -25266,17 +27392,17 @@ SOFTWARE.
   }
 
   function molstarNativeMenuEntries(session, target, mode) {
-    const action = entry => {
+    const action = (entry, destructive = false) => {
       const [name, label] = entry;
       const children = moleculeMenuActionChildren(entry);
       const icon = molstarNativeMenuIcon(moleculeContextActionIcon(name));
       const text = molstarNativeMenuLabel(name, label);
-      if (children.length) return { kind: 'submenu', id: name, text, icon, items: children.map(action) };
-      session.handlers.set(name, () => {
+      if (children.length) return { kind: 'submenu', id: name, text, icon, items: children.map(child => action(child, destructive)) };
+      session.handlers.set(name, (_value, id) => {
         session.actionChosen = true;
-        void moleculeContextMenuAction(name, label, target);
+        void moleculeContextMenuAction(id || name, label, target);
       });
-      return { kind: 'item', id: name, text, icon };
+      return { kind: 'item', id: name, text, icon, ...(destructive ? { variant: 'destructive' } : {}) };
     };
     const grouped = new Map();
     for (const entry of molstarContextMenuActions(target, mode)) {
@@ -25298,7 +27424,7 @@ SOFTWARE.
           if (!groupEntries.length) continue;
           if (items.length) items.push({ kind: 'separator' });
           if (groupIds.length > 1) items.push({ kind: 'label', text: MOLECULE_MENU_GROUP_TITLES[groupId] || section.title });
-          items.push(...groupEntries.map(action));
+          items.push(...groupEntries.map(entry => action(entry, section.destructive === true)));
         }
         body.push({
           kind: 'submenu', id: `section:${section.id}`, text: section.title,
@@ -25308,7 +27434,7 @@ SOFTWARE.
       }
       if (!section.hideTitle) body.push({ kind: 'label', text: section.title });
       for (const entry of entries) {
-        const item = entry[0] === 'represent:menu' ? molstarNativeRepresentationMenu(session, target) : action(entry);
+        const item = entry[0] === 'represent:menu' ? molstarNativeRepresentationMenu(session, target) : action(entry, section.destructive === true);
         if (item) body.push(item);
       }
     }
@@ -25394,7 +27520,11 @@ SOFTWARE.
     const session = molstarNativeMenuPending;
     if (!session || session.requestId !== body.requestId) return;
     if (body.event === 'select') {
-      session.handlers.get(String(body.id || ''))?.(body.value);
+      const id = String(body.id || '');
+      // The host lists its open grids under "Open in"; their rows share one handler.
+      const handler = session.handlers.get(id)
+        || (id.startsWith(`${MOLSTAR_OPEN_IN_GRID_ACTION}:`) ? session.handlers.get(MOLSTAR_OPEN_IN_GRID_ACTION) : null);
+      handler?.(body.value, id);
       return;
     }
     molstarNativeMenuPending = null;
@@ -25450,7 +27580,9 @@ SOFTWARE.
         return;
       } else if (action === 'select') {
         const selectionLoci = molstarContextSelectionLoci(target);
-        if (!selectMolstarContextPick({ ...target, loci: selectionLoci }, { applyGranularity: false })) throw new Error('No Mol* residue or ligand is available to select.');
+        // Menu selection accumulates, so molecules picked one by one, in one structure
+        // or several, stay selected together for "Open in".
+        if (!selectMolstarContextPick({ ...target, loci: selectionLoci }, { additive: true, applyGranularity: false })) throw new Error('No Mol* residue or ligand is available to select.');
         if (target.scope === 'ligand' || target.scope === 'ion') previewAfterAction = target;
         setStatus(`[web] Selected ${targetLabel}.`);
       } else if (action === 'remove') {
@@ -25487,15 +27619,23 @@ SOFTWARE.
         pushMolstarEditUndoSnapshot(undoSnapshot);
         setMolstarStructureDirty(true);
         setStatus(`[web] Deleted ${atomLabel}.`);
-      } else if (action === 'molstar') {
-        const contextDocument = molstarContextDocumentPayload(target);
+      } else if (action === 'molstar' || action === MOLSTAR_OPEN_IN_TAB_ACTION || action === MOLSTAR_OPEN_IN_POPOUT_ACTION || action.startsWith(MOLSTAR_OPEN_IN_GRID_ACTION)) {
+        const toGrid = action.startsWith(MOLSTAR_OPEN_IN_GRID_ACTION);
+        const records = molstarOpenInMolecules(target).map(molstarMoleculeSdfRecord).filter(Boolean);
+        // One molecule bound for a tab keeps the source-text entry when the file has one.
+        const contextDocument = (!toGrid && records.length < 2 ? molstarContextDocumentPayload(target) : null)
+          || molstarOpenInDocumentPayload(records);
         if (!contextDocument) throw new Error('No molecule-level Mol* context is available for this target.');
+        const gridDocumentId = toGrid ? action.slice(MOLSTAR_OPEN_IN_GRID_ACTION.length + 1) : '';
         const posted = postHostMessage({
           type: 'openMolstarContextDocument',
           renderer: 'molstar',
+          destination: toGrid ? 'grid' : action === MOLSTAR_OPEN_IN_POPOUT_ACTION ? 'popout' : 'tab',
+          ...(gridDocumentId ? { gridDocumentId } : {}),
           contextDocument
         });
-        setStatus(posted ? `[web] Opening ${targetLabel} in a new tab...` : '[web] Separate Mol* view is unavailable in this host.');
+        const opened = records.length > 1 ? `${records.length} molecules` : targetLabel;
+        setStatus(posted ? `[web] Opening ${opened} in ${toGrid ? 'a grid' : 'a new tab'}...` : '[web] Separate Mol* view is unavailable in this host.');
       } else if (action === 'save-modified') {
         const saved = saveMolstarModifiedStructure();
         setStatus(`[web] Saving ${saved.name} (${saved.count} structure${saved.count === 1 ? '' : 's'}).`);
@@ -25680,6 +27820,9 @@ SOFTWARE.
 
   function molstarMoleculePreviewEntry(target) {
     if (!target || (target.scope !== 'ligand' && target.scope !== 'ion')) return null;
+    if (target.structure && activeMolstarPrepared?.kind === 'sdf-collection') {
+      return molstarContextSourceEntryForActiveConfig(target.structure);
+    }
     const sdfEntry = molstarMoleculePreviewSdfEntry(target);
     if (sdfEntry) return sdfEntry;
     const entry = target.selectedEntry || target.ligand || null;
@@ -25783,7 +27926,7 @@ SOFTWARE.
   }
 
   function molstarPreviewKey(entry) {
-    return `${normalizeFormat(entry?.format)}:${String(entry?.data || '')}`;
+    return `${molstarShowHydrogens ? 'all-H' : 'no-H'}:${normalizeFormat(entry?.format)}:${String(entry?.data || '')}`;
   }
 
   function molstarMoleculePreviewResizeHandlesHTML() {
@@ -25833,7 +27976,7 @@ SOFTWARE.
   }
 
   function molstarPreviewLigandTarget(entry) {
-    const sourceEntry = molstarContextSourceEntryForActiveConfig();
+    const sourceEntry = molstarContextSourceEntryForActiveConfig(entry.structureRef);
     const selectedEntry = sourceEntry ? pdbEntryForResidue(sourceEntry, entry.atom) : null;
     return {
       structures: [entry.structureRef],
@@ -25855,7 +27998,10 @@ SOFTWARE.
   function molstarPreviewLigandIndex(entries) {
     const atom = molstarMoleculePreviewTarget?.atom;
     const key = atom ? molstarContextResidueLabel(atom) : '';
-    const index = key ? entries.findIndex(entry => entry.label === key) : -1;
+    const structure = molstarMoleculePreviewTarget?.structure;
+    const ref = structure?.cell?.transform?.ref;
+    const index = key ? entries.findIndex(entry => entry.label === key
+      && (!structure || entry.structureRef === structure || (ref && entry.structureRef?.cell?.transform?.ref === ref))) : -1;
     return index >= 0 ? index : 0;
   }
 
@@ -25902,6 +28048,7 @@ SOFTWARE.
       <div class="buret-molecule-card-toolbar" role="toolbar" aria-label="Molecule preview actions">
         <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="ketcher" aria-label="Open in Ketcher" title="Open in Ketcher">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.ketcher)}<span>Edit</span></button>
         <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="copy-smiles" aria-label="Copy SMILES" title="Copy SMILES">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.copy)}<span>SMILES</span></button>
+        <button type="button" class="buret-molecule-card-button" data-buret-hydrogens data-buret-molecule-preview-action="hydrogens" aria-label="${molstarShowHydrogens ? 'Hide' : 'Show'} hydrogens" aria-pressed="${molstarShowHydrogens}" title="${molstarShowHydrogens ? 'Hide' : 'Show'} hydrogens">H</button>
         <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="lasso" aria-label="Lasso atoms in 2D" aria-pressed="false" title="Select atoms by drawing a lasso · Esc to exit">${molstarMoleculePreviewIconHTML(['M7 17c-3-1-5-3-5-6 0-5 5-8 11-8s9 3 9 7-5 8-11 8', 'M7 15c-3 0-4 2-3 4s4 2 5 0-1-4-2-4', 'M7 21c2 2 5 2 7 0'])}<span>Lasso</span></button>
       </div>
       <div class="buret-molstar-molecule-preview-image" data-buret-molecule-preview-drag>${image}</div>
@@ -25909,8 +28056,16 @@ SOFTWARE.
   }
 
   function openMolstarMoleculePreviewInKetcher(target) {
-    const entry = molstarMoleculePreviewEntry(target);
-    const text = String(entry?.data || '').trim();
+    // Preserve the coordinate source for chemical bond perception in the host;
+    // the distance-only SDF used by the preview is not an editable molecule.
+    const source = target?.sourceEntry || target?.receptor;
+    const entry = target?.structure && activeMolstarPrepared?.kind === 'sdf-collection'
+      ? molstarContextSourceEntryForActiveConfig(target.structure)
+      : (target?.atom && normalizeFormat(target.ligand?.format) === 'sdf' && target.ligand)
+      || (target?.atom && pdbEntryForResidue(source, target.atom))
+      || (!target?.atom && normalizeFormat(source?.format) === 'pdb' && source)
+      || molstarMoleculePreviewEntry(target);
+    const text = String(entry?.data || '').trimEnd();
     if (!text) {
       setStatus('[web] This molecule has no structure text to open in Ketcher.', 'error');
       return;
@@ -26071,6 +28226,7 @@ SOFTWARE.
     else if (action === 'minimize') minimizeMolstarMoleculePreview();
     else if (action === 'ketcher') openMolstarMoleculePreviewInKetcher(molstarMoleculePreviewTarget);
     else if (action === 'copy-smiles') void copyMolstarMoleculePreviewSmiles(molstarMoleculePreviewTarget);
+    else if (action === 'hydrogens') void toggleMolstarHydrogens();
     else if (action === 'lasso') molstarMoleculePreview?.querySelector('.buret-molstar-molecule-preview-image')?.dispatchEvent(new Event('burette-toggle-lasso'));
     else if (action === 'prev') stepMolstarMoleculePreview(-1);
     else if (action === 'next') stepMolstarMoleculePreview(1);
@@ -26406,12 +28562,15 @@ SOFTWARE.
     return '#8f9499';
   }
 
-  function molstarMoleculePreviewFallbackSVG(entry) {
+  function molstarMoleculePreviewFallbackSVG(entry, showHydrogens = molstarShowHydrogens) {
     const parsed = molstarPreviewParseMolblock2D(entry?.data);
     if (!parsed?.atoms?.length) return '';
     const size = MOLSTAR_PREVIEW_RDKIT_SVG_SIZE;
     const pad = 18;
     let atoms = parsed.atoms;
+    const visible = atom => showHydrogens || !['H', 'D', 'T'].includes(atom.element.toUpperCase());
+    const visibleAtoms = atoms.filter(visible);
+    if (!visibleAtoms.length) return '';
     let minX = Math.min(...atoms.map(atom => atom.x));
     let maxX = Math.max(...atoms.map(atom => atom.x));
     let minY = Math.min(...atoms.map(atom => atom.y));
@@ -26435,12 +28594,12 @@ SOFTWARE.
       x: dx + (atom.x - minX) * scale,
       y: size - (dy + (atom.y - minY) * scale)
     });
-    const bondLines = parsed.bonds.map(bond => {
+    const bondLines = parsed.bonds.filter(bond => visible(atoms[bond.a]) && visible(atoms[bond.b])).map(bond => {
       const a = point(atoms[bond.a]);
       const b = point(atoms[bond.b]);
       return `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="var(--depiction-carbon)" stroke-width="${Math.max(2, bond.order + 1)}" stroke-linecap="round" />`;
     }).join('');
-    const atomNodes = atoms.map(atom => {
+    const atomNodes = atoms.filter(visible).map(atom => {
       const p = point(atom);
       const color = molstarPreviewAtomColor(atom.element);
       const label = escapeHTML(atom.element);
@@ -26455,6 +28614,7 @@ SOFTWARE.
   }
 
   async function molstarMoleculePreviewRDKitSVG(entry) {
+    const showHydrogens = molstarShowHydrogens;
     if (normalizeFormat(entry?.format) !== 'sdf') return '';
     const key = molstarPreviewKey(entry);
     if (molstarPreviewSvgCache.has(key)) return molstarPreviewSvgCache.get(key);
@@ -26465,6 +28625,9 @@ SOFTWARE.
         const molblock = splitSdfRecords(String(entry.data || ''))[0] || String(entry.data || '');
         mol = rdkit.get_mol(molblock);
         if (!mol || (typeof mol.is_valid === 'function' && !mol.is_valid())) throw new Error('invalid molecule');
+        // Work on the disposable depiction molecule only. Read coordinates after
+        // H removal so lasso atom indices still map to the original 3D positions.
+        if (!showHydrogens) mol.remove_hs_in_place();
         const original = JSON.parse(mol.get_json()).molecules?.[0];
         const sourcePositions = original?.conformers?.[0]?.coords || [];
         mol.set_new_coords(true);
@@ -26487,7 +28650,7 @@ SOFTWARE.
       }
     } catch (error) {
       debug(`RDKit molecule preview failed; using SVG fallback: ${error?.message || error}`);
-      const fallback = molstarMoleculePreviewFallbackSVG(entry);
+      const fallback = molstarMoleculePreviewFallbackSVG(entry, showHydrogens);
       if (!fallback) throw error;
       molstarPreviewCacheSVG(key, fallback);
       return fallback;
@@ -26558,20 +28721,25 @@ SOFTWARE.
       popover.dataset.buretPreviewKey = key;
       if (created) applyMolstarMoleculePreviewGeometry(popover);
       rememberMolstarMoleculePreviewGeometry(popover);
+      updateMolstarHydrogenButtons();
     }
     void molstarMoleculePreviewRDKitSVG(entry)
       .then(svg => {
-        if (!svg || !molstarMoleculePreview || molstarMoleculePreview.dataset.buretPreviewKey !== key) return;
+        if (!svg || molstarMoleculePreview !== popover || molstarMoleculePreviewTarget !== target || popover.dataset.buretPreviewKey !== key) return;
         const imageEl = molstarMoleculePreview.querySelector('.buret-molstar-molecule-preview-image');
         if (imageEl && imageEl.dataset.depictionKey !== key) {
           imageEl.innerHTML = svg;
           imageEl.dataset.depictionKey = key;
           fitMolstarMoleculePreviewDrawing(molstarMoleculePreview);
-          window.BuretteMoleculePreviewInteractions?.install(imageEl, positions => selectMolstarMoleculePreviewAtoms(target, positions));
+          window.BuretteMoleculePreviewInteractions?.install(imageEl, positions => {
+            if (molstarMoleculePreview === popover && molstarMoleculePreviewTarget) {
+              selectMolstarMoleculePreviewAtoms(molstarMoleculePreviewTarget, positions);
+            }
+          });
         }
       })
       .catch(() => {
-        if (!image && molstarMoleculePreview?.dataset?.buretPreviewKey === key) {
+        if (!image && molstarMoleculePreview === popover && molstarMoleculePreviewTarget === target && popover.dataset.buretPreviewKey === key) {
           const imageEl = molstarMoleculePreview.querySelector('.buret-molstar-molecule-preview-image');
           if (imageEl) imageEl.textContent = '2D preview unavailable';
         }
@@ -26581,13 +28749,13 @@ SOFTWARE.
   function molstarSelectionMoleculePreviewTarget() {
     const structures = molstarContextStructures();
     if (!structures.length) return null;
-    const sourceEntry = molstarContextSourceEntryForActiveConfig();
     for (const structureRef of structures) {
       const structure = molstarStructureFromRef(structureRef) || structureRef;
       const loci = molstarContextSelectionLociForStructure(structureRef);
       const atom = molstarContextAtomFromLoci(loci);
       const scope = molstarContextScopeForAtom(atom);
       if (scope !== 'ligand' && scope !== 'ion') continue;
+      const sourceEntry = molstarContextSourceEntryForActiveConfig(structureRef);
       const selectedEntry = sourceEntry ? pdbEntryForResidue(sourceEntry, atom) : null;
       return {
         structures: [structureRef],
@@ -27928,7 +30096,7 @@ SOFTWARE.
   function installMolstarBrowserAnnotationTarget(viewer) {
     molstarBrowserAnnotationTargetCleanup?.();
     molstarBrowserAnnotationTargetCleanup = null;
-    const canvas = viewer?.plugin?.canvas3d?.webgl?.gl?.canvas;
+    const canvas = viewer?.plugin?.canvas3dContext?.canvas;
     if (!(canvas instanceof HTMLCanvasElement)) return;
     let annotationTarget = null;
     let observedCommentRoot = null;
@@ -28183,7 +30351,7 @@ SOFTWARE.
       collapseRightPanel: true,
       pdbProvider: 'rcsb',
       emdbProvider: 'rcsb',
-      preferWebgl1: option('molstarPreferWebgl1', true),
+      graphicsBackend: activeConfig?.molstarPreferWebgl1 === true ? 'webgl1' : 'webgl',
       disableAntialiasing: option('molstarDisableAntialiasing', true),
       ...(pixelScale !== undefined ? { pixelScale } : {}),
       ...(pickScale !== undefined ? { pickScale } : {}),
@@ -28212,6 +30380,12 @@ SOFTWARE.
       viewer = typeof window.molstar.Viewer.create === 'function'
         ? await window.molstar.Viewer.create('app', createViewerOptions())
         : new window.molstar.Viewer('app', createViewerOptions());
+      // Embedded imports belong to the workspace; Mol*'s competing drop layer
+      // can otherwise remain over the scene after a drag leaves the iframe.
+      if (window.parent && window.parent !== window) {
+        viewer.plugin.spec.components.disableDragOverlay = true;
+        viewer.plugin.layout.events.updated.next();
+      }
       viewer.plugin.canvas3d?.setProps({ transparentBackground, renderer: { backgroundColor: canvasBackgroundColor() } });
       viewer.plugin.canvas3d?.requestDraw();
       // WebKit may suspend animation callbacks while this container is hidden.
@@ -28251,7 +30425,7 @@ SOFTWARE.
       if (width === lastWidth && height === lastHeight) return;
       lastWidth = width;
       lastHeight = height;
-      scheduleViewerResize(viewer, 20);
+      scheduleViewerResize(viewer);
     });
     observer.observe(app);
     return () => observer.disconnect();
@@ -28271,6 +30445,8 @@ SOFTWARE.
     clearMolstarEditUndoHistory();
     resetXyzFrameOverlayState(activeViewer);
     const viewer = activeViewer || window.BuretteViewer || window.BuretteViewer;
+    window.molstar?.BuretteResizeInteraction?.dispose(viewer);
+    if (resizeState.standaloneWindowViewer === viewer) resizeState.standaloneWindowViewer = null;
     try { viewer?.plugin?.dispose?.(); } catch (_) {}
     if (molstarContainerResizeCleanup) {
       molstarContainerResizeCleanup();
@@ -28302,6 +30478,7 @@ SOFTWARE.
   }
 
   async function startMolstar(config, cb) {
+    const restoredView = window.BuretteRendererViewState?.restoreFromHost(config.documentId, postHostMessage);
     disposeActiveMolstarViewer();
     activeSdfPoseMode = readSdfPoseMode(config);
     activeSdfCollectionLayout = readSdfCollectionLayout(config);
@@ -28344,7 +30521,12 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       debug('BuretteAgent attach failed: ' + (error && error.message || String(error)));
     }
     activeViewer = viewer;
-    window.BuretteHandleResize = () => scheduleViewerResize(viewer, 60);
+    await viewer.plugin.managers.structure.component.setOptions({
+      ...viewer.plugin.managers.structure.component.state.options,
+      hydrogens: molstarShowHydrogens ? 'all' : 'hide-all'
+    });
+    updateMolstarHydrogenButtons();
+    window.BuretteHandleResize = () => scheduleViewerResize(viewer);
     molstarContainerResizeCleanup = installMolstarContainerResizeObserver(viewer);
     applyViewerUIScale(viewer);
     initViewerKeyboardShortcuts(viewer);
@@ -28397,7 +30579,14 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     trackMolstarOrientation(viewer, config);
 
     if (molstarWindowResizeHandler) window.removeEventListener('resize', molstarWindowResizeHandler);
-    molstarWindowResizeHandler = () => scheduleViewerResize(viewer, 100);
+    molstarWindowResizeHandler = () => {
+      // Quick Look and standalone previews have no host to signal a window drag.
+      if (window.parent === window && resizeState.hasDrawn === viewer
+        && viewerCanvasIsVisible(viewer) && viewerContainerSize(viewer) !== resizeState.appliedSize) {
+        resizeState.standaloneWindowViewer = viewer;
+      }
+      scheduleViewerResize(viewer);
+    };
     window.addEventListener('resize', molstarWindowResizeHandler);
     await waitForAnimationFrame();
     applyLayoutState(viewer);
@@ -28420,17 +30609,22 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       }
     }
     try {
-      await applyConfiguredMolstarPreset(viewer, activeConfig || config);
+      if (prepared.kind !== 'session') await applyConfiguredMolstarPreset(viewer, activeConfig || config);
     } catch (error) {
       debug('Configured Mol* preset failed: ' + (error?.message || String(error)));
       if (window.BuretteNativeFirstFrame) throw error;
     }
     if (window.BuretteViewerDisposed) return;
+    const sourceViewport = await restoredView;
     const savedCamera = window.BuretteRendererViewState?.read(config.documentId, config.rendererViewState).camera;
     if (savedCamera && !hasMolstarContextFocus(config) && prepared.kind !== 'mvs') {
       molstarStructureFocusSerial += 1;
-      restoreMolstarCameraSnapshotNow(viewer, savedCamera);
-    } else if (isQuickLookHost() && !hasMolstarContextFocus(config)) {
+      const camera = sourceViewport
+        ? window.BuretteRendererViewState.transferCamera(savedCamera, sourceViewport, viewer.plugin.canvas3d?.camera?.viewport)
+        : savedCamera;
+      restoreMolstarCameraSnapshotNow(viewer, camera);
+      if (sourceViewport) saveRendererViewState();
+    } else if ((isQuickLookHost() || prepared.fitSessionCamera) && !hasMolstarContextFocus(config)) {
       // Quick Look keeps the file's orientation and never animates the camera; it
       // only trades Mol*'s bounding-sphere distance for the atom-fitted one. An MVS
       // scene brings its own camera.
@@ -28438,13 +30632,14 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       if (cameraState && prepared.kind !== 'mvs') {
         scheduleMolstarStructureFocus(viewer, {
           reason: 'quick-look-frame',
+          mode: prepared.fitSessionCamera ? cameraState.mode : 'perspective',
           durationMs: 0,
           force: true,
           direction: [0, 1, 2].map(axis => cameraState.position[axis] - cameraState.target[axis]),
           up: Array.from(cameraState.up)
         });
       }
-    } else if (!hasMolstarContextFocus(config)) {
+    } else if (!hasMolstarContextFocus(config) && !prepared.hasSessionCamera) {
       scheduleMolstarStructureFocus(viewer, { reason: 'initial-load', durationMs: 120 });
     }
     {
@@ -28463,6 +30658,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       }
       const readyPayload = molstarReadyPayload(config, prepared, {
         molstarStructureCount: currentMolstarStructureCount(viewer),
+        molstarVolumeCount: currentMolstarVolumeCount(viewer),
         poseCount,
         trajectoryFrameCount: Math.max(Number(config?.trajectoryFrameCount || 0), poseCount)
       });
@@ -28478,6 +30674,8 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       molstarStructureFocusSerial += 1;
       await applyHostedMcpActions();
     }
+    // A panel can be hidden while its initial structure is still loading.
+    if (!hostViewerVisible) viewer.plugin.animationLoop.stop({ noDraw: true });
   }
 
   async function start() {
@@ -28505,15 +30703,22 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       return;
     }
 
+    if (config.inspectorPreview === true) molstarShowHydrogens = config.hydrogenDisplay === 'all';
     await startMolstar(config, cb);
     if (config.inspectorPreview === true) {
       activeViewer.plugin.canvas3d?.setProps({ cameraResetDurationMs: 0, camera: { helper: { axes: { name: 'off', params: {} } } } });
       const settlePreview = async () => {
         const plugin = activeViewer.plugin;
+        activeViewer.handleResize();
         plugin.canvas3d?.commit(true);
-        requestMolstarStructureFocus(activeViewer, { durationMs: 0 });
-        await plugin.animationLoop.tick(performance.now(), { isSynchronous: true });
         plugin.managers.camera.orientAxes(undefined, 0);
+        await plugin.animationLoop.tick(performance.now(), { isSynchronous: true });
+        const camera = plugin.canvas3d?.camera?.state;
+        requestMolstarStructureFocus(activeViewer, {
+          durationMs: 0,
+          direction: camera && Array.from(camera.position, (value, axis) => value - camera.target[axis]),
+          up: camera && Array.from(camera.up),
+        });
         await plugin.animationLoop.tick(performance.now(), { isSynchronous: true });
       };
       await settlePreview();
@@ -28522,10 +30727,14 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       let running = false;
       let current = structureDataForMolstar(config).data;
       window.addEventListener('message', async event => {
-        if (event.source !== window.parent || event.data?.source !== 'burette-inspector-host') return;
+        // WKWebView can report the receiving frame as event.source for a
+        // parent's timer/effect postMessage. Bind updates to this document's
+        // unguessable channel instead; never accept another inspector's data.
+        if (!config.inspectorChannel || event.data?.channel !== config.inspectorChannel
+          || event.data?.source !== 'burette-inspector-host') return;
         const data = event.data.molblock;
         if (typeof data !== 'string' || !data || data.length > 350000) return;
-        pending = data;
+        pending = { data, showHydrogens: event.data.hydrogenDisplay === 'all' };
         if (running) return;
         running = true;
         const previousFrame = captureMolstarTransitionFrame();
@@ -28536,11 +30745,12 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
           while (pending !== null) {
             const next = pending;
             pending = null;
-            if (next === current) continue;
+            if (next.showHydrogens !== molstarShowHydrogens) await toggleMolstarHydrogens();
+            if (next.data === current) continue;
             await activeViewer.plugin.clear();
-            await loadPreparedStructure(activeViewer, { data: next, format: 'mol', label: 'Molecule' });
+            await loadPreparedStructure(activeViewer, { data: next.data, format: 'mol', label: 'Molecule' });
             await applyConfiguredMolstarPreset(activeViewer, activeConfig);
-            current = next;
+            current = next.data;
             await settlePreview();
           }
         } catch (error) { console.error('Inspector preview:', error); }
@@ -28551,7 +30761,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
           running = false;
         }
       });
-      window.parent.postMessage({ source: 'burette-inspector-ready' }, '*');
+      window.parent.postMessage({ source: 'burette-inspector-ready', channel: config.inspectorChannel }, '*');
     }
 
   }

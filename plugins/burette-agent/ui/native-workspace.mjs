@@ -1,5 +1,6 @@
 import { createSelectionContext } from '../../../apps/burette-public-plugin/lib/hosted-context';
 import { createWorkspaceAssets } from './native-workspace-assets.mjs';
+import { prepareWorkspaceFrame } from './native-workspace-frame.mjs';
 import { createWorkspaceTransport } from './native-workspace-transport.mjs';
 import { createWorkspaceAgent } from './native-workspace-agent.mjs';
 import { prepareWorkspacePreview } from './native-workspace-preview.mjs';
@@ -45,7 +46,11 @@ export async function startNativeWorkspace(app, initialResult) {
   // the first render, so no document has to become ready first.
   let emptyWorkspace = false;
   function reveal() {
-    if (!startupFailed && runtimeLoaded && latestState && !latestState.error && (emptyWorkspace || (latestState.ready &&
+    // A restored Style tab owns focus while its molecular source remains in
+    // the main pane. Agent document readiness is not workspace readiness.
+    const focusedTool = latestState?.tabs?.some(tab => tab.active && tab.kind === 'tool');
+    const toolSourcePainted = focusedTool && latestState.documents?.some(document => paintedDocuments.has(document.id));
+    if (!startupFailed && runtimeLoaded && latestState && !latestState.error && (emptyWorkspace || toolSourcePainted || (latestState.ready &&
       (latestState.activeDocument?.renderer !== 'molstar' || paintedDocuments.has(latestState.activeDocument.id))))) {
       root.inert = false;
       clearTimeout(loadingDeadline);
@@ -246,6 +251,7 @@ export async function startNativeWorkspace(app, initialResult) {
         },
       });
       window.BuretteMcpWorkspace = { ...assets, placement, sessionId: session.sessionId, get closed() { return lifetime.closed; },
+        prepareFrame: path => prepareWorkspaceFrame(path, assets, window.origin),
         firstFrame(documentId) { if (!lifetime.closed) { paintedDocuments.add(documentId); reveal(); } },
         theme: app.getHostContext()?.theme || 'light', backgrounds,
         initialPaths: !checkpoint.restored && ['auto', 'xyzrender'].includes(descriptor.view) ? descriptor.documents.map(item => item.path) : [],

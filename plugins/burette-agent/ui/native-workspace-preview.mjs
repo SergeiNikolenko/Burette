@@ -88,6 +88,7 @@ function startPreview(installTooltipLayout) {
     }
     syncTheme();
   })().catch(error => {
+    document.documentElement.classList.remove('buret-viewer-booting');
     const status = document.getElementById('status');
     if (status) { status.hidden = false; status.classList.remove('hidden'); status.textContent = error.message; }
     window.parent.postMessage({ source: 'burette-viewer', body: { type: 'error', message: error.message, documentId: window.BuretteConfig?.documentId } }, '*');
@@ -101,6 +102,12 @@ function startPreview(installTooltipLayout) {
 
 export function prepareWorkspacePreview(html) {
   const doc = new DOMParser().parseFromString(html, 'text/html');
+  // The offline loader restores styles before viewer-shell.js can run. Guard
+  // the very first paint, using the shared viewer's existing reveal lifecycle.
+  doc.documentElement.classList.add('buret-viewer-booting');
+  const bootStyle = doc.createElement('style');
+  bootStyle.textContent = 'html.buret-viewer-booting,html.buret-viewer-booting body{background:transparent!important;color-scheme:normal}html.buret-viewer-booting body{opacity:0!important}';
+  doc.head.appendChild(bootStyle);
   const config = doc.getElementById('burette-runtime-config');
   if (config) {
     config.textContent = JSON.stringify({ ...JSON.parse(config.textContent), autoFocusStructure: true, defaultToolbarCollapsed: true, hostedMcpWidgetBootstrap: true }).replaceAll('<', '\\u003c');

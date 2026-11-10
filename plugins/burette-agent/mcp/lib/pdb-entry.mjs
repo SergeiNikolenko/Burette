@@ -1,4 +1,5 @@
-import { mkdir, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
@@ -27,9 +28,11 @@ export async function resolvePdbEntry(pdbId) {
     const bytes = Buffer.from(await response.arrayBuffer());
     if (bytes.length > MAX_ENTRY_BYTES) throw new Error(`PDB entry ${id} exceeds 16 MiB and cannot be opened in Burette.`);
     const path = join(cacheRoot, `${id}.${extension}`);
-    const partial = `${path}.${process.pid}.partial`;
-    await writeFile(partial, bytes);
-    await rename(partial, path);
+    const partial = `${path}.${randomUUID()}.partial`;
+    try {
+      await writeFile(partial, bytes, { flag: 'wx' });
+      await rename(partial, path);
+    } finally { await unlink(partial).catch(error => { if (error.code !== 'ENOENT') throw error; }); }
     return path;
   }
   throw new Error(`PDB entry ${id} was not found at RCSB.`);

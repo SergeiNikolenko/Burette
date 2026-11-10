@@ -23,6 +23,7 @@ test('shell CSS images and SDK fonts are packaged and missing resources fail the
     }
     await writeFile(join(runtimeRoot, 'rdkit/RDKit_minimal.js'), 'function craftInvokerFunction(){new Function()}var __embind_register_class_constructor;');
     const manifest = await packNativeWorkspace({ shellRoot, runtimeRoot, outputRoot, molstar: 'fixture' });
+    assert.equal(manifest.assets['shell/index.html'].mimeType, 'text/html');
     const entry = manifest.assets['shell/assets/style.css'];
     const css = gunzipSync(await readFile(join(outputRoot, `${entry.sha256}.gz`))).toString();
     assert.equal(css, '@font-face{src:url("./KaTeX_Main-Regular-fixture.woff2")}' + background);

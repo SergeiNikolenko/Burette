@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "version": "0.2.73-viewerfix.20261106",
+  "uiSourceCommit": "6c017f2a8 + host background and narrow tab strip fixes",
+  "uiSourceBranch": "main",
+  "backendFrom": "0.2.72-viewerfix.20261105",
+  "composition": "Native workspace UI and preview-web rebuilt from main; backend inherited unchanged from 0.2.72",
+  "createdAt": "2026-11-06T02:40:49Z"
+}

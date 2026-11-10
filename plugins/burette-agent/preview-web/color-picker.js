@@ -1,6 +1,15 @@
 (function () {
   'use strict';
 
+  const quickPresets = [
+    { label: 'Red', value: 0xef4444 }, { label: 'Orange', value: 0xf97316 },
+    { label: 'Yellow', value: 0xeab308 }, { label: 'Green', value: 0x22c55e },
+    { label: 'Cyan', value: 0x06b6d4 }, { label: 'Blue', value: 0x3b82f6 },
+    { label: 'Violet', value: 0x8b5cf6 }, { label: 'Pink', value: 0xec4899 },
+    { label: 'White', value: 0xffffff }, { label: 'Gray', value: 0x808080 },
+    { label: 'Black', value: 0x000000 },
+  ];
+
   const families = [
     [0xd1c9e3, 0xa48abd, 0x705c91], [0xbcd2e7, 0x7ca5c5, 0x497699],
     [0xb3d6d7, 0x72a7a6, 0x467c7d], [0xc7d6be, 0x90ab80, 0x637d55],
@@ -14,6 +23,7 @@
 
   // Exact qualitative lists from Mol* mol-util/color/lists (ColorBrewer / D3).
   const palettes = [
+    { label: 'Standard', colors: quickPresets.map(entry => entry.value) },
     { label: 'Shades', colors: shades },
     { label: 'Tableau-10', colors: [0x4e79a7, 0xf28e2c, 0xe15759, 0x76b7b2, 0x59a14f, 0xedc949, 0xaf7aa1, 0xff9da7, 0x9c755f, 0xbab0ab] },
     { label: 'Pastel-1', colors: [0xfbb4ae, 0xb3cde3, 0xccebc5, 0xdecbe4, 0xfed9a6, 0xffffcc, 0xe5d8bd, 0xfddaec, 0xf2f2f2] },
@@ -30,7 +40,7 @@
     panel.hidden = true;
     panel.setAttribute('role', 'group');
     panel.setAttribute('aria-label', 'Colour palette');
-    panel.innerHTML = `<label class="buret-color-picker-title">Shades<select aria-label="Colour palette preset"></select></label>
+    panel.innerHTML = `<label class="buret-color-picker-title">Palette<select aria-label="Colour palette preset"></select></label>
       <div class="buret-color-picker-grid" role="group" aria-label="Colour shades"></div>
       <label class="buret-color-picker-hex"><span>HEX</span><input type="text" maxlength="7" spellcheck="false" aria-label="Hex colour"></label>`;
     const grid = panel.querySelector('.buret-color-picker-grid');
@@ -56,7 +66,7 @@
     }
     function renderPalette() {
       grid.replaceChildren();
-      grid.style.gridTemplateColumns = `repeat(${select.value === '0' ? 8 : 5}, minmax(0, 1fr))`;
+      grid.style.gridTemplateColumns = `repeat(${palettes[Number(select.value) || 0].label === 'Shades' ? 8 : 5}, minmax(0, 1fr))`;
       buttons = [];
       for (const colour of palettes[Number(select.value) || 0].colors) {
         const button = document.createElement('button');
@@ -75,7 +85,7 @@
     select.addEventListener('change', renderPalette);
     grid.addEventListener('keydown', event => {
       const index = buttons.indexOf(document.activeElement);
-      const columns = select.value === '0' ? 8 : 5;
+      const columns = palettes[Number(select.value) || 0].label === 'Shades' ? 8 : 5;
       const delta = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -columns, ArrowDown: columns }[event.key];
       if (index < 0 || delta === undefined) return;
       event.preventDefault();
@@ -94,5 +104,5 @@
     renderPalette();
     return panel;
   }
-  window.BuretteColorPicker = { create, presets };
+  window.BuretteColorPicker = { create, presets, quickPresets };
 })();
