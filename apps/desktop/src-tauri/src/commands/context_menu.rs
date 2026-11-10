@@ -2,6 +2,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
+// Other platforms reject the request before reading the entries; the web
+// layer then shows its own menu.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) enum MenuEntry {
     Separator,
     Item {
@@ -50,6 +53,7 @@ pub(crate) enum MenuEntry {
 }
 
 /// Emitted to the requesting webview for each live slider or colour change.
+#[cfg(target_os = "macos")]
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct MenuValue {
@@ -58,6 +62,7 @@ struct MenuValue {
     value: serde_json::Value,
 }
 
+#[cfg(target_os = "macos")]
 const MENU_VALUE_EVENT: &str = "native-context-menu-value";
 
 fn is_hex_colour(value: &str) -> bool {

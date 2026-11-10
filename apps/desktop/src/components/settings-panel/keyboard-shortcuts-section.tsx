@@ -35,6 +35,7 @@ import {
   type ShortcutId,
   type ShortcutOverrides,
 } from "../../lib/keyboard-shortcuts";
+import { isMacPlatform } from "../../lib/platform";
 import { isTauriRuntime } from "../../lib/tauri";
 import { useSettingsStore } from "../../stores/settings-store";
 import { SettingControl } from "./setting-control";
@@ -267,7 +268,7 @@ function ShortcutSetter({
           <span id={problemId} role="alert" className="keyboard-shortcut-problem" data-kind={problem.kind}>
             {problem.kind === "conflict"
               ? `Used by ${problem.conflict.label}`
-              : "Use a key combination with ⌘, ⌃, or ⌥, or a function key"}
+              : isMacPlatform() ? "Use a key combination with ⌘, ⌃, or ⌥, or a function key" : "Use a key combination with Ctrl, Alt, or Super, or a function key"}
           </span>
         ) : null}
       </div>

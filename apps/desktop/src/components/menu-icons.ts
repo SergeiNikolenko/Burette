@@ -2,14 +2,17 @@ import * as iconData from "./ui/app-icon-data";
 import type { MenuItemSpec } from "./menu-types";
 
 // Native template images use the same reviewed SVG geometry as React controls.
-const urls = Object.fromEntries(Object.entries(iconData).map(([name, nodes]) => {
+function iconSvgUrl(nodes: (typeof iconData)[keyof typeof iconData], color = "#000") {
   const svg = nodes.map(([tag, attributes]) => `<${tag} ${Object.entries(attributes)
     .filter(([key]) => key !== "key" && key !== "className")
     .map(([key, value]) => `${key.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`)}="${String(value)
-      .replaceAll("currentColor", "#000").replaceAll("&", "&amp;").replaceAll('"', "&quot;")}"`)
+      .replaceAll("currentColor", color).replaceAll("&", "&amp;").replaceAll('"', "&quot;")}"`)
     .join(" ")} />`).join("");
-  return [name, `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">${svg}</svg>`)}`];
-}));
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">${svg}</svg>`)}`;
+}
+const urls = Object.fromEntries(Object.entries(iconData).map(([name, nodes]) => [name, iconSvgUrl(nodes)]));
+/** The shared folder glyph as an image, grey so it reads on light and dark surfaces. */
+export const FOLDER_IMAGE_URL = iconSvgUrl(iconData.Folder, "#8e8e93");
 const aliases: Record<string, keyof typeof iconData> = {
   ArrowUpRight: "ExternalLink", CloseBold: "X", FolderDocumentsFinder: "Folder",
   Grid: "Stack", ImageSquare: "FileImage", OpenRight: "SidebarRight", SelectText: "Clipboard",

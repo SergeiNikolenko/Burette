@@ -218,10 +218,7 @@ fn operate(request: FileOperation) -> Result<Option<String>, String> {
             if target == source {
                 return Ok(Some(path));
             }
-            #[cfg(target_os = "macos")]
             rename_new(&source, &target).map_err(|error| error.to_string())?;
-            #[cfg(not(target_os = "macos"))]
-            return Err("Folder rename is currently available on macOS".into());
             target
         }
         FileOperation::TrashFolder { path } => {
@@ -374,9 +371,33 @@ fn copy_item(source: &Path, target: &Path) -> Result<(), String> {
     }
 }
 
-#[cfg(all(unix, not(target_os = "macos")))]
-fn copy_item(_source: &Path, _target: &Path) -> Result<(), String> {
-    Err("Moving items to another volume is supported by the macOS app.".into())
+#[cfg(not(target_os = "macos"))]
+fn copy_item(source: &Path, target: &Path) -> Result<(), String> {
+    copy_tree(source, target).map_err(|error| {
+        // The caller checked that nothing lived at the target, so a partial
+        // copy is ours to remove.
+        let _ = fs::remove_dir_all(target).or_else(|_| fs::remove_file(target));
+        error.to_string()
+    })
+}
+
+/// Copies a file, folder, or symbolic link without replacing anything.
+#[cfg(not(target_os = "macos"))]
+fn copy_tree(source: &Path, target: &Path) -> io::Result<()> {
+    let metadata = fs::symlink_metadata(source)?;
+    let kind = metadata.file_type();
+    if kind.is_symlink() {
+        std::os::unix::fs::symlink(fs::read_link(source)?, target)
+    } else if kind.is_dir() {
+        fs::create_dir(target)?;
+        for entry in fs::read_dir(source)? {
+            let entry = entry?;
+            copy_tree(&entry.path(), &target.join(entry.file_name()))?;
+        }
+        fs::set_permissions(target, metadata.permissions())
+    } else {
+        copy_new(source, target)
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -423,12 +444,9 @@ fn rename_new(source: &Path, target: &Path) -> io::Result<()> {
 
 #[cfg(not(target_os = "macos"))]
 fn rename_new(source: &Path, target: &Path) -> io::Result<()> {
-    fs::hard_link(source, target)?;
-    if let Err(error) = fs::remove_file(source) {
-        let _ = fs::remove_file(target);
-        return Err(error);
-    }
-    Ok(())
+    use rustix::fs::{renameat_with, RenameFlags, CWD};
+    // RENAME_NOREPLACE closes the exists-check/rename race without replacing files.
+    renameat_with(CWD, source, CWD, target, RenameFlags::NOREPLACE).map_err(io::Error::from)
 }
 
 #[cfg(target_os = "macos")]
@@ -453,9 +471,11 @@ fn trash_file(path: &Path) -> Result<(), String> {
     }
 }
 
+/// The freedesktop.org Trash, which GNOME Files, Dolphin and the other Linux
+/// file managers share.
 #[cfg(not(target_os = "macos"))]
-fn trash_file(_path: &Path) -> Result<(), String> {
-    Err("Moving files to Trash is supported by the macOS app.".into())
+fn trash_file(path: &Path) -> Result<(), String> {
+    trash::delete(path).map_err(|error| format!("Could not move the item to Trash: {error}"))
 }
 
 #[cfg(test)]

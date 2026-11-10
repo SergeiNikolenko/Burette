@@ -1,11 +1,12 @@
 import { SidebarRight, SidebarRightHidden } from "../ui/app-icons";
 import { ToolbarButton } from "../ui/toolbar-button";
 import { ShortcutTooltip } from "../shortcut-tooltip";
+import { defaultShortcutLabel } from "../../lib/keyboard-shortcuts";
 
 // The title bar's trailing panel button shows or hides the right dock. The
 // bottom dock has no button of its own and opens from its shortcut (⌘J).
 export function RightDockToggle({ open, toggle }: { open: boolean; toggle: () => void }) {
-  return <ShortcutTooltip label={open ? "Hide right panel" : "Show right panel"} shortcut="⌥⌘B">
+  return <ShortcutTooltip label={open ? "Hide right panel" : "Show right panel"} shortcut={defaultShortcutLabel("view.toggle-inspector")}>
     <ToolbarButton className="dock-toggle-button" aria-label="Toggle right panel" aria-pressed={open} selected={open}
       onMouseDown={(event) => event.preventDefault()} onClick={toggle}>
       {open ? <SidebarRight size={16} aria-hidden /> : <SidebarRightHidden size={16} aria-hidden />}

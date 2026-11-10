@@ -24,6 +24,8 @@ import { TabDragPreview } from "./tab-drag-preview";
 import { TabHoverPreview, type TabPreviewInfo } from "./tab-hover-preview";
 import { captureTabThumbnail, pruneTabThumbnails } from "./tab-thumbnails";
 import { ShortcutTooltip } from "../shortcut-tooltip";
+import { defaultShortcutLabel } from "../../lib/keyboard-shortcuts";
+import { isMacPlatform, revealInFileManagerLabel } from "../../lib/platform";
 import { ToolbarButton } from "../ui/toolbar-button";
 import { Plus } from "../ui/app-icons";
 import { isMainTab, useMoleculeStore, type MoleculeTab } from "../../stores/molecule-store";
@@ -717,12 +719,12 @@ export function EditorTabs({
             if (tabDocument && !tabDocument.virtual) items.push(
               { kind: "separator" },
               { kind: "item", id: "open-tab-document-as-text", text: "Open as Text", action: () => { void actions.openTextPaths([tabDocument.path]); } },
-              { kind: "item", id: "reveal-tab-document", text: "Show in Finder", action: () => { void actions.revealDocument(tabDocument); } },
+              { kind: "item", id: "reveal-tab-document", text: revealInFileManagerLabel("Show in Finder"), action: () => { void actions.revealDocument(tabDocument); } },
               { kind: "item", id: "copy-tab-document-path", text: "Copy path", action: () => { void actions.copyDocumentPath(tabDocument); } },
             );
             if (textDocument) items.push(
               { kind: "separator" },
-              { kind: "item", id: "reveal-tab-text-file", text: "Show in Finder", action: () => { void actions.revealPath(textDocument.path, "file"); } },
+              { kind: "item", id: "reveal-tab-text-file", text: revealInFileManagerLabel("Show in Finder"), action: () => { void actions.revealPath(textDocument.path, "file"); } },
               { kind: "item", id: "copy-tab-text-file-path", text: "Copy path", action: () => { void actions.copyPath(textDocument.path, "file"); } },
             );
             items.push({ kind: "separator" },
@@ -764,7 +766,7 @@ export function EditorTabs({
             const reveal: MenuItemSpec[] = [];
             if (open?.kind === "submenu") {
               const finder = open.items.find(entry => entry.kind === "item" && entry.id === "open-finder");
-              if (finder?.kind === "item") reveal.push({ ...finder, text: "Reveal in Finder" });
+              if (finder?.kind === "item") reveal.push({ ...finder, text: revealInFileManagerLabel() });
               // A scene tab adds the whole scene through its own entry; the file one would add only its first structure.
               const hidden = ["open-tabs", "open-as", "open-external", "open-finder", ...(sceneMenu.length ? ["add-scene"] : [])];
               open.items = open.items.filter(entry => !("id" in entry && hidden.includes(entry.id)));
@@ -818,7 +820,7 @@ export function EditorTabs({
                 aria-label={dirty ? `${title}, Unsaved changes` : title}
                 className={active ? "tab active" : "tab"}
                 aria-grabbed={isDragging || undefined}
-                title="Drag to move tab; Option-drag to export file"
+                title={isMacPlatform() ? "Drag to move tab; Option-drag to export file" : "Drag to move tab"}
                 onPointerDown={readOnly ? undefined : (event) => {
                   if (event.button !== 0) return;
                   event.currentTarget.draggable = event.altKey;
@@ -932,7 +934,7 @@ export function EditorTabs({
         })}
         </div>
       </ScrollFade>
-      {!readOnly ? <ShortcutTooltip label="New tab" shortcut="⌘T">
+      {!readOnly ? <ShortcutTooltip label="New tab" shortcut={defaultShortcutLabel("file.new-tab")}>
         <ToolbarButton type="button" className="new-tab" onMouseDown={(event) => event.preventDefault()}
           onClick={(event) => showNewTabMenu(event, group, selectedTab, state)}
           onContextMenu={(event) => showNewTabMenu(event, group, selectedTab, state)}

@@ -359,9 +359,17 @@ fn fetch(job: &RemoteJob) -> Result<(), String> {
     fs::create_dir_all(work_dir).map_err(|e| format!("{}: {e}", work_dir.display()))?;
     let archive = work_dir.join(".burette-remote-results.zip");
     fs::write(&archive, bytes).map_err(|e| format!("{}: {e}", archive.display()))?;
+    #[cfg(target_os = "macos")]
     let unpacked = Command::new("/usr/bin/ditto")
         .args(["-x", "-k"])
         .arg(&archive)
+        .arg(work_dir)
+        .status();
+    #[cfg(not(target_os = "macos"))]
+    let unpacked = Command::new("unzip")
+        .args(["-o", "-q"])
+        .arg(&archive)
+        .arg("-d")
         .arg(work_dir)
         .status();
     let _ = fs::remove_file(&archive);

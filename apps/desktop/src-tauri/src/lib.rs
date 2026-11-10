@@ -358,6 +358,9 @@ pub fn run() {
     commands::native_updates::initialize(app.handle());
 
     app.run(|app, event| match event {
+        // Linux delivers opened files and links through argv instead, which
+        // the startup and single-instance handlers above already route.
+        #[cfg(target_os = "macos")]
         RunEvent::Opened { urls } => {
             let links = urls
                 .iter()
@@ -402,7 +405,10 @@ pub fn run() {
                 !app.webview_windows().is_empty(),
             );
             #[cfg(not(target_os = "macos"))]
-            let keep_running_without_windows = false;
+            let keep_running_without_windows = {
+                let _ = code;
+                false
+            };
             if !keep_running_without_windows {
                 menu::request_quit(app);
             }
@@ -419,6 +425,10 @@ fn should_keep_running_after_last_window_closed(code: Option<i32>, has_windows: 
 fn packaged_compute_service_path() -> Option<PathBuf> {
     if let Some(path) = std::env::var_os("BURETTE_COMPUTE_SERVICE_PATH").map(PathBuf::from) {
         return path.is_file().then_some(path);
+    }
+    // The service only runs Metal kernels; other platforms compute in process.
+    if !cfg!(target_os = "macos") {
+        return None;
     }
     let executable = std::env::current_exe().ok()?;
     let directory = executable.parent()?;

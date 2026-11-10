@@ -20,6 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       native: ${{ steps.scope.outputs.native }}
+      linux: ${{ steps.scope.outputs.linux }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -62,7 +63,13 @@ jobs:
           }
 
           native=false
+          linux=false
           while IFS= read -r path; do
+            case "$path" in
+              crates/*|packaging/linux/*|config/xtb/*|scripts/linux-*|.github/workflows/ci.yml)
+                linux=true
+                ;;
+            esac
             case "$path" in
               PreviewExtension/Web/*)
                 ;;
@@ -72,6 +79,8 @@ jobs:
             esac
           done <<< "$changed"
           echo "native=$native" >> "$GITHUB_OUTPUT"
+          [[ "$native" == true ]] && linux=true
+          echo "linux=$linux" >> "$GITHUB_OUTPUT"
 
   validate:
     name: Fast PR Validation (${{ matrix.scope }})
@@ -155,5 +164,46 @@ jobs:
         with:
           name: native-acceptance-${{ github.event.number }}-${{ github.sha }}
           path: build/native-acceptance.zip
+          retention-days: 7
+          compression-level: 0
+
+  linux-build:
+    name: Linux Bundle Build
+    needs:
+      - changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.linux == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install Linux build dependencies
+        run: ./scripts/install-linux-build-deps.sh
+
+      - name: Setup Burette toolchain
+        uses: ./.github/actions/setup-burette-toolchain
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: linux
+
+      - name: Lint and test Rust on Linux
+        run: |
+          echo "CARGO_BUILD_JOBS=$(nproc)" >> "$GITHUB_ENV"
+          bun scripts/stage-native-widget.mjs
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo test --workspace
+
+      - name: Build Linux bundles
+        run: ./scripts/build-linux.sh
+
+      - name: Upload Linux bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-bundles-${{ github.event.number }}-${{ github.sha }}
+          path: build/linux
           retention-days: 7
           compression-level: 0

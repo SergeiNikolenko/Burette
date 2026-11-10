@@ -34,6 +34,9 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
     let quit = MenuItemBuilder::with_id("app.quit", "Quit Burette")
         .accelerator("CmdOrCtrl+Q")
         .build(app)?;
+    // GTK applications have no application menu: Quit ends File, Settings ends
+    // Edit, and the update check and About end Help.
+    #[cfg(target_os = "macos")]
     let app_menu = SubmenuBuilder::new(app, "Burette")
         .items(&[
             &about,
@@ -78,7 +81,12 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
         .enabled(false)
         .accelerator("CmdOrCtrl+Shift+S")
         .build(app)?;
-    let reveal_active = MenuItemBuilder::with_id("file.reveal-active", "Reveal in Finder")
+    let reveal_label = if cfg!(target_os = "macos") {
+        "Reveal in Finder"
+    } else {
+        "Show in File Manager"
+    };
+    let reveal_active = MenuItemBuilder::with_id("file.reveal-active", reveal_label)
         .enabled(false)
         .accelerator("CmdOrCtrl+Shift+R")
         .build(app)?;
@@ -131,49 +139,51 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
     let close_window = MenuItemBuilder::with_id("file.close-window", "Close Window")
         .accelerator("CmdOrCtrl+Shift+W")
         .build(app)?;
-    let file_menu = SubmenuBuilder::new(app, "File")
-        .items(&[
-            &new_window,
-            &resume,
-            &new_tab,
-            &PredefinedMenuItem::separator(app)?,
-            &open,
-            &open_clipboard,
-            &open_recent,
-            &PredefinedMenuItem::separator(app)?,
-            &save,
-            &save_as,
-            &PredefinedMenuItem::separator(app)?,
-            &reveal_active,
-            &copy_active_path,
-            &show_active_metadata,
-            &PredefinedMenuItem::separator(app)?,
-            &export_menu,
-            &PredefinedMenuItem::separator(app)?,
-            &close_tab,
-            &close_other_tabs,
-            &close_all_tabs,
-            &reopen_closed_tab,
-            &close_window,
-        ])
-        .build()?;
+    let file_menu = SubmenuBuilder::new(app, "File").items(&[
+        &new_window,
+        &resume,
+        &new_tab,
+        &PredefinedMenuItem::separator(app)?,
+        &open,
+        &open_clipboard,
+        &open_recent,
+        &PredefinedMenuItem::separator(app)?,
+        &save,
+        &save_as,
+        &PredefinedMenuItem::separator(app)?,
+        &reveal_active,
+        &copy_active_path,
+        &show_active_metadata,
+        &PredefinedMenuItem::separator(app)?,
+        &export_menu,
+        &PredefinedMenuItem::separator(app)?,
+        &close_tab,
+        &close_other_tabs,
+        &close_all_tabs,
+        &reopen_closed_tab,
+        &close_window,
+    ]);
+    #[cfg(not(target_os = "macos"))]
+    let file_menu = file_menu.separator().item(&quit);
+    let file_menu = file_menu.build()?;
 
     let find = MenuItemBuilder::with_id("edit.find", "Find")
         .accelerator("CmdOrCtrl+F")
         .build(app)?;
-    let edit_menu = SubmenuBuilder::with_id(app, "edit.menu", "Edit")
-        .items(&[
-            &PredefinedMenuItem::undo(app, None)?,
-            &PredefinedMenuItem::redo(app, None)?,
-            &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::cut(app, None)?,
-            &PredefinedMenuItem::copy(app, None)?,
-            &PredefinedMenuItem::paste(app, None)?,
-            &PredefinedMenuItem::select_all(app, None)?,
-            &PredefinedMenuItem::separator(app)?,
-            &find,
-        ])
-        .build()?;
+    let edit_menu = SubmenuBuilder::with_id(app, "edit.menu", "Edit").items(&[
+        &PredefinedMenuItem::undo(app, None)?,
+        &PredefinedMenuItem::redo(app, None)?,
+        &PredefinedMenuItem::separator(app)?,
+        &PredefinedMenuItem::cut(app, None)?,
+        &PredefinedMenuItem::copy(app, None)?,
+        &PredefinedMenuItem::paste(app, None)?,
+        &PredefinedMenuItem::select_all(app, None)?,
+        &PredefinedMenuItem::separator(app)?,
+        &find,
+    ]);
+    #[cfg(not(target_os = "macos"))]
+    let edit_menu = edit_menu.separator().item(&settings);
+    let edit_menu = edit_menu.build()?;
 
     let show_sidebar = CheckMenuItemBuilder::with_id("view.toggle-sidebar", "Sidebar")
         .checked(true)
@@ -599,6 +609,7 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
     let clear_preview_cache =
         MenuItemBuilder::with_id("maintenance.clear-preview-cache", "Clear Preview Cache")
             .build(app)?;
+    #[cfg(target_os = "macos")]
     let reset_quick_look =
         MenuItemBuilder::with_id("maintenance.reset-quick-look", "Reset Quick Look").build(app)?;
     let open_logs = MenuItemBuilder::with_id("maintenance.open-logs", "Open Logs").build(app)?;
@@ -609,26 +620,30 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
             &runtime_doctor,
             &PredefinedMenuItem::separator(app)?,
             &clear_preview_cache,
-            &reset_quick_look,
-            &PredefinedMenuItem::separator(app)?,
-            &open_logs,
-            &export_diagnostics,
-        ])
+        ]);
+    #[cfg(target_os = "macos")]
+    let troubleshooting = troubleshooting.item(&reset_quick_look);
+    let troubleshooting = troubleshooting
+        .separator()
+        .items(&[&open_logs, &export_diagnostics])
         .build()?;
-    let help_menu = SubmenuBuilder::with_id(app, HELP_SUBMENU_ID, "Help")
-        .items(&[
-            &github,
-            &shortcuts,
-            &whats_new,
-            &report_issue,
-            &PredefinedMenuItem::separator(app)?,
-            &troubleshooting,
-        ])
-        .build()?;
+    let help_menu = SubmenuBuilder::with_id(app, HELP_SUBMENU_ID, "Help").items(&[
+        &github,
+        &shortcuts,
+        &whats_new,
+        &report_issue,
+        &PredefinedMenuItem::separator(app)?,
+        &troubleshooting,
+    ]);
+    #[cfg(not(target_os = "macos"))]
+    let help_menu = help_menu.separator().items(&[&updates, &about]);
+    let help_menu = help_menu.build()?;
 
-    let menu = MenuBuilder::new(app)
+    let menu = MenuBuilder::new(app);
+    #[cfg(target_os = "macos")]
+    let menu = menu.item(&app_menu);
+    let menu = menu
         .items(&[
-            &app_menu,
             &file_menu,
             &edit_menu,
             &view_menu,

@@ -1741,25 +1741,10 @@ fn resolve_xyzrender_executable() -> Result<PathBuf, String> {
 }
 
 fn bundled_xyzrender_candidates_from_executable(executable: &Path) -> Vec<PathBuf> {
-    let mut candidates = Vec::new();
-    for ancestor in executable.ancestors() {
-        candidates.push(
-            ancestor
-                .join("Resources")
-                .join("xyzrender-runtime")
-                .join("bin")
-                .join("xyzrender"),
-        );
-        candidates.push(
-            ancestor
-                .join("Contents")
-                .join("Resources")
-                .join("xyzrender-runtime")
-                .join("bin")
-                .join("xyzrender"),
-        );
-    }
-    candidates
+    super::runtime_utils::bundled_resource_dirs(executable)
+        .into_iter()
+        .map(|resources| resources.join("xyzrender-runtime/bin/xyzrender"))
+        .collect()
 }
 
 #[cfg(unix)]

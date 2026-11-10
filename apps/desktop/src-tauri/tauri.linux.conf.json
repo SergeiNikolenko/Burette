@@ -1,0 +1,34 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "targets": ["deb", "rpm", "appimage"],
+    "category": "Education",
+    "shortDescription": "Molecular structure viewer",
+    "longDescription": "Burette opens protein structures, small molecules, trajectories, volumes and chemical tables in one workspace.",
+    "resources": {
+      "../../../compute/metal/runtime": null
+    },
+    "linux": {
+      "deb": {
+        "depends": ["unzip"],
+        "desktopTemplate": "../../../packaging/linux/burette.desktop",
+        "files": {
+          "/usr/share/mime/packages/burette.xml": "../../../packaging/linux/burette-mime.xml"
+        }
+      },
+      "rpm": {
+        "depends": ["unzip"],
+        "desktopTemplate": "../../../packaging/linux/burette.desktop",
+        "files": {
+          "/usr/share/mime/packages/burette.xml": "../../../packaging/linux/burette-mime.xml"
+        }
+      },
+      "appimage": {
+        "bundleMediaFramework": false,
+        "files": {
+          "/usr/share/mime/packages/burette.xml": "../../../packaging/linux/burette-mime.xml"
+        }
+      }
+    }
+  }
+}

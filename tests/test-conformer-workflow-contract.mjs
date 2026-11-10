@@ -38,7 +38,7 @@ assert.match(gridViewer, /optimizeGeometryGridSelection/);
 assert.match(nativeConformerWorkflow, /workflowTemplate: "conformer\.v1"/);
 assert.match(nativeConformerWorkflow, /initialization: options\.initialization/);
 assert.match(nativeConformerWorkflow, /mmffVariant: options\.mmffVariant/);
-assert.match(nativeConformerWorkflow, /computeBackend === "cpu" \? "referenceCpu"[\s\S]*: options\.backendPolicy \?\? "gpuRequired"/);
+assert.match(nativeConformerWorkflow, /computeBackend === "cpu" \|\| !isMacPlatform\(\) \? "referenceCpu"[\s\S]*: options\.backendPolicy \?\? "gpuRequired"/);
 assert.match(nativeConformerWorkflow, /executionPolicy: \{\s*backendPolicy,/);
 assert.match(nativeConformerWorkflow, /compute_get_job/);
 assert.match(nativeConformerWorkflow, /latest\.revision/);

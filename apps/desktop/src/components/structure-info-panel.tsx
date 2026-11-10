@@ -49,6 +49,7 @@ import { Progress } from "@/components/ui/progress";
 import { claimContextualGuide, markContextualGuideSeen, releaseContextualGuide, resetOnboardingEvent } from "./onboarding/progress";
 import { ContextualGuideCard } from "./onboarding/contextual-guide-card";
 import { isTauriRuntime } from "../lib/tauri";
+import { isMacPlatform } from "../lib/platform";
 import { showMacAvailability } from "../lib/browser-availability";
 import type { ConformerSettings, TextFileDocument, ViewerDocument, XtbArtifact, XtbRunResult, XtbSettings, HoveredGridRow } from "../types";
 
@@ -923,7 +924,7 @@ function TrajectorySmoothingCard({
   const build = async () => {
     if (running) return;
     if (import.meta.env.VITE_BURETTE_WEB_DEMO === "1") {
-      showMacAvailability("Trajectory smoothing uses a local runtime in the Mac app and is not available in this browser preview.");
+      showMacAvailability(`Trajectory smoothing uses a local runtime in the ${isMacPlatform() ? "Mac" : "desktop"} app and is not available in this browser preview.`);
       return;
     }
     const requestedSignature = settingsSignature;

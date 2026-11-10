@@ -14,6 +14,7 @@ import { Kbd } from "../ui/kbd";
 import { formatBytes, rendererLabel } from "../format";
 import type { ShellActions, ShellViewState } from "../types";
 import { isRemoteStructureUrl } from "../../lib/remote-structure";
+import { defaultShortcutLabel, formatAccelerator } from "../../lib/keyboard-shortcuts";
 import { buildShellCommands, filterShellCommands, type ShellCommand } from "../../lib/shell-commands";
 
 type CommandPaletteProps = {
@@ -38,10 +39,10 @@ const commandIcons: Record<string, AppIconType> = {
   "open-settings": SettingsCog,
 };
 const commandShortcuts: Record<string, string> = {
-  "open-structure": "⌘O",
-  "open-recent": "⇧⌘O",
-  "search-projects": "⌘P",
-  "open-settings": "⌘,",
+  "open-structure": defaultShortcutLabel("file.open"),
+  "open-recent": defaultShortcutLabel("file.open-most-recent"),
+  "search-projects": defaultShortcutLabel("view.command-palette"),
+  "open-settings": defaultShortcutLabel("settings.open"),
 };
 
 export function CommandPalette({
@@ -105,7 +106,7 @@ export function CommandPalette({
     const matches = filterShellCommands(allItems, query);
     let structures = 0;
     return matches.filter((item) => query.trim() || item.group !== "Structures" || ++structures <= 9)
-      .map((item, index) => ({ ...item, shortcut: item.group === "Structures" && index < 9 ? `⌘${index + 1}` : item.shortcut }));
+      .map((item, index) => ({ ...item, shortcut: item.group === "Structures" && index < 9 ? formatAccelerator(`CmdOrCtrl+${index + 1}`) : item.shortcut }));
   }, [actions, items, query]);
 
   const visibleGroups = useMemo(() => {

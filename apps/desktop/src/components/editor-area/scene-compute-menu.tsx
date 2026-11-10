@@ -9,6 +9,7 @@ import { ChevronDown } from "../ui/app-icons";
 import { recordedScenePaths, sceneFileStates, type SceneFileState } from "../../hooks/workspace-scene-import";
 import { xtbOperationLabel } from "../../lib/chemistry-settings";
 import { setComputeHost, useComputeHost } from "../../lib/remote-jobs";
+import { isMacPlatform } from "../../lib/platform";
 import { useSshConnections } from "../../lib/ssh-projects";
 import { basename } from "../../lib/sidebar-projects";
 
@@ -96,7 +97,7 @@ export function SceneComputeMenu({ document, actions, iframeRef }: {
   if (connections.length > 0) items.push({ kind: "separator" }, {
     kind: "select", id: "scene-run-on", label: "Run on", value: host ?? THIS_MAC,
     options: [THIS_MAC, ...connections.map(connection => connection.host)],
-    optionLabels: Object.fromEntries([[THIS_MAC, "This Mac"], ...connections.map(connection => [connection.host, connection.name])]),
+    optionLabels: Object.fromEntries([[THIS_MAC, isMacPlatform() ? "This Mac" : "This Computer"], ...connections.map(connection => [connection.host, connection.name])]),
     action: value => setComputeHost(value === THIS_MAC ? null : value),
   });
   // Opaque base under the soft secondary pill so the scene never shows through it.

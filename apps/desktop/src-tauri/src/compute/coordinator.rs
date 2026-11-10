@@ -3,7 +3,6 @@ use std::{
     fs::File,
     io::Read,
     path::PathBuf,
-    process::Command,
     sync::{Arc, Mutex},
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
@@ -27,7 +26,8 @@ use uuid::Uuid;
 use crate::compute::{
     alignment_workflow::{
         apply_grid_alignment_result, durable_alignment_request,
-        execute_snapshot_alignment_with_run_id, GridAlignmentRequest, GridAlignmentResult,
+        execute_snapshot_alignment_with_run_id, AlignmentBackend, GridAlignmentRequest,
+        GridAlignmentResult,
     },
     analysis_snapshot::load_analysis_source_rows,
     artifact_publisher::{
@@ -37,7 +37,7 @@ use crate::compute::{
     },
     chemical_space::{
         cluster_chemical_space_from_fingerprints, decode_knn_cache_payload, execute_chemical_space,
-        execute_learned_chemical_space_from_knn, ChemicalSpaceClusterRequest,
+        execute_learned_chemical_space_from_knn, ChemicalSpaceBackend, ChemicalSpaceClusterRequest,
         ChemicalSpaceClusterResult, ChemicalSpaceKnnCachePayload, ChemicalSpaceRequest,
         ChemicalSpaceResult,
     },
@@ -242,8 +242,12 @@ impl ComputeCoordinator {
             .map_err(|_| poisoned("chemical-space neighbor cache"))?
             .get(&cache_key)
             .cloned();
-        let execution =
-            execute_chemical_space(batch, &ready.native_metal, request, cached_knn.as_ref())?;
+        let execution = execute_chemical_space(
+            batch,
+            ready.native_metal.chemical_space_backend()?,
+            request,
+            cached_knn.as_ref(),
+        )?;
         if cached_knn.is_none() {
             ready
                 .chemical_space_knn
@@ -257,7 +261,7 @@ impl ComputeCoordinator {
     /// Embeds a learned representation produced by the Python model worker.
     /// Unlike [`Self::execute_chemical_space`] there is no prepared fingerprint
     /// job: the neighbourhood graph arrives fully formed from the worker, so
-    /// this only needs the Metal runtime.
+    /// this only runs the embedding optimizer.
     pub(crate) fn execute_learned_chemical_space(
         &self,
         owner: &str,
@@ -268,20 +272,13 @@ impl ComputeCoordinator {
     ) -> ComputeResult<ChemicalSpaceResult> {
         validate_owner_window_label(owner)?;
         let ready = self.ready()?;
-        let runtime = match &ready.native_metal {
-            NativeMetalState::Available(runtime) => runtime,
-            NativeMetalState::Unavailable { message, .. } => {
-                return Err(ComputeCoordinatorError::Unavailable(format!(
-                    "Chemical-space Metal runtime is unavailable: {message}"
-                )))
-            }
-        };
+        let backend = ready.native_metal.chemical_space_backend()?;
         let knn = decode_knn_cache_payload(&knn_cache, source_record_ids.len())
             .map_err(ComputeCoordinatorError::Validation)?;
         execute_learned_chemical_space_from_knn(
             &source_record_ids,
             failed_records,
-            runtime,
+            backend,
             request,
             &knn,
         )
@@ -325,18 +322,10 @@ impl ComputeCoordinator {
             .iter()
             .map(|ordinal| batch.identities[*ordinal as usize].source_record_id)
             .collect::<Vec<_>>();
-        let runtime = match &ready.native_metal {
-            NativeMetalState::Available(runtime) => runtime,
-            NativeMetalState::Unavailable { message, .. } => {
-                return Err(ComputeCoordinatorError::Unavailable(format!(
-                    "Chemical-space Metal runtime is unavailable: {message}"
-                )))
-            }
-        };
         cluster_chemical_space_from_fingerprints(
             &fingerprints,
             &source_record_ids,
-            runtime,
+            ready.native_metal.chemical_space_backend()?,
             request,
         )
     }
@@ -806,10 +795,15 @@ impl ComputeCoordinator {
                 return Err(error);
             }
         };
+        let native = prepare_running.stages[2].effective_backend == Backend::NativeMetal;
         let prepare_succeeded = finish_stage(
             &prepare_running,
             1,
-            JobState::WaitingGpu,
+            if native {
+                JobState::WaitingGpu
+            } else {
+                JobState::Running
+            },
             now_ms(),
             "Mapped alignment inputs prepared",
             StageFinishMetrics::default(),
@@ -817,23 +811,36 @@ impl ComputeCoordinator {
         ready
             .store
             .apply_successor(owner, prepare_running.revision, &prepare_succeeded)?;
-        let runtime = match &ready.native_metal {
-            NativeMetalState::Available(runtime) => runtime,
-            NativeMetalState::Unavailable { message, .. } => {
-                return Err(ComputeCoordinatorError::Unavailable(format!(
-                    "Native Metal alignment is unavailable: {message}"
-                )))
+        let backend = if native {
+            match &ready.native_metal {
+                NativeMetalState::Available(runtime) => AlignmentBackend::NativeMetal {
+                    runtime,
+                    service: ready.compute_service.as_ref(),
+                },
+                NativeMetalState::Unavailable { message, .. } => {
+                    return Err(ComputeCoordinatorError::Unavailable(format!(
+                        "Native Metal alignment is unavailable: {message}"
+                    )))
+                }
             }
+        } else {
+            AlignmentBackend::ReferenceCpu
         };
         let numeric_running = start_stage(
             &prepare_succeeded,
             2,
             JobState::Running,
             now_ms(),
-            "Aligning and scoring poses on Metal",
-            StageStartEvidence {
-                device: Some(runtime.device_identity().name.clone()),
-                kernel_id: Some("burette.compute.alignment.v1:mapped-horn".into()),
+            match backend {
+                AlignmentBackend::NativeMetal { .. } => "Aligning and scoring poses on Metal",
+                AlignmentBackend::ReferenceCpu => "Aligning and scoring poses on the CPU",
+            },
+            match backend {
+                AlignmentBackend::NativeMetal { runtime, .. } => StageStartEvidence {
+                    device: Some(runtime.device_identity().name.clone()),
+                    kernel_id: Some("burette.compute.alignment.v1:mapped-horn".into()),
+                },
+                AlignmentBackend::ReferenceCpu => StageStartEvidence::default(),
             },
         )?;
         ready
@@ -841,8 +848,7 @@ impl ComputeCoordinator {
             .apply_successor(owner, prepare_succeeded.revision, &numeric_running)?;
         let numeric_started = Instant::now();
         let result = execute_snapshot_alignment_with_run_id(
-            runtime,
-            ready.compute_service.as_ref(),
+            backend,
             source_rows.clone(),
             request,
             queued.job_id,
@@ -875,10 +881,14 @@ impl ComputeCoordinator {
             2,
             JobState::Validating,
             now_ms(),
-            "Metal alignment and scoring completed",
+            if native {
+                "Metal alignment and scoring completed"
+            } else {
+                "CPU alignment and scoring completed"
+            },
             StageFinishMetrics {
                 host_time_ms,
-                gpu_time_ms: Some(result.gpu_time_ms as f64),
+                gpu_time_ms: native.then_some(result.gpu_time_ms as f64),
                 transferred_bytes: result.aligned_sdf.len() as u64,
             },
         )?;
@@ -890,7 +900,11 @@ impl ComputeCoordinator {
             3,
             JobState::Validating,
             now_ms(),
-            "Validating CPU and Metal alignment parity",
+            if native {
+                "Validating CPU and Metal alignment parity"
+            } else {
+                "Validating CPU alignment scores"
+            },
             StageStartEvidence::default(),
         )?;
         ready
@@ -901,7 +915,11 @@ impl ComputeCoordinator {
             3,
             JobState::Publishing,
             now_ms(),
-            "Alignment parity validated",
+            if native {
+                "Alignment parity validated"
+            } else {
+                "Alignment scores validated"
+            },
             StageFinishMetrics::default(),
         )?;
         ready
@@ -916,7 +934,7 @@ impl ComputeCoordinator {
             &queued.frozen_source,
             &source_rows,
             &result,
-            runtime,
+            backend,
             publication.artifact_id,
             &publication.artifact_manifest_sha256,
         ) {
@@ -1127,6 +1145,15 @@ impl ComputeCoordinator {
                     Ok(_) => match initialize_runtime_catalog(viewer_runtime_root) {
                         Ok((helper_sha256, engines)) => {
                             let (native_metal, compute_service) = match service_mode {
+                                // Without Metal there is nothing to probe or launch;
+                                // every workflow runs on the CPU reference path.
+                                _ if !cfg!(target_os = "macos") => (
+                                    NativeMetalState::unavailable(
+                                        CapabilityReasonCode::UnsupportedOperatingSystem,
+                                        "Native Metal compute requires macOS; compute workflows run on the CPU reference backend.",
+                                    ),
+                                    None,
+                                ),
                                 None => (
                                     NativeMetalState::probe(metal_runtime_root, &helper_sha256),
                                     None,
@@ -3151,6 +3178,28 @@ impl NativeMetalState {
         }
     }
 
+    /// Chemical space has no durable job policy of its own: it follows the
+    /// Settings backend choice on top of a GPU-required default.
+    fn chemical_space_backend(&self) -> ComputeResult<ChemicalSpaceBackend<'_>> {
+        let policy =
+            crate::commands::app_preferences::compute_backend().apply(BackendPolicy::GpuRequired);
+        match (policy, self) {
+            (BackendPolicy::ReferenceCpu, _)
+            | (BackendPolicy::GpuPreferred, Self::Unavailable { .. }) => {
+                Ok(ChemicalSpaceBackend::ReferenceCpu)
+            }
+            (
+                BackendPolicy::GpuRequired | BackendPolicy::GpuPreferred,
+                Self::Available(runtime),
+            ) => Ok(ChemicalSpaceBackend::NativeMetal(runtime)),
+            (BackendPolicy::GpuRequired, Self::Unavailable { message, .. }) => {
+                Err(ComputeCoordinatorError::Unavailable(format!(
+                    "Chemical-space Metal runtime is unavailable: {message}"
+                )))
+            }
+        }
+    }
+
     fn submission_binding(
         &self,
         policy: BackendPolicy,
@@ -3538,7 +3587,7 @@ fn platform_identity() -> PlatformIdentity {
         } else {
             std::env::consts::OS.into()
         },
-        os_version: macos_version(),
+        os_version: os_version(),
     }
 }
 
@@ -3601,14 +3650,25 @@ fn now_ms() -> u64 {
         .as_millis() as u64
 }
 
-fn macos_version() -> String {
-    Command::new("/usr/bin/sw_vers")
+#[cfg(target_os = "macos")]
+fn os_version() -> String {
+    std::process::Command::new("/usr/bin/sw_vers")
         .arg("-productVersion")
         .output()
         .ok()
         .filter(|output| output.status.success())
         .and_then(|output| String::from_utf8(output.stdout).ok())
         .map(|version| version.trim().to_owned())
+        .filter(|version| !version.is_empty())
+        .unwrap_or_else(|| "unknown".into())
+}
+
+/// The kernel release; distribution names are not needed by any consumer.
+#[cfg(not(target_os = "macos"))]
+fn os_version() -> String {
+    std::fs::read_to_string("/proc/sys/kernel/osrelease")
+        .ok()
+        .map(|version| version.trim().chars().take(160).collect::<String>())
         .filter(|version| !version.is_empty())
         .unwrap_or_else(|| "unknown".into())
 }

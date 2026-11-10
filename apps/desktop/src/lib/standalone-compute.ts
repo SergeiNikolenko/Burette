@@ -1,6 +1,7 @@
 import { runAnalysisWorkflow } from "./compute-analysis";
 import { publishConformerJob } from "./conformer-job-events";
 import { assertConcreteConformerSource } from "./conformer-input";
+import { isMacPlatform } from "./platform";
 import type { ConformerJob } from "../types";
 
 import { invoke } from "@tauri-apps/api/core";
@@ -89,7 +90,7 @@ export async function runStandaloneConformerWorkflow(
     status: "running",
     startedAt: Date.now(),
     progress: "Preparing molecular constraints…",
-    backend: "nativeMetal",
+    backend: isMacPlatform() ? "nativeMetal" : "referenceCpu",
     cancelable: false,
   };
   const update = (patch: Partial<ConformerJob>) => {

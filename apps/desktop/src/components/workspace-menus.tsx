@@ -1,6 +1,7 @@
 import { SceneNameDialog } from "./scene-name-dialog";
 import type { ViewerDocument } from "../types";
 import { isTauriRuntime } from "../lib/tauri";
+import { fileManagerName } from "../lib/platform";
 import { useBatchFileOperations } from "./batch-file-operations";
 import { useGridWorkspaceMenu } from "../hooks/use-grid-workspace-menu";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
@@ -79,7 +80,7 @@ export function WorkspaceMenus({ state, actions, children }: { state: ShellViewS
           ...(paths.every(path => fileCapabilities(path).protein) ? [item("open-aligned", "Aligned…", openFolder("aligned"))] : []),
           ...(paths.every(path => fileCapabilities(path).poses) ? [item("open-poses", "As poses…", openFolder("poses"))] : [])] : []),
         ...submenu("add-scene", "Add to scene", workflows.sceneTargets(paths).map((target, index) => item(`add-scene-${index}`, target.title, openFolder(`scene:${target.id}`)))),
-        item("folder-finder", "Finder", () => actions.revealPath(path, "folder"))
+        item("folder-finder", fileManagerName(), () => actions.revealPath(path, "folder"))
       ], "arrow.up.forward"),
       ...submenu("folder-new", "New", [...disk.filter(entry => "id" in entry && entry.id === "new-folder"), item("new-molecule", "Molecule", actions.openKetcher)]),
     ], [

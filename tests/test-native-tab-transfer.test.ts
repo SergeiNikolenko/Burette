@@ -11,6 +11,7 @@ mock.module("../apps/desktop/src/components/workspace-panes/native-page-window",
 mock.module("@tauri-apps/api/core", () => ({ invoke: async (...args: unknown[]) => { commands.push(args); return outcome; } }));
 mock.module("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ label: "source" }) }));
 mock.module("../apps/desktop/src/lib/native-file-drag", () => ({ canStartNativeFileDrag: () => true }));
+mock.module("../apps/desktop/src/lib/tauri", () => ({ isTauriRuntime: () => true }));
 mock.module("../apps/desktop/src/stores/molecule-store", () => ({ useMoleculeStore: { getState: () => ({ tabs, documents: [{ id: "doc", title: "Scene" }] }) } }));
 mock.module("../apps/desktop/src/components/workspace-panes/native-scene-window", () => ({
   nativePopoutReason: () => reason,

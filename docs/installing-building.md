@@ -8,7 +8,7 @@ Use this page when you want to build the app from the repository.
 
 | Requirement | Details |
 | --- | --- |
-| Operating system | macOS 12+ for the desktop app, Finder Quick Look, and local release builds. |
+| Operating system | macOS 12+ for the desktop app, Finder Quick Look, and local release builds. Linux x86_64 with WebKitGTK 4.1 for the desktop workspace; see [Burette on Linux](linux.md). |
 | Xcode | Required for Tauri/macOS packaging, Quick Look extensions, thumbnail extension, and the source-built iPhone target. |
 | Bun | Required for workspace scripts, JavaScript checks, vendoring, package metadata, and the CLI installer. |
 | Vite+ `vp` CLI | Preferred entrypoint for frontend install, dev, check, test, and build workflows. |
@@ -39,6 +39,16 @@ The local installer places the app here:
 ```text
 ~/Applications/Burette.app
 ```
+
+On Linux, build the deb, rpm and AppImage bundles instead:
+
+```bash
+./scripts/install-linux-build-deps.sh   # Debian or Ubuntu
+./scripts/build-linux.sh
+```
+
+The bundles land in `build/linux/`. [Burette on Linux](linux.md) covers the
+prerequisites on other distributions and what differs from the Mac app.
 
 ## Development Workflow
 

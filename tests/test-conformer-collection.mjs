@@ -52,6 +52,7 @@ new Function('require', 'exports', ts.transpile(readFileSync('apps/desktop/src/h
   if (name === '../lib/tauri') return { isTauriRuntime: () => true };
   if (name === '../lib/conformer-collection') return exports;
   if (name === '../lib/conformer-generation') return { conformerGenerationTaskLabel: () => '3D conformer' };
+  if (name === '../lib/platform') return { isMacPlatform: () => true, nativeComputeLabel: (label = 'Metal') => label };
   if (name === '../lib/browser-dev-compute') return {};
   if (name === '../lib/browser-dev-documents') return { readBrowserDevVirtualTextDocument: () => null };
   if (name === '../lib/structure-text') return { readStructureText: async path => path.endsWith('.xyz') ? nativeXyz : source };

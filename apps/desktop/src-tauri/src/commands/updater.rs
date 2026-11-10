@@ -1377,6 +1377,7 @@ fn canonical_update_destination(current_app: &Path) -> PathBuf {
     }
 }
 
+#[cfg(target_os = "macos")]
 pub(crate) fn relocate_legacy_install_on_startup() -> Result<bool, String> {
     let current_app = current_app_bundle()?;
     let destination_app = canonical_update_destination(&current_app);
@@ -1418,6 +1419,7 @@ pub(crate) fn relocate_legacy_install_on_startup() -> Result<bool, String> {
         .map_err(|error| format!("Could not launch the app migration helper: {error}"))
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn should_relocate_legacy_install(current_app: &Path, bundle_id: &str) -> bool {
     canonical_update_destination(current_app) != current_app
         && bundle_id == APP_ID
@@ -1426,6 +1428,7 @@ fn should_relocate_legacy_install(current_app: &Path, bundle_id: &str) -> bool {
             .any(|component| component.as_os_str() == "AppTranslocation")
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn legacy_relocation_script(
     app_pid: u32,
     current_app: &Path,
@@ -1944,6 +1947,8 @@ mod tests {
         assert!(error.contains("complete digest set"));
     }
 
+    // The manifest carries a minimum macOS version; Linux never installs in place.
+    #[cfg(target_os = "macos")]
     #[test]
     fn verifies_signed_update_manifest_and_request_binding() {
         let manifest = verify_update_manifest_with_key(

@@ -1,5 +1,6 @@
 import type { ViewerPreferences } from "../../types";
 import { defaultPreferences } from "../../stores/settings-store";
+import { isMacPlatform } from "../../lib/platform";
 import type { ShellActions } from "../types";
 import { SettingsSection, ToggleControl, selectPreferenceRow, type SettingRow } from "./setting-control";
 
@@ -91,15 +92,17 @@ export function ViewerDefaultsSection({
           choiceRow("Hydrogens", "hydrogenDisplay", HYDROGEN_LABELS, preferences, setPreference),
         ]}
       />
-      <SettingsSection
-        title="Quick Look"
-        rows={[
-          toggleRow("SDF as grid", "quickLookGridSdf", preferences, setPreference),
-          toggleRow("SMILES as grid", "quickLookGridSmiles", preferences, setPreference),
-          toggleRow("CSV as grid", "quickLookGridCsv", preferences, setPreference),
-          toggleRow("TSV as grid", "quickLookGridTsv", preferences, setPreference),
-        ]}
-      />
+      {isMacPlatform() ? (
+        <SettingsSection
+          title="Quick Look"
+          rows={[
+            toggleRow("SDF as grid", "quickLookGridSdf", preferences, setPreference),
+            toggleRow("SMILES as grid", "quickLookGridSmiles", preferences, setPreference),
+            toggleRow("CSV as grid", "quickLookGridCsv", preferences, setPreference),
+            toggleRow("TSV as grid", "quickLookGridTsv", preferences, setPreference),
+          ]}
+        />
+      ) : null}
     </>
   );
 }

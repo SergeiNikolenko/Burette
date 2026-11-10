@@ -40,6 +40,7 @@ import {
 import type { ViewerPreferences, ViewerReloadOptions } from "../types";
 import { useMenuEvents } from "./use-menu-events";
 import { requestTextFind } from "../lib/text-find";
+import { isMacPlatform } from "../lib/platform";
 
 const PROJECT_URL = "https://github.com/SergeiNikolenko/Burette";
 const ADD_COLUMN_COMMAND_KINDS: Record<string, DerivedColumnKind> = {
@@ -536,7 +537,8 @@ export function useAppNativeMenu({
         await actions.clearCache();
         return;
       case "maintenance.reset-quick-look":
-        await actions.resetQuickLook();
+        // Quick Look exists only on macOS.
+        if (isMacPlatform()) await actions.resetQuickLook();
         return;
       case "maintenance.open-logs":
         await actions.openLogs();

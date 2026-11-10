@@ -519,6 +519,7 @@ impl QuitGuard {
         Ok(())
     }
 
+    #[cfg(any(target_os = "macos", test))]
     pub(super) fn revoke_exit_authorization(&self) {
         if let Ok(mut state) = self.state.lock() {
             state.exit_authorized = false;

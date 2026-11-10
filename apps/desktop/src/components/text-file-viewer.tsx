@@ -18,6 +18,7 @@ import { hasStructureTextHighlighting, structureTextHighlighting, textNumberHigh
 import { Button } from "./ui/button";
 import { Search } from "./ui/app-icons";
 import { ShortcutTooltip } from "./shortcut-tooltip";
+import { defaultShortcutLabel } from "../lib/keyboard-shortcuts";
 import { createTextSearchPanel, toggleTextSearch } from "./text-file-viewer/text-search-panel";
 import { registerTextFind } from "../lib/text-find";
 import { classifySourceEditEligibility, classifySourceShape, sourceNotEditableMessage } from "../lib/source-editing/policy";
@@ -337,7 +338,7 @@ export function TextFileViewer({
             </span>
           )}
           {!nonEditorDocument && (
-            <ShortcutTooltip label="Find in text" shortcut="⌘F">
+            <ShortcutTooltip label="Find in text" shortcut={defaultShortcutLabel("edit.find")}>
               <Button type="button" variant="ghost" size="icon-xs" aria-label="Find in text" onClick={() => { if (viewRef.current) toggleTextSearch(viewRef.current); }}>
                 <Search />
               </Button>
@@ -360,7 +361,7 @@ export function TextFileViewer({
           {sourceEditing?.editable && (
             <ShortcutTooltip
               label={sourceEditing.saveDisabledReason ?? "Save source"}
-              shortcut={sourceEditing.saveDisabledReason ? undefined : "⌘S"}
+              shortcut={sourceEditing.saveDisabledReason ? undefined : defaultShortcutLabel("file.save")}
             >
               <span className="inline-flex">
                 <Button
