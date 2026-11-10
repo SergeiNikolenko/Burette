@@ -772,6 +772,12 @@
       return agentActionFailure(type, 'NO_VIEWER', 'BuretteAgent is not available in this viewer runtime.');
     }
     if (type === 'focus_ligand') {
+      if (action.dockingPose === true) {
+        const structureId = activeDockingPoseCollectionState?.activeRefs?.[0]
+          || activeMolstarPrepared?.activeLigandRefs?.[0];
+        if (!structureId) return agentActionFailure(type, 'NO_POSES', 'The active docking pose is not available.');
+        action = { ...action, selector: { kind: 'ligand', structureId } };
+      }
       const previewTarget = molstarMoleculePreviewTargetForAction(action);
       const result = await window.BuretteAgent.run({
         command: 'focusLigand',
@@ -19448,7 +19454,8 @@ SOFTWARE.
     }
     for (const entry of prepared.entries) {
       if (isDockingTrajectoryPairEntry(entry, prepared.trajectoryPair)) continue;
-      await loadMolstarEntry(viewer, entry);
+      const structures = await loadMolstarEntryWithStructureRefs(viewer, entry);
+      if (entry === prepared.poses?.[prepared.activePose]) prepared.activeLigandRefs = molstarStructureRefsOf(structures);
     }
     // A derived topology has coordinates but no chemical identity. Keep its
     // point representation intact instead of applying chemistry-dependent
@@ -21070,9 +21077,14 @@ SOFTWARE.
     if (!activeViewer || !Number.isFinite(poseCount) || poseCount <= 0) {
       return agentActionFailure('set_sdf_pose_index', 'NO_POSES', 'The active Mol* viewer has no selectable poses.');
     }
-    const index = Math.trunc(Number(action.index) || 0);
+    const index = action.sourceRecordId == null ? Math.trunc(Number(action.index) || 0)
+      : prepared.kind === 'docking' ? prepared.poses.findIndex(pose => pose.poseIndex === action.sourceRecordId) : -1;
     const outOfRange = agentFrameIndexFailure('set_sdf_pose_index', index, poseCount);
     if (outOfRange) return outOfRange;
+    if (prepared.kind === 'docking' && poseCount === 1 && !prepared.nativeTrajectoryControls) {
+      notifyDockingPoseChanged(0, prepared);
+      return { ok: true, command: 'set_sdf_pose_index', result: { index: 0, poseCount } };
+    }
     try {
       if (activeSdfPoseMode === 'all' && structureOverlayAvailable(prepared)) {
         setSdfPoseMode('single');
@@ -21080,7 +21092,9 @@ SOFTWARE.
         updateSdfPoseButton(prepared);
       }
       writeTrajectoryControlIndex(activeConfig, prepared, index);
-      if (prepared.nativeTrajectoryControls && activeSdfPoseMode !== 'all' && !xyzSingleFrameSceneActive(activeViewer)) {
+      if (activeStructurePoseSetter) {
+        await activeStructurePoseSetter(index, { throwOnError: true });
+      } else if (prepared.nativeTrajectoryControls && activeSdfPoseMode !== 'all' && !xyzSingleFrameSceneActive(activeViewer)) {
         const switched = await setNativeTrajectoryPose(index, poseCount);
         if (!switched) throw new Error('Mol* trajectory controls are not available.');
       } else if (prepared.xyzFrameOverlayAvailable === true) {
@@ -21092,7 +21106,7 @@ SOFTWARE.
       } else {
         await reloadActiveMolstarStructure();
       }
-      notifyDockingPoseChanged(index, prepared);
+      if (!activeStructurePoseSetter) notifyDockingPoseChanged(index, prepared);
       return {
         ok: true,
         command: 'set_sdf_pose_index',
@@ -21473,7 +21487,10 @@ SOFTWARE.
     if (!prepared) return;
     const overlayAvailable = structureOverlayAvailable(prepared);
     const overlayToggleAvailable = structureOverlayToggleAvailable(prepared);
-    if (prepared.poseCount <= 1 && !overlayAvailable) return;
+    if (prepared.poseCount <= 1 && !overlayAvailable) {
+      if (prepared.poseCount === 1) notifyDockingPoseChanged(0, prepared);
+      return;
+    }
     document.body.classList.add('buret-docking-pose-controls-active');
     const root = document.createElement('div');
     root.className = 'buret-docking-poses';
@@ -22435,6 +22452,7 @@ SOFTWARE.
         // already rolled back to the frame still on screen, which is the honest report.
         // eslint-disable-next-line no-console
         console.error(error);
+        if (options.throwOnError === true) throw error;
       }
     };
     // Dots and files show or hide poses until the next step; a pin keeps a pose
