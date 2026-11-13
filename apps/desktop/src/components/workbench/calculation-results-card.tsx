@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
-import type { AtomicChargeSet, ScientificDocument, ScientificFrame, Thermochemistry } from "../../lib/molecular-workbench/scientific-types";
+import type { AtomicChargeSet, CalculationMetadata, ScientificDocument, ScientificFrame, Thermochemistry } from "../../lib/molecular-workbench/scientific-types";
 import { requestViewerAction } from "../../lib/viewer-bridge";
 import { sourceExtension, useScientificDocument, useTrajectoryFrame } from "../../lib/workbench/source";
 import type { ViewerDocument } from "../../types";
@@ -91,20 +91,25 @@ export function CalculationResultsCard({ document }: { document: ViewerDocument 
 
   const energy = frame?.energyHartree;
   const converged = science?.converged;
-  if (!frame || (!sets.length && dipole === null && !thermochemistry && energy === undefined && converged === undefined)) return null;
+  const metadata = science?.metadata;
+  const status = metadata?.termination === "error" ? { ok: false, text: "Error termination" }
+    : converged !== undefined ? { ok: converged, text: converged ? "Converged" : "Not converged" } : null;
+  const runRows = metadata ? runDescription(metadata) : [];
+  if (!frame || (!sets.length && dipole === null && !thermochemistry && energy === undefined && !status && !runRows.length)) return null;
   const toggle = (kind: OverlayKind, value: boolean) => setChoice(document.id, { ...choice, model: charges?.model ?? null, shown: { ...choice.shown, [kind]: value } });
 
   return (
     <>
-      {energy !== undefined || converged !== undefined ? (
+      {energy !== undefined || status || runRows.length ? (
         <section className="structure-brief-card" aria-label="Calculation">
           <div className="structure-brief-card-header">
             <h4>Calculation</h4>
-            {converged !== undefined ? (
-              <span className="calculation-results-status" data-status={converged ? "success" : "failure"}>{converged ? "Converged" : "Not converged"}</span>
-            ) : null}
+            {status ? <span className="calculation-results-status" data-status={status.ok ? "success" : "failure"}>{status.text}</span> : null}
           </div>
-          {energy !== undefined ? <div className="structure-brief-row"><span>Energy</span><strong>{hartree(energy)}</strong></div> : null}
+          <div className="structure-brief-rows">
+            {energy !== undefined ? <div className="structure-brief-row"><span>Energy</span><strong>{hartree(energy)}</strong></div> : null}
+            {runRows.map(([label, value]) => <div key={label} className="structure-brief-row"><span>{label}</span><strong>{value}</strong></div>)}
+          </div>
         </section>
       ) : null}
       {sets.length || dipole !== null ? (
@@ -143,6 +148,24 @@ export function CalculationResultsCard({ document }: { document: ViewerDocument 
       {thermochemistry ? <ThermochemistryCard values={thermochemistry} /> : null}
     </>
   );
+}
+
+function duration(seconds: number) {
+  if (seconds < 60) return `${seconds.toFixed(seconds < 10 ? 1 : 0)} s`;
+  const minutes = Math.round(seconds / 60);
+  return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
+}
+
+function runDescription(metadata: CalculationMetadata): [string, string][] {
+  const rows: [string, string][] = [];
+  if (metadata.keywords) rows.push(["Keywords", metadata.keywords]);
+  if (metadata.basis) rows.push(["Basis", metadata.basis]);
+  if (metadata.charge !== undefined && metadata.multiplicity !== undefined) rows.push(["Charge, multiplicity", `${metadata.charge}, ${metadata.multiplicity}`]);
+  else if (metadata.charge !== undefined) rows.push(["Charge", String(metadata.charge)]);
+  else if (metadata.multiplicity !== undefined) rows.push(["Multiplicity", String(metadata.multiplicity)]);
+  if (metadata.program) rows.push(["Program", metadata.program]);
+  if (metadata.runSeconds !== undefined) rows.push(["Run time", duration(metadata.runSeconds)]);
+  return rows;
 }
 
 function ThermochemistryCard({ values }: { values: Thermochemistry }) {

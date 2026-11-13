@@ -93,6 +93,19 @@ export interface ScalarGrid {
 }
 /** One Cube dataset; `orbitalNumber` is the producer's 1-based MO number when the header lists orbitals. */
 export interface ScalarDataset { label: string; orbitalNumber?: number; grid: ScalarGrid }
+/** The job as its output describes it; every field is what the program printed. */
+export interface CalculationMetadata {
+  /** Program and version, such as "ORCA 6.0.1". */
+  program?: string;
+  /** The input keyword line(s) the job ran with, such as "b3lyp sto-3g freq". */
+  keywords?: string;
+  basis?: string;
+  charge?: number;
+  multiplicity?: number;
+  /** How the run ended; absent while a job runs or when its output was cut. */
+  termination?: "normal" | "error";
+  runSeconds?: number;
+}
 export interface ScientificDocument {
   format: "gaussian-log" | "qcschema" | "fchk" | "orca" | "orca-hessian" | "orca-property" | "molden" | "cube" | "xyz" | "zmat" | "cjson"
     | "nwchem-log" | "gamess-log" | "psi4-log" | "molpro-log" | "qchem-log" | "xtb";
@@ -111,6 +124,8 @@ export interface ScientificDocument {
   /** Every dataset of a multi-field Cube in file order (`grid` is the first), on one shared grid and geometry. */
   gridDatasets?: ScalarDataset[];
   converged?: boolean;
+  /** How the job was run and how it ended, as the program printed it. */
+  metadata?: CalculationMetadata;
   /** Named coordinates and dummy reference points; atoms contain only real atoms. */
   internalCoordinates?: ZmatrixDocument;
 }

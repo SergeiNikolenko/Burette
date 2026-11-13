@@ -232,6 +232,17 @@ export function validateScientificDocument(value: unknown, sourceFrames: readonl
     if (first.some((value, i) => value !== grid!.values[i])) fail("The scalar grid is not the first grid dataset.");
   }
   if (document.converged !== undefined && typeof document.converged !== "boolean") fail("Scientific convergence must be a boolean.");
+  const metadata = document.metadata;
+  if (metadata !== undefined) {
+    const text = (value: unknown) => value === undefined || (typeof value === "string" && value.length > 0 && value.length <= 512);
+    const integer = (value: unknown, low: number, high: number) => value === undefined || (Number.isInteger(value) && (value as number) >= low && (value as number) <= high);
+    if (!isRecord(metadata) || Object.keys(metadata).some(key => !["program", "keywords", "basis", "charge", "multiplicity", "termination", "runSeconds"].includes(key))
+      || !text(metadata.program) || !text(metadata.keywords) || !text(metadata.basis) || !integer(metadata.charge, -1000, 1000) || !integer(metadata.multiplicity, 1, 1000)
+      || (metadata.termination !== undefined && metadata.termination !== "normal" && metadata.termination !== "error")
+      || (metadata.runSeconds !== undefined && (typeof metadata.runSeconds !== "number" || !(metadata.runSeconds >= 0 && metadata.runSeconds < 1e9)))) {
+      fail("Scientific metadata is not a calculation description.");
+    }
+  }
   if (document.internalCoordinates !== undefined) {
     let real: MolecularAtom[];
     try {

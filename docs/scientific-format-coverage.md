@@ -87,6 +87,16 @@ returning to the file's own set restores them. `test-cjson-graph-codec`
 covers the revision and its save and reopen
 (`cjson/avogadro-formaldehyde-raman.cjson`).
 
+## Calculation metadata
+
+`metadata` describes the job as its output prints it: program and version, the
+input keyword lines, the basis, charge and multiplicity, how the run ended
+(`normal` or `error`; absent while a job runs or when the output was cut) and
+the run time (`quantum/run-metadata.ts`). ORCA output gives all of them. The
+Info dock's Calculation card shows them with the energy of the geometry the
+scene shows and whether the job converged. `test-calculation-metadata` checks
+each reader against its printed lines.
+
 ## Thermochemistry
 
 `frames[i].thermochemistry` holds the ideal-gas values a frequency job printed

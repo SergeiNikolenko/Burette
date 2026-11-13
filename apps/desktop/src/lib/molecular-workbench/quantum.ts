@@ -24,6 +24,7 @@ import { parseMolden } from "./gaussian";
 import { hessianFromOrcaSection } from "./hessian";
 import { atomsFromZmatrixDocument, parseZmatrixDocument } from "../../../../../scripts/zmatrix-document.mjs";
 import { readCoordinateInterchange } from "../../../../../scripts/coordinate-interchange.mjs";
+import { orcaMetadata } from "./quantum/run-metadata";
 
 export const BOHR_ANGSTROM = 0.529177210903;
 const MAX_TEXT = 16 * 1024 * 1024;
@@ -176,6 +177,8 @@ function parseOrca(name: string, text: string): ScientificDocument {
       } else if (line.trim() && reading) reading = false;
     }
   }
+  const metadata = orcaMetadata(lines);
+  if (metadata) result.metadata = metadata;
   result.converged = /THE OPTIMIZATION HAS CONVERGED/.test(text) ? true
     : /THE OPTIMIZATION HAS NOT CONVERGED|SCF NOT CONVERGED/.test(text) ? false : undefined;
   // A scan/optimization output may contain a frequency calculation at several
