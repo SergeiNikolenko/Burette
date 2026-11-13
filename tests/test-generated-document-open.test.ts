@@ -63,13 +63,13 @@ test("overlapping same-name parsed imports keep their own original and complete 
   assert.equal(importedOriginalFor(documentA.id), null); assert.equal(importedOriginalFor(documentB.id)?.file, fileB);
 });
 
-test("steps preserve frame geometry, energies and frame modes while final-only data stays final", async () => {
-  const science = data(); let result: { record: RecordInput; document: ViewerDocument } | undefined;
+test("steps preserve frame geometry, energies, frame modes and the run description while final-only data stays final", async () => {
+  const science = { ...data(), metadata: { program: "Gaussian 16", termination: "normal" as const } }; let result: { record: RecordInput; document: ViewerDocument } | undefined;
   await openScientificDocument({ openStructureRecords: async records => { const document = add(records[0]); result = { record: records[0], document }; return [document]; } }, "optimization", science, "steps");
   assert.ok(result); const { record, document } = result, lines = record.text.trimEnd().split("\n");
   assert.deepEqual([parseXyz(lines.slice(0,3).join("\n")).atoms, parseXyz(lines.slice(3,6).join("\n")).atoms], science.frames.map(frame => frame.atoms));
   assert.match(lines[1], /^Step 1 Energy=-1 Hartree import-/); assert.equal(lines[4], "Step 2 Energy=-2 Hartree");
-  assert.deepEqual(scientificStateFor(document.id, record.text).revision?.document, { format: science.format, atoms: science.frames[0].atoms, referenceFrameIndex: 0, frames: science.frames, modes: [], orbitals: [], converged: true });
+  assert.deepEqual(scientificStateFor(document.id, record.text).revision?.document, { format: science.format, atoms: science.frames[0].atoms, referenceFrameIndex: 0, frames: science.frames, modes: [], orbitals: [], converged: true, metadata: science.metadata });
 });
 
 test("failed, empty, ambiguous and already-closed opens release only their own registration", async () => {
