@@ -98,6 +98,20 @@ energy, which is then H − T·S; ORCA and xtb print T·S, which becomes the
 entropy. `test-thermochemistry-readers` compares every reader with its
 program's printed numbers.
 
+## Optimization convergence
+
+`frames[i].convergence` holds what a geometry optimizer printed for the step it
+took from that geometry: maximum and RMS force (gradient, hartree per bohr) and
+maximum and RMS step, each with the threshold when the program printed one
+(`quantum/convergence.ts`). Gaussian and ORCA print all four items with
+thresholds; Q-Chem prints the maximum gradient and displacement; Psi4 prints a
+row per step whose inactive criteria have no threshold; NWChem prints a row per
+step and its thresholds once in the optimizer header. Psi4 and NWChem rows are
+kept only on the frame whose energy they repeat, so a summary reprint cannot
+move a value to another geometry. xtb's optimizer log is not read yet. The
+Plots panel draws the chosen item on a log axis with the threshold dashed.
+`test-optimization-convergence` checks every reader against its printed table.
+
 ## Known gaps
 
 - ORCA, NWChem, Psi4, Q-Chem, Molpro and xtb text outputs give orbital

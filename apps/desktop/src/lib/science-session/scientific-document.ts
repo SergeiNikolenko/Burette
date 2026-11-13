@@ -134,6 +134,12 @@ export function validateScientificDocument(value: unknown, sourceFrames: readonl
       if (!isRecord(thermochemistry) || typeof thermochemistry.temperatureKelvin !== "number" || !(thermochemistry.temperatureKelvin > 0 && thermochemistry.temperatureKelvin < 1e5)) fail(`frames[${index}].thermochemistry has no temperature.`);
       optionalNumbers(thermochemistry, ["zeroPointHartree", "enthalpyHartree", "gibbsHartree", "entropyCalMolKelvin"], `frames[${index}].thermochemistry`);
     }
+    const convergence = frame.convergence;
+    if (convergence !== undefined && (!isRecord(convergence) || Object.entries(convergence).some(([key, entry]) => !["maxForce", "rmsForce", "maxStep", "rmsStep"].includes(key)
+      || !isRecord(entry) || typeof entry.value !== "number" || !(entry.value >= 0 && entry.value < 1e6)
+      || (entry.threshold !== undefined && (typeof entry.threshold !== "number" || !(entry.threshold > 0 && entry.threshold < 1e6)))))) {
+      fail(`frames[${index}].convergence is not an optimization step.`);
+    }
     const hessian = frame.hessian;
     if (hessian !== undefined) {
       if (!isRecord(hessian) || hessian.units !== HESSIAN_UNITS || !(hessian.values instanceof Float64Array)

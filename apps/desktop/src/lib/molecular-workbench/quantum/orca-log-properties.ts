@@ -3,11 +3,12 @@ import type { Vec3 } from '../types';
 import { DEBYE_PER_AU } from './output-history';
 import { numeric } from './reader-values';
 import { readThermochemistryLine } from './thermochemistry';
+import { readConvergence } from './convergence';
 
 /**
  * One property print of an ORCA text output, for the geometry printed before it: Mulliken or
- * Löwdin charges (spin populations follow in a second column), the total dipole in a.u. and the
- * thermochemistry. Returns the last line it read, or -1 when line `i` starts no such print.
+ * Löwdin charges (spin populations follow in a second column), the total dipole in a.u., the
+ * geometry convergence of an optimization step and the thermochemistry. Returns the last line it read, or -1 when line `i` starts no such print.
  */
 export function readOrcaLogProperty(lines: readonly string[], i: number, frame: ScientificFrame) {
   const charges = lines[i].match(/^(MULLIKEN|LOEWDIN) ATOMIC CHARGES(?: AND SPIN (?:POPULATIONS|DENSITIES))?\s*$/u);
@@ -30,5 +31,7 @@ export function readOrcaLogProperty(lines: readonly string[], i: number, frame: 
     frame.dipoleDebye = dipole.slice(1, 4).map(value => numeric(value) * DEBYE_PER_AU) as Vec3;
     return i;
   }
+  const convergence = readConvergence('orca', lines, i, frame);
+  if (convergence >= 0) return convergence;
   return readThermochemistryLine('orca', lines, i, frame) ? i : -1;
 }

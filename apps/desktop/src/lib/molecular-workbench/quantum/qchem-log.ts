@@ -3,6 +3,7 @@ import type { AtomicChargeSet, MolecularOrbital, ScientificDocument, Vibrational
 import { coordinate, numeric } from './reader-values';
 import { OutputHistory, orbitalTable, outputLines } from './output-history';
 import { readThermochemistryLine } from './thermochemistry';
+import { readConvergence } from './convergence';
 
 const CHARGE_TABLES: [RegExp, AtomicChargeSet['model']][] = [
   [/^\s*Ground-State Mulliken Net Atomic Charges\s*$/u, 'mulliken'],
@@ -72,6 +73,8 @@ export function parseQchemLog(text: string): ScientificDocument {
       continue;
     }
     if (readThermochemistryLine('qchem', lines, i, history.frames.at(-1))) continue;
+    const convergenceEnd = readConvergence('qchem', lines, i, history.frames.at(-1));
+    if (convergenceEnd >= 0) { i = convergenceEnd; continue; }
     let match = line.match(/^\s*Total energy in the final basis set\s*=\s*(\S+)\s*$/u);
     if (match) { history.scfEnergy(numeric(match[1])); models = new Set(); continue; }
     match = line.match(CORRELATED_ENERGY);

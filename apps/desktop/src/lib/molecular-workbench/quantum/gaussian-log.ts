@@ -5,6 +5,7 @@ import { checkIdentity, coordinate, MAX_ATOMS, MAX_FRAMES, MAX_VALUES, numeric }
 import { gaussianOrbitals, readGeneralBasis, readMoCoefficients, type GaussianMoSet } from './gaussian-log-orbitals';
 import { orbitalTable } from './output-history';
 import { readThermochemistryLine } from './thermochemistry';
+import { readConvergence } from './convergence';
 
 const ORIENTATION = /^\s*(Standard|Input|Z-Matrix) orientation:\s*$/;
 const DASH = /^\s*-{5,}\s*$/;
@@ -62,7 +63,7 @@ export function parseGaussianLog(text: string): ScientificDocument {
       continue;
     }
     eigenvaluesOpen = false;
-    if (readThermochemistryLine('gaussian', lines, i, frame)) continue;
+    if (readThermochemistryLine('gaussian', lines, i, frame) || readConvergence('gaussian', lines, i, frame) >= 0) continue;
     if (/^\s*AO basis set in the form of general basis input/u.test(lines[i])) {
       const section = readGeneralBasis(lines, i + 1);
       if (section.end >= lines.length) break;

@@ -22,7 +22,18 @@ export interface ScientificFrame {
   dipoleDebye?: Vec3;
   /** Producer-printed ideal-gas thermochemistry of this geometry's frequency calculation. */
   thermochemistry?: Thermochemistry;
+  /** Producer-printed geometry convergence of the optimizer step taken from this geometry. */
+  convergence?: OptimizationConvergence;
 }
+/**
+ * Forces are gradients in hartree per bohr; steps are in bohr, or the program's mixed
+ * internal-coordinate units. A threshold is present only when the program printed it.
+ */
+export interface OptimizationConvergence {
+  maxForce?: ConvergenceValue; rmsForce?: ConvergenceValue;
+  maxStep?: ConvergenceValue; rmsStep?: ConvergenceValue;
+}
+export interface ConvergenceValue { value: number; threshold?: number }
 /**
  * Energies are per particle in Hartree: the zero-point correction, and the absolute enthalpy and
  * Gibbs energy at the temperature, electronic energy included. G is H − T·S where a program prints no G.
