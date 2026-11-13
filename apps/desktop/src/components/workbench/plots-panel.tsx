@@ -14,7 +14,8 @@ import "./workbench-layout.css";
 import "./plots.css";
 
 const KINDS = { 2: ["distance", "Distance", "Å"], 3: ["angle", "Angle", "°"], 4: ["dihedral", "Dihedral", "°"] } as const;
-const CONVERGENCE = [["maxForce", "Max force", "Eh/bohr"], ["rmsForce", "RMS force", "Eh/bohr"], ["maxStep", "Max step", "a.u."], ["rmsStep", "RMS step", "a.u."]] as const;
+const CONVERGENCE = [["maxForce", "Max force", "Eh/bohr"], ["rmsForce", "RMS force", "Eh/bohr"], ["gradientNorm", "Gradient norm", "Eh/bohr"],
+  ["maxStep", "Max step", "a.u."], ["rmsStep", "RMS step", "a.u."], ["energyChange", "Energy change", "Eh"]] as const;
 type ConvergenceItem = typeof CONVERGENCE[number][0];
 const exponent = (value: number) => value.toExponential(2);
 const UNIT_STORAGE_KEY = "burette.workbench.energy-unit";

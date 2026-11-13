@@ -135,7 +135,7 @@ export function validateScientificDocument(value: unknown, sourceFrames: readonl
       optionalNumbers(thermochemistry, ["zeroPointHartree", "enthalpyHartree", "gibbsHartree", "entropyCalMolKelvin"], `frames[${index}].thermochemistry`);
     }
     const convergence = frame.convergence;
-    if (convergence !== undefined && (!isRecord(convergence) || Object.entries(convergence).some(([key, entry]) => !["maxForce", "rmsForce", "maxStep", "rmsStep"].includes(key)
+    if (convergence !== undefined && (!isRecord(convergence) || Object.entries(convergence).some(([key, entry]) => !["maxForce", "rmsForce", "maxStep", "rmsStep", "energyChange", "gradientNorm"].includes(key)
       || !isRecord(entry) || typeof entry.value !== "number" || !(entry.value >= 0 && entry.value < 1e6)
       || (entry.threshold !== undefined && (typeof entry.threshold !== "number" || !(entry.threshold > 0 && entry.threshold < 1e6)))))) {
       fail(`frames[${index}].convergence is not an optimization step.`);

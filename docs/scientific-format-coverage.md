@@ -101,16 +101,21 @@ program's printed numbers.
 ## Optimization convergence
 
 `frames[i].convergence` holds what a geometry optimizer printed for the step it
-took from that geometry: maximum and RMS force (gradient, hartree per bohr) and
-maximum and RMS step, each with the threshold when the program printed one
-(`quantum/convergence.ts`). Gaussian and ORCA print all four items with
+took from that geometry: maximum and RMS force (gradient, hartree per bohr),
+maximum and RMS step, the energy change and xtb's gradient norm, each with the
+threshold when the program printed one (`quantum/convergence.ts`). The energy
+change comes from ORCA's and Q-Chem's tables and the Psi4 and NWChem step rows;
+a first step, which has no previous energy, has none. Gaussian and ORCA print all four items with
 thresholds; Q-Chem prints the maximum gradient and displacement; Psi4 prints a
 row per step whose inactive criteria have no threshold; NWChem prints a row per
 step and its thresholds once in the optimizer header. GAMESS prints the maximum
 and RMS gradient of each search step (`NSERCH: n E= … GRAD. MAX= … R.M.S.=`);
 its thresholds are `OPTTOL` and `OPTTOL`/3, the criteria GAMESS applies. Psi4,
 NWChem and GAMESS rows are kept only on the frame whose energy they repeat, so a
-summary reprint cannot move a value to another geometry. xtb's optimizer log is not read yet. The
+summary reprint cannot move a value to another geometry. xtb's `xtbopt.log` gives each frame its gradient norm; an xtb output, which
+prints only the final structure, gives it the last cycle's energy change and
+gradient norm with the `energy convergence` and `grad. convergence` thresholds,
+when that cycle's energy is the final energy. The
 Plots panel draws the chosen item on a log axis with the threshold dashed.
 `test-optimization-convergence` checks every reader against its printed table.
 

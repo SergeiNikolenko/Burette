@@ -27,11 +27,14 @@ export interface ScientificFrame {
 }
 /**
  * Forces are gradients in hartree per bohr; steps are in bohr, or the program's mixed
- * internal-coordinate units. A threshold is present only when the program printed it.
+ * internal-coordinate units. The energy change is the hartree change the step was judged by,
+ * and the gradient norm xtb's Euclidean norm in hartree per bohr. Values are magnitudes;
+ * a threshold is present only when the program printed it.
  */
 export interface OptimizationConvergence {
   maxForce?: ConvergenceValue; rmsForce?: ConvergenceValue;
   maxStep?: ConvergenceValue; rmsStep?: ConvergenceValue;
+  energyChange?: ConvergenceValue; gradientNorm?: ConvergenceValue;
 }
 export interface ConvergenceValue { value: number; threshold?: number }
 /**

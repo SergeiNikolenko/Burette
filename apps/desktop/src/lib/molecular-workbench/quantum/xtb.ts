@@ -1,6 +1,6 @@
 import { atomicNumber } from '../elements';
 import type { MolecularAtom, Vec3 } from '../types';
-import type { MolecularOrbital, ScientificDocument } from '../scientific-types';
+import type { MolecularOrbital, OptimizationConvergence, ScientificDocument } from '../scientific-types';
 import { BOHR, coordinate, MAX_ATOMS, numeric } from './reader-values';
 import { DEBYE_PER_AU, OutputHistory, outputLines } from './output-history';
 import { readThermochemistryLine } from './thermochemistry';
@@ -39,8 +39,17 @@ export function parseXtbOutput(text: string): ScientificDocument {
   const forceField = /^\s*\|\s+G F N - F F\s+\|\s*$/mu.test(text);
   let orbitals: MolecularOrbital[] = [];
   let converged: boolean | undefined;
+  // The optimizer's thresholds and its last cycle, which judged the geometry it then prints as final.
+  const thresholds: { energyChange?: number; gradientNorm?: number } = {};
+  let cycle: { energy: number; change: number; gradientNorm?: number } | undefined;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    const setup = line.match(/^\s*:\s*(energy|grad\.) convergence\s+(\S+)\s+Eh/u);
+    if (setup) { thresholds[setup[1] === 'energy' ? 'energyChange' : 'gradientNorm'] = numeric(setup[2]); continue; }
+    const total = line.match(/^\s*\* total energy\s*:\s*(\S+)\s+Eh\s+change\s+(\S+)\s+Eh\s*$/u);
+    if (total) { cycle = { energy: numeric(total[1]), change: numeric(total[2]) }; continue; }
+    const norm = line.match(/^\s*gradient norm\s*:\s*(\S+)\s+Eh\/\S+\s/u);
+    if (norm && cycle) { cycle.gradientNorm = numeric(norm[1]); continue; }
     if (/^\s*final structure:\s*$/u.test(line)) {
       let j = i + 1;
       while (j < lines.length && /^\s*=*\s*$/u.test(lines[j])) j++;
@@ -105,6 +114,14 @@ export function parseXtbOutput(text: string): ScientificDocument {
     }
   }
   if (!history.frames.length) throw new Error('This xtb output prints no geometry. Open its xtbopt.xyz, xtbopt.log or input coordinates instead.');
+  const final = history.frames.at(-1)!;
+  // The cycle prints its energy to 1e-7 Eh; another geometry's cycle is not this frame's.
+  if (cycle && final.energyHartree !== undefined && Math.abs(cycle.energy - final.energyHartree) < 1e-6) {
+    const step: OptimizationConvergence = {};
+    if (cycle.change !== 0) step.energyChange = { value: Math.abs(cycle.change), ...(thresholds.energyChange ? { threshold: thresholds.energyChange } : {}) };
+    if (cycle.gradientNorm !== undefined) step.gradientNorm = { value: cycle.gradientNorm, ...(thresholds.gradientNorm ? { threshold: thresholds.gradientNorm } : {}) };
+    if (Object.keys(step).length) final.convergence = step;
+  }
   return history.document('xtb', orbitals, converged);
 }
 
@@ -116,13 +133,13 @@ export function parseXtbTrajectory(text: string): ScientificDocument {
     if (!lines[i].trim()) { i++; continue; }
     const block = xyzBlock(lines, i);
     if (!block) break; // the optimizer was stopped while writing this frame
-    const energy = block.comment.match(/^\s*energy:\s+(\S+)\s+gnorm:\s+\S+\s+xtb:\s/u);
+    const energy = block.comment.match(/^\s*energy:\s+(\S+)\s+gnorm:\s+(\S+)\s+xtb:\s/u);
     if (!energy) throw new Error('xtb trajectory frames must carry their energy comment.');
     const first = history.frames[0];
     if (first && (block.atoms.length !== first.atoms.length || block.atoms.some((atom, a) => atom.element !== first.atoms[a].element))) throw new Error('xtb trajectory atom identity changes between frames.');
     if (history.frames.length >= 2000) throw new Error('xtb trajectory exceeds 2000 frames.');
     // Every written frame is its own optimizer step, even when two coincide.
-    history.frames.push({ atoms: block.atoms, energyHartree: numeric(energy[1]) });
+    history.frames.push({ atoms: block.atoms, energyHartree: numeric(energy[1]), convergence: { gradientNorm: { value: numeric(energy[2]) } } });
     i = block.end;
   }
   return history.document('xtb', [], undefined);

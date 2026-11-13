@@ -5,8 +5,8 @@ export type ConvergenceProgram = 'gaussian' | 'orca' | 'psi4' | 'nwchem' | 'qche
 type Item = keyof OptimizationConvergence;
 
 const NUMBER = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[EeDd][+-]?\d+)?$/u;
-// Psi4 lists ΔE first; its later columns, and NWChem's step columns, map onto these items.
-const PSI4_COLUMNS: (Item | null)[] = [null, 'maxForce', 'rmsForce', 'maxStep', 'rmsStep'];
+// Psi4's columns, and NWChem's step columns, map onto these items.
+const PSI4_COLUMNS: Item[] = ['energyChange', 'maxForce', 'rmsForce', 'maxStep', 'rmsStep'];
 const NWCHEM_THRESHOLDS: [RegExp, Item][] = [
   [/^\s*maximum gradient threshold\s+\(gmax\)\s*=\s*(\S+)\s*$/u, 'maxForce'],
   [/^\s*rms gradient threshold\s+\(grms\)\s*=\s*(\S+)\s*$/u, 'rmsForce'],
@@ -20,9 +20,11 @@ const TABLE_ROWS: Partial<Record<ConvergenceProgram, { header: RegExp; rows: [Re
     [/^\s*Maximum Displacement\s+(\S+)\s+(\S+)\s+(?:YES|NO)\s*$/u, 'maxStep'], [/^\s*RMS\s+Displacement\s+(\S+)\s+(\S+)\s+(?:YES|NO)\s*$/u, 'rmsStep']] },
   orca: { header: /\|Geometry convergence\|/u, rows: [
     [/^\s*RMS gradient\s+(\S+)\s+(\S+)\s+(?:YES|NO)\s*$/u, 'rmsForce'], [/^\s*MAX gradient\s+(\S+)\s+(\S+)\s+(?:YES|NO)\s*$/u, 'maxForce'],
-    [/^\s*RMS step\s+(\S+)\s+(\S+)\s+(?:YES|NO)\s*$/u, 'rmsStep'], [/^\s*MAX step\s+(\S+)\s+(\S+)\s+(?:YES|NO)\s*$/u, 'maxStep']] },
+    [/^\s*RMS step\s+(\S+)\s+(\S+)\s+(?:YES|NO)\s*$/u, 'rmsStep'], [/^\s*MAX step\s+(\S+)\s+(\S+)\s+(?:YES|NO)\s*$/u, 'maxStep'],
+    [/^\s*Energy change\s+(\S+)\s+(\S+)\s+(?:YES|NO)\s*$/u, 'energyChange']] },
   qchem: { header: /^\s*Maximum\s+Tolerance\s+Cnvgd\?\s*$/u, rows: [
-    [/^\s*Gradient\s+(\S+)\s+(\S+)\s+(?:YES|NO)\s*$/u, 'maxForce'], [/^\s*Displacement\s+(\S+)\s+(\S+)\s+(?:YES|NO)\s*$/u, 'maxStep']] },
+    [/^\s*Gradient\s+(\S+)\s+(\S+)\s+(?:YES|NO)\s*$/u, 'maxForce'], [/^\s*Displacement\s+(\S+)\s+(\S+)\s+(?:YES|NO)\s*$/u, 'maxStep'],
+    [/^\s*Energy change\s+(\S+)\s+(\S+)\s+(?:YES|NO)\s*$/u, 'energyChange']] },
 };
 
 /** NWChem and GAMESS print their thresholds once, before the first step of one output. */
@@ -33,6 +35,8 @@ const value = (token: string | undefined) => token !== undefined && NUMBER.test(
 
 function set(frame: ScientificFrame, item: Item, printed: number | undefined, threshold?: number) {
   if (printed === undefined || !(Math.abs(printed) < 1e6)) return;
+  // The first step has no previous energy: programs print zero, or the energy itself (Psi4 to three digits).
+  if (item === 'energyChange' && (printed === 0 || (frame.energyHartree !== undefined && Math.abs(printed - frame.energyHartree) <= 0.01 * Math.abs(frame.energyHartree)))) return;
   const entry: ConvergenceValue = { value: Math.abs(printed), ...(threshold !== undefined && threshold > 0 ? { threshold } : {}) };
   frame.convergence = { ...frame.convergence, [item]: entry };
 }
@@ -49,13 +53,13 @@ export function readConvergence(program: ConvergenceProgram, lines: readonly str
       if (match) { printedThresholds.set(lines, { ...printedThresholds.get(lines), [item]: value(match[1]) }); return i; }
     }
     // `@ Step Energy ΔE Gmax Grms Xrms Xmax Walltime`; the summary at the end repeats the last row.
-    const row = line.match(/^@\s+\d+\s+(\S+)\s+\S+\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+\S+\s*$/u);
+    const row = line.match(/^@\s+\d+\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+\S+\s*$/u);
     if (!row || !frame) return -1;
     const energy = value(row[1]);
     // The row's energy names its geometry; a row of another geometry is not this frame's.
     if (energy === undefined || frame.energyHartree === undefined || Math.abs(energy - frame.energyHartree) > 1e-6) return i;
     const thresholds = printedThresholds.get(lines) ?? {};
-    (['maxForce', 'rmsForce', 'rmsStep', 'maxStep'] as const).forEach((item, k) => set(frame, item, value(row[k + 2]), thresholds[item]));
+    (['energyChange', 'maxForce', 'rmsForce', 'rmsStep', 'maxStep'] as const).forEach((item, k) => set(frame, item, value(row[k + 2]), thresholds[item]));
     return i;
   }
   if (program === 'gamess') {
@@ -90,7 +94,7 @@ export function readConvergence(program: ConvergenceProgram, lines: readonly str
       if (tokens[k] === 'o') thresholds.push(undefined);
       else if (NUMBER.test(tokens[k])) { thresholds.push(numeric(tokens[k])); if (tokens[k + 1] === '*') k++; }
     }
-    PSI4_COLUMNS.forEach((item, k) => { if (item) set(frame, item, value(step[k + 2]), thresholds[k]); });
+    PSI4_COLUMNS.forEach((item, k) => set(frame, item, value(step[k + 2]), thresholds[k]));
     return i + 4;
   }
   const table = TABLE_ROWS[program];

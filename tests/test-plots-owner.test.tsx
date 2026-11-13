@@ -38,17 +38,19 @@ for(const route of ["compute","palette"]) test(`${route} opens source-owned acti
    await wait(()=>Boolean(view.host.querySelector('[aria-label="Atom numbers to measure"]')));
    expect([getTabWorkspace(WINDOW_TOOLS_ID).bottom.documentId,getTabWorkspace(WINDOW_TOOLS_ID).bottom.activeTab]).toEqual([view.current.id,"plots"]);
    expect(view.host.textContent).toContain("Frame 6 of 7");expect(view.host.textContent).not.toContain("Export forces");expect(view.host.textContent).not.toContain("Open steps");
-   expect(view.host.querySelector('[aria-label="Energy unit"]')).toBeNull();expect(view.host.querySelector('[aria-label="Temperature per frame"]')).toBeNull();
+   // Avogadro stored one energy per set, so the energy chart is offered.
+   expect(view.host.querySelector('[aria-label="Energy unit"]')).not.toBeNull();expect(view.host.querySelector('[aria-label="Temperature per frame"]')).toBeNull();
    await chooseAtoms(view.host,"1 2");await wait(()=>view.host.textContent?.includes("Distance, Å1.200")??false);
-   const path=view.host.querySelector('.recharts-line path.recharts-curve')!;
+   const distanceChart=view.host.querySelector<HTMLElement>('[aria-label="Distance per frame"]')!;
+   const path=distanceChart.querySelector('.recharts-line path.recharts-curve')!;
    expect(path).not.toBeNull();
    const points=[...path.getAttribute("d")!.matchAll(/[ML]([\d.-]+),([\d.-]+)/gu)].map(match=>[Number(match[1]),Number(match[2])]);
-   const labels=[...view.host.querySelectorAll('.recharts-yAxis-tick-labels .recharts-cartesian-axis-tick-value')].map(label=>({value:Number(label.textContent),y:Number(label.getAttribute("y"))}));
+   const labels=[...distanceChart.querySelectorAll('.recharts-yAxis-tick-labels .recharts-cartesian-axis-tick-value')].map(label=>({value:Number(label.textContent),y:Number(label.getAttribute("y"))}));
    const distances=[1.2006257364669461,1.2076004908856757,1.207148138965056,1.203060011575511,1.2002628167009621,1.2003876259138908,1.2006056263914924];
    expect(points).toHaveLength(7);expect(labels.length).toBeGreaterThan(1);
    const [low,high]=[labels[0],labels.at(-1)!];
    for(let i=0;i<7;i++){const expectedY=low.y+(distances[i]-low.value)*(high.y-low.y)/(high.value-low.value);expect(Math.abs(points[i][1]-expectedY)).toBeLessThan(0.005);if(i)expect(points[i][0]).toBeGreaterThan(points[i-1][0]);}
-   const currentDot=view.host.querySelector('.recharts-reference-dot circle')!;
+   const currentDot=distanceChart.querySelector('.recharts-reference-dot circle')!;
    expect(Number(currentDot.getAttribute("cx"))).toBeCloseTo(points[5][0],2);
    expect(Number(currentDot.getAttribute("cy"))).toBeCloseTo(points[5][1],2);
    expect(view.host.querySelector('[role="slider"]')).toBeNull();
