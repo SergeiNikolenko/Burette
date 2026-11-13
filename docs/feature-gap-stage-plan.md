@@ -65,7 +65,9 @@ for the browser shell and on a `macvm` guest on Orion for the packaged app.
   NWChem optimizations keep each step's maximum and RMS force and step with the
   printed thresholds (`test:optimization-convergence`); Plots draws the chosen
   item on a log axis with the threshold dashed. Orbitals has a level diagram
-  with α and β columns, occupancy arrows and HOMO/LUMO labels. A click or the
+  with α and β strips on one axis (redrawn in 018894015: every level labelled
+  with its energy on a leader, the HOMO–LUMO gap shaded, the same orbital of
+  both spins joined by a dashed line, levels gliding between frames). A click or the
   arrow keys pick a level and show its surface at once. The diagram keeps to
   the valence region (20 eV past the frontier levels); core levels stay in the
   table. xtb's optimizer log and SCF iteration graphs are not read yet. Browser
