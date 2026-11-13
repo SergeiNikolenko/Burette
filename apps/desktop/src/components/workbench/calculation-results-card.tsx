@@ -56,8 +56,9 @@ function overlayFor(kind: OverlayKind, frame: ScientificFrame, charges: AtomicCh
 }
 
 /**
- * Calculated properties of the geometry the scene shows: partial charges as atom colours or labels,
- * the dipole moment as an arrow, and the thermochemistry of the frequency job.
+ * Calculated properties of the geometry the scene shows: its energy and whether the job converged,
+ * partial charges as atom colours or labels, the dipole moment as an arrow, and the thermochemistry
+ * of the frequency job.
  */
 export function CalculationResultsCard({ document }: { document: ViewerDocument }) {
   const { document: science, text } = useScientificDocument(document);
@@ -88,11 +89,24 @@ export function CalculationResultsCard({ document }: { document: ViewerDocument 
     return () => controller.abort();
   }, [document.id, frame, charges, choice]);
 
-  if (!frame || (!sets.length && dipole === null && !thermochemistry)) return null;
+  const energy = frame?.energyHartree;
+  const converged = science?.converged;
+  if (!frame || (!sets.length && dipole === null && !thermochemistry && energy === undefined && converged === undefined)) return null;
   const toggle = (kind: OverlayKind, value: boolean) => setChoice(document.id, { ...choice, model: charges?.model ?? null, shown: { ...choice.shown, [kind]: value } });
 
   return (
     <>
+      {energy !== undefined || converged !== undefined ? (
+        <section className="structure-brief-card" aria-label="Calculation">
+          <div className="structure-brief-card-header">
+            <h4>Calculation</h4>
+            {converged !== undefined ? (
+              <span className="calculation-results-status" data-status={converged ? "success" : "failure"}>{converged ? "Converged" : "Not converged"}</span>
+            ) : null}
+          </div>
+          {energy !== undefined ? <div className="structure-brief-row"><span>Energy</span><strong>{hartree(energy)}</strong></div> : null}
+        </section>
+      ) : null}
       {sets.length || dipole !== null ? (
         <section className="structure-brief-card" aria-label="Charges and dipole">
           <div className="structure-brief-card-header">

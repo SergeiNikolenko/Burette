@@ -14,3 +14,9 @@
   color: var(--text-secondary);
   font-size: 12px;
 }
+.calculation-results-status {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.calculation-results-status[data-status="success"] { color: var(--color-text-success, var(--text-secondary)); }
+.calculation-results-status[data-status="failure"] { color: var(--color-text-danger); }
