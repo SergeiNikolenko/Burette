@@ -40,6 +40,26 @@ test('Q-Chem 5.4 single points match cclib: orbitals, spin channels, charge mode
   expect(read('cclib-water_ccsd_t.out').frames[0].energyHartree).toBe(reference['cclib-water_ccsd_t.out'].ccenergies![0]);
 });
 
+test('jobs without symmetry print a bare Alpha MOs header with four-decimal energies and no labels', () => {
+  // Printed values; a restricted job without symmetry prints no beta block.
+  for (const [name, expected] of [
+    ['cclib-Trp_polar.out', { count: 87, occupied: 54, homo: -0.2257, lumo: 0.2476 }],
+    ['cclib-water_hf_solvent_smd.out', { count: 7, occupied: 5, homo: -0.3853, lumo: 0.5766 }],
+  ] as const) {
+    const document = read(name);
+    const occupied = document.orbitals.filter(orbital => orbital.occupancy > 0);
+    expect({ count: document.orbitals.length, occupied: occupied.length, homo: occupied.at(-1)?.energyHartree, lumo: document.orbitals[occupied.length]?.energyHartree }).toEqual(expected);
+    expect(document.orbitals.every(orbital => orbital.spin === 'alpha' && orbital.occupancy === (orbital.index < occupied.length ? 2 : 0) && orbital.symmetry === undefined)).toBe(true);
+    expectSchema(document);
+  }
+  expect(read('cclib-Trp_polar.out').orbitals.slice(0, 3).map(orbital => orbital.energyHartree)).toEqual([-20.269, -20.2423, -15.3897]);
+  // A bare beta block after the alpha block makes the job unrestricted.
+  const water = fixtureText('qchem/cclib-water_hf_solvent_smd.out');
+  const alpha = '  0.5766   0.7135\n';
+  const unrestricted = parseQchemLog(water.replace(alpha, `${alpha} \n Beta MOs\n -- Occupied --\n-20.2300  -1.2400  -0.5900  -0.4400\n -- Virtual --\n -0.3000   0.5800   0.7200\n`));
+  expect(['alpha', 'beta'].map(spin => unrestricted.orbitals.filter(orbital => orbital.spin === spin).map(orbital => orbital.occupancy).join(''))).toEqual(['1111100', '1111000']);
+});
+
 test('optimization keeps every cycle, its convergence and the final orbitals', () => {
   const name = 'cclib-dvb_gopt.out', text = fixtureText(`qchem/${name}`), document = parseQchemLog(text), expected = reference[name];
   expectGeometries(document, expected, 1e-10);

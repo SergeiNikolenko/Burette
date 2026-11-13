@@ -25,6 +25,32 @@ function atomicCoordinates(lines: string[], start: number) {
   return { atoms, end: i, complete: i < lines.length && atoms.length > 0 };
 }
 
+/**
+ * `Orbital energies:` rows of `n.s` labels over energies, numbered per symmetry; `occupied` is the
+ * closed-shell `Final occupancy` per symmetry, which may stop before trailing unoccupied symmetries.
+ * Molpro lists every occupied orbital and a few virtuals.
+ */
+function orbitalEnergyList(lines: string[], start: number, occupied: number[]) {
+  const rows: { energyHartree: number; occupancy: number }[] = [];
+  const counts = new Array<number>(8).fill(0);
+  let i = start;
+  for (; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    const labels = lines[i].trim().split(/\s+/);
+    if (!labels.every(label => /^\d+\.[1-8]$/u.test(label))) break;
+    if (++i >= lines.length) break;
+    const energies = lines[i].trim().split(/\s+/);
+    if (energies.length !== labels.length) throw new Error('Malformed Molpro orbital energy row.');
+    labels.forEach((label, k) => {
+      const [n, s] = label.split('.').map(Number);
+      if (n !== ++counts[s - 1]) throw new Error('Malformed Molpro orbital energy label.');
+      rows.push({ energyHartree: numeric(energies[k]), occupancy: n <= (occupied[s - 1] ?? 0) ? 2 : 0 });
+    });
+  }
+  if (i < lines.length && occupied.some((count, s) => counts[s] < count)) throw new Error('Molpro orbital energies omit occupied orbitals.');
+  return { rows, end: i };
+}
+
 /** Lower-triangle blocks headed by coordinate labels (`CX1 CY1 ...`); returns rows × columns values. */
 function labelledTriangle(lines: string[], start: number, dimension: number) {
   const triangle = new Array<number | undefined>(dimension * (dimension + 1) / 2);
@@ -67,6 +93,7 @@ export function parseMolproLog(text: string): ScientificDocument {
   let masses: number[] | undefined;
   type Orbital = { energyHartree: number; occupancy: number };
   let orbitals: { frame: number; alpha?: Orbital[]; beta?: Orbital[] } = { frame: -1 };
+  let closedShell: number[] | undefined, electrons: number[] | undefined;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (/^\s*ATOMIC COORDINATES\s*$/u.test(line)) {
@@ -99,7 +126,29 @@ export function parseMolproLog(text: string): ScientificDocument {
     if (/^\s*\?\s*No convergence|^\s*\?\s*Error/u.test(line)) converged = false;
     match = line.match(/^\s*Dipole moment \/Debye\s+(\S+)\s+(\S+)\s+(\S+)\s*$/u);
     if (match) { history.dipole([numeric(match[1]), numeric(match[2]), numeric(match[3])]); continue; }
-    match = line.match(/^\s*ELECTRON ORBITALS(?: FOR (POSITIVE|NEGATIVE) SPIN)?\s*$/u);
+    match = line.match(/^\s*NUMBER OF ELECTRONS:\s+(\d+)\+\s+(\d+)-/u);
+    if (match) { electrons = [Number(match[1]), Number(match[2])]; continue; }
+    // Closed-shell SCFs print one count per symmetry; open-shell SCFs print alpha and beta counts.
+    // The doubly occupied counts are trusted only when they hold the SCF's equal alpha and beta electrons.
+    match = line.match(/^\s*Final (?:(alpha|beta)\s+)?occupancy:\s+(\d.*)$/u);
+    if (match) {
+      closedShell = match[1] ? undefined : match[2].trim().split(/\s+/).map(numeric);
+      if (closedShell?.some(count => !Number.isInteger(count) || count < 0)) throw new Error('Malformed Molpro occupancy.');
+      if (electrons?.[0] !== electrons?.[1] || closedShell?.reduce((sum, count) => sum + count, 0) !== electrons?.[0]) closedShell = undefined;
+      continue;
+    }
+    if (closedShell && /^\s*Orbital energies:\s*$/u.test(line)) {
+      const { rows, end } = orbitalEnergyList(lines, i + 1, closedShell);
+      if (end >= lines.length) break;
+      i = end - 1;
+      closedShell = undefined;
+      if (history.trial) continue;
+      rows.sort((a, b) => a.energyHartree - b.energyHartree);
+      orbitals = { frame: history.frames.length - 1, alpha: rows };
+      continue;
+    }
+    // Molpro 2012 names the UHF spin tables POSITIVE/NEGATIVE, Molpro 2018 ALPHA/BETA.
+    match = line.match(/^\s*ELECTRON ORBITALS(?: FOR (POSITIVE|NEGATIVE|ALPHA|BETA) SPIN)?\s*$/u);
     if (match) {
       const rows: Orbital[] = [];
       let j = i + 1;
@@ -114,7 +163,7 @@ export function parseMolproLog(text: string): ScientificDocument {
       const frame = history.frames.length - 1;
       // Symmetry blocks interleave; the table numbers orbitals in energy order.
       rows.sort((a, b) => a.energyHartree - b.energyHartree);
-      if (match[1] === 'NEGATIVE') { if (orbitals.frame === frame) orbitals.beta = rows; }
+      if (match[1] === 'NEGATIVE' || match[1] === 'BETA') { if (orbitals.frame === frame) orbitals.beta = rows; }
       else orbitals = { frame, alpha: rows };
       continue;
     }

@@ -13,9 +13,10 @@ const CHARGE_TABLES: [RegExp, AtomicChargeSet['model']][] = [
   [/^\s*Merz-Kollman ESP Net Atomic Charges\s*$/u, 'esp'],
 ];
 const CORRELATED_ENERGY = /^\s*(?:MP2|MP3|MP4|MP4SDQ|CCD|CCSD|CCSD\(T\)|QCISD|QCISD\(T\)|CISD)\s+total energy\s*=\s*(-\d+\.\d+)(?:\s+au)?\s*$/u;
-const ORBITAL_ENERGY = /-?\d+\.\d{3}/gu;
+// Three decimals when symmetry labels follow, four when the job ran without symmetry.
+const ORBITAL_ENERGY = /-?\d+\.\d{3,4}/gu;
 
-/** `-- Occupied --` / `-- Virtual --` lists of three-decimal energies, each optionally followed by `n Label` symmetry pairs. */
+/** `-- Occupied --` / `-- Virtual --` lists of energies, each optionally followed by `n Label` symmetry pairs. */
 function orbitalEnergies(lines: string[], start: number) {
   const rows: { energyHartree: number; occupied: boolean; symmetry?: string }[] = [];
   let occupied: boolean | undefined, i = start;
@@ -42,9 +43,9 @@ function orbitalEnergies(lines: string[], start: number) {
 /**
  * Q-Chem 4–6 output (https://manual.q-chem.com): `Standard Nuclear Orientation (Angstroms)` per
  * SCF; `Total energy in the final basis set` in Hartree (SCF or DFT); orbital energies in Hartree
- * to 0.001; normal modes as Cartesian displacements, IR in km/mol, Raman in Å⁴/amu. MO coefficients
- * printed by `print_orbitals` are truncated to five decimals: the FCHK (`gui = 2`) or Molden file of
- * the same job carries them.
+ * to 0.001 with symmetry labels, or to 0.0001 without them; normal modes as Cartesian
+ * displacements, IR in km/mol, Raman in Å⁴/amu. MO coefficients printed by `print_orbitals` are
+ * truncated to five decimals: the FCHK (`gui = 2`) or Molden file of the same job carries them.
  */
 export function parseQchemLog(text: string): ScientificDocument {
   const lines = outputLines(text);
@@ -81,15 +82,16 @@ export function parseQchemLog(text: string): ScientificDocument {
     if (match) { history.correlatedEnergy(numeric(match[1])); continue; }
     if (/^\s*\*\*\s+OPTIMIZATION CONVERGED\s+\*\*\s*$/u.test(line)) converged = true;
     if (/SCF failed to converge|MAXIMUM OPTIMIZATION CYCLES REACHED|Q-Chem fatal error occurred/u.test(line)) converged = false;
-    match = line.match(/^\s*(Alpha|Beta) MOs, (Restricted|Unrestricted)\s*$/u);
+    // Without symmetry the header is bare and a restricted job prints no beta block.
+    match = line.match(/^\s*(Alpha|Beta) MOs(?:, (Restricted|Unrestricted))?\s*$/u);
     if (match) {
       const { rows, end } = orbitalEnergies(lines, i + 1);
       if (end >= lines.length) break;
       i = end - 1;
-      if (history.trial) continue;
+      if (history.trial || !rows.length) continue;
       const frame = history.frames.length - 1;
       if (match[1] === 'Alpha') orbitals = { frame, alpha: rows, unrestricted: match[2] === 'Unrestricted' };
-      else if (orbitals.frame === frame) orbitals.beta = rows;
+      else if (orbitals.frame === frame) orbitals = { ...orbitals, beta: rows, unrestricted: match[2] !== 'Restricted' };
       continue;
     }
     const table = CHARGE_TABLES.find(([pattern]) => pattern.test(line));
