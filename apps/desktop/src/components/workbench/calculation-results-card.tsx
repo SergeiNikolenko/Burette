@@ -164,9 +164,8 @@ function runDescription(metadata: CalculationMetadata): [string, string][] {
   const rows: [string, string][] = [];
   if (metadata.keywords) rows.push(["Keywords", metadata.keywords]);
   if (metadata.basis) rows.push(["Basis", metadata.basis]);
-  if (metadata.charge !== undefined && metadata.multiplicity !== undefined) rows.push(["Charge, multiplicity", `${metadata.charge}, ${metadata.multiplicity}`]);
-  else if (metadata.charge !== undefined) rows.push(["Charge", String(metadata.charge)]);
-  else if (metadata.multiplicity !== undefined) rows.push(["Multiplicity", String(metadata.multiplicity)]);
+  if (metadata.charge !== undefined) rows.push(["Charge", String(metadata.charge)]);
+  if (metadata.multiplicity !== undefined) rows.push(["Multiplicity", String(metadata.multiplicity)]);
   if (metadata.program) rows.push(["Program", metadata.program]);
   if (metadata.runSeconds !== undefined) rows.push(["Run time", duration(metadata.runSeconds)]);
   return rows;
