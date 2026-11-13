@@ -11,6 +11,10 @@ const ELEMENT = /^([A-Za-z]{1,2})/u;
 const SCF_ENERGY = /^\s*Total (?:SCF|DFT) energy\s*=\s*(\S+)/u;
 // MP2, coupled-cluster and CI total energies of the same geometry (task energy order: last wins).
 const CORRELATED_ENERGY = /^\s*(?:Total (?:MP2|MP3|MP4|CCSD|CCSD\(T\)|CISD) energy|(?:CCSD|CCSD\(T\)|CCSD\[T\]|CCSDT|CISD|MBPT\(2\)) total energy \/ (?:hartree|a\.u\.))\s*[:=]?\s*(-\d+\.\d+)\s*$/iu;
+// Hessian fields are fixed-width Fortran D-format; NWChem 6 leaves no blank before a negative value
+// (`-1.97223D-16-3.58723D-07`), so fields are read by their mandatory exponent, not by spaces.
+const HESSIAN_ROW = /^\s*(\d+)((?:\s*[+-]?\d+\.\d+[DdEe][+-]?\d+)+)\s*$/u;
+const HESSIAN_FIELD = /[+-]?\d+\.\d+[DdEe][+-]?\d+/gu;
 
 function element(tag: string, charge: number) {
   if (/^bq/iu.test(tag)) throw new Error('NWChem ghost (bq) centres are not supported.');
@@ -69,9 +73,16 @@ export function parseNwchemLog(text: string): ScientificDocument {
   type Vector = { energy: number; occupancy: number; symmetry?: string };
   let orbitals: { alpha?: number[]; beta?: number[] } = {};
   let vectors: Record<'alpha' | 'beta', Map<number, Vector>> = { alpha: new Map(), beta: new Map() };
-  // Orbitals belong to the frame whose own SCF printed them, never to a line-search trial.
-  let orbitalFrame = -1;
-  const resetOrbitals = () => { orbitals = {}; vectors = { alpha: new Map(), beta: new Map() }; orbitalFrame = history.trial ? -1 : history.frames.length - 1; };
+  // Orbitals belong to the frame whose own SCF printed them; those of a line-search trial wait
+  // for the geometry whose SCF repeats the trial energy.
+  let orbitalFrame = -1, orbitalTrial: number | undefined;
+  const resetOrbitals = () => {
+    orbitals = {}; vectors = { alpha: new Map(), beta: new Map() };
+    orbitalFrame = history.trial ? -1 : history.frames.length - 1;
+    orbitalTrial = history.trialEnergy;
+  };
+  // Per-atom masses of the vibrational analysis (isotopes included), printed before its Hessian.
+  let vibrationMasses: number[] | undefined;
   let electrons: { closed: number; open: number } | { alpha: number; beta: number } | undefined;
   let converged: boolean | undefined;
   let vectorSpin: 'alpha' | 'beta' = 'alpha';
@@ -105,7 +116,11 @@ export function parseNwchemLog(text: string): ScientificDocument {
     const convergenceEnd = readConvergence('nwchem', lines, i, history.frames.at(-1));
     if (convergenceEnd >= 0) { i = convergenceEnd; continue; }
     let match = line.match(SCF_ENERGY);
-    if (match) { history.scfEnergy(numeric(match[1])); continue; }
+    if (match) {
+      const adopted = history.scfEnergy(numeric(match[1]));
+      if (adopted !== undefined && orbitalFrame === -1 && orbitalTrial === adopted) orbitalFrame = history.frames.length - 1;
+      continue;
+    }
     match = line.match(CORRELATED_ENERGY);
     if (match) { history.correlatedEnergy(numeric(match[1])); continue; }
     if (/^\s*Optimization converged\s*$/u.test(line)) converged = true;
@@ -170,10 +185,21 @@ export function parseNwchemLog(text: string): ScientificDocument {
       if (dipole.length === 3 && dipole.every(Number.isFinite)) history.dipole(dipole as Vec3);
       continue;
     }
+    if (/^\s*-+ Atom information -+\s*$/u.test(line)) {
+      const values: number[] = [];
+      for (i += 3; i < lines.length && !/^\s*-+\s*$/u.test(lines[i]); i++) {
+        const p = lines[i].trim().split(/\s+/);
+        if (p.length !== 6 || Number(p[1]) !== values.length + 1) throw new Error('Malformed NWChem atom information row.');
+        values.push(numeric(p[5]));
+      }
+      vibrationMasses = values;
+      continue;
+    }
     if (/^\s*MASS-WEIGHTED NUCLEAR HESSIAN \(Hartree\/Bohr\/Bohr\/Kamu\)/u.test(line)) {
       const frame = history.current('Hessian');
       const n = frame.atoms.length * 3;
-      const atomMasses = frame.atoms.map(atom => masses.get(atom.element));
+      const atomMasses = vibrationMasses?.length === frame.atoms.length ? vibrationMasses : frame.atoms.map(atom => masses.get(atom.element));
+      vibrationMasses = undefined;
       const triangle = new Array<number>(n * (n + 1) / 2);
       let filled = 0, columns: number[] = [];
       // Lower-triangle blocks of column numbers; each row lists the block's columns up to the diagonal.
@@ -181,8 +207,10 @@ export function parseNwchemLog(text: string): ScientificDocument {
         const p = lines[j].trim().split(/\s+/);
         if (!lines[j].trim() || /^-+$/u.test(p[0])) continue;
         if (p.every(token => /^\d+$/u.test(token))) { columns = p.map(token => Number(token) - 1); continue; }
-        const row = Number(p[0]) - 1, values = p.slice(1);
-        if (!columns.length || !Number.isInteger(row) || row >= n || values.length !== Math.min(columns.length, row - columns[0] + 1)) throw new Error('Malformed NWChem Hessian.');
+        const fields = lines[j].match(HESSIAN_ROW);
+        if (!fields) throw new Error('Malformed NWChem Hessian.');
+        const row = Number(fields[1]) - 1, values = fields[2].match(HESSIAN_FIELD)!;
+        if (!columns.length || row >= n || values.length !== Math.min(columns.length, row - columns[0] + 1)) throw new Error('Malformed NWChem Hessian.');
         values.forEach((token, k) => {
           const column = columns[k];
           const offset = row * (row + 1) / 2 + column;

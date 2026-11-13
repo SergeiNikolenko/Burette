@@ -1,13 +1,17 @@
 import { atomicNumber } from '../elements';
 import type { MolecularAtom, Vec3 } from '../types';
-import type { MolecularOrbital, ScientificDocument, VibrationalMode } from '../scientific-types';
+import type { MolecularOrbital, ScientificDocument, ScientificFrame, VibrationalMode } from '../scientific-types';
 import { hessianFromSquare } from '../hessian';
 import { BOHR, coordinate, numeric } from './reader-values';
-import { DEBYE_PER_AU, OutputHistory, orbitalTable, outputLines } from './output-history';
+import { DEBYE_PER_AU, OutputHistory, orbitalTable, outputLines, sameGeometry } from './output-history';
 import { readThermochemistryLine } from './thermochemistry';
 import { readConvergence } from './convergence';
 
 const GEOMETRY = /^\s*Geometry \(in (Angstrom|Bohr)\), charge = -?\d+, multiplicity = \d+:\s*$/u;
+// The SAD guess prints each unique atom as a one-atom geometry inside the molecule's SCF.
+const SAD_ATOM = /Unique Atom \d+ which is Atom \d+:|^\s*Atom:\s*$/u;
+// Ghost centres: `Gh(C)` since Psi4 1.2, `C(Gh)` before.
+const GHOST = /^Gh\(|\(Gh\)$/u;
 const SCF_ENERGY = /^\s*@\S*?(?:RHF|UHF|ROHF|CUHF|RKS|UKS|ROKS) Final Energy:\s+(\S+)\s*$/u;
 // Post-Hartree–Fock totals as the Psi4 modules print them; the last level of a geometry wins.
 const CORRELATED_ENERGY = /^\s*(?:\*\s*)?(?:(?:SCS-)?MP2(?:\.5)?|MP3|MP4|CCSD|CCSD\(T\)|CISD|QCISD|QCISD\(T\)|CEPA\(0\)|FNO-CCSD\(T\)) (?:[Tt]otal [Ee]nergy|Total Energy \(a\.u\.\))\s*[:=]\s*(-\d+\.\d+)(?:\s*\[Eh\])?\s*$/u;
@@ -18,7 +22,6 @@ const SECTIONS: Record<string, { spin: 'alpha' | 'beta'; occupancy: number }> = 
 };
 
 function element(label: string) {
-  if (/^Gh\(/u.test(label)) throw new Error('Psi4 ghost atoms are not supported.');
   const symbol = label.match(/^([A-Z][a-z]?)/u)?.[1];
   for (const candidate of symbol ? [symbol, symbol[0]] : []) { try { atomicNumber(candidate); return candidate; } catch { /* one letter */ } }
   throw new Error(`Unrecognised Psi4 atom label ${label}.`);
@@ -48,7 +51,11 @@ function readMatrix(lines: string[], start: number, size: number) {
  * (reoriented) frame and unit, energies Hartree, orbital energies Hartree in energy order
  * with irrep labels, the vibrational analysis table (Cartesian displacements of each listed
  * vibration, frequencies cm^-1 with an `i` suffix for imaginary ones, IR km/mol) and the
- * total Hessian in Hartree/bohr².
+ * total Hessian in Hartree/bohr². A finite-difference job computes its reference geometry
+ * first (psi4/driver/driver_findif.py), then the displaced ones; the displaced geometries are
+ * not frames, and the vibrational analysis and thermochemistry after `FiniteDifference Results`
+ * belong to the reference. Geometries with ghost centres (counterpoise or SAPT monomers in the
+ * dimer basis) and the SAD guess's one-atom geometries are not frames either.
  */
 export function parsePsi4Log(text: string): ScientificDocument {
   const lines = outputLines(text);
@@ -59,25 +66,38 @@ export function parsePsi4Log(text: string): ScientificDocument {
   let energyBox = false;
   // The geometry table's mass column (amu), kept for the Hessian of that geometry.
   const masses = new WeakMap<object, number[]>();
+  // Inside a finite-difference job: its reference frame once printed, or null before that.
+  let findif: ScientificFrame | null | undefined;
+  // Properties printed after a geometry that is not a frame belong to that computation.
+  let elsewhere = false;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const geometry = line.match(GEOMETRY);
+    if (geometry && (SAD_ATOM.test(lines[i - 1] ?? '') || SAD_ATOM.test(lines[i - 2] ?? '') && /^\s*Molecular point group:/u.test(lines[i - 1]))) continue;
     if (geometry) {
       const scale = geometry[1] === 'Bohr' ? BOHR : 1;
       while (++i < lines.length && !lines[i].trim()) { /* blank */ }
       if (/^\s*Center\s+X\s+Y\s+Z/u.test(lines[i] ?? '')) i += 2;
       const atoms: MolecularAtom[] = [], atomMasses: number[] = [];
+      let ghosts = false;
       for (; i < lines.length && lines[i].trim(); i++) {
         const p = lines[i].trim().split(/\s+/);
         if (p.length !== 4 && p.length !== 5) throw new Error('Malformed Psi4 geometry row.');
+        if (GHOST.test(p[0])) { ghosts = true; continue; }
         atoms.push(coordinate(element(p[0]), p.slice(1, 4).map(numeric), scale));
         if (p.length === 5) atomMasses.push(numeric(p[4]));
       }
       if (i >= lines.length || !atoms.length) break;
+      elsewhere = ghosts || (findif ? !sameGeometry(atoms, findif) : false);
+      if (elsewhere) continue;
       const frame = history.geometry(atoms);
+      if (findif === null) findif = frame;
       if (atomMasses.length === atoms.length) masses.set(frame, atomMasses);
       continue;
     }
+    if (/^\s*Using finite-differences of (?:gradients|energies)/u.test(line)) { findif = null; continue; }
+    if (/^\s*\/\/\s+FiniteDifference Results\s+\/\/\s*$/u.test(line)) { findif = undefined; elsewhere = false; continue; }
+    if (elsewhere) continue;
     if (readThermochemistryLine('psi4', lines, i, history.frames.at(-1))) continue;
     const convergenceEnd = readConvergence('psi4', lines, i, history.frames.at(-1));
     if (convergenceEnd >= 0) { i = convergenceEnd; continue; }

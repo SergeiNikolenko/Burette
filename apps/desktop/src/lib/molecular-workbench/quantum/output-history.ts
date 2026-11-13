@@ -5,6 +5,8 @@ import { checkIdentity, finite, MAX_FRAMES, MAX_VALUES } from './reader-values';
 /** 1 e·bohr in debye (CODATA 2018, as printed by Psi4 and NWChem). */
 export const DEBYE_PER_AU = 2.541746473;
 const SAME_POSITION_ANGSTROM = 1e-6;
+/** Programs print SCF totals to 10–12 decimals; only a recomputation of the same geometry repeats one. */
+const SAME_ENERGY_HARTREE = 1e-10;
 
 /**
  * The geometry history of a text log. A program reprints the geometry it is about to
@@ -12,22 +14,26 @@ const SAME_POSITION_ANGSTROM = 1e-6;
  * that same frame, so frame energies, modes and charges stay attached to their geometry.
  * The first SCF energy printed after a geometry is its energy: later SCF energies before
  * the next geometry belong to unprinted line-search trials, and so do the charges, dipole and
- * orbitals printed after them. A correlated total energy of the same geometry supersedes its
- * SCF energy, and the last correlated level printed wins.
+ * orbitals printed after them. A trial can be the next geometry itself (NWChem prints the
+ * accepted step after the line search computed it): when that geometry's first SCF energy
+ * repeats the trial energy, the trial's charges and dipole become its own. A correlated total
+ * energy of the same geometry supersedes its SCF energy, and the last correlated level printed wins.
  */
 export class OutputHistory {
   readonly frames: ScientificFrame[] = [];
   private levels: number[] = [];
   private values = 0;
+  private pending: { energy: number; charges: AtomicChargeSet[]; dipole?: Vec3 } | undefined;
   /** Whether the properties now printed belong to an unprinted trial geometry. */
   trial = false;
+
+  /** The SCF energy of the trial whose properties are now printed. */
+  get trialEnergy() { return this.trial ? this.pending?.energy : undefined; }
 
   geometry(atoms: MolecularAtom[]) {
     const last = this.frames.at(-1);
     this.trial = false;
-    if (last && atoms.length === last.atoms.length && atoms.every((atom, i) => atom.element === last.atoms[i].element
-      && Math.abs(atom.x - last.atoms[i].x) <= SAME_POSITION_ANGSTROM && Math.abs(atom.y - last.atoms[i].y) <= SAME_POSITION_ANGSTROM
-      && Math.abs(atom.z - last.atoms[i].z) <= SAME_POSITION_ANGSTROM)) {
+    if (last && sameGeometry(atoms, last)) {
       // A recomputation of the same geometry refreshes its SCF result.
       if (this.levels[this.frames.length - 1] === 1) this.levels[this.frames.length - 1] = 0;
       return last;
@@ -47,12 +53,21 @@ export class OutputHistory {
     return frame;
   }
 
-  scfEnergy(value: number) {
+  /** Returns the trial energy when this geometry's SCF repeats it and adopted the trial's properties. */
+  scfEnergy(value: number): number | undefined {
     const frame = this.current('energy');
     const level = this.levels[this.frames.length - 1];
     this.trial = level === 1;
-    if (level === 0) { frame.energyHartree = finite(value); this.levels[this.frames.length - 1] = 1; }
-    else if (level === 2) this.trial = false;
+    if (level === 1) { this.pending = { energy: finite(value), charges: [] }; return undefined; }
+    if (level === 2) { this.trial = false; return undefined; }
+    frame.energyHartree = finite(value);
+    this.levels[this.frames.length - 1] = 1;
+    const pending = this.pending;
+    this.pending = undefined;
+    if (!pending || Math.abs(pending.energy - value) > SAME_ENERGY_HARTREE) return undefined;
+    for (const set of pending.charges) this.charges(set.model, set.values);
+    if (pending.dipole) frame.dipoleDebye = pending.dipole;
+    return pending.energy;
   }
 
   correlatedEnergy(value: number) {
@@ -62,7 +77,10 @@ export class OutputHistory {
 
   charges(model: AtomicChargeSet['model'], values: number[]) {
     const frame = this.current('charges');
-    if (this.trial) return;
+    if (this.trial) {
+      if (this.pending) this.pending.charges = [...this.pending.charges.filter(set => set.model !== model), { model, values }];
+      return;
+    }
     if (values.length !== frame.atoms.length || values.some(value => !Number.isFinite(value) || Math.abs(value) > 200)) throw new Error('Quantum output charges do not match the atoms.');
     // A later analysis of the same geometry (for example after a frequency job) replaces it.
     frame.charges = [...(frame.charges ?? []).filter(set => set.model !== model), { model, values }];
@@ -72,6 +90,7 @@ export class OutputHistory {
     if (vector.some(value => !Number.isFinite(value) || Math.abs(value) > 1e6)) throw new Error('Quantum output dipole is not finite.');
     const frame = this.current('dipole');
     if (!this.trial) frame.dipoleDebye = vector;
+    else if (this.pending) this.pending.dipole = vector;
   }
 
   /** The reference geometry is the last one printed; only it carries file-level orbitals and modes. */
@@ -81,6 +100,13 @@ export class OutputHistory {
     return { format, atoms: last.atoms, referenceFrameIndex: this.frames.length - 1, frames: this.frames, modes: last.modes ?? [], orbitals,
       ...(converged === undefined ? {} : { converged }), ...extra };
   }
+}
+
+/** Whether a printed geometry reprints a frame (same elements, positions within 1e-6 Å). */
+export function sameGeometry(atoms: readonly MolecularAtom[], frame: ScientificFrame) {
+  return atoms.length === frame.atoms.length && atoms.every((atom, i) => atom.element === frame.atoms[i].element
+    && Math.abs(atom.x - frame.atoms[i].x) <= SAME_POSITION_ANGSTROM && Math.abs(atom.y - frame.atoms[i].y) <= SAME_POSITION_ANGSTROM
+    && Math.abs(atom.z - frame.atoms[i].z) <= SAME_POSITION_ANGSTROM);
 }
 
 /** Orbitals in energy order of one spin, numbered from zero in that order. */

@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { NWCHEM_SIGNATURE } from '../apps/desktop/src/lib/molecular-workbench/quantum/signatures';
 import { parseNwchemLog } from '../apps/desktop/src/lib/molecular-workbench/quantum/nwchem-log';
-import { cclibReference, expectClose, expectGeometries, expectLineEndingsIgnored, expectSchema, expectTruncationsKeepHistory, fixtureText } from './quantum-output-fixture';
+import { cclibReference, expectClose, expectGeometries, expectLineEndingsIgnored, expectSchema, expectTruncationsKeepHistory, fixtureText, harmonicFrequencies } from './quantum-output-fixture';
 
 const reference = cclibReference('nwchem');
 const read = (name: string) => parseNwchemLog(fixtureText(`nwchem/${name}`));
@@ -99,4 +99,91 @@ test('malformed NWChem tables are refused rather than guessed', () => {
   ];
   for (const variant of broken) expect(() => parseNwchemLog(variant)).toThrow();
   expect(() => parseNwchemLog('NWChem Input Module\n')).toThrow(/geometry/);
+});
+
+// NWChem 6.0 QA output QA/tests/hess_h2o/hess_h2o.out (ECL-2.0, SHA-256
+// 01a6cfd263a0d1530b87fba6bd22d01abf06be468d8c9d7d96754aaeada4d061), lines 3002–3018 and 4221–4247:
+// https://github.com/nwchemgit/nwchem/blob/8701f25ad941a4237cdd5a843b6d569f5b3fff1d/QA/tests/hess_h2o/hess_h2o.out
+// The last `task scf freq` reweights the Hessian with the isotopes `mass 2 2.014101779 ; mass 3 3.01604927`.
+const HESS_H2O = `
+                         Geometry "geometry" -> "geometry"
+                         ---------------------------------
+
+ Output coordinates in a.u. (scale by  1.000000000 to convert to a.u.)
+
+  No.       Tag          Charge          X              Y              Z
+ ---- ---------------- ---------- -------------- -------------- --------------
+    1 O                    8.0000     0.00000000     0.00000000     0.28432369
+    2 H                    1.0000    -1.43256442     0.00000000    -0.91716871
+    3 H                    1.0000     1.43256442     0.00000000    -0.91716871
+
+      Atomic Mass 
+      ----------- 
+
+      O                 15.994910
+      H                  1.007825
+
+ ---------------------------- Atom information ----------------------------
+     atom    #        X              Y              Z            mass
+ --------------------------------------------------------------------------
+    O        1  0.0000000D+00  0.0000000D+00  2.8432369D-01  1.5994910D+01
+    H        2 -1.4325644D+00  0.0000000D+00 -9.1716871D-01  2.0141018D+00
+    H        3  1.4325644D+00  0.0000000D+00 -9.1716871D-01  3.0160493D+00
+ --------------------------------------------------------------------------
+
+
+
+
+          ----------------------------------------------------
+          MASS-WEIGHTED NUCLEAR HESSIAN (Hartree/Bohr/Bohr/Kamu)
+          ----------------------------------------------------
+
+
+              1           2           3           4           5           6           7           8           9
+   ----- ----- ----- ----- -----
+    1   5.02629D+01
+    2  -1.97223D-16-3.58723D-07
+    3   9.59055D-15 5.94164D-15 3.96939D+01
+    4  -7.08219D+01 1.35178D-15-3.81109D+01 2.17919D+02
+    5  -2.03368D-15 5.03601D-07-3.82677D-15 6.44472D-16-2.57577D-05
+    6  -5.93984D+01-8.33793D-15-5.59299D+01 1.37394D+02-9.02283D-16 1.49001D+02
+    7  -5.78748D+01-1.02982D-15 3.11437D+01-1.49863D+01 5.28095D-15 2.45113D+01 1.45525D+02
+    8   2.11608D-15 4.11536D-07-2.93873D-15-1.16640D-15 1.98891D-05 1.78301D-15-3.91991D-15-1.72008D-05
+    9   4.85396D+01-6.86924D-15-4.57052D+01-2.45113D+01-1.27346D-15 7.03810D+00-9.17507D+01 1.68597D-14 9.95022D+01
+`;
+
+test('NWChem 6.0 fixed-width Hessian fields that touch are read with the isotopes of the analysis', () => {
+  expect(HESS_H2O).toContain('    2  -1.97223D-16-3.58723D-07\n');
+  const hessian = parseNwchemLog(HESS_H2O).frames[0].hessian!;
+  expect(hessian.massesAmu).toEqual([15.99491, 2.0141018, 3.0160493]);
+  // Row 2, column 2 (mass-weighted, Hartree/bohr²/kamu) back from Hartree/bohr².
+  expect(hessian.values[1 * 9 + 1] / 15.99491 * 1000).toBeCloseTo(-3.58723e-7, 18);
+  // The same task's printed frequencies (lines 4269 and 4282 of the output).
+  expectClose(harmonicFrequencies(hessian).slice(6), [1463.33, 2579.31, 3123.05], 0.05);
+});
+
+test('NWChem optimizations bind the final orbitals and charges, printed by the line search, to the accepted geometry', () => {
+  // cclib data/NWChem/basicNWChem7.0: the line search computes the next step's geometry, and that
+  // step's own SCF only prints `The SCF is already converged` with the same energy.
+  const hf = read('cclib-dvb_gopt_hf.out');
+  expect(hf.frames).toHaveLength(5);
+  expect(hf.converged).toBe(true);
+  expect(hf.frames.at(-1)!.energyHartree).toBe(-379.777955110136);
+  expect(hf.frames.every(frame => frame.charges?.[0].model === 'mulliken')).toBe(true);
+  // Printed after `Total SCF energy =   -379.777955110136` (line 4875), before the geometry of step 4.
+  expect(hf.frames.at(-1)!.charges![0].values.map(value => Math.round(value * 100) / 100)).toEqual([0, 0, -0.06, -0.06, -0.06, -0.06, 0.06, 0.06, 0.06, 0.06, -0.06, -0.06, 0.06, 0.06, -0.13, -0.13, 0.06, 0.06, 0.06, 0.06]);
+  expect(hf.frames.at(-1)!.dipoleDebye!.map(Math.abs)).toEqual([0, 0, 0]);
+  expect(hf.orbitals).toHaveLength(45);
+  expect(hf.orbitals[0].energyHartree).toBe(-11.0409);
+  expect(hf.orbitals.filter(orbital => orbital.occupancy === 2)).toHaveLength(35);
+  expectSchema(hf);
+
+  const ks = read('cclib-dvb_gopt_ks.out');
+  expect(ks.frames).toHaveLength(4);
+  expect(ks.frames.at(-1)!.energyHartree).toBe(-382.308261640255);
+  expect(ks.orbitals).toHaveLength(60);
+  // Vector 60 of the final line search (line 5202); the previous step printed 7.946114D-01.
+  expect(ks.orbitals.at(-1)!.energyHartree).toBe(0.7945871);
+  expect(ks.orbitals[0].energyHartree).toBe(-10.02022);
+  expectSchema(ks);
 });

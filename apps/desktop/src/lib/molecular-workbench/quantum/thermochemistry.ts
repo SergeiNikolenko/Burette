@@ -26,7 +26,8 @@ const RULES: Record<ThermochemistryProgram, Rule[]> = {
     { pattern: /^\s*Final Gibbs free energy\s+\.\.\.\s+(\S+) Eh/u, fields: ['gibbs'] },
   ],
   psi4: [
-    { pattern: /^\s*Correction ZPVE(?: to E_e)?\s+\S+ \[kcal\/mol\]\s+\S+ \[kJ\/mol\]\s+(\S+) \[Eh\]/u, fields: ['zeroPoint'] },
+    // Psi4 1.7 prints `Correction ZPE`, Psi4 1.11 `Correction ZPVE`.
+    { pattern: /^\s*Correction ZPV?E(?: to E_e)?\s+\S+ \[kcal\/mol\]\s+\S+ \[kJ\/mol\]\s+(\S+) \[Eh\]/u, fields: ['zeroPoint'] },
     { pattern: /^\s*Total S\s+(\S+) \[cal\/\(mol K\)\]/u, fields: ['entropy'] },
     { pattern: /^\s*Total H, Enthalpy at\s+(\S+) \[K\]\s+(\S+) \[Eh\]\s*$/u, fields: ['temperature', 'enthalpy'] },
     { pattern: /^\s*Total G, (?:Gibbs energy|Free enthalpy) at\s+(\S+) \[K\]\s+(\S+) \[Eh\]\s*$/u, fields: ['temperature', 'gibbs'] },

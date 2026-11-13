@@ -83,3 +83,34 @@ test('failed and interrupted Psi4 runs stay truthful; malformed tables are refus
   ];
   for (const variant of broken) { expect(variant).not.toBe(text); expect(() => parsePsi4Log(variant)).toThrow(); }
 });
+
+test('Psi4 finite-difference frequencies belong to the reference geometry, not the displaced ones', () => {
+  // cclib data/Psi4/basicPsi4-1.7/dvb_ir_rhf.out, lines 1–998 (the reference computation and the first
+  // displaced one) and 32882–33564 (`FiniteDifference Results` to the end); see psi4/README.md.
+  const document = read('cclib-dvb_ir_rhf-excerpt.out');
+  expect(document.frames).toHaveLength(1);
+  const frame = document.frames[0];
+  // `@DF-RHF Final Energy` of the reference; the displaced geometry printed -379.77006013479900.
+  expect(frame.energyHartree).toBe(-379.770111520162);
+  expect(frame.atoms[2]).toEqual({ element: 'C', x: -0.935666060096 * BOHR, y: 2.483971042018 * BOHR, z: 0 });
+  expect(document.modes).toHaveLength(54);
+  expect(document.modes.slice(0, 3).map(mode => [mode.index, mode.frequencyCm1, mode.intensityKmMol])).toEqual([[6, 137.2531, 0.0544], [7, 244.0758, 0], [8, 247.5649, 0.0655]]);
+  expect(document.modes.at(-1)!.frequencyCm1).toBe(3680.4324);
+  // Psi4 1.7 prints `Correction ZPE`, later versions `Correction ZPVE`.
+  expect(frame.thermochemistry).toEqual({ temperatureKelvin: 298.15, zeroPointHartree: 0.19168059, enthalpyHartree: -379.57027841, gibbsHartree: -379.60972224, entropyCalMolKelvin: 83.017 });
+  // The reference's orbitals (1Bu −11.040746); the displaced SCF printed −11.040740.
+  expect(document.orbitals).toHaveLength(60);
+  expect(document.orbitals[0]).toMatchObject({ energyHartree: -11.040746, symmetry: 'Bu', occupancy: 2 });
+  expectSchema(document);
+});
+
+test('a Psi4 SAPT output opens as its dimer; SAD atoms and ghosted monomers are not frames', () => {
+  // Psi4 regression output tests/sapt1/output.ref (Psi4 1.1, LGPL-3.0); see psi4/README.md.
+  const document = read('psi4-sapt1.out');
+  expect(document.frames).toHaveLength(1);
+  expect(document.atoms.map(atom => atom.element)).toEqual(['C', 'C', 'H', 'H', 'H', 'H', 'C', 'C', 'H', 'H']);
+  expect(document.atoms[6].z).toBe(2.897005706311);
+  // The dimer SCF; the monomers in the dimer basis printed their own energies after it.
+  expect(document.frames[0].energyHartree).toBe(-154.86653167999293);
+  expectSchema(document);
+});
