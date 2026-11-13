@@ -246,7 +246,8 @@ export function evaluateQuantumGrid(document: ScientificDocument, field: Quantum
   return { dimensions, origin, axes, values };
 }
 
-function boxAround(atoms: readonly MolecularAtom[], options: QuantumGridOptions): QuantumGridGeometry {
+/** An axis-aligned grid `padding` beyond the atoms, `spacing` apart (both Å). */
+export function boxAround(atoms: readonly MolecularAtom[], options: QuantumGridOptions): QuantumGridGeometry {
   const spacing = options.spacingAngstrom ?? 0.3;
   const padding = options.paddingAngstrom ?? 3;
   if (!Number.isFinite(spacing) || spacing < 0.1 || spacing > 2 || !Number.isFinite(padding) || padding < 0 || padding > 10) throw new Error("Unsupported orbital grid spacing or padding.");

@@ -465,6 +465,30 @@ export function displaceNormalMode(atoms: MolecularAtom[], mode: VibrationalMode
   return atoms.map((item, i) => ({ ...item, x: item.x + scale * mode.displacements![i][0], y: item.y + scale * mode.displacements![i][1], z: item.z + scale * mode.displacements![i][2] }));
 }
 
+/**
+ * Fields on one grid as one Cube: a negative atom count, the field numbers after the atoms,
+ * and each point's values in field order. One field is the plain single-field Cube.
+ */
+export function gridsToCube(grids: readonly ScalarGrid[], atoms: MolecularAtom[]): string {
+  if (grids.length === 1) return gridToCube(grids[0], atoms);
+  const [first] = grids;
+  const same = (grid: ScalarGrid) => grid.dimensions.every((value, i) => value === first.dimensions[i]) && grid.origin.every((value, i) => value === first.origin[i])
+    && grid.axes.every((axis, i) => axis.every((value, k) => value === first.axes[i][k]));
+  if (!first || grids.length > 8 || !grids.every(same)) throw new Error("The fields of one Cube need the same grid.");
+  // The plain writer validates each grid; its header carries over with the atom count negated.
+  const single = grids.map(grid => gridToCube(grid, atoms));
+  const header = single[0].split("\n").slice(0, 6 + atoms.length);
+  header[2] = header[2].replace(/^\d+/u, String(-atoms.length));
+  const lines = [...header, `${grids.length} ${grids.map((_, i) => i + 1).join(" ")}`];
+  const size = first.values.length, row: string[] = [];
+  for (let point = 0; point < size; point++) for (const grid of grids) {
+    row.push(grid.values[point].toExponential(7));
+    if (row.length === 6) { lines.push(row.join(" ")); row.length = 0; }
+  }
+  if (row.length) lines.push(row.join(" "));
+  return lines.join("\n") + "\n";
+}
+
 export function gridToCube(grid: ScalarGrid, atoms: MolecularAtom[]): string {
   const { dimensions, origin, axes, values } = grid;
   if (dimensions.length !== 3 || dimensions.some(value => !Number.isInteger(value) || value < 1) || dimensions.reduce((a, b) => a * b, 1) !== values.length || values.length > MAX_GRID) throw new Error("Invalid scalar grid dimensions.");
