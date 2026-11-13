@@ -178,7 +178,7 @@ export function nwchemMetadata(lines: readonly string[]): CalculationMetadata | 
     if (match) {
       module = match[1];
       if (/^MP2\b/u.test(module)) add('MP2');
-      else if (/^(?:CCSD|TCE|Tensor Contraction Engine)/u.test(module)) add(module.split(/\s/u)[0]);
+      else if (/^(?:CCSD|TCE|Tensor Contraction Engine|TDDFT)/u.test(module)) add(module.split(/\s/u)[0]);
       continue;
     }
     match = line.match(/^\s*wavefunction\s*=\s*(\w+)\s*$/u);

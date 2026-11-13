@@ -52,3 +52,14 @@ test("Gaussian velocity rotatory strengths become an ECD spectrum when any is no
   // The other rows print `-0.0000`.
   expect(ecd.values.map((value) => value + 0)).toEqual([12.3456, 0, 0, 0, 0]);
 });
+
+test("NWChem TDDFT roots keep their symmetry, transition dipole and dipole oscillator strength", () => {
+  const { document, spectrum } = absorption("fixtures/quantum/nwchem/cclib-dvb_td.out");
+  // `Root   1 singlet bu   0.196071264 a.u.   5.3354 eV`, `Transition Moments X 0.13039 Y -1.10260 Z -0.00000`,
+  // `Dipole Oscillator Strength 0.1611342389`.
+  expect(spectrum.sourceRowIds).toEqual(["1 singlet bu", "2 singlet bu", "3 singlet ag", "4 singlet bu", "5 singlet ag"]);
+  expect(spectrum.positions).toEqual([5.3354, 5.3716, 6.2147, 6.7704, 7.4074]);
+  expect(spectrum.values.slice(0, 2)).toEqual([0.1611342389, 0.6826580671]);
+  expect(spectrum.auxiliary!.map((column) => column.values[0])).toEqual([0.13039, -1.1026, -0]);
+  expect(document.metadata?.keywords).toBe("B3LYP TDDFT");
+});

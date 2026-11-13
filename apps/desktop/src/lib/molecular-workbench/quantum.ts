@@ -104,7 +104,7 @@ export function parseScientificFile(name: string, text: string): ScientificDocum
   // Program banners are definitive; they precede the looser Gaussian/ORCA table markers.
   const head = text.slice(0, 64 * 1024);
   if (/[._]property\.txt$/i.test(name) || ORCA_PROPERTY_SIGNATURE.test(head)) return parseOrcaProperty(text);
-  if (NWCHEM_SIGNATURE.test(head)) return described(parseNwchemLog(text), nwchemMetadata(text.split(/\r\n?|\n/)));
+  if (NWCHEM_SIGNATURE.test(head)) return described(parseNwchemLog(text, name), nwchemMetadata(text.split(/\r\n?|\n/)));
   if (PSI4_SIGNATURE.test(head)) return described(parsePsi4Log(text), psi4Metadata(text.split(/\r\n?|\n/)));
   if (GAMESS_SIGNATURE.test(head)) return parseGamessLog(text, name);
   if (QCHEM_SIGNATURE.test(head)) return parseQchemLog(text, name);

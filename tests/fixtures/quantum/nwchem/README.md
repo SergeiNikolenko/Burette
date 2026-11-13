@@ -14,18 +14,20 @@ Burette fixtures generated for this reader with NWChem 7.3.0 (conda-forge build
 `cclib-water-mp2.out` is `data/NWChem/basicNWChem7.0/water_mp2.out` from
 [cclib](https://github.com/cclib/cclib/tree/0c6e08e0a0d04b308201666793030ef3b77b2973/data/NWChem/basicNWChem7.0),
 BSD-3-Clause (`../cclib-LICENSE.txt`), byte-identical (MP2 total energy supersedes SCF).
-`cclib-dvb_gopt_hf.out` and `cclib-dvb_gopt_ks.out` are `dvb_gopt_hf.out` and `dvb_gopt_ks.out`
-from the same directory, byte-identical:
+`cclib-dvb_gopt_hf.out`, `cclib-dvb_gopt_ks.out` and `cclib-dvb_td.out` are `dvb_gopt_hf.out`,
+`dvb_gopt_ks.out` and `dvb_td.out` from the same directory, byte-identical:
 
 | File | Calculation | Covers |
 | --- | --- | --- |
 | `cclib-dvb_gopt_hf.out` | NWChem 7.0 RHF/STO-3G optimization | the final steps' orbitals, Mulliken charges and dipole are printed by the line search before their geometry and bind to it by the repeated SCF energy |
 | `cclib-dvb_gopt_ks.out` | NWChem 7.0 B3LYP/STO-3G optimization | the same for a DFT vector table |
+| `cclib-dvb_td.out` | NWChem 7.0 B3LYP/STO-3G TDDFT, five roots | root energies, transition dipoles and dipole oscillator strengths |
 
 SHA-256:
 
     6f9e7c8fa77cd7956d465741558b0bdd5591cd78019510994f2887877cc3c2d5  cclib-dvb_gopt_hf.out
     bfe111f578601841d3487890b1977f0da20d9363c406d88c8ca7f55c265b9a94  cclib-dvb_gopt_ks.out
+    a9f553352b6342b87f71aaa0278d2a36b620d46f810a3ee95a99ad233ce69e8e  cclib-dvb_td.out
     b33d8698d05fabd895e06705dcdf543737fde1ab9c97b9b59c3aaf58a9771b0c  cclib-water-mp2.out
     6451acc1e9ba0d76791528daa4a64b98240eed837a88e6b91a3387104f47521a  methanol-dft-freq.out
     a93fcd8c028d30090e16775432d704604e924f6ec4705f3b796ea051bc95bd1e  oh-uhf.out

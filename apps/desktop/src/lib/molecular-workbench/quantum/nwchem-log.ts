@@ -6,6 +6,7 @@ import { BOHR, coordinate, numeric } from './reader-values';
 import { DEBYE_PER_AU, OutputHistory, orbitalTable, outputLines } from './output-history';
 import { readThermochemistryLine } from './thermochemistry';
 import { readConvergence } from './convergence';
+import { absorptionSpectrum, withFrameSpectra, type ExcitedState } from './excited-states';
 
 const ELEMENT = /^([A-Za-z]{1,2})/u;
 const SCF_ENERGY = /^\s*Total (?:SCF|DFT) energy\s*=\s*(\S+)/u;
@@ -15,6 +16,8 @@ const CORRELATED_ENERGY = /^\s*(?:Total (?:MP2|MP3|MP4|CCSD|CCSD\(T\)|CISD) ener
 // (`-1.97223D-16-3.58723D-07`), so fields are read by their mandatory exponent, not by spaces.
 const HESSIAN_ROW = /^\s*(\d+)((?:\s*[+-]?\d+\.\d+[DdEe][+-]?\d+)+)\s*$/u;
 const HESSIAN_FIELD = /[+-]?\d+\.\d+[DdEe][+-]?\d+/gu;
+// `Root   1 singlet bu   0.196071264 a.u.   5.3354 eV`; a run without symmetry prints `singlet a`.
+const TDDFT_ROOT = /^\s*Root\s+(\d+)\s+(.*?)\s+-?\d+\.\d+ a\.u\.\s+(-?\d+\.\d+) eV\s*$/u;
 
 function element(tag: string, charge: number) {
   if (/^bq/iu.test(tag)) throw new Error('NWChem ghost (bq) centres are not supported.');
@@ -66,7 +69,7 @@ function columnBlocks(lines: string[], start: number, rows: number, valueLabel: 
  * Hessian is printed mass-weighted in Hartree/bohr²/kamu. The projected analysis replaces the
  * unprojected one when both are printed.
  */
-export function parseNwchemLog(text: string): ScientificDocument {
+export function parseNwchemLog(text: string, name = 'output'): ScientificDocument {
   const lines = outputLines(text);
   const history = new OutputHistory();
   const masses = new Map<string, number>();
@@ -86,6 +89,8 @@ export function parseNwchemLog(text: string): ScientificDocument {
   let electrons: { closed: number; open: number } | { alpha: number; beta: number } | undefined;
   let converged: boolean | undefined;
   let vectorSpin: 'alpha' | 'beta' = 'alpha';
+  // One TDDFT run per table, numbered from root 1, at the geometry it was computed for.
+  const excited: { frame: number; states: ExcitedState[] }[] = [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const units = line.match(/^\s*Output coordinates in (angstroms|a\.u\.)/u);
@@ -115,7 +120,26 @@ export function parseNwchemLog(text: string): ScientificDocument {
     if (readThermochemistryLine('nwchem', lines, i, history.frames.at(-1))) continue;
     const convergenceEnd = readConvergence('nwchem', lines, i, history.frames.at(-1));
     if (convergenceEnd >= 0) { i = convergenceEnd; continue; }
-    let match = line.match(SCF_ENERGY);
+    let match = line.match(TDDFT_ROOT);
+    if (match) {
+      const number = Number(match[1]);
+      if (number === 1 && history.frames.length) excited.push({ frame: history.frames.length - 1, states: [] });
+      const table = excited.at(-1);
+      if (!table || number !== table.states.length + 1) throw new Error('Out-of-order NWChem TDDFT roots.');
+      const state: ExcitedState = { label: `${number} ${match[2]}`, energyEv: numeric(match[3]), oscillatorStrength: NaN };
+      // Triplet roots print `Spin forbidden` instead of their moments and strength.
+      for (let j = i + 1; j < lines.length && !TDDFT_ROOT.test(lines[j]) && !/^\s*Occ\.\s/u.test(lines[j]); j++) {
+        const dipole = lines[j].match(/^\s*Transition Moments\s+X\s+(\S+)\s+Y\s+(\S+)\s+Z\s+(\S+)\s*$/u);
+        if (dipole) state.transitionDipoleAu = [numeric(dipole[1]), numeric(dipole[2]), numeric(dipole[3])];
+        if (/^\s*Transition Moments\s+Spin forbidden\s*$/u.test(lines[j])) state.oscillatorStrength = 0;
+        const strength = lines[j].match(/^\s*(?:Dipole )?Oscillator Strength\s+(\S+)\s*$/u);
+        if (strength) { state.oscillatorStrength = numeric(strength[1]); break; }
+      }
+      if (!Number.isFinite(state.oscillatorStrength)) throw new Error('NWChem TDDFT root has no oscillator strength.');
+      table.states.push(state);
+      continue;
+    }
+    match = line.match(SCF_ENERGY);
     if (match) {
       const adopted = history.scfEnergy(numeric(match[1]));
       if (adopted !== undefined && orbitalFrame === -1 && orbitalTrial === adopted) orbitalFrame = history.frames.length - 1;
@@ -276,5 +300,5 @@ export function parseNwchemLog(text: string): ScientificDocument {
   // DFT prints a vector window: keep orbitals only when they start at the first vector.
   const windowed = !orbitals.alpha && vectors.alpha.size > 0 && !vectors.alpha.has(1);
   const all = orbitalFrame !== history.frames.length - 1 || windowed ? [] : [...table('alpha'), ...(restricted ? [] : table('beta'))];
-  return history.document('nwchem-log', all, converged);
+  return withFrameSpectra(history.document('nwchem-log', all, converged), name, excited.map(({ frame, states }) => ({ frame, spectrum: absorptionSpectrum(states) })));
 }
