@@ -11,13 +11,17 @@ function number(text: string) {
   return value;
 }
 
-/** Electric-dipole absorption/CD, preserving every declared numeric column and transition ID. */
+/**
+ * Electric-dipole absorption/CD, preserving every declared numeric column and transition ID.
+ * ORCA 4 and 5 title the length-gauge CD table plainly "CD SPECTRUM". Rows of spin-forbidden
+ * (triplet) states carry no intensity and are skipped; a "*" footnote ends a table.
+ */
 export function readOrcaOpticalTables(text: string): OrcaOpticalTable[] {
   if (text.length > MAX_BYTES || text.includes("\0") || new TextEncoder().encode(text).length > MAX_BYTES) fail("source exceeds the 16 MiB text budget.");
   const tables: OrcaOpticalTable[] = [];
   let totalRows = 0;
-  for (const title of text.matchAll(/^[\t ]*(ABSORPTION|CD) SPECTRUM VIA TRANSITION ELECTRIC DIPOLE MOMENTS[\t ]*(?:\r\n?|\n|$)/gm)) {
-    const kind = title[1] === "CD" ? "ecd" : "electronic";
+  for (const title of text.matchAll(/^[\t ]*(?:(ABSORPTION|CD) SPECTRUM VIA TRANSITION ELECTRIC DIPOLE MOMENTS|CD SPECTRUM)[\t ]*(?:\r\n?|\n|$)/gm)) {
+    const kind = title[1] === "ABSORPTION" ? "electronic" : "ecd";
     let cursor = title.index! + title[0].length;
     const pattern = /([^\r\n]*)(?:\r\n?|\n|$)/y;
     const nextLine = () => {
@@ -45,7 +49,8 @@ export function readOrcaOpticalTables(text: string): OrcaOpticalTable[] {
     const rows: number[][] = [], sourceRowIds: string[] = [], seen = new Set<string>();
     let end = cursor;
     line = nextLine();
-    while (line !== null && line !== "") {
+    while (line !== null && line !== "" && !line.startsWith("*")) {
+      if (/\sspin forbidden\b/.test(line)) { end = cursor; line = nextLine(); continue; }
       const fields = line.split(/\s+/), labels = modern ? 3 : 1;
       if (fields.length !== (modern ? 11 : 8) - (kind === "ecd" ? 1 : 0)) fail("malformed or incomplete transition row.");
       if (modern ? fields[1] !== "->" || ![fields[0], fields[2]].every(label => /^\d+-[A-Za-z0-9'"*]+$/.test(label)) : !/^\d+$/.test(fields[0])) fail("invalid source transition identity.");

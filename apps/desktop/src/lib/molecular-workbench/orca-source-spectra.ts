@@ -11,7 +11,7 @@ export function withOrcaSourceSpectra(name: string, text: string, frames: Scient
   if (geometryStarts.length !== frames.length || geometryStarts.some((offset, i) => !Number.isSafeInteger(offset) || offset < 0 || offset >= text.length || (i > 0 && offset <= geometryStarts[i - 1]))) throw new Error("ORCA spectral source frames are inconsistent.");
   const tables: OrcaSourceSpectrum[] = latestVcd.filter((table): table is OrcaSourceSpectrum => table !== undefined);
   if (text.includes("CHEMICAL SHIELDING SUMMARY (ppm)")) tables.push(...readOrcaNmrTables(text, frames[0].atoms.map(atom => atomicNumber(atom.element))));
-  if (/^(?:[\t ]*)(?:ABSORPTION|CD) SPECTRUM VIA TRANSITION ELECTRIC DIPOLE MOMENTS/m.test(text)) tables.push(...readOrcaOpticalTables(text));
+  if (/^[\t ]*(?:(?:ABSORPTION|CD) SPECTRUM VIA TRANSITION ELECTRIC DIPOLE MOMENTS|CD SPECTRUM[\t ]*$)/m.test(text)) tables.push(...readOrcaOpticalTables(text));
   if (!tables.length) return frames;
   const sets = frames.map(() => new Map<AdditionalSpectrum["kind"], AdditionalSpectrum>());
   let owner = -1;

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { readOrcaOpticalTables } from "../apps/desktop/src/lib/molecular-workbench/orca-optical-spectra";
 import { checkScientificSpectra, scientificSpectraJson, parseScientificSpectraJson, scientificSpectrumCsv, type ScientificSpectra } from "../apps/desktop/src/lib/molecular-workbench/scientific-spectra";
 import { plotScientificSpectrum } from "../apps/desktop/src/lib/molecular-workbench/scientific-spectra-plot";
+import { parseScientificFile } from "../apps/desktop/src/lib/molecular-workbench/quantum";
 const original = readFileSync(new URL("./fixtures/quantum/spectra-orca-camphor.out", import.meta.url), "utf8");
 function data(text = original): ScientificSpectra {
   return { kind: "scientific-spectra", version: 1, source: { name: "camphor.out", format: "orca-output", scope: "file" }, atomicNumbers: [],
@@ -70,4 +71,21 @@ test("invalid row identities, units, numbers or incomplete source columns refuse
   const many = Array.from({ length: 10_000 }, (_, i) => `${i} 10000 1000 1 2 3 4 5`).join("\n");
   expect(readOrcaOpticalTables(legacy("electronic", many))[0].spectrum.sourceRowIds?.length).toBe(10_000);
   expect(() => readOrcaOpticalTables(legacy("electronic", many) + legacy("ecd", "1 10000 1000 1 2 3 4"))).toThrow("10,000");
+});
+
+const orcaLog = (name: string) => readFileSync(new URL(`./fixtures/quantum/orca-log/${name}`, import.meta.url), "utf8");
+
+test("ORCA 5 TDDFT skips spin-forbidden triplet rows and reads the plainly titled CD table", () => {
+  const tables = readOrcaOpticalTables(orcaLog("cclib-orca5-dvb_td.out"));
+  // Singlets 1-5 carry intensity; triplets 6-10 print "spin forbidden" in both tables.
+  expect(tables.map(table => [table.spectrum.kind, table.spectrum.sourceRowIds])).toEqual([
+    ["electronic", ["1", "2", "3", "4", "5"]], ["ecd", ["1", "2", "3", "4", "5"]]]);
+  expect(tables[0].spectrum.values).toEqual([0.005267213, 1.171011871, 0, 0.218288556, 0.000000005]);
+  expect(tables[1].spectrum).toMatchObject({ xUnit: "cm^-1", valueUnit: "1e40*cgs", values: [0, 0.0001, 0, -0.00003, -0.00001] });
+});
+
+test("an EOM-CCSD table ending in a footnote opens, keeping the last (left-right) absorption table", () => {
+  const document = parseScientificFile("dvb_eom_ccsd.log", orcaLog("cclib-orca6-dvb_eom_ccsd.log"));
+  const [spectrum] = document.frames.at(-1)!.spectra!.spectra;
+  expect(spectrum).toMatchObject({ kind: "electronic", xUnit: "eV", positions: [5.471765, 7.625161], values: [0.00052827, 0.997594919] });
 });
