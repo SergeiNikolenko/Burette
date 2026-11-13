@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { coulombPotential, coulombPotentialGrid, surfacePotentialLimit, VAN_DER_WAALS_ISOVALUE, vanDerWaalsField } from "../apps/desktop/src/lib/molecular-workbench/electrostatic-potential";
 import { gridsToCube, parseScientificFile } from "../apps/desktop/src/lib/molecular-workbench/quantum";
 import type { MolecularAtom } from "../apps/desktop/src/lib/molecular-workbench/types";
@@ -42,6 +43,21 @@ test("the potential grid holds the potential at its own points, z fastest, and t
   // The default colour limit is the size of the potential on the surface: 0.07 to 0.1 hartree/e.
   const waterGrid = coulombPotentialGrid(water, waterCharges);
   expect([surfacePotentialLimit(surface, VAN_DER_WAALS_ISOVALUE, grid), surfacePotentialLimit(vanDerWaalsField(water, waterGrid), VAN_DER_WAALS_ISOVALUE, waterGrid)]).toEqual([0.071, 0.097]);
+});
+
+test("a density and potential Cube pair shares its grid, and the charge potential agrees in sign on the density surface", () => {
+  const read = (name: string) => parseScientificFile(name, readFileSync(new URL(`fixtures/quantum/cube-pair/${name}`, import.meta.url), "utf8"));
+  const density = read("water-density.cube"), potential = read("water-potential.cube");
+  expect([density.grid!.dimensions, density.grid!.origin, density.grid!.axes]).toEqual([potential.grid!.dimensions, potential.grid!.origin, potential.grid!.axes]);
+  // Points near the 0.0004 e/bohr³ isosurface, where cubegen's convention draws the potential.
+  const { dimensions: [, ny, nz], origin, axes } = density.grid!;
+  const surface = Array.from(density.grid!.values.keys()).filter(index => density.grid!.values[index] > 0.0003 && density.grid!.values[index] < 0.0005);
+  const position = (index: number) => [0, 1, 2].map(k => origin[k] + Math.floor(index / (ny * nz)) * axes[0][k] + (Math.floor(index / nz) % ny) * axes[1][k] + (index % nz) * axes[2][k]) as [number, number, number];
+  const agree = surface.filter(index => Math.sign(potential.grid!.values[index]) === Math.sign(coulombPotential(water, waterCharges, position(index))));
+  expect(surface.length).toBeGreaterThan(100);
+  expect(agree.length / surface.length).toBeGreaterThan(0.9);
+  // The B3LYP potential on that surface spans about ±0.054 hartree/e, the default colour range.
+  expect(surfacePotentialLimit(density.grid!, 0.0004, potential.grid!)).toBe(0.054);
 });
 
 test("a surface field and the potential colouring it travel as one two-field Cube on their shared grid", () => {

@@ -5,8 +5,10 @@ import type { ScalarGrid, ScientificDocument, VibrationalMode } from "./scientif
 import type { MolecularAtom } from "./types";
 
 export type QuantumWorkerRequest = { type: "evaluate-field"; document: ScientificDocument; field: QuantumField; options: QuantumGridOptions }
-  | { type: "harmonic-modes"; atoms: MolecularAtom[]; hessian: CartesianHessian };
-export type QuantumWorkerResponse = { type: "field-result"; grid: ScalarGrid } | { type: "modes-result"; modes: VibrationalMode[] } | { type: "field-error"; error: string };
+  | { type: "harmonic-modes"; atoms: MolecularAtom[]; hessian: CartesianHessian }
+  | { type: "electrostatic-potential"; atoms: MolecularAtom[]; charges: number[] };
+export type QuantumWorkerResponse = { type: "field-result"; grid: ScalarGrid } | { type: "modes-result"; modes: VibrationalMode[] }
+  | { type: "potential-result"; potential: ScalarGrid; surface: ScalarGrid } | { type: "field-error"; error: string };
 
 /** The bounded calculation input shared by workers and immutable agent revisions. */
 export function quantumCalculationInput(document: ScientificDocument): ScientificDocument {
@@ -41,6 +43,12 @@ export function computeQuantumGrid(document: ScientificDocument, field: QuantumF
 export function computeHarmonicModes(atoms: readonly MolecularAtom[], hessian: CartesianHessian, signal?: AbortSignal): Promise<VibrationalMode[]> {
   return runQuantumWorker({ type: "harmonic-modes", atoms: atoms.map(({ element, x, y, z }) => ({ element, x, y, z })), hessian }, "modes-result", signal)
     .then(response => response.modes);
+}
+
+/** The potential of atomic charges and the van der Waals surface it colours, on one grid, off the main thread. */
+export function computePotentialGrids(atoms: readonly MolecularAtom[], charges: readonly number[], signal?: AbortSignal) {
+  return runQuantumWorker({ type: "electrostatic-potential", atoms: atoms.map(({ element, x, y, z }) => ({ element, x, y, z })), charges: [...charges] }, "potential-result", signal)
+    .then(({ potential, surface }) => ({ potential, surface }));
 }
 
 function runQuantumWorker<T extends Exclude<QuantumWorkerResponse["type"], "field-error">>(request: QuantumWorkerRequest, expected: T, signal?: AbortSignal) {

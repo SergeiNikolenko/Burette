@@ -7,7 +7,7 @@ import { Checkbox } from "../ui/checkbox";
 import { NativeSelect, NativeSelectOption } from "../ui/native-select";
 import "./calculation-results.css";
 
-const MODEL_NAMES: Record<AtomicChargeSet["model"], string> = {
+export const MODEL_NAMES: Record<AtomicChargeSet["model"], string> = {
   mulliken: "Mulliken", lowdin: "Löwdin", hirshfeld: "Hirshfeld", cm5: "CM5", npa: "NPA", esp: "ESP", chelpg: "ChElPG", eeq: "EEQ", gasteiger: "Gasteiger",
 };
 type OverlayKind = "charge-colors" | "charges" | "dipole";
@@ -31,7 +31,7 @@ function setChoice(documentId: string, next: Choice) {
  * The frame the scene shows, as for spectra: a final import is one XYZ frame of the reference geometry,
  * a CJSON scene its active set, and a trajectory its current frame when it has the file's frames.
  */
-function useSceneFrame(document: ViewerDocument, science: ScientificDocument | null, text: string | null): ScientificFrame | null {
+export function useSceneFrame(document: ViewerDocument, science: ScientificDocument | null, text: string | null): ScientificFrame | null {
   const trajectory = useTrajectoryFrame(document.id);
   if (!science) return null;
   const graph = science.format === "cjson" ? science.graph : undefined;

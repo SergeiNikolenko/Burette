@@ -175,7 +175,8 @@
         : { name: 'uniform', params: { value } };
       const volume = parsed.apply(transforms.Volume.VolumeFromCube, { dataIndex: 0, entryId: '' });
       const surface = (value, fallback) => volume.apply(transforms.Representation.VolumeRepresentation3D, {
-        type: { name: 'isosurface', params: { isoValue: { kind: 'absolute', absoluteValue: value }, alpha } },
+        // external-volume samples the second field at mesh vertices it can read only from a CPU mesh.
+        type: { name: 'isosurface', params: { isoValue: { kind: 'absolute', absoluteValue: value }, alpha, ...(tint ? { tryUseGpu: false } : {}) } },
         colorTheme: colorTheme(fallback), sizeTheme: { name: 'uniform', params: { value: 1 } },
       });
       surface(action.isovalue, color(action.positiveColor, 0x3b82f6));

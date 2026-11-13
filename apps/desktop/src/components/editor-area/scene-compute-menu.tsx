@@ -5,6 +5,7 @@ import { assemblySourceFormat } from "../../lib/workbench/assembly-source";
 import { sourceExtension, useLogicalSource } from "../../lib/science-session/state";
 import { openScientificSpectra, useScientificSpectraAvailable, SCIENTIFIC_SPECTRA_COMMAND } from "../../lib/workbench/scientific-spectra-tool";
 import { openOrbitals, useOrbitalsAvailable, ORBITALS_COMMAND } from "../../lib/workbench/orbitals-tool";
+import { openPotential, usePotentialAvailable, POTENTIAL_COMMAND } from "../../lib/workbench/potential-tool";
 import { openVibrations, useVibrationsAvailable, VIBRATIONS_COMMAND } from "../../lib/workbench/vibrations-tool";
 import { CRYSTAL_COMMAND, openSymmetryTool, SYMMETRY_COMMAND, useSymmetryAvailable } from "../../lib/workbench/symmetry-tools";
 import { useCrystalAvailable } from "../../lib/workbench/use-crystal-draft";
@@ -40,6 +41,7 @@ const UNAVAILABLE: Record<Exclude<SceneFileState, "available">, string> = {
 export function SceneComputeMenu({ document, actions }: { document: ViewerDocument; actions: ShellActions }) {
   const [files, setFiles] = useState<Array<{ path: string; state: SceneFileState }> | null>(null);
   const hasOrbitals = useOrbitalsAvailable(document);
+  const hasPotential = usePotentialAvailable(document);
   const logical = useLogicalSource(document.id);
   const hasPolymer = polymerSourceFormat(document, logical?.extension ?? document.extension) !== null;
   const hasPlots = usePlotsAvailable(document);
@@ -84,11 +86,13 @@ export function SceneComputeMenu({ document, actions }: { document: ViewerDocume
       ...CONFORMER_JOBS.map(([operation, text]) => ({ kind: "item" as const, id: `scene-${operation === "crest-generate" ? "conformers" : "prune"}`, text, action: () => void actions.runConformerOperation(operation, document) })),
     ];
   if (!embeddedGraph && !combined && hasOrbitals) items.push({ kind: "separator" }, { kind: "item", id: "workbench-tool-orbitals", text: ORBITALS_COMMAND.label, action: () => openOrbitals(actions, document.id) });
-  if (!embeddedGraph && !combined && hasVibrations) items.push(...(hasOrbitals ? [] : [{ kind: "separator" as const }]), { kind: "item", id: "workbench-tool-vibrations", text: VIBRATIONS_COMMAND.label, action: () => openVibrations(actions, document.id) });
-  if (!embeddedGraph && !combined && hasCrystal) items.push(...(hasOrbitals || hasVibrations ? [] : [{ kind: "separator" as const }]), { kind: "item", id: "workbench-tool-crystal", text: CRYSTAL_COMMAND.label, action: () => openSymmetryTool(actions, document.id, "crystal") });
-  if (!embeddedGraph && !combined && hasSymmetry) items.push(...(hasOrbitals || hasVibrations || hasCrystal ? [] : [{ kind: "separator" as const }]), { kind: "item", id: "workbench-tool-symmetry", text: SYMMETRY_COMMAND.label, action: () => openSymmetryTool(actions, document.id, "symmetry") });
-  if (!combined && hasScientificSpectra) items.push(...(embeddedGraph || hasOrbitals || hasVibrations || hasCrystal || hasSymmetry ? [] : [{ kind: "separator" as const }]), { kind: "item", id: "workbench-tool-scientific-spectra", text: SCIENTIFIC_SPECTRA_COMMAND.label, action: () => openScientificSpectra(actions, document.id) });
-  if (!combined && hasPlots) items.push(...(embeddedGraph || hasOrbitals || hasVibrations || hasCrystal || hasSymmetry || hasScientificSpectra ? [] : [{ kind: "separator" as const }]), { kind: "item", id: "workbench-tool-plots", text: PLOTS_COMMAND.label, action: () => openPlots(actions, document.id) });
+  // A MOL or SDF scene gets the potential of its Gasteiger charges, so its menu lists it too.
+  if (!combined && hasPotential) items.push(...(embeddedGraph || hasOrbitals ? [] : [{ kind: "separator" as const }]), { kind: "item", id: "workbench-tool-potential", text: POTENTIAL_COMMAND.label, action: () => openPotential(actions, document.id) });
+  if (!embeddedGraph && !combined && hasVibrations) items.push(...(hasOrbitals || hasPotential ? [] : [{ kind: "separator" as const }]), { kind: "item", id: "workbench-tool-vibrations", text: VIBRATIONS_COMMAND.label, action: () => openVibrations(actions, document.id) });
+  if (!embeddedGraph && !combined && hasCrystal) items.push(...(hasOrbitals || hasPotential || hasVibrations ? [] : [{ kind: "separator" as const }]), { kind: "item", id: "workbench-tool-crystal", text: CRYSTAL_COMMAND.label, action: () => openSymmetryTool(actions, document.id, "crystal") });
+  if (!embeddedGraph && !combined && hasSymmetry) items.push(...(hasOrbitals || hasPotential || hasVibrations || hasCrystal ? [] : [{ kind: "separator" as const }]), { kind: "item", id: "workbench-tool-symmetry", text: SYMMETRY_COMMAND.label, action: () => openSymmetryTool(actions, document.id, "symmetry") });
+  if (!combined && hasScientificSpectra) items.push(...(embeddedGraph || hasOrbitals || hasPotential || hasVibrations || hasCrystal || hasSymmetry ? [] : [{ kind: "separator" as const }]), { kind: "item", id: "workbench-tool-scientific-spectra", text: SCIENTIFIC_SPECTRA_COMMAND.label, action: () => openScientificSpectra(actions, document.id) });
+  if (!combined && hasPlots) items.push(...(embeddedGraph || hasOrbitals || hasPotential || hasVibrations || hasCrystal || hasSymmetry || hasScientificSpectra ? [] : [{ kind: "separator" as const }]), { kind: "item", id: "workbench-tool-plots", text: PLOTS_COMMAND.label, action: () => openPlots(actions, document.id) });
   // Builders open a new document; peptide, DNA/RNA and metal complex also insert into an editable MOL/SDF.
   if (!combined) {
     if (items.length) items.push({ kind: "separator" });

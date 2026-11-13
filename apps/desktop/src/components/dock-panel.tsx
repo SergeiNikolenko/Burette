@@ -1,6 +1,7 @@
 import { plotsDockArea, usePlotsAvailable } from "../lib/workbench/plots-tool";
 import { useScientificSpectraAvailable } from "../lib/workbench/scientific-spectra-tool";
 import { useOrbitalsAvailable } from "../lib/workbench/orbitals-tool";
+import { usePotentialAvailable } from "../lib/workbench/potential-tool";
 import { useScientificSourceLifetime } from "../lib/workbench/scientific-source-lifetime";
 import { useVibrationsAvailable } from "../lib/workbench/vibrations-tool";
 import { useCrystalAvailable } from "../lib/workbench/use-crystal-draft";
@@ -66,6 +67,7 @@ const ChemicalSpacePanel = lazy(() => import("./chemical-space-panel").then((mod
 })));
 // The tool panels pull charts, chemistry and parsers that a plain structure never needs.
 const OrbitalsDockContent = lazy(() => import("./workbench/orbitals-dock-content").then(module => ({ default: module.OrbitalsDockContent })));
+const PotentialDockContent = lazy(() => import("./workbench/potential-dock-content").then(module => ({ default: module.PotentialDockContent })));
 const PlotsDockContent = lazy(() => import("./workbench/plots-dock-content").then(module => ({ default: module.PlotsDockContent })));
 const ScientificSpectraDockContent = lazy(() => import("./workbench/scientific-spectra-dock-content").then(module => ({ default: module.ScientificSpectraDockContent })));
 const VibrationsDockContent = lazy(() => import("./workbench/vibrations-dock-content").then(module => ({ default: module.VibrationsDockContent })));
@@ -116,6 +118,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
   const chemicalSpaceDockAvailable = Boolean(resolveChemicalSpaceDocument(state, dockDocument));
   const hasOrbitals = useOrbitalsAvailable(activeStructureDocument);
   const orbitalsDockAvailable = area === "right" && hasOrbitals;
+  const potentialDockAvailable = area === "right" && usePotentialAvailable(activeStructureDocument);
   const hasPlots = usePlotsAvailable(activeStructureDocument);
   const plotsDockAvailable = area === plotsDockArea() && hasPlots;
   const hasScientificSpectra = useScientificSpectraAvailable(activeStructureDocument);
@@ -147,6 +150,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
     // while allowing an explicitly active legacy Files view to finish migrating.
     if (area === "right" && tab.kind === "files" && storedActiveTabKind !== "files") return false;
     if (tab.kind === "orbitals") return orbitalsDockAvailable;
+    if (tab.kind === "potential") return potentialDockAvailable;
     if (tab.kind === "plots") return plotsDockAvailable;
     if (tab.kind === "scientific-spectra") return scientificSpectraDockAvailable;
     if (tab.kind === "vibrations") return vibrationsDockAvailable;
@@ -226,6 +230,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
     void showNativeContextMenu(
       catalog.filter((kind) => {
         if (kind === "orbitals") return orbitalsDockAvailable;
+        if (kind === "potential") return potentialDockAvailable;
         if (kind === "plots") return plotsDockAvailable;
         if (kind === "scientific-spectra") return scientificSpectraDockAvailable;
         if (kind === "vibrations") return vibrationsDockAvailable;
@@ -489,6 +494,7 @@ export function DockPanelContent({
     );
   }
   const toolPanel = activeTabKind === "orbitals" ? <OrbitalsDockContent document={dockStructureDocument} actions={actions} />
+    : activeTabKind === "potential" ? <PotentialDockContent document={dockStructureDocument} actions={actions} />
     : activeTabKind === "plots" ? <PlotsDockContent document={dockStructureDocument} actions={actions} />
     : activeTabKind === "scientific-spectra" ? <ScientificSpectraDockContent document={dockStructureDocument} actions={actions} />
     : activeTabKind === "vibrations" ? <VibrationsDockContent document={dockStructureDocument} actions={actions} />
