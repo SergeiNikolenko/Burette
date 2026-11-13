@@ -32,3 +32,10 @@ test("a QCSchema result describes its model, molecule and success, and keeps its
   expect(optimization.metadata).toEqual({ termination: "normal", keywords: "hf", basis: "sto-3g", charge: 0, multiplicity: 1 });
   expect(read("fixtures/quantum/qcschema-water-gradient.json").metadata?.program).toBe("QM Program 1.1");
 });
+
+test("an xtb output describes its version, Hamiltonian and options, charge, unpaired electrons, termination and wall time", () => {
+  expect(read("fixtures/quantum/xtb/water-opt.out").metadata).toEqual({ program: "xtb 6.7.1", keywords: "GFN2-xTB --opt -P 2", charge: 0, multiplicity: 1,
+    termination: "normal", runSeconds: 0.053 });
+  // The force field prints neither a Hamiltonian line nor charge and spin; its option names it.
+  expect(read("fixtures/quantum/xtb/water-gfnff-opt.out").metadata).toEqual({ program: "xtb 6.7.1", keywords: "--gfnff --opt -P 2", termination: "normal", runSeconds: 0.029 });
+});

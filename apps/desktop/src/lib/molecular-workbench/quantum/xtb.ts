@@ -4,6 +4,7 @@ import type { MolecularOrbital, OptimizationConvergence, ScientificDocument } fr
 import { BOHR, coordinate, MAX_ATOMS, numeric } from './reader-values';
 import { DEBYE_PER_AU, OutputHistory, outputLines } from './output-history';
 import { readThermochemistryLine } from './thermochemistry';
+import { xtbMetadata } from './run-metadata';
 
 
 function symbol(token: string) {
@@ -113,7 +114,7 @@ export function parseXtbOutput(text: string): ScientificDocument {
       if (full) history.dipole(full.slice(1, 4).map(value => numeric(value!) * DEBYE_PER_AU) as Vec3);
     }
   }
-  if (!history.frames.length) throw new Error('This xtb output prints no geometry. Open its xtbopt.xyz, xtbopt.log or input coordinates instead.');
+  if (!history.frames.length) throw new Error('This xtb output prints no geometry. Open the input coordinates instead, or the xtbopt.xyz, xtbopt.log or g98.out file written next to it.');
   const final = history.frames.at(-1)!;
   // The cycle prints its energy to 1e-7 Eh; another geometry's cycle is not this frame's.
   if (cycle && final.energyHartree !== undefined && Math.abs(cycle.energy - final.energyHartree) < 1e-6) {
@@ -122,7 +123,9 @@ export function parseXtbOutput(text: string): ScientificDocument {
     if (cycle.gradientNorm !== undefined) step.gradientNorm = { value: cycle.gradientNorm, ...(thresholds.gradientNorm ? { threshold: thresholds.gradientNorm } : {}) };
     if (Object.keys(step).length) final.convergence = step;
   }
-  return history.document('xtb', orbitals, converged);
+  const document = history.document('xtb', orbitals, converged);
+  const metadata = xtbMetadata(lines, forceField);
+  return metadata ? { ...document, metadata } : document;
 }
 
 /** The optimization trajectory xtb writes to `xtbopt.log`: angstrom XYZ frames with energies in Hartree. */
