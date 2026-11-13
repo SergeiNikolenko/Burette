@@ -6,6 +6,7 @@ import { readThermochemistryLine } from './thermochemistry';
 import { readConvergence } from './convergence';
 import type { AdditionalSpectrum } from '../scientific-spectra';
 import { absorptionSpectrum, withFrameSpectra, type ExcitedState } from './excited-states';
+import { qchemMetadata } from './run-metadata';
 
 const CHARGE_TABLES: [RegExp, AtomicChargeSet['model']][] = [
   [/^\s*Ground-State Mulliken Net Atomic Charges\s*$/u, 'mulliken'],
@@ -187,6 +188,9 @@ export function parseQchemLog(text: string, name = 'output'): ScientificDocument
     const list = (spin: 'alpha' | 'beta', rows = orbitals[spin]): MolecularOrbital[] => !rows ? []
       : orbitalTable(spin, rows.map(({ energyHartree, occupied, symmetry }) => ({ energyHartree, occupancy: occupied ? (orbitals.unrestricted ? 1 : 2) : 0, ...(symmetry ? { symmetry } : {}) })));
     const all = orbitals.frame !== reference || !orbitals.alpha ? [] : [...list('alpha'), ...(orbitals.unrestricted ? list('beta') : [])];
-    return history.document('qchem-log', all, converged);
+    const result = history.document('qchem-log', all, converged);
+    const metadata = qchemMetadata(lines);
+    if (metadata) result.metadata = metadata;
+    return result;
   }
 }

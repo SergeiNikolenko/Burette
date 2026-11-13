@@ -95,7 +95,14 @@ input keyword lines, the basis, charge and multiplicity, how the run ended
 the run time (`quantum/run-metadata.ts`). ORCA output gives all of them;
 QCSchema gives the model, `provenance`, charge and multiplicity. xtb output gives its
 version, Hamiltonian and command-line options, charge and unpaired electrons,
-termination and total wall time. The
+termination and total wall time. Q-Chem gives the method, job type and basis
+of the first `$rem` and the charge and multiplicity of the first `$molecule`.
+GAMESS and Firefly give the method keywords and basis from their printed
+option tables (the Pople and Dunning families get their usual names, a
+semiempirical `GBASIS` stays a keyword), `ICHARG` and `MULT`. Molpro gives the
+programs the input ran, the basis it set, and the charge and multiplicity from
+the nuclear charge and the first SCF's electron counts; a restarted job that
+reads its basis from a record has none. The
 Info dock's Calculation card shows them with the energy of the geometry the
 scene shows and whether the job converged. `test-calculation-metadata` checks
 each reader against its printed lines.

@@ -59,3 +59,134 @@ export function xtbMetadata(lines: readonly string[], forceField: boolean): Calc
   if (keywords) metadata.keywords = clip(keywords);
   return Object.keys(metadata).length ? metadata : undefined;
 }
+
+/**
+ * Q-Chem's banner version, the method and job type of the first `$rem` block with its basis,
+ * the charge and multiplicity of the first `$molecule`, the closing banner and the last job time.
+ */
+export function qchemMetadata(lines: readonly string[]): CalculationMetadata | undefined {
+  const metadata: CalculationMetadata = {};
+  const rem = new Map<string, string>();
+  let block: 'rem' | 'molecule' | undefined, remDone = false;
+  for (const line of lines) {
+    let match = line.match(/^\s*Q-Chem (\d[\w.]*) for /u);
+    if (match && !metadata.program) { metadata.program = `Q-Chem ${match[1]}`; continue; }
+    match = line.match(/^\s*\$(rem|molecule)\s*$/iu);
+    if (match) { block = match[1].toLowerCase() as 'rem' | 'molecule'; continue; }
+    if (/^\s*\$end\s*$/iu.test(line)) { if (block === 'rem') remDone = true; block = undefined; continue; }
+    if (block === 'rem' && !remDone) {
+      match = line.match(/^\s*(\w+)\s*(?:=\s*|\s+)(\S+)/u);
+      if (match && !rem.has(match[1].toLowerCase())) rem.set(match[1].toLowerCase(), match[2]);
+      continue;
+    }
+    if (block === 'molecule') {
+      match = line.match(/^\s*([+-]?\d+)\s+(\d+)\s*$/u);
+      if (match && metadata.charge === undefined) { metadata.charge = Number(match[1]); metadata.multiplicity = Number(match[2]); }
+      block = undefined;
+      continue;
+    }
+    if (/Thank you very much for using Q-Chem/u.test(line)) { metadata.termination = 'normal'; continue; }
+    if (/Q-Chem fatal error/u.test(line)) { metadata.termination = 'error'; continue; }
+    match = line.match(/^\s*Total job time:\s*([\d.]+)s\(wall\)/u);
+    if (match) metadata.runSeconds = Number(match[1]);
+  }
+  const method = rem.get('method') ?? [rem.get('exchange'), rem.get('correlation')].filter(Boolean).join(' ');
+  const jobType = rem.get('jobtype');
+  const keywords = [method, jobType && !/^sp$/iu.test(jobType) ? jobType : ''].filter(Boolean).join(' ');
+  if (keywords) metadata.keywords = clip(keywords);
+  if (rem.has('basis')) metadata.basis = clip(rem.get('basis')!);
+  return Object.keys(metadata).length ? metadata : undefined;
+}
+
+const GAMESS_KEYS = ['SCFTYP', 'RUNTYP', 'DFTTYP', 'TDDFT', 'MPLEVL', 'CITYP', 'CCTYP'];
+const GAMESS_SEMIEMPIRICAL = /^(?:AM1|PM3|PM6|MNDO|RM1|DFTB)$/u;
+const GAMESS_CC = /^(A?)CC([DTQ56])(C?)$/u;
+
+/** GAMESS names its basis by family and Gaussian count; the common Pople and Dunning sets get their usual names. */
+function gamessBasis(options: Map<string, string>): string | undefined {
+  const family = options.get('GBASIS');
+  if (!family || GAMESS_SEMIEMPIRICAL.test(family)) return undefined;
+  const gaussians = options.get('IGAUSS') ?? '';
+  const cc = family.match(GAMESS_CC);
+  if (cc) return `${cc[1] ? 'aug-' : ''}cc-p${cc[3] ? 'C' : ''}V${cc[2]}Z`;
+  const pople = { STO: `STO-${gaussians}G`, N21: '3-21G', N31: `${gaussians}-31G`, N311: '6-311G' }[family];
+  if (!pople) return family;
+  if (family === 'STO') return pople;
+  const diffuse = options.get('DIFFSP') === 'T' ? options.get('DIFFS') === 'T' ? '++' : '+' : '';
+  const d = Number(options.get('NDFUNC') ?? 0), p = Number(options.get('NPFUNC') ?? 0), f = Number(options.get('NFFUNC') ?? 0);
+  const heavy = d ? `${d > 1 ? d : ''}d${f ? 'f' : ''}` : '';
+  const polarization = heavy || p ? `(${[heavy, p ? `${p > 1 ? p : ''}p` : ''].filter(Boolean).join(',')})` : '';
+  return pople.replace(/G$/u, `${diffuse}G${polarization}`);
+}
+
+/**
+ * GAMESS (or Firefly) version, the method keywords and basis from the printed option tables
+ * (the input echo is skipped), ICHARG and MULT, the termination line and the last wall clock time.
+ */
+export function gamessMetadata(lines: readonly string[]): CalculationMetadata | undefined {
+  const metadata: CalculationMetadata = {};
+  const options = new Map<string, string>();
+  for (const line of lines) {
+    let match = line.match(/GAMESS VERSION = (.+?)\s*\*/u) ?? line.match(/^\s*\*\s*Firefly version ([\w.]+)/u);
+    if (match && !metadata.program && !/BASED ON/u.test(line)) { metadata.program = `${/Firefly/u.test(line) ? 'Firefly' : 'GAMESS'} ${match[1]}`; continue; }
+    if (/^\s*INPUT CARD>/u.test(line)) continue;
+    for (const [, key, value] of line.matchAll(/\b(SCFTYP|RUNTYP|DFTTYP|TDDFT|MPLEVL|CITYP|CCTYP|GBASIS|IGAUSS|NDFUNC|NPFUNC|NFFUNC|DIFFSP|DIFFS|ICHARG|MULT)\s*=\s*(-?[\w.]+)/gu)) {
+      if (!options.has(key)) options.set(key, value);
+    }
+    if (/EXECUTION OF (?:GAMESS|FIREFLY) TERMINATED NORMALLY/u.test(line)) { metadata.termination = 'normal'; continue; }
+    if (/EXECUTION OF (?:GAMESS|FIREFLY) TERMINATED -?ABNORMALLY/u.test(line)) { metadata.termination = 'error'; continue; }
+    match = line.match(/TOTAL WALL CLOCK TIME=\s*([\d.]+) SECONDS/u);
+    if (match) metadata.runSeconds = Number(match[1]);
+  }
+  const keywords = GAMESS_KEYS.flatMap(key => {
+    const value = options.get(key);
+    return !value || value === 'NONE' || (key === 'MPLEVL' && value === '0') ? [] : [`${key}=${value}`];
+  });
+  const family = options.get('GBASIS');
+  if (family && GAMESS_SEMIEMPIRICAL.test(family)) keywords.push(`GBASIS=${family}`);
+  if (keywords.length) metadata.keywords = clip(keywords.join(' '));
+  const basis = gamessBasis(options);
+  if (basis) metadata.basis = basis;
+  if (options.has('ICHARG')) metadata.charge = Number(options.get('ICHARG'));
+  if (options.has('MULT')) metadata.multiplicity = Number(options.get('MULT'));
+  return Object.keys(metadata).length ? metadata : undefined;
+}
+
+const MOLPRO_SETUP_PROGRAMS = new Set(['SEWARD', 'MATROP', 'POP', 'PROPERTY', 'GRID']);
+
+/**
+ * Molpro's version, the programs the input ran (integrals and analysis left out), the basis it
+ * set, the charge and multiplicity from the first SCF's electron count, the termination and the
+ * last cumulative real time.
+ */
+export function molproMetadata(lines: readonly string[]): CalculationMetadata | undefined {
+  const metadata: CalculationMetadata = {};
+  const programs: string[] = [];
+  let nuclear: number | undefined, last = '';
+  for (const line of lines) {
+    if (line.trim()) last = line.trim();
+    let match = line.match(/^\s+Version (\d[\w.]*) linked/u);
+    if (match && !metadata.program) { metadata.program = `Molpro ${match[1]}`; continue; }
+    match = line.match(/^1?\s*PROGRAM \* (\S+)/u);
+    if (match) { if (!MOLPRO_SETUP_PROGRAMS.has(match[1]) && !programs.includes(match[1])) programs.push(match[1]); continue; }
+    match = line.match(/^\s*SETTING BASIS\s*=\s*(\S+)/u);
+    if (match && !metadata.basis) { metadata.basis = clip(match[1]); continue; }
+    match = line.match(/^\s*NUCLEAR CHARGE:\s*(\d+)\s*$/u);
+    if (match && nuclear === undefined) { nuclear = Number(match[1]); continue; }
+    match = line.match(/^\s*NUMBER OF ELECTRONS:\s*(\d+)\+\s*(\d+)-/u);
+    if (match && metadata.multiplicity === undefined) {
+      const alpha = Number(match[1]), beta = Number(match[2]);
+      metadata.multiplicity = alpha - beta + 1;
+      if (nuclear !== undefined) metadata.charge = nuclear - alpha - beta;
+      continue;
+    }
+    if (/^\s*Molpro calculation terminated\s*$/u.test(line)) { metadata.termination = 'normal'; continue; }
+    if (/^\s*\?\s*Error\b|GLOBAL ERROR/u.test(line)) { metadata.termination = 'error'; continue; }
+    match = line.match(/^\s*REAL TIME\s*\*\s*([\d.]+) SEC/u);
+    if (match) metadata.runSeconds = Number(match[1]);
+  }
+  // Molpro 2012 ends a finished run with the memory release line instead of a banner.
+  if (!metadata.termination && last === 'Variable memory released') metadata.termination = 'normal';
+  if (programs.length) metadata.keywords = clip(programs.join(' '));
+  return Object.keys(metadata).length ? metadata : undefined;
+}

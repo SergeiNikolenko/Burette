@@ -8,6 +8,7 @@ import { OutputHistory, outputLines } from './output-history';
 import { readConvergence } from './convergence';
 import type { AdditionalSpectrum } from '../scientific-spectra';
 import { absorptionSpectrum, withFrameSpectra, type ExcitedState } from './excited-states';
+import { gamessMetadata } from './run-metadata';
 
 /** 1 D²/(amu·Å²) in km/mol: N_A/(12 ε₀ c²) with 1 D = 10⁻²¹/c C·m (CODATA 2018 constants). */
 const KM_MOL_PER_DEBYE2_AMU_ANGSTROM2 = 42.25606;
@@ -392,6 +393,8 @@ export function parseGamessLog(text: string, name = 'output'): ScientificDocumen
 
   function finish(): ScientificDocument {
     const document = history.document('gamess-log', [], converged);
+    const metadata = gamessMetadata(lines);
+    if (metadata) document.metadata = metadata;
     for (const frame of history.frames) {
       if (!frame.modes) continue;
       frame.modes = (frame.modes as (VibrationalMode & { number?: number })[])

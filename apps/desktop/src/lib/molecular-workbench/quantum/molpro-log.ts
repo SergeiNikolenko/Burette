@@ -4,6 +4,7 @@ import type { MolecularOrbital, ScientificDocument, VibrationalMode } from '../s
 import { hessianFromLowerTriangle, hessianFromSquare } from '../hessian';
 import { BOHR, coordinate, numeric } from './reader-values';
 import { OutputHistory, orbitalTable, outputLines } from './output-history';
+import { molproMetadata } from './run-metadata';
 
 const SCF_ENERGY = /^\s*!(?:RHF|UHF|ROHF|RKS|UKS|HF|KS)(?:-SCF)? STATE\s+\d+\.\d+\s+Energy\s+(-\d+\.\d+)\s*$/u;
 // `!MP2 total energy`, `!CCSD(T) total energy`, `!RHF-UCCSD(T) energy` and similar result lines.
@@ -263,6 +264,9 @@ export function parseMolproLog(text: string): ScientificDocument {
       return row;
     }));
     const all = orbitals.frame !== reference || !orbitals.alpha ? [] : [...list('alpha'), ...(unrestricted ? list('beta') : [])];
-    return history.document('molpro-log', all, converged);
+    const result = history.document('molpro-log', all, converged);
+    const metadata = molproMetadata(lines);
+    if (metadata) result.metadata = metadata;
+    return result;
   }
 }

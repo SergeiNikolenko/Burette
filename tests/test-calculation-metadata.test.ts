@@ -39,3 +39,22 @@ test("an xtb output describes its version, Hamiltonian and options, charge, unpa
   // The force field prints neither a Hamiltonian line nor charge and spin; its option names it.
   expect(read("fixtures/quantum/xtb/water-gfnff-opt.out").metadata).toEqual({ program: "xtb 6.7.1", keywords: "--gfnff --opt -P 2", termination: "normal", runSeconds: 0.029 });
 });
+
+test("Q-Chem, GAMESS and Molpro outputs describe their version, method, basis, charge, multiplicity, termination and time", () => {
+  expect(read("fixtures/quantum/qchem/cclib-dvb_sp_un.out").metadata).toEqual({ program: "Q-Chem 5.4.1", keywords: "b3lyp", basis: "sto-3g",
+    charge: 1, multiplicity: 2, termination: "normal", runSeconds: 5.07 });
+  expect(read("fixtures/quantum/qchem/cclib-dvb_gopt.out").metadata?.keywords).toBe("b3lyp opt");
+  expect(read("fixtures/quantum/gamess/cclib-dvb_un_sp.out").metadata).toEqual({ program: "GAMESS 30 SEP 2018 (R3)", keywords: "SCFTYP=UHF RUNTYP=ENERGY DFTTYP=B3LYP",
+    basis: "STO-3G", charge: 1, multiplicity: 2, termination: "normal", runSeconds: 12.8 });
+  // GAMESS prints its basis as a family, Gaussian count and polarization counts.
+  expect(read("fixtures/quantum/gamess/cclib-water_ccsd.out").metadata).toMatchObject({ keywords: "SCFTYP=RHF RUNTYP=ENERGY CCTYP=CCSD", basis: "6-31G(d,p)" });
+  expect(read("fixtures/quantum/gamess/cclib-dvb_td.out").metadata?.basis).toBe("3-21G(d)");
+  expect(read("fixtures/quantum/gamess/cclib-C_bigbasis-trimmed.out").metadata?.basis).toBe("aug-cc-pCVQZ");
+  // A semiempirical Hamiltonian is a method, so it has no basis.
+  const semiempirical = read("fixtures/quantum/gamess/cclib-nh3_ts_ir.out").metadata!;
+  expect([semiempirical.keywords, semiempirical.basis]).toEqual(["SCFTYP=RHF RUNTYP=HESSIAN GBASIS=AM1", undefined]);
+  // Molpro's charge is the nuclear charge less the SCF's electrons.
+  expect(read("fixtures/quantum/molpro/cclib-2018-dvb_sphf_un.out").metadata).toEqual({ program: "Molpro 2018.2", keywords: "UHF-SCF", basis: "STO-3G",
+    charge: 1, multiplicity: 2, termination: "normal", runSeconds: 1.11 });
+  expect(read("fixtures/quantum/molpro/cclib-dvb_ir.out").metadata).toMatchObject({ program: "Molpro 2012.1", keywords: "RKS-SCF HESSIAN", termination: "normal" });
+});
