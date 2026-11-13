@@ -21,3 +21,14 @@ test("a session document keeps a calculation description and refuses a malformed
     expect(() => validateScientificDocument({ ...document, metadata }, scene)).toThrow("calculation description");
   }
 });
+
+test("a QCSchema result describes its model, molecule and success, and keeps its SCF dipole in debye", () => {
+  const result = read("fixtures/quantum/qcschema/hydroxyl-uhf-wavefunction.json");
+  expect(result.metadata).toEqual({ termination: "normal", keywords: "hf", basis: "cc-pvdz", charge: 0, multiplicity: 2 });
+  const source = JSON.parse(readFileSync(new URL("fixtures/quantum/qcschema/hydroxyl-uhf-wavefunction.json", import.meta.url), "utf8"));
+  // e·bohr to debye.
+  expect(result.frames[0].dipoleDebye).toEqual(source.properties.scf_dipole_moment.map((value: number) => value * 2.541746473));
+  const optimization = read("fixtures/quantum/qcschema/water-optimization-trajectory-all.json");
+  expect(optimization.metadata).toEqual({ termination: "normal", keywords: "hf", basis: "sto-3g", charge: 0, multiplicity: 1 });
+  expect(read("fixtures/quantum/qcschema-water-gradient.json").metadata?.program).toBe("QM Program 1.1");
+});

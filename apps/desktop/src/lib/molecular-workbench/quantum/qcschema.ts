@@ -3,7 +3,8 @@ import { validateParsedSpectra } from '../parsed-spectral-document';
 import type { ScientificSpectra } from '../scientific-spectra';
 import { atomicNumber } from '../elements';
 import { hessianFromSquare } from '../hessian';
-import type { GaussianShell, MolecularOrbital, ScientificDocument, ScientificFrame } from '../scientific-types';
+import type { CalculationMetadata, GaussianShell, MolecularOrbital, ScientificDocument, ScientificFrame } from '../scientific-types';
+import { DEBYE_PER_AU } from './output-history';
 import { readQcschemaWavefunction } from './qcschema-wavefunction';
 import type { Vec3 } from '../types';
 import { BOHR, checkIdentity, coordinate, finite, MAX_ATOMS, MAX_FRAMES, MAX_VALUES } from './reader-values';
@@ -62,6 +63,8 @@ function atomicResult(value: unknown, name: string): ScientificFrame & { identit
   const properties = data.properties === undefined ? {} : object(data.properties);
   if (properties.calcinfo_natom !== undefined && properties.calcinfo_natom !== atoms.length) throw new Error('QCSchema atom count disagrees with molecule.');
   if (properties.return_energy !== undefined) frame.energyHartree = finite(properties.return_energy);
+  // QCElemental's dipoles are e·bohr.
+  if (properties.scf_dipole_moment != null) frame.dipoleDebye = array(properties.scf_dipole_moment, 3, 'dipole').map(value => finite(value) * DEBYE_PER_AU) as Vec3;
   if (data.driver === 'energy') {
     const energy = finite(data.return_result);
     if (frame.energyHartree !== undefined && Math.abs(frame.energyHartree - energy) > 1e-8) throw new Error('QCSchema return energies disagree.');
@@ -82,6 +85,23 @@ function atomicResult(value: unknown, name: string): ScientificFrame & { identit
   if (data.wavefunction != null) frame.wavefunction = readQcschemaWavefunction(data.wavefunction, atoms.length, { alpha: properties.calcinfo_nalpha, beta: properties.calcinfo_nbeta });
   return { ...frame, propertySpectra: readQcschemaSpectra(data.properties, { name, format: 'qcschema', scope: 'file' }, atoms.map(atom => atomicNumber(atom.element))) };
 }
+const label = (value: unknown) => typeof value === 'string' && value.trim() ? value.trim().slice(0, 512) : undefined;
+const integer = (value: unknown) => typeof value === 'number' && Number.isInteger(value) ? value : undefined;
+/** The model's method and basis, the producing program and the molecule's charge and multiplicity; a result that did not succeed is refused before this. */
+function runMetadata(model: unknown, provenance: unknown, molecule: unknown): CalculationMetadata {
+  const spec = model && typeof model === 'object' ? model as JsonObject : {};
+  const origin = provenance && typeof provenance === 'object' ? provenance as JsonObject : {};
+  const system = molecule && typeof molecule === 'object' ? molecule as JsonObject : {};
+  const program = label(origin.creator);
+  const metadata: CalculationMetadata = { termination: 'normal' };
+  if (program) metadata.program = label(`${program} ${label(origin.version) ?? ''}`);
+  if (label(spec.method)) metadata.keywords = label(spec.method);
+  if (label(spec.basis)) metadata.basis = label(spec.basis);
+  const charge = integer(system.molecular_charge), multiplicity = integer(system.molecular_multiplicity);
+  if (charge !== undefined) metadata.charge = charge;
+  if (multiplicity !== undefined && multiplicity > 0) metadata.multiplicity = multiplicity;
+  return metadata;
+}
 /** Most steps each `protocols.trajectory` value keeps. */
 const TRAJECTORY_PROTOCOLS = new Map<unknown, number>([['all', MAX_FRAMES], ['final', 1], ['initial_and_final', 2], ['none', 0]]);
 /** Optimizers echo the input geometry with symmetrization noise (~1e-17 bohr). */
@@ -97,7 +117,7 @@ export function parseQcschema(text: string, name = "QCSchema input"): Scientific
   try { parsed = JSON.parse(text); } catch { throw new Error('Invalid or truncated QCSchema JSON.'); }
   const data = object(parsed);
   let frames: Array<ScientificFrame & { propertySpectra?: ScientificSpectra }>;
-  let converged: boolean | undefined, wavefunction: Wavefunction | undefined;
+  let converged: boolean | undefined, wavefunction: Wavefunction | undefined, metadata: CalculationMetadata | undefined;
   if (data.schema_name === 'qcschema_molecule') {
     frames = [{ atoms: molecule(data, false).atoms }];
   } else if (data.schema_name === 'qcschema_optimization_output') {
@@ -137,13 +157,16 @@ export function parseQcschema(text: string, name = "QCSchema input"): Scientific
     if (!sameGeometry({ atoms: final.atoms }, frames.at(-1)!)) frames.push({ atoms: final.atoms });
     else wavefunction = steps.at(-1)?.wavefunction;
     converged = true;
+    const specification = data.input_specification && typeof data.input_specification === 'object' ? data.input_specification as JsonObject : {};
+    metadata = runMetadata(specification.model, data.provenance, data.final_molecule);
   } else {
     const { identity: _, wavefunction: result, ...frame } = atomicResult(data, name);
     frames = [frame];
     wavefunction = result;
+    metadata = runMetadata(data.model, data.provenance, data.molecule);
   }
   if (frames.length > MAX_FRAMES || frames.reduce((sum, f) => sum + f.atoms.length * 3, 0) > MAX_VALUES) throw new Error('QCSchema trajectory exceeds browser limit.');
   const ownedFrames = frames.map(({ propertySpectra, ...frame }, frameIndex) => propertySpectra ? { ...frame, spectra: { ...propertySpectra,
     source: { ...propertySpectra.source, scope: 'frame' as const, frameIndex, frameCount: frames.length } } } : frame);
-  return validateParsedSpectra({ format: 'qcschema', atoms: frames.at(-1)!.atoms, referenceFrameIndex: frames.length - 1, frames: ownedFrames, modes: [], orbitals: wavefunction?.orbitals ?? [], ...(wavefunction ? { basis: wavefunction.basis } : {}), ...(converged === undefined ? {} : { converged }) });
+  return validateParsedSpectra({ format: 'qcschema', atoms: frames.at(-1)!.atoms, referenceFrameIndex: frames.length - 1, frames: ownedFrames, modes: [], orbitals: wavefunction?.orbitals ?? [], ...(wavefunction ? { basis: wavefunction.basis } : {}), ...(converged === undefined ? {} : { converged }), ...(metadata ? { metadata } : {}) });
 }
