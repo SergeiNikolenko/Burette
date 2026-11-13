@@ -71,6 +71,19 @@ for the browser shell and on a `macvm` guest on Orion for the packaged app.
   table. xtb's optimizer log and SCF iteration graphs are not read yet. Browser
   shell verified on Gauss with the CH₂ triplet CJSON and the Gaussian divinyl-
   benzene optimization in both themes.
+- **Extraction audit (2084c5760 … 6d44d62d0):** every program reader was checked
+  against cclib and program regression outputs for what it printed but Burette
+  dropped. Now read as well: GAMESS step forces, the energy change of ORCA,
+  Q-Chem, Psi4, NWChem and xtb steps, and xtb's gradient norm; ORCA Mulliken, Löwdin and Hirshfeld spins, ⟨S²⟩ and
+  gradients; Gaussian TD-DFT/CIS/EOM states, ECD from velocity rotatory
+  strengths, GIAO shieldings, Mulliken spins, ⟨S²⟩ and forces; Q-Chem, GAMESS
+  and NWChem excited states; CJSON energies, dipoles and charges; QCSchema SCF
+  dipoles. Every reader fills the Calculation card (program and version,
+  keywords or route, basis, charge, multiplicity, termination, run time). Readers
+  also stopped mistaking reprinted, displaced, ghost and SAD-guess geometries
+  for frames. The electronic and ECD window now widens to cover every
+  transition. Browser shell verified on Gauss with ORCA UKS, Gaussian TD-DFT and
+  NMR and NWChem TDDFT in both themes.
 
 ### Stage 16. Electrostatic potential surfaces
 
