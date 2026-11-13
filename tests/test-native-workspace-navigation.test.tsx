@@ -33,7 +33,7 @@ test("Home reuses its page and keeps open structures available", async () => {
     await render();
     await click("Recent files");
     await click("1htb.pdb");
-    await click("Ketcher");
+    await click("Molecular editor");
     expect(calls).toEqual(["home", "protein", "ketcher"]);
     expect(state.tabs).toHaveLength(2);
     state.tabs = state.tabs.filter(tab => tab.id !== "home");
@@ -42,7 +42,7 @@ test("Home reuses its page and keeps open structures available", async () => {
     expect(calls).toEqual(["home", "protein", "ketcher", "new"]);
     state.tabs.push({ id: "sketch", location: { kind: "ketcher", draftMolfile: "saved sketch" } });
     await render();
-    await click("Ketcher");
+    await click("Molecular editor");
     expect(calls.at(-1)).toBe("sketch");
     expect(container.querySelectorAll("button")).toHaveLength(3);
     // The hide toggle lives in the sidebar's own top row, clear of its rows.

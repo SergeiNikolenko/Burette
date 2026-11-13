@@ -413,7 +413,7 @@ async function writeObserve(
         }
       : {
           ready: false,
-          note: activeKetcher ? "The active surface is a molecular editor editor." : "No active document is open in the desktop app.",
+          note: activeKetcher ? "The active surface is the molecular editor." : "No active document is open in the desktop app.",
         },
     documents: documents.slice(0, MAX_OBSERVED_DOCUMENTS).map((document) => ({
       id: document.id,
@@ -580,7 +580,7 @@ async function executeDesktopAgentAction(
   }
   if (type === "control_ketcher") {
     if (activeTabKind !== "ketcher") {
-      return agentFailure(type, "STALE_TARGET", "molecular editor actions require the observed active molecular editor tab.");
+      return agentFailure(type, "STALE_TARGET", "Molecular editor actions require the observed active molecular editor tab.");
     }
     const ketcherAgent = await loadKetcherAgentModule();
     const controller = ketcherAgent.getKetcherAgentController(activeTabId);
