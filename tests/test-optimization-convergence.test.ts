@@ -45,3 +45,10 @@ test("a session document keeps valid convergence and refuses a malformed step", 
   const broken = { ...document, frames: document.frames.map((frame, index) => index ? frame : { ...frame, convergence: { maxForce: { value: -1 } } }) };
   expect(() => validateScientificDocument(broken, readXyzFrames(xyz))).toThrow("convergence");
 });
+
+test("GAMESS search steps keep the gradient row of their geometry, with OPTTOL and OPTTOL/3 as thresholds", () => {
+  const frames = steps("fixtures/quantum/gamess/cclib-dvb_gopt_a.out");
+  // `NSERCH: n E= ... GRAD. MAX= ... R.M.S.= ...` for searches 0-6, under `OPTTOL = 1.000E-04`.
+  expect(frames.slice(0, 7).map((frame) => frame?.maxForce?.value)).toEqual([0.0013457, 0.0010067, 0.0002726, 0.0004048, 0.0001882, 0.0001071, 0.0000391]);
+  expect(frames[6]).toEqual({ maxForce: { value: 0.0000391, threshold: 1e-4 }, rmsForce: { value: 0.0000132, threshold: 1e-4 / 3 } });
+});

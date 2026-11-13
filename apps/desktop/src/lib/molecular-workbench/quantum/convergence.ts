@@ -1,7 +1,7 @@
 import type { ConvergenceValue, OptimizationConvergence, ScientificFrame } from '../scientific-types';
 import { numeric } from './reader-values';
 
-export type ConvergenceProgram = 'gaussian' | 'orca' | 'psi4' | 'nwchem' | 'qchem';
+export type ConvergenceProgram = 'gaussian' | 'orca' | 'psi4' | 'nwchem' | 'qchem' | 'gamess';
 type Item = keyof OptimizationConvergence;
 
 const NUMBER = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[EeDd][+-]?\d+)?$/u;
@@ -25,8 +25,8 @@ const TABLE_ROWS: Partial<Record<ConvergenceProgram, { header: RegExp; rows: [Re
     [/^\s*Gradient\s+(\S+)\s+(\S+)\s+(?:YES|NO)\s*$/u, 'maxForce'], [/^\s*Displacement\s+(\S+)\s+(\S+)\s+(?:YES|NO)\s*$/u, 'maxStep']] },
 };
 
-/** NWChem prints its thresholds once, before the first step of one output. */
-const nwchemThresholds = new WeakMap<readonly string[], Partial<Record<Item, number>>>();
+/** NWChem and GAMESS print their thresholds once, before the first step of one output. */
+const printedThresholds = new WeakMap<readonly string[], Partial<Record<Item, number>>>();
 
 /** A printed number, or undefined for a Fortran overflow such as `*********`. */
 const value = (token: string | undefined) => token !== undefined && NUMBER.test(token) ? numeric(token) : undefined;
@@ -46,7 +46,7 @@ export function readConvergence(program: ConvergenceProgram, lines: readonly str
   if (program === 'nwchem') {
     for (const [pattern, item] of NWCHEM_THRESHOLDS) {
       const match = line.match(pattern);
-      if (match) { nwchemThresholds.set(lines, { ...nwchemThresholds.get(lines), [item]: value(match[1]) }); return i; }
+      if (match) { printedThresholds.set(lines, { ...printedThresholds.get(lines), [item]: value(match[1]) }); return i; }
     }
     // `@ Step Energy ΔE Gmax Grms Xrms Xmax Walltime`; the summary at the end repeats the last row.
     const row = line.match(/^@\s+\d+\s+(\S+)\s+\S+\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+\S+\s*$/u);
@@ -54,8 +54,26 @@ export function readConvergence(program: ConvergenceProgram, lines: readonly str
     const energy = value(row[1]);
     // The row's energy names its geometry; a row of another geometry is not this frame's.
     if (energy === undefined || frame.energyHartree === undefined || Math.abs(energy - frame.energyHartree) > 1e-6) return i;
-    const thresholds = nwchemThresholds.get(lines) ?? {};
+    const thresholds = printedThresholds.get(lines) ?? {};
     (['maxForce', 'rmsForce', 'rmsStep', 'maxStep'] as const).forEach((item, k) => set(frame, item, value(row[k + 2]), thresholds[item]));
+    return i;
+  }
+  if (program === 'gamess') {
+    // A search converges when the largest gradient component is below OPTTOL and the RMS gradient below OPTTOL/3.
+    const tolerance = line.match(/^\s*OPTTOL\s*=\s*(\S+)/u);
+    if (tolerance) {
+      const opttol = value(tolerance[1]);
+      if (opttol !== undefined) printedThresholds.set(lines, { maxForce: opttol, rmsForce: opttol / 3 });
+      return i;
+    }
+    // `NSERCH: n  E= energy  GRAD. MAX= value  R.M.S.= value` closes the step of the geometry whose energy it repeats.
+    const row = line.match(/^\s*NSERCH:\s*\d+\s+E=\s*(\S+)\s+GRAD\. MAX=\s*(\S+)\s+R\.M\.S\.=\s*(\S+)\s*$/u);
+    if (!row || !frame) return -1;
+    const energy = value(row[1]);
+    if (energy === undefined || frame.energyHartree === undefined || Math.abs(energy - frame.energyHartree) > 1e-6) return i;
+    const thresholds = printedThresholds.get(lines) ?? {};
+    set(frame, 'maxForce', value(row[2]), thresholds.maxForce);
+    set(frame, 'rmsForce', value(row[3]), thresholds.rmsForce);
     return i;
   }
   if (program === 'psi4') {

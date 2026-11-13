@@ -106,9 +106,11 @@ maximum and RMS step, each with the threshold when the program printed one
 (`quantum/convergence.ts`). Gaussian and ORCA print all four items with
 thresholds; Q-Chem prints the maximum gradient and displacement; Psi4 prints a
 row per step whose inactive criteria have no threshold; NWChem prints a row per
-step and its thresholds once in the optimizer header. Psi4 and NWChem rows are
-kept only on the frame whose energy they repeat, so a summary reprint cannot
-move a value to another geometry. xtb's optimizer log is not read yet. The
+step and its thresholds once in the optimizer header. GAMESS prints the maximum
+and RMS gradient of each search step (`NSERCH: n E= … GRAD. MAX= … R.M.S.=`);
+its thresholds are `OPTTOL` and `OPTTOL`/3, the criteria GAMESS applies. Psi4,
+NWChem and GAMESS rows are kept only on the frame whose energy they repeat, so a
+summary reprint cannot move a value to another geometry. xtb's optimizer log is not read yet. The
 Plots panel draws the chosen item on a log axis with the threshold dashed.
 `test-optimization-convergence` checks every reader against its printed table.
 

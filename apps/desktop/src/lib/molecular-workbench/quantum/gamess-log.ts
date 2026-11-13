@@ -5,6 +5,7 @@ import { cartesianPowers } from '../gaussian-angular';
 import { hessianFromSquare } from '../hessian';
 import { BOHR, coordinate, MAX_VALUES, numeric } from './reader-values';
 import { OutputHistory, outputLines } from './output-history';
+import { readConvergence } from './convergence';
 
 /** 1 D²/(amu·Å²) in km/mol: N_A/(12 ε₀ c²) with 1 D = 10⁻²¹/c C·m (CODATA 2018 constants). */
 const KM_MOL_PER_DEBYE2_AMU_ANGSTROM2 = 42.25606;
@@ -222,6 +223,8 @@ export function parseGamessLog(text: string): ScientificDocument {
       i = section.end;
       continue;
     }
+    const convergenceEnd = readConvergence('gamess', lines, i, history.frames.at(-1));
+    if (convergenceEnd >= 0) { i = convergenceEnd; continue; }
     let match = line.match(/^\s*SCFTYP=(\S+)/u);
     if (match) { scfType ??= match[1]; continue; }
     match = line.match(/^\s*NUMBER OF OCCUPIED ORBITALS \((ALPHA|BETA )\)\s*=\s*(\d+)\s*$/u);
