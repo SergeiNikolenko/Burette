@@ -100,6 +100,23 @@ for the browser shell and on a `macvm` guest on Orion for the packaged app.
 - **Done when:** water and formaldehyde ESP values at sample surface points
   match an independent Coulomb sum from the same charges, and a density + ESP
   cube pair from a Gaussian job colours as cubegen does.
+- **Done (c62dc80a6, 92ffda6f1, 701fefdf6):** Compute → "Show electrostatic
+  potential" opens a Potential tab for calculations, MOL and SDF files. The
+  potential comes from the shown frame's charge sets, Gasteiger charges (MOL,
+  SDF and CJSON graphs; XYZ has no bond orders), another field of a multi-field
+  Cube, or a potential Cube opened next to a density Cube. Charges give a
+  Coulomb grid (hartree/e, 0.3 Å, coarser for large molecules) drawn on a
+  smooth van der Waals surface; a Cube pair draws the 0.0004 e/bohr³ density
+  isosurface. Both travel as one two-field Cube, and Mol*'s `external-volume`
+  theme colours the surface red to blue across a range that defaults to the
+  98th percentile of |V| on the surface and is adjustable. Tests: water and
+  formaldehyde potentials against an independent Python Coulomb sum
+  (`test:electrostatic-potential`), and a PySCF B3LYP water density and
+  potential pair whose surface potential agrees in sign with TIP3P charges.
+  Browser shell verified on Gauss in both themes with Gaussian water Mulliken
+  charges, a p-nitroaniline MOL (Gasteiger) and a p-nitroaniline density +
+  potential pair. The Mol* molecular surface is not offered: building it from
+  the Cube's atoms adds a second structure to the scene.
 
 ### Stage 17. Cube arithmetic and slices
 
