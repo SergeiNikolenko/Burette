@@ -68,7 +68,7 @@ Routing as a whole is covered by `test-scientific-dispatch.test.ts`,
 | --- | --- | --- | --- |
 | XYZ and extended XYZ (`parseXyzTrajectory`, `trajectory-metadata.ts`) | Every frame; energy, time and temperature from `key=value` comments with explicit units; extended `Properties` columns with velocities and forces; `Lattice` stays in the frame comment, where the Crystal and Symmetry tools read it. | Unitless values are ignored. Extended XYZ needs `species:S:1` and `pos:R:3`; vector columns need a declared unit. A `.xyz` name without the internal-coordinate marker takes this reader before any content signature. | `test-scientific-dispatch`, `test-direct-quantum-readers`, `test-built-molstar-xyz-lattice.mjs` (`xyz-lattice/`) |
 | Z-matrix (`scripts/zmatrix-document.mjs`, `scripts/coordinate-interchange.mjs`) | Rows with references and values or named variables (`name = value`, or Gaussian's `Variables:` section); `X` rows are reference points only; a marker restores the saved atom/definition pair. | 1 MiB, 512 rows and 1,536 variables. Gaussian `Constants` sections, expressions and mixed Cartesian rows are refused; dihedrals must lie within ±360°. A marker that disagrees with the rows is refused, never ignored. | `test-scientific-dispatch`, `test-coordinate-interchange-reader`, `test-coordinate-interchange`, `test-zmatrix-reference` (`zmatrix-reference/`) |
-| Chemical JSON (`cjson-graph.ts`, `cjson-science.ts`) | Versions 0 and 1: explicit bonds, formal charges and isotopes as a source-ordered MOL graph; every `3dSets` entry as a frame; vibrations with IR, Raman activity and eigenvectors (zero padding past 3N allowed), by set through `conformers` or for the active set; Avogadro `basisSet` and orbitals (energies eV to Hartree, occupations or aufbau from `electronCount` and multiplicity); electronic, ECD and NMR spectra scoped to the file. | 1–256 atoms, at most 2,000 sets and 2,000,000 coordinates. Bond orders 4–6, self or duplicate bonds, more than 3N vibrations, shells other than s/p/d/f/g and unnormalized primitives are refused. A periodic file (`cellVectors` or a, b, c, α, β, γ, with Cartesian or `3dFractional` coordinates) opens as extended XYZ with its lattice. | `test-cjson-graph`, `test-cjson-science`, `test-cjson-graph-codec`, `test-cjson-import` (`cjson/`, `quantum/spectra-native-nmr.cjson`) |
+| Chemical JSON (`cjson-graph.ts`, `cjson-science.ts`) | Versions 0 and 1: explicit bonds, formal charges and isotopes as a source-ordered MOL graph; every `3dSets` entry as a frame; vibrations with IR, Raman activity and eigenvectors (zero padding past 3N allowed), by set through `conformers` or for the active set; Avogadro `basisSet` and orbitals (energies eV to Hartree, occupations or aufbau from `electronCount` and multiplicity); electronic, ECD and NMR spectra scoped to the file; `properties.energies` (Hartree) on their sets when there is one per set, and `totalEnergy`, `dipoleMoment` (debye) and `atoms.partialCharges` on the final geometry: the only set, or the set whose stored energy is the total energy. | 1–256 atoms, at most 2,000 sets and 2,000,000 coordinates. Bond orders 4–6, self or duplicate bonds, more than 3N vibrations, shells other than s/p/d/f/g and unnormalized primitives are refused. A periodic file (`cellVectors` or a, b, c, α, β, γ, with Cartesian or `3dFractional` coordinates) opens as extended XYZ with its lattice. | `test-cjson-graph`, `test-cjson-science`, `test-cjson-graph-codec`, `test-cjson-import` (`cjson/`, `quantum/spectra-native-nmr.cjson`) |
 
 ## CJSON coordinate sets
 
@@ -122,9 +122,10 @@ Plots panel draws the chosen item on a log axis with the threshold dashed.
 - ORCA output keeps no Hessian; the ORCA property file keeps no orbitals or
   masses.
 - QCSchema results carry no modes; a Hessian result keeps only the matrix.
-- CJSON `properties` other than `totalSpinMultiplicity` (energies, dipole) and
-  `atoms.forces` are not read. A periodic CJSON keeps only atoms and cell: no
-  bonds, vibrations, orbitals or spectra.
+- CJSON results that no coordinate set can be named for (energies whose count
+  differs from the sets, and then the total energy, dipole and charges) and
+  `atoms.forces`, whose unit Avogadro does not record, are not read. A periodic
+  CJSON keeps only atoms and cell: no bonds, vibrations, orbitals or spectra.
 - Ghost and dummy centres are refused wherever a reader can meet them.
 - xtb output keeps only its final structure; Molpro output keeps no
   intermediate optimizer steps.

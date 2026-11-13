@@ -96,3 +96,19 @@ test("a periodic CJSON opens as extended XYZ with its lattice, from cell paramet
   expect(parseScientificFile("argon.cjson", vectors).atoms).toEqual([{ element: "Ar", x: 2.5, y: 2, z: 2.5 }]);
   expect(() => readCjsonGraph("argon.cjson", vectors)).toThrow("cell-preserving");
 });
+
+test("Avogadro's stored energies go to their coordinate sets, and the final energy, dipole and charges to the final set", () => {
+  const source = JSON.parse(fixture("avogadro-formaldehyde-orbitals.cjson"));
+  // Partial charges of avogadrodata's formaldehyde.cjson, dropped from the fixture.
+  source.atoms.partialCharges = { Loewdin: [0.133356, -0.112557, -0.010399, -0.010399], Mulliken: [0.16726, -0.201292, 0.017016, 0.017016] };
+  const document = parseScientificFile("formaldehyde.cjson", JSON.stringify(source));
+  expect(document.frames.map(frame => frame.energyHartree)).toEqual([-114.353761036049, -114.355940490718, -114.356236928996,
+    -114.356331674912, -114.356338421285, -114.356339016006, -114.356339016032]);
+  // totalEnergy equals the last set's energy, so the results belong there and not to coords.3d (set 0).
+  expect(document.frames.map(frame => Boolean(frame.dipoleDebye || frame.charges))).toEqual([false, false, false, false, false, false, true]);
+  expect(document.frames[6]).toMatchObject({ dipoleDebye: [2.1202526018495886, -3.5584447919999995e-08, 0.0018030029741956798],
+    charges: [{ model: "lowdin", values: [0.133356, -0.112557, -0.010399, -0.010399] }, { model: "mulliken", values: [0.16726, -0.201292, 0.017016, 0.017016] }] });
+  // 21 sets with 7 energies: no set can be named, so none gets an energy, dipole or charges.
+  const raman = parseScientificFile("raman.cjson", fixture("avogadro-formaldehyde-raman.cjson"));
+  expect(raman.frames.some(frame => frame.energyHartree !== undefined || frame.dipoleDebye)).toBe(false);
+});

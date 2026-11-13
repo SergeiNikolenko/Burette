@@ -5,7 +5,7 @@
  * read here in Hartree. Exponents are bohr⁻², coefficients belong to normalized
  * primitives, and spherical shells keep Molden's m = 0, +1, −1, … order. */
 import { shellSize } from "./gaussian-angular";
-import type { GaussianShell, MolecularOrbital, VibrationalMode } from "./scientific-types";
+import type { AtomicChargeSet, GaussianShell, MolecularOrbital, VibrationalMode } from "./scientific-types";
 import type { Vec3 } from "./types";
 
 const EV_PER_HARTREE = 27.211386245988;
@@ -134,4 +134,49 @@ export function readCjsonOrbitals(value: unknown, basis: GaussianShell[] | undef
     ...table(alpha, value.alphaEnergies, value.alphaOccupations, "alpha", 1, alphaElectrons),
     ...table(beta, value.betaEnergies, value.betaOccupations, "beta", 1, alphaElectrons === undefined ? undefined : electrons! - alphaElectrons),
   ];
+}
+
+/** Results Avogadro stores for a calculation: per-set energies, and the final geometry's energy, dipole and charges. */
+export type CjsonResults = {
+  /** Hartree energy of each coordinate set, when Avogadro stored one per set. */
+  energies?: number[];
+  /** The coordinate set the final energy, dipole and charges were computed at. */
+  owner?: number;
+  energyHartree?: number;
+  dipoleDebye?: Vec3;
+  charges?: AtomicChargeSet[];
+};
+
+const CHARGE_MODELS: Record<string, AtomicChargeSet["model"]> = {
+  mulliken: "mulliken", loewdin: "lowdin", lowdin: "lowdin", hirshfeld: "hirshfeld", cm5: "cm5", npa: "npa",
+  esp: "esp", chelpg: "chelpg", eeq: "eeq", gasteiger: "gasteiger",
+};
+
+/**
+ * Avogadro's `properties.energies` (Hartree, one per set, each a one-element list), `totalEnergy`
+ * (Hartree), `dipoleMoment` (debye) and `atoms.partialCharges` by model name. The total energy,
+ * dipole and charges describe the final geometry: the only set, or the set whose stored energy is
+ * the total energy. Avogadro keeps its first set in `coords.3d`, so position is no guide.
+ */
+export function readCjsonResults(properties: RecordValue, atoms: RecordValue, setCount: number, atomCount: number): CjsonResults {
+  const results: CjsonResults = {};
+  if (Array.isArray(properties.energies) && properties.energies.length === setCount) {
+    const energies = properties.energies.map(entry => Array.isArray(entry) && entry.length === 1 ? entry[0] : entry);
+    results.energies = numbers(energies, "set energies", setCount);
+  }
+  const total = typeof properties.totalEnergy === "number" && Number.isFinite(properties.totalEnergy) && properties.totalEnergy !== 0 ? properties.totalEnergy : undefined;
+  const owner = setCount === 1 ? 0 : total === undefined || !results.energies ? -1 : results.energies.lastIndexOf(total);
+  if (owner < 0) return results;
+  results.owner = owner;
+  if (total !== undefined) results.energyHartree = total;
+  if (properties.dipoleMoment !== undefined) results.dipoleDebye = numbers(properties.dipoleMoment, "the dipole moment", 3) as Vec3;
+  if (isRecord(atoms.partialCharges)) {
+    const charges: AtomicChargeSet[] = [];
+    for (const [name, values] of Object.entries(atoms.partialCharges)) {
+      const model = CHARGE_MODELS[name.toLowerCase()];
+      if (model && !charges.some(set => set.model === model)) charges.push({ model, values: numbers(values, `${name} charges`, atomCount) });
+    }
+    if (charges.length) results.charges = charges;
+  }
+  return results;
 }

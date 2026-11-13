@@ -81,9 +81,13 @@ export function parseScientificFile(name: string, text: string): ScientificDocum
     if (crystal) return { ...empty("xyz", crystal.atoms), frames: [{ atoms: crystal.atoms, comment: `Lattice="${crystal.cell.flat().join(" ")}" Properties=species:S:1:pos:R:3` }] };
     const parsed = readCjsonGraph(name, text);
     // The active set's modes describe the scene atoms; other sets keep their own on their frame.
+    const { results } = parsed;
     const frames = parsed.coordinateSets.map((atoms, index) => {
       const modes = index === parsed.activeSet ? undefined : parsed.modes.get(index);
-      return { atoms, ...(modes?.length ? { modes } : {}) };
+      const energyHartree = index === results.owner ? results.energyHartree ?? results.energies?.[index] : results.energies?.[index];
+      return { atoms, ...(modes?.length ? { modes } : {}), ...(energyHartree !== undefined ? { energyHartree } : {}),
+        ...(index === results.owner && results.dipoleDebye ? { dipoleDebye: results.dipoleDebye } : {}),
+        ...(index === results.owner && results.charges ? { charges: results.charges } : {}) };
     });
     return { format: "cjson", atoms: parsed.structure.atoms, frames, modes: parsed.modes.get(parsed.activeSet) ?? [], orbitals: parsed.orbitals,
       ...(parsed.basis ? { basis: parsed.basis } : {}),

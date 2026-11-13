@@ -3,7 +3,7 @@ import { atomicNumber, elementSymbol } from "./elements";
 import { checkMoleculeSize, parseMolecule, type MolecularStructure } from "./molecular-graph";
 import { readCjsonSpectra } from "./scientific-spectra-inputs";
 import type { ScientificSpectra } from "./scientific-spectra";
-import { readCjsonBasis, readCjsonOrbitals, readCjsonVibrations } from "./cjson-science";
+import { readCjsonBasis, readCjsonOrbitals, readCjsonResults, readCjsonVibrations, type CjsonResults } from "./cjson-science";
 import type { GaussianShell, MolecularOrbital, VibrationalMode } from "./scientific-types";
 import type { MolecularAtom, MolecularBond, UnitCell, Vec3 } from "./types";
 
@@ -18,6 +18,7 @@ export type CjsonGraphDocument = {
   modes: Map<number, VibrationalMode[]>;
   basis?: GaussianShell[];
   orbitals: MolecularOrbital[];
+  results: CjsonResults;
 };
 
 type RecordValue = Record<string, unknown>;
@@ -150,5 +151,6 @@ export function readCjsonGraph(name: string, text: string): CjsonGraphDocument {
   const multiplicity = properties.totalSpinMultiplicity === undefined ? 1 : integer(properties.totalSpinMultiplicity, 1, 101);
   const basis = readCjsonBasis(input.basisSet, count);
   return { format: "cjson", structure, coordinateSets, activeSet, ...(spectra ? { spectra } : {}),
-    modes: readCjsonVibrations(input.vibrations, count, activeSet), ...(basis ? { basis } : {}), orbitals: readCjsonOrbitals(input.orbitals, basis, multiplicity) };
+    modes: readCjsonVibrations(input.vibrations, count, activeSet), ...(basis ? { basis } : {}), orbitals: readCjsonOrbitals(input.orbitals, basis, multiplicity),
+    results: readCjsonResults(properties, atoms, coordinateSets.length, count) };
 }
