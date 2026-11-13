@@ -122,12 +122,15 @@ export function validateScientificDocument(value: unknown, sourceFrames: readonl
       const vectors = frame[key];
       if (vectors !== undefined && (!Array.isArray(vectors) || vectors.length !== elements.length || !vectors.every(isVec3))) fail(`frames[${index}].${key} do not match the atoms.`);
     }
-    if (frame.charges !== undefined) {
+    for (const key of ["charges", "spinPopulations"] as const) {
+      const sets = frame[key];
+      if (sets === undefined) continue;
       const models = new Set<unknown>();
-      if (!Array.isArray(frame.charges) || frame.charges.some((set) => !isRecord(set) || !(ATOMIC_CHARGE_MODELS as readonly unknown[]).includes(set.model)
+      if (!Array.isArray(sets) || sets.some((set) => !isRecord(set) || !(ATOMIC_CHARGE_MODELS as readonly unknown[]).includes(set.model)
         || models.has(set.model) || !models.add(set.model) || !numbers(set.values) || set.values.length !== elements.length
-        || set.values.some((charge) => Math.abs(charge) > 200))) fail(`frames[${index}].charges do not match the atoms.`);
+        || set.values.some((charge) => Math.abs(charge) > 200))) fail(`frames[${index}].${key} do not match the atoms.`);
     }
+    if (frame.spinSquared !== undefined && (typeof frame.spinSquared !== "number" || !(frame.spinSquared >= 0 && frame.spinSquared < 1e4))) fail(`frames[${index}].spinSquared is not an expectation value.`);
     if (frame.dipoleDebye !== undefined && (!isVec3(frame.dipoleDebye) || (frame.dipoleDebye as number[]).some((value) => Math.abs(value) > 1e6))) fail(`frames[${index}].dipoleDebye is not a vector.`);
     const thermochemistry = frame.thermochemistry;
     if (thermochemistry !== undefined) {

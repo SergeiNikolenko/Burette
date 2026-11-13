@@ -11,7 +11,9 @@ const MODEL_NAMES: Record<AtomicChargeSet["model"], string> = {
   mulliken: "Mulliken", lowdin: "Löwdin", hirshfeld: "Hirshfeld", cm5: "CM5", npa: "NPA", esp: "ESP", chelpg: "ChElPG", eeq: "EEQ", gasteiger: "Gasteiger",
 };
 type OverlayKind = "charge-colors" | "charges" | "dipole";
-type Choice = { model: AtomicChargeSet["model"] | null; shown: Record<OverlayKind, boolean> };
+/** One per-atom population the scene can show: a charge model, or its spin populations (`spin:` key). */
+type Population = { key: string; label: string; values: number[] };
+type Choice = { model: string | null; shown: Record<OverlayKind, boolean> };
 
 // What each scene shows, kept while the dock switches documents: the overlays stay in that scene.
 const choices = new Map<string, Choice>();
@@ -19,7 +21,7 @@ const listeners = new Set<() => void>();
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 const NONE: Choice = { model: null, shown: { "charge-colors": false, charges: false, dipole: false } };
 // What each scene draws now, so a change redraws only the overlays it affects.
-const drawn = new Map<string, Map<OverlayKind, { frame: ScientificFrame; model?: AtomicChargeSet["model"] }>>();
+const drawn = new Map<string, Map<OverlayKind, { frame: ScientificFrame; model?: string }>>();
 function setChoice(documentId: string, next: Choice) {
   choices.set(documentId, next);
   listeners.forEach(listener => listener());
@@ -44,7 +46,7 @@ function useSceneFrame(document: ViewerDocument, science: ScientificDocument | n
 const signed = (value: number, digits: number) => `${value < 0 ? "−" : value > 0 ? "+" : ""}${Math.abs(value).toFixed(digits)}`;
 const hartree = (value: number) => `${value < 0 ? "−" : ""}${Math.abs(value).toFixed(6)} Eh`;
 
-function overlayFor(kind: OverlayKind, frame: ScientificFrame, charges: AtomicChargeSet | undefined) {
+function overlayFor(kind: OverlayKind, frame: ScientificFrame, charges: Population | undefined) {
   if (kind === "dipole") {
     const centre = [0, 1, 2].map(axis => frame.atoms.reduce((sum, atom) => sum + [atom.x, atom.y, atom.z][axis], 0) / frame.atoms.length);
     // One angstrom per debye, from the centre of the atoms.
@@ -52,7 +54,7 @@ function overlayFor(kind: OverlayKind, frame: ScientificFrame, charges: AtomicCh
   }
   if (!charges) return null;
   if (kind === "charges") return { positions: frame.atoms.map(atom => [atom.x, atom.y, atom.z]), labels: charges.values.map(value => signed(value, 2)) };
-  return { values: charges.values, source: `${MODEL_NAMES[charges.model]} charges` };
+  return { values: charges.values, source: charges.key.startsWith("spin:") ? charges.label : `${charges.label} charges` };
 }
 
 /**
@@ -65,8 +67,9 @@ export function CalculationResultsCard({ document }: { document: ViewerDocument 
   const frame = useSceneFrame(document, science, text);
   const choice = useSyncExternalStore(subscribe, () => choices.get(document.id) ?? NONE, () => NONE);
   const [error, setError] = useState<string | null>(null);
-  const sets = frame?.charges ?? [];
-  const charges = sets.find(set => set.model === choice.model) ?? sets[0];
+  const sets: Population[] = [...(frame?.charges ?? []).map(set => ({ key: set.model, label: MODEL_NAMES[set.model], values: set.values })),
+    ...(frame?.spinPopulations ?? []).map(set => ({ key: `spin:${set.model}`, label: `${MODEL_NAMES[set.model]} spin`, values: set.values }))];
+  const charges = sets.find(set => set.key === choice.model) ?? sets[0];
   const dipole = frame?.dipoleDebye ? Math.hypot(...frame.dipoleDebye) : null;
   const thermochemistry = frame?.thermochemistry ?? (science ? science.frames[science.referenceFrameIndex ?? 0]?.thermochemistry : undefined);
 
@@ -79,7 +82,7 @@ export function CalculationResultsCard({ document }: { document: ViewerDocument 
     const kinds: OverlayKind[] = ["charge-colors", "charges", "dipole"];
     void Promise.all(kinds.map(async kind => {
       const overlay = choice.shown[kind] ? overlayFor(kind, frame, charges) : null;
-      const current = scene.get(kind), model = kind === "dipole" ? undefined : charges?.model;
+      const current = scene.get(kind), model = kind === "dipole" ? undefined : charges?.key;
       if (overlay ? current?.frame === frame && current.model === model : !current) return;
       await requestViewerAction(document.id, { type: "calculation_overlay", kind, ...(overlay ? { overlay } : {}) }, 15_000, controller.signal);
       if (overlay) scene.set(kind, { frame, model }); else scene.delete(kind);
@@ -96,7 +99,7 @@ export function CalculationResultsCard({ document }: { document: ViewerDocument 
     : converged !== undefined ? { ok: converged, text: converged ? "Converged" : "Not converged" } : null;
   const runRows = metadata ? runDescription(metadata) : [];
   if (!frame || (!sets.length && dipole === null && !thermochemistry && energy === undefined && !status && !runRows.length)) return null;
-  const toggle = (kind: OverlayKind, value: boolean) => setChoice(document.id, { ...choice, model: charges?.model ?? null, shown: { ...choice.shown, [kind]: value } });
+  const toggle = (kind: OverlayKind, value: boolean) => setChoice(document.id, { ...choice, model: charges?.key ?? null, shown: { ...choice.shown, [kind]: value } });
 
   return (
     <>
@@ -108,6 +111,7 @@ export function CalculationResultsCard({ document }: { document: ViewerDocument 
           </div>
           <div className="structure-brief-rows">
             {energy !== undefined ? <div className="structure-brief-row"><span>Energy</span><strong>{hartree(energy)}</strong></div> : null}
+            {frame.spinSquared !== undefined ? <div className="structure-brief-row"><span>⟨S²⟩</span><strong>{frame.spinSquared.toFixed(4)}</strong></div> : null}
             {runRows.map(([label, value]) => <div key={label} className="structure-brief-row"><span>{label}</span><strong>{value}</strong></div>)}
           </div>
         </section>
@@ -115,13 +119,13 @@ export function CalculationResultsCard({ document }: { document: ViewerDocument 
       {sets.length || dipole !== null ? (
         <section className="structure-brief-card" aria-label="Charges and dipole">
           <div className="structure-brief-card-header">
-            <h4>{sets.length ? "Charges" : "Dipole moment"}</h4>
+            <h4>{sets.length ? (frame.spinPopulations?.length && frame.charges?.length ? "Charges and spins" : frame.charges?.length ? "Charges" : "Spins") : "Dipole moment"}</h4>
             {sets.length > 1 ? (
-              <NativeSelect size="sm" name="charge-model" aria-label="Charge model" value={charges!.model}
-                onChange={event => setChoice(document.id, { ...choice, model: event.target.value as AtomicChargeSet["model"] })}>
-                {sets.map(set => <NativeSelectOption key={set.model} value={set.model}>{MODEL_NAMES[set.model]}</NativeSelectOption>)}
+              <NativeSelect size="sm" name="charge-model" aria-label="Charge model" value={charges!.key}
+                onChange={event => setChoice(document.id, { ...choice, model: event.target.value })}>
+                {sets.map(set => <NativeSelectOption key={set.key} value={set.key}>{set.label}</NativeSelectOption>)}
               </NativeSelect>
-            ) : sets.length ? <span className="calculation-results-value">{MODEL_NAMES[sets[0].model]}</span>
+            ) : sets.length ? <span className="calculation-results-value">{sets[0].label}</span>
               : <span className="calculation-results-value">{`${dipole!.toFixed(2)} D`}</span>}
           </div>
           {sets.length && dipole !== null ? (
@@ -129,7 +133,7 @@ export function CalculationResultsCard({ document }: { document: ViewerDocument 
           ) : null}
           <div className="calculation-results-toggles">
             {sets.length ? <>
-              <label className="calculation-results-toggle" title="Negative charges are blue, positive orange.">
+              <label className="calculation-results-toggle" title="Negative values are blue, positive orange.">
                 <Checkbox checked={choice.shown["charge-colors"]} onCheckedChange={value => toggle("charge-colors", value === true)} />Color atoms
               </label>
               <label className="calculation-results-toggle">

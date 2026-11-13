@@ -18,6 +18,10 @@ export interface ScientificFrame {
   velocitiesAngstromPerPs?: Vec3[]; forcesKcalMolAngstrom?: Vec3[];
   /** Producer-printed partial charges of this geometry, in elementary charges and source atom order. */
   charges?: AtomicChargeSet[];
+  /** Producer-printed atomic spin populations (α − β electrons) of an open-shell geometry, by population model. */
+  spinPopulations?: AtomicChargeSet[];
+  /** ⟨S²⟩ of this geometry's open-shell SCF, as printed. */
+  spinSquared?: number;
   /** Producer-printed total dipole moment of this geometry, in debye, in the frame's Cartesian axes. */
   dipoleDebye?: Vec3;
   /** Producer-printed ideal-gas thermochemistry of this geometry's frequency calculation. */
