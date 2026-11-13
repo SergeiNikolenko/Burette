@@ -14,6 +14,9 @@ import "./workbench-layout.css";
 import "./plots.css";
 
 const KINDS = { 2: ["distance", "Distance", "Å"], 3: ["angle", "Angle", "°"], 4: ["dihedral", "Dihedral", "°"] } as const;
+const CONVERGENCE = [["maxForce", "Max force", "Eh/bohr"], ["rmsForce", "RMS force", "Eh/bohr"], ["maxStep", "Max step", "a.u."], ["rmsStep", "RMS step", "a.u."]] as const;
+type ConvergenceItem = typeof CONVERGENCE[number][0];
+const exponent = (value: number) => value.toExponential(2);
 const UNIT_STORAGE_KEY = "burette.workbench.energy-unit";
 
 function parseAtoms(text: string, atomCount: number) {
@@ -67,6 +70,22 @@ function niceTicks(values: (number | null)[]) {
   return { ticks, domain: [ticks[0], ticks.at(-1)!] as [number, number], format: (value: number) => format(Math.abs(value) < step * 1e-9 ? 0 : value) };
 }
 
+const SUPERSCRIPT = "⁰¹²³⁴⁵⁶⁷⁸⁹";
+/** Whole decades around the positive values and the reference, labelled 10⁻⁴ and so on. */
+function logTicks(values: (number | null)[], reference?: number) {
+  const positive = [...values, reference ?? null].filter((value): value is number => value !== null && Number.isFinite(value) && value > 0);
+  if (!positive.length) return null;
+  const low = Math.floor(Math.log10(Math.min(...positive)) + 1e-9);
+  const high = Math.max(low + 1, Math.ceil(Math.log10(Math.max(...positive)) - 1e-9));
+  const every = Math.ceil((high - low + 1) / 7);
+  const ticks = Array.from({ length: high - low + 1 }, (_, index) => low + index).filter((power) => (power - low) % every === 0).map((power) => 10 ** power);
+  const format = (value: number) => {
+    const power = Math.round(Math.log10(value));
+    return `10${power < 0 ? "⁻" : ""}${[...String(Math.abs(power))].map((digit) => SUPERSCRIPT[Number(digit)]).join("")}`;
+  };
+  return { ticks, domain: [10 ** low, 10 ** high] as [number, number], format };
+}
+
 export function PlotsPanel({ document, science, sourceText }: { document: ViewerDocument; actions: ShellActions; science: ScientificDocument; sourceText: string }) {
   const { cursor, seek, error } = useRetainedTrajectorySource(document, science, sourceText);
   const errorId = useId();
@@ -105,6 +124,11 @@ export function PlotsPanel({ document, science, sourceText }: { document: Viewer
   const maxForces = useMemo(() => (science.frames.some((item) => item.forcesKcalMolAngstrom?.length)
     ? science.frames.map((item) => (item.forcesKcalMolAngstrom?.length ? Math.max(...item.forcesKcalMolAngstrom.map((force) => Math.hypot(...force))) : null))
     : null), [science]);
+  const convergenceItems = useMemo(() => CONVERGENCE.filter(([key]) => science.frames.some((item) => item.convergence?.[key])), [science]);
+  const [convergenceKey, setConvergenceKey] = useState<ConvergenceItem>("maxForce");
+  const convergenceItem = convergenceItems.find(([key]) => key === convergenceKey) ?? convergenceItems[0];
+  const convergence = useMemo(() => (convergenceItem ? science.frames.map((item) => item.convergence?.[convergenceItem[0]]?.value ?? null) : null), [science, convergenceItem]);
+  const threshold = convergenceItem ? science.frames.find((item) => item.convergence?.[convergenceItem[0]]?.threshold)?.convergence?.[convergenceItem[0]]?.threshold : undefined;
 
   const chooseUnit = (value: EnergyUnit) => {
     setUnit(value);
@@ -144,6 +168,17 @@ export function PlotsPanel({ document, science, sourceText }: { document: Viewer
               </>
             )} />
         ) : null}
+        {convergenceItem ? (
+          <SeriesChart {...series} name={convergenceItem[1]} unit={convergenceItem[2]} values={convergence} digits={2} format={exponent} scale="log" reference={threshold}
+            header={(value) => (
+              <>
+                <h3 className="workbench-chart-title">Convergence, {convergenceItem[2]}{value}</h3>
+                <NativeSelect size="sm" aria-label="Convergence value" name="plotConvergence" value={convergenceItem[0]} onChange={(event) => setConvergenceKey(event.currentTarget.value as ConvergenceItem)}>
+                  {convergenceItems.map(([key, label]) => <NativeSelectOption key={key} value={key}>{label}</NativeSelectOption>)}
+                </NativeSelect>
+              </>
+            )} />
+        ) : null}
         <SeriesChart {...series} name={kind ? kind[1] : "Geometry"} unit={kind?.[2] ?? ""} values={geometry} digits={kind?.[0] === "distance" ? 3 : 1}
           header={(value) => (
             <label className="workbench-field workbench-field-inline">
@@ -172,20 +207,27 @@ export function PlotsPanel({ document, science, sourceText }: { document: Viewer
  * one frame, Page Up and Page Down ten, Home and End jump to the ends) and a click
  * on the chart seeks the scene.
  */
-export function SeriesChart({ name, unit, values, digits, axis, cursor, onSeek, header, footer }: {
+export function SeriesChart({ name, unit, values, digits, format = (value) => value.toFixed(digits), scale, reference, axis, cursor, onSeek, header, footer }: {
   name: string; unit: string; values: (number | null)[] | null; digits: number;
+  format?: (value: number) => string;
+  /** A log axis drops values that are not positive. */
+  scale?: "log";
+  /** A dashed level such as a convergence threshold. */
+  reference?: number;
   axis: Axis; cursor: number | null; onSeek?: (index: number) => void;
   header: (current: ReactNode) => ReactNode; footer?: ReactNode;
 }) {
-  const data = useMemo(() => values?.flatMap((value, index) => {
+  const data = useMemo(() => values?.flatMap((raw, index) => {
+    const value = scale === "log" && raw !== null && !(raw > 0) ? null : raw;
     const point = { x: axis.values[index], frame: (axis.frames?.[index] ?? index) + 1, value };
     // Sparse observed frames must not draw a line through unread frames.
     return axis.frames && index > 0 && axis.frames[index] > axis.frames[index - 1] + 1
       ? [{ x: (axis.values[index - 1] + point.x) / 2, frame: 0, value: null }, point] : [point];
-  }) ?? null, [values, axis]);
-  const yTicks = useMemo(() => (values ? niceTicks(values) : null), [values]);
+  }) ?? null, [values, axis, scale]);
+  const yTicks = useMemo(() => (values ? scale === "log" ? logTicks(values, reference) : niceTicks(values) : null), [values, scale, reference]);
   const timeTicks = useMemo(() => (axis.kind === "time" ? niceTicks(axis.values) : null), [axis]);
-  const currentValue = cursor !== null ? values?.[cursor] ?? null : null;
+  const cursorValue = cursor !== null ? values?.[cursor] ?? null : null;
+  const currentValue = scale === "log" && cursorValue !== null && !(cursorValue > 0) ? null : cursorValue;
   const label = unit ? `${name}, ${unit}` : name;
   const currentFrame = cursor !== null ? axis.frames?.[cursor] ?? cursor : null;
   const frameCount = axis.frameCount ?? axis.values.length;
@@ -193,7 +235,7 @@ export function SeriesChart({ name, unit, values, digits, axis, cursor, onSeek, 
   const valueText = (index: number) => {
     const value = values?.[index];
     const frame = (axis.frames?.[index] ?? index) + 1;
-    return value === null || value === undefined ? `Frame ${frame}` : `Frame ${frame}, ${name} ${value.toFixed(digits)} ${unit}`.trim();
+    return value === null || value === undefined ? `Frame ${frame}` : `Frame ${frame}, ${name} ${format(value)} ${unit}`.trim();
   };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (currentFrame === null || !onSeek) return;
@@ -214,7 +256,8 @@ export function SeriesChart({ name, unit, values, digits, axis, cursor, onSeek, 
         ) : (
           <XAxis dataKey="x" type="number" domain={["dataMin", "dataMax"]} allowDecimals={false} tickLine={false} axisLine={false} minTickGap={24} />
         )}
-        <YAxis width={52} tickLine={false} axisLine={false} interval={0} domain={yTicks?.domain ?? ["auto", "auto"]} ticks={yTicks?.ticks} tickFormatter={yTicks?.format} />
+        <YAxis width={52} tickLine={false} axisLine={false} interval={0} scale={scale ?? "auto"} allowDataOverflow={scale === "log"} domain={yTicks?.domain ?? ["auto", "auto"]} ticks={yTicks?.ticks} tickFormatter={yTicks?.format} />
+        {reference !== undefined ? <ReferenceLine y={reference} stroke="var(--color-text-secondary)" strokeDasharray="4 3" /> : null}
         <ChartTooltip content={<ChartTooltipContent labelFormatter={(_, payload) => {
           const frame = Number(payload?.[0]?.payload?.frame);
           const index = axis.frames ? axis.frames.indexOf(frame - 1) : frame - 1;
@@ -228,7 +271,7 @@ export function SeriesChart({ name, unit, values, digits, axis, cursor, onSeek, 
   ) : null;
   return (
     <section aria-label={`${name} per frame`}>
-      <div className="workbench-chart-header">{header(currentValue !== null ? <span className="workbench-chart-current">{currentValue.toFixed(digits)}</span> : null)}</div>
+      <div className="workbench-chart-header">{header(currentValue !== null ? <span className="workbench-chart-current">{format(currentValue)}</span> : null)}</div>
       {footer}
       {chart && cursor !== null && onSeek ? (
         <div className="workbench-chart" role="slider" tabIndex={0} aria-label={`${label} frame`} aria-valuemin={1} aria-valuemax={frameCount}

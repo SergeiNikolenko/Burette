@@ -206,3 +206,23 @@ test("undefined historical dihedrals are SVG gaps and keep frame indices distinc
     assert.deepEqual(sent,[1,2,4]);assert.equal(JSON.stringify(science),original);
   } finally {await view.unmount();if(box)Object.defineProperty(proto,"getBoundingClientRect",box);else Reflect.deleteProperty(proto,"getBoundingClientRect");for(const name of ["clientWidth","clientHeight","offsetWidth","offsetHeight"])Reflect.deleteProperty(proto,name);}
 });
+
+test("an optimization log plots the printed convergence of each step on a chosen item", async () => {
+  const { parseScientificFile } = await import("../apps/desktop/src/lib/molecular-workbench/quantum");
+  const { readFileSync } = await import("node:fs");
+  const science = parseScientificFile("dvb_gopt.out", readFileSync(new URL("fixtures/quantum/gaussian/cclib-dvb_gopt.out", import.meta.url), "utf8"));
+  const view = await mount(<PlotsPanel document={doc} science={science} actions={{ runStructureViewerAction: async () => {} }} />);
+  try {
+    const select = view.host.querySelector('select[aria-label="Convergence value"]');
+    assert.deepEqual([...select.options].map((option) => option.textContent), ["Max force", "RMS force", "Max step", "RMS step"]);
+    await sceneFrame(0, 6);
+    assert.equal(view.host.querySelector('[role="slider"][aria-label="Max force, Eh/bohr frame"]').getAttribute("aria-valuetext"), "Frame 1, Max force 6.07e-2 Eh/bohr");
+    await act(async () => { select.value = "rmsStep"; select.dispatchEvent(new window.Event("change", { bubbles: true })); });
+    assert.equal(view.host.querySelector('[role="slider"][aria-label="RMS step, a.u. frame"]').getAttribute("aria-valuetext"), "Frame 1, RMS step 1.39e-1 a.u.");
+    // The final geometry was not stepped from, so it has no convergence value.
+    await sceneFrame(5, 6);
+    assert.equal(view.host.querySelector('[role="slider"][aria-label="RMS step, a.u. frame"]').getAttribute("aria-valuetext"), "Frame 6");
+  } finally { await view.unmount(); }
+  const plain = await mount(<PlotsPanel document={doc} science={{ format: "xyz", atoms: atoms(0), frames: [0, 0.01].map((shift) => ({ atoms: atoms(shift) })), modes: [], orbitals: [] }} actions={{ runStructureViewerAction: async () => {} }} />);
+  try { assert.equal(plain.host.querySelector('[aria-label="Convergence value"]'), null); } finally { await plain.unmount(); }
+});
