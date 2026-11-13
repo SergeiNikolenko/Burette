@@ -1,6 +1,6 @@
 /** Source data for the six additional Avogadro spectra, separate from display curves. */
 export type AdditionalSpectrumKind = "vcd" | "mcd" | "nmr" | "electronic" | "ecd" | "dos";
-type SpectrumFormat = "avogadro-matrix" | "orca-output" | "orca-mcd" | "cjson" | "qcschema";
+type SpectrumFormat = "avogadro-matrix" | "orca-output" | "orca-mcd" | "cjson" | "qcschema" | "program-output";
 export type SpectralSource = { name: string; format: SpectrumFormat } &
   ({ scope: "file" } | { scope: "frame"; frameIndex: number; frameCount: number });
 export type SpectralColumn = { name: string; unit: string | null; values: readonly number[] };
@@ -25,7 +25,7 @@ export type ScientificSpectra = {
 };
 
 const KINDS = ["vcd", "mcd", "nmr", "electronic", "ecd", "dos"] as const;
-const FORMATS = ["avogadro-matrix", "orca-output", "orca-mcd", "cjson", "qcschema"];
+const FORMATS = ["avogadro-matrix", "orca-output", "orca-mcd", "cjson", "qcschema", "program-output"];
 export const SCIENTIFIC_SPECTRA_LIMITS = Object.freeze({ rows: 10_000, scalars: 100_000, fileBytes: 8 * 1024 * 1024 });
 const { rows: MAX_ROWS, scalars: MAX_SCALARS, fileBytes: MAX_FILE_BYTES } = SCIENTIFIC_SPECTRA_LIMITS;
 function fail(message: string): never { throw new Error(`Invalid scientific spectra: ${message}`); }

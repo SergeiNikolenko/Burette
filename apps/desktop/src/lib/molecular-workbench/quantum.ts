@@ -106,8 +106,8 @@ export function parseScientificFile(name: string, text: string): ScientificDocum
   if (/[._]property\.txt$/i.test(name) || ORCA_PROPERTY_SIGNATURE.test(head)) return parseOrcaProperty(text);
   if (NWCHEM_SIGNATURE.test(head)) return parseNwchemLog(text);
   if (PSI4_SIGNATURE.test(head)) return parsePsi4Log(text);
-  if (GAMESS_SIGNATURE.test(head)) return parseGamessLog(text);
-  if (QCHEM_SIGNATURE.test(head)) return parseQchemLog(text);
+  if (GAMESS_SIGNATURE.test(head)) return parseGamessLog(text, name);
+  if (QCHEM_SIGNATURE.test(head)) return parseQchemLog(text, name);
   if (MOLPRO_SIGNATURE.test(head)) return parseMolproLog(text);
   if (XTB_TRAJECTORY_SIGNATURE.test(head)) return parseXtbTrajectory(text);
   // ORCA's xtb interface can echo the xtb banner inside an ORCA output.

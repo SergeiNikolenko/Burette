@@ -9,6 +9,7 @@ Program outputs from [cclib](https://github.com/cclib/cclib/tree/0c6e08e0a0d04b3
 | `cclib-dvb_sp.out` | B3LYP/STO-3G, C2h divinylbenzene | symmetry-unique basis listing, L shells, eigenvectors with symmetry labels, Mulliken/Löwdin charges, dipole |
 | `cclib-dvb_un_sp.out` | UB3LYP doublet cation, SCF stopped unconverged | alpha/beta sets, `converged: false`, placeholder energy 0.0 not stored |
 | `cclib-C_bigbasis-trimmed.out` | RHF/aug-cc-pCVQZ carbon atom, `ISPHER=1` | s–g Cartesian AO labels, 139 AOs and 109 spherical MOs |
+| `cclib-dvb_td.out` | TDDFT B3LYP/STO-3G | `SUMMARY OF TDDFT RESULTS`: ten states with symmetry, transition dipole and oscillator strength |
 | `cclib-water_mp2.out`, `cclib-water_ccsd.out` | MP2 and CCSD | correlated total energy supersedes SCF |
 | `cclib-dvb_gopt_a.out` | B3LYP optimization | seven steps, `EQUILIBRIUM GEOMETRY LOCATED`, final `MOLECULAR ORBITALS` window |
 | `cclib-nh3_ts_ir.out` | AM1 semi-numerical Hessian at the planar transition state | force-constant matrix, masses, imaginary mode, IR, rigid modes dropped, no Gaussian basis |
@@ -40,6 +41,7 @@ SHA-256:
 
     da1918b28f3d0c1eb3a00a99c7fb83113451aa8f5dc098dcb2ef16ec1e3751cf  cclib-C_bigbasis-trimmed.out
     30c29bb0051f70ebfc644164841af8cef3cb643b7c94696a08808e18c4ca9df1  cclib-dvb_gopt_a.out
+    7247019590c0a75c5fe54416a2a0bbfc64b32b7b2d3dd372777dd1673cc4c0b2  cclib-dvb_td.out
     4d42ff064e4bd9e165d658174d9d8a39619d2db7c09632fcd08b4ebc91a442e3  cclib-dvb_sp.out
     40ee4f23726cd87a691798aba84bc178a0070320946c0db14996b925b8cfdf6f  cclib-dvb_un_sp.out
     7450708da07cb0dfc4992ecac9ed94d39c8f88f1f58c020a0933d992b7844729  cclib-firefly-dvb_raman.out

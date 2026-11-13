@@ -6,6 +6,8 @@ import { hessianFromSquare } from '../hessian';
 import { BOHR, coordinate, MAX_VALUES, numeric } from './reader-values';
 import { OutputHistory, outputLines } from './output-history';
 import { readConvergence } from './convergence';
+import type { AdditionalSpectrum } from '../scientific-spectra';
+import { absorptionSpectrum, withFrameSpectra, type ExcitedState } from './excited-states';
 
 /** 1 D²/(amu·Å²) in km/mol: N_A/(12 ε₀ c²) with 1 D = 10⁻²¹/c C·m (CODATA 2018 constants). */
 const KM_MOL_PER_DEBYE2_AMU_ANGSTROM2 = 42.25606;
@@ -181,9 +183,10 @@ function forceConstantValues(rest: string) {
  * intensities in debye²/(amu·Å²), converted to km/mol. Rotations/translations are dropped as
  * the program classifies them.
  */
-export function parseGamessLog(text: string): ScientificDocument {
+export function parseGamessLog(text: string, name = 'output'): ScientificDocument {
   const lines = outputLines(text);
   const history = new OutputHistory();
+  const excited: { frame: number; spectrum: AdditionalSpectrum }[] = [];
   let unique: ReturnType<typeof basisSection>['atoms'] | undefined;
   let scfType: string | undefined;
   const occupied = { alpha: 0, beta: 0 };
@@ -225,6 +228,22 @@ export function parseGamessLog(text: string): ScientificDocument {
     }
     const convergenceEnd = readConvergence('gamess', lines, i, history.frames.at(-1));
     if (convergenceEnd >= 0) { i = convergenceEnd; continue; }
+    // Rows `n SYM E(Eh) ΔE(eV) X Y Z f` after the ground state's `0 SYM E 0.000`.
+    if (/^\s*SUMMARY OF TDDFT RESULTS\s*$/u.test(line) && history.frames.length) {
+      const states: ExcitedState[] = [];
+      let j = i + 1;
+      while (j < lines.length && !/^\s*0\s+\S+\s+\S+\s+0\.0+\s*$/u.test(lines[j]) && j < i + 6) j++;
+      for (j++; j < lines.length; j++) {
+        const row = lines[j].match(/^\s*(\d+)\s+(\S+)\s+\S+\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s*$/u);
+        if (!row) break;
+        states.push({ label: `${row[1]} ${row[2]}`, energyEv: numeric(row[3]), oscillatorStrength: numeric(row[7]),
+          transitionDipoleAu: [numeric(row[4]), numeric(row[5]), numeric(row[6])] });
+      }
+      if (!states.length) throw new Error('Malformed GAMESS TDDFT summary.');
+      excited.push({ frame: history.frames.length - 1, spectrum: absorptionSpectrum(states) });
+      i = j - 1;
+      continue;
+    }
     let match = line.match(/^\s*SCFTYP=(\S+)/u);
     if (match) { scfType ??= match[1]; continue; }
     match = line.match(/^\s*NUMBER OF OCCUPIED ORBITALS \((ALPHA|BETA )\)\s*=\s*(\d+)\s*$/u);
@@ -369,7 +388,7 @@ export function parseGamessLog(text: string): ScientificDocument {
       i = j - 1;
     }
   }
-  return finish();
+  return withFrameSpectra(finish(), name, excited);
 
   function finish(): ScientificDocument {
     const document = history.document('gamess-log', [], converged);

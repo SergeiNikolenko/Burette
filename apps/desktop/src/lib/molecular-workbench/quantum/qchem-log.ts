@@ -4,6 +4,8 @@ import { coordinate, numeric } from './reader-values';
 import { OutputHistory, orbitalTable, outputLines } from './output-history';
 import { readThermochemistryLine } from './thermochemistry';
 import { readConvergence } from './convergence';
+import type { AdditionalSpectrum } from '../scientific-spectra';
+import { absorptionSpectrum, withFrameSpectra, type ExcitedState } from './excited-states';
 
 const CHARGE_TABLES: [RegExp, AtomicChargeSet['model']][] = [
   [/^\s*Ground-State Mulliken Net Atomic Charges\s*$/u, 'mulliken'],
@@ -47,9 +49,10 @@ function orbitalEnergies(lines: string[], start: number) {
  * displacements, IR in km/mol, Raman in Å⁴/amu. MO coefficients printed by `print_orbitals` are
  * truncated to five decimals: the FCHK (`gui = 2`) or Molden file of the same job carries them.
  */
-export function parseQchemLog(text: string): ScientificDocument {
+export function parseQchemLog(text: string, name = 'output'): ScientificDocument {
   const lines = outputLines(text);
   const history = new OutputHistory();
+  const excited: { frame: number; spectrum: AdditionalSpectrum }[] = [];
   let converged: boolean | undefined;
   let orbitals: { frame: number; alpha?: ReturnType<typeof orbitalEnergies>['rows']; beta?: ReturnType<typeof orbitalEnergies>['rows']; unrestricted: boolean } = { frame: -1, unrestricted: false };
   // Q-Chem 5.4 can print a second table under the same heading (orbital-by-orbital populations): the first per SCF counts.
@@ -76,6 +79,28 @@ export function parseQchemLog(text: string): ScientificDocument {
     if (readThermochemistryLine('qchem', lines, i, history.frames.at(-1))) continue;
     const convergenceEnd = readConvergence('qchem', lines, i, history.frames.at(-1));
     if (convergenceEnd >= 0) { i = convergenceEnd; continue; }
+    // `Excited state n: excitation energy (eV) = E`, then its multiplicity (restricted), transition moment and strength.
+    if (/^\s*(?:TDDFT\/TDA|TDDFT|CIS|RPA)\s+Excitation Energies\s*$/u.test(line) && history.frames.length) {
+      const states: ExcitedState[] = [];
+      let j = i + 2;
+      for (; j < lines.length && !/^\s*-{20,}\s*$/u.test(lines[j]); j++) {
+        const state = lines[j].match(/^\s*Excited state\s+(\d+): excitation energy \(eV\) =\s*(\S+)\s*$/u);
+        if (state) { states.push({ label: state[1], energyEv: numeric(state[2]), oscillatorStrength: NaN }); continue; }
+        const current = states.at(-1);
+        if (!current) continue;
+        const multiplicity = lines[j].match(/^\s*Multiplicity:\s*(\S+)\s*$/u);
+        if (multiplicity) { current.label = `${current.label} ${multiplicity[1]}`; continue; }
+        const moment = lines[j].match(/^\s*Trans\. Mom\.:\s*(\S+) X\s+(\S+) Y\s+(\S+) Z\s*$/u);
+        if (moment) { current.transitionDipoleAu = [numeric(moment[1]), numeric(moment[2]), numeric(moment[3])]; continue; }
+        const strength = lines[j].match(/^\s*Strength\s*:\s*(\S+)\s*$/u);
+        if (strength) current.oscillatorStrength = numeric(strength[1]);
+      }
+      if (j >= lines.length) break;
+      if (!states.length || states.some(state => !Number.isFinite(state.oscillatorStrength))) throw new Error('Malformed Q-Chem excited state.');
+      excited.push({ frame: history.frames.length - 1, spectrum: absorptionSpectrum(states) });
+      i = j;
+      continue;
+    }
     let match = line.match(/^\s*Total energy in the final basis set\s*=\s*(\S+)\s*$/u);
     if (match) { history.scfEnergy(numeric(match[1])); models = new Set(); continue; }
     match = line.match(CORRELATED_ENERGY);
@@ -155,7 +180,7 @@ export function parseQchemLog(text: string): ScientificDocument {
       i = j;
     }
   }
-  return document();
+  return withFrameSpectra(document(), name, excited);
 
   function document(): ScientificDocument {
     const reference = history.frames.length - 1;

@@ -15,6 +15,7 @@ BSD-3-Clause (`../cclib-LICENSE.txt`); `water_ccsd(t).out` is renamed `cclib-wat
 | `cclib-water_mp2.out`, `cclib-water_ccsd_t.out` | MP2, CCSD(T) | correlated total energy supersedes SCF |
 | `cclib-Trp_polar.out` | RHF polarizability, `symmetry = false` | bare `Alpha MOs` header, four-decimal energies, no symmetry labels |
 | `cclib-water_hf_solvent_smd.out` | Q-Chem 6.0 HF in SMD water | symmetry turned off by the solvent model, same orbital format |
+| `cclib-dvb_td.out` | TDDFT/TDA B3LYP/STO-3G | ten excited states with multiplicity, transition moment and strength |
 
 `cclib-reference.json`: `python ../cclib-reference.py cclib-*.out` with cclib
 `1.8.1.post1298+0c6e08e0`; it does not cover `cclib-Trp_polar.out` or
@@ -25,6 +26,7 @@ Burette keeps the first (fitted) table.
 SHA-256:
 
     b4f7fd1e82098429d25df93dd2be21d4e7f5f634fba97027e333d5345884dccb  cclib-dvb_gopt.out
+    90f19779d869d81fbe224e82a485dfdc30f319467b4c32cb886803723bb80033  cclib-dvb_td.out
     f2fcd932f305256583aaca8b552143bd9265db10d51647f1fe32250c75f3d532  cclib-dvb_ir.out
     cf73cd9afb246ab617d18b0fb4d5badfdc6ff78f59bf9fe5426fcacfe5269a70  cclib-dvb_raman.out
     a30d77ffa105d57a2ee1c3678a0aa6443d18af519aadfb64348de501e4d46658  cclib-dvb_sp.out
