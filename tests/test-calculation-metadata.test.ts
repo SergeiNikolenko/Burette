@@ -58,3 +58,10 @@ test("Q-Chem, GAMESS and Molpro outputs describe their version, method, basis, c
     charge: 1, multiplicity: 2, termination: "normal", runSeconds: 1.11 });
   expect(read("fixtures/quantum/molpro/cclib-dvb_ir.out").metadata).toMatchObject({ program: "Molpro 2012.1", keywords: "RKS-SCF HESSIAN", termination: "normal" });
 });
+
+test("a Gaussian log describes its revision, route, basis, charge, multiplicity, termination and elapsed time", () => {
+  expect(read("fixtures/quantum/gaussian/cclib-dvb_un_sp.log").metadata).toEqual({ program: "Gaussian 16 Rev. A.03", keywords: "#p ub3lyp/sto-3g pop=full iop(3/33=1,3/36=-1) nosym",
+    basis: "STO-3G", charge: 1, multiplicity: 2, termination: "normal", runSeconds: 8.9 });
+  // Gaussian wraps the route at 70 columns, inside "iop(3/33=1,3/36=-1)" here.
+  expect(read("fixtures/quantum/gaussian/cclib-dvb_sp.out").metadata?.keywords).toBe("#p b3lyp/sto-3g guess=read geom=allcheck pop=full gfinput iop(3/33=1,3/36=-1)");
+});

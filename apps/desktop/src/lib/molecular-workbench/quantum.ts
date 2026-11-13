@@ -24,7 +24,7 @@ import { parseMolden } from "./gaussian";
 import { hessianFromOrcaSection } from "./hessian";
 import { atomsFromZmatrixDocument, parseZmatrixDocument } from "../../../../../scripts/zmatrix-document.mjs";
 import { readCoordinateInterchange } from "../../../../../scripts/coordinate-interchange.mjs";
-import { orcaMetadata } from "./quantum/run-metadata";
+import { gaussianMetadata, orcaMetadata } from "./quantum/run-metadata";
 
 export const BOHR_ANGSTROM = 0.529177210903;
 const MAX_TEXT = 16 * 1024 * 1024;
@@ -112,11 +112,18 @@ export function parseScientificFile(name: string, text: string): ScientificDocum
   if (XTB_TRAJECTORY_SIGNATURE.test(head)) return parseXtbTrajectory(text);
   // ORCA's xtb interface can echo the xtb banner inside an ORCA output.
   if (XTB_SIGNATURE.test(head) && !ORCA_BANNER.test(head)) return parseXtbOutput(text);
-  if (/Entering Gaussian System|Gaussian, Inc\.|Gaussian \d+:|^\s*(?:Standard|Input|Z-Matrix) orientation:/m.test(text)) return parseGaussianLog(text);
+  if (/Entering Gaussian System|Gaussian, Inc\.|Gaussian \d+:|^\s*(?:Standard|Input|Z-Matrix) orientation:/m.test(text)) return parseGaussian(text);
   if (/\[Molden Format\]/i.test(text)) return parseMolden(text);
   if (/\$vibrational_frequencies\b/.test(text)) return parseHessian(text);
   if (/CARTESIAN COORDINATES \(ANGSTROEM\)/.test(text)) return parseOrca(name, text);
   throw new Error("Supported scientific inputs are ORCA output/Hessian/property files, Gaussian log/FCHK/cube, GAMESS, NWChem, Psi4, Q-Chem, Molpro and xtb outputs, Molden, QCSchema, Chemical JSON and XYZ trajectories.");
+}
+
+function parseGaussian(text: string): ScientificDocument {
+  const document = parseGaussianLog(text);
+  const metadata = gaussianMetadata(text.split(/\r\n?|\n/));
+  if (metadata) document.metadata = metadata;
+  return document;
 }
 
 function parseXyzTrajectory(text: string): ScientificDocument {

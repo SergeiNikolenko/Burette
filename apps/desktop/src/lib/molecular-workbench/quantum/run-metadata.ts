@@ -98,6 +98,36 @@ export function qchemMetadata(lines: readonly string[]): CalculationMetadata | u
   return Object.keys(metadata).length ? metadata : undefined;
 }
 
+/**
+ * Gaussian's banner version and revision, the first route section (Gaussian wraps it at 70
+ * columns mid-token, so the lines join without spaces), the first standard basis, charge and
+ * multiplicity, the last link's termination and the elapsed time summed over the links.
+ */
+export function gaussianMetadata(lines: readonly string[]): CalculationMetadata | undefined {
+  const metadata: CalculationMetadata = {};
+  let route: string | undefined, inRoute = false, elapsed: number | undefined;
+  for (const line of lines) {
+    if (inRoute) {
+      if (/^\s*-+\s*$/u.test(line)) inRoute = false; else route += line.replace(/^ /u, '');
+      continue;
+    }
+    let match = line.match(/^ Gaussian (\d+):\s+\S*?G\d+Rev([A-Z]\.\d+)/u);
+    if (match && !metadata.program) { metadata.program = `Gaussian ${match[1]} Rev. ${match[2]}`; continue; }
+    if (route === undefined && metadata.program && /^ #/u.test(line)) { route = line.slice(1); inRoute = true; continue; }
+    match = line.match(/^ Standard basis:\s*(\S+)/u);
+    if (match && !metadata.basis) { metadata.basis = clip(match[1]); continue; }
+    match = line.match(/^ Charge =\s*(-?\d+) Multiplicity =\s*(\d+)/u);
+    if (match && metadata.charge === undefined) { metadata.charge = Number(match[1]); metadata.multiplicity = Number(match[2]); continue; }
+    if (/^ Normal termination of Gaussian/u.test(line)) { metadata.termination = 'normal'; continue; }
+    if (/^ Error termination/u.test(line)) { metadata.termination = 'error'; continue; }
+    match = line.match(/^ Elapsed time:\s*(\d+) days\s+(\d+) hours\s+(\d+) minutes\s+([\d.]+) seconds/u);
+    if (match) elapsed = (elapsed ?? 0) + ((Number(match[1]) * 24 + Number(match[2])) * 60 + Number(match[3])) * 60 + Number(match[4]);
+  }
+  if (route) metadata.keywords = clip(route);
+  if (elapsed !== undefined) metadata.runSeconds = Number(elapsed.toFixed(3));
+  return Object.keys(metadata).length ? metadata : undefined;
+}
+
 const GAMESS_KEYS = ['SCFTYP', 'RUNTYP', 'DFTTYP', 'TDDFT', 'MPLEVL', 'CITYP', 'CCTYP'];
 const GAMESS_SEMIEMPIRICAL = /^(?:AM1|PM3|PM6|MNDO|RM1|DFTB)$/u;
 const GAMESS_CC = /^(A?)CC([DTQ56])(C?)$/u;

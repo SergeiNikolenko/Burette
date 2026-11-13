@@ -92,7 +92,8 @@ covers the revision and its save and reopen
 `metadata` describes the job as its output prints it: program and version, the
 input keyword lines, the basis, charge and multiplicity, how the run ended
 (`normal` or `error`; absent while a job runs or when the output was cut) and
-the run time (`quantum/run-metadata.ts`). ORCA output gives all of them;
+the run time (`quantum/run-metadata.ts`). ORCA and Gaussian output give all of
+them (Gaussian: the first route section and the elapsed time of all links);
 QCSchema gives the model, `provenance`, charge and multiplicity. xtb output gives its
 version, Hamiltonian and command-line options, charge and unpaired electrons,
 termination and total wall time. Q-Chem gives the method, job type and basis
