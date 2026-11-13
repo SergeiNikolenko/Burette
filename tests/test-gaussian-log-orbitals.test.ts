@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 import { parseGaussianLog } from '../apps/desktop/src/lib/molecular-workbench/quantum/gaussian-log';
+import { parseScientificFile } from '../apps/desktop/src/lib/molecular-workbench/quantum';
 import { evaluateOrbital } from '../apps/desktop/src/lib/molecular-workbench/gaussian';
 import type { Vec3 } from '../apps/desktop/src/lib/molecular-workbench/types';
 import { cclibReference, expectClose, expectLineEndingsIgnored, expectSchema, fixtureText } from './quantum-output-fixture';
@@ -92,4 +93,18 @@ test('malformed orbital tables are refused rather than guessed', () => {
     text.replace(/(Molecular Orbital Coefficients:\n[\s\S]*?\n) +6 +7 +8 +9 +10\n/u, '$1                           7         8         9        10        11\n'),
   ];
   for (const variant of broken) expect(() => parseGaussianLog(variant)).toThrow();
+});
+
+test('GIAO shieldings, Mulliken spin densities, S**2 and forces belong to the geometry that printed them', () => {
+  const nmr = parseScientificFile('cclib-dvb_nmr.log', fixtureText('gaussian/cclib-dvb_nmr.log')).frames[0].spectra!.spectra[0];
+  if (nmr.kind !== 'nmr') throw new Error('expected shieldings');
+  // `1  C    Isotropic =   114.0880   Anisotropy =   147.6438`
+  expect([nmr.atomIndices.length, nmr.valuesPpm.slice(0, 3), nmr.auxiliary![1].values[0]]).toEqual([20, [114.088, 114.088, 117.763], 147.6438]);
+  const open = read('cclib-dvb_un_sp.log').frames[0];
+  expect(open.spinPopulations![0].values.slice(0, 2)).toEqual([0.213022, 0.02541]);
+  expect(open.spinSquared).toBe(0.7778); // `S**2 before annihilation     0.7778,   after     0.7504`
+  const forces = read('cclib-dvb_gopt.out').frames.map(frame => frame.forcesKcalMolAngstrom![0][0]);
+  // `1  6  -0.050454775  0.000000000  0.000584594` Hartree/bohr at the first step.
+  expect(forces[0]).toBeCloseTo(-0.050454775 * 627.5094740631 / 0.529177210903, 10);
+  expect(forces).toHaveLength(5);
 });

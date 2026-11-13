@@ -13,6 +13,8 @@ BSD-3-Clause (`../cclib-LICENSE.txt`).
 | `cclib-dvb_ir.out` | B3LYP/STO-3G `freq=hpmodes` | high-precision mode table before the standard one, thermochemistry |
 | `cclib-water_mp2.log` | MP2 `Density Pop=(Full,NaturalOrbitals)` | MP2 total energy supersedes SCF; no SCF orbital table |
 | `cclib-dvb_eomccsd.log` | EOM-CCSD/STO-3G singlets and triplets | coefficient window from MO 31, CCSD total energy supersedes SCF |
+| `cclib-dvb_td.out` | B3LYP/STO-3G `td(nstates=5)` | excited states with transition dipoles; rotatory strengths of an achiral molecule (all zero) |
+| `cclib-dvb_nmr.log` | B3LYP/STO-3G NMR | GIAO isotropic shieldings and anisotropies of every atom |
 
 All files are byte-identical except `cclib-C_bigbasis-trimmed.out`, which removes the printed
 density matrix and gross orbital populations to stay under the repository blob limit:
@@ -41,3 +43,5 @@ SHA-256:
     bc1a21de15ada135d5188b11d44226389022d92488ddfa8163ba7d4d713e5061  cclib-dvb_ir.out
     9a93eac63dba161d4973494df296ff4e62bd1f3c97da6e519df97df172bade74  cclib-water_mp2.log
     cb7da36685f114a91cb786cce7d02c5468e572345fa7e0e90f5547ce8cf65b0a  cclib-dvb_eomccsd.log
+    c9255c92b829a4d2072ffca262be4dd9212f35a9c75d84c1fe8eb5969c166eef  cclib-dvb_td.out
+    f25963eae563e31fc3cbd58507d904f28f8a6fa8df61ef711b270a06ecc50b83  cclib-dvb_nmr.log

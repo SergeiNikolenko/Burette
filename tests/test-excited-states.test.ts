@@ -28,3 +28,27 @@ test("the GAMESS TDDFT summary keeps each state's symmetry, transition dipole an
   expect(spectrum.values.slice(0, 2)).toEqual([0.6722, 0.0358]);
   expect(spectrum.auxiliary!.map((column) => column.values[0])).toEqual([2.4722, 0.0498, 0]);
 });
+
+test("Gaussian TD-DFT states keep their symmetry, transition dipole and oscillator strength; EOM-CCSD keeps its final states", () => {
+  const { spectrum } = absorption("fixtures/quantum/gaussian/cclib-dvb_td.out");
+  // `Excited State   1:      Singlet-BU     5.3351 eV  232.39 nm  f=0.1707`; dipole row `1  0.1090 -1.1375 0.0000`.
+  expect(spectrum.sourceRowIds).toEqual(["1 Singlet-BU", "2 Singlet-BU", "3 Singlet-AG", "4 Singlet-BU", "5 Singlet-AG"]);
+  expect(spectrum.positions).toEqual([5.3351, 5.3746, 6.2152, 6.7732, 7.4124]);
+  expect(spectrum.values).toEqual([0.1707, 0.6779, 0, 0.1793, 0]);
+  expect(spectrum.auxiliary!.map((column) => column.values[0])).toEqual([0.109, -1.1375, 0]);
+  // Divinylbenzene is achiral: its rotatory strengths are all zero, so there is no ECD spectrum.
+  expect(read("fixtures/quantum/gaussian/cclib-dvb_td.out").frames[0].spectra!.spectra.map((item) => item.kind)).toEqual(["electronic"]);
+  // The CIS guess states come first; the EOM-CCSD states printed last are the result.
+  const eom = absorption("fixtures/quantum/gaussian/cclib-dvb_eomccsd.log").spectrum;
+  expect([eom.positions.length, eom.positions[0], eom.sourceRowIds![0]]).toEqual([10, 3.0322, "1 Triplet-BU"]);
+});
+
+test("Gaussian velocity rotatory strengths become an ECD spectrum when any is nonzero", () => {
+  const text = readFileSync(new URL("fixtures/quantum/gaussian/cclib-dvb_td.out", import.meta.url), "utf8");
+  const chiral = text.replace(/(R\(velocity\)    E-M Angle\n {9}1 +-0\.0000 +0\.0000 +-0\.0000) +-0\.0000/u, "$1     12.3456");
+  expect(chiral).not.toBe(text);
+  const ecd = parseScientificFile("chiral.out", chiral).frames[0].spectra!.spectra.find((item) => item.kind === "ecd")!;
+  expect(ecd).toMatchObject({ xUnit: "eV", valueUnit: "10**-40 erg-esu-cm/Gauss", positions: [5.3351, 5.3746, 6.2152, 6.7732, 7.4124] });
+  // The other rows print `-0.0000`.
+  expect(ecd.values.map((value) => value + 0)).toEqual([12.3456, 0, 0, 0, 0]);
+});
