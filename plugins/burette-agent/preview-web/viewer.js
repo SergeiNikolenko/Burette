@@ -2250,6 +2250,39 @@
     viewerResizeObserver = { observer, container };
   }
 
+  // Mol* keeps the camera distance when the viewport changes shape, so a camera
+  // nobody moved would crop the scene in a narrower pane. Each frame records
+  // whether the camera is where a reset puts it (target on the scene centre at
+  // the fitting distance; rotation keeps that). `resized` fires inside the frame
+  // after the new viewport is set and before drawing, so the refit lands on that
+  // same frame. A zoom, pan or focus leaves its view as it is.
+  const cameraRefitCanvases = new WeakSet();
+  function installCameraRefit(viewer) {
+    const canvas3d = viewer?.plugin?.canvas3d;
+    if (!canvas3d?.resized || !canvas3d.didDraw || cameraRefitCanvases.has(canvas3d)) return;
+    cameraRefitCanvases.add(canvas3d);
+    const fitsScene = () => {
+      const { center, radius } = canvas3d.boundingSphereVisible;
+      if (!(radius > 0)) return false;
+      const camera = canvas3d.camera;
+      const view = camera.getSettledSnapshot?.() ?? camera.getSnapshot();
+      const distance = Math.hypot(view.position[0] - view.target[0], view.position[1] - view.target[1], view.position[2] - view.target[2]);
+      const tolerance = 1e-3 * Math.max(radius, distance);
+      return Math.hypot(view.target[0] - center[0], view.target[1] - center[1], view.target[2] - center[2]) <= tolerance
+        && Math.abs(distance - camera.getTargetDistance(Math.max(radius, 0.01))) <= tolerance;
+    };
+    let fitted = false;
+    canvas3d.didDraw.subscribe(() => { fitted = fitsScene(); });
+    // A BehaviorSubject replays its last value on subscribe; that is no resize.
+    let replayed = false;
+    canvas3d.resized.subscribe(() => {
+      if (!replayed) { replayed = true; return; }
+      if (!fitted) return;
+      const { center, radius } = canvas3d.boundingSphereVisible;
+      if (radius > 0) canvas3d.camera.setState(canvas3d.camera.getFocus(center, radius), 0);
+    });
+  }
+
   const DEFAULT_VIEWER_UI_SCALE = 0.9;
   const MIN_VIEWER_UI_SCALE = 0.9;
   const MAX_VIEWER_UI_SCALE = 0.9;
@@ -6522,6 +6555,7 @@
     initSequenceResize();
     installSequenceSelectionMode();
     installViewerResizeObserver(viewer);
+    installCameraRefit(viewer);
     updateToolbarVisibility();
     updateSdfPoseButton();
     updateThemeButton();
