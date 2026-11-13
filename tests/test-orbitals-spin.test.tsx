@@ -89,3 +89,19 @@ test('schema-valid sparse source ids shared by alpha and beta select array posit
   expect(Array.from(b.grid!.values, value => value === 0 ? 0 : -value)).toEqual(Array.from(a.grid!.values));
  } finally { await view.close(); }
 });
+
+test('a level in the diagram selects its spin and orbital and shows that surface right away', async () => {
+ const view = await fixture();
+ try {
+  await view.replaceScience(await originalScience());
+  const level = (label: string) => [...view.host.querySelectorAll('[role="option"]')].find(option => option.getAttribute('aria-label')!.startsWith(label))!;
+  await act(async () => { level('Orbital 2 β').dispatchEvent(new (view.host.ownerDocument.defaultView as unknown as typeof window).MouseEvent('click', { bubbles: true })); });
+  expect(button(view.host, 'β').getAttribute('aria-checked')).toBe('true');
+  expect(view.host.querySelector('tbody tr[aria-selected="true"] th')?.textContent).toContain('2');
+  await ready(view);
+  expect(view.calls.filter(action => action.cube).length).toBe(1);
+  expect(level('Orbital 2 β').getAttribute('aria-selected')).toBe('true');
+  await click(view.host, 'Export Cube'); await wait(() => view.saved.length === 1, 'beta export');
+  expect(view.saved[0].title).toBe('import-orbital-2.cube');
+ } finally { await view.close(); }
+});

@@ -14,3 +14,33 @@
   color: var(--text-muted);
   font-weight: 400;
 }
+.orbital-diagram {
+  display: block;
+  max-width: 100%;
+  overflow: visible;
+  border-radius: 6px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.orbital-diagram:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+.orbital-diagram text { fill: var(--text-secondary); }
+.orbital-diagram-axis,
+.orbital-diagram-tick line { stroke: var(--color-border); }
+.orbital-level line,
+.orbital-level-arrow {
+  fill: none;
+  stroke: var(--text-secondary);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+.orbital-level[data-occupied] line,
+.orbital-level[data-occupied] .orbital-level-arrow { stroke: var(--color-text); }
+.orbital-level-hit { fill: transparent; }
+.orbital-diagram[tabindex="0"] .orbital-level { cursor: pointer; }
+.orbital-diagram[tabindex="0"] .orbital-level:hover line { stroke: var(--color-text); }
+.orbital-level[data-selected] line { stroke: var(--color-text); stroke-width: 3; }
+.orbital-level[data-selected] .orbital-level-hit { fill: var(--color-border); }
+.orbital-diagram .orbital-level-tag { fill: var(--color-text); font-weight: 500; }

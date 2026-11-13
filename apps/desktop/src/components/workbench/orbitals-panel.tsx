@@ -14,6 +14,7 @@ import { NativeSelect, NativeSelectOption } from "../ui/native-select";
 import { ScrubNumberField } from "../ui/scrub-number-input";
 import { SegmentedControl, SegmentedControlItem } from "../ui/segmented-control";
 import { Spinner } from "../ui/spinner";
+import { OrbitalLevelDiagram } from "./orbital-level-diagram";
 import "./workbench-layout.css";
 import "./orbitals.css";
 
@@ -289,6 +290,9 @@ export function OrbitalsPanel({ document, actions, science, sourceText, sourceKi
             ) : null}
             {homo && lumo ? <span className="workbench-value">Gap {((lumo.energyHartree - homo.energyHartree) * HARTREE_EV).toFixed(3)} eV</span> : null}
           </div>
+          {/* A level shows its surface right away; the table below keeps the full list of the chosen spin. */}
+          <OrbitalLevelDiagram orbitals={science.orbitals} frontier={frontier} selected={hasBasis ? selected : null} selectable={hasBasis}
+            onSelect={(index) => { setSelected(index); setSpin(science.orbitals[index].spin); setFieldKind("orbital"); setIsovalue(DEFAULT_ISOVALUE.orbital); setWanted(true); }} />
           <table className="workbench-table" aria-label="Molecular orbitals">
             <thead>
               <tr><th scope="col">Orbital</th><th scope="col">Occupancy</th><th scope="col">Energy, Eh</th><th scope="col">Energy, eV</th></tr>
