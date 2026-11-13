@@ -195,8 +195,8 @@ test("restored MOL graph keeps source-only Compute while XYZ and foreign MOLX ke
       expect(outcome).toBe(version === "plain" ? "foreign" : "restored");
       expect(logicalSourceFor(document.id)?.extension).toBe(version === 4 ? "mol" : version === 1 ? "xyz" : undefined);
       const menu = await labels();
-      // A restored MOL source is a polymer-builder source (dc1066484) but never gains generic xTB/CREST jobs.
-      if (version === 4) expect(menu).toEqual(["Show spectra", "Build polymer…"]);
+      // A restored MOL source takes the builders (polymer since dc1066484, the others insert into it) but never generic xTB/CREST jobs.
+      if (version === 4) expect(menu).toEqual(["Show spectra", "Build polymer…", "Build peptide…", "Build DNA or RNA…", "Build metal complex…"]);
       else { expect(menu).toContain("Energy & charges"); expect(menu).toContain("Generate conformers"); }
     } finally { await act(async () => root.unmount()); host.remove(); native.dispose(); }
   }
