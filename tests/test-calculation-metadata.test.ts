@@ -65,3 +65,18 @@ test("a Gaussian log describes its revision, route, basis, charge, multiplicity,
   // Gaussian wraps the route at 70 columns, inside "iop(3/33=1,3/36=-1)" here.
   expect(read("fixtures/quantum/gaussian/cclib-dvb_sp.out").metadata?.keywords).toBe("#p b3lyp/sto-3g guess=read geom=allcheck pop=full gfinput iop(3/33=1,3/36=-1)");
 });
+
+test("Psi4 and NWChem outputs describe their version, method, basis, charge, multiplicity, termination and wall time", () => {
+  expect(read("fixtures/quantum/psi4/cclib-water-mp2.out").metadata).toEqual({ program: "Psi4 1.7", keywords: "energy('mp2')", basis: "STO-3G",
+    charge: 0, multiplicity: 1, termination: "normal", runSeconds: 0.42 });
+  // A Python API run echoes no input and ends without the exit line; a failed SCF raises.
+  expect(read("fixtures/quantum/psi4/oh-uhf.out").metadata).toEqual({ program: "Psi4 1.11", basis: "6-31G*", charge: 0, multiplicity: 2 });
+  expect(read("fixtures/quantum/psi4/water-scf-fail.out").metadata?.termination).toBe("error");
+  expect(read("fixtures/quantum/nwchem/oh-uhf.out").metadata).toEqual({ program: "NWChem 7.3.0", keywords: "UHF", basis: "6-31g*",
+    charge: 0, multiplicity: 2, termination: "normal", runSeconds: 0.2 });
+  expect(read("fixtures/quantum/nwchem/cclib-dvb_gopt_ks.out").metadata).toMatchObject({ keywords: "B3LYP", basis: "sto-3g", multiplicity: 1, runSeconds: 9.9 });
+  expect(read("fixtures/quantum/nwchem/cclib-water-mp2.out").metadata?.keywords).toBe("RHF MP2");
+  // NWChem prints the failing input line instead of its timing summary.
+  const failed = read("fixtures/quantum/nwchem/water-scf-fail.out").metadata!;
+  expect([failed.termination, failed.runSeconds]).toEqual(["error", undefined]);
+});

@@ -128,6 +128,89 @@ export function gaussianMetadata(lines: readonly string[]): CalculationMetadata 
   return Object.keys(metadata).length ? metadata : undefined;
 }
 
+/**
+ * Psi4's banner version, the driver calls of the echoed input (absent for a Python API run),
+ * the first orbital basis, the charge and multiplicity of the first geometry, the exit line and
+ * the wall time for execution.
+ */
+export function psi4Metadata(lines: readonly string[]): CalculationMetadata | undefined {
+  const metadata: CalculationMetadata = {};
+  const calls: string[] = [];
+  let input: 'before' | 'header' | 'open' | 'done' = 'before';
+  for (const line of lines) {
+    if (input === 'header' || input === 'open') {
+      if (/^\s*-{20,}\s*$/u.test(line)) { input = input === 'header' ? 'open' : 'done'; continue; }
+      if (input === 'open' && /^\s*(?:\w+\s*(?:,\s*\w+\s*)*=\s*)?(?:psi4\.)?(?:energy|optimize|opt|frequency|frequencies|freq|gradient|hessian|properties|prop)\s*\(/u.test(line)) calls.push(line.trim());
+      continue;
+    }
+    if (input === 'before' && /^\s*==> Input File <==\s*$/u.test(line)) { input = 'header'; continue; }
+    // `Psi4 1.7 release`; development builds print `Psi4 1.1rc3.dev5`.
+    let match = line.match(/^\s+Psi4 (\d[\w.]*)(?: release)?\s*$/u);
+    if (match && !metadata.program) { metadata.program = `Psi4 ${match[1]}`; continue; }
+    match = line.match(/^\s*Basis Set: ([^(\s].*?)\s*$/u);
+    if (match && !metadata.basis) { metadata.basis = clip(match[1]); continue; }
+    match = line.match(/^\s*Geometry \(in (?:Angstrom|Bohr)\), charge = (-?\d+), multiplicity = (\d+):\s*$/u);
+    if (match && metadata.charge === undefined) { metadata.charge = Number(match[1]); metadata.multiplicity = Number(match[2]); continue; }
+    if (/^\*\*\* Psi4 exiting successfully/u.test(line)) { metadata.termination = 'normal'; continue; }
+    if (/^\s*(?:PsiException:|Psi4 encountered an error)/u.test(line)) { metadata.termination = 'error'; continue; }
+    match = line.match(/^\s*Psi4 wall time for execution:\s*(\d+):(\d+):([\d.]+)\s*$/u);
+    if (match) metadata.runSeconds = (Number(match[1]) * 60 + Number(match[2])) * 60 + Number(match[3]);
+  }
+  if (calls.length) metadata.keywords = clip(calls.join('; '));
+  return Object.keys(metadata).length ? metadata : undefined;
+}
+
+/**
+ * NWChem's version, the methods its modules ran (the SCF wavefunction, the DFT functional, then
+ * correlated modules), the first basis description, the charge and multiplicity of the first
+ * SCF or DFT setup, the termination (an error prints the failing input line) and the total wall time.
+ */
+export function nwchemMetadata(lines: readonly string[]): CalculationMetadata | undefined {
+  const metadata: CalculationMetadata = {};
+  const methods: string[] = [];
+  let module: string | undefined, alpha: number | undefined, basisTable = false;
+  const add = (method: string) => { if (!methods.includes(method)) methods.push(method); };
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    let match = line.match(/\(NWChem\) (\d[\w.]*)\s*$/u);
+    if (match && !metadata.program) { metadata.program = `NWChem ${match[1]}`; continue; }
+    match = line.match(/^\s*NWChem (.+?) Module\s*$/u);
+    if (match) {
+      module = match[1];
+      if (/^MP2\b/u.test(module)) add('MP2');
+      else if (/^(?:CCSD|TCE|Tensor Contraction Engine)/u.test(module)) add(module.split(/\s/u)[0]);
+      continue;
+    }
+    match = line.match(/^\s*wavefunction\s*=\s*(\w+)\s*$/u);
+    if (match && module === 'SCF') { add(match[1]); continue; }
+    match = line.match(/^\s*(\S+) Method XC (?:Potential|Functional)\s*$/u);
+    if (match && module === 'DFT') { add(match[1]); continue; }
+    if (/^\s*Tag\s+Description\s+Shells\s+Functions and Types\s*$/u.test(line)) { basisTable = !metadata.basis; continue; }
+    if (basisTable) {
+      match = line.match(/^\s*[A-Za-z]\w*\s+(\S+)\s+\d+\s+\d+\s+\S+\s*$/u);
+      if (match) { metadata.basis = clip(match[1]); basisTable = false; }
+      else if (!/^[\s-]+$/u.test(line)) basisTable = false;
+      continue;
+    }
+    match = line.match(/^\s*alpha electrons\s*=\s*(\d+)\s*$/u);
+    if (match && metadata.multiplicity === undefined) { alpha = Number(match[1]); continue; }
+    match = line.match(/^\s*beta\s+electrons\s*=\s*(\d+)\s*$/u);
+    if (match && alpha !== undefined && metadata.multiplicity === undefined) { metadata.multiplicity = alpha - Number(match[1]) + 1; continue; }
+    match = line.match(/^\s*open shells\s*=\s*(\d+)\s*$/u);
+    if (match && module === 'SCF' && metadata.multiplicity === undefined) { metadata.multiplicity = Number(match[1]) + 1; continue; }
+    match = line.match(/^\s*Spin multiplicity:\s*(\d+)\s*$/u);
+    if (match && metadata.multiplicity === undefined) { metadata.multiplicity = Number(match[1]); continue; }
+    // SCF prints `charge = 0.00`, DFT `Charge : 0`.
+    match = line.match(/^\s*charge\s*=\s*(-?\d+)\.0+\s*$/u) ?? line.match(/^\s*Charge\s*:\s*(-?\d+)\s*$/u);
+    if (match && metadata.charge === undefined) { metadata.charge = Number(match[1]); continue; }
+    if (/^\s*current input line :\s*$/u.test(line)) { metadata.termination = 'error'; continue; }
+    match = line.match(/^\s*Total times\s+cpu:\s*\S+s\s+wall:\s*([\d.]+)s\s*$/u);
+    if (match) { metadata.runSeconds = Number(match[1]); metadata.termination ??= 'normal'; }
+  }
+  if (methods.length) metadata.keywords = clip(methods.join(' '));
+  return Object.keys(metadata).length ? metadata : undefined;
+}
+
 const GAMESS_KEYS = ['SCFTYP', 'RUNTYP', 'DFTTYP', 'TDDFT', 'MPLEVL', 'CITYP', 'CCTYP'];
 const GAMESS_SEMIEMPIRICAL = /^(?:AM1|PM3|PM6|MNDO|RM1|DFTB)$/u;
 const GAMESS_CC = /^(A?)CC([DTQ56])(C?)$/u;

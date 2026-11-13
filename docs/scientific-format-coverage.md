@@ -94,7 +94,12 @@ input keyword lines, the basis, charge and multiplicity, how the run ended
 (`normal` or `error`; absent while a job runs or when the output was cut) and
 the run time (`quantum/run-metadata.ts`). ORCA and Gaussian output give all of
 them (Gaussian: the first route section and the elapsed time of all links);
-QCSchema gives the model, `provenance`, charge and multiplicity. xtb output gives its
+QCSchema gives the model, `provenance`, charge and multiplicity. Psi4 gives the
+driver calls of its echoed input (a Python API run echoes none and prints no exit
+line), the orbital basis, the first geometry's charge and multiplicity, the exit
+line and the wall time. NWChem gives the SCF wavefunction, DFT functional and
+correlated modules, the first basis description, charge and multiplicity, and the
+total wall time; an error prints the failing input line instead. xtb output gives its
 version, Hamiltonian and command-line options, charge and unpaired electrons,
 termination and total wall time. Q-Chem gives the method, job type and basis
 of the first `$rem` and the charge and multiplicity of the first `$molecule`.

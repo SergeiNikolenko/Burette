@@ -1,4 +1,4 @@
-import type { ScientificFrame, VibrationalMode, MolecularOrbital, GaussianShell, ScalarGrid, ScientificDocument } from "./scientific-types";
+import type { CalculationMetadata, ScientificFrame, VibrationalMode, MolecularOrbital, GaussianShell, ScalarGrid, ScientificDocument } from "./scientific-types";
 export type { ScientificFrame, VibrationalMode, MolecularOrbital, GaussianShell, ScalarGrid, ScientificDocument } from "./scientific-types";
 import type { MolecularAtom, Vec3 } from "./types";
 import { atomicNumber, elementSymbol } from "./elements";
@@ -24,7 +24,7 @@ import { parseMolden } from "./gaussian";
 import { hessianFromOrcaSection } from "./hessian";
 import { atomsFromZmatrixDocument, parseZmatrixDocument } from "../../../../../scripts/zmatrix-document.mjs";
 import { readCoordinateInterchange } from "../../../../../scripts/coordinate-interchange.mjs";
-import { gaussianMetadata, orcaMetadata } from "./quantum/run-metadata";
+import { gaussianMetadata, nwchemMetadata, orcaMetadata, psi4Metadata } from "./quantum/run-metadata";
 
 export const BOHR_ANGSTROM = 0.529177210903;
 const MAX_TEXT = 16 * 1024 * 1024;
@@ -104,8 +104,8 @@ export function parseScientificFile(name: string, text: string): ScientificDocum
   // Program banners are definitive; they precede the looser Gaussian/ORCA table markers.
   const head = text.slice(0, 64 * 1024);
   if (/[._]property\.txt$/i.test(name) || ORCA_PROPERTY_SIGNATURE.test(head)) return parseOrcaProperty(text);
-  if (NWCHEM_SIGNATURE.test(head)) return parseNwchemLog(text);
-  if (PSI4_SIGNATURE.test(head)) return parsePsi4Log(text);
+  if (NWCHEM_SIGNATURE.test(head)) return described(parseNwchemLog(text), nwchemMetadata(text.split(/\r\n?|\n/)));
+  if (PSI4_SIGNATURE.test(head)) return described(parsePsi4Log(text), psi4Metadata(text.split(/\r\n?|\n/)));
   if (GAMESS_SIGNATURE.test(head)) return parseGamessLog(text, name);
   if (QCHEM_SIGNATURE.test(head)) return parseQchemLog(text, name);
   if (MOLPRO_SIGNATURE.test(head)) return parseMolproLog(text);
@@ -120,10 +120,11 @@ export function parseScientificFile(name: string, text: string): ScientificDocum
 }
 
 function parseGaussian(name: string, text: string): ScientificDocument {
-  const document = parseGaussianLog(text, name);
-  const metadata = gaussianMetadata(text.split(/\r\n?|\n/));
-  if (metadata) document.metadata = metadata;
-  return document;
+  return described(parseGaussianLog(text, name), gaussianMetadata(text.split(/\r\n?|\n/)));
+}
+
+function described(document: ScientificDocument, metadata: CalculationMetadata | undefined): ScientificDocument {
+  return metadata ? { ...document, metadata } : document;
 }
 
 function parseXyzTrajectory(text: string): ScientificDocument {
