@@ -35,7 +35,13 @@ export type StructureViewerAction =
   | { type: "scalar_field_validate"; lease: string; label: string; notify: false }
   | { type: "show_scalar_field"; lease: string; label: string; cube: string; isovalue: number; signed: boolean; alpha?: number;
       /** 0xRRGGBB of the positive and negative lobes; blue and red when absent. */
-      positiveColor?: number; negativeColor?: number; notify: false }
+      positiveColor?: number; negativeColor?: number;
+      /**
+       * Colours the isosurface of a two-field Cube's first field by its second, red at `min`
+       * through white to blue at `max`; `signed` is then ignored.
+       */
+      coloring?: { min: number; max: number };
+      notify: false }
   | { type: "geometry_binding"; label: string; notify: false }
   | { type: "geometry_topology_scene_capture"; label: string; notify: false; lease: string }
   | { type: "geometry_topology_scene_validate"; label: string; notify: false; lease: string; receipt: string }

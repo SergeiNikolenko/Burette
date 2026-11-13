@@ -6,9 +6,12 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { Window } from 'happy-dom';
 import { molstarStatePreconditionPlugin } from '../scripts/molstar-state-precondition.mjs';
+import { molstarCubeDatasetsPlugin } from '../scripts/molstar-cube-datasets.mjs';
 import { gridToCube } from '../apps/desktop/src/lib/molecular-workbench/quantum';
 import { evaluateOrbitalGrid, parseMolden } from '../apps/desktop/src/lib/molecular-workbench/gaussian';
 installPlugin(molstarStatePreconditionPlugin);
+// The runtime bundle reads the chosen field of a multi-field Cube; upstream reads the first.
+installPlugin(molstarCubeDatasetsPlugin);
 const dom = new Window(), descriptor = Object.getOwnPropertyDescriptor(globalThis, 'document');
 Object.defineProperty(globalThis, 'document', { configurable: true, value: dom.document });
 const { PluginContext } = await import('@molstar/plugin');
@@ -51,4 +54,37 @@ test('independent: a one-cell cube without its scalar value is not silently publ
   expect(view.plugin.state.data.getSnapshot()).toEqual(before);
   expect(fields(view.plugin).length).toBe(0);
  } finally {view.close();}
+});
+
+const { coulombPotentialGrid, vanDerWaalsField } = await import("../apps/desktop/src/lib/molecular-workbench/electrostatic-potential");
+const { gridsToCube } = await import("../apps/desktop/src/lib/molecular-workbench/quantum");
+const water = [{ element: "O", x: 0, y: 0, z: 0.1173 }, { element: "H", x: 0, y: 0.7572, z: -0.4692 }, { element: "H", x: 0, y: -0.7572, z: -0.4692 }];
+const potential = coulombPotentialGrid(water, [-0.834, 0.417, 0.417], 0.6);
+const pair = gridsToCube([vanDerWaalsField(water, potential), potential], water);
+const coloring = { min: -0.05, max: 0.05 };
+const named = (plugin: InstanceType<typeof PluginContext>, name: string) => [...plugin.state.data.cells.values()].filter(cell => cell.transform.transformer.definition.name === name);
+
+test('a surface takes its colours from the potential field of the same Cube', async () => {
+ const view = await setup();
+ try {
+  await view.send({ ...action(pair), isovalue: 1, coloring });
+  const surfaces = named(view.plugin, 'volume-representation-3d'), theme = surfaces[0].transform.params.colorTheme;
+  // One isosurface of the first field; the colouring volume is the second field.
+  const tint = view.plugin.state.data.cells.get(theme.params.volume.ref)!;
+  expect([surfaces.length, view.plugin.state.data.cells.get(surfaces[0].transform.parent)!.transform.params.dataIndex, tint.transform.params.dataIndex]).toEqual([1, 0, 1]);
+  expect([theme.name, theme.params.coloring.params.domain]).toEqual(['external-volume', { name: 'custom', params: [-0.05, 0.05] }]);
+  const values = tint.obj!.data.grid.cells.data, written = Array.from(potential.values, value => Number(value.toExponential(7)));
+  expect([Math.min(...values), Math.max(...values)]).toEqual([Math.min(...written), Math.max(...written)]);
+ } finally { view.close(); }
+});
+
+test('a field pair without its colouring, with another field list, or with an empty range is refused', async () => {
+ const view = await setup();
+ try {
+  await expect(view.send({ ...action(pair), isovalue: 1 })).rejects.toThrow('isosurface and the field colouring it');
+  await expect(view.send({ ...action(pair.replace('\n2 1 2\n', '\n2 7 9\n')), isovalue: 1, coloring })).rejects.toThrow('two fields after the atoms');
+  await expect(view.send({ ...action(pair), isovalue: 1, coloring: { min: 1, max: 1 } })).rejects.toThrow('colouring range');
+  await expect(view.send({ ...action(), coloring })).rejects.toThrow('isosurface and the field colouring it');
+  expect(fields(view.plugin).length).toBe(0);
+ } finally { view.close(); }
 });

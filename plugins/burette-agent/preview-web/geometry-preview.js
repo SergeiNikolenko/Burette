@@ -90,7 +90,8 @@
   }
   const fields = new WeakMap();
 
-  // This private route accepts one generated Gaussian cube, in bohr, not arbitrary multi-field files.
+  // This private route accepts one generated Gaussian cube, in bohr: one field, or a surface field
+  // and the field colouring it (a negative atom count and the line `2 1 2` after the atoms).
   function validateField(action) {
     if (typeof action.cube !== 'string' || action.cube.length > 32 * 1024 * 1024) throw new Error('Scalar field exceeds 32 MiB.');
     if (!action.cube) return;
@@ -98,7 +99,7 @@
     const lines = action.cube.split(/\r\n?|\n/u);
     const number = value => /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/u.test(value) ? Number(value) : NaN;
     const row = index => (lines[index] || '').trim().split(/\s+/u).map(number);
-    const header = row(2), atoms = header[0], axes = [row(3), row(4), row(5)];
+    const header = row(2), atoms = Math.abs(header[0]), axes = [row(3), row(4), row(5)];
     const size = axes.reduce((n, axis) => n * axis[0], 1);
     if (!Number.isInteger(atoms) || atoms < 1 || atoms > 10000 || (header[4] !== undefined && header[4] !== 1)
       || header.length < 4 || !header.every(Number.isFinite) || axes.some(axis => axis.length !== 4 || !axis.every(Number.isFinite)
@@ -107,9 +108,18 @@
       const atom = row(6 + i);
       if (atom.length !== 5 || !atom.every(Number.isFinite)) throw new Error('Invalid scalar field atom.');
     }
-    const values = lines.slice(6 + atoms).join(' ').trim().split(/\s+/u);
-    if (values.length !== size || values.some(value => !Number.isFinite(Math.fround(number(value))))) throw new Error('Invalid scalar field values.');
+    const paired = header[0] < 0;
+    if (paired && row(6 + atoms).join(' ') !== '2 1 2') throw new Error('A scalar field pair lists its two fields after the atoms.');
+    const fields = paired ? 2 : 1;
+    const values = lines.slice(6 + atoms + (paired ? 1 : 0)).join(' ').trim().split(/\s+/u);
+    if (values.length !== size * fields || values.some(value => !Number.isFinite(Math.fround(number(value))))) throw new Error('Invalid scalar field values.');
+    const coloring = action.coloring;
+    if (paired !== (coloring !== undefined)) throw new Error('A scalar field pair is an isosurface and the field colouring it.');
+    if (coloring !== undefined && (!coloring || !Number.isFinite(coloring.min) || !Number.isFinite(coloring.max) || coloring.min >= coloring.max)) throw new Error('Invalid scalar field colouring range.');
   }
+
+  // Negative potential red, positive blue, as Avogadro and GaussView draw electrostatic potential.
+  const POTENTIAL_COLORS = [0xd62728, 0xf7f7f7, 0x1f63d1];
 
   function field(viewer, action, isCurrent) {
     const plugin = viewer?.plugin;
@@ -153,15 +163,23 @@
       const data = builder.toRoot().apply(transforms.Data.RawData, { data: action.cube, label: String(action.label || 'Scalar field').slice(0, 128) }, { ...(state.ref ? { ref: state.ref } : {}), tags: ['burette-scalar-field'] });
       state.ref = data.ref;
       state.expectedVersion = builder.currentTree.transforms.get(data.ref).version;
-      const volume = data.apply(transforms.Data.ParseCube).apply(transforms.Volume.VolumeFromCube);
+      const parsed = data.apply(transforms.Data.ParseCube);
       const alpha = Number.isFinite(action.alpha) ? Math.min(1, Math.max(0.05, action.alpha)) : 0.6;
-      const surface = (value, color) => volume.apply(transforms.Representation.VolumeRepresentation3D, {
-        type: { name: 'isosurface', params: { isoValue: { kind: 'absolute', absoluteValue: value }, alpha } },
-        colorTheme: { name: 'uniform', params: { value: color } }, sizeTheme: { name: 'uniform', params: { value: 1 } },
-      });
       const color = (value, fallback) => Number.isInteger(value) && value >= 0 && value <= 0xffffff ? value : fallback;
+      const { coloring } = action;
+      // A pair's second field colours the first one's isosurface. Its volume comes first in the
+      // branch, so it exists when the surface's theme samples it at each vertex.
+      const tint = coloring ? parsed.apply(transforms.Volume.VolumeFromCube, { dataIndex: 1, entryId: '' }) : null;
+      const colorTheme = value => tint ? { name: 'external-volume', params: { volume: { ref: tint.ref }, defaultColor: 0xcccccc, normalOffset: 0, usePalette: false,
+        coloring: { name: 'absolute-value', params: { domain: { name: 'custom', params: [coloring.min, coloring.max] }, list: { kind: 'interpolate', colors: POTENTIAL_COLORS } } } } }
+        : { name: 'uniform', params: { value } };
+      const volume = parsed.apply(transforms.Volume.VolumeFromCube, { dataIndex: 0, entryId: '' });
+      const surface = (value, fallback) => volume.apply(transforms.Representation.VolumeRepresentation3D, {
+        type: { name: 'isosurface', params: { isoValue: { kind: 'absolute', absoluteValue: value }, alpha } },
+        colorTheme: colorTheme(fallback), sizeTheme: { name: 'uniform', params: { value: 1 } },
+      });
       surface(action.isovalue, color(action.positiveColor, 0x3b82f6));
-      if (action.signed !== false) surface(-action.isovalue, color(action.negativeColor, 0xef4444));
+      if (action.signed !== false && !coloring) surface(-action.isovalue, color(action.negativeColor, 0xef4444));
       try {
         await commit(builder);
         assertCurrent();

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { coulombPotential, coulombPotentialGrid, surfacePotentialLimit } from "../apps/desktop/src/lib/molecular-workbench/electrostatic-potential";
+import { coulombPotential, coulombPotentialGrid, surfacePotentialLimit, VAN_DER_WAALS_ISOVALUE, vanDerWaalsField } from "../apps/desktop/src/lib/molecular-workbench/electrostatic-potential";
 import { gridsToCube, parseScientificFile } from "../apps/desktop/src/lib/molecular-workbench/quantum";
 import type { MolecularAtom } from "../apps/desktop/src/lib/molecular-workbench/types";
 
@@ -24,7 +24,7 @@ test("the potential at points on the water and formaldehyde surfaces matches an 
   for (const [molecule, charges, point, expected] of references) expect(coulombPotential(molecule, charges, point)).toBeCloseTo(expected, 12);
 });
 
-test("the potential grid holds the potential at its own points, z fastest, and draws from the values near the surface", () => {
+test("the potential grid holds the potential at its own points, z fastest, and the van der Waals field it colours crosses its isovalue at the atomic radius", () => {
   const grid = coulombPotentialGrid(formaldehyde, formaldehydeCharges);
   const [nx, ny, nz] = grid.dimensions;
   expect(grid.axes).toEqual([[0.3, 0, 0], [0, 0.3, 0], [0, 0, 0.3]]);
@@ -33,8 +33,15 @@ test("the potential grid holds the potential at its own points, z fastest, and d
     const point = [grid.origin[0] + 0.3 * x, grid.origin[1] + 0.3 * y, grid.origin[2] + 0.3 * z] as [number, number, number];
     expect(grid.values[(x * ny + y) * nz + z]).toBeCloseTo(Math.fround(coulombPotential(formaldehyde, formaldehydeCharges, point)), 6);
   }
-  // The default colour limit is the size of the surface potentials above: about 0.05 to 0.07 hartree/e.
-  expect([surfacePotentialLimit(grid, formaldehyde), surfacePotentialLimit(coulombPotentialGrid(water, waterCharges), water)]).toEqual([0.052, 0.066]);
+  // The van der Waals field is 1 at an isolated atom's radius: just outside the oxygen's 1.52 Å along the C=O axis.
+  const surface = vanDerWaalsField(formaldehyde, grid), along = (z: number) => surface.values[(Math.round(-grid.origin[0] / 0.3) * ny + Math.round(-grid.origin[1] / 0.3)) * nz + z];
+  const outward = Array.from({ length: nz }, (_, z) => z).filter(z => grid.origin[2] + 0.3 * z > 0.6753);
+  const crossing = outward.find(z => along(z) < VAN_DER_WAALS_ISOVALUE)!;
+  expect(grid.origin[2] + 0.3 * crossing - 0.6753).toBeGreaterThan(1.52 - 0.3);
+  expect(grid.origin[2] + 0.3 * crossing - 0.6753).toBeLessThan(1.52 + 0.3);
+  // The default colour limit is the size of the potential on the surface: 0.07 to 0.1 hartree/e.
+  const waterGrid = coulombPotentialGrid(water, waterCharges);
+  expect([surfacePotentialLimit(surface, VAN_DER_WAALS_ISOVALUE, grid), surfacePotentialLimit(vanDerWaalsField(water, waterGrid), VAN_DER_WAALS_ISOVALUE, waterGrid)]).toEqual([0.071, 0.097]);
 });
 
 test("a surface field and the potential colouring it travel as one two-field Cube on their shared grid", () => {
