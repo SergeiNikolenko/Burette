@@ -20,11 +20,11 @@ test("XYZ first and ORCA final reference are producer-owned, with distinct coord
 
 test("Gaussian printed orientations and QCSchema omitted endpoint retain their actual reference, never a prior energy", () => {
   const gaussian = parseScientificFile("water.log", file("quantum/gaussian-water-optimization.log"));
-  expect(gaussian.referenceFrameIndex).toBe(4);
-  expect(gaussian.atoms).toBe(gaussian.frames[4].atoms);
+  expect(gaussian.referenceFrameIndex).toBe(3);
+  expect(gaussian.atoms).toBe(gaussian.frames[3].atoms);
   expect(gaussian.frames[0].atoms).not.toEqual(gaussian.atoms);
   expect(gaussian.atoms[1]).toEqual({element:"H",x:-0,y:.755981,z:-.475764});
-  expect(gaussian.frames[4].energyHartree).toBe(-76.340665699);
+  expect(gaussian.frames[3].energyHartree).toBe(-76.340665699);
   const step = JSON.parse(file("quantum/qcschema-water-gradient.json"));
   const initial = structuredClone(step.molecule), final = structuredClone(step.molecule);
   step.molecule.geometry[2] += .1; final.geometry[2] += .2;

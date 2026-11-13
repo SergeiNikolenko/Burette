@@ -10,10 +10,10 @@ const steps = (path: string) => read(path).frames.map((frame) => frame.convergen
 // Every expected number is copied from the convergence table the program printed for that step.
 test("Gaussian optimization steps keep the Berny table of the geometry they were computed at", () => {
   const frames = steps("fixtures/quantum/gaussian/cclib-dvb_gopt.out");
-  expect(frames).toHaveLength(6);
+  expect(frames).toHaveLength(5);
   expect(frames[0]).toEqual({ maxForce: { value: 0.06068, threshold: 0.00045 }, rmsForce: { value: 0.012894, threshold: 0.0003 },
     maxStep: { value: 0.556332, threshold: 0.0018 }, rmsStep: { value: 0.138777, threshold: 0.0012 } });
-  expect(frames.map((frame) => frame?.maxForce?.value ?? null)).toEqual([0.06068, 0.012462, 0.001112, 0.000309, 0.000036, null]);
+  expect(frames.map((frame) => frame?.maxForce?.value ?? null)).toEqual([0.06068, 0.012462, 0.001112, 0.000309, 0.000036]);
 });
 
 test("Psi4 and NWChem step rows belong to the frame whose energy they print, with the printed criteria", () => {

@@ -46,9 +46,11 @@ test('without gfinput, eigenvalues give energies and occupations only; spin chan
 
 test('optimization properties and correlated energies belong to the geometry that printed them', () => {
   const opt = read('cclib-dvb_gopt.out'), expected = reference['cclib-dvb_gopt.out'];
-  expectClose(opt.frames.slice(0, 5).map(frame => frame.energyHartree!), expected.scfenergies!, 1e-9);
-  // Population analysis is printed for the first and the final (reprinted) geometry only.
-  expect(opt.frames.map(frame => !!frame.charges)).toEqual([true, false, false, false, false, true]);
+  // The geometry reprinted after `Optimization completed.` is the last step, not a sixth frame.
+  expectClose(opt.frames.map(frame => frame.energyHartree!), expected.scfenergies!, 1e-9);
+  expect(opt.frames.at(-1)!.energyHartree).toBe(-382.308266602); // the last `SCF Done`
+  // Population analysis is printed for the first and the final geometry only.
+  expect(opt.frames.map(frame => !!frame.charges)).toEqual([true, false, false, false, true]);
   expectClose(opt.frames.at(-1)!.charges![0].values, expected.atomcharges!.mulliken, 1e-9);
   expectClose(opt.frames.at(-1)!.dipoleDebye!, expected.dipole_debye!, 1e-9);
   expectClose(opt.orbitals.map(orbital => orbital.energyHartree), expected.moenergies![0], 5e-6);
@@ -56,6 +58,26 @@ test('optimization properties and correlated energies belong to the geometry tha
   const mp2 = read('cclib-water_mp2.log'), correlated = reference['cclib-water_mp2.log'];
   expect(mp2.frames[0].energyHartree).toBe(correlated.mpenergies![0][0]);
   expectClose(mp2.frames[0].dipoleDebye!, correlated.dipole_debye!, 1e-9);
+});
+
+test('a coefficient window (EOM-CCSD prints from MO 31) opens with energies and occupations of every orbital', () => {
+  const eom = read('cclib-dvb_eomccsd.log');
+  expect(eom.frames).toHaveLength(1);
+  expect(eom.frames[0].energyHartree).toBe(-380.50037233); // CCSD `E(Corr)`, printed after `SCF Done`
+  expect(eom.basis).toBeUndefined();
+  expect(eom.orbitals).toHaveLength(60);
+  expect(eom.orbitals.every(orbital => orbital.coefficients.length === 0)).toBe(true);
+  expect(eom.orbitals.filter(orbital => orbital.occupancy === 2)).toHaveLength(35);
+  expect([eom.orbitals[0].energyHartree, eom.orbitals[34].energyHartree, eom.orbitals[35].energyHartree]).toEqual([-11.04058, -0.22227, 0.19887]);
+  expect(eom.frames[0].charges![0].values.slice(0, 2)).toEqual([0.001721, -0.060489]);
+  expectSchema(eom);
+
+  // With gfinput present, a print that skips the first orbitals still yields no coefficients.
+  const full = fixtureText('gaussian/cclib-dvb_sp.out');
+  const window = parseGaussianLog(full.replace(/(Molecular Orbital Coefficients:\n)[\s\S]*?\n(?= +6 +7 +8 +9 +10\n)/u, '$1'));
+  expect(window.basis).toBeUndefined();
+  expect(window.orbitals.map(orbital => [orbital.energyHartree, orbital.occupancy])).toEqual(read('cclib-dvb_sp.out').orbitals.map(orbital => [orbital.energyHartree, orbital.occupancy]));
+  expect(window.orbitals.every(orbital => orbital.coefficients.length === 0)).toBe(true);
 });
 
 test('malformed orbital tables are refused rather than guessed', () => {
@@ -66,6 +88,8 @@ test('malformed orbital tables are refused rather than guessed', () => {
     text.replace('   3        2PX        -0.00005', '   3        2PY        -0.00005'),
     text.replace(' SP   3 1.00       0.000000000000\n      0.2941249355D+01 -0.9996722919D-01  0.1559162750D+00', ' SP   3 1.00       0.000000000000\n      0.2941249355D+01 -0.9996722919D-01'),
     text.replace('     1  C   -0.004504', '     1  H   -0.004504'),
+    text.replace(/(Molecular Orbital Coefficients:\n) +1 +2 +3 +4 +5\n/u, '$1                           0         1         2         3         4\n'),
+    text.replace(/(Molecular Orbital Coefficients:\n[\s\S]*?\n) +6 +7 +8 +9 +10\n/u, '$1                           7         8         9        10        11\n'),
   ];
   for (const variant of broken) expect(() => parseGaussianLog(variant)).toThrow();
 });

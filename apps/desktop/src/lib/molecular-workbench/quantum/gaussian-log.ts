@@ -161,10 +161,23 @@ export function parseGaussianLog(text: string): ScientificDocument {
     }
   }
   if (!frames.length) throw new Error('No supported Gaussian orientation was found.');
+  // After `Optimization completed.` (optimizations, scans, IRC) Gaussian reprints the converged
+  // geometry before its population analysis. A table that repeats the previous coordinates and has
+  // no SCF of its own is that reprint: its charges, dipole and orbitals belong to the previous frame.
+  for (let k = frames.length - 1; k > 0; k--) {
+    const { atoms, ...fields } = frames[k];
+    if (fields.energyHartree !== undefined || fields.modes || !samePrintedCoordinates(atoms, frames[k - 1].atoms)) continue;
+    Object.assign(frames[k - 1], fields);
+    frames.splice(k, 1);
+    if (coefficients.frame >= k) coefficients.frame--;
+    if (eigenvalues.frame >= k) eigenvalues.frame--;
+  }
   const reference = frames.length - 1;
+  // A coefficient window (EOM-CC prints from the first correlated orbital) is not an orbital set.
+  const complete = (spin: 'alpha' | 'beta', set?: GaussianMoSet) => !set || (eigenvalues.frame === coefficients.frame && set.first === 0 && set.energies.length === eigenvalues[spin].length);
   let orbitals: ScientificDocument['orbitals'] = [];
   let basis: ScientificDocument['basis'];
-  if (coefficients.frame === reference && coefficients.alpha && generalBasis) {
+  if (coefficients.frame === reference && coefficients.alpha && generalBasis && complete('alpha', coefficients.alpha) && complete('beta', coefficients.beta)) {
     // pop=full with gfinput: the printed basis and every printed coefficient.
     const restricted = !coefficients.beta;
     ({ basis, orbitals } = gaussianOrbitals(generalBasis, [{ spin: 'alpha', set: coefficients.alpha, restricted }, ...(coefficients.beta ? [{ spin: 'beta' as const, set: coefficients.beta, restricted }] : [])], frames[reference].atoms.length));
@@ -174,4 +187,10 @@ export function parseGaussianLog(text: string): ScientificDocument {
     orbitals = [...table('alpha'), ...(restricted ? [] : table('beta'))];
   }
   return { format: xtb ? 'xtb' : 'gaussian-log', atoms: frames.at(-1)!.atoms, referenceFrameIndex: reference, frames, modes: frames.at(-1)!.modes ?? [], orbitals, ...(basis ? { basis } : {}), ...(converged === undefined ? {} : { converged }) };
+}
+
+/** Orientation tables print six decimals; allow one unit of the last digit. */
+function samePrintedCoordinates(a: MolecularAtom[], b: MolecularAtom[]) {
+  const close = (u: number, v: number) => Math.abs(u - v) <= 1.5e-6;
+  return a.length === b.length && a.every((atom, k) => close(atom.x, b[k].x) && close(atom.y, b[k].y) && close(atom.z, b[k].z));
 }

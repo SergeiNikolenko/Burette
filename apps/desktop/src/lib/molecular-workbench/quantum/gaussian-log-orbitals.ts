@@ -8,7 +8,8 @@ const KINDS: Record<string, GaussianShell['kind'][]> = { S: ['s'], P: ['p'], SP:
 const AO_LABEL = /^\s*(\d+)\s+(?:(\d+)\s+[A-Za-z]{1,2}\s+)?(\d+)(S|P[XYZ]|[DFGHI] ?[+-]?\d|[XYZ]{2,6})\s*$/u;
 
 type PrintedShell = { atomIndex: number; kind: GaussianShell['kind']; exponents: number[]; coefficients: number[] };
-export type GaussianMoSet = { energies: number[]; occupied: boolean[]; symmetries: (string | undefined)[]; vectors: number[][]; labels: { atom: number; shell: number; component: string }[] };
+/** `first` is the zero-based index of the first printed orbital: EOM-CC and `pop=regular` print a window. */
+export type GaussianMoSet = { first: number; energies: number[]; occupied: boolean[]; symmetries: (string | undefined)[]; vectors: number[][]; labels: { atom: number; shell: number; component: string }[] };
 
 /**
  * `gfinput`: `AO basis set in the form of general basis input`, one block per atom (`n 0`, shells,
@@ -36,12 +37,13 @@ export function readGeneralBasis(lines: string[], start: number) {
 
 /** `Molecular Orbital Coefficients`: five-column blocks of numbers, symmetry/occupation, eigenvalues and AO rows. */
 export function readMoCoefficients(lines: string[], start: number): { set: GaussianMoSet; end: number } | undefined {
-  const set: GaussianMoSet = { energies: [], occupied: [], symmetries: [], vectors: [], labels: [] };
+  const set: GaussianMoSet = { first: 0, energies: [], occupied: [], symmetries: [], vectors: [], labels: [] };
   let i = start, atom = -1;
   for (;;) {
     const numbers = lines[i]?.trim().split(/\s+/) ?? [];
     if (!numbers.length || !numbers.every(token => /^\d+$/u.test(token))) break;
-    if (numbers.some((token, k) => Number(token) !== set.energies.length + k + 1)) throw new Error('Out-of-order Gaussian orbital numbers.');
+    if (!set.energies.length) set.first = Number(numbers[0]) - 1;
+    if (set.first < 0 || numbers.some((token, k) => Number(token) !== set.first + set.energies.length + k + 1)) throw new Error('Out-of-order Gaussian orbital numbers.');
     // `(BU)--O` with symmetry, or a bare `O`/`V` occupation.
     const flags = (lines[i + 1] ?? '').trim().split(/\s+/).map(token => token.match(/^(?:\(([^)]+)\)--)?([OV])$/u));
     const energies = (lines[i + 2] ?? '').match(/^\s*Eigenvalues --\s+(.*)$/u)?.[1].match(/-?\d+\.\d+/gu);

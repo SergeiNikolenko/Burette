@@ -11,8 +11,9 @@ const block = gaussian.match(/\s*Standard orientation:[\s\S]*?\n -{5,}\n(?= SCF 
 test('independent Gaussian 16 optimization keeps printed angstrom coordinates, SCF energies and final-only modes', () => {
   const doc = parseScientificFile('water.log', gaussian);
   expect(doc.format).toBe('gaussian-log');
-  expect(doc.frames).toHaveLength(5);
-  expect(doc.frames.map(f => f.energyHartree)).toEqual([-76.3329398833, -76.3404588388, -76.340665699, undefined, -76.340665699]);
+  // The geometry reprinted after `Optimization completed.` joins the last step; the freq step has its own SCF.
+  expect(doc.frames).toHaveLength(4);
+  expect(doc.frames.map(f => f.energyHartree)).toEqual([-76.3329398833, -76.3404588388, -76.340665699, -76.340665699]);
   expect(doc.atoms).toBe(doc.frames.at(-1)!.atoms);
   expect(doc.atoms[1]).toEqual({ element: 'H', x: -0, y: .755981, z: -.475764 });
   expect(doc.frames.slice(0, -1).every(f => f.modes === undefined)).toBe(true);
@@ -28,7 +29,7 @@ test('Gaussian imaginary frequencies retain signed force constants and modes nev
   expect(doc.frames.at(-2)!.modes![0]).toMatchObject({ frequencyCm1: -1668.2293, forceConstantMdynAngstrom: -1.7741 });
   const inputOnly = block.replace('Standard orientation:', 'Input orientation:');
   expect(parseScientificFile('water.log', inputOnly).atoms).toHaveLength(3);
-  expect(parseScientificFile('water.log', gaussian + inputOnly).frames).toHaveLength(6);
+  expect(parseScientificFile('water.log', gaussian + inputOnly).frames).toHaveLength(5);
 });
 
 test('Gaussian rejects incomplete coordinates, changing atom order, invalid values and truncated normal coordinates', () => {

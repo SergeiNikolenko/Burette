@@ -215,13 +215,13 @@ test("an optimization log plots the printed convergence of each step on a chosen
   try {
     const select = view.host.querySelector('select[aria-label="Convergence value"]');
     assert.deepEqual([...select.options].map((option) => option.textContent), ["Max force", "RMS force", "Max step", "RMS step"]);
-    await sceneFrame(0, 6);
+    await sceneFrame(0, 5);
     assert.equal(view.host.querySelector('[role="slider"][aria-label="Max force, Eh/bohr frame"]').getAttribute("aria-valuetext"), "Frame 1, Max force 6.07e-2 Eh/bohr");
     await act(async () => { select.value = "rmsStep"; select.dispatchEvent(new window.Event("change", { bubbles: true })); });
     assert.equal(view.host.querySelector('[role="slider"][aria-label="RMS step, a.u. frame"]').getAttribute("aria-valuetext"), "Frame 1, RMS step 1.39e-1 a.u.");
-    // The final geometry was not stepped from, so it has no convergence value.
-    await sceneFrame(5, 6);
-    assert.equal(view.host.querySelector('[role="slider"][aria-label="RMS step, a.u. frame"]').getAttribute("aria-valuetext"), "Frame 6");
+    // The final geometry carries the last Berny table, the one that converged.
+    await sceneFrame(4, 5);
+    assert.equal(view.host.querySelector('[role="slider"][aria-label="RMS step, a.u. frame"]').getAttribute("aria-valuetext"), "Frame 5, RMS step 1.34e-4 a.u.");
   } finally { await view.unmount(); }
   const plain = await mount(<PlotsPanel document={doc} science={{ format: "xyz", atoms: atoms(0), frames: [0, 0.01].map((shift) => ({ atoms: atoms(shift) })), modes: [], orbitals: [] }} actions={{ runStructureViewerAction: async () => {} }} />);
   try { assert.equal(plain.host.querySelector('[aria-label="Convergence value"]'), null); } finally { await plain.unmount(); }
