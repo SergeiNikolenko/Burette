@@ -106,7 +106,7 @@ export class GaussianPropertyReader {
     }
     if (atomIndices.length !== frame.atoms.length) throw new Error('Gaussian shielding table does not cover the atoms.');
     this.spectra.push({ frame, spectrum: { kind: 'nmr', quantity: 'isotropic-shielding', atomIndices, valuesPpm,
-      auxiliary: [{ name: 'source nucleus index', unit: null, values: atomIndices.map(atom => atom + 1) }, { name: 'anisotropy', unit: 'ppm', values: anisotropy }] } });
+      auxiliary: [{ name: 'anisotropy', unit: 'ppm', values: anisotropy }] } });
     return j - 1;
   }
 

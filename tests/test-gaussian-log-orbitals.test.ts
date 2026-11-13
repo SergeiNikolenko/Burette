@@ -99,7 +99,7 @@ test('GIAO shieldings, Mulliken spin densities, S**2 and forces belong to the ge
   const nmr = parseScientificFile('cclib-dvb_nmr.log', fixtureText('gaussian/cclib-dvb_nmr.log')).frames[0].spectra!.spectra[0];
   if (nmr.kind !== 'nmr') throw new Error('expected shieldings');
   // `1  C    Isotropic =   114.0880   Anisotropy =   147.6438`
-  expect([nmr.atomIndices.length, nmr.valuesPpm.slice(0, 3), nmr.auxiliary![1].values[0]]).toEqual([20, [114.088, 114.088, 117.763], 147.6438]);
+  expect([nmr.atomIndices.length, nmr.valuesPpm.slice(0, 3), nmr.auxiliary![0].values[0]]).toEqual([20, [114.088, 114.088, 117.763], 147.6438]);
   const open = read('cclib-dvb_un_sp.log').frames[0];
   expect(open.spinPopulations![0].values.slice(0, 2)).toEqual([0.213022, 0.02541]);
   expect(open.spinSquared).toBe(0.7778); // `S**2 before annihilation     0.7778,   after     0.7504`
