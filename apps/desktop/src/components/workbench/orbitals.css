@@ -26,21 +26,68 @@
   outline: 2px solid var(--color-ring);
   outline-offset: 2px;
 }
-.orbital-diagram text { fill: var(--text-secondary); }
-.orbital-diagram-axis,
-.orbital-diagram-tick line { stroke: var(--color-border); }
-.orbital-level line,
-.orbital-level-arrow {
-  fill: none;
-  stroke: var(--text-secondary);
-  stroke-width: 1.5;
-  stroke-linecap: round;
+.orbital-diagram text { fill: var(--text-muted); }
+.orbital-diagram-axis { stroke: var(--color-border); }
+/* Tick values sit on the axis, cut out of the lines that cross it. */
+.orbital-diagram .orbital-diagram-tick {
+  paint-order: stroke;
+  stroke: var(--color-surface);
+  stroke-width: 4;
+  stroke-linejoin: round;
 }
-.orbital-level[data-occupied] line,
-.orbital-level[data-occupied] .orbital-level-arrow { stroke: var(--color-text); }
+.orbital-diagram .orbital-diagram-unit { fill: var(--text-secondary); }
+.orbital-diagram-gap {
+  fill: var(--surface-subtle);
+  animation: orbital-fade 320ms ease-out both;
+}
+.orbital-diagram-partner {
+  stroke: var(--color-border);
+  stroke-dasharray: 2 3;
+  transition: stroke 150ms ease-out;
+}
+.orbital-diagram-partner[data-active] { stroke: var(--text-muted); }
+.orbital-diagram-pill {
+  fill: var(--surface-subtle-strong);
+  transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1), width 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
 .orbital-level-hit { fill: transparent; }
+.orbital-level-bar {
+  stroke: var(--text-muted);
+  stroke-width: 2;
+  stroke-linecap: round;
+  transform-box: fill-box;
+  transform-origin: left center;
+  transition: stroke 150ms ease-out, stroke-width 150ms ease-out;
+  animation: orbital-bar-in 280ms cubic-bezier(0.2, 0.8, 0.2, 1) var(--orbital-delay, 0ms) both;
+}
+.orbital-level-bar[data-side="left"] { transform-origin: right center; }
+.orbital-level[data-occupied] .orbital-level-bar { stroke: var(--color-text); }
+.orbital-level-leader {
+  fill: none;
+  stroke: var(--color-border);
+  transition: stroke 150ms ease-out;
+}
+.orbital-diagram .orbital-level-label {
+  transition: fill 150ms ease-out;
+  animation: orbital-fade 240ms ease-out calc(var(--orbital-delay, 0ms) + 120ms) both;
+}
+.orbital-level[data-tag] .orbital-level-label { fill: var(--text-secondary); }
+.orbital-diagram .orbital-level-tag { fill: var(--color-text); font-size: 9.5px; font-weight: 500; }
+.orbital-level[data-tag="HOMO"] .orbital-level-label { fill: var(--color-text); font-weight: 600; }
 .orbital-diagram[tabindex="0"] .orbital-level { cursor: pointer; }
-.orbital-diagram[tabindex="0"] .orbital-level:hover line { stroke: var(--color-text); }
-.orbital-level[data-selected] line { stroke: var(--color-text); stroke-width: 3; }
-.orbital-level[data-selected] .orbital-level-hit { fill: var(--color-border); }
-.orbital-diagram .orbital-level-tag { fill: var(--color-text); font-weight: 500; }
+.orbital-level:hover .orbital-level-bar { stroke: var(--color-text); }
+.orbital-level:hover .orbital-level-leader { stroke: var(--text-muted); }
+.orbital-diagram .orbital-level:hover .orbital-level-label { fill: var(--color-text); }
+.orbital-level[data-selected] .orbital-level-bar { stroke: var(--color-text); stroke-width: 3.5; }
+.orbital-level[data-selected] .orbital-level-leader { stroke: var(--text-secondary); }
+.orbital-diagram .orbital-level[data-selected] .orbital-level-label { fill: var(--color-text); font-weight: 600; }
+@keyframes orbital-bar-in {
+  from { transform: scaleX(0); opacity: 0; }
+}
+@keyframes orbital-fade {
+  from { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .orbital-level-bar, .orbital-diagram .orbital-level-label, .orbital-diagram-gap { animation: none; }
+  .orbital-diagram-pill { transition: none; }
+}
