@@ -854,6 +854,13 @@
     if (type === 'set_trajectory_smoothing_view') {
       return setTrajectorySmoothingViewFromAction(action);
     }
+    if (type === 'set_trajectory_playback') {
+      const control = activeTrajectoryPlaybackControl;
+      if (!control) return agentActionFailure(type, 'NO_TRAJECTORY', 'The active scene has no frame playback.');
+      if (action.playing === true) control.play();
+      else await control.stop();
+      return { ok: true, command: type, result: { playing: control.isPlaying() } };
+    }
     if (type === 'set_molstar_style') {
       return setMolstarStyleFromAction(action);
     }
@@ -20567,6 +20574,7 @@ SOFTWARE.
       type: 'dockingPoseChanged',
       activePose: index,
       sourceRecordId: pose?.poseIndex ?? index,
+      ligandIndex: pose?.ligandIndex ?? 0,
       poseCount: poses.length,
       poseMode: activeSdfPoseMode === 'all' ? 'all' : 'single',
       sourcePath: pose?.sourcePath || ''
@@ -21078,7 +21086,8 @@ SOFTWARE.
       return agentActionFailure('set_sdf_pose_index', 'NO_POSES', 'The active Mol* viewer has no selectable poses.');
     }
     const index = action.sourceRecordId == null ? Math.trunc(Number(action.index) || 0)
-      : prepared.kind === 'docking' ? prepared.poses.findIndex(pose => pose.poseIndex === action.sourceRecordId) : -1;
+      : prepared.kind === 'docking' ? prepared.poses.findIndex(pose => pose.poseIndex === action.sourceRecordId
+        && (action.ligandIndex == null || pose.ligandIndex === action.ligandIndex)) : -1;
     const outOfRange = agentFrameIndexFailure('set_sdf_pose_index', index, poseCount);
     if (outOfRange) return outOfRange;
     if (prepared.kind === 'docking' && poseCount === 1 && !prepared.nativeTrajectoryControls) {
@@ -22851,7 +22860,18 @@ SOFTWARE.
       if (loopActive) void trajectoryPlaybackControl.stop();
       else trajectoryPlaybackControl.play();
     });
-    smooth.addEventListener('click', () => {
+    smooth.addEventListener('click', async () => {
+      // Hosts without the desktop Info panel (the embed) smooth in this runtime.
+      if (activeConfig?.trajectorySmoothing === 'in-viewer') {
+        const result = trajectorySmoothingState
+          ? await setTrajectorySmoothingViewFromAction({ view: trajectorySmoothingState.view === 'smoothed' ? 'original' : 'smoothed' })
+          : await applyTrajectorySmoothingFromAction();
+        if (result?.ok === false) {
+          setStatus(`[web] ${result.error?.message || 'Smooth motion failed.'}`);
+          setTimeout(hideStatus, 3000);
+        }
+        return;
+      }
       const posted = postHostMessage({
         type: 'openTrajectorySmoothing',
         documentId: activeConfig?.documentId || ''
@@ -22940,7 +22960,9 @@ SOFTWARE.
       window.removeEventListener('keydown', onKeyDown);
     };
     mainRow.append(animation, previous, label, next);
-    const smoothAvailable = (prepared.kind === 'trajectory' || prepared.kind === 'xyz-frame-overlay' || prepared.nativeTrajectoryControls);
+    const smoothAvailable = (prepared.kind === 'trajectory' || prepared.kind === 'xyz-frame-overlay' || prepared.nativeTrajectoryControls)
+      && (activeConfig?.trajectorySmoothing !== 'in-viewer'
+        || (!activeMolstarPrepared?.trajectoryPair && ['pdb', 'xyz'].includes(normalizeFormat(activeMolstarPrepared?.format))));
     const toggleRow = prepared.dockingSceneMode ? document.createElement('div') : null;
     if (smoothAvailable && toggleRow) mainRow.append(smooth);
     if (toggleRow) {

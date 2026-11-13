@@ -13,6 +13,13 @@
     sdf: 'sdf', sd: 'sdf', mol: 'mol', mol2: 'mol2', pdbqt: 'pdbqt', xyz: 'xyz', gro: 'gro'
   };
   const POSE_FORMATS = new Set(['sdf', 'mol', 'mol2', 'pdbqt']);
+  // Coordinate-only trajectories replayed over the structure file as topology.
+  const TRAJECTORY_FORMATS = {
+    xtc: 'xtc', trr: 'trr', dcd: 'dcd', nc: 'nctraj', ncdf: 'nctraj', nctraj: 'nctraj', lammpstrj: 'lammpstrj'
+  };
+  const TEXT_TRAJECTORY_FORMATS = new Set(['lammpstrj']);
+  const TOPOLOGY_FORMATS = new Set(['pdb', 'mmcif', 'gro', 'pdbqt']);
+  const MAX_SCENE_FILES = 64;
   const MAX_SCENE_BYTES = 100 * 1024 * 1024;
   // Same order as the desktop viewer document (browser-dev-documents.ts viewerHtml).
   const RUNTIME_SCRIPTS = [
@@ -28,6 +35,7 @@
   let poseMode = 'single';
   let docking = false;
   let sdfPosePager = false;
+  let smoothingView = null;
   let resolveRender;
   let rejectRender;
   let commandsInOrder = Promise.resolve();
@@ -106,25 +114,39 @@
     return btoa(binary);
   }
 
-  function readFile(file, role, formats) {
+  function readFile(file, role, formats, table = STRUCTURE_FORMATS) {
     if (!file || typeof file !== 'object') throw new Error(`The ${role} file is missing.`);
     const name = String(file.name || role).slice(0, 255);
     const extension = String(file.format || name.split('.').pop() || '').toLowerCase();
-    const format = Object.hasOwn(STRUCTURE_FORMATS, extension) ? STRUCTURE_FORMATS[extension] : null;
+    const format = Object.hasOwn(table, extension) ? table[extension] : null;
     if (!format || (formats && !formats.has(format))) throw new Error(`${name}: unsupported ${role} format.`);
     const bytes = file.data instanceof ArrayBuffer ? new Uint8Array(file.data)
       : ArrayBuffer.isView(file.data) ? new Uint8Array(file.data.buffer, file.data.byteOffset, file.data.byteLength) : null;
     if (!bytes?.length) throw new Error(`${name} is empty.`);
-    return { name, format, binary: format === 'bcif', bytes };
+    const binary = format === 'bcif' || (table === TRAJECTORY_FORMATS && !TEXT_TRAJECTORY_FORMATS.has(format));
+    return { name, format, binary, bytes };
+  }
+
+  // The viewer reports a pose's file by name, so names within one scene must differ.
+  function readFiles(files, role, formats, table) {
+    const list = files == null ? [] : Array.isArray(files) ? files : [files];
+    if (list.length > MAX_SCENE_FILES) throw new Error(`A scene accepts at most ${MAX_SCENE_FILES} ${role} files.`);
+    const seen = new Set();
+    return list.map(file => {
+      const entry = readFile(file, role, formats, table);
+      for (let copy = 2; seen.has(entry.name); copy += 1) entry.name = `${entry.name.replace(/ \(\d+\)$/u, '')} (${copy})`;
+      seen.add(entry.name);
+      return entry;
+    });
   }
 
   function source(file) {
     return { path: file.name, label: file.name, extension: file.format, format: file.format, binary: file.binary, byteCount: file.bytes.length };
   }
 
-  function viewerConfig(scene, structure, poses) {
+  function viewerConfig(scene, structure, ligands, trajectory) {
     const theme = ['light', 'dark', 'auto'].includes(scene.theme) ? scene.theme : 'auto';
-    const byteCount = structure.bytes.length + (poses?.bytes.length || 0);
+    const byteCount = [structure, ...ligands].reduce((total, file) => total + file.bytes.length, 0);
     const config = {
       format: structure.format,
       molstarFormat: structure.format,
@@ -132,7 +154,7 @@
       renderer: 'molstar',
       requestedRenderer: 'molstar',
       allowMolstarFallback: false,
-      label: poses ? `${structure.name} + ${poses.name}` : structure.name,
+      label: ligands.length ? [structure, ...ligands].map(file => file.name).join(' + ') : structure.name,
       byteCount,
       previewByteCount: byteCount,
       quickLookBuild: 'burette-embed',
@@ -147,7 +169,9 @@
       transparentBackground: false,
       sdfGrid: false,
       sdfPoseModeStorageKey: 'burette.embed.poseMode',
-      sdfPosePager: !poses && structure.format === 'sdf',
+      sdfPosePager: !ligands.length && structure.format === 'sdf',
+      // No desktop Info panel here: Smooth runs in the viewer for PDB and XYZ frames.
+      trajectorySmoothing: 'in-viewer',
       // Context menus and messages stay inside the frame: no native menu host.
       appViewer: false,
       tauriViewer: false,
@@ -163,17 +187,17 @@
       showPanelControls: true,
       defaultLayoutState: { left: 'hidden', right: 'hidden', top: 'hidden', bottom: 'hidden' }
     };
-    if (poses) {
-      const activePose = Number.isInteger(scene.activePose) && scene.activePose >= 0 ? scene.activePose : null;
-      config.docking = { activePose, sceneMode: null, receptor: source(structure), ligands: [source(poses)] };
+    if (ligands.length) {
+      const activePose = !trajectory && Number.isInteger(scene.activePose) && scene.activePose >= 0 ? scene.activePose : null;
+      config.docking = { activePose, sceneMode: null, receptor: source(structure), ligands: ligands.map(source) };
     }
     return config;
   }
 
-  function publishPose(index, sourceRecordId, count, mode) {
+  function publishPose(index, sourceRecordId, count, mode, file = 0) {
     if (lastPose?.index === index && lastPose.sourceRecordId === sourceRecordId
-      && lastPose.count === count && lastPose.mode === mode) return;
-    lastPose = { type: 'pose', index, sourceRecordId, count, mode };
+      && lastPose.count === count && lastPose.mode === mode && lastPose.file === file) return;
+    lastPose = { type: 'pose', index, sourceRecordId, count, mode, file };
     toHost(lastPose);
   }
 
@@ -187,13 +211,22 @@
       if (!ready) rejectRender(new Error(message));
       else toHost({ type: 'error', message });
     } else if (body.type === 'dockingPoseChanged') {
-      publishPose(body.activePose, body.sourceRecordId, body.poseCount, body.poseMode);
+      publishPose(body.activePose, body.sourceRecordId, body.poseCount, body.poseMode, body.ligandIndex ?? 0);
     } else if (body.type === 'trajectoryFrameChanged' && sdfPosePager) {
       // Standalone SDF controls report the original record as a frame index.
       publishPose(body.globalFrameIndex, body.globalFrameIndex, body.frameCount, poseMode);
+    } else if (body.type === 'trajectoryFrameChanged' && !docking) {
+      // Docking pose paging reuses the frame controls; it reports as `pose` only.
+      toHost({
+        type: 'frame', index: body.globalFrameIndex, playing: body.playing === true,
+        segment: { start: body.segmentStartFrame, count: body.frameCount }
+      });
+    } else if (body.type === 'trajectorySmoothingChanged') {
+      smoothingView = body.view === 'smoothed' ? 'smoothed' : 'original';
+      toHost({ type: 'smoothing', view: smoothingView });
     } else if (body.type === 'structureOverlayModeChanged') {
       poseMode = body.mode;
-      if (lastPose) publishPose(lastPose.index, lastPose.sourceRecordId, lastPose.count, poseMode);
+      if (lastPose) publishPose(lastPose.index, lastPose.sourceRecordId, lastPose.count, poseMode, lastPose.file);
     } else if (body.type === 'selectionChanged') {
       toHost({ type: 'selection', selection: body.selection ?? null });
     } else if (body.type === 'exportText' || body.type === 'exportData') {
@@ -205,18 +238,29 @@
     if (opened) throw new Error('This frame already shows a scene; reload it to open another.');
     opened = true;
     const structure = readFile(scene.structure, 'structure');
-    const poses = scene.poses ? readFile(scene.poses, 'poses', POSE_FORMATS) : null;
-    docking = !!poses;
-    if (structure.bytes.length + (poses?.bytes.length || 0) > MAX_SCENE_BYTES) throw new Error('The scene is larger than 100 MB.');
-    const config = viewerConfig(scene, structure, poses);
+    const poses = readFiles(scene.poses, 'poses', POSE_FORMATS);
+    const trajectory = readFiles(scene.trajectory, 'trajectory', null, TRAJECTORY_FORMATS);
+    if (poses.length && trajectory.length) throw new Error('A scene shows either docking poses or a trajectory, not both.');
+    if (trajectory.length && !TOPOLOGY_FORMATS.has(structure.format)) {
+      throw new Error(`${structure.name}: a trajectory needs a PDB, mmCIF, GRO or PDBQT topology.`);
+    }
+    if (trajectory.length > 1 && trajectory.some(file => file.format !== 'xtc')) {
+      throw new Error('Several trajectory segments must all be XTC files.');
+    }
+    const ligands = trajectory.length ? trajectory : poses;
+    docking = poses.length > 0;
+    if ([structure, ...ligands].reduce((total, file) => total + file.bytes.length, 0) > MAX_SCENE_BYTES) {
+      throw new Error('The scene is larger than 100 MB.');
+    }
+    const config = viewerConfig(scene, structure, ligands, trajectory.length > 0);
     sdfPosePager = config.sdfPosePager;
     setBackground(config.theme);
     jsonElement('burette-runtime-config', config);
-    jsonElement('burette-runtime-data', poses ? base64(new Uint8Array([10])) : base64(structure.bytes));
-    if (poses) {
+    jsonElement('burette-runtime-data', ligands.length ? base64(new Uint8Array([10])) : base64(structure.bytes));
+    if (ligands.length) {
       window.BuretteDockingPayloads = {
         receptor: { dataBase64: base64(structure.bytes) },
-        ligands: [{ dataBase64: base64(poses.bytes) }]
+        ligands: ligands.map(file => ({ dataBase64: base64(file.bytes) }))
       };
     }
     // The viewer reports to a native host when one is present; this frame is that host.
@@ -265,10 +309,22 @@
         data: { source: 'burette-host', body: { type: 'setViewerTheme', value: window.BuretteConfig.theme, themeTokens: tokens } }
       }));
     },
-    setPose: ({ index, sourceRecordId }) => {
+    setPose: ({ index, sourceRecordId, file }) => {
       const value = sourceRecordId ?? index;
       if (!Number.isSafeInteger(value) || value < 0) throw new RangeError('The pose must be a non-negative integer.');
-      return run({ type: 'set_sdf_pose_index', index, sourceRecordId });
+      if (file !== undefined && (!Number.isSafeInteger(file) || file < 0)) throw new RangeError('The pose file must be a non-negative integer.');
+      return run({ type: 'set_sdf_pose_index', index, sourceRecordId, ligandIndex: sourceRecordId == null ? undefined : file ?? 0 });
+    },
+    setFrame: ({ index }) => {
+      if (!Number.isSafeInteger(index) || index < 0) throw new RangeError('The frame must be a non-negative integer.');
+      return run({ type: 'set_structure_pose', index });
+    },
+    setPlayback: ({ playing }) => run({ type: 'set_trajectory_playback', playing: playing === true }),
+    setSmoothing: async ({ on }) => {
+      if (on === (smoothingView === 'smoothed')) return { view: smoothingView ?? 'original' };
+      if (on && !smoothingView) await run({ type: 'apply_trajectory_smoothing' });
+      else await run({ type: 'set_trajectory_smoothing_view', view: on ? 'smoothed' : 'original' });
+      return { view: on ? 'smoothed' : 'original' };
     },
     setPoseMode: ({ mode }) => {
       if (mode !== 'all' && mode !== 'single') throw new TypeError('Unknown pose mode.');

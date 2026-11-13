@@ -3,7 +3,7 @@ const LOAD_TIMEOUT_MS = 60_000;
 const COMMAND_TIMEOUT_MS = 30_000;
 const MAX_SCENE_BYTES = 100 * 1024 * 1024;
 const THEMES = new Set(['light', 'dark', 'auto']);
-const EVENTS = new Set(['ready', 'pose', 'selection', 'error', 'export']);
+const EVENTS = new Set(['ready', 'pose', 'frame', 'smoothing', 'selection', 'error', 'export']);
 const DEFAULT_BASE = new URL('./', import.meta.url);
 
 async function fetchFile(url, name, signal) {
@@ -47,6 +47,8 @@ async function fileBytes(file, role, signal) {
   if (!data.byteLength) throw new Error(`${name} is empty.`);
   return { name, format: file.format, data };
 }
+
+const fileList = value => value == null ? [] : Array.isArray(value) ? value : [value];
 
 function downloadExport({ name, mimeType, text, base64 }) {
   const bytes = typeof text === 'string' ? new TextEncoder().encode(text)
@@ -94,9 +96,13 @@ export function createBuretteViewer(container, options = {}) {
       if (message.ok) request?.resolve(message.result);
       else request?.reject(new Error(message.error));
     } else if (message.type === 'pose') {
-      const { index, sourceRecordId, count, mode } = message;
-      emit('pose', { index, sourceRecordId, count, mode });
-    } else if (message.type === 'selection') emit('selection', { selection: message.selection });
+      const { index, sourceRecordId, count, mode, file } = message;
+      emit('pose', { index, sourceRecordId, count, mode, file });
+    } else if (message.type === 'frame') {
+      const { index, playing, segment } = message;
+      emit('frame', { index, playing, segment });
+    } else if (message.type === 'smoothing') emit('smoothing', { view: message.view });
+    else if (message.type === 'selection') emit('selection', { selection: message.selection });
     else if (message.type === 'error' && session.ready) emit('error', { message: message.message });
     else if (message.type === 'export') emit('export', { name: message.name, mimeType: message.mimeType, text: message.text, base64: message.base64 });
   }
@@ -160,12 +166,15 @@ export function createBuretteViewer(container, options = {}) {
       const current = session = { controller, element, ready: false };
       try {
         const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(LOAD_TIMEOUT_MS)]);
-        const [structure, poses] = await Promise.all([
+        const [structure, poses, trajectory] = await Promise.all([
           fileBytes(scene?.structure, 'structure', signal),
-          scene?.poses ? fileBytes(scene.poses, 'poses', signal) : null
+          Promise.all(fileList(scene?.poses).map(file => fileBytes(file, 'poses', signal))),
+          Promise.all(fileList(scene?.trajectory).map(file => fileBytes(file, 'trajectory', signal)))
         ]);
         signal.throwIfAborted();
-        if (structure.data.byteLength + (poses?.data.byteLength ?? 0) > MAX_SCENE_BYTES) throw new Error('The scene is larger than 100 MiB.');
+        if ([structure, ...poses, ...trajectory].reduce((total, file) => total + file.data.byteLength, 0) > MAX_SCENE_BYTES) {
+          throw new Error('The scene is larger than 100 MiB.');
+        }
         const url = new URL(`index.html?v=${VERSION}&theme=${theme}`, base);
         const html = transport ? await transport.prepareFrame(transport.resolve(url.href)) : null;
         signal.throwIfAborted();
@@ -175,7 +184,7 @@ export function createBuretteViewer(container, options = {}) {
           container.append(element);
         });
         const openingTheme = theme;
-        await request(current, 'open', { scene: { structure, poses, activePose: scene.activePose, theme: openingTheme, appearance } }, LOAD_TIMEOUT_MS);
+        await request(current, 'open', { scene: { structure, poses, trajectory, activePose: scene.activePose, theme: openingTheme, appearance } }, LOAD_TIMEOUT_MS);
         controller.signal.throwIfAborted();
         let appliedTheme = openingTheme;
         while (appliedTheme !== theme) {
@@ -194,7 +203,11 @@ export function createBuretteViewer(container, options = {}) {
       }
     },
     setPose: index => command('setPose', { index }),
-    setPoseRecord: sourceRecordId => command('setPose', { sourceRecordId }),
+    setPoseRecord: (sourceRecordId, file = 0) => command('setPose', { sourceRecordId, file }),
+    setFrame: index => command('setFrame', { index }),
+    play: () => command('setPlayback', { playing: true }),
+    pause: () => command('setPlayback', { playing: false }),
+    setSmoothing: on => command('setSmoothing', { on: on === true }),
     setPoseMode: mode => command('setPoseMode', { mode }),
     focusLigand: () => command('focusLigand'),
     resetCamera: () => command('resetCamera'),
