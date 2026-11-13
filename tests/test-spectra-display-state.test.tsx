@@ -47,7 +47,8 @@ test("actual CD display survives Settings-style unmount/remount with kind, range
   try {
     await f.select("Spectrum", "ecd"); await f.step("Axis start, eV", 5);
     await act(async () => { f.host.querySelectorAll<HTMLElement>("tbody tr")[1].click(); f.host.querySelector<HTMLElement>('[role="checkbox"]')!.click(); });
-    const before = f.state(); expect(before).toEqual({ kind: "ecd", start: "10", raw: "false", row: "0-1A -> 2-1A" });
+    // Camphor's transitions reach 8.33 eV, so the default window starts at 9 eV; five steps up is 14.
+    const before = f.state(); expect(before).toEqual({ kind: "ecd", start: "14", raw: "false", row: "0-1A -> 2-1A" });
     await f.hide(); await f.show(); expect(f.state()).toEqual(before); expect(f.requests()).toBe(0);
   } finally { await f.close(); }
 });
@@ -76,7 +77,7 @@ test("unmounted revision replacement, rollback ABA, logical restore and new docu
         else if (change === "document") f.replaceDocument();
         else addDocumentInternalCoordinates("unrelated", "unrelated source", f.science);
       });
-      await f.show(); expect([f.state().kind, f.state().start]).toEqual(change === "unrelated" ? ["ecd", "10"] : ["electronic", "5"]);
+      await f.show(); expect([f.state().kind, f.state().start]).toEqual(change === "unrelated" ? ["ecd", "14"] : ["electronic", "9"]);
     } finally { await f.close(); }
   }
 });

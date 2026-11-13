@@ -26,7 +26,7 @@ export const spectrumJob: AgentJobRunner<"spectrum"> = {
   async run(snapshot, params, { signal, timeoutMs, stem, artifact }) {
     const data = sourceFor(snapshot, params)!;
     const selection: SpectralPlotSelection = params.kind === "nmr" ? { kind: "nmr", atomicNumber: params.atomicNumber! } : { kind: params.kind };
-    const options = spectralPlotDefaults(selection);
+    const options = spectralPlotDefaults(selection, data);
     for (const key of ["scale", "offset", "fwhm", "axisStart", "axisEnd"] as const) if (params[key] !== undefined) options[key] = params[key];
     const plot = await computeScientificSpectrum({ data, selection, options }, { signal, timeoutMs });
     const selected = { ...data, spectra: data.spectra.filter(item => item.kind === params.kind) };

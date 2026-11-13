@@ -63,7 +63,7 @@ function SourceSpectra({ data, actions, onSelectAtom, sourceKey, display }: { da
 type Run = { request: ScientificSpectrumRequest; plot: ScientificSpectrumPlot | null; status: "running" | "ready" | "cancelled" | "error"; error: string | null };
 function SpectrumView({ data, selection, actions, onSelectAtom, memory }: { data: ScientificSpectra; selection: SpectralPlotSelection; actions: Actions; memory: SourceDisplayState } & AtomSelection) {
   const viewKey = `${selection.kind}:${selection.kind === "nmr" ? selection.atomicNumber : ""}`, remembered = memory.views.get(viewKey);
-  const [options, setOptions] = useState(() => remembered?.options ?? spectralPlotDefaults(selection));
+  const [options, setOptions] = useState(() => remembered?.options ?? spectralPlotDefaults(selection, data));
   const [showRaw, setShowRaw] = useState(remembered?.showRaw ?? true), [selected, setSelected] = useState<string | null>(remembered?.selected ?? null), [page, setPage] = useState(remembered?.page ?? 0), [retry, setRetry] = useState(0);
   useLayoutEffect(() => {
     memory.views.delete(viewKey); memory.views.set(viewKey, { options, showRaw, selected, page });

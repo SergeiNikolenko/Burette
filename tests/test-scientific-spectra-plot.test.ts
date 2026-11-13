@@ -94,3 +94,15 @@ test("bounds and Float32 overflow refuse a curve instead of normalizing, resampl
   expect(() => plotScientificSpectrum(doubleSource, { kind: "electronic" })).toThrow("Float32");
   expect(scientificSpectraJson(doubleSource)).toContain("1e-320");
 });
+
+test("electronic and ECD defaults widen Avogadro's 5 to 1 eV window to cover every transition, falling", () => {
+  const spectra = (positions: number[], xUnit: "eV" | "nm") => ({ kind: "scientific-spectra" as const, version: 1 as const,
+    source: { name: "td.out", format: "program-output" as const, scope: "frame" as const, frameIndex: 0, frameCount: 1 }, atomicNumbers: [6],
+    spectra: [{ kind: "electronic" as const, xUnit, positions, values: positions.map(() => 0.1), valueUnit: null }] });
+  // Gaussian's divinylbenzene states lie at 5.3351 to 7.4124 eV.
+  expect(spectralPlotDefaults({ kind: "electronic" }, spectra([5.3351, 7.4124], "eV"))).toMatchObject({ axisStart: 8, axisEnd: 1 });
+  // 800 nm is 1.55 eV; the window still reaches below it.
+  expect(spectralPlotDefaults({ kind: "electronic" }, spectra([800, 250], "nm"))).toMatchObject({ axisStart: 6, axisEnd: 1 });
+  expect(spectralPlotDefaults({ kind: "electronic" }, spectra([1.2, 3], "eV"))).toMatchObject({ axisStart: 5, axisEnd: 0 });
+  expect(spectralPlotDefaults({ kind: "electronic" })).toMatchObject({ axisStart: 5, axisEnd: 1 });
+});

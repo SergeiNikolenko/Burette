@@ -16,7 +16,17 @@ const NMR: Readonly<Record<number, readonly [number, number, number]>> = {
   9: [60, -300, 206.735], 14: [50, -200, 400.876], 15: [250, -250, 392.841],
 };
 
-export function spectralPlotDefaults(selection: SpectralPlotSelection): SpectralPlotOptions {
+/** A transition's energy in eV, as the plot places it. */
+function electronvolts(position: number, unit: "eV" | "nm" | "cm^-1") {
+  return unit === "nm" ? 1239.841984 / position : unit === "cm^-1" ? position / 8065.544 : position;
+}
+
+/**
+ * Avogadro's display defaults. Its electronic and ECD window is 5 to 1 eV; with the source given,
+ * the window widens to whole eV half an eV beyond every transition, so DFT excitations above 5 eV
+ * are on screen, and keeps the falling direction.
+ */
+export function spectralPlotDefaults(selection: SpectralPlotSelection, data?: ScientificSpectra): SpectralPlotOptions {
   if (selection.kind === "nmr") {
     if (!Number.isInteger(selection.atomicNumber) || selection.atomicNumber < 1 || selection.atomicNumber > 118) throw new Error("Choose an NMR source element.");
     const [axisStart, axisEnd, offset] = NMR[selection.atomicNumber] ?? [100, -100, 0];
@@ -24,7 +34,16 @@ export function spectralPlotDefaults(selection: SpectralPlotSelection): Spectral
   }
   const preset = PRESETS[selection.kind];
   if (!preset) throw new Error("Unknown scientific spectrum type.");
-  return { scale: 1, offset: 0, fwhm: preset[2], axisStart: preset[0], axisEnd: preset[1] };
+  const options = { scale: 1, offset: 0, fwhm: preset[2], axisStart: preset[0] as number, axisEnd: preset[1] as number };
+  const spectrum = data?.spectra.find(item => item.kind === selection.kind);
+  if ((selection.kind === "electronic" || selection.kind === "ecd") && spectrum && spectrum.kind !== "nmr" && spectrum.positions.length) {
+    const energies = spectrum.positions.map(position => electronvolts(position, spectrum.xUnit)).filter(Number.isFinite);
+    if (energies.length) {
+      options.axisStart = Math.max(options.axisStart, Math.ceil(Math.max(...energies) + 0.5));
+      options.axisEnd = Math.max(0, Math.min(options.axisEnd, Math.floor(Math.min(...energies) - 0.5)));
+    }
+  }
+  return options;
 }
 
 const roundIndex = (value: number) => value < 0 ? -Math.round(-value) : Math.round(value);
@@ -72,8 +91,7 @@ export function plotScientificSpectrum(data: ScientificSpectra, selection: Spect
   const signedScale = selection.kind === "nmr" ? -float(scale) : float(scale);
   const peaks = sourcePositions.map((position, index) => {
     // Reader conversions are double precision; only the native plot input casts to float.
-    if (spectrum.kind !== "nmr" && spectrum.xUnit === "nm") position = 1239.841984 / position;
-    else if (spectrum.kind !== "nmr" && spectrum.xUnit === "cm^-1" && xUnit === "eV") position /= 8065.544;
+    if (spectrum.kind !== "nmr" && xUnit === "eV") position = electronvolts(position, spectrum.xUnit);
     const center = float(float(float(position) - float(offset)) / signedScale), value = float(sourceValues[index]);
     if (!Number.isFinite(center) || !Number.isFinite(value)) throw new Error("Source quantities exceed the finite Float32 display range.");
     return { center, value };
