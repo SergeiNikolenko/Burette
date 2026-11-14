@@ -6596,9 +6596,16 @@
     }
   }
 
-  function molstarHydrogenRepresentation(representation) {
-    return { ...representation, typeParams: { ...representation.typeParams,
-      ignoreHydrogens: !molstarShowHydrogens, ignoreHydrogensVariant: 'all' } };
+  // Mol* gives the illustrative flat shading only to representations its own
+  // presets build; setOptions never pushes it to existing ones. Pass the plugin
+  // when building a new representation so it matches the rest of the scene.
+  function molstarHydrogenRepresentation(representation, plugin) {
+    const typeParams = { ...representation.typeParams,
+      ignoreHydrogens: !molstarShowHydrogens, ignoreHydrogensVariant: 'all' };
+    if (typeParams.ignoreLight === undefined && plugin?.managers?.structure?.component?.state?.options?.ignoreLight === true) {
+      typeParams.ignoreLight = true;
+    }
+    return { ...representation, typeParams };
   }
 
   function installMolstarToolbarActionDelegates() {
@@ -7646,18 +7653,6 @@
   function updateToolbarButtons() {
     const toolbar = document.getElementById('buret-toolbar');
     if (!toolbar) return;
-    for (const [side, icon] of [['left', 'SidebarLeft'], ['right', 'SidebarRight']]) {
-      const button = toolbar.querySelector(`[data-buret-toggle="${side}"]`);
-      if (!button) continue;
-      const open = layoutState[side] === 'full';
-      button.classList.toggle('active', open);
-      const slot = button.querySelector('[data-buret-mode-icon]');
-      const name = open ? icon : `${icon}Hidden`;
-      if (slot && slot.dataset.buretModeIcon !== name) {
-        slot.dataset.buretModeIcon = name;
-        slot.replaceChildren(sceneTreeIconElement(APP_ICON_DATA[name]));
-      }
-    }
     toolbar.querySelector('[data-buret-toggle="sequence"]')?.classList.toggle('active', layoutState.top === 'full');
     toolbar.querySelector('[data-buret-toggle="log"]')?.classList.toggle('active', layoutState.bottom === 'full');
   }
@@ -10860,7 +10855,6 @@ SOFTWARE.
     const motion = viewportMotionState().name;
     return {
       motion: playing ? 'playing' : (motion !== 'off' ? motion : (viewportWiggleState()?.name === 'off' ? 'off' : 'wiggle')),
-      illumination: plugin?.canvas3d?.props?.illumination?.enabled === true,
       selectionMode: plugin?.selectionMode === true,
       hasSelection: Number(plugin?.managers?.structure?.selection?.stats?.elementCount) > 0
     };
@@ -11163,10 +11157,6 @@ SOFTWARE.
       openViewportMenu(control, 'Animate', viewportAnimateMenu);
     } else if (action === 'screenshot') {
       openViewportMenu(control, 'Screenshot', viewportScreenshotMenu);
-    } else if (action === 'illumination') {
-      const enabled = plugin.canvas3d?.props?.illumination?.enabled !== true;
-      plugin.canvas3d?.setProps({ illumination: { enabled } });
-      viewportRailControls?.refresh();
     } else if (action === 'select-mode') {
       const enabled = plugin.selectionMode !== true;
       plugin.selectionMode = enabled;
@@ -16887,7 +16877,7 @@ SOFTWARE.
             continue;
           }
           const representation = item.representations[component.role];
-          const selector = representationBuilder.buildRepresentation(representations, component.ref, molstarHydrogenRepresentation(representation));
+          const selector = representationBuilder.buildRepresentation(representations, component.ref, molstarHydrogenRepresentation(representation, plugin));
           if (selector) item.added.push({ ref: selector.ref, representation, role: component.role });
         }
         // Unusual structures keep their parsed data and take the builders.
@@ -17891,7 +17881,7 @@ SOFTWARE.
 
   async function addCollectionRepresentation(plugin, structure, component, representation, role) {
     if (!component) return false;
-    const result = await plugin.builders.structure.representation.addRepresentation(component.cell || component, molstarHydrogenRepresentation(representation));
+    const result = await plugin.builders.structure.representation.addRepresentation(component.cell || component, molstarHydrogenRepresentation(representation, plugin));
     if (!result) throw new Error('Mol* could not build this representation.');
     if (result.ref && structure.cell) recordCollectionRepresentation(plugin, structure.cell, result.ref, representation, role);
     return true;
@@ -18060,6 +18050,25 @@ SOFTWARE.
     });
   }
 
+  // Mol* pushes a component option to representations only when its value
+  // changes. Docking pose layers and other structures added after the appearance
+  // was set would keep the lit default, so they take the scene's value here.
+  async function syncMolstarIgnoreLight(plugin, ignoreLight) {
+    const update = plugin.state.data.build();
+    let changed = false;
+    for (const structure of plugin.managers.structure.hierarchy.current.structures) {
+      for (const component of structure.components) {
+        for (const representation of component.representations) {
+          const params = representation.cell.transform.params?.type?.params;
+          if (!params || !('ignoreLight' in params) || params.ignoreLight === ignoreLight) continue;
+          update.to(representation.cell).update(old => ({ ...old, type: { ...old.type, params: { ...old.type.params, ignoreLight } } }));
+          changed = true;
+        }
+      }
+    }
+    if (changed) await update.commit();
+  }
+
   async function applyMolstarNonIllustrativePostprocessing(viewer) {
     const plugin = viewer?.plugin;
     if (!plugin) return;
@@ -18067,6 +18076,7 @@ SOFTWARE.
       ...plugin.managers.structure.component.state.options,
       ignoreLight: false
     });
+    await syncMolstarIgnoreLight(plugin, false);
     resetMolstarPostprocessing(viewer);
   }
 
@@ -18082,6 +18092,7 @@ SOFTWARE.
       ...plugin.managers.structure.component.state.options,
       ignoreLight: true
     });
+    await syncMolstarIgnoreLight(plugin, true);
     enableMolstarIllustrativeOutline(viewer, options);
   }
 
@@ -20153,6 +20164,9 @@ SOFTWARE.
     };
   }
 
+  // Narrowest one-row layout of the pose controls: play, steppers, a truncated
+  // name with its counter, and All.
+  const DOCKING_POSE_ROW_MIN_WIDTH = 224;
   function dockingPoseControlsBounds(mainRect = visibleRect('.msp-plugin .msp-layout-main'), top = TOOLBAR_MARGIN) {
     const margin = TOOLBAR_MARGIN;
     const left = mainRect ? Math.max(margin, Math.ceil(mainRect.left + margin)) : margin;
@@ -20166,12 +20180,19 @@ SOFTWARE.
     const clearedRight = viewportRailRect
       ? Math.min(right, Math.floor(viewportRailRect.left - FLOATING_LAYOUT_GAP))
       : right;
+    // On the main toolbar's row the controls end where the toolbar starts, as long
+    // as that leaves room for their compact layout; the file name truncates.
+    const toolbarRect = visibleRect('#buret-toolbar');
+    const rowRight = toolbarRect && Math.abs(toolbarRect.top - top) < toolbarRect.height
+      && toolbarRect.left - FLOATING_LAYOUT_GAP - clearedLeft >= DOCKING_POSE_ROW_MIN_WIDTH
+      ? Math.min(clearedRight, Math.floor(toolbarRect.left - FLOATING_LAYOUT_GAP))
+      : clearedRight;
     // The sequence panel pushes the viewport down; the controls stay inside the
     // viewport instead of covering the sequence header.
     const viewportTop = mainRect ? Math.max(margin, Math.ceil(mainRect.top + margin)) : margin;
     return {
       left: clearedLeft,
-      right: Math.max(clearedLeft, clearedRight),
+      right: Math.max(clearedLeft, rowRight),
       top: viewportTop,
       bottom: window.innerHeight - margin
     };
@@ -20260,7 +20281,9 @@ SOFTWARE.
   function defaultDockingPoseControlsTop(root, bounds) {
     const toolbarRect = visibleRect('#buret-toolbar');
     if (!toolbarRect) return bounds.top;
-    const width = root.offsetWidth || root.getBoundingClientRect().width || 180;
+    // The controls shrink to the room beside the toolbar, so only a row too short
+    // for their compact layout sends them below it.
+    const width = Math.min(root.offsetWidth || DOCKING_POSE_ROW_MIN_WIDTH, DOCKING_POSE_ROW_MIN_WIDTH);
     const overlapsToolbar = bounds.left < toolbarRect.right + FLOATING_LAYOUT_GAP
       && bounds.left + width > toolbarRect.left - FLOATING_LAYOUT_GAP;
     return overlapsToolbar ? Math.ceil(toolbarRect.bottom + FLOATING_LAYOUT_GAP) : bounds.top;
@@ -24476,6 +24499,17 @@ SOFTWARE.
     return poses[index] || poses[0] || null;
   }
 
+  // The pose a picked ligand structure shows. Pinned poses and All keep several
+  // pose structures on screen, so the pick decides, not the stepper position.
+  function dockingPoseSourceForStructure(prepared, structure) {
+    const ref = structure?.cell?.transform?.ref;
+    if (!ref) return null;
+    for (const [index, layer] of activeDockingPoseCollectionState?.layers || []) {
+      if (layer.activeRefs.includes(ref)) return prepared?.poses?.[index] || null;
+    }
+    return null;
+  }
+
   const MOLSTAR_CONTEXT_STANDARD_RESIDUES = new Set([
     'ALA', 'ARG', 'ASN', 'ASP', 'CYS', 'GLN', 'GLU', 'GLY', 'HIS', 'ILE',
     'LEU', 'LYS', 'MET', 'PHE', 'PRO', 'SER', 'THR', 'TRP', 'TYR', 'VAL',
@@ -25130,7 +25164,9 @@ SOFTWARE.
         : molstarContextTargetLabel(targetStructures));
     if (activeConfig?.docking && activeDockingPrepared) {
       if (pickedAtom && pickedScope === 'ligand') {
-        const ligand = pdbEntryForResidue(activeDockingPrepared.receptorEntry, pickedAtom);
+        // A pose is its own file; only the receptor's ligands are cut from it.
+        const ligand = dockingPoseSourceForStructure(activeDockingPrepared, targetStructure)
+          || pdbEntryForResidue(activeDockingPrepared.receptorEntry, pickedAtom);
         return {
           structures: targetStructures,
           structure: targetStructure,
@@ -25176,7 +25212,8 @@ SOFTWARE.
         };
       }
       if (picked && picked.index > 0) {
-        const pose = currentDockingPoseSource(activeDockingPrepared);
+        const pose = dockingPoseSourceForStructure(activeDockingPrepared, targetStructure)
+          || currentDockingPoseSource(activeDockingPrepared);
         return {
           structures: targetStructures,
           structure: targetStructure,
@@ -25307,16 +25344,36 @@ SOFTWARE.
     return molecule?.atoms?.map(atom => ({ x: atom.x, y: atom.y, z: atom.z })) || [];
   }
 
+  // Every hover and selection resolves the residue under the pointer. Keep the
+  // last PDB text's atom lines by residue number, and its CONECT lines, so a
+  // lookup does not split and parse the whole file again.
+  let pdbResidueIndex = null;
+  function pdbResidueIndexFor(data) {
+    if (pdbResidueIndex?.data === data) return pdbResidueIndex;
+    const atomLines = new Map();
+    const conect = [];
+    for (const line of data.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')) {
+      if (line.startsWith('CONECT')) conect.push(line);
+      if (!line.startsWith('ATOM  ') && !line.startsWith('HETATM')) continue;
+      const seqId = line.slice(22, 27).trim();
+      const residue = atomLines.get(seqId);
+      if (residue) residue.push(line);
+      else atomLines.set(seqId, [line]);
+    }
+    pdbResidueIndex = { data, atomLines, conect };
+    return pdbResidueIndex;
+  }
+
   function pdbLinesForResidue(receptor, atom) {
     if (!receptor || normalizeFormat(receptor.format) !== 'pdb') return null;
     const compId = String(atom?.auth_comp_id || atom?.label_comp_id || '').trim();
     const chainId = String(atom?.auth_asym_id || atom?.label_asym_id || '').trim();
     const seqId = String(atom?.auth_seq_id ?? atom?.label_seq_id ?? '').trim();
     if (!seqId) return null;
-    const lines = String(receptor.data || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(line => {
+    const lines = (pdbResidueIndexFor(String(receptor.data || '')).atomLines.get(seqId) || []).filter(line => {
       const parsed = parsePdbAtomLine(line);
       if (!parsed) return false;
-      return (!compId || parsed.compId === compId) && parsed.seqId === seqId && (!chainId || parsed.chainId === chainId);
+      return (!compId || parsed.compId === compId) && (!chainId || parsed.chainId === chainId);
     });
     return lines.length ? { lines, compId, chainId, seqId } : null;
   }
@@ -25328,8 +25385,7 @@ SOFTWARE.
     const firstAtom = parsePdbAtomLine(lines[0]);
     const resolvedCompId = compId || firstAtom?.compId || 'Ligand';
     const serials = new Set(lines.map(line => parsePdbAtomLine(line).serial));
-    const conect = String(receptor.data || '').split(/\r?\n/u)
-      .filter(line => line.startsWith('CONECT'))
+    const conect = pdbResidueIndexFor(String(receptor.data || '')).conect
       .map(line => filteredPdbConectLine(line, serials)).filter(Boolean);
     return {
       data: ['HEADER    BURETTE PICKED SELECTION', ...lines, ...conect, 'END', ''].join('\n'),
@@ -28083,7 +28139,7 @@ SOFTWARE.
         <button type="button" class="buret-molecule-card-icon" data-buret-molecule-preview-action="close" aria-label="Hide preview" title="Hide preview">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.close)}</button>
       </div>
       <div class="buret-molecule-card-toolbar" role="toolbar" aria-label="Molecule preview actions">
-        <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="ketcher" aria-label="Open in Ketcher" title="Open in Ketcher">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.ketcher)}<span>Edit</span></button>
+        ${activeConfig?.visualizationOnly === true ? '' : `<button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="ketcher" aria-label="Open in Ketcher" title="Open in Ketcher">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.ketcher)}<span>Edit</span></button>`}
         <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="copy-smiles" aria-label="Copy SMILES" title="Copy SMILES">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.copy)}<span>SMILES</span></button>
         <button type="button" class="buret-molecule-card-button" data-buret-hydrogens data-buret-molecule-preview-action="hydrogens" aria-label="${molstarShowHydrogens ? 'Hide' : 'Show'} hydrogens" aria-pressed="${molstarShowHydrogens}" title="${molstarShowHydrogens ? 'Hide' : 'Show'} hydrogens">H</button>
         <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="lasso" aria-label="Lasso atoms in 2D" aria-pressed="false" title="Select atoms by drawing a lasso · Esc to exit">${molstarMoleculePreviewIconHTML(['M7 17c-3-1-5-3-5-6 0-5 5-8 11-8s9 3 9 7-5 8-11 8', 'M7 15c-3 0-4 2-3 4s4 2 5 0-1-4-2-4', 'M7 21c2 2 5 2 7 0'])}<span>Lasso</span></button>

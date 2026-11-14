@@ -77,8 +77,13 @@
   }
 
   async function show(plugin, options) {
-    const { molecules, all, spread, spreadCells, spreadMolecules, foreground, background } = options;
+    const { molecules, all, spread, spreadCells, spreadMolecules } = options;
     if (!molecules?.length) throw new Error('The molecule collection is empty.');
+    // Mol* gives the illustrative flat shading only to representations its own
+    // presets build, so the ones built here take it at creation.
+    const flat = plugin.managers?.structure?.component?.state?.options?.ignoreLight === true;
+    const [foreground, background] = [options.foreground, options.background].map(representation => flat && representation
+      ? { ...representation, typeParams: { ...representation.typeParams, ignoreLight: true } } : representation);
     const index = Math.max(0, Math.min(molecules.length - 1, Math.trunc(Number(options.index) || 0)));
     const cellsKey = spread ? JSON.stringify(spreadCells || null) : '';
     const dataState = plugin.state.data;
@@ -123,7 +128,7 @@
           await dataState.build().to(scene.model).update({ modelIndex: index }).commit({ revertOnError: true });
         }
         if (all && molecules.length <= MAX_MOLECULE_COMPONENTS) {
-          await showMoleculeComponents(plugin, scene, options, index);
+          await showMoleculeComponents(plugin, scene, { ...options, foreground, background }, index);
           return;
         }
         if (scene.index !== index || !dataState.cells.has(scene.foreground?.ref)) {
