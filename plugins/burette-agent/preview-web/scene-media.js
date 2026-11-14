@@ -8,6 +8,7 @@
 // in the view are recorded as shown.
 if (!window.BuretteSceneMedia) {
   const SPHERE_TYPES = new Set(['ball-and-stick', 'spacefill']);
+  const POLAR = new Set(['N', 'O', 'S', 'F', 'CL', 'BR', 'I']);
   const MAX_SECONDS = 60;
   const MOVIE_TYPES = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm'];
 
@@ -41,7 +42,8 @@ if (!window.BuretteSceneMedia) {
       const sizeTheme = themes.sizeThemeRegistry.create(params.sizeTheme.name, { structure }, params.sizeTheme.params);
       const props = params.type.params || {};
       out.push({ type, structure, colorTheme, sizeTheme, sizeFactor: props.sizeFactor ?? 1,
-        aspect: type === 'spacefill' ? 0 : props.sizeAspectRatio ?? 2 / 3 });
+        aspect: type === 'spacefill' ? 0 : props.sizeAspectRatio ?? 2 / 3,
+        hiddenHydrogens: props.ignoreHydrogens ? props.ignoreHydrogensVariant === 'non-polar' ? 'non-polar' : 'all' : null });
     }
     return out;
   }
@@ -53,21 +55,31 @@ if (!window.BuretteSceneMedia) {
     if (!representations.length) throw new Error('Vector export supports ball-and-stick, licorice and spacefill views.');
     const camera = canvas3d.camera, { width, height } = camera.viewport, view = camera.view;
     const right = [view[0], view[4], view[8]];
-    const project = point => { const p = camera.project([0, 0, 0, 0], point); return [p[0], height - p[1], p[2]]; };
+    // Camera window coordinates have a top-left origin, as SVG does.
+    const project = point => camera.project([0, 0, 0, 0], point);
     const pixelRadius = (point, center, radius) => {
       const edge = project(point.map((value, axis) => value + right[axis] * radius));
       return Math.hypot(edge[0] - center[0], edge[1] - center[1]);
     };
     const shapes = [], colors = new Set();
     let atomCount = 0, bondCount = 0;
-    for (const { type, structure, colorTheme, sizeTheme, sizeFactor, aspect } of representations) {
-      const location = Element.Location.create(structure), other = Element.Location.create(structure);
+    for (const { structure, colorTheme, sizeTheme, sizeFactor, aspect, hiddenHydrogens } of representations) {
+      const location = Element.Location.create(structure);
       const atom = new Map();
+      // As the render: every hydrogen, or with "non-polar" those without a polar neighbour in their unit.
+      const hidden = (unit, i) => {
+        const symbol = unit.model.atomicHierarchy.atoms.type_symbol, { offset, b } = unit.bonds;
+        if (!hiddenHydrogens || symbol.value(unit.elements[i]) !== 'H') return false;
+        if (hiddenHydrogens === 'all') return true;
+        for (let k = offset[i]; k < offset[i + 1]; k++) if (POLAR.has(symbol.value(unit.elements[b[k]]))) return false;
+        return true;
+      };
       // Atoms: projected centre, pixel radius and colour, keyed by unit and element row.
       for (const unit of structure.units) {
         if (unit.kind !== 0) continue;
         location.unit = unit;
         for (let i = 0; i < unit.elements.length; i++) {
+          if (hidden(unit, i)) continue;
           location.element = unit.elements[i];
           const world = [0, 0, 0]; unit.conformation.position(location.element, world);
           const center = project(world), radius = sizeTheme.size(location) * sizeFactor;
@@ -76,7 +88,9 @@ if (!window.BuretteSceneMedia) {
           const entry = { world, center, radius, color, pixels: pixelRadius(world, center, radius) };
           atom.set(`${unit.id}:${i}`, entry);
           atomCount++;
-          shapes.push({ depth: center[2], kind: 'atom', entry, label: `${unit.model.atomicHierarchy.atoms.type_symbol.value(location.element)}${unit.model.atomicHierarchy.atomSourceIndex.value(location.element) + 1}` });
+          // Mol* keeps element symbols in upper case.
+          const symbol = unit.model.atomicHierarchy.atoms.type_symbol.value(location.element);
+          shapes.push({ depth: center[2], kind: 'atom', entry, label: `${symbol.slice(0, 1)}${symbol.slice(1).toLowerCase()}${unit.model.atomicHierarchy.atomSourceIndex.value(location.element) + 1}` });
         }
       }
       if (!aspect) continue;

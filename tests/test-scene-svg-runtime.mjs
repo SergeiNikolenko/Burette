@@ -58,14 +58,24 @@ try {
   assert.match(oxygen.getAttribute('fill'), /^url\(#a/);
   assert.ok(document.querySelector(`radialGradient#${oxygen.getAttribute('fill').slice(5, -1)}`), 'each fill has its gradient');
 
+  // Hydrogens hidden in the view are not drawn, nor are their bonds; "non-polar" keeps the hydroxyl hydrogen.
+  const hydrogens = async (ignoreHydrogens, ignoreHydrogensVariant = 'all') => {
+    await plugin.build().to(sticks).update(old => ({ ...old, type: { name: old.type.name, params: { ...old.type.params, ignoreHydrogens, ignoreHydrogensVariant } } })).commit();
+    const shown = media.svg(plugin);
+    return [shown.atoms, shown.bonds];
+  };
+  assert.deepEqual(await hydrogens(true), [3, 2]);
+  assert.deepEqual(await hydrogens(true, 'non-polar'), [4, 3]);
+  assert.deepEqual(await hydrogens(false), [9, 8]);
+
   // Hidden representations are skipped; spacefill gives atoms only.
   await plugin.build().to(sticks).update(old => ({ ...old, type: { name: 'spacefill', params: { ...old.type.params } } })).commit();
   const spheres = media.svg(plugin);
   assert.deepEqual([spheres.atoms, spheres.bonds], [9, 0]);
 
-  // Formaldehyde in the screen plane: a bond stroke starts where its cylinder leaves the
+  // Formyl chloride in the screen plane: a bond stroke starts where its cylinder leaves the
   // atom's sphere, so the nearer atom's disc is not painted over by the bond's end.
-  const flat = await open(molfile([['C', 0, 0, 0], ['O', 0, 1.21, 0], ['H', 0.94, -0.54, 0], ['H', -0.94, -0.54, 0]], [[1, 2, 2], [1, 3, 1], [1, 4, 1]]), 'mol');
+  const flat = await open(molfile([['C', 0, 0, 0], ['O', 0, 1.21, 0], ['H', 0.94, -0.54, 0], ['Cl', -1.5, -0.87, 0]], [[1, 2, 2], [1, 3, 1], [1, 4, 1]]), 'mol');
   await flat.plugin.builders.structure.representation.addRepresentation(flat.structure, { type: 'ball-and-stick', color: 'element-symbol' });
   const planar = parse(media.svg(flat.plugin).svg);
   const discs = Object.fromEntries([...planar.querySelectorAll('circle')].map(circle => [circle.querySelector('title').textContent,
@@ -75,12 +85,15 @@ try {
   assert.deepEqual(groups.map(ends => ends.length / 4).sort(), [1, 1, 2], 'two single bonds and one double bond');
   const reach = (ends, disc) => Math.min(...ends.map(([x, y]) => Math.hypot(x - disc.x, y - disc.y)));
   for (const ends of groups) {
-    const partner = ['O2', 'H3', 'H4'].map(name => discs[name]).sort((p, q) => reach(ends, p) - reach(ends, q))[0];
+    const partner = ['O2', 'H3', 'Cl4'].map(name => discs[name]).sort((p, q) => reach(ends, p) - reach(ends, q))[0];
     for (const disc of [discs.C1, partner]) {
       assert.ok(reach(ends, disc) >= 0.5 * disc.r - 0.02, 'a bond stroke does not start at the atom centre');
       assert.ok(reach(ends, disc) <= disc.r + 0.02, 'a bond stroke starts under the atom disc');
     }
   }
+  // The image is the view, not its mirror: +y is up and +x is right on screen.
+  assert.ok(discs.O2.y < discs.C1.y && discs.H3.y > discs.C1.y, 'atoms above the centre are drawn above it');
+  assert.ok(discs.H3.x > discs.C1.x && discs.Cl4.x < discs.C1.x);
   console.log('Vector export draws one circle per atom and one group per bond from the shown representations.');
 } finally {
   for (const plugin of plugins) plugin.dispose();
