@@ -306,6 +306,21 @@ applies the name; Escape cancels. Use **Save** to write the collection, or
 the Name property while preserving structures, identifiers, and other data.
 Renaming participates in the collection's Undo/Redo history.
 
+A collection's columns can be plotted in the **Chart** dock tab: **Analyze →
+Chart Columns…**, "Chart columns" in the command palette, or **Chart** in a
+dock's add menu while a collection is in front. It draws a scatter chart of two
+number columns, a histogram of one, a bar chart of the rows (or the mean of a
+number column) per category, or a box chart of a number column per category.
+Any column, including computed property and analysis columns, can be picked; in
+a scatter chart the points can take their colour from any column and their size
+from a number column. The chart and the grid share one selection: clicking a
+point, bar, bin, box or outlier, dragging across bars, or drawing a lasso
+selects those rows in the grid (Shift adds or toggles), and rows selected in
+the grid are highlighted in the chart. Rows hidden by the grid's search and
+filters are not drawn. The scatter view zooms with the wheel, pans with a drag
+or the arrow keys, and **Fit** or `0` shows every point again. A chart reads at
+most 100,000 rows and says so when the collection is larger.
+
 Mass-spectrometry formats (MS, MAGMA, MGF, MSP, MZML, MZXML) open in the
 dedicated spectrum viewer.
 
