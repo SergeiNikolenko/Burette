@@ -58,6 +58,8 @@ export function PotentialPanel({ document, actions, science, sourceText, sourceK
   const [computing, setComputing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const shown = useRef<Shown | null>(null);
+  // Where a surface was last sent, also while the scene is still drawing it.
+  const scene = useRef<{ target: ViewerActionTarget; lease: string } | null>(null);
   const binding = useRef<{ target: ViewerActionTarget; lease: string } | null>(null);
   const sender = useRef(actions.runStructureViewerAction);
   sender.current = actions.runStructureViewerAction;
@@ -68,17 +70,22 @@ export function PotentialPanel({ document, actions, science, sourceText, sourceK
   const sourceKey = source ? `${source.key}:${source.kind === "cube" ? "" : atoms.map((atom) => `${atom.x},${atom.y},${atom.z}`).join(";")}` : null;
   const colors = range?.key === sourceKey ? range : null;
 
-  const send = (cube: string, target: ViewerActionTarget, lease: string, coloring?: { min: number; max: number }, value = surfaceIsovalue) =>
-    sender.current(document, { type: "show_scalar_field", lease, label: "Electrostatic potential", cube, isovalue: value, signed: false, alpha: 0.9, ...(coloring ? { coloring } : {}), notify: false }, { target });
+  const send = (cube: string, target: ViewerActionTarget, lease: string, coloring?: { min: number; max: number }, value = surfaceIsovalue) => {
+    scene.current = cube ? { target, lease } : null;
+    return sender.current(document, { type: "show_scalar_field", lease, label: "Electrostatic potential", cube, isovalue: value, signed: false, alpha: 0.9, ...(coloring ? { coloring } : {}), notify: false }, { target });
+  };
+  const clear = () => {
+    const value = scene.current; shown.current = null;
+    if (value) void Promise.resolve(send("", value.target, value.lease)).catch(() => {});
+  };
 
   // Clears through the retained scene when the panel goes away.
-  useEffect(() => () => {
-    const value = shown.current; shown.current = null;
-    if (value) void Promise.resolve(send("", value.target, value.lease)).catch(() => {});
-  }, [document, science]);
+  useEffect(() => clear, [document, science]);
 
   // Computes and shows the surface for the chosen source; a newer choice aborts the one in flight.
   useEffect(() => {
+    // A frame with no charges has no potential: the surface of another geometry does not stay on it.
+    if (wanted && !sourceKey) clear();
     if (!wanted || !source || !sourceKey || shown.current?.key === sourceKey) return undefined;
     const target = binding.current?.target.isCurrent() ? binding.current.target : captureViewerActionTarget(document.id);
     if (!target) { setError("Open the scene and wait for it to load."); setWanted(false); return undefined; }
@@ -108,6 +115,8 @@ export function PotentialPanel({ document, actions, science, sourceText, sourceK
         if (signal.aborted || !current() || !target.isCurrent()) return;
         await sender.current(document, { type: "scalar_field_validate", lease, label: "Electrostatic potential", notify: false }, { target, signal });
         await send(cube, target, lease, coloring);
+        // Hidden or replaced while the scene drew it: that request owns the scene now.
+        if (signal.aborted) return;
         shown.current = { key: sourceKey, cube, style: `${coloring.min}:${coloring.max}:${surfaceIsovalue}`, lease, target };
         if (!colors) setRange({ key: sourceKey, ...coloring });
       } catch (caught) {
@@ -133,8 +142,7 @@ export function PotentialPanel({ document, actions, science, sourceText, sourceK
 
   const hide = () => {
     setWanted(false);
-    const value = shown.current; shown.current = null;
-    if (value) void Promise.resolve(send("", value.target, value.lease)).catch(() => {});
+    clear();
   };
 
   const openCube = async (event: ChangeEvent<HTMLInputElement>) => {
