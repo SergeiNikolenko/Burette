@@ -81,6 +81,7 @@ const FORWARDED_COMMANDS: &[&str] = &[
     "collection.pivot",
     "collection.unpivot",
     "collection.merge-by-key",
+    "collection.record-view",
     "collection.reaction.add-smiles",
     "collection.reaction.extract-reactants",
     "collection.reaction.extract-catalysts",

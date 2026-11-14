@@ -853,11 +853,13 @@ pub(super) fn sync_native_menu<R: Runtime>(
     // database, so it follows the same rule.
     set_enabled(&app, "collection.transform.split-rows", state.is_grid)?;
     // Pivot, Unpivot and Merge File by Key rewrite cells and rows through the
-    // same edit layer, so they are reachable on an edited grid as well.
+    // same edit layer, so they are reachable on an edited grid as well. The
+    // record view only reads the rows.
     for id in [
         "collection.pivot",
         "collection.unpivot",
         "collection.merge-by-key",
+        "collection.record-view",
     ] {
         set_enabled(&app, id, state.is_grid)?;
     }

@@ -4,6 +4,7 @@ import { inputExportSupportsDocument } from "./workbench/structure";
 import type { ShellActions, ShellViewState } from "../components/types";
 import { parsePdbFetchCommand, parseSmilesCommand } from "./structure-fetch";
 import type { ViewerPreferences } from "../types";
+import { postGridCommand } from "./viewer-bridge";
 
 export type ShellCommand = {
   id: string;
@@ -199,6 +200,14 @@ export function buildShellCommands(
       label: "Merge file by key…",
       description: "",
       run: () => openWorkbenchDialog({ kind: "merge-by-key", document: state.activeDocument }),
+    }, {
+      // One row at a time with all its fields; the grid opens it on the first
+      // selected row, or on the first row it shows.
+      id: "record-view",
+      group: "Suggested",
+      label: "Record view",
+      description: "",
+      run: () => postGridCommand(state.activeDocument!.id, "collection.record-view"),
     }] : []),
     {
       id: "toggle-sidebar",

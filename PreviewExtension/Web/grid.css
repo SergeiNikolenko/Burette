@@ -1641,6 +1641,33 @@ body.buret-grid-rail-dragging .buret-grid-rail-tick-pill {
   letter-spacing: 0;
 }
 
+.buret-grid-molecule-detail-title-row > div:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Record view: previous and next sit beside the close button and step through
+   the rows the grid shows. */
+.buret-grid-molecule-detail-nav {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  color: var(--buret-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.buret-grid-molecule-detail-position {
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+.buret-grid-molecule-detail-nav button:disabled {
+  opacity: 0.35;
+}
+
+.buret-grid-molecule-detail-nav button,
 .buret-grid-molecule-detail [data-buret-detail-close] {
   display: grid;
   place-items: center;

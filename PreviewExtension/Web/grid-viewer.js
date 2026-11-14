@@ -1256,6 +1256,12 @@
         if (!caps.selection) return;
         clearSelection(cfgValue);
         return;
+      case 'collection.record-view': {
+        // Opens on the first selected row the view shows, or on its first row.
+        const row = state.rows.find(candidate => state.selected.has(Number(candidate.index))) || state.rows[0];
+        if (row) showMoleculeDetail(row, cfgValue);
+        return;
+      }
       case 'collection.delete-rows.selected': {
         if (!caps.editing || !caps.selection) return;
         const removed = hideGridRowIndexes([...state.selected], 'Delete Selected Molecules');
@@ -7913,10 +7919,18 @@
     return parts.join(' · ');
   }
 
-  function showMoleculeDetail(row, cfg) {
+  // The detail overlay is also the record view: one row at a time with its
+  // structure and every field, stepping through the rows the grid shows - the
+  // filters and the sort order apply. `carry` is what a step keeps from the
+  // record it left: the element to give focus back to on close, the open tab
+  // and which step button had focus.
+  function showMoleculeDetail(row, cfg, carry = null) {
     hideMoleculeDetail();
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousFocus = carry?.previousFocus
+      || (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     const index = Number(row.index);
+    const position = state.rows.findIndex(candidate => Number(candidate.index) === index);
+    const total = Math.max(state.rows.length, state.remoteMode ? Number(state.totalRows) || 0 : 0);
     const overlay = document.createElement('div');
     overlay.className = 'buret-grid-molecule-detail-overlay';
     overlay.dataset.buretDetailRowIndex = Number.isFinite(index) ? String(index) : '';
@@ -7934,6 +7948,11 @@
             <div>
               <h2 id="buret-grid-molecule-detail-title">${escapeHTML(row.name || `Molecule ${index + 1}`)}</h2>
             </div>
+            ${position >= 0 && total > 1 ? `<div class="buret-grid-molecule-detail-nav" role="group" aria-label="Record">
+              <button type="button" data-buret-detail-step="-1" aria-label="Previous record" title="Previous record (←)"${position === 0 ? ' disabled' : ''}>&lsaquo;</button>
+              <span class="buret-grid-molecule-detail-position">${(position + 1).toLocaleString()} of ${total.toLocaleString()}</span>
+              <button type="button" data-buret-detail-step="1" aria-label="Next record" title="Next record (→)"${position >= total - 1 ? ' disabled' : ''}>&rsaquo;</button>
+            </div>` : ''}
             <button type="button" data-buret-detail-close aria-label="Close molecule detail" title="Close">&times;</button>
           </div>
           <div class="buret-grid-molecule-detail-tabs" role="tablist" aria-label="Molecule preview sections">
@@ -7990,10 +8009,22 @@
     });
     installMoleculeDetailTabs(overlay);
     installMoleculeDetailDescriptorSearch(overlay);
+    if (carry?.tab) overlay.querySelector(`[data-buret-detail-tab="${carry.tab}"]`)?.click();
+    const step = delta => void stepMoleculeDetail(overlay, position + delta, delta, cfg);
+    overlay.querySelectorAll('[data-buret-detail-step]').forEach(button => {
+      button.addEventListener('click', () => step(Number(button.getAttribute('data-buret-detail-step'))));
+    });
     const onKey = event => {
       if (event.key === 'Escape') {
         event.preventDefault();
         hideMoleculeDetail();
+        return;
+      }
+      // The arrow keys step through the records unless they are moving a caret.
+      if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && position >= 0
+        && !event.metaKey && !event.ctrlKey && !event.altKey && !isEditableShortcutTarget(event.target)) {
+        event.preventDefault();
+        step(event.key === 'ArrowLeft' ? -1 : 1);
         return;
       }
       if (event.key !== 'Tab') return;
@@ -8014,7 +8045,32 @@
     document.addEventListener('keydown', onKey);
     scheduleRdkitCard(overlay, row);
     scheduleXyzrenderCard(overlay, row, cfg);
-    overlay.querySelector('[data-buret-detail-close]')?.focus?.();
+    const stepButton = carry?.step ? overlay.querySelector(`[data-buret-detail-step="${carry.step}"]:not([disabled])`) : null;
+    (stepButton || overlay.querySelector('[data-buret-detail-close]'))?.focus?.();
+  }
+
+  // A paged collection holds only the pages it has shown, so stepping past the
+  // last loaded row loads through the one that is asked for first.
+  async function stepMoleculeDetail(overlay, position, delta, cfg) {
+    if (overlay._buretDetailStepping || position < 0) return;
+    if (position >= state.rows.length) {
+      if (!state.remoteMode || position >= state.totalRows) return;
+      overlay._buretDetailStepping = true;
+      const token = state.dataToken;
+      try {
+        await loadRemoteRowsThrough(position, cfg);
+      } finally {
+        overlay._buretDetailStepping = false;
+      }
+      if (token !== state.dataToken || !overlay.isConnected) return;
+    }
+    const row = state.rows[position];
+    if (!row) return;
+    showMoleculeDetail(row, cfg, {
+      previousFocus: overlay._buretDetailPreviousFocus,
+      tab: overlay.querySelector('[data-buret-detail-tab][aria-selected="true"]')?.getAttribute('data-buret-detail-tab'),
+      step: delta
+    });
   }
 
   function moleculeDetailPropertyHTML(key, value, column) {

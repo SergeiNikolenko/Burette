@@ -8449,7 +8449,7 @@ assert.match(gridViewer, /function copyMoleculeStructure\(row\)/);
 assert.match(gridViewer, /if \(await writeClipboardText\(text, `\[grid\] Copied \$\{label\}\.`\)\) return;/);
 assert.match(gridViewer, /function writeClipboardText\(text, successMessage\)/);
 assert.match(gridViewer, /function exportMolecule\(row\)/);
-assert.match(gridViewer, /function showMoleculeDetail\(row, cfg\)/);
+assert.match(gridViewer, /function showMoleculeDetail\(row, cfg, carry = null\)/);
 assert.match(gridViewer, /removeGridRow\(row\)/);
 assert.match(gridViewer, /markGridDirty\('row edits'\)/);
 assert.doesNotMatch(gridViewer, /separateWindow/);

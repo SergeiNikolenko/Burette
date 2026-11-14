@@ -454,6 +454,9 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
     let merge_by_key = MenuItemBuilder::with_id("collection.merge-by-key", "Merge File by Key…")
         .enabled(false)
         .build(app)?;
+    let record_view = MenuItemBuilder::with_id("collection.record-view", "Record View")
+        .enabled(false)
+        .build(app)?;
     let reaction_add_smiles =
         MenuItemBuilder::with_id("collection.reaction.add-smiles", "Add Reaction SMILES")
             .enabled(false)
@@ -516,6 +519,7 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
             &copy_selected,
             &select_all,
             &clear_selection,
+            &record_view,
             &PredefinedMenuItem::separator(app)?,
             &calculate_descriptors,
             &add_column,

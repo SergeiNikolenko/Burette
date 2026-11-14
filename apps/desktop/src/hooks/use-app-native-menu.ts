@@ -567,6 +567,7 @@ export function useAppNativeMenu({
       case "collection.copy-selected":
       case "collection.select-all":
       case "collection.clear-selection":
+      case "collection.record-view":
         gridCommand();
         return;
       case "collection.calculate-descriptors":
