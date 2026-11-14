@@ -1032,13 +1032,14 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .tab-scroll-region::-webkit-scrollbar { display: none; }
 .tab-strip-spacer { min-width: 0; align-self: stretch; flex: 1 1 28px; }
 .tab-shell {
-  /* Atlas distributes the usable strip width and scrolls below the 90px floor. */
+  /* Short titles keep Close nearby; long titles share the available strip. */
   --tab-width: clamp(90px, calc((100cqw - 32px) / var(--tab-count, 1) - 4px), 240px);
   position: relative;
   display: flex;
   align-items: center;
   flex: 0 0 auto;
-  width: var(--tab-width);
+  width: max-content;
+  max-width: var(--tab-width);
 }
 .tab-shell:not(:last-child)::after {
   content: "";
