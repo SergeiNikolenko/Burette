@@ -302,6 +302,27 @@ Database menus. These stages cover what it left out.
   (fragmentation by single acyclic cuts as in Hussain–Rea).
 - **Done when:** a small ChEMBL series gives the same transformations and means
   as mmpdb on the same data.
+- **Done (5d3a683a9, 182c95833, 037e3657e, 4a0de5032, 9b0ede216):**
+  **Matched Pairs…** and **SAR Table…** sit in Analyze, after Decompose
+  R-Groups, and in the command palette. Matched pairs fragments every molecule
+  by single acyclic cuts in a worker, as mmpdb does, and lists the
+  transformations with their pair count and the mean and SD of the change in a
+  chosen column; a transformation opens its pairs, and Select in grid selects
+  their molecules. The SAR table lays two R positions of one series out as a
+  matrix tinted by a column's mean; hovering a cell shows its molecules and
+  Select in grid selects them. `tests/fixtures/matched-pairs` holds two
+  ChEMBL series (factor Xa benzamides, 58 molecules; D2 sulfonamides, 54) and
+  the mmpdb 3.1.6 output on RDKit 2026.03.6: every fragmentation, pair and
+  statistic matches (545 and 582 pairs, 317 and 290 transformations).
+  `docs/sar-analysis.md` describes both tools and the one known difference
+  from mmpdb (the geometry of a fragment next to a stereo double bond). Gauss
+  acceptance in both themes on the factor Xa series: Cl → F leads with 13
+  pairs, mean Δ pKi −0.31, SD 0.34, and selects 22 molecules; the R4 × R1
+  table of series S1 is 18 × 9, its Cl/Cl cell is the mean of 3 molecules
+  (7.76), and selecting the Cl/H cell selects 2 rows. Cell previews come from
+  the grid's cards, so they keep the grid's white tile in the dark theme.
+  `test:matched-pairs` and `test:sar-analysis-dialogs` cover the module and
+  the dialogs.
 
 ### Stage 24. Property models and Predict Missing Values
 
@@ -380,6 +401,33 @@ Database menus. These stages cover what it left out.
   `grid-viewer.js`.
 - **Done when:** pivot followed by unpivot returns the original table, and a
   merge by ChEMBL ID matches a pandas merge.
+- **Done (7c9fbb548, b34f148d0, 5acaeb4df, 1562d4476, 06cd873ba):**
+  **Pivot…**, **Unpivot…**, **Merge File by Key…** and **Record View** sit in
+  the Collection menu and in the command palette. Pivot takes the column that
+  identifies a row, the column whose values become new columns and the column
+  of values, and says what to do with several values in one cell (keep all,
+  first, last or mean). Unpivot turns chosen columns back into rows. Merge
+  reads a CSV, TSV or SD file, matches it by a key column and adds the chosen
+  columns; a repeated key in the file uses its first row or adds a row for
+  each. Each dialog states the outcome before it is applied: rows before and
+  after, new columns, rows without a key, unmatched and repeated keys, and
+  renamed columns. The Filters section of the Info panel lists the values of a
+  text column with their counts as checkboxes, and **Row lists** saves the
+  selection under a name to select, show alone, export as CSV or SMILES,
+  rename or delete. Record View opens one row at a time with Previous and
+  Next. All edits go through the grid's undo history.
+  `tests/fixtures/table-shaping` holds small collections with made-up
+  activity values and the pandas reference: pivot followed by unpivot returns
+  the original table, and the merge by ChEMBL ID matches pandas cell by cell
+  for both repeated-key modes. Gauss acceptance in both themes: pivot turns 9
+  rows into 5 with the columns COX-1 and COX-2 and unpivot gives 8 rows back
+  (the row that had no value is not restored as a separate row); the merge
+  matches 7 of 11 rows, names the three rows without a match, the key that is
+  only in the file and the repeated key, and adds the clashing column as
+  `Source_2`; the Class filter lists NSAID 5, Stimulant 3, Analgesic 1,
+  Solvent 1 and Empty 1, and NSAID leaves 5 molecules; the selection is saved
+  as the row list NSAIDs; Record View shows 1 of 5 and then 2 of 5.
+  `test:table-shaping` covers the operations, the grid bridge and the panels.
 
 ## Not planned yet
 
