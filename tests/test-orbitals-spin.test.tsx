@@ -105,3 +105,16 @@ test('a level in the diagram selects its spin and orbital and shows that surface
   expect(view.saved[0].title).toBe('import-orbital-2.cube');
  } finally { await view.close(); }
 });
+
+test('the HOMO of a degenerate occupied pair is its last orbital, where the gap begins', async () => {
+ const view = await fixture();
+ try {
+  // NWChem UHF OH: alpha vectors 4 and 5 are the occupied pi pair at -0.6197457 Eh, vector 6 is the first virtual.
+  const text = readFileSync(new URL('fixtures/quantum/nwchem/oh-uhf.out', import.meta.url), 'utf8');
+  await view.replaceScience(await runReaderTask({ action: 'parse', name: 'oh-uhf.out', text }));
+  const tagged = [...view.host.querySelectorAll('tbody tr')].filter(row => row.querySelector('.workbench-tag')).map(row => row.querySelector('th')!.textContent);
+  expect(tagged).toEqual(['5HOMO e', '6LUMO a1']);
+  const levels = [...view.host.querySelectorAll('[role="option"]')].map(option => option.getAttribute('aria-label')!);
+  expect(levels.filter(label => label.includes('α, HOMO'))).toEqual(['Orbital 5 α, HOMO, -16.864 eV, occupancy 1']);
+ } finally { await view.close(); }
+});

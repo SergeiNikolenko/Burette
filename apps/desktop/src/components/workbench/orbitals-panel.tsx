@@ -38,7 +38,8 @@ function frontierOrbitals(orbitals: MolecularOrbital[]) {
     const channel = orbitals.filter((orbital) => orbital.spin === spin);
     const occupied = channel.filter((orbital) => orbital.occupancy > 1e-6);
     const virtual = channel.filter((orbital) => orbital.occupancy <= 1e-6);
-    const homo = occupied.reduce<MolecularOrbital | null>((best, orbital) => !best || orbital.energyHartree > best.energyHartree ? orbital : best, null);
+    // Of a degenerate occupied set the last orbital is the HOMO, as the first of a degenerate virtual set is the LUMO.
+    const homo = occupied.reduce<MolecularOrbital | null>((best, orbital) => !best || orbital.energyHartree >= best.energyHartree ? orbital : best, null);
     const lumo = virtual.reduce<MolecularOrbital | null>((best, orbital) => !best || orbital.energyHartree < best.energyHartree ? orbital : best, null);
     if (homo) result.set(orbitals.indexOf(homo), "HOMO");
     if (lumo) result.set(orbitals.indexOf(lumo), "LUMO");
