@@ -49,11 +49,6 @@ export function FieldsPanel({ document, actions, science, sourceText, sourceKind
   const integral = useMemo(() => integrateGrid(field.grid), [field]);
   const position = Math.min(index, field.grid.dimensions[axis] - 1);
   const slice = useMemo(() => sliceGrid(field.grid, axis, position), [field, axis, position]);
-  const offset = useMemo(() => {
-    const [u, v] = [slice.u, slice.v];
-    const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]], length = Math.hypot(...n);
-    return (slice.origin[0] * n[0] + slice.origin[1] * n[1] + slice.origin[2] * n[2]) / length;
-  }, [slice]);
 
   const [operation, setOperation] = useState<FieldOperation>("difference");
   const [first, setFirst] = useState(own[0].key);
@@ -185,7 +180,7 @@ export function FieldsPanel({ document, actions, science, sourceText, sourceKind
           <span>Position, Å</span>
           <div className="fields-position">
             <Slider tone="neutral" aria-label="Slice position" min={0} max={field.grid.dimensions[axis] - 1} step={1} value={[position]} onValueChange={([value]) => setIndex(value)} />
-            <output className="fields-value">{offset.toFixed(2)}</output>
+            <output className="fields-value">{slice.offset.toFixed(2)}</output>
           </div>
         </div>
         <FieldSlicePlot slice={slice} atoms={science.atoms} min={range.min} max={range.max} contours={contours} label={field.label} />

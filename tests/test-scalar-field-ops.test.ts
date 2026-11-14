@@ -75,3 +75,18 @@ test("a saddle cell joins the corners its centre agrees with", () => {
   // The two segments cut off b (bottom → right) and d (top → left), leaving a and c joined.
   expect(segments.map((value) => +value.toFixed(6))).toEqual([0.6, 0, 1, 0.4, 0.4, 1, 0, 0.6]);
 });
+
+test("a slice states its position along the sliced axis, growing with the index", () => {
+  // The water grid is axis-aligned, so each plane's position is its x, y or z coordinate.
+  const grid = cube("water-potential.cube").grid!;
+  for (const axis of [0, 1, 2] as const) {
+    for (const index of [0, 7, 23]) expect(sliceGrid(grid, axis, index).offset).toBeCloseTo(grid.origin[axis] + index * grid.axes[axis][axis], 6);
+  }
+  // An oblique grid in ångström: 4 × 3 × 3 points on (0.5, 0.125, 0), (0, 0.75, −0.125), (0.25, 0, 1.5) Å,
+  // a cell of 0.55859375 Å³. Neighbouring planes lie the cell volume over the plane cell's area apart.
+  const oblique = parseScientificFile("oblique.cube", readFileSync(new URL("./fixtures/oblique-angstrom-single.cube", import.meta.url), "utf8")).grid!;
+  const spacing = [0.55859375 / Math.hypot(1.125, 0.03125, -0.1875), 0.55859375 / Math.hypot(0.1875, -0.75, -0.03125), 0.55859375 / Math.hypot(-0.015625, 0.0625, 0.375)];
+  for (const axis of [0, 1, 2] as const) expect(sliceGrid(oblique, axis, 1).offset - sliceGrid(oblique, axis, 0).offset).toBeCloseTo(spacing[axis], 6);
+  // The same cell integrates the field: the file's 36 values sum to −30.
+  expect(integrateGrid(oblique)).toBeCloseTo(-30 * 0.55859375 / 0.529177210903 ** 3, 4);
+});

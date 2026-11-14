@@ -41,8 +41,11 @@ export function integrateGrid(grid: ScalarGrid) {
 
 export type SliceAxis = 0 | 1 | 2;
 
-/** One grid plane: `values[j * width + i]` is the field at origin + i·u + j·v (Å). */
-export interface GridSlice { width: number; height: number; origin: Vec3; u: Vec3; v: Vec3; normal: Vec3; values: Float32Array }
+/**
+ * One grid plane: `values[j * width + i]` is the field at origin + i·u + j·v (Å). `offset` is the
+ * plane's distance from the coordinate origin along its normal (Å), growing with the plane index.
+ */
+export interface GridSlice { width: number; height: number; origin: Vec3; u: Vec3; v: Vec3; normal: Vec3; offset: number; values: Float32Array }
 
 /** The plane of grid points with index `index` along `axis`; the other two axes keep their order. */
 export function sliceGrid(grid: ScalarGrid, axis: SliceAxis, index: number): GridSlice {
@@ -64,7 +67,10 @@ export function sliceGrid(grid: ScalarGrid, axis: SliceAxis, index: number): Gri
   }
   const step = grid.axes[axis];
   const origin: Vec3 = [0, 1, 2].map((k) => grid.origin[k] + index * step[k]) as Vec3;
-  return { width, height, origin, u: grid.axes[first], v: grid.axes[second], normal: step, values };
+  // u × v points against the sliced axis for the XZ plane, so the normal takes the side the index moves to.
+  const across = cross(grid.axes[first], grid.axes[second]);
+  const offset = Math.sign(dot(across, step)) * dot(origin, across) / Math.hypot(...across);
+  return { width, height, origin, u: grid.axes[first], v: grid.axes[second], normal: step, offset, values };
 }
 
 /**
