@@ -43,14 +43,19 @@ export function useSceneFrame(document: ViewerDocument, science: ScientificDocum
   return science.frames[index] ?? null;
 }
 
+/** Below this the arrow is shorter than a hundredth of an angstrom. */
+const MIN_ARROW_DEBYE = 0.01;
 const signed = (value: number, digits: number) => `${value < 0 ? "−" : value > 0 ? "+" : ""}${Math.abs(value).toFixed(digits)}`;
 const hartree = (value: number) => `${value < 0 ? "−" : ""}${Math.abs(value).toFixed(6)} Eh`;
 
 function overlayFor(kind: OverlayKind, frame: ScientificFrame, charges: Population | undefined) {
   if (kind === "dipole") {
+    // A frame that printed no dipole, or one too small to draw, has no arrow.
+    const dipole = frame.dipoleDebye;
+    if (!dipole || Math.hypot(...dipole) < MIN_ARROW_DEBYE) return null;
     const centre = [0, 1, 2].map(axis => frame.atoms.reduce((sum, atom) => sum + [atom.x, atom.y, atom.z][axis], 0) / frame.atoms.length);
     // One angstrom per debye, from the centre of the atoms.
-    return { origin: centre, vector: frame.dipoleDebye, label: `${Math.hypot(...frame.dipoleDebye!).toFixed(2)} D` };
+    return { origin: centre, vector: dipole, label: `${Math.hypot(...dipole).toFixed(2)} D` };
   }
   if (!charges) return null;
   if (kind === "charges") return { positions: frame.atoms.map(atom => [atom.x, atom.y, atom.z]), labels: charges.values.map(value => signed(value, 2)) };
@@ -142,7 +147,7 @@ export function CalculationResultsCard({ document }: { document: ViewerDocument 
             </> : null}
             {dipole !== null ? (
               <label className="calculation-results-toggle">
-                <Checkbox checked={choice.shown.dipole} disabled={dipole < 0.01} onCheckedChange={value => toggle("dipole", value === true)} />Dipole arrow
+                <Checkbox checked={choice.shown.dipole} disabled={dipole < MIN_ARROW_DEBYE} onCheckedChange={value => toggle("dipole", value === true)} />Dipole arrow
               </label>
             ) : null}
           </div>
