@@ -17,7 +17,7 @@ const source = (name: string) => {
   return viewer.slice(start, viewer.indexOf("\n  }", start) + 4);
 };
 
-test("shared viewport controls preserve camera, lighting, selection, animation, scene reload and tooltip ownership", async () => {
+test("shared viewport controls preserve camera, selection, animation, scene reload and tooltip ownership", async () => {
   document.body.innerHTML = '<div id="buret-viewport-rail" role="toolbar"></div><div id="buret-selection-bar" class="hidden"></div>';
   const rail = document.getElementById("buret-viewport-rail")!;
   const calls: unknown[] = [];
@@ -25,8 +25,6 @@ test("shared viewport controls preserve camera, lighting, selection, animation, 
   const changed = { subscribe(callback: () => void) { listeners.add(callback); return { unsubscribe: () => listeners.delete(callback) }; } };
   let motion = "off", wiggle = "off", trajectory = false, theme = "dark";
   const canvas = {
-    props: { illumination: { enabled: false } },
-    setProps(props: { illumination: { enabled: boolean } }) { canvas.props = props; calls.push(["lighting", props.illumination.enabled]); },
     requestCameraReset: (options: unknown) => calls.push(["reset", options]),
   };
   const plugin = { selectionMode: false, canvas3d: canvas, managers: {
@@ -61,7 +59,7 @@ test("shared viewport controls preserve camera, lighting, selection, animation, 
   try {
     await act(async () => api.init({ plugin }));
     expect([...rail.querySelectorAll("button")].map(b => [b.getAttribute("aria-label"), b.classList.contains("atlas-button")])).toEqual([
-      ["Camera", true], ["Save a screenshot", true], ["Realistic lighting", true], ["Animate the scene", true], ["Selection mode", true],
+      ["Camera", true], ["Save a screenshot", true], ["Animate the scene", true], ["Selection mode", true],
     ]);
     const camera = button("camera");
     await act(async () => api.init({ plugin }));
@@ -73,10 +71,6 @@ test("shared viewport controls preserve camera, lighting, selection, animation, 
     await click("animate");
     expect(calls).toEqual([["reset", { durationMs: 250 }], ["menu", "Camera"], ["menu", "Screenshot"], ["menu", "Animate"]]);
     expect(button("animate").getAttribute("aria-haspopup")).toBe("dialog");
-    await click("illumination");
-    expect([canvas.props.illumination.enabled, button("illumination").getAttribute("aria-pressed"), button("illumination").hasAttribute("data-selected")]).toEqual([true, "true", true]);
-    await click("illumination");
-    expect([canvas.props.illumination.enabled, button("illumination").getAttribute("aria-pressed"), button("illumination").hasAttribute("data-selected")]).toEqual([false, "false", false]);
     await click("select-mode");
     expect([plugin.selectionMode, button("select-mode").getAttribute("aria-pressed"), document.getElementById("buret-selection-bar")!.classList.contains("hidden")]).toEqual([true, "true", false]);
     plugin.managers.structure.selection.stats = { elementCount: 8, label: "2 Residues" };
@@ -106,14 +100,14 @@ test("shared viewport controls preserve camera, lighting, selection, animation, 
     expect(document.getElementById("buret-selection-bar")!.classList.contains("hidden")).toBe(true);
     // Radix tooltip owns both the portal and the accessible description. It is
     // outside the draggable/backdrop-filtered rail and follows the viewer theme.
-    await act(async () => button("illumination").focus());
+    await act(async () => button("select-mode").focus());
     expect([document.querySelector(".buret-viewport-tooltip")?.getAttribute("data-effective-theme"), rail.querySelector(".buret-viewport-tooltip")]).toEqual(["dark", null]);
-    expect(button("illumination").hasAttribute("aria-describedby")).toBe(true);
-    await act(async () => button("illumination").blur());
+    expect(button("select-mode").hasAttribute("aria-describedby")).toBe(true);
+    await act(async () => button("select-mode").blur());
     theme = "light";
-    await act(async () => button("illumination").focus());
+    await act(async () => button("select-mode").focus());
     expect(document.querySelector(".buret-viewport-tooltip")?.getAttribute("data-effective-theme")).toBe("light");
-    await click("illumination");
+    await click("select-mode");
     expect(document.querySelector(".buret-viewport-tooltip")).toBeNull();
   } finally { await act(async () => api.dispose()); document.body.innerHTML = ""; }
   expect(listeners.size).toBe(0);
@@ -134,7 +128,7 @@ test("rail dragging skips nested button content and suppresses only the click fo
   new Function(...Object.keys(bindings), `${source("initViewportRailDrag")}; return initViewportRailDrag`)(...Object.values(bindings))(rail, toolbar);
   let controls: ReturnType<typeof mountViewerViewportToolbar>;
   await act(async () => { controls = mountViewerViewportToolbar(rail, {
-    read: () => ({ illumination: false, selectionMode: false, hasSelection: false, motion: "off" }),
+    read: () => ({ selectionMode: false, hasSelection: false, motion: "off" }),
     styleSurface: () => {}, onAction: action => calls.push(action),
   }); });
   const button = rail.querySelector("button")!;
