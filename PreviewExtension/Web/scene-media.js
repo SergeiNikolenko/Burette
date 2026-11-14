@@ -227,7 +227,9 @@ if (!window.BuretteSceneMedia) {
   // taken on the wall clock, so a slow view plays back faster than it ran.
   async function encode(plugin, canvas, { seconds, fps, spin }) {
     const width = canvas.width - canvas.width % 2, height = canvas.height - canvas.height % 2;
-    const config = { codec: 'avc1.420033', width, height, bitrate: 8_000_000, framerate: fps, avc: { format: 'avc' } };
+    // 'detail' keeps flat backgrounds clean behind a moving molecule: without
+    // it software encoders leave specks where the drawing used to be.
+    const config = { codec: 'avc1.420033', width, height, bitrate: 8_000_000, framerate: fps, contentHint: 'detail', avc: { format: 'avc' } };
     if (!(await VideoEncoder.isConfigSupported(config)).supported) return null;
     const samples = [], keys = [];
     let description = null, failure = null;
@@ -248,6 +250,7 @@ if (!window.BuretteSceneMedia) {
       for (let index = 0; index < count && !failure; index++) {
         if (turning) { turning.turn(index / count); plugin.canvas3d.requestDraw?.(); await nextFrames(); }
         else await sleep(began + index * 1000 / fps - performance.now());
+        if (canvas.width - canvas.width % 2 !== width || canvas.height - canvas.height % 2 !== height) throw new Error('The view changed size while recording. Record again.');
         const frame = new VideoFrame(canvas, { timestamp: Math.round(index * 1e6 / fps), duration: Math.round(1e6 / fps), visibleRect: { x: 0, y: 0, width, height } });
         encoder.encode(frame, { keyFrame: index % (fps * 2) === 0 });
         frame.close();
