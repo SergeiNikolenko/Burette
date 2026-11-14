@@ -2789,7 +2789,7 @@ assert.match(gridFilterSection, /from "\.\/ui\/input"/);
 assert.match(gridFilterSection, /from "\.\/ui\/badge"/);
 assert.match(gridFilterSection, /from "\.\/ui\/tooltip"/);
 // One owner coordinates manual and default column expansion state.
-assert.match(gridFilterSection, /const isColumnOpen = \(column: GridFilterColumn\) => columnOpen\[column\.id\]\s*\?\? Boolean\(column\.filter\?\.min \|\| column\.filter\?\.max \|\| column\.filter\?\.text \|\| column\.id === defaultOpenColumnId\)/);
+assert.match(gridFilterSection, /const isColumnOpen = \(column: GridFilterColumn\) => columnOpen\[column\.id\]\s*\?\? Boolean\(column\.filter\?\.min \|\| column\.filter\?\.max \|\| column\.filter\?\.text \|\| column\.filter\?\.values\?\.length \|\| column\.id === defaultOpenColumnId\)/);
 assert.match(gridFilterSection, /return scale && !scale\.flat;/);
 assert.match(gridFilterSection, /open=\{isColumnOpen\(column\)\}/);
 assert.match(gridFilterSection, /<Collapsible ref=\{cardRef\} className="grid-filter-card"/);

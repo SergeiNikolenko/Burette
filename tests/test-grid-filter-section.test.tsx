@@ -24,10 +24,11 @@ async function fixture(run: (mount: HTMLDivElement, calls: unknown[], render: (f
   const model: GridFilterModel = { documentId: "collection", total: 4, visible: 4, columns: [
     { id: "name", label: "Name", type: "text" },
     { id: "mass", label: "Mass", type: "number", min: 10, max: 50, bins: [1, 1, 1, 1], statsComplete: false, statsRows: 4, statsTotal: 10 },
+    { id: "class", label: "Class", type: "text", categories: [["NSAID", 5], ["Stimulant", 3], ["", 1]] },
   ] };
   // Model echoes stand in for the grid runtime, not local optimistic filter state.
   const actions = {
-    setGridColumnFilter(id: string, field: "min" | "max" | "text", value: string) {
+    setGridColumnFilter(id: string, field: "min" | "max" | "text" | "values", value: string | string[]) {
       calls.push([id, field, value]);
       const column = model.columns.find(column => column.id === id)!;
       column.filter = { min: "", max: "", text: "", ...column.filter, [field]: value };
@@ -83,5 +84,32 @@ test("numeric filter commits only on blur and exposes the updated range and part
     expect([...mount.querySelectorAll('[role="slider"]')].map(el => el.getAttribute("aria-valuenow"))).toEqual(["20", "50"]);
     await click(mount.querySelector<HTMLButtonElement>('[aria-label="Clear the Mass filter"]')!); await render();
     expect([...mount.querySelectorAll('[role="slider"]')].map(el => el.getAttribute("aria-valuenow"))).toEqual(["10", "50"]);
+  });
+});
+
+test("a category column lists its values with counts and filters by the ticked ones", async () => {
+  await fixture(async (mount, calls, render) => {
+    await render();
+    await click(mount.querySelectorAll<HTMLButtonElement>(".grid-filter-card-trigger")[2]!);
+    const rows = () => [...mount.querySelectorAll<HTMLLabelElement>(".grid-filter-category")];
+    const box = (index: number) => rows()[index].querySelector<HTMLButtonElement>('[role="checkbox"]')!;
+    expect(rows().map(row => [row.querySelector(".grid-filter-category-value")!.textContent, row.querySelector(".grid-filter-category-count")!.textContent]))
+      .toEqual([["NSAID", "5"], ["Stimulant", "3"], ["Empty", "1"]]);
+    expect(mount.querySelector(".grid-filter-categories")!.getAttribute("aria-label")).toBe("Class values");
+    // The text filter stays available next to the values.
+    expect(input(mount, "Filter Class").value).toBe("");
+
+    await click(box(1)); await render();
+    expect(calls).toEqual([["class", "values", ["Stimulant"]]]);
+    expect([0, 1, 2].map(index => box(index).getAttribute("aria-checked"))).toEqual(["false", "true", "false"]);
+    expect(mount.querySelectorAll(".grid-filter-card")[2].getAttribute("data-active")).toBe("true");
+
+    await click(box(2)); await render();
+    await click(box(1)); await render();
+    expect(calls.slice(1)).toEqual([["class", "values", ["Stimulant", ""]], ["class", "values", [""]]]);
+    expect([0, 1, 2].map(index => box(index).getAttribute("aria-checked"))).toEqual(["false", "false", "true"]);
+
+    await click(mount.querySelector<HTMLButtonElement>('[aria-label="Clear the Class filter"]')!); await render();
+    expect([0, 1, 2].map(index => box(index).getAttribute("aria-checked"))).toEqual(["false", "false", "false"]);
   });
 });

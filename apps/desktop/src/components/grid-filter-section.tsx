@@ -4,6 +4,7 @@ import { CollapsibleSection } from "./ui/collapsible-section";
 import { Bar, BarChart, XAxis } from "recharts";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { Checkbox } from "./ui/checkbox";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "./ui/chart";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 import { Field, FieldLabel } from "./ui/field";
@@ -257,6 +258,40 @@ function NumericFilter({
   );
 }
 
+// A text column whose values repeat: tick the values to keep. The counts are
+// the grid's, taken over the whole collection, so they do not move as filters
+// narrow the view.
+function CategoryFilter({ column, categories, actions }: {
+  column: GridFilterColumn;
+  categories: Array<[string, number]>;
+  actions: ShellActions;
+}) {
+  const picked = new Set(column.filter?.values ?? []);
+  const toggle = (value: string) => {
+    const next = new Set(picked);
+    if (!next.delete(value)) next.add(value);
+    actions.setGridColumnFilter(column.id, "values", [...next]);
+  };
+  return (
+    <>
+      {column.statsComplete === false ? (
+        <div className="grid-filter-stats-coverage">
+          Loaded rows · {(column.statsRows ?? 0).toLocaleString()} of {(column.statsTotal ?? 0).toLocaleString()}
+        </div>
+      ) : null}
+      <div className="grid-filter-categories" role="group" aria-label={`${column.label} values`}>
+        {categories.map(([value, count]) => (
+          <label key={value} className="grid-filter-category">
+            <Checkbox checked={picked.has(value)} onCheckedChange={() => toggle(value)} />
+            <span className="grid-filter-category-value" data-empty={value ? undefined : ""} title={value || undefined}>{value || "Empty"}</span>
+            <span className="grid-filter-category-count">{count.toLocaleString()}</span>
+          </label>
+        ))}
+      </div>
+    </>
+  );
+}
+
 function FilterCard({
   column,
   actions,
@@ -271,7 +306,7 @@ function FilterCard({
   focusRequestId?: number;
 }) {
   const scale = useMemo(() => columnScale(column), [column]);
-  const active = Boolean(column.filter && (column.filter.min || column.filter.max || column.filter.text));
+  const active = Boolean(column.filter && (column.filter.min || column.filter.max || column.filter.text || column.filter.values?.length));
   // A flat histogram is a row id or a counter, so its chart starts folded away.
   const [chartOpen, setChartOpen] = useState<boolean | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -338,15 +373,18 @@ function FilterCard({
           {scale ? (
             <NumericFilter column={column} scale={scale} chartOpen={showChart} actions={actions} />
           ) : (
-            <Input
-              type="search"
-              placeholder="Contains…"
-              name={`filter-${column.id}`}
-              autoComplete="off"
-              value={column.filter?.text ?? ""}
-              aria-label={`Filter ${column.label}`}
-              onChange={(event) => actions.setGridColumnFilter(column.id, "text", event.currentTarget.value)}
-            />
+            <>
+              <Input
+                type="search"
+                placeholder="Contains…"
+                name={`filter-${column.id}`}
+                autoComplete="off"
+                value={column.filter?.text ?? ""}
+                aria-label={`Filter ${column.label}`}
+                onChange={(event) => actions.setGridColumnFilter(column.id, "text", event.currentTarget.value)}
+              />
+              {column.categories ? <CategoryFilter column={column} categories={column.categories} actions={actions} /> : null}
+            </>
           )}
         </Field>
       </CollapsibleContent>
@@ -382,7 +420,7 @@ export function GridFilterSection({
     [model.columns],
   );
   const isColumnOpen = (column: GridFilterColumn) => columnOpen[column.id]
-    ?? Boolean(column.filter?.min || column.filter?.max || column.filter?.text || column.id === defaultOpenColumnId);
+    ?? Boolean(column.filter?.min || column.filter?.max || column.filter?.text || column.filter?.values?.length || column.id === defaultOpenColumnId);
 
   useEffect(() => {
     if (!focusRequest) return;

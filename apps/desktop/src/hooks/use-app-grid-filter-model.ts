@@ -45,7 +45,7 @@ export function useAppGridFilterModel(
     });
   }, [activeDocument, postMessageToViewerSource]);
 
-  const setGridColumnFilter = useCallback((columnId: string, part: "min" | "max" | "text", value: string) => {
+  const setGridColumnFilter = useCallback((columnId: string, part: "min" | "max" | "text" | "values", value: string | string[]) => {
     send({ type: "gridSetColumnFilter", columnId, part, value });
   }, [send]);
 

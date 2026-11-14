@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import { NAME_COLUMN, columnKey, mergeRowEdits, pivotRowEdits, tableRows, unpivotRowEdits, type ReshapeColumn } from "../apps/desktop/src/lib/grid-reshape";
 import type { GridRowEdits, GridTable } from "../apps/desktop/src/lib/grid-table-bridge";
+import { fixtureText as fixture, functionSource, sdfRows, type GridRow } from "./fixtures/table-shaping/grid-functions";
 import { mergeByKey, parseDelimitedTable, parseSdfDataTable, pivotTable, unpivotTable, type TableRow } from "../apps/desktop/src/lib/table-shaping";
 
 // Pivot, Unpivot and Merge File by Key cross two runtimes: the host works the
@@ -9,20 +9,6 @@ import { mergeByKey, parseDelimitedTable, parseSdfDataTable, pivotTable, unpivot
 // fixtures - the grid's functions lifted out of the viewer, the way
 // test-grid-table-operations.mjs does - and checks that what the grid holds
 // afterwards is the table the pure operation promised.
-const viewerSource = readFileSync("PreviewExtension/Web/grid-viewer.js", "utf8");
-const fixture = (name: string) => readFileSync(new URL(`./fixtures/table-shaping/${name}`, import.meta.url), "utf8");
-
-function functionSource(name: string) {
-  const start = [`\n  function ${name}(`, `\n  async function ${name}(`]
-    .map((needle) => viewerSource.indexOf(needle))
-    .filter((index) => index !== -1)
-    .sort((left, right) => left - right)[0];
-  if (start === undefined) throw new Error(`missing ${name}`);
-  const rest = viewerSource.slice(start + 1);
-  return rest.slice(0, rest.search(/\n {2}(?:async )?function [A-Za-z_$]/u));
-}
-
-type GridRow = { index: number; name: string; molblock: string; props: Record<string, string> };
 type Message = { type: string } & Record<string, unknown>;
 
 const LIFTED = [
@@ -86,12 +72,6 @@ function grid(rows: GridRow[], remote = false) {
     return messages.splice(0);
   };
   return { state, api, read, apply };
-}
-
-function sdfRows(name: string): GridRow[] {
-  const text = fixture(name);
-  const names = text.split(/^\$\$\$\$\n/mu).filter((record) => record.trim()).map((record) => record.split("\n")[0]);
-  return parseSdfDataTable(text).rows.map((props, index) => ({ index, name: names[index], molblock: `molblock ${index}`, props: { ...props } }));
 }
 
 const columnsOf = (names: string[]): ReshapeColumn[] => [NAME_COLUMN, ...names.map((name) => ({ id: `prop:${name}`, label: name, type: "text" as const }))];

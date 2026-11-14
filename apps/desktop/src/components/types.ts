@@ -262,7 +262,11 @@ export type ShellActions = {
   toggleDockTab: (area: DockArea, kind: DockTabKind) => void;
   setDockOpen: (area: DockArea, open: boolean) => void;
   setDockSize: (area: DockArea, size: number) => void;
-  setGridColumnFilter: (columnId: string, part: "min" | "max" | "text", value: string) => void;
+  setGridColumnFilter: {
+    (columnId: string, part: "min" | "max" | "text", value: string): void;
+    /** A category filter: the rows whose cell is one of these values. */
+    (columnId: string, part: "values", value: string[]): void;
+  };
   clearGridColumnFilters: (columnId?: string) => void;
   openDockTab: (area: DockArea, kind: DockTabKind) => void;
   closeDockTab: (area: DockArea, tabId: string) => void;
@@ -328,7 +332,9 @@ export type GridFilterColumn = {
   id: string;
   label: string;
   type: "number" | "text";
-  filter?: { min: string; max: string; text: string };
+  filter?: { min: string; max: string; text: string; values?: string[] };
+  /** Value and row count of a text column whose values repeat, most frequent first; "" counts the empty cells. */
+  categories?: Array<[string, number]>;
   min?: number;
   max?: number;
   allowedMin?: number;

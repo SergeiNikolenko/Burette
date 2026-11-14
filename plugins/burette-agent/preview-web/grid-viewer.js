@@ -141,6 +141,7 @@
     filterColumnStatsCache: new Map(),
     filterColumnVariationCache: new Map(),
     filterColumnStatsRows: null,
+    filterCategoryPins: new Map(),
     reactionRowsCache: null,
     tableColumnPanelOutsideController: null,
     tableScrollLeft: 0,
@@ -3360,7 +3361,10 @@
     state.searchTimer = 0;
     resetGridWindowForNewResultSet();
     if (state.remoteMode) {
-      if (state.chemicalSpaceFilterActive) {
+      // A SMARTS query walks the collection itself and applies the client-side
+      // filters to what it finds.
+      const clientFiltered = clientRowFiltersActive() && !state.smarts.trim();
+      if (state.chemicalSpaceFilterActive && !clientFiltered) {
         const loaded = new Set(state.rows.map(row => Number(row.index)));
         const allLoaded = [...state.selected].every(index => loaded.has(Number(index)));
         if (allLoaded) {
@@ -3368,8 +3372,8 @@
           state.totalRows = state.rows.length;
           return render(cfg);
         }
-        return refreshRemoteChemicalSpaceSelection(cfg);
       }
+      if (state.chemicalSpaceFilterActive || clientFiltered) return refreshRemoteChemicalSpaceSelection(cfg);
       return refreshRemote(cfg);
     }
     const query = state.smarts.trim() ? '' : normalize(state.query);
@@ -3405,6 +3409,7 @@
     return !!state.query.trim()
       || !!state.smarts.trim()
       || remoteTableColumnFilters().length > 0
+      || clientRowFiltersActive()
       || mergedDescriptorFilters().length > 0
       || mergedAnalysisFilters().length > 0;
   }
@@ -3544,9 +3549,27 @@
       if (Number.isFinite(max) && value > max) return false;
       return true;
     }
+    const display = tableColumnDisplayValue(row, columnId);
+    // A category filter keeps the rows whose cell is one of the picked values;
+    // the empty string among them stands for the empty cells.
+    if (filter.values?.length && !filter.values.includes(display.trim())) return false;
     const text = String(filter.text || '').trim().toLowerCase();
     if (!text) return true;
-    return tableColumnDisplayValue(row, columnId).toLowerCase().includes(text);
+    return display.toLowerCase().includes(text);
+  }
+
+  // The collection database filters a page by "contains" and by number range.
+  // A list of picked values is not something it evaluates, so on a paged
+  // collection those filters are applied here to the pages as they are walked.
+  function clientRowFiltersActive() {
+    return Object.values(state.tableColumnFilters || {}).some(filter => filter?.values?.length > 0);
+  }
+
+  function rowPassesClientFilters(row) {
+    for (const [columnId, filter] of Object.entries(state.tableColumnFilters || {})) {
+      if (filter?.values?.length && !filter.values.includes(tableColumnDisplayValue(row, columnId).trim())) return false;
+    }
+    return true;
   }
 
   function filterBySMARTS(rows) {
@@ -3751,7 +3774,7 @@
     updateChrome(cfg);
     try {
       if (state.smarts.trim()) {
-        const matches = await scanRemoteBySMARTS(cfg, token);
+        const matches = (await scanRemoteBySMARTS(cfg, token)).filter(rowPassesClientFilters);
         if (token !== state.dataToken) return;
         if (!shouldFallbackSMARTSToTextSearch()) {
           state.rows = matches;
@@ -3794,11 +3817,13 @@
   // A chemical-space lasso can select molecules far past the loaded window, so
   // filtering the fetched rows alone showed a handful of the selection. Page
   // through the collection like the SMARTS scan does and keep every selected row.
+  // The same walk serves the filters only the grid can evaluate - a category
+  // filter's picked values - with or without a selection to keep to.
   async function refreshRemoteChemicalSpaceSelection(cfg) {
     const token = ++state.dataToken;
     const loadToken = ++state.remoteLoadToken;
     state.token += 1;
-    const wanted = new Set([...state.selected].map(Number));
+    const wanted = state.chemicalSpaceFilterActive ? new Set([...state.selected].map(Number)) : null;
     state.smartsError = '';
     state.smartsMatches = new Map();
     state.rows = [];
@@ -3815,7 +3840,7 @@
       let offset = 0;
       let total = null;
       const limit = Math.max(120, loadBatchSize(cfg));
-      while ((total === null || offset < total) && matches.length < wanted.size) {
+      while ((total === null || offset < total) && (!wanted || matches.length < wanted.size)) {
         if (token !== state.dataToken) return;
         const result = await hostRequest('gridFetchPage', gridFetchPayload({
           query: state.query || '',
@@ -3828,11 +3853,13 @@
         applyGridPageState(result);
         total = Number(result.totalRows || 0);
         for (const row of pageRows) {
-          if (wanted.has(Number(row.index))) matches.push(row);
+          if ((!wanted || wanted.has(Number(row.index))) && rowPassesClientFilters(row)) matches.push(row);
         }
-        offset += pageRows.length;
-        if (!pageRows.length) break;
-        setStatus(`[grid] Loading selection ${matches.length.toLocaleString()} / ${wanted.size.toLocaleString()} molecules...`);
+        offset += Math.max(pageRows.length, Number(result.rows?.length || 0));
+        if (!result.rows?.length) break;
+        setStatus(wanted
+          ? `[grid] Loading selection ${matches.length.toLocaleString()} / ${wanted.size.toLocaleString()} molecules...`
+          : `[grid] Filtering ${Math.min(offset, total).toLocaleString()} / ${total.toLocaleString()} rows...`);
       }
       if (token !== state.dataToken) return;
       state.rows = matches;
@@ -3840,7 +3867,11 @@
       state.totalRows = matches.length;
       state.visibleCount = Math.min(loadBatchSize(cfg), state.rows.length);
       await renderVirtualWindow(cfg, state.token, { force: true });
-      setStatus(`[grid] Showing ${matches.length.toLocaleString()} selected molecule${matches.length === 1 ? '' : 's'}.`);
+      // A lasso's own selection must not feed back into the map; a filter does.
+      if (!wanted) postChemicalSpaceVisibility(matches);
+      setStatus(wanted
+        ? `[grid] Showing ${matches.length.toLocaleString()} selected molecule${matches.length === 1 ? '' : 's'}.`
+        : `[grid] Showing ${matches.length.toLocaleString()} of ${Number(total || 0).toLocaleString()} rows.`);
     } catch (error) {
       if (token !== state.dataToken) return;
       const message = error?.message || String(error);
@@ -4924,6 +4955,8 @@
 
 
   const FILTER_BINS = 32;
+  const FILTER_CATEGORY_LIMIT = 60;
+  const FILTER_CATEGORY_VALUE_CHARS = 80;
 
   function filterModelColumns() {
     // Remote collections expose their loaded columns here while filter
@@ -4967,6 +5000,55 @@
     const statsRows = state.filterColumnStatsRows.length;
     const statsTotal = remoteCollectionTotal();
     return { ...stats, statsRows, statsTotal, statsComplete: state.indexReady && statsTotal > 0 && statsRows >= statsTotal };
+  }
+
+  // How often each value of a column occurs, most frequent first; the empty
+  // string counts the empty cells. Pure on purpose, and null as soon as the
+  // column turns out to be free text: more distinct values than `limit`, or a
+  // value too long to be a category. Same counting as categoryCounts in
+  // apps/desktop/src/lib/table-shaping.ts, which the grid frame cannot import.
+  function categoryValueCounts(rows, read, limit, maxLength) {
+    const counts = new Map();
+    for (const row of rows) {
+      const value = String(read(row) ?? '').trim();
+      const count = counts.get(value);
+      if (count !== undefined) {
+        counts.set(value, count + 1);
+        continue;
+      }
+      if (counts.size >= limit || value.length > maxLength) return null;
+      counts.set(value, 1);
+    }
+    return [...counts].sort((a, b) => b[1] - a[1]
+      || a[0].localeCompare(b[0], undefined, { numeric: true, sensitivity: 'base' }));
+  }
+
+  // A text column is offered as a category filter when its values repeat: on
+  // average every value at least twice, which leaves names and identifiers
+  // out. The counts are taken over every loaded row, like the numeric
+  // distribution, so they stay put while other filters narrow the view.
+  function filterColumnCategories(column) {
+    const rows = state.filterColumnStatsRows ??= tableColumnDiscoveryRows();
+    const key = `categories:${column.id}`;
+    if (!state.filterColumnStatsCache.has(key)) {
+      const counts = categoryValueCounts(rows, row => tableColumnDisplayValue(row, column.id), FILTER_CATEGORY_LIMIT, FILTER_CATEGORY_VALUE_CHARS);
+      state.filterColumnStatsCache.set(key, counts && counts.length > 1 && counts.length * 2 <= rows.length ? counts : null);
+    }
+    const categories = state.filterColumnStatsCache.get(key);
+    if (!state.remoteMode) return categories ? { categories } : null;
+    // A paged collection only holds the rows its filters let through, so the
+    // values a column offered when its own filter was set stay on offer;
+    // otherwise picking one value would take the others off the list.
+    if (state.tableColumnFilters[column.id]?.values?.length && state.filterCategoryPins.has(column.id)) {
+      return state.filterCategoryPins.get(column.id);
+    }
+    const statsRows = rows.length;
+    const statsTotal = remoteCollectionTotal();
+    const offered = categories
+      ? { categories, statsRows, statsTotal, statsComplete: state.indexReady && statsTotal > 0 && statsRows >= statsTotal }
+      : null;
+    state.filterCategoryPins.set(column.id, offered);
+    return offered;
   }
 
   function filterColumnVaries(column) {
@@ -5024,7 +5106,14 @@
         state.filterColumnVariationCache.set(column.id, filterColumnVaries(column) && !filterColumnIsRowIndex(column));
       }
       entry.varied = state.filterColumnVariationCache.get(column.id);
-      if (filter) entry.filter = { min: filter.min ?? '', max: filter.max ?? '', text: filter.text ?? '' };
+      if (filter) {
+        entry.filter = { min: filter.min ?? '', max: filter.max ?? '', text: filter.text ?? '' };
+        if (filter.values?.length) entry.filter.values = filter.values;
+      }
+      if (column.type !== 'number') {
+        const categories = filterColumnCategories(column);
+        if (categories) Object.assign(entry, categories);
+      }
       if (column.type === 'number') {
         const stats = filterColumnStats(column);
         if (stats) Object.assign(entry, stats);
@@ -5079,7 +5168,11 @@
         if (String(filter.min ?? '').trim() && Number.isFinite(Number(filter.min))) row.min = Number(filter.min);
         if (String(filter.max ?? '').trim() && Number.isFinite(Number(filter.max))) row.max = Number(filter.max);
       } else {
-        row.text = gridAgentText(String(filter.text || '').trim());
+        // A category filter reads as the values it lets through.
+        row.text = gridAgentText([
+          String(filter.text || '').trim(),
+          (filter.values || []).map(value => value || '(empty)').join(' | ')
+        ].filter(Boolean).join(' & '));
       }
       filters.push(row);
     }
@@ -5147,10 +5240,15 @@
   }
 
   function applyGridColumnFilter(cfg, columnId, part, value) {
-    if (!columnId || !['min', 'max', 'text'].includes(part)) return;
+    if (!columnId || !['min', 'max', 'text', 'values'].includes(part)) return;
     const current = { ...state.tableColumnFilters[columnId] };
-    current.type = part === 'text' ? 'text' : 'number';
-    current[part] = String(value ?? '');
+    current.type = part === 'text' || part === 'values' ? 'text' : 'number';
+    if (part === 'values') {
+      current.values = [...new Set((Array.isArray(value) ? value : []).map(item => String(item ?? '').trim()))]
+        .slice(0, FILTER_CATEGORY_LIMIT);
+    } else {
+      current[part] = String(value ?? '');
+    }
     if (tableColumnFilterEmpty(current)) delete state.tableColumnFilters[columnId];
     else state.tableColumnFilters[columnId] = current;
     void refresh(cfg);
@@ -5872,7 +5970,7 @@
   function tableColumnFilterEmpty(filter) {
     if (!filter) return true;
     if (filter.type === 'number') return !String(filter.min || '').trim() && !String(filter.max || '').trim();
-    return !String(filter.text || '').trim();
+    return !String(filter.text || '').trim() && !(filter.values?.length > 0);
   }
 
   function inferPropColumnType(rows, key) {
@@ -9160,6 +9258,7 @@
     state.rowPatches = new Map();
     state.insertedRows = [];
     state.columnValueRanges = new Map();
+    state.filterCategoryPins = new Map();
     state.xyzrenderPreset = null;
     state.selectionAnchorIndex = null;
     state.visibleCount = 0;

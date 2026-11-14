@@ -8445,6 +8445,38 @@ img.settings-open-destination-icon {
   min-width: 0;
   width: 100%;
 }
+/* A category filter lists its values under the text filter; a long list
+   scrolls inside the card so the next column stays within reach. */
+.grid-filter-categories {
+  min-width: 0;
+  max-height: 208px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.grid-filter-category {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 3px 2px;
+  font-size: 12px;
+  line-height: 1.3;
+}
+.grid-filter-category-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.grid-filter-category-value[data-empty] {
+  color: var(--text-secondary);
+}
+.grid-filter-category-count {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
 .grid-filter-card [data-slot="field"] {
   min-width: 0;
   max-width: 100%;
