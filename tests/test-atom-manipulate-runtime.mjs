@@ -47,7 +47,8 @@ try {
       const near = point => Math.hypot(point[0] - x, point[1] - y) < 4;
       const row = [0, 1, 2, 3].find(index => near(screen(index)));
       if (row !== undefined) return { id: { row }, position: [0, 0, 0] };
-      return near(middle(1, 2)) ? { id: { bond: [1, 2] }, position: [0, 0, 0] } : undefined;
+      const bond = [[1, 2], [0, 1]].find(pair => near(middle(...pair)));
+      return bond ? { id: { bond }, position: [0, 0, 0] } : undefined;
     },
     getLoci(id) {
       const s = structure(), unit = s.units[0];
@@ -106,6 +107,20 @@ try {
   angles().forEach((value, i) => assert.ok(Math.abs(value - a0[i]) < 0.02, 'bond angles stay'));
   await reset();
 
+  // A click on an atom and a turn about a terminal bond move nothing, so neither ends as an edit.
+  const before = rows();
+  events.length = 0;
+  pointer('pointerdown', screen(3)); pointer('pointerup', screen(3));
+  assert.deepEqual(events.map(event => event.phase), ['start', 'cancel'], 'a click is not a move');
+  // The next press is taken once the released atoms are back with the scene.
+  await new Promise(resolve => setTimeout(resolve, 50));
+  events.length = 0;
+  pointer('pointerdown', middle(0, 1)); pointer('pointermove', [middle(0, 1)[0] + 180, middle(0, 1)[1]]); flush();
+  pointer('pointerup', [middle(0, 1)[0] + 180, middle(0, 1)[1]]);
+  assert.deepEqual(events.map(event => event.phase), ['start', 'move', 'cancel'], 'a terminal atom does not turn about its own bond');
+  await new Promise(resolve => setTimeout(resolve, 50));
+  assert.deepEqual(rows(), before);
+
   // ⌥-drag on the bond stretches it along its axis; the angles and the dihedral stay.
   await drag(middle(1, 2), 20, { altKey: true });
   await until(() => measure([1, 2]) > l0[1] + 0.1, 'the bond stretches');
@@ -117,11 +132,11 @@ try {
   // ⌥-drag on a selected atom rotates the selection rigidly about its centre.
   const unit = structure().units[0];
   plugin.managers.structure.selection.fromLoci('set', StructureElement.Loci(structure(), [{ unit, indices: Int32Array.of(2, 3) }]), false);
-  const before = measure([2, 3]), centre = [2, 3].map(i => rows()[i]).reduce((sum, point) => sum.map((v, k) => v + point[k] / 2), [0, 0, 0]);
+  const length = measure([2, 3]), centre = [2, 3].map(i => rows()[i]).reduce((sum, point) => sum.map((v, k) => v + point[k] / 2), [0, 0, 0]);
   const rotation = await drag(screen(3), 60, { altKey: true });
   assert.deepEqual(rotation.atoms, [2, 3]);
   await until(() => Math.abs(rows()[3][2]) > 0.1, 'the selection turns out of the plane');
-  assert.ok(Math.abs(measure([2, 3]) - before) < 2e-4, 'the rotation is rigid');
+  assert.ok(Math.abs(measure([2, 3]) - length) < 2e-4, 'the rotation is rigid');
   const after = [2, 3].map(i => rows()[i]).reduce((sum, point) => sum.map((v, k) => v + point[k] / 2), [0, 0, 0]);
   after.forEach((value, k) => assert.ok(Math.abs(value - centre[k]) < 2e-4, 'about the centre'));
   assert.deepEqual([rows()[0], rows()[1]].map(p => p.map(v => Number(v.toFixed(3)))), [carbons[0], carbons[1]].map(p => p.map(v => Number(v.toFixed(3)))));

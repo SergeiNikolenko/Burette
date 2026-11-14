@@ -255,7 +255,8 @@ if (!window.BuretteAtomDrag) {
       unhighlight();
       current.ended = true;
       void send(text, { passive: true }).finally(() => { if (drag === current) stop(); });
-      post('end', current);
+      // A click, or a turn of a terminal atom about its own bond, moved nothing: not an edit.
+      post(current.positions.every((point, i) => point.every((value, axis) => value === current.start[i][axis])) ? 'cancel' : 'end', current);
     }
     function cancel(event) {
       const current = drag;
