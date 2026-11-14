@@ -154,6 +154,22 @@ for the browser shell and on a `macvm` guest on Orion for the packaged app.
   blocks); `plots-panel.tsx` series linked to frames.
 - **Done when:** a Gaussian ModRedundant scan and an ORCA IRC log give the
   printed energies and coordinates, and clicking a point shows that geometry.
+- **Done (d27276bc5, bfb9ba835, 497c84e56):** quantum logs keep a scan or
+  reaction path next to their frames, and **Plots** draws it first: "Scan, ΔE"
+  against the scanned bond, angle or dihedral (read from the ModRedundant `S`
+  lines or ORCA's `%geom Scan` box; several scanned coordinates fall back to the
+  step number), or "Reaction path, ΔE" against the reaction coordinate. Clicking a
+  point or stepping with the arrow keys moves the scene to that geometry; scan
+  points whose optimization did not converge are drawn hollow. Gaussian relaxed
+  scans take the last geometry of each scan point; a Gaussian IRC opens ordered
+  by the reaction coordinate with the TS as reference; ORCA relaxed and
+  unrelaxed surface scans take one geometry per point; ORCA's `_IRC_Full_trj.xyz`
+  links each point to its geometry (x = step from the TS, energies from the
+  comment lines). Tests (`test:reaction-paths`) check the energies and
+  coordinates against the summaries the programs print, on public Gaussian 09/16
+  and ORCA 4.2/6.1 outputs in `tests/fixtures/quantum/reaction-paths/`. Browser
+  shell verified on Gauss in both themes. An ORCA IRC `.out` has no geometries
+  along the path, so its plot is not linked to frames; the trajectory file is.
 
 ## B. Building and manipulation in 3D (Avogadro)
 
