@@ -13,7 +13,7 @@ const LIFTED = [
   "applyGridColumnFilter", "clearGridColumnFilters", "tableColumnFilterEmpty", "tableColumnFilterMatches",
   "tableColumnFilterBound", "filterByTableColumnControls", "clientRowFiltersActive", "rowPassesClientFilters",
   "gridAgentFilters", "gridAgentText", "remoteTableColumnFilters", "mergedDescriptorFilters", "mergedAnalysisFilters",
-  "gridFetchPayload", "refreshRemoteChemicalSpaceSelection", "refresh", "filterByChemicalSpaceSelection",
+  "gridFetchPayload", "refreshRemoteChemicalSpaceSelection", "refresh", "filterByChemicalSpaceSelection", "applyRowListCommand",
 ];
 
 const COLUMNS = [
@@ -23,7 +23,7 @@ const COLUMNS = [
   { id: "prop:MW", label: "MW", type: "number" },
 ];
 
-type Model = { visible: number; total: number; columns: Array<Record<string, unknown> & { id: string }> };
+type Model = { visible: number; total: number; rowListFilter: string | null; columns: Array<Record<string, unknown> & { id: string }> };
 
 function grid(source: GridRow[], options: { remote?: boolean; pageSize?: number } = {}) {
   const remote = options.remote === true;
@@ -34,7 +34,8 @@ function grid(source: GridRow[], options: { remote?: boolean; pageSize?: number 
     rowPatches: new Map(), insertedRows: [], hiddenRows: new Set<number>(), deletedPropColumns: new Set<string>(),
     selected: new Set<number>(), chemicalSpaceFilterActive: false, columnValueRanges: new Map(),
     filterColumnStatsCache: new Map(), filterColumnVariationCache: new Map(), filterColumnStatsRows: null as GridRow[] | null,
-    filterCategoryPins: new Map(), tableColumnFilters: {} as Record<string, unknown>, descriptorFilters: [], descriptorSort: null,
+    filterCategoryPins: new Map(), rowListFilter: null as { id: string } | null, selectionAnchorIndex: null as number | null,
+    exports: [] as Array<[string, number[]]>, tableColumnFilters: {} as Record<string, unknown>, descriptorFilters: [], descriptorSort: null,
     remoteAnalysisColumns: [], query: "", sort: "index", smarts: "", smartsError: "", smartsMatches: new Map(),
     dataToken: 0, remoteLoadToken: 0, token: 0, remoteLoading: false, renderedCount: 0, visibleCount: 0,
     plainRemoteRefreshes: 0, searchTimer: 0, fetches: [] as Array<Record<string, unknown>>, statuses: [] as string[], visibility: null as number[] | null,
@@ -44,6 +45,11 @@ function grid(source: GridRow[], options: { remote?: boolean; pageSize?: number 
     const FILTER_CATEGORY_LIMIT = 60;
     const FILTER_CATEGORY_VALUE_CHARS = 80;
     const GRID_AGENT_MAX_TEXT = 256;
+    const GRID_SELECTION_BRIDGE_LIMIT = 100000;
+    function capabilities() { return { selection: true, export: true }; }
+    function syncRenderedSelection() {}
+    async function exportCSV() { state.exports.push(['csv', [...state.selected]]); }
+    async function exportSmiles() { state.exports.push(['smiles', [...state.selected]]); }
     const document = { getElementById() { return null; } };
     function filterModelColumns() { return columns; }
     function safeConfig() { return {}; }
@@ -88,7 +94,7 @@ function grid(source: GridRow[], options: { remote?: boolean; pageSize?: number 
     function render() {}
     async function refreshRemote() { state.plainRemoteRefreshes += 1; }
     ${LIFTED.map(functionSource).join("\n")}
-    return { gridFilterModel, applyGridColumnFilter, clearGridColumnFilters, gridAgentFilters, categoryValueCounts, refresh };
+    return { gridFilterModel, applyGridColumnFilter, clearGridColumnFilters, gridAgentFilters, categoryValueCounts, refresh, applyRowListCommand };
   `)(state, COLUMNS, source, pageSize) as {
     gridFilterModel: (cfg: unknown) => Model;
     applyGridColumnFilter: (cfg: unknown, columnId: string, part: string, value: unknown) => void;
@@ -96,6 +102,7 @@ function grid(source: GridRow[], options: { remote?: boolean; pageSize?: number 
     gridAgentFilters: () => unknown[];
     categoryValueCounts: (rows: unknown[], read: (row: never) => unknown, limit: number, maxLength: number) => Array<[string, number]> | null;
     refresh: (cfg: unknown) => Promise<void> | void;
+    applyRowListCommand: (body: unknown, cfg: unknown) => void;
   };
   const column = (id: string) => api.gridFilterModel({}).columns.find((entry) => entry.id === id)!;
   const names = () => state.rows.map((row) => row.name);
@@ -194,4 +201,59 @@ test("a paged collection applies picked values while it walks the pages the data
   api.clearGridColumnFilters({}, "prop:Class");
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(state.plainRemoteRefreshes).toBe(1);
+});
+
+const nsaids = { id: "list-1", name: "NSAIDs", indexes: [0, 1, 2, 3, 10] };
+
+test("a row list is shown on its own, survives a change of selection and combines with the other filters", () => {
+  const { state, api, names } = grid(compounds());
+  api.applyRowListCommand({ action: "filter", ...nsaids }, {});
+  expect(names()).toEqual(["Aspirin", "Ibuprofen", "Naproxen", "Diclofenac", "Acetylsalicylic acid"]);
+  expect(api.gridFilterModel({}).rowListFilter).toBe("list-1");
+  expect(api.gridFilterModel({}).visible).toBe(5);
+  // It is a filter, so the map dims the rest and an export says "filtered".
+  expect(state.visibility).toEqual([0, 1, 2, 3, 10]);
+
+  state.selected = new Set([5]);
+  api.refresh({});
+  expect(names()).toHaveLength(5);
+  api.applyGridColumnFilter({}, "prop:MW", "min", "200");
+  expect(names()).toEqual(["Ibuprofen", "Naproxen", "Diclofenac"]);
+  api.clearGridColumnFilters({}, null);
+
+  api.applyRowListCommand({ action: "filter", id: null, indexes: [] }, {});
+  expect(api.gridFilterModel({}).rowListFilter).toBeNull();
+  expect(names()).toHaveLength(11);
+});
+
+test("selecting a row list replaces the selection, and exporting one exports exactly its rows", () => {
+  const { state, api, names } = grid(compounds());
+  state.selected = new Set([7, 8]);
+  api.applyRowListCommand({ action: "select", ...nsaids, indexes: [0, 1, "2", -4, 3.5, 10] }, {});
+  expect([...state.selected]).toEqual([0, 1, 2, 10]);
+  expect(state.selectionAnchorIndex).toBe(10);
+  expect(names()).toHaveLength(11);
+  expect(state.exports).toEqual([]);
+
+  api.applyRowListCommand({ action: "export-csv", ...nsaids }, {});
+  api.applyRowListCommand({ action: "export-smiles", id: "list-2", name: "Two", indexes: [5, 6] }, {});
+  expect(state.exports).toEqual([["csv", [0, 1, 2, 3, 10]], ["smiles", [5, 6]]]);
+
+  // A selection the map was filtering by is replaced, so the map filter goes with it.
+  state.chemicalSpaceFilterActive = true;
+  api.applyRowListCommand({ action: "select", ...nsaids }, {});
+  expect(state.chemicalSpaceFilterActive).toBe(false);
+  // An empty list changes nothing.
+  api.applyRowListCommand({ action: "select", id: "x", name: "Empty", indexes: [] }, {});
+  expect([...state.selected]).toEqual([0, 1, 2, 3, 10]);
+});
+
+test("a paged collection shows a row list by walking its pages", async () => {
+  const { state, api, names } = grid(compounds(), { remote: true, pageSize: 4 });
+  api.applyRowListCommand({ action: "filter", ...nsaids }, {});
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(names()).toEqual(["Aspirin", "Ibuprofen", "Naproxen", "Diclofenac", "Acetylsalicylic acid"]);
+  expect(state.fetches.map((payload) => payload.offset)).toEqual([0, 4, 8]);
+  expect(state.totalRows).toBe(5);
+  expect(state.plainRemoteRefreshes).toBe(0);
 });

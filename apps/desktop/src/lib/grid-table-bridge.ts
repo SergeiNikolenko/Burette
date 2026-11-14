@@ -80,3 +80,26 @@ export async function applyGridRowEdits(documentId: string, edits: GridRowEdits)
     hidden: Number(reply.hidden) || 0,
   };
 }
+
+/** The source indexes of the rows selected in the grid, in ascending order. */
+export async function requestGridSelection(documentId: string): Promise<number[]> {
+  const reply = await requestGrid(documentId, { type: "gridRequestSelection" }, "gridSelection");
+  return (Array.isArray(reply.indexes) ? reply.indexes : [])
+    .map(Number)
+    .filter((index) => Number.isSafeInteger(index) && index >= 0);
+}
+
+/**
+ * What the grid does with the rows of a row list: select them, show nothing
+ * else (`filter`, or clear that with a null list), or select and export them.
+ */
+export function postGridRowListCommand(
+  documentId: string,
+  action: "select" | "filter" | "export-csv" | "export-smiles",
+  list: { id: string; name: string; indexes: number[] } | null,
+) {
+  activeViewerIframeForDocument(documentId, "grid2d")?.contentWindow?.postMessage({
+    source: "burette-grid-host",
+    body: { type: "gridRowListCommand", documentId, action, ...(list ?? { id: null, indexes: [] }) },
+  }, "*");
+}

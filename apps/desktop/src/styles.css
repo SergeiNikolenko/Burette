@@ -8477,6 +8477,37 @@ img.settings-open-destination-icon {
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
 }
+/* Row lists read like the filter rows above them: a name, its row count, and
+   the actions at the trailing edge. */
+.grid-row-lists {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.grid-row-list {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.grid-row-list-name {
+  flex: 1 1 auto;
+  justify-content: flex-start;
+  min-width: 0;
+  text-align: left;
+}
+.grid-row-list-rename {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.grid-row-list-count {
+  flex: 0 0 auto;
+  padding-inline: 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
 .grid-filter-card [data-slot="field"] {
   min-width: 0;
   max-width: 100%;

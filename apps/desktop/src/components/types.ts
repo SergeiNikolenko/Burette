@@ -348,6 +348,8 @@ export type GridFilterColumn = {
 
 export type GridFilterModel = {
   documentId: string | null;
+  /** The row list the grid shows on its own, if any. */
+  rowListFilter?: string | null;
   visible: number;
   total: number;
   columns: GridFilterColumn[];

@@ -455,7 +455,7 @@
     "test:lasso-projection": "bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-molstar-lasso-projection.mjs",
     "test:move-tool": "bun test tests/test-move-tool-frame-renewal.test.tsx",
     "test:collection-chart": "bun test tests/test-collection-chart.test.ts tests/test-collection-chart-scatter.test.ts tests/test-collection-chart-performance.test.ts tests/test-collection-chart-bridge.test.tsx tests/test-collection-chart-panel.test.tsx",
-    "test:table-shaping": "bun test tests/test-table-shaping.test.ts tests/test-grid-reshape.test.ts tests/test-grid-data-filters.test.ts"
+    "test:table-shaping": "bun test tests/test-table-shaping.test.ts tests/test-grid-reshape.test.ts tests/test-grid-data-filters.test.ts tests/test-grid-row-lists.test.tsx"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",

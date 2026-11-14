@@ -10,6 +10,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collap
 import { Field, FieldLabel } from "./ui/field";
 import { Input } from "./ui/input";
 import { GridFilterNumberInput } from "./grid-filter-number-input";
+import { GridRowListsSection } from "./grid-row-lists-section";
 import { Slider } from "./ui/slider";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import type { GridFilterColumn, GridFilterModel, ShellActions } from "./types";
@@ -482,6 +483,7 @@ export function GridFilterSection({
           {columns.length ? null : <div className="dock-empty">No filterable columns</div>}
         </div>
       </CollapsibleSection>
+      {model.documentId ? <GridRowListsSection documentId={model.documentId} shownListId={model.rowListFilter ?? null} /> : null}
     </TooltipProvider>
   );
 }

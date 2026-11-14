@@ -142,6 +142,7 @@
     filterColumnVariationCache: new Map(),
     filterColumnStatsRows: null,
     filterCategoryPins: new Map(),
+    rowListFilter: null,
     reactionRowsCache: null,
     tableColumnPanelOutsideController: null,
     tableScrollLeft: 0,
@@ -940,6 +941,19 @@
       }
       if (body.type === 'gridRequestTable') {
         void postGridTable(body, config());
+        return;
+      }
+      if (body.type === 'gridRequestSelection') {
+        post('gridSelection', '', {
+          requestId: String(body.requestId || ''),
+          indexes: [...state.selected].map(Number).filter(index => Number.isSafeInteger(index) && index >= 0)
+            .slice(0, GRID_SELECTION_BRIDGE_LIMIT).sort((a, b) => a - b),
+          truncated: state.selected.size > GRID_SELECTION_BRIDGE_LIMIT
+        });
+        return;
+      }
+      if (body.type === 'gridRowListCommand') {
+        applyRowListCommand(body, config());
         return;
       }
       if (body.type === 'gridApplyRowEdits') {
@@ -3527,8 +3541,40 @@
 
   function filterByTableColumnControls(rows) {
     const filters = Object.entries(state.tableColumnFilters || {});
-    if (!filters.length) return rows;
-    return rows.filter(row => filters.every(([columnId, filter]) => tableColumnFilterMatches(row, columnId, filter)));
+    const list = state.rowListFilter?.indexes;
+    if (!filters.length && !list) return rows;
+    return rows.filter(row => (!list || list.has(Number(row.index)))
+      && filters.every(([columnId, filter]) => tableColumnFilterMatches(row, columnId, filter)));
+  }
+
+  // Row lists are named selections the host keeps per document. The grid only
+  // ever sees the rows of one: to select them, to show nothing else, or to
+  // export them. Showing a list is a filter of its own - it survives a change
+  // of selection, which is what tells it apart from the selection it was saved from.
+  function applyRowListCommand(body, cfg) {
+    const indexes = (Array.isArray(body.indexes) ? body.indexes : [])
+      .slice(0, GRID_SELECTION_BRIDGE_LIMIT).map(Number)
+      .filter(index => Number.isSafeInteger(index) && index >= 0);
+    if (body.action === 'filter') {
+      state.rowListFilter = body.id && indexes.length
+        ? { id: String(body.id), name: String(body.name || '').slice(0, 120), indexes: new Set(indexes) }
+        : null;
+      void refresh(cfg);
+      return;
+    }
+    if (!capabilities(cfg).selection || !indexes.length) return;
+    const wasFilteringSelection = state.chemicalSpaceFilterActive;
+    state.selected = new Set(indexes);
+    state.chemicalSpaceFilterActive = false;
+    state.selectionAnchorIndex = indexes[indexes.length - 1];
+    if (wasFilteringSelection) void refresh(cfg);
+    else {
+      syncRenderedSelection();
+      updateChrome(cfg);
+    }
+    // The export commands take the selection, so the list is what they write.
+    if (body.action === 'export-csv' && capabilities(cfg).export) void exportCSV(cfg);
+    else if (body.action === 'export-smiles' && capabilities(cfg).export) void exportSmiles(cfg);
   }
 
   // A cleared bound is stored as an empty string, and Number('') is 0, so the
@@ -3559,13 +3605,16 @@
   }
 
   // The collection database filters a page by "contains" and by number range.
-  // A list of picked values is not something it evaluates, so on a paged
-  // collection those filters are applied here to the pages as they are walked.
+  // A list of picked values and a row list are not something it evaluates, so
+  // on a paged collection those filters are applied here to the pages as they
+  // are walked.
   function clientRowFiltersActive() {
-    return Object.values(state.tableColumnFilters || {}).some(filter => filter?.values?.length > 0);
+    return state.rowListFilter !== null
+      || Object.values(state.tableColumnFilters || {}).some(filter => filter?.values?.length > 0);
   }
 
   function rowPassesClientFilters(row) {
+    if (state.rowListFilter && !state.rowListFilter.indexes.has(Number(row.index))) return false;
     for (const [columnId, filter] of Object.entries(state.tableColumnFilters || {})) {
       if (filter?.values?.length && !filter.values.includes(tableColumnDisplayValue(row, columnId).trim())) return false;
     }
@@ -5124,6 +5173,7 @@
     });
     return {
       documentId: cfg?.documentId || null,
+      rowListFilter: state.rowListFilter ? state.rowListFilter.id : null,
       visible: state.remoteMode ? state.totalRows : state.rows.length,
       total: state.remoteMode
         ? remoteCollectionTotal(cfg)
@@ -9259,6 +9309,7 @@
     state.insertedRows = [];
     state.columnValueRanges = new Map();
     state.filterCategoryPins = new Map();
+    state.rowListFilter = null;
     state.xyzrenderPreset = null;
     state.selectionAnchorIndex = null;
     state.visibleCount = 0;
