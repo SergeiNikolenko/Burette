@@ -556,6 +556,12 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
     let analyze_rgroups = MenuItemBuilder::with_id("analyze.rgroups", "Decompose R-Groups…")
         .enabled(false)
         .build(app)?;
+    let analyze_matched_pairs = MenuItemBuilder::with_id("analyze.matched-pairs", "Matched Pairs…")
+        .enabled(false)
+        .build(app)?;
+    let analyze_sar_table = MenuItemBuilder::with_id("analyze.sar-table", "SAR Table…")
+        .enabled(false)
+        .build(app)?;
     let analyze_substructure_count =
         MenuItemBuilder::with_id("analyze.substructure-count", "Substructure Count…")
             .enabled(false)
@@ -579,6 +585,8 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
             &PredefinedMenuItem::separator(app)?,
             &analyze_scaffolds,
             &analyze_rgroups,
+            &analyze_sar_table,
+            &analyze_matched_pairs,
             &PredefinedMenuItem::separator(app)?,
             &analyze_substructure_count,
             &analyze_find_similar,

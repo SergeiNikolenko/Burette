@@ -922,6 +922,11 @@ pub(super) fn sync_native_menu<R: Runtime>(
     for id in ["analyze.cluster", "analyze.diverse"] {
         set_enabled(&app, id, can_analyze_collection)?;
     }
+    // Matched pairs and the SAR table only read the collection, the way the
+    // correlation matrix does.
+    for id in ["analyze.matched-pairs", "analyze.sar-table"] {
+        set_enabled(&app, id, can_analyze_collection)?;
+    }
     // The SAR analyses all write derived columns, so they follow the same rule
     // Add Column does: a grid with molecules whose edits are already saved.
     for id in [

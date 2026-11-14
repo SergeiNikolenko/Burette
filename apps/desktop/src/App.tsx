@@ -45,6 +45,7 @@ import { SplitValueRowsDialog, type SplitValueRowsRequest } from "./components/s
 import { PerformReactionDialog, type PerformReactionRequest } from "./components/perform-reaction-dialog";
 import { SubstructureCountDialog, type SubstructureCountRequest } from "./components/substructure-count-dialog";
 import { RGroupDecompositionDialog, type RGroupDecompositionRequest } from "./components/rgroup-decomposition-dialog";
+import { useSarAnalysisDialogs } from "./components/sar-analysis-dialogs";
 import { requestGridColumns, useAppDerivedColumns } from "./hooks/use-app-derived-columns";
 import { useAppDatabase } from "./hooks/use-app-database";
 import { useAppDescriptors } from "./hooks/use-app-descriptors";
@@ -594,6 +595,7 @@ export default function App() {
     if (!target) return;
     setRGroupDecompositionRequest({ documentId, documentTitle: target.title });
   }, [documents]);
+  const { openMatchedPairs, openSarTable, sarAnalysisDialogs } = useSarAnalysisDialogs({ documents, pushStatus });
   const {
     pendingViewerReloadOptionsRef,
     pendingViewerReloadDocumentIdRef,
@@ -1166,6 +1168,8 @@ export default function App() {
     openSubstructureCount,
     findSimilarInFile,
     openRGroupDecomposition,
+    openMatchedPairs,
+    openSarTable,
     canNavigateBack,
     canNavigateForward,
     cancelConformerJob,
@@ -1485,6 +1489,7 @@ export default function App() {
         onDismiss={() => setRGroupDecompositionRequest(null)}
         onRun={decomposeGridRGroups}
       />
+      {sarAnalysisDialogs}
       <CalculatePropertiesDialog
         request={calculatePropertiesRequest}
         onDismiss={() => setCalculatePropertiesRequest(null)}

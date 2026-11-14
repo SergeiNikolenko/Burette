@@ -47,6 +47,8 @@ type UseAppShellActionsOptions = {
   openSubstructureCount: ShellActions["openSubstructureCount"];
   findSimilarInFile: ShellActions["findSimilarInFile"];
   openRGroupDecomposition: ShellActions["openRGroupDecomposition"];
+  openMatchedPairs: ShellActions["openMatchedPairs"];
+  openSarTable: ShellActions["openSarTable"];
   canNavigateBack: boolean;
   canNavigateForward: boolean;
   cancelConformerJob: ShellActions["cancelConformerJob"];
@@ -261,6 +263,8 @@ type GridShellActions = Pick<
   | "openSubstructureCount"
   | "findSimilarInFile"
   | "openRGroupDecomposition"
+  | "openMatchedPairs"
+  | "openSarTable"
   | "appendGridRecords"
   | "addXyzrenderSheetItems"
 >;
@@ -504,6 +508,8 @@ const workspaceHistoryNoneActions = new Set<keyof ShellActions>([
   "openSubstructureCount",
   "findSimilarInFile",
   "openRGroupDecomposition",
+  "openMatchedPairs",
+  "openSarTable",
   "appendGridRecords",
   "addXyzrenderSheetItems",
   "checkConformerStatus",
@@ -693,6 +699,8 @@ export function createAppShellActionSlices(actions: ShellActions): AppShellActio
       openSubstructureCount: actions.openSubstructureCount,
       findSimilarInFile: actions.findSimilarInFile,
       openRGroupDecomposition: actions.openRGroupDecomposition,
+      openMatchedPairs: actions.openMatchedPairs,
+      openSarTable: actions.openSarTable,
       appendGridRecords: actions.appendGridRecords,
       addXyzrenderSheetItems: actions.addXyzrenderSheetItems,
     },
@@ -837,6 +845,8 @@ export function useAppShellActions({
   openSubstructureCount,
   findSimilarInFile,
   openRGroupDecomposition,
+  openMatchedPairs,
+  openSarTable,
   canNavigateBack,
   canNavigateForward,
   cancelConformerJob,
@@ -1064,6 +1074,8 @@ export function useAppShellActions({
     openSubstructureCount,
     findSimilarInFile,
     openRGroupDecomposition,
+    openMatchedPairs,
+    openSarTable,
     checkConformerStatus,
     runConformerOperation,
     cancelConformerJob,
@@ -1173,7 +1185,7 @@ export function useAppShellActions({
     canRedoWorkspace,
     canUndoFocusedPreview: focusedPreviewHistory.canUndo,
     canUndoWorkspace,
-  }), [openCrystalsStructure, installCrystals, removeCrystals, refreshResourceExtensions, cancelResourceJob, clearResourceJobs, activeDocument, addDerivedGridColumn, addDockDrop, addXyzrenderSheetItemsToDocument, openCalculateProperties, deleteDuplicateGridRows, openCorrelationMatrix, openCalculatedColumn, openMergeColumns, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, clearDerivedColumnJobs, canNavigateForward, canRedoWorkspace, canUndoWorkspace, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearDirtyGridDocuments, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeQuickLookPreview, closeTab, confirmCloseSourceDocuments, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, exportDiagnostics, fetchPdbStructure, focusedPreviewHistory.canRedo, focusedPreviewHistory.canUndo, focusSidebarSearch, forgetDirtyGridDocument, forgetDirtyGridDocuments, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openStructureUrlInMolstar, openTextDocuments, openUpdateRelease, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectFolder, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runExternalRuntimeDoctor, runStructureViewerAction, saveKetcherDraft, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, openPerformReaction, addScaffoldGridColumns, openSubstructureCount, findSimilarInFile, openRGroupDecomposition]);
+  }), [openCrystalsStructure, installCrystals, removeCrystals, refreshResourceExtensions, cancelResourceJob, clearResourceJobs, activeDocument, addDerivedGridColumn, addDockDrop, addXyzrenderSheetItemsToDocument, openCalculateProperties, deleteDuplicateGridRows, openCorrelationMatrix, openCalculatedColumn, openMergeColumns, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, clearDerivedColumnJobs, canNavigateForward, canRedoWorkspace, canUndoWorkspace, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearDirtyGridDocuments, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeQuickLookPreview, closeTab, confirmCloseSourceDocuments, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, exportDiagnostics, fetchPdbStructure, focusedPreviewHistory.canRedo, focusedPreviewHistory.canUndo, focusSidebarSearch, forgetDirtyGridDocument, forgetDirtyGridDocuments, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openStructureUrlInMolstar, openTextDocuments, openUpdateRelease, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectFolder, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runExternalRuntimeDoctor, runStructureViewerAction, saveKetcherDraft, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, openPerformReaction, addScaffoldGridColumns, openSubstructureCount, findSimilarInFile, openRGroupDecomposition, openMatchedPairs, openSarTable]);
 }
 
 export function createJobHistoryShellActions({

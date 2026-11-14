@@ -177,6 +177,18 @@ export function buildShellCommands(
       description: "Count how often a SMARTS query occurs in each molecule",
       run: () => actions.openSubstructureCount(state.activeDocument!.id),
     }, {
+      id: "matched-pairs",
+      group: "Suggested",
+      label: "Matched pairs",
+      description: "Find molecules that differ in one substituent and how a column changes between them",
+      run: () => actions.openMatchedPairs(state.activeDocument!.id),
+    }, {
+      id: "sar-table",
+      group: "Suggested",
+      label: "SAR table",
+      description: "Lay the R-group decomposition out as a matrix of two positions",
+      run: () => actions.openSarTable(state.activeDocument!.id),
+    }, {
       id: "delete-duplicate-rows",
       group: "Suggested",
       label: "Delete duplicate molecules",

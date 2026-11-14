@@ -109,6 +109,8 @@ const FORWARDED_COMMANDS: &[&str] = &[
     "database.retrieve-sql",
     "analyze.scaffolds",
     "analyze.rgroups",
+    "analyze.sar-table",
+    "analyze.matched-pairs",
     "analyze.substructure-count",
     "analyze.find-similar",
     "window.previous-tab",

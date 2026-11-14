@@ -622,6 +622,12 @@ export function useAppNativeMenu({
       case "analyze.rgroups":
         if (activeDocument && isGrid) actions.openRGroupDecomposition(activeDocument.id);
         return;
+      case "analyze.matched-pairs":
+        if (activeDocument && isGrid) actions.openMatchedPairs(activeDocument.id);
+        return;
+      case "analyze.sar-table":
+        if (activeDocument && isGrid) actions.openSarTable(activeDocument.id);
+        return;
       case "collection.add-column.calculated":
         if (activeDocument && isGrid) actions.openCalculatedColumn(activeDocument.id);
         return;
