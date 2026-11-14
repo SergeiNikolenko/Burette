@@ -326,6 +326,26 @@ Database menus. These stages cover what it left out.
   enumeration in the chemistry worker.
 - **Done when:** a 3 × 4 amide library gives 12 products identical to RDKit's
   `EnumerateLibrary`.
+- **Done (345c2bafc, 6da1ee234, 494a8889b):** **Enumerate Library…** sits in
+  Collection → Reaction and in the command palette. **Reaction** takes one of
+  the app's reactions or a reaction SMARTS and one list per reactant;
+  **Core** takes a core with numbered attachment points (`[*:1]`) and one list
+  per R position. A list is an open collection or pasted SMILES. The library
+  opens as a new collection named after the reaction, with the product SMILES,
+  the reaction or core, and each part with its source (`acids.smi #2`, or the
+  pasted name). Enumeration runs in a worker on RDKit (`run_reactants`,
+  `molzip`) with progress and Cancel; products are deduplicated by canonical
+  SMILES, building blocks that do not fit are skipped and counted, and a
+  library is capped at 2,000 combinations because the result travels as SDF
+  text. `tests/fixtures/library-enumeration` holds the RDKit reference
+  (`EnumerateLibraryFromReaction` and `molzip`, script and output in its
+  README): the 3 × 4 amide library and a 2 × 3 core library match it string for
+  string, with provenance. Gauss acceptance in both themes: acids read from the
+  open collection and four pasted amines give 12 products with the expected
+  provenance (Product 7 is benzoic acid × morpholine), the core
+  `[*:1]c1ccc([*:2])cc1` with 2 × 3 pasted groups gives 6, and 41 × 49 is
+  refused with the limit message. `test:library-enumeration` covers the worker
+  and the dialog.
 
 ### Stage 26. Data shaping: pivot, merge by key, category filters, row lists
 

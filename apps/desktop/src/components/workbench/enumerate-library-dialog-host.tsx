@@ -232,11 +232,11 @@ function EnumerateLibraryForm({ document, actions, onStatus, run }: Props & { do
         ))}
       </fieldset>
       {error ? <p role="alert" className="workbench-error">{error}</p> : null}
+      {overLimit && !progress ? <p role="alert" className="workbench-error">{plural(total, "product")}. A library holds up to {LIBRARY_PRODUCT_LIMIT.toLocaleString()}.</p> : null}
       <DialogFooter>
         {progress ? <span role="status" className="workbench-status mr-auto"><Spinner aria-hidden className="size-3" />
           {progress.done.toLocaleString()} of {progress.total.toLocaleString()}</span>
-          : overLimit ? <p role="alert" className="workbench-error mr-auto">{plural(total, "product")}. A library holds up to {LIBRARY_PRODUCT_LIMIT.toLocaleString()}.</p>
-          : total ? <span className="workbench-value mr-auto">{plural(total, "product")}</span> : null}
+          : total && !overLimit ? <span className="workbench-value mr-auto">{plural(total, "product")}</span> : null}
         <Button type="button" variant="outline" onClick={() => { if (busy) run.current?.abort(); else closeWorkbenchDialog(); }}>Cancel</Button>
         <Button type="submit" disabled={busy || !total || overLimit}>Enumerate</Button>
       </DialogFooter>
