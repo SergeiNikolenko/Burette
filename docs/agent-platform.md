@@ -728,7 +728,7 @@ and its workers against the pymatgen, spglib and ASE references in
 
 ### Private Geometry and scalar-field transports
 
-`geometry_binding`, `update_geometry`, `atom_drag`, `atom_draw`, `scalar_field_binding`,
+`geometry_binding`, `update_geometry`, `atom_drag`, `atom_draw`, `select_command`, `scalar_field_binding`,
 `scalar_field_validate` and `show_scalar_field` are private desktop-host routes,
 not public CLI/MCP actions. They use retained source/iframe leases; Geometry edits
 stage through source ownership and scalar display carries a full Cube payload.

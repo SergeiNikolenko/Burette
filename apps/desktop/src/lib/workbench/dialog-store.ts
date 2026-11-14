@@ -4,7 +4,7 @@ import type { ViewerDocument } from "../../types";
 import type { MeasurementDialogRequest } from "./measurement-request";
 import type { ZmatrixDocument } from "../../../../../scripts/zmatrix-document.mjs";
 
-export type WorkbenchDialogKind = "builder" | "supercell" | "assembly" | "input" | "properties" | "smiles" | "symmetry" | "measurement";
+export type WorkbenchDialogKind = "builder" | "supercell" | "assembly" | "input" | "properties" | "smiles" | "symmetry" | "measurement" | "smarts";
 export type BuilderKind = "polymer" | "peptide" | "nucleic" | "metal";
 export type CrystalView = "supercell" | "symmetry" | "niggli";
 

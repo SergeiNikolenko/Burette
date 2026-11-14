@@ -16,6 +16,7 @@ import { structureStoryFromViewerMessage, type StructureStory } from "../lib/str
 import { rendererViewReloadOptions } from "../lib/renderer-view-state";
 import { dockCameraRestore } from "../lib/dock-camera-transfer";
 import { postMessageToViewerSource } from "../lib/viewer-bridge";
+import { openSmartsSelect } from "../lib/workbench/select-commands";
 
 type ViewerStateMessageBody = Record<string, unknown> | null | undefined;
 type SetViewerLigandSelections = (
@@ -110,6 +111,12 @@ export function useAppViewerStateMessages({
           measurement: { ...request, frameSource: eventSource, requestId: crypto.randomUUID() },
         });
       }
+      return true;
+    }
+    if (sourceName === "burette-viewer" && body?.type === "selectBySmarts") {
+      // The frame identifies the document; its runtime id can differ from the shell's.
+      const document = documents.find(document => activeViewerIframeForDocument(document.id, "molstar")?.contentWindow === eventSource);
+      if (document) openSmartsSelect(document);
       return true;
     }
     if (sourceName === "burette-viewer" && body?.type === "rendererViewStateRequest") {

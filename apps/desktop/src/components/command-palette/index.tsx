@@ -1,4 +1,5 @@
 import { openPlots, usePlotsAvailable, PLOTS_COMMAND } from "../../lib/workbench/plots-tool";
+import { openSmartsSelect, runSelectCommand, SELECT_COMMANDS } from "../../lib/workbench/select-commands";
 import { startAvogadroCommand, useAvogadroCommands } from "../../lib/extensions/avogadro-commands";
 import { openScientificSpectra, useScientificSpectraAvailable, SCIENTIFIC_SPECTRA_COMMAND } from "../../lib/workbench/scientific-spectra-tool";
 import { openOrbitals, useOrbitalsAvailable, ORBITALS_COMMAND } from "../../lib/workbench/orbitals-tool";
@@ -122,6 +123,12 @@ export function CommandPalette({
         return document && panel ? OPTIMIZATION_COMMANDS.map(({ command, label }) => ({ id: `optimization-${command}`, group: "Calculate", label, description: "",
           shortcut: command === "optimize" ? "⌥⌘O" : undefined, run: () => requestOptimizationCommand(actions, document, panel, command) })) : [];
       })(),
+      ...(state.activeDocument?.renderer === "molstar" ? [
+        ...SELECT_COMMANDS.map(({ command, label }) => ({ id: `select-${command}`, group: "Select", label, description: "",
+          run: () => runSelectCommand(actions, state.activeDocument!, command) })),
+        ...(structureEditAvailable(state.activeDocument) ? [{ id: "select-smarts", group: "Select", label: "Select by SMARTS…", description: "",
+          run: () => openSmartsSelect(state.activeDocument!) }] : []),
+      ] : []),
       ...(state.activeDocument ? pluginCommands.map(entry => ({ id: `avogadro-command-${entry.id}`, group: "Extensions", label: entry.path.join(" › "),
         description: entry.plugin.name, run: () => startAvogadroCommand(entry, state.activeDocument!) })) : []),
       ...buildShellCommands(state, actions, query).map((command) => ({

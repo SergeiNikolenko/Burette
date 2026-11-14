@@ -1041,6 +1041,13 @@
         || current[0].cell !== cell || cell.obj?.data !== structure) return { ok: true };
       return window.BuretteGeometryPreview.apply(viewer, action);
     }
+    if (type === 'select_command') {
+      const commands = ['all', 'none', 'invert', 'residues', 'enlarge', 'element', 'atoms'];
+      if (!commands.includes(action.command)) throw new Error('Unknown selection command.');
+      if (action.command === 'element' && !/^[A-Z][a-z]?$/u.test(String(action.element))) throw new Error('Choose an element symbol.');
+      if (action.command === 'atoms' && !(Array.isArray(action.atoms) && action.atoms.length <= 100000 && action.atoms.every(atom => Number.isSafeInteger(atom) && atom >= 0))) throw new Error('Atoms must be source atom indices.');
+      return { ok: true, result: { selected: await runMolstarSelectCommand(action.command, action.command === 'element' ? action.element : action.atoms) } };
+    }
     if (type === 'select_residues') {
       const previewTarget = molstarMoleculePreviewTargetForAction(action);
       const result = await window.BuretteAgent.run({
@@ -27233,6 +27240,76 @@ SOFTWARE.
     return true;
   }
 
+  // Avogadro's Select menu, built on the atoms of the shown structures. Every
+  // command replaces the selection and returns the number of atoms selected.
+  const SELECT_MENU_ELEMENT_LIMIT = 8;
+  function molstarAtomicUnits() {
+    return molstarCurrentStructures(activeMolstarViewer()).flatMap(ref => {
+      const structure = molstarStructureFromRef(ref);
+      return structure ? [{ structure, units: structure.units.filter(unit => unit.kind === 0) }] : [];
+    });
+  }
+  function molstarShownElements() {
+    const symbols = new Set();
+    for (const { units } of molstarAtomicUnits()) for (const unit of units) {
+      const type = unit.model.atomicHierarchy.atoms.type_symbol;
+      for (const row of unit.elements) symbols.add(type.value(row));
+    }
+    // Carbon first and hydrogen next, then alphabetical, as in a formula.
+    return [...symbols].sort((a, b) => (a === 'C' ? -2 : a === 'H' ? -1 : 0) - (b === 'C' ? -2 : b === 'H' ? -1 : 0) || a.localeCompare(b));
+  }
+  function selectMolstarAtomsWhere(test) {
+    const manager = activeMolstarViewer()?.plugin?.managers?.structure?.selection;
+    const Element = window.molstar?.lib?.structure?.StructureElement;
+    if (!manager || !Element) throw new Error('No Mol* selection manager is available.');
+    manager.clear();
+    let count = 0;
+    for (const { structure, units } of molstarAtomicUnits()) {
+      const elements = units.flatMap(unit => {
+        const indices = [];
+        for (let i = 0; i < unit.elements.length; i++) if (test(unit, i)) indices.push(i);
+        count += indices.length;
+        return indices.length ? [{ unit, indices: Int32Array.from(indices) }] : [];
+      });
+      if (elements.length) manager.fromLoci('add', Element.Loci(structure, elements));
+    }
+    return count;
+  }
+  // Atoms bonded to the selection join it.
+  function enlargeMolstarSelection() {
+    const manager = activeMolstarViewer()?.plugin?.managers?.structure?.selection;
+    const Element = window.molstar?.lib?.structure?.StructureElement;
+    const picked = new Set();
+    for (const { structure, units } of molstarAtomicUnits()) {
+      const loci = manager?.getLoci(structure);
+      if (!Element?.Loci.is(loci)) continue;
+      for (const { unit, indices } of loci.elements) {
+        if (unit.kind !== 0 || !units.includes(unit)) continue;
+        const { offset, b } = unit.bonds;
+        Element.Loci.forEachLocation({ kind: 'element-loci', structure, elements: [{ unit, indices }] }, location => {
+          const i = unit.elements.indexOf(location.element);
+          picked.add(`${unit.id}:${i}`);
+          for (let k = offset[i]; k < offset[i + 1]; k++) picked.add(`${unit.id}:${b[k]}`);
+        });
+      }
+    }
+    return picked.size ? selectMolstarAtomsWhere((unit, i) => picked.has(`${unit.id}:${i}`)) : 0;
+  }
+  async function runMolstarSelectCommand(command, value) {
+    if (command === 'all') return selectMolstarAtomsWhere(() => true);
+    if (command === 'element') return selectMolstarAtomsWhere((unit, i) => unit.model.atomicHierarchy.atoms.type_symbol.value(unit.elements[i]) === value);
+    // Source atom indices, as the host's graph numbers them.
+    if (command === 'atoms') {
+      const wanted = new Set(value);
+      return selectMolstarAtomsWhere((unit, i) => wanted.has(unit.model.atomicHierarchy.atomSourceIndex.value(unit.elements[i])));
+    }
+    if (command === 'enlarge') return enlargeMolstarSelection();
+    if (command === 'none') { activeMolstarViewer()?.plugin?.managers?.structure?.selection?.clear?.(); return 0; }
+    const query = { invert: ['inverse', 'set'], residues: ['whole residues', 'set'] }[command];
+    if (!query || !await applyMolstarSelectionQuery(...query)) throw new Error('This selection command is unavailable.');
+    return null;
+  }
+
   // Maestro and PyMOL both pick at a level, not at an atom: clicking a side chain
   // with residue level on takes the residue. Mol* keeps the same idea in the
   // interactivity manager, where it was previously only reachable from its own UI.
@@ -27739,6 +27816,7 @@ SOFTWARE.
     { id: 'view', title: 'Visibility', direct: true, breakBefore: true },
     { id: 'represent', title: 'Appearance', direct: true, breakBefore: true },
     { id: 'analyze', title: 'Analyze', rootLabel: 'Tools', breakBefore: true },
+    { id: 'selection', title: 'Select' },
     { id: 'align', title: 'Align' },
     { id: 'export', title: 'Export' },
     { id: 'search', title: 'Search' },
@@ -27869,6 +27947,10 @@ SOFTWARE.
         actions.push(['analyze:angle', 'Measure angle']);
         actions.push(['analyze:dihedral', 'Measure dihedral']);
       }
+      actions.push(['select:all', 'Select all'], ['select:clear', 'Select none'], ['select:invert', 'Invert selection']);
+      const elements = molstarShownElements();
+      if (elements.length > 1 && elements.length <= SELECT_MENU_ELEMENT_LIMIT) actions.push(...elements.map(symbol => [`select:element:${symbol}`, `Select ${symbol} atoms`]));
+      actions.push(['select:whole-residues', 'Select whole residues'], ['select:enlarge', 'Enlarge selection'], ['select:smarts', 'Select by SMARTS…']);
     }
     if (molstarModifiedPdbExportAvailable()) {
       if (molstarContextChainId(target?.atom)) {
@@ -28242,6 +28324,7 @@ SOFTWARE.
     if (name === 'select:grow') return 'grown selection';
     if (name === 'select:invert') return 'inverted selection';
     if (name === 'select:clear') return 'cleared selection';
+    if (name === 'select:all' || name === 'select:enlarge' || name.startsWith('select:element:')) return 'selection';
     return null;
   }
 
@@ -28466,6 +28549,13 @@ SOFTWARE.
       } else if (action === 'select:clear') {
         activeViewer?.plugin?.managers?.structure?.selection?.clear?.();
         setStatus('[web] Cleared the selection.');
+      } else if (action === 'select:all' || action === 'select:enlarge' || action.startsWith('select:element:')) {
+        const command = action === 'select:all' ? 'all' : action === 'select:enlarge' ? 'enlarge' : 'element';
+        const count = await runMolstarSelectCommand(command, action.slice('select:element:'.length));
+        setStatus(`[web] Selected ${count} atoms.`);
+      } else if (action === 'select:smarts') {
+        // The host owns the chemistry toolkit and the source graph; it asks for the pattern.
+        postHostMessage({ type: 'selectBySmarts' });
       } else if (action.startsWith('colour:')) {
         const theme = action.slice('colour:'.length);
         if (!await applyMolstarColourPreset(target, theme)) throw new Error('No Mol* structure is available to colour.');
