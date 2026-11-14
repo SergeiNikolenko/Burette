@@ -15,6 +15,11 @@ registrations, validation helpers, and plugin-local scripts.
 
 ## Contract Rules
 
+- Preserve default molecular representations and native atom/bond sizes unless
+  the user explicitly requests a change. Read
+  [Molecular display defaults](../../docs/molecular-display-defaults.md) before
+  changing scene authoring, preview examples, or export workflows. Carry this
+  rule in packaged skills as well as repository instructions.
 - The repository CLI remains the execution contract. MCP tools should wrap
   `scripts/burette-agent.mjs` or plugin-local validation scripts instead of
   reimplementing app control.

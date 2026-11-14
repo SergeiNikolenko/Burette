@@ -11,6 +11,12 @@ contacts, comparison, and conclusion. A Story is not a list of viewer clicks.
 It is a reproducible MolViewSpec object with `kind: "multiple"` and one complete
 scene tree per snapshot.
 
+Follow [molstar-scene](../molstar-scene/SKILL.md) for display defaults: preserve
+native protein cartoon and ligand ball-and-stick sizes and element colors
+unless the user explicitly asks otherwise. Omit size/radius/bond-width
+overrides. Compose each view with the camera and real receptor surroundings;
+do not thicken ligands or invent contacts to emphasize a story step.
+
 ## Workflow
 
 1. Call `burette.list_story_templates`. Reuse the closest installed scaffold

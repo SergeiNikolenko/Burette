@@ -32,6 +32,26 @@ the snapshots.
 
 ## Contract
 
+Preserve Burette's default display and existing user choices. For authored
+protein–ligand scenes, use the standard protein cartoon and ligand
+ball-and-stick with native size and element-color defaults. Omit `sizeFactor`,
+`sizeAspectRatio`, custom radii, and bond-width overrides unless the user
+explicitly asks for them. Make a ligand readable by adjusting camera focus,
+orientation, and framing, not by thickening its atoms or bonds.
+
+Do not equate omitted MVS sizes with native geometry: the installed
+`ball_and_stick` adapter injects sizeFactor `0.5`, sizeAspectRatio `0.5`, and a
+uniform size theme; the native builder uses `0.15`, `2/3`, and physical sizes.
+Use native representation builders or verify the resulting parameters before
+claiming default thickness. Native lines are suitable for real residue
+surroundings when the MVS adapter would obscure the ligand.
+
+Use Burette's illustrative appearance for an illustrative protein; do not
+substitute Mol*'s all-spacefill `illustrative` representation preset. Any shown
+surroundings must be actual residues from the loaded receptor in the same
+coordinate frame. Show contact lines only for calculated or supplied
+interactions. Check the result at its intended display size.
+
 Use one typed action surface:
 
 ```bash

@@ -7,6 +7,14 @@ description: Preview supported molecular attachments or an explicit public PDB I
 
 Use Burette for bounded molecular inspection and transient chemical sketching.
 
+Preserve Burette's default molecular display and existing user choices unless
+the user explicitly requests another representation or size. Do not enlarge
+ligand atoms, thicken bonds, or replace the default cartoon/ball-and-stick view
+with spacefill to improve readability. Use camera focus and framing instead.
+Burette's illustrative appearance applies to the normal protein cartoon; it
+does not require inflated ligand geometry. Show only surroundings present in
+the supplied structure and contacts supported by actual calculations or data.
+
 ## Choose the tool
 
 - Use `preview_molecular_file` when the user provides one supported molecular

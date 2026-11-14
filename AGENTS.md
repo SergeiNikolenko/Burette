@@ -27,6 +27,7 @@ changing.
 - Architecture: [docs/architecture.md](docs/architecture.md)
 - Product direction: [docs/product.md](docs/product.md)
 - Design direction: [docs/design-system.md](docs/design-system.md)
+- Molecular display defaults: [docs/molecular-display-defaults.md](docs/molecular-display-defaults.md)
 - Configuration: [docs/configuration.md](docs/configuration.md)
 - Modular runtime refactor: [docs/modular-runtime-refactor.md](docs/modular-runtime-refactor.md)
 - Renderer support: [docs/renderer-support.md](docs/renderer-support.md)
@@ -65,6 +66,10 @@ changing.
 
 ## Common Routing
 
+- For molecular scenes, previews, illustrations, and exports, preserve the
+  default representations and atom/bond sizes unless the user explicitly asks
+  to change them. Read [docs/molecular-display-defaults.md](docs/molecular-display-defaults.md)
+  before authoring or changing molecular rendering.
 - For frontend development and JavaScript validation, use Vite+ through `vp`;
   see [docs/vite-plus.md](docs/vite-plus.md) and [scripts/README.md](scripts/README.md).
 - Install or refresh lightweight repository tools when the documented workflow

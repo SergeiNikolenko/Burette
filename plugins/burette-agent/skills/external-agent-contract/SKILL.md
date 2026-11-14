@@ -73,6 +73,11 @@ links do not replace the Browser workspace link.
 
 ## Boundaries
 
+- Preserve default representations, element colors, and atom/bond sizes unless
+  the user explicitly requests otherwise. Improve ligand readability with
+  camera framing rather than enlarged spheres or thick sticks; use only real
+  receptor surroundings and calculated or supplied contacts. Follow
+  [molstar-scene](../molstar-scene/SKILL.md) for authored scenes.
 - Do not read molecular file bytes merely to open the viewer.
 - Do not treat screenshots as molecular truth when `modelContext` or typed
   observe/action output is available.

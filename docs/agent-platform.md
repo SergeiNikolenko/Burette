@@ -5,6 +5,11 @@ The goal is to let agents open structures, observe workspace state, act on the
 active viewer, and render bounded side panels without treating screenshots as
 the source of truth.
 
+Molecular scene authoring follows [Molecular display defaults](molecular-display-defaults.md):
+keep native representations and atom/bond sizes unless the user explicitly
+requests otherwise; improve readability through framing and real structure
+context instead of enlarged ligand geometry.
+
 ## Layers
 
 | Layer | Path | Responsibility |
