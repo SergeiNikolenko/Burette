@@ -24065,7 +24065,8 @@ SOFTWARE.
             unit.conformation.position(unit.elements[index], world);
             camera.project(projected, world);
             const clientX = canvasRect.left + ((projected[0] - viewport.x) / viewport.width) * canvasRect.width;
-            const clientY = canvasRect.top + (1 - (projected[1] - viewport.y) / viewport.height) * canvasRect.height;
+            // Camera window coordinates have a top-left origin, as client coordinates do.
+            const clientY = canvasRect.top + ((projected[1] - viewport.y) / viewport.height) * canvasRect.height;
             if (
               projected[3] > 0
               && projected[2] >= 0
