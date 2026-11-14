@@ -1,0 +1,2728 @@
+ Entering Gaussian System, Link 0=g16
+ Initial command:
+ /opt/g16/l1.exe "/home/jh-li/scratch/g16/Gau-11190.inp" -scrdir="/home/jh-li/scratch/g16/"
+ Entering Link 1 = /opt/g16/l1.exe PID=     11219.
+  
+ Copyright (c) 1988,1990,1992,1993,1995,1998,2003,2009,2016,
+            Gaussian, Inc.  All Rights Reserved.
+  
+ This is part of the Gaussian(R) 16 program.  It is based on
+ the Gaussian(R) 09 system (copyright 2009, Gaussian, Inc.),
+ the Gaussian(R) 03 system (copyright 2003, Gaussian, Inc.),
+ the Gaussian(R) 98 system (copyright 1998, Gaussian, Inc.),
+ the Gaussian(R) 94 system (copyright 1995, Gaussian, Inc.),
+ the Gaussian 92(TM) system (copyright 1992, Gaussian, Inc.),
+ the Gaussian 90(TM) system (copyright 1990, Gaussian, Inc.),
+ the Gaussian 88(TM) system (copyright 1988, Gaussian, Inc.),
+ the Gaussian 86(TM) system (copyright 1986, Carnegie Mellon
+ University), and the Gaussian 82(TM) system (copyright 1983,
+ Carnegie Mellon University). Gaussian is a federally registered
+ trademark of Gaussian, Inc.
+  
+ This software contains proprietary and confidential information,
+ including trade secrets, belonging to Gaussian, Inc.
+  
+ This software is provided under written license and may be
+ used, copied, transmitted, or stored only in accord with that
+ written license.
+  
+ The following legend is applicable only to US Government
+ contracts under FAR:
+  
+                    RESTRICTED RIGHTS LEGEND
+  
+ Use, reproduction and disclosure by the US Government is
+ subject to restrictions as set forth in subparagraphs (a)
+ and (c) of the Commercial Computer Software - Restricted
+ Rights clause in FAR 52.227-19.
+  
+ Gaussian, Inc.
+ 340 Quinnipiac St., Bldg. 40, Wallingford CT 06492
+  
+  
+ ---------------------------------------------------------------
+ Warning -- This program may not be used in any manner that
+ competes with the business of Gaussian, Inc. or will provide
+ assistance to any competitor of Gaussian, Inc.  The licensee
+ of this program is prohibited from giving any competitor of
+ Gaussian, Inc. access to this program.  By using this program,
+ the user acknowledges that Gaussian, Inc. is engaged in the
+ business of creating and licensing software in the field of
+ computational chemistry and represents and warrants to the
+ licensee that it is not a competitor of Gaussian, Inc. and that
+ it will not use this program in any manner prohibited above.
+ ---------------------------------------------------------------
+  
+
+ Cite this work as:
+ Gaussian 16, Revision A.03,
+ M. J. Frisch, G. W. Trucks, H. B. Schlegel, G. E. Scuseria, 
+ M. A. Robb, J. R. Cheeseman, G. Scalmani, V. Barone, 
+ G. A. Petersson, H. Nakatsuji, X. Li, M. Caricato, A. V. Marenich, 
+ J. Bloino, B. G. Janesko, R. Gomperts, B. Mennucci, H. P. Hratchian, 
+ J. V. Ortiz, A. F. Izmaylov, J. L. Sonnenberg, D. Williams-Young, 
+ F. Ding, F. Lipparini, F. Egidi, J. Goings, B. Peng, A. Petrone, 
+ T. Henderson, D. Ranasinghe, V. G. Zakrzewski, J. Gao, N. Rega, 
+ G. Zheng, W. Liang, M. Hada, M. Ehara, K. Toyota, R. Fukuda, 
+ J. Hasegawa, M. Ishida, T. Nakajima, Y. Honda, O. Kitao, H. Nakai, 
+ T. Vreven, K. Throssell, J. A. Montgomery, Jr., J. E. Peralta, 
+ F. Ogliaro, M. J. Bearpark, J. J. Heyd, E. N. Brothers, K. N. Kudin, 
+ V. N. Staroverov, T. A. Keith, R. Kobayashi, J. Normand, 
+ K. Raghavachari, A. P. Rendell, J. C. Burant, S. S. Iyengar, 
+ J. Tomasi, M. Cossi, J. M. Millam, M. Klene, C. Adamo, R. Cammi, 
+ J. W. Ochterski, R. L. Martin, K. Morokuma, O. Farkas, 
+ J. B. Foresman, and D. J. Fox, Gaussian, Inc., Wallingford CT, 2016.
+ 
+ ******************************************
+ Gaussian 16:  ES64L-G16RevA.03 25-Dec-2016
+                22-Mar-2025 
+ ******************************************
+ %nproc=1
+ Will use up to    1 processors via shared memory.
+ %oldchk=HCN-ts-opt-freq.chk
+ Copying data from "HCN-ts-opt-freq.chk" to current chk file "/home/jh-li/scratch/g16/Gau-11219.chk"
+ IOpt=  2 FromEx=T IUOpen= 4 IOptOp= 5 NList=   0 IFRang= 0 IUIn= 4 IUOut= 2.
+ ----------------------------------------------------------------------
+ #p external="python3 -u ../../../src/gmm.py" irc=(rcfc,gradientonly) g
+ eom=allcheck
+ ----------------------------------------------------------------------
+ 1/6=10,10=5,18=10,26=1,29=7,38=1,44=3,45=6,71=-1,172=1/1,23;
+ 2/12=2,29=1,40=1/2;
+ 3/11=9,14=-4,25=1,30=1,41=9900000,43=2,71=1/1;
+ 4/20=17,22=1001,24=3,113=1,114=1/2;
+ 6/7=2,8=2,9=2,10=2/1;
+ 7/44=-1/16;
+ 1/6=10,18=10,26=1,44=3,45=6,71=-1/23(2);
+ 2/29=1/2;
+ 99/5=20/99;
+ 2/29=1/2;
+ 3/11=9,14=-2,25=1,30=1,41=9900000,43=2,71=1/1;
+ 4/16=2,20=17,22=1001,24=3,113=1,114=1/2;
+ 7/44=-1/16;
+ 1/6=10,18=10,26=1,44=3,45=6,71=-1/23(-4);
+ 2/29=1/2;
+ 6/7=2,8=2,9=2,10=2/1;
+ 99/5=20/99;
+ Leave Link    1 at Sat Mar 22 18:44:39 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l101.exe)
+ Structure from the checkpoint file:  "/home/jh-li/scratch/g16/Gau-11219.chk"
+ -------------------
+ Title Card Required
+ -------------------
+ Charge =  0 Multiplicity = 1
+ No Z-Matrix found in chk file; cartesian coordinates used.
+  C                                                 0.427601046333     -0.595124818941      0.000000000000
+  N                                                -0.354873742408      0.327913217079      0.000000000000
+  H                                                -0.680027213924     -1.045649718138      0.000000000000
+ Recover connectivity data from disk.
+ ITRead=  0  0  0
+ MicOpt= -1 -1 -1
+ NAtoms=      3 NQM=        3 NQMF=       0 NMMI=      0 NMMIF=      0
+                NMic=       0 NMicF=      0.
+                    Isotopes and Nuclear Properties:
+ (Nuclear quadrupole moments (NQMom) in fm**2, nuclear magnetic moments (NMagM)
+  in nuclear magnetons)
+
+  Atom         1           2           3
+ IAtWgt=          12          14           1
+ AtmWgt=  12.0000000  14.0030740   1.0078250
+ NucSpn=           0           2           1
+ AtZEff=   3.6000000   4.5500000   1.0000000
+ NQMom=    0.0000000   2.0440000   0.0000000
+ NMagM=    0.0000000   0.4037610   2.7928460
+ AtZNuc=   6.0000000   7.0000000   1.0000000
+ Leave Link  101 at Sat Mar 22 18:44:39 2025, MaxMem=   104857600 cpu:               0.1 elap:               0.2
+ (Enter /opt/g16/l123.exe)
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ ------------------------------------------------------------------------
+ INPUT DATA FOR L123
+ ------------------------------------------------------------------------
+ GENERAL PARAMETERS:
+ Follow reaction path in both directions.
+ Maximum points per path      =  10
+ Step size                    =   0.075 bohr
+ Integration scheme           = Euler-PC                            
+    Redo corrector integration= Yes                                 
+    DWI Weight Power          =  2
+    DWI will use Hessian update vectors when possible.
+    Max correction cycles     =  10
+ Initial Hessian              = ReadFC from chk
+ Hessian evaluation           = All updating
+ Hessian updating method      = Bofill                              
+ ------------------------------------------------------------------------
+          ******** Start new reaction path calculation ********
+ RCFC Option Requested - Data Read From Chk File:
+ "/home/jh-li/scratch/g16/Gau-11219.chk"
+   Energy From Chk =    -93.1140196
+
+ Current Structure is TS -> form Hessian eigenvectors.
+                            Recovering Hessian eigenvectors from chk file.
+ Supplied step size of   0.0750 bohr.
+    Integration on MW PES will use step size of   0.0809 sqrt(amu)*bohr.
+ Point Number:   0          Path Number:   1
+ Calculating another point on the path.
+ Point Number  1 in FORWARD path direction.
+ Using Euler Reaction Path Following.
+ Gradient is small - USING TRANSITION VECTOR.
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Leave Link  123 at Sat Mar 22 18:44:39 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l202.exe)
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          6           0        0.443533   -0.461858    0.000000
+      2          7           0       -0.334022    0.463866    0.000000
+      3          1           0       -0.640047   -0.945858    0.000000
+ ---------------------------------------------------------------------
+                    Distance matrix (angstroms):
+                    1          2          3
+     1  C    0.000000
+     2  N    1.208948   0.000000
+     3  H    1.186761   1.442558   0.000000
+ Symmetry turned off by external request.
+ Stoichiometry    CHN
+ Framework group  CS[SG(CHN)]
+ Deg. of freedom     3
+ Full point group                 CS      NOp   2
+ Rotational constants (GHZ):         405.0867265          52.8487710          46.7496749
+ Leave Link  202 at Sat Mar 22 18:44:39 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l301.exe)
+ Standard basis: STO-3G (5D, 7F)
+ Ernie: Thresh=  0.10000D-02 Tol=  0.10000D-05 Strict=F.
+    11 basis functions,    33 primitive gaussians,    11 cartesian basis functions
+     7 alpha electrons        7 beta electrons
+       nuclear repulsion energy        23.6273419691 Hartrees.
+ IExCor=    0 DFT=F Ex=HF Corr=None ExCW=0 ScaHFX=  1.000000
+ ScaDFX=  1.000000  1.000000  1.000000  1.000000 ScalE2=  1.000000  1.000000
+ IRadAn=      5 IRanWt=     -1 IRanGd=            0 ICorTp=0 IEmpDi=  4
+ NAtoms=    3 NActive=    3 NUniq=    3 SFac= 1.00D+00 NAtFMM=   60 NAOKFM=F Big=F
+ Integral buffers will be    131072 words long.
+ Raffenetti 1 integral format.
+ Two-electron integral symmetry is turned off.
+ Leave Link  301 at Sat Mar 22 18:44:40 2025, MaxMem=   104857600 cpu:               0.1 elap:               0.1
+ (Enter /opt/g16/l402.exe)
+ External calculation of energy and first derivatives.
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1141992500     dipole=      0.000000000000      0.000000000000      0.000000000000
+ NRF= 0 NRA=   0 NVA=   0 HaveQM=F NVQ=       0
+ Convergence limit is  0.750E-04 MaxStp= 10000 StMxLn= 3.00D-04 StpMin= 1.00D-06.
+ Convergence criteria             0.00011250 0.00007500 0.00045000 0.00030000
+  Step  NS  ND Rises OKQ   Scale  Max. Force  RMS Force Max. Disp.  RMS Disp.     Energy   Flag
+     1   0   0   F    T  1.00D+00 0.00000000 0.00000000 0.00000000 0.00000000  -93.1141993 ====
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1141992500     dipole=      0.000000000000      0.000000000000      0.000000000000
+ Energy=    -93.1141993     NIter=   0.
+ Dipole moment=       0.000000       0.000000       0.000000
+ Leave Link  402 at Sat Mar 22 18:44:58 2025, MaxMem=   104857600 cpu:               0.0 elap:              18.9
+ (Enter /opt/g16/l601.exe)
+ Leave Link  601 at Sat Mar 22 18:44:59 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l716.exe)
+ Dipole        = 0.00000000D+00 0.00000000D+00 0.00000000D+00
+ -------------------------------------------------------------------
+ Center     Atomic                   Forces (Hartrees/Bohr)
+ Number     Number              X              Y              Z
+ -------------------------------------------------------------------
+      1        6          -0.004540680   -0.000285480   -0.000000000
+      2        7           0.002129220    0.003637760   -0.000000000
+      3        1           0.002411460   -0.003352280   -0.000000000
+ -------------------------------------------------------------------
+ Cartesian Forces:  Max     0.004540680 RMS     0.002483704
+ Leave Link  716 at Sat Mar 22 18:44:59 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l123.exe)
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Pt  1 Step number   1 out of a maximum of  10
+ Using modified Bulirsch-Stoer corrector integration.
+   Using distance weighted interpolants to fit PES.
+ PreDWI: IReCr0= 2 IReCr1= 1 IReCr2= 1 IReCr3= 1
+ Modified Bulirsch-Stoer Extrapolation Cycles:
+    EPS =    0.000100000000000
+    Cycle     1 NS=    48
+      PEZero:  N= 2 I= 1 D=  2.11D-04 Err=  4.95D-04
+    Cycle     2 NS=    64 Truncation Error =  0.000495422
+      PEZero:  N= 3 I= 2 D=  2.11D-04 Err=  3.30D-04
+      PEZero:  N= 3 I= 1 D=  4.21D-04 Err=  2.32D-08
+    Cycle     3 NS=    96 Truncation Error =  0.000000023
+ BS completed in    3 cycles and     208 integration steps.
+ Maximum DWI energy   std dev =  0.000000236 at pt    26
+ Maximum DWI gradient std dev =  0.024496635 at pt     3
+ SUMMARY OF CORRECTOR INTEGRATION:
+   Predictor End Point Energy =   -93.114199
+   Old End Point Energy       =   -93.114199
+   Corrected End Point Energy =   -93.114199
+   Predictor End-Start Dist.  =     0.080851
+   Old End-Start Dist.        =     0.080851
+   New End-Start Dist.        =     0.080842
+   New End-Old End Dist.      =     0.000966
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:   1          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                    0.443500   -0.461873   -0.000000
+      2          7                   -0.334023    0.463858    0.000000
+      3          1                   -0.639646   -0.945571    0.000000
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.08084
+   NET REACTION COORDINATE UP TO THIS POINT =    0.08084
+  # OF POINTS ALONG THE PATH =   1
+  # OF STEPS =   1
+
+ Calculating another point on the path.
+ Point Number  2 in FORWARD path direction.
+ Using Euler Reaction Path Following.
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Leave Link  123 at Sat Mar 22 18:44:59 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l202.exe)
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          6           0        0.440016   -0.462031   -0.000000
+      2          7           0       -0.332547    0.466391    0.000000
+      3          1           0       -0.618646   -0.978903    0.000000
+ ---------------------------------------------------------------------
+                    Distance matrix (angstroms):
+                    1          2          3
+     1  C    0.000000
+     2  N    1.207817   0.000000
+     3  H    1.178100   1.473339   0.000000
+ Symmetry turned off by external request.
+ Stoichiometry    CHN
+ Framework group  CS[SG(CHN)]
+ Deg. of freedom     3
+ Full point group                 CS      NOp   2
+ Rotational constants (GHZ):         404.2273974          52.7491475          46.6602736
+ Leave Link  202 at Sat Mar 22 18:44:59 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l301.exe)
+ Standard basis: STO-3G (5D, 7F)
+ Ernie: Thresh=  0.10000D-02 Tol=  0.10000D-05 Strict=F.
+    11 basis functions,    33 primitive gaussians,    11 cartesian basis functions
+     7 alpha electrons        7 beta electrons
+       nuclear repulsion energy        23.6105845975 Hartrees.
+ IExCor=    0 DFT=F Ex=HF Corr=None ExCW=0 ScaHFX=  1.000000
+ ScaDFX=  1.000000  1.000000  1.000000  1.000000 ScalE2=  1.000000  1.000000
+ IRadAn=      5 IRanWt=     -1 IRanGd=            0 ICorTp=0 IEmpDi=  4
+ NAtoms=    3 NActive=    3 NUniq=    3 SFac= 1.00D+00 NAtFMM=   60 NAOKFM=F Big=F
+ Integral buffers will be    131072 words long.
+ Raffenetti 1 integral format.
+ Two-electron integral symmetry is turned off.
+ Leave Link  301 at Sat Mar 22 18:44:59 2025, MaxMem=   104857600 cpu:               0.1 elap:               0.0
+ (Enter /opt/g16/l402.exe)
+ External calculation of energy and first derivatives.
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1147402200     dipole=      0.000000000000      0.000000000000      0.000000000000
+ NRF= 0 NRA=   0 NVA=   0 HaveQM=F NVQ=       0
+ Convergence limit is  0.750E-04 MaxStp= 10000 StMxLn= 3.00D-04 StpMin= 1.00D-06.
+ Convergence criteria             0.00011250 0.00007500 0.00045000 0.00030000
+  Step  NS  ND Rises OKQ   Scale  Max. Force  RMS Force Max. Disp.  RMS Disp.     Energy   Flag
+     1   0   0   F    T  1.00D+00 0.00000000 0.00000000 0.00000000 0.00000000  -93.1147402 ====
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1147402200     dipole=      0.000000000000      0.000000000000      0.000000000000
+ Energy=    -93.1147402     NIter=   0.
+ Dipole moment=       0.000000       0.000000       0.000000
+ Leave Link  402 at Sat Mar 22 18:45:14 2025, MaxMem=   104857600 cpu:               0.0 elap:              15.5
+ (Enter /opt/g16/l716.exe)
+ Dipole        = 0.00000000D+00 0.00000000D+00 0.00000000D+00
+ -------------------------------------------------------------------
+ Center     Atomic                   Forces (Hartrees/Bohr)
+ Number     Number              X              Y              Z
+ -------------------------------------------------------------------
+      1        6          -0.008997920   -0.000529460   -0.000000000
+      2        7           0.004275260    0.007300710   -0.000000000
+      3        1           0.004722670   -0.006771250   -0.000000000
+ -------------------------------------------------------------------
+ Cartesian Forces:  Max     0.008997920 RMS     0.004955071
+ Leave Link  716 at Sat Mar 22 18:45:14 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l123.exe)
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Pt  2 Step number   1 out of a maximum of  10
+ Using modified Bulirsch-Stoer corrector integration.
+   Using distance weighted interpolants to fit PES.
+ PreDWI: IReCr0= 2 IReCr1= 1 IReCr2= 1 IReCr3= 1
+ Modified Bulirsch-Stoer Extrapolation Cycles:
+    EPS =    0.000100000000000
+    Cycle     1 NS=    48
+      PEZero:  N= 2 I= 1 D=  4.21D-04 Err=  2.61D-06
+    Cycle     2 NS=    64 Truncation Error =  0.000002607
+ BS completed in    2 cycles and     112 integration steps.
+ Maximum DWI energy   std dev =  0.000000402 at pt    35
+ Maximum DWI gradient std dev =  0.019163838 at pt    27
+ SUMMARY OF CORRECTOR INTEGRATION:
+   Predictor End Point Energy =   -93.114740
+   Old End Point Energy       =   -93.114740
+   Corrected End Point Energy =   -93.114740
+   Predictor End-Start Dist.  =     0.080851
+   Old End-Start Dist.        =     0.080851
+   New End-Start Dist.        =     0.080848
+   New End-Old End Dist.      =     0.000799
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:   2          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                    0.439990   -0.462043   -0.000000
+      2          7                   -0.332549    0.466384    0.000000
+      3          1                   -0.618314   -0.978664    0.000000
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.08085
+   NET REACTION COORDINATE UP TO THIS POINT =    0.16169
+  # OF POINTS ALONG THE PATH =   2
+  # OF STEPS =   1
+
+ Calculating another point on the path.
+ Point Number  3 in FORWARD path direction.
+ Using Euler Reaction Path Following.
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Leave Link  123 at Sat Mar 22 18:45:14 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l202.exe)
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          6           0        0.436452   -0.462225   -0.000000
+      2          7           0       -0.331077    0.468902    0.000000
+      3          1           0       -0.596630   -1.011505    0.000000
+ ---------------------------------------------------------------------
+                    Distance matrix (angstroms):
+                    1          2          3
+     1  C    0.000000
+     2  N    1.206689   0.000000
+     3  H    1.170028   1.504036   0.000000
+ Symmetry turned off by external request.
+ Stoichiometry    CHN
+ Framework group  CS[SG(CHN)]
+ Deg. of freedom     3
+ Full point group                 CS      NOp   2
+ Rotational constants (GHZ):         404.4234166          52.6231975          46.5642949
+ Leave Link  202 at Sat Mar 22 18:45:14 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l301.exe)
+ Standard basis: STO-3G (5D, 7F)
+ Ernie: Thresh=  0.10000D-02 Tol=  0.10000D-05 Strict=F.
+    11 basis functions,    33 primitive gaussians,    11 cartesian basis functions
+     7 alpha electrons        7 beta electrons
+       nuclear repulsion energy        23.5950632278 Hartrees.
+ IExCor=    0 DFT=F Ex=HF Corr=None ExCW=0 ScaHFX=  1.000000
+ ScaDFX=  1.000000  1.000000  1.000000  1.000000 ScalE2=  1.000000  1.000000
+ IRadAn=      5 IRanWt=     -1 IRanGd=            0 ICorTp=0 IEmpDi=  4
+ NAtoms=    3 NActive=    3 NUniq=    3 SFac= 1.00D+00 NAtFMM=   60 NAOKFM=F Big=F
+ Integral buffers will be    131072 words long.
+ Raffenetti 1 integral format.
+ Two-electron integral symmetry is turned off.
+ Leave Link  301 at Sat Mar 22 18:45:14 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l402.exe)
+ External calculation of energy and first derivatives.
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1156370900     dipole=      0.000000000000      0.000000000000      0.000000000000
+ NRF= 0 NRA=   0 NVA=   0 HaveQM=F NVQ=       0
+ Convergence limit is  0.750E-04 MaxStp= 10000 StMxLn= 3.00D-04 StpMin= 1.00D-06.
+ Convergence criteria             0.00011250 0.00007500 0.00045000 0.00030000
+  Step  NS  ND Rises OKQ   Scale  Max. Force  RMS Force Max. Disp.  RMS Disp.     Energy   Flag
+     1   0   0   F    T  1.00D+00 0.00000000 0.00000000 0.00000000 0.00000000  -93.1156371 ====
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1156370900     dipole=      0.000000000000      0.000000000000      0.000000000000
+ Energy=    -93.1156371     NIter=   0.
+ Dipole moment=       0.000000       0.000000       0.000000
+ Leave Link  402 at Sat Mar 22 18:45:31 2025, MaxMem=   104857600 cpu:               0.0 elap:              16.4
+ (Enter /opt/g16/l716.exe)
+ Dipole        = 0.00000000D+00 0.00000000D+00 0.00000000D+00
+ -------------------------------------------------------------------
+ Center     Atomic                   Forces (Hartrees/Bohr)
+ Number     Number              X              Y              Z
+ -------------------------------------------------------------------
+      1        6          -0.013427480   -0.000830400   -0.000000000
+      2        7           0.006343580    0.010820840   -0.000000000
+      3        1           0.007083890   -0.009990440   -0.000000000
+ -------------------------------------------------------------------
+ Cartesian Forces:  Max     0.013427480 RMS     0.007365903
+ Leave Link  716 at Sat Mar 22 18:45:31 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l123.exe)
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Pt  3 Step number   1 out of a maximum of  10
+ Using modified Bulirsch-Stoer corrector integration.
+   Using distance weighted interpolants to fit PES.
+ PreDWI: IReCr0= 2 IReCr1= 1 IReCr2= 1 IReCr3= 1
+ Modified Bulirsch-Stoer Extrapolation Cycles:
+    EPS =    0.000100000000000
+    Cycle     1 NS=    48
+      PEZero:  N= 2 I= 1 D=  4.21D-04 Err=  4.60D-06
+    Cycle     2 NS=    64 Truncation Error =  0.000004598
+ BS completed in    2 cycles and     112 integration steps.
+ Maximum DWI energy   std dev =  0.000000469 at pt    37
+ Maximum DWI gradient std dev =  0.013367600 at pt    28
+ SUMMARY OF CORRECTOR INTEGRATION:
+   Predictor End Point Energy =   -93.115637
+   Old End Point Energy       =   -93.115637
+   Corrected End Point Energy =   -93.115637
+   Predictor End-Start Dist.  =     0.080851
+   Old End-Start Dist.        =     0.080851
+   New End-Start Dist.        =     0.080849
+   New End-Old End Dist.      =     0.000623
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:   3          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                    0.436432   -0.462236   -0.000000
+      2          7                   -0.331078    0.468897    0.000000
+      3          1                   -0.596375   -1.011313    0.000000
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.08085
+   NET REACTION COORDINATE UP TO THIS POINT =    0.24254
+  # OF POINTS ALONG THE PATH =   3
+  # OF STEPS =   1
+
+ Calculating another point on the path.
+ Point Number  4 in FORWARD path direction.
+ Using Euler Reaction Path Following.
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Leave Link  123 at Sat Mar 22 18:45:31 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l202.exe)
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          6           0        0.432846   -0.462443   -0.000000
+      2          7           0       -0.329610    0.471403    0.000000
+      3          1           0       -0.574068   -1.043684    0.000000
+ ---------------------------------------------------------------------
+                    Distance matrix (angstroms):
+                    1          2          3
+     1  C    0.000000
+     2  N    1.205574   0.000000
+     3  H    1.162634   1.534682   0.000000
+ Symmetry turned off by external request.
+ Stoichiometry    CHN
+ Framework group  CS[SG(CHN)]
+ Deg. of freedom     3
+ Full point group                 CS      NOp   2
+ Rotational constants (GHZ):         405.6244015          52.4707809          46.4607137
+ Leave Link  202 at Sat Mar 22 18:45:31 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l301.exe)
+ Standard basis: STO-3G (5D, 7F)
+ Ernie: Thresh=  0.10000D-02 Tol=  0.10000D-05 Strict=F.
+    11 basis functions,    33 primitive gaussians,    11 cartesian basis functions
+     7 alpha electrons        7 beta electrons
+       nuclear repulsion energy        23.5801794321 Hartrees.
+ IExCor=    0 DFT=F Ex=HF Corr=None ExCW=0 ScaHFX=  1.000000
+ ScaDFX=  1.000000  1.000000  1.000000  1.000000 ScalE2=  1.000000  1.000000
+ IRadAn=      5 IRanWt=     -1 IRanGd=            0 ICorTp=0 IEmpDi=  4
+ NAtoms=    3 NActive=    3 NUniq=    3 SFac= 1.00D+00 NAtFMM=   60 NAOKFM=F Big=F
+ Integral buffers will be    131072 words long.
+ Raffenetti 1 integral format.
+ Two-electron integral symmetry is turned off.
+ Leave Link  301 at Sat Mar 22 18:45:31 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l402.exe)
+ External calculation of energy and first derivatives.
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1168731400     dipole=      0.000000000000      0.000000000000      0.000000000000
+ NRF= 0 NRA=   0 NVA=   0 HaveQM=F NVQ=       0
+ Convergence limit is  0.750E-04 MaxStp= 10000 StMxLn= 3.00D-04 StpMin= 1.00D-06.
+ Convergence criteria             0.00011250 0.00007500 0.00045000 0.00030000
+  Step  NS  ND Rises OKQ   Scale  Max. Force  RMS Force Max. Disp.  RMS Disp.     Energy   Flag
+     1   0   0   F    T  1.00D+00 0.00000000 0.00000000 0.00000000 0.00000000  -93.1168731 ====
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1168731400     dipole=      0.000000000000      0.000000000000      0.000000000000
+ Energy=    -93.1168731     NIter=   0.
+ Dipole moment=       0.000000       0.000000       0.000000
+ Leave Link  402 at Sat Mar 22 18:45:45 2025, MaxMem=   104857600 cpu:               0.0 elap:              14.4
+ (Enter /opt/g16/l716.exe)
+ Dipole        = 0.00000000D+00 0.00000000D+00 0.00000000D+00
+ -------------------------------------------------------------------
+ Center     Atomic                   Forces (Hartrees/Bohr)
+ Number     Number              X              Y              Z
+ -------------------------------------------------------------------
+      1        6          -0.017760520   -0.001225270   -0.000000000
+      2        7           0.008271770    0.014084300   -0.000000000
+      3        1           0.009488740   -0.012859030   -0.000000000
+ -------------------------------------------------------------------
+ Cartesian Forces:  Max     0.017760520 RMS     0.009655844
+ Leave Link  716 at Sat Mar 22 18:45:45 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l123.exe)
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Pt  4 Step number   1 out of a maximum of  10
+ Using modified Bulirsch-Stoer corrector integration.
+   Using distance weighted interpolants to fit PES.
+ PreDWI: IReCr0= 2 IReCr1= 1 IReCr2= 1 IReCr3= 1
+ Modified Bulirsch-Stoer Extrapolation Cycles:
+    EPS =    0.000100000000000
+    Cycle     1 NS=    48
+      PEZero:  N= 2 I= 1 D=  4.21D-04 Err=  5.74D-06
+    Cycle     2 NS=    64 Truncation Error =  0.000005744
+ BS completed in    2 cycles and     112 integration steps.
+ Maximum DWI energy   std dev =  0.000001107 at pt    36
+ Maximum DWI gradient std dev =  0.010739205 at pt    38
+ SUMMARY OF CORRECTOR INTEGRATION:
+   Predictor End Point Energy =   -93.116873
+   Old End Point Energy       =   -93.116873
+   Corrected End Point Energy =   -93.116873
+   Predictor End-Start Dist.  =     0.080851
+   Old End-Start Dist.        =     0.080851
+   New End-Start Dist.        =     0.080849
+   New End-Old End Dist.      =     0.000674
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:   4          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                    0.432825   -0.462456   -0.000000
+      2          7                   -0.329611    0.471399    0.000000
+      3          1                   -0.573798   -1.043471    0.000000
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.08085
+   NET REACTION COORDINATE UP TO THIS POINT =    0.32339
+  # OF POINTS ALONG THE PATH =   4
+  # OF STEPS =   1
+
+ Calculating another point on the path.
+ Point Number  5 in FORWARD path direction.
+ Using Euler Reaction Path Following.
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Leave Link  123 at Sat Mar 22 18:45:45 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l202.exe)
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          6           0        0.429188   -0.462695   -0.000000
+      2          7           0       -0.328145    0.473894    0.000000
+      3          1           0       -0.550838   -1.075325    0.000000
+ ---------------------------------------------------------------------
+                    Distance matrix (angstroms):
+                    1          2          3
+     1  C    0.000000
+     2  N    1.204472   0.000000
+     3  H    1.155754   1.565142   0.000000
+ Symmetry turned off by external request.
+ Stoichiometry    CHN
+ Framework group  CS[SG(CHN)]
+ Deg. of freedom     3
+ Full point group                 CS      NOp   2
+ Rotational constants (GHZ):         407.9656836          52.2925839          46.3513232
+ Leave Link  202 at Sat Mar 22 18:45:45 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l301.exe)
+ Standard basis: STO-3G (5D, 7F)
+ Ernie: Thresh=  0.10000D-02 Tol=  0.10000D-05 Strict=F.
+    11 basis functions,    33 primitive gaussians,    11 cartesian basis functions
+     7 alpha electrons        7 beta electrons
+       nuclear repulsion energy        23.5663267368 Hartrees.
+ IExCor=    0 DFT=F Ex=HF Corr=None ExCW=0 ScaHFX=  1.000000
+ ScaDFX=  1.000000  1.000000  1.000000  1.000000 ScalE2=  1.000000  1.000000
+ IRadAn=      5 IRanWt=     -1 IRanGd=            0 ICorTp=0 IEmpDi=  4
+ NAtoms=    3 NActive=    3 NUniq=    3 SFac= 1.00D+00 NAtFMM=   60 NAOKFM=F Big=F
+ Integral buffers will be    131072 words long.
+ Raffenetti 1 integral format.
+ Two-electron integral symmetry is turned off.
+ Leave Link  301 at Sat Mar 22 18:45:45 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l402.exe)
+ External calculation of energy and first derivatives.
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1184230200     dipole=      0.000000000000      0.000000000000      0.000000000000
+ NRF= 0 NRA=   0 NVA=   0 HaveQM=F NVQ=       0
+ Convergence limit is  0.750E-04 MaxStp= 10000 StMxLn= 3.00D-04 StpMin= 1.00D-06.
+ Convergence criteria             0.00011250 0.00007500 0.00045000 0.00030000
+  Step  NS  ND Rises OKQ   Scale  Max. Force  RMS Force Max. Disp.  RMS Disp.     Energy   Flag
+     1   0   0   F    T  1.00D+00 0.00000000 0.00000000 0.00000000 0.00000000  -93.1184230 ====
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1184230200     dipole=      0.000000000000      0.000000000000      0.000000000000
+ Energy=    -93.1184230     NIter=   0.
+ Dipole moment=       0.000000       0.000000       0.000000
+ Leave Link  402 at Sat Mar 22 18:46:04 2025, MaxMem=   104857600 cpu:               0.0 elap:              18.3
+ (Enter /opt/g16/l716.exe)
+ Dipole        = 0.00000000D+00 0.00000000D+00 0.00000000D+00
+ -------------------------------------------------------------------
+ Center     Atomic                   Forces (Hartrees/Bohr)
+ Number     Number              X              Y              Z
+ -------------------------------------------------------------------
+      1        6          -0.021849410   -0.001682590   -0.000000000
+      2        7           0.010023120    0.017025070   -0.000000000
+      3        1           0.011826290   -0.015342480   -0.000000000
+ -------------------------------------------------------------------
+ Cartesian Forces:  Max     0.021849410 RMS     0.011765281
+ Leave Link  716 at Sat Mar 22 18:46:04 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l123.exe)
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Pt  5 Step number   1 out of a maximum of  10
+ Using modified Bulirsch-Stoer corrector integration.
+   Using distance weighted interpolants to fit PES.
+ PreDWI: IReCr0= 2 IReCr1= 1 IReCr2= 1 IReCr3= 1
+ Modified Bulirsch-Stoer Extrapolation Cycles:
+    EPS =    0.000100000000000
+    Cycle     1 NS=    48
+      PEZero:  N= 2 I= 1 D=  4.21D-04 Err=  6.43D-06
+    Cycle     2 NS=    64 Truncation Error =  0.000006426
+ BS completed in    2 cycles and     112 integration steps.
+ Maximum DWI energy   std dev =  0.000001595 at pt    36
+ Maximum DWI gradient std dev =  0.009043440 at pt    38
+ SUMMARY OF CORRECTOR INTEGRATION:
+   Predictor End Point Energy =   -93.118423
+   Old End Point Energy       =   -93.118423
+   Corrected End Point Energy =   -93.118423
+   Predictor End-Start Dist.  =     0.080851
+   Old End-Start Dist.        =     0.080851
+   New End-Start Dist.        =     0.080849
+   New End-Old End Dist.      =     0.000724
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:   5          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                    0.429166   -0.462710   -0.000000
+      2          7                   -0.328146    0.473889    0.000000
+      3          1                   -0.550554   -1.075089    0.000000
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.08085
+   NET REACTION COORDINATE UP TO THIS POINT =    0.40424
+  # OF POINTS ALONG THE PATH =   5
+  # OF STEPS =   1
+
+ Calculating another point on the path.
+ Point Number  6 in FORWARD path direction.
+ Using Euler Reaction Path Following.
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Leave Link  123 at Sat Mar 22 18:46:04 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l202.exe)
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          6           0        0.425476   -0.462983   -0.000000
+      2          7           0       -0.326683    0.476374    0.000000
+      3          1           0       -0.526925   -1.106386    0.000000
+ ---------------------------------------------------------------------
+                    Distance matrix (angstroms):
+                    1          2          3
+     1  C    0.000000
+     2  N    1.203385   0.000000
+     3  H    1.149362   1.595376   0.000000
+ Symmetry turned off by external request.
+ Stoichiometry    CHN
+ Framework group  CS[SG(CHN)]
+ Deg. of freedom     3
+ Full point group                 CS      NOp   2
+ Rotational constants (GHZ):         411.4963911          52.0895452          46.2366483
+ Leave Link  202 at Sat Mar 22 18:46:04 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l301.exe)
+ Standard basis: STO-3G (5D, 7F)
+ Ernie: Thresh=  0.10000D-02 Tol=  0.10000D-05 Strict=F.
+    11 basis functions,    33 primitive gaussians,    11 cartesian basis functions
+     7 alpha electrons        7 beta electrons
+       nuclear repulsion energy        23.5534247516 Hartrees.
+ IExCor=    0 DFT=F Ex=HF Corr=None ExCW=0 ScaHFX=  1.000000
+ ScaDFX=  1.000000  1.000000  1.000000  1.000000 ScalE2=  1.000000  1.000000
+ IRadAn=      5 IRanWt=     -1 IRanGd=            0 ICorTp=0 IEmpDi=  4
+ NAtoms=    3 NActive=    3 NUniq=    3 SFac= 1.00D+00 NAtFMM=   60 NAOKFM=F Big=F
+ Integral buffers will be    131072 words long.
+ Raffenetti 1 integral format.
+ Two-electron integral symmetry is turned off.
+ Leave Link  301 at Sat Mar 22 18:46:04 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l402.exe)
+ External calculation of energy and first derivatives.
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1202548200     dipole=      0.000000000000      0.000000000000      0.000000000000
+ NRF= 0 NRA=   0 NVA=   0 HaveQM=F NVQ=       0
+ Convergence limit is  0.750E-04 MaxStp= 10000 StMxLn= 3.00D-04 StpMin= 1.00D-06.
+ Convergence criteria             0.00011250 0.00007500 0.00045000 0.00030000
+  Step  NS  ND Rises OKQ   Scale  Max. Force  RMS Force Max. Disp.  RMS Disp.     Energy   Flag
+     1   0   0   F    T  1.00D+00 0.00000000 0.00000000 0.00000000 0.00000000  -93.1202548 ====
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1202548200     dipole=      0.000000000000      0.000000000000      0.000000000000
+ Energy=    -93.1202548     NIter=   0.
+ Dipole moment=       0.000000       0.000000       0.000000
+ Leave Link  402 at Sat Mar 22 18:46:21 2025, MaxMem=   104857600 cpu:               0.0 elap:              17.2
+ (Enter /opt/g16/l716.exe)
+ Dipole        = 0.00000000D+00 0.00000000D+00 0.00000000D+00
+ -------------------------------------------------------------------
+ Center     Atomic                   Forces (Hartrees/Bohr)
+ Number     Number              X              Y              Z
+ -------------------------------------------------------------------
+      1        6          -0.025617180   -0.002196270   -0.000000000
+      2        7           0.011570830    0.019593350   -0.000000000
+      3        1           0.014046350   -0.017397080   -0.000000000
+ -------------------------------------------------------------------
+ Cartesian Forces:  Max     0.025617180 RMS     0.013657742
+ Leave Link  716 at Sat Mar 22 18:46:21 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l123.exe)
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Pt  6 Step number   1 out of a maximum of  10
+ Using modified Bulirsch-Stoer corrector integration.
+   Using distance weighted interpolants to fit PES.
+ PreDWI: IReCr0= 2 IReCr1= 1 IReCr2= 1 IReCr3= 1
+ Modified Bulirsch-Stoer Extrapolation Cycles:
+    EPS =    0.000100000000000
+    Cycle     1 NS=    48
+      PEZero:  N= 2 I= 1 D=  4.21D-04 Err=  6.91D-06
+    Cycle     2 NS=    64 Truncation Error =  0.000006910
+ BS completed in    2 cycles and     112 integration steps.
+ Maximum DWI energy   std dev =  0.000001945 at pt    47
+ Maximum DWI gradient std dev =  0.007952602 at pt    38
+ SUMMARY OF CORRECTOR INTEGRATION:
+   Predictor End Point Energy =   -93.120255
+   Old End Point Energy       =   -93.120255
+   Corrected End Point Energy =   -93.120255
+   Predictor End-Start Dist.  =     0.080851
+   Old End-Start Dist.        =     0.080851
+   New End-Start Dist.        =     0.080849
+   New End-Old End Dist.      =     0.000772
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:   6          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                    0.425452   -0.463000   -0.000000
+      2          7                   -0.326684    0.476369    0.000000
+      3          1                   -0.526627   -1.106127    0.000000
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.08085
+   NET REACTION COORDINATE UP TO THIS POINT =    0.48509
+  # OF POINTS ALONG THE PATH =   6
+  # OF STEPS =   1
+
+ Calculating another point on the path.
+ Point Number  7 in FORWARD path direction.
+ Using Euler Reaction Path Following.
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Leave Link  123 at Sat Mar 22 18:46:21 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l202.exe)
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          6           0        0.421707   -0.463311   -0.000000
+      2          7           0       -0.325223    0.478842    0.000000
+      3          1           0       -0.502313   -1.136825    0.000000
+ ---------------------------------------------------------------------
+                    Distance matrix (angstroms):
+                    1          2          3
+     1  C    0.000000
+     2  N    1.202313   0.000000
+     3  H    1.143430   1.625343   0.000000
+ Symmetry turned off by external request.
+ Stoichiometry    CHN
+ Framework group  CS[SG(CHN)]
+ Deg. of freedom     3
+ Full point group                 CS      NOp   2
+ Rotational constants (GHZ):         416.2789611          51.8628232          46.1172296
+ Leave Link  202 at Sat Mar 22 18:46:21 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l301.exe)
+ Standard basis: STO-3G (5D, 7F)
+ Ernie: Thresh=  0.10000D-02 Tol=  0.10000D-05 Strict=F.
+    11 basis functions,    33 primitive gaussians,    11 cartesian basis functions
+     7 alpha electrons        7 beta electrons
+       nuclear repulsion energy        23.5414047354 Hartrees.
+ IExCor=    0 DFT=F Ex=HF Corr=None ExCW=0 ScaHFX=  1.000000
+ ScaDFX=  1.000000  1.000000  1.000000  1.000000 ScalE2=  1.000000  1.000000
+ IRadAn=      5 IRanWt=     -1 IRanGd=            0 ICorTp=0 IEmpDi=  4
+ NAtoms=    3 NActive=    3 NUniq=    3 SFac= 1.00D+00 NAtFMM=   60 NAOKFM=F Big=F
+ Integral buffers will be    131072 words long.
+ Raffenetti 1 integral format.
+ Two-electron integral symmetry is turned off.
+ Leave Link  301 at Sat Mar 22 18:46:21 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l402.exe)
+ External calculation of energy and first derivatives.
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1223327300     dipole=      0.000000000000      0.000000000000      0.000000000000
+ NRF= 0 NRA=   0 NVA=   0 HaveQM=F NVQ=       0
+ Convergence limit is  0.750E-04 MaxStp= 10000 StMxLn= 3.00D-04 StpMin= 1.00D-06.
+ Convergence criteria             0.00011250 0.00007500 0.00045000 0.00030000
+  Step  NS  ND Rises OKQ   Scale  Max. Force  RMS Force Max. Disp.  RMS Disp.     Energy   Flag
+     1   0   0   F    T  1.00D+00 0.00000000 0.00000000 0.00000000 0.00000000  -93.1223327 ====
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1223327300     dipole=      0.000000000000      0.000000000000      0.000000000000
+ Energy=    -93.1223327     NIter=   0.
+ Dipole moment=       0.000000       0.000000       0.000000
+ Leave Link  402 at Sat Mar 22 18:46:35 2025, MaxMem=   104857600 cpu:               0.0 elap:              14.0
+ (Enter /opt/g16/l716.exe)
+ Dipole        = 0.00000000D+00 0.00000000D+00 0.00000000D+00
+ -------------------------------------------------------------------
+ Center     Atomic                   Forces (Hartrees/Bohr)
+ Number     Number              X              Y              Z
+ -------------------------------------------------------------------
+      1        6          -0.029012450   -0.002752370   -0.000000000
+      2        7           0.012905380    0.021761580   -0.000000000
+      3        1           0.016107060   -0.019009210   -0.000000000
+ -------------------------------------------------------------------
+ Cartesian Forces:  Max     0.029012450 RMS     0.015312306
+ Leave Link  716 at Sat Mar 22 18:46:35 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l123.exe)
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Pt  7 Step number   1 out of a maximum of  10
+ Using modified Bulirsch-Stoer corrector integration.
+   Using distance weighted interpolants to fit PES.
+ PreDWI: IReCr0= 2 IReCr1= 1 IReCr2= 1 IReCr3= 1
+ Modified Bulirsch-Stoer Extrapolation Cycles:
+    EPS =    0.000100000000000
+    Cycle     1 NS=    48
+      PEZero:  N= 2 I= 1 D=  4.21D-04 Err=  7.23D-06
+    Cycle     2 NS=    64 Truncation Error =  0.000007231
+ BS completed in    2 cycles and     112 integration steps.
+ Maximum DWI energy   std dev =  0.000002148 at pt    47
+ Maximum DWI gradient std dev =  0.007185083 at pt    38
+ SUMMARY OF CORRECTOR INTEGRATION:
+   Predictor End Point Energy =   -93.122333
+   Old End Point Energy       =   -93.122333
+   Corrected End Point Energy =   -93.122333
+   Predictor End-Start Dist.  =     0.080851
+   Old End-Start Dist.        =     0.080851
+   New End-Start Dist.        =     0.080849
+   New End-Old End Dist.      =     0.000815
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:   7          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                    0.421682   -0.463329   -0.000000
+      2          7                   -0.325223    0.478837    0.000000
+      3          1                   -0.502006   -1.136544    0.000000
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.08085
+   NET REACTION COORDINATE UP TO THIS POINT =    0.56593
+  # OF POINTS ALONG THE PATH =   7
+  # OF STEPS =   1
+
+ Calculating another point on the path.
+ Point Number  8 in FORWARD path direction.
+ Using Euler Reaction Path Following.
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Leave Link  123 at Sat Mar 22 18:46:35 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l202.exe)
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          6           0        0.417880   -0.463681   -0.000000
+      2          7           0       -0.323763    0.481299    0.000000
+      3          1           0       -0.476996   -1.166602    0.000000
+ ---------------------------------------------------------------------
+                    Distance matrix (angstroms):
+                    1          2          3
+     1  C    0.000000
+     2  N    1.201258   0.000000
+     3  H    1.137938   1.655009   0.000000
+ Symmetry turned off by external request.
+ Stoichiometry    CHN
+ Framework group  CS[SG(CHN)]
+ Deg. of freedom     3
+ Full point group                 CS      NOp   2
+ Rotational constants (GHZ):         422.3844051          51.6138720          45.9936157
+ Leave Link  202 at Sat Mar 22 18:46:35 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l301.exe)
+ Standard basis: STO-3G (5D, 7F)
+ Ernie: Thresh=  0.10000D-02 Tol=  0.10000D-05 Strict=F.
+    11 basis functions,    33 primitive gaussians,    11 cartesian basis functions
+     7 alpha electrons        7 beta electrons
+       nuclear repulsion energy        23.5301976833 Hartrees.
+ IExCor=    0 DFT=F Ex=HF Corr=None ExCW=0 ScaHFX=  1.000000
+ ScaDFX=  1.000000  1.000000  1.000000  1.000000 ScalE2=  1.000000  1.000000
+ IRadAn=      5 IRanWt=     -1 IRanGd=            0 ICorTp=0 IEmpDi=  4
+ NAtoms=    3 NActive=    3 NUniq=    3 SFac= 1.00D+00 NAtFMM=   60 NAOKFM=F Big=F
+ Integral buffers will be    131072 words long.
+ Raffenetti 1 integral format.
+ Two-electron integral symmetry is turned off.
+ Leave Link  301 at Sat Mar 22 18:46:35 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l402.exe)
+ External calculation of energy and first derivatives.
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1246192700     dipole=      0.000000000000      0.000000000000      0.000000000000
+ NRF= 0 NRA=   0 NVA=   0 HaveQM=F NVQ=       0
+ Convergence limit is  0.750E-04 MaxStp= 10000 StMxLn= 3.00D-04 StpMin= 1.00D-06.
+ Convergence criteria             0.00011250 0.00007500 0.00045000 0.00030000
+  Step  NS  ND Rises OKQ   Scale  Max. Force  RMS Force Max. Disp.  RMS Disp.     Energy   Flag
+     1   0   0   F    T  1.00D+00 0.00000000 0.00000000 0.00000000 0.00000000  -93.1246193 ====
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1246192700     dipole=      0.000000000000      0.000000000000      0.000000000000
+ Energy=    -93.1246193     NIter=   0.
+ Dipole moment=       0.000000       0.000000       0.000000
+ Leave Link  402 at Sat Mar 22 18:46:53 2025, MaxMem=   104857600 cpu:               0.1 elap:              17.5
+ (Enter /opt/g16/l716.exe)
+ Dipole        = 0.00000000D+00 0.00000000D+00 0.00000000D+00
+ -------------------------------------------------------------------
+ Center     Atomic                   Forces (Hartrees/Bohr)
+ Number     Number              X              Y              Z
+ -------------------------------------------------------------------
+      1        6          -0.032010400   -0.003336480   -0.000000000
+      2        7           0.014029690    0.023522690   -0.000000000
+      3        1           0.017980710   -0.020186210   -0.000000000
+ -------------------------------------------------------------------
+ Cartesian Forces:  Max     0.032010400 RMS     0.016722360
+ Leave Link  716 at Sat Mar 22 18:46:53 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l123.exe)
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Pt  8 Step number   1 out of a maximum of  10
+ Using modified Bulirsch-Stoer corrector integration.
+   Using distance weighted interpolants to fit PES.
+ PreDWI: IReCr0= 2 IReCr1= 1 IReCr2= 1 IReCr3= 1
+ Modified Bulirsch-Stoer Extrapolation Cycles:
+    EPS =    0.000100000000000
+    Cycle     1 NS=    48
+      PEZero:  N= 2 I= 1 D=  4.21D-04 Err=  7.44D-06
+    Cycle     2 NS=    64 Truncation Error =  0.000007439
+ BS completed in    2 cycles and     112 integration steps.
+ Maximum DWI energy   std dev =  0.000002223 at pt    47
+ Maximum DWI gradient std dev =  0.006644296 at pt    38
+ SUMMARY OF CORRECTOR INTEGRATION:
+   Predictor End Point Energy =   -93.124619
+   Old End Point Energy       =   -93.124619
+   Corrected End Point Energy =   -93.124620
+   Predictor End-Start Dist.  =     0.080851
+   Old End-Start Dist.        =     0.080851
+   New End-Start Dist.        =     0.080849
+   New End-Old End Dist.      =     0.000853
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:   8          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                    0.417854   -0.463700   -0.000000
+      2          7                   -0.323763    0.481293    0.000000
+      3          1                   -0.476683   -1.166300    0.000000
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.08085
+   NET REACTION COORDINATE UP TO THIS POINT =    0.64678
+  # OF POINTS ALONG THE PATH =   8
+  # OF STEPS =   1
+
+ Calculating another point on the path.
+ Point Number  9 in FORWARD path direction.
+ Using Euler Reaction Path Following.
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Leave Link  123 at Sat Mar 22 18:46:53 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l202.exe)
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          6           0        0.413993   -0.464094   -0.000000
+      2          7           0       -0.322302    0.483741    0.000000
+      3          1           0       -0.450974   -1.195678    0.000000
+ ---------------------------------------------------------------------
+                    Distance matrix (angstroms):
+                    1          2          3
+     1  C    0.000000
+     2  N    1.200217   0.000000
+     3  H    1.132865   1.684341   0.000000
+ Symmetry turned off by external request.
+ Stoichiometry    CHN
+ Framework group  CS[SG(CHN)]
+ Deg. of freedom     3
+ Full point group                 CS      NOp   2
+ Rotational constants (GHZ):         429.8989234          51.3443997          45.8664071
+ Leave Link  202 at Sat Mar 22 18:46:53 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l301.exe)
+ Standard basis: STO-3G (5D, 7F)
+ Ernie: Thresh=  0.10000D-02 Tol=  0.10000D-05 Strict=F.
+    11 basis functions,    33 primitive gaussians,    11 cartesian basis functions
+     7 alpha electrons        7 beta electrons
+       nuclear repulsion energy        23.5197535307 Hartrees.
+ IExCor=    0 DFT=F Ex=HF Corr=None ExCW=0 ScaHFX=  1.000000
+ ScaDFX=  1.000000  1.000000  1.000000  1.000000 ScalE2=  1.000000  1.000000
+ IRadAn=      5 IRanWt=     -1 IRanGd=            0 ICorTp=0 IEmpDi=  4
+ NAtoms=    3 NActive=    3 NUniq=    3 SFac= 1.00D+00 NAtFMM=   60 NAOKFM=F Big=F
+ Integral buffers will be    131072 words long.
+ Raffenetti 1 integral format.
+ Two-electron integral symmetry is turned off.
+ Leave Link  301 at Sat Mar 22 18:46:53 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l402.exe)
+ External calculation of energy and first derivatives.
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1270772300     dipole=      0.000000000000      0.000000000000      0.000000000000
+ NRF= 0 NRA=   0 NVA=   0 HaveQM=F NVQ=       0
+ Convergence limit is  0.750E-04 MaxStp= 10000 StMxLn= 3.00D-04 StpMin= 1.00D-06.
+ Convergence criteria             0.00011250 0.00007500 0.00045000 0.00030000
+  Step  NS  ND Rises OKQ   Scale  Max. Force  RMS Force Max. Disp.  RMS Disp.     Energy   Flag
+     1   0   0   F    T  1.00D+00 0.00000000 0.00000000 0.00000000 0.00000000  -93.1270772 ====
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1270772300     dipole=      0.000000000000      0.000000000000      0.000000000000
+ Energy=    -93.1270772     NIter=   0.
+ Dipole moment=       0.000000       0.000000       0.000000
+ Leave Link  402 at Sat Mar 22 18:47:08 2025, MaxMem=   104857600 cpu:               0.0 elap:              15.1
+ (Enter /opt/g16/l716.exe)
+ Dipole        = 0.00000000D+00 0.00000000D+00 0.00000000D+00
+ -------------------------------------------------------------------
+ Center     Atomic                   Forces (Hartrees/Bohr)
+ Number     Number              X              Y              Z
+ -------------------------------------------------------------------
+      1        6          -0.034607010   -0.003934030   -0.000000000
+      2        7           0.014955950    0.024886100   -0.000000000
+      3        1           0.019651060   -0.020952070   -0.000000000
+ -------------------------------------------------------------------
+ Cartesian Forces:  Max     0.034607010 RMS     0.017892499
+ Leave Link  716 at Sat Mar 22 18:47:08 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l123.exe)
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Pt  9 Step number   1 out of a maximum of  10
+ Using modified Bulirsch-Stoer corrector integration.
+   Using distance weighted interpolants to fit PES.
+ PreDWI: IReCr0= 2 IReCr1= 1 IReCr2= 1 IReCr3= 1
+ Modified Bulirsch-Stoer Extrapolation Cycles:
+    EPS =    0.000100000000000
+    Cycle     1 NS=    48
+      PEZero:  N= 2 I= 1 D=  4.21D-04 Err=  7.78D-06
+    Cycle     2 NS=    64 Truncation Error =  0.000007781
+ BS completed in    2 cycles and     112 integration steps.
+ Maximum DWI energy   std dev =  0.000002190 at pt    47
+ Maximum DWI gradient std dev =  0.006269441 at pt    29
+ SUMMARY OF CORRECTOR INTEGRATION:
+   Predictor End Point Energy =   -93.127077
+   Old End Point Energy       =   -93.127077
+   Corrected End Point Energy =   -93.127078
+   Predictor End-Start Dist.  =     0.080851
+   Old End-Start Dist.        =     0.080851
+   New End-Start Dist.        =     0.080849
+   New End-Old End Dist.      =     0.000888
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:   9          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                    0.413966   -0.464114   -0.000000
+      2          7                   -0.322301    0.483735    0.000000
+      3          1                   -0.450657   -1.195355    0.000000
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.08085
+   NET REACTION COORDINATE UP TO THIS POINT =    0.72763
+  # OF POINTS ALONG THE PATH =   9
+  # OF STEPS =   1
+
+ Calculating another point on the path.
+ Point Number 10 in FORWARD path direction.
+ Using Euler Reaction Path Following.
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Leave Link  123 at Sat Mar 22 18:47:08 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l202.exe)
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          6           0        0.410044   -0.464551   -0.000000
+      2          7           0       -0.320839    0.486169    0.000000
+      3          1           0       -0.424244   -1.224013    0.000000
+ ---------------------------------------------------------------------
+                    Distance matrix (angstroms):
+                    1          2          3
+     1  C    0.000000
+     2  N    1.199190   0.000000
+     3  H    1.128192   1.713305   0.000000
+ Symmetry turned off by external request.
+ Stoichiometry    CHN
+ Framework group  CS[SG(CHN)]
+ Deg. of freedom     3
+ Full point group                 CS      NOp   2
+ Rotational constants (GHZ):         438.9270543          51.0563294          45.7362536
+ Leave Link  202 at Sat Mar 22 18:47:08 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l301.exe)
+ Standard basis: STO-3G (5D, 7F)
+ Ernie: Thresh=  0.10000D-02 Tol=  0.10000D-05 Strict=F.
+    11 basis functions,    33 primitive gaussians,    11 cartesian basis functions
+     7 alpha electrons        7 beta electrons
+       nuclear repulsion energy        23.5100420838 Hartrees.
+ IExCor=    0 DFT=F Ex=HF Corr=None ExCW=0 ScaHFX=  1.000000
+ ScaDFX=  1.000000  1.000000  1.000000  1.000000 ScalE2=  1.000000  1.000000
+ IRadAn=      5 IRanWt=     -1 IRanGd=            0 ICorTp=0 IEmpDi=  4
+ NAtoms=    3 NActive=    3 NUniq=    3 SFac= 1.00D+00 NAtFMM=   60 NAOKFM=F Big=F
+ Integral buffers will be    131072 words long.
+ Raffenetti 1 integral format.
+ Two-electron integral symmetry is turned off.
+ Leave Link  301 at Sat Mar 22 18:47:08 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l402.exe)
+ External calculation of energy and first derivatives.
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1296710300     dipole=      0.000000000000      0.000000000000      0.000000000000
+ NRF= 0 NRA=   0 NVA=   0 HaveQM=F NVQ=       0
+ Convergence limit is  0.750E-04 MaxStp= 10000 StMxLn= 3.00D-04 StpMin= 1.00D-06.
+ Convergence criteria             0.00011250 0.00007500 0.00045000 0.00030000
+  Step  NS  ND Rises OKQ   Scale  Max. Force  RMS Force Max. Disp.  RMS Disp.     Energy   Flag
+     1   0   0   F    T  1.00D+00 0.00000000 0.00000000 0.00000000 0.00000000  -93.1296710 ====
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1296710300     dipole=      0.000000000000      0.000000000000      0.000000000000
+ Energy=    -93.1296710     NIter=   0.
+ Dipole moment=       0.000000       0.000000       0.000000
+ Leave Link  402 at Sat Mar 22 18:47:24 2025, MaxMem=   104857600 cpu:               0.0 elap:              16.1
+ (Enter /opt/g16/l716.exe)
+ Dipole        = 0.00000000D+00 0.00000000D+00 0.00000000D+00
+ -------------------------------------------------------------------
+ Center     Atomic                   Forces (Hartrees/Bohr)
+ Number     Number              X              Y              Z
+ -------------------------------------------------------------------
+      1        6          -0.036813480   -0.004531750   -0.000000000
+      2        7           0.015701900    0.025873200   -0.000000000
+      3        1           0.021111580   -0.021341450   -0.000000000
+ -------------------------------------------------------------------
+ Cartesian Forces:  Max     0.036813480 RMS     0.018835243
+ Leave Link  716 at Sat Mar 22 18:47:24 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l123.exe)
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Pt 10 Step number   1 out of a maximum of  10
+ Using modified Bulirsch-Stoer corrector integration.
+   Using distance weighted interpolants to fit PES.
+ PreDWI: IReCr0= 2 IReCr1= 1 IReCr2= 1 IReCr3= 1
+ Modified Bulirsch-Stoer Extrapolation Cycles:
+    EPS =    0.000100000000000
+    Cycle     1 NS=    48
+      PEZero:  N= 2 I= 1 D=  4.21D-04 Err=  8.30D-06
+    Cycle     2 NS=    64 Truncation Error =  0.000008299
+ BS completed in    2 cycles and     112 integration steps.
+ Maximum DWI energy   std dev =  0.000002090 at pt    47
+ Maximum DWI gradient std dev =  0.006022209 at pt    29
+ SUMMARY OF CORRECTOR INTEGRATION:
+   Predictor End Point Energy =   -93.129671
+   Old End Point Energy       =   -93.129671
+   Corrected End Point Energy =   -93.129672
+   Predictor End-Start Dist.  =     0.080851
+   Old End-Start Dist.        =     0.080851
+   New End-Start Dist.        =     0.080849
+   New End-Old End Dist.      =     0.000921
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  10          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                    0.410015   -0.464572   -0.000000
+      2          7                   -0.320837    0.486161    0.000000
+      3          1                   -0.423925   -1.223669    0.000000
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.08085
+   NET REACTION COORDINATE UP TO THIS POINT =    0.80848
+  # OF POINTS ALONG THE PATH =  10
+  # OF STEPS =   1
+
+ Maximum number of steps reached.
+ Calculation of FORWARD path complete.
+ Beginning calculation of the REVERSE path.
+ 
+ Calculating another point on the path.
+ Point Number  1 in REVERSE path direction.
+ Using Euler Reaction Path Following.
+ Gradient is small - USING TRANSITION VECTOR.
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Leave Link  123 at Sat Mar 22 18:47:24 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l202.exe)
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          6           0        0.450428   -0.461571    0.000000
+      2          7           0       -0.336966    0.458781    0.000000
+      3          1           0       -0.681249   -0.878620    0.000000
+ ---------------------------------------------------------------------
+                    Distance matrix (angstroms):
+                    1          2          3
+     1  C    0.000000
+     2  N    1.211214   0.000000
+     3  H    1.206078   1.381005   0.000000
+ Symmetry turned off by external request.
+ Stoichiometry    CHN
+ Framework group  CS[SG(CHN)]
+ Deg. of freedom     3
+ Full point group                 CS      NOp   2
+ Rotational constants (GHZ):         409.7990942          52.9687531          46.9059101
+ Leave Link  202 at Sat Mar 22 18:47:24 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l301.exe)
+ Standard basis: STO-3G (5D, 7F)
+ Ernie: Thresh=  0.10000D-02 Tol=  0.10000D-05 Strict=F.
+    11 basis functions,    33 primitive gaussians,    11 cartesian basis functions
+     7 alpha electrons        7 beta electrons
+       nuclear repulsion energy        23.6645627326 Hartrees.
+ IExCor=    0 DFT=F Ex=HF Corr=None ExCW=0 ScaHFX=  1.000000
+ ScaDFX=  1.000000  1.000000  1.000000  1.000000 ScalE2=  1.000000  1.000000
+ IRadAn=      5 IRanWt=     -1 IRanGd=            0 ICorTp=0 IEmpDi=  4
+ NAtoms=    3 NActive=    3 NUniq=    3 SFac= 1.00D+00 NAtFMM=   60 NAOKFM=F Big=F
+ Integral buffers will be    131072 words long.
+ Raffenetti 1 integral format.
+ Two-electron integral symmetry is turned off.
+ Leave Link  301 at Sat Mar 22 18:47:24 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l402.exe)
+ External calculation of energy and first derivatives.
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1141938000     dipole=      0.000000000000      0.000000000000      0.000000000000
+ NRF= 0 NRA=   0 NVA=   0 HaveQM=F NVQ=       0
+ Convergence limit is  0.750E-04 MaxStp= 10000 StMxLn= 3.00D-04 StpMin= 1.00D-06.
+ Convergence criteria             0.00011250 0.00007500 0.00045000 0.00030000
+  Step  NS  ND Rises OKQ   Scale  Max. Force  RMS Force Max. Disp.  RMS Disp.     Energy   Flag
+     1   0   0   F    T  1.00D+00 0.00000000 0.00000000 0.00000000 0.00000000  -93.1141938 ====
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1141938000     dipole=      0.000000000000      0.000000000000      0.000000000000
+ Energy=    -93.1141938     NIter=   0.
+ Dipole moment=       0.000000       0.000000       0.000000
+ Leave Link  402 at Sat Mar 22 18:47:39 2025, MaxMem=   104857600 cpu:               0.0 elap:              15.0
+ (Enter /opt/g16/l716.exe)
+ Dipole        = 0.00000000D+00 0.00000000D+00 0.00000000D+00
+ -------------------------------------------------------------------
+ Center     Atomic                   Forces (Hartrees/Bohr)
+ Number     Number              X              Y              Z
+ -------------------------------------------------------------------
+      1        6           0.003929990    0.000100080   -0.000000000
+      2        7          -0.002074980   -0.003630000   -0.000000000
+      3        1          -0.001855010    0.003529920   -0.000000000
+ -------------------------------------------------------------------
+ Cartesian Forces:  Max     0.003929990 RMS     0.002329489
+ Leave Link  716 at Sat Mar 22 18:47:39 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l123.exe)
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Pt 11 Step number   1 out of a maximum of  10
+ Using modified Bulirsch-Stoer corrector integration.
+   Using distance weighted interpolants to fit PES.
+ PreDWI: IReCr0= 2 IReCr1= 1 IReCr2= 1 IReCr3= 1
+ Modified Bulirsch-Stoer Extrapolation Cycles:
+    EPS =    0.000100000000000
+    Cycle     1 NS=    48
+      PEZero:  N= 2 I= 1 D=  2.11D-04 Err=  5.02D-04
+    Cycle     2 NS=    64 Truncation Error =  0.000501689
+      PEZero:  N= 3 I= 2 D=  2.11D-04 Err=  3.34D-04
+      PEZero:  N= 3 I= 1 D=  4.21D-04 Err=  4.98D-08
+    Cycle     3 NS=    96 Truncation Error =  0.000000050
+ BS completed in    3 cycles and     208 integration steps.
+ Maximum DWI energy   std dev =  0.000000426 at pt    36
+ Maximum DWI gradient std dev =  0.063280231 at pt     1
+ SUMMARY OF CORRECTOR INTEGRATION:
+   Predictor End Point Energy =   -93.114194
+   Old End Point Energy       =   -93.114194
+   Corrected End Point Energy =   -93.114194
+   Predictor End-Start Dist.  =     0.080851
+   Old End-Start Dist.        =     0.080851
+   New End-Start Dist.        =     0.080847
+   New End-Old End Dist.      =     0.000809
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:   1          Path Number:   2
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                    0.450401   -0.461578    0.000000
+      2          7                   -0.336968    0.458771   -0.000000
+      3          1                   -0.680903   -0.878393   -0.000000
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.08085
+   NET REACTION COORDINATE UP TO THIS POINT =    0.08085
+  # OF POINTS ALONG THE PATH =  11
+  # OF STEPS =   1
+
+ Calculating another point on the path.
+ Point Number  2 in REVERSE path direction.
+ Using Euler Reaction Path Following.
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Leave Link  123 at Sat Mar 22 18:47:39 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l202.exe)
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          6           0        0.453816   -0.461439    0.000000
+      2          7           0       -0.338443    0.456213   -0.000000
+      3          1           0       -0.701073   -0.844491   -0.000000
+ ---------------------------------------------------------------------
+                    Distance matrix (angstroms):
+                    1          2          3
+     1  C    0.000000
+     2  N    1.212337   0.000000
+     3  H    1.216757   1.350308   0.000000
+ Symmetry turned off by external request.
+ Stoichiometry    CHN
+ Framework group  CS[SG(CHN)]
+ Deg. of freedom     3
+ Full point group                 CS      NOp   2
+ Rotational constants (GHZ):         413.6481527          52.9899200          46.9725550
+ Leave Link  202 at Sat Mar 22 18:47:39 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l301.exe)
+ Standard basis: STO-3G (5D, 7F)
+ Ernie: Thresh=  0.10000D-02 Tol=  0.10000D-05 Strict=F.
+    11 basis functions,    33 primitive gaussians,    11 cartesian basis functions
+     7 alpha electrons        7 beta electrons
+       nuclear repulsion energy        23.6854333014 Hartrees.
+ IExCor=    0 DFT=F Ex=HF Corr=None ExCW=0 ScaHFX=  1.000000
+ ScaDFX=  1.000000  1.000000  1.000000  1.000000 ScalE2=  1.000000  1.000000
+ IRadAn=      5 IRanWt=     -1 IRanGd=            0 ICorTp=0 IEmpDi=  4
+ NAtoms=    3 NActive=    3 NUniq=    3 SFac= 1.00D+00 NAtFMM=   60 NAOKFM=F Big=F
+ Integral buffers will be    131072 words long.
+ Raffenetti 1 integral format.
+ Two-electron integral symmetry is turned off.
+ Leave Link  301 at Sat Mar 22 18:47:39 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l402.exe)
+ External calculation of energy and first derivatives.
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1147016800     dipole=      0.000000000000      0.000000000000      0.000000000000
+ NRF= 0 NRA=   0 NVA=   0 HaveQM=F NVQ=       0
+ Convergence limit is  0.750E-04 MaxStp= 10000 StMxLn= 3.00D-04 StpMin= 1.00D-06.
+ Convergence criteria             0.00011250 0.00007500 0.00045000 0.00030000
+  Step  NS  ND Rises OKQ   Scale  Max. Force  RMS Force Max. Disp.  RMS Disp.     Energy   Flag
+     1   0   0   F    T  1.00D+00 0.00000000 0.00000000 0.00000000 0.00000000  -93.1147017 ====
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1147016800     dipole=      0.000000000000      0.000000000000      0.000000000000
+ Energy=    -93.1147017     NIter=   0.
+ Dipole moment=       0.000000       0.000000       0.000000
+ Leave Link  402 at Sat Mar 22 18:47:56 2025, MaxMem=   104857600 cpu:               0.1 elap:              17.0
+ (Enter /opt/g16/l716.exe)
+ Dipole        = 0.00000000D+00 0.00000000D+00 0.00000000D+00
+ -------------------------------------------------------------------
+ Center     Atomic                   Forces (Hartrees/Bohr)
+ Number     Number              X              Y              Z
+ -------------------------------------------------------------------
+      1        6           0.007737100    0.000305020   -0.000000000
+      2        7          -0.003942490   -0.006940210   -0.000000000
+      3        1          -0.003794610    0.006635190   -0.000000000
+ -------------------------------------------------------------------
+ Cartesian Forces:  Max     0.007737100 RMS     0.004498028
+ Leave Link  716 at Sat Mar 22 18:47:56 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l123.exe)
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Pt 12 Step number   1 out of a maximum of  10
+ Using modified Bulirsch-Stoer corrector integration.
+   Using distance weighted interpolants to fit PES.
+ PreDWI: IReCr0= 2 IReCr1= 1 IReCr2= 1 IReCr3= 1
+ Modified Bulirsch-Stoer Extrapolation Cycles:
+    EPS =    0.000100000000000
+    Cycle     1 NS=    48
+      PEZero:  N= 2 I= 1 D=  4.21D-04 Err=  1.11D-06
+    Cycle     2 NS=    64 Truncation Error =  0.000001113
+ BS completed in    2 cycles and     112 integration steps.
+ Maximum DWI energy   std dev =  0.000001397 at pt    36
+ Maximum DWI gradient std dev =  0.011767235 at pt    27
+ SUMMARY OF CORRECTOR INTEGRATION:
+   Predictor End Point Energy =   -93.114702
+   Old End Point Energy       =   -93.114702
+   Corrected End Point Energy =   -93.114702
+   Predictor End-Start Dist.  =     0.080851
+   Old End-Start Dist.        =     0.080851
+   New End-Start Dist.        =     0.080850
+   New End-Old End Dist.      =     0.000253
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:   2          Path Number:   2
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                    0.453804   -0.461440    0.000000
+      2          7                   -0.338440    0.456208   -0.000000
+      3          1                   -0.700971   -0.844420   -0.000000
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.08085
+   NET REACTION COORDINATE UP TO THIS POINT =    0.16170
+  # OF POINTS ALONG THE PATH =  12
+  # OF STEPS =   1
+
+ Calculating another point on the path.
+ Point Number  3 in REVERSE path direction.
+ Using Euler Reaction Path Following.
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Leave Link  123 at Sat Mar 22 18:47:56 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l202.exe)
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          6           0        0.457186   -0.461303    0.000000
+      2          7           0       -0.339908    0.453637   -0.000000
+      3          1           0       -0.720851   -0.810320   -0.000000
+ ---------------------------------------------------------------------
+                    Distance matrix (angstroms):
+                    1          2          3
+     1  C    0.000000
+     2  N    1.213456   0.000000
+     3  H    1.228652   1.320116   0.000000
+ Symmetry turned off by external request.
+ Stoichiometry    CHN
+ Framework group  CS[SG(CHN)]
+ Deg. of freedom     3
+ Full point group                 CS      NOp   2
+ Rotational constants (GHZ):         418.1062528          52.9853999          47.0259383
+ Leave Link  202 at Sat Mar 22 18:47:56 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l301.exe)
+ Standard basis: STO-3G (5D, 7F)
+ Ernie: Thresh=  0.10000D-02 Tol=  0.10000D-05 Strict=F.
+    11 basis functions,    33 primitive gaussians,    11 cartesian basis functions
+     7 alpha electrons        7 beta electrons
+       nuclear repulsion energy        23.7060044875 Hartrees.
+ IExCor=    0 DFT=F Ex=HF Corr=None ExCW=0 ScaHFX=  1.000000
+ ScaDFX=  1.000000  1.000000  1.000000  1.000000 ScalE2=  1.000000  1.000000
+ IRadAn=      5 IRanWt=     -1 IRanGd=            0 ICorTp=0 IEmpDi=  4
+ NAtoms=    3 NActive=    3 NUniq=    3 SFac= 1.00D+00 NAtFMM=   60 NAOKFM=F Big=F
+ Integral buffers will be    131072 words long.
+ Raffenetti 1 integral format.
+ Two-electron integral symmetry is turned off.
+ Leave Link  301 at Sat Mar 22 18:47:56 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l402.exe)
+ External calculation of energy and first derivatives.
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1155091800     dipole=      0.000000000000      0.000000000000      0.000000000000
+ NRF= 0 NRA=   0 NVA=   0 HaveQM=F NVQ=       0
+ Convergence limit is  0.750E-04 MaxStp= 10000 StMxLn= 3.00D-04 StpMin= 1.00D-06.
+ Convergence criteria             0.00011250 0.00007500 0.00045000 0.00030000
+  Step  NS  ND Rises OKQ   Scale  Max. Force  RMS Force Max. Disp.  RMS Disp.     Energy   Flag
+     1   0   0   F    T  1.00D+00 0.00000000 0.00000000 0.00000000 0.00000000  -93.1155092 ====
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1155091800     dipole=      0.000000000000      0.000000000000      0.000000000000
+ Energy=    -93.1155092     NIter=   0.
+ Dipole moment=       0.000000       0.000000       0.000000
+ Leave Link  402 at Sat Mar 22 18:48:11 2025, MaxMem=   104857600 cpu:               0.0 elap:              14.7
+ (Enter /opt/g16/l716.exe)
+ Dipole        = 0.00000000D+00 0.00000000D+00 0.00000000D+00
+ -------------------------------------------------------------------
+ Center     Atomic                   Forces (Hartrees/Bohr)
+ Number     Number              X              Y              Z
+ -------------------------------------------------------------------
+      1        6           0.010986830    0.000492470   -0.000000000
+      2        7          -0.005552990   -0.009881460   -0.000000000
+      3        1          -0.005433840    0.009388980   -0.000000000
+ -------------------------------------------------------------------
+ Cartesian Forces:  Max     0.010986830 RMS     0.006386718
+ Leave Link  716 at Sat Mar 22 18:48:11 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l123.exe)
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Pt 13 Step number   1 out of a maximum of  10
+ Using modified Bulirsch-Stoer corrector integration.
+   Using distance weighted interpolants to fit PES.
+ PreDWI: IReCr0= 2 IReCr1= 1 IReCr2= 1 IReCr3= 1
+ Modified Bulirsch-Stoer Extrapolation Cycles:
+    EPS =    0.000100000000000
+    Cycle     1 NS=    48
+      PEZero:  N= 2 I= 1 D=  4.21D-04 Err=  6.89D-07
+    Cycle     2 NS=    64 Truncation Error =  0.000000689
+ BS completed in    2 cycles and     112 integration steps.
+ Maximum DWI energy   std dev =  0.000002234 at pt    36
+ Maximum DWI gradient std dev =  0.003376654 at pt    28
+ SUMMARY OF CORRECTOR INTEGRATION:
+   Predictor End Point Energy =   -93.115509
+   Old End Point Energy       =   -93.115509
+   Corrected End Point Energy =   -93.115509
+   Predictor End-Start Dist.  =     0.080851
+   Old End-Start Dist.        =     0.080851
+   New End-Start Dist.        =     0.080851
+   New End-Old End Dist.      =     0.000073
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:   3          Path Number:   2
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                    0.457180   -0.461299    0.000000
+      2          7                   -0.339904    0.453632   -0.000000
+      3          1                   -0.720840   -0.810309   -0.000000
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.08085
+   NET REACTION COORDINATE UP TO THIS POINT =    0.24255
+  # OF POINTS ALONG THE PATH =  13
+  # OF STEPS =   1
+
+ Calculating another point on the path.
+ Point Number  4 in REVERSE path direction.
+ Using Euler Reaction Path Following.
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Leave Link  123 at Sat Mar 22 18:48:11 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l202.exe)
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          6           0        0.460545   -0.461153    0.000000
+      2          7           0       -0.341362    0.451049   -0.000000
+      3          1           0       -0.740643   -0.776151   -0.000000
+ ---------------------------------------------------------------------
+                    Distance matrix (angstroms):
+                    1          2          3
+     1  C    0.000000
+     2  N    1.214565   0.000000
+     3  H    1.241804   1.290521   0.000000
+ Symmetry turned off by external request.
+ Stoichiometry    CHN
+ Framework group  CS[SG(CHN)]
+ Deg. of freedom     3
+ Full point group                 CS      NOp   2
+ Rotational constants (GHZ):         423.1348829          52.9560124          47.0656682
+ Leave Link  202 at Sat Mar 22 18:48:11 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l301.exe)
+ Standard basis: STO-3G (5D, 7F)
+ Ernie: Thresh=  0.10000D-02 Tol=  0.10000D-05 Strict=F.
+    11 basis functions,    33 primitive gaussians,    11 cartesian basis functions
+     7 alpha electrons        7 beta electrons
+       nuclear repulsion energy        23.7262623875 Hartrees.
+ IExCor=    0 DFT=F Ex=HF Corr=None ExCW=0 ScaHFX=  1.000000
+ ScaDFX=  1.000000  1.000000  1.000000  1.000000 ScalE2=  1.000000  1.000000
+ IRadAn=      5 IRanWt=     -1 IRanGd=            0 ICorTp=0 IEmpDi=  4
+ NAtoms=    3 NActive=    3 NUniq=    3 SFac= 1.00D+00 NAtFMM=   60 NAOKFM=F Big=F
+ Integral buffers will be    131072 words long.
+ Raffenetti 1 integral format.
+ Two-electron integral symmetry is turned off.
+ Leave Link  301 at Sat Mar 22 18:48:11 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l402.exe)
+ External calculation of energy and first derivatives.
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1165705300     dipole=      0.000000000000      0.000000000000      0.000000000000
+ NRF= 0 NRA=   0 NVA=   0 HaveQM=F NVQ=       0
+ Convergence limit is  0.750E-04 MaxStp= 10000 StMxLn= 3.00D-04 StpMin= 1.00D-06.
+ Convergence criteria             0.00011250 0.00007500 0.00045000 0.00030000
+  Step  NS  ND Rises OKQ   Scale  Max. Force  RMS Force Max. Disp.  RMS Disp.     Energy   Flag
+     1   0   0   F    T  1.00D+00 0.00000000 0.00000000 0.00000000 0.00000000  -93.1165705 ====
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1165705300     dipole=      0.000000000000      0.000000000000      0.000000000000
+ Energy=    -93.1165705     NIter=   0.
+ Dipole moment=       0.000000       0.000000       0.000000
+ Leave Link  402 at Sat Mar 22 18:48:28 2025, MaxMem=   104857600 cpu:               0.0 elap:              17.1
+ (Enter /opt/g16/l716.exe)
+ Dipole        = 0.00000000D+00 0.00000000D+00 0.00000000D+00
+ -------------------------------------------------------------------
+ Center     Atomic                   Forces (Hartrees/Bohr)
+ Number     Number              X              Y              Z
+ -------------------------------------------------------------------
+      1        6           0.013643620    0.000710640   -0.000000000
+      2        7          -0.006813090   -0.012314040   -0.000000000
+      3        1          -0.006830530    0.011603400   -0.000000000
+ -------------------------------------------------------------------
+ Cartesian Forces:  Max     0.013643620 RMS     0.007930267
+ Leave Link  716 at Sat Mar 22 18:48:28 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l123.exe)
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Pt 14 Step number   1 out of a maximum of  10
+ Using modified Bulirsch-Stoer corrector integration.
+   Using distance weighted interpolants to fit PES.
+ PreDWI: IReCr0= 2 IReCr1= 1 IReCr2= 1 IReCr3= 1
+ Modified Bulirsch-Stoer Extrapolation Cycles:
+    EPS =    0.000100000000000
+    Cycle     1 NS=    48
+      PEZero:  N= 2 I= 1 D=  4.21D-04 Err=  1.04D-06
+    Cycle     2 NS=    64 Truncation Error =  0.000001039
+ BS completed in    2 cycles and     112 integration steps.
+ Maximum DWI energy   std dev =  0.000002924 at pt    47
+ Maximum DWI gradient std dev =  0.001645382 at pt    38
+ SUMMARY OF CORRECTOR INTEGRATION:
+   Predictor End Point Energy =   -93.116571
+   Old End Point Energy       =   -93.116571
+   Corrected End Point Energy =   -93.116571
+   Predictor End-Start Dist.  =     0.080851
+   Old End-Start Dist.        =     0.080851
+   New End-Start Dist.        =     0.080851
+   New End-Old End Dist.      =     0.000165
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:   4          Path Number:   2
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                    0.460543   -0.461144    0.000000
+      2          7                   -0.341355    0.451044   -0.000000
+      3          1                   -0.740709   -0.776188   -0.000000
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.08085
+   NET REACTION COORDINATE UP TO THIS POINT =    0.32340
+  # OF POINTS ALONG THE PATH =  14
+  # OF STEPS =   1
+
+ Calculating another point on the path.
+ Point Number  5 in REVERSE path direction.
+ Using Euler Reaction Path Following.
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Leave Link  123 at Sat Mar 22 18:48:28 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l202.exe)
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          6           0        0.463902   -0.460978    0.000000
+      2          7           0       -0.342798    0.448449   -0.000000
+      3          1           0       -0.760647   -0.742105   -0.000000
+ ---------------------------------------------------------------------
+                    Distance matrix (angstroms):
+                    1          2          3
+     1  C    0.000000
+     2  N    1.215657   0.000000
+     3  H    1.256404   1.261751   0.000000
+ Symmetry turned off by external request.
+ Stoichiometry    CHN
+ Framework group  CS[SG(CHN)]
+ Deg. of freedom     3
+ Full point group                 CS      NOp   2
+ Rotational constants (GHZ):         428.5717731          52.9026279          47.0898826
+ Leave Link  202 at Sat Mar 22 18:48:28 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l301.exe)
+ Standard basis: STO-3G (5D, 7F)
+ Ernie: Thresh=  0.10000D-02 Tol=  0.10000D-05 Strict=F.
+    11 basis functions,    33 primitive gaussians,    11 cartesian basis functions
+     7 alpha electrons        7 beta electrons
+       nuclear repulsion energy        23.7455598873 Hartrees.
+ IExCor=    0 DFT=F Ex=HF Corr=None ExCW=0 ScaHFX=  1.000000
+ ScaDFX=  1.000000  1.000000  1.000000  1.000000 ScalE2=  1.000000  1.000000
+ IRadAn=      5 IRanWt=     -1 IRanGd=            0 ICorTp=0 IEmpDi=  4
+ NAtoms=    3 NActive=    3 NUniq=    3 SFac= 1.00D+00 NAtFMM=   60 NAOKFM=F Big=F
+ Integral buffers will be    131072 words long.
+ Raffenetti 1 integral format.
+ Two-electron integral symmetry is turned off.
+ Leave Link  301 at Sat Mar 22 18:48:28 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l402.exe)
+ External calculation of energy and first derivatives.
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1178304600     dipole=      0.000000000000      0.000000000000      0.000000000000
+ NRF= 0 NRA=   0 NVA=   0 HaveQM=F NVQ=       0
+ Convergence limit is  0.750E-04 MaxStp= 10000 StMxLn= 3.00D-04 StpMin= 1.00D-06.
+ Convergence criteria             0.00011250 0.00007500 0.00045000 0.00030000
+  Step  NS  ND Rises OKQ   Scale  Max. Force  RMS Force Max. Disp.  RMS Disp.     Energy   Flag
+     1   0   0   F    T  1.00D+00 0.00000000 0.00000000 0.00000000 0.00000000  -93.1178305 ====
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1178304600     dipole=      0.000000000000      0.000000000000      0.000000000000
+ Energy=    -93.1178305     NIter=   0.
+ Dipole moment=       0.000000       0.000000       0.000000
+ Leave Link  402 at Sat Mar 22 18:48:43 2025, MaxMem=   104857600 cpu:               0.0 elap:              14.5
+ (Enter /opt/g16/l716.exe)
+ Dipole        = 0.00000000D+00 0.00000000D+00 0.00000000D+00
+ -------------------------------------------------------------------
+ Center     Atomic                   Forces (Hartrees/Bohr)
+ Number     Number              X              Y              Z
+ -------------------------------------------------------------------
+      1        6           0.015664540    0.000981410   -0.000000000
+      2        7          -0.007650260   -0.014134020   -0.000000000
+      3        1          -0.008014270    0.013152600   -0.000000000
+ -------------------------------------------------------------------
+ Cartesian Forces:  Max     0.015664540 RMS     0.009079020
+ Leave Link  716 at Sat Mar 22 18:48:43 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l123.exe)
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Pt 15 Step number   1 out of a maximum of  10
+ Using modified Bulirsch-Stoer corrector integration.
+   Using distance weighted interpolants to fit PES.
+ PreDWI: IReCr0= 2 IReCr1= 1 IReCr2= 1 IReCr3= 1
+ Modified Bulirsch-Stoer Extrapolation Cycles:
+    EPS =    0.000100000000000
+    Cycle     1 NS=    48
+      PEZero:  N= 2 I= 1 D=  4.21D-04 Err=  3.54D-06
+    Cycle     2 NS=    64 Truncation Error =  0.000003541
+ BS completed in    2 cycles and     112 integration steps.
+ Maximum DWI energy   std dev =  0.000003425 at pt    47
+ Maximum DWI gradient std dev =  0.004971035 at pt    38
+ SUMMARY OF CORRECTOR INTEGRATION:
+   Predictor End Point Energy =   -93.117830
+   Old End Point Energy       =   -93.117830
+   Corrected End Point Energy =   -93.117831
+   Predictor End-Start Dist.  =     0.080851
+   Old End-Start Dist.        =     0.080851
+   New End-Start Dist.        =     0.080851
+   New End-Old End Dist.      =     0.000393
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:   5          Path Number:   2
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                    0.463903   -0.460965    0.000000
+      2          7                   -0.342788    0.448445   -0.000000
+      3          1                   -0.760816   -0.742206   -0.000000
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.08085
+   NET REACTION COORDINATE UP TO THIS POINT =    0.40425
+  # OF POINTS ALONG THE PATH =  15
+  # OF STEPS =   1
+
+ Calculating another point on the path.
+ Point Number  6 in REVERSE path direction.
+ Using Euler Reaction Path Following.
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Leave Link  123 at Sat Mar 22 18:48:43 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l202.exe)
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          6           0        0.467266   -0.460768    0.000000
+      2          7           0       -0.344205    0.445840   -0.000000
+      3          1           0       -0.781148   -0.708358   -0.000000
+ ---------------------------------------------------------------------
+                    Distance matrix (angstroms):
+                    1          2          3
+     1  C    0.000000
+     2  N    1.216726   0.000000
+     3  H    1.272729   1.234136   0.000000
+ Symmetry turned off by external request.
+ Stoichiometry    CHN
+ Framework group  CS[SG(CHN)]
+ Deg. of freedom     3
+ Full point group                 CS      NOp   2
+ Rotational constants (GHZ):         434.1578962          52.8261400          47.0957652
+ Leave Link  202 at Sat Mar 22 18:48:43 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l301.exe)
+ Standard basis: STO-3G (5D, 7F)
+ Ernie: Thresh=  0.10000D-02 Tol=  0.10000D-05 Strict=F.
+    11 basis functions,    33 primitive gaussians,    11 cartesian basis functions
+     7 alpha electrons        7 beta electrons
+       nuclear repulsion energy        23.7627646960 Hartrees.
+ IExCor=    0 DFT=F Ex=HF Corr=None ExCW=0 ScaHFX=  1.000000
+ ScaDFX=  1.000000  1.000000  1.000000  1.000000 ScalE2=  1.000000  1.000000
+ IRadAn=      5 IRanWt=     -1 IRanGd=            0 ICorTp=0 IEmpDi=  4
+ NAtoms=    3 NActive=    3 NUniq=    3 SFac= 1.00D+00 NAtFMM=   60 NAOKFM=F Big=F
+ Integral buffers will be    131072 words long.
+ Raffenetti 1 integral format.
+ Two-electron integral symmetry is turned off.
+ Leave Link  301 at Sat Mar 22 18:48:43 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l402.exe)
+ External calculation of energy and first derivatives.
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1192281600     dipole=      0.000000000000      0.000000000000      0.000000000000
+ NRF= 0 NRA=   0 NVA=   0 HaveQM=F NVQ=       0
+ Convergence limit is  0.750E-04 MaxStp= 10000 StMxLn= 3.00D-04 StpMin= 1.00D-06.
+ Convergence criteria             0.00011250 0.00007500 0.00045000 0.00030000
+  Step  NS  ND Rises OKQ   Scale  Max. Force  RMS Force Max. Disp.  RMS Disp.     Energy   Flag
+     1   0   0   F    T  1.00D+00 0.00000000 0.00000000 0.00000000 0.00000000  -93.1192282 ====
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1192281600     dipole=      0.000000000000      0.000000000000      0.000000000000
+ Energy=    -93.1192282     NIter=   0.
+ Dipole moment=       0.000000       0.000000       0.000000
+ Leave Link  402 at Sat Mar 22 18:48:59 2025, MaxMem=   104857600 cpu:               0.0 elap:              16.1
+ (Enter /opt/g16/l716.exe)
+ Dipole        = 0.00000000D+00 0.00000000D+00 0.00000000D+00
+ -------------------------------------------------------------------
+ Center     Atomic                   Forces (Hartrees/Bohr)
+ Number     Number              X              Y              Z
+ -------------------------------------------------------------------
+      1        6           0.017022620    0.001312760   -0.000000000
+      2        7          -0.008020500   -0.015290880   -0.000000000
+      3        1          -0.009002120    0.013978120   -0.000000000
+ -------------------------------------------------------------------
+ Cartesian Forces:  Max     0.017022620 RMS     0.009809623
+ Leave Link  716 at Sat Mar 22 18:48:59 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l123.exe)
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Pt 16 Step number   1 out of a maximum of  10
+ Using modified Bulirsch-Stoer corrector integration.
+   Using distance weighted interpolants to fit PES.
+ PreDWI: IReCr0= 2 IReCr1= 1 IReCr2= 1 IReCr3= 1
+ Modified Bulirsch-Stoer Extrapolation Cycles:
+    EPS =    0.000100000000000
+    Cycle     1 NS=    48
+      PEZero:  N= 2 I= 1 D=  4.21D-04 Err=  6.57D-06
+    Cycle     2 NS=    64 Truncation Error =  0.000006569
+ BS completed in    2 cycles and     112 integration steps.
+ Maximum DWI energy   std dev =  0.000003650 at pt    47
+ Maximum DWI gradient std dev =  0.008118692 at pt    38
+ SUMMARY OF CORRECTOR INTEGRATION:
+   Predictor End Point Energy =   -93.119228
+   Old End Point Energy       =   -93.119228
+   Corrected End Point Energy =   -93.119228
+   Predictor End-Start Dist.  =     0.080851
+   Old End-Start Dist.        =     0.080851
+   New End-Start Dist.        =     0.080849
+   New End-Old End Dist.      =     0.000685
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:   6          Path Number:   2
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                    0.467271   -0.460749    0.000000
+      2          7                   -0.344189    0.445837   -0.000000
+      3          1                   -0.781445   -0.708542   -0.000000
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.08085
+   NET REACTION COORDINATE UP TO THIS POINT =    0.48510
+  # OF POINTS ALONG THE PATH =  16
+  # OF STEPS =   1
+
+ Calculating another point on the path.
+ Point Number  7 in REVERSE path direction.
+ Using Euler Reaction Path Following.
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Leave Link  123 at Sat Mar 22 18:48:59 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l202.exe)
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          6           0        0.470647   -0.460509    0.000000
+      2          7           0       -0.345568    0.443226   -0.000000
+      3          1           0       -0.802476   -0.675128   -0.000000
+ ---------------------------------------------------------------------
+                    Distance matrix (angstroms):
+                    1          2          3
+     1  C    0.000000
+     2  N    1.217762   0.000000
+     3  H    1.291086   1.208089   0.000000
+ Symmetry turned off by external request.
+ Stoichiometry    CHN
+ Framework group  CS[SG(CHN)]
+ Deg. of freedom     3
+ Full point group                 CS      NOp   2
+ Rotational constants (GHZ):         439.5692624          52.7277595          47.0803221
+ Leave Link  202 at Sat Mar 22 18:48:59 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l301.exe)
+ Standard basis: STO-3G (5D, 7F)
+ Ernie: Thresh=  0.10000D-02 Tol=  0.10000D-05 Strict=F.
+    11 basis functions,    33 primitive gaussians,    11 cartesian basis functions
+     7 alpha electrons        7 beta electrons
+       nuclear repulsion energy        23.7764746458 Hartrees.
+ IExCor=    0 DFT=F Ex=HF Corr=None ExCW=0 ScaHFX=  1.000000
+ ScaDFX=  1.000000  1.000000  1.000000  1.000000 ScalE2=  1.000000  1.000000
+ IRadAn=      5 IRanWt=     -1 IRanGd=            0 ICorTp=0 IEmpDi=  4
+ NAtoms=    3 NActive=    3 NUniq=    3 SFac= 1.00D+00 NAtFMM=   60 NAOKFM=F Big=F
+ Integral buffers will be    131072 words long.
+ Raffenetti 1 integral format.
+ Two-electron integral symmetry is turned off.
+ Leave Link  301 at Sat Mar 22 18:48:59 2025, MaxMem=   104857600 cpu:               0.1 elap:               0.0
+ (Enter /opt/g16/l402.exe)
+ External calculation of energy and first derivatives.
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1207028300     dipole=      0.000000000000      0.000000000000      0.000000000000
+ NRF= 0 NRA=   0 NVA=   0 HaveQM=F NVQ=       0
+ Convergence limit is  0.750E-04 MaxStp= 10000 StMxLn= 3.00D-04 StpMin= 1.00D-06.
+ Convergence criteria             0.00011250 0.00007500 0.00045000 0.00030000
+  Step  NS  ND Rises OKQ   Scale  Max. Force  RMS Force Max. Disp.  RMS Disp.     Energy   Flag
+     1   0   0   F    T  1.00D+00 0.00000000 0.00000000 0.00000000 0.00000000  -93.1207028 ====
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1207028300     dipole=      0.000000000000      0.000000000000      0.000000000000
+ Energy=    -93.1207028     NIter=   0.
+ Dipole moment=       0.000000       0.000000       0.000000
+ Leave Link  402 at Sat Mar 22 18:49:15 2025, MaxMem=   104857600 cpu:               0.0 elap:              16.0
+ (Enter /opt/g16/l716.exe)
+ Dipole        = 0.00000000D+00 0.00000000D+00 0.00000000D+00
+ -------------------------------------------------------------------
+ Center     Atomic                   Forces (Hartrees/Bohr)
+ Number     Number              X              Y              Z
+ -------------------------------------------------------------------
+      1        6           0.017728780    0.001701320   -0.000000000
+      2        7          -0.007922700   -0.015804570   -0.000000000
+      3        1          -0.009806080    0.014103250   -0.000000000
+ -------------------------------------------------------------------
+ Cartesian Forces:  Max     0.017728780 RMS     0.010136943
+ Leave Link  716 at Sat Mar 22 18:49:15 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l123.exe)
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Pt 17 Step number   1 out of a maximum of  10
+ Using modified Bulirsch-Stoer corrector integration.
+   Using distance weighted interpolants to fit PES.
+ PreDWI: IReCr0= 2 IReCr1= 1 IReCr2= 1 IReCr3= 1
+ Modified Bulirsch-Stoer Extrapolation Cycles:
+    EPS =    0.000100000000000
+    Cycle     1 NS=    48
+      PEZero:  N= 2 I= 1 D=  4.21D-04 Err=  9.71D-06
+    Cycle     2 NS=    64 Truncation Error =  0.000009708
+ BS completed in    2 cycles and     112 integration steps.
+ Maximum DWI energy   std dev =  0.000003513 at pt    47
+ Maximum DWI gradient std dev =  0.011049763 at pt    29
+ SUMMARY OF CORRECTOR INTEGRATION:
+   Predictor End Point Energy =   -93.120703
+   Old End Point Energy       =   -93.120703
+   Corrected End Point Energy =   -93.120703
+   Predictor End-Start Dist.  =     0.080851
+   Old End-Start Dist.        =     0.080851
+   New End-Start Dist.        =     0.080847
+   New End-Old End Dist.      =     0.001013
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:   7          Path Number:   2
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                    0.470655   -0.460483    0.000000
+      2          7                   -0.345544    0.443225   -0.000000
+      3          1                   -0.802912   -0.675408   -0.000000
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.08085
+   NET REACTION COORDINATE UP TO THIS POINT =    0.56595
+  # OF POINTS ALONG THE PATH =  17
+  # OF STEPS =   1
+
+ Calculating another point on the path.
+ Point Number  8 in REVERSE path direction.
+ Using Euler Reaction Path Following.
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Leave Link  123 at Sat Mar 22 18:49:15 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l202.exe)
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          6           0        0.474049   -0.460185    0.000000
+      2          7           0       -0.346866    0.440613   -0.000000
+      3          1           0       -0.824958   -0.642652   -0.000000
+ ---------------------------------------------------------------------
+                    Distance matrix (angstroms):
+                    1          2          3
+     1  C    0.000000
+     2  N    1.218745   0.000000
+     3  H    1.311760   1.184075   0.000000
+ Symmetry turned off by external request.
+ Stoichiometry    CHN
+ Framework group  CS[SG(CHN)]
+ Deg. of freedom     3
+ Full point group                 CS      NOp   2
+ Rotational constants (GHZ):         444.4448477          52.6092557          47.0409810
+ Leave Link  202 at Sat Mar 22 18:49:15 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l301.exe)
+ Standard basis: STO-3G (5D, 7F)
+ Ernie: Thresh=  0.10000D-02 Tol=  0.10000D-05 Strict=F.
+    11 basis functions,    33 primitive gaussians,    11 cartesian basis functions
+     7 alpha electrons        7 beta electrons
+       nuclear repulsion energy        23.7851820472 Hartrees.
+ IExCor=    0 DFT=F Ex=HF Corr=None ExCW=0 ScaHFX=  1.000000
+ ScaDFX=  1.000000  1.000000  1.000000  1.000000 ScalE2=  1.000000  1.000000
+ IRadAn=      5 IRanWt=     -1 IRanGd=            0 ICorTp=0 IEmpDi=  4
+ NAtoms=    3 NActive=    3 NUniq=    3 SFac= 1.00D+00 NAtFMM=   60 NAOKFM=F Big=F
+ Integral buffers will be    131072 words long.
+ Raffenetti 1 integral format.
+ Two-electron integral symmetry is turned off.
+ Leave Link  301 at Sat Mar 22 18:49:15 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l402.exe)
+ External calculation of energy and first derivatives.
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1222004600     dipole=      0.000000000000      0.000000000000      0.000000000000
+ NRF= 0 NRA=   0 NVA=   0 HaveQM=F NVQ=       0
+ Convergence limit is  0.750E-04 MaxStp= 10000 StMxLn= 3.00D-04 StpMin= 1.00D-06.
+ Convergence criteria             0.00011250 0.00007500 0.00045000 0.00030000
+  Step  NS  ND Rises OKQ   Scale  Max. Force  RMS Force Max. Disp.  RMS Disp.     Energy   Flag
+     1   0   0   F    T  1.00D+00 0.00000000 0.00000000 0.00000000 0.00000000  -93.1222005 ====
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1222004600     dipole=      0.000000000000      0.000000000000      0.000000000000
+ Energy=    -93.1222005     NIter=   0.
+ Dipole moment=       0.000000       0.000000       0.000000
+ Leave Link  402 at Sat Mar 22 18:49:32 2025, MaxMem=   104857600 cpu:               0.0 elap:              16.6
+ (Enter /opt/g16/l716.exe)
+ Dipole        = 0.00000000D+00 0.00000000D+00 0.00000000D+00
+ -------------------------------------------------------------------
+ Center     Atomic                   Forces (Hartrees/Bohr)
+ Number     Number              X              Y              Z
+ -------------------------------------------------------------------
+      1        6           0.017840530    0.002130670   -0.000000000
+      2        7          -0.007416000   -0.015783150   -0.000000000
+      3        1          -0.010424520    0.013652480   -0.000000000
+ -------------------------------------------------------------------
+ Cartesian Forces:  Max     0.017840530 RMS     0.010121429
+ Leave Link  716 at Sat Mar 22 18:49:32 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l123.exe)
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Pt 18 Step number   1 out of a maximum of  10
+ Using modified Bulirsch-Stoer corrector integration.
+   Using distance weighted interpolants to fit PES.
+ PreDWI: IReCr0= 2 IReCr1= 1 IReCr2= 1 IReCr3= 1
+ Modified Bulirsch-Stoer Extrapolation Cycles:
+    EPS =    0.000100000000000
+    Cycle     1 NS=    48
+      PEZero:  N= 2 I= 1 D=  4.21D-04 Err=  1.23D-05
+    Cycle     2 NS=    64 Truncation Error =  0.000012266
+ BS completed in    2 cycles and     112 integration steps.
+ Maximum DWI energy   std dev =  0.000002960 at pt    35
+ Maximum DWI gradient std dev =  0.013482819 at pt    29
+ SUMMARY OF CORRECTOR INTEGRATION:
+   Predictor End Point Energy =   -93.122200
+   Old End Point Energy       =   -93.122200
+   Corrected End Point Energy =   -93.122201
+   Predictor End-Start Dist.  =     0.080851
+   Old End-Start Dist.        =     0.080851
+   New End-Start Dist.        =     0.080844
+   New End-Old End Dist.      =     0.001324
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:   8          Path Number:   2
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                    0.474055   -0.460153    0.000000
+      2          7                   -0.346832    0.440614   -0.000000
+      3          1                   -0.825518   -0.643032   -0.000000
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.08084
+   NET REACTION COORDINATE UP TO THIS POINT =    0.64679
+  # OF POINTS ALONG THE PATH =  18
+  # OF STEPS =   1
+
+ Calculating another point on the path.
+ Point Number  9 in REVERSE path direction.
+ Using Euler Reaction Path Following.
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Leave Link  123 at Sat Mar 22 18:49:32 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l202.exe)
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          6           0        0.477464   -0.459782    0.000000
+      2          7           0       -0.348076    0.438005   -0.000000
+      3          1           0       -0.848851   -0.611161   -0.000000
+ ---------------------------------------------------------------------
+                    Distance matrix (angstroms):
+                    1          2          3
+     1  C    0.000000
+     2  N    1.219646   0.000000
+     3  H    1.334926   1.162550   0.000000
+ Symmetry turned off by external request.
+ Stoichiometry    CHN
+ Framework group  CS[SG(CHN)]
+ Deg. of freedom     3
+ Full point group                 CS      NOp   2
+ Rotational constants (GHZ):         448.4573774          52.4732017          46.9765580
+ Leave Link  202 at Sat Mar 22 18:49:32 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l301.exe)
+ Standard basis: STO-3G (5D, 7F)
+ Ernie: Thresh=  0.10000D-02 Tol=  0.10000D-05 Strict=F.
+    11 basis functions,    33 primitive gaussians,    11 cartesian basis functions
+     7 alpha electrons        7 beta electrons
+       nuclear repulsion energy        23.7876245697 Hartrees.
+ IExCor=    0 DFT=F Ex=HF Corr=None ExCW=0 ScaHFX=  1.000000
+ ScaDFX=  1.000000  1.000000  1.000000  1.000000 ScalE2=  1.000000  1.000000
+ IRadAn=      5 IRanWt=     -1 IRanGd=            0 ICorTp=0 IEmpDi=  4
+ NAtoms=    3 NActive=    3 NUniq=    3 SFac= 1.00D+00 NAtFMM=   60 NAOKFM=F Big=F
+ Integral buffers will be    131072 words long.
+ Raffenetti 1 integral format.
+ Two-electron integral symmetry is turned off.
+ Leave Link  301 at Sat Mar 22 18:49:32 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l402.exe)
+ External calculation of energy and first derivatives.
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1236802300     dipole=      0.000000000000      0.000000000000      0.000000000000
+ NRF= 0 NRA=   0 NVA=   0 HaveQM=F NVQ=       0
+ Convergence limit is  0.750E-04 MaxStp= 10000 StMxLn= 3.00D-04 StpMin= 1.00D-06.
+ Convergence criteria             0.00011250 0.00007500 0.00045000 0.00030000
+  Step  NS  ND Rises OKQ   Scale  Max. Force  RMS Force Max. Disp.  RMS Disp.     Energy   Flag
+     1   0   0   F    T  1.00D+00 0.00000000 0.00000000 0.00000000 0.00000000  -93.1236802 ====
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1236802300     dipole=      0.000000000000      0.000000000000      0.000000000000
+ Energy=    -93.1236802     NIter=   0.
+ Dipole moment=       0.000000       0.000000       0.000000
+ Leave Link  402 at Sat Mar 22 18:49:47 2025, MaxMem=   104857600 cpu:               0.0 elap:              15.0
+ (Enter /opt/g16/l716.exe)
+ Dipole        = 0.00000000D+00 0.00000000D+00 0.00000000D+00
+ -------------------------------------------------------------------
+ Center     Atomic                   Forces (Hartrees/Bohr)
+ Number     Number              X              Y              Z
+ -------------------------------------------------------------------
+      1        6           0.017469850    0.002571540   -0.000000000
+      2        7          -0.006629750   -0.015419820   -0.000000000
+      3        1          -0.010840100    0.012848290   -0.000000000
+ -------------------------------------------------------------------
+ Cartesian Forces:  Max     0.017469850 RMS     0.009866437
+ Leave Link  716 at Sat Mar 22 18:49:47 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l123.exe)
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Pt 19 Step number   1 out of a maximum of  10
+ Using modified Bulirsch-Stoer corrector integration.
+   Using distance weighted interpolants to fit PES.
+ PreDWI: IReCr0= 2 IReCr1= 1 IReCr2= 1 IReCr3= 1
+ Modified Bulirsch-Stoer Extrapolation Cycles:
+    EPS =    0.000100000000000
+    Cycle     1 NS=    48
+      PEZero:  N= 2 I= 1 D=  4.21D-04 Err=  1.34D-05
+    Cycle     2 NS=    64 Truncation Error =  0.000013375
+ BS completed in    2 cycles and     112 integration steps.
+ Maximum DWI energy   std dev =  0.000002070 at pt    35
+ Maximum DWI gradient std dev =  0.014781349 at pt    29
+ SUMMARY OF CORRECTOR INTEGRATION:
+   Predictor End Point Energy =   -93.123680
+   Old End Point Energy       =   -93.123680
+   Corrected End Point Energy =   -93.123681
+   Predictor End-Start Dist.  =     0.080851
+   Old End-Start Dist.        =     0.080851
+   New End-Start Dist.        =     0.080842
+   New End-Old End Dist.      =     0.001529
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:   9          Path Number:   2
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                    0.477464   -0.459744    0.000000
+      2          7                   -0.348031    0.438007   -0.000000
+      3          1                   -0.849481   -0.611617   -0.000000
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.08084
+   NET REACTION COORDINATE UP TO THIS POINT =    0.72763
+  # OF POINTS ALONG THE PATH =  19
+  # OF STEPS =   1
+
+ Calculating another point on the path.
+ Point Number 10 in REVERSE path direction.
+ Using Euler Reaction Path Following.
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Leave Link  123 at Sat Mar 22 18:49:47 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l202.exe)
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          6           0        0.480873   -0.459287    0.000000
+      2          7           0       -0.349175    0.435401   -0.000000
+      3          1           0       -0.874236   -0.580792   -0.000000
+ ---------------------------------------------------------------------
+                    Distance matrix (angstroms):
+                    1          2          3
+     1  C    0.000000
+     2  N    1.220429   0.000000
+     3  H    1.360545   1.143826   0.000000
+ Symmetry turned off by external request.
+ Stoichiometry    CHN
+ Framework group  CS[SG(CHN)]
+ Deg. of freedom     3
+ Full point group                 CS      NOp   2
+ Rotational constants (GHZ):         451.4332626          52.3229089          46.8883615
+ Leave Link  202 at Sat Mar 22 18:49:47 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l301.exe)
+ Standard basis: STO-3G (5D, 7F)
+ Ernie: Thresh=  0.10000D-02 Tol=  0.10000D-05 Strict=F.
+    11 basis functions,    33 primitive gaussians,    11 cartesian basis functions
+     7 alpha electrons        7 beta electrons
+       nuclear repulsion energy        23.7833112783 Hartrees.
+ IExCor=    0 DFT=F Ex=HF Corr=None ExCW=0 ScaHFX=  1.000000
+ ScaDFX=  1.000000  1.000000  1.000000  1.000000 ScalE2=  1.000000  1.000000
+ IRadAn=      5 IRanWt=     -1 IRanGd=            0 ICorTp=0 IEmpDi=  4
+ NAtoms=    3 NActive=    3 NUniq=    3 SFac= 1.00D+00 NAtFMM=   60 NAOKFM=F Big=F
+ Integral buffers will be    131072 words long.
+ Raffenetti 1 integral format.
+ Two-electron integral symmetry is turned off.
+ Leave Link  301 at Sat Mar 22 18:49:47 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l402.exe)
+ External calculation of energy and first derivatives.
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1251182900     dipole=      0.000000000000      0.000000000000      0.000000000000
+ NRF= 0 NRA=   0 NVA=   0 HaveQM=F NVQ=       0
+ Convergence limit is  0.750E-04 MaxStp= 10000 StMxLn= 3.00D-04 StpMin= 1.00D-06.
+ Convergence criteria             0.00011250 0.00007500 0.00045000 0.00030000
+  Step  NS  ND Rises OKQ   Scale  Max. Force  RMS Force Max. Disp.  RMS Disp.     Energy   Flag
+     1   0   0   F    T  1.00D+00 0.00000000 0.00000000 0.00000000 0.00000000  -93.1251183 ====
+ Running external command "python3 -u ../../../src/gmm.py R"
+         input file       "/home/jh-li/scratch/g16/Gau-11219.EIn"
+         output file      "/home/jh-li/scratch/g16/Gau-11219.EOu"
+         message file     "/home/jh-li/scratch/g16/Gau-11219.EMs"
+         fchk file        "/home/jh-li/scratch/g16/Gau-11219.EFC"
+         mat. el file     "/home/jh-li/scratch/g16/Gau-11219.EUF"
+ Read checkpoint file mol_rohf.chk
+ Write formatted file mol_rohf.fchk
+!LICENCE! Warning: licence will expire on 2025/04/10
+ Recovered energy= -93.1251182900     dipole=      0.000000000000      0.000000000000      0.000000000000
+ Energy=    -93.1251183     NIter=   0.
+ Dipole moment=       0.000000       0.000000       0.000000
+ Leave Link  402 at Sat Mar 22 18:50:03 2025, MaxMem=   104857600 cpu:               0.0 elap:              16.1
+ (Enter /opt/g16/l716.exe)
+ Dipole        = 0.00000000D+00 0.00000000D+00 0.00000000D+00
+ -------------------------------------------------------------------
+ Center     Atomic                   Forces (Hartrees/Bohr)
+ Number     Number              X              Y              Z
+ -------------------------------------------------------------------
+      1        6           0.016781130    0.002988910   -0.000000000
+      2        7          -0.005745680   -0.014950400   -0.000000000
+      3        1          -0.011035460    0.011961490   -0.000000000
+ -------------------------------------------------------------------
+ Cartesian Forces:  Max     0.016781130 RMS     0.009498104
+ Leave Link  716 at Sat Mar 22 18:50:03 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l123.exe)
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Pt 20 Step number   1 out of a maximum of  10
+ Using modified Bulirsch-Stoer corrector integration.
+   Using distance weighted interpolants to fit PES.
+ PreDWI: IReCr0= 2 IReCr1= 1 IReCr2= 1 IReCr3= 1
+ Modified Bulirsch-Stoer Extrapolation Cycles:
+    EPS =    0.000100000000000
+    Cycle     1 NS=    48
+      PEZero:  N= 2 I= 1 D=  4.21D-04 Err=  1.24D-05
+    Cycle     2 NS=    64 Truncation Error =  0.000012404
+ BS completed in    2 cycles and     112 integration steps.
+ Maximum DWI energy   std dev =  0.000001057 at pt    35
+ Maximum DWI gradient std dev =  0.014178353 at pt    29
+ SUMMARY OF CORRECTOR INTEGRATION:
+   Predictor End Point Energy =   -93.125118
+   Old End Point Energy       =   -93.125118
+   Corrected End Point Energy =   -93.125119
+   Predictor End-Start Dist.  =     0.080851
+   Old End-Start Dist.        =     0.080851
+   New End-Start Dist.        =     0.080843
+   New End-Old End Dist.      =     0.001531
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  10          Path Number:   2
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                    0.480862   -0.459245    0.000000
+      2          7                   -0.349123    0.435401   -0.000000
+      3          1                   -0.874843   -0.581264   -0.000000
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.08084
+   NET REACTION COORDINATE UP TO THIS POINT =    0.80848
+  # OF POINTS ALONG THE PATH =  20
+  # OF STEPS =   1
+
+ Maximum number of steps reached.
+ Calculation of REVERSE path complete.
+ Reaction path calculation complete.
+ 
+ Energies reported relative to the TS energy of         -93.114020
+ --------------------------------------------------------------------------
+    Summary of reaction path following
+ --------------------------------------------------------------------------
+                        Energy    RxCoord
+   1                   -0.01110  -0.80848
+   2                   -0.00966  -0.72763
+   3                   -0.00818  -0.64679
+   4                   -0.00668  -0.56595
+   5                   -0.00521  -0.48510
+   6                   -0.00381  -0.40425
+   7                   -0.00255  -0.32340
+   8                   -0.00149  -0.24255
+   9                   -0.00068  -0.16170
+  10                   -0.00017  -0.08085
+  11                    0.00000   0.00000
+  12                   -0.00018   0.08084
+  13                   -0.00072   0.16169
+  14                   -0.00162   0.24254
+  15                   -0.00285   0.32339
+  16                   -0.00440   0.40424
+  17                   -0.00624   0.48509
+  18                   -0.00831   0.56593
+  19                   -0.01060   0.64678
+  20                   -0.01306   0.72763
+  21                   -0.01565   0.80848
+ --------------------------------------------------------------------------
+ 
+ Total number of points:                   20
+ Total number of gradient calculations:    20
+ Total number of Hessian calculations:      0
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Leave Link  123 at Sat Mar 22 18:50:03 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l202.exe)
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          6           0        0.480873   -0.459287    0.000000
+      2          7           0       -0.349175    0.435401   -0.000000
+      3          1           0       -0.874236   -0.580792   -0.000000
+ ---------------------------------------------------------------------
+                    Distance matrix (angstroms):
+                    1          2          3
+     1  C    0.000000
+     2  N    1.220429   0.000000
+     3  H    1.360545   1.143826   0.000000
+ Symmetry turned off by external request.
+ Stoichiometry    CHN
+ Framework group  CS[SG(CHN)]
+ Deg. of freedom     3
+ Full point group                 CS      NOp   2
+ Rotational constants (GHZ):         451.4332626          52.3229089          46.8883615
+ Leave Link  202 at Sat Mar 22 18:50:03 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l601.exe)
+ Leave Link  601 at Sat Mar 22 18:50:03 2025, MaxMem=   104857600 cpu:               0.0 elap:               0.0
+ (Enter /opt/g16/l9999.exe)
+
+ This type of calculation cannot be archived.
+
+
+ GOD DOES NOT PLAY WITH DICE.
+               -- A. EINSTEIN
+ Job cpu time:       0 days  0 hours  0 minutes  3.3 seconds.
+ Elapsed time:       0 days  0 hours  5 minutes 23.9 seconds.
+ File lengths (MBytes):  RWF=      6 Int=      0 D2E=      0 Chk=      2 Scr=      1
+ Normal termination of Gaussian 16 at Sat Mar 22 18:50:03 2025.

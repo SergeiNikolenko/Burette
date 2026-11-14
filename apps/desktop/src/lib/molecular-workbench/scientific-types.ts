@@ -132,4 +132,15 @@ export interface ScientificDocument {
   metadata?: CalculationMetadata;
   /** Named coordinates and dummy reference points; atoms contain only real atoms. */
   internalCoordinates?: ZmatrixDocument;
+  /** The converged points of a relaxed scan or a reaction path, in path order. */
+  path?: ReactionPath;
 }
+/**
+ * What a path point's `x` is: the scanned bond (Å), angle or dihedral (°) between 0-based atoms;
+ * Gaussian's mass-weighted reaction coordinate (amu^½·bohr); the program's own scan parameter;
+ * or the point number from the transition state.
+ */
+export type ReactionPathAxis = { kind: "bond" | "angle" | "dihedral"; atoms: number[] } | { kind: "reaction-coordinate" | "parameter" | "step" };
+/** `frame` indexes `frames` when the file holds the point's geometry. */
+export interface ReactionPathPoint { x: number; energyHartree: number; frame?: number; converged?: boolean }
+export interface ReactionPath { kind: "scan" | "irc"; axis: ReactionPathAxis; points: ReactionPathPoint[] }

@@ -246,6 +246,22 @@ export function validateScientificDocument(value: unknown, sourceFrames: readonl
       fail("Scientific metadata is not a calculation description.");
     }
   }
+  const path = document.path;
+  if (path !== undefined) {
+    const finite = (value: unknown) => typeof value === "number" && Number.isFinite(value);
+    const axis = isRecord(path) ? path.axis : undefined;
+    const measured = isRecord(axis) && ["bond", "angle", "dihedral"].includes(axis.kind as string);
+    if (!isRecord(path) || (path.kind !== "scan" && path.kind !== "irc") || !isRecord(axis)
+      || !(measured || ["reaction-coordinate", "parameter", "step"].includes(axis.kind as string))
+      || (measured && (!Array.isArray(axis.atoms) || axis.atoms.length !== { bond: 2, angle: 3, dihedral: 4 }[axis.kind as "bond"]
+        || axis.atoms.some(atom => !Number.isInteger(atom) || atom < 0 || atom >= atoms.length)))
+      || !Array.isArray(path.points) || !path.points.length || path.points.length > SCIENCE_SESSION_LIMITS.frames
+      || path.points.some(point => !isRecord(point) || !finite(point.x) || !finite(point.energyHartree)
+        || (point.frame !== undefined && (!Number.isInteger(point.frame) || (point.frame as number) < 0 || (point.frame as number) >= frameCount))
+        || (point.converged !== undefined && typeof point.converged !== "boolean"))) {
+      fail("The scan or reaction path is not a list of points on this document's frames.");
+    }
+  }
   if (document.internalCoordinates !== undefined) {
     let real: MolecularAtom[];
     try {

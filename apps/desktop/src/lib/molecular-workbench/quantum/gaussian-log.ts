@@ -8,6 +8,8 @@ import { readThermochemistryLine } from './thermochemistry';
 import { readConvergence } from './convergence';
 import { GaussianPropertyReader } from './gaussian-log-properties';
 import { withFrameSpectra } from './excited-states';
+import { gaussianScanAxis, measureAxis, readGaussianIrcPoint } from './reaction-path';
+import type { ReactionPath } from '../scientific-types';
 
 const ORIENTATION = /^\s*(Standard|Input|Z-Matrix) orientation:\s*$/;
 const DASH = /^\s*-{5,}\s*$/;
@@ -30,6 +32,14 @@ export function parseGaussianLog(text: string, name = 'output'): ScientificDocum
   let coefficients: { frame: number; alpha?: GaussianMoSet; beta?: GaussianMoSet } = { frame: -1 };
   let eigenvalues: { frame: number; alpha: { energy: number; occupied: boolean }[]; beta: { energy: number; occupied: boolean }[] } = { frame: -1, alpha: [], beta: [] };
   let eigenvaluesOpen = false;
+  // A relaxed scan's optimization steps name their scan point; the last step of a point is its result.
+  const scanPoints = new Map<ScientificFrame, number>();
+  const scanConverged = new Map<number, boolean>();
+  let scanPoint: number | undefined;
+  // IRC points as Gaussian reports them after each corrector step; the TS energy is the job's start.
+  const ircPoints: Array<{ atoms: MolecularAtom[]; x: number; energy?: number }> = [];
+  let correctedEnergy: number | undefined;
+  let checkpointEnergy: number | undefined;
   for (let i = 0; i < lines.length; i++) {
     const heading = lines[i].match(ORIENTATION);
     if (heading) {
@@ -66,6 +76,20 @@ export function parseGaussianLog(text: string, name = 'output'): ScientificDocum
       continue;
     }
     eigenvaluesOpen = false;
+    const scanStep = lines[i].match(/Step number\s+\d+ out of a maximum of\s+\d+ on scan point\s+(\d+) out of\s+\d+/u);
+    if (scanStep && frame) { scanPoint = Number(scanStep[1]); scanPoints.set(frame, scanPoint); continue; }
+    const corrected = lines[i].match(/^\s*Corrected End Point Energy\s*=\s*(\S+)/u);
+    if (corrected) { correctedEnergy = numeric(corrected[1]); continue; }
+    const fromCheckpoint = lines[i].match(/^\s*Energy From Chk\s*=\s*(\S+)/u);
+    if (fromCheckpoint) { checkpointEnergy = numeric(fromCheckpoint[1]); continue; }
+    const ircPoint = readGaussianIrcPoint(lines, i);
+    if (ircPoint) {
+      if (frames.length) checkIdentity(ircPoint.atoms, frames[0].atoms);
+      ircPoints.push({ atoms: ircPoint.atoms, x: ircPoint.x, energy: correctedEnergy ?? frame?.energyHartree });
+      correctedEnergy = undefined;
+      i = ircPoint.end;
+      continue;
+    }
     if (readThermochemistryLine('gaussian', lines, i, frame) || readConvergence('gaussian', lines, i, frame) >= 0) continue;
     const propertyEnd = frame ? properties.read(lines, i, frame) : -1;
     if (propertyEnd >= 0) { i = propertyEnd; continue; }
@@ -122,8 +146,8 @@ export function parseGaussianLog(text: string, name = 'output'): ScientificDocum
       if (!frame) throw new Error('Gaussian correlated energy has no associated geometry.');
       frame.energyHartree = numeric(correlated.slice(1).find(Boolean)!);
     }
-    if (/Optimization completed\./.test(lines[i])) converged = true;
-    if (/Optimization stopped\.|Convergence failure/.test(lines[i])) converged = false;
+    if (/Optimization completed\./.test(lines[i])) { converged = true; if (scanPoint !== undefined) scanConverged.set(scanPoint, true); }
+    if (/Optimization stopped\.|Convergence failure/.test(lines[i])) { converged = false; if (scanPoint !== undefined) scanConverged.set(scanPoint, false); }
     // freq=hpmodes prints a `---` table of the same modes before the standard one.
     if (/^\s*Frequencies\s+--(?!-)/.test(lines[i])) {
       if (!frame) throw new Error('Gaussian frequencies have no associated geometry.');
@@ -196,8 +220,36 @@ export function parseGaussianLog(text: string, name = 'output'): ScientificDocum
     orbitals = [...table('alpha'), ...(restricted ? [] : table('beta'))];
   }
   const document: ScientificDocument = { format: xtb ? 'xtb' : 'gaussian-log', atoms: frames.at(-1)!.atoms, referenceFrameIndex: reference, frames, modes: frames.at(-1)!.modes ?? [], orbitals, ...(basis ? { basis } : {}), ...(converged === undefined ? {} : { converged }) };
+  if (ircPoints.length) return ircDocument(document, ircPoints, frames[0].energyHartree ?? checkpointEnergy);
+  const scan = scanPath(lines, frames, scanPoints, scanConverged);
+  if (scan) document.path = scan;
   const owner = (frame: ScientificFrame): number => { let current = frame; while (merged.has(current)) current = merged.get(current)!; return frames.indexOf(current); };
   return withFrameSpectra(document, name, properties.finish().map(({ frame, spectrum }) => ({ frame: owner(frame), spectrum })));
+}
+
+function scanPath(lines: string[], frames: ScientificFrame[], scanPoints: Map<ScientificFrame, number>, scanConverged: Map<number, boolean>): ReactionPath | undefined {
+  const axis = gaussianScanAxis(lines);
+  if (!axis || !scanPoints.size) return undefined;
+  const last = new Map<number, number>();
+  frames.forEach((frame, index) => { const point = scanPoints.get(frame); if (point !== undefined) last.set(point, index); });
+  const points = [...last].sort(([a], [b]) => a - b).flatMap(([point, frame]) => {
+    const energyHartree = frames[frame].energyHartree;
+    if (energyHartree === undefined) return [];
+    const x = 'atoms' in axis ? measureAxis(axis, frames[frame].atoms) : point;
+    return [{ x, energyHartree, frame, ...(scanConverged.has(point) ? { converged: scanConverged.get(point) } : {}) }];
+  });
+  return points.length > 1 ? { kind: 'scan', axis, points } : undefined;
+}
+
+/** An IRC opens as its path: the TS and every reported point, ordered by reaction coordinate. */
+function ircDocument(document: ScientificDocument, points: Array<{ atoms: MolecularAtom[]; x: number; energy?: number }>, tsEnergy: number | undefined): ScientificDocument {
+  const ordered = [{ atoms: document.frames[0].atoms, x: 0, energy: tsEnergy }, ...points].sort((a, b) => a.x - b.x);
+  const frames: ScientificFrame[] = ordered.map(point => ({ atoms: point.atoms, ...(point.energy !== undefined ? { energyHartree: point.energy } : {}) }));
+  const reference = ordered.findIndex(point => point.x === 0);
+  const path: ReactionPath | undefined = ordered.every(point => point.energy !== undefined)
+    ? { kind: 'irc', axis: { kind: 'reaction-coordinate' }, points: ordered.map((point, frame) => ({ x: point.x, energyHartree: point.energy!, frame })) }
+    : undefined;
+  return { ...document, atoms: frames[reference].atoms, referenceFrameIndex: reference, frames, modes: [], orbitals: [], ...(path ? { path } : {}) };
 }
 
 /** Orientation tables print six decimals; allow one unit of the last digit. */

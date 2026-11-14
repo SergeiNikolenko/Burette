@@ -5,6 +5,7 @@ import { atomicNumber, elementSymbol } from "./elements";
 import { parseXyz, serializeXyz } from "./xyz";
 import { parseExtendedFrame, trajectoryMetadata } from "./trajectory-metadata";
 import { parseGaussianLog } from "./quantum/gaussian-log";
+import { orcaPath, orcaTrajectoryPath } from "./quantum/reaction-path";
 import { parseGamessLog } from "./quantum/gamess-log";
 import { parseMolproLog } from "./quantum/molpro-log";
 import { parseNwchemLog } from "./quantum/nwchem-log";
@@ -138,20 +139,25 @@ function parseXyzTrajectory(text: string): ScientificDocument {
     const block = lines.slice(offset, offset + count + 2).join("\n");
     const comment = lines[offset + 1];
     const extended = parseExtendedFrame(comment, lines.slice(offset + 2, offset + count + 2));
-    frames.push(extended ?? { atoms: parseXyz(block).atoms, comment, ...trajectoryMetadata(comment) });
+    // ORCA's _trj.xyz files state each geometry's energy in Hartree as `E <value>`.
+    const orcaEnergy = comment.match(/^\s*Coordinates from ORCA-job \S+\s+E\s+([+-]?\d+\.\d+)\s*$/u);
+    frames.push(extended ?? { atoms: parseXyz(block).atoms, comment, ...trajectoryMetadata(comment), ...(orcaEnergy ? { energyHartree: number(orcaEnergy[1]) } : {}) });
     if (frames.length > MAX_FRAMES) throw new Error("XYZ trajectory exceeds 2000 frames.");
     offset += count + 2;
   }
   checkFrames(frames);
-  return { ...empty("xyz", frames[0].atoms), frames };
+  const path = orcaTrajectoryPath(frames);
+  return { ...empty("xyz", frames[0].atoms), frames, ...(path ? { path } : {}) };
 }
 
 function parseOrca(name: string, text: string): ScientificDocument {
   text = text.replace(/\r\n?/g, "\n");
   const lines = text.split("\n");
   const frames: ScientificFrame[] = [];
+  const geometryLines: number[] = [];
   for (let i = 0; i < lines.length; i++) {
     if (/CARTESIAN COORDINATES \(ANGSTROEM\)/.test(lines[i])) {
+      geometryLines.push(i);
       const atoms: MolecularAtom[] = [];
       while (++i < lines.length && (!lines[i].trim() || /^\s*-+\s*$/.test(lines[i]))) { /* header */ }
       for (; i < lines.length; i++) {
@@ -211,6 +217,8 @@ function parseOrca(name: string, text: string): ScientificDocument {
   });
   result.modes = frames.at(-1)!.modes ?? [];
   result.frames = withOrcaSourceSpectra(name, text, frames, geometries.map(geometry => geometry.index!), vcdTables);
+  const path = orcaPath(lines, geometryLines);
+  if (path) result.path = path;
   return validateParsedSpectra(result);
 }
 
