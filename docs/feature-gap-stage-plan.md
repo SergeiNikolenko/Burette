@@ -219,6 +219,24 @@ for the browser shell and on a `macvm` guest on Orion for the packaged app.
 - **Done when:** rotating a butane end about C2–C3 changes only that dihedral
   (checked against the Geometry panel), and each select command picks the
   expected atoms.
+- **Done (456298677, a54e18bb9, 486e5afaf):** **Move** sits next to Draw in the
+  Edit panel toolbar, where the draft lives, instead of on the selection bar. A
+  drag on an atom moves it, or the selection it belongs to; a drag on a bond
+  turns its smaller side about the bond (a ring bond stays with Mol*); ⌥-drag on
+  a bond stretches it along its axis, never below 0.5 Å; ⌥-drag on a selected
+  atom rotates the selection rigidly about its centre. The viewer moves the
+  scene live through the Geometry queue and each released drag is one
+  `positions` draft step, so one Undo step. The 3D context menu has a **Select**
+  section (all, none, invert, the shown elements, whole residues, enlarge, by
+  SMARTS…) and the command palette the same commands; SMARTS matching runs on
+  the draft's molfile with explicit hydrogens. Selection commands work at atom
+  level whatever the picking granularity. Tests: `test:atom-drag` turns, stretches
+  and rotates an anti butane on a real Mol* scene and checks that only the
+  intended lengths, angles and dihedral change; `test:smarts-select` covers the
+  pattern matching. Browser shell verified on Gauss in both themes on a 14-atom
+  butane: SMARTS `[CH3]` selects 2 atoms, Enlarge 10, Invert 4, all 14, none 0;
+  turning C2–C3 takes C1–C2–C3–C4 from 180° to −90° and Undo restores it; ⌥-drag
+  changes the C2–C3 length.
 
 ### Stage 21. Vector graphics and movies
 
