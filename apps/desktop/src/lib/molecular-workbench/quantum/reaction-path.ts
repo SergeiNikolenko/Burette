@@ -31,7 +31,7 @@ export function gaussianScanAxis(lines: string[]): ReactionPathAxis | undefined 
 
 /**
  * One converged IRC point: `Point Number: n  Path Number: p`, the `CURRENT STRUCTURE` table and the
- * net reaction coordinate. The reverse path (2) runs to negative coordinates, as Gaussian's summary does.
+ * net reaction coordinate, which Gaussian counts up from the TS on either path.
  */
 export function readGaussianIrcPoint(lines: string[], i: number) {
   const header = lines[i].match(/^\s*Point Number:\s*(\d+)\s+Path Number:\s*(\d+)\s*$/u);
@@ -48,9 +48,40 @@ export function readGaussianIrcPoint(lines: string[], i: number) {
   }
   for (let k = j; k < Math.min(lines.length, j + 6); k++) {
     const net = lines[k].match(/NET REACTION COORDINATE UP TO THIS POINT\s*=\s*(\S+)/u);
-    if (net) return { atoms, x: (header[2] === '2' ? -1 : 1) * numeric(net[1]), end: k };
+    if (net) return { atoms, x: numeric(net[1]), path: Number(header[2]), end: k };
   }
   throw new Error('Gaussian IRC point has no reaction coordinate.');
+}
+
+/**
+ * The Cartesian structure a job read from its checkpoint, listed after `No Z-Matrix found in chk file`.
+ * A job that starts from it prints no orientation table before its first step.
+ */
+export function readGaussianCheckpointStructure(lines: string[], i: number): MolecularAtom[] | null {
+  if (!/No Z-Matrix found in chk file; cartesian coordinates used\./u.test(lines[i])) return null;
+  const atoms: MolecularAtom[] = [];
+  for (let j = i + 1; j < lines.length; j++) {
+    const row = lines[j].match(/^\s*([A-Z][a-z]?)\s+(-?\d+\.\d+)\s+(-?\d+\.\d+)\s+(-?\d+\.\d+)\s*$/u);
+    if (!row) break;
+    atoms.push(coordinate(row[1], row.slice(2).map(numeric)));
+  }
+  return atoms.length ? atoms : null;
+}
+
+const centroid = (atoms: MolecularAtom[]) => (['x', 'y', 'z'] as const).map(k => atoms.reduce((sum, atom) => sum + atom[k], 0) / atoms.length);
+
+/**
+ * Gaussian reports IRC points in a frame centred on the centre of mass and the structure the path
+ * starts from in the input frame. This moves that structure to where the points' centroid, continued
+ * linearly to x = 0 from the nearest point on each side (or the nearest two on one side), puts it.
+ */
+export function inPathFrame(start: MolecularAtom[], points: Array<{ atoms: MolecularAtom[]; x: number }>): MolecularAtom[] {
+  const forward = points.filter(point => point.x > 0).sort((a, b) => a.x - b.x), reverse = points.filter(point => point.x < 0).sort((a, b) => b.x - a.x);
+  const [a, b] = forward.length && reverse.length ? [reverse[0], forward[0]] : forward.length ? forward : reverse;
+  if (!a) return start;
+  const from = centroid(a.atoms), to = b && b.x !== a.x ? centroid(b.atoms) : from, t = b && b.x !== a.x ? -a.x / (b.x - a.x) : 0;
+  const origin = centroid(start), shift = from.map((value, k) => value + (to[k] - value) * t - origin[k]);
+  return start.map(atom => ({ ...atom, x: atom.x + shift[0], y: atom.y + shift[1], z: atom.z + shift[2] }));
 }
 
 /**

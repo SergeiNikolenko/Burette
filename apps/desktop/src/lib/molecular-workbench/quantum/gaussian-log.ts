@@ -8,7 +8,7 @@ import { readThermochemistryLine } from './thermochemistry';
 import { readConvergence } from './convergence';
 import { GaussianPropertyReader } from './gaussian-log-properties';
 import { withFrameSpectra } from './excited-states';
-import { gaussianScanAxis, measureAxis, readGaussianIrcPoint } from './reaction-path';
+import { gaussianScanAxis, inPathFrame, measureAxis, readGaussianCheckpointStructure, readGaussianIrcPoint } from './reaction-path';
 import type { ReactionPath } from '../scientific-types';
 
 const ORIENTATION = /^\s*(Standard|Input|Z-Matrix) orientation:\s*$/;
@@ -36,10 +36,14 @@ export function parseGaussianLog(text: string, name = 'output'): ScientificDocum
   const scanPoints = new Map<ScientificFrame, number>();
   const scanConverged = new Map<number, boolean>();
   let scanPoint: number | undefined;
-  // IRC points as Gaussian reports them after each corrector step; the TS energy is the job's start.
+  // IRC points as Gaussian reports them after each corrector step. The path starts from the last
+  // geometry and energy before its first step: a computed TS, or the checkpoint's.
   const ircPoints: Array<{ atoms: MolecularAtom[]; x: number; energy?: number }> = [];
+  let ircStart: { atoms?: MolecularAtom[]; energy?: number } | undefined;
+  let ircReverse: boolean | undefined;
   let correctedEnergy: number | undefined;
   let checkpointEnergy: number | undefined;
+  let checkpointAtoms: MolecularAtom[] | undefined;
   for (let i = 0; i < lines.length; i++) {
     const heading = lines[i].match(ORIENTATION);
     if (heading) {
@@ -82,10 +86,15 @@ export function parseGaussianLog(text: string, name = 'output'): ScientificDocum
     if (corrected) { correctedEnergy = numeric(corrected[1]); continue; }
     const fromCheckpoint = lines[i].match(/^\s*Energy From Chk\s*=\s*(\S+)/u);
     if (fromCheckpoint) { checkpointEnergy = numeric(fromCheckpoint[1]); continue; }
+    checkpointAtoms ??= readGaussianCheckpointStructure(lines, i) ?? undefined;
+    if (!ircStart && /Start new reaction path calculation/u.test(lines[i])) { ircStart = { atoms: frame?.atoms ?? checkpointAtoms, energy: frame?.energyHartree }; continue; }
+    // A reverse-only job numbers its one path 1, so the stated direction decides the sign.
+    const direction = lines[i].match(/^\s*Point Number\s+\d+ in (FORWARD|REVERSE) path direction\./u);
+    if (direction) { ircReverse = direction[1] === 'REVERSE'; continue; }
     const ircPoint = readGaussianIrcPoint(lines, i);
     if (ircPoint) {
       if (frames.length) checkIdentity(ircPoint.atoms, frames[0].atoms);
-      ircPoints.push({ atoms: ircPoint.atoms, x: ircPoint.x, energy: correctedEnergy ?? frame?.energyHartree });
+      ircPoints.push({ atoms: ircPoint.atoms, x: (ircReverse ?? ircPoint.path === 2 ? -1 : 1) * ircPoint.x, energy: correctedEnergy ?? frame?.energyHartree });
       correctedEnergy = undefined;
       i = ircPoint.end;
       continue;
@@ -223,7 +232,7 @@ export function parseGaussianLog(text: string, name = 'output'): ScientificDocum
     orbitals = [...table('alpha'), ...(restricted ? [] : table('beta'))];
   }
   const document: ScientificDocument = { format: xtb ? 'xtb' : 'gaussian-log', atoms: frames.at(-1)!.atoms, referenceFrameIndex: reference, frames, modes: frames.at(-1)!.modes ?? [], orbitals, ...(basis ? { basis } : {}), ...(converged === undefined ? {} : { converged }) };
-  if (ircPoints.length) return ircDocument(document, ircPoints, frames[0].energyHartree ?? checkpointEnergy);
+  if (ircPoints.length) return ircDocument(document, ircPoints, { atoms: ircStart?.atoms, energy: ircStart?.energy ?? checkpointEnergy });
   const scan = scanPath(lines, frames, scanPoints, scanConverged);
   if (scan) document.path = scan;
   const owner = (frame: ScientificFrame): number => { let current = frame; while (merged.has(current)) current = merged.get(current)!; return frames.indexOf(current); };
@@ -244,13 +253,23 @@ function scanPath(lines: string[], frames: ScientificFrame[], scanPoints: Map<Sc
   return points.length > 1 ? { kind: 'scan', axis, points } : undefined;
 }
 
-/** An IRC opens as its path: the TS and every reported point, ordered by reaction coordinate. */
-function ircDocument(document: ScientificDocument, points: Array<{ atoms: MolecularAtom[]; x: number; energy?: number }>, tsEnergy: number | undefined): ScientificDocument {
-  const ordered = [{ atoms: document.frames[0].atoms, x: 0, energy: tsEnergy }, ...points].sort((a, b) => a.x - b.x);
-  const frames: ScientificFrame[] = ordered.map(point => ({ atoms: point.atoms, ...(point.energy !== undefined ? { energyHartree: point.energy } : {}) }));
-  const reference = ordered.findIndex(point => point.x === 0);
-  const path: ReactionPath | undefined = ordered.every(point => point.energy !== undefined)
-    ? { kind: 'irc', axis: { kind: 'reaction-coordinate' }, points: ordered.map((point, frame) => ({ x: point.x, energyHartree: point.energy!, frame })) }
+/**
+ * An IRC opens as its path: the TS and every reported point, ordered by reaction coordinate. The TS
+ * has a geometry when the job printed or read one before its first step.
+ */
+function ircDocument(document: ScientificDocument, points: Array<{ atoms: MolecularAtom[]; x: number; energy?: number }>, start: { atoms?: MolecularAtom[]; energy?: number }): ScientificDocument {
+  const ts = start.atoms?.length === points[0].atoms.length ? inPathFrame(start.atoms, points) : undefined;
+  const ordered = [{ atoms: ts, x: 0, energy: start.energy }, ...points].sort((a, b) => a.x - b.x);
+  const frames: ScientificFrame[] = [];
+  const located = ordered.map(point => {
+    if (!point.atoms) return { ...point, frame: undefined };
+    frames.push({ atoms: point.atoms, ...(point.energy !== undefined ? { energyHartree: point.energy } : {}) });
+    return { ...point, frame: frames.length - 1 };
+  });
+  // Without a TS geometry the reference is the reported point nearest to it.
+  const reference = located.filter(point => point.frame !== undefined).reduce((best, point) => (Math.abs(point.x) < Math.abs(best.x) ? point : best)).frame!;
+  const path: ReactionPath | undefined = located.every(point => point.energy !== undefined)
+    ? { kind: 'irc', axis: { kind: 'reaction-coordinate' }, points: located.map(point => ({ x: point.x, energyHartree: point.energy!, ...(point.frame !== undefined ? { frame: point.frame } : {}) })) }
     : undefined;
   return { ...document, atoms: frames[reference].atoms, referenceFrameIndex: reference, frames, modes: [], orbitals: [], ...(path ? { path } : {}) };
 }

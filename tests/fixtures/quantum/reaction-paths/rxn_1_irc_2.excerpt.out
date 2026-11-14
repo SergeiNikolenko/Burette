@@ -1,0 +1,2002 @@
+ Entering Gaussian System, Link 0=/Local/ce_dana/g09/g09
+ Initial command:
+ /Local/ce_dana/g09/l1.exe "/storage/ce_dana/alongd/scratch/g09/Gau-277065.inp" -scrdir="/storage/ce_dana/alongd/scratch/g09/"
+ Entering Link 1 = /Local/ce_dana/g09/l1.exe PID=    277069.
+  
+ Copyright (c) 1988,1990,1992,1993,1995,1998,2003,2009,2013,
+            Gaussian, Inc.  All Rights Reserved.
+  
+ This is part of the Gaussian(R) 09 program.  It is based on
+ the Gaussian(R) 03 system (copyright 2003, Gaussian, Inc.),
+ the Gaussian(R) 98 system (copyright 1998, Gaussian, Inc.),
+ the Gaussian(R) 94 system (copyright 1995, Gaussian, Inc.),
+ the Gaussian 92(TM) system (copyright 1992, Gaussian, Inc.),
+ the Gaussian 90(TM) system (copyright 1990, Gaussian, Inc.),
+ the Gaussian 88(TM) system (copyright 1988, Gaussian, Inc.),
+ the Gaussian 86(TM) system (copyright 1986, Carnegie Mellon
+ University), and the Gaussian 82(TM) system (copyright 1983,
+ Carnegie Mellon University). Gaussian is a federally registered
+ trademark of Gaussian, Inc.
+  
+ This software contains proprietary and confidential information,
+ including trade secrets, belonging to Gaussian, Inc.
+  
+ This software is provided under written license and may be
+ used, copied, transmitted, or stored only in accord with that
+ written license.
+  
+ The following legend is applicable only to US Government
+ contracts under FAR:
+  
+                    RESTRICTED RIGHTS LEGEND
+  
+ Use, reproduction and disclosure by the US Government is
+ subject to restrictions as set forth in subparagraphs (a)
+ and (c) of the Commercial Computer Software - Restricted
+ Rights clause in FAR 52.227-19.
+  
+ Gaussian, Inc.
+ 340 Quinnipiac St., Bldg. 40, Wallingford CT 06492
+  
+  
+ ---------------------------------------------------------------
+ Warning -- This program may not be used in any manner that
+ competes with the business of Gaussian, Inc. or will provide
+ assistance to any competitor of Gaussian, Inc.  The licensee
+ of this program is prohibited from giving any competitor of
+ Gaussian, Inc. access to this program.  By using this program,
+ the user acknowledges that Gaussian, Inc. is engaged in the
+ business of creating and licensing software in the field of
+ computational chemistry and represents and warrants to the
+ licensee that it is not a competitor of Gaussian, Inc. and that
+ it will not use this program in any manner prohibited above.
+ ---------------------------------------------------------------
+  
+
+ Cite this work as:
+ Gaussian 09, Revision D.01,
+ M. J. Frisch, G. W. Trucks, H. B. Schlegel, G. E. Scuseria, 
+ M. A. Robb, J. R. Cheeseman, G. Scalmani, V. Barone, B. Mennucci, 
+ G. A. Petersson, H. Nakatsuji, M. Caricato, X. Li, H. P. Hratchian, 
+ A. F. Izmaylov, J. Bloino, G. Zheng, J. L. Sonnenberg, M. Hada, 
+ M. Ehara, K. Toyota, R. Fukuda, J. Hasegawa, M. Ishida, T. Nakajima, 
+ Y. Honda, O. Kitao, H. Nakai, T. Vreven, J. A. Montgomery, Jr., 
+ J. E. Peralta, F. Ogliaro, M. Bearpark, J. J. Heyd, E. Brothers, 
+ K. N. Kudin, V. N. Staroverov, T. Keith, R. Kobayashi, J. Normand, 
+ K. Raghavachari, A. Rendell, J. C. Burant, S. S. Iyengar, J. Tomasi, 
+ M. Cossi, N. Rega, J. M. Millam, M. Klene, J. E. Knox, J. B. Cross, 
+ V. Bakken, C. Adamo, J. Jaramillo, R. Gomperts, R. E. Stratmann, 
+ O. Yazyev, A. J. Austin, R. Cammi, C. Pomelli, J. W. Ochterski, 
+ R. L. Martin, K. Morokuma, V. G. Zakrzewski, G. A. Voth, 
+ P. Salvador, J. J. Dannenberg, S. Dapprich, A. D. Daniels, 
+ O. Farkas, J. B. Foresman, J. V. Ortiz, J. Cioslowski, 
+ and D. J. Fox, Gaussian, Inc., Wallingford CT, 2013.
+ 
+ ******************************************
+ Gaussian 09:  ES64L-G09RevD.01 24-Apr-2013
+                12-Jun-2022 
+ ******************************************
+ %chk=check.chk
+ %mem=7168mb
+ %NProcShared=10
+ Will use up to   10 processors via shared memory.
+ ----------------------------------------------------------------------
+ #P irc=(CalcAll, reverse, maxpoints=50, stepsize=7) guess=read ub3lyp/
+ cbsb7 IOp(2/9=2000) scf=xqc
+ ----------------------------------------------------------------------
+ 1/10=4,14=-1,18=10,22=2,26=3,38=1,39=7,42=50,44=3,71=1/1,23;
+ 2/9=2000,12=2,17=6,18=5,29=1,40=1/2;
+ 3/5=4,6=6,7=700,11=2,16=1,25=1,30=1,71=2,74=-5,116=2,140=1/1,2,3;
+ 4/5=1/1;
+ 5/5=2,8=3,13=1,38=6/2,8;
+ 8/6=4,10=90,11=11/1;
+ 11/6=1,8=1,9=11,15=111,16=1/1,2,10;
+ 10/6=1,13=1/2;
+ 6/7=2,8=2,9=2,10=2,18=1,28=1/1;
+ 7/10=1,25=1/1,2,3,16;
+ 1/10=4,14=-1,18=10,22=2,26=3,39=7,42=50,44=3,71=1/23(2);
+ 2/9=2000,29=1/2;
+ 99/5=20/99;
+ 2/9=2000,29=1/2;
+ 3/5=4,6=6,7=700,11=2,16=1,25=1,30=1,71=2,74=-5,116=2,140=1/1,2,3;
+ 4/5=5,16=3,69=1/1;
+ 5/5=2,8=3,13=1,38=5/2,8;
+ 8/6=4,10=90,11=11/1;
+ 11/6=1,8=1,9=11,15=111,16=1/1,2,10;
+ 10/6=1,13=1/2;
+ 7/10=1,25=1/1,2,3,16;
+ 1/10=4,14=-1,18=10,22=2,26=3,39=7,42=50,44=3,71=1/23(-8);
+ 2/9=2000,29=1/2;
+ 6/7=2,8=2,9=2,10=2,18=1,19=2,28=1/1;
+ 99/5=20/99;
+ Leave Link    1 at Sun Jun 12 00:15:07 2022, MaxMem=   939524096 cpu:         0.0
+ (Enter /Local/ce_dana/g09/l101.exe)
+ ---
+ TS1
+ ---
+ Symbolic Z-matrix:
+ Charge =  0 Multiplicity = 2
+ O                    -0.97512   1.69354   1.01983 
+ C                    -0.71802   1.02817   0.0855 
+ C                    -0.45859  -0.50618  -0.03441 
+ O                    -0.62575  -0.73178  -1.41019 
+ O                     0.05667   0.32948  -2.03957 
+ H                    -0.37414   1.19221  -1.20334 
+ H                     0.57698  -0.65773   0.29594 
+ H                    -1.15875  -1.12976   0.52336 
+ 
+ NAtoms=      8 NQM=        8 NQMF=       0 NMMI=      0 NMMIF=      0
+                NMic=       0 NMicF=      0.
+                    Isotopes and Nuclear Properties:
+ (Nuclear quadrupole moments (NQMom) in fm**2, nuclear magnetic moments (NMagM)
+  in nuclear magnetons)
+
+  Atom         1           2           3           4           5           6           7           8
+ IAtWgt=          16          12          12          16          16           1           1           1
+ AtmWgt=  15.9949146  12.0000000  12.0000000  15.9949146  15.9949146   1.0078250   1.0078250   1.0078250
+ NucSpn=           0           0           0           0           0           1           1           1
+ AtZEff=   0.0000000   0.0000000   0.0000000   0.0000000   0.0000000   0.0000000   0.0000000   0.0000000
+ NQMom=    0.0000000   0.0000000   0.0000000   0.0000000   0.0000000   0.0000000   0.0000000   0.0000000
+ NMagM=    0.0000000   0.0000000   0.0000000   0.0000000   0.0000000   2.7928460   2.7928460   2.7928460
+ AtZNuc=   8.0000000   6.0000000   6.0000000   8.0000000   8.0000000   1.0000000   1.0000000   1.0000000
+ Leave Link  101 at Sun Jun 12 00:15:07 2022, MaxMem=   939524096 cpu:         0.1
+ (Enter /Local/ce_dana/g09/l123.exe)
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ ------------------------------------------------------------------------
+ INPUT DATA FOR L123
+ ------------------------------------------------------------------------
+ GENERAL PARAMETERS:
+ Rxn path following direction = Reverse
+ Maximum points per path      =  50
+ Step size                    =   0.070 bohr
+ Integration scheme           = HPC                                 
+    Redo corrector integration= Yes                                 
+    DWI Weight Power          =  2
+    DWI will use Hessian update vectors when possible.
+    Max correction cycles     =  20
+ Initial Hessian              = CalcFC
+ Hessian evaluation           = Analytic at all predictor steps
+                              = Update at all corrector steps
+ Hessian updating method      = Bofill                              
+ ------------------------------------------------------------------------
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Leave Link  123 at Sun Jun 12 00:15:07 2022, MaxMem=   939524096 cpu:         0.0
+ (Enter /Local/ce_dana/g09/l202.exe)
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.975117    1.693544    1.019828
+      2          6           0       -0.718021    1.028168    0.085502
+      3          6           0       -0.458586   -0.506183   -0.034413
+      4          8           0       -0.625751   -0.731784   -1.410192
+      5          8           0        0.056671    0.329477   -2.039574
+      6          1           0       -0.374140    1.192211   -1.203343
+      7          1           0        0.576975   -0.657727    0.295940
+      8          1           0       -1.158748   -1.129757    0.523356
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.577879721     A.U. after   17 cycles
+          ******** Start new reaction path calculation ********
+ Point Number  1 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.444791    1.342663    1.534867
+      2          6           0       -0.187134    0.677362    0.599402
+      3          6           0        0.071730   -0.857106    0.481094
+      4          8           0       -0.095033   -1.081916   -0.895435
+      5          8           0        0.587210   -0.023065   -1.525077
+      6          1           0        0.142806    0.858450   -0.658319
+      7          1           0        1.107222   -1.008956    0.810694
+      8          1           0       -0.627998   -1.481496    1.038189
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.578203085     A.U. after   17 cycles
+   Corrected End Point Energy =  -303.578203
+ Point Number:   1          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.444795    1.342667    1.534883
+      2          6                   -0.187137    0.677354    0.599416
+      3          6                    0.071735   -0.857085    0.481110
+      4          8                   -0.095026   -1.081907   -0.895453
+      5          8                    0.587213   -0.023091   -1.525089
+      6          1                    0.142722    0.858548   -0.658446
+      7          1                    1.107217   -1.009005    0.810672
+      8          1                   -0.628006   -1.481488    1.038171
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07236
+   NET REACTION COORDINATE UP TO THIS POINT =    0.07236
+ Point Number  2 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.444853    1.342655    1.534840
+      2          6           0       -0.186645    0.677383    0.598235
+      3          6           0        0.071693   -0.857064    0.481533
+      4          8           0       -0.094641   -1.081138   -0.895924
+      5          8           0        0.587393   -0.024894   -1.525803
+      6          1           0        0.129078    0.876021   -0.629059
+      7          1           0        1.107084   -1.009607    0.810202
+      8          1           0       -0.627654   -1.482345    1.037787
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.579127649     A.U. after   17 cycles
+   Corrected End Point Energy =  -303.579128
+ Point Number:   2          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.444854    1.342656    1.534846
+      2          6                   -0.186648    0.677380    0.598243
+      3          6                    0.071694   -0.857056    0.481540
+      4          8                   -0.094636   -1.081133   -0.895932
+      5          8                    0.587393   -0.024908   -1.525808
+      6          1                    0.129061    0.876081   -0.629121
+      7          1                    1.107082   -1.009633    0.810193
+      8          1                   -0.627656   -1.482345    1.037781
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07233
+   NET REACTION COORDINATE UP TO THIS POINT =    0.14469
+ Point Number  3 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.444926    1.342652    1.534864
+      2          6           0       -0.186183    0.677396    0.597139
+      3          6           0        0.071656   -0.856959    0.482021
+      4          8           0       -0.094208   -1.080309   -0.896477
+      5          8           0        0.587571   -0.026835   -1.526572
+      6          1           0        0.115292    0.893990   -0.600232
+      7          1           0        1.106940   -1.010451    0.809662
+      8          1           0       -0.627320   -1.483194    1.037350
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.580546881     A.U. after   17 cycles
+   Corrected End Point Energy =  -303.580547
+ Point Number:   3          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.444927    1.342652    1.534869
+      2          6                   -0.186185    0.677394    0.597148
+      3          6                    0.071656   -0.856953    0.482026
+      4          8                   -0.094203   -1.080304   -0.896484
+      5          8                    0.587570   -0.026847   -1.526576
+      6          1                    0.115279    0.894056   -0.600299
+      7          1                    1.106940   -1.010471    0.809655
+      8          1                   -0.627322   -1.483194    1.037346
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07234
+   NET REACTION COORDINATE UP TO THIS POINT =    0.21703
+ Point Number  4 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.445015    1.342654    1.534957
+      2          6           0       -0.185752    0.677394    0.596150
+      3          6           0        0.071623   -0.856768    0.482572
+      4          8           0       -0.093722   -1.079408   -0.897117
+      5          8           0        0.587745   -0.028930   -1.527397
+      6          1           0        0.101336    0.912592   -0.572149
+      7          1           0        1.106790   -1.011529    0.809052
+      8          1           0       -0.627012   -1.484028    1.036863
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.582320409     A.U. after   18 cycles
+   Corrected End Point Energy =  -303.582320
+ Point Number:   4          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.445017    1.342654    1.534961
+      2          6                   -0.185754    0.677392    0.596160
+      3          6                    0.071623   -0.856763    0.482576
+      4          8                   -0.093717   -1.079403   -0.897124
+      5          8                    0.587744   -0.028943   -1.527400
+      6          1                    0.101323    0.912669   -0.572230
+      7          1                    1.106790   -1.011546    0.809046
+      8          1                   -0.627013   -1.484028    1.036860
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07234
+   NET REACTION COORDINATE UP TO THIS POINT =    0.28937
+ Point Number  5 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.445126    1.342658    1.535139
+      2          6           0       -0.185361    0.677374    0.595311
+      3          6           0        0.071596   -0.856470    0.483193
+      4          8           0       -0.093167   -1.078415   -0.897866
+      5          8           0        0.587914   -0.031228   -1.528289
+      6          1           0        0.087164    0.932070   -0.545170
+      7          1           0        1.106635   -1.012885    0.808356
+      8          1           0       -0.626739   -1.484835    1.036317
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.584294957     A.U. after   18 cycles
+   Corrected End Point Energy =  -303.584295
+ Point Number:   5          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.445127    1.342658    1.535144
+      2          6                   -0.185363    0.677372    0.595323
+      3          6                    0.071596   -0.856464    0.483197
+      4          8                   -0.093163   -1.078410   -0.897872
+      5          8                    0.587914   -0.031241   -1.528293
+      6          1                    0.087154    0.932156   -0.545270
+      7          1                    1.106635   -1.012902    0.808351
+      8          1                   -0.626741   -1.484834    1.036315
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07233
+   NET REACTION COORDINATE UP TO THIS POINT =    0.36170
+ Point Number  6 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.445264    1.342662    1.535440
+      2          6           0       -0.185024    0.677335    0.594674
+      3          6           0        0.071576   -0.856032    0.483892
+      4          8           0       -0.092528   -1.077306   -0.898746
+      5          8           0        0.588079   -0.033784   -1.529267
+      6          1           0        0.072748    0.952660   -0.519785
+      7          1           0        1.106471   -1.014573    0.807562
+      8          1           0       -0.626519   -1.485587    1.035704
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.586327452     A.U. after   18 cycles
+   Corrected End Point Energy =  -303.586327
+ Point Number:   6          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.445265    1.342662    1.535445
+      2          6                   -0.185027    0.677333    0.594688
+      3          6                    0.071576   -0.856027    0.483895
+      4          8                   -0.092524   -1.077301   -0.898752
+      5          8                    0.588079   -0.033796   -1.529270
+      6          1                    0.072742    0.952750   -0.519904
+      7          1                    1.106471   -1.014588    0.807557
+      8          1                   -0.626521   -1.485585    1.035702
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07232
+   NET REACTION COORDINATE UP TO THIS POINT =    0.43402
+ Point Number  7 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.445435    1.342659    1.535902
+      2          6           0       -0.184760    0.677283    0.594297
+      3          6           0        0.071570   -0.855416    0.484668
+      4          8           0       -0.091785   -1.076060   -0.899785
+      5          8           0        0.588241   -0.036654   -1.530350
+      6          1           0        0.058088    0.974499   -0.496596
+      7          1           0        1.106296   -1.016644    0.806659
+      8          1           0       -0.626376   -1.486234    1.035014
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.588304816     A.U. after   18 cycles
+   Corrected End Point Energy =  -303.588305
+ Point Number:   7          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.445436    1.342658    1.535906
+      2          6                   -0.184763    0.677281    0.594311
+      3          6                    0.071570   -0.855411    0.484670
+      4          8                   -0.091782   -1.076056   -0.899790
+      5          8                    0.588241   -0.036665   -1.530353
+      6          1                    0.058089    0.974581   -0.496731
+      7          1                    1.106295   -1.016656    0.806656
+      8          1                   -0.626379   -1.486231    1.035012
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07230
+   NET REACTION COORDINATE UP TO THIS POINT =    0.50632
+ Point Number  8 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.445648    1.342640    1.536579
+      2          6           0       -0.184590    0.677240    0.594223
+      3          6           0        0.071582   -0.854575    0.485513
+      4          8           0       -0.090926   -1.074666   -0.901002
+      5          8           0        0.588405   -0.039889   -1.531562
+      6          1           0        0.043226    0.997457   -0.476193
+      7          1           0        1.106099   -1.019132    0.805648
+      8          1           0       -0.626345   -1.486697    1.034236
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.590155312     A.U. after   18 cycles
+   Corrected End Point Energy =  -303.590155
+ Point Number:   8          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.445649    1.342639    1.536584
+      2          6                   -0.184593    0.677239    0.594234
+      3          6                    0.071582   -0.854571    0.485513
+      4          8                   -0.090924   -1.074663   -0.901005
+      5          8                    0.588405   -0.039897   -1.531564
+      6          1                    0.043232    0.997517   -0.476325
+      7          1                    1.106098   -1.019141    0.805646
+      8          1                   -0.626349   -1.486693    1.034236
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07229
+   NET REACTION COORDINATE UP TO THIS POINT =    0.57861
+ Point Number  9 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.445909    1.342592    1.537536
+      2          6           0       -0.184532    0.677254    0.594451
+      3          6           0        0.071623   -0.853466    0.486401
+      4          8           0       -0.089947   -1.073126   -0.902403
+      5          8           0        0.588581   -0.043515   -1.532921
+      6          1           0        0.028217    1.021008   -0.458879
+      7          1           0        1.105867   -1.022031    0.804545
+      8          1           0       -0.626470   -1.486867    1.033365
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.591846685     A.U. after   18 cycles
+   Corrected End Point Energy =  -303.591846
+ Point Number:   9          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.445909    1.342592    1.537540
+      2          6                   -0.184534    0.677254    0.594460
+      3          6                    0.071623   -0.853463    0.486401
+      4          8                   -0.089946   -1.073125   -0.902405
+      5          8                    0.588581   -0.043520   -1.532923
+      6          1                    0.028226    1.021040   -0.458986
+      7          1                    1.105866   -1.022036    0.804544
+      8          1                   -0.626473   -1.486862    1.033365
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07228
+   NET REACTION COORDINATE UP TO THIS POINT =    0.65089
+ Point Number 10 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.446219    1.342499    1.538835
+      2          6           0       -0.184604    0.677401    0.594937
+      3          6           0        0.071701   -0.852054    0.487298
+      4          8           0       -0.088854   -1.071461   -0.903982
+      5          8           0        0.588783   -0.047534   -1.534449
+      6          1           0        0.013104    1.044314   -0.444517
+      7          1           0        1.105584   -1.025287    0.803377
+      8          1           0       -0.626792   -1.486620    1.032395
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.593373085     A.U. after   18 cycles
+   Corrected End Point Energy =  -303.593373
+ Point Number:  10          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.446219    1.342498    1.538839
+      2          6                   -0.184605    0.677403    0.594942
+      3          6                    0.071701   -0.852052    0.487297
+      4          8                   -0.088854   -1.071462   -0.903983
+      5          8                    0.588784   -0.047536   -1.534450
+      6          1                    0.013112    1.044321   -0.444589
+      7          1                    1.105582   -1.025289    0.803377
+      8          1                   -0.626796   -1.486615    1.032395
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07228
+   NET REACTION COORDINATE UP TO THIS POINT =    0.72318
+ Point Number 11 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.446577    1.342338    1.540533
+      2          6           0       -0.184822    0.677770    0.595609
+      3          6           0        0.071822   -0.850315    0.488166
+      4          8           0       -0.087662   -1.069708   -0.905717
+      5          8           0        0.589036   -0.051932   -1.536171
+      6          1           0       -0.002080    1.066457   -0.432672
+      7          1           0        1.105231   -1.028801    0.802183
+      8          1           0       -0.627353   -1.485835    1.031321
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.594742143     A.U. after   18 cycles
+   Corrected End Point Energy =  -303.594742
+ Point Number:  11          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.446577    1.342337    1.540536
+      2          6                   -0.184824    0.677772    0.595611
+      3          6                    0.071822   -0.850314    0.488165
+      4          8                   -0.087662   -1.069709   -0.905717
+      5          8                    0.589037   -0.051932   -1.536172
+      6          1                   -0.002073    1.066448   -0.432716
+      7          1                    1.105229   -1.028800    0.802183
+      8          1                   -0.627355   -1.485831    1.031322
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07228
+   NET REACTION COORDINATE UP TO THIS POINT =    0.79546
+ Point Number 12 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.446975    1.342089    1.542672
+      2          6           0       -0.185209    0.678443    0.596400
+      3          6           0        0.071989   -0.848237    0.488967
+      4          8           0       -0.086394   -1.067915   -0.907573
+      5          8           0        0.589367   -0.056672   -1.538115
+      6          1           0       -0.017255    1.086647   -0.422906
+      7          1           0        1.104794   -1.032436    0.801001
+      8          1           0       -0.628180   -1.484415    1.030146
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.595968849     A.U. after   17 cycles
+   Corrected End Point Energy =  -303.595968
+ Point Number:  12          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.446975    1.342088    1.542674
+      2          6                   -0.185210    0.678446    0.596401
+      3          6                    0.071989   -0.848237    0.488965
+      4          8                   -0.086395   -1.067916   -0.907572
+      5          8                    0.589369   -0.056671   -1.538116
+      6          1                   -0.017248    1.086628   -0.422930
+      7          1                    1.104792   -1.032433    0.801002
+      8          1                   -0.628181   -1.484412    1.030146
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07227
+   NET REACTION COORDINATE UP TO THIS POINT =    0.86773
+ Point Number 13 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.447400    1.341735    1.545267
+      2          6           0       -0.185787    0.679475    0.597259
+      3          6           0        0.072195   -0.845830    0.489663
+      4          8           0       -0.085084   -1.066144   -0.909498
+      5          8           0        0.589809   -0.061692   -1.540305
+      6          1           0       -0.032263    1.104344   -0.414911
+      7          1           0        1.104268   -1.036020    0.799878
+      8          1           0       -0.629283   -1.482305    1.028880
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.597073022     A.U. after   17 cycles
+   Corrected End Point Energy =  -303.597072
+ Point Number:  13          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.447400    1.341734    1.545268
+      2          6                   -0.185787    0.679478    0.597259
+      3          6                    0.072196   -0.845830    0.489662
+      4          8                   -0.085085   -1.066146   -0.909497
+      5          8                    0.589810   -0.061690   -1.540306
+      6          1                   -0.032255    1.104320   -0.414923
+      7          1                    1.104266   -1.036015    0.799878
+      8          1                   -0.629284   -1.482303    1.028881
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07227
+   NET REACTION COORDINATE UP TO THIS POINT =    0.94000
+ Point Number 14 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.447835    1.341263    1.548300
+      2          6           0       -0.186573    0.680884    0.598152
+      3          6           0        0.072430   -0.843119    0.490228
+      4          8           0       -0.083770   -1.064464   -0.911432
+      5          8           0        0.590390   -0.066900   -1.542754
+      6          1           0       -0.046895    1.119330   -0.408483
+      7          1           0        1.103658   -1.039361    0.798856
+      8          1           0       -0.630646   -1.479508    1.027549
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.598076332     A.U. after   16 cycles
+   Corrected End Point Energy =  -303.598076
+ Point Number:  14          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.447835    1.341262    1.548300
+      2          6                   -0.186574    0.680886    0.598152
+      3          6                    0.072431   -0.843119    0.490227
+      4          8                   -0.083772   -1.064467   -0.911430
+      5          8                    0.590391   -0.066897   -1.542755
+      6          1                   -0.046888    1.119307   -0.408488
+      7          1                    1.103655   -1.039356    0.798856
+      8          1                   -0.630646   -1.479507    1.027550
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07227
+   NET REACTION COORDINATE UP TO THIS POINT =    1.01227
+ Point Number 15 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.448258    1.340673    1.551718
+      2          6           0       -0.187576    0.682642    0.599058
+      3          6           0        0.072674   -0.840147    0.490642
+      4          8           0       -0.082492   -1.062939   -0.913309
+      5          8           0        0.591133   -0.072195   -1.545462
+      6          1           0       -0.060957    1.131721   -0.403429
+      7          1           0        1.102972   -1.042284    0.797972
+      8          1           0       -0.632221   -1.476091    1.026189
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.598998959     A.U. after   15 cycles
+   Corrected End Point Energy =  -303.598999
+ Point Number:  15          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.448257    1.340672    1.551717
+      2          6                   -0.187577    0.682643    0.599058
+      3          6                    0.072675   -0.840148    0.490641
+      4          8                   -0.082494   -1.062941   -0.913307
+      5          8                    0.591134   -0.072192   -1.545463
+      6          1                   -0.060951    1.131700   -0.403429
+      7          1                    1.102970   -1.042280    0.797972
+      8          1                   -0.632220   -1.476090    1.026189
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07228
+   NET REACTION COORDINATE UP TO THIS POINT =    1.08456
+ Point Number 16 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.448650    1.339969    1.555451
+      2          6           0       -0.188790    0.684696    0.599964
+      3          6           0        0.072905   -0.836962    0.490901
+      4          8           0       -0.081280   -1.061613   -0.915079
+      5          8           0        0.592047   -0.077487   -1.548415
+      6          1           0       -0.074319    1.141876   -0.399516
+      7          1           0        1.102227   -1.044651    0.797250
+      8          1           0       -0.633941   -1.472159    1.024837
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.599857383     A.U. after   15 cycles
+   Corrected End Point Energy =  -303.599857
+ Point Number:  16          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.448649    1.339968    1.555450
+      2          6                   -0.188791    0.684697    0.599965
+      3          6                    0.072906   -0.836962    0.490900
+      4          8                   -0.081282   -1.061614   -0.915077
+      5          8                    0.592048   -0.077484   -1.548417
+      6          1                   -0.074314    1.141860   -0.399512
+      7          1                    1.102225   -1.044646    0.797250
+      8          1                   -0.633940   -1.472159    1.024837
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07230
+   NET REACTION COORDINATE UP TO THIS POINT =    1.15685
+ Point Number 17 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.448996    1.339161    1.559426
+      2          6           0       -0.190203    0.686982    0.600863
+      3          6           0        0.073105   -0.833607    0.491007
+      4          8           0       -0.080151   -1.060507   -0.916706
+      5          8           0        0.593132   -0.082710   -1.551591
+      6          1           0       -0.086930    1.150273   -0.396481
+      7          1           0        1.101436   -1.046372    0.796699
+      8          1           0       -0.635732   -1.467837    1.023526
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.600663870     A.U. after   15 cycles
+   Corrected End Point Energy =  -303.600664
+ Point Number:  17          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.448996    1.339161    1.559425
+      2          6                   -0.190203    0.686983    0.600864
+      3          6                    0.073105   -0.833608    0.491006
+      4          8                   -0.080152   -1.060508   -0.916705
+      5          8                    0.593133   -0.082708   -1.551592
+      6          1                   -0.086927    1.150260   -0.396476
+      7          1                    1.101434   -1.046369    0.796700
+      8          1                   -0.635731   -1.467836    1.023526
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07231
+   NET REACTION COORDINATE UP TO THIS POINT =    1.22917
+ Point Number 18 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.449287    1.338261    1.563577
+      2          6           0       -0.191795    0.689437    0.601750
+      3          6           0        0.073255   -0.830118    0.490970
+      4          8           0       -0.079110   -1.059623   -0.918176
+      5          8           0        0.594377   -0.087825   -1.554960
+      6          1           0       -0.098800    1.157388   -0.394077
+      7          1           0        1.100612   -1.047407    0.796316
+      8          1           0       -0.637526   -1.463242    1.022284
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.601427114     A.U. after   15 cycles
+   Corrected End Point Energy =  -303.601427
+ Point Number:  18          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.449287    1.338261    1.563576
+      2          6                   -0.191795    0.689438    0.601752
+      3          6                    0.073256   -0.830119    0.490969
+      4          8                   -0.079111   -1.059624   -0.918174
+      5          8                    0.594378   -0.087824   -1.554961
+      6          1                   -0.098798    1.157378   -0.394070
+      7          1                    1.100610   -1.047404    0.796318
+      8          1                   -0.637525   -1.463242    1.022284
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07232
+   NET REACTION COORDINATE UP TO THIS POINT =    1.30149
+ Point Number 19 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.449517    1.337280    1.567850
+      2          6           0       -0.193546    0.692010    0.602624
+      3          6           0        0.073344   -0.826524    0.490803
+      4          8           0       -0.078152   -1.058948   -0.919485
+      5          8           0        0.595764   -0.092819   -1.558492
+      6          1           0       -0.109974    1.163624   -0.392092
+      7          1           0        1.099765   -1.047747    0.796089
+      8          1           0       -0.639269   -1.458478    1.021125
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.602153197     A.U. after   14 cycles
+   Corrected End Point Energy =  -303.602153
+ Point Number:  19          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.449517    1.337280    1.567849
+      2          6                   -0.193546    0.692011    0.602626
+      3          6                    0.073344   -0.826524    0.490802
+      4          8                   -0.078154   -1.058949   -0.919484
+      5          8                    0.595765   -0.092818   -1.558493
+      6          1                   -0.109973    1.163616   -0.392085
+      7          1                    1.099764   -1.047744    0.796091
+      8          1                   -0.639268   -1.458478    1.021125
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07233
+   NET REACTION COORDINATE UP TO THIS POINT =    1.37382
+ Point Number 20 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.449684    1.336228    1.572204
+      2          6           0       -0.195437    0.694661    0.603484
+      3          6           0        0.073363   -0.822844    0.490519
+      4          8           0       -0.077268   -1.058458   -0.920644
+      5          8           0        0.597272   -0.097690   -1.562155
+      6          1           0       -0.120511    1.169294   -0.390365
+      7          1           0        1.098904   -1.047409    0.795999
+      8          1           0       -0.640918   -1.453629    1.020059
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.602846427     A.U. after   14 cycles
+   Corrected End Point Energy =  -303.602846
+ Point Number:  20          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.449684    1.336228    1.572202
+      2          6                   -0.195437    0.694661    0.603486
+      3          6                    0.073364   -0.822844    0.490519
+      4          8                   -0.077268   -1.058459   -0.920643
+      5          8                    0.597273   -0.097689   -1.562156
+      6          1                   -0.120511    1.169288   -0.390358
+      7          1                    1.098903   -1.047407    0.796000
+      8          1                   -0.640917   -1.453629    1.020058
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07233
+   NET REACTION COORDINATE UP TO THIS POINT =    1.44615
+ Point Number 21 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.449789    1.335112    1.576607
+      2          6           0       -0.197449    0.697360    0.604331
+      3          6           0        0.073308   -0.819093    0.490131
+      4          8           0       -0.076442   -1.058128   -0.921665
+      5          8           0        0.598881   -0.102448   -1.565921
+      6          1           0       -0.130477    1.174622   -0.388781
+      7          1           0        1.098036   -1.046424    0.796024
+      8          1           0       -0.642445   -1.448759    1.019084
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.603509910     A.U. after   14 cycles
+   Corrected End Point Energy =  -303.603510
+ Point Number:  21          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.449789    1.335112    1.576605
+      2          6                   -0.197450    0.697361    0.604333
+      3          6                    0.073309   -0.819093    0.490130
+      4          8                   -0.076443   -1.058129   -0.921664
+      5          8                    0.598882   -0.102447   -1.565922
+      6          1                   -0.130477    1.174617   -0.388774
+      7          1                    1.098035   -1.046422    0.796025
+      8          1                   -0.642444   -1.448759    1.019084
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07234
+   NET REACTION COORDINATE UP TO THIS POINT =    1.51849
+ Point Number 22 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.449833    1.333941    1.581037
+      2          6           0       -0.199567    0.700090    0.605164
+      3          6           0        0.073178   -0.815284    0.489650
+      4          8           0       -0.075662   -1.057932   -0.922565
+      5          8           0        0.600570   -0.107107   -1.569762
+      6          1           0       -0.139936    1.179759   -0.387262
+      7          1           0        1.097166   -1.044833    0.796141
+      8          1           0       -0.643834   -1.443915    1.018197
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.604145932     A.U. after   14 cycles
+   Corrected End Point Energy =  -303.604146
+ Point Number:  22          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.449833    1.333940    1.581035
+      2          6                   -0.199567    0.700091    0.605166
+      3          6                    0.073179   -0.815284    0.489649
+      4          8                   -0.075663   -1.057932   -0.922564
+      5          8                    0.600570   -0.107107   -1.569763
+      6          1                   -0.139936    1.179755   -0.387254
+      7          1                    1.097166   -1.044831    0.796142
+      8          1                   -0.643833   -1.443915    1.018196
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07234
+   NET REACTION COORDINATE UP TO THIS POINT =    1.59083
+ Point Number 23 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.449819    1.332719    1.585478
+      2          6           0       -0.201776    0.702835    0.605986
+      3          6           0        0.072974   -0.811425    0.489087
+      4          8           0       -0.074915   -1.057845   -0.923362
+      5          8           0        0.602320   -0.111682   -1.573656
+      6          1           0       -0.148947    1.184806   -0.385756
+      7          1           0        1.096300   -1.042680    0.796328
+      8          1           0       -0.645077   -1.439132    1.017387
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.604756210     A.U. after   14 cycles
+   Corrected End Point Energy =  -303.604756
+ Point Number:  23          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.449819    1.332719    1.585476
+      2          6                   -0.201777    0.702836    0.605988
+      3          6                    0.072975   -0.811426    0.489086
+      4          8                   -0.074916   -1.057845   -0.923361
+      5          8                    0.602321   -0.111682   -1.573657
+      6          1                   -0.148948    1.184802   -0.385749
+      7          1                    1.096300   -1.042678    0.796329
+      8          1                   -0.645077   -1.439132    1.017386
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07234
+   NET REACTION COORDINATE UP TO THIS POINT =    1.66318
+ Point Number 24 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.449751    1.331453    1.589919
+      2          6           0       -0.204065    0.705589    0.606797
+      3          6           0        0.072700   -0.807524    0.488450
+      4          8           0       -0.074191   -1.057845   -0.924071
+      5          8           0        0.604118   -0.116189   -1.577584
+      6          1           0       -0.157567    1.189824   -0.384234
+      7          1           0        1.095440   -1.040014    0.796565
+      8          1           0       -0.646175   -1.434431    1.016645
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.605342064     A.U. after   14 cycles
+   Corrected End Point Energy =  -303.605342
+ Point Number:  24          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.449751    1.331452    1.589917
+      2          6                   -0.204066    0.705590    0.606800
+      3          6                    0.072701   -0.807525    0.488450
+      4          8                   -0.074191   -1.057845   -0.924070
+      5          8                    0.604118   -0.116189   -1.577584
+      6          1                   -0.157568    1.189821   -0.384226
+      7          1                    1.095441   -1.040012    0.796567
+      8          1                   -0.646174   -1.434431    1.016645
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07234
+   NET REACTION COORDINATE UP TO THIS POINT =    1.73552
+ Point Number 25 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.449633    1.330147    1.594352
+      2          6           0       -0.206425    0.708346    0.607600
+      3          6           0        0.072359   -0.803587    0.487749
+      4          8           0       -0.073479   -1.057915   -0.924706
+      5          8           0        0.605949   -0.120640   -1.581529
+      6          1           0       -0.165849    1.194852   -0.382675
+      7          1           0        1.094591   -1.036882    0.796835
+      8          1           0       -0.647130   -1.429825    1.015961
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.605904537     A.U. after   14 cycles
+   Corrected End Point Energy =  -303.605905
+ Point Number:  25          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.449633    1.330147    1.594350
+      2          6                   -0.206425    0.708347    0.607602
+      3          6                    0.072360   -0.803587    0.487749
+      4          8                   -0.073480   -1.057915   -0.924706
+      5          8                    0.605949   -0.120640   -1.581530
+      6          1                   -0.165849    1.194849   -0.382668
+      7          1                    1.094591   -1.036881    0.796836
+      8          1                   -0.647129   -1.429826    1.015960
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07235
+   NET REACTION COORDINATE UP TO THIS POINT =    1.80787
+ Point Number 26 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.449467    1.328806    1.598773
+      2          6           0       -0.208846    0.711104    0.608396
+      3          6           0        0.071957   -0.799619    0.486990
+      4          8           0       -0.072775   -1.058040   -0.925282
+      5          8           0        0.607805   -0.125046   -1.585481
+      6          1           0       -0.173838    1.199911   -0.381071
+      7          1           0        1.093753   -1.033331    0.797122
+      8          1           0       -0.647949   -1.425323    1.015323
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.606444468     A.U. after   14 cycles
+   Corrected End Point Energy =  -303.606444
+ Point Number:  26          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.449467    1.328805    1.598771
+      2          6                   -0.208847    0.711105    0.608398
+      3          6                    0.071958   -0.799619    0.486989
+      4          8                   -0.072775   -1.058040   -0.925281
+      5          8                    0.607805   -0.125046   -1.585482
+      6          1                   -0.173839    1.199909   -0.381063
+      7          1                    1.093753   -1.033330    0.797123
+      8          1                   -0.647949   -1.425323    1.015323
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07235
+   NET REACTION COORDINATE UP TO THIS POINT =    1.88021
+ Point Number 27 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.449258    1.327433    1.603178
+      2          6           0       -0.211323    0.713862    0.609187
+      3          6           0        0.071500   -0.795624    0.486178
+      4          8           0       -0.072072   -1.058208   -0.925807
+      5          8           0        0.609678   -0.129418   -1.589430
+      6          1           0       -0.181581    1.205013   -0.379415
+      7          1           0        1.092928   -1.029405    0.797412
+      8          1           0       -0.648641   -1.420925    1.014723
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.606962561     A.U. after   14 cycles
+   Corrected End Point Energy =  -303.606963
+ Point Number:  27          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.449258    1.327432    1.603176
+      2          6                   -0.211324    0.713863    0.609189
+      3          6                    0.071500   -0.795624    0.486178
+      4          8                   -0.072073   -1.058208   -0.925807
+      5          8                    0.609678   -0.129418   -1.589431
+      6          1                   -0.181582    1.205012   -0.379407
+      7          1                    1.092928   -1.029404    0.797413
+      8          1                   -0.648641   -1.420925    1.014723
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07235
+   NET REACTION COORDINATE UP TO THIS POINT =    1.95256
+ Point Number 28 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.449009    1.326033    1.607565
+      2          6           0       -0.213850    0.716619    0.609975
+      3          6           0        0.070993   -0.791606    0.485320
+      4          8           0       -0.071369   -1.058408   -0.926292
+      5          8           0        0.611564   -0.133763   -1.593370
+      6          1           0       -0.189117    1.210164   -0.377705
+      7          1           0        1.092118   -1.025147    0.797696
+      8          1           0       -0.649215   -1.416630    1.014152
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.607459414     A.U. after   14 cycles
+   Corrected End Point Energy =  -303.607459
+ Point Number:  28          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.449009    1.326032    1.607563
+      2          6                   -0.213851    0.716620    0.609977
+      3          6                    0.070994   -0.791607    0.485319
+      4          8                   -0.071369   -1.058408   -0.926291
+      5          8                    0.611564   -0.133763   -1.593370
+      6          1                   -0.189118    1.210163   -0.377697
+      7          1                    1.092118   -1.025145    0.797697
+      8          1                   -0.649214   -1.416630    1.014152
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07235
+   NET REACTION COORDINATE UP TO THIS POINT =    2.02491
+ Point Number 29 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.448723    1.324609    1.611934
+      2          6           0       -0.216423    0.719376    0.610762
+      3          6           0        0.070444   -0.787571    0.484418
+      4          8           0       -0.070663   -1.058635   -0.926743
+      5          8           0        0.613458   -0.138088   -1.597294
+      6          1           0       -0.196484    1.215365   -0.375940
+      7          1           0        1.091323   -1.020595    0.797966
+      8          1           0       -0.649679   -1.412434    1.013604
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.607935556     A.U. after   14 cycles
+   Corrected End Point Energy =  -303.607936
+ Point Number:  29          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.448723    1.324608    1.611932
+      2          6                   -0.216424    0.719378    0.610764
+      3          6                    0.070444   -0.787572    0.484418
+      4          8                   -0.070663   -1.058634   -0.926743
+      5          8                    0.613458   -0.138088   -1.597294
+      6          1                   -0.196485    1.215365   -0.375932
+      7          1                    1.091323   -1.020593    0.797966
+      8          1                   -0.649678   -1.412435    1.013604
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07235
+   NET REACTION COORDINATE UP TO THIS POINT =    2.09725
+ Point Number 30 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.448403    1.323164    1.616282
+      2          6           0       -0.219038    0.722134    0.611550
+      3          6           0        0.069858   -0.783522    0.483477
+      4          8           0       -0.069954   -1.058880   -0.927168
+      5          8           0        0.615358   -0.142397   -1.601200
+      6          1           0       -0.203718    1.220616   -0.374120
+      7          1           0        1.090543   -1.015786    0.798213
+      8          1           0       -0.650042   -1.408333    1.013073
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.608391463     A.U. after   14 cycles
+   Corrected End Point Energy =  -303.608391
+ Point Number:  30          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.448403    1.323163    1.616280
+      2          6                   -0.219039    0.722135    0.611553
+      3          6                    0.069858   -0.783522    0.483477
+      4          8                   -0.069954   -1.058880   -0.927168
+      5          8                    0.615358   -0.142397   -1.601201
+      6          1                   -0.203719    1.220615   -0.374111
+      7          1                    1.090544   -1.015784    0.798214
+      8          1                   -0.650041   -1.408333    1.013072
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07235
+   NET REACTION COORDINATE UP TO THIS POINT =    2.16960
+ Point Number 31 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.448052    1.321702    1.620611
+      2          6           0       -0.221692    0.724892    0.612342
+      3          6           0        0.069241   -0.779461    0.482500
+      4          8           0       -0.069243   -1.059140   -0.927571
+      5          8           0        0.617264   -0.146694   -1.605086
+      6          1           0       -0.210850    1.225915   -0.372244
+      7          1           0        1.089781   -1.010753    0.798434
+      8          1           0       -0.650312   -1.404319    1.012553
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.608827580     A.U. after   14 cycles
+   Corrected End Point Energy =  -303.608828
+ Point Number:  31          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.448051    1.321701    1.620609
+      2          6                   -0.221693    0.724893    0.612344
+      3          6                    0.069241   -0.779462    0.482499
+      4          8                   -0.069243   -1.059139   -0.927570
+      5          8                    0.617264   -0.146694   -1.605087
+      6          1                   -0.210851    1.225914   -0.372235
+      7          1                    1.089781   -1.010752    0.798434
+      8          1                   -0.650311   -1.404319    1.012553
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07235
+   NET REACTION COORDINATE UP TO THIS POINT =    2.24195
+ Point Number 32 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.447672    1.320225    1.624919
+      2          6           0       -0.224384    0.727651    0.613139
+      3          6           0        0.068599   -0.775394    0.481489
+      4          8           0       -0.068530   -1.059409   -0.927956
+      5          8           0        0.619176   -0.150984   -1.608951
+      6          1           0       -0.217911    1.231259   -0.370313
+      7          1           0        1.089035   -1.005527    0.798621
+      8          1           0       -0.650496   -1.400388    1.012042
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.609244329     A.U. after   14 cycles
+   Corrected End Point Energy =  -303.609244
+ Point Number:  32          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.447671    1.320224    1.624917
+      2          6                   -0.224384    0.727653    0.613142
+      3          6                    0.068600   -0.775394    0.481488
+      4          8                   -0.068531   -1.059409   -0.927956
+      5          8                    0.619176   -0.150984   -1.608951
+      6          1                   -0.217913    1.231258   -0.370303
+      7          1                    1.089035   -1.005526    0.798621
+      8          1                   -0.650495   -1.400388    1.012041
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07235
+   NET REACTION COORDINATE UP TO THIS POINT =    2.31430
+ Point Number 33 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.447265    1.318738    1.629207
+      2          6           0       -0.227110    0.730411    0.613945
+      3          6           0        0.067938   -0.771322    0.480446
+      4          8           0       -0.067818   -1.059685   -0.928327
+      5          8           0        0.621093   -0.155268   -1.612792
+      6          1           0       -0.224931    1.236646   -0.368324
+      7          1           0        1.088309   -1.000135    0.798772
+      8          1           0       -0.650599   -1.396533    1.011536
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.609642121     A.U. after   14 cycles
+   Corrected End Point Energy =  -303.609642
+ Point Number:  33          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.447265    1.318737    1.629205
+      2          6                   -0.227111    0.730413    0.613948
+      3          6                    0.067939   -0.771323    0.480445
+      4          8                   -0.067818   -1.059685   -0.928327
+      5          8                    0.621093   -0.155268   -1.612792
+      6          1                   -0.224932    1.236646   -0.368314
+      7          1                    1.088308   -1.000134    0.798773
+      8          1                   -0.650599   -1.396534    1.011535
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07235
+   NET REACTION COORDINATE UP TO THIS POINT =    2.38664
+ Point Number 34 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.446834    1.317242    1.633475
+      2          6           0       -0.229871    0.733173    0.614761
+      3          6           0        0.067264   -0.767250    0.479373
+      4          8           0       -0.067109   -1.059964   -0.928688
+      5          8           0        0.623018   -0.159550   -1.616611
+      6          1           0       -0.231935    1.242072   -0.366277
+      7          1           0        1.087602   -0.994601    0.798883
+      8          1           0       -0.650627   -1.392750    1.011033
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.610021359     A.U. after   13 cycles
+   Corrected End Point Energy =  -303.610021
+ Point Number:  34          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.446834    1.317241    1.633472
+      2          6                   -0.229871    0.733174    0.614764
+      3          6                    0.067264   -0.767250    0.479373
+      4          8                   -0.067109   -1.059963   -0.928688
+      5          8                    0.623018   -0.159550   -1.616611
+      6          1                   -0.231936    1.242072   -0.366267
+      7          1                    1.087602   -0.994600    0.798883
+      8          1                   -0.650627   -1.392750    1.011033
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07235
+   NET REACTION COORDINATE UP TO THIS POINT =    2.45899
+ Point Number 35 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.446381    1.315741    1.637722
+      2          6           0       -0.232664    0.735935    0.615589
+      3          6           0        0.066581   -0.763179    0.478273
+      4          8           0       -0.066404   -1.060242   -0.929041
+      5          8           0        0.624950   -0.163831   -1.620406
+      6          1           0       -0.238948    1.247534   -0.364172
+      7          1           0        1.086917   -0.988947    0.798950
+      8          1           0       -0.650583   -1.389034    1.010531
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.610382442     A.U. after   13 cycles
+   Corrected End Point Energy =  -303.610382
+ Point Number:  35          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.446381    1.315740    1.637720
+      2          6                   -0.232665    0.735936    0.615592
+      3          6                    0.066581   -0.763180    0.478272
+      4          8                   -0.066405   -1.060241   -0.929041
+      5          8                    0.624951   -0.163832   -1.620406
+      6          1                   -0.238949    1.247535   -0.364161
+      7          1                    1.086916   -0.988946    0.798950
+      8          1                   -0.650582   -1.389034    1.010531
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07235
+   NET REACTION COORDINATE UP TO THIS POINT =    2.53134
+ Point Number 36 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.445907    1.314238    1.641949
+      2          6           0       -0.235491    0.738697    0.616431
+      3          6           0        0.065895   -0.759114    0.477145
+      4          8           0       -0.065708   -1.060515   -0.929388
+      5          8           0        0.626894   -0.168115   -1.624178
+      6          1           0       -0.245992    1.253027   -0.362007
+      7          1           0        1.086256   -0.983191    0.798968
+      8          1           0       -0.650468   -1.385382    1.010030
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.610725764     A.U. after   13 cycles
+   Corrected End Point Energy =  -303.610726
+ Point Number:  36          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.445907    1.314237    1.641946
+      2          6                   -0.235491    0.738698    0.616434
+      3          6                    0.065895   -0.759114    0.477145
+      4          8                   -0.065708   -1.060515   -0.929387
+      5          8                    0.626894   -0.168116   -1.624178
+      6          1                   -0.245993    1.253027   -0.361996
+      7          1                    1.086255   -0.983191    0.798968
+      8          1                   -0.650468   -1.385382    1.010029
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07235
+   NET REACTION COORDINATE UP TO THIS POINT =    2.60369
+ Point Number 37 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.445414    1.312734    1.646155
+      2          6           0       -0.238350    0.741458    0.617290
+      3          6           0        0.065210   -0.755055    0.475993
+      4          8           0       -0.065023   -1.060782   -0.929731
+      5          8           0        0.628849   -0.172403   -1.627927
+      6          1           0       -0.253088    1.258544   -0.359783
+      7          1           0        1.085622   -0.977351    0.798934
+      8          1           0       -0.650285   -1.381792    1.009528
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.611051717     A.U. after   13 cycles
+   Corrected End Point Energy =  -303.611052
+ Point Number:  37          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.445413    1.312733    1.646153
+      2          6                   -0.238350    0.741459    0.617293
+      3          6                    0.065210   -0.755056    0.475992
+      4          8                   -0.065023   -1.060781   -0.929731
+      5          8                    0.628849   -0.172404   -1.627927
+      6          1                   -0.253089    1.258544   -0.359771
+      7          1                    1.085621   -0.977350    0.798934
+      8          1                   -0.650284   -1.381792    1.009527
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07235
+   NET REACTION COORDINATE UP TO THIS POINT =    2.67604
+ Point Number 38 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.444902    1.311234    1.650341
+      2          6           0       -0.241241    0.744216    0.618167
+      3          6           0        0.064531   -0.751007    0.474817
+      4          8           0       -0.064353   -1.061038   -0.930072
+      5          8           0        0.630820   -0.176697   -1.631654
+      6          1           0       -0.260252    1.264078   -0.357499
+      7          1           0        1.085018   -0.971439    0.798844
+      8          1           0       -0.650031   -1.378261    1.009024
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.611360690     A.U. after   13 cycles
+   Corrected End Point Energy =  -303.611361
+ Point Number:  38          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.444902    1.311233    1.650338
+      2          6                   -0.241242    0.744218    0.618171
+      3          6                    0.064532   -0.751007    0.474816
+      4          8                   -0.064353   -1.061037   -0.930072
+      5          8                    0.630820   -0.176698   -1.631654
+      6          1                   -0.260253    1.264078   -0.357486
+      7          1                    1.085017   -0.971439    0.798843
+      8          1                   -0.650031   -1.378261    1.009024
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07235
+   NET REACTION COORDINATE UP TO THIS POINT =    2.74838
+ Point Number 39 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.444375    1.309739    1.654505
+      2          6           0       -0.244166    0.746970    0.619065
+      3          6           0        0.063864   -0.746970    0.473617
+      4          8           0       -0.063701   -1.061279   -0.930413
+      5          8           0        0.632808   -0.181000   -1.635358
+      6          1           0       -0.267501    1.269621   -0.355155
+      7          1           0        1.084448   -0.965467    0.798691
+      8          1           0       -0.649705   -1.374791    1.008521
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.611653065     A.U. after   13 cycles
+   Corrected End Point Energy =  -303.611653
+ Point Number:  39          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.444374    1.309738    1.654502
+      2          6                   -0.244166    0.746972    0.619069
+      3          6                    0.063864   -0.746970    0.473617
+      4          8                   -0.063701   -1.061278   -0.930413
+      5          8                    0.632808   -0.181001   -1.635358
+      6          1                   -0.267501    1.269621   -0.355142
+      7          1                    1.084447   -0.965466    0.798691
+      8          1                   -0.649705   -1.374791    1.008520
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07235
+   NET REACTION COORDINATE UP TO THIS POINT =    2.82073
+ Point Number 40 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.443831    1.308251    1.658648
+      2          6           0       -0.247124    0.749718    0.619986
+      3          6           0        0.063211   -0.742946    0.472397
+      4          8           0       -0.063073   -1.061502   -0.930756
+      5          8           0        0.634816   -0.185314   -1.639039
+      6          1           0       -0.274847    1.275163   -0.352752
+      7          1           0        1.083917   -0.959442    0.798471
+      8          1           0       -0.649303   -1.371382    1.008018
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.611929220     A.U. after   13 cycles
+   Corrected End Point Energy =  -303.611929
+ Point Number:  40          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.443831    1.308251    1.658645
+      2          6                   -0.247125    0.749720    0.619989
+      3          6                    0.063211   -0.742947    0.472396
+      4          8                   -0.063073   -1.061501   -0.930756
+      5          8                    0.634816   -0.185315   -1.639038
+      6          1                   -0.274848    1.275163   -0.352738
+      7          1                    1.083915   -0.959442    0.798471
+      8          1                   -0.649303   -1.371381    1.008017
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07235
+   NET REACTION COORDINATE UP TO THIS POINT =    2.89308
+ Point Number 41 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.443274    1.306775    1.662769
+      2          6           0       -0.250118    0.752457    0.620931
+      3          6           0        0.062578   -0.738939    0.471156
+      4          8           0       -0.062472   -1.061701   -0.931101
+      5          8           0        0.636848   -0.189641   -1.642697
+      6          1           0       -0.282303    1.280694   -0.350291
+      7          1           0        1.083431   -0.953373    0.798177
+      8          1           0       -0.648820   -1.368035    1.007517
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.612189527     A.U. after   13 cycles
+   Corrected End Point Energy =  -303.612190
+ Point Number:  41          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.443273    1.306774    1.662766
+      2          6                   -0.250118    0.752459    0.620935
+      3          6                    0.062578   -0.738939    0.471155
+      4          8                   -0.062472   -1.061700   -0.931101
+      5          8                    0.636848   -0.189642   -1.642697
+      6          1                   -0.282303    1.280693   -0.350277
+      7          1                    1.083429   -0.953373    0.798176
+      8          1                   -0.648821   -1.368035    1.007516
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07235
+   NET REACTION COORDINATE UP TO THIS POINT =    2.96543
+ Point Number 42 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.442703    1.305311    1.666867
+      2          6           0       -0.253146    0.755183    0.621902
+      3          6           0        0.061970   -0.734948    0.469896
+      4          8           0       -0.061903   -1.061873   -0.931451
+      5          8           0        0.638907   -0.193983   -1.646332
+      6          1           0       -0.289879    1.286202   -0.347774
+      7          1           0        1.082994   -0.947263    0.797802
+      8          1           0       -0.648249   -1.364755    1.007020
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.612434359     A.U. after   13 cycles
+   Corrected End Point Energy =  -303.612434
+ Point Number:  42          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.442703    1.305310    1.666863
+      2          6                   -0.253146    0.755186    0.621906
+      3          6                    0.061969   -0.734949    0.469896
+      4          8                   -0.061904   -1.061872   -0.931451
+      5          8                    0.638907   -0.193984   -1.646332
+      6          1                   -0.289879    1.286201   -0.347759
+      7          1                    1.082992   -0.947263    0.797801
+      8          1                   -0.648250   -1.364755    1.007019
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07235
+   NET REACTION COORDINATE UP TO THIS POINT =    3.03778
+ Point Number 43 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.442121    1.303862    1.670941
+      2          6           0       -0.256211    0.757895    0.622902
+      3          6           0        0.061390   -0.730978    0.468619
+      4          8           0       -0.061374   -1.062012   -0.931807
+      5          8           0        0.640996   -0.198343   -1.649944
+      6          1           0       -0.297585    1.291677   -0.345200
+      7          1           0        1.082616   -0.941117    0.797336
+      8          1           0       -0.647582   -1.361545    1.006531
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.612664090     A.U. after   14 cycles
+   Corrected End Point Energy =  -303.612664
+ Point Number:  43          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.442120    1.303861    1.670937
+      2          6                   -0.256211    0.757897    0.622906
+      3          6                    0.061390   -0.730978    0.468618
+      4          8                   -0.061374   -1.062011   -0.931807
+      5          8                    0.640996   -0.198344   -1.649943
+      6          1                   -0.297585    1.291676   -0.345185
+      7          1                    1.082614   -0.941117    0.797336
+      8          1                   -0.647583   -1.361544    1.006530
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07235
+   NET REACTION COORDINATE UP TO THIS POINT =    3.11013
+ Point Number 44 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.441528    1.302431    1.674988
+      2          6           0       -0.259314    0.760587    0.623931
+      3          6           0        0.060845   -0.727029    0.467326
+      4          8           0       -0.060889   -1.062112   -0.932170
+      5          8           0        0.643120   -0.202723   -1.653531
+      6          1           0       -0.305432    1.297108   -0.342571
+      7          1           0        1.082304   -0.934935    0.796772
+      8          1           0       -0.646809   -1.358411    1.006053
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.612879101     A.U. after   14 cycles
+   Corrected End Point Energy =  -303.612879
+ Point Number:  44          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.441527    1.302431    1.674985
+      2          6                   -0.259314    0.760589    0.623935
+      3          6                    0.060845   -0.727030    0.467325
+      4          8                   -0.060889   -1.062111   -0.932170
+      5          8                    0.643121   -0.202725   -1.653530
+      6          1                   -0.305431    1.297107   -0.342555
+      7          1                    1.082301   -0.934935    0.796771
+      8          1                   -0.646809   -1.358410    1.006052
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07235
+   NET REACTION COORDINATE UP TO THIS POINT =    3.18247
+ Point Number 45 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.440925    1.301021    1.679009
+      2          6           0       -0.262454    0.763255    0.624992
+      3          6           0        0.060340   -0.723104    0.466017
+      4          8           0       -0.060456   -1.062168   -0.932541
+      5          8           0        0.645283   -0.207127   -1.657092
+      6          1           0       -0.313428    1.302483   -0.339886
+      7          1           0        1.082067   -0.928719    0.796098
+      8          1           0       -0.645916   -1.355357    1.005591
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.613079790     A.U. after   14 cycles
+   Corrected End Point Energy =  -303.613080
+ Point Number:  45          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.440925    1.301020    1.679005
+      2          6                   -0.262454    0.763258    0.624996
+      3          6                    0.060339   -0.723105    0.466017
+      4          8                   -0.060457   -1.062167   -0.932541
+      5          8                    0.645284   -0.207129   -1.657092
+      6          1                   -0.313428    1.302482   -0.339869
+      7          1                    1.082065   -0.928719    0.796097
+      8          1                   -0.645917   -1.355356    1.005589
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07235
+   NET REACTION COORDINATE UP TO THIS POINT =    3.25482
+ Point Number 46 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.440315    1.299634    1.683000
+      2          6           0       -0.265634    0.765895    0.626086
+      3          6           0        0.059881   -0.719207    0.464696
+      4          8           0       -0.060084   -1.062171   -0.932921
+      5          8           0        0.647490   -0.211556   -1.660627
+      6          1           0       -0.321587    1.307790   -0.337146
+      7          1           0        1.081917   -0.922470    0.795302
+      8          1           0       -0.644891   -1.352393    1.005150
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.613266571     A.U. after   14 cycles
+   Corrected End Point Energy =  -303.613267
+ Point Number:  46          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.440315    1.299634    1.682996
+      2          6                   -0.265634    0.765897    0.626091
+      3          6                    0.059880   -0.719207    0.464695
+      4          8                   -0.060084   -1.062170   -0.932922
+      5          8                    0.647490   -0.211558   -1.660626
+      6          1                   -0.321587    1.307789   -0.337128
+      7          1                    1.081914   -0.922470    0.795301
+      8          1                   -0.644892   -1.352392    1.005148
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07235
+   NET REACTION COORDINATE UP TO THIS POINT =    3.32717
+ Point Number 47 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.439699    1.298273    1.686958
+      2          6           0       -0.268853    0.768500    0.627215
+      3          6           0        0.059475   -0.715339    0.463362
+      4          8           0       -0.059781   -1.062114   -0.933313
+      5          8           0        0.649745   -0.216014   -1.664131
+      6          1           0       -0.329920    1.313017   -0.334350
+      7          1           0        1.081865   -0.916188    0.794370
+      8          1           0       -0.643717   -1.349525    1.004736
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.613439878     A.U. after   14 cycles
+   Corrected End Point Energy =  -303.613440
+ Point Number:  47          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.439699    1.298273    1.686954
+      2          6                   -0.268853    0.768502    0.627219
+      3          6                    0.059475   -0.715339    0.463362
+      4          8                   -0.059781   -1.062113   -0.933314
+      5          8                    0.649745   -0.216016   -1.664130
+      6          1                   -0.329920    1.313015   -0.334331
+      7          1                    1.081862   -0.916188    0.794370
+      8          1                   -0.643718   -1.349523    1.004735
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07235
+   NET REACTION COORDINATE UP TO THIS POINT =    3.39952
+ Point Number 48 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.439079    1.296941    1.690881
+      2          6           0       -0.272113    0.771063    0.628379
+      3          6           0        0.059131   -0.711505    0.462019
+      4          8           0       -0.059557   -1.061989   -0.933717
+      5          8           0        0.652054   -0.220502   -1.667603
+      6          1           0       -0.338438    1.318147   -0.331499
+      7          1           0        1.081924   -0.909872    0.793288
+      8          1           0       -0.642377   -1.346761    1.004357
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.613600170     A.U. after   14 cycles
+   Corrected End Point Energy =  -303.613600
+ Point Number:  48          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.439079    1.296940    1.690877
+      2          6                   -0.272113    0.771065    0.628384
+      3          6                    0.059130   -0.711505    0.462018
+      4          8                   -0.059558   -1.061988   -0.933718
+      5          8                    0.652054   -0.220504   -1.667602
+      6          1                   -0.338438    1.318146   -0.331479
+      7          1                    1.081921   -0.909872    0.793287
+      8          1                   -0.642377   -1.346760    1.004356
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07235
+   NET REACTION COORDINATE UP TO THIS POINT =    3.47186
+ Point Number 49 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.438457    1.295641    1.694765
+      2          6           0       -0.275414    0.773579    0.629580
+      3          6           0        0.058856   -0.707708    0.460666
+      4          8           0       -0.059424   -1.061786   -0.934135
+      5          8           0        0.654422   -0.225024   -1.671038
+      6          1           0       -0.347153    1.323165   -0.328596
+      7          1           0        1.082110   -0.903522    0.792039
+      8          1           0       -0.640850   -1.344113    1.004021
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.613747929     A.U. after   14 cycles
+   Corrected End Point Energy =  -303.613748
+ Point Number:  49          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.438457    1.295640    1.694760
+      2          6                   -0.275414    0.773581    0.629585
+      3          6                    0.058856   -0.707708    0.460666
+      4          8                   -0.059424   -1.061785   -0.934136
+      5          8                    0.654422   -0.225025   -1.671037
+      6          1                   -0.347153    1.323164   -0.328574
+      7          1                    1.082107   -0.903522    0.792038
+      8          1                   -0.640850   -1.344111    1.004019
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07235
+   NET REACTION COORDINATE UP TO THIS POINT =    3.54421
+ Point Number 50 in REVERSE path direction.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.437836    1.294375    1.698605
+      2          6           0       -0.278756    0.776039    0.630818
+      3          6           0        0.058661   -0.703953    0.459307
+      4          8           0       -0.059393   -1.061495   -0.934568
+      5          8           0        0.656855   -0.229580   -1.674432
+      6          1           0       -0.356074    1.328051   -0.325642
+      7          1           0        1.082439   -0.897136    0.790603
+      8          1           0       -0.639113   -1.341590    1.003736
+ ---------------------------------------------------------------------
+ SCF Done:  E(UB3LYP) =  -303.613883656     A.U. after   14 cycles
+   Corrected End Point Energy =  -303.613884
+ Point Number:  50          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          8                   -0.437836    1.294374    1.698600
+      2          6                   -0.278756    0.776040    0.630823
+      3          6                    0.058661   -0.703954    0.459306
+      4          8                   -0.059393   -1.061494   -0.934569
+      5          8                    0.656854   -0.229581   -1.674431
+      6          1                   -0.356075    1.328049   -0.325620
+      7          1                    1.082436   -0.897136    0.790602
+      8          1                   -0.639113   -1.341588    1.003734
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.07235
+   NET REACTION COORDINATE UP TO THIS POINT =    3.61655
+ Energies reported relative to the TS energy of        -303.577880
+ --------------------------------------------------------------------------
+    Summary of reaction path following
+ --------------------------------------------------------------------------
+                        Energy    RxCoord
+   1                   -0.03600  -3.61655
+   2                   -0.03587  -3.54421
+   3                   -0.03572  -3.47186
+   4                   -0.03556  -3.39952
+   5                   -0.03539  -3.32717
+   6                   -0.03520  -3.25482
+   7                   -0.03500  -3.18247
+   8                   -0.03478  -3.11013
+   9                   -0.03455  -3.03778
+  10                   -0.03431  -2.96543
+  11                   -0.03405  -2.89308
+  12                   -0.03377  -2.82073
+  13                   -0.03348  -2.74838
+  14                   -0.03317  -2.67604
+  15                   -0.03285  -2.60369
+  16                   -0.03250  -2.53134
+  17                   -0.03214  -2.45899
+  18                   -0.03176  -2.38664
+  19                   -0.03136  -2.31430
+  20                   -0.03095  -2.24195
+  21                   -0.03051  -2.16960
+  22                   -0.03006  -2.09725
+  23                   -0.02958  -2.02491
+  24                   -0.02908  -1.95256
+  25                   -0.02856  -1.88021
+  26                   -0.02802  -1.80787
+  27                   -0.02746  -1.73552
+  28                   -0.02688  -1.66318
+  29                   -0.02627  -1.59083
+  30                   -0.02563  -1.51849
+  31                   -0.02497  -1.44615
+  32                   -0.02427  -1.37382
+  33                   -0.02355  -1.30149
+  34                   -0.02278  -1.22917
+  35                   -0.02198  -1.15685
+  36                   -0.02112  -1.08456
+  37                   -0.02020  -1.01227
+  38                   -0.01919  -0.94000
+  39                   -0.01809  -0.86773
+  40                   -0.01686  -0.79546
+  41                   -0.01549  -0.72318
+  42                   -0.01397  -0.65089
+  43                   -0.01228  -0.57861
+  44                   -0.01042  -0.50632
+  45                   -0.00845  -0.43402
+  46                   -0.00642  -0.36170
+  47                   -0.00444  -0.28937
+  48                   -0.00267  -0.21703
+  49                   -0.00125  -0.14469
+  50                   -0.00032  -0.07236
+  51                    0.00000   0.00000
+ --------------------------------------------------------------------------
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0       -0.437836    1.294375    1.698605
+      2          6           0       -0.278756    0.776039    0.630818
+      3          6           0        0.058661   -0.703953    0.459307
+      4          8           0       -0.059393   -1.061495   -0.934568
+      5          8           0        0.656855   -0.229580   -1.674432
+      6          1           0       -0.356074    1.328051   -0.325642
+      7          1           0        1.082439   -0.897136    0.790603
+      8          1           0       -0.639113   -1.341590    1.003736
+ ---------------------------------------------------------------------
+ Normal termination of Gaussian 09 at Sun Jun 12 00:36:55 2022.

@@ -39,6 +39,45 @@ test("a Gaussian IRC opens as its path, ordered by the reaction coordinate in th
   expect(path.points.map((point) => point.frame)).toEqual(document.frames.map((_, i) => i));
 });
 
+// Gaussian reports IRC points in a frame centred on the centre of mass, with its own isotope masses.
+const MASS: Record<string, number> = { H: 1.007825, C: 12, N: 14.003074, O: 15.9949146 };
+type Atoms = Array<{ element: string; x: number; y: number; z: number }>;
+const massCentre = (atoms: Atoms) => {
+  const total = atoms.reduce((sum, atom) => sum + MASS[atom.element], 0);
+  return Math.hypot(...(["x", "y", "z"] as const).map((k) => atoms.reduce((sum, atom) => sum + MASS[atom.element] * atom[k], 0) / total));
+};
+const rmsd = (a: Atoms, b: Atoms) => Math.sqrt(a.reduce((sum, atom, i) => sum + (atom.x - b[i].x) ** 2 + (atom.y - b[i].y) ** 2 + (atom.z - b[i].z) ** 2, 0) / a.length);
+
+test("the TS of a Gaussian IRC sits in the frame of its path points", () => {
+  // This job reads the TS from a checkpoint and prints no geometry table before its first step.
+  const hcn = read("HCN-ts-irc.log");
+  for (const frame of hcn.frames) expect(massCentre(frame.atoms)).toBeLessThan(1e-3);
+  // The TS is the checkpoint structure (C–H 1.19575 Å), one step from its neighbours on both sides.
+  const [carbon, , hydrogen] = hcn.frames[10].atoms;
+  expect(Math.hypot(carbon.x - hydrogen.x, carbon.y - hydrogen.y, carbon.z - hydrogen.z)).toBeCloseTo(1.19575, 4);
+  const step = rmsd(hcn.frames[11].atoms, hcn.frames[12].atoms);
+  for (const neighbour of [9, 11]) expect(Math.abs(rmsd(hcn.frames[10].atoms, hcn.frames[neighbour].atoms) - step)).toBeLessThan(0.2 * step);
+
+  // This job computes the TS first, in the input frame 0.82 Å from the centre of mass.
+  const reverse = read("rxn_1_irc_2.excerpt.out");
+  const ts = reverse.referenceFrameIndex!;
+  expect(massCentre(reverse.frames[ts].atoms)).toBeLessThan(1e-3);
+  expect(Math.abs(rmsd(reverse.frames[ts].atoms, reverse.frames[ts - 1].atoms) - rmsd(reverse.frames[ts - 1].atoms, reverse.frames[ts - 2].atoms))).toBeLessThan(1e-3);
+});
+
+test("a reverse-only Gaussian IRC runs to negative coordinates, as its summary prints", () => {
+  const document = read("rxn_1_irc_2.excerpt.out");
+  const path = document.path!;
+  // "Summary of reaction path following": 51 rows from -3.61655 to the TS at 0, energies relative to the TS.
+  expect([path.points.length, document.frames.length, document.referenceFrameIndex]).toEqual([51, 51, 50]);
+  close(path.points.slice(0, 4).map((point) => point.x), [-3.61655, -3.54421, -3.47186, -3.39952], 1e-5);
+  close(path.points.slice(-3).map((point) => point.x), [-0.14469, -0.07236, 0], 1e-5);
+  const ts = path.points[50].energyHartree;
+  expect(ts).toBe(-303.577879721);
+  close(path.points.slice(0, 4).map((point) => point.energyHartree - ts), [-0.03600, -0.03587, -0.03572, -0.03556], 6e-6);
+  close(path.points.slice(-3, -1).map((point) => point.energyHartree - ts), [-0.00125, -0.00032], 6e-6);
+});
+
 // ORCA 6.1.1 "IRC PATH SUMMARY" of the SN2 run, E(Eh) by step; step 13 is the TS.
 const ORCA_IRC = [-3073.691287, -3073.691271, -3073.691194, -3073.691094, -3073.690967, -3073.690807, -3073.690635, -3073.690540, -3073.690373, -3073.689228,
   -3073.687149, -3073.685119, -3073.683420, -3073.685423, -3073.688467, -3073.692088, -3073.695419, -3073.697323, -3073.698410, -3073.698773,
