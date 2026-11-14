@@ -40,7 +40,8 @@ if (!window.BurettePolymerPick) {
       const report = await window.BuretteSceneFiles.science.graphBinding(viewer, expected.format);
       if (!current()) throw stale();
       if (report.sourceSha256 !== expected.sourceSha256 || report.frameIndex !== 0 || report.frameCount !== 1
-        || report.atomCount !== expected.atoms.length || expected.atoms.some((atom, i) => atom.element !== report.elements[i]
+        // Mol* reports element symbols in upper case.
+        || report.atomCount !== expected.atoms.length || expected.atoms.some((atom, i) => atom.element.toUpperCase() !== String(report.elements[i]).toUpperCase()
           || [atom.x, atom.y, atom.z].some((v, axis) => Math.fround(v) !== Math.fround(report.positions[3 * i + axis])))) throw new Error('The displayed molecule differs from the polymer source.');
       return { lease: owner.lease, atomCount: report.atomCount };
     } catch (error) { retire(false); throw error; }
@@ -90,7 +91,8 @@ if (!window.BurettePolymerPick) {
             || !sourceUnit.elements.includes(atom)) throw new Error('Pick an atom in the polymer source molecule.');
           const sourceIndex = unit.model.atomicHierarchy.atomSourceIndex.value(atom);
           if (!Number.isSafeInteger(sourceIndex) || sourceIndex < 0 || sourceIndex >= owner.structure.elementCount) throw stale();
-          cleanup(); resolve({ lease, sourceIndex, element: unit.model.atomicHierarchy.atoms.type_symbol.value(atom) });
+          const symbol = unit.model.atomicHierarchy.atoms.type_symbol.value(atom);
+          cleanup(); resolve({ lease, sourceIndex, element: symbol.slice(0, 1) + symbol.slice(1).toLowerCase() });
         } catch (error) { cleanup(); reject(error); }
       });
       armed = true;

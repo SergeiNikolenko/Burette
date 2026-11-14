@@ -86,6 +86,19 @@ test("real native atom clicks preserve interleaved source rows, camera-free scen
   }
 });
 
+test("a monomer with a two-letter element binds and its atoms can be picked", async () => {
+  // Vinyl chloride without hydrogens; Mol* keeps element symbols in upper case.
+  const atoms = [{ element: "C", x: 0, y: 0, z: 0 }, { element: "C", x: 1.33, y: 0, z: 0 }, { element: "Cl", x: 2.2, y: 1.5, z: 0 }];
+  const f = await fixture(sdfFromGraph(atoms, [{ a: 0, b: 1, order: 2 }, { a: 1, b: 2, order: 1 }], "Vinyl chloride"));
+  try {
+    const owner = await f.bind();
+    const pending = owner.pick(new AbortController().signal); await Promise.resolve();
+    f.click(f.loci(2));
+    expect(await pending).toBe(2);
+    owner.release();
+  } finally { f.close(); }
+});
+
 test("cancelling atom picking restores the previous level without overwriting a user change", async () => {
   const f = await fixture();
   try {
