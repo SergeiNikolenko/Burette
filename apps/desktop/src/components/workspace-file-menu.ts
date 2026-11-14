@@ -8,6 +8,7 @@ import { menuItem as item, submenu, menuSections, fileCapabilities } from "./wor
 import { requestContextualGuide } from "./onboarding/request";
 import { sourceExtension } from "../lib/science-session/state";
 import { inputExportSupportsDocument, workbenchSupportsDocument } from "../lib/workbench/structure";
+import { exportSceneSvg, openMovieDialog } from "../lib/workbench/scene-media";
 
 type Workflows = ReturnType<typeof useWorkspaceFileActions>;
 export function workspaceFileMenu(paths: string[], state: ShellViewState, actions: ShellActions, workflows: Workflows,
@@ -92,6 +93,8 @@ export function workspaceFileMenu(paths: string[], state: ShellViewState, action
           ...(caps[0].protein ? [command("export-pdb", "PDB…", () => workflows.exportStructure(document, "pdb"))] : []),
         ]),
         command("export-image", "Image…", () => workflows.exportImage(document)),
+        command("export-svg", "Vector Image…", () => exportSceneSvg(actions, document)),
+        command("record-movie", "Movie…", () => openMovieDialog(document)),
       ] : []),
     ], "square.and.arrow.up"),
   ],

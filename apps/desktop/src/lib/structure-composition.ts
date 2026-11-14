@@ -56,6 +56,8 @@ export type StructureViewerAction =
   | { type: "atom_draw"; label: string; enabled: boolean; lease: string; notify: false }
   | { type: "select_command"; label: string; command: "all" | "none" | "invert" | "residues" | "enlarge"; notify: false }
   | { type: "select_command"; label: string; command: "atoms"; atoms: number[]; notify: false }
+  | { type: "export_svg"; label: string; notify: false }
+  | { type: "record_movie"; label: string; notify: false; seconds: number; fps: number; spin: boolean }
   // Model-local atom_index values, matching the viewer selection contract.
   | { type: "preview_geometry"; label: string; atoms: number[]; kind?: "bond" | "angle" | "dihedral"; notify: false }
   | { type: "open_components_menu"; label: string; query: string; componentLabel: string; kind: "polymer" | "ligand" | "ion" | "water"; x: number; y: number; notify: false }

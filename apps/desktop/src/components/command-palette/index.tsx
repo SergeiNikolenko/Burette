@@ -1,5 +1,6 @@
 import { openPlots, usePlotsAvailable, PLOTS_COMMAND } from "../../lib/workbench/plots-tool";
 import { openSmartsSelect, runSelectCommand, SELECT_COMMANDS } from "../../lib/workbench/select-commands";
+import { exportSceneSvg, openMovieDialog } from "../../lib/workbench/scene-media";
 import { startAvogadroCommand, useAvogadroCommands } from "../../lib/extensions/avogadro-commands";
 import { openScientificSpectra, useScientificSpectraAvailable, SCIENTIFIC_SPECTRA_COMMAND } from "../../lib/workbench/scientific-spectra-tool";
 import { openOrbitals, useOrbitalsAvailable, ORBITALS_COMMAND } from "../../lib/workbench/orbitals-tool";
@@ -128,6 +129,8 @@ export function CommandPalette({
           run: () => runSelectCommand(actions, state.activeDocument!, command) })),
         ...(structureEditAvailable(state.activeDocument) ? [{ id: "select-smarts", group: "Select", label: "Select by SMARTS…", description: "",
           run: () => openSmartsSelect(state.activeDocument!) }] : []),
+        { id: "export-svg", group: "Export", label: "Export image as SVG", description: "", run: () => exportSceneSvg(actions, state.activeDocument!) },
+        { id: "record-movie", group: "Export", label: "Record movie…", description: "", run: () => openMovieDialog(state.activeDocument!) },
       ] : []),
       ...(state.activeDocument ? pluginCommands.map(entry => ({ id: `avogadro-command-${entry.id}`, group: "Extensions", label: entry.path.join(" › "),
         description: entry.plugin.name, run: () => startAvogadroCommand(entry, state.activeDocument!) })) : []),
