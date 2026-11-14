@@ -52,7 +52,7 @@ export interface Thermochemistry {
   gibbsHartree?: number;
   entropyCalMolKelvin?: number;
 }
-export const ATOMIC_CHARGE_MODELS = ["mulliken", "lowdin", "hirshfeld", "cm5", "npa", "esp", "chelpg", "eeq", "gasteiger"] as const;
+export const ATOMIC_CHARGE_MODELS = ["mulliken", "lowdin", "hirshfeld", "cm5", "npa", "apt", "esp", "chelpg", "eeq", "gasteiger"] as const;
 export interface AtomicChargeSet { model: typeof ATOMIC_CHARGE_MODELS[number]; values: number[] }
 export interface VibrationalMode {
   index: number;

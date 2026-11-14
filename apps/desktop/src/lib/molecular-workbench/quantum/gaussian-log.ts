@@ -110,19 +110,22 @@ export function parseGaussianLog(text: string, name = 'output'): ScientificDocum
       i = section.end - 1;
       continue;
     }
-    if (/^\s*Mulliken (?:atomic )?charges(?: and spin densities)?:?\s*$/u.test(lines[i]) && frame) {
+    // Mulliken charges, with spin densities for an open shell, and a frequency job's atomic polar tensor charges.
+    const chargeTable = frame && lines[i].match(/^\s*(Mulliken|APT) (?:atomic )?charges(?: and spin densities)?:?\s*$/u);
+    if (chargeTable && frame) {
+      const model = chargeTable[1] === 'APT' ? 'apt' : 'mulliken';
       const values: number[] = [], spins: number[] = [];
       let j = i + 2;
-      for (; j < lines.length && !/^\s*Sum of Mulliken/u.test(lines[j]); j++) {
+      for (; j < lines.length && !/^\s*Sum of (?:Mulliken|APT)/u.test(lines[j]); j++) {
         const p = lines[j].trim().split(/\s+/);
-        if ((p.length !== 3 && p.length !== 4) || Number(p[0]) !== values.length + 1 || p[1].toLowerCase() !== frame.atoms[values.length]?.element.toLowerCase()) throw new Error('Malformed Gaussian Mulliken row.');
+        if ((p.length !== 3 && p.length !== 4) || Number(p[0]) !== values.length + 1 || p[1].toLowerCase() !== frame.atoms[values.length]?.element.toLowerCase()) throw new Error('Malformed Gaussian atomic charge row.');
         values.push(numeric(p[2]));
         if (p.length === 4) spins.push(numeric(p[3]));
       }
       if (j >= lines.length) break;
-      if (values.length !== frame.atoms.length) throw new Error('Gaussian Mulliken charges do not match the atoms.');
-      frame.charges = [...(frame.charges ?? []).filter(set => set.model !== 'mulliken'), { model: 'mulliken', values }];
-      if (spins.length === values.length) frame.spinPopulations = [...(frame.spinPopulations ?? []).filter(set => set.model !== 'mulliken'), { model: 'mulliken', values: spins }];
+      if (values.length !== frame.atoms.length) throw new Error('Gaussian atomic charges do not match the atoms.');
+      frame.charges = [...(frame.charges ?? []).filter(set => set.model !== model), { model, values }];
+      if (spins.length === values.length) frame.spinPopulations = [...(frame.spinPopulations ?? []).filter(set => set.model !== model), { model, values: spins }];
       i = j;
       continue;
     }

@@ -52,3 +52,21 @@ test('a Gaussian freq=hpmodes log reads its standard mode table and skips the hi
   expect(document.modes[0].frequencyCm1).toBeCloseTo(53.1981, 3);
   expect(document.modes.every(mode => mode.displacements?.length === 20)).toBe(true);
 });
+
+test('a Gaussian frequency log keeps both charge sets it prints: Mulliken and the atomic polar tensor charges', () => {
+  const frame = read('gaussian/cclib-dvb_ir.out').frames.at(-1)!;
+  expect(frame.charges!.map(set => set.model)).toEqual(['mulliken', 'apt']);
+  // `Mulliken charges: 1 C -0.004504` and `APT charges: 1 C 0.021510, 2 C -0.079658, 3 C -0.083041`.
+  expect(frame.charges!.map(set => set.values.slice(0, 3))).toEqual([[-0.004504, -0.077163, -0.076614], [0.02151, -0.079658, -0.083041]]);
+  for (const set of frame.charges!) expect(Math.abs(set.values.reduce((sum, value) => sum + value, 0))).toBeLessThan(1e-5);
+});
+
+test('printed dipoles keep their components and sign: debye as printed, atomic units converted', () => {
+  // Gaussian `X= 0.0000 Y= -0.4085 Z= -0.2140 Tot= 0.4612` (Debye) at the last scan geometry.
+  expect(read('reaction-paths/relaxed_PES_testCO2.log').frames.at(-1)!.dipoleDebye).toEqual([0, -0.4085, -0.214]);
+  // ORCA `Total Dipole Moment : 0.000027508 -0.000000562 -1.718548819` (a.u.), `Magnitude (Debye) : 4.368203951`.
+  const orca = read('reaction-paths/sn2_irc.out').frames.at(-1)!.dipoleDebye!;
+  expectClose(orca, [0.000027508, -0.000000562, -1.718548819].map(value => value * 2.541746473), 1e-9);
+  // ORCA's own debye conversion differs from CODATA in the fifth digit.
+  expect(Math.hypot(...orca)).toBeCloseTo(4.368203951, 3);
+});

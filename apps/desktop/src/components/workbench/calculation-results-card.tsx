@@ -8,7 +8,7 @@ import { NativeSelect, NativeSelectOption } from "../ui/native-select";
 import "./calculation-results.css";
 
 export const MODEL_NAMES: Record<AtomicChargeSet["model"], string> = {
-  mulliken: "Mulliken", lowdin: "Löwdin", hirshfeld: "Hirshfeld", cm5: "CM5", npa: "NPA", esp: "ESP", chelpg: "ChElPG", eeq: "EEQ", gasteiger: "Gasteiger",
+  mulliken: "Mulliken", lowdin: "Löwdin", hirshfeld: "Hirshfeld", cm5: "CM5", npa: "NPA", apt: "APT", esp: "ESP", chelpg: "ChElPG", eeq: "EEQ", gasteiger: "Gasteiger",
 };
 type OverlayKind = "charge-colors" | "charges" | "dipole";
 /** One per-atom population the scene can show: a charge model, or its spin populations (`spin:` key). */
