@@ -288,6 +288,27 @@ Database menus. These stages cover what it left out.
   a new chart component in the dock (canvas for 100k rows).
 - **Done when:** a 10k-row SDF with descriptors keeps selection and filters in
   sync both ways at 60 fps pan and zoom.
+- **Done (87b48bfb7, 4d5e1e994, 1bb0fdf82, 8d28307bb, 3e7cf138c, 9e5d99cab,
+  a7f038d7b, 3c1175a1b, b2cd87818, 8c9a61b78):** **Chart Columns…** in Analyze
+  and in the command palette opens the **Chart** tab in the bottom dock: a
+  scatter chart of two number columns with colour from any column and size
+  from a number column, a histogram, a bar chart of counts or means per
+  category, and a box chart per category. The grid answers whole columns over
+  `collectionChartRequestData` (up to six columns and 100,000 rows); the chart
+  draws on a canvas. Points, bars, bins, boxes, legend entries and a lasso
+  select grid rows, and the grid's selection, search and filters reach the
+  chart. The Codex plugin surface has no bottom dock, so the tab lives in the
+  desktop app and browser dev. `tests/fixtures/collection-chart` holds a
+  47-molecule MOSES set with a NumPy and matplotlib reference for the bins and
+  box statistics. Gauss acceptance in both themes on that set: the MolWt
+  histogram is 2, 5, 9, 13, 15, 3; bars by halogen are 33, 7, 5, 1, 1; the
+  legend entry F selects 7 rows; a grid search for Cl leaves 6 of 47 in the
+  chart. On `samples/large/moses_10k_descriptors_preview.csv` (10,000 rows)
+  the scatter chart pans and zooms with a 95th-percentile frame of 16.8 ms, a
+  lasso selects 67 rows and the grid shows the same 67, a search for Cl leaves
+  1,057 of 10,000 in the chart, and Select all in the grid selects 10,000
+  points. `test:collection-chart` covers the data, painters, bridge and
+  frame budget.
 
 ### Stage 23. Matched molecular pairs and the SAR table
 
