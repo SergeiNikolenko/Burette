@@ -6,6 +6,7 @@ import { sourceExtension, useLogicalSource } from "../../lib/science-session/sta
 import { openScientificSpectra, useScientificSpectraAvailable, SCIENTIFIC_SPECTRA_COMMAND } from "../../lib/workbench/scientific-spectra-tool";
 import { openOrbitals, useOrbitalsAvailable, ORBITALS_COMMAND } from "../../lib/workbench/orbitals-tool";
 import { openPotential, usePotentialAvailable, POTENTIAL_COMMAND } from "../../lib/workbench/potential-tool";
+import { FIELDS_COMMAND, openFields, useFieldsAvailable } from "../../lib/workbench/fields-tool";
 import { openVibrations, useVibrationsAvailable, VIBRATIONS_COMMAND } from "../../lib/workbench/vibrations-tool";
 import { CRYSTAL_COMMAND, openSymmetryTool, SYMMETRY_COMMAND, useSymmetryAvailable } from "../../lib/workbench/symmetry-tools";
 import { useCrystalAvailable } from "../../lib/workbench/use-crystal-draft";
@@ -42,6 +43,7 @@ export function SceneComputeMenu({ document, actions }: { document: ViewerDocume
   const [files, setFiles] = useState<Array<{ path: string; state: SceneFileState }> | null>(null);
   const hasOrbitals = useOrbitalsAvailable(document);
   const hasPotential = usePotentialAvailable(document);
+  const hasFields = useFieldsAvailable(document);
   const logical = useLogicalSource(document.id);
   const hasPolymer = polymerSourceFormat(document, logical?.extension ?? document.extension) !== null;
   const hasPlots = usePlotsAvailable(document);
@@ -88,6 +90,8 @@ export function SceneComputeMenu({ document, actions }: { document: ViewerDocume
   if (!embeddedGraph && !combined && hasOrbitals) items.push({ kind: "separator" }, { kind: "item", id: "workbench-tool-orbitals", text: ORBITALS_COMMAND.label, action: () => openOrbitals(actions, document.id) });
   // A MOL or SDF scene gets the potential of its Gasteiger charges, so its menu lists it too.
   if (!combined && hasPotential) items.push(...(embeddedGraph || hasOrbitals ? [] : [{ kind: "separator" as const }]), { kind: "item", id: "workbench-tool-potential", text: POTENTIAL_COMMAND.label, action: () => openPotential(actions, document.id) });
+  // A Cube is a calculation, so the item joins the Orbitals and Potential group.
+  if (!combined && hasFields) items.push({ kind: "item", id: "workbench-tool-fields", text: FIELDS_COMMAND.label, action: () => openFields(actions, document.id) });
   if (!embeddedGraph && !combined && hasVibrations) items.push(...(hasOrbitals || hasPotential ? [] : [{ kind: "separator" as const }]), { kind: "item", id: "workbench-tool-vibrations", text: VIBRATIONS_COMMAND.label, action: () => openVibrations(actions, document.id) });
   if (!embeddedGraph && !combined && hasCrystal) items.push(...(hasOrbitals || hasPotential || hasVibrations ? [] : [{ kind: "separator" as const }]), { kind: "item", id: "workbench-tool-crystal", text: CRYSTAL_COMMAND.label, action: () => openSymmetryTool(actions, document.id, "crystal") });
   if (!embeddedGraph && !combined && hasSymmetry) items.push(...(hasOrbitals || hasPotential || hasVibrations || hasCrystal ? [] : [{ kind: "separator" as const }]), { kind: "item", id: "workbench-tool-symmetry", text: SYMMETRY_COMMAND.label, action: () => openSymmetryTool(actions, document.id, "symmetry") });

@@ -3,6 +3,7 @@ import { startAvogadroCommand, useAvogadroCommands } from "../../lib/extensions/
 import { openScientificSpectra, useScientificSpectraAvailable, SCIENTIFIC_SPECTRA_COMMAND } from "../../lib/workbench/scientific-spectra-tool";
 import { openOrbitals, useOrbitalsAvailable, ORBITALS_COMMAND } from "../../lib/workbench/orbitals-tool";
 import { openPotential, usePotentialAvailable, POTENTIAL_COMMAND } from "../../lib/workbench/potential-tool";
+import { FIELDS_COMMAND, openFields, useFieldsAvailable } from "../../lib/workbench/fields-tool";
 import { focusToolDock, type WorkbenchToolDockKind } from "../../lib/workbench/focus-tool-dock";
 import { openVibrations, useVibrationsAvailable, VIBRATIONS_COMMAND } from "../../lib/workbench/vibrations-tool";
 import { CRYSTAL_COMMAND, openSymmetryTool, SYMMETRY_COMMAND, useSymmetryAvailable } from "../../lib/workbench/symmetry-tools";
@@ -69,6 +70,7 @@ export function CommandPalette({
   const workbenchFocus = useRef<{ kind: WorkbenchToolDockKind; documentId: string; workspaceId: string } | null>(null);
   const hasOrbitals = useOrbitalsAvailable(state.activeDocument ?? null);
   const hasPotential = usePotentialAvailable(state.activeDocument ?? null);
+  const hasFields = useFieldsAvailable(state.activeDocument ?? null);
   const hasPlots = usePlotsAvailable(state.activeDocument);
   const hasScientificSpectra = useScientificSpectraAvailable(state.activeDocument ?? null);
   const hasVibrations = useVibrationsAvailable(state.activeDocument ?? null);
@@ -104,6 +106,7 @@ export function CommandPalette({
       ...projectItems,
       ...(hasOrbitals && state.activeDocument ? [{ id: "workbench-tool-orbitals", group: "Suggested", ...ORBITALS_COMMAND, run: () => openOrbitals(actions, state.activeDocument!.id) }] : []),
       ...(hasPotential && state.activeDocument ? [{ id: "workbench-tool-potential", group: "Suggested", ...POTENTIAL_COMMAND, run: () => openPotential(actions, state.activeDocument!.id) }] : []),
+      ...(hasFields && state.activeDocument ? [{ id: "workbench-tool-fields", group: "Suggested", ...FIELDS_COMMAND, run: () => openFields(actions, state.activeDocument!.id) }] : []),
       ...(hasVibrations && state.activeDocument ? [{ id: "workbench-tool-vibrations", group: "Suggested", ...VIBRATIONS_COMMAND, run: () => openVibrations(actions, state.activeDocument!.id) }] : []),
       ...(hasCrystal && state.activeDocument ? [{ id: "workbench-tool-crystal", group: "Suggested", ...CRYSTAL_COMMAND, run: () => openSymmetryTool(actions, state.activeDocument!.id, "crystal") }] : []),
       ...(hasSymmetry && state.activeDocument ? [{ id: "workbench-tool-symmetry", group: "Suggested", ...SYMMETRY_COMMAND, run: () => openSymmetryTool(actions, state.activeDocument!.id, "symmetry") }] : []),
@@ -129,7 +132,7 @@ export function CommandPalette({
       })),
     ];
     return commands;
-  }, [actions, query, state, hasVibrations, hasOrbitals, hasPotential, hasScientificSpectra, hasPlots, hasCrystal, hasSymmetry, pluginCommands]);
+  }, [actions, query, state, hasVibrations, hasOrbitals, hasPotential, hasFields, hasScientificSpectra, hasPlots, hasCrystal, hasSymmetry, pluginCommands]);
 
   const visibleItems = useMemo(() => {
     const queryUrl = query.trim();

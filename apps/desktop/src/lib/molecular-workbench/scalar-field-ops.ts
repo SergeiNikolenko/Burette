@@ -1,4 +1,5 @@
-import type { ScalarGrid, Vec3 } from "./scientific-types";
+import type { ScalarGrid } from "./scientific-types";
+import type { Vec3 } from "./types";
 import { BOHR_ANGSTROM } from "./quantum";
 
 export type FieldOperation = "difference" | "sum" | "scale";

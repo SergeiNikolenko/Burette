@@ -1,0 +1,65 @@
+.fields-panel {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  padding-top: 8px;
+  gap: 8px;
+}
+.fields-value {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 28px;
+}
+.fields-position {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.fields-position [data-slot="slider"] {
+  flex: 1;
+}
+.fields-position .fields-value {
+  min-width: 40px;
+  text-align: end;
+}
+.field-slice-plot {
+  display: block;
+  width: 100%;
+  max-height: 360px;
+}
+.field-slice-frame {
+  fill: none;
+  stroke: var(--color-border);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.field-slice-contour {
+  fill: none;
+  stroke: rgb(0 0 0 / 0.55);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.field-slice-contour[data-negative] {
+  stroke-dasharray: 3 2;
+}
+.field-slice-atom circle {
+  fill: rgb(0 0 0 / 0.75);
+}
+.field-slice-atom text {
+  fill: rgb(0 0 0 / 0.8);
+  font-weight: 600;
+  text-anchor: middle;
+}
+/* Operation, A and B share one line however long the field names are. */
+.fields-new {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
+  align-items: end;
+  gap: 8px;
+}
+.fields-new .workbench-field {
+  min-width: 0;
+}
+.fields-new .workbench-actions {
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+}
