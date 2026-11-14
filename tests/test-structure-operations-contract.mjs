@@ -164,7 +164,8 @@ assert.match(fn("extractMolstarSelectionToFile"), /for \(const structure of mols
 assert.match(fn("molstarSelectionQuery"), /plugin\?\.query\?\.structure\?\.registry[\s\S]*label[\s\S]*includes\(needle\)/);
 assert.match(viewer, /applyMolstarSelectionQuery\('whole residues'\)/);
 assert.match(viewer, /applyMolstarSelectionQuery\('surrounding residues', 'add'\)/);
-assert.match(viewer, /applyMolstarSelectionQuery\('inverse'\)/);
+// Invert is an atom-level command (test:select-commands); Mol*'s inverse query widens to the picking level.
+assert.match(viewer, /runMolstarSelectCommand\('invert'\)/);
 assert.match(viewer, /const MOLSTAR_SELECTION_LEVELS = \[\['element', 'Atom'\], \['residue', 'Residue'\], \['chain', 'Chain'\]\]/);
 assert.match(fn("setMolstarSelectionLevel"), /interactivity\.setProps\(\{ granularity: level \}\)/);
 assert.match(fn("molstarContextSelectionLoci"), /const pickingLevel = target\?\.pickingLevel \|\| molstarContextMenuMode/);

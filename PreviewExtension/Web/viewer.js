@@ -27271,7 +27271,8 @@ SOFTWARE.
     const symbols = new Set();
     for (const { units } of molstarAtomicUnits()) for (const unit of units) {
       const type = unit.model.atomicHierarchy.atoms.type_symbol;
-      for (const row of unit.elements) symbols.add(type.value(row));
+      // Mol* keeps element symbols in upper case.
+      for (const row of unit.elements) { const symbol = type.value(row); symbols.add(symbol.slice(0, 1) + symbol.slice(1).toLowerCase()); }
     }
     // Carbon first and hydrogen next, then alphabetical, as in a formula.
     return [...symbols].sort((a, b) => (a === 'C' ? -2 : a === 'H' ? -1 : 0) - (b === 'C' ? -2 : b === 'H' ? -1 : 0) || a.localeCompare(b));
@@ -27286,7 +27287,7 @@ SOFTWARE.
     for (const { structure, units } of molstarAtomicUnits()) {
       const elements = units.flatMap(unit => {
         const indices = [];
-        for (let i = 0; i < unit.elements.length; i++) if (test(unit, i)) indices.push(i);
+        for (let i = 0; i < unit.elements.length; i++) if (test(unit, i, structure)) indices.push(i);
         count += indices.length;
         return indices.length ? [{ unit, indices: Int32Array.from(indices) }] : [];
       });
@@ -27295,8 +27296,7 @@ SOFTWARE.
     }
     return count;
   }
-  // Atoms bonded to the selection join it.
-  // Calls `visit(unit, i)` for each selected atom of the shown atomic units.
+  // Calls `visit(unit, i, structure)` for each selected atom of the shown atomic units.
   function forEachSelectedMolstarAtom(visit) {
     const manager = activeMolstarViewer()?.plugin?.managers?.structure?.selection;
     const Element = window.molstar?.lib?.structure?.StructureElement;
@@ -27306,27 +27306,34 @@ SOFTWARE.
       for (const { unit, indices } of loci.elements) {
         if (unit.kind !== 0 || !units.includes(unit)) continue;
         Element.Loci.forEachLocation({ kind: 'element-loci', structure, elements: [{ unit, indices }] },
-          location => visit(unit, unit.elements.indexOf(location.element)));
+          location => visit(unit, unit.elements.indexOf(location.element), structure));
       }
     }
   }
+  // Atoms bonded to the selection join it, also across units. Unit ids repeat
+  // between structures, so picked atoms are kept per structure.
   function enlargeMolstarSelection() {
-    const picked = new Set();
-    forEachSelectedMolstarAtom((unit, i) => {
-      const { offset, b } = unit.bonds;
-      picked.add(`${unit.id}:${i}`);
-      for (let k = offset[i]; k < offset[i + 1]; k++) picked.add(`${unit.id}:${b[k]}`);
+    const picked = new Map();
+    forEachSelectedMolstarAtom((unit, i, structure) => {
+      const atoms = picked.get(structure) || picked.set(structure, new Set()).get(structure);
+      const { offset, b } = unit.bonds, links = structure.interUnitBonds;
+      atoms.add(`${unit.id}:${i}`);
+      for (let k = offset[i]; k < offset[i + 1]; k++) atoms.add(`${unit.id}:${b[k]}`);
+      for (const edge of links.getEdgeIndices(i, unit.id)) atoms.add(`${links.edges[edge].unitB}:${links.edges[edge].indexB}`);
     });
-    return picked.size ? selectMolstarAtomsWhere((unit, i) => picked.has(`${unit.id}:${i}`)) : 0;
+    return picked.size ? selectMolstarAtomsWhere((unit, i, structure) => picked.get(structure)?.has(`${unit.id}:${i}`) === true) : 0;
   }
   function invertMolstarSelection() {
-    const picked = new Set();
-    forEachSelectedMolstarAtom((unit, i) => picked.add(`${unit.id}:${i}`));
-    return selectMolstarAtomsWhere((unit, i) => !picked.has(`${unit.id}:${i}`));
+    const picked = new Map();
+    forEachSelectedMolstarAtom((unit, i, structure) => (picked.get(structure) || picked.set(structure, new Set()).get(structure)).add(`${unit.id}:${i}`));
+    return selectMolstarAtomsWhere((unit, i, structure) => picked.get(structure)?.has(`${unit.id}:${i}`) !== true);
   }
   async function runMolstarSelectCommand(command, value) {
     if (command === 'all') return selectMolstarAtomsWhere(() => true);
-    if (command === 'element') return selectMolstarAtomsWhere((unit, i) => unit.model.atomicHierarchy.atoms.type_symbol.value(unit.elements[i]) === value);
+    if (command === 'element') {
+      const symbol = String(value).toUpperCase();
+      return selectMolstarAtomsWhere((unit, i) => unit.model.atomicHierarchy.atoms.type_symbol.value(unit.elements[i]) === symbol);
+    }
     // Source atom indices, as the host's graph numbers them.
     if (command === 'atoms') {
       const wanted = new Set(value);
@@ -28573,10 +28580,11 @@ SOFTWARE.
         if (!await applyMolstarSelectionQuery('surrounding residues', 'add')) throw new Error('Mol* has no surroundings query registered.');
         setStatus('[web] Grew the selection by residues within 5 Å.');
       } else if (action === 'select:invert') {
-        if (!await applyMolstarSelectionQuery('inverse')) throw new Error('Mol* has no inverse query registered.');
+        // Atom level: Mol*'s inverse query would widen the result to the picking level.
+        await runMolstarSelectCommand('invert');
         setStatus('[web] Inverted the selection.');
       } else if (action === 'select:clear') {
-        activeViewer?.plugin?.managers?.structure?.selection?.clear?.();
+        await runMolstarSelectCommand('none');
         setStatus('[web] Cleared the selection.');
       } else if (action === 'select:all' || action === 'select:enlarge' || action.startsWith('select:element:')) {
         const command = action === 'select:all' ? 'all' : action === 'select:enlarge' ? 'enlarge' : 'element';
