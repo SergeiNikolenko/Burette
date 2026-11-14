@@ -5,7 +5,7 @@ import { Button } from "./ui/button";
 import { DARK_STRUCTURE_PALETTE } from "../lib/structure-palette";
 
 /** A 2D drawing of a SMILES or molblock in the current theme's ink; `label` names it when the source text is not readable. */
-export function Structure({ smiles, label = smiles }: { smiles: string; label?: string }) {
+export function Structure({ smiles, label = smiles, width = 260, height = 150 }: { smiles: string; label?: string; width?: number; height?: number }) {
   const [image, setImage] = useState("");
   useEffect(() => {
     setImage("");
@@ -21,7 +21,7 @@ export function Structure({ smiles, label = smiles }: { smiles: string; label?: 
           mol.set_new_coords();
           const dark = document.querySelector(".app-shell")?.getAttribute("data-effective-theme") === "dark";
           const ink = dark ? [0.87, 0.87, 0.87] : [0.12, 0.12, 0.12];
-          const svg = mol.get_svg_with_highlights(JSON.stringify({ width: 260, height: 150,
+          const svg = mol.get_svg_with_highlights(JSON.stringify({ width, height,
             backgroundColour: [0, 0, 0, 0], atomColourPalette: { 0: ink, 1: ink, 6: ink, ...(dark ? DARK_STRUCTURE_PALETTE : {}) }, padding: 0.1 }));
           if (active && version === current) setImage(svg);
         } finally { mol.delete(); }
@@ -31,7 +31,7 @@ export function Structure({ smiles, label = smiles }: { smiles: string; label?: 
     const observer = new MutationObserver(() => { void draw(); });
     observer.observe(document.querySelector(".app-shell") ?? document.documentElement, { attributes: true, attributeFilter: ["data-effective-theme"] });
     return () => { active = false; observer.disconnect(); };
-  }, [smiles]);
+  }, [smiles, width, height]);
   return <div className="rgroup-structure" role="img" aria-label={label} title={label} dangerouslySetInnerHTML={{ __html: image }} />;
 }
 

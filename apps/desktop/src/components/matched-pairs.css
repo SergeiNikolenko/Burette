@@ -1,0 +1,9 @@
+.matched-pairs-table td { padding-block: 2px; }
+.matched-pairs-table .rgroup-structure { width: 120px; height: 56px; }
+.matched-pairs-pairs { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line-subtler); padding-top: 12px; }
+.matched-pairs-pair { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 56px; align-items: center; gap: 24px; }
+.matched-pairs-pair figure { margin: 0; padding: 6px; border: 1px solid var(--line-subtler); border-radius: 6px; overflow: hidden; }
+.matched-pairs-pair .rgroup-structure { height: 110px; }
+.matched-pairs-pair figcaption { display: flex; justify-content: space-between; gap: 8px; padding-top: 4px; font-size: 12px; color: var(--text-secondary); }
+.matched-pairs-arrow { position: absolute; left: calc((100% - 56px - 48px) / 2 + 4px); color: var(--text-secondary); }
+.matched-pairs-delta { text-align: right; font-size: 13px; font-weight: 600; }
