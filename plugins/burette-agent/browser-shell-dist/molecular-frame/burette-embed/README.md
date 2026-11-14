@@ -1,7 +1,8 @@
 # Embeddable Burette viewer
 
-A static web component for one structure or a docking result. It uses Burette's
-3D runtime, default illustrative appearance, pose controls and scene tree.
+A static web component for one structure, a docking result or a trajectory. It
+uses Burette's 3D runtime, default illustrative appearance, pose and frame
+controls and scene tree.
 It does not load the application workspace, structure editor or compute services.
 
 ## Build and serve
@@ -44,14 +45,17 @@ application theme explicitly when it can differ from the system theme.
 
 | Method | Effect |
 | --- | --- |
-| `open({ structure, poses?, activePose? })` | Resolves when the new scene is rendered. A subsequent open replaces the frame and cancels pending work. |
+| `open({ structure, poses?, trajectory?, structures?, activePose? })` | Resolves when the new scene is rendered. A subsequent open replaces the frame and cancels pending work. |
 | `setPose(index)` | Shows the zero-based displayed pose. The camera stays where it is. |
-| `setPoseRecord(sourceRecordId)` | Selects a zero-based record from the supplied docking pose file. |
+| `setPoseRecord(sourceRecordId, file?)` | Selects a zero-based record from the zero-based pose file (default 0). |
+| `setFrame(index)`, `play()`, `pause()` | Steps or plays the frames of a trajectory or multi-model file. |
+| `setSmoothing(on)` | Turns Smooth motion on or off for multi-model PDB and multi-frame XYZ trajectories. |
 | `setPoseMode('single' \| 'all')` | Switches between one pose and all poses. |
 | `focusLigand()`, `resetCamera()` | Changes the camera in place. |
 | `capture({ width?, height?, format?, axes?, transparent? })` | Returns an image data URI (PNG by default). Custom dimensions accept up to 4096 pixels per side. |
 | `setTheme('light' \| 'dark' \| 'auto')` | Changes the theme in place. |
-| `on(event, listener)` | Subscribes to `ready`, `pose`, `selection`, `error` or `export`. Returns an unsubscribe function. |
+| `setAppearance({ background?, foreground?, accent?, uiFont?, locale? })` | Updates host appearance in place. |
+| `on(event, listener)` | Subscribes to `ready`, `pose`, `frame`, `smoothing`, `selection`, `error` or `export`. Returns an unsubscribe function. |
 | `destroy()` | Cancels pending work and removes the frame and listeners. |
 
 Files accept an `ArrayBuffer`, typed array, `Blob`, text or `url`.
@@ -59,11 +63,29 @@ The client does not detach input buffers. URLs use the host's same-origin
 credentials. To use an application-specific authentication flow, load the file
 in the application and pass its bytes. The combined scene limit is 100 MiB.
 Structures accept PDB, mmCIF, BinaryCIF, SDF, MOL, MOL2, PDBQT, XYZ and GRO.
-Docking accepts multiple SDF records, or one ligand in MOL, MOL2 or PDBQT.
+`poses` takes one ligand file or an array of them (SDF records, MOL, MOL2 or
+PDBQT); poses from several files are grouped by file, as in Burette.
+`trajectory` takes XTC, TRR, DCD, NetCDF or LAMMPS frames over `structure` as
+topology (PDB, mmCIF, GRO or PDBQT); several XTC files play as segments.
+`structures` adds more structure files to the same scene, as Together does in
+Burette: every file gets its own scene-tree row, and `setPoseMode('single')`
+pages through them one at a time.
+A scene has one of `poses`, `trajectory` or `structures`. Multi-model PDB and
+multi-frame XYZ structures get frame controls without a separate trajectory file.
+In the scene tree every pose, ligand file and structure has its own row with
+Hide, Remove and a menu. A molecule-only SDF shown as All lists each molecule
+by its SDF title when it has up to 64 records; larger files share one row for
+the molecules behind the selected one. Poses from several files open a menu
+grouped by file, where a pose or a whole file can be pinned to stay on screen
+while stepping; a single-pose file named like a crystal or reference ligand is
+pinned from the start.
 `activePose` is a display index. To select by the original SDF record number,
 call `setPoseRecord` after opening the scene.
 
-The pose event includes the display index, source record, count and mode.
+The pose event includes the display index, source record, file, count and mode.
+The frame event includes the global frame index, playback state and segment.
+Smooth motion runs in the frame for multi-model PDB and multi-frame XYZ; binary
+trajectories need the desktop smoother, so the frame hides the button for them.
 Without an `export` listener, files exported from the viewer menu download
 through the host page. Call scene commands after `open` resolves.
 If a scene command times out, the viewer discards that scene and its pending
