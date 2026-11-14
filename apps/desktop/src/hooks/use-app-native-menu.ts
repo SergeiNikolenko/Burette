@@ -649,6 +649,15 @@ export function useAppNativeMenu({
         // Molecules already uses, and the merge is one undo entry.
         if (activeDocument && isGrid) actions.mergeEquivalentGridRows(activeDocument.id);
         return;
+      case "collection.pivot":
+      case "collection.unpivot":
+      case "collection.merge-by-key":
+        // The dialog reads the table out of the grid and the grid applies the
+        // reshaped rows through its edit layer, so nothing goes through actions.
+        if (activeDocument && isGrid) {
+          openWorkbenchDialog({ kind: command.slice("collection.".length) as "pivot" | "unpivot" | "merge-by-key", document: activeDocument });
+        }
+        return;
       case "collection.reaction.perform":
         // Runs a reaction over the collection's molecules, so it opens a dialog
         // for the reaction rather than reading one off the rows.

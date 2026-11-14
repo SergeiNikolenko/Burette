@@ -937,6 +937,14 @@
         void fillGridEmptyCells(body, config());
         return;
       }
+      if (body.type === 'gridRequestTable') {
+        void postGridTable(body, config());
+        return;
+      }
+      if (body.type === 'gridApplyRowEdits') {
+        void applyGridRowEdits(body, config());
+        return;
+      }
       if (body.type === 'gridDescriptorControls') {
         applyDescriptorGridControls(body, config());
         return;
@@ -6732,6 +6740,136 @@
       setStatus(`[grid] Filled ${filled.size.toLocaleString()} empty cell${filled.size === 1 ? '' : 's'} of ${String(body.columnLabel || propKey)}.`);
     }
     post('gridCellsFilled', '', { requestId, filled: filled.size });
+  }
+
+  // Pivot, Unpivot and Merge File by Key are worked out by the host over the
+  // whole collection, so it reads the cells here first: one array per row, the
+  // row's index followed by the text of every asked column. The revision lets
+  // the edit that comes back be refused if the collection changed meanwhile.
+  async function postGridTable(body, cfg) {
+    const requestId = String(body.requestId || '');
+    const columnIds = (Array.isArray(body.columnIds) ? body.columnIds : []).map(id => String(id || '')).filter(Boolean);
+    try {
+      if (!requireCollectionIndexReady('reading the table')) throw new Error('The collection is still being indexed.');
+      const rows = await collectCurrentCollectionRows(cfg);
+      post('gridTable', '', {
+        requestId,
+        sourceRevision: state.sourceRevision,
+        rows: rows.map(row => [Number(row.index), ...columnIds.map(id => tableColumnRawDisplayValue(row, id))])
+      });
+    } catch (error) {
+      post('gridTable', '', { requestId, error: error?.message || String(error) });
+    }
+  }
+
+  // A row edit planned outside the grid arrives as cell changes: `set` writes
+  // cells, an empty text clears one, `remove` drops cells by name.
+  function editedRowProps(props, edit) {
+    const next = { ...props };
+    for (const key of Array.isArray(edit?.remove) ? edit.remove : []) delete next[String(key)];
+    for (const [key, value] of Object.entries(edit?.set && typeof edit.set === 'object' ? edit.set : {})) {
+      const text = String(value ?? '');
+      if (!key.trim()) continue;
+      if (text.trim()) next[key] = text;
+      else delete next[key];
+    }
+    return next;
+  }
+
+  // Pure on purpose. An inserted row is a copy of the row it follows - the
+  // structure with it - as that row was before its own patch, so a reshape can
+  // describe every output row from the same source row.
+  function planGridRowEdits(rows, body, firstNewIndex) {
+    const byIndex = new Map(rows.map(row => [Number(row.index), row]));
+    const hide = [...new Set((Array.isArray(body.hide) ? body.hide : []).map(Number))].filter(index => byIndex.has(index));
+    const hidden = new Set(hide);
+    const patches = [];
+    const inserts = [];
+    let nextIndex = Number(firstNewIndex) || 0;
+    for (const patch of Array.isArray(body.patches) ? body.patches : []) {
+      const row = byIndex.get(Number(patch?.index));
+      if (!row || hidden.has(Number(row.index))) continue;
+      patches.push({ index: Number(row.index), row: { ...row, props: editedRowProps(row.props || {}, patch) } });
+    }
+    for (const insert of Array.isArray(body.inserts) ? body.inserts : []) {
+      const row = byIndex.get(Number(insert?.afterIndex));
+      if (!row || hidden.has(Number(row.index))) continue;
+      inserts.push({
+        afterIndex: Number(row.index),
+        row: { ...row, index: nextIndex++, props: editedRowProps(row.props || {}, insert) }
+      });
+    }
+    return { patches, inserts, hide };
+  }
+
+  async function applyGridRowEdits(body, cfg) {
+    const requestId = String(body.requestId || '');
+    const refuse = error => post('gridRowEditsApplied', '', { requestId, error });
+    if (state.closeTransitionActive || state.saveAsPending || !capabilities(cfg).editing) {
+      refuse('The collection cannot be edited right now.');
+      return;
+    }
+    if (Number(body.sourceRevision) !== state.sourceRevision) {
+      refuse('The collection changed in the meantime. Run the command again.');
+      return;
+    }
+    if (!requireCollectionIndexReady('editing the table')) {
+      refuse('The collection is still being indexed.');
+      return;
+    }
+    const rows = await collectCurrentCollectionRows(cfg);
+    if (state.closeTransitionActive || state.saveAsPending || Number(body.sourceRevision) !== state.sourceRevision) {
+      refuse('The collection changed in the meantime. Run the command again.');
+      return;
+    }
+    const plan = planGridRowEdits(rows, body, nextGridRowIndex(rows));
+    if (plan.patches.length + plan.inserts.length + plan.hide.length > 0) {
+      pushUndoSnapshot(String(body.label || 'Edit Rows').slice(0, 80));
+      for (const patch of plan.patches) {
+        state.rowPatches.set(patch.index, {
+          name: patch.row.name,
+          molblock: patch.row.molblock,
+          smiles: patch.row.smiles,
+          props: patch.row.props
+        });
+      }
+      const doomed = new Set(plan.hide);
+      for (const index of doomed) {
+        state.selected.delete(index);
+        state.hiddenRows.add(index);
+      }
+      // Inserts that follow the same row are placed last one first, so they end
+      // up in the order they were listed.
+      const inserts = plan.inserts.slice().reverse();
+      if (state.remoteMode) {
+        state.rows = applyVirtualGridEdits(state.rows);
+        const loaded = new Set(state.rows.map(row => Number(row.index)));
+        for (const insert of inserts) {
+          state.insertedRows.push(insert.row);
+          if (loaded.has(insert.afterIndex)) insertAfterRow(state.rows, insert.afterIndex, insert.row);
+        }
+        const delta = inserts.length - doomed.size;
+        state.totalRows = Math.max(0, state.totalRows + delta);
+        const previousTotalHint = Number(state.recordsTotalHint);
+        state.recordsTotalHint = Number.isFinite(previousTotalHint)
+          ? Math.max(0, previousTotalHint + delta)
+          : state.totalRows;
+      } else {
+        state.all = state.all.filter(row => !doomed.has(Number(row.index)));
+        for (const insert of inserts) insertAfterRow(state.all, insert.afterIndex, insert.row);
+      }
+      invalidateTableColumnCatalog();
+      markGridDirty('row edits');
+      if (state.remoteMode) void render(cfg);
+      else refresh(cfg);
+      if (body.summary) setStatus(`[grid] ${String(body.summary).slice(0, 240)}`);
+    }
+    post('gridRowEditsApplied', '', {
+      requestId,
+      patched: plan.patches.length,
+      inserted: plan.inserts.length,
+      hidden: plan.hide.length
+    });
   }
 
   function applyKetcherGridRow(body, cfg) {

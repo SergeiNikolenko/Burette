@@ -181,6 +181,24 @@ export function buildShellCommands(
       label: "Delete duplicate molecules",
       description: "Remove repeated structures from the active collection",
       run: () => actions.deleteDuplicateGridRows(state.activeDocument!.id),
+    }, {
+      id: "pivot-collection",
+      group: "Suggested",
+      label: "Pivot…",
+      description: "",
+      run: () => openWorkbenchDialog({ kind: "pivot", document: state.activeDocument }),
+    }, {
+      id: "unpivot-collection",
+      group: "Suggested",
+      label: "Unpivot…",
+      description: "",
+      run: () => openWorkbenchDialog({ kind: "unpivot", document: state.activeDocument }),
+    }, {
+      id: "merge-file-by-key",
+      group: "Suggested",
+      label: "Merge file by key…",
+      description: "",
+      run: () => openWorkbenchDialog({ kind: "merge-by-key", document: state.activeDocument }),
     }] : []),
     {
       id: "toggle-sidebar",

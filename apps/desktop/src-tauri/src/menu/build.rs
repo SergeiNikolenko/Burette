@@ -445,6 +445,15 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
     let merge_rows = MenuItemBuilder::with_id("collection.merge-rows", "Merge Equivalent Rows")
         .enabled(false)
         .build(app)?;
+    let pivot = MenuItemBuilder::with_id("collection.pivot", "Pivot…")
+        .enabled(false)
+        .build(app)?;
+    let unpivot = MenuItemBuilder::with_id("collection.unpivot", "Unpivot…")
+        .enabled(false)
+        .build(app)?;
+    let merge_by_key = MenuItemBuilder::with_id("collection.merge-by-key", "Merge File by Key…")
+        .enabled(false)
+        .build(app)?;
     let reaction_add_smiles =
         MenuItemBuilder::with_id("collection.reaction.add-smiles", "Add Reaction SMILES")
             .enabled(false)
@@ -513,6 +522,9 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
             &transform,
             &merge_columns,
             &merge_rows,
+            &pivot,
+            &unpivot,
+            &merge_by_key,
             &reaction,
             &PredefinedMenuItem::separator(app)?,
             &delete_rows,

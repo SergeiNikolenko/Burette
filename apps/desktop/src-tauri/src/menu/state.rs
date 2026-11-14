@@ -852,6 +852,15 @@ pub(super) fn sync_native_menu<R: Runtime>(
     // which is the grid's own virtual edit layer rather than the collection
     // database, so it follows the same rule.
     set_enabled(&app, "collection.transform.split-rows", state.is_grid)?;
+    // Pivot, Unpivot and Merge File by Key rewrite cells and rows through the
+    // same edit layer, so they are reachable on an edited grid as well.
+    for id in [
+        "collection.pivot",
+        "collection.unpivot",
+        "collection.merge-by-key",
+    ] {
+        set_enabled(&app, id, state.is_grid)?;
+    }
     set_enabled(&app, "collection.transform", state.is_grid)?;
     // The reaction columns only mean anything for a collection that holds
     // reactions, so they follow what the grid reports. Perform Reaction is the
