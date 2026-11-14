@@ -197,7 +197,7 @@ export function MatchedPairsDialog({ request, onDismiss }: { request: MatchedPai
               const to = values?.get(toId);
               return <div key={`${fromId} ${toId} ${constant}`} className="matched-pairs-pair">
                 {[fromId, toId].map((id, side) => <figure key={side}>
-                  <Structure smiles={analysis.smiles.get(id) ?? ""} width={240} height={84} />
+                  <Structure smiles={analysis.smiles.get(id) ?? ""} width={264} height={120} />
                   <figcaption><span className="truncate" title={name(id)}>{name(id)}</span><span className="tabular-nums">{value(id)}</span></figcaption>
                 </figure>)}
                 <ArrowRight className="matched-pairs-arrow size-4" aria-hidden />

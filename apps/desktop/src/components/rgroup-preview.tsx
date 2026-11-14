@@ -3,6 +3,7 @@ import { loadDerivedEngines, type RGroupDecomposition } from "../lib/derived-col
 import { NativeSelect, NativeSelectOption } from "./ui/native-select";
 import { Button } from "./ui/button";
 import { DARK_STRUCTURE_PALETTE } from "../lib/structure-palette";
+import { depictionLongAxisAngle } from "../lib/depiction-axis";
 
 /** A 2D drawing of a SMILES or molblock in the current theme's ink; `label` names it when the source text is not readable. */
 export function Structure({ smiles, label = smiles, width = 260, height = 150 }: { smiles: string; label?: string; width?: number; height?: number }) {
@@ -21,7 +22,8 @@ export function Structure({ smiles, label = smiles, width = 260, height = 150 }:
           mol.set_new_coords();
           const dark = document.querySelector(".app-shell")?.getAttribute("data-effective-theme") === "dark";
           const ink = dark ? [0.87, 0.87, 0.87] : [0.12, 0.12, 0.12];
-          const svg = mol.get_svg_with_highlights(JSON.stringify({ width, height,
+          // Every place this is drawn in is wider than tall: lay the molecule's long axis across it.
+          const svg = mol.get_svg_with_highlights(JSON.stringify({ width, height, rotate: depictionLongAxisAngle(mol.get_molblock()),
             backgroundColour: [0, 0, 0, 0], atomColourPalette: { 0: ink, 1: ink, 6: ink, ...(dark ? DARK_STRUCTURE_PALETTE : {}) }, padding: 0.1 }));
           if (active && version === current) setImage(svg);
         } finally { mol.delete(); }

@@ -5,7 +5,9 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { PanelEmptyState } from "@/components/ui/panel-empty-state";
 import { Spinner } from "@/components/ui/spinner";
 import { useChemicalSpaceSetting } from "../hooks/use-chemical-space-setting";
-import { useCollectionChartSource } from "../hooks/use-collection-chart-source";
+import { useCollectionChartSource, type ChartMoleculePreview } from "../hooks/use-collection-chart-source";
+import { Structure } from "./rgroup-preview";
+import "./rgroup-analysis.css";
 import { barChart, boxChart, histogramChart, type BandChart } from "../lib/collection-chart-bands";
 import { CHART_CATEGORY_COLORS, CHART_NEUTRAL_COLOR, cssColor, rowColors, sequentialColor } from "../lib/collection-chart-color";
 import {
@@ -382,7 +384,7 @@ function ChartTip({ tip, table, bands, selected, preview, lines, valueLabel }: {
   table: ChartTable;
   bands: BandChart | null;
   selected: Uint8Array;
-  preview: { sourceRecordId: number; name: string; svgUrl: string | null } | null;
+  preview: ChartMoleculePreview | null;
   lines: Array<[string, number]>;
   valueLabel: string;
 }) {
@@ -393,7 +395,8 @@ function ChartTip({ tip, table, bands, selected, preview, lines, valueLabel }: {
     const molecule = preview?.sourceRecordId === id ? preview : null;
     return (
       <div className={frame} style={style} data-testid="collection-chart-tip">
-        {molecule?.svgUrl ? <img className="mb-1 h-24 w-44 rounded-md bg-white object-contain" src={molecule.svgUrl} alt="" /> : null}
+        {molecule?.smiles ? <div className="mb-1 w-44 [&_.rgroup-structure]:h-24"><Structure smiles={molecule.smiles} label={molecule.name} width={176} height={96} /></div>
+          : molecule?.svgUrl ? <img className="mb-1 h-24 w-44 rounded-md bg-white object-contain" src={molecule.svgUrl} alt="" /> : null}
         <div className="truncate font-medium">{molecule?.name || `Row ${id + 1}`}</div>
         {lines.map(([label, value]) => (
           <div key={label} className="flex justify-between gap-3 tabular-nums">

@@ -22,7 +22,7 @@ export type SarTableRequest = {
   columns: GridColumnChoice[];
 };
 
-type Preview = { name: string; svgUrl: string | null };
+type Preview = { name: string; smiles: string; svgUrl: string | null };
 type CellAddress = { row: number; column: number };
 
 const PREVIEWED_MOLECULES = 3;
@@ -73,7 +73,8 @@ export function SarTableDialog({ request, onDismiss }: { request: SarTableReques
       if (data.body.sourceRecordId == null || !Number.isSafeInteger(id) || id < 0) return;
       const svg = typeof data.body.svgBase64 === "string" && data.body.svgBase64.length <= MAX_PREVIEW_BASE64_BYTES ? data.body.svgBase64 : "";
       const name = typeof data.body.name === "string" ? data.body.name : `Molecule ${id + 1}`;
-      setPreviews((known) => new Map(known).set(id, { name, svgUrl: svg ? `data:image/svg+xml;base64,${svg}` : null }));
+      const smiles = typeof data.body.smiles === "string" ? data.body.smiles : "";
+      setPreviews((known) => new Map(known).set(id, { name, smiles, svgUrl: svg ? `data:image/svg+xml;base64,${svg}` : null }));
     };
     window.addEventListener("message", onMessage);
     return () => {
@@ -203,17 +204,19 @@ export function SarTableDialog({ request, onDismiss }: { request: SarTableReques
             </tbody>
           </table>
         </div>}
-        {shown && shownIds && <div className="sar-table-molecules" aria-label="Molecules in the cell">
-          {shownIds.map((id) => {
+        {/* The row is there before a cell is pointed at: a dialog that grew on hover would move the table under the pointer. */}
+        {table && <div className="sar-table-molecules" aria-label="Molecules in the cell">
+          {shown && shownIds?.map((id) => {
             const preview = previews.get(id);
             const value = values?.get(id);
             return <figure key={id}>
-              {preview?.svgUrl ? <img src={preview.svgUrl} alt="" /> : <div className="sar-table-molecule-pending" />}
+              {preview?.smiles ? <Structure smiles={preview.smiles} label={preview.name} width={200} height={96} />
+                : preview?.svgUrl ? <img src={preview.svgUrl} alt="" /> : <div className="sar-table-molecule-pending" />}
               <figcaption><span className="truncate" title={preview?.name}>{preview?.name ?? `Molecule ${id + 1}`}</span>
                 <span className="tabular-nums">{value === undefined ? "" : value.toFixed(2)}</span></figcaption>
             </figure>;
           })}
-          {shown.ids.length > PREVIEWED_MOLECULES && <span className="text-xs text-(--color-text-secondary)">+{shown.ids.length - PREVIEWED_MOLECULES}</span>}
+          {shown && shown.ids.length > PREVIEWED_MOLECULES && <span className="text-xs text-(--color-text-secondary)">+{shown.ids.length - PREVIEWED_MOLECULES}</span>}
         </div>}
         {table && (table.capped.rows || table.capped.columns) && <p className="text-xs text-(--color-text-secondary)" role="status">Showing the {SAR_TABLE_MAX_GROUPS} most frequent substituents.</p>}
       </div>

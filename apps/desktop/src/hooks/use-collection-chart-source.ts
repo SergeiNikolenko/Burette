@@ -19,7 +19,7 @@ const MAX_PREVIEW_BASE64_BYTES = 512 * 1024;
 
 type GridBody = Record<string, unknown>;
 
-export type ChartMoleculePreview = { sourceRecordId: number; name: string; svgUrl: string | null };
+export type ChartMoleculePreview = { sourceRecordId: number; name: string; smiles: string; svgUrl: string | null };
 
 function postToGrid(documentId: string, body: GridBody) {
   activeViewerIframeForDocument(documentId, "grid2d")?.contentWindow?.postMessage({
@@ -203,6 +203,7 @@ export function useCollectionChartSource(
         setPreview({
           sourceRecordId: id,
           name: typeof body.name === "string" ? body.name : "",
+          smiles: typeof body.smiles === "string" ? body.smiles : "",
           svgUrl: svg ? `data:image/svg+xml;base64,${svg}` : null,
         });
       }
