@@ -33,6 +33,7 @@ test("the grid answers a chart request with whole columns, edits applied", async
   expect(grid.posted).toEqual([{
     type: "collectionChartData",
     requestId: "r1",
+    sourceRevision: 0,
     sourceRecordIds: [0, 1, 2, 3, 5],
     columns: [
       { id: "prop:Weight", valueType: "number", values: [999, 110, 120, 130, 150] },
@@ -213,6 +214,11 @@ test("the chart source keeps columns, rows, selection and filters in step with t
     await settle();
     expect(hostMessages.filter(message => message.type === "collectionChartRequestData").length).toBe(1);
     expect((source.table!.series.get(chartSeriesKey({ id: "prop:Weight", valueType: "number" })) as NumericSeries).max).toBe(500);
+    // Saving clears the dirty flag at the same revision: nothing is read again.
+    hostMessages.length = 0;
+    await emit({ type: "gridDirtyChanged", dirty: false, sourceRevision: 1 });
+    await settle();
+    expect(hostMessages).toEqual([]);
 
     // The grid's filter model is its only notice that columns or values changed
     // without an edit. The first one sets the ranges the chart was read at.
@@ -249,6 +255,18 @@ test("the chart source keeps columns, rows, selection and filters in step with t
       subscriberId: subscription.subscriberId, active: false,
     }]);
     expect(source.table).not.toBeNull();
+
+    // Shown again, it asks which revision the grid is at and re-reads rows edited meanwhile.
+    hostMessages.length = 0;
+    grid.state.sourceRevision = 2;
+    await act(async () => root.render(<Harness active />));
+    await settle();
+    const revisionRequest = hostMessages.find(message => message.type === "chemicalSpaceRequestIndexState")!;
+    expect(hostMessages.filter(message => message.type === "collectionChartRequestData").length).toBe(0);
+    await emit({ type: "chemicalSpaceIndexState", requestId: revisionRequest.requestId, sourceRevision: 2 });
+    await settle();
+    expect(hostMessages.filter(message => message.type === "collectionChartRequestData").length).toBe(1);
+    expect(source.table!.sourceRevision).toBe(2);
   } finally {
     await act(async () => root.unmount());
   }

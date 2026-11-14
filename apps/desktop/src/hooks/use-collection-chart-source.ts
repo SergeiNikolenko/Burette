@@ -146,7 +146,8 @@ export function useCollectionChartSource(
   const requestsRef = useRef(requests);
   requestsRef.current = requests;
   const loadedEpoch = useRef(-1);
-  const sourceRevision = useRef<number | null>(null);
+  const tableRef = useRef(table);
+  tableRef.current = table;
   const valuesSignature = useRef("[]");
 
   useEffect(() => {
@@ -155,6 +156,8 @@ export function useCollectionChartSource(
     const subscribe = () => {
       postToGrid(documentId, { type: "chemicalSpaceVisibilitySubscription", subscriberId, active: true });
       postToGrid(documentId, { type: "chemicalSpaceRequestState" });
+      // Edits made while the chart was hidden show up as a newer revision.
+      postToGrid(documentId, { type: "chemicalSpaceRequestIndexState", requestId: `chart-revision-${subscriberId}` });
     };
     const onMessage = (event: MessageEvent) => {
       const body = gridMessage(event, documentId);
@@ -167,12 +170,15 @@ export function useCollectionChartSource(
         const ids = boundedIds(body.selectedSourceIndexes);
         if (ids) setSelectedIds(current => sameIds(current, ids) ? current : ids);
       } else if (body.type === "chemicalSpaceVisibilityChanged") {
-        setVisibleIds(body.kind === "filtered" ? boundedIds(body.sourceRecordIds) : null);
-      } else if (body.type === "gridDirtyChanged") {
+        const ids = body.kind === "filtered" ? boundedIds(body.sourceRecordIds) : null;
+        // The grid repeats its filter state after every selection; equal ids keep the chart as it is.
+        setVisibleIds(current => current && ids ? sameIds(current, ids) ? current : ids : ids);
+      } else if (body.type === "gridDirtyChanged" || body.type === "chemicalSpaceIndexState") {
+        // Rows read at another revision are stale; a read still in flight was
+        // dropped by the grid and has to be asked for again.
         const revision = Number(body.sourceRevision);
-        if (Number.isSafeInteger(revision) && revision !== sourceRevision.current) {
-          if (sourceRevision.current !== null || revision > 0) setDataEpoch(epoch => epoch + 1);
-          sourceRevision.current = revision;
+        if (Number.isSafeInteger(revision) && tableRef.current?.sourceRevision !== revision) {
+          setDataEpoch(epoch => epoch + 1);
         }
       } else if (body.type === "gridFilterModel") {
         window.clearTimeout(columnsTimer);

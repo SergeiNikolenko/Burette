@@ -26,6 +26,8 @@ function resolveColor(css: string): [number, number] {
   scratch.canvas.width = 1;
   scratch.canvas.height = 1;
   scratch.clearRect(0, 0, 1, 1);
+  // An unparseable colour leaves the fill style as it was, so start from black.
+  scratch.fillStyle = "#000";
   scratch.fillStyle = css;
   scratch.fillRect(0, 0, 1, 1);
   const [red, green, blue, alpha] = scratch.getImageData(0, 0, 1, 1).data;

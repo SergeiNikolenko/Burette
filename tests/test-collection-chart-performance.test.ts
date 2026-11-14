@@ -127,6 +127,7 @@ test("selection, filter and lasso updates of 100k rows fit an interaction", () =
     rowBySourceRecordId: new Map(Array.from({ length: rowCount }, (_, row) => [row, row])),
     series: new Map(),
     total: rowCount,
+    sourceRevision: 0,
   };
   const half = Array.from({ length: rowCount / 2 }, (_, index) => index * 2);
   const include = new Uint8Array(rowCount).fill(1);

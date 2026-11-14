@@ -7118,6 +7118,7 @@
       }
       post('collectionChartData', '', {
         requestId,
+        sourceRevision,
         sourceRecordIds,
         columns: columns.map(column => ({ id: column.id, valueType: column.numeric ? 'number' : 'text', values: column.values })),
         total: Math.max(total, sourceRecordIds.length)

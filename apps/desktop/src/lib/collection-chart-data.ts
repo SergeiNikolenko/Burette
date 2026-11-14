@@ -39,6 +39,8 @@ export type ChartTable = {
   series: Map<string, ChartSeries>;
   /** Rows in the collection; larger than the table when the bridge limit cut it. */
   total: number;
+  /** The grid's edit counter when the rows were read. */
+  sourceRevision: number;
 };
 
 export function chartSeriesKey(request: ChartColumnRequest) {
@@ -125,11 +127,13 @@ export function chartTableFromBridge(
       : categorySeries(column.values, rowCount));
   }
   const total = Number(body.total);
+  const sourceRevision = Number(body.sourceRevision);
   return {
     sourceRecordIds,
     rowBySourceRecordId,
     series,
     total: Number.isSafeInteger(total) && total > rowCount ? total : rowCount,
+    sourceRevision: Number.isSafeInteger(sourceRevision) ? sourceRevision : 0,
   };
 }
 
