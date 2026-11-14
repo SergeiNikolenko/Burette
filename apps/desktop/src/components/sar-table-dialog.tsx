@@ -165,7 +165,7 @@ export function SarTableDialog({ request, onDismiss }: { request: SarTableReques
         {text && <div className="sar-table-controls">
           {series.length > 1 && <label className="flex min-w-0 flex-col gap-2 text-xs">Series
             <NativeSelect name="series" value={activeSeries} onChange={(event) => { setSeriesId(event.target.value); setAxes(null); setHovered(null); setPinned(null); }}>
-              {series.map(([id, count]) => <NativeSelectOption key={id} value={id}>{id} · {count.toLocaleString()} molecules</NativeSelectOption>)}
+              {series.map(([id, count]) => <NativeSelectOption key={id} value={id}>{id} ({count.toLocaleString()})</NativeSelectOption>)}
             </NativeSelect>
           </label>}
           {table && axisSelect("Rows", "rows", rowsId, columnsId)}
@@ -196,7 +196,7 @@ export function SarTableDialog({ request, onDismiss }: { request: SarTableReques
                     onMouseEnter={() => setHovered(address)} onFocus={() => setHovered(address)}
                     onClick={() => setPinned(address)}
                     onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setPinned(address); } }}>
-                    {cell.mean === null ? "–" : cell.mean.toFixed(2)}
+                    {cell.mean?.toFixed(2)}
                   </td>;
                 })}
               </tr>)}

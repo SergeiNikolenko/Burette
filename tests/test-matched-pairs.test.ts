@@ -13,6 +13,7 @@ import {
   transformationStatistics,
   type FragmentedMolecule,
   type MatchedPairInput,
+  type MatchedPairQueries,
 } from "../apps/desktop/src/lib/matched-pairs/matched-pairs";
 
 type Reference = {
@@ -22,7 +23,8 @@ type Reference = {
 };
 
 let rdkit: MainModule;
-beforeAll(async () => { rdkit = await initRDKitModule(); });
+let queries: MatchedPairQueries;
+beforeAll(async () => { rdkit = await initRDKitModule(); queries = createMatchedPairQueries(rdkit); });
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/matched-pairs/${name}`, import.meta.url), "utf8");
 
@@ -54,7 +56,6 @@ describe.each([
     expect(records).toHaveLength(molecules);
     const title = (id: number) => records[id].title;
 
-    const queries = createMatchedPairQueries(rdkit);
     const fragmented = inputs(records).flatMap((input) => fragmentMolecule(rdkit, queries, input) ?? []);
     const fragmentations = fragmented.flatMap((molecule) => molecule.fragmentations
       .map(({ label, variable, constant, variableHeavies }) => [title(molecule.id), label, variable, constant, variableHeavies]));
@@ -84,16 +85,15 @@ describe.each([
 });
 
 function fragment(smiles: string, id = 0): FragmentedMolecule {
-  const queries = createMatchedPairQueries(rdkit);
   const molecule = fragmentMolecule(rdkit, queries, { id, smiles, molblock: null });
   if (!molecule) throw new Error(`${smiles} was not fragmented`);
   return molecule;
 }
 
 function rejoin(variable: string, constant: string): string {
-  const [a, b] = [variable, constant].map((part) => rdkit.get_mol(part.replace("*", "[*:1]")));
+  const [a, b] = [variable, constant].map((part) => rdkit.get_mol(part.replace("*", "[*:1]"))!);
   const joined = rdkit.molzip(a, b);
-  return joined?.get_smiles() ?? "";
+  try { return joined?.get_smiles() ?? ""; } finally { joined?.delete(); a.delete(); b.delete(); }
 }
 
 test("a cut next to a double bond keeps the bond's geometry", () => {

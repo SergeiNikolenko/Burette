@@ -77,7 +77,7 @@ test("matched pairs lists mmpdb's transformations, shows the pairs and selects t
     ["[*:1]C to [*:1][H], 8 pairs", "8", "+0.21", "0.60"],
   ]);
   expect(rows()[0].querySelector("[data-structure]")?.getAttribute("data-structure")).toBe("*Cl");
-  expect(text('[role="status"]')).toEqual(["1–6 of 317", "1 molecule was left out."]);
+  expect(text('[role="status"]')).toEqual(["1–5 of 317", "1 molecule was left out."]);
   expect(button("Select in grid").disabled).toBe(true);
 
   await act(async () => (rows()[0] as HTMLElement).click());

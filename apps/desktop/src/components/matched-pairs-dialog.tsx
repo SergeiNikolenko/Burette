@@ -35,7 +35,7 @@ const SORTS = {
   increase: "Largest increase",
   decrease: "Largest decrease",
 } as const;
-const TRANSFORMATIONS_PER_PAGE = 6;
+const TRANSFORMATIONS_PER_PAGE = 5;
 const PAIRS_PER_PAGE = 2;
 
 const signed = (value: number) => `${value > 0 ? "+" : value < 0 ? "−" : ""}${Math.abs(value).toFixed(2)}`;
@@ -179,8 +179,8 @@ export function MatchedPairsDialog({ request, onDismiss }: { request: MatchedPai
                   aria-label={`${transformation.from} to ${transformation.to}, ${pairs} ${pairs === 1 ? "pair" : "pairs"}`}
                   onClick={() => select(key)}
                   onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); select(key); } }}>
-                  <TableCell><Structure smiles={drawn(transformation.from)} width={120} height={56} /></TableCell>
-                  <TableCell><Structure smiles={drawn(transformation.to)} width={120} height={56} /></TableCell>
+                  <TableCell><Structure smiles={drawn(transformation.from)} width={120} height={44} /></TableCell>
+                  <TableCell><Structure smiles={drawn(transformation.to)} width={120} height={44} /></TableCell>
                   <TableCell className="text-right tabular-nums">{pairs.toLocaleString()}</TableCell>
                   <TableCell className="text-right tabular-nums" title={statistics && statistics.count < pairs ? `${statistics.count} of ${pairs} pairs have a value` : undefined}>
                     {statistics ? signed(statistics.mean) : ""}
@@ -197,7 +197,7 @@ export function MatchedPairsDialog({ request, onDismiss }: { request: MatchedPai
               const to = values?.get(toId);
               return <div key={`${fromId} ${toId} ${constant}`} className="matched-pairs-pair">
                 {[fromId, toId].map((id, side) => <figure key={side}>
-                  <Structure smiles={analysis.smiles.get(id) ?? ""} width={240} height={110} />
+                  <Structure smiles={analysis.smiles.get(id) ?? ""} width={240} height={84} />
                   <figcaption><span className="truncate" title={name(id)}>{name(id)}</span><span className="tabular-nums">{value(id)}</span></figcaption>
                 </figure>)}
                 <ArrowRight className="matched-pairs-arrow size-4" aria-hidden />

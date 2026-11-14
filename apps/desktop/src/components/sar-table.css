@@ -8,8 +8,10 @@
 .sar-table .rgroup-structure { width: 84px; height: 48px; }
 .sar-table-hydrogen { display: grid; place-items: center; width: 84px; height: 48px; font-size: 13px; }
 .sar-table td { min-width: 56px; padding: 4px 8px; border-radius: 4px; text-align: center; cursor: default; }
+/* A cell that holds molecules is a tile even when none of them has a value. */
+.sar-table td[tabindex] { background: var(--line-subtler); }
 /* Colour carries the value: the tint deepens from the lowest cell mean to the highest. */
-.sar-table td[style] { background: color-mix(in srgb, var(--accent) var(--sar-shade), transparent); }
+.sar-table td[tabindex][style] { background: color-mix(in srgb, var(--accent) var(--sar-shade), transparent); }
 .sar-table td[aria-selected="true"] { outline: 2px solid var(--text-primary); outline-offset: -2px; }
 .sar-table td:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .sar-table-molecules { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; align-items: center; gap: 8px; }
