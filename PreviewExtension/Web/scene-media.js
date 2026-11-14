@@ -85,7 +85,7 @@ if (!window.BuretteSceneMedia) {
         const center = a.center.map((value, axis) => (value + b.center[axis]) / 2);
         const radius = Math.min(a.radius, b.radius) * aspect;
         bondCount++;
-        shapes.push({ depth: center[2], kind: 'bond', a, b, order, pixels: pixelRadius(a.world, a.center, radius) });
+        shapes.push({ depth: center[2], kind: 'bond', a, b, order, radius, pixels: pixelRadius(a.world, a.center, radius) });
       };
       for (const unit of structure.units) {
         if (unit.kind !== 0) continue;
@@ -119,19 +119,31 @@ if (!window.BuretteSceneMedia) {
       }
       // A bond: one group with a half in each atom's colour; double and triple
       // bonds as parallel strokes across the screen.
-      const { a, b, order, pixels } = shape;
+      const { a, b, order, radius, pixels } = shape;
       const dx = b.center[0] - a.center[0], dy = b.center[1] - a.center[1], length = Math.hypot(dx, dy) || 1;
       const strokes = Math.min(Math.max(order | 0, 1), 3), strokeWidth = strokes > 1 ? pixels * 2 / (strokes * 0.9) : pixels * 2;
       const nx = -dy / length * strokeWidth * 1.1, ny = dx / length * strokeWidth * 1.1;
-      const middle = [(a.center[0] + b.center[0]) / 2, (a.center[1] + b.center[1]) / 2];
+      const axis = b.world.map((value, i) => value - a.world[i]), span = Math.hypot(...axis);
+      const middle = project(a.world.map((value, i) => value + axis[i] / 2));
       const parts = [];
       for (let s = 0; s < strokes; s++) {
         const offset = s - (strokes - 1) / 2, ox = nx * offset, oy = ny * offset;
-        for (const [from, to, color] of [[a.center, middle, a.color], [middle, b.center, b.color]]) {
-          parts.push(`<line x1="${round(from[0] + ox)}" y1="${round(from[1] + oy)}" x2="${round(to[0] + ox)}" y2="${round(to[1] + oy)}" stroke="${hex(color)}" stroke-width="${round(strokeWidth)}"/>`);
+        // The stroke's half width plus its distance from the bond axis, in Å.
+        const lateral = pixels ? (0.5 + Math.abs(offset) * 1.1) * strokeWidth * radius / pixels : 0;
+        // Where the stroke leaves the atom's sphere: under its disc, at least half a
+        // radius from the centre for strokes wider than the atom, never past the middle.
+        const end = (atom, sign) => {
+          const along = span ? sign * Math.min(Math.max(Math.sqrt(Math.max(atom.radius ** 2 - lateral ** 2, 0)), atom.radius / 2), span / 2) / span : 0;
+          return project(atom.world.map((value, i) => value + axis[i] * along));
+        };
+        const from = end(a, 1), to = end(b, -1);
+        // The first half runs a little past the middle so the halves meet without a seam.
+        const lap = Math.min(0.5, Math.hypot(to[0] - middle[0], to[1] - middle[1])) / length;
+        for (const [start, stop, color] of [[from, [middle[0] + dx * lap, middle[1] + dy * lap], a.color], [middle, to, b.color]]) {
+          parts.push(`<line x1="${round(start[0] + ox)}" y1="${round(start[1] + oy)}" x2="${round(stop[0] + ox)}" y2="${round(stop[1] + oy)}" stroke="${hex(color)}" stroke-width="${round(strokeWidth)}"/>`);
         }
       }
-      lines.push(`<g class="bond" stroke-linecap="round">${parts.join('')}</g>`);
+      lines.push(`<g class="bond">${parts.join('')}</g>`);
     }
     lines.push('</svg>', '');
     return { svg: lines.join('\n'), atoms: atomCount, bonds: bondCount };
