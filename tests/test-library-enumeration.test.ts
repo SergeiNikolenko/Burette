@@ -1,13 +1,14 @@
 // Enumerate Library against RDKit. The expected products come from RDKit's own
 // EnumerateLibraryFromReaction and molzip (tests/fixtures/library-enumeration,
-// reference.py); the functions under test are the ones the enumeration worker
-// calls, run here with the RDKit WASM the app ships.
+// reference.py). The first group starts the app's enumeration worker, which
+// loads the RDKit WASM the app ships; the rest call the functions it runs.
 import { beforeAll, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 
 import type { MainModule as RDKitModule } from "@rdkit/rdkit";
 
 import { parseSdfCollectionRecords } from "../apps/desktop/src/lib/collection-documents";
+import { runLibraryEnumeration } from "../apps/desktop/src/lib/library-enumeration-task";
 import {
   coreAttachmentLabels,
   enumerateLibrary,
@@ -47,6 +48,50 @@ function canonical(smiles: string) {
   const molecule = rdkit.get_mol(smiles)!;
   try { return molecule.get_smiles(); } finally { molecule.delete(); }
 }
+
+describe("enumeration worker", () => {
+  test("the 3 x 4 amide library comes back as RDKit's 12 products with their acid and amine", async () => {
+    const progress: Array<{ done: number; total: number }> = [];
+    const result = await runLibraryEnumeration({
+      mode: "reaction",
+      reaction: expected.amidation,
+      reactionName: "Amidation",
+      positions: [blocks("acids.smi"), blocks("amines.smi")],
+    }, { onProgress: (step) => progress.push(step) });
+
+    expect({ ...result, sdf: "" }).toEqual({ sdf: "", products: 12, duplicates: 0, skipped: 0, withoutProduct: 0, capped: false });
+    expect(progress.every((step) => step.total === 12 && step.done >= 1 && step.done <= 12)).toBe(true);
+    const records = parseSdfCollectionRecords(result.sdf);
+    expect(records.map((record) => canonical(record.molblock))).toEqual(expected.amides.map((amide) => amide.smiles));
+    expect(records.map((record) => record.props)).toEqual(expected.amides.map((amide) => ({
+      Reaction: "Amidation",
+      "Reactant 1": canonical(amide.reactants[0]),
+      "Reactant 1 source": `acids.smi #${amide.rows[0]}`,
+      "Reactant 2": canonical(amide.reactants[1]),
+      "Reactant 2 source": `amines.smi #${amide.rows[1]}`,
+    })));
+  });
+
+  test("the 2 x 3 core library comes back as RDKit's 6 molzip products", async () => {
+    const result = await runLibraryEnumeration({ mode: "core", core: expected.core, positions: [blocks("r1.smi"), blocks("r2.smi")] });
+    expect(parseSdfCollectionRecords(result.sdf).map((record) => canonical(record.molblock)))
+      .toEqual(expected.coreLibrary.map((row) => row.smiles));
+  });
+
+  test("a library over the limit is refused with its count, and a cancelled run stops", async () => {
+    const many = (count: number) => Array.from({ length: count }, (_, index) => ({ smiles: "CC(=O)O", source: `#${index + 1}` }));
+    await expect(runLibraryEnumeration({ mode: "reaction", reaction: expected.amidation, positions: [many(41), many(49)] }))
+      .rejects.toThrow("A library holds up to 2,000 products; this one would have 2,009.");
+
+    const controller = new AbortController();
+    const run = runLibraryEnumeration(
+      { mode: "reaction", reaction: expected.amidation, positions: [blocks("acids.smi"), blocks("amines.smi")] },
+      { signal: controller.signal },
+    );
+    controller.abort();
+    await expect(run).rejects.toThrow("Calculation cancelled.");
+  });
+});
 
 describe("reaction library", () => {
   test("3 acids x 4 amines give RDKit's 12 amides, each with its acid and amine", () => {
