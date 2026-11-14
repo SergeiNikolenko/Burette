@@ -12,12 +12,14 @@ import type { ShellActions } from "../../types";
  * scene under the pointer; each released drag reaches `onMoved` once with the final
  * positions of the moved atoms. A draft write reloads the scene into a second frame
  * that becomes visible only after it renders, so a binding read before then belongs to
- * the old frame: `onStale` asks for a new binding whenever the active frame differs.
+ * the old frame: while `active`, `onStale` asks for a new binding whenever the document's
+ * active frame changes. That also recovers a read the old frame failed, as it does after an
+ * edit that changed the atom count.
  */
 const FRAME_CHECK_MS = 400;
 
 export function useAtomMove(document: ViewerDocument, binding: GeometryBinding | null, send: ShellActions["runStructureViewerAction"],
-  onMoved: (event: AtomDragEvent) => void, onError: (message: string) => void, onStale: () => void) {
+  onMoved: (event: AtomDragEvent) => void, onError: (message: string) => void, onStale: () => void, active: boolean) {
   const handlers = useRef({ onMoved, onError, onStale, send });
   handlers.current = { onMoved, onError, onStale, send };
   useEffect(() => {
@@ -26,12 +28,19 @@ export function useAtomMove(document: ViewerDocument, binding: GeometryBinding |
     const unsubscribe = subscribeAtomDrag(document, binding, (event) => { if (event.phase === "end") handlers.current.onMoved(event); });
     void setAtomDragMode(document, binding, true, handlers.current.send, { signal: controller.signal, manipulate: true })
       .catch((caught) => { if (!controller.signal.aborted) handlers.current.onError(caught instanceof Error ? caught.message : String(caught)); });
-    const check = window.setInterval(() => {
-      if (activeViewerIframeForDocument(document.id)?.contentWindow !== binding.target.source) handlers.current.onStale();
-    }, FRAME_CHECK_MS);
     return () => {
-      controller.abort(); unsubscribe(); window.clearInterval(check);
+      controller.abort(); unsubscribe();
       void setAtomDragMode(document, binding, false, handlers.current.send).catch(() => {});
     };
   }, [binding, document.id]);
+  useEffect(() => {
+    if (!active) return undefined;
+    const frame = () => activeViewerIframeForDocument(document.id)?.contentWindow ?? null;
+    let seen = frame();
+    const check = window.setInterval(() => {
+      const current = frame();
+      if (current !== seen) { seen = current; handlers.current.onStale(); }
+    }, FRAME_CHECK_MS);
+    return () => window.clearInterval(check);
+  }, [active, document.id]);
 }

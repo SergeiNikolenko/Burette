@@ -167,7 +167,7 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
     (gesture) => draw.current(gesture), setInputError);
   const moved = useRef<(event: AtomDragEvent) => void>(() => {});
   useAtomMove(document, moving && !auto.running ? autoBinding : null, actions.runStructureViewerAction,
-    (event) => moved.current(event), setInputError, () => renewFrame((count) => count + 1));
+    (event) => moved.current(event), setInputError, () => renewFrame((count) => count + 1), moving && !auto.running);
   useEffect(() => {
     if (autoBase.current && autoBase.current !== editor?.current) { autoBase.current = null; auto.stop(); }
   }, [editor?.current]);
