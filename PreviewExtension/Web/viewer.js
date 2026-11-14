@@ -27258,11 +27258,12 @@ SOFTWARE.
     // Carbon first and hydrogen next, then alphabetical, as in a formula.
     return [...symbols].sort((a, b) => (a === 'C' ? -2 : a === 'H' ? -1 : 0) - (b === 'C' ? -2 : b === 'H' ? -1 : 0) || a.localeCompare(b));
   }
+  // Goes through lociSelects so the representation marks follow the selection.
   function selectMolstarAtomsWhere(test) {
-    const manager = activeMolstarViewer()?.plugin?.managers?.structure?.selection;
+    const selects = activeMolstarViewer()?.plugin?.managers?.interactivity?.lociSelects;
     const Element = window.molstar?.lib?.structure?.StructureElement;
-    if (!manager || !Element) throw new Error('No Mol* selection manager is available.');
-    manager.clear();
+    if (!selects || !Element) throw new Error('No Mol* selection manager is available.');
+    selects.deselectAll();
     let count = 0;
     for (const { structure, units } of molstarAtomicUnits()) {
       const elements = units.flatMap(unit => {
@@ -27272,7 +27273,7 @@ SOFTWARE.
         return indices.length ? [{ unit, indices: Int32Array.from(indices) }] : [];
       });
       // Atom-level commands: the picking granularity (often residue) must not widen them.
-      if (elements.length) manager.fromLoci('add', Element.Loci(structure, elements), false);
+      if (elements.length) selects.select({ loci: Element.Loci(structure, elements) }, false);
     }
     return count;
   }
@@ -27315,7 +27316,7 @@ SOFTWARE.
     }
     if (command === 'enlarge') return enlargeMolstarSelection();
     if (command === 'invert') return invertMolstarSelection();
-    if (command === 'none') { activeMolstarViewer()?.plugin?.managers?.structure?.selection?.clear?.(); return 0; }
+    if (command === 'none') { activeMolstarViewer()?.plugin?.managers?.interactivity?.lociSelects?.deselectAll?.(); return 0; }
     if (command !== 'residues' || !await applyMolstarSelectionQuery('whole residues', 'set')) throw new Error('This selection command is unavailable.');
     return null;
   }

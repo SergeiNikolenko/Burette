@@ -151,6 +151,8 @@ if (!window.BuretteAtomDrag) {
       drag = null;
     };
     const retire = () => { const current = drag; stop(); if (current) post('cancel', current); dispose(); };
+    // Mol* sees no pointer moves during a drag, so its hover highlight would stay on.
+    const unhighlight = () => plugin.managers.interactivity?.lociHighlights?.clearHighlights?.();
     const send = (text, options) => {
       let owner;
       try { owner = token(); } catch { retire(); return Promise.resolve(); }
@@ -229,6 +231,7 @@ if (!window.BuretteAtomDrag) {
       };
       try { drag.unpin = geometry.pin(plugin, patch, token()); } catch { drag = null; dispose(); return; }
       listen(true);
+      unhighlight();
       // Escape reaches this frame only while it has focus.
       window.focus();
       post('start');
@@ -249,6 +252,7 @@ if (!window.BuretteAtomDrag) {
       try { text = geometry.binding(plugin, isCurrent).text; } catch { retire(); return; }
       // Keep the pin until the final coordinates are applied, then release the atoms.
       listen(false);
+      unhighlight();
       current.ended = true;
       void send(text, { passive: true }).finally(() => { if (drag === current) stop(); });
       post('end', current);
