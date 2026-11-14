@@ -7099,12 +7099,42 @@
     return section;
   }
 
+  // Mol* nests every loaded file as data -> trajectory -> model -> structure ->
+  // component before the first representation, which reads as five rows of
+  // bookkeeping above one ligand. A row whose only structural child is another
+  // container folds into that child: the outermost name stays (it is the one a
+  // person gave it), the innermost ref drives colour and visibility, and removal
+  // still deletes from the outermost cell so no empty parents are left behind.
+  const sceneTreeRemoveRefs = new Map();
+  function compactSceneTreeNodes(list) {
+    return list.map(node => {
+      let current = node;
+      const carried = [];
+      for (;;) {
+        const structural = current.children.filter(child => child.typeClass !== 'Representation3D');
+        if (structural.length !== 1 || structural[0].group === 'annotations') break;
+        carried.push(...current.children.filter(child => child !== structural[0]));
+        current = structural[0];
+      }
+      if (current === node) return { ...node, children: compactSceneTreeNodes(node.children) };
+      sceneTreeRemoveRefs.set(current.ref, node.ref);
+      return {
+        ...current,
+        label: node.label,
+        sourceLabel: node.sourceLabel,
+        note: current.note || node.note,
+        children: compactSceneTreeNodes([...current.children, ...carried])
+      };
+    });
+  }
+
   function renderSceneTree() {
     const toggle = document.getElementById('buret-scene-tree-toggle');
     const panel = document.getElementById('buret-scene-tree');
     const body = panel?.querySelector('[data-buret-scene-tree-body]');
     if (!toggle || !panel || !body) return;
-    const nodes = sceneTreeNodes(activeMolstarViewer());
+    sceneTreeRemoveRefs.clear();
+    const nodes = compactSceneTreeNodes(sceneTreeNodes(activeMolstarViewer()));
     reconcileSceneTreeExpansion(nodes);
     const available = nodes.length > 0;
     toggle.classList.toggle('hidden', !available);
@@ -8365,7 +8395,7 @@
     else if (action === 'show-all') showAllSceneTreeNodes(ref);
     else if (action === 'save-focus') await saveSceneTreeFocusNode(ref);
     else if (action === 'delete-lasso-atoms') await deleteMolstarLassoAtoms(ref);
-    else if (action === 'remove') await removeSceneTreeNode(ref);
+    else if (action === 'remove') await removeSceneTreeNode(sceneTreeRemoveRefs.get(ref) || ref);
     else if (action === 'tint-color') {
       await applySceneTreeColorTheme(ref, 'tint', Number(control.dataset.sceneTreeColor));
     } else if (action === 'rep-tint-color') {
