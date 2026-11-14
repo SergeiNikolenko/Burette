@@ -3,6 +3,7 @@ import { runChemistryTask } from "../../lib/molecular-workbench/compute-client";
 import { surfacePotentialLimit, VAN_DER_WAALS_ISOVALUE } from "../../lib/molecular-workbench/electrostatic-potential";
 import { parseScientificFile } from "../../lib/molecular-workbench/quantum";
 import { computePotentialGrids } from "../../lib/molecular-workbench/quantum-client";
+import { sameGrid } from "../../lib/molecular-workbench/scalar-field-ops";
 import type { ScalarGrid, ScientificDocument } from "../../lib/molecular-workbench/scientific-types";
 import type { MolecularStructure } from "../../lib/molecular-workbench/molecular-graph";
 import type { MolecularAtom } from "../../lib/molecular-workbench/types";
@@ -27,8 +28,6 @@ type Shown = { key: string; cube: string; style: string; lease: string; target: 
 // cubegen and GaussView draw the potential on the 0.0004 e/bohr³ density isosurface.
 const DENSITY_ISOVALUE = 0.0004;
 
-const sameGrid = (a: ScalarGrid, b: ScalarGrid) => a.dimensions.every((value, i) => value === b.dimensions[i])
-  && [...a.origin, ...a.axes.flat()].every((value, i) => Math.abs(value - [...b.origin, ...b.axes.flat()][i]) < 1e-6);
 const format = (value: number) => value.toPrecision(2);
 
 export function PotentialPanel({ document, actions, science, sourceText, sourceKind, structure }: {
