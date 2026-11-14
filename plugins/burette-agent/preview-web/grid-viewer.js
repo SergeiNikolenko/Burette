@@ -21,6 +21,8 @@
   const CHEMICAL_SPACE_RECORD_LIMIT = 20000;
   const CHEMICAL_SPACE_INPUT_BYTES_LIMIT = 8 * 1024 * 1024;
   const GRID_TABLE_INPUT_BYTES_LIMIT = 64 * 1024 * 1024;
+  const COLLECTION_CHART_COLUMN_LIMIT = 6;
+  const COLLECTION_CHART_TEXT_LIMIT = 120;
   const CONFORMER_VARIANT_STORAGE_KEY = 'buret.grid.conformerVariant';
   const MMFF_VARIANT_STORAGE_KEY = 'buret.grid.mmffVariant';
   const SEMIEMPIRICAL_METHOD_STORAGE_KEY = 'buret.grid.semiempiricalMethod';
@@ -161,6 +163,7 @@
     chemicalSpaceVisibilityRequest: null,
     chemicalSpaceVisibilityGeneration: 0,
     chemicalSpaceVisibilityScanning: false,
+    collectionChartRequests: new Map(),
     ketcherOpenPendingUntil: 0,
     selectionAnchorIndex: null,
     selectionKeydownHandler: null,
@@ -840,6 +843,10 @@
       }
       if (body.type === 'chemicalSpaceRequestColumnText') {
         postChemicalSpaceColumnText(body.requestId, body.columnId);
+        return;
+      }
+      if (body.type === 'collectionChartRequestData') {
+        void postCollectionChartData(body, config());
         return;
       }
       if (body.type === 'chemicalSpaceHoverChanged') {
@@ -7049,6 +7056,77 @@
       }
     }
     post('chemicalSpaceColumnValues', '', { requestId: String(requestId || ''), columnId: id, values });
+  }
+
+  // The Chart tab plots whole columns, so it reads up to the selection bridge
+  // limit instead of the chemical-space one and takes every column it draws in
+  // one answer. A paged collection holds only the loaded window, so there the
+  // rows come from one walk over the unfiltered pages; a newer request from the
+  // same chart replaces a walk that is still running.
+  async function postCollectionChartData(body, cfg) {
+    const requestId = String(body.requestId || '');
+    const subscriberId = String(body.subscriberId || '');
+    if (!requestId || !subscriberId) return;
+    const columns = (Array.isArray(body.columns) ? body.columns : [])
+      .slice(0, COLLECTION_CHART_COLUMN_LIMIT)
+      .map(column => ({ id: String(column?.id || ''), numeric: column?.valueType === 'number', values: [] }))
+      .filter(column => column.id);
+    const sourceRecordIds = [];
+    const append = rows => {
+      for (const row of rows) {
+        if (sourceRecordIds.length >= GRID_SELECTION_BRIDGE_LIMIT) return;
+        const index = Number(row?.index);
+        if (!Number.isSafeInteger(index) || index < 0) continue;
+        sourceRecordIds.push(index);
+        for (const column of columns) {
+          if (column.numeric) {
+            const value = tableColumnNumericValue(row, column.id);
+            column.values.push(Number.isFinite(value) ? value : null);
+          } else {
+            column.values.push(String(tableColumnDisplayValue(row, column.id) ?? '').slice(0, COLLECTION_CHART_TEXT_LIMIT));
+          }
+        }
+      }
+    };
+    const sourceRevision = state.sourceRevision;
+    state.collectionChartRequests.set(subscriberId, requestId);
+    const current = () => state.collectionChartRequests.get(subscriberId) === requestId
+      && sourceRevision === state.sourceRevision && safeConfig()?.documentId === cfg.documentId;
+    let total = 0;
+    try {
+      if (!state.remoteMode) {
+        const rows = currentLocalCollectionRows();
+        total = rows.length;
+        append(rows);
+      } else {
+        let offset = 0;
+        let pageTotal = null;
+        const limit = Math.max(120, loadBatchSize(cfg));
+        while ((pageTotal === null || offset < pageTotal) && sourceRecordIds.length < GRID_SELECTION_BRIDGE_LIMIT) {
+          const result = await hostRequest('gridFetchPage', { query: '', sort: 'index', offset, limit });
+          if (!current()) return;
+          const pageRows = Array.isArray(result.rows) ? result.rows : [];
+          pageTotal = Number(result.totalRows || 0);
+          append(applyVirtualGridEdits(pageRows));
+          offset += pageRows.length;
+          if (!pageRows.length) break;
+        }
+        const walked = new Set(sourceRecordIds);
+        const inserted = applyVirtualGridEdits(state.insertedRows).filter(row => !walked.has(Number(row.index)));
+        append(inserted);
+        total = Math.max(0, Number(pageTotal || 0) - state.hiddenRows.size) + inserted.length;
+      }
+      post('collectionChartData', '', {
+        requestId,
+        sourceRecordIds,
+        columns: columns.map(column => ({ id: column.id, valueType: column.numeric ? 'number' : 'text', values: column.values })),
+        total: Math.max(total, sourceRecordIds.length)
+      });
+    } catch (_) {
+      if (current()) post('collectionChartData', '', { requestId, failed: true });
+    } finally {
+      if (state.collectionChartRequests.get(subscriberId) === requestId) state.collectionChartRequests.delete(subscriberId);
+    }
   }
 
   function toggleSelection(index, cfg) {
