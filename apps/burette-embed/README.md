@@ -45,7 +45,7 @@ application theme explicitly when it can differ from the system theme.
 
 | Method | Effect |
 | --- | --- |
-| `open({ structure, poses?, trajectory?, activePose? })` | Resolves when the new scene is rendered. A subsequent open replaces the frame and cancels pending work. |
+| `open({ structure, poses?, trajectory?, structures?, activePose? })` | Resolves when the new scene is rendered. A subsequent open replaces the frame and cancels pending work. |
 | `setPose(index)` | Shows the zero-based displayed pose. The camera stays where it is. |
 | `setPoseRecord(sourceRecordId, file?)` | Selects a zero-based record from the zero-based pose file (default 0). |
 | `setFrame(index)`, `play()`, `pause()` | Steps or plays the frames of a trajectory or multi-model file. |
@@ -67,8 +67,18 @@ Structures accept PDB, mmCIF, BinaryCIF, SDF, MOL, MOL2, PDBQT, XYZ and GRO.
 PDBQT); poses from several files are grouped by file, as in Burette.
 `trajectory` takes XTC, TRR, DCD, NetCDF or LAMMPS frames over `structure` as
 topology (PDB, mmCIF, GRO or PDBQT); several XTC files play as segments.
-A scene has either `poses` or `trajectory`. Multi-model PDB and multi-frame XYZ
-structures get frame controls without a separate trajectory file.
+`structures` adds more structure files to the same scene, as Together does in
+Burette: every file gets its own scene-tree row, and `setPoseMode('single')`
+pages through them one at a time.
+A scene has one of `poses`, `trajectory` or `structures`. Multi-model PDB and
+multi-frame XYZ structures get frame controls without a separate trajectory file.
+In the scene tree every pose, ligand file and structure has its own row with
+Hide, Remove and a menu. A molecule-only SDF shown as All lists each molecule
+by its SDF title when it has up to 64 records; larger files share one row for
+the molecules behind the selected one. Poses from several files open a menu
+grouped by file, where a pose or a whole file can be pinned to stay on screen
+while stepping; a single-pose file named like a crystal or reference ligand is
+pinned from the start.
 `activePose` is a display index. To select by the original SDF record number,
 call `setPoseRecord` after opening the scene.
 

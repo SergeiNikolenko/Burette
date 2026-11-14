@@ -27,13 +27,15 @@ export interface BuretteScene {
   poses?: BuretteFile | BuretteFile[];
   /** One trajectory, or several XTC segments played in order. Not combined with `poses`. */
   trajectory?: BuretteTrajectoryFile | BuretteTrajectoryFile[];
+  /** More structures shown together with `structure` as one scene. Not combined with `poses` or `trajectory`. */
+  structures?: BuretteFile | BuretteFile[];
   /** Zero-based pose shown first. */
   activePose?: number;
 }
 
 export interface BuretteViewerEvents {
   ready: Record<string, never>;
-  /** `file` is the zero-based index into `scene.poses`. */
+  /** `file` is the zero-based index into `scene.poses`; in a scene of several structures, the structure's index. */
   pose: { index: number; sourceRecordId: number; count: number; mode: 'single' | 'all'; file: number };
   /** `index` counts frames across all segments. */
   frame: { index: number; playing: boolean; segment: { start: number; count: number } };
@@ -58,6 +60,7 @@ export interface BuretteViewer {
   pause(): Promise<unknown>;
   /** Smooth motion for multi-model PDB and multi-frame XYZ trajectories. */
   setSmoothing(on: boolean): Promise<unknown>;
+  /** One pose or all poses; in a scene of several structures, one structure or all of them. */
   setPoseMode(mode: 'single' | 'all'): Promise<unknown>;
   focusLigand(): Promise<unknown>;
   resetCamera(): Promise<unknown>;

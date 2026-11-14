@@ -108,6 +108,31 @@ try {
   await page.waitForFunction(() => events.at(-1)?.index === 2);
   await page.evaluate(() => viewer.setPoseMode('all'));
   assert.deepEqual(await page.evaluate(() => events), [sdfPose(0), sdfPose(1), sdfPose(2), sdfPose(2, 'all')]);
+  // All lists every molecule in the scene tree; one hidden there stays hidden while stepping.
+  await frame().locator('#buret-scene-tree-toggle').click();
+  const molecules = frame().locator('.buret-tree-item:has(> .buret-tree-row .buret-tree-label:text-is("Ensemble")) > .buret-tree-content > .buret-tree-content-inner > .buret-tree-item > .buret-tree-row');
+  await assert.doesNotReject(molecules.nth(3).waitFor(), 'Every SDF molecule has its own scene-tree row');
+  assert.equal(await molecules.count(), 4);
+  const visibility = molecules.nth(1).locator('[data-scene-tree-action="visibility"]');
+  await molecules.nth(1).hover();
+  await visibility.click();
+  await visibility.and(frame().locator('[aria-label^="Show "]')).waitFor({ state: 'attached' });
+  await frame().getByRole('button', { name: /Next (molecule|pose)/i }).click();
+  await page.waitForFunction(() => events.at(-1)?.index === 3);
+  assert.match(await visibility.getAttribute('aria-label'), /^Show /);
+  assert.equal(await molecules.count(), 4);
+
+  // Several structures: one scene, shown together, each file with its own scene-tree row.
+  await page.evaluate(async () => {
+    events.length = 0;
+    frames.length = 0;
+    await viewer.open({ structure: source.structure, structures: { ...source.poses, name: 'ligands.sdf' } });
+  });
+  assert.deepEqual(await page.evaluate(() => [events.at(-1).count, events.at(-1).mode, frames.length]), [2, 'all', 0]);
+  await frame().locator('#buret-scene-tree-toggle').click();
+  await frame().locator('.buret-tree > .buret-tree-item').nth(1).waitFor();
+  assert.equal(await frame().locator('.buret-tree > .buret-tree-item').count(), 2);
+  await assert.rejects(page.evaluate(() => viewer.open({ ...source, structures: source.poses })), /not a combination/);
 
   // Several ligand files: poses are grouped by file and records stay per file.
   await page.evaluate(async () => {
@@ -163,7 +188,7 @@ try {
   await page.evaluate(() => viewer.open(source));
   await page.evaluate(() => viewer.destroy());
   assert.equal(await page.locator('iframe').count(), 0);
-  console.log('Embed API passed: docking and standalone SDF events, several ligand files, XTC frames and playback, XYZ smoothing, rapid selections, invalid records, singleton focus, instance isolation, timeout recovery.');
+  console.log('Embed API passed: docking and standalone SDF events, several ligand files, XTC frames and playback, XYZ smoothing, per-molecule scene-tree visibility, several structures, rapid selections, invalid records, singleton focus, instance isolation, timeout recovery.');
 } finally {
   await browser.close();
 }

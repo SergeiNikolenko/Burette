@@ -34,6 +34,7 @@
   let lastPose;
   let poseMode = 'single';
   let docking = false;
+  let posePaging = false;
   let sdfPosePager = false;
   let smoothingView = null;
   let resolveRender;
@@ -144,7 +145,8 @@
     return { path: file.name, label: file.name, extension: file.format, format: file.format, binary: file.binary, byteCount: file.bytes.length };
   }
 
-  function viewerConfig(scene, structure, ligands, trajectory) {
+  // `kind` is what `ligands` holds: 'poses', 'trajectory' or 'structures'.
+  function viewerConfig(scene, structure, ligands, kind) {
     const theme = ['light', 'dark', 'auto'].includes(scene.theme) ? scene.theme : 'auto';
     const byteCount = [structure, ...ligands].reduce((total, file) => total + file.bytes.length, 0);
     const config = {
@@ -188,8 +190,10 @@
       defaultLayoutState: { left: 'hidden', right: 'hidden', top: 'hidden', bottom: 'hidden' }
     };
     if (ligands.length) {
-      const activePose = !trajectory && Number.isInteger(scene.activePose) && scene.activePose >= 0 ? scene.activePose : null;
-      config.docking = { activePose, sceneMode: null, receptor: source(structure), ligands: ligands.map(source) };
+      const activePose = kind !== 'trajectory' && Number.isInteger(scene.activePose) && scene.activePose >= 0 ? scene.activePose : null;
+      // Equal structures form Burette's Together scene; poses keep the docking view.
+      const sceneMode = kind === 'structures' ? 'structureAll' : null;
+      config.docking = { activePose, sceneMode, receptor: source(structure), ligands: ligands.map(source) };
     }
     return config;
   }
@@ -215,8 +219,8 @@
     } else if (body.type === 'trajectoryFrameChanged' && sdfPosePager) {
       // Standalone SDF controls report the original record as a frame index.
       publishPose(body.globalFrameIndex, body.globalFrameIndex, body.frameCount, poseMode);
-    } else if (body.type === 'trajectoryFrameChanged' && !docking) {
-      // Docking pose paging reuses the frame controls; it reports as `pose` only.
+    } else if (body.type === 'trajectoryFrameChanged' && !posePaging) {
+      // Pose and structure paging reuses the frame controls; it reports as `pose` only.
       toHost({
         type: 'frame', index: body.globalFrameIndex, playing: body.playing === true,
         segment: { start: body.segmentStartFrame, count: body.frameCount }
@@ -240,19 +244,24 @@
     const structure = readFile(scene.structure, 'structure');
     const poses = readFiles(scene.poses, 'poses', POSE_FORMATS);
     const trajectory = readFiles(scene.trajectory, 'trajectory', null, TRAJECTORY_FORMATS);
-    if (poses.length && trajectory.length) throw new Error('A scene shows either docking poses or a trajectory, not both.');
+    const structures = readFiles(scene.structures, 'structures');
+    if ([poses, trajectory, structures].filter(list => list.length).length > 1) {
+      throw new Error('A scene takes docking poses, a trajectory or more structures, not a combination.');
+    }
     if (trajectory.length && !TOPOLOGY_FORMATS.has(structure.format)) {
       throw new Error(`${structure.name}: a trajectory needs a PDB, mmCIF, GRO or PDBQT topology.`);
     }
     if (trajectory.length > 1 && trajectory.some(file => file.format !== 'xtc')) {
       throw new Error('Several trajectory segments must all be XTC files.');
     }
-    const ligands = trajectory.length ? trajectory : poses;
+    const kind = trajectory.length ? 'trajectory' : structures.length ? 'structures' : 'poses';
+    const ligands = { trajectory, structures, poses }[kind];
     docking = poses.length > 0;
+    posePaging = kind !== 'trajectory' && ligands.length > 0;
     if ([structure, ...ligands].reduce((total, file) => total + file.bytes.length, 0) > MAX_SCENE_BYTES) {
       throw new Error('The scene is larger than 100 MB.');
     }
-    const config = viewerConfig(scene, structure, ligands, trajectory.length > 0);
+    const config = viewerConfig(scene, structure, ligands, kind);
     sdfPosePager = config.sdfPosePager;
     setBackground(config.theme);
     jsonElement('burette-runtime-config', config);
@@ -281,6 +290,8 @@
     // parallel first, then insert scripts in their required execution order.
     const sources = await Promise.all(RUNTIME_SCRIPTS.map(resolveScript));
     await Promise.all([rendered, ...RUNTIME_SCRIPTS.map((name, index) => loadScript(name, sources[index]))]);
+    // The viewer starts a scene on one structure; the desktop app switches it the same way.
+    if (kind === 'structures') await run({ type: 'set_sdf_pose_mode', mode: 'all' });
   }
 
   async function run(action) {

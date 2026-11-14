@@ -15909,7 +15909,9 @@ SOFTWARE.
           sdfPoseRecordCount: records.length,
           collectionResidues: collection.residues,
           collectionSinglePdbs: collection.singlePdbs,
-          collectionMolecules: collection.molecules
+          collectionMolecules: collection.molecules,
+          // Scene-tree row names: the molfile title, numbered when titles repeat.
+          collectionLabels: sdfCollectionLabels(records)
         };
       }
       const activeRecord = readTrajectoryControlIndex(config, { controlLabel }, records.length);
@@ -15968,6 +15970,13 @@ SOFTWARE.
       format: 'xyz',
       label
     };
+  }
+
+  function sdfCollectionLabels(records) {
+    const titles = records.map(record => record.split('\n', 1)[0].trim());
+    const uses = new Map();
+    for (const title of titles) uses.set(title, (uses.get(title) || 0) + 1);
+    return titles.map((title, index) => title && uses.get(title) > 1 ? `${title} (${index + 1})` : title);
   }
 
   function splitSdfRecords(text) {
@@ -16988,7 +16997,7 @@ SOFTWARE.
         await loadScript(runtimeURL('BuretteSdfCollectionURL', './sdf-collection-scene.js'), 'collection scene', 10000);
       }
       await window.BuretteSdfCollection.show(plugin, {
-        molecules: prepared.collectionMolecules, index: activeIndex, all: allMode,
+        molecules: prepared.collectionMolecules, labels: prepared.collectionLabels, index: activeIndex, all: allMode,
         spread: allMode && activeSdfCollectionLayout === 'spread',
         spreadCells: activeConfig?.sdfCollectionSpreadCells,
         spreadMolecules: spreadSdfCollectionMolecules, foreground, background

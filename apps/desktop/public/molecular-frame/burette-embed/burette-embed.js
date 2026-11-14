@@ -1,4 +1,4 @@
-const VERSION = "211de849cb62";
+const VERSION = "aa60d8292a22";
 const LOAD_TIMEOUT_MS = 60_000;
 const COMMAND_TIMEOUT_MS = 30_000;
 const MAX_SCENE_BYTES = 100 * 1024 * 1024;
@@ -166,13 +166,13 @@ export function createBuretteViewer(container, options = {}) {
       const current = session = { controller, element, ready: false };
       try {
         const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(LOAD_TIMEOUT_MS)]);
-        const [structure, poses, trajectory] = await Promise.all([
+        const [structure, poses, trajectory, structures] = await Promise.all([
           fileBytes(scene?.structure, 'structure', signal),
-          Promise.all(fileList(scene?.poses).map(file => fileBytes(file, 'poses', signal))),
-          Promise.all(fileList(scene?.trajectory).map(file => fileBytes(file, 'trajectory', signal)))
+          ...['poses', 'trajectory', 'structures'].map(role =>
+            Promise.all(fileList(scene?.[role]).map(file => fileBytes(file, role, signal))))
         ]);
         signal.throwIfAborted();
-        if ([structure, ...poses, ...trajectory].reduce((total, file) => total + file.data.byteLength, 0) > MAX_SCENE_BYTES) {
+        if ([structure, ...poses, ...trajectory, ...structures].reduce((total, file) => total + file.data.byteLength, 0) > MAX_SCENE_BYTES) {
           throw new Error('The scene is larger than 100 MiB.');
         }
         const url = new URL(`index.html?v=${VERSION}&theme=${theme}`, base);
@@ -184,7 +184,7 @@ export function createBuretteViewer(container, options = {}) {
           container.append(element);
         });
         const openingTheme = theme;
-        await request(current, 'open', { scene: { structure, poses, trajectory, activePose: scene.activePose, theme: openingTheme, appearance } }, LOAD_TIMEOUT_MS);
+        await request(current, 'open', { scene: { structure, poses, trajectory, structures, activePose: scene.activePose, theme: openingTheme, appearance } }, LOAD_TIMEOUT_MS);
         controller.signal.throwIfAborted();
         let appliedTheme = openingTheme;
         while (appliedTheme !== theme) {
