@@ -944,7 +944,14 @@
       const media = window.BuretteSceneMedia;
       if (type === 'export_svg') return { ok: true, result: media.svg(viewer.plugin, { transparent: action.transparent === true }) };
       const seconds = Number(action.seconds), fps = Number(action.fps);
-      const { blob, type: mediaType } = await media.record(viewer.plugin, { seconds, fps, spin: action.spin === true });
+      // The host cancels a recording the user dismissed; the camera stops turning and returns.
+      const controller = new AbortController();
+      const cancel = event => { if (requestOwner && event.source === requestOwner.source && event.data?.source === 'burette-agent-host'
+        && event.data.body?.type === 'agent-action-cancel' && event.data.body.id === requestOwner.id) controller.abort(); };
+      window.addEventListener('message', cancel);
+      let blob, mediaType;
+      try { ({ blob, type: mediaType } = await media.record(viewer.plugin, { seconds, fps, spin: action.spin === true }, controller.signal)); }
+      finally { window.removeEventListener('message', cancel); }
       const dataUri = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result); reader.onerror = () => reject(reader.error || new Error('The movie could not be read.'));

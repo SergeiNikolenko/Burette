@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { closeWorkbenchDialog, useWorkbenchDialogRequest } from "../../lib/workbench/dialog-store";
 import { MOVIE_FRAME_RATES, recordSceneMovie, type MovieSettings } from "../../lib/workbench/scene-media";
 import { isAbortError } from "../../lib/viewer-errors";
@@ -31,6 +31,8 @@ function MovieForm({ document, actions, recording }: { document: ViewerDocument;
   const [length, setLength] = useState("5");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Another dialog can replace this one without closing it; its recording ends with it.
+  useEffect(() => () => recording.current?.abort(), [recording]);
   const record = async () => {
     const seconds = Number(length);
     if (!Number.isInteger(seconds) || seconds < 1 || seconds > 60) { setError("Choose a length from 1 to 60 seconds."); return; }

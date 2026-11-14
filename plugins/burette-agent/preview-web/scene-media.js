@@ -229,7 +229,7 @@ if (!window.BuretteSceneMedia) {
   // `seconds × fps` frames at `fps` however fast the view renders. A spin
   // frame is taken after the view has drawn that angle; "as shown" frames are
   // taken on the wall clock, so a slow view plays back faster than it ran.
-  async function encode(plugin, canvas, { seconds, fps, spin }) {
+  async function encode(plugin, canvas, { seconds, fps, spin }, signal) {
     const width = canvas.width - canvas.width % 2, height = canvas.height - canvas.height % 2;
     // 'detail' keeps flat backgrounds clean behind a moving molecule: without
     // it software encoders leave specks where the drawing used to be.
@@ -251,7 +251,7 @@ if (!window.BuretteSceneMedia) {
     encoder.configure(config);
     const turning = spin ? spinner(plugin.canvas3d.camera) : null, count = Math.round(seconds * fps), began = performance.now();
     try {
-      for (let index = 0; index < count && !failure; index++) {
+      for (let index = 0; index < count && !failure && !signal?.aborted; index++) {
         if (turning) { turning.turn(index / count); plugin.canvas3d.requestDraw?.(); await nextFrames(); }
         else await sleep(began + index * 1000 / fps - performance.now());
         if (canvas.width - canvas.width % 2 !== width || canvas.height - canvas.height % 2 !== height) throw new Error('The view changed size while recording. Record again.');
@@ -260,18 +260,19 @@ if (!window.BuretteSceneMedia) {
         frame.close();
         while (encoder.encodeQueueSize > 4 && !failure) await sleep(5);
       }
-      if (!failure) await encoder.flush();
+      if (!failure && !signal?.aborted) await encoder.flush();
     } finally {
       if (encoder.state !== 'closed') encoder.close();
       turning?.restore();
     }
     if (failure) throw failure;
+    signal?.throwIfAborted();
     if (!description || samples.length !== count) throw new Error('The movie could not be encoded.');
     return { blob: mp4({ width, height, fps, samples, keys, description }), type: 'video/mp4' };
   }
 
   // Without WebCodecs: MediaRecorder on a 2D copy, timed by the wall clock.
-  async function stream(plugin, canvas, { seconds, fps, spin }) {
+  async function stream(plugin, canvas, { seconds, fps, spin }, signal) {
     const type = typeof MediaRecorder === 'function' ? MOVIE_TYPES.find(candidate => MediaRecorder.isTypeSupported(candidate)) : null;
     if (!type) throw new Error('This browser cannot record the 3D view.');
     const copy = document.createElement('canvas');
@@ -283,7 +284,7 @@ if (!window.BuretteSceneMedia) {
     const turning = spin ? spinner(plugin.canvas3d.camera) : null, count = Math.round(seconds * fps), began = performance.now();
     recorder.start(250);
     try {
-      for (let index = 0; index < count; index++) {
+      for (let index = 0; index < count && !signal?.aborted; index++) {
         turning?.turn(index / count);
         await sleep(began + index * 1000 / fps - performance.now());
         context.drawImage(canvas, 0, 0, copy.width, copy.height);
@@ -295,16 +296,23 @@ if (!window.BuretteSceneMedia) {
       turning?.restore();
     }
     await stopped;
+    signal?.throwIfAborted();
     return { blob: new Blob(chunks, { type: type.split(';')[0] }), type: type.split(';')[0] };
   }
 
-  async function record(plugin, settings) {
+  // One recording per view: a second one would start from a camera the first is turning.
+  const recording = new WeakSet();
+  async function record(plugin, settings, signal) {
     const canvas = plugin?.canvas3dContext?.canvas;
     if (!canvas || !plugin.canvas3d?.camera) throw new Error('Recording needs the 3D view.');
     if (!(settings.seconds > 0 && settings.seconds <= MAX_SECONDS)) throw new Error(`Choose a length from 1 to ${MAX_SECONDS} seconds.`);
     if (![12, 24, 25, 30, 50, 60].includes(settings.fps)) throw new Error('Choose a frame rate of 12, 24, 25, 30, 50 or 60.');
-    const encoded = typeof VideoEncoder === 'function' && typeof VideoFrame === 'function' ? await encode(plugin, canvas, settings) : null;
-    return encoded ?? stream(plugin, canvas, settings);
+    if (recording.has(plugin)) throw new Error('A movie is already being recorded.');
+    recording.add(plugin);
+    try {
+      const encoded = typeof VideoEncoder === 'function' && typeof VideoFrame === 'function' ? await encode(plugin, canvas, settings, signal) : null;
+      return encoded ?? await stream(plugin, canvas, settings, signal);
+    } finally { recording.delete(plugin); }
   }
 
   window.BuretteSceneMedia = { svg, record, MAX_SECONDS };

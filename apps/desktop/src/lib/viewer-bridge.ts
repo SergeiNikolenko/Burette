@@ -117,7 +117,8 @@ export async function requestViewerAction(documentId: string, action: Record<str
       ? retainGeometryActionStatus(id, target, action.type === "select_source_atom" ? 60_000 : timeoutMs) : null;
     const finish = (retired = false) => { if (retired) status?.retire(); else status?.settle(); window.clearTimeout(timer); window.removeEventListener("message", receive); signal?.removeEventListener("abort", abort); };
     const cancelSelection = () => {
-      if (action.type === "select_source_atom" || polymerPick) {
+      // A recording keeps turning the camera until the viewer is told to stop.
+      if (action.type === "select_source_atom" || polymerPick || action.type === "record_movie") {
         try { source.postMessage({ source: "burette-agent-host", body: { type: "agent-action-cancel", id } }, "*"); } catch { /* A closed frame is already cancelled. */ }
       }
     };
