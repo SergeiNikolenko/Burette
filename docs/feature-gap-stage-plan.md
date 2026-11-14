@@ -249,6 +249,27 @@ for the browser shell and on a `macvm` guest on Orion for the packaged app.
   the Mol* canvas; the native encoder in `src-tauri` for MP4.
 - **Done when:** the SVG opens in a vector editor with one element per atom and
   bond, and a 5 s vibration movie plays at the chosen frame rate.
+- **Done (96a001f6a, c06c064d9, 57c41f4b3, 9748f82c3, 0ca50eeef, be135ad18,
+  28ffdc93b):**
+  **Vector Image…** and **Movie…** sit in a file's Export menu, and the command
+  palette has **Export image as SVG** and **Record movie…**. The SVG is drawn
+  from the shown ball-and-stick, licorice or spacefill representations with
+  their own colour and size themes: one `<circle>` per atom (titled `O2`), one
+  `<g class="bond">` per bond with one stroke per bond order, sorted by depth,
+  bonds starting where they leave the atom spheres and outlined so a white half
+  shows on a white page, the view's hidden hydrogens left out. Movies are MP4 on every surface instead of WebM in the browser and
+  a native encoder in the Mac app: WebCodecs H.264 with synthetic timestamps
+  and a small MP4 writer in `scene-media.js`, so the file holds exactly
+  length × frame rate frames however fast the view renders; MediaRecorder is
+  the fallback where WebCodecs is missing. **Spin** turns the camera once,
+  **As shown** records what is playing (a vibration, a trajectory, an
+  optimization). Gauss acceptance on formaldehyde in both themes: the SVG has 4
+  circles and 3 bond groups with C=O as two strokes and matches a tilted view;
+  a 5 s vibration at 24 fps is 120 frames over 4.96 s and a 3 s spin at 30 fps
+  is 90 frames over 2.97 s, both H.264 at 2158×1720. Chromium's software
+  encoder on Linux left specks behind a spinning molecule until the encoder got
+  the `detail` content hint; the Mac hardware encoder leaves none either way.
+  `test:scene-media` covers the SVG.
 
 ## C. Collections and SAR (DataWarrior)
 
