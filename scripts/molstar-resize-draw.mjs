@@ -1,4 +1,5 @@
 import { molstarPatchPlugin } from './molstar-source.mjs';
+import { patchMolstarHoverPickCanvas } from './molstar-hover-pick.mjs';
 
 // Resizing a WebGL canvas clears its drawing buffer. The host must redraw in
 // the same animation callback, even if Mol*'s animation loop already ran in
@@ -12,8 +13,9 @@ export function patchMolstarResizeDraw(source) {
   return source.replace(before, '      requestDraw,\n      draw,\n      prepare,');
 }
 
+// A module takes one loader, so every Canvas3D patch is applied here.
 export const molstarResizeDrawPlugin = molstarPatchPlugin(
   'molstar-atomic-resize-draw',
   '@molstar/graphics/canvas3d/canvas3d',
-  patchMolstarResizeDraw,
+  source => patchMolstarHoverPickCanvas(patchMolstarResizeDraw(source)),
 );
