@@ -185,6 +185,26 @@ for the browser shell and on a `macvm` guest on Orion for the packaged app.
   graph edits through `graph-edit.ts` and the structure-edit draft.
 - **Done when:** drawing ethanol from methane in clicks gives the same graph as
   RDKit from SMILES, and Undo walks back stroke by stroke.
+- **Done (2f506103b, c8080526d, 226b03704):** **Draw** in the Edit panel toolbar
+  turns the 3D view of a MOL or SDF structure into a drawing surface with a
+  crosshair: a click on empty space adds an atom of the element in the panel's
+  element field, a drag from an atom adds a bonded atom towards the pointer at a
+  bond length from covalent radii, a drag onto another atom bonds the two, a
+  click on a bond cycles single → double → triple → single, and a click on an
+  atom changes its element. Bond order (Single, Double, Triple) and **Adjust
+  hydrogens** sit under the toolbar. With Adjust hydrogens, the hydrogens nearest
+  the new bond give way first and the touched atoms get hydrogens for their free
+  valence, placed by the Add hydrogens geometry; other atoms keep theirs. Every
+  stroke is one graph-draft operation, so one Undo step. Presses on empty space
+  that move still rotate the view, and presses made before the pick buffer is
+  ready reach Mol* without drawing. Tests: `test:draw-strokes` draws ethanol
+  from methane in two drags through the real worker and compares it with RDKit's
+  `CCO`, cycles a C–C bond to ethene and ethyne and back, turns a carbon into
+  nitrogen, and walks Undo back stroke by stroke; `test:atom-drag` covers the
+  pointer gestures on a real Mol* scene. Browser shell verified on Gauss in both
+  themes (methane → ethane → ethanol → acetaldehyde, Undo to methane). XYZ files
+  have perceived bonds only and are edited through Geometry. Each stroke reloads
+  the scene and the browser shell then refits the camera, also for Add.
 
 ### Stage 20. Manipulate, bond-centric tool and Select menu
 
