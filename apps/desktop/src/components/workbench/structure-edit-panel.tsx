@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import type { GraphEdit, GraphEditResult } from "../../lib/molecular-workbench/graph-edit";
 import { moveAtomOrder } from "../../lib/molecular-workbench/atom-order";
 import type { MolecularAtom, Vec3 } from "../../lib/molecular-workbench/types";
@@ -153,7 +153,10 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
   // the Move tool drags atoms through the same binding.
   const [autoScene, setAutoScene] = useState(false);
   const moving = tool === "move" && Boolean(editor);
-  const geometry = useGeometryBinding(document, actions.runStructureViewerAction, editor?.current ?? document,
+  // A new count rereads the binding from the frame that is active now.
+  const [frameRenewal, renewFrame] = useState(0);
+  const bindingIdentity = useMemo(() => ({ snapshot: editor?.current ?? document, frameRenewal }), [editor?.current, document, frameRenewal]);
+  const geometry = useGeometryBinding(document, actions.runStructureViewerAction, bindingIdentity,
     (binding) => Boolean(editor) && sameAtoms(binding, editor!.current.structure.atoms), autoScene || moving);
   const autoBinding = geometry.binding;
   const live = useGeometryLivePreview(document, autoBinding, actions.runStructureViewerAction,
@@ -164,7 +167,7 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
     (gesture) => draw.current(gesture), setInputError);
   const moved = useRef<(event: AtomDragEvent) => void>(() => {});
   useAtomMove(document, moving && !auto.running ? autoBinding : null, actions.runStructureViewerAction,
-    (event) => moved.current(event), setInputError);
+    (event) => moved.current(event), setInputError, () => renewFrame((count) => count + 1));
   useEffect(() => {
     if (autoBase.current && autoBase.current !== editor?.current) { autoBase.current = null; auto.stop(); }
   }, [editor?.current]);

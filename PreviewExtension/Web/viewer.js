@@ -27271,29 +27271,39 @@ SOFTWARE.
         count += indices.length;
         return indices.length ? [{ unit, indices: Int32Array.from(indices) }] : [];
       });
-      if (elements.length) manager.fromLoci('add', Element.Loci(structure, elements));
+      // Atom-level commands: the picking granularity (often residue) must not widen them.
+      if (elements.length) manager.fromLoci('add', Element.Loci(structure, elements), false);
     }
     return count;
   }
   // Atoms bonded to the selection join it.
-  function enlargeMolstarSelection() {
+  // Calls `visit(unit, i)` for each selected atom of the shown atomic units.
+  function forEachSelectedMolstarAtom(visit) {
     const manager = activeMolstarViewer()?.plugin?.managers?.structure?.selection;
     const Element = window.molstar?.lib?.structure?.StructureElement;
-    const picked = new Set();
     for (const { structure, units } of molstarAtomicUnits()) {
       const loci = manager?.getLoci(structure);
       if (!Element?.Loci.is(loci)) continue;
       for (const { unit, indices } of loci.elements) {
         if (unit.kind !== 0 || !units.includes(unit)) continue;
-        const { offset, b } = unit.bonds;
-        Element.Loci.forEachLocation({ kind: 'element-loci', structure, elements: [{ unit, indices }] }, location => {
-          const i = unit.elements.indexOf(location.element);
-          picked.add(`${unit.id}:${i}`);
-          for (let k = offset[i]; k < offset[i + 1]; k++) picked.add(`${unit.id}:${b[k]}`);
-        });
+        Element.Loci.forEachLocation({ kind: 'element-loci', structure, elements: [{ unit, indices }] },
+          location => visit(unit, unit.elements.indexOf(location.element)));
       }
     }
+  }
+  function enlargeMolstarSelection() {
+    const picked = new Set();
+    forEachSelectedMolstarAtom((unit, i) => {
+      const { offset, b } = unit.bonds;
+      picked.add(`${unit.id}:${i}`);
+      for (let k = offset[i]; k < offset[i + 1]; k++) picked.add(`${unit.id}:${b[k]}`);
+    });
     return picked.size ? selectMolstarAtomsWhere((unit, i) => picked.has(`${unit.id}:${i}`)) : 0;
+  }
+  function invertMolstarSelection() {
+    const picked = new Set();
+    forEachSelectedMolstarAtom((unit, i) => picked.add(`${unit.id}:${i}`));
+    return selectMolstarAtomsWhere((unit, i) => !picked.has(`${unit.id}:${i}`));
   }
   async function runMolstarSelectCommand(command, value) {
     if (command === 'all') return selectMolstarAtomsWhere(() => true);
@@ -27304,9 +27314,9 @@ SOFTWARE.
       return selectMolstarAtomsWhere((unit, i) => wanted.has(unit.model.atomicHierarchy.atomSourceIndex.value(unit.elements[i])));
     }
     if (command === 'enlarge') return enlargeMolstarSelection();
+    if (command === 'invert') return invertMolstarSelection();
     if (command === 'none') { activeMolstarViewer()?.plugin?.managers?.structure?.selection?.clear?.(); return 0; }
-    const query = { invert: ['inverse', 'set'], residues: ['whole residues', 'set'] }[command];
-    if (!query || !await applyMolstarSelectionQuery(...query)) throw new Error('This selection command is unavailable.');
+    if (command !== 'residues' || !await applyMolstarSelectionQuery('whole residues', 'set')) throw new Error('This selection command is unavailable.');
     return null;
   }
 

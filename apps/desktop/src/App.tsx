@@ -1378,7 +1378,7 @@ export default function App() {
       <WindowTitle activeDocument={activeDocument} />
       <InputExportDialogHost actions={actions} />
       <PropertiesDialogHost actions={actions} />
-      <SmartsSelectDialogHost actions={actions} />
+      <SmartsSelectDialogHost actions={actions} onError={pushErrorStatus} />
       <PeptideBuilderDialogHost actions={actions} />
       <MetalComplexBuilderDialogHost actions={actions} />
       <NucleicBuilderDialogHost actions={actions} />

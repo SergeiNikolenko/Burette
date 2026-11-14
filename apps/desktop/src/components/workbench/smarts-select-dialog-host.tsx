@@ -12,21 +12,21 @@ import { Input } from "../ui/input";
 import { useGraphDraft } from "./use-graph-draft";
 
 /** Select by SMARTS, from the 3D context menu's Select section or the command palette. */
-export function SmartsSelectDialogHost({ actions }: { actions: ShellActions }) {
+export function SmartsSelectDialogHost({ actions, onError }: { actions: ShellActions; onError: (error: unknown, prefix: string) => void }) {
   const request = useWorkbenchDialogRequest();
   const document = request?.kind === "smarts" ? request.document : null;
   return (
     <Dialog open={Boolean(document)} onOpenChange={(open) => { if (!open && document) closeWorkbenchDialog(); }}>
       {document ? <DialogContent aria-describedby={undefined} variant="form" size="narrow">
         <DialogHeader><DialogTitle>Select by SMARTS</DialogTitle></DialogHeader>
-        {structureEditAvailable(document) ? <SmartsForm key={document.id} document={document} actions={actions} />
+        {structureEditAvailable(document) ? <SmartsForm key={document.id} document={document} actions={actions} onError={onError} />
           : <p role="alert" className="text-sm text-destructive">SMARTS selection needs a MOL or SDF structure.</p>}
       </DialogContent> : null}
     </Dialog>
   );
 }
 
-function SmartsForm({ document, actions }: { document: ViewerDocument; actions: ShellActions }) {
+function SmartsForm({ document, actions, onError }: { document: ViewerDocument; actions: ShellActions; onError: (error: unknown, prefix: string) => void }) {
   // The draft is the scene the viewer shows, so its atom order is the scene's source order.
   const draft = useGraphDraft(document);
   const [pattern, setPattern] = useState("");
@@ -39,8 +39,10 @@ function SmartsForm({ document, actions }: { document: ViewerDocument; actions: 
     try {
       const atoms = smartsMatchAtoms(await loadRDKitModule(), molfile, pattern);
       if (!atoms.length) { setError("No atoms match this pattern."); return; }
-      await selectSourceAtoms(actions, document, atoms);
+      // While the modal is open the scene is aria-hidden and its selection reports are
+      // ignored, so the dialog closes first, as the command palette does.
       closeWorkbenchDialog();
+      void Promise.resolve(selectSourceAtoms(actions, document, atoms)).catch((caught: unknown) => onError(caught, "Select by SMARTS failed"));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally { setBusy(false); }
