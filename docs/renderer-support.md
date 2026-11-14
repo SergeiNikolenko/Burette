@@ -316,8 +316,10 @@ a scatter chart the points can take their colour from any column and their size
 from a number column. The chart and the grid share one selection: clicking a
 point, bar, bin, box or outlier, dragging across bars, or drawing a lasso
 selects those rows in the grid (Shift adds or toggles), and rows selected in
-the grid are highlighted in the chart. Rows hidden by the grid's search and
-filters are not drawn. The scatter view zooms with the wheel, pans with a drag
+the grid are highlighted in the chart. With the keyboard, the arrow keys walk
+the bars, bins or boxes, Enter or Space selects the one in focus and Escape
+clears the selection. Rows hidden by the grid's search and filters are not
+drawn. The scatter view zooms with the wheel, pans with a drag
 or the arrow keys, and **Fit** or `0` shows every point again. A chart reads at
 most 100,000 rows and says so when the collection is larger.
 

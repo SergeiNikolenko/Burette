@@ -190,6 +190,24 @@ test("the Chart tab draws the fixture, selects grid rows from every chart type a
     expect(selections().at(-1)!.sourceRecordIds.length).toBe(7);
     expect(table().map(row => row[2])).toEqual(["2", "5", "0", "0", "0", "0"]);
 
+    // The keyboard walks the bins and selects the one it stands on.
+    const key = (name: string) => act(async () => {
+      const event = new Event("keydown", { bubbles: true }) as any;
+      Object.assign(event, { key: name, shiftKey: false });
+      [...host.querySelectorAll("canvas")].at(-1)!.dispatchEvent(event);
+    });
+    await key("ArrowRight");
+    expect(host.querySelector('[data-testid="collection-chart-tip"]')!.textContent).toBe("240 – 2602 rows2 selected");
+    await key("ArrowRight");
+    await key("ArrowRight");
+    await key("Enter");
+    await settle();
+    expect(selections().at(-1)!.sourceRecordIds.length).toBe(9);
+    expect(host.querySelector('[data-testid="collection-chart-tip"]')!.textContent).toBe("280 – 3009 rows9 selected");
+    await key("Escape");
+    await settle();
+    expect(selections().at(-1)!.sourceRecordIds).toEqual([]);
+
     // A selection made in the grid highlights its share of each bar.
     await choose("Chart type", "bar");
     expect(host.querySelector('canvas[aria-label="Bar chart of Count by Halogen"]')).not.toBeNull();
@@ -218,7 +236,7 @@ test("the Chart tab draws the fixture, selects grid rows from every chart type a
     await choose("Value column", "prop:SLogP");
     expect(host.querySelector('canvas[aria-label="Box chart of SLogP by Halogen"]')).not.toBeNull();
     const boxes = reference.box["SLogP by Halogen"];
-    const text = (value: number) => Number(value.toPrecision(5)).toLocaleString();
+    const text = (value: number) => String(Number(value.toPrecision(5)));
     expect(table()).toEqual(["none", "F", "Cl", "Br+F", "Cl+F"].map((label) => {
       const box = boxes[label];
       const picked = label === "Cl" ? "5" : label === "Br+F" ? "1" : "0";

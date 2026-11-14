@@ -182,11 +182,22 @@ export function CollectionChartBands({ chart, xLabel, yLabel, selected, selected
         aria-label={chart.kind === "histogram"
           ? `Histogram of ${xLabel}`
           : `${chart.kind === "box" ? "Box" : "Bar"} chart of ${yLabel}${xLabel ? ` by ${xLabel}` : ""}`}
-        aria-keyshortcuts="Escape"
+        aria-keyshortcuts="ArrowLeft ArrowRight Enter Space Escape"
         onKeyDown={(event) => {
-          if (event.key !== "Escape") return;
+          // The arrows walk the bands, showing each one's tip; Enter or Space selects it.
+          const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+          if (step) {
+            const band = Math.min(chart.bandCount - 1, Math.max(0, hoverBand + step));
+            const plot = plotRef.current;
+            hover(band, { x: 0, y: plot.top + plot.height / 3 });
+          } else if ((event.key === "Enter" || event.key === " ") && hoverBand >= 0) {
+            onSelectRows(rowsOfBands(chart, hoverBand, hoverBand), event.shiftKey ? "toggle" : "replace");
+          } else if (event.key === "Escape") {
+            onSelectRows([], "replace");
+          } else {
+            return;
+          }
           event.preventDefault();
-          onSelectRows([], "replace");
         }}
         onPointerDown={(event) => {
           if (event.button !== 0) return;

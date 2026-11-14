@@ -40,17 +40,20 @@ const AXIS_LABELS: Record<ChartType, { x: string; y: string }> = {
   box: { x: "Group", y: "Value" },
 };
 
-type Tip = { kind: "row"; row: number; x: number; y: number } | { kind: "band"; band: number; x: number; y: number };
+type TipTarget = { kind: "row"; row: number } | { kind: "band"; band: number };
+/** `right` is set instead of `left` when the tip opens towards the left. */
+type Tip = TipTarget & { left?: number; right?: number; top: number };
 
+// Values keep the decimal point of the axis labels next to them.
 function formatValue(value: number) {
-  return Number.isInteger(value) ? value.toLocaleString() : Number(value.toPrecision(5)).toLocaleString();
+  return String(Number(value.toPrecision(5)));
 }
 
 function bandLabel(chart: BandChart, band: number) {
   if (chart.labels) return chart.labels[band];
   const { start, step } = chart.bins!;
   // One bin per whole number reads as that number, not as a half-open range.
-  if (step === 1 && !Number.isInteger(start)) return formatValue(start + band + 0.5);
+  if (step === 1 && !Number.isInteger(start)) return String(start + band + 0.5);
   return `${formatAxisValue(start + band * step, step)} – ${formatAxisValue(start + (band + 1) * step, step)}`;
 }
 
@@ -125,6 +128,19 @@ function CollectionChart({ documentId, visible }: { documentId: string; visible:
 
   // The tip names a row or band of the chart that was on screen when it opened.
   useEffect(() => setTip(null), [bands, scatter]);
+  // Opens beside the pointed mark, towards the middle of the chart.
+  const showTip = (target: TipTarget, point: { x: number; y: number } | null) => {
+    if (!point) {
+      setTip(null);
+      return;
+    }
+    const width = bodyRef.current?.clientWidth ?? 0;
+    setTip({
+      ...target,
+      ...(point.x > width / 2 ? { right: width - point.x + 14 } : { left: point.x + 14 }),
+      top: Math.max(8, point.y - 12),
+    });
+  };
 
   const selectRows = useCallback((rows: number[], mode: ChartSelectionMode, focusRow?: number) => {
     if (!table) return;
@@ -190,7 +206,7 @@ function CollectionChart({ documentId, visible }: { documentId: string; visible:
         fitRequest={fitRequest}
         onSelectRows={selectRows}
         onHoverRow={(row, point) => {
-          setTip(row >= 0 && point ? { kind: "row", row, ...point } : null);
+          showTip({ kind: "row", row }, row >= 0 ? point : null);
           hover(row >= 0 ? table.sourceRecordIds[row] : null);
         }}
       >
@@ -206,7 +222,7 @@ function CollectionChart({ documentId, visible }: { documentId: string; visible:
         selected={selected!}
         selectedCount={selectedCount}
         onSelectRows={selectRows}
-        onHoverBand={(band, point) => setTip(band >= 0 && point ? { kind: "band", band, ...point } : null)}
+        onHoverBand={(band, point) => showTip({ kind: "band", band }, band >= 0 ? point : null)}
       >
         <BandTable chart={bands} xLabel={xTitle} yLabel={yTitle} selected={selected!} />
       </CollectionChartBands>
@@ -289,7 +305,6 @@ function CollectionChart({ documentId, visible }: { documentId: string; visible:
         {ready && tip ? (
           <ChartTip
             tip={tip}
-            width={bodyRef.current?.clientWidth ?? 0}
             table={table!}
             bands={bands}
             selected={selected!}
@@ -362,10 +377,8 @@ function ColorLegend({ title, series, onSelectCategory }: {
   );
 }
 
-function ChartTip({ tip, width, table, bands, selected, preview, lines, valueLabel }: {
+function ChartTip({ tip, table, bands, selected, preview, lines, valueLabel }: {
   tip: Tip;
-  /** Width of the chart area; the tip opens towards its middle. */
-  width: number;
   table: ChartTable;
   bands: BandChart | null;
   selected: Uint8Array;
@@ -374,10 +387,7 @@ function ChartTip({ tip, width, table, bands, selected, preview, lines, valueLab
   valueLabel: string;
 }) {
   const frame = "pointer-events-none absolute z-20 w-max max-w-56 rounded-lg border border-border bg-popover px-2 py-1.5 text-xs text-popover-foreground shadow-md";
-  const style = {
-    ...(tip.x > width / 2 ? { right: width - tip.x + 14 } : { left: tip.x + 14 }),
-    top: Math.max(8, tip.y - 12),
-  };
+  const style = { left: tip.left, right: tip.right, top: tip.top };
   if (tip.kind === "row") {
     const id = table.sourceRecordIds[tip.row];
     const molecule = preview?.sourceRecordId === id ? preview : null;
