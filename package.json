@@ -447,7 +447,8 @@
     "test:library-enumeration": "bun test tests/test-library-enumeration.test.ts tests/test-enumerate-library-dialog.test.tsx",
     "test:draw-strokes": "bun test tests/test-draw-strokes.test.tsx",
     "test:smarts-select": "bun test tests/test-smarts-select.test.ts",
-    "test:scene-media": "bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-scene-svg-runtime.mjs"
+    "test:scene-media": "bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-scene-svg-runtime.mjs",
+    "test:calculation-overlays": "bun test tests/test-calculation-results-card.test.tsx && bun test tests/test-potential-panel.test.tsx"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",
