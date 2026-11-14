@@ -772,6 +772,12 @@
       return agentActionFailure(type, 'NO_VIEWER', 'BuretteAgent is not available in this viewer runtime.');
     }
     if (type === 'focus_ligand') {
+      if (action.dockingPose === true) {
+        const structureId = activeDockingPoseCollectionState?.activeRefs?.[0]
+          || activeMolstarPrepared?.activeLigandRefs?.[0];
+        if (!structureId) return agentActionFailure(type, 'NO_POSES', 'The active docking pose is not available.');
+        action = { ...action, selector: { kind: 'ligand', structureId } };
+      }
       const previewTarget = molstarMoleculePreviewTargetForAction(action);
       const result = await window.BuretteAgent.run({
         command: 'focusLigand',
@@ -847,6 +853,13 @@
     }
     if (type === 'set_trajectory_smoothing_view') {
       return setTrajectorySmoothingViewFromAction(action);
+    }
+    if (type === 'set_trajectory_playback') {
+      const control = activeTrajectoryPlaybackControl;
+      if (!control) return agentActionFailure(type, 'NO_TRAJECTORY', 'The active scene has no frame playback.');
+      if (action.playing === true) control.play();
+      else await control.stop();
+      return { ok: true, command: type, result: { playing: control.isPlaying() } };
     }
     if (type === 'set_molstar_style') {
       return setMolstarStyleFromAction(action);
@@ -15896,7 +15909,9 @@ SOFTWARE.
           sdfPoseRecordCount: records.length,
           collectionResidues: collection.residues,
           collectionSinglePdbs: collection.singlePdbs,
-          collectionMolecules: collection.molecules
+          collectionMolecules: collection.molecules,
+          // Scene-tree row names: the molfile title, numbered when titles repeat.
+          collectionLabels: sdfCollectionLabels(records)
         };
       }
       const activeRecord = readTrajectoryControlIndex(config, { controlLabel }, records.length);
@@ -15955,6 +15970,13 @@ SOFTWARE.
       format: 'xyz',
       label
     };
+  }
+
+  function sdfCollectionLabels(records) {
+    const titles = records.map(record => record.split('\n', 1)[0].trim());
+    const uses = new Map();
+    for (const title of titles) uses.set(title, (uses.get(title) || 0) + 1);
+    return titles.map((title, index) => title && uses.get(title) > 1 ? `${title} (${index + 1})` : title);
   }
 
   function splitSdfRecords(text) {
@@ -16975,7 +16997,7 @@ SOFTWARE.
         await loadScript(runtimeURL('BuretteSdfCollectionURL', './sdf-collection-scene.js'), 'collection scene', 10000);
       }
       await window.BuretteSdfCollection.show(plugin, {
-        molecules: prepared.collectionMolecules, index: activeIndex, all: allMode,
+        molecules: prepared.collectionMolecules, labels: prepared.collectionLabels, index: activeIndex, all: allMode,
         spread: allMode && activeSdfCollectionLayout === 'spread',
         spreadCells: activeConfig?.sdfCollectionSpreadCells,
         spreadMolecules: spreadSdfCollectionMolecules, foreground, background
@@ -17152,7 +17174,12 @@ SOFTWARE.
       const receptorStructures = prepared.receptorEntry
         ? await loadMolstarEntryWithStructureRefs(viewer, prepared.receptorEntry)
         : [];
-      if (receptorStructures.length) await applySdfCollectionMolstarStyle(viewer, style, receptorStructures, 1, 'colored');
+      if (receptorStructures.length) {
+        await applySdfCollectionMolstarStyle(viewer, style, receptorStructures, 1, 'colored');
+        // Receptor waters take the viewer's water style, as in a plain structure;
+        // otherwise they stay element-coloured ball-and-stick oxygens.
+        await applyMolstarWaterLineRepresentation(viewer);
+      }
       state = { viewer, key: stateKey, receptorRefs: molstarStructureRefsOf(receptorStructures),
         layers: new Map(), activeRefs: [], activeIndex: -1 };
       activeDockingPoseCollectionState = state;
@@ -19448,7 +19475,8 @@ SOFTWARE.
     }
     for (const entry of prepared.entries) {
       if (isDockingTrajectoryPairEntry(entry, prepared.trajectoryPair)) continue;
-      await loadMolstarEntry(viewer, entry);
+      const structures = await loadMolstarEntryWithStructureRefs(viewer, entry);
+      if (entry === prepared.poses?.[prepared.activePose]) prepared.activeLigandRefs = molstarStructureRefsOf(structures);
     }
     // A derived topology has coordinates but no chemical identity. Keep its
     // point representation intact instead of applying chemistry-dependent
@@ -20560,6 +20588,7 @@ SOFTWARE.
       type: 'dockingPoseChanged',
       activePose: index,
       sourceRecordId: pose?.poseIndex ?? index,
+      ligandIndex: pose?.ligandIndex ?? 0,
       poseCount: poses.length,
       poseMode: activeSdfPoseMode === 'all' ? 'all' : 'single',
       sourcePath: pose?.sourcePath || ''
@@ -21070,17 +21099,26 @@ SOFTWARE.
     if (!activeViewer || !Number.isFinite(poseCount) || poseCount <= 0) {
       return agentActionFailure('set_sdf_pose_index', 'NO_POSES', 'The active Mol* viewer has no selectable poses.');
     }
-    const index = Math.trunc(Number(action.index) || 0);
+    const index = action.sourceRecordId == null ? Math.trunc(Number(action.index) || 0)
+      : prepared.kind === 'docking' ? prepared.poses.findIndex(pose => pose.poseIndex === action.sourceRecordId
+        && (action.ligandIndex == null || pose.ligandIndex === action.ligandIndex)) : -1;
     const outOfRange = agentFrameIndexFailure('set_sdf_pose_index', index, poseCount);
     if (outOfRange) return outOfRange;
+    if (prepared.kind === 'docking' && poseCount === 1 && !prepared.nativeTrajectoryControls) {
+      notifyDockingPoseChanged(0, prepared);
+      return { ok: true, command: 'set_sdf_pose_index', result: { index: 0, poseCount } };
+    }
     try {
-      if (activeSdfPoseMode === 'all' && structureOverlayAvailable(prepared)) {
+      // An embedding host selects poses from its own list and keeps the user's All view.
+      if (activeSdfPoseMode === 'all' && structureOverlayAvailable(prepared) && action.keepPoseMode !== true) {
         setSdfPoseMode('single');
         notifyStructureOverlayModeChanged(prepared);
         updateSdfPoseButton(prepared);
       }
       writeTrajectoryControlIndex(activeConfig, prepared, index);
-      if (prepared.nativeTrajectoryControls && activeSdfPoseMode !== 'all' && !xyzSingleFrameSceneActive(activeViewer)) {
+      if (activeStructurePoseSetter) {
+        await activeStructurePoseSetter(index, { throwOnError: true });
+      } else if (prepared.nativeTrajectoryControls && activeSdfPoseMode !== 'all' && !xyzSingleFrameSceneActive(activeViewer)) {
         const switched = await setNativeTrajectoryPose(index, poseCount);
         if (!switched) throw new Error('Mol* trajectory controls are not available.');
       } else if (prepared.xyzFrameOverlayAvailable === true) {
@@ -21092,7 +21130,7 @@ SOFTWARE.
       } else {
         await reloadActiveMolstarStructure();
       }
-      notifyDockingPoseChanged(index, prepared);
+      if (!activeStructurePoseSetter) notifyDockingPoseChanged(index, prepared);
       return {
         ok: true,
         command: 'set_sdf_pose_index',
@@ -21473,7 +21511,10 @@ SOFTWARE.
     if (!prepared) return;
     const overlayAvailable = structureOverlayAvailable(prepared);
     const overlayToggleAvailable = structureOverlayToggleAvailable(prepared);
-    if (prepared.poseCount <= 1 && !overlayAvailable) return;
+    if (prepared.poseCount <= 1 && !overlayAvailable) {
+      if (prepared.poseCount === 1) notifyDockingPoseChanged(0, prepared);
+      return;
+    }
     document.body.classList.add('buret-docking-pose-controls-active');
     const root = document.createElement('div');
     root.className = 'buret-docking-poses';
@@ -22435,6 +22476,7 @@ SOFTWARE.
         // already rolled back to the frame still on screen, which is the honest report.
         // eslint-disable-next-line no-console
         console.error(error);
+        if (options.throwOnError === true) throw error;
       }
     };
     // Dots and files show or hide poses until the next step; a pin keeps a pose
@@ -22833,7 +22875,18 @@ SOFTWARE.
       if (loopActive) void trajectoryPlaybackControl.stop();
       else trajectoryPlaybackControl.play();
     });
-    smooth.addEventListener('click', () => {
+    smooth.addEventListener('click', async () => {
+      // Hosts without the desktop Info panel (the embed) smooth in this runtime.
+      if (activeConfig?.trajectorySmoothing === 'in-viewer') {
+        const result = trajectorySmoothingState
+          ? await setTrajectorySmoothingViewFromAction({ view: trajectorySmoothingState.view === 'smoothed' ? 'original' : 'smoothed' })
+          : await applyTrajectorySmoothingFromAction();
+        if (result?.ok === false) {
+          setStatus(`[web] ${result.error?.message || 'Smooth motion failed.'}`);
+          setTimeout(hideStatus, 3000);
+        }
+        return;
+      }
       const posted = postHostMessage({
         type: 'openTrajectorySmoothing',
         documentId: activeConfig?.documentId || ''
@@ -22922,7 +22975,9 @@ SOFTWARE.
       window.removeEventListener('keydown', onKeyDown);
     };
     mainRow.append(animation, previous, label, next);
-    const smoothAvailable = (prepared.kind === 'trajectory' || prepared.kind === 'xyz-frame-overlay' || prepared.nativeTrajectoryControls);
+    const smoothAvailable = (prepared.kind === 'trajectory' || prepared.kind === 'xyz-frame-overlay' || prepared.nativeTrajectoryControls)
+      && (activeConfig?.trajectorySmoothing !== 'in-viewer'
+        || (!activeMolstarPrepared?.trajectoryPair && ['pdb', 'xyz'].includes(normalizeFormat(activeMolstarPrepared?.format))));
     const toggleRow = prepared.dockingSceneMode ? document.createElement('div') : null;
     if (smoothAvailable && toggleRow) mainRow.append(smooth);
     if (toggleRow) {

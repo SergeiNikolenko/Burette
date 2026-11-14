@@ -1,0 +1,8 @@
+{
+  "name": "@burette/embed",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun scripts/build.mjs"
+  }
+}

@@ -66,7 +66,7 @@ assert.deepEqual(buildFileDropPreview({
   itemLabel: "ligand.sdf",
   point: { x: 480, y: 240 },
   targetKind: "ketcher",
-  targetLabel: "Ketcher",
+  targetLabel: "Molecular editor",
 });
 assert.deepEqual(buildFileDropPreview({
   payload: payload(["/tmp/ligand.sdf"]),
@@ -189,7 +189,7 @@ assert.deepEqual(sdfOnKetcher, {
 assert.deepEqual(resolveDropActionChoices(payload(["/tmp/a.sdf"]), { kind: "ketcher" }), [
   {
     id: "import-ketcher-structures",
-    label: "Add to Ketcher",
+    label: "Add to molecular editor",
     confidence: "default",
     action: {
       kind: "import-ketcher-structures",
@@ -233,7 +233,7 @@ assert.deepEqual(resolveDropActionChoices(payload(["/tmp/receptor.pdb"]), { kind
 assert.deepEqual(resolveDropActionChoices(payload(["/tmp/receptor.pdb", "/tmp/a.sdf"]), { kind: "ketcher" }), [
   {
     id: "import-ketcher-structures",
-    label: "Add to Ketcher",
+    label: "Add to molecular editor",
     confidence: "default",
     action: {
       kind: "import-ketcher-structures",

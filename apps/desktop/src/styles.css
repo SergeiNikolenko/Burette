@@ -7883,7 +7883,8 @@ img.radix-menu-item-icon {
   font-size: 13px;
   font-weight: 400;
 }
-.app-shell[data-structure-drag-active="true"] .viewer-iframe {
+.app-shell[data-structure-drag-active="true"] .viewer-iframe,
+.app-shell[data-structure-drag-active="true"] .molecular-frame-host > iframe {
   pointer-events: none;
 }
 /* Table and file forms use the InterfaceAtlas form dialog and action tokens. */

@@ -61,7 +61,7 @@ export function NativeWorkspaceHome({ actions, home }: { actions: ShellActions; 
       <div className="mx-auto flex w-full max-w-[720px] flex-col gap-5">
         <header className="flex items-start justify-between gap-4">
           <h1 className="native-home-title">Recent files</h1>
-          <Button type="button" className="native-home-ketcher" variant="secondary" size="xs" onClick={actions.openKetcher}>Ketcher</Button>
+          <Button type="button" className="native-home-ketcher" variant="secondary" size="xs" onClick={actions.openKetcher}>Molecular editor</Button>
         </header>
         <section aria-label="Recent files" aria-busy={loading} className="flex flex-col">
           {loading ? <div role="status" className="flex items-center gap-2 px-2 py-[5px] text-sm text-(--color-text-secondary)"><Spinner aria-hidden />Loading recent files…</div> : null}

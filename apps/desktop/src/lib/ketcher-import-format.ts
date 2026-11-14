@@ -38,6 +38,28 @@ export function detectKetcherImportFormat(text: string): KetcherDetectedImportFo
   return "smiles";
 }
 
+export function isReactionDrawing(text: string) {
+  const value = text.trim();
+  if (/^\$(?:RXN|RDFILE|RFMT)\b/u.test(value)) return true;
+  if (value.startsWith("{")) {
+    try {
+      const ket = JSON.parse(value);
+      const nodes = ket?.root?.nodes;
+      return Array.isArray(nodes) && nodes.some(node => {
+        const type = node?.$ref ? ket[node.$ref]?.type : node?.type;
+        return type === "arrow" || type === "plus" || type === "multi-tailed-arrow";
+      });
+    } catch {
+      return false;
+    }
+  }
+  const format = detectKetcherImportFormat(value);
+  if (format !== "smiles" && format !== "extended-smiles" && format !== "smarts") return false;
+  // A greater-than sign can also be part of a coordinate bond in a molecule.
+  const token = value.split(/\s/u, 1)[0].replaceAll("->", "");
+  return token !== ">>" && /^[^>]*>[^>]*>[^>]*$/u.test(token);
+}
+
 export function normalizeKetcherSmilesImport(text: string) {
   const value = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
   const lines = value.split("\n").map((line) => line.trim()).filter(Boolean);

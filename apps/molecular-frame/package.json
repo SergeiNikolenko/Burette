@@ -1,0 +1,25 @@
+{
+  "name": "@burette/molecular-frame",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "vp build && node scripts/manifest.mjs", "stage": "node scripts/stage.mjs", "build:core": "node scripts/build-core.mjs", "typecheck": "tsc --noEmit" },
+  "dependencies": {
+    "@base-ui/react": "^1.8.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.42.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "tailwind-merge": "^3.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^6",
+    "tailwindcss": "^4",
+    "typescript": "~6",
+    "vite": "^8"
+  }
+}

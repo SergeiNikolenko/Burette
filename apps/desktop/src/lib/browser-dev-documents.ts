@@ -8,7 +8,8 @@ import { parseDataWarrior } from "./datawarrior";
 import { nativePreviewHtml } from "./native-mcp-workspace";
 import { isHostedMcpWidget } from "./hosted-mcp-widget";
 import { validatePdbMolecule } from "./pdb-chemistry";
-import { previewBackgroundStyle, readPreviewThemeTokens, viewerThemePreference } from "./theme";
+import { previewBackgroundStyle, viewerThemePreference } from "./theme";
+import { previewThemeTokens, previewViewerDefaults } from "./preview-defaults";
 import type { DockingDocumentRequest, DockingSceneMode, OpenDocumentsResult, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XyzrenderControls } from "../types";
 import previewFormatRegistry from "../../../../config/preview-formats.json";
 
@@ -159,16 +160,6 @@ type ResolvedPreviewVisuals = {
   transparentBackground: boolean;
 };
 
-type PreviewThemeTokenSet = {
-  accent: string;
-  background: string;
-  foreground: string;
-  uiFont: string;
-  editorFont: string;
-  translucent: number;
-  contrast: number;
-};
-
 type BrowserDevExternalArtifact = {
   inlineSvg?: string;
   inlineSvgBase64?: string;
@@ -236,27 +227,6 @@ function resolvePreviewVisuals(preferences: ViewerPreferences): ResolvedPreviewV
     theme: viewerThemePreference(preferences.theme),
     canvasBackground: preferences.canvasBackground,
     transparentBackground: preferences.canvasBackground === "transparent",
-  };
-}
-
-function previewThemeTokens(preferences: ViewerPreferences): Record<"light" | "dark", PreviewThemeTokenSet> {
-  return {
-    light: readPreviewThemeTokens(preferences, "light"),
-    dark: readPreviewThemeTokens(preferences, "dark"),
-  };
-}
-
-// App Settings defaults the runtimes start from; the same shape as
-// ViewerDefaults::runtime_config in src-tauri/src/preview/runtime.rs.
-function previewViewerDefaults(preferences: ViewerPreferences) {
-  return {
-    screenshotResolution: preferences.screenshotResolution,
-    screenshotFormat: preferences.screenshotFormat,
-    screenshotTransparent: preferences.screenshotTransparent,
-    gridViewMode: preferences.gridViewMode,
-    gridCardRenderer: preferences.gridCardRenderer,
-    gridCardSize: preferences.gridCardSize,
-    hydrogenDisplay: preferences.hydrogenDisplay,
   };
 }
 

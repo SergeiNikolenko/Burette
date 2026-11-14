@@ -1,0 +1,292 @@
+/* Molecule editor in the Codex visual language: one continuous canvas, compact
+   floating panels, gray glyphs that darken on hover and neutral selection
+   fills. The core draws plain classed SVG; every color is set here. */
+.me-root {
+  --me-surface: #ffffff;
+  --me-float: #ffffff;
+  --me-fg: #1a1c1f;
+  --me-fg-secondary: rgb(26 28 31 / 0.695);
+  --me-border-strong: rgb(26 28 31 / 0.117);
+  --me-divider: rgb(26 28 31 / 0.078);
+  --me-hover: rgb(26 28 31 / 0.053);
+  --me-active: rgb(26 28 31 / 0.12);
+  --me-ink: #1a1c1f;
+  --me-danger: #e02e2a;
+  --me-shadow: 0 0 0 0.5px var(--me-border-strong), 0 3px 7.5px #0000000a, 0 0 20px #0000000d;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--me-surface);
+  color: var(--me-fg);
+}
+.dark .me-root {
+  --me-surface: var(--background, #000);
+  --me-float: var(--popover, #171717);
+  --me-fg: var(--foreground, #eee);
+  --me-fg-secondary: rgb(255 255 255 / 0.71);
+  --me-border-strong: rgb(255 255 255 / 0.156);
+  --me-divider: rgb(255 255 255 / 0.084);
+  --me-hover: rgb(255 255 255 / 0.078);
+  --me-active: rgb(223 223 223 / 0.16);
+  --me-ink: #ececec;
+  --me-danger: #ff6764;
+}
+
+.me-host {
+  position: absolute;
+  inset: 0;
+  outline: none;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.me-host:focus-visible {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--me-fg) 22%, transparent);
+}
+.me-drawing,
+.me-drawing > svg {
+  position: absolute;
+  inset: 0;
+  display: block;
+  pointer-events: none;
+}
+
+/* Drawing: ACS-style labels; elements share one palette with the atom panel. */
+.me-root .me-canvas {
+  color: var(--me-ink);
+  font-family: Arial, Helvetica, sans-serif;
+}
+.me-root :is(.me-bond, .me-ring-circle) { stroke: currentColor; }
+.me-root :is(.me-wedge, .me-label, .me-charge) { fill: var(--me-el, currentColor); }
+.me-root .me-cip { fill: var(--me-fg-secondary); }
+/* Halos are filled capsules under the drawing; hover and error tint what lies
+   below, so a hovered selection reads darker. */
+.me-root .me-selected { fill: color-mix(in srgb, var(--me-fg) 13%, transparent); }
+.me-root .me-hover { fill: color-mix(in srgb, var(--me-fg) 8%, transparent); }
+.me-root path.me-error { fill: color-mix(in srgb, var(--me-danger) 20%, transparent); }
+.me-root .me-preview { opacity: 0.45; }
+.me-root .me-marquee {
+  fill: color-mix(in srgb, var(--me-fg) 4%, transparent);
+  stroke: var(--me-fg-secondary);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+
+.me-root .me-el-N { --me-el: #304ff7; }
+.me-root .me-el-O { --me-el: #ff0d0d; }
+.me-root .me-el-S { --me-el: #c99a19; }
+.me-root .me-el-P { --me-el: #ff8000; }
+.me-root .me-el-F { --me-el: #78bc42; }
+.me-root .me-el-Cl { --me-el: #1fd01f; }
+.me-root .me-el-Br { --me-el: #a62929; }
+.me-root .me-el-I { --me-el: #940094; }
+.me-root .me-el-B { --me-el: #d4797b; }
+.dark .me-root .me-el-N { --me-el: #9bb7ff; }
+.dark .me-root .me-el-O { --me-el: #ff8585; }
+.dark .me-root .me-el-S { --me-el: #efd16c; }
+.dark .me-root .me-el-P { --me-el: #ffbb79; }
+.dark .me-root .me-el-Br { --me-el: #d9a08c; }
+.dark .me-root .me-el-I { --me-el: #dca6ef; }
+.dark .me-root .me-el-B { --me-el: #ffb5b5; }
+.me-root .me-canvas text.me-error { --me-el: var(--me-danger); }
+
+/* Floating panels */
+.me-panel {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--me-float);
+  box-shadow: var(--me-shadow);
+  scrollbar-width: none;
+}
+.me-panel[aria-orientation='horizontal'] {
+  left: 50%;
+  max-width: calc(100% - 20px);
+  overflow-x: auto;
+  translate: -50% 0;
+}
+.me-panel[aria-orientation='vertical'] {
+  top: 50%;
+  flex-direction: column;
+  max-height: calc(100% - 112px);
+  overflow-y: auto;
+  translate: 0 -50%;
+}
+.me-panel[data-edge='top'] { top: 10px; }
+.me-panel[data-edge='bottom'] { bottom: 10px; }
+.me-panel[data-edge='left'] { left: 10px; }
+.me-panel[data-edge='right'] { right: 10px; }
+.me-root[data-view='3d'] .me-3d { top: 56px; }
+.me-divider {
+  flex: none;
+  align-self: center;
+  background: var(--me-divider);
+}
+.me-panel[aria-orientation='horizontal'] .me-divider { width: 1px; height: 16px; margin-inline: 4px; }
+.me-panel[aria-orientation='vertical'] .me-divider { width: 18px; height: 1px; margin-block: 3px; }
+
+.me-tool {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  color: var(--me-fg-secondary);
+}
+.me-tool:hover:not(:disabled) { background: var(--me-hover); color: var(--me-fg); }
+.me-tool[aria-pressed='true']:not(:disabled) { background: var(--me-active); color: var(--me-fg); }
+.me-tool:disabled { opacity: 0.4; }
+.me-tool svg { width: 18px; height: 18px; stroke-width: 1.75; }
+.me-tool.me-atom { color: var(--me-el, var(--me-fg-secondary)); font-size: 13px; font-weight: 500; }
+.me-tool.me-atom:is(:hover, [aria-pressed='true']):not(:disabled) { color: var(--me-el, var(--me-fg)); }
+
+/* Bond button with its type menu in the corner */
+.me-split { position: relative; display: flex; flex: none; }
+.me-more {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  display: grid;
+  width: 12px;
+  height: 12px;
+  place-items: center;
+  border-radius: 5px;
+  color: var(--me-fg-secondary);
+}
+.me-more:is(:hover, [data-popup-open]) { background: var(--me-hover); color: var(--me-fg); }
+.me-more svg { width: 8px; height: 8px; stroke-width: 2.5; }
+.me-more:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.me-split > .me-tool { padding: 4px 5px 6px 3px; }
+.me-grouped { position: relative; }
+.me-grouped::after { content: ''; position: absolute; right: 3px; bottom: 3px; width: 0; height: 0; border-left: 3px solid transparent; border-top: 3px solid transparent; border-right: 3px solid currentColor; }
+
+.me-zoom {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  border-radius: 12px;
+  background: var(--me-float);
+  box-shadow: var(--me-shadow);
+}
+
+.me-elements { display: grid; grid-template-columns: repeat(18, minmax(28px, 1fr)); grid-template-rows: repeat(10, 38px); gap: 2px; min-width: 540px; }
+.me-element { display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: 5px; font-size: 13px; line-height: 16px; touch-action: manipulation; }
+.me-element:hover, .me-element[aria-pressed='true'] { background: var(--muted); }
+.me-element:focus-visible, .me-fragment:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.me-element:disabled { opacity: 0.2; }
+.me-atomic-number { font-size: 8px; line-height: 10px; }
+.me-fragment-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 6px; max-height: min(440px, 55dvh); overflow-y: auto; padding: 2px; overscroll-behavior: contain; }
+.me-fragment { display: flex; min-width: 0; flex-direction: column; align-items: stretch; border: 1px solid var(--border); border-radius: 8px; padding: 4px; color: var(--foreground); content-visibility: auto; contain-intrinsic-size: auto 100px; }
+.me-fragment:hover, .me-fragment[aria-pressed='true'] { background: var(--muted); }
+.me-fragment-image { display: grid; height: 90px; place-items: center; overflow: hidden; }
+.me-fragment-image > svg { width: 100%; height: 90px; }
+.me-fragment .me-canvas { font-family: Arial, Helvetica, sans-serif; }
+.me-fragment :is(.me-bond, .me-ring-circle) { stroke: currentColor; }
+.me-fragment :is(.me-wedge, .me-label, .me-charge) { fill: currentColor; }
+.me-fragment .me-cip { fill: var(--muted-foreground); }
+
+.me-popup { max-width: min(calc(100vw - 16px), var(--available-width, 100vw)); max-height: min(calc(100dvh - 16px), var(--available-height, 100dvh)); overflow-y: auto; overscroll-behavior: contain; }
+.me-elements-scroll { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.me-popup > input, .me-library-search { flex-shrink: 0; }
+.me-tool, .me-more, .me-zoom button, .me-fragment { touch-action: manipulation; }
+
+/* The editor's own width decides its layout, including narrow platform columns.
+   Narrow editors keep two rows that hug their buttons and scroll sideways only
+   when the buttons do not fit. */
+.me-dock { display: contents; }
+.me-root[data-compact] .me-host { inset: 48px 0; }
+.me-root[data-compact] .me-panel[data-edge='top'] { top: 8px; max-width: calc(100% - 16px); }
+.me-root[data-compact] .me-dock {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  z-index: 3;
+  display: flex;
+  width: max-content;
+  max-width: calc(100% - 16px);
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--me-float);
+  box-shadow: var(--me-shadow);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  translate: -50% 0;
+}
+.me-root[data-compact] .me-dock::-webkit-scrollbar { display: none; }
+.me-root[data-compact] .me-dock > .me-panel { position: static; flex: none; max-width: none; padding: 0; overflow: visible; border-radius: 0; background: none; box-shadow: none; translate: none; }
+.me-root[data-compact] .me-dock > .me-panel + .me-panel::before { content: ''; flex: none; align-self: center; width: 1px; height: 16px; margin-inline: 4px; background: var(--me-divider); }
+.me-root[data-compact] .me-status { top: 52px; }
+.me-root[data-compact] .me-zoom { right: 8px; bottom: 52px; }
+@media (pointer: coarse) {
+  .me-root[data-compact] .me-tool { width: 32px; min-width: 32px; height: 32px; min-height: 32px; }
+  .me-root[data-compact] :is(.me-back, .me-zoom button) { min-height: 32px; }
+  .me-root[data-compact] .me-host { inset: 52px 0; }
+  .me-root[data-compact] .me-status { top: 56px; }
+  .me-root[data-compact] .me-zoom { bottom: 56px; }
+}
+.me-root[data-view='3d'] .me-panel[data-edge='top'] { top: 4px; left: 8px; right: auto; max-width: calc(100% - 16px); translate: none; box-shadow: none; }
+.me-root[data-view='3d'] .me-status { top: 62px; }
+
+.me-editor-shell { container-type: inline-size; }
+.me-editor-surface { position: relative; height: min(820px, calc(100dvh - 240px)); min-height: 320px; }
+@container (max-width: 600px) { .me-editor-surface { min-height: 480px; } }
+@media (pointer: coarse) {
+  .me-tool { min-width: 36px; min-height: 36px; }
+  .me-back { min-height: 36px; }
+  .me-popup button { min-height: 40px; }
+  .me-popup input, .me-popup select { font-size: 16px; }
+  .me-elements { grid-template-columns: repeat(18, 40px); grid-template-rows: repeat(10, 40px); }
+}
+
+.me-3d {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: var(--me-surface);
+}
+.me-3d iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.me-center {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--me-fg-secondary);
+}
+.me-status {
+  position: absolute;
+  top: 56px;
+  left: 50%;
+  z-index: 4;
+  max-width: calc(100% - 20px);
+  overflow: hidden;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--me-float);
+  box-shadow: var(--me-shadow);
+  color: var(--me-fg-secondary);
+  font-size: 13px;
+  line-height: 18px;
+  text-align: center;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  translate: -50% 0;
+}
+.me-status:empty { display: none; }
+.me-root:fullscreen { border-radius: 0; }
+.me-root[data-expanded] { position: fixed; inset: 0; z-index: 60; width: 100%; height: 100dvh; border-radius: 0; }

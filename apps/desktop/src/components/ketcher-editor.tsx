@@ -4,10 +4,12 @@ import type { Ketcher, Struct } from "ketcher-core";
 import { installKetcherBrowserRequire, installKetcherRaphaelBrowserModules } from "../lib/ketcher-browser-require";
 import { deserializeKetcherMolfile, normalizeKetcherMolfileNames } from "../lib/ketcher-workflow";
 import { rejectOnKetcherAsyncFailure } from "../lib/ketcher-async-failure";
+import { shareIndigoWorker } from "../lib/molecular-codecs";
 import { Spinner } from "@/components/ui/spinner";
 import "ketcher-react/dist/index.css";
 
 export type KetcherEditorApi = {
+  cancelPendingImports?: () => void;
   addFragment: Ketcher["addFragment"];
   addMolfileFragment: (molfile: string) => Promise<void>;
   containsReaction: Ketcher["containsReaction"];
@@ -477,7 +479,11 @@ export function KetcherEditor({
 
   const structServiceProvider = useMemo(() => {
     if (!runtime) return null;
-    return new runtime.StandaloneStructServiceProvider();
+    const provider = new runtime.StandaloneStructServiceProvider();
+    const createStructService = provider.createStructService.bind(provider);
+    // The molecular editor's codecs keep their own Indigo service on the same worker.
+    provider.createStructService = options => shareIndigoWorker("editor", createStructService(options));
+    return provider;
   }, [runtime]);
 
   const handleInit = useCallback((instance: KetcherReactInstance) => {

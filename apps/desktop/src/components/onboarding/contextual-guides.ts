@@ -47,13 +47,13 @@ export const contextualGuides = {
     when: "The first time you switch between Cards and Table in a collection.",
   },
   ketcher: {
-    pattern: "announcement", title: "Meet Ketcher",
+    pattern: "announcement", title: "Meet the molecular editor",
     body: "Edit molecules right in Burette: change atoms and bonds, add fragments, and save the structure.",
     media: [still("Oxygen", "ketcher-editor-before.webp"), still("Sulfur", "ketcher-editor-after.webp")],
     animate: true,
-    alt: "A molecule in Ketcher before and after an oxygen atom is replaced with sulfur.",
-    where: "Ketcher tab",
-    when: "The first time you open Ketcher, once the editor is ready.",
+    alt: "A molecule in the molecular editor before and after an oxygen atom is replaced with sulfur.",
+    where: "Molecular editor tab",
+    when: "The first time you open the molecular editor, once the editor is ready.",
   },
   "scene-compose": {
     pattern: "education", title: "Several files. One scene.",
