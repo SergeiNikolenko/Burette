@@ -730,11 +730,16 @@ with a half in each atom's colour and one stroke per bond order. Other
 representation types are not drawn; a scene with none of the supported ones is
 refused.
 
-`record_movie` `{ seconds, fps, spin }` records the canvas with MediaRecorder for
-1–60 s at 24, 30 or 60 fps (12, 25 and 50 are accepted too) and returns
-`{ dataUri, type, bytes }`. The format is MP4 where the runtime records it (WebKit
-in the Mac app), otherwise WebM. With `spin` the camera turns once about the
-screen's vertical axis through its target and returns to its start; without it
-the view is recorded as shown, which captures vibrations and trajectories that
-play during the recording. The host offers both as File → Export → Vector
-Image… and Movie…, and in the command palette.
+`record_movie` `{ seconds, fps, spin }` records the canvas for 1–60 s at 24, 30
+or 60 fps (12, 25 and 50 are accepted too) and returns `{ dataUri, type, bytes }`.
+Where WebCodecs encodes H.264 (Chromium and WebKit, so also the Mac app) the
+viewer encodes each frame with a synthetic timestamp and writes the MP4 itself,
+so the movie always has `seconds × fps` frames at `fps`, however fast the view
+renders. With `spin` each frame is taken after the view has drawn the next
+angle of one turn about the screen's vertical axis, and the camera returns to
+its start afterwards. Without it frames are taken on the wall clock, which
+captures vibrations and trajectories that play during the recording; a view
+that renders slower than `fps` plays back faster than it ran. Without WebCodecs
+MediaRecorder records a 2D copy of the canvas (MP4 or WebM) on the wall clock.
+The host offers both exports as File → Export → Vector Image… and Movie…, and
+in the command palette.

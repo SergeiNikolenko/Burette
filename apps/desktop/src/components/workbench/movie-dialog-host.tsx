@@ -52,9 +52,9 @@ function MovieForm({ document, actions, recording }: { document: ViewerDocument;
         <SegmentedControl aria-label="Motion" value={settings.spin ? "spin" : "shown"} disabled={busy}
           onValueChange={(value) => { if (value) setSettings({ ...settings, spin: value === "spin" }); }}>
           <SegmentedControlItem value="spin">Spin</SegmentedControlItem>
-          <ShortcutTooltip label="Records a vibration or trajectory as it plays">
-            <SegmentedControlItem value="shown">As shown</SegmentedControlItem>
-          </ShortcutTooltip>
+          <SegmentedControlItem value="shown">
+            <ShortcutTooltip label="Records a vibration or trajectory as it plays"><span>As shown</span></ShortcutTooltip>
+          </SegmentedControlItem>
         </SegmentedControl>
       </div>
       <label className="workbench-field"><span>Length, s</span>

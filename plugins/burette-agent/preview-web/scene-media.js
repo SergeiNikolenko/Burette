@@ -2,9 +2,10 @@
 // SVG: the shown ball-and-stick, licorice and spacefill representations as flat
 // vector shapes, painted back to front from the current camera, with the same
 // colour and size themes as the render: one <circle> per atom, one <g> per bond.
-// Movie: the canvas recorded at a chosen frame rate, optionally while the camera
-// spins once about the screen's vertical axis; vibrations and trajectories that
-// play in the view are recorded as shown.
+// Movie: an MP4 of the canvas at a chosen frame rate (WebCodecs H.264, or
+// MediaRecorder where WebCodecs is missing), optionally while the camera spins
+// once about the screen's vertical axis; vibrations and trajectories that play
+// in the view are recorded as shown.
 if (!window.BuretteSceneMedia) {
   const SPHERE_TYPES = new Set(['ball-and-stick', 'spacefill']);
   const MAX_SECONDS = 60;
@@ -136,47 +137,141 @@ if (!window.BuretteSceneMedia) {
     return { svg: lines.join('\n'), atoms: atomCount, bonds: bondCount };
   }
 
-  // Records the canvas for `seconds`; with `spin` the camera turns once about the
-  // screen's vertical axis through the target and returns to where it started.
-  async function record(plugin, { seconds, fps, spin }) {
-    const canvas = plugin?.canvas3dContext?.canvas, camera = plugin?.canvas3d?.camera;
-    if (!canvas || !camera) throw new Error('Recording needs the 3D view.');
-    if (!(seconds > 0 && seconds <= MAX_SECONDS)) throw new Error(`Choose a length from 1 to ${MAX_SECONDS} seconds.`);
-    if (![12, 24, 25, 30, 50, 60].includes(fps)) throw new Error('Choose a frame rate of 12, 24, 25, 30, 50 or 60.');
-    if (typeof MediaRecorder !== 'function' || typeof canvas.captureStream !== 'function') throw new Error('This browser cannot record the 3D view.');
-    const type = MOVIE_TYPES.find(candidate => MediaRecorder.isTypeSupported(candidate));
-    if (!type) throw new Error('This browser cannot record the 3D view.');
-    const stream = canvas.captureStream(fps), recorder = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 8_000_000 });
-    const chunks = [];
-    recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
-    const stopped = new Promise((resolve, reject) => { recorder.onstop = resolve; recorder.onerror = event => reject(event.error || new Error('Recording failed.')); });
+  // ISO BMFF boxes for one H.264 track with a fixed frame duration.
+  const concat = parts => {
+    const out = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
+    let at = 0;
+    for (const part of parts) { out.set(part, at); at += part.length; }
+    return out;
+  };
+  const u16 = value => Uint8Array.of(value >> 8 & 255, value & 255);
+  const u32 = value => Uint8Array.of(value >>> 24 & 255, value >> 16 & 255, value >> 8 & 255, value & 255);
+  const ascii = text => Uint8Array.from(text, ch => ch.charCodeAt(0));
+  const box = (type, ...parts) => { const body = concat(parts); return concat([u32(body.length + 8), ascii(type), body]); };
+  const fullBox = (type, version, flags, ...parts) => box(type, Uint8Array.of(version, flags >> 16 & 255, flags >> 8 & 255, flags & 255), ...parts);
+  const MATRIX = concat([u32(0x10000), u32(0), u32(0), u32(0), u32(0x10000), u32(0), u32(0), u32(0), u32(0x40000000)]);
+
+  function mp4({ width, height, fps, samples, keys, description }) {
+    const count = samples.length, milliseconds = Math.round(count * 1000 / fps);
+    const ftyp = box('ftyp', ascii('isom'), u32(512), ascii('isomiso2avc1mp41'));
+    const moov = chunkOffset => box('moov',
+      fullBox('mvhd', 0, 0, u32(0), u32(0), u32(1000), u32(milliseconds), u32(0x10000), u16(0x100), new Uint8Array(10), MATRIX, new Uint8Array(24), u32(2)),
+      box('trak',
+        fullBox('tkhd', 0, 3, u32(0), u32(0), u32(1), u32(0), u32(milliseconds), new Uint8Array(8), u16(0), u16(0), u16(0), u16(0), MATRIX, u32(width << 16), u32(height << 16)),
+        box('mdia',
+          fullBox('mdhd', 0, 0, u32(0), u32(0), u32(fps), u32(count), u16(0x55c4), u16(0)),
+          fullBox('hdlr', 0, 0, u32(0), ascii('vide'), new Uint8Array(12), ascii('VideoHandler\0')),
+          box('minf',
+            fullBox('vmhd', 0, 1, new Uint8Array(8)),
+            box('dinf', fullBox('dref', 0, 0, u32(1), fullBox('url ', 0, 1))),
+            box('stbl',
+              fullBox('stsd', 0, 0, u32(1), box('avc1', new Uint8Array(6), u16(1), new Uint8Array(16), u16(width), u16(height),
+                u32(0x480000), u32(0x480000), u32(0), u16(1), new Uint8Array(32), u16(0x18), u16(0xffff), box('avcC', description))),
+              fullBox('stts', 0, 0, u32(1), u32(count), u32(1)),
+              fullBox('stss', 0, 0, u32(keys.length), ...keys.map(index => u32(index + 1))),
+              fullBox('stsc', 0, 0, u32(1), u32(1), u32(count), u32(1)),
+              fullBox('stsz', 0, 0, u32(0), u32(count), ...samples.map(sample => u32(sample.length))),
+              fullBox('stco', 0, 0, u32(1), u32(chunkOffset)))))));
+    const data = concat(samples), offset = ftyp.length + moov(0).length + 8;
+    return new Blob([ftyp, moov(offset), u32(data.length + 8), ascii('mdat'), data], { type: 'video/mp4' });
+  }
+
+  // Turns the camera once about the screen's vertical axis through its target.
+  function spinner(camera) {
     const start = camera.getSnapshot();
     const up = [start.up[0], start.up[1], start.up[2]], target = start.target;
     const offset = [0, 1, 2].map(axis => start.position[axis] - target[axis]);
-    let frame = 0, began = 0;
-    const turn = now => {
-      began ||= now;
-      const angle = Math.min(1, (now - began) / (seconds * 1000)) * Math.PI * 2;
-      // Rodrigues rotation of the eye offset about the up axis.
-      const cos = Math.cos(angle), sin = Math.sin(angle), dot = up[0] * offset[0] + up[1] * offset[1] + up[2] * offset[2];
-      const cross = [up[1] * offset[2] - up[2] * offset[1], up[2] * offset[0] - up[0] * offset[2], up[0] * offset[1] - up[1] * offset[0]];
-      const position = [0, 1, 2].map(axis => target[axis] + offset[axis] * cos + cross[axis] * sin + up[axis] * dot * (1 - cos));
-      camera.setState({ ...start, position }, 0);
-      plugin.canvas3d.requestDraw?.();
-      if (angle < Math.PI * 2) frame = requestAnimationFrame(turn);
+    return {
+      turn(fraction) {
+        // Rodrigues rotation of the eye offset about the up axis.
+        const angle = fraction * Math.PI * 2, cos = Math.cos(angle), sin = Math.sin(angle);
+        const dot = up[0] * offset[0] + up[1] * offset[1] + up[2] * offset[2];
+        const cross = [up[1] * offset[2] - up[2] * offset[1], up[2] * offset[0] - up[0] * offset[2], up[0] * offset[1] - up[1] * offset[0]];
+        camera.setState({ ...start, position: [0, 1, 2].map(axis => target[axis] + offset[axis] * cos + cross[axis] * sin + up[axis] * dot * (1 - cos)) }, 0);
+      },
+      restore() { camera.setState(start, 0); },
     };
-    recorder.start(250);
-    if (spin) frame = requestAnimationFrame(turn);
+  }
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, Math.max(0, ms)));
+  const nextFrames = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+  // WebCodecs H.264 with synthetic timestamps: the movie has exactly
+  // `seconds × fps` frames at `fps` however fast the view renders. A spin
+  // frame is taken after the view has drawn that angle; "as shown" frames are
+  // taken on the wall clock, so a slow view plays back faster than it ran.
+  async function encode(plugin, canvas, { seconds, fps, spin }) {
+    const width = canvas.width - canvas.width % 2, height = canvas.height - canvas.height % 2;
+    const config = { codec: 'avc1.420033', width, height, bitrate: 8_000_000, framerate: fps, avc: { format: 'avc' } };
+    if (!(await VideoEncoder.isConfigSupported(config)).supported) return null;
+    const samples = [], keys = [];
+    let description = null, failure = null;
+    const encoder = new VideoEncoder({
+      output(chunk, metadata) {
+        const source = metadata?.decoderConfig?.description;
+        if (source) description = new Uint8Array(ArrayBuffer.isView(source) ? source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength) : source.slice(0));
+        const bytes = new Uint8Array(chunk.byteLength);
+        chunk.copyTo(bytes);
+        if (chunk.type === 'key') keys.push(samples.length);
+        samples.push(bytes);
+      },
+      error(error) { failure = error; },
+    });
+    encoder.configure(config);
+    const turning = spin ? spinner(plugin.canvas3d.camera) : null, count = Math.round(seconds * fps), began = performance.now();
     try {
-      await new Promise(resolve => setTimeout(resolve, seconds * 1000));
+      for (let index = 0; index < count && !failure; index++) {
+        if (turning) { turning.turn(index / count); plugin.canvas3d.requestDraw?.(); await nextFrames(); }
+        else await sleep(began + index * 1000 / fps - performance.now());
+        const frame = new VideoFrame(canvas, { timestamp: Math.round(index * 1e6 / fps), duration: Math.round(1e6 / fps), visibleRect: { x: 0, y: 0, width, height } });
+        encoder.encode(frame, { keyFrame: index % (fps * 2) === 0 });
+        frame.close();
+        while (encoder.encodeQueueSize > 4 && !failure) await sleep(5);
+      }
+      if (!failure) await encoder.flush();
     } finally {
-      if (frame) cancelAnimationFrame(frame);
+      if (encoder.state !== 'closed') encoder.close();
+      turning?.restore();
+    }
+    if (failure) throw failure;
+    if (!description || samples.length !== count) throw new Error('The movie could not be encoded.');
+    return { blob: mp4({ width, height, fps, samples, keys, description }), type: 'video/mp4' };
+  }
+
+  // Without WebCodecs: MediaRecorder on a 2D copy, timed by the wall clock.
+  async function stream(plugin, canvas, { seconds, fps, spin }) {
+    const type = typeof MediaRecorder === 'function' ? MOVIE_TYPES.find(candidate => MediaRecorder.isTypeSupported(candidate)) : null;
+    if (!type) throw new Error('This browser cannot record the 3D view.');
+    const copy = document.createElement('canvas');
+    copy.width = canvas.width - canvas.width % 2; copy.height = canvas.height - canvas.height % 2;
+    const context = copy.getContext('2d'), media = copy.captureStream(0), track = media.getVideoTracks()[0];
+    const recorder = new MediaRecorder(media, { mimeType: type, videoBitsPerSecond: 8_000_000 }), chunks = [];
+    recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
+    const stopped = new Promise((resolve, reject) => { recorder.onstop = resolve; recorder.onerror = event => reject(event.error || new Error('Recording failed.')); });
+    const turning = spin ? spinner(plugin.canvas3d.camera) : null, count = Math.round(seconds * fps), began = performance.now();
+    recorder.start(250);
+    try {
+      for (let index = 0; index < count; index++) {
+        turning?.turn(index / count);
+        await sleep(began + index * 1000 / fps - performance.now());
+        context.drawImage(canvas, 0, 0, copy.width, copy.height);
+        track.requestFrame?.();
+      }
+    } finally {
       if (recorder.state !== 'inactive') recorder.stop();
-      stream.getTracks().forEach(track => track.stop());
-      if (spin) camera.setState(start, 0);
+      media.getTracks().forEach(item => item.stop());
+      turning?.restore();
     }
     await stopped;
     return { blob: new Blob(chunks, { type: type.split(';')[0] }), type: type.split(';')[0] };
+  }
+
+  async function record(plugin, settings) {
+    const canvas = plugin?.canvas3dContext?.canvas;
+    if (!canvas || !plugin.canvas3d?.camera) throw new Error('Recording needs the 3D view.');
+    if (!(settings.seconds > 0 && settings.seconds <= MAX_SECONDS)) throw new Error(`Choose a length from 1 to ${MAX_SECONDS} seconds.`);
+    if (![12, 24, 25, 30, 50, 60].includes(settings.fps)) throw new Error('Choose a frame rate of 12, 24, 25, 30, 50 or 60.');
+    const encoded = typeof VideoEncoder === 'function' && typeof VideoFrame === 'function' ? await encode(plugin, canvas, settings) : null;
+    return encoded ?? stream(plugin, canvas, settings);
   }
 
   window.BuretteSceneMedia = { svg, record, MAX_SECONDS };
