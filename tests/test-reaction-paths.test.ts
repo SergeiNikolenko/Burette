@@ -78,6 +78,22 @@ test("a reverse-only Gaussian IRC runs to negative coordinates, as its summary p
   close(path.points.slice(-3, -1).map((point) => point.energyHartree - ts), [-0.00125, -0.00032], 6e-6);
 });
 
+test("a dihedral scanned through ±180° keeps one continuous coordinate", () => {
+  const document = read("H2O2-scan.excerpt.out");
+  const path = document.path!;
+  expect([path.kind, path.axis, path.points.length]).toEqual(["scan", { kind: "dihedral", atoms: [2, 0, 1, 3] }, 37]);
+  // `D 3 1 2 4 S 36 10.000` from 118.87361°: the summary prints D1 wrapped into ±180°. The reader measures
+  // the six-decimal geometry, good to a few 1e-4°.
+  const printed = [118.87361, 128.87361, 138.87361, 148.87361, 158.87361, 168.87361, 178.87361, -171.12639, -161.12639];
+  path.points.slice(0, 9).forEach((point, k) => expect(Math.abs(((point.x - printed[k]) % 360 + 540) % 360 - 180)).toBeLessThan(5e-4));
+  for (let k = 1; k < path.points.length; k++) expect(path.points[k].x - path.points[k - 1].x).toBeCloseTo(10, 3);
+  // The full turn is centred as near 0° as whole turns allow.
+  expect(path.points[0].x).toBeCloseTo(-241.12639, 3);
+  expect(path.points[36].x).toBeCloseTo(118.87361, 3);
+  // "EIGENVALUES --", five decimals.
+  close(path.points.slice(0, 5).map((point) => point.energyHartree), [-151.60206, -151.60200, -151.60177, -151.60147, -151.60118], 5e-6);
+});
+
 // ORCA 6.1.1 "IRC PATH SUMMARY" of the SN2 run, E(Eh) by step; step 13 is the TS.
 const ORCA_IRC = [-3073.691287, -3073.691271, -3073.691194, -3073.691094, -3073.690967, -3073.690807, -3073.690635, -3073.690540, -3073.690373, -3073.689228,
   -3073.687149, -3073.685119, -3073.683420, -3073.685423, -3073.688467, -3073.692088, -3073.695419, -3073.697323, -3073.698410, -3073.698773,

@@ -13,14 +13,15 @@ reader against the summary table the program printed in the same file.
 
 ## Excerpts
 
-Larger public logs are kept as excerpts: whole lines of the original in their order, cut by
+Two larger public logs are kept as excerpts: whole lines of the original in their order, cut by
 `node excerpt.mjs <log> > <excerpt>` to everything before the first geometry table and, after it, the
 geometry tables, `SCF Done` energies, scan and IRC step markers, IRC point blocks and the summaries.
-They come from [ReactionMechanismGenerator/ARC](https://github.com/ReactionMechanismGenerator/ARC) at
+Both come from [ReactionMechanismGenerator/ARC](https://github.com/ReactionMechanismGenerator/ARC) at
 `ad2e2c99`, MIT (`../ARC-LICENSE.txt`).
 
 | File | Program | Job | Original | Original SHA-256 | Bytes | SHA-256 |
 | --- | --- | --- | --- | --- | --- | --- |
+| `H2O2-scan.excerpt.out` | Gaussian 03 D.01 | `opt=(modredundant,calcfc)` scan of the H–O–O–H dihedral `D 3 1 2 4 S 36 10.000`, 37 points through ±180° | `arc/testing/rotor_scans/H2O2.out` (557297 bytes) | `a702c326842d2633c21f43b357fe10e1efe2fa3c643cb9f319771f2606d9e2aa` | 124793 | `9dc1a0dbf562312493779d64c45b635b28e9aedc8f35b884fa32eece9512a3d8` |
 | `rxn_1_irc_2.excerpt.out` | Gaussian 09 D.01 | UB3LYP `irc=(CalcAll,reverse,maxpoints=50)`, 50 points on the reverse path only; the TS is computed first, in the input frame | `arc/testing/irc/rxn_1_irc_2.out` (1595971 bytes) | `0ff3dd871638d985f5d2712f2def141671fb8d8c070f78e50fa6574a51fd3a6a` | 127809 | `03b06596160cacc0bf6ce64d0733404ad3fdbc08aa3eb1e186ef1fdaaa5e581b` |
 
 Gaussian's IRC summary prints energies relative to the TS (here the checkpoint energy, −93.1140196 Eh)

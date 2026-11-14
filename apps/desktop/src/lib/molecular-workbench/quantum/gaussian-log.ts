@@ -250,7 +250,14 @@ function scanPath(lines: string[], frames: ScientificFrame[], scanPoints: Map<Sc
     const x = 'atoms' in axis ? measureAxis(axis, frames[frame].atoms) : point;
     return [{ x, energyHartree, frame, ...(scanConverged.has(point) ? { converged: scanConverged.get(point) } : {}) }];
   });
-  return points.length > 1 ? { kind: 'scan', axis, points } : undefined;
+  if (points.length < 2) return undefined;
+  if (axis.kind === 'dihedral') {
+    // A dihedral scanned through ±180° continues instead of wrapping, on the turn that centres the scan nearest 0°.
+    for (let k = 1; k < points.length; k++) points[k].x += 360 * Math.round((points[k - 1].x - points[k].x) / 360);
+    const turns = Math.round((points[0].x + points.at(-1)!.x) / 720);
+    for (const point of points) point.x -= 360 * turns;
+  }
+  return { kind: 'scan', axis, points };
 }
 
 /**
