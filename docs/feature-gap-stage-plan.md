@@ -129,6 +129,19 @@ for the browser shell and on a `macvm` guest on Orion for the packaged app.
   the field picker.
 - **Done when:** a difference density integrates to the expected electron
   difference, and slice values match the cube at grid points.
+- **Done (d9d3a8de5, 109904dae, 0c05358d9):** Compute → "Slice and combine
+  fields" opens a **Fields** tab for Cube documents. It shows the field's
+  integral (Σ value × voxel volume in bohr³), a slice along the XY, XZ or YZ grid
+  plane with a slider through the field, drawn in the panel as a colour map with
+  contours (dashed below zero) and the atoms near the plane, and in the scene as
+  the same plane coloured by Mol*'s `slice` representation. **New field** makes
+  A − B, A + B or k × A from the file's fields and Cubes opened on the same grid,
+  and opens the result as a new Cube document. Tests (`test:scalar-field-ops`):
+  the B3LYP/6-31G* water density minus the cation density on one 24-point grid
+  integrates to 0.9826 electrons, as NumPy gives from the same files; slice values
+  equal the Cube's numbers at its grid points; contours of a paraboloid lie on its
+  circle. Browser shell verified on Gauss in both themes. Slices follow the grid
+  axes only; an arbitrary plane is not offered.
 
 ### Stage 18. Relaxed scans and IRC paths
 
