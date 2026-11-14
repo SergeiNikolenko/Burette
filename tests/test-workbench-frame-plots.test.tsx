@@ -226,3 +226,30 @@ test("an optimization log plots the printed convergence of each step on a chosen
   const plain = await mount(<PlotsPanel document={doc} science={{ format: "xyz", atoms: atoms(0), frames: [0, 0.01].map((shift) => ({ atoms: atoms(shift) })), modes: [], orbitals: [] }} actions={{ runStructureViewerAction: async () => {} }} />);
   try { assert.equal(plain.host.querySelector('[aria-label="Convergence value"]'), null); } finally { await plain.unmount(); }
 });
+
+test("a reaction path that is the only energy chart carries the unit choice", async () => {
+  const { parseScientificFile } = await import("../apps/desktop/src/lib/molecular-workbench/quantum");
+  const { readFileSync } = await import("node:fs");
+  const read = (name) => parseScientificFile(name, readFileSync(new URL(`fixtures/quantum/reaction-paths/${name}`, import.meta.url), "utf8"));
+  // A scan keeps its optimization steps: the per-step energy chart below the path carries the unit choice.
+  const scan = await mount(<PlotsPanel document={doc} science={read("relaxed_PES_testCO2.log")} actions={{ runStructureViewerAction: async () => {} }} />);
+  try {
+    assert.ok(scan.host.querySelector('[aria-label="ΔE along the path"]'));
+    assert.equal(scan.host.querySelector('[aria-label="ΔE along the path"] select[aria-label="Energy unit"]'), null);
+    assert.equal(scan.host.querySelectorAll('[aria-label="ΔE per frame"] select[aria-label="Energy unit"]').length, 1);
+  } finally { await scan.unmount(); }
+  // An IRC opens as its points, so the path chart is the only energy chart and names the unit itself.
+  const irc = await mount(<PlotsPanel document={doc} science={read("HCN-ts-irc.log")} actions={{ runStructureViewerAction: async () => {} }} />);
+  try {
+    assert.equal(irc.host.querySelector('[aria-label="ΔE per frame"]'), null);
+    const select = irc.host.querySelector('[aria-label="ΔE along the path"] select[aria-label="Energy unit"]');
+    assert.equal(select?.value, "kcal/mol");
+    assert.equal(irc.host.querySelectorAll('select[aria-label="Energy unit"]').length, 1);
+    // The choice rescales the path: the TS is 9.82 kcal/mol, 41.1 kJ/mol, above the lowest point.
+    await sceneFrame(10, 21);
+    const slider = () => irc.host.querySelector('[aria-label="ΔE along the path"] [role="slider"]');
+    assert.match(slider().getAttribute("aria-valuetext"), /ΔE 9\.82 kcal\/mol$/u);
+    await act(async () => { select.value = "kJ/mol"; select.dispatchEvent(new window.Event("change", { bubbles: true })); });
+    assert.match(slider().getAttribute("aria-valuetext"), /ΔE 41\.1\d* kJ\/mol$/u);
+  } finally { await irc.unmount(); window.localStorage.removeItem("burette.workbench.energy-unit"); }
+});

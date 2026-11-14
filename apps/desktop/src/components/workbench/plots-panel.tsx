@@ -157,8 +157,14 @@ export function PlotsPanel({ document, science, sourceText }: { document: Viewer
   const pathCursor = cursor !== null && path ? path.points.findIndex((point) => point.frame === cursor) : -1;
   // An IRC opens as its points, so the per-frame energy chart would repeat the path chart.
   const pathIsFrames = Boolean(path && path.points.length === science.frames.length && path.points.every((point, index) => point.frame === index));
+  const frameEnergies = energies && science.frames.length > 1 && !pathIsFrames ? energies : null;
   const current = cursor !== null ? science.frames[cursor] : null;
   const series = { axis, cursor, onSeek: seek };
+  const unitSelect = (
+    <NativeSelect size="sm" aria-label="Energy unit" name="plotEnergyUnit" value={unit} onChange={(event) => chooseUnit(event.currentTarget.value as EnergyUnit)}>
+      {(Object.keys(ENERGY_UNITS) as EnergyUnit[]).map((option) => <NativeSelectOption key={option} value={option}>{option}</NativeSelectOption>)}
+    </NativeSelect>
+  );
 
   return (
     <div className="dock-content workbench-plots">
@@ -183,16 +189,20 @@ export function PlotsPanel({ document, science, sourceText }: { document: Viewer
         {path && pathAxis ? (
           <SeriesChart axis={pathAxis} cursor={pathCursor >= 0 ? pathCursor : null} onSeek={seek} name="ΔE" unit={unit} values={pathEnergies} digits={digits}
             hollow={path.points.map((point) => point.converged === false)}
-            header={(value) => <h3 className="workbench-chart-title">{path.kind === "scan" ? "Scan" : "Reaction path"}, ΔE{value}</h3>} />
+            header={(value) => (
+              <>
+                <h3 className="workbench-chart-title">{path.kind === "scan" ? "Scan" : "Reaction path"}, ΔE{value}</h3>
+                {/* The unit choice sits on the per-frame energy chart; without one the path carries it. */}
+                {frameEnergies ? null : unitSelect}
+              </>
+            )} />
         ) : null}
-        {energies && science.frames.length > 1 && !pathIsFrames ? (
-          <SeriesChart {...series} name="ΔE" unit={unit} values={energies} digits={digits}
+        {frameEnergies ? (
+          <SeriesChart {...series} name="ΔE" unit={unit} values={frameEnergies} digits={digits}
             header={(value) => (
               <>
                 <h3 className="workbench-chart-title">ΔE{value}</h3>
-                <NativeSelect size="sm" aria-label="Energy unit" name="plotEnergyUnit" value={unit} onChange={(event) => chooseUnit(event.currentTarget.value as EnergyUnit)}>
-                  {(Object.keys(ENERGY_UNITS) as EnergyUnit[]).map((option) => <NativeSelectOption key={option} value={option}>{option}</NativeSelectOption>)}
-                </NativeSelect>
+                {unitSelect}
               </>
             )} />
         ) : null}
@@ -279,7 +289,13 @@ export function SeriesChart({ name, unit, values, digits, format = (value) => va
       ? [{ x: (axis.values[index - 1] + point.x) / 2, frame: 0, value: null, index: -1 }, point] : [point];
   }) ?? null, [values, axis, scale]);
   const yTicks = useMemo(() => (values ? scale === "log" ? logTicks(values, reference) : niceTicks(values) : null), [values, scale, reference]);
-  const timeTicks = useMemo(() => (axis.kind !== "frame" ? niceTicks(axis.values) : null), [axis]);
+  const timeTicks = useMemo(() => {
+    const nice = axis.kind !== "frame" ? niceTicks(axis.values) : null;
+    if (!nice) return null;
+    // A path may run downwards (a bond scanned from long to short), so the data range is not first-to-last.
+    const low = Math.min(...axis.values), high = Math.max(...axis.values);
+    return { ...nice, ticks: nice.ticks.filter((tick) => tick >= low && tick <= high) };
+  }, [axis]);
   const cursorValue = cursor !== null ? values?.[cursor] ?? null : null;
   const currentValue = scale === "log" && cursorValue !== null && !(cursorValue > 0) ? null : cursorValue;
   const label = unit ? `${name}, ${unit}` : name;
@@ -317,7 +333,7 @@ export function SeriesChart({ name, unit, values, digits, format = (value) => va
 >
         <CartesianGrid vertical={false} />
         {timeTicks ? (
-          <XAxis dataKey="x" type="number" domain={["dataMin", "dataMax"]} ticks={timeTicks.ticks.filter((tick) => tick >= axis.values[0] && tick <= axis.values.at(-1)!)} tickLine={false} axisLine={false} minTickGap={24} tickFormatter={timeTicks.format} />
+          <XAxis dataKey="x" type="number" domain={["dataMin", "dataMax"]} ticks={timeTicks.ticks} tickLine={false} axisLine={false} minTickGap={24} tickFormatter={timeTicks.format} />
         ) : (
           <XAxis dataKey="x" type="number" domain={["dataMin", "dataMax"]} allowDecimals={false} tickLine={false} axisLine={false} minTickGap={24} />
         )}
