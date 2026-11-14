@@ -133,3 +133,13 @@ test("a restored document keeps a valid path and refuses a broken one", () => {
   expect(broken({ ...document.path!, points: [{ x: 1, energyHartree: -1, frame: document.frames.length }] })).toThrow("path");
   expect(broken({ ...document.path!, axis: { kind: "bond", atoms: [0, 99] } })).toThrow("path");
 });
+
+test("a surface table the reader cannot assign to one coordinate gives no path", () => {
+  // The same output with a second scanned parameter in each row of the surface tables.
+  const text = readFileSync(new URL("./fixtures/quantum/reaction-paths/dvb_scan_unrelaxed.out", import.meta.url), "utf8")
+    .replace(/^(\s+\d+\.\d{8})( -3\d\d\.\d{8})$/gmu, "$1   1.50000000$2");
+  expect(text.match(/1\.50000000 -3/gu)!.length).toBeGreaterThanOrEqual(12);
+  const document = parseScientificFile("dvb_scan_unrelaxed.out", text);
+  expect(document.path).toBeUndefined();
+  expect(document.frames.length).toBe(12);
+});

@@ -92,27 +92,28 @@ export function inPathFrame(start: MolecularAtom[], points: Array<{ atoms: Molec
  */
 export function orcaPath(lines: string[], geometryLines: number[]): ReactionPath | undefined {
   const surface = lines.findIndex(line => /The Calculated Surface using the 'Actual Energy'/u.test(line));
-  if (surface >= 0) {
-    const rows: Array<[number, number]> = [];
-    for (let i = surface + 1; i < lines.length; i++) {
-      const p = lines[i].trim().split(/\s+/u);
-      if (p.length !== 2) break;
-      rows.push([numeric(p[0]), numeric(p[1])]);
-    }
+  const surfaceRows: Array<[number, number]> = [];
+  for (let i = surface + 1; surface >= 0 && i < lines.length; i++) {
+    const p = lines[i].trim().split(/\s+/u);
+    if (p.length !== 2) break;
+    surfaceRows.push([numeric(p[0]), numeric(p[1])]);
+  }
+  // A table of another shape, such as two scanned coordinates per row, gives no rows and no path.
+  if (surfaceRows.length) {
     const steps = lines.flatMap((line, i) => (/RELAXED SURFACE SCAN STEP\s+\d+/u.test(line) ? [i] : []));
     const frameOf = (k: number) => {
-      if (steps.length === rows.length) {
+      if (steps.length === surfaceRows.length) {
         const end = steps[k + 1] ?? lines.length;
         const last = geometryLines.filter(line => line > steps[k] && line < end).length;
         return last ? geometryLines.findIndex(line => line > steps[k] && line < end) + last - 1 : undefined;
       }
-      return geometryLines.length === rows.length ? k : undefined;
+      return geometryLines.length === surfaceRows.length ? k : undefined;
     };
     const coordinate = lines.find(line => /^\s*\*\s+(Bond|Angle|Dihedral)\s*\(([\d,\s]+)\)\s*:/u.test(line))?.match(/(Bond|Angle|Dihedral)\s*\(([\d,\s]+)\)/u);
     const axis: ReactionPathAxis = coordinate
       ? { kind: coordinate[1].toLowerCase() as 'bond' | 'angle' | 'dihedral', atoms: coordinate[2].split(',').map(value => Number(value.trim())) }
       : { kind: 'parameter' };
-    return { kind: 'scan', axis, points: rows.map(([x, energyHartree], k) => ({ x, energyHartree, ...(frameOf(k) !== undefined ? { frame: frameOf(k) } : {}) })) };
+    return { kind: 'scan', axis, points: surfaceRows.map(([x, energyHartree], k) => ({ x, energyHartree, ...(frameOf(k) !== undefined ? { frame: frameOf(k) } : {}) })) };
   }
   const summary = lines.findIndex(line => /^\s*IRC PATH SUMMARY\s*$/u.test(line));
   if (summary < 0) return undefined;
