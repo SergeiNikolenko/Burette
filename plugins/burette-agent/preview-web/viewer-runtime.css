@@ -8,7 +8,7 @@
 /* Until the first frame the page paints nothing of its own, so the host surface
    shows through instead of the black default shell and half-mounted chrome. */
 html.buret-viewer-booting,
-html.buret-viewer-booting body { background: transparent !important; }
+html.buret-viewer-booting body { background: transparent !important; color-scheme: normal; }
 /* Opacity rather than visibility: Mol* marks parts of its layout visible, which
    would override an inherited visibility: hidden. */
 html.buret-viewer-booting body { opacity: 0 !important; }

@@ -1,9 +1,9 @@
 {
-  "pluginVersion": "0.2.80-molecular-frame.20261114",
-  "applicationSource": "/home/nikolenko/work/Experiments/Burette/2026-11/molecular-plugin-0.2.80/source",
-  "transportSource": "/home/nikolenko/work/Experiments/Burette/2026-11/molecular-plugin-0.2.80/transport",
-  "molecularFrameVersion": "dfb2278bd4fe",
-  "nativeManifestSha256": "6343ef7b796d1decff18fe99ba451f5532786a1789f686c23dc63f66192dfeaf",
+  "pluginVersion": "0.2.81-molecular-frame.20261114",
+  "applicationSource": "/home/nikolenko/work/Experiments/Burette/2026-11/molecular-plugin-0.2.81/source",
+  "transportSource": "/home/nikolenko/work/Experiments/Burette/2026-11/molecular-plugin-0.2.81/transport",
+  "molecularFrameVersion": "c3d9cec4689e",
+  "nativeManifestSha256": "27085dfcb449e03c57279b1f23bc67204f4ff33ab1f64fa7388085446372e670",
   "previewManifestVersion": 1,
   "previewAssets": {
     "burette-agent.js": "f10b4bc80a127fbc4897acb8cf0424f8068a552d5d2a7e0afff8a5168e8c1931",
@@ -11,7 +11,7 @@
     "grid-ui.js": "9d57a3056a62067f87a6b52a8553e37be8696f3733d9af319e327061bfc57e78",
     "grid-viewer.js": "6f4901ad6d4637fd6c15746e38c0f71bc5f699eb979bf0ee923c482c6951b065",
     "grid.css": "43ed30896f73437c7c5254825372c8a1a03721c86b03eaa67cf362f7b2f5f6fa",
-    "index.html": "2c4368bce2dd2facdc8f5d09d7d7b370c3e35acf31fe1715ba3f957b3c9d23e3",
+    "index.html": "68d86b55192bd7b302d4eca0058b9106914e7ae763c7e1991e4423647c46cd66",
     "mesoscale.css": "f6a24e1b5c29a7833a6892b67f69e1c6f6707baca4c236c8afbed70d8ec7d89b",
     "mesoscale.js": "5a00ca9b0814879c11b4004c59f64cb14685c3d4a4bb01d9ad1c40fc4a69611a",
     "molecule-preview-interactions.js": "5b891b45c9a60cc196a243aaaf2965b768cfb26cd7a63056375ee440cba5ae9e",
@@ -38,9 +38,9 @@
     "svg-sanitizer.js": "fada3acccd5943a6e5e7cc5394e6d13133aa117414c9e485aa82cb0c8c84b520",
     "trajectory-smoothing.js": "6ccd7883bb66a3ff96973c03c67746b3b646239374ee7684762441b422181048",
     "viewer-bootstrap.js": "e93c2c98104f10ac7a69930e1a48781f95da802fdb96f248c09947af01128c56",
-    "viewer-runtime.css": "954f8d3d5438b2fd5dc56a851d774e7d5fd31e0e3b15b067dd79dcc1e944ff50",
+    "viewer-runtime.css": "a625befafd969da5d7de1125661c06c69731e38ce316c74f84e07d896e7b4bff",
     "viewer-shell.js": "8ae219770eb803168ee9f3b538784fde9096c245585cb788c964ed0cc2c53f88",
-    "viewer.js": "ba253e21fc9870663414f6dc85627aa12386b55726019fbd30447ee4194695cb",
+    "viewer.js": "608809f60aff24e9824a27b22f59cc432a6ba14e9877e64aafe979e06b395c45",
     "xyzrender-3d-editor.js": "03496b674a0bfb540ccf7020a591eb076cc2b96ec7c3023799117cf52f886d68"
   }
 }

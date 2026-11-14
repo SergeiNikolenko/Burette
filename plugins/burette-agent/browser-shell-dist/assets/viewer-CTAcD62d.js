@@ -17174,7 +17174,12 @@ SOFTWARE.
       const receptorStructures = prepared.receptorEntry
         ? await loadMolstarEntryWithStructureRefs(viewer, prepared.receptorEntry)
         : [];
-      if (receptorStructures.length) await applySdfCollectionMolstarStyle(viewer, style, receptorStructures, 1, 'colored');
+      if (receptorStructures.length) {
+        await applySdfCollectionMolstarStyle(viewer, style, receptorStructures, 1, 'colored');
+        // Receptor waters take the viewer's water style, as in a plain structure;
+        // otherwise they stay element-coloured ball-and-stick oxygens.
+        await applyMolstarWaterLineRepresentation(viewer);
+      }
       state = { viewer, key: stateKey, receptorRefs: molstarStructureRefsOf(receptorStructures),
         layers: new Map(), activeRefs: [], activeIndex: -1 };
       activeDockingPoseCollectionState = state;
@@ -21104,7 +21109,8 @@ SOFTWARE.
       return { ok: true, command: 'set_sdf_pose_index', result: { index: 0, poseCount } };
     }
     try {
-      if (activeSdfPoseMode === 'all' && structureOverlayAvailable(prepared)) {
+      // An embedding host selects poses from its own list and keeps the user's All view.
+      if (activeSdfPoseMode === 'all' && structureOverlayAvailable(prepared) && action.keepPoseMode !== true) {
         setSdfPoseMode('single');
         notifyStructureOverlayModeChanged(prepared);
         updateSdfPoseButton(prepared);
