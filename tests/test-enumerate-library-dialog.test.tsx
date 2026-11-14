@@ -83,7 +83,9 @@ test("a library over the limit says so and cannot run; unfit building blocks are
   try {
     await paste("Reactant 1 SMILES", "CC(=O)O\n".repeat(41));
     await paste("Reactant 2 SMILES", "CCN\n".repeat(49));
-    expect(text('[data-slot="dialog-footer"] [role="alert"]')).toEqual(["2,009 products. A library holds up to 2,000."]);
+    // Above the buttons, not beside them: the message is too long to share their row.
+    expect(text('form > [role="alert"]')).toEqual(["2,009 products. A library holds up to 2,000."]);
+    expect(text('[data-slot="dialog-footer"] [role="alert"]')).toEqual([]);
     expect(button(document.body, "Enumerate").disabled).toBe(true);
 
     // Ethanol is no acid, and the second acetic acid repeats the first.
