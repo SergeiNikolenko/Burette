@@ -1996,12 +1996,16 @@ export function ScrubNumberInput({
   }
 
   useLayoutEffect(() => {
+    // Surrounding styles size the visible field (the display button or the input), so the
+    // animated value copies its typography from there; the hidden mirror is only a fallback.
+    const typographySource = () =>
+      scrub.editing ? scrub.inputRef.current : (scrub.displaySurfaceRef.current ?? mirrorRef.current)
     const syncMirroredTypography = () => {
       if (scrub.interactingRef.current) {
         return
       }
 
-      const source = scrub.editing ? scrub.inputRef.current : mirrorRef.current
+      const source = typographySource()
 
       if (!source) {
         return
@@ -2022,7 +2026,7 @@ export function ScrubNumberInput({
 
     syncMirroredTypography()
 
-    const source = scrub.editing ? scrub.inputRef.current : mirrorRef.current
+    const source = typographySource()
 
     if (!source || typeof ResizeObserver === "undefined") {
       return
@@ -2034,7 +2038,14 @@ export function ScrubNumberInput({
     return () => {
       observer.disconnect()
     }
-  }, [scrub.displayValue, scrub.editing, scrub.inputRef, scrub.interactingRef, scrub.interactionEpoch])
+  }, [
+    scrub.displayValue,
+    scrub.displaySurfaceRef,
+    scrub.editing,
+    scrub.inputRef,
+    scrub.interactingRef,
+    scrub.interactionEpoch,
+  ])
 
   const groupControlClass =
     "relative z-[1] flex min-w-0 w-full flex-1 items-center justify-start overflow-hidden rounded-none border-0 bg-transparent text-foreground shadow-none dark:bg-transparent"
@@ -2129,6 +2140,7 @@ export function ScrubNumberInput({
         aria-hidden
         className={fieldClass}
         style={{
+          ...mirroredTypography,
           inset: 0,
           opacity: 0,
           pointerEvents: "none",
