@@ -10,7 +10,7 @@ const icons: Record<DockTabKind, AppIconType> = {
   plots: BarChart, orbitals: Cube, potential: ColorTheme, fields: Scissor, "scientific-spectra": Chart, vibrations: MoveHorizontal, geometry: SettingsSlider, crystal: Grid, symmetry: Atom, "structure-edit": Edit,
   story: FileDocument, inspector: InfoCircle, folding: Atom, "structure-basket": Stack,
   compare: Compare, jobs: Stopwatch, logs: FileCode, diagnostics: SettingsWrench,
-  review: Eye, "chemical-space": Orbit,
+  review: Eye, "chemical-space": Orbit, "collection-chart": Chart,
 };
 
 export function DockHeader({ area, tabs, activeKind, panelId, readOnly, transientTabId, fileDragProps, onSelect, onClose, onAdd, onHide, onOpenScreen }: {

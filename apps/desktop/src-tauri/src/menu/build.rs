@@ -531,6 +531,9 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
     let analyze_build_model = MenuItemBuilder::with_id("analyze.build-model", "Build Model…")
         .enabled(false)
         .build(app)?;
+    let analyze_chart = MenuItemBuilder::with_id("analyze.chart", "Chart Columns…")
+        .enabled(false)
+        .build(app)?;
     let analyze_scaffolds = MenuItemBuilder::with_id("analyze.scaffolds", "Analyse Scaffolds")
         .enabled(false)
         .build(app)?;
@@ -554,6 +557,7 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
     let analyze_menu = SubmenuBuilder::with_id(app, "analyze.menu", "Analyze")
         .items(&[
             &analyze_chemical_space,
+            &analyze_chart,
             &analyze_cluster,
             &analyze_diverse,
             &PredefinedMenuItem::separator(app)?,

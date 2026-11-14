@@ -453,7 +453,8 @@
     "test:select-commands": "bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-select-commands-runtime.mjs",
     "test:scene-movie": "bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-scene-movie-runtime.mjs && bun test tests/test-scene-movie-host.test.ts",
     "test:lasso-projection": "bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-molstar-lasso-projection.mjs",
-    "test:move-tool": "bun test tests/test-move-tool-frame-renewal.test.tsx"
+    "test:move-tool": "bun test tests/test-move-tool-frame-renewal.test.tsx",
+    "test:collection-chart": "bun test tests/test-collection-chart.test.ts tests/test-collection-chart-scatter.test.ts tests/test-collection-chart-performance.test.ts tests/test-collection-chart-bridge.test.tsx tests/test-collection-chart-panel.test.tsx"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",

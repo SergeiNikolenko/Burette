@@ -66,6 +66,7 @@ import { MesoscaleInfoPanel } from "./mesoscale/mesoscale-info-panel";
 const ChemicalSpacePanel = lazy(() => import("./chemical-space-panel").then((module) => ({
   default: module.ChemicalSpacePanel,
 })));
+const CollectionChartPanel = lazy(() => import("./collection-chart-panel").then(module => ({ default: module.CollectionChartPanel })));
 // The tool panels pull charts, chemistry and parsers that a plain structure never needs.
 const OrbitalsDockContent = lazy(() => import("./workbench/orbitals-dock-content").then(module => ({ default: module.OrbitalsDockContent })));
 const FieldsDockContent = lazy(() => import("./workbench/fields-dock-content").then(module => ({ default: module.FieldsDockContent })));
@@ -146,7 +147,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
   const foldingDockAvailable = area === "bottom" && (foldingState.loading || Boolean(foldingState.bundle));
   const foldingDockRequested = area === "bottom" && storedActiveTabKind === "folding" && rawTabs.some((tab) => tab.kind === "folding");
   const pluginSurface = isHostedMcpWidget() || (typeof window !== "undefined" && Boolean(window.BuretteMcpWorkspace));
-  const catalog = dockTabCatalog(area).filter(kind => !pluginSurface || !["jobs", "chemical-space", "folding"].includes(kind));
+  const catalog = dockTabCatalog(area).filter(kind => !pluginSurface || !["jobs", "chemical-space", "collection-chart", "folding"].includes(kind));
   const tabs = rawTabs.filter((tab) => {
     if (!catalog.includes(tab.kind)) return false;
     // Files is opened from +. Hide the former default in restored layouts,
@@ -164,7 +165,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
     if (tab.kind === "structure-edit") return structureEditDockAvailable;
     if (tab.kind === "spectrum") return spectrumDockAvailable;
     if (tab.kind === "folding") return foldingDockAvailable || foldingDockRequested;
-    if (tab.kind === "chemical-space") return chemicalSpaceDockAvailable;
+    if (tab.kind === "chemical-space" || tab.kind === "collection-chart") return chemicalSpaceDockAvailable;
     return true;
   });
   // A restored desktop layout can contain only panels unavailable in a plugin.
@@ -247,7 +248,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
         if (kind === "folding") return foldingDockAvailable;
         if (kind === "xyzrender") return Boolean(xyzrenderDockDocument);
         if (kind === "scene") return Boolean(mesoscaleDockDocument);
-        if (kind === "chemical-space") return chemicalSpaceDockAvailable;
+        if (kind === "chemical-space" || kind === "collection-chart") return chemicalSpaceDockAvailable;
         if (kind === "story") return Boolean(state.structureStory);
         return true;
       }).map((kind) => ({
@@ -524,6 +525,16 @@ export function DockPanelContent({
             && chemicalSpaceSourceMatches(document, chemicalSpaceDocument)) ?? null}
           visible={area === "right" ? state.rightDockOpen : state.bottomDockOpen}
           inspectorOpen={state.rightDockOpen && state.rightDockActiveTab === "inspector"}
+        />
+      </Suspense>
+    );
+  }
+  if (activeTabKind === "collection-chart") {
+    return (
+      <Suspense fallback={null}>
+        <CollectionChartPanel
+          document={chemicalSpaceDocument}
+          visible={area === "right" ? state.rightDockOpen : state.bottomDockOpen}
         />
       </Suspense>
     );

@@ -902,6 +902,8 @@ pub(super) fn sync_native_menu<R: Runtime>(
     let can_analyze_columns = can_add_derived_column || state.can_open_collection_analysis;
     set_enabled(&app, "analyze.menu", true)?;
     set_enabled(&app, "analyze.chemical-space", can_analyze_collection)?;
+    // A chart reads columns, so it also serves tables that hold no molecules.
+    set_enabled(&app, "analyze.chart", state.is_grid)?;
     set_enabled(&app, "analyze.correlation-matrix", can_analyze_collection)?;
     set_enabled(&app, "analyze.build-model", can_analyze_collection)?;
     // Clustering runs inside the grid, which re-checks its own capability; the

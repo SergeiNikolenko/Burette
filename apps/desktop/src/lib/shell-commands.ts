@@ -149,6 +149,12 @@ export function buildShellCommands(
       description: "Predict a column from descriptors and fill its missing values",
       run: () => openWorkbenchDialog({ kind: "model", document: state.activeDocument! }),
     }, {
+      id: "chart-columns",
+      group: "Suggested",
+      label: "Chart columns",
+      description: "Scatter, histogram, bar and box charts of the active collection",
+      run: () => actions.openDockTab("bottom", "collection-chart"),
+    }, {
       id: "add-calculated-values",
       group: "Suggested",
       label: "Add calculated values",

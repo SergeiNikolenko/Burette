@@ -89,6 +89,7 @@ const FORWARDED_COMMANDS: &[&str] = &[
     "collection.delete-rows.duplicates",
     "collection.delete-columns",
     "analyze.chemical-space",
+    "analyze.chart",
     "analyze.cluster",
     "analyze.diverse",
     "analyze.correlation-matrix",

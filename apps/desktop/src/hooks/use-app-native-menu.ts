@@ -600,6 +600,9 @@ export function useAppNativeMenu({
       case "analyze.chemical-space":
         if (isGrid) actions.openDockTab("bottom", "chemical-space");
         return;
+      case "analyze.chart":
+        if (isGrid) actions.openDockTab("bottom", "collection-chart");
+        return;
       case "analyze.cluster":
       case "analyze.diverse":
         // Clustering lives in the grid; the command is forwarded whole and the
