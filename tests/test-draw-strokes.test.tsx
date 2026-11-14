@@ -73,18 +73,20 @@ test("clicking a bond cycles its order and the hydrogens follow; clicking an ato
     const second = ethane.atoms.findIndex((atom, i) => atom.element === "C" && i !== 0);
     const ethene = (await view.apply({ kind: "draw", hydrogens: true, stroke: { kind: "cycle-bond", a: 0, b: second } }))!;
     expect([smiles(ethene), ethene.atoms.length, implicitHydrogens(ethene)]).toEqual([canonical("C=C"), 6, 0]);
-    const c1 = ethene.atoms.findIndex(atom => atom.element === "C"), c2 = ethene.atoms.findIndex((atom, i) => atom.element === "C" && i !== c1);
+    // Hydrogens come and go between strokes, so the carbons are looked up in each result.
+    const carbons = (s: GraphEditResult) => s.atoms.flatMap((atom, i) => (atom.element === "C" ? [i] : []));
+    const [c1, c2] = carbons(ethene);
     const ethyne = (await view.apply({ kind: "draw", hydrogens: true, stroke: { kind: "cycle-bond", a: c1, b: c2 } }))!;
     expect([smiles(ethyne), ethyne.atoms.length]).toEqual([canonical("C#C"), 4]);
     // Triple wraps back to single, and both carbons get their hydrogens again.
-    const back = (await view.apply({ kind: "draw", hydrogens: true, stroke: { kind: "cycle-bond", a: 0, b: 1 } }))!;
+    const back = (await view.apply({ kind: "draw", hydrogens: true, stroke: { kind: "cycle-bond", a: carbons(ethyne)[0], b: carbons(ethyne)[1] } }))!;
     expect([smiles(back), back.atoms.length, implicitHydrogens(back)]).toEqual([canonical("CC"), 8, 0]);
     // Carbon to nitrogen drops one hydrogen to keep the valence: methylamine.
-    const amine = (await view.apply({ kind: "draw", hydrogens: true, stroke: { kind: "element", atom: 1, element: "N" } }))!;
+    const amine = (await view.apply({ kind: "draw", hydrogens: true, stroke: { kind: "element", atom: carbons(back)[1], element: "N" } }))!;
     expect([smiles(amine), amine.atoms.length, implicitHydrogens(amine)]).toEqual([canonical("CN"), 7, 0]);
     // The same element again changes nothing and adds no Undo step.
     const steps = view.graph.history!.undo.length;
-    expect(await view.apply({ kind: "draw", hydrogens: true, stroke: { kind: "element", atom: 1, element: "N" } })).toBeNull();
+    expect(await view.apply({ kind: "draw", hydrogens: true, stroke: { kind: "element", atom: amine.atoms.findIndex(atom => atom.element === "N"), element: "N" } })).toBeNull();
     expect([view.graph.history!.undo.length, view.graph.error]).toEqual([steps, null]);
   } finally { await view.close(); }
 });
@@ -97,5 +99,73 @@ test("a click on empty space adds a separate atom with its hydrogens, and withou
     const bare = (await view.apply({ kind: "draw", hydrogens: false, stroke: { kind: "atom", element: "N", position: [-5, 0, 0] } }))!;
     expect(bare.atoms.length).toBe(9);
     expect(bare.atoms.at(-1)!.element).toBe("N");
+  } finally { await view.close(); }
+});
+
+test("a stroke on an atom numbered after hydrogens changes that atom", async () => {
+  const view = await fixture("mol", useGraphDraft, methane);
+  try {
+    // The drawn carbon follows the methane hydrogens in the atom list.
+    const ethane = (await view.apply({ kind: "draw", hydrogens: true, stroke: { kind: "bonded-atom", from: 0, toward: [3 * h, 3 * h, 3 * h], element: "C", order: 1 } }))!;
+    const second = ethane.atoms.findIndex((atom, i) => atom.element === "C" && i !== 0);
+    expect(ethane.atoms.slice(0, second).some(atom => atom.element === "H")).toBe(true);
+    // Carbon to oxygen gives up two of its hydrogens: methanol.
+    const methanol = (await view.apply({ kind: "draw", hydrogens: true, stroke: { kind: "element", atom: second, element: "O" } }))!;
+    expect(view.graph.error).toBeNull();
+    expect([smiles(methanol), methanol.atoms.length, implicitHydrogens(methanol)]).toEqual([canonical("CO"), 6, 0]);
+    // A hydrogen listed before that oxygen becomes fluorine without touching the oxygen.
+    const hydrogen = methanol.atoms.findIndex(atom => atom.element === "H");
+    expect(hydrogen).toBeLessThan(methanol.atoms.findIndex(atom => atom.element === "O"));
+    const fluoro = (await view.apply({ kind: "draw", hydrogens: true, stroke: { kind: "element", atom: hydrogen, element: "F" } }))!;
+    expect([smiles(fluoro), fluoro.atoms.length, implicitHydrogens(fluoro)]).toEqual([canonical("OCF"), 6, 0]);
+  } finally { await view.close(); }
+});
+
+test("a bond click skips an order the atoms cannot take, so a carbonyl cycles between double and single", async () => {
+  const view = await fixture("mol", useGraphDraft, methane);
+  try {
+    const ethane = (await view.apply({ kind: "draw", hydrogens: true, stroke: { kind: "bonded-atom", from: 0, toward: [3 * h, 3 * h, 3 * h], element: "C", order: 1 } }))!;
+    const second = ethane.atoms.findIndex((atom, i) => atom.element === "C" && i !== 0);
+    const aldehyde = (await view.apply({ kind: "draw", hydrogens: true, stroke: { kind: "bonded-atom", from: second, toward: [ethane.atoms[second].x + 1, ethane.atoms[second].y + 1, ethane.atoms[second].z - 1], element: "O", order: 2 } }))!;
+    expect([smiles(aldehyde), aldehyde.atoms.length]).toEqual([canonical("CC=O"), 7]);
+    const carbonyl = (s: GraphEditResult) => { const o = s.atoms.findIndex(atom => atom.element === "O"); const bond = s.bonds.find(item => (item.a === o || item.b === o) && s.atoms[item.a + item.b - o].element === "C")!; return { a: bond.a, b: bond.b }; };
+    // The oxygen has no hydrogen to give for a triple bond, so the click goes on to single: ethanol.
+    const ethanol = (await view.apply({ kind: "draw", hydrogens: true, stroke: { kind: "cycle-bond", ...carbonyl(aldehyde) } }))!;
+    expect(view.graph.error).toBeNull();
+    expect([smiles(ethanol), ethanol.atoms.length, implicitHydrogens(ethanol)]).toEqual([canonical("CCO"), 9, 0]);
+    const again = (await view.apply({ kind: "draw", hydrogens: true, stroke: { kind: "cycle-bond", ...carbonyl(ethanol) } }))!;
+    expect([smiles(again), again.atoms.length]).toEqual([canonical("CC=O"), 7]);
+    // Without hydrogen adjustment the carbonyl of acetaldehyde can only go back to single.
+    const radical = (await view.apply({ kind: "draw", hydrogens: false, stroke: { kind: "cycle-bond", ...carbonyl(again) } }))!;
+    expect(view.graph.error).toBeNull();
+    expect([radical.atoms.length, radical.bonds.find(item => item.a === carbonyl(radical).a && item.b === carbonyl(radical).b)!.order]).toEqual([7, 1]);
+  } finally { await view.close(); }
+});
+
+// Planar benzene written with alternating bonds: 1=2, 3=4 and 5=6 double, 2–3, 4–5 and 6–1 single.
+const benzene = ["benzene", "  hand-written", "",
+  " 12 12  0  0  0  0  0  0  0  0999 V2000",
+  ...[1.39, 2.48].flatMap((radius, shell) => Array.from({ length: 6 }, (_, k) =>
+    `${[radius * Math.cos(k * Math.PI / 3), radius * Math.sin(k * Math.PI / 3), 0].map(v => v.toFixed(4).padStart(10)).join("")} ${shell ? "H" : "C"}   0  0  0  0  0  0  0  0  0  0  0  0`)),
+  ...Array.from({ length: 6 }, (_, k) => `${String(k + 1).padStart(3)}${String((k + 1) % 6 + 1).padStart(3)}${String(k % 2 ? 1 : 2).padStart(3)}  0`),
+  ...Array.from({ length: 6 }, (_, k) => `${String(k + 1).padStart(3)}${String(k + 7).padStart(3)}  1  0`), "M  END", ""].join("\n");
+
+test("a click on an aromatic bond cycles the order the file gives it", async () => {
+  const view = await fixture("mol", useGraphDraft, benzene);
+  try {
+    const start = view.graph.history!.current.structure as GraphEditResult;
+    expect(smiles(start)).toBe(canonical("c1ccccc1"));
+    // Bond 2–3 is single in the file: double, with a hydrogen leaving each carbon.
+    const triene = (await view.apply({ kind: "draw", hydrogens: true, stroke: { kind: "cycle-bond", a: 1, b: 2 } }))!;
+    expect([smiles(triene), triene.atoms.length]).toEqual([canonical("C1=CC=C=C=C1"), 10]);
+    await act(async () => view.graph.undo());
+    // Bond 1=2 is double in the file: triple, benzyne.
+    const benzyne = (await view.apply({ kind: "draw", hydrogens: true, stroke: { kind: "cycle-bond", a: 0, b: 1 } }))!;
+    expect([smiles(benzyne), benzyne.atoms.length]).toEqual([canonical("C1#CC=CC=C1"), 10]);
+    await act(async () => view.graph.undo());
+    // Dragging a single bond onto the bond that already is single changes nothing and adds no Undo step.
+    const steps = view.graph.history!.undo.length;
+    expect(await view.apply({ kind: "draw", hydrogens: true, stroke: { kind: "bond", a: 1, b: 2, order: 1 } })).toBeNull();
+    expect([view.graph.history!.undo.length, view.graph.error]).toEqual([steps, null]);
   } finally { await view.close(); }
 });
