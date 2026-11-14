@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
+import type { DrawStroke } from "../molecular-workbench/draw-stroke";
 import type { EnergyModelId, MolecularAtom, Vec3 } from "../molecular-workbench/types";
 import type { EnergyModelChoice } from "../molecular-workbench/energy-models";
 import type { ConstraintResidual, GeometryConstraint, OptimizationMethod, OptimizationProgress } from "../molecular-workbench/optimization";
@@ -46,7 +47,9 @@ export type GraphAdvancedOperation = { kind: "add-hydrogens" } | { kind: "prepar
   // One rigid fragment bonded to `target` in place of a hydrogen, or a separate molecule when `target` is null.
   | { kind: "insert-fragment"; fragment: FragmentSource; target: number | null }
   // Protonation states for `pH`, then every hydrogen explicit; heavy atoms keep their indices and coordinates.
-  | { kind: "protonate"; pH: number };
+  | { kind: "protonate"; pH: number }
+  // One Draw-tool stroke; with `hydrogens`, the atoms it changes get the hydrogens their valence leaves free.
+  | { kind: "draw"; stroke: DrawStroke; hydrogens: boolean };
 export type GraphComputeResult = { structure: GraphEditResult; outcome: GraphOutcome | null };
 export type GraphAdvancedCompute = (operation: GraphAdvancedOperation, structure: GraphEditResult, signal: AbortSignal, onProgress: (progress: OptimizationProgress) => void) => Promise<GraphComputeResult>;
 
