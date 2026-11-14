@@ -26,3 +26,12 @@ test("a closed-shell ORCA output has no spins, and each optimization step its gr
   const toForce = -627.5094740631 / 0.529177210903;
   [0.000763548, 0.000179736, 0.000000092].forEach((gradient, axis) => expect(document.frames[0].forcesKcalMolAngstrom![0][axis]).toBeCloseTo(gradient * toForce, 12));
 });
+
+test("an open-shell ORCA output numbers the orbitals of each spin as ORCA prints them", () => {
+  const { orbitals } = read("cclib-orca6-dvb_sp_un_dft.out");
+  const beta = orbitals.filter((orbital) => orbital.spin === "beta");
+  // `SPIN DOWN ORBITALS` restart at NO 0; the last occupied one is `33   1.0000      -0.385104`.
+  expect(beta.map((orbital) => orbital.index)).toEqual(beta.map((_, place) => place));
+  expect(beta.filter((orbital) => orbital.occupancy > 0).at(-1)).toMatchObject({ index: 33, energyHartree: -0.385104 });
+  expect(orbitals.filter((orbital) => orbital.spin === "alpha" && orbital.occupancy > 0).at(-1)).toMatchObject({ index: 34 });
+});

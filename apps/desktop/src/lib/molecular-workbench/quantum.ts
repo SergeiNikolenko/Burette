@@ -186,7 +186,8 @@ function parseOrca(name: string, text: string): ScientificDocument {
       if (/NO\s+OCC\s+E\(Eh\)/.test(line)) { reading = true; continue; }
       const match = reading && line.match(/^\s*(\d+)\s+(\S+)\s+(\S+)\s+(\S+)(?:\s+(\S+))?\s*$/);
       if (match) {
-        result.orbitals.push({ index: result.orbitals.length, occupancy: number(match[2]), energyHartree: number(match[3]), spin, symmetry: match[5], coefficients: [] });
+        // ORCA numbers the orbitals of each spin from zero.
+        result.orbitals.push({ index: Number(match[1]), occupancy: number(match[2]), energyHartree: number(match[3]), spin, symmetry: match[5], coefficients: [] });
         if (result.orbitals.length > 10_000) throw new Error("ORCA orbital table exceeds browser limit.");
       } else if (line.trim() && reading) reading = false;
     }

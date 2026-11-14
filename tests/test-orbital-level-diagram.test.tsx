@@ -61,8 +61,8 @@ test("an unrestricted CJSON draws alpha and beta levels with their energies, gap
   await act(async () => root.unmount()); host.remove();
 });
 
-test("spin partners pair by place in the channel when the reader numbers orbitals across both channels", async () => {
-  // ORCA numbers the beta orbitals after the alpha ones.
+test("spin partners pair by place in the channel, whatever the numbers the reader gives the orbitals", async () => {
+  // An ORCA output prints only the first virtual orbitals of each spin.
   const orca = parseScientificFile("dvb.out", readFileSync(new URL("fixtures/quantum/orca-log/cclib-orca6-dvb_sp_un_dft.out", import.meta.url), "utf8"));
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
