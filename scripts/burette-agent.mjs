@@ -1182,7 +1182,7 @@ const SESSION_VIEWER_ACTION_TYPES = [
   'show_ligands', 'hide_components', 'show_components', 'edit_components', 'open_components_menu',
   'remove_components', 'create_component', 'select_residues', 'clear_selection', 'set_sdf_molecule',
   'set_structure_pose', 'apply_trajectory_smoothing', 'apply_external_trajectory_smoothing',
-  'set_trajectory_smoothing_view', 'set_molstar_style', 'set_sdf_context_style',
+  'set_trajectory_smoothing_view', 'set_trajectory_playback', 'set_molstar_style', 'set_sdf_context_style',
   'set_sdf_context_opacity', 'set_sdf_context_color', 'set_sdf_pose_mode', 'set_sdf_pose_index',
   'focus_selection', 'show_assembly_symmetry', 'hide_assembly_symmetry', 'show_water_bridges',
   'apply_mesoscale_preset', 'color_xtb_charges', 'color_xtb_fukui', 'label_selection', 'contacts',
