@@ -80,8 +80,19 @@ try {
   const planar = parse(media.svg(flat.plugin).svg);
   const discs = Object.fromEntries([...planar.querySelectorAll('circle')].map(circle => [circle.querySelector('title').textContent,
     { x: Number(circle.getAttribute('cx')), y: Number(circle.getAttribute('cy')), r: Number(circle.getAttribute('r')) }]));
-  const groups = [...planar.querySelectorAll('g.bond')].map(group => [...group.querySelectorAll('line')]
+  const groups = [...planar.querySelectorAll('g.bond')].map(group => [...group.querySelectorAll('line:not(.outline)')]
     .flatMap(line => [[line.getAttribute('x1'), line.getAttribute('y1')], [line.getAttribute('x2'), line.getAttribute('y2')]].map(point => point.map(Number))));
+  // A white half stays visible on a white page: every stroke lies on a wider, darker one.
+  for (const group of planar.querySelectorAll('g.bond')) {
+    const [outlines, strokes] = ['line.outline', 'line:not(.outline)'].map(selector => [...group.querySelectorAll(selector)]);
+    assert.equal(outlines.length, strokes.length);
+    strokes.forEach((stroke, index) => {
+      assert.equal(outlines[index].getAttribute('x1'), stroke.getAttribute('x1'));
+      assert.ok(Number(outlines[index].getAttribute('stroke-width')) > Number(stroke.getAttribute('stroke-width')));
+      assert.notEqual(outlines[index].getAttribute('stroke'), stroke.getAttribute('stroke'));
+    });
+    assert.ok(group.innerHTML.lastIndexOf('class="outline"') < group.innerHTML.indexOf('<line x1'), 'outlines are painted first');
+  }
   assert.deepEqual(groups.map(ends => ends.length / 4).sort(), [1, 1, 2], 'two single bonds and one double bond');
   const reach = (ends, disc) => Math.min(...ends.map(([x, y]) => Math.hypot(x - disc.x, y - disc.y)));
   for (const ends of groups) {

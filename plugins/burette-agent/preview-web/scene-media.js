@@ -139,7 +139,9 @@ if (!window.BuretteSceneMedia) {
       const nx = -dy / length * strokeWidth * 1.1, ny = dx / length * strokeWidth * 1.1;
       const axis = b.world.map((value, i) => value - a.world[i]), span = Math.hypot(...axis);
       const middle = project(a.world.map((value, i) => value + axis[i] / 2));
-      const parts = [];
+      // Under every stroke a slightly wider one in a darker shade: the outline
+      // that keeps a white half visible on a white background.
+      const outlines = [], parts = [], rim = Math.max(0.5, pixels * 0.06);
       for (let s = 0; s < strokes; s++) {
         const offset = s - (strokes - 1) / 2, ox = nx * offset, oy = ny * offset;
         // The stroke's half width plus its distance from the bond axis, in Å.
@@ -154,10 +156,12 @@ if (!window.BuretteSceneMedia) {
         // The first half runs a little past the middle so the halves meet without a seam.
         const lap = Math.min(0.5, Math.hypot(to[0] - middle[0], to[1] - middle[1])) / length;
         for (const [start, stop, color] of [[from, [middle[0] + dx * lap, middle[1] + dy * lap], a.color], [middle, to, b.color]]) {
-          parts.push(`<line x1="${round(start[0] + ox)}" y1="${round(start[1] + oy)}" x2="${round(stop[0] + ox)}" y2="${round(stop[1] + oy)}" stroke="${hex(color)}" stroke-width="${round(strokeWidth)}"/>`);
+          const span = `x1="${round(start[0] + ox)}" y1="${round(start[1] + oy)}" x2="${round(stop[0] + ox)}" y2="${round(stop[1] + oy)}"`;
+          outlines.push(`<line class="outline" ${span} stroke="${hex(shade(color, 0.45))}" stroke-width="${round(strokeWidth + rim * 2)}"/>`);
+          parts.push(`<line ${span} stroke="${hex(color)}" stroke-width="${round(strokeWidth)}"/>`);
         }
       }
-      lines.push(`<g class="bond">${parts.join('')}</g>`);
+      lines.push(`<g class="bond">${outlines.join('')}${parts.join('')}</g>`);
     }
     lines.push('</svg>', '');
     return { svg: lines.join('\n'), atoms: atomCount, bonds: bondCount };
