@@ -29,7 +29,7 @@ for(const route of ["compute","palette"]) test(`${route} opens source-owned acti
    if(route==="compute"){
     await wait(()=>Boolean(view.host.querySelector('[aria-label="Open molecular compute menu"]')));
     await act(async()=>view.host.querySelector<HTMLElement>('[aria-label="Open molecular compute menu"]')!.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true})));
-    const items=[...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];expect(items.map(item=>item.textContent)).toEqual(["Show spectra","Show plots","Build polymer…","Build peptide…","Build DNA or RNA…","Build metal complex…"]);
+    const items=[...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];expect(items.map(item=>item.textContent)).toEqual(["Show electrostatic potential","Show spectra","Show plots","Build polymer…","Build peptide…","Build DNA or RNA…","Build metal complex…"]);
     await act(async()=>items.find(item=>item.textContent==="Show plots")!.click());
    }else{
     await act(async()=>view.showCommands());await wait(()=>[...document.querySelectorAll('[cmdk-item]')].some(item=>item.textContent?.includes("Show plots")));

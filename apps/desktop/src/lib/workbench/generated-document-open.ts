@@ -55,9 +55,9 @@ export async function openScientificDocument(actions: Pick<ShellActions, "openSt
   // Steps are a trajectory of frames and energies; a frame's own modes travel with it.
   // The document's modes, orbitals and fields refer to its main reference geometry, so
   // they stay with the single-frame document. File-scoped spectra and the run's
-  // description (program, method, basis) travel with either layout.
+  // description (program, method, basis) and a scan or reaction path travel with either layout.
   registerImportedScientificSource(token, text, graph ? { ...document, graph: { ...graph, molfile: text } } : layout === "steps"
-    ? { format: document.format, atoms: document.frames[0]?.atoms ?? document.atoms, referenceFrameIndex: 0, frames: document.frames, modes: [], orbitals: [], converged: document.converged, ...(document.spectra ? { spectra: document.spectra } : {}), ...(document.metadata ? { metadata: document.metadata } : {}) }
+    ? { format: document.format, atoms: document.frames[0]?.atoms ?? document.atoms, referenceFrameIndex: 0, frames: document.frames, modes: [], orbitals: [], converged: document.converged, ...(document.spectra ? { spectra: document.spectra } : {}), ...(document.metadata ? { metadata: document.metadata } : {}), ...(document.path ? { path: document.path } : {}) }
     : document, original);
   // The import belongs to the one document this open created; without it, nothing is kept.
   // That document may already have closed (and close cleanup run) before the open returned.

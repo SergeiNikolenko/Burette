@@ -2,6 +2,7 @@ import { useMemo, useState, useId, type KeyboardEvent, type ReactNode } from "re
 import { CartesianGrid, Line, LineChart, ReferenceDot, ReferenceLine, XAxis, YAxis } from "recharts";
 import { measureGeometry } from "../../../../../scripts/molecular-geometry.js";
 import type { ScientificDocument } from "../../lib/molecular-workbench/quantum";
+import type { ReactionPath } from "../../lib/molecular-workbench/scientific-types";
 import { ENERGY_UNITS, type EnergyUnit } from "../../lib/workbench/formats";
 import { useRetainedTrajectorySource } from "../../lib/workbench/retained-trajectory-source";
 import type { ShellActions } from "../types";
@@ -37,7 +38,8 @@ function storedUnit(): EnergyUnit {
   } catch { return "kcal/mol"; }
 }
 
-export type PlotAxis = { kind: "frame" | "time"; values: number[]; frames?: number[]; frameCount?: number };
+/** `path` plots a scan or reaction path: one point per path point, `frames` -1 where the file has no geometry. */
+export type PlotAxis = { kind: "frame" | "time" | "path"; values: number[]; frames?: number[]; frameCount?: number; label?: string };
 type Axis = PlotAxis;
 
 /**
@@ -85,6 +87,16 @@ function logTicks(values: (number | null)[], reference?: number) {
     return `10${power < 0 ? "⁻" : ""}${[...String(Math.abs(power))].map((digit) => SUPERSCRIPT[Number(digit)]).join("")}`;
   };
   return { ticks, domain: [10 ** low, 10 ** high] as [number, number], format };
+}
+
+const AXIS_UNITS = { bond: "Å", angle: "°", dihedral: "°" } as const;
+/** The path's horizontal axis in the user's terms: the scanned atoms (1-based, as the input lists them) or the coordinate's name. */
+function pathAxisLabel(path: ReactionPath, atoms: ScientificDocument["atoms"]) {
+  const axis = path.axis;
+  if ("atoms" in axis) return `${axis.atoms.map((atom) => `${atoms[atom]?.element ?? ""}${atom + 1}`).join("–")}, ${AXIS_UNITS[axis.kind]}`;
+  if (axis.kind === "reaction-coordinate") return "Reaction coordinate, amu½·bohr";
+  if (axis.kind === "parameter") return "Scan parameter";
+  return path.kind === "irc" ? "Step from the TS" : "Scan point";
 }
 
 export function PlotsPanel({ document, science, sourceText }: { document: ViewerDocument; actions: ShellActions; science: ScientificDocument; sourceText: string }) {
@@ -135,6 +147,14 @@ export function PlotsPanel({ document, science, sourceText }: { document: Viewer
     setUnit(value);
     try { localStorage.setItem(UNIT_STORAGE_KEY, value); } catch { /* storage unavailable: keep the choice for this panel */ }
   };
+  const path = science.path;
+  const pathAxis = useMemo<Axis | null>(() => (path ? { kind: "path", values: path.points.map((point) => point.x), frames: path.points.map((point) => point.frame ?? -1), label: pathAxisLabel(path, science.atoms) } : null), [path, science]);
+  const pathEnergies = useMemo(() => {
+    if (!path) return null;
+    const reference = Math.min(...path.points.map((point) => point.energyHartree));
+    return path.points.map((point) => (point.energyHartree - reference) * factor);
+  }, [path, factor]);
+  const pathCursor = cursor !== null && path ? path.points.findIndex((point) => point.frame === cursor) : -1;
   const current = cursor !== null ? science.frames[cursor] : null;
   const series = { axis, cursor, onSeek: seek };
 
@@ -158,7 +178,12 @@ export function PlotsPanel({ document, science, sourceText }: { document: Viewer
       </div>
       {error ? <p role="alert" className="workbench-error">{error}</p> : null}
       <div className="workbench-charts">
-        {energies ? (
+        {path && pathAxis ? (
+          <SeriesChart axis={pathAxis} cursor={pathCursor >= 0 ? pathCursor : null} onSeek={seek} name="ΔE" unit={unit} values={pathEnergies} digits={digits}
+            hollow={path.points.map((point) => point.converged === false)}
+            header={(value) => <h3 className="workbench-chart-title">{path.kind === "scan" ? "Scan" : "Reaction path"}, ΔE{value}</h3>} />
+        ) : null}
+        {energies && science.frames.length > 1 ? (
           <SeriesChart {...series} name="ΔE" unit={unit} values={energies} digits={digits}
             header={(value) => (
               <>
@@ -208,7 +233,7 @@ export function PlotsPanel({ document, science, sourceText }: { document: Viewer
  * one frame, Page Up and Page Down ten, Home and End jump to the ends) and a click
  * on the chart seeks the scene.
  */
-export function SeriesChart({ name, unit, values, digits, format = (value) => value.toFixed(digits), scale, reference, axis, cursor, onSeek, header, footer }: {
+export function SeriesChart({ name, unit, values, digits, format = (value) => value.toFixed(digits), scale, reference, axis, cursor, onSeek, header, footer, hollow }: {
   name: string; unit: string; values: (number | null)[] | null; digits: number;
   format?: (value: number) => string;
   /** A log axis drops values that are not positive. */
@@ -217,29 +242,43 @@ export function SeriesChart({ name, unit, values, digits, format = (value) => va
   reference?: number;
   axis: Axis; cursor: number | null; onSeek?: (index: number) => void;
   header: (current: ReactNode) => ReactNode; footer?: ReactNode;
+  /** Points drawn as open circles, such as scan points whose optimization stopped short. */
+  hollow?: boolean[];
 }) {
+  const path = axis.kind === "path";
   const data = useMemo(() => values?.flatMap((raw, index) => {
     const value = scale === "log" && raw !== null && !(raw > 0) ? null : raw;
-    const point = { x: axis.values[index], frame: (axis.frames?.[index] ?? index) + 1, value };
-    // Sparse observed frames must not draw a line through unread frames.
-    return axis.frames && index > 0 && axis.frames[index] > axis.frames[index - 1] + 1
-      ? [{ x: (axis.values[index - 1] + point.x) / 2, frame: 0, value: null }, point] : [point];
+    const point = { x: axis.values[index], frame: (axis.frames?.[index] ?? index) + 1, value, index };
+    // Sparse observed frames must not draw a line through unread frames; a path joins its points.
+    return !path && axis.frames && index > 0 && axis.frames[index] > axis.frames[index - 1] + 1
+      ? [{ x: (axis.values[index - 1] + point.x) / 2, frame: 0, value: null, index: -1 }, point] : [point];
   }) ?? null, [values, axis, scale]);
   const yTicks = useMemo(() => (values ? scale === "log" ? logTicks(values, reference) : niceTicks(values) : null), [values, scale, reference]);
-  const timeTicks = useMemo(() => (axis.kind === "time" ? niceTicks(axis.values) : null), [axis]);
+  const timeTicks = useMemo(() => (axis.kind !== "frame" ? niceTicks(axis.values) : null), [axis]);
   const cursorValue = cursor !== null ? values?.[cursor] ?? null : null;
   const currentValue = scale === "log" && cursorValue !== null && !(cursorValue > 0) ? null : cursorValue;
   const label = unit ? `${name}, ${unit}` : name;
-  const currentFrame = cursor !== null ? axis.frames?.[cursor] ?? cursor : null;
-  const frameCount = axis.frameCount ?? axis.values.length;
-  const xLabel = (index: number) => (axis.kind === "time" ? `${axis.values[index].toFixed(3)} ps` : `Frame ${(axis.frames?.[index] ?? index) + 1}`);
+  // A path slider moves between its points; a frame slider between frames.
+  const currentFrame = cursor !== null ? (path ? cursor : axis.frames?.[cursor] ?? cursor) : null;
+  const frameCount = path ? axis.values.length : axis.frameCount ?? axis.values.length;
+  const xLabel = (index: number) => (axis.kind === "time" ? `${axis.values[index].toFixed(3)} ps`
+    : path ? `${axis.label ?? ""} ${timeTicks ? timeTicks.format(axis.values[index]) : axis.values[index]}`.trim() : `Frame ${(axis.frames?.[index] ?? index) + 1}`);
   const valueText = (index: number) => {
     const value = values?.[index];
-    const frame = (axis.frames?.[index] ?? index) + 1;
-    return value === null || value === undefined ? `Frame ${frame}` : `Frame ${frame}, ${name} ${format(value)} ${unit}`.trim();
+    const place = path ? xLabel(index) : `Frame ${(axis.frames?.[index] ?? index) + 1}`;
+    return value === null || value === undefined ? place : `${place}, ${name} ${format(value)} ${unit}`.trim();
   };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (currentFrame === null || !onSeek) return;
+    if (path) {
+      const step = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1, PageDown: -10, PageUp: 10, Home: -frameCount, End: frameCount }[event.key];
+      if (step === undefined) return;
+      event.preventDefault();
+      const target = Math.min(frameCount - 1, Math.max(0, currentFrame + step));
+      const frame = axis.frames?.[target] ?? -1;
+      if (frame >= 0) onSeek(frame);
+      return;
+    }
     const next = { ArrowLeft: currentFrame - 1, ArrowDown: currentFrame - 1, ArrowRight: currentFrame + 1, ArrowUp: currentFrame + 1,
       PageDown: currentFrame - 10, PageUp: currentFrame + 10, Home: 0, End: frameCount - 1 }[event.key];
     if (next === undefined) return;
@@ -260,18 +299,19 @@ export function SeriesChart({ name, unit, values, digits, format = (value) => va
         <YAxis width={52} tickLine={false} axisLine={false} interval={0} scale={scale ?? "auto"} allowDataOverflow={scale === "log"} domain={yTicks?.domain ?? ["auto", "auto"]} ticks={yTicks?.ticks} tickFormatter={yTicks?.format} />
         {reference !== undefined ? <ReferenceLine y={reference} stroke="var(--color-text-secondary)" strokeDasharray="4 3" /> : null}
         <ChartTooltip content={<ChartTooltipContent labelFormatter={(_, payload) => {
-          const frame = Number(payload?.[0]?.payload?.frame);
-          const index = axis.frames ? axis.frames.indexOf(frame - 1) : frame - 1;
+          const index = Number(payload?.[0]?.payload?.index);
           return index >= 0 ? xLabel(index) : "";
         }} />} />
         {cursor !== null ? <ReferenceLine x={axis.values[cursor]} stroke="var(--color-text-secondary)" /> : null}
-        <Line type="linear" dataKey="value" name={label} stroke="var(--color-value)" strokeWidth={1.5} dot={axis.frames ? { r: 2 } : false} connectNulls={false} isAnimationActive={false} />
+        <Line type="linear" dataKey="value" name={label} stroke="var(--color-value)" strokeWidth={1.5} connectNulls={false} isAnimationActive={false}
+          dot={path ? (props: { cx?: number; cy?: number; index?: number }) => <circle key={props.index} cx={props.cx} cy={props.cy} r={2.5} stroke="var(--color-value)" strokeWidth={1.5} fill={hollow?.[props.index ?? -1] ? "var(--bg-base)" : "var(--color-value)"} />
+            : axis.frames ? { r: 2 } : false} />
         {cursor !== null && currentValue !== null ? <ReferenceDot x={axis.values[cursor]} y={currentValue} r={3} fill="var(--color-value)" stroke="none" /> : null}
       </LineChart>
     </ChartContainer>
   ) : null;
   return (
-    <section aria-label={`${name} per frame`}>
+    <section aria-label={path ? `${name} along the path` : `${name} per frame`}>
       <div className="workbench-chart-header">{header(currentValue !== null ? <span className="workbench-chart-current">{format(currentValue)}</span> : null)}</div>
       {footer}
       {chart && cursor !== null && onSeek ? (

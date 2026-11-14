@@ -16,7 +16,8 @@ export function usePlotsAvailable(document: ViewerDocument | null) {
 export function useScientificPlots(document: ViewerDocument | null) {
   const { document: science, text } = useScientificDocument(document?.renderer === "molstar" ? document : null);
   const extension = document ? sourceExtension(document) : null;
-  const available = Boolean(science && science.frames.length > 1 && text !== null
+  // A path summary without geometries (an ORCA IRC output) still plots its energies.
+  const available = Boolean(science && (science.frames.length > 1 || science.path) && text !== null
     && (extension === "xyz" || (extension === "mol" && science.format === "cjson" && science.graph?.molfile === text)));
   return { available, science, text };
 }
