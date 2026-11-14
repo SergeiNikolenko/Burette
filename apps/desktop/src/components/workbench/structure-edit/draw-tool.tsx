@@ -1,6 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { parseAtomDrawMessage, setAtomDrawMode, type DrawGesture } from "../../../lib/atom-draw";
-import { captureViewerActionTarget } from "../../../lib/viewer-bridge";
+import { activeViewerIframeForDocument, captureViewerActionTarget } from "../../../lib/viewer-bridge";
 import { isAbortError } from "../../../lib/viewer-errors";
 import type { ViewerDocument } from "../../../types";
 import type { ShellActions } from "../../types";
@@ -11,13 +11,18 @@ export type DrawSettings = { order: 1 | 2 | 3; hydrogens: boolean };
 
 /**
  * Keeps the viewer's Draw mode on while `enabled` and hands its gestures to
- * `onGesture`. A draft write reloads the scene, so the mode is renewed for each
- * `revision` with a new lease; gestures from older scenes are ignored.
+ * `onGesture`. A draft write reloads the scene into a second frame that becomes
+ * visible only after it renders, so the mode is renewed with a new lease
+ * whenever the document's active frame changes; gestures from older frames are
+ * ignored.
  */
+const FRAME_CHECK_MS = 400;
+
 export function useAtomDraw(document: ViewerDocument, send: ShellActions["runStructureViewerAction"], enabled: boolean, revision: unknown,
   onGesture: (gesture: DrawGesture) => void, onError: (message: string) => void) {
   const handlers = useRef({ onGesture, onError, send });
   handlers.current = { onGesture, onError, send };
+  const [renewal, renew] = useState(0);
   useEffect(() => {
     if (!enabled) return undefined;
     const target = captureViewerActionTarget(document.id);
@@ -29,14 +34,18 @@ export function useAtomDraw(document: ViewerDocument, send: ShellActions["runStr
       if (gesture) handlers.current.onGesture(gesture);
     };
     window.addEventListener("message", listener);
+    const check = window.setInterval(() => {
+      if (!target.isCurrent() || activeViewerIframeForDocument(document.id)?.contentWindow !== target.source) renew((count) => count + 1);
+    }, FRAME_CHECK_MS);
     setAtomDrawMode(document, target, lease, true, handlers.current.send).catch((caught) => {
       if (!isAbortError(caught) && target.isCurrent()) handlers.current.onError(caught instanceof Error ? caught.message : String(caught));
     });
     return () => {
       window.removeEventListener("message", listener);
+      window.clearInterval(check);
       if (target.isCurrent()) void setAtomDrawMode(document, target, lease, false, handlers.current.send).catch(() => {});
     };
-  }, [enabled, document, revision]);
+  }, [enabled, document, revision, renewal]);
 }
 
 export function DrawSettingsRow({ settings, onChange }: { settings: DrawSettings; onChange: (settings: DrawSettings) => void }) {

@@ -26,12 +26,13 @@ if (!window.BuretteAtomDrag) {
       if (hovered && Math.hypot(hovered.x - event.clientX, hovered.y - event.clientY) > 3) hovered = null;
       if (!hoverFrame) hoverFrame = requestAnimationFrame(probe);
     };
+    // The loci under the pointer, null over empty space, or 'pending' while the pick buffer is not ready.
     const loci = event => {
       const rect = canvas.getBoundingClientRect();
       let pick = plugin.canvas3d.identify([event.clientX - rect.left, event.clientY - rect.top]);
       if (pick === 'pending') pick = hovered && Math.hypot(hovered.x - event.clientX, hovered.y - event.clientY) <= 3
-        && hovered.view === view() && hovered.structure === shown() ? hovered.pick : undefined;
-      return pick ? plugin.canvas3d.getLoci(pick.id).loci : null;
+        && hovered.view === view() && hovered.structure === shown() ? hovered.pick : 'pending';
+      return pick === 'pending' ? pick : pick ? plugin.canvas3d.getLoci(pick.id).loci : null;
     };
     const dispose = () => { if (hoverFrame) cancelAnimationFrame(hoverFrame); hoverFrame = 0; };
     return { hover, loci, dispose };
@@ -90,7 +91,7 @@ if (!window.BuretteAtomDrag) {
 
     const picker = createPicker(plugin, canvas);
     const hover = event => { if (!drag) picker.hover(event); };
-    const pickedAtom = event => atomAt(plugin, picker.loci(event));
+    const pickedAtom = event => { const loci = picker.loci(event); return loci === 'pending' ? null : atomAt(plugin, loci); };
     const selectedRows = (structure, model) => {
       const Element = window.molstar.lib.structure.StructureElement, selected = new Set();
       const loci = plugin.managers.structure.selection.getLoci(structure);
@@ -228,7 +229,9 @@ if (!window.BuretteAtomDrag) {
     };
     const depthOf = world => { const projected = [0, 0, 0, 0]; plugin.canvas3d.camera.project(projected, world); return projected[2]; };
     const hitAt = event => {
-      const loci = picker.loci(event), atom = atomAt(plugin, loci);
+      const loci = picker.loci(event);
+      if (loci === 'pending') return { kind: 'pending' };
+      const atom = atomAt(plugin, loci);
       if (atom) {
         const world = [0, 0, 0];
         atom.unit.conformation.position(atom.row, world);
@@ -262,6 +265,8 @@ if (!window.BuretteAtomDrag) {
         || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey || !isCurrent()) return;
       press = { x: event.clientX, y: event.clientY, hit: hitAt(event), moved: false };
       // Presses on atoms and bonds belong to the tool; on empty space Mol* still rotates the view.
+      // Until the pick buffer answers, a press could be on an atom, so it only reaches Mol*.
+      if (press.hit?.kind === 'pending') { press = null; return; }
       if (press.hit) { event.preventDefault(); event.stopImmediatePropagation(); window.focus(); }
       listen(true);
     }
@@ -290,6 +295,7 @@ if (!window.BuretteAtomDrag) {
       if (hit.kind === 'bond') { if (!moved) post({ gesture: 'bond-click', atoms: hit.atoms }); return; }
       if (!moved) { post({ gesture: 'atom', atoms: [hit.atom] }); return; }
       const end = hitAt(event);
+      if (end?.kind === 'pending') return;
       if (end?.kind === 'atom' && end.atom !== hit.atom) { post({ gesture: 'bond', atoms: [hit.atom, end.atom] }); return; }
       const position = modelPoint(event, hit.depth, hit.unit);
       if (position) post({ gesture: 'drag', atoms: [hit.atom], position });

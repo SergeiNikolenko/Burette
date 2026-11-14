@@ -14,6 +14,7 @@ const xyz = '3\nwater\nO 0 0 0\nH 1 0 0\nH 0 1 0\n';
 const dom = new Window({ url: 'http://localhost/' }), previous = globalThis.document;
 globalThis.document = dom.document;
 const plugin = new PluginContext({ registry: DefaultRegistry, behaviors: [] });
+let pending = false;
 try {
   await plugin.init();
   const raw = await plugin.builders.data.rawData({ data: xyz });
@@ -33,6 +34,7 @@ try {
   Object.defineProperty(plugin, 'canvas3d', { configurable: true, value: {
     camera, props: { camera: { manualReset: false } }, pause() {}, resume() {}, commit() {}, dispose() {}, remove() {},
     identify([x, y]) {
+      if (pending) return 'pending';
       const near = point => Math.hypot(point[0] - x, point[1] - y) < 4;
       const row = [0, 1, 2].find(index => near(screen(index)));
       if (row !== undefined) return { id: { row }, position: [0, 0, 0] };
@@ -94,6 +96,14 @@ try {
   // A drag from one atom onto another joins them.
   pointer('pointerdown', screen(1)); pointer('pointermove', screen(2)); pointer('pointerup', screen(2));
   assert.deepEqual(events.at(-1), { type: 'atom-draw', lease, gesture: 'bond', atoms: [1, 2] });
+
+  // While the pick buffer is not ready a press may be on an atom: it reaches Mol* and draws nothing.
+  pending = true;
+  const before = events.length;
+  assert.equal(pointer('pointerdown', screen(1)).defaultPrevented, false);
+  pointer('pointerup', screen(1));
+  assert.equal(events.length, before);
+  pending = false;
 
   // Escape drops the stroke in progress.
   const count = events.length;
