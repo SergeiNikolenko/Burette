@@ -190,7 +190,8 @@ export async function storeDerivedValues(
       | "similarity"
       | "rgroup"
       | "row-number"
-      | "bins";
+      | "bins"
+      | "prediction";
     paramsJson?: string | null;
   },
   values: DerivedStoreValue[],

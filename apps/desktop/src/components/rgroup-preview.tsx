@@ -4,7 +4,8 @@ import { NativeSelect, NativeSelectOption } from "./ui/native-select";
 import { Button } from "./ui/button";
 import { DARK_STRUCTURE_PALETTE } from "../lib/structure-palette";
 
-function Structure({ smiles }: { smiles: string }) {
+/** A 2D drawing of a SMILES or molblock in the current theme's ink; `label` names it when the source text is not readable. */
+export function Structure({ smiles, label = smiles }: { smiles: string; label?: string }) {
   const [image, setImage] = useState("");
   useEffect(() => {
     setImage("");
@@ -31,7 +32,7 @@ function Structure({ smiles }: { smiles: string }) {
     observer.observe(document.querySelector(".app-shell") ?? document.documentElement, { attributes: true, attributeFilter: ["data-effective-theme"] });
     return () => { active = false; observer.disconnect(); };
   }, [smiles]);
-  return <div className="rgroup-structure" role="img" aria-label={smiles} title={smiles} dangerouslySetInnerHTML={{ __html: image }} />;
+  return <div className="rgroup-structure" role="img" aria-label={label} title={label} dangerouslySetInnerHTML={{ __html: image }} />;
 }
 
 export function RGroupPreviewResults({ result, total }: { result: RGroupDecomposition; total: number }) {

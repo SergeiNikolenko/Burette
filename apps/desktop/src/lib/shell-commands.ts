@@ -143,6 +143,12 @@ export function buildShellCommands(
       description: "Correlate the numeric columns of the active collection",
       run: () => actions.openCorrelationMatrix(state.activeDocument!.id),
     }, {
+      id: "build-model",
+      group: "Suggested",
+      label: "Build model",
+      description: "Predict a column from descriptors and fill its missing values",
+      run: () => openWorkbenchDialog({ kind: "model", document: state.activeDocument! }),
+    }, {
       id: "add-calculated-values",
       group: "Suggested",
       label: "Add calculated values",

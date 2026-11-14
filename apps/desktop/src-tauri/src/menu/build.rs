@@ -528,6 +528,9 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
         MenuItemBuilder::with_id("analyze.correlation-matrix", "Show Correlation Matrix…")
             .enabled(false)
             .build(app)?;
+    let analyze_build_model = MenuItemBuilder::with_id("analyze.build-model", "Build Model…")
+        .enabled(false)
+        .build(app)?;
     let analyze_scaffolds = MenuItemBuilder::with_id("analyze.scaffolds", "Analyse Scaffolds")
         .enabled(false)
         .build(app)?;
@@ -561,6 +564,7 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
             &analyze_find_similar,
             &PredefinedMenuItem::separator(app)?,
             &analyze_correlation,
+            &analyze_build_model,
         ])
         .build()?;
 

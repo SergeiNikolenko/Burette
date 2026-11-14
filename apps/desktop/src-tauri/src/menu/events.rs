@@ -92,6 +92,7 @@ const FORWARDED_COMMANDS: &[&str] = &[
     "analyze.cluster",
     "analyze.diverse",
     "analyze.correlation-matrix",
+    "analyze.build-model",
     "database.search-chembl",
     "database.chembl-actives",
     "database.search-cod",

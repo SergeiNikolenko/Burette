@@ -29,6 +29,7 @@ import { nativeMenuAccelerators } from "../lib/keyboard-shortcuts";
 import { openEnumerateLibrary } from "../lib/library-enumeration-task";
 import { structureEditAvailable } from "../lib/workbench/graph-draft";
 import { geometryPanelAvailable } from "../lib/geometry-editing";
+import { openWorkbenchDialog } from "../lib/workbench/dialog-store";
 import { requestOptimizationCommand, type OptimizationCommand } from "../lib/workbench/optimization-commands";
 import { useSettingsStore } from "../stores/settings-store";
 import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
@@ -666,6 +667,9 @@ export function useAppNativeMenu({
         return;
       case "analyze.correlation-matrix":
         if (activeDocument && isGrid) actions.openCorrelationMatrix(activeDocument.id);
+        return;
+      case "analyze.build-model":
+        if (activeDocument && isGrid) openWorkbenchDialog({ kind: "model", document: activeDocument });
         return;
       case "file.close-tab":
         await actions.closeActiveDocument();

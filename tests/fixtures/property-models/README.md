@@ -10,6 +10,7 @@ with.
 | --- | --- | --- |
 | `esol.csv` | 1128 molecules: SMILES and measured log solubility (mol/L) | `329cba2f67de162d7f16ed67ff981e0383325d6de42bb89958811e04f2aa1cd2` |
 | `sklearn-reference.json` | scikit-learn scores and PLS predictions on Burette's descriptor matrix | `e1728d1b3cde5bcb11c5c9184683098d5f10237adf48dd56878a374db36f5fa3` |
+| `solubility-60.sdf` | the first 60 ESOL molecules as an SDF collection with six values missing | `97ec2391a5e6186c53598f9832fec5886e8d73a5b864ba4e113486a539e0b8bd` |
 | `esol.ts` | loads the set the way the tests and the export see it | |
 | `export-esol-matrix.ts` | writes the descriptor matrix handed to scikit-learn | |
 | `sklearn_reference.py` | computes `sklearn-reference.json` from that matrix | |
@@ -80,3 +81,20 @@ generators, so they agree within the spread between seeds.
 
 One of the 18 properties, `cLogS`, is itself a solubility estimate, which is
 why these models score higher than ESOL results quoted for plain descriptors.
+
+## Walkthrough collection
+
+`solubility-60.sdf` is for trying Build model by hand: the first 60 rows of the
+source file, each with its compound name as the title, 2D coordinates from
+RDKit (`set_new_coords`), `logS` and a `Solubility` class (`low` below -4,
+`medium` below -2, otherwise `high`). Six records carry neither field, so the
+model has something to predict:
+
+| Row | Molecule | Measured logS | Class |
+| --- | --- | --- | --- |
+| 5 | Thiophene | -1.33 | high |
+| 12 | 2-Chloronapthalene | -4.14 | low |
+| 21 | 2,2',3,4,6-PCB | -7.43 | low |
+| 34 | 1,1-Dichloroethylene | -1.64 | high |
+| 48 | brompyrazone | -3.127 | medium |
+| 59 | 6-Methylchrysene | -6.57 | low |

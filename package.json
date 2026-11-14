@@ -449,7 +449,7 @@
     "test:smarts-select": "bun test tests/test-smarts-select.test.ts",
     "test:scene-media": "bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-scene-svg-runtime.mjs",
     "test:calculation-overlays": "bun test tests/test-calculation-results-card.test.tsx && bun test tests/test-potential-panel.test.tsx",
-    "test:property-models": "bun test tests/test-property-models.test.ts"
+    "test:property-models": "bun test tests/test-property-models.test.ts && bun test tests/test-build-model-dialog.test.tsx"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",
