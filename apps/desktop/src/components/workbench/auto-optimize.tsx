@@ -69,7 +69,7 @@ export function useAutoOptimize(document: ViewerDocument, binding: GeometryBindi
       move(event.atoms, event.positions);
       if (event.phase === "end" || event.phase === "cancel") release();
     });
-    void setAtomDragMode(document, binding, true, send, controller.signal)
+    void setAtomDragMode(document, binding, true, send, { signal: controller.signal })
       .catch((caught) => { if (!controller.signal.aborted) setError(caught instanceof Error ? caught.message : String(caught)); });
     return () => { controller.abort(); unsubscribe(); void setAtomDragMode(document, binding, false, send).catch(() => {}); };
   }, [active, binding, document.id]);

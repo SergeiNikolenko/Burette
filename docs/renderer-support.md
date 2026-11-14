@@ -682,6 +682,18 @@ other atoms without pulling the dragged ones back; drag frames never supersede a
 queued host update. A stale lease ends drag mode at the next press, and a drag
 whose lease goes stale posts `cancel`. The host side is `lib/atom-drag.ts`.
 
+With `manipulate: true` (the Edit panel's Move tool, Avogadro's Manipulate and
+Bond-Centric tools) drag mode also takes bond presses and Alt presses:
+
+| Press | Effect | `atoms` |
+| --- | --- | --- |
+| drag a bond | turns the smaller side about the bond axis, π/360 rad per pixel | atoms of that side |
+| Alt-drag a bond | stretches the bond along its axis, moving the smaller side; at least 0.5 Å | atoms of that side |
+| Alt-drag a selected atom | rotates the selection rigidly about its centre, around the screen axis perpendicular to the drag | the selection |
+
+A bond in a ring has no smaller side and stays with Mol*. The Move tool records
+each `end` as one `positions` draft operation, so every drag is one Undo step.
+
 ### Drawing
 
 `atom_draw` `{ enabled, lease }` turns the Draw tool on or off in the active

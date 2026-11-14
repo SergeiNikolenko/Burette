@@ -49,7 +49,7 @@ identify internal Mol* Undo/restore: geometry writes also require a runtime owne
 `update_geometry` carries that retained lease. Never acquire a new lease for an edit
 computed from an older baseline. Legacy fire-and-forget actions keep their existing path.
 `atom-drag.ts` turns the viewer's drag mode on and off for a binding
-(`setAtomDragMode`) and receives its `atom-drag` gestures (`subscribeAtomDrag`).
+(`setAtomDragMode`, with `manipulate` for the Move tool) and receives its `atom-drag` gestures (`subscribeAtomDrag`).
 Gestures are accepted from the binding's frame window and lease, not from the
 body's `documentId`, which carries the viewer's runtime id.
 

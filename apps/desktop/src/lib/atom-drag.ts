@@ -17,12 +17,14 @@ const MAX_DRAGGED_ATOMS = 100_000;
 /**
  * Turns the viewer's drag mode on or off for the structure behind `binding`.
  * The viewer refuses to enable it once the lease no longer owns the scene.
+ * With `manipulate`, bond drags turn or (⌥) stretch the bond and ⌥ atom drags
+ * rotate the selection, as Avogadro's Manipulate and Bond-Centric tools.
  */
 export async function setAtomDragMode(document: ViewerDocument, binding: GeometryBinding, enabled: boolean,
-  send: ShellActions["runStructureViewerAction"], signal?: AbortSignal): Promise<void> {
+  send: ShellActions["runStructureViewerAction"], options: { signal?: AbortSignal; manipulate?: boolean } = {}): Promise<void> {
   if (binding.target.documentId !== document.id) throw new Error("The Geometry binding belongs to another document.");
-  await send(document, { type: "atom_drag", enabled, lease: binding.lease, label: "Atom drag", notify: false },
-    { target: binding.target, signal });
+  await send(document, { type: "atom_drag", enabled, lease: binding.lease, label: "Atom drag", notify: false, ...(options.manipulate ? { manipulate: true as const } : {}) },
+    { target: binding.target, signal: options.signal });
 }
 
 /** Receives drag gestures from the frame that issued `binding`. Returns the unsubscribe function. */

@@ -59,6 +59,30 @@ if (!window.BuretteAtomDrag) {
     return [0, 1, 2].map(r => [0, 1, 2].map(c => cofactor(c, r) / det));
   }
   const apply3 = (matrix, v) => matrix.map(row => row[0] * v[0] + row[1] * v[1] + row[2] * v[2]);
+  // Rodrigues rotation of points about the unit `axis` through `center`.
+  function rotateAbout(points, center, axis, angle) {
+    const cos = Math.cos(angle), sin = Math.sin(angle);
+    return points.map(point => {
+      const v = point.map((value, i) => value - center[i]), dot = v[0] * axis[0] + v[1] * axis[1] + v[2] * axis[2];
+      const cross = [axis[1] * v[2] - axis[2] * v[1], axis[2] * v[0] - axis[0] * v[2], axis[0] * v[1] - axis[1] * v[0]];
+      return v.map((value, i) => center[i] + value * cos + cross[i] * sin + axis[i] * dot * (1 - cos));
+    });
+  }
+  // Unit-local atoms reached from `from` without crossing its bond to `pivot`; null when the bond is in a ring.
+  function bondSide(unit, from, pivot) {
+    const { offset, b } = unit.bonds, seen = new Set([from]), queue = [from];
+    while (queue.length) {
+      const i = queue.pop();
+      for (let k = offset[i]; k < offset[i + 1]; k++) {
+        const j = b[k];
+        if (i === from && j === pivot) continue;
+        if (j === pivot) return null;
+        if (!seen.has(j)) { seen.add(j); queue.push(j); }
+      }
+    }
+    return seen;
+  }
+  const RADIANS_PER_PIXEL = Math.PI / 360, MIN_BOND_LENGTH = 0.5;
   // Camera window coordinates are drawing-buffer pixels with a top-left origin.
   function windowPoint(plugin, canvas, event, depth) {
     const rect = canvas.getBoundingClientRect();
@@ -91,7 +115,16 @@ if (!window.BuretteAtomDrag) {
 
     const picker = createPicker(plugin, canvas);
     const hover = event => { if (!drag) picker.hover(event); };
-    const pickedAtom = event => { const loci = picker.loci(event); return loci === 'pending' ? null : atomAt(plugin, loci); };
+    // With `manipulate` (Avogadro's Manipulate and Bond-Centric tools), ⌥-drag on an
+    // atom rotates the held atoms about their centre, a drag on a bond turns its
+    // smaller side about the bond and ⌥-drag on a bond stretches it.
+    const manipulate = action.manipulate === true;
+    const bondAt = loci => {
+      const Bond = window.molstar.lib.structure.Bond, bond = Bond?.isLoci(loci) && loci.bonds.length ? loci.bonds[0] : null;
+      const structure = plugin.managers.structure.hierarchy.current.structures[0]?.cell.obj?.data;
+      if (!bond || bond.aUnit !== bond.bUnit || bond.aUnit.kind !== 0 || structure?.unitMap.get(bond.aUnit.id)?.model !== bond.aUnit.model) return null;
+      return { structure, unit: bond.aUnit, a: bond.aIndex, b: bond.bIndex };
+    };
     const selectedRows = (structure, model) => {
       const Element = window.molstar.lib.structure.StructureElement, selected = new Set();
       const loci = plugin.managers.structure.selection.getLoci(structure);
@@ -123,12 +156,26 @@ if (!window.BuretteAtomDrag) {
       try { owner = token(); } catch { retire(); return Promise.resolve(); }
       return geometry.update(plugin, text, owner, options).catch(() => { try { token(); } catch { retire(); } });
     };
-    const step = () => {
-      drag.frame = 0;
+    const moved = () => {
+      const dx = drag.pointer.clientX - drag.client[0], dy = drag.pointer.clientY - drag.client[1];
+      if (drag.mode === 'torsion') return rotateAbout(drag.start, drag.pivot, drag.axis, dx * RADIANS_PER_PIXEL);
+      if (drag.mode === 'rotate') {
+        // A drag turns the near side with the pointer, about the screen axis across it.
+        const view = plugin.canvas3d.camera.view, right = [view[0], view[4], view[8]], up = [view[1], view[5], view[9]];
+        const axis = apply3(drag.inverse, up.map((value, i) => value * dx + right[i] * dy)), size = Math.hypot(...axis);
+        return size ? rotateAbout(drag.start, drag.center, axis.map(value => value / size), Math.hypot(dx, dy) * RADIANS_PER_PIXEL) : drag.start;
+      }
       const now = windowPoint(plugin, canvas, drag.pointer, drag.depth), delta = now.map((value, axis) => value - drag.origin[axis]);
       const local = apply3(drag.inverse, delta);
+      if (drag.mode === 'translate') return drag.start.map(point => point.map((value, axis) => value + local[axis]));
+      // Stretch: the moving side slides along the bond by the pointer's travel along it.
+      const along = Math.max(local[0] * drag.axis[0] + local[1] * drag.axis[1] + local[2] * drag.axis[2], MIN_BOND_LENGTH - drag.length);
+      return drag.start.map(point => point.map((value, axis) => value + drag.axis[axis] * along));
+    };
+    const step = () => {
+      drag.frame = 0;
       // Reported positions equal the decimals written into the Geometry text.
-      drag.positions = drag.start.map(point => point.map((value, axis) => Number(geometry.coordinate(value + local[axis]))));
+      drag.positions = moved().map(point => point.map(value => Number(geometry.coordinate(value))));
       let text;
       try { text = geometry.binding(plugin, isCurrent).text; } catch { retire(); return; }
       void send(text, { passive: true });
@@ -136,28 +183,49 @@ if (!window.BuretteAtomDrag) {
     };
     function down(event) {
       if (drag || event.target !== canvas || event.button !== 0 || event.pointerType === 'touch'
-        || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey || !isCurrent()) return;
+        || event.shiftKey || event.ctrlKey || (event.altKey && !manipulate) || event.metaKey || !isCurrent()) return;
       let binding;
       try { token(); binding = geometry.binding(plugin, isCurrent); } catch { dispose(); return; }
-      const atom = pickedAtom(event);
-      if (!atom || binding.lease !== lease) return;
-      const parsed = rows(binding.text), model = atom.unit.model, sourceIndex = model.atomicHierarchy.atomSourceIndex;
-      const selected = selectedRows(atom.structure, model);
-      const held = selected.has(atom.row) ? [...selected].sort((a, b) => a - b) : [atom.row];
+      const loci = picker.loci(event);
+      if (loci === 'pending') return;
+      const atom = atomAt(plugin, loci), bond = manipulate && !atom ? bondAt(loci) : null;
+      if ((!atom && !bond) || binding.lease !== lease) return;
+      const unit = atom ? atom.unit : bond.unit, parsed = rows(binding.text), sourceIndex = unit.model.atomicHierarchy.atomSourceIndex;
+      let held, anchor, extra;
+      if (bond) {
+        const sideA = bondSide(unit, bond.a, bond.b), sideB = bondSide(unit, bond.b, bond.a);
+        // A ring bond has no side to turn; the press reaches Mol*.
+        if (!sideA || !sideB) return;
+        const [moving, fixed, side] = sideB.size <= sideA.size ? [bond.b, bond.a, sideB] : [bond.a, bond.b, sideA];
+        held = [...side].map(i => unit.elements[i]).sort((a, b) => a - b);
+        anchor = unit.elements[moving];
+        if (held.some(row => row >= parsed.atoms.length) || unit.elements[fixed] >= parsed.atoms.length) return;
+        const pivot = position(parsed.atoms, unit.elements[fixed]), end = position(parsed.atoms, anchor);
+        const length = Math.hypot(end[0] - pivot[0], end[1] - pivot[1], end[2] - pivot[2]);
+        if (!(length > 1e-6)) return;
+        extra = { mode: event.altKey ? 'stretch' : 'torsion', pivot, length, axis: end.map((value, i) => (value - pivot[i]) / length) };
+      } else {
+        const selected = selectedRows(atom.structure, unit.model);
+        held = selected.has(atom.row) ? [...selected].sort((a, b) => a - b) : [atom.row];
+        anchor = atom.row;
+        if (event.altKey && held.length < 2) return;
+        extra = { mode: event.altKey ? 'rotate' : 'translate' };
+      }
       if (held.some(row => row >= parsed.atoms.length)) return;
       const world = [0, 0, 0];
-      atom.unit.conformation.position(atom.row, world);
+      unit.conformation.position(anchor, world);
       const projected = [0, 0, 0, 0];
       plugin.canvas3d.camera.project(projected, world);
       // World deltas map back through the inverse of the unit operator's linear part.
-      const inverse = inverseLinear(atom.unit.conformation.operator.matrix);
+      const inverse = inverseLinear(unit.conformation.operator.matrix);
       if (!inverse) return;
       event.preventDefault(); event.stopImmediatePropagation();
       const start = held.map(row => position(parsed.atoms, row));
+      const center = [0, 1, 2].map(axis => start.reduce((sum, point) => sum + point[axis], 0) / start.length);
       drag = {
         count: parsed.atoms.length, rows: held, sources: held.map(row => sourceIndex.value(row)), start, positions: start,
         text: binding.text, depth: projected[2], origin: windowPoint(plugin, canvas, event, projected[2]), pointer: event, frame: 0,
-        inverse, unpin: () => {},
+        client: [event.clientX, event.clientY], center, inverse, unpin: () => {}, ...extra,
       };
       try { drag.unpin = geometry.pin(plugin, patch, token()); } catch { drag = null; dispose(); return; }
       listen(true);

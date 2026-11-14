@@ -16,7 +16,8 @@ import { useSourceEditing } from "../../lib/source-editing/context";
 import type { ShellActions } from "../types";
 import type { ViewerDocument } from "../../types";
 import { ShortcutTooltip } from "../shortcut-tooltip";
-import { ArrowCurvedRight, DotsHorizontal, Edit, FileBlank, Plus, Undo } from "../ui/app-icons";
+import { ArrowCurvedRight, DotsHorizontal, Edit, FileBlank, Move, Plus, Undo } from "../ui/app-icons";
+import type { AtomDragEvent } from "../../lib/atom-drag";
 import { Button } from "../ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import { Input } from "../ui/input";
@@ -39,6 +40,7 @@ import { label, normalizeElement } from "./structure-edit/values";
 import { InsertFragmentDialog } from "./structure-edit/insert-fragment-dialog";
 import { AdjustPhDialog } from "./structure-edit/adjust-ph-dialog";
 import { DrawSettingsRow, useAtomDraw, type DrawSettings } from "./structure-edit/draw-tool";
+import { useAtomMove } from "./structure-edit/move-tool";
 import { drawStroke, type DrawGesture } from "../../lib/atom-draw";
 import type { FragmentSource } from "../../lib/molecular-workbench/fragment-source";
 import "./workbench-layout.css";
@@ -132,8 +134,8 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
   const [addElement, setAddElement] = useState("C");
   const [inputError, setInputError] = useState<string | null>(null);
   const [inserting, setInserting] = useState(false), [adjustingPh, setAdjustingPh] = useState(false);
-  // Avogadro's Draw tool: each click or drag in the 3D view is one Undo step.
-  const [drawing, setDrawing] = useState(false), [drawSettings, setDrawSettings] = useState<DrawSettings>({ order: 1, hydrogens: true });
+  // Avogadro's Draw and Manipulate tools: each click or drag in the 3D view is one Undo step.
+  const [tool, setTool] = useState<"draw" | "move" | null>(null), [drawSettings, setDrawSettings] = useState<DrawSettings>({ order: 1, hydrogens: true });
   const viewerSelection = useViewerAtomSelection(document.id);
   const send = useRef(actions.runStructureViewerAction);
   send.current = actions.runStructureViewerAction;
@@ -147,16 +149,22 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
   useOptimizationCommandHandler(document.id, Boolean(editor), (name) => command.current(name));
   // The snapshot Auto Optimize started from; any other change to the draft ends the session.
   const autoBase = useRef<GraphSnapshot | null>(null);
-  // While Auto Optimize runs, its frames preview in the scene through a Geometry binding.
+  // While Auto Optimize runs, its frames preview in the scene through a Geometry binding;
+  // the Move tool drags atoms through the same binding.
   const [autoScene, setAutoScene] = useState(false);
-  const autoBinding = useGeometryBinding(document, actions.runStructureViewerAction, editor?.current ?? document,
-    (binding) => Boolean(editor) && sameAtoms(binding, editor!.current.structure.atoms), autoScene).binding;
+  const moving = tool === "move" && Boolean(editor);
+  const geometry = useGeometryBinding(document, actions.runStructureViewerAction, editor?.current ?? document,
+    (binding) => Boolean(editor) && sameAtoms(binding, editor!.current.structure.atoms), autoScene || moving);
+  const autoBinding = geometry.binding;
   const live = useGeometryLivePreview(document, autoBinding, actions.runStructureViewerAction,
     (caught) => setInputError(caught instanceof Error ? caught.message : String(caught)));
   const auto = useAutoOptimize(document, autoBinding, actions.runStructureViewerAction);
   const draw = useRef<(gesture: DrawGesture) => void>(() => {});
-  useAtomDraw(document, actions.runStructureViewerAction, drawing && Boolean(editor) && !auto.running, session?.sourcePreview,
+  useAtomDraw(document, actions.runStructureViewerAction, tool === "draw" && Boolean(editor) && !auto.running, session?.sourcePreview,
     (gesture) => draw.current(gesture), setInputError);
+  const moved = useRef<(event: AtomDragEvent) => void>(() => {});
+  useAtomMove(document, moving && !auto.running ? autoBinding : null, actions.runStructureViewerAction,
+    (event) => moved.current(event), setInputError);
   useEffect(() => {
     if (autoBase.current && autoBase.current !== editor?.current) { autoBase.current = null; auto.stop(); }
   }, [editor?.current]);
@@ -285,6 +293,12 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
     void draft.apply({ kind: "draw", stroke: drawStroke(gesture, element, drawSettings.order), hydrogens: drawSettings.hydrogens })
       .then((result) => { if (result) setSelection(NO_SELECTION); });
   };
+  moved.current = ({ atoms: dragged, positions }) => {
+    const coordinates = structure.atoms.map((atom): [number, number, number] => [atom.x, atom.y, atom.z]);
+    dragged.forEach((atom, index) => { coordinates[atom] = positions[index]; });
+    setInputError(null);
+    void draft.apply({ kind: "positions", coordinates, from: editor.current }).then((result) => { if (result) keepConstraints(result); });
+  };
   const deleteSelected = () => {
     if (atoms.length) void apply([{ kind: "delete-atoms", indices: atoms }], () => []);
   };
@@ -326,7 +340,7 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
 
   const busy = draft.busy;
   const truncated = viewerSelection?.truncated && selection.from === "viewer";
-  const error = inputError ?? auto.error ?? draft.error ?? session?.diagnostic ?? null;
+  const error = inputError ?? auto.error ?? (moving ? geometry.error : null) ?? draft.error ?? session?.diagnostic ?? null;
   return (
     <div className="dock-content workbench-panel structure-edit-panel" onKeyDown={onPanelKeyDown}>
       <div className="workbench-toolbar">
@@ -344,8 +358,12 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
           </ShortcutTooltip>
         </form>
         <ShortcutTooltip label="Draw atoms and bonds in the 3D view">
-          <Button type="button" variant={drawing ? "secondary" : "ghost"} size="xs" aria-pressed={drawing} disabled={auto.running}
-            onClick={() => { setInputError(null); setDrawing((current) => !current); }}><Edit aria-hidden />Draw</Button>
+          <Button type="button" variant={tool === "draw" ? "secondary" : "ghost"} size="xs" aria-pressed={tool === "draw"} disabled={auto.running}
+            onClick={() => { setInputError(null); setTool((current) => current === "draw" ? null : "draw"); }}><Edit aria-hidden />Draw</Button>
+        </ShortcutTooltip>
+        <ShortcutTooltip label={`Drag atoms in the 3D view; drag a bond to turn it, ${IS_MAC ? "⌥" : "Alt"}-drag to rotate the selection or stretch the bond`}>
+          <Button type="button" variant={tool === "move" ? "secondary" : "ghost"} size="xs" aria-pressed={tool === "move"} disabled={auto.running}
+            onClick={() => { setInputError(null); setTool((current) => current === "move" ? null : "move"); }}><Move aria-hidden />Move</Button>
         </ShortcutTooltip>
         <OptimizeButton atomCount={structure.atoms.length} elements={structure.atoms.map((atom) => atom.element)} constraintCount={constraints.length} unavailableReason={constraintError} size="xs" variant="secondary" disabled={busy}
           configureOpen={configuring} onConfigureOpenChange={setConfiguring}
@@ -383,7 +401,7 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
           </ShortcutTooltip>
         ) : null}
       </div>
-      {drawing ? <DrawSettingsRow settings={drawSettings} onChange={setDrawSettings} /> : null}
+      {tool === "draw" ? <DrawSettingsRow settings={drawSettings} onChange={setDrawSettings} /> : null}
       {error && !inserting ? <p role="alert" className="workbench-error">{error}</p> : null}
       <InsertFragmentDialog open={inserting} onOpenChange={setInserting} target={atoms.length === 1 ? label(structure, atoms[0]) : null}
         busy={busy} error={error} onInsert={fragment => void insertFragment(fragment)} />

@@ -52,7 +52,7 @@ export type StructureViewerAction =
   | { type: "geometry_topology_scene_validate"; label: string; notify: false; lease: string; receipt: string }
   | { type: "measurement_preview_capture"; label: string; notify: false; sourceExtension: "xyz"; lease: string }
   | { type: "update_geometry"; label: string; text: string; lease: string; notify: false }
-  | { type: "atom_drag"; label: string; enabled: boolean; lease: string; notify: false }
+  | { type: "atom_drag"; label: string; enabled: boolean; lease: string; notify: false; manipulate?: true }
   | { type: "atom_draw"; label: string; enabled: boolean; lease: string; notify: false }
   | { type: "select_command"; label: string; command: "all" | "none" | "invert" | "residues" | "enlarge"; notify: false }
   | { type: "select_command"; label: string; command: "atoms"; atoms: number[]; notify: false }

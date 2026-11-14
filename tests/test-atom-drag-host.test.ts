@@ -20,9 +20,12 @@ const body = { type: "atom-drag", phase: "move", lease: "lease-1", atoms: [2, 5]
 
 test("drag mode is an acknowledged action on the binding's own frame", async () => {
   const calls: unknown[] = [], signal = new AbortController().signal;
-  await setAtomDragMode(document, binding, true, async (...args) => { calls.push(args); }, signal);
+  await setAtomDragMode(document, binding, true, async (...args) => { calls.push(args); }, { signal });
+  await setAtomDragMode(document, binding, true, async (...args) => { calls.push(args); }, { manipulate: true });
   expect(calls).toEqual([[document, { type: "atom_drag", enabled: true, lease: "lease-1", label: "Atom drag", notify: false },
-    { target: binding.target, signal }]]);
+    { target: binding.target, signal }],
+  [document, { type: "atom_drag", enabled: true, lease: "lease-1", label: "Atom drag", notify: false, manipulate: true },
+    { target: binding.target, signal: undefined }]]);
   await expect(setAtomDragMode({ id: "doc-2" } as ViewerDocument, binding, false, async () => {})).rejects.toThrow(/another document/);
 });
 
