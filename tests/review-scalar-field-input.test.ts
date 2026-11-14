@@ -78,6 +78,21 @@ test('a surface takes its colours from the potential field of the same Cube', as
  } finally { view.close(); }
 });
 
+test('a slice draws one grid plane of the field coloured by the field itself', async () => {
+ const view = await setup();
+ try {
+  await view.send({ ...action(), isovalue: undefined, slice: { axis: 2, index: 3, min: -0.1, max: 0.1 } });
+  const [plane] = named(view.plugin, 'volume-representation-3d'), params = plane.transform.params;
+  expect([params.type.name, params.type.params.mode, params.type.params.dimension]).toEqual(['slice', 'grid', { name: 'z', params: 3 }]);
+  // The colouring volume is the sliced volume, so the plane shows the same field.
+  expect([params.colorTheme.name, params.colorTheme.params.volume.ref, params.colorTheme.params.coloring.params.domain])
+    .toEqual(['external-volume', plane.transform.parent, { name: 'custom', params: [-0.1, 0.1] }]);
+  expect(plane.obj?.data.repr).toBeDefined();
+  await expect(view.send({ ...action(), slice: { axis: 2, index: grid.dimensions[2], min: -0.1, max: 0.1 } })).rejects.toThrow('Invalid scalar field slice');
+  await expect(view.send({ ...action(pair), coloring, slice: { axis: 0, index: 0, min: -0.1, max: 0.1 } })).rejects.toThrow('Invalid scalar field slice');
+ } finally { view.close(); }
+});
+
 test('a field pair without its colouring, with another field list, or with an empty range is refused', async () => {
  const view = await setup();
  try {

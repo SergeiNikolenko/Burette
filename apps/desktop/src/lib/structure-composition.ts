@@ -41,6 +41,11 @@ export type StructureViewerAction =
        * through white to blue at `max`; `signed` is then ignored.
        */
       coloring?: { min: number; max: number };
+      /**
+       * Draws the grid plane `index` along cube axis `axis` (0 is the slowest) coloured red at `min`
+       * through white to blue at `max`, in place of isosurfaces; `isovalue` is then ignored.
+       */
+      slice?: { axis: 0 | 1 | 2; index: number; min: number; max: number };
       notify: false }
   | { type: "geometry_binding"; label: string; notify: false }
   | { type: "geometry_topology_scene_capture"; label: string; notify: false; lease: string }

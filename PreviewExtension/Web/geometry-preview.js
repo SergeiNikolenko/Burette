@@ -92,10 +92,12 @@
 
   // This private route accepts one generated Gaussian cube, in bohr: one field, or a surface field
   // and the field colouring it (a negative atom count and the line `2 1 2` after the atoms).
+  // One field may instead be drawn as a grid plane coloured by its values (`slice`).
   function validateField(action) {
     if (typeof action.cube !== 'string' || action.cube.length > 32 * 1024 * 1024) throw new Error('Scalar field exceeds 32 MiB.');
     if (!action.cube) return;
-    if (!Number.isFinite(action.isovalue) || action.isovalue <= 0) throw new Error('The isovalue must be positive.');
+    const slice = action.slice;
+    if (slice === undefined && (!Number.isFinite(action.isovalue) || action.isovalue <= 0)) throw new Error('The isovalue must be positive.');
     const lines = action.cube.split(/\r\n?|\n/u);
     const number = value => /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/u.test(value) ? Number(value) : NaN;
     const row = index => (lines[index] || '').trim().split(/\s+/u).map(number);
@@ -115,7 +117,10 @@
     if (values.length !== size * fields || values.some(value => !Number.isFinite(Math.fround(number(value))))) throw new Error('Invalid scalar field values.');
     const coloring = action.coloring;
     if (paired !== (coloring !== undefined)) throw new Error('A scalar field pair is an isosurface and the field colouring it.');
-    if (coloring !== undefined && (!coloring || !Number.isFinite(coloring.min) || !Number.isFinite(coloring.max) || coloring.min >= coloring.max)) throw new Error('Invalid scalar field colouring range.');
+    const validRange = range => range && Number.isFinite(range.min) && Number.isFinite(range.max) && range.min < range.max;
+    if (coloring !== undefined && !validRange(coloring)) throw new Error('Invalid scalar field colouring range.');
+    if (slice !== undefined && (paired || !validRange(slice) || ![0, 1, 2].includes(slice.axis)
+      || !Number.isInteger(slice.index) || slice.index < 0 || slice.index >= axes[slice.axis][0])) throw new Error('Invalid scalar field slice.');
   }
 
   // Negative potential red, positive blue, as Avogadro and GaussView draw electrostatic potential.
@@ -179,8 +184,21 @@
         type: { name: 'isosurface', params: { isoValue: { kind: 'absolute', absoluteValue: value }, alpha, ...(tint ? { tryUseGpu: false } : {}) } },
         colorTheme: colorTheme(fallback), sizeTheme: { name: 'uniform', params: { value: 1 } },
       });
-      surface(action.isovalue, color(action.positiveColor, 0x3b82f6));
-      if (action.signed !== false && !coloring) surface(-action.isovalue, color(action.negativeColor, 0xef4444));
+      const { slice } = action;
+      if (slice) {
+        // The plane of grid points `index` along cube axis `axis` (Mol*'s x is the cube's slowest axis),
+        // coloured by the field itself; the iso level below every value keeps the whole plane opaque.
+        volume.apply(transforms.Representation.VolumeRepresentation3D, {
+          type: { name: 'slice', params: { mode: 'grid', dimension: { name: 'xyz'[slice.axis], params: slice.index },
+            isoValue: { kind: 'absolute', absoluteValue: -Number.MAX_VALUE }, alpha } },
+          colorTheme: { name: 'external-volume', params: { volume: { ref: volume.ref }, defaultColor: 0xcccccc, normalOffset: 0, usePalette: false,
+            coloring: { name: 'absolute-value', params: { domain: { name: 'custom', params: [slice.min, slice.max] }, list: { kind: 'interpolate', colors: POTENTIAL_COLORS } } } } },
+          sizeTheme: { name: 'uniform', params: { value: 1 } },
+        });
+      } else {
+        surface(action.isovalue, color(action.positiveColor, 0x3b82f6));
+        if (action.signed !== false && !coloring) surface(-action.isovalue, color(action.negativeColor, 0xef4444));
+      }
       try {
         await commit(builder);
         assertCurrent();
