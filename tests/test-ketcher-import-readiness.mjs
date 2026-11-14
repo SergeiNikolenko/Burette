@@ -59,3 +59,19 @@ const loadedImports = imports.length;
 assert.equal(loadRuntime(), retry);
 assert.equal(imports.length, loadedImports, "mount reuses preloaded runtime");
 console.log("Ketcher runtime loading tests passed");
+
+// Every Indigo service assigns `onmessage` on the window's one worker when it is
+// created. The reaction editor's service must not silence the codec's service.
+const { shareIndigoWorker } = await import("../apps/desktop/src/lib/molecular-codecs.ts");
+const worker = {};
+const replies = [];
+const indigoService = (name) => {
+  worker.onmessage = (event) => replies.push(`${name}:${event.data}`);
+  return { worker };
+};
+shareIndigoWorker("codecs", indigoService("codecs"));
+shareIndigoWorker("editor", indigoService("editor"));
+shareIndigoWorker("editor", indigoService("remounted editor"));
+worker.onmessage({ data: "reply" });
+assert.deepEqual(replies, ["codecs:reply", "remounted editor:reply"]);
+console.log("Indigo worker sharing test passed");

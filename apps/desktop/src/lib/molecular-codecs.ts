@@ -12,15 +12,28 @@ export function loadCodecs() {
   })().catch(error => { codecs = undefined; throw error; });
 }
 
-// Indigo owns one worker per window. Share its service and serialize requests:
-// its conversion replies are matched by input text, without a request ID.
+// Indigo owns one worker per window, and every Indigo service claims it by
+// assigning `onmessage`: the last service created would leave the others
+// waiting for replies forever. Fan replies out to each owner's current service.
+const indigoReplyHandlers = new Map<'codecs' | 'editor', NonNullable<Worker['onmessage']>>();
+export function shareIndigoWorker<Service extends StructService>(owner: 'codecs' | 'editor', service: Service): Service {
+  const { worker } = service as unknown as { worker: Worker };
+  if (worker.onmessage) indigoReplyHandlers.set(owner, worker.onmessage);
+  worker.onmessage = event => {
+    for (const handler of indigoReplyHandlers.values()) handler.call(worker, event);
+  };
+  return service;
+}
+
+// Serialize the codec's requests: conversion replies are matched by input
+// text, without a request ID.
 let conversionService: Promise<StructService> | undefined;
 let conversionQueue: Promise<unknown> = Promise.resolve();
 export function convertStructure(struct: string, format: keyof typeof import('ketcher-core')['ChemicalMimeType'], molfileFormat?: 'v2000' | 'v3000', inputFormat: 'Mol' | 'UNKNOWN' = 'Mol') {
   const result = conversionQueue.then(async () => {
     const core = await loadCodecs();
     conversionService ??= import('ketcher-standalone/dist/binaryWasm').then(({ StandaloneStructServiceProvider }) => {
-      const service = new StandaloneStructServiceProvider().createStructService({}) as StructService & {
+      const service = shareIndigoWorker('codecs', new StandaloneStructServiceProvider().createStructService({})) as StructService & {
         getStandardServerOptions: (options?: StructServiceOptions) => StructServiceOptions;
       };
       // The standalone codec otherwise obtains these settings from a mounted
