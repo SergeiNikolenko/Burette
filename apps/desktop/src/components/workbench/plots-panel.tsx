@@ -1,5 +1,5 @@
 import { useMemo, useState, useId, type KeyboardEvent, type ReactNode } from "react";
-import { CartesianGrid, Line, LineChart, ReferenceDot, ReferenceLine, XAxis, YAxis } from "recharts";
+import { CartesianGrid, Line, LineChart, ReferenceDot, ReferenceLine, XAxis, YAxis, usePlotArea, useXAxisInverseScale } from "recharts";
 import { measureGeometry } from "../../../../../scripts/molecular-geometry.js";
 import type { ScientificDocument } from "../../lib/molecular-workbench/quantum";
 import type { ReactionPath } from "../../lib/molecular-workbench/scientific-types";
@@ -155,6 +155,8 @@ export function PlotsPanel({ document, science, sourceText }: { document: Viewer
     return path.points.map((point) => (point.energyHartree - reference) * factor);
   }, [path, factor]);
   const pathCursor = cursor !== null && path ? path.points.findIndex((point) => point.frame === cursor) : -1;
+  // An IRC opens as its points, so the per-frame energy chart would repeat the path chart.
+  const pathIsFrames = Boolean(path && path.points.length === science.frames.length && path.points.every((point, index) => point.frame === index));
   const current = cursor !== null ? science.frames[cursor] : null;
   const series = { axis, cursor, onSeek: seek };
 
@@ -183,7 +185,7 @@ export function PlotsPanel({ document, science, sourceText }: { document: Viewer
             hollow={path.points.map((point) => point.converged === false)}
             header={(value) => <h3 className="workbench-chart-title">{path.kind === "scan" ? "Scan" : "Reaction path"}, ΔE{value}</h3>} />
         ) : null}
-        {energies && science.frames.length > 1 ? (
+        {energies && science.frames.length > 1 && !pathIsFrames ? (
           <SeriesChart {...series} name="ΔE" unit={unit} values={energies} digits={digits}
             header={(value) => (
               <>
@@ -228,6 +230,29 @@ export function PlotsPanel({ document, science, sourceText }: { document: Viewer
 }
 
 /**
+ * Seeks to the point nearest the click along x. The chart's own click state reports the first point
+ * on a numeric axis, so the pointer position is mapped through the axis scale instead.
+ */
+function SeekLayer({ points, onSeek }: { points: { x: number; frame: number }[]; onSeek: (frame: number) => void }) {
+  const area = usePlotArea();
+  const invert = useXAxisInverseScale();
+  if (!area || !invert) return null;
+  return (
+    <rect x={area.x} y={area.y} width={area.width} height={area.height} fill="transparent"
+      onClick={(event) => {
+        const svg = event.currentTarget.ownerSVGElement;
+        if (!svg) return;
+        const box = svg.getBoundingClientRect();
+        // The svg can be scaled by window zoom, so convert client pixels into its own units.
+        const x = Number(invert(((event.clientX - box.left) * svg.width.baseVal.value) / box.width));
+        let best: { x: number; frame: number } | null = null;
+        for (const point of points) if (point.frame > 0 && (!best || Math.abs(point.x - x) < Math.abs(best.x - x))) best = point;
+        if (best) onSeek(best.frame - 1);
+      }} />
+  );
+}
+
+/**
  * One per-frame series with its own header. The current scene frame is marked;
  * while the scene plays these frames the chart is a keyboard slider (arrows step
  * one frame, Page Up and Page Down ten, Home and End jump to the ends) and a click
@@ -262,7 +287,7 @@ export function SeriesChart({ name, unit, values, digits, format = (value) => va
   const currentFrame = cursor !== null ? (path ? cursor : axis.frames?.[cursor] ?? cursor) : null;
   const frameCount = path ? axis.values.length : axis.frameCount ?? axis.values.length;
   const xLabel = (index: number) => (axis.kind === "time" ? `${axis.values[index].toFixed(3)} ps`
-    : path ? `${axis.label ?? ""} ${timeTicks ? timeTicks.format(axis.values[index]) : axis.values[index]}`.trim() : `Frame ${(axis.frames?.[index] ?? index) + 1}`);
+    : path ? `${axis.label ?? ""} ${Number(axis.values[index].toPrecision(6))}`.trim() : `Frame ${(axis.frames?.[index] ?? index) + 1}`);
   const valueText = (index: number) => {
     const value = values?.[index];
     const place = path ? xLabel(index) : `Frame ${(axis.frames?.[index] ?? index) + 1}`;
@@ -289,7 +314,7 @@ export function SeriesChart({ name, unit, values, digits, format = (value) => va
     // The line, its current-frame dot and the tooltip all read the series colour from this one config key.
     <ChartContainer config={{ value: { label, color: "var(--color-text)" } }} className="aspect-auto h-36 w-full">
       <LineChart data={data} margin={{ top: 6, right: 8, bottom: 0, left: 0 }}
-        onClick={(state: { activeTooltipIndex?: unknown }) => { const index = Number(state?.activeTooltipIndex); const point = Number.isInteger(index) ? data[index] : null; if (point && point.frame > 0) onSeek?.(point.frame - 1); }}>
+>
         <CartesianGrid vertical={false} />
         {timeTicks ? (
           <XAxis dataKey="x" type="number" domain={["dataMin", "dataMax"]} ticks={timeTicks.ticks.filter((tick) => tick >= axis.values[0] && tick <= axis.values.at(-1)!)} tickLine={false} axisLine={false} minTickGap={24} tickFormatter={timeTicks.format} />
@@ -306,6 +331,7 @@ export function SeriesChart({ name, unit, values, digits, format = (value) => va
         <Line type="linear" dataKey="value" name={label} stroke="var(--color-value)" strokeWidth={1.5} connectNulls={false} isAnimationActive={false}
           dot={path ? (props: { cx?: number; cy?: number; index?: number }) => <circle key={props.index} cx={props.cx} cy={props.cy} r={2.5} stroke="var(--color-value)" strokeWidth={1.5} fill={hollow?.[props.index ?? -1] ? "var(--bg-base)" : "var(--color-value)"} />
             : axis.frames ? { r: 2 } : false} />
+        {onSeek ? <SeekLayer points={data} onSeek={onSeek} /> : null}
         {cursor !== null && currentValue !== null ? <ReferenceDot x={axis.values[cursor]} y={currentValue} r={3} fill="var(--color-value)" stroke="none" /> : null}
       </LineChart>
     </ChartContainer>
