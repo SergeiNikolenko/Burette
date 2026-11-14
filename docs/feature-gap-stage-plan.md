@@ -219,7 +219,7 @@ for the browser shell and on a `macvm` guest on Orion for the packaged app.
 - **Done when:** rotating a butane end about C2–C3 changes only that dihedral
   (checked against the Geometry panel), and each select command picks the
   expected atoms.
-- **Done (456298677, a54e18bb9, 486e5afaf):** **Move** sits next to Draw in the
+- **Done (456298677, a54e18bb9, 486e5afaf, 05573c174):** **Move** sits next to Draw in the
   Edit panel toolbar, where the draft lives, instead of on the selection bar. A
   drag on an atom moves it, or the selection it belongs to; a drag on a bond
   turns its smaller side about the bond (a ring bond stays with Mol*); ⌥-drag on
