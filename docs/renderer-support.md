@@ -717,3 +717,24 @@ progress. The Edit panel turns each gesture into one graph-draft operation
 (`draw`), so every stroke is one Undo step, and renews the mode with a new lease
 whenever the draft reloads the scene.
 
+### Vector images and movies
+
+`export_svg` `{ transparent? }` returns `{ svg, atoms, bonds }` for the visible
+ball-and-stick, licorice (ball-and-stick with equal radii) and spacefill
+representations, from the current camera. The viewer loads `scene-media.js` on
+first use. Colours and radii come from each representation's own colour and size
+themes and its `sizeFactor` and `sizeAspectRatio`, so the drawing matches the
+render. Shapes are painted back to front: each atom is one `<circle>` with a
+radial gradient and a `<title>` such as `O1`, and each bond one `<g class="bond">`
+with a half in each atom's colour and one stroke per bond order. Other
+representation types are not drawn; a scene with none of the supported ones is
+refused.
+
+`record_movie` `{ seconds, fps, spin }` records the canvas with MediaRecorder for
+1–60 s at 24, 30 or 60 fps (12, 25 and 50 are accepted too) and returns
+`{ dataUri, type, bytes }`. The format is MP4 where the runtime records it (WebKit
+in the Mac app), otherwise WebM. With `spin` the camera turns once about the
+screen's vertical axis through its target and returns to its start; without it
+the view is recorded as shown, which captures vibrations and trajectories that
+play during the recording. The host offers both as File → Export → Vector
+Image… and Movie…, and in the command palette.

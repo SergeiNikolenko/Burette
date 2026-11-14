@@ -108,7 +108,7 @@ try {
   assert.equal(sequence.status, 200);
   assert.match(sequence.headers.get('content-type'), /^text\/javascript/);
   assert.match(await sequence.text(), /BuretteSequencePanel/);
-  for (const name of ['polymer-pick.js', 'atom-drag.js']) for (const path of [`/__burette/runtime/${name}`, `/@fs/workspace/PreviewExtension/Web/${name}`]) {
+  for (const name of ['polymer-pick.js', 'atom-drag.js', 'scene-media.js']) for (const path of [`/__burette/runtime/${name}`, `/@fs/workspace/PreviewExtension/Web/${name}`]) {
     const response = await fetch(`${base}${path}`, { headers });
     assert.equal(response.status, 200);
     assert.match(response.headers.get('content-type'), /^text\/javascript/);

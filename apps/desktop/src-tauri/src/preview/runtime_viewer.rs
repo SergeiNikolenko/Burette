@@ -1323,6 +1323,7 @@ impl AssetProfile {
                 "scene-file-actions.js",
                 "geometry-preview.js",
                 "atom-drag.js",
+                "scene-media.js",
                 "sdf-collection-scene.js",
                 "sequence-panel.js",
                 "svg-sanitizer.js",
@@ -1350,6 +1351,7 @@ impl AssetProfile {
                 "scene-file-actions.js",
                 "geometry-preview.js",
                 "atom-drag.js",
+                "scene-media.js",
                 "sequence-panel.js",
                 "svg-sanitizer.js",
                 "viewer.js",
@@ -1595,6 +1597,7 @@ fn viewer_html(
     let scene_files_js = asset_url(&assets.join("scene-file-actions.js"));
     let geometry_preview_js = asset_url(&assets.join("geometry-preview.js"));
     let atom_drag_js = asset_url(&assets.join("atom-drag.js"));
+    let scene_media_js = asset_url(&assets.join("scene-media.js"));
     let sdf_collection_js = asset_url(&assets.join("sdf-collection-scene.js"));
     let superposition_panel_js = asset_url(&assets.join("superposition-panel.js"));
     let color_picker_js = asset_url(&assets.join("color-picker.js"));
@@ -1637,6 +1640,7 @@ fn viewer_html(
     window.BuretteSceneFilesURL = {scene_files_js:?};
     window.BuretteGeometryPreviewURL = {geometry_preview_js:?};
     window.BuretteAtomDragURL = {atom_drag_js:?};
+    window.BuretteSceneMediaURL = {scene_media_js:?};
     window.BuretteSdfCollectionURL = {sdf_collection_js:?};
     window.BuretteMolstarURL = {molstar_js:?};
     window.BuretteRDKitJSURL = {rdkit_js:?};

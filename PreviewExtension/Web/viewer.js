@@ -707,7 +707,7 @@
 
   let geometryPreviewRequest = 0;
   let scalarFieldRequest = 0, scalarBindingRequest = 0;
-  let geometryPreviewLoading = null, atomDragLoading = null;
+  let geometryPreviewLoading = null, atomDragLoading = null, sceneMediaLoading = null;
   async function executeBuretteAgentAction(action, requestOwner) {
     const type = String(action?.type || '');
     if (type === 'workspace_scene_snapshot') {
@@ -933,6 +933,24 @@
         await geometryPreviewLoading;
       }
       return window.BuretteGeometryPreview.update(viewer, action, owner);
+    }
+    if (type === 'export_svg' || type === 'record_movie') {
+      const viewer = activeMolstarViewer();
+      if (!viewer?.plugin) throw new Error('Open a structure in the 3D view first.');
+      if (!window.BuretteSceneMedia) {
+        sceneMediaLoading ||= loadScript(runtimeURL('BuretteSceneMediaURL', './scene-media.js'), 'scene media', 10000).finally(() => { sceneMediaLoading = null; });
+        await sceneMediaLoading;
+      }
+      const media = window.BuretteSceneMedia;
+      if (type === 'export_svg') return { ok: true, result: media.svg(viewer.plugin, { transparent: action.transparent === true }) };
+      const seconds = Number(action.seconds), fps = Number(action.fps);
+      const { blob, type: mediaType } = await media.record(viewer.plugin, { seconds, fps, spin: action.spin === true });
+      const dataUri = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result); reader.onerror = () => reject(reader.error || new Error('The movie could not be read.'));
+        reader.readAsDataURL(blob);
+      });
+      return { ok: true, result: { dataUri, type: mediaType, bytes: blob.size } };
     }
     if (type === 'atom_drag' || type === 'atom_draw') {
       const viewer = activeMolstarViewer();

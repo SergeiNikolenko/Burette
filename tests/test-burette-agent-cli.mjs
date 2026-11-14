@@ -632,7 +632,7 @@ try {
   const hostOnlyViewerActions = [
     'workspace_scene_snapshot', 'scene_source_paths', 'scene_science_binding', 'scene_science_restore_ack', 'measurement_preview_capture', 'preview_geometry',
     'geometry_binding', 'update_geometry', 'scalar_field_binding', 'scalar_field_validate', 'show_scalar_field', 'select_source_atom', 'geometry_topology_scene_capture', 'geometry_topology_scene_validate',
-    'atom_drag', 'atom_draw', 'select_command', 'indexed_trajectory_scan', 'calculation_overlay', 'polymer_source_binding', 'polymer_pick_atom', 'polymer_source_release', 'polymer_source_validate',
+    'atom_drag', 'atom_draw', 'select_command', 'export_svg', 'record_movie', 'indexed_trajectory_scan', 'calculation_overlay', 'polymer_source_binding', 'polymer_pick_atom', 'polymer_source_release', 'polymer_source_validate',
   ];
   for (const privateAction of hostOnlyViewerActions) {
     assert.ok(!cliTypeList('SESSION_VIEWER_ACTION_TYPES').includes(privateAction), `${privateAction} must stay outside the public CLI`);
