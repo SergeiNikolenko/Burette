@@ -1,6 +1,7 @@
 import { openPlots, usePlotsAvailable, PLOTS_COMMAND } from "../../lib/workbench/plots-tool";
 import { openSmartsSelect, runSelectCommand, SELECT_COMMANDS } from "../../lib/workbench/select-commands";
 import { exportSceneSvg, openMovieDialog } from "../../lib/workbench/scene-media";
+import { openEnumerateLibrary } from "../../lib/library-enumeration-task";
 import { startAvogadroCommand, useAvogadroCommands } from "../../lib/extensions/avogadro-commands";
 import { openScientificSpectra, useScientificSpectraAvailable, SCIENTIFIC_SPECTRA_COMMAND } from "../../lib/workbench/scientific-spectra-tool";
 import { openOrbitals, useOrbitalsAvailable, ORBITALS_COMMAND } from "../../lib/workbench/orbitals-tool";
@@ -132,6 +133,8 @@ export function CommandPalette({
         { id: "export-svg", group: "Export", label: "Export image as SVG", description: "", run: () => exportSceneSvg(actions, state.activeDocument!) },
         { id: "record-movie", group: "Export", label: "Record movie…", description: "", run: () => openMovieDialog(state.activeDocument!) },
       ] : []),
+      // Building blocks can be pasted, so the library does not need an open collection.
+      { id: "enumerate-library", group: "Collection", label: "Enumerate library…", description: "", run: () => openEnumerateLibrary(state.activeDocument ?? null) },
       ...(state.activeDocument ? pluginCommands.map(entry => ({ id: `avogadro-command-${entry.id}`, group: "Extensions", label: entry.path.join(" › "),
         description: entry.plugin.name, run: () => startAvogadroCommand(entry, state.activeDocument!) })) : []),
       ...buildShellCommands(state, actions, query).map((command) => ({

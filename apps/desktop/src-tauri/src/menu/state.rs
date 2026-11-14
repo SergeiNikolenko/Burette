@@ -868,6 +868,13 @@ pub(super) fn sync_native_menu<R: Runtime>(
         set_enabled(&app, id, can_add_reaction_column)?;
     }
     set_enabled(&app, "collection.reaction.perform", can_add_derived_column)?;
+    // Enumerate Library reads the collection's molecules as building blocks, so
+    // it follows the same rule; the command palette offers it without one.
+    set_enabled(
+        &app,
+        "collection.reaction.enumerate",
+        can_add_derived_column,
+    )?;
     set_enabled(
         &app,
         "collection.reaction",

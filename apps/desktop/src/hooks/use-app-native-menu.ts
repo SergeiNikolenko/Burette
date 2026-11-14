@@ -26,6 +26,7 @@ import {
 } from "../lib/native-menu-paths";
 import type { DerivedColumnKind } from "../lib/derived-columns";
 import { nativeMenuAccelerators } from "../lib/keyboard-shortcuts";
+import { openEnumerateLibrary } from "../lib/library-enumeration-task";
 import { structureEditAvailable } from "../lib/workbench/graph-draft";
 import { geometryPanelAvailable } from "../lib/geometry-editing";
 import { requestOptimizationCommand, type OptimizationCommand } from "../lib/workbench/optimization-commands";
@@ -648,6 +649,11 @@ export function useAppNativeMenu({
         // Runs a reaction over the collection's molecules, so it opens a dialog
         // for the reaction rather than reading one off the rows.
         if (activeDocument && isGrid) actions.openPerformReaction(activeDocument.id);
+        return;
+      case "collection.reaction.enumerate":
+        // The result is a new collection, so this one only offers itself as the
+        // first building-block list.
+        openEnumerateLibrary(activeDocument && isGrid ? activeDocument : null);
         return;
       case "collection.transform.logarithmic":
         // The same dialog, opened with the transform already written: naming the

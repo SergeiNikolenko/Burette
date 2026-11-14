@@ -84,6 +84,7 @@ const FORWARDED_COMMANDS: &[&str] = &[
     "collection.reaction.extract-products",
     "collection.reaction.extract-transformation",
     "collection.reaction.perform",
+    "collection.reaction.enumerate",
     "collection.delete-rows.selected",
     "collection.delete-rows.duplicates",
     "collection.delete-columns",

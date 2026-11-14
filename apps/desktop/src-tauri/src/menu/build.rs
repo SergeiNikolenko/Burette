@@ -471,6 +471,10 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
         MenuItemBuilder::with_id("collection.reaction.perform", "Perform Reaction…")
             .enabled(false)
             .build(app)?;
+    let reaction_enumerate =
+        MenuItemBuilder::with_id("collection.reaction.enumerate", "Enumerate Library…")
+            .enabled(false)
+            .build(app)?;
     let reaction = SubmenuBuilder::with_id(app, "collection.reaction", "Reaction")
         .items(&[
             &reaction_extract_reactants,
@@ -480,6 +484,8 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
             &PredefinedMenuItem::separator(app)?,
             &reaction_add_smiles,
             &reaction_perform,
+            &PredefinedMenuItem::separator(app)?,
+            &reaction_enumerate,
         ])
         .build()?;
     let delete_rows_selected =

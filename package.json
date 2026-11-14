@@ -444,7 +444,7 @@
     "test:excited-states": "bun test tests/test-excited-states.test.ts",
     "test:scalar-field-ops": "bun test tests/test-scalar-field-ops.test.ts",
     "test:reaction-paths": "bun test tests/test-reaction-paths.test.ts",
-    "test:library-enumeration": "bun test tests/test-library-enumeration.test.ts",
+    "test:library-enumeration": "bun test tests/test-library-enumeration.test.ts tests/test-enumerate-library-dialog.test.tsx",
     "test:draw-strokes": "bun test tests/test-draw-strokes.test.tsx",
     "test:smarts-select": "bun test tests/test-smarts-select.test.ts",
     "test:scene-media": "bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-scene-svg-runtime.mjs"

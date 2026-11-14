@@ -9,6 +9,7 @@ import { InputExportDialogHost } from "./components/workbench/input-export-host"
 import { PropertiesDialogHost } from "./components/workbench/properties-dialog-host";
 import { SmartsSelectDialogHost } from "./components/workbench/smarts-select-dialog-host";
 import { MovieDialogHost } from "./components/workbench/movie-dialog-host";
+import { EnumerateLibraryDialogHost } from "./components/workbench/enumerate-library-dialog-host";
 import { useMoleculeStore } from "./stores/molecule-store";
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { AppLayout } from "./components/app-layout";
@@ -1381,6 +1382,7 @@ export default function App() {
       <PropertiesDialogHost actions={actions} />
       <SmartsSelectDialogHost actions={actions} onError={pushErrorStatus} />
       <MovieDialogHost actions={actions} />
+      <EnumerateLibraryDialogHost actions={actions} onStatus={pushStatus} />
       <PeptideBuilderDialogHost actions={actions} />
       <MetalComplexBuilderDialogHost actions={actions} />
       <NucleicBuilderDialogHost actions={actions} />
