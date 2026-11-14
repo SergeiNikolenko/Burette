@@ -16,7 +16,7 @@ import { useSourceEditing } from "../../lib/source-editing/context";
 import type { ShellActions } from "../types";
 import type { ViewerDocument } from "../../types";
 import { ShortcutTooltip } from "../shortcut-tooltip";
-import { ArrowCurvedRight, DotsHorizontal, FileBlank, Plus, Undo } from "../ui/app-icons";
+import { ArrowCurvedRight, DotsHorizontal, Edit, FileBlank, Plus, Undo } from "../ui/app-icons";
 import { Button } from "../ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import { Input } from "../ui/input";
@@ -38,6 +38,8 @@ import { BondTable } from "./structure-edit/bond-table";
 import { label, normalizeElement } from "./structure-edit/values";
 import { InsertFragmentDialog } from "./structure-edit/insert-fragment-dialog";
 import { AdjustPhDialog } from "./structure-edit/adjust-ph-dialog";
+import { DrawSettingsRow, useAtomDraw, type DrawSettings } from "./structure-edit/draw-tool";
+import { drawStroke, type DrawGesture } from "../../lib/atom-draw";
 import type { FragmentSource } from "../../lib/molecular-workbench/fragment-source";
 import "./workbench-layout.css";
 import "./structure-edit/structure-edit.css";
@@ -130,6 +132,8 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
   const [addElement, setAddElement] = useState("C");
   const [inputError, setInputError] = useState<string | null>(null);
   const [inserting, setInserting] = useState(false), [adjustingPh, setAdjustingPh] = useState(false);
+  // Avogadro's Draw tool: each click or drag in the 3D view is one Undo step.
+  const [drawing, setDrawing] = useState(false), [drawSettings, setDrawSettings] = useState<DrawSettings>({ order: 1, hydrogens: true });
   const viewerSelection = useViewerAtomSelection(document.id);
   const send = useRef(actions.runStructureViewerAction);
   send.current = actions.runStructureViewerAction;
@@ -150,6 +154,9 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
   const live = useGeometryLivePreview(document, autoBinding, actions.runStructureViewerAction,
     (caught) => setInputError(caught instanceof Error ? caught.message : String(caught)));
   const auto = useAutoOptimize(document, autoBinding, actions.runStructureViewerAction);
+  const draw = useRef<(gesture: DrawGesture) => void>(() => {});
+  useAtomDraw(document, actions.runStructureViewerAction, drawing && Boolean(editor) && !auto.running, session?.sourcePreview,
+    (gesture) => draw.current(gesture), setInputError);
   useEffect(() => {
     if (autoBase.current && autoBase.current !== editor?.current) { autoBase.current = null; auto.stop(); }
   }, [editor?.current]);
@@ -270,6 +277,14 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
     if (anchor !== null) edits.push({ kind: "set-bond", a: anchor, b: index, order: 1 });
     void apply(edits, () => [index]);
   };
+  draw.current = (gesture) => {
+    const element = normalizeElement(addElement);
+    if (!element) { setInputError("Enter an element symbol, such as C or Cl."); return; }
+    setInputError(null);
+    // A stroke renumbers atoms when hydrogens come and go, so the selection does not carry over.
+    void draft.apply({ kind: "draw", stroke: drawStroke(gesture, element, drawSettings.order), hydrogens: drawSettings.hydrogens })
+      .then((result) => { if (result) setSelection(NO_SELECTION); });
+  };
   const deleteSelected = () => {
     if (atoms.length) void apply([{ kind: "delete-atoms", indices: atoms }], () => []);
   };
@@ -328,6 +343,10 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
             <Button type="submit" variant="secondary" size="xs" disabled={busy}><Plus aria-hidden />Add</Button>
           </ShortcutTooltip>
         </form>
+        <ShortcutTooltip label="Draw atoms and bonds in the 3D view">
+          <Button type="button" variant={drawing ? "secondary" : "ghost"} size="xs" aria-pressed={drawing} disabled={auto.running}
+            onClick={() => { setInputError(null); setDrawing((current) => !current); }}><Edit aria-hidden />Draw</Button>
+        </ShortcutTooltip>
         <OptimizeButton atomCount={structure.atoms.length} elements={structure.atoms.map((atom) => atom.element)} constraintCount={constraints.length} unavailableReason={constraintError} size="xs" variant="secondary" disabled={busy}
           configureOpen={configuring} onConfigureOpenChange={setConfiguring}
           onOptimize={(method, forceField, maxIterations) => void optimize({ method, forceField, maxIterations })} onAutoOptimize={toggleAutoOptimize} />
@@ -364,6 +383,7 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
           </ShortcutTooltip>
         ) : null}
       </div>
+      {drawing ? <DrawSettingsRow settings={drawSettings} onChange={setDrawSettings} /> : null}
       {error && !inserting ? <p role="alert" className="workbench-error">{error}</p> : null}
       <InsertFragmentDialog open={inserting} onOpenChange={setInserting} target={atoms.length === 1 ? label(structure, atoms[0]) : null}
         busy={busy} error={error} onInsert={fragment => void insertFragment(fragment)} />

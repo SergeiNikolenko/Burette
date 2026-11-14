@@ -681,3 +681,27 @@ held atoms' rows replaced by the pointer positions, so an optimizer can move the
 other atoms without pulling the dragged ones back; drag frames never supersede a
 queued host update. A stale lease ends drag mode at the next press, and a drag
 whose lease goes stale posts `cancel`. The host side is `lib/atom-drag.ts`.
+
+### Drawing
+
+`atom_draw` `{ enabled, lease }` turns the Draw tool on or off in the active
+viewer; `atom-drag.js` holds both pointer tools. The canvas shows a crosshair.
+A plain left click on empty space, a click on an atom or a bond, and a drag from
+an atom each post one
+`{ type: 'atom-draw', lease, gesture, atoms?, position? }` to the host:
+
+| `gesture` | Press | `atoms` | `position` |
+| --- | --- | --- | --- |
+| `empty` | click on empty space | — | under the pointer, at the depth of the camera target |
+| `atom` | click on an atom | `[atom]` | — |
+| `drag` | drag from an atom into space | `[atom]` | under the pointer, at the atom's depth |
+| `bond` | drag from an atom onto another | `[from, to]` | — |
+| `bond-click` | click on a bond | `[a, b]` | — |
+
+Atoms are zero-based source indices and positions model coordinates in Å. A
+press that moves on empty space still rotates the camera and posts nothing;
+presses with a modifier key reach Mol* unchanged; Escape drops a drag in
+progress. The Edit panel turns each gesture into one graph-draft operation
+(`draw`), so every stroke is one Undo step, and renews the mode with a new lease
+whenever the draft reloads the scene.
+

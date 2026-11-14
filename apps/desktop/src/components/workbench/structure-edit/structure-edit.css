@@ -95,3 +95,15 @@
   height: 24px;
   font-size: 12px;
 }
+.structure-edit-draw {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+.structure-edit-draw-hydrogens {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}

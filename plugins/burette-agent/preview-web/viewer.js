@@ -934,14 +934,15 @@
       }
       return window.BuretteGeometryPreview.update(viewer, action, owner);
     }
-    if (type === 'atom_drag') {
+    if (type === 'atom_drag' || type === 'atom_draw') {
       const viewer = activeMolstarViewer();
       if (!window.BuretteAtomDrag) {
         atomDragLoading ||= loadScript(runtimeURL('BuretteAtomDragURL', './atom-drag.js'), 'atom dragging', 10000).finally(() => { atomDragLoading = null; });
         await atomDragLoading;
       }
       if (viewer !== activeMolstarViewer()) throw new Error('The structure changed. Read the current Geometry again.');
-      return { ok: true, result: window.BuretteAtomDrag.set(viewer, action, activeMolstarViewer, postHostMessage) };
+      const tools = window.BuretteAtomDrag;
+      return { ok: true, result: type === 'atom_draw' ? tools.draw(viewer, action, activeMolstarViewer, postHostMessage) : tools.set(viewer, action, activeMolstarViewer, postHostMessage) };
     }
     if (type === 'show_scalar_field' || type === 'scalar_field_binding' || type === 'scalar_field_validate') {
       const viewer = activeMolstarViewer();

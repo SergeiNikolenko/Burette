@@ -53,6 +53,7 @@ export type StructureViewerAction =
   | { type: "measurement_preview_capture"; label: string; notify: false; sourceExtension: "xyz"; lease: string }
   | { type: "update_geometry"; label: string; text: string; lease: string; notify: false }
   | { type: "atom_drag"; label: string; enabled: boolean; lease: string; notify: false }
+  | { type: "atom_draw"; label: string; enabled: boolean; lease: string; notify: false }
   // Model-local atom_index values, matching the viewer selection contract.
   | { type: "preview_geometry"; label: string; atoms: number[]; kind?: "bond" | "angle" | "dihedral"; notify: false }
   | { type: "open_components_menu"; label: string; query: string; componentLabel: string; kind: "polymer" | "ligand" | "ion" | "water"; x: number; y: number; notify: false }
