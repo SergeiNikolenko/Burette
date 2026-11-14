@@ -324,7 +324,7 @@
       const value = sourceRecordId ?? index;
       if (!Number.isSafeInteger(value) || value < 0) throw new RangeError('The pose must be a non-negative integer.');
       if (file !== undefined && (!Number.isSafeInteger(file) || file < 0)) throw new RangeError('The pose file must be a non-negative integer.');
-      return run({ type: 'set_sdf_pose_index', index, sourceRecordId, ligandIndex: sourceRecordId == null ? undefined : file ?? 0 });
+      return run({ type: 'set_sdf_pose_index', index, sourceRecordId, ligandIndex: sourceRecordId == null ? undefined : file ?? 0, keepPoseMode: true });
     },
     setFrame: ({ index }) => {
       if (!Number.isSafeInteger(index) || index < 0) throw new RangeError('The frame must be a non-negative integer.');

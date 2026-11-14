@@ -46,7 +46,7 @@ application theme explicitly when it can differ from the system theme.
 | Method | Effect |
 | --- | --- |
 | `open({ structure, poses?, trajectory?, structures?, activePose? })` | Resolves when the new scene is rendered. A subsequent open replaces the frame and cancels pending work. |
-| `setPose(index)` | Shows the zero-based displayed pose. The camera stays where it is. |
+| `setPose(index)` | Shows the zero-based displayed pose. The camera and the Single or All mode stay as they are. |
 | `setPoseRecord(sourceRecordId, file?)` | Selects a zero-based record from the zero-based pose file (default 0). |
 | `setFrame(index)`, `play()`, `pause()` | Steps or plays the frames of a trajectory or multi-model file. |
 | `setSmoothing(on)` | Turns Smooth motion on or off for multi-model PDB and multi-frame XYZ trajectories. |

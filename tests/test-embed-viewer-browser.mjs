@@ -121,6 +121,9 @@ try {
   await page.waitForFunction(() => events.at(-1)?.index === 3);
   assert.match(await visibility.getAttribute('aria-label'), /^Show /);
   assert.equal(await molecules.count(), 4);
+  await page.evaluate(() => viewer.setPose(0));
+  assert.deepEqual(await page.evaluate(() => events.at(-1)), sdfPose(0, 'all'), 'Host pose selection keeps All');
+  assert.match(await visibility.getAttribute('aria-label'), /^Show /);
 
   // Several structures: one scene, shown together, each file with its own scene-tree row.
   await page.evaluate(async () => {
