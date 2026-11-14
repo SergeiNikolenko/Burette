@@ -11,11 +11,11 @@ for (const [key, value] of Object.entries({ window: browser, document: browser.d
   Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
 }
 const science = parseScientificFile("ch2.cjson", readFileSync(new URL("fixtures/cjson/avogadro-ch2-triplet-uhf.cjson", import.meta.url), "utf8"));
-// Frontier orbitals as printed in the CJSON: four occupied levels in each spin channel.
-const frontier = new Map<number, "HOMO" | "LUMO">([[3, "HOMO"], [4, "LUMO"], [10, "HOMO"], [11, "LUMO"]]);
+// Frontier orbitals of the triplet: five occupied alpha levels and three occupied beta ones.
+const frontier = new Map<number, "HOMO" | "LUMO">([[4, "HOMO"], [5, "LUMO"], [9, "HOMO"], [10, "LUMO"]]);
 
 function Diagram({ onChange, shift = 0 }: { onChange: (index: number) => void; shift?: number }) {
-  const [selected, setSelected] = useState<number>(3);
+  const [selected, setSelected] = useState<number>(4);
   const orbitals = useMemo(() => science.orbitals.map((orbital) => ({ ...orbital, energyHartree: orbital.energyHartree + shift })), [shift]);
   return <OrbitalLevelDiagram orbitals={orbitals} frontier={frontier} selected={selected} selectable onSelect={(index) => { setSelected(index); onChange(index); }} />;
 }
@@ -30,21 +30,22 @@ test("an unrestricted CJSON draws alpha and beta levels with their energies, gap
   // The 1s core levels near −299 eV stay in the table; the diagram shows the valence region.
   expect(options.map((item) => item.getAttribute("aria-label")!.split(",")[0])).toEqual([
     ...[2, 3, 4, 5, 6, 7].map((n) => `Orbital ${n} α`), ...[2, 3, 4, 5, 6, 7].map((n) => `Orbital ${n} β`)]);
-  expect(option("Orbital 4 α").getAttribute("aria-label")).toBe("Orbital 4 α, HOMO, -11.122 eV, occupancy 1");
-  expect(option("Orbital 4 β").getAttribute("aria-label")).toBe("Orbital 4 β, HOMO, 8.494 eV, occupancy 1");
-  expect(options.map((item) => item.hasAttribute("data-occupied"))).toEqual([true, true, true, false, false, false, true, true, true, false, false, false]);
+  expect(option("Orbital 5 α").getAttribute("aria-label")).toBe("Orbital 5 α, HOMO, -9.843 eV, occupancy 1");
+  expect(option("Orbital 3 β").getAttribute("aria-label")).toBe("Orbital 3 β, HOMO, -13.491 eV, occupancy 1");
+  expect(option("Orbital 4 β").getAttribute("aria-label")).toBe("Orbital 4 β, LUMO, 8.494 eV, occupancy 0");
+  expect(options.map((item) => item.hasAttribute("data-occupied"))).toEqual([true, true, true, true, false, false, true, true, false, false, false, false]);
   // Every level carries its energy; the frontier ones also their name.
   const label = (name: string) => option(name).querySelector(".orbital-level-label")!;
-  expect([label("Orbital 4 α").textContent, label("Orbital 5 β").textContent, label("Orbital 2 α").textContent]).toEqual(["HOMO\u221211.12", "10.38LUMO", "\u221224.08"]);
+  expect([label("Orbital 5 α").textContent, label("Orbital 4 β").textContent, label("Orbital 2 α").textContent]).toEqual(["HOMO\u22129.84", "8.49LUMO", "\u221224.08"]);
   // The gap of each spin is shaded, and the same orbital of both spins is joined.
   expect(host.querySelectorAll(".orbital-diagram-gap")).toHaveLength(2);
   expect(host.querySelectorAll(".orbital-diagram-partner")).toHaveLength(6);
   expect([...host.querySelectorAll(".orbital-level-tag")].map((tag) => tag.textContent)).toEqual(["HOMO", "LUMO", "HOMO", "LUMO"]);
   expect([...host.querySelectorAll(".orbital-diagram-unit")].map((text) => text.textContent)).toEqual(["eV", "α", "β"]);
-  // Higher energy is higher on screen, and the 1.28 eV alpha gap stays visible.
+  // Higher energy is higher on screen, and alpha levels 1.28 eV apart stay distinct.
   const y = (name: string) => Number(option(name).querySelector(".orbital-level-bar")!.getAttribute("y1"));
   expect(y("Orbital 4 α") - y("Orbital 5 α")).toBeGreaterThan(4);
-  // The labels of that narrow gap do not overlap.
+  // The labels of those two close levels do not overlap.
   const labelY = (name: string) => Number(label(name).getAttribute("y"));
   expect(labelY("Orbital 4 α") - labelY("Orbital 5 α")).toBeGreaterThanOrEqual(12);
   const svg = host.querySelector("svg")!;
@@ -54,8 +55,8 @@ test("an unrestricted CJSON draws alpha and beta levels with their energies, gap
   await key("End");
   await act(async () => { option("Orbital 2 β").dispatchEvent(new MouseEvent("click", { bubbles: true })); });
   // Up from the alpha HOMO is its LUMO; Right lands on the beta level nearest to it in energy
-  // (orbital 3 β at −0.496 Eh for −0.362 Eh), and End is the highest beta level.
-  expect(chosen).toEqual([4, 9, 13, 8]);
+  // (orbital 6 β at 18.61 eV for 16.57 eV), and End is the highest beta level.
+  expect(chosen).toEqual([5, 12, 13, 8]);
   expect(svg.getAttribute("aria-activedescendant")).toBe(option("Orbital 2 β").id);
   await act(async () => root.unmount()); host.remove();
 });
@@ -74,7 +75,7 @@ test("spin partners pair by place in the channel when the reader numbers orbital
 test("levels glide to the energies of another frame and end exactly where a fresh diagram puts them", async () => {
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
-  const bar = (where: Element) => Number(where.querySelector('[aria-label^="Orbital 4 α,"] .orbital-level-bar')!.getAttribute("y1"));
+  const bar = (where: Element) => Number(where.querySelector('[aria-label^="Orbital 5 α,"] .orbital-level-bar')!.getAttribute("y1"));
   await act(async () => root.render(<Diagram onChange={() => {}} />));
   const before = bar(host);
   await act(async () => root.render(<Diagram onChange={() => {}} shift={0.01} />));
@@ -84,6 +85,6 @@ test("levels glide to the energies of another frame and end exactly where a fres
   // Shifting every level by one amount moves the range with them, so the bar keeps its place.
   expect(bar(host)).toBeCloseTo(bar(fresh), 6);
   expect(bar(host)).toBeCloseTo(before, 6);
-  expect(host.querySelector('[aria-label^="Orbital 4 α,"] .orbital-level-label')!.textContent).toBe("HOMO\u221210.85");
+  expect(host.querySelector('[aria-label^="Orbital 5 α,"] .orbital-level-label')!.textContent).toBe("HOMO\u22129.57");
   await act(async () => { root.unmount(); other.unmount(); }); host.remove();
 });

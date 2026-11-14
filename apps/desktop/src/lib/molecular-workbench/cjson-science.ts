@@ -129,7 +129,17 @@ export function readCjsonOrbitals(value: unknown, basis: GaussianShell[] | undef
   if (value.alphaCoefficients == null && value.betaCoefficients == null) return [];
   const alpha = orbitalColumns(value.alphaCoefficients, "alpha orbital coefficients", functions);
   const beta = orbitalColumns(value.betaCoefficients, "beta orbital coefficients", functions);
-  const unpaired = multiplicity - 1, alphaElectrons = electrons === undefined ? undefined : (electrons + unpaired) / 2;
+  // Avogadro writes multiplicity 1 whenever the reader it converted from kept none (Molden), also for
+  // radicals and triplets. Only a stated open shell that fits the electron count sets the unpaired
+  // electrons; otherwise the lowest spin orbitals of both channels fill, a tie going to alpha.
+  const unpaired = multiplicity - 1;
+  let alphaElectrons: number | undefined;
+  if (electrons !== undefined && unpaired > 0 && (electrons + unpaired) % 2 === 0) alphaElectrons = (electrons + unpaired) / 2;
+  else if (electrons !== undefined) {
+    const levels = [numbers(value.alphaEnergies, "orbital energies", alpha.length), numbers(value.betaEnergies, "beta orbital energies", beta.length)]
+      .flatMap((energies, channel) => energies.map(energy => ({ energy, channel }))).sort((a, b) => a.energy - b.energy || a.channel - b.channel);
+    alphaElectrons = levels.slice(0, electrons).filter(level => level.channel === 0).length;
+  }
   return [
     ...table(alpha, value.alphaEnergies, value.alphaOccupations, "alpha", 1, alphaElectrons),
     ...table(beta, value.betaEnergies, value.betaOccupations, "beta", 1, alphaElectrons === undefined ? undefined : electrons! - alphaElectrons),

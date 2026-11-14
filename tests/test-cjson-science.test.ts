@@ -45,12 +45,13 @@ test("an unrestricted CJSON written by Avogadro keeps both spins and evaluates i
   expect({
     spins: document.orbitals.map(orbital => orbital.spin).join(" "),
     energiesEv: document.orbitals.map(orbital => orbital.energyHartree * 27.211386245988),
-    // The file carries multiplicity 1 and no occupations, so four electrons of each spin fill.
+    // Avogadro wrote multiplicity 1 and no occupations for this triplet: the eight electrons fill the
+    // lowest spin orbitals, five alpha and three beta, as PySCF occupied them (avogadro-written/uhf.py).
     occupancy: document.orbitals.map(orbital => orbital.occupancy),
   }).toEqual({
     spins: "alpha alpha alpha alpha alpha alpha alpha beta beta beta beta beta beta beta",
     energiesEv: [...orbitals.alphaEnergies, ...orbitals.betaEnergies].map((energy: number) => expect.closeTo(energy, 9)),
-    occupancy: [1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0],
+    occupancy: [1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0],
   });
   // PySCF's own UHF alpha orbitals 3 and 4 at these points (Å; bohr^-3/2), from avogadro-written/uhf.py.
   const points: Vec3[] = [[0.3, 0.2, 0.4], [0, 0.6, -0.2], [-0.25, -0.5, 0.3], [0.1, 0, -0.6]];
@@ -58,6 +59,23 @@ test("an unrestricted CJSON written by Avogadro keeps both spins and evaluates i
   for (const [orbital, values] of Object.entries(pyscf)) {
     points.forEach((point, n) => expect(evaluateOrbital(document, Number(orbital), point)).toBeCloseTo(values[n], 6));
   }
+});
+
+test("an unrestricted CJSON without occupations fills whole spin orbitals: by a stated multiplicity, else lowest first", () => {
+  const source = JSON.parse(fixture("avogadro-ch2-triplet-uhf.cjson"));
+  const occupied = (change: (input: typeof source) => void) => {
+    const input = structuredClone(source); change(input);
+    const { orbitals } = parseScientificFile("ch2.cjson", JSON.stringify(input));
+    return (["alpha", "beta"] as const).map(spin => orbitals.filter(orbital => orbital.spin === spin).map(orbital => orbital.occupancy).join(""));
+  };
+  // A stated triplet and the energies agree.
+  expect(occupied(input => { input.properties.totalSpinMultiplicity = 3; })).toEqual(["1111100", "1110000"]);
+  // The cation: seven electrons never leave half an electron in each channel.
+  expect(occupied(input => { input.orbitals.electronCount = 7; })).toEqual(["1111000", "1110000"]);
+  // A stated quintet overrides the energy order.
+  expect(occupied(input => { input.properties.totalSpinMultiplicity = 5; })).toEqual(["1111110", "1100000"]);
+  // Identical channels are a closed shell.
+  expect(occupied(input => { input.orbitals.betaEnergies = input.orbitals.alphaEnergies; })).toEqual(["1111000", "1111000"]);
 });
 
 test("per-conformer vibrations written by Avogadro stay with the coordinate sets that carry them", () => {
