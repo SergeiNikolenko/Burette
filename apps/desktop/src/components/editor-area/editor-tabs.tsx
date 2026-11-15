@@ -580,7 +580,8 @@ export function EditorTabs({
           const textDocument = textFileLocation
             ? findIndexedDocument(state.textDocuments, textFileLocation, "first")
             : null;
-          const dirty = Boolean(tabDocument && state.dirtyGridDocuments?.has(tabDocument.id));
+          // A grid edit or a Geometry, Edit or Crystal draft not yet written to the file.
+          const dirty = Boolean(tabDocument && (state.dirtyGridDocuments?.has(tabDocument.id) || sourceEditing?.sessionForDocument(tabDocument)?.dirty));
           const isDragging = draggingTabId === tab.id;
           const selected = selectedTabIds.has(tab.id);
           const tabDropTarget = fileLocation
