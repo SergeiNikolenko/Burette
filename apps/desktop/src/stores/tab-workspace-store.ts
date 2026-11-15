@@ -51,6 +51,8 @@ type TabWorkspaceState = TabWorkspaceSnapshot & {
   setDockDocument: (tabId: string, area: DockArea, documentId: string | null) => void;
   setDockTool: (tabId: string, area: DockArea, tool: DockToolKind | null) => void;
   addDockDrop: (tabId: string, input: DockDropInput) => void;
+  mergeToolDrops: (tabId: string, drops: DockDroppedStructure[]) => void;
+  clearLegacyRight: (tabId: string) => void;
   pruneWorkspaces: (tabIds: string[]) => void;
   restoreSnapshot: (snapshot: TabWorkspaceSnapshot) => void;
 };
@@ -297,6 +299,8 @@ export const useTabWorkspaceStore = create<TabWorkspaceState>()(
         const items = dockDropItems(input);
         if (items.length === 0) return state;
         return updateWorkspace(state, input.area === "bottom" ? WINDOW_TOOLS_ID : tabId, (workspace) => {
+          const droppedStructures = [...items, ...workspace.droppedStructures].slice(0, MAX_DROPS);
+          if (input.area === "right") return { ...workspace, droppedStructures };
           const current = workspace[input.area];
           const tabs = current.tabs.some((tab) => tab.kind === input.tabKind)
             ? current.tabs
@@ -304,10 +308,19 @@ export const useTabWorkspaceStore = create<TabWorkspaceState>()(
           return {
             ...workspace,
             [input.area]: { ...current, open: true, tabs, activeTab: input.tabKind },
-            droppedStructures: [...items, ...workspace.droppedStructures].slice(0, MAX_DROPS),
+            droppedStructures,
           };
         });
       }),
+      mergeToolDrops: (tabId, drops) => set(state => updateWorkspace(state, tabId, workspace => ({
+        ...workspace,
+        droppedStructures: [...new Map([...workspace.droppedStructures, ...drops].map(drop => [drop.id, drop])).values()].slice(0, MAX_DROPS),
+      }))),
+      clearLegacyRight: (tabId) => set(state => updateWorkspace(state, tabId, workspace => ({
+        ...workspace,
+        right: defaultDockArea("right"),
+        droppedStructures: workspace.droppedStructures.filter(drop => drop.area !== "right"),
+      }))),
       pruneWorkspaces: (tabIds) => set((state) => {
         const live = new Set([...tabIds, WINDOW_TOOLS_ID]);
         const workspaces = Object.fromEntries(Object.entries(state.workspaces).filter(([tabId]) => live.has(tabId)));

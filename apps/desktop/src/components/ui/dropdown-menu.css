@@ -55,3 +55,34 @@
   }
   .atlas-menu-separator { margin: 4px 8px; height: 1px; flex-shrink: 0; background: var(--color-border); }
 }
+
+/* Workspace New tab menu, snapshot 26.1027. */
+.workspace-new-tab-menu {
+  width: 280px;
+  padding: 4px;
+  border-radius: 20px;
+  box-shadow: var(--shadow-xl-spread);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :is(
+    .atlas-menu-content,
+    [data-slot="dropdown-menu-sub-content"],
+    [data-slot="context-menu-content"],
+    [data-slot="context-menu-sub-content"]
+  )[data-state="open"] {
+    animation: atlas-menu-enter 100ms var(--cubic-enter, cubic-bezier(.19, 1, .22, 1)) both;
+  }
+  :is(.atlas-menu-content, [data-slot="dropdown-menu-sub-content"], [data-slot="context-menu-sub-content"])[data-state="closed"] {
+    pointer-events: none;
+    animation: atlas-menu-exit 90ms var(--cubic-exit, cubic-bezier(.8, 0, .4, 1)) both;
+  }
+}
+@keyframes atlas-menu-enter {
+  from { opacity: 0; scale: .97; }
+  to { opacity: 1; scale: 1; }
+}
+@keyframes atlas-menu-exit {
+  from { opacity: 1; scale: 1; }
+  to { opacity: 0; scale: .97; }
+}

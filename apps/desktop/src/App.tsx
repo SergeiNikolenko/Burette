@@ -280,8 +280,6 @@ export default function App() {
     bottomDockTabs,
     closeDockTab,
     documents,
-    rightDockActiveTab,
-    rightDockDocumentId,
     setDockActiveTab,
     setDockDocument,
     setDockOpen,
@@ -659,8 +657,6 @@ export default function App() {
     activeDocument,
     preferences,
     pushErrorStatus,
-    setDockActiveTab,
-    setDockOpen,
   });
   const activeSourceSession = sourceEditing.sessionForDocument(activeDocument);
   const sourceSaveEnabled = Boolean(activeDocument
@@ -1350,6 +1346,7 @@ export default function App() {
     databaseJobs,
     viewerLigandSelections,
     structureStories,
+    structureOverlayModes,
     structureOverlayMode: activeDocument ? structureOverlayModes[activeDocument.id] ?? "single" : "single",
     xtbStatus,
     xtbSettings,
@@ -1382,7 +1379,7 @@ export default function App() {
 
   return (
     <SourceEditingProvider value={sourceEditing}>
-      <WindowTitle activeDocument={activeDocument} />
+      <WindowTitle state={state} />
       <InputExportDialogHost actions={actions} />
       <PropertiesDialogHost actions={actions} />
       <SmartsSelectDialogHost actions={actions} onError={pushErrorStatus} />

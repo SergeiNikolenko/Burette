@@ -18,6 +18,24 @@ the same typography when they occupy one header band.
 
 ## Layers
 
+Desktop process launches route files and their agent session to the same normal
+workspace window: the focused workspace, then the last active workspace, then
+the main or another existing workspace. Preview windows are not implicit launch
+destinations. This also applies when startup restores a workspace without a
+`main` window. Agent attachments are queued by window label; a targeted
+`agent-session` notification tells the registered listener to drain
+`startup_agent_session`. The command consumes the pending attachment once,
+so another window cannot claim it and a listener that mounts late can still
+receive it.
+
+Ordinary external file opens (Finder, Dock, or process launch without an agent
+session) reuse a live normal workspace that already owns the normalized source
+path. Multi-file requests are grouped by existing owner; unopened files go to
+the last active workspace, and the first requested file determines which window
+is focused. Explicit agent-session launches keep their whole file batch in one
+workspace so session observation and actions do not span unrelated windows.
+Explicit new-view and window-transfer commands keep their own destinations.
+
 | Layer | Path | Responsibility |
 | --- | --- | --- |
 | Hosted public plugin | `apps/burette-public-plugin` | Public HTTPS MCP tools for one authorized attachment or public PDB entry, plus the sandboxed Burette workspace. |
@@ -77,6 +95,7 @@ result back to the user.
 | Coordinate converter | `bun scripts/burette-agent.mjs convert` | Converts bounded XYZ/ZMAT with absolute coordinates and full definitions. |
 | Workspace opener | `bun scripts/burette-agent.mjs open` | Opens browser preview, browser agent shell, or desktop app sessions. |
 | Workspace observer | `bun scripts/burette-agent.mjs observe` | Reads typed state from a session directory. |
+| Browser server shutdown | `bun scripts/burette-agent.mjs close --session-dir <session>` | Stops the CLI-owned server and its descendants; repeated close is safe. |
 | Workspace action | `bun scripts/burette-agent.mjs act` | Sends typed shell or Mol* actions and waits for completion. |
 | Viewer capture | `bun scripts/burette-agent.mjs capture` | Renders the active Mol* view to a PNG/JPEG/WebP file and prints its path, MIME type, size, and dimensions. |
 | 3D model export | `bun scripts/burette-agent.mjs export-model` | Writes the visible scene as glTF binary (default), PLY, OBJ, X3D, VRML or POV-Ray in scene coordinates (Å), up to 16 MiB, and prints its path, size, vertex and face counts. |
@@ -158,6 +177,26 @@ from the workbench scientific importer and does not add native dataset Undo UI.
 Browser means the in-app Browser plugin unless the user explicitly asks for an
 external browser. Computer/native UI control is a QA fallback, not the primary
 state channel.
+
+## Browser Server Lifetime
+
+CLI browser launches return a supervisor `processId`, `sessionDir`, `close`
+command, and `idleTimeoutMs`. Use `close --session-dir` after a check; SIGTERM
+to the returned supervisor also stops its Vite/Node descendants. Failed or
+cancelled startup is cleaned up before fallback or exit. Session files remain
+available for inspection. Control uses a private authenticated Unix socket
+recorded in `server.json`, never a saved PID that could belong to another process.
+
+Managed servers stop after ten minutes without client activity. An open SSE
+response, WebSocket, or unfinished request prevents idle shutdown; `/healthz`
+probes do not renew the timeout. `open --idle-timeout-ms <positive-integer>`
+changes the grace period. Manual foreground servers and desktop-app sessions
+are unaffected. Existing servers launched before this lifecycle need their
+original manual cleanup. Separate session directories remain isolated; a live
+session cannot be overwritten by another `open`.
+
+Run `node tests/test-agent-server-lifecycle.mjs` for real process-tree and idle
+shutdown coverage, plus `node tests/test-burette-agent-cli.mjs` for CLI coverage.
 
 ## Static Browser Shell Authorization
 

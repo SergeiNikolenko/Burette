@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 
-import { detectKetcherImportFormat, normalizeKetcherSmilesImport } from "../apps/desktop/src/lib/ketcher-import-format.ts";
+import { detectKetcherImportFormat, isReactionDrawing, normalizeKetcherSmilesImport } from "../apps/desktop/src/lib/ketcher-import-format.ts";
 import { deserializeKetcherMolfile, normalizeKetcherMolfileNames } from "../apps/desktop/src/lib/ketcher-workflow.ts";
 
 const molV2000 = [
@@ -27,6 +28,15 @@ assert.equal(detectKetcherImportFormat("<cml><molecule /></cml>"), "cml");
 assert.equal(normalizeKetcherSmilesImport("CCO ethanol\nCC propane"), "CCO.CC");
 assert.equal(normalizeKetcherSmilesImport("CCO CC"), "CCO.CC");
 assert.equal(normalizeKetcherSmilesImport("CCO ethanol"), "CCO ethanol");
+
+for (const file of ["mapped-amidation.rxn", "three-reactions.rdf"]) {
+  assert.equal(isReactionDrawing(readFileSync(new URL(`./fixtures/reactions/${file}`, import.meta.url), "utf8")), true);
+}
+assert.equal(isReactionDrawing("[CH3:1][OH:2]>>[CH2:1]=[O:2]"), true);
+assert.equal(isReactionDrawing("N->[Cu+2]<-N->[Cu+2]"), false);
+assert.equal(isReactionDrawing('{"root":{"nodes":[{"$ref":"mol0"},{"type":"arrow","data":{"mode":"open-angle","pos":[{"x":0,"y":0},{"x":3,"y":0}]}}]},"mol0":{"type":"molecule","atoms":[]}}'), true);
+assert.equal(isReactionDrawing(molV2000.replace("example", "example>>title")), false);
+assert.equal(isReactionDrawing('{"root":{"nodes":[{"$ref":"mol0"}]},"mol0":{"type":"molecule","atoms":[]}}'), false);
 
 // ketcher-core writes `'' + struct.name`, so SMILES-built structures export a "null" name line.
 const ketcherMolBody = "  Ketcher 09252612002D\n\n  1  0  0  0  0  0            999 V2000\nM  END";

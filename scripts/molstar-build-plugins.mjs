@@ -8,6 +8,7 @@ import { molstarXyzLatticePlugin } from './molstar-xyz-lattice.mjs';
 import { molstarCubeDatasetsPlugin } from './molstar-cube-datasets.mjs';
 import { molstarCubeUiHistoryPlugin } from './molstar-cube-ui-history.mjs';
 import { molstarResizeDrawPlugin } from './molstar-resize-draw.mjs';
+import { molstarHoverPickEventsPlugin } from './molstar-hover-pick.mjs';
 import { molstarSurfaceLoopPlugin } from './molstar-surface-loop.mjs';
 import { molstarSurfaceFieldCachePlugin } from './molstar-surface-field-cache.mjs';
 import { molstarRmsdPrecisionPlugin } from './molstar-rmsd-precision.mjs';
@@ -19,6 +20,6 @@ import { molstarLegacySnapshotPlugin } from './molstar-legacy-snapshot.mjs';
 export const molstarBuildPlugins = [
   molstarSourcePlugin, molstarXyzLatticePlugin, molstarCubeUiHistoryPlugin, molstarCubeDatasetsPlugin, molstarCubeUnitsPlugin,
   molstarV3000ChargesPlugin, molstarMolV3000Plugin, molstarStatePreconditionPlugin, molstarDcdTimePlugin,
-  molstarResizeDrawPlugin, molstarSurfaceFieldCachePlugin, molstarSurfaceLoopPlugin, molstarLegacySnapshotPlugin,
+  molstarResizeDrawPlugin, molstarHoverPickEventsPlugin, molstarSurfaceFieldCachePlugin, molstarSurfaceLoopPlugin, molstarLegacySnapshotPlugin,
   molstarPickReadbackPlugin, molstarAnisotropExportPlugin, molstarRmsdPrecisionPlugin,
 ];

@@ -4,6 +4,7 @@ import {
   fileBackedViewerDocumentPath,
   isAbsoluteNativeFilePath,
   nativeOpenDocumentPaths,
+  nativeTabDocumentPaths,
 } from "../apps/desktop/src/lib/native-menu-paths.ts";
 
 assert.equal(isAbsoluteNativeFilePath("/tmp/molecules.sdf"), true);
@@ -32,3 +33,13 @@ assert.deepEqual(nativeOpenDocumentPaths([
   "/tmp/molecules.sdf",
   "/tmp/notes.txt",
 ]);
+
+// Restored file tabs claim their original paths before any viewer loads.
+assert.deepEqual(nativeOpenDocumentPaths([], [], nativeTabDocumentPaths([
+  { location: { kind: "file", path: "/tmp/sheet.xyz", recoveryPath: "/tmp/checkpoint.xyz" } },
+  { location: { kind: "text-file", path: "/tmp/source.pdb" } },
+  { location: { kind: "document", path: "/tmp/report.pdf" } },
+  { location: { kind: "file", path: "/tmp/sheet.xyz" } },
+  { location: { kind: "file", path: "virtual:report" } },
+  { location: { kind: "settings" } },
+])), ["/tmp/sheet.xyz", "/tmp/source.pdb", "/tmp/report.pdf"]);

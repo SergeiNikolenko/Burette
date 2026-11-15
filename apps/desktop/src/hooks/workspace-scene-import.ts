@@ -8,16 +8,17 @@ import { isMolstarSceneImportSource, isStructureComparisonSource } from "../lib/
 import { isTauriRuntime } from "../lib/tauri";
 import { useSettingsStore } from "../stores/settings-store";
 
-export async function focusSceneDocument(document: ViewerDocument, select: (id: string) => void) {
+export async function focusSceneDocument(document: ViewerDocument, select: (id: string) => void, signal?: AbortSignal) {
+  signal?.throwIfAborted();
   select(document.id);
-  return waitForSceneDocument(document);
+  return waitForSceneDocument(document, signal);
 }
 
 async function waitForSceneDocument(document: ViewerDocument, signal?: AbortSignal) {
   for (let attempt = 0; attempt < 50; attempt++) {
     signal?.throwIfAborted();
     if (activeViewerIframeForDocument(document.id, document.renderer)?.contentWindow) {
-      if (document.renderer !== "molstar") return;
+      if (document.renderer !== "molstar" && document.renderer !== "xyzrender-external") return;
       try {
         const state = await requestViewerAction(document.id, { type: "workspace_scene_state" }, 1200);
         if (state.ready) return;

@@ -43,7 +43,7 @@ export function useGridWorkspaceMenu(state: ShellViewState, actions: ShellAction
       const opening = [
         ...take("open", "Preview"),
         ...take("molstar", "Interactive 3D"),
-        ...take("ketcher", "Ketcher"),
+        ...take("ketcher", "Molecular editor"),
       ];
       if (valid) opening.push(item("row-new-tab", records.length === 1 ? "New tab" : "In tabs", run(() => actions.openStructureRecords(records))));
       if (valid) {

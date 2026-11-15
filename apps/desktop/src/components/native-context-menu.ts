@@ -6,11 +6,11 @@ import { showRadixContextMenu } from "./radix-menu";
 export async function showNativeContextMenu(
   spec: MenuItemSpec[],
   at?: { x: number; y: number },
-  options: { forceWeb?: boolean; presentation?: MenuPresentation } = {},
+  options: { forceWeb?: boolean; presentation?: MenuPresentation; contentClassName?: string } = {},
 ): Promise<boolean> {
   if (!options.forceWeb) spec = withMenuIcons(spec);
   if (options.forceWeb || !isTauriRuntime()) {
-    await showRadixContextMenu(spec, at);
+    await showRadixContextMenu(spec, at, options.contentClassName);
     return true;
   }
 
@@ -21,7 +21,7 @@ export async function showNativeContextMenu(
     entry.kind === "swatches" || entry.kind === "number" || entry.kind === "select"
     || (entry.kind === "submenu" && hasControls(entry.items)));
   if (hasControls(spec)) {
-    await showRadixContextMenu(spec, at);
+    await showRadixContextMenu(spec, at, options.contentClassName);
     return true;
   }
 

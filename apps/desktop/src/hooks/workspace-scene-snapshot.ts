@@ -12,6 +12,7 @@ type SnapshotOptions = {
   sourceEditing: SourceEditingContextValue | null;
   sceneFileCount: number;
   scientificData: "require" | "allow-omission";
+  signal?: AbortSignal;
 };
 type SnapshotResult = { kind: "molx"; dataBase64: string } | { kind: "sheet"; sheet: unknown };
 
@@ -23,7 +24,8 @@ export async function captureWorkspaceSceneSnapshot(document: ViewerDocument, op
     if (!currentSource()) throw new Error("The scene source closed or changed while it was being saved. Save the scene again.");
   };
   confirmCurrent();
-  await focusSceneDocument(document, useMoleculeStore.getState().setActiveDocument);
+  await focusSceneDocument(document, useMoleculeStore.getState().setActiveDocument, options.signal);
+  options.signal?.throwIfAborted();
   confirmCurrent();
   const confirmRestore = await waitForSceneScienceRestore(document);
   const science = await prepareSceneScienceExport(document, {

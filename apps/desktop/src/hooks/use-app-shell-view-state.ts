@@ -77,6 +77,7 @@ type DockingShellViewState = Pick<ShellViewState, "poseReviewSelections">;
 type ViewerShellViewState = Pick<
   ShellViewState,
   "viewerLigandSelection" | "structureStory" | "structureOverlayMode"
+  | "viewerLigandSelections" | "structureStories" | "structureOverlayModes"
 >;
 
 type ChemistryShellViewState = Pick<
@@ -190,6 +191,9 @@ export function createAppShellViewStateSlices(input: AppShellViewStateInput): Ap
       poseReviewSelections: state.poseReviewSelections,
     },
     viewer: {
+      viewerLigandSelections,
+      structureStories,
+      structureOverlayModes: state.structureOverlayModes,
       viewerLigandSelection: state.activeDocument
         ? viewerLigandSelections[state.activeDocument.id] ?? null
         : null,

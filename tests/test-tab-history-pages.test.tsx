@@ -22,6 +22,49 @@ const { TabHistoryPages } = await import("../apps/desktop/src/components/editor-
 const { useSceneEditProtection } = await import("../apps/desktop/src/components/editor-area/use-scene-edit-protection");
 const { useAppViewerStateMessages } = await import("../apps/desktop/src/hooks/use-app-viewer-state-messages");
 
+test("a transferred scene isolates its camera checkpoint from an older view of the source file", async () => {
+  const { useAppRendererMessage } = await import("../apps/desktop/src/hooks/use-app-renderer-message");
+  const { rememberRendererViewState, rendererViewReloadOptions } = await import("../apps/desktop/src/lib/renderer-view-state");
+  const scene = { id: "transferred-camera", path: "/camera-source.pdb", recoveryPath: "/new-scene.molx" } as ViewerDocument;
+  const stale = { camera: { position: [0, 0, 56], radius: 0.01 } };
+  const current = { camera: { position: [10, -2, 8], radius: 5.6 } };
+  rememberRendererViewState(scene.path, stale);
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  const noop = () => {};
+  let read!: ReturnType<typeof useAppViewerStateMessages>["handleViewerStateMessage"];
+  let write!: ReturnType<typeof useAppRendererMessage>["handleRendererMessage"];
+  let response: any, reload: any;
+  const sender = { postMessage: (value: unknown) => { response = value; } } as unknown as MessageEventSource;
+  function Workspace() {
+    ({ handleViewerStateMessage: read } = useAppViewerStateMessages({
+      documents: [scene], activeDocument: scene, addDocuments: noop, updateDirtyGridDocument: noop,
+      openCommandPalette: noop, openDockTab: noop, toggleDockTab: noop, setPreference: noop,
+      setViewerLigandSelections: noop, setStructureOverlayModes: noop, setStructureStories: noop,
+      toggleSidebar: noop, toggleDock: noop,
+    }));
+    ({ handleRendererMessage: write } = useAppRendererMessage({
+      documents: [scene], activeDocument: scene, openDocuments: (_paths, options) => { reload = options; },
+      pendingViewerReloadDocumentIdRef: { current: null }, pendingViewerReloadOptionsRef: { current: null },
+      setPreference: noop, skipNextPreferenceRefreshRef: { current: false }, xyzrenderOrientationRefRef: { current: null },
+    }));
+    return null;
+  }
+  const request = () => read("burette-viewer", { type: "rendererViewStateRequest", documentId: scene.id, requestId: "camera" }, sender);
+  try {
+    await act(async () => root.render(<Workspace />));
+    request();
+    expect(response.body.viewState).toBeNull(); // Let the new archive's camera win.
+    write({ type: "rendererViewStateChanged", documentId: scene.id, viewState: current }, sender);
+    request();
+    expect(JSON.parse(response.body.viewState)).toEqual(current); // Remount keeps subsequent edits.
+    expect(JSON.parse(rendererViewReloadOptions(scene.path).rendererViewState!)).toEqual(stale);
+    write({ type: "setRenderer", documentId: scene.id, value: "molstar", viewState: current }, sender);
+    expect(JSON.parse(reload.rendererViewState)).toEqual(current);
+    expect(JSON.parse(rendererViewReloadOptions(scene.recoveryPath!).rendererViewState!)).toEqual(current);
+  } finally { await act(async () => root.unmount()); container.remove(); }
+});
+
 test("Back/Forward retains visited iframe and camera state, pauses hidden pages, bounds history and protects dirty grids", async () => {
   const container = document.createElement("div"); document.body.append(container);
   const root = createRoot(container);

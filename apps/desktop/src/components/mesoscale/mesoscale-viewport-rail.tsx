@@ -1,4 +1,4 @@
-import { X } from "../ui/app-icons";
+import { Sun as Lighting, X } from "../ui/app-icons";
 import type { ComponentType, MouseEvent } from "react";
 import type { ViewerDocument } from "../../types";
 import { requestMesoscale, useMesoscaleStore } from "../../stores/mesoscale-store";
@@ -6,7 +6,7 @@ import { showNativeContextMenu } from "../native-context-menu";
 import type { MenuItemSpec } from "../menu-types";
 import { ToolbarButton } from "../ui/toolbar-button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
-import { Aim, Lighting, Motion, Pick, Snapshot } from "../../preview-controls/viewer-viewport-toolbar";
+import { Aim, Motion, Pick, Snapshot } from "../../preview-controls/viewer-viewport-toolbar";
 
 function menuPoint(event: MouseEvent<HTMLButtonElement>) {
   const rect = event.currentTarget.getBoundingClientRect();

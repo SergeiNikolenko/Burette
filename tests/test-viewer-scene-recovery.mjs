@@ -156,7 +156,7 @@ console.log('Scene switching, hidden presets, aligned reloads and partial builde
 // Selection/All/pins must never clear or reload the receptor. Only selected
 // ligand structures belong in the live hierarchy; parsed offscreen data is cached.
 {
-  let clears = 0, parses = 0, receptorLoads = 0, receptorStyles = 0, appearances = 0, fail = false;
+  let clears = 0, parses = 0, receptorLoads = 0, receptorStyles = 0, waterStyles = 0, appearances = 0, fail = false;
   const live = new Set(), deleted = [], children = new Map();
   const pins = new Set(), selection = new Set(), references = new Set();
   const docking = { kind: 'docking', sdfPoseOverlayAvailable: true, receptorEntry: { label: 'receptor' },
@@ -187,6 +187,7 @@ console.log('Scene switching, hidden presets, aligned reloads and partial builde
     applySdfCollectionMolstarStyle: async (_viewer, _style, refs) => {
       if (refs.includes('receptor')) receptorStyles++;
     },
+    applyMolstarWaterLineRepresentation: async () => { waterStyles++; },
     applySdfCollectionMolstarRepresentations: async () => {
       if (fail) { fail = false; throw new Error('representation failed'); }
     },
@@ -237,8 +238,8 @@ console.log('Scene switching, hidden presets, aligned reloads and partial builde
   assert.deepEqual([...live].sort(), ['pose1', 'receptor'], 'a hidden stepper pose leaves the scene');
   context.dockingPinnedPoseState.activeHidden = false; await render(0);
   await context.resyncDockingSceneAfterRestyle(poseViewer);
-  assert.deepEqual({ clears, receptorLoads, receptorStyles, camera: camera.view, manualReset: camera.props.camera.manualReset },
-    { clears: 1, receptorLoads: 1, receptorStyles: 1, camera: { zoom: 3, rotation: [1, 2, 3] }, manualReset: false });
+  assert.deepEqual({ clears, receptorLoads, receptorStyles, waterStyles, camera: camera.view, manualReset: camera.props.camera.manualReset },
+    { clears: 1, receptorLoads: 1, receptorStyles: 1, waterStyles: 1, camera: { zoom: 3, rotation: [1, 2, 3] }, manualReset: false });
   selection.clear(); pins.clear();
   for (let i = 0; i < 8; i++) await render(i);
   assert.ok(context.activeDockingPoseCollectionState.layers.size <= 5, 'inactive parsed cache is bounded');

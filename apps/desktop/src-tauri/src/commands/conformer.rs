@@ -1539,7 +1539,7 @@ fn should_prepare_crest_input_with_openbabel(input_path: &Path) -> bool {
     )
 }
 
-fn should_generate_crest_input_3d(input_text: &str) -> bool {
+pub(super) fn should_generate_crest_input_3d(input_text: &str) -> bool {
     let stats = sdf_atom_block_stats(input_text);
     stats.atom_count > 0 && !stats.has_non_planar_3d_coordinates
 }

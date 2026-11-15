@@ -121,7 +121,7 @@ if core is not None:
     else:
         core_match = mol.GetSubstructMatch(core)
         if len(core_match) != core.GetNumAtoms():
-            sys.stderr.write("Cannot preserve the original 3D pose because the original core no longer matches the current Ketcher sketch.")
+            sys.stderr.write("Cannot preserve the original 3D pose because the original core no longer matches the current sketch.")
             sys.exit(4)
 
 def conformer_plane_thickness(value, conf_id):

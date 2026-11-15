@@ -251,10 +251,16 @@ function inputTarget(target: EventTarget | null) {
 
 function watchInput() {
   const record = (event: Event) => {
-    lastInputAt = perfEventTime(event);
-    tracePerf(`input:${event.type}`, { at: lastInputAt, detail: { target: inputTarget(event.target) } });
+    const at = perfEventTime(event);
+    if (event.type === "pointerdown" || event.type === "pointerup" || event.type === "keydown") lastInputAt = at;
+    const pointer = event instanceof PointerEvent ? {
+      pointerId: event.pointerId, pointerType: event.pointerType,
+      button: event.button, buttons: event.buttons,
+      x: event.clientX, y: event.clientY, trusted: event.isTrusted,
+    } : {};
+    tracePerf(`input:${event.type}`, { at, detail: { target: inputTarget(event.target), ...pointer } });
   };
-  for (const type of ["pointerdown", "pointerup", "keydown"]) {
+  for (const type of ["pointerdown", "pointerup", "pointercancel", "gotpointercapture", "lostpointercapture", "keydown"]) {
     document.addEventListener(type, record, { capture: true, passive: true });
   }
 }

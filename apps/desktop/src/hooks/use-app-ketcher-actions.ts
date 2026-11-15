@@ -127,7 +127,7 @@ export function useAppKetcherActions({
         setStructureDragActive(false);
         setKetcherDraftMolfile(draftMolfile);
         setKetcherImportRequest(null);
-        pushStatus(`Opened ${fragment.title.trim() || "structure"} in Ketcher`);
+        pushStatus(`Opened ${fragment.title.trim() || "structure"} in the molecular editor`);
         return;
       }
     }
@@ -196,7 +196,7 @@ export function useAppKetcherActions({
       pushStatus(`Saved ${basename(savedPath)}`);
       return { status: "saved", path: savedPath };
     } catch (error) {
-      pushErrorStatus(error, "Save Ketcher export failed");
+      pushErrorStatus(error, "Save molecular editor export failed");
       return { status: "failed", message: error instanceof Error ? error.message : String(error) };
     }
   }, [pushErrorStatus, pushStatus]);
@@ -212,7 +212,7 @@ export function useAppKetcherActions({
       setStructureDragActive(false);
       setKetcherDraftMolfile(draftMolfile);
       setKetcherImportRequest(null);
-      pushStatus(`Opened ${cleanTitle} in Ketcher`);
+      pushStatus(`Opened ${cleanTitle} in the molecular editor`);
       return;
     }
     const request: KetcherImportRequest = {
@@ -250,7 +250,9 @@ export function useAppKetcherActions({
     if (isGridDocumentCloseTransitionActive(request.documentId)) {
       throw new Error("Wait for the collection update to finish before applying the grid edit.");
     }
-    const ketcherTabId = tabs.find((tab) => tab.location.kind === "ketcher")?.id ?? null;
+    // A docked editor stays open beside the collection and follows its selection.
+    const ketcherTab = tabs.find((tab) => tab.location.kind === "ketcher");
+    const ketcherTabId = ketcherTab && !ketcherTab.pane ? ketcherTab.id : null;
     const iframe = activeViewerIframeForDocument(request.documentId, "grid2d");
     if (!iframe?.contentWindow) {
       pushStatus("Grid edit target is not open.", "error");
@@ -277,7 +279,7 @@ export function useAppKetcherActions({
         closeTab(ketcherTabId);
       }, 0);
     }
-    pushStatus("Saving Ketcher edit to collection...");
+    pushStatus("Saving molecular editor edit to collection...");
   }, [closeTab, pushStatus, setActiveDocument, tabs, updateDirtyGridDocument]);
 
   const clearKetcherImportRequest = useCallback((id: number) => {
@@ -334,7 +336,7 @@ export function useAppKetcherActions({
         : "auto";
     const reloadOptions = request.target === "collection" ? undefined : {};
     const effectivePreferences = { ...preferences, rendererMode };
-    pushStatus("Opening Ketcher sketch...");
+    pushStatus("Opening molecular editor sketch...");
     try {
       if (request.target === "collection" && request.collectionTargetPath) {
         if (isTauriRuntime()) {
@@ -500,7 +502,7 @@ export function useAppKetcherActions({
         `Opened Ketcher sketch in ${request.target === "grid" ? "grid" : request.target === "molstar" ? "Molstar" : "xyzrender"}`,
       );
     } catch (error) {
-      pushErrorStatus(error, "Open Ketcher sketch failed");
+      pushErrorStatus(error, "Open molecular editor sketch failed");
       throw error;
     }
   }, [addDocuments, documents, isDirtyGridDocument, openDocuments, openDocumentsInActiveTab, openTextDocuments, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);

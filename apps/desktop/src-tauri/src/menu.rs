@@ -37,6 +37,10 @@ pub(crate) fn window_destroyed<R: tauri::Runtime>(app: &tauri::AppHandle<R>, win
     events::window_destroyed(app, window_label);
     if let Some(registry) = app.try_state::<OpenDocumentRegistry>() {
         registry.remove_window(window_label);
+        let app = app.clone();
+        let handle = app.clone();
+        let _ =
+            app.run_on_main_thread(move || crate::startup::flush_external_open_documents(&handle));
     }
     let has_other_window = app
         .webview_windows()
@@ -48,9 +52,7 @@ pub(crate) fn window_destroyed<R: tauri::Runtime>(app: &tauri::AppHandle<R>, win
 }
 
 /// Quit the whole application, exactly like the "Quit Burette" menu item and
-/// Cmd+Q. The window close button routes here so it closes the app rather than
-/// leaving a windowless process alive (which macOS does by default and which
-/// this app previously recreated a window from).
+/// Cmd+Q. Closing a window uses its own preflight and does not quit on macOS.
 #[tauri::command]
 pub(crate) fn request_app_quit<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
     quit::request_quit(&app);

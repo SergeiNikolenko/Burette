@@ -2,10 +2,12 @@ import { existsSync, watch } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { ViteDevServer } from "vite";
+import { installAgentServerIdleTimeout } from "../../../../scripts/agent-server-idle.mjs";
 
 import { readJsonBody, sendJson, sendJsonError } from "./http";
 
 export function registerBrowserDevAgentSessionRoute(server: ViteDevServer) {
+  installAgentServerIdleTimeout(server.httpServer);
   server.middlewares.use("/__burette/agent-session/", async (req, res) => {
     const sessionDir = process.env.BURETTE_AGENT_SHELL_SESSION_DIR
       ? resolve(process.env.BURETTE_AGENT_SHELL_SESSION_DIR)

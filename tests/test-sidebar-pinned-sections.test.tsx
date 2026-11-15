@@ -12,6 +12,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const { createRoot } = await import("react-dom/client");
 const { FileBrowser } = await import("../apps/desktop/src/components/sidebar/file-browser");
 const { TooltipProvider } = await import("../apps/desktop/src/components/ui/tooltip");
+const { ToolPage } = await import("../apps/desktop/src/components/workspace-panes/tool-page");
 
 test("folders move between Pinned and Projects without duplicate root rows; collapse and search keep working", async () => {
   const host = document.createElement("div"); document.body.append(host);
@@ -45,5 +46,24 @@ test("folders move between Pinned and Projects without duplicate root rows; coll
     await click("Unpin Collections"); expect(rows()).toEqual({ Projects: ["Samples", "Collections"] });
     await click("Pin Samples"); await click("Pin Collections");
     await render("collections"); expect(rows()).toEqual({ Pinned: ["Collections"], Projects: [] });
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+test("a standalone Files tab renders populated project rows and opens their pin controls", async () => {
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  const project = { id: "project:/fixtures/Samples", rootPath: "/fixtures/Samples", title: "Samples",
+    subtitle: null, isExplicit: true, isPinned: false, isActive: false, items: [], matchText: "samples" } satisfies SidebarProject;
+  const state = { buildInfo: { isAgentShell: true }, documents: [], tabs: [], activeTabId: null, projectNameOverrides: {}, expandedProjectIds: [],
+    sidebarQuery: "", projectsOpen: true, sidebarProjects: [project] } as unknown as ShellViewState;
+  const pinned: string[] = [];
+  const actions = { togglePinnedProjectRoot: (path: string) => pinned.push(path), setStructureDragActive() {} } as unknown as ShellActions;
+  try {
+    await act(async () => root.render(<ToolPage location={{ kind: "tool", tool: "files", area: "right" }} tabId="files"
+      state={state} actions={actions} isActive />));
+    const pin = host.querySelector<HTMLButtonElement>('button[aria-label="Pin Samples"]');
+    expect(pin).not.toBeNull();
+    await act(async () => pin!.click());
+    expect(pinned).toEqual([project.rootPath]);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });

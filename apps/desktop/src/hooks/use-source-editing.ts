@@ -13,7 +13,8 @@ import type { DockTabKind } from "../lib/dock";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm as confirmDialog, message as messageDialog } from "@tauri-apps/plugin-dialog";
-import type { PreparedGeometryTopology, SourceEditingBeginOptions, DraftUpdateOptions, SourceEditingContextValue, SourceEditingView, SourcePreviewState } from "../lib/source-editing/context";
+import type { PreparedGeometryTopology, SourceEditingBeginOptions, DraftUpdateOptions, SourceEditingContextValue, SourceEditingView, SourcePreviewState, SourceEditingTransfer } from "../lib/source-editing/context";
+import { captureSourceEditorView } from "../lib/source-editing/view-state";
 import { SourcePreviewAdapter } from "../lib/source-preview/adapter";
 import type { SourcePreviewCandidate, SourcePreviewIdentity } from "../lib/source-preview/types";
 import { isBrowserDraftSource, openBrowserDevTextDocument } from "../lib/browser-dev-documents";
@@ -28,6 +29,7 @@ import { measurementPreviewTarget, measurementPreviewTransfer } from "../lib/wor
 import { prepareDeferredViewerRuntime } from "./use-deferred-viewer-runtime";
 import type { ViewerDocument, ViewerPreferences } from "../types";
 import { classifySourceShape, sourceDraftValidationError, sourceNotEditableMessage } from "../lib/source-editing/policy";
+import { openRightTool } from "../lib/right-workspace-panel";
 
 const LIVE_PREVIEW_LIMIT = 1_000_000;
 const SOURCE_EDIT_LIMIT = 3_000_000;
@@ -99,8 +101,6 @@ type UseSourceEditingOptions = {
   activeDocument: ViewerDocument | null;
   preferences: ViewerPreferences;
   pushErrorStatus: (error: unknown, prefix?: string, details?: string[]) => void;
-  setDockOpen: (area: "right" | "bottom", open: boolean) => void;
-  setDockActiveTab: (area: "right" | "bottom", kind: DockTabKind) => void;
 };
 
 function sourceOpeningTicket() {
@@ -139,8 +139,6 @@ export function useSourceEditingController({
   activeDocument,
   preferences,
   pushErrorStatus,
-  setDockActiveTab,
-  setDockOpen,
 }: UseSourceEditingOptions): SourceEditingContextValue & {
   ownsCurrentSourceFrame: (document: ViewerDocument, frame: HTMLIFrameElement) => boolean;
 } {
@@ -323,7 +321,7 @@ export function useSourceEditingController({
         }
         if (logicalXyzGeometry) { cancelGeometryPreview(document.id); updateSession(document.path, current => ({ ...current, geometryBinding: { ...suppliedBinding, target: geometryTarget! } })); }
       }
-      if (beginOptions?.reveal !== false) { setDockOpen("right", true); setDockActiveTab("right", revealTab); }
+      if (beginOptions?.reveal !== false) openRightTool(revealTab, document.path);
       return;
     }
     // Logical XYZ is admitted only by Geometry; graph and crystal sources keep their real-format preview lane.
@@ -454,7 +452,7 @@ export function useSourceEditingController({
       };
       commitSessions((current) => ({ ...current, [document.path]: session }));
       unusedHandleId = null;
-      if (beginOptions?.reveal !== false) { setDockOpen("right", true); setDockActiveTab("right", revealTab); }
+      if (beginOptions?.reveal !== false) openRightTool(revealTab, document.path);
     } catch (error) {
       if (!isOpeningCurrent()) return;
       const parsed = parseNativeSourceError(error);
@@ -469,7 +467,7 @@ export function useSourceEditingController({
       if (openingSourceTokensRef.current.get(document.id) === token) openingSourceTokensRef.current.delete(document.id);
       token.complete();
     }
-  }, [cancelGeometryPreview, clearStagingWindows, commitSessions, preferences, pushErrorStatus, recoverRetiredSessions, retireReplacedSession, setDockActiveTab, setDockOpen, updateSession]);
+  }, [cancelGeometryPreview, clearStagingWindows, commitSessions, preferences, pushErrorStatus, recoverRetiredSessions, retireReplacedSession, updateSession]);
 
   const prepareGeometryTopology = useCallback(async (document: ViewerDocument, target: ImportedRevision, binding: GeometryBinding) => {
     const session = sessionsRef.current[document.path], lifetime = topologyLifetime.current;
@@ -570,13 +568,18 @@ export function useSourceEditingController({
       }
       const previewTitle = logicalSourceFor(document.id)
         ? `${session.title.replace(/\.[^.]+$/u, "")}.${session.extension}` : session.title;
+      // Restored and transferred documents can differ from the global default.
+      // Keep the staged runtime compatible with this document's scene owner.
+      const rendererMode = document.renderer === "molstar" || document.renderer === "grid2d" || document.renderer === "xyzrender-external"
+        ? document.renderer : preferences.rendererMode;
+      const previewPreferences = { ...preferences, rendererMode };
       const candidateDocument = isTauriRuntime()
         ? await invoke<ViewerDocument>("open_text_structure", {
           request: { title: previewTitle, extension: session.extension, text: targetContent },
-          preferences,
+          preferences: previewPreferences,
           reloadOptions,
         })
-        : await openBrowserDevTextDocument(previewTitle, session.extension, targetContent, preferences, reloadOptions, document.id);
+        : await openBrowserDevTextDocument(previewTitle, session.extension, targetContent, previewPreferences, reloadOptions, document.id);
       if (!matchesTarget()) return;
       const identity: SourcePreviewIdentity = {
         documentId: document.id,
@@ -786,6 +789,12 @@ export function useSourceEditingController({
         });
       };
       const applySavedRevision = (revision: FileRevision) => {
+        const store = useMoleculeStore.getState();
+        const saved = store.documents.find(candidate => candidate.id === document.id);
+        if (saved?.recoveryPath) {
+          const { recoveryPath: _recoveryPath, ...currentSource } = saved;
+          store.replaceDocument(saved.id, currentSource);
+        }
         updateSession(document.path, (current) => current.sessionId !== session.sessionId || !ownsSource(current) ? current : ({
           ...current,
           expectedRevision: revision,
@@ -936,7 +945,7 @@ export function useSourceEditingController({
     for (const adapter of adaptersRef.current.values()) adapter.dispose();
   }, []);
 
-  const closeDocuments = useCallback(async (documentIds: string[]) => {
+  const closeDocuments = useCallback(async (documentIds: string[], transferred = false) => {
     const wanted = new Set(documentIds);
     if (!wanted.size) return true;
     if (documentIds.some(id => closingDocumentIdsRef.current.has(id))) return false;
@@ -969,7 +978,7 @@ export function useSourceEditingController({
       const retired = targets.filter(session => session.dirty && !ownsSource(session));
       if (retired.length) return await recoverRetiredSessions(retired);
       const dirtyCount = targets.filter((session) => session.dirty).length;
-      if (dirtyCount > 0) {
+      if (dirtyCount > 0 && !transferred) {
         const text = dirtyCount === 1
           ? "Discard the unsaved source edit and close this document?"
           : `Discard unsaved source edits in ${dirtyCount} documents and close them?`;
@@ -1019,6 +1028,34 @@ export function useSourceEditingController({
   }), [beginEditing, preparePreview]);
   useBrowserSourceRecovery(activeDocument, checkpointActions, pushErrorStatus);
 
+  const beginTransfer = useCallback((document: ViewerDocument): SourceEditingTransfer | null => {
+    const session = sessionsRef.current[document.path];
+    if (closingDocumentIdsRef.current.has(document.id) || openingSourceTokensRef.current.has(document.id)
+      || session?.saving || savingPathsRef.current.has(document.path)) throw new Error("Wait for source editing to finish before moving this tab.");
+    closingDocumentIdsRef.current.add(document.id);
+    if (!session) return null;
+    return { path: session.path, content: session.content, baseContent: session.baseContent,
+      viewState: captureSourceEditorView(session.path),
+      expectedRevision: session.expectedRevision ? { ...session.expectedRevision } : null };
+  }, []);
+
+  const finishTransfer = useCallback(async (document: ViewerDocument, committed: boolean) => {
+    if (!closingDocumentIdsRef.current.delete(document.id)) return false;
+    return committed ? closeDocuments([document.id], true) : true;
+  }, [closeDocuments]);
+
+  const receiveTransfer = useCallback(async (document: ViewerDocument, snapshot: SourceEditingTransfer) => {
+    if (snapshot.path !== document.path || sessionsRef.current[document.path]) throw new Error("This source is already being edited in the receiving window.");
+    await beginEditing(document);
+    const session = sessionsRef.current[document.path];
+    if (!session) throw new Error("The receiving window could not open source editing.");
+    updateSession(document.path, current => ({ ...current, content: snapshot.content,
+      viewState: snapshot.viewState,
+      baseContent: snapshot.baseContent, expectedRevision: snapshot.expectedRevision,
+      dirty: snapshot.content !== snapshot.baseContent, revision: current.revision + 1,
+      previewState: "manual", diagnostic: null }));
+  }, [beginEditing, updateSession]);
+
   return useMemo(() => ({
     recovery, closeConfirmation,
     // Async callers must see updates made since their render.
@@ -1054,5 +1091,6 @@ export function useSourceEditingController({
     confirmCloseWindow,
     getWindowDirtySnapshot,
     hasUnsavedOrSavingSessions,
-  }), [beginEditing, captureOperation, closeDocuments, confirmCloseWindow, recovery, closeConfirmation, getWindowDirtySnapshot, hasUnsavedOrSavingSessions, prepareGeometryTopology, preparePreview, save, sessions, stagingLoaded, updateDraft]);
+    beginTransfer, finishTransfer, receiveTransfer,
+  }), [beginEditing, captureOperation, closeDocuments, confirmCloseWindow, recovery, closeConfirmation, getWindowDirtySnapshot, hasUnsavedOrSavingSessions, prepareGeometryTopology, preparePreview, save, sessions, stagingLoaded, updateDraft, beginTransfer, finishTransfer, receiveTransfer]);
 }

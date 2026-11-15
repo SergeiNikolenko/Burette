@@ -9,8 +9,6 @@ type UseAppSpectrumDockLifecycleOptions = {
   bottomDockTabs: DockTab[];
   closeDockTab: (area: "bottom", tabId: string) => void;
   documents: ViewerDocument[];
-  rightDockActiveTab: string;
-  rightDockDocumentId: string | null;
   setDockActiveTab: (area: "right" | "bottom", kind: "files" | "inspector") => void;
   setDockDocument: (area: "right" | "bottom", documentId: string | null) => void;
   setDockOpen: (area: "right" | "bottom", open: boolean) => void;
@@ -24,8 +22,6 @@ export function useAppSpectrumDockLifecycle({
   bottomDockTabs,
   closeDockTab,
   documents,
-  rightDockActiveTab,
-  rightDockDocumentId,
   setDockActiveTab,
   setDockDocument,
   setDockOpen,
@@ -52,13 +48,6 @@ export function useAppSpectrumDockLifecycle({
       setDockOpen("bottom", false);
     }
 
-    const rightDockDocument = rightDockDocumentId
-      ? documents.find((document) => document.id === rightDockDocumentId) ?? null
-      : null;
-    if (rightDockDocument?.renderer !== "spectrum") return;
-
-    setDockDocument("right", activeDocument?.id ?? null);
-    if (!activeDocument && rightDockActiveTab === "inspector") setDockOpen("right", false);
   }, [
     activeDocument,
     bottomDockActiveTab,
@@ -66,8 +55,6 @@ export function useAppSpectrumDockLifecycle({
     bottomDockTabs,
     closeDockTab,
     documents,
-    rightDockActiveTab,
-    rightDockDocumentId,
     setDockActiveTab,
     setDockDocument,
     setDockOpen,

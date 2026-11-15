@@ -12,15 +12,15 @@ import "../styles/mobile-web-demo.css";
 export function MobileWebDemoLayout({ state, actions, style, theme }: {
   state: ShellViewState; actions: ShellActions; style: CSSProperties; theme: string;
 }) {
-  const [panel, setPanel] = useState<"files" | "right" | "bottom" | null>(null);
+  const [panel, setPanel] = useState<"files" | "bottom" | null>(null);
   useEffect(() => { setPanel(null); }, [state.activeTabId, state.activeDocument?.path, state.page]);
-  const title = panel === "files" ? "Files" : panel === "right" ? "Inspector" : "Tools";
+  const title = panel === "files" ? "Files" : "Tools";
   return <SidebarFileOperations state={state} actions={actions}><WorkspaceMenus state={state} actions={actions}>
     <main className="app-shell mobile-web-demo" data-runtime="browser" data-theme={state.preferences.theme} data-effective-theme={theme} style={style}>
       <nav className="mobile-demo-nav" aria-label="Workspace">
         <button onClick={() => setPanel("files")}>Files</button>
         <strong>Burette</strong>
-        <button onClick={() => setPanel("right")}>Inspector</button>
+        <button aria-pressed={state.rightDockOpen} onClick={() => actions.toggleDock("right")}>Inspector</button>
         <button onClick={() => setPanel("bottom")}>Tools</button>
       </nav>
       <header className="topbar"><EditorTabs state={state} actions={actions} /></header>
@@ -29,7 +29,7 @@ export function MobileWebDemoLayout({ state, actions, style, theme }: {
         <DialogContent className="mobile-demo-panel">
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription className="sr-only">{panel === "files" ? "Choose a file to view." : "Inspect and work with the current document."}</DialogDescription>
-          {panel === "files" ? <Sidebar state={state} actions={actions} open /> : panel ? <DockPanel area={panel} state={{ ...state, rightDockOpen: panel === "right", bottomDockOpen: panel === "bottom" }} actions={{ ...actions, setDockOpen: (area, open) => { if (!open) setPanel(null); actions.setDockOpen(area, open); } }} /> : null}
+          {panel === "files" ? <Sidebar state={state} actions={actions} open /> : panel ? <DockPanel area="bottom" state={{ ...state, bottomDockOpen: true }} actions={{ ...actions, setDockOpen: (area, open) => { if (!open) setPanel(null); actions.setDockOpen(area, open); } }} /> : null}
         </DialogContent>
       </Dialog>
     </main>

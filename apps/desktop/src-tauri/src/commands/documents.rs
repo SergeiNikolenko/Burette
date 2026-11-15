@@ -407,11 +407,19 @@ pub(crate) async fn open_documents<R: Runtime>(
         let (document_paths, mut errors) = expand_open_document_paths(paths);
         for path in document_paths {
             let opened_sources = app.state::<OpenedSourceRegistry>();
-            let source_registration = path.canonicalize().ok().map(|source_path| {
+            let recovery_source = match crate::commands::popout_scene::recovery_source(&app, &path)
+            {
+                Ok(source) => source.map(|descriptor| descriptor.source_path),
+                Err(error) => {
+                    errors.push(error);
+                    continue;
+                }
+            };
+            let claimed_path = recovery_source.clone().unwrap_or_else(|| path.clone());
+            let source_registration = claimed_path.canonicalize().ok().map(|source_path| {
                 let document_id = crate::preview::runtime_utils::stable_id(&source_path);
                 (source_path, document_id)
             });
-            let claimed_path = path.clone();
             match open_with_provisional_claim(
                 &registry,
                 &window_label,
@@ -430,6 +438,7 @@ pub(crate) async fn open_documents<R: Runtime>(
                         // Desmond pointer files normalize to their CMS identity;
                         // let that existing bundle opener resolve them atomically.
                         let deferred = (defer_runtime.unwrap_or(false)
+                            && recovery_source.is_none()
                             && structure_path_extension(&path) != "dtr")
                             .then(|| ViewerDocument::deferred_file(path.clone(), &preferences).ok())
                             .flatten();
@@ -1183,7 +1192,7 @@ pub(crate) fn read_structure_text(path: String) -> Result<String, String> {
     }
     if metadata.len() > KETCHER_IMPORT_MAX_STRUCTURE_FILE_SIZE {
         return Err(format!(
-            "{} is too large for Ketcher import",
+            "{} is too large for the molecular editor",
             input_path.display()
         ));
     }
@@ -2013,7 +2022,7 @@ pub(crate) fn create_molecule_collection<R: Runtime>(
         );
     }
     if output_family != CollectionFamily::Sdf {
-        return Err("Ketcher sketches can only create SDF collections".to_string());
+        return Err("Molecular editor sketches can only create SDF collections".to_string());
     }
     if request.text.trim().is_empty() {
         return Err("Structure text is empty".to_string());

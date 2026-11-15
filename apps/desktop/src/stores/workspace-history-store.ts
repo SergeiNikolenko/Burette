@@ -19,6 +19,7 @@ import {
   useTabWorkspaceStore,
   type TabWorkspaceSnapshot,
 } from "./tab-workspace-store";
+import { useWorkspacePanesStore } from "./workspace-panes-store";
 
 export type WorkspaceHistoryGroup =
   | "navigation"
@@ -35,6 +36,7 @@ export type WorkspaceHistorySnapshot = {
   molecule: MoleculeStoreSnapshot;
   shell: ShellStoreSnapshot;
   tabWorkspace: TabWorkspaceSnapshot;
+  panes: Pick<ReturnType<typeof useWorkspacePanesStore.getState>, "selectedTabs" | "closedGroups" | "split" | "fullViewTabId">;
   settings: SettingsStoreSnapshot;
   extras: Record<string, unknown>;
 };
@@ -100,10 +102,12 @@ function snapshotEquals(left: unknown, right: unknown): boolean {
 }
 
 function captureWorkspaceSnapshot(): WorkspaceHistorySnapshot {
+  const { selectedTabs, closedGroups, split, fullViewTabId } = useWorkspacePanesStore.getState();
   return {
     molecule: getMoleculeStoreSnapshot(),
     shell: getShellStoreSnapshot(),
     tabWorkspace: getTabWorkspaceStoreSnapshot(),
+    panes: { selectedTabs, closedGroups, split, fullViewTabId },
     settings: getSettingsStoreSnapshot(),
     extras: extraAdapter.capture(),
   };
@@ -113,6 +117,7 @@ function restoreWorkspaceSnapshot(snapshot: WorkspaceHistorySnapshot) {
   useMoleculeStore.getState().restoreSnapshot(snapshot.molecule);
   useShellStore.getState().restoreSnapshot(snapshot.shell);
   useTabWorkspaceStore.getState().restoreSnapshot(snapshot.tabWorkspace ?? { workspaces: {} });
+  useWorkspacePanesStore.setState(snapshot.panes);
   useSettingsStore.getState().restoreSnapshot(snapshot.settings);
   extraAdapter.restore(snapshot.extras);
 }

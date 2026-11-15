@@ -11,6 +11,8 @@ export type WorkspaceGroup = "main" | "right" | "bottom" | "floating";
 
 type WorkspacePanesState = {
   selectedTabs: Partial<Record<WorkspaceGroup, string>>;
+  closedGroups: Partial<Record<"right" | "bottom", boolean>>;
+  setGroupOpen: (group: "right" | "bottom", open: boolean) => void;
   fullViewTabId: string | null;
   split: { right: number; bottom: number };
   selectTab: (group: WorkspaceGroup, id: string) => void;
@@ -22,7 +24,7 @@ type WorkspacePanesState = {
   setFloatingMinimized: (minimized: boolean) => void;
 };
 
-type PersistedWorkspacePanes = Pick<WorkspacePanesState, "floating" | "floatingMinimized" | "selectedTabs" | "split">;
+type PersistedWorkspacePanes = Pick<WorkspacePanesState, "floating" | "floatingMinimized" | "selectedTabs" | "closedGroups" | "split">;
 
 // The atlas hotkey window: 470 x 640 by default, at least 400 x 400.
 export const FLOATING_PANE_MIN_WIDTH = 400;
@@ -62,6 +64,8 @@ export const useWorkspacePanesStore = create<WorkspacePanesState>()(
   persist<WorkspacePanesState, [], [], PersistedWorkspacePanes>(
     (set) => ({
       selectedTabs: {},
+      closedGroups: {},
+      setGroupOpen: (group, open) => set(state => state.closedGroups[group] === !open ? state : ({ closedGroups: { ...state.closedGroups, [group]: !open } })),
       fullViewTabId: null,
       split: { right: 0.5, bottom: 0.6 },
       selectTab: (group, id) => set(state => state.selectedTabs[group] === id ? state : ({ selectedTabs: { ...state.selectedTabs, [group]: id } })),
@@ -78,6 +82,7 @@ export const useWorkspacePanesStore = create<WorkspacePanesState>()(
       version: 1,
       partialize: (state) => ({
         selectedTabs: state.selectedTabs,
+        closedGroups: state.closedGroups,
         split: state.split,
         floating: state.floating,
         floatingMinimized: state.floatingMinimized,
@@ -87,6 +92,7 @@ export const useWorkspacePanesStore = create<WorkspacePanesState>()(
         return {
           ...current,
           selectedTabs: Object.fromEntries(Object.entries(stored?.selectedTabs ?? {}).filter(([group, id]) => ["main", "right", "bottom", "floating"].includes(group) && typeof id === "string")),
+          closedGroups: { right: stored?.closedGroups?.right === true, bottom: stored?.closedGroups?.bottom === true },
           split: { right: normalizeRatio(stored?.split?.right, 0.5), bottom: normalizeRatio(stored?.split?.bottom, 0.6) },
           floating: normalizeFloatingRect(stored?.floating),
           floatingMinimized: stored?.floatingMinimized === true,

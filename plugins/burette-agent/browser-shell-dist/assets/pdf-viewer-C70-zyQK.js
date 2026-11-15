@@ -1,0 +1,1 @@
+import{a as e}from"./document-page-4mpgaSxV.js";export{e as PdfResourceContent};

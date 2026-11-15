@@ -136,13 +136,6 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
   const hasSymmetry = useSymmetryAvailable(activeStructureDocument);
   const symmetryDockAvailable = area === "right" && hasSymmetry;
   const storedActiveTabKind = area === "right" ? state.rightDockActiveTab : state.bottomDockActiveTab;
-  // File screens use the same editable page in every group. Legacy Files entry
-  // points become placements instead of creating a second read-only renderer.
-  useEffect(() => {
-    if (!readOnly && open && storedActiveTabKind === "files" && dockScreenLocation(area, "files", state)) {
-      openDockScreen(area, "files", state, actions, area);
-    }
-  }, [open, storedActiveTabKind, dockDocumentId, dockTool, area, readOnly, state, actions]);
   const foldingState = useFoldingResult(area === "bottom" && open ? activeStructureDocument : null);
   const foldingDockAvailable = area === "bottom" && (foldingState.loading || Boolean(foldingState.bundle));
   const foldingDockRequested = area === "bottom" && storedActiveTabKind === "folding" && rawTabs.some((tab) => tab.kind === "folding");
@@ -313,6 +306,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
           fileDragProps={{ ...filesTabDrag, draggable: Boolean(filesTabDragPayload) }}
           onSelect={kind => showDockTab(kind, () => actions.setDockActiveTab(area, kind))} onClose={id => actions.closeDockTab(area, id)}
           onOpenScreen={dockScreenLocation(area, activeTab.kind, state) ? () => openDockScreen(area, activeTab.kind, state, actions) : undefined}
+          openScreenLabel={area === "right" && activeTab.kind === "files" && !dockTool ? "Open Files in Main Tabs" : undefined}
           onAdd={showAddMenu} onHide={() => actions.setDockOpen(area, false)} />
         <div className="dock-panel-body" role="tabpanel" id={panelId} aria-labelledby={`${panelId}-${activeTab.kind}`} tabIndex={0}>
         {contentState && filesVisited.current && <div key={`files:${contentState.activeTab?.id}`} className="dock-files-view" hidden={contentKind !== "files"}
@@ -423,7 +417,7 @@ export function DockPanelContent({
       return (
         <DockEmptyState
           title="Sketch text lives in Export"
-          description="While Ketcher is open, its molfile is available from the Export panel in the bottom dock."
+          description="While molecular editor is open, its molfile is available from the Export panel in the bottom dock."
         />
       );
     }
@@ -631,9 +625,10 @@ function xyzrenderGalleryFilename(src: string) {
 }
 
 async function resolveXyzrenderGalleryResource(src: string) {
-  if (!isTauriRuntime()) return null;
   const fileName = xyzrenderGalleryFilename(src);
   if (!XYZRENDER_GALLERY_FILENAME_PATTERN.test(fileName)) return null;
+  if (window.BuretteMcpWorkspace) return window.BuretteMcpWorkspace.asset(`shell/xyzrender-gallery/${fileName}`);
+  if (!isTauriRuntime()) return null;
   let cached = xyzrenderGalleryResourceCache.get(fileName);
   if (!cached) {
     cached = (async () => {
@@ -1042,11 +1037,17 @@ function XyzrenderGalleryTile({ label, image, pressed, onSelect }: { label: stri
 }
 
 function XyzrenderGalleryTileImage({ src }: { src: string }) {
-  const [resolvedSrc, setResolvedSrc] = useState(src);
+  const nativeWorkspace = Boolean(window.BuretteMcpWorkspace);
+  const [resolvedSrc, setResolvedSrc] = useState<string | undefined>(nativeWorkspace ? undefined : src);
 
   useEffect(() => {
-    setResolvedSrc(src);
-  }, [src]);
+    let cancelled = false;
+    setResolvedSrc(nativeWorkspace ? undefined : src);
+    if (nativeWorkspace) void resolveXyzrenderGalleryResource(src).then((url) => {
+      if (!cancelled && url) setResolvedSrc(url);
+    }).catch(error => console.warn("[Burette] Could not load gallery preview", error));
+    return () => { cancelled = true; };
+  }, [src, nativeWorkspace]);
 
   const handleError = useCallback(() => {
     if (resolvedSrc !== src) return;
@@ -1154,7 +1155,7 @@ function KetcherInspectorPanel({ state }: { state: ShellViewState }) {
   return (
     <div className="ketcher-dock-portal" data-ketcher-dock-portal="right">
       <div className="dock-content dock-content-empty">
-        <div className="dock-empty">{state.activeTab?.location.kind === "ketcher" ? <Spinner className="mx-auto" aria-label="Loading structure text" /> : "Open Ketcher to import or export a structure"}</div>
+        <div className="dock-empty">{state.activeTab?.location.kind === "ketcher" ? <Spinner className="mx-auto" aria-label="Loading structure text" /> : "Open molecular editor to import or export a structure"}</div>
       </div>
     </div>
   );
@@ -1264,6 +1265,7 @@ function SingleDocumentTextPanel({
           editable: sourceSession.editable,
           content: sourceSession.content,
           status: sourceSession.status,
+          viewState: sourceSession.viewState,
           dirty: sourceSession.dirty,
           saving: sourceSession.saving,
           diagnostic: sourceSession.diagnostic,
@@ -1514,7 +1516,7 @@ function dockFilesDragPayload(
     return {
       paths: [],
       records: [],
-      items: [{ kind: "ketcher", title: "Ketcher", detail: "Sketcher" }],
+      items: [{ kind: "ketcher", title: "Molecular editor", detail: "Sketcher" }],
     };
   }
   return null;

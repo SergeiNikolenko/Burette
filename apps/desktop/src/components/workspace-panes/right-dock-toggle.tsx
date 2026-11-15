@@ -1,4 +1,4 @@
-import { SidebarRight } from "../ui/app-icons";
+import { SidebarRight, SidebarRightHidden } from "../ui/app-icons";
 import { ToolbarButton } from "../ui/toolbar-button";
 import { ShortcutTooltip } from "../shortcut-tooltip";
 
@@ -8,7 +8,7 @@ export function RightDockToggle({ open, toggle }: { open: boolean; toggle: () =>
   return <ShortcutTooltip label={open ? "Hide right panel" : "Show right panel"} shortcut="⌥⌘B">
     <ToolbarButton className="dock-toggle-button" aria-label="Toggle right panel" aria-pressed={open} selected={open}
       onMouseDown={(event) => event.preventDefault()} onClick={toggle}>
-      <SidebarRight size={16} aria-hidden />
+      {open ? <SidebarRight size={16} aria-hidden /> : <SidebarRightHidden size={16} aria-hidden />}
     </ToolbarButton>
   </ShortcutTooltip>;
 }

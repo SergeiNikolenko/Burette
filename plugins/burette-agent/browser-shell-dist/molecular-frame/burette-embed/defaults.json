@@ -1,0 +1,33 @@
+{
+  "molstarStyle": "illustrative",
+  "canvasBackground": "auto",
+  "themeTokens": {
+    "light": {
+      "accent": "#339cff",
+      "background": "#ffffff",
+      "foreground": "#1a1c1f",
+      "uiFont": "-apple-system-body, ui-sans-serif, -apple-system, system-ui, \"Segoe UI\", Helvetica, \"Apple Color Emoji\", Arial, sans-serif, \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+      "editorFont": "-apple-system-body, ui-sans-serif, -apple-system, system-ui, \"Segoe UI\", Helvetica, \"Apple Color Emoji\", Arial, sans-serif, \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+      "translucent": 30,
+      "contrast": 45
+    },
+    "dark": {
+      "accent": "#339cff",
+      "background": "#181818",
+      "foreground": "#ffffff",
+      "uiFont": "-apple-system-body, ui-sans-serif, -apple-system, system-ui, \"Segoe UI\", Helvetica, \"Apple Color Emoji\", Arial, sans-serif, \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+      "editorFont": "-apple-system-body, ui-sans-serif, -apple-system, system-ui, \"Segoe UI\", Helvetica, \"Apple Color Emoji\", Arial, sans-serif, \"Segoe UI Emoji\", \"Segoe UI Symbol\"",
+      "translucent": 20,
+      "contrast": 60
+    }
+  },
+  "viewerDefaults": {
+    "screenshotResolution": "viewport",
+    "screenshotFormat": "png",
+    "screenshotTransparent": false,
+    "gridViewMode": "cards",
+    "gridCardRenderer": "rdkit",
+    "gridCardSize": 0,
+    "hydrogenDisplay": "none"
+  }
+}
