@@ -32,6 +32,8 @@ export type MoleculeEditorHandle = {
   getMolfile3d(): string
   getSvg(): string
   getState(): EditorState | null
+  /** Atom centres in molfile order, in the frame's viewport pixels. */
+  getAtomPositions(): { x: number; y: number }[]
   zoom(factor: number): void
   command(name: CommandId): void
   setTool(tool: ToolId): void
@@ -326,6 +328,12 @@ export function MoleculeEditor({ ref, defaultValue = '', onChange, onReady, onOp
     getSmiles: () => { if (!editor.current) throw new Error('The editor is still loading'); return editor.current.smiles() },
     getMolfile: () => { if (!editor.current) throw new Error('The editor is still loading'); return editor.current.molfile() },
     getState: () => editor.current ? JSON.parse(editor.current.state()) as EditorState : null,
+    getAtomPositions: () => {
+      if (!editor.current || !host.current) throw new Error('The editor is still loading')
+      const { left, top } = host.current.getBoundingClientRect()
+      const flat = editor.current.atom_positions()
+      return Array.from({ length: flat.length / 2 }, (_, i) => ({ x: left + flat[2 * i], y: top + flat[2 * i + 1] }))
+    },
     getSvg: () => {
       if (editor.current && drawing.current) drawing.current.innerHTML = editor.current.svg()
       const source = drawing.current?.querySelector('svg')

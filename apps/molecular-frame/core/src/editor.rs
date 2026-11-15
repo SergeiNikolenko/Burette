@@ -1016,7 +1016,7 @@ impl Editor {
         let selection = self.atoms.iter().chain(&self.bonds).filter(|&&x| x).count();
         let message: String = self.message.chars().filter(|c| !c.is_control()).map(|c| if c == '"' { '\'' } else { c }).collect();
         format!(
-            "{{\"tool\":\"{}\",\"canUndo\":{},\"canRedo\":{},\"aromatic\":{},\"cip\":{},\"hydrogens\":{},\"empty\":{},\"selection\":{},\"cursor\":\"{}\",\"revision\":{},\"zoom\":{},\"message\":\"{}\",\"selectedAtoms\":{:?},\"selectedBonds\":{:?}}}",
+            "{{\"tool\":\"{}\",\"canUndo\":{},\"canRedo\":{},\"aromatic\":{},\"cip\":{},\"hydrogens\":{},\"empty\":{},\"selection\":{},\"cursor\":\"{}\",\"revision\":{},\"zoom\":{},\"message\":\"{}\",\"selectedAtoms\":{:?},\"selectedBonds\":{:?},\"view\":[{:.4},{:.2},{:.2}]}}",
             self.tool.id(),
             !self.undo.is_empty(),
             !self.redo.is_empty(),
@@ -1031,7 +1031,15 @@ impl Editor {
             message.replace('\\', "/"),
             self.atoms.iter().enumerate().filter_map(|(i, selected)| selected.then_some(i)).collect::<Vec<_>>(),
             self.bonds.iter().enumerate().filter_map(|(i, selected)| selected.then_some(i)).collect::<Vec<_>>(),
+            self.view.scale,
+            self.view.offset.x,
+            self.view.offset.y,
         )
+    }
+
+    /// Canvas coordinates of every atom as `x0, y0, x1, y1, …`, in molfile order.
+    pub fn atom_positions(&self) -> Vec<f64> {
+        self.mol.atoms.iter().flat_map(|a| { let p = self.view.screen(a.pos); [p.x, p.y] }).collect()
     }
 
     pub fn highlight_atoms(&mut self, indexes: &[u32]) -> Result<(), String> {
