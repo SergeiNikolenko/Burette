@@ -58,6 +58,8 @@ async function writeBuild(destination) {
     ...runtime,
     ...notices,
     ...src,
+    // Hosts that boot the runtime scripts themselves read Burette's defaults here.
+    'defaults.json': `${JSON.stringify(defaults, null, 2)}\n`,
     'frame.js': src['frame.js']
       .replace('__BURETTE_EMBED_MANIFEST__', JSON.stringify({ version, files: runtimeFiles }))
       .replace('__BURETTE_EMBED_DEFAULTS__', JSON.stringify(defaults)),

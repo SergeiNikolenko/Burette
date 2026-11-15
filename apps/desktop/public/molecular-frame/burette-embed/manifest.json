@@ -1,10 +1,10 @@
 {
   "name": "burette-embed",
-  "version": "4f4a9a416f3b",
-  "burette": "2026.11.7",
-  "commit": "66db4fe6f978c43a656f4b50a86c3527d59e8f73",
+  "version": "65f87b42cad3",
+  "burette": "2026.11.8",
+  "commit": "cb29c9839e12484a4c35f30daf970aee4487194b",
   "dirty": false,
-  "bytes": 16190362,
+  "bytes": 16192022,
   "files": {
     "viewer-runtime.css": "efca3fca8123a6b63a7e304f889d0e8e8d1bbe29ebdb9e2251f65973acefbc56",
     "molstar.css": "bef46e4da8a4f4798bc7812b8e39f34d91ea5556dd91b8813522f409af421c3f",
@@ -28,14 +28,15 @@
     "rdkit/RDKit_minimal.js": "339ec5a6031f2e0e3f04bcad3ee7991a9f9ae18f8926c1f8a6e19cc06a3daf1b",
     "rdkit/RDKit_minimal.wasm": "f5981af4cf5bdcef861ffdf7410330bf9887f1195e39fbf9901b3a2f134ace2e",
     "rdkit/LICENSE": "01c94cf021015183787810769b8006d0575e96e727b9533d6caffd2be58ea6f1",
-    "README.md": "6398fa38f476136ab7c3b4ac96a30817d08bc046d5f68016bf1f71381a1ccd80",
+    "README.md": "7a4e0e7a367f20d5dece86a04ec541043eeb497a05d075e06abde491d158c644",
     "LICENSE": "d547e1c4afbc34619797b17737d8a8aab55f35c21a75541b0272b0bd7a925334",
     "THIRD_PARTY_NOTICES.md": "30324210206f35db8b92603b1dcd773931b0fcc197d6874b667286e1fd994ed8",
-    "frame.js": "5e6d7baf20d2dcd37e5128caf72d88303c83a540f807fe8a5ef25b3af82b4e77",
+    "frame.js": "32ea9d78eda45d0c6800d8597ec4b0384eeb0dd649675318bb4e50a660b5d456",
     "frame.css": "cbb8c65cc678c2eebc0c44ec9e3004619471edd30c02fa3c95aba344ddd5f6de",
-    "burette-embed.js": "987a2d735cd7f18fac3f44dae36f449a6227379671b9009be3b1fa2757eb59a2",
+    "burette-embed.js": "99c59641211f1b1cbc9ed25b3e1fc98c9cc5929a6e657e8f1764e008c94e0a6d",
     "burette-embed.d.ts": "c32996a8548ec3c01eed4d5fdd0280d1a722a5fa590321a1d0fc0d34e4c22e03",
-    "index.html": "0fe20736ec341fb70e224b0dff0f851a48f4192ea4a7e92be438ec229bf590ba",
-    "verify.mjs": "633b7e0e0a1f0cb0e2d03d3af66a383a0e0ba932b8cc190a95635fddec97d2e8"
+    "index.html": "fa29c3b7d427357eafb5264b0dbff5f39e5126e301fe12946c5810d8a611b0d2",
+    "verify.mjs": "633b7e0e0a1f0cb0e2d03d3af66a383a0e0ba932b8cc190a95635fddec97d2e8",
+    "defaults.json": "4c609c006ef542842ad83ccb83ec75c5fcc16568c25cabf5ae4f3a1d76366eb5"
   }
 }
