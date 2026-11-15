@@ -76,7 +76,7 @@ test('restored MOLX Geometry applies through actual dispatcher ACK and real Mols
     const plugin = await newPlugin(), token = science.beginImport(plugin); await plugin.managers.snapshot.open(new File([bytes], 'scene.molx'));
     expect(science.completeImport(plugin, token)).toBe(true); return { plugin };
   };
-  function Fixture() { controller = useSourceEditingController({ activeDocument: doc, preferences: defaultPreferences, pushErrorStatus: error => errors.push(error), setDockOpen() {}, setDockActiveTab() {} }); return null; }
+  function Fixture() { controller = useSourceEditingController({ activeDocument: doc, preferences: defaultPreferences, pushErrorStatus: error => errors.push(error) }); return null; }
   try {
     const original = await newPlugin(), raw = await original.builders.data.rawData({ data: XYZ });
     const trajectory = await original.builders.structure.parseTrajectory(raw, 'xyz');

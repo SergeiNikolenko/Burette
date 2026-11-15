@@ -83,7 +83,7 @@ async function fixture(molecule: Molecule, variant: "v2000" | "v3000" | "sdf", k
     return <MeasurementCoordinateDialogHost />;
   }
   function Fixture() {
-    controller = useSourceEditingController({ activeDocument: doc, preferences: defaultPreferences, pushErrorStatus: noop, setDockOpen: noop, setDockActiveTab: noop });
+    controller = useSourceEditingController({ activeDocument: doc, preferences: defaultPreferences, pushErrorStatus: noop });
     return <SourceEditingProvider value={controller}><Probe /></SourceEditingProvider>;
   }
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);

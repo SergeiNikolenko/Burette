@@ -67,7 +67,7 @@ test("normal producer CJSON active0/5 keeps seven source sets and native0/1 with
       await wait(() => f.host.querySelector("output")?.textContent === `${active}/7`);
       expect(f.host.querySelector("button")!.disabled).toBe(true); expect(f.native.index()).toBe(0); expect(f.native.expected().frameCount).toBe(1);
       expect(f.sent).toHaveLength(0); expect(science.frames).toHaveLength(7); expect(science.graph!.activeFrameIndex).toBe(active);
-      expect(Object.keys(science.frames[active])).toEqual(["atoms"]);
+      expect(Object.keys(science.frames[active])).toEqual(["atoms", "energyHartree"]);
       const [c, o] = science.frames[active].atoms; expect(Math.hypot(o.x-c.x,o.y-c.y,o.z-c.z)).toBeCloseTo(active ? 1.2003876259138908 : 1.2006257364669461,12);
       expect(science.spectra!.source.scope).toBe("file");
       expect(science.spectra!.spectra[0]).toEqual({ kind: "nmr", quantity: "native-input", atomIndices: [0,1,2,3], valuesPpm: [8.356,-394.078,21.901,21.901] });

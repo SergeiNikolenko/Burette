@@ -30,7 +30,7 @@ test("opening Geometry and acknowledged drafts preserve the frame; text edits st
   const root = createRoot(host);
   let controller;
   const errors = [];
-  const options = { activeDocument: doc, preferences: {}, pushErrorStatus: e => errors.push(e), setDockOpen() {}, setDockActiveTab() {} };
+  const options = { activeDocument: doc, preferences: {}, pushErrorStatus: e => errors.push(e) };
   function Fixture() {
     controller = useSourceEditingController(options);
     return <ViewerFrame document={doc} sourcePreview={controller.sessionForDocument(doc)?.sourcePreview} />;

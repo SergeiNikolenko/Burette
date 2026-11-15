@@ -77,7 +77,7 @@
     "test:peptide-reference": "tsc --noEmit -p tests/tsconfig.peptide-reference.json && bun test tests/test-peptide-reference.test.ts",
     "test:insert-built-structure": "bun test tests/test-insert-built-structure.test.tsx",
     "test:metal-complex": "tsc --noEmit -p tests/tsconfig.metal-complex-builder.json && tsc --noEmit -p tests/tsconfig.metal-complex-worker.json && tsc --noEmit -p tests/tsconfig.metal-complex-dialog.json && bun test tests/test-metal-complex-builder.test.ts tests/test-metal-complex-worker.test.ts && bun test tests/test-metal-complex-dialog.test.tsx",
-    "test:nucleic": "tsc --noEmit -p tests/tsconfig.nucleic-acid-builder.json && tsc --noEmit -p tests/tsconfig.nucleic-acid-worker.json && tsc --noEmit -p tests/tsconfig.nucleic-builder.json && tsc --noEmit -p tests/tsconfig.nucleic-insert.json && bun test tests/test-nucleic-acid-builder.test.ts tests/test-nucleic-acid-worker.test.ts && bun test tests/test-nucleic-builder.test.tsx tests/test-nucleic-insert.test.tsx",
+    "test:nucleic": "tsc --noEmit -p tests/tsconfig.nucleic-acid-builder.json && tsc --noEmit -p tests/tsconfig.nucleic-acid-worker.json && tsc --noEmit -p tests/tsconfig.nucleic-builder.json && tsc --noEmit -p tests/tsconfig.nucleic-insert.json && bun test tests/test-nucleic-acid-builder.test.ts tests/test-nucleic-acid-worker.test.ts && bun test tests/test-nucleic-builder.test.tsx && bun test tests/test-nucleic-insert.test.tsx",
     "check:vendor-assets": "bun scripts/check-vendor-assets.mjs",
     "check:formats": "bun scripts/check-preview-format-registry.mjs",
     "check:release": "bun scripts/check-release-version.mjs",

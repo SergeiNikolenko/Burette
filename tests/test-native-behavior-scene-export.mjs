@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 import { Window } from 'happy-dom';
 import { PluginContext } from '@molstar/plugin';
 import { Camera } from '@molstar/graphics/canvas3d/camera';
@@ -54,9 +55,12 @@ try {
   }));
   const expected = read(source), before = source.state.data.tree;
   const unavailable = () => { throw new Error('Unexpected script load'); };
+  // The export runs through the scene file actions the viewer loads on demand; load the real module up front.
+  const sceneWindow = {};
+  runInNewContext(readFileSync(new URL('../PreviewExtension/Web/scene-file-actions.js', import.meta.url), 'utf8'), { window: sceneWindow, TextEncoder });
   const execute = new Function('window', 'activeMolstarViewer', 'activeConfig', 'document', 'runtimeURL', 'loadScript',
     `${extract('bytesToBase64')}\n${extract('executeBuretteAgentAction')}\nreturn executeBuretteAgentAction;`)
-    ({}, () => ({ plugin: source }), { renderer: 'molstar' }, dom.document, unavailable, unavailable);
+    (sceneWindow, () => ({ plugin: source }), { renderer: 'molstar' }, dom.document, unavailable, unavailable);
   const exported = await execute({ type: 'workspace_scene_snapshot' });
   assert.equal(exported.ok, true); assert.equal(source.state.data.tree, before); assert.deepEqual(read(source), expected);
   const bytes = new Uint8Array(Buffer.from(exported.result.dataBase64, 'base64'));

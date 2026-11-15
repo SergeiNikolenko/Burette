@@ -31,6 +31,7 @@ test("ordinary plain MOLX Info uses the live native hierarchy and existing Chain
  }} as unknown as ShellActions;
  const state: Partial<ShellViewState>={page:"viewer",documents:useMoleculeStore.getState().documents,textDocuments:[],activeDocument:doc,
   activeTab:{id:doc.id,location:{kind:"file",path:doc.path,documentId:doc.id},back:[],forward:[]},preferences:defaultPreferences,
+  tabs:[{id:doc.id,location:{kind:"file",path:doc.path,documentId:doc.id},back:[],forward:[]}],activeTabId:doc.id,
   rightDockTabs:[{id:"info",kind:"inspector"}],rightDockActiveTab:"inspector",rightDockOpen:true,rightDockDocumentId:doc.id,rightDockTool:null,
   dockDroppedStructures:[],hoveredGridRows:{},visibleDocuments:[doc],sidebarProjects:[],xtbJobs:[],xtbSettings:DEFAULT_XTB_SETTINGS,conformerSettings:DEFAULT_CONFORMER_SETTINGS,
   buildInfo:{name:"Burette",version:"test",identifier:"test",flavor:null,isDevBuild:true,isBrowserDev:true,isAgentShell:true,notes:[],limitations:[]}};

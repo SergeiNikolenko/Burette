@@ -48,7 +48,7 @@ async function fixture(initialContent = source) {
     const [shown, show] = useState(true); setShown = show;
     const [current, select] = useState(doc); setCurrent = select;
     controller = useSourceEditingController({ activeDocument: shown ? current : null, preferences: {} as ViewerPreferences,
-      pushErrorStatus: error => errors.push(error), setDockOpen() {}, setDockActiveTab() {} });
+      pushErrorStatus: error => errors.push(error) });
     return null;
   }
   await act(async () => root.render(<Fixture />));

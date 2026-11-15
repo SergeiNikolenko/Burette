@@ -94,7 +94,7 @@ function Probe({ document }) {
 const preferences = { rendererMode: "molstar" };
 function Fixture({ document }) {
   ensureGeometryViewerFrame(document);
-  controller = useSourceEditingController({ activeDocument: document, preferences, pushErrorStatus() {}, setDockOpen() {}, setDockActiveTab() {} });
+  controller = useSourceEditingController({ activeDocument: document, preferences, pushErrorStatus() {} });
   return <SourceEditingProvider value={controller}><GeometryPanel document={document} actions={actions} /><Probe document={document} /></SourceEditingProvider>;
 }
 const current = (document) => controller?.sessionForDocument(document)?.content ?? readBrowserDevVirtualTextDocument(document.path);

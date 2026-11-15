@@ -75,7 +75,7 @@ export async function fixture(format: "sdf" | "mol" = "sdf", useAdapter: typeof 
   function Probe() { graph = useAdapter(doc); focused = useFocusedGraphDraft(doc); return null; }
   function Fixture() {
     controller = useSourceEditingController({ activeDocument: doc, preferences: {} as ViewerPreferences,
-      pushErrorStatus() {}, setDockOpen() {}, setDockActiveTab() {} });
+      pushErrorStatus() {} });
     return <SourceEditingProvider value={{ ...controller, updateDraft(document, content, options) {
       if (writeMode === "throw") throw new Error("Draft write rejected.");
       if (writeMode === "noop") return;

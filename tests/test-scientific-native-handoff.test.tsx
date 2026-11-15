@@ -28,6 +28,12 @@ test("native checkpoint retains science and keeps origin until receiving window 
     await act(async () =>
       sendNativeMessage({ kind: "ready", id: offer.message.id, from: "workspace-peer" }),
     );
+    // Readiness asks the peer to commit; the source retires only after the peer confirms.
+    await until(() => relays.some((row) => row.message.kind === "commit"));
+    expect(useMoleculeStore.getState().tabs.some((tab) => tab.location.kind === "file")).toBe(true);
+    await act(async () =>
+      sendNativeMessage({ kind: "committed", id: offer.message.id, from: "workspace-peer" }),
+    );
     await moving;
     expect(useMoleculeStore.getState().tabs.some((tab) => tab.location.kind === "file")).toBe(
       false,
@@ -40,9 +46,10 @@ test("native checkpoint retains science and keeps origin until receiving window 
 test("receiver withholds native ready until scientific restore/ACK, and return checkpoint retains data", async () => {
   const f = await fixture("xyz", true);
   try {
+    const id = crypto.randomUUID();
     const receiving = sendNativeMessage({
       kind: "offer",
-      id: crypto.randomUUID(),
+      id,
       from: "workspace-parent",
       path: f.doc.path,
       title: "Returned scene",
@@ -55,6 +62,8 @@ test("receiver withholds native ready until scientific restore/ACK, and return c
     await f.ready();
     await receiving;
     expect(relays.some((row) => row.message.kind === "ready")).toBe(true);
+    await act(async () => sendNativeMessage({ kind: "commit", id, from: "workspace-parent" }));
+    await until(() => relays.some((row) => row.message.kind === "committed"));
     expect(f.reserved()).toBe(0);
     setParentAlive(false);
     await act(async () => {
@@ -93,6 +102,10 @@ test("peer ready cannot close a replacement that took the source tab after check
     await f.replace();
     await act(async () =>
       sendNativeMessage({ kind: "ready", id: offer.message.id, from: "workspace-peer" }),
+    );
+    await until(() => relays.some((row) => row.message.kind === "commit"));
+    await act(async () =>
+      sendNativeMessage({ kind: "committed", id: offer.message.id, from: "workspace-peer" }),
     );
     await moving;
     expect(

@@ -70,7 +70,7 @@ async function fixture(extension = "molx") {
       detectContentSpectrumPaths: async () => new Set<string>(), expandStructureBundles: async paths => paths, openDockTab: noop, openDocumentsInActiveTab: noop,
       openDocumentTab: noop, openFepNetworkTab: noop, openTextDocumentsInActiveTab: noop, pushErrorStatus: error => errors.push(error), pushStatus: noop,
       rememberRecentStructures: noop, replaceDocument: noop, setActiveDocument: noop, setDockActiveTab: noop, setDockDocument: noop, setDockOpen: noop, setDocuments: noop });
-    controller = useSourceEditingController({ activeDocument: doc, preferences: defaultPreferences, pushErrorStatus: error => errors.push(error), setDockOpen() {}, setDockActiveTab() {} }); return <SourceEditingProvider value={controller}><Probe /></SourceEditingProvider>; }
+    controller = useSourceEditingController({ activeDocument: doc, preferences: defaultPreferences, pushErrorStatus: error => errors.push(error) }); return <SourceEditingProvider value={controller}><Probe /></SourceEditingProvider>; }
   await act(async () => root.render(<Fixture />));
   return { doc, frame, errors, get controller() { return controller; }, async close() { await act(async () => root.unmount()); host.remove(); for (const doc of prepared) browserDocuments.deleteBrowserDevVirtualTextDocument(doc.path); releaseClosedScienceSessions(new Set()); native = false; prepare = async document => document; } };
 }

@@ -68,7 +68,7 @@ let server: ReturnType<typeof spawn>, mounted: ReturnType<typeof createRoot>, un
 let documents: ViewerDocument[] = [], source: ViewerDocument, sourceText = "";
 const hookErrors: unknown[] = [];
 function Probe() {
-  sourceEditing = useSourceEditingController({ activeDocument: documents[0] ?? null, preferences: defaultPreferences, pushErrorStatus: (error: unknown) => hookErrors.push(error), setDockOpen() {}, setDockActiveTab() {} });
+  sourceEditing = useSourceEditingController({ activeDocument: documents[0] ?? null, preferences: defaultPreferences, pushErrorStatus: (error: unknown) => hookErrors.push(error) });
   useAgentSession({ activeDocument: documents[0], documents, activeTabId: "tab", activeTabKind: "document", tabs: [],
     tabActions: { openNewTab() {}, setActiveTab() {}, closeTab() {}, moveTab() {} }, openDockingDocument: async () => null,
     openPaths() {}, openKetcherTab() {}, openTextDocuments: async () => null, pushErrorStatus(error) { hookErrors.push(error); }, setDockDocument() {},

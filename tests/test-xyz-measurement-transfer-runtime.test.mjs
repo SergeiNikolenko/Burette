@@ -82,7 +82,8 @@ test('XYZ transfer rebuilds all six measurements for explicit reordered source a
     expect(transfer(await captured(after))).toEqual(value);
     expect(measurements(after).map(cell => [cell.obj.label, cell.transform.params])).toEqual(measurements(before).map(cell => [cell.obj.label, cell.transform.params]));
     await expect(runtime.restore(after, value, science)).rejects.toThrow('already has measurements');
-    await expect(runtime.describe(before, [measurements(before)[0]], science)).rejects.toThrow('MOL or SDF');
+    // XYZ measurements open Geometry rows instead of moving bonded fragments, so describe admits them.
+    expect(await runtime.describe(before, [measurements(before)[0]], science)).toMatchObject({ kind: 'distance', sourceFormat: 'xyz' });
   } finally { before.plugin.dispose(); after.plugin.dispose(); }
 }, 15_000);
 
@@ -138,7 +139,7 @@ test('XYZ admission is explicit and refuses actual oversize or multi-frame model
     await expect(runtime.capture(single, science)).rejects.toThrow();
     await expect(runtime.capture(single, science, { sourceFormat: 'xyz', lease: 'x'.repeat(129) })).rejects.toThrow('current Geometry receipt');
     await expect(captured(oversized)).rejects.toThrow('up to 256 atoms');
-    await expect(runtime.capture(multi, science, { sourceFormat: 'xyz', lease: 'old' })).rejects.toThrow('single XYZ frame');
+    await expect(runtime.capture(multi, science, { sourceFormat: 'xyz', lease: 'old' })).rejects.toThrow('requires a single XYZ');
     expect(measurements(single)).toHaveLength(0); expect(measurements(oversized)).toHaveLength(0); expect(measurements(multi)).toHaveLength(0);
   } finally { single.plugin.dispose(); oversized.plugin.dispose(); multi.plugin.dispose(); }
 });

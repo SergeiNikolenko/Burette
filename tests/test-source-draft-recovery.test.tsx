@@ -61,7 +61,7 @@ async function fixture() {
   let controller!: ReturnType<typeof useSourceEditingController>;
   const errors: unknown[] = [], host = document.createElement("div"); host.className = "app-shell"; document.body.append(host); const root = createRoot(host);
   function Fixture() {
-    controller = useSourceEditingController({ activeDocument: doc, preferences: defaultPreferences, pushErrorStatus: error => errors.push(error), setDockOpen() {}, setDockActiveTab() {} });
+    controller = useSourceEditingController({ activeDocument: doc, preferences: defaultPreferences, pushErrorStatus: error => errors.push(error) });
     return <SourceEditingProvider value={controller}><TextFileViewer document={{ ...doc, extension: "sdf", language: "sdf", content: restored, truncated: false, byteCount: restored.length }} sourceEditing={{
       editable: false, content: restored, dirty: false, saving: false, status: "Read Only", onBeginEditing: () => { void controller.beginEditing(doc); },
     }} /></SourceEditingProvider>;

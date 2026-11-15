@@ -48,7 +48,7 @@ async function fixture(extension = "molx") {
   currentDocument = doc; let controller!: ReturnType<typeof useSourceEditingController>;
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host), errors: unknown[] = [];
   const frame = document.createElement("iframe"); host.append(frame);
-  function Fixture() { controller = useSourceEditingController({ activeDocument: doc, preferences: defaultPreferences, pushErrorStatus: error => errors.push(error), setDockOpen() {}, setDockActiveTab() {} }); return null; }
+  function Fixture() { controller = useSourceEditingController({ activeDocument: doc, preferences: defaultPreferences, pushErrorStatus: error => errors.push(error) }); return null; }
   await act(async () => root.render(<Fixture />));
   return { doc, frame, errors, get controller() { return controller; }, async close() { await act(async () => root.unmount()); host.remove(); releaseClosedScienceSessions(new Set()); native = false; prepare = async document => document; } };
 }

@@ -85,7 +85,7 @@ async function pickerFixture(name: string, mode: "picker" | "owner" | "route" = 
  function App() {
   const current = useMoleculeStore(state => state.documents.find(value => value.path === doc.path) ?? null);
   const [visible, show] = React.useState(mode !== "route"), [dockDocument, setDockDocument] = React.useState<string | null>(doc.id); setVisible = show;
-  source = useSourceEditingController({ activeDocument: current, preferences: defaultPreferences, pushErrorStatus: error => errors.push(error), setDockOpen() {}, setDockActiveTab() {} });
+  source = useSourceEditingController({ activeDocument: current, preferences: defaultPreferences, pushErrorStatus: error => errors.push(error) });
   const context = React.useMemo(() => ({ ...source, captureOperation: (document: ViewerDocument) => { captures.push(document); return source.captureOperation(document); } }), [source]);
   const actions = { saveKetcherExportFile: async () => ({ status: "saved" as const, path: null }),
     setDockDocument: (_area: string, id: string | null) => { dockDocuments.push(id); setDockDocument(id); }, openDockTab: (_area: string, kind: string) => show(kind === "scientific-spectra") };

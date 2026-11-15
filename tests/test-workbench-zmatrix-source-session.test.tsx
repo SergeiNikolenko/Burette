@@ -90,7 +90,7 @@ const sourceErrors = [];
 // The right dock shows one tab at a time: Geometry, or the source Text wired as the dock wires it.
 function Fixture({ document, tab = "geometry" }) {
   ensureGeometryViewerFrame(document);
-  controller = useSourceEditingController({ activeDocument: document, preferences: { rendererMode: "molstar" }, pushErrorStatus: (error) => sourceErrors.push(error), setDockOpen() {}, setDockActiveTab() {} });
+  controller = useSourceEditingController({ activeDocument: document, preferences: { rendererMode: "molstar" }, pushErrorStatus: (error) => sourceErrors.push(error) });
   const session = controller.sessionForDocument(document);
   const content = session?.content ?? readBrowserDevVirtualTextDocument(document.path);
   const text = { id: document.id, path: document.path, title: document.title, extension: document.extension, language: "text", byteCount: content.length, content, truncated: false };

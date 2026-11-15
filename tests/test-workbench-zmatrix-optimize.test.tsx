@@ -133,7 +133,7 @@ const preferences = { rendererMode: "molstar" };
 // `panel` closes the Geometry tab while the document and its source session stay open.
 function Fixture({ document, panel = true }) {
   ensureGeometryViewerFrame(document);
-  controller = useSourceEditingController({ activeDocument: document, preferences, pushErrorStatus() {}, setDockOpen() {}, setDockActiveTab() {} });
+  controller = useSourceEditingController({ activeDocument: document, preferences, pushErrorStatus() {} });
   return <SourceEditingProvider value={controller}>{panel ? <GeometryPanel document={document} actions={actions} /> : null}<Probe document={document} /></SourceEditingProvider>;
 }
 const current = (document) => controller?.sessionForDocument(document)?.content ?? readBrowserDevVirtualTextDocument(document.path);

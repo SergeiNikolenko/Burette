@@ -116,7 +116,7 @@ mock.module("@tauri-apps/api/core", () => ({
         revision: { modifiedAt: 1, byteCount: 100, contentHash: "before" },
         previewMode: "live",
       };
-    if (command === "close_source_edit_session" || command === "close_workspace_window") return;
+    if (command === "close_source_edit_session" || command === "close_workspace_window" || command === "close_opened_source_documents") return;
     if (command === "relay_popout_handoff") {
       relays.push(args);
       return;

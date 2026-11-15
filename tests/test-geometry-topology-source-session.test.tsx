@@ -115,7 +115,7 @@ let controller!: ReturnType<typeof useSourceEditingController>;
 const errors: unknown[] = [];
 function Fixture({ document }: { document: ViewerDocument }) {
   controller = useSourceEditingController({ activeDocument: document, preferences: defaultPreferences,
-    pushErrorStatus: error => errors.push(error), setDockOpen() {}, setDockActiveTab() {} });
+    pushErrorStatus: error => errors.push(error) });
   const session = controller.sessionForDocument(document);
   return <SourceEditingProvider value={controller}>
     <ViewerFrame document={document} sourcePreview={session?.sourcePreview ?? undefined} onStagingLoad={(identity, frame) => controller.stagingLoaded(document, identity, frame)} />

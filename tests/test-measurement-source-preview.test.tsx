@@ -60,7 +60,7 @@ async function fixture(format = "mol") {
   let holdNextCapture = false, releaseCapture: (() => void) | null = null;
   let controller!: ReturnType<typeof useSourceEditingController>, setDocument!: (doc: any) => void;
   const host = document.createElement("div"); document.body.append(host); const react = createRoot(host);
-  function Probe() { const [activeDocument, select] = useState(doc); setDocument = select; controller = useSourceEditingController({ activeDocument, preferences: { ...defaultPreferences, rendererMode: "molstar" } as any, pushErrorStatus: cause => { throw cause; }, setDockOpen() {}, setDockActiveTab() {} }); return null; }
+  function Probe() { const [activeDocument, select] = useState(doc); setDocument = select; controller = useSourceEditingController({ activeDocument, preferences: { ...defaultPreferences, rendererMode: "molstar" } as any, pushErrorStatus: cause => { throw cause; } }); return null; }
   await act(async () => react.render(<Probe />)); await act(async () => controller.beginEditing(doc));
   const runtimeGetter = new Function("window", `${extract("measurementCoordinateRuntime")};return measurementCoordinateRuntime;`)(scope);
   function attach(current) {

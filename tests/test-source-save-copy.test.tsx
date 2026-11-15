@@ -37,7 +37,7 @@ async function fixture(document: ViewerDocument = doc) {
   let controller!: ReturnType<typeof useSourceEditingController>;
   const errors: unknown[] = [];
   const host = browser.document.createElement("div"); browser.document.body.append(host); const root = createRoot(host as unknown as HTMLElement);
-  function Fixture() { controller = useSourceEditingController({ activeDocument: document, preferences: defaultPreferences, pushErrorStatus: (error: unknown) => errors.push(error), setDockOpen() {}, setDockActiveTab() {} }); return null; }
+  function Fixture() { controller = useSourceEditingController({ activeDocument: document, preferences: defaultPreferences, pushErrorStatus: (error: unknown) => errors.push(error) }); return null; }
   await act(async () => root.render(<Fixture />));
   await act(async () => controller.beginEditing(document));
   return { get controller() { return controller; }, errors, close: async () => { await act(async () => root.unmount()); host.remove(); } };

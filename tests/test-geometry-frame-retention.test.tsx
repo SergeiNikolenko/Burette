@@ -45,7 +45,7 @@ async function fixture() {
   const initial = doc(), errors: unknown[] = [], host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   let controller!: ReturnType<typeof useSourceEditingController>;
   function Probe({ document }: { document: ViewerDocument }) {
-    controller = useSourceEditingController({ activeDocument: document, preferences: {} as ViewerPreferences, pushErrorStatus: error => errors.push(error), setDockOpen() {}, setDockActiveTab() {} });
+    controller = useSourceEditingController({ activeDocument: document, preferences: {} as ViewerPreferences, pushErrorStatus: error => errors.push(error) });
     return <ViewerFrame document={document} sourcePreview={controller.sessionForDocument(document)?.sourcePreview ?? undefined} onStagingLoad={(identity, frame) => controller.stagingLoaded(document, identity, frame)} />;
   }
   const render = (value = initial) => act(async () => root.render(<Probe document={value} />)); await render();

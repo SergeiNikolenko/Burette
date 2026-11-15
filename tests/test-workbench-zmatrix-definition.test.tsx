@@ -77,7 +77,7 @@ const actions = {
 let controller;
 function Fixture({ document }) {
   ensureGeometryViewerFrame(document);
-  controller = useSourceEditingController({ activeDocument: document, preferences: {}, pushErrorStatus() {}, setDockOpen() {}, setDockActiveTab() {} });
+  controller = useSourceEditingController({ activeDocument: document, preferences: {}, pushErrorStatus() {} });
   return <SourceEditingProvider value={controller}><GeometryPanel document={document} actions={actions} /></SourceEditingProvider>;
 }
 const current = (document) => controller?.sessionForDocument(document)?.content ?? readBrowserDevVirtualTextDocument(document.path);

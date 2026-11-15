@@ -124,7 +124,7 @@ test("a scene that cannot carry its scientific state refuses drag instead of sil
         documents: [{ ...f.doc, sceneSourcePaths: [f.doc.path, "/Structures/second.xyz"] }],
       }),
     );
-    await expect(f.drag()).rejects.toThrow(/belongs to one structure/u);
+    await expect(f.drag()).rejects.toThrow(/bound to one structure/u);
     expect(writes).toHaveLength(0);
   } finally {
     await f.close();

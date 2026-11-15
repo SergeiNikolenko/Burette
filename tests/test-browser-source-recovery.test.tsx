@@ -263,7 +263,7 @@ test("independent: closing a background draft refuses close when source admissio
   let controller!: ReturnType<typeof useSourceEditingController>;
   const errors: unknown[] = [];
   function Background() { controller = useSourceEditingController({ activeDocument: null, preferences: defaultPreferences,
-    pushErrorStatus: error => errors.push(error), setDockOpen: () => {}, setDockActiveTab: () => {} }); return null; }
+    pushErrorStatus: error => errors.push(error) }); return null; }
   const host = browser.document.createElement("div"), root = createRoot(host as unknown as HTMLElement); browser.document.body.append(host);
   await act(async () => root.render(<Background />));
   const arrayBuffer = Blob.prototype.arrayBuffer;

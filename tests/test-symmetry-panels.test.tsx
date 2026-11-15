@@ -58,7 +58,7 @@ async function mount(name: string, options: { text?: string; panel?: typeof Crys
       detectContentSpectrumPaths: async () => new Set<string>(), expandStructureBundles: async paths => paths, openDockTab: noop, openDocumentsInActiveTab: noop,
       openDocumentTab: noop, openFepNetworkTab: noop, openTextDocumentsInActiveTab: noop, pushErrorStatus: noop, pushStatus: noop,
       rememberRecentStructures: noop, replaceDocument: noop, setActiveDocument: noop, setDockActiveTab: noop, setDockDocument: noop, setDockOpen: noop, setDocuments: noop });
-    editing = useSourceEditingController({ activeDocument: source, preferences: defaultPreferences, pushErrorStatus: error => errors.push(error), setDockOpen: noop, setDockActiveTab: noop });
+    editing = useSourceEditingController({ activeDocument: source, preferences: defaultPreferences, pushErrorStatus: error => errors.push(error) });
     return <SourceEditingProvider value={editing}><Panel document={source} actions={{ openStructureRecords: files.openStructureRecords, runStructureViewerAction: async () => ({ ok: true }) } as unknown as ShellActions} /></SourceEditingProvider>;
   }
   const host = browser.document.createElement("div"); browser.document.body.append(host); const root = createRoot(host as unknown as Element);

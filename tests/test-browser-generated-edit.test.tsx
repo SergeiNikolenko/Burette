@@ -50,7 +50,7 @@ async function fixture(doc: ViewerDocument) {
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   function Graph() { graph = useGraphDraft(doc); return null; }
   function Fixture() {
-    controller = useSourceEditingController({ activeDocument: doc, preferences, pushErrorStatus: error => errors.push(error), setDockOpen() {}, setDockActiveTab() {} });
+    controller = useSourceEditingController({ activeDocument: doc, preferences, pushErrorStatus: error => errors.push(error) });
     return <SourceEditingProvider value={controller}><Graph /></SourceEditingProvider>;
   }
   await act(async () => root.render(<Fixture />));

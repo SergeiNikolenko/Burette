@@ -48,7 +48,7 @@ async function fixture() {
   let controller!: ReturnType<typeof useSourceEditingController>;
   const reveals = await recordRightToolReveals();
   const errors: unknown[] = [], host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
-  function Probe() { controller = useSourceEditingController({ activeDocument: doc, preferences: { ...defaultPreferences, rendererMode: "molstar" } as any, pushErrorStatus: error => errors.push(error), setDockOpen() {}, setDockActiveTab() {} }); return null; }
+  function Probe() { controller = useSourceEditingController({ activeDocument: doc, preferences: { ...defaultPreferences, rendererMode: "molstar" } as any, pushErrorStatus: error => errors.push(error) }); return null; }
   await act(async () => root.render(<Probe />));
   return { doc, errors, get dockTargets() { return reveals.tools.map(tool => ["right", tool] as const); }, get controller() { return controller; }, async close() { reveals.stop(); await act(async () => root.unmount()); host.remove(); releaseClosedScienceSessions(new Set()); native = false; } };
 }

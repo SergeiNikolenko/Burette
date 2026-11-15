@@ -99,7 +99,7 @@ export async function fixture() {
       openDocumentTab: noop, openFepNetworkTab: noop, openTextDocumentsInActiveTab: noop, pushErrorStatus: noop, pushStatus: noop,
       rememberRecentStructures: noop, replaceDocument: noop, setActiveDocument: noop, setDockActiveTab: noop, setDockDocument: noop, setDockOpen: noop, setDocuments: noop });
     actions = { openStructureRecords: (...args) => failOpen ? Promise.resolve([]) : hook.openStructureRecords(...args) } as ShellActions;
-    editing = useSourceEditingController({ activeDocument: source, preferences: defaultPreferences, pushErrorStatus: error => sourceErrors.push(error), setDockOpen: noop, setDockActiveTab: noop });
+    editing = useSourceEditingController({ activeDocument: source, preferences: defaultPreferences, pushErrorStatus: error => sourceErrors.push(error) });
     return <SourceEditingProvider value={editing}><AssemblyDialogHost actions={actions} /></SourceEditingProvider>;
   }
   const host = browser.document.createElement("div"); browser.document.body.append(host); const root = createRoot(host as unknown as Element);

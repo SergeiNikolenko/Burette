@@ -69,7 +69,7 @@ async function fixture(bindingText?: string, raw = false) {
     bindings.push(payload); queueMicrotask(() => window.dispatchEvent(new MessageEvent("message", { source: frame.contentWindow!, data: { source: "burette-agent-viewer", body: { type: "agent-action-result", id: payload.body.id, result: { ok: true, result: { lease: "captured-source-lease", text: bindingText ?? logicalSourceFor(doc.id)?.text } } } } })));
   };
   const target = document.createElement("div"); host.append(target); const root = createRoot(target);
-  function Probe() { controller = useSourceEditingController({ activeDocument: active, preferences: defaultPreferences, pushErrorStatus: error => errors.push(error), setDockOpen() {}, setDockActiveTab() {} }); return null; }
+  function Probe() { controller = useSourceEditingController({ activeDocument: active, preferences: defaultPreferences, pushErrorStatus: error => errors.push(error) }); return null; }
   await act(async () => root.render(<Probe />));
   return { doc, frame, sent, bindings, errors, get controller() { return controller; },
     async inactive() { active = null; await act(async () => root.render(<Probe />)); },

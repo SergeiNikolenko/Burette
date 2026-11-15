@@ -74,7 +74,7 @@ export async function mount(doc = documentFor(), renderContent?: (document: View
   };
   const actions = new Proxy(supplied, { get(target, key) { if (key in target) return Reflect.get(target, key); return () => { throw new Error(`Unexpected shell action ${String(key)}`); }; } }) as ShellActions;
   function Frame({ document: current, edit }: { document: ViewerDocument; edit?: boolean }) {
-    controller = useSourceEditingController({ activeDocument: current, preferences: defaultPreferences, pushErrorStatus: error => { throw error; }, setDockOpen() {}, setDockActiveTab() {} });
+    controller = useSourceEditingController({ activeDocument: current, preferences: defaultPreferences, pushErrorStatus: error => { throw error; } });
     useLayoutEffect(() => { layouts.push({ id: current.id, formula: formula() }); });
     return <SourceEditingProvider value={controller}>{renderContent ? renderContent(current, actions) : edit ? <StructureEditPanel document={current} actions={actions} /> : <Dialog open><DialogContent><PropertiesDialogBody document={current} actions={actions} onDone={() => { done++; }} /></DialogContent></Dialog>}</SourceEditingProvider>;
   }

@@ -112,7 +112,7 @@ test("the actual source controller stages a restored logical MOL using MOL title
   adoptLogicalSource({ documentId: doc.id, extension: "mol", text: source }, crypto.randomUUID(), null, ["C", "H", "C", "O"]);
   let controller!: ReturnType<typeof useSourceEditingController>;
   const errors: unknown[] = [], host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
-  function Probe() { controller = useSourceEditingController({ activeDocument: doc, preferences: { ...defaultPreferences, rendererMode: "molstar" }, pushErrorStatus: error => errors.push(error), setDockOpen() {}, setDockActiveTab() {} }); return null; }
+  function Probe() { controller = useSourceEditingController({ activeDocument: doc, preferences: { ...defaultPreferences, rendererMode: "molstar" }, pushErrorStatus: error => errors.push(error) }); return null; }
   try {
     await act(async () => root.render(<Probe />)); await act(async () => controller.beginEditing(doc));
     const changed = source.replace("M  V30 2 2 1 3", "M  V30 2 1 1 3"); await act(async () => controller.updateDraft(doc, changed));
@@ -171,7 +171,7 @@ test("independent actual controller: null-id MOL replacement revokes the held pr
   const errors: unknown[] = [], gate = new Promise<void>(resolve => { release = resolve; });
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   function Graph() { graph = useGraphDraft(doc); return null; }
-  function Controller() { controller = useSourceEditingController({ activeDocument: doc, preferences: { ...defaultPreferences, rendererMode: "molstar" }, pushErrorStatus: error => errors.push(error), setDockOpen() {}, setDockActiveTab() {} }); return <SourceEditingProvider value={controller}><Graph /></SourceEditingProvider>; }
+  function Controller() { controller = useSourceEditingController({ activeDocument: doc, preferences: { ...defaultPreferences, rendererMode: "molstar" }, pushErrorStatus: error => errors.push(error) }); return <SourceEditingProvider value={controller}><Graph /></SourceEditingProvider>; }
   try {
     await act(async () => root.render(<Controller />)); await until(() => Boolean(graph.history));
     await act(async () => controller.beginEditing(doc));

@@ -99,7 +99,7 @@ test("real SDF archive restore, compiled edits, Undo/Redo and fresh MOLX reopen 
   let controller!: ReturnType<typeof useSourceEditingController>, graph!: ReturnType<typeof useGraphDraft>, scene!: ViewerDocument;
   const errors: unknown[] = [], host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   function Graph() { graph = useGraphDraft(scene); return null; }
-  function Fixture() { controller = useSourceEditingController({ activeDocument: scene, preferences, pushErrorStatus: cause => errors.push(cause), setDockOpen() {}, setDockActiveTab() {} }); return <SourceEditingProvider value={controller}><Graph /></SourceEditingProvider>; }
+  function Fixture() { controller = useSourceEditingController({ activeDocument: scene, preferences, pushErrorStatus: cause => errors.push(cause) }); return <SourceEditingProvider value={controller}><Graph /></SourceEditingProvider>; }
   const current = () => controller.sessionForDocument(scene)! as LiveSourceSession;
   try {
     const initial = await textViewer(source), initialDoc = await browserOpen(initialPath, original), initialFrame = attach(initial, initialDoc.id);
