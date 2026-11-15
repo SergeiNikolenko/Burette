@@ -39,8 +39,8 @@ plugin.canvas3d = { mark({ loci }, action) {
   assert.equal(action, MarkerAction.RemoveHighlight, 'never clear explicit selections');
   highlighted = false;
 } };
-const direct = new Function('nativeTrajectoryModelTransform', 'afterNativeTrajectoryPaint', 'clearMolstarTrajectoryHover', `${extract('setNativeTrajectoryPoseDirect')}; return setNativeTrajectoryPoseDirect;`)(
-  () => transform, async () => { assert.equal(highlighted, false, "late hover clears before painting, even if playback stops now"); painted++; }, clearHover,
+const direct = new Function('window', 'nativeTrajectoryModelTransform', 'afterNativeTrajectoryPaint', 'clearMolstarTrajectoryHover', `${extract('setNativeTrajectoryPoseDirect')}; return setNativeTrajectoryPoseDirect;`)(
+  {}, () => transform, async () => { assert.equal(highlighted, false, "late hover clears before painting, even if playback stops now"); painted++; }, clearHover,
 );
 highlights.highlightOnly({ loci: EveryLoci }, false);
 assert.equal(highlighted, true);
