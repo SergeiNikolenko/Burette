@@ -87,6 +87,8 @@ export function createMolecularEditor(container, options = {}) {
     async load(text) { await ready; return request('load', text); },
     async snapshot() { await ready; return request('snapshot'); },
     async svg() { await ready; return request('svg'); },
+    async atoms() { await ready; return request('atoms'); },
+    async setTool(tool) { await ready; return request('tool', tool); },
     async command(name) { await ready; return request('command', name); },
     async setZoom(zoom) { await ready; return request('zoom', zoom); },
     syncAppearance,

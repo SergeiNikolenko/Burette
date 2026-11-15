@@ -2,6 +2,7 @@
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
 export const __wbg_editor_free: (a: number, b: number) => void;
+export const editor_atom_positions: (a: number, b: number) => void;
 export const editor_command: (a: number, b: number, c: number) => number;
 export const editor_double_click: (a: number, b: number, c: number) => number;
 export const editor_highlight_atoms: (a: number, b: number, c: number, d: number) => void;
@@ -26,7 +27,7 @@ export const editor_svg: (a: number, b: number) => void;
 export const editor_wheel: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
 export const editor_zoom_by: (a: number, b: number) => number;
 export const thumbnail: (a: number, b: number, c: number, d: number, e: number) => void;
-export const __wbindgen_export: (a: number, b: number) => number;
-export const __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
 export const __wbindgen_add_to_stack_pointer: (a: number) => number;
-export const __wbindgen_export3: (a: number, b: number, c: number) => void;
+export const __wbindgen_export: (a: number, b: number, c: number) => void;
+export const __wbindgen_export2: (a: number, b: number) => number;
+export const __wbindgen_export3: (a: number, b: number, c: number, d: number) => number;
