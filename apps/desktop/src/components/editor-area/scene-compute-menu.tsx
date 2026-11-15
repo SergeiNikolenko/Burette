@@ -34,8 +34,8 @@ const UNAVAILABLE: Record<Exclude<SceneFileState, "available">, string> = {
   deleted: "The file no longer exists",
 };
 
-// SDF/MOL's embedded toolbar owns geometry/ensemble actions; registered source
-// spectra use this host menu without exposing another generic compute route. Other
+// SDF/MOL geometry/ensemble actions run in the viewer; it reports them with its
+// anchor and hides its own trigger, so this is the only Compute button. Other
 // molecular scenes use the same selection-aware jobs as the inspector. A scene
 // built from several files lists each file, so any of them can be computed
 // without selecting it first, and files that are gone show why they cannot.
@@ -45,6 +45,8 @@ export function SceneComputeMenu({ document, actions, iframeRef }: {
   iframeRef?: RefObject<HTMLIFrameElement | null>;
 }) {
   const [files, setFiles] = useState<Array<{ path: string; state: SceneFileState }> | null>(null);
+  const [viewerOperations, setViewerOperations] = useState<ViewerComputeOperation[]>([]);
+  const [pendingLabel, setPendingLabel] = useState("");
   const hasOrbitals = useOrbitalsAvailable(document);
   const hasPotential = usePotentialAvailable(document);
   const hasFields = useFieldsAvailable(document);
@@ -71,6 +73,8 @@ export function SceneComputeMenu({ document, actions, iframeRef }: {
         || body?.type !== "sceneComputeAnchor" || body.documentId !== document.id
         || !Number.isFinite(body.top) || !Number.isFinite(body.right)
         || body.top < 0 || body.top >= frame.clientHeight || body.right < 0 || body.right >= frame.clientWidth) return;
+      setViewerOperations(viewerComputeOperations(body.operations));
+      setPendingLabel(typeof body.pendingLabel === "string" ? body.pendingLabel.slice(0, 40) : "");
       const element = anchor.current;
       if (element) {
         element.style.top = `${body.top}px`;
@@ -133,6 +137,16 @@ export function SceneComputeMenu({ document, actions, iframeRef }: {
     if (hasPolymer) items.push({ kind: "item", id: "workbench-polymer", text: "Build polymer…", action: () => openWorkbenchDialog({ kind: "builder", builder: "polymer", document }) });
     for (const [builder, text] of BUILDERS) items.push({ kind: "item", id: `workbench-${builder}`, text, action: () => openWorkbenchDialog({ kind: "builder", builder, document }) });
   }
+  if (viewerOperations.length) items.unshift(...viewerOperations.map(({ operation, label, disabled }) => ({
+    kind: "item" as const,
+    id: `viewer-${operation}`,
+    text: label,
+    disabled,
+    action: () => iframeRef?.current?.contentWindow?.postMessage({
+      source: "burette-host",
+      body: { type: "runComputeOperation", documentId: document.id, operation },
+    }, "*"),
+  })), ...(items.length ? [{ kind: "separator" as const }] : []));
   if (!combined && pluginCommands.length) items.push(...(items.length ? [{ kind: "separator" as const }] : []), ...commandMenuItems(pluginCommands, entry => startAvogadroCommand(entry, document)));
   // Every calculation here, and xTB/CREST started elsewhere, runs where this points.
   if (!embeddedGraph && connections.length > 0) items.push({ kind: "separator" }, {
@@ -147,7 +161,19 @@ export function SceneComputeMenu({ document, actions, iframeRef }: {
       align="end"
       items={items}
       onOpenChange={(open) => { if (open && combined) void sceneFileStates(document).then(setFiles).catch(() => {}); }}
-      trigger={<Button variant="secondary" size="toolbar" aria-label="Open molecular compute menu">Compute<ChevronDown data-icon="inline-end" aria-hidden="true" /></Button>}
+      trigger={<Button variant="secondary" size="toolbar" aria-label="Open molecular compute menu">{pendingLabel || "Compute"}<ChevronDown data-icon="inline-end" aria-hidden="true" /></Button>}
     />
   </div>;
+}
+
+type ViewerComputeOperation = { operation: string; label: string; disabled: boolean };
+
+// The viewer's own operations arrive over postMessage; keep only well-formed, short entries.
+function viewerComputeOperations(value: unknown): ViewerComputeOperation[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 12).flatMap(item => (
+    item && typeof item.operation === "string" && /^[A-Za-z0-9]{1,40}$/u.test(item.operation) && typeof item.label === "string"
+      ? [{ operation: item.operation, label: item.label.slice(0, 60), disabled: item.disabled === true }]
+      : []
+  ));
 }
