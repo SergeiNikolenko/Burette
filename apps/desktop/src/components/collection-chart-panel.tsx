@@ -395,7 +395,7 @@ function ChartTip({ tip, table, bands, selected, preview, lines, valueLabel }: {
     const molecule = preview?.sourceRecordId === id ? preview : null;
     return (
       <div className={frame} style={style} data-testid="collection-chart-tip">
-        {molecule?.smiles ? <div className="mb-1 w-44 [&_.rgroup-structure]:h-24"><Structure smiles={molecule.smiles} label={molecule.name} width={176} height={96} /></div>
+        {molecule?.smiles ? <div className="mb-1 w-52 [&_.rgroup-structure]:h-30"><Structure smiles={molecule.smiles} label={molecule.name} width={208} height={120} /></div>
           : molecule?.svgUrl ? <img className="mb-1 h-24 w-44 rounded-md bg-white object-contain" src={molecule.svgUrl} alt="" /> : null}
         <div className="truncate font-medium">{molecule?.name || `Row ${id + 1}`}</div>
         {lines.map(([label, value]) => (

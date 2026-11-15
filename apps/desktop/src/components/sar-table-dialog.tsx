@@ -27,7 +27,7 @@ export type SarTableRequest = {
 type Preview = { name: string; smiles: string; svgUrl: string | null };
 type CellAddress = { row: number; column: number };
 
-const PREVIEWED_MOLECULES = 3;
+const PREVIEWED_MOLECULES = 2;
 const MAX_PREVIEW_BASE64_BYTES = 350_000;
 const positionLabel = (column: GridColumnChoice) => column.label.replace(/^RGroup_/, "");
 const sameCell = (a: CellAddress | null, b: CellAddress) => a?.row === b.row && a.column === b.column;
@@ -164,17 +164,18 @@ export function SarTableDialog({ request, onDismiss }: { request: SarTableReques
     </label>;
 
   return <Dialog open={request !== null} onOpenChange={(open) => { if (!open) onDismiss(); }}>
-    <DialogContent variant="form" size="xwide" className="min-w-0 overscroll-contain">
+    {/* A column whose only shrinking part is the table, so the core, the cell's molecules and Select in grid stay on screen. */}
+    <DialogContent variant="form" size="xwide" className="flex min-w-0 flex-col overscroll-contain">
       <DialogHeader>
         <DialogTitle>SAR table</DialogTitle>
         <DialogDescription className="sr-only">The R-group decomposition of {request?.documentTitle} as a matrix of two positions, coloured by a column.</DialogDescription>
       </DialogHeader>
-      <div className="flex min-w-0 flex-col gap-4">
+      <div className="flex min-h-0 min-w-0 flex-col gap-4">
         {error && <p className="py-5 text-sm text-(--color-text-secondary)" role="alert">{error}</p>}
         {!error && !text && <p className="flex items-center justify-center gap-2 py-5 text-sm text-(--color-text-secondary)" role="status"><Spinner className="size-4" aria-hidden />Reading R-groups…</p>}
         {text && !table && <p className="py-5 text-sm text-(--color-text-secondary)" role="status">This series varies at fewer than two positions.</p>}
         {text && <div className="sar-table-head">
-          {core && table && <figure className="sar-table-core"><Structure smiles={core} label={`Core ${core}`} attachments width={300} height={120} /></figure>}
+          {core && table && <figure className="sar-table-core"><Structure smiles={core} label={`Core ${core}`} attachments width={280} height={180} /></figure>}
           <div className="sar-table-controls">
           {series.length > 1 && <label className="flex min-w-0 flex-col gap-2 text-xs">Series
             <NativeSelect name="series" value={activeSeries} onChange={(event) => { setSeriesId(event.target.value); setAxes(null); setHovered(null); setPinned(null); }}>
@@ -227,7 +228,7 @@ export function SarTableDialog({ request, onDismiss }: { request: SarTableReques
             const preview = previews.get(id);
             const value = values?.get(id);
             return <figure key={id}>
-              {preview?.smiles ? <Structure smiles={preview.smiles} label={preview.name} width={200} height={96} />
+              {preview?.smiles ? <Structure smiles={preview.smiles} label={preview.name} width={290} height={160} />
                 : preview?.svgUrl ? <img src={preview.svgUrl} alt="" /> : <div className="sar-table-molecule-pending" />}
               <figcaption><span className="truncate" title={preview?.name}>{preview?.name ?? `Molecule ${id + 1}`}</span>
                 <span className="tabular-nums">{value === undefined ? "" : value.toFixed(2)}</span></figcaption>

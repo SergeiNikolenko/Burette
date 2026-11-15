@@ -107,7 +107,7 @@ export function RGroupPreviewResults({ result, total }: { result: RGroupDecompos
           {result.series.map((item) => <NativeSelectOption key={item.id} value={item.id}>{item.id} · {item.matchedRows} molecules · {item.labels.length} variable {item.labels.length === 1 ? "position" : "positions"}</NativeSelectOption>)}
         </NativeSelect>
       </label>
-      <div className="rgroup-core"><Structure smiles={series.core} />
+      <div className="rgroup-core"><Structure smiles={series.core} width={360} height={180} />
         {series.coreVariantCount > 1 && <span>{series.coreVariantCount} core variants</span>}
         {!series.labels.length && <span>No variable substituents</span>}
       </div>
@@ -118,7 +118,7 @@ export function RGroupPreviewResults({ result, total }: { result: RGroupDecompos
           </NativeSelect>
         </label>
         <div className="rgroup-substituents">{groups.slice(page * 6, page * 6 + 6).map(([smiles, count]) =>
-          <figure key={smiles}><Structure smiles={smiles} /><figcaption>{count} {count === 1 ? "molecule" : "molecules"} · {Math.round(100 * count / series.matchedRows)}%</figcaption></figure>)}</div>
+          <figure key={smiles}><Structure smiles={smiles} width={200} height={110} /><figcaption>{count} {count === 1 ? "molecule" : "molecules"} · {Math.round(100 * count / series.matchedRows)}%</figcaption></figure>)}</div>
         {groups.length > 6 && <div className="rgroup-pagination">
           <Button type="button" variant="secondary" size="sm" disabled={page === 0} onClick={() => setPage(page - 1)}>Previous</Button>
           <span className="text-xs tabular-nums" role="status">{page * 6 + 1}–{Math.min(page * 6 + 6, groups.length)} of {groups.length}</span>
