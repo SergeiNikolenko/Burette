@@ -71,12 +71,14 @@ test("matched pairs lists mmpdb's transformations, shows the pairs and selects t
   await settle();
   const rows = () => [...document.querySelectorAll("tbody tr")];
   // The three commonest transformations with mmpdb's count, mean and deviation.
-  expect(rows().slice(0, 3).map((row) => [row.getAttribute("aria-label"), ...[...row.querySelectorAll("td")].slice(2).map((cell) => cell.textContent)])).toEqual([
+  expect(rows().slice(0, 3).map((row) => [row.getAttribute("aria-label"), ...[...row.querySelectorAll("td:not(.matched-pairs-bar-cell)")].slice(1).map((cell) => cell.textContent)])).toEqual([
     ["[*:1]Cl to [*:1]F, 13 pairs", "13", "−0.31", "0.34"],
     ["[*:1]Cl to [*:1]OC, 8 pairs", "8", "−0.54", "0.52"],
     ["[*:1]C to [*:1][H], 8 pairs", "8", "+0.21", "0.60"],
   ]);
   expect(rows()[0].querySelector("[data-structure]")?.getAttribute("data-structure")).toBe("*Cl");
+  // The bar points the way the mean moves.
+  expect(rows().slice(0, 3).map((row) => row.querySelector(".matched-pairs-bar")?.getAttribute("data-direction"))).toEqual(["down", "down", "up"]);
   expect(text('[role="status"]')).toEqual(["1–5 of 317", "1 molecule was left out."]);
   expect(button("Select in grid").disabled).toBe(true);
 
@@ -100,7 +102,7 @@ test("matched pairs lists mmpdb's transformations, shows the pairs and selects t
 });
 
 const sarRequest = {
-  documentId: "fxa", documentTitle: "fxa.sdf", columns: numeric, seriesColumnId: "prop:RGroup_Series",
+  documentId: "fxa", documentTitle: "fxa.sdf", columns: numeric, seriesColumnId: "prop:RGroup_Series", coreColumnId: "prop:RGroup_Core",
   positions: [1, 2, 3, 4, 5, 6].map((position) => ({ id: `prop:RGroup_R${position}`, label: `RGroup_R${position}`, type: "text" as const, kind: "property" })),
 };
 
@@ -109,6 +111,9 @@ test("the SAR table lays the largest series out by its two most varied positions
   await settle();
   const value = (name: string) => document.querySelector<HTMLSelectElement>(`select[name="${name}"]`)!.value;
   expect([value("series"), value("rows"), value("columns"), value("colour")]).toEqual(["S1", "prop:RGroup_R4", "prop:RGroup_R1", "prop:pKi"]);
+  // The series' core, with its R positions, explains what the rows and columns are.
+  expect(document.querySelector(".sar-table-core [data-structure]")?.getAttribute("data-structure"))
+    .toBe("O=C(NCC1CCN(c2ccnc([*:6])c2)CC1)c1cc(OCCc2ccc([*:1])c([*:2])c2[*:3])c([*:4])c([*:5])c1");
   const table = document.querySelector("table.sar-table")!;
   expect(table.querySelectorAll("tbody tr")).toHaveLength(18);
   expect([...table.querySelectorAll("thead th")].slice(1).map((cell) => cell.getAttribute("title"))).toEqual(
@@ -122,7 +127,9 @@ test("the SAR table lays the largest series out by its two most varied positions
   expect(row(2).map((cell) => cell.textContent)).toEqual(["7.13", "", "", "", "", "", "", "", ""]);
   expect(row(0)[0].getAttribute("title")).toBe("Mean of 3 of 3 molecules");
   // The scale runs over the cell means: the best cell is the strongest tint.
-  expect([row(0)[0], row(0)[8]].map((cell) => (cell as HTMLElement).style.getPropertyValue("--sar-shade"))).toEqual(["60%", "10%"]);
+  expect([row(0)[0], row(0)[8]].map((cell) => (cell as HTMLElement).style.getPropertyValue("--sar-shade"))).toEqual(["100%", "0%"]);
+  expect([row(0)[0], row(0)[8]].map((cell) => cell.hasAttribute("data-strong"))).toEqual([true, false]);
+  expect(document.querySelector(".sar-table-legend")?.textContent).toBe("pKi5.347.76");
 
   // Hovering asks the grid for the cell's molecules one at a time.
   await act(async () => row(0)[0].dispatchEvent(new MouseEvent("mouseover", { bubbles: true })));

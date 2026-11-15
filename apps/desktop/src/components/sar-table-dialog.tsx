@@ -18,6 +18,8 @@ export type SarTableRequest = {
   /** The R-position columns of the collection's R-group decomposition. */
   positions: GridColumnChoice[];
   seriesColumnId: string | null;
+  /** The core each molecule was decomposed on, with its R positions as `[*:N]`. */
+  coreColumnId: string | null;
   /** Numeric columns a cell can be coloured by. */
   columns: GridColumnChoice[];
 };
@@ -55,7 +57,7 @@ export function SarTableDialog({ request, onDismiss }: { request: SarTableReques
     void (async () => {
       try {
         const next = new Map<string, Map<number, string>>();
-        for (const id of [...request.positions.map((column) => column.id), ...(request.seriesColumnId ? [request.seriesColumnId] : [])]) {
+        for (const id of [...request.positions.map((column) => column.id), request.seriesColumnId, request.coreColumnId].filter((id): id is string => Boolean(id))) {
           next.set(id, await requestGridColumnText(request.documentId, id));
           if (!current) return;
         }
@@ -114,6 +116,14 @@ export function SarTableDialog({ request, onDismiss }: { request: SarTableReques
     const groups = new Set([...(text?.get(column.id) ?? [])].flatMap(([id, value]) => (!members || members.has(id) ? [value] : [])));
     return groups.size ? [{ column, groups: groups.size }] : [];
   }).sort((a, b) => b.groups - a.groups), [request, text, members]);
+  // The series' own core, as most of its molecules were decomposed on it.
+  const core = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const [id, smiles] of (request?.coreColumnId && text?.get(request.coreColumnId)) || []) {
+      if (smiles && (!members || members.has(id))) counts.set(smiles, (counts.get(smiles) ?? 0) + 1);
+    }
+    return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
+  }, [request, text, members]);
   const rowsId = positions.some(({ column }) => column.id === axes?.rows) ? axes!.rows : positions[0]?.column.id ?? "";
   const columnsId = positions.some(({ column }) => column.id === axes?.columns) && axes!.columns !== rowsId
     ? axes!.columns : positions.find(({ column }) => column.id !== rowsId)?.column.id ?? "";
@@ -163,7 +173,9 @@ export function SarTableDialog({ request, onDismiss }: { request: SarTableReques
         {error && <p className="py-5 text-sm text-(--color-text-secondary)" role="alert">{error}</p>}
         {!error && !text && <p className="flex items-center justify-center gap-2 py-5 text-sm text-(--color-text-secondary)" role="status"><Spinner className="size-4" aria-hidden />Reading R-groups…</p>}
         {text && !table && <p className="py-5 text-sm text-(--color-text-secondary)" role="status">This series varies at fewer than two positions.</p>}
-        {text && <div className="sar-table-controls">
+        {text && <div className="sar-table-head">
+          {core && table && <figure className="sar-table-core"><Structure smiles={core} label={`Core ${core}`} attachments width={300} height={120} /></figure>}
+          <div className="sar-table-controls">
           {series.length > 1 && <label className="flex min-w-0 flex-col gap-2 text-xs">Series
             <NativeSelect name="series" value={activeSeries} onChange={(event) => { setSeriesId(event.target.value); setAxes(null); setHovered(null); setPinned(null); }}>
               {series.map(([id, count]) => <NativeSelectOption key={id} value={id}>{id} ({count.toLocaleString()})</NativeSelectOption>)}
@@ -176,6 +188,7 @@ export function SarTableDialog({ request, onDismiss }: { request: SarTableReques
               {request?.columns.map((column) => <NativeSelectOption key={column.id} value={column.id}>{column.label}</NativeSelectOption>)}
             </NativeSelect>
           </label>}
+          </div>
         </div>}
         {table && <div className="sar-table-scroll" onMouseLeave={() => setHovered(null)}>
           <table className="sar-table" aria-label={`${colour?.label ?? "Molecules"} by substituent`}>
@@ -192,7 +205,8 @@ export function SarTableDialog({ request, onDismiss }: { request: SarTableReques
                   const address = { row, column };
                   if (!cell) return <td key={table.columnGroups[column]} />;
                   return <td key={table.columnGroups[column]} tabIndex={0} aria-selected={sameCell(pinned, address)}
-                    style={cell.mean === null ? undefined : { "--sar-shade": `${Math.round(10 + 50 * shade(cell.mean))}%` } as CSSProperties}
+                    style={cell.mean === null ? undefined : { "--sar-shade": `${Math.round(100 * shade(cell.mean))}%` } as CSSProperties}
+                    data-strong={cell.mean !== null && shade(cell.mean) > 0.55 ? "" : undefined}
                     title={cell.ids.length > 1 ? `Mean of ${cell.valued} of ${cell.ids.length} molecules` : undefined}
                     onMouseEnter={() => setHovered(address)} onFocus={() => setHovered(address)}
                     onClick={() => setPinned(address)}
@@ -203,6 +217,9 @@ export function SarTableDialog({ request, onDismiss }: { request: SarTableReques
               </tr>)}
             </tbody>
           </table>
+        </div>}
+        {table && table.max > table.min && <div className="sar-table-legend" aria-label={`${colour?.label ?? "Value"} from ${table.min.toFixed(2)} to ${table.max.toFixed(2)}`}>
+          <span>{colour?.label}</span><span className="tabular-nums">{table.min.toFixed(2)}</span><span className="sar-table-ramp" /><span className="tabular-nums">{table.max.toFixed(2)}</span>
         </div>}
         {/* The row is there before a cell is pointed at: a dialog that grew on hover would move the table under the pointer. */}
         {table && <div className="sar-table-molecules" aria-label="Molecules in the cell">

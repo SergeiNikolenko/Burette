@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import { ArrowRight } from "./ui/app-icons";
@@ -39,6 +39,7 @@ const TRANSFORMATIONS_PER_PAGE = 5;
 const PAIRS_PER_PAGE = 2;
 
 const signed = (value: number) => `${value > 0 ? "+" : value < 0 ? "−" : ""}${Math.abs(value).toFixed(2)}`;
+const direction = (value: number) => (value > 0 ? "up" : value < 0 ? "down" : undefined);
 // The attachment point reads as a plain asterisk in the drawing.
 const drawn = (smiles: string) => smiles.replaceAll("[*:1]", "*");
 
@@ -117,6 +118,9 @@ export function MatchedPairsDialog({ request, onDismiss }: { request: MatchedPai
       || a.key.localeCompare(b.key));
   }, [analysis, values, sort]);
   const selected = rows.find((row) => row.key === selectedKey) ?? null;
+  const pageRows = rows.slice(page * TRANSFORMATIONS_PER_PAGE, (page + 1) * TRANSFORMATIONS_PER_PAGE);
+  // Bars compare the rows on screen: one single-pair outlier elsewhere would flatten them all.
+  const largestChange = pageRows.reduce((largest, row) => Math.max(largest, Math.abs(row.statistics?.mean ?? 0)), 0);
   const column = request?.columns.find((item) => item.id === columnId);
   const result = analysis?.result;
   const notes = analysis && result ? [
@@ -164,25 +168,31 @@ export function MatchedPairsDialog({ request, onDismiss }: { request: MatchedPai
           <Table className="matched-pairs-table" aria-label="Transformations">
             <TableHeader>
               <TableRow>
-                <TableHead>From</TableHead>
-                <TableHead>To</TableHead>
+                <TableHead>Replacement</TableHead>
                 <TableHead className="text-right">Pairs</TableHead>
-                <TableHead className="text-right" title={`Mean change in ${column?.label ?? "the property"}, To minus From`}>Mean Δ</TableHead>
+                <TableHead colSpan={2} className="text-right" title={`Mean change in ${column?.label ?? "the property"} after the replacement`}>Mean Δ</TableHead>
                 <TableHead className="text-right" title="Standard deviation of the change">SD</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.slice(page * TRANSFORMATIONS_PER_PAGE, (page + 1) * TRANSFORMATIONS_PER_PAGE).map(({ key, transformation, statistics }) => {
+              {pageRows.map(({ key, transformation, statistics }) => {
                 const pairs = transformation.pairs.length;
                 return <TableRow key={key} tabIndex={0} className="cursor-default" aria-selected={key === selectedKey}
                   data-state={key === selectedKey ? "selected" : undefined}
                   aria-label={`${transformation.from} to ${transformation.to}, ${pairs} ${pairs === 1 ? "pair" : "pairs"}`}
                   onClick={() => select(key)}
                   onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); select(key); } }}>
-                  <TableCell><Structure smiles={drawn(transformation.from)} width={120} height={44} /></TableCell>
-                  <TableCell><Structure smiles={drawn(transformation.to)} width={120} height={44} /></TableCell>
+                  <TableCell><div className="matched-pairs-replacement">
+                    <Structure smiles={drawn(transformation.from)} width={120} height={44} />
+                    <ArrowRight className="size-4" aria-hidden />
+                    <Structure smiles={drawn(transformation.to)} width={120} height={44} />
+                  </div></TableCell>
                   <TableCell className="text-right tabular-nums">{pairs.toLocaleString()}</TableCell>
-                  <TableCell className="text-right tabular-nums" title={statistics && statistics.count < pairs ? `${statistics.count} of ${pairs} pairs have a value` : undefined}>
+                  <TableCell className="matched-pairs-bar-cell" aria-hidden>{statistics && largestChange > 0 &&
+                    <span className="matched-pairs-bar" data-direction={direction(statistics.mean)}
+                      style={{ "--change": Math.abs(statistics.mean) / largestChange } as CSSProperties} />}</TableCell>
+                  <TableCell className="matched-pairs-change text-right tabular-nums" data-direction={statistics ? direction(statistics.mean) : undefined}
+                    title={statistics && statistics.count < pairs ? `${statistics.count} of ${pairs} pairs have a value` : undefined}>
                     {statistics ? signed(statistics.mean) : ""}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{statistics?.sd == null ? "" : statistics.sd.toFixed(2)}</TableCell>
@@ -197,11 +207,12 @@ export function MatchedPairsDialog({ request, onDismiss }: { request: MatchedPai
               const to = values?.get(toId);
               return <div key={`${fromId} ${toId} ${constant}`} className="matched-pairs-pair">
                 {[fromId, toId].map((id, side) => <figure key={side}>
-                  <Structure smiles={analysis.smiles.get(id) ?? ""} width={264} height={120} />
+                  <Structure smiles={analysis.smiles.get(id) ?? ""} constant={result?.constants[constant]} width={264} height={120} />
                   <figcaption><span className="truncate" title={name(id)}>{name(id)}</span><span className="tabular-nums">{value(id)}</span></figcaption>
                 </figure>)}
                 <ArrowRight className="matched-pairs-arrow size-4" aria-hidden />
-                <span className="matched-pairs-delta tabular-nums">{from === undefined || to === undefined ? "" : signed(to - from)}</span>
+                <span className="matched-pairs-delta matched-pairs-change tabular-nums" data-direction={from === undefined || to === undefined ? undefined : direction(to - from)}>
+                  {from === undefined || to === undefined ? "" : signed(to - from)}</span>
               </div>;
             })}
             <Pager page={pairPage} pageSize={PAIRS_PER_PAGE} total={selected.transformation.pairs.length} onPage={setPairPage} />

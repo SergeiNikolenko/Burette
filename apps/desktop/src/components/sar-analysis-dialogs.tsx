@@ -5,7 +5,7 @@ import { requestGridColumns } from "../hooks/use-app-derived-columns";
 import type { GridColumnChoice, StatusKind } from "./types";
 import type { ViewerDocument } from "../types";
 
-const RGROUP_COLUMN = /^(descriptor|prop):RGroup_(Series|R[1-9][0-9]*)$/;
+const RGROUP_COLUMN = /^(descriptor|prop):RGroup_(Series|Core|R[1-9][0-9]*)$/;
 
 // The decomposition's columns, whether it ran in this session or came with
 // the file; a column computed in this session wins over a saved one.
@@ -16,9 +16,11 @@ function rgroupColumns(columns: GridColumnChoice[]) {
     if (match && (match[1] === "descriptor" || !byLabel.has(match[2]))) byLabel.set(match[2], column);
   }
   const series = byLabel.get("Series") ?? null;
+  const core = byLabel.get("Core") ?? null;
   byLabel.delete("Series");
+  byLabel.delete("Core");
   const positions = [...byLabel].sort((a, b) => Number(a[0].slice(1)) - Number(b[0].slice(1))).map(([, column]) => column);
-  return { positions, seriesColumnId: series?.id ?? null };
+  return { positions, seriesColumnId: series?.id ?? null, coreColumnId: core?.id ?? null };
 }
 
 /** Matched pairs and the SAR table: the two Analyze dialogs that read a
