@@ -209,3 +209,35 @@ apps/desktop/public/molecular-frame/burette-embed/viewer.js
 apps/desktop/public/molecular-frame/templates.json
 apps/molecular-frame/public/templates.json
 apps/molecular-frame/src/components/molecular/molecule-editor/core/molecule_editor_bg.wasm
+# Generated resizable-panels patch: rebuilt runtime bundles and their source maps,
+# reproduced as described in docs/react-resizable-panels-patch.md.
+patches/react-resizable-panels@4.14.8.patch
+# Reviewed generated shell, molecular editor frame and embedded viewer for 2026.11.14.
+plugins/burette-agent/browser-shell-dist/assets/Burette_rdkit_conformer-CradlaqK.wasm
+plugins/burette-agent/browser-shell-dist/assets/auto-optimize-worker-Dcik2gFi.js
+plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-oOVeK60s.js
+plugins/burette-agent/browser-shell-dist/assets/compute-worker-CLHlUpc1.js
+plugins/burette-agent/browser-shell-dist/assets/cube-worker-gAWjmbJf.js
+plugins/burette-agent/browser-shell-dist/assets/dist-CGv2YIHB.js
+plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-CorQE_rM.js
+plugins/burette-agent/browser-shell-dist/assets/fragment-worker-BBS8P9Fy.js
+plugins/burette-agent/browser-shell-dist/assets/graph-worker-Dlfvbdtg.js
+plugins/burette-agent/browser-shell-dist/assets/index-LIX5aNdD.css
+plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-CtK0YPto.js
+plugins/burette-agent/browser-shell-dist/assets/metal-complex-worker-DRYtL8s5.js
+plugins/burette-agent/browser-shell-dist/assets/molecule-store-CLOTfJEz.js
+plugins/burette-agent/browser-shell-dist/assets/molstar-BJQWRUD5.js
+plugins/burette-agent/browser-shell-dist/assets/moyo_wasm_bg-BNjhA5Ri.wasm
+plugins/burette-agent/browser-shell-dist/assets/native-viewer-menus-C9UTL4HT.js
+plugins/burette-agent/browser-shell-dist/assets/openchemlib-CbNIcicW.js
+plugins/burette-agent/browser-shell-dist/assets/polymer-worker-C7svjLSr.js
+plugins/burette-agent/browser-shell-dist/assets/reader-worker-TJyq8b7n.js
+plugins/burette-agent/browser-shell-dist/assets/viewer-CETPiU2k.js
+plugins/burette-agent/browser-shell-dist/molecular-frame/assets/index.modern-C7D2JuZo.js
+plugins/burette-agent/browser-shell-dist/molecular-frame/assets/indigo-ketcher-1.46.0-f_xBxuuS.wasm
+plugins/burette-agent/browser-shell-dist/molecular-frame/assets/molecule_editor_bg-DZABOe7T.wasm
+plugins/burette-agent/browser-shell-dist/molecular-frame/burette-embed/molstar.js
+plugins/burette-agent/browser-shell-dist/molecular-frame/burette-embed/native-viewer-menus.js
+plugins/burette-agent/browser-shell-dist/molecular-frame/burette-embed/rdkit/RDKit_minimal.wasm
+plugins/burette-agent/browser-shell-dist/molecular-frame/burette-embed/viewer.js
+plugins/burette-agent/browser-shell-dist/molecular-frame/templates.json
