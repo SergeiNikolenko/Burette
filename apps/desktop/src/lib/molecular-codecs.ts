@@ -55,13 +55,30 @@ export function convertStructure(struct: string, format: keyof typeof import('ke
   return result;
 }
 
+// RDKit and most toolkits write chiral flag 0 even for 3D records, which marks
+// every stereocentre as relative, and the editor refuses relative stereo. In a
+// 3D V2000 block the coordinates fix each centre, so the flag is set to absolute.
+export function absoluteStereoIn3dMolfiles(text: string) {
+  const lines = text.split('\n');
+  for (let index = 0; index < lines.length; index++) {
+    const counts = lines[index];
+    if (!/^.{33} ?V2000\s*$/u.test(counts) || counts.slice(12, 15).trim() !== '0') continue;
+    const atoms = Number(counts.slice(0, 3));
+    const atomLines = lines.slice(index + 1, index + 1 + atoms);
+    if (atomLines.some(line => Math.abs(Number(line.slice(20, 30))) > 1e-4)) {
+      lines[index] = `${counts.slice(0, 12)}  1${counts.slice(15)}`;
+    }
+  }
+  return lines.join('\n');
+}
+
 // Existing files and agent contracts retain their formats. The drawing surface
 // and its state belong to the shared molecular frame.
 export async function importStructure(value: string) {
   if (/^\s*(?:<|InChI=|VjCD0100|\$RXN|\$RDFILE)/u.test(value)) {
     return importStructure(await convertStructure(value, 'KET', undefined, 'UNKNOWN'));
   }
-  if (!value.trim().startsWith('{')) return value;
+  if (!value.trim().startsWith('{')) return absoluteStereoIn3dMolfiles(value);
   const ket = JSON.parse(value);
   const nodes = ket?.root?.nodes;
   if (!Array.isArray(nodes) || nodes.some((node: { $ref?: string }) => !node.$ref || ket[node.$ref]?.type !== 'molecule')) {

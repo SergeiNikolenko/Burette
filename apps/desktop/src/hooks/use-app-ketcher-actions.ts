@@ -141,7 +141,7 @@ export function useAppKetcherActions({
     openKetcherTab({ kind: "ketcher", importRequestId: request.id, importRequest: request });
     setStructureDragActive(false);
     const count = readablePaths.length + cleanFragments.length;
-    pushStatus(`Adding ${count} structure${count === 1 ? "" : "s"} to Ketcher`);
+    pushStatus(`Adding ${count} structure${count === 1 ? "" : "s"} to the molecular editor`);
   }, [nextKetcherImportRequestId, openKetcherTab, pushStatus, setStructureDragActive]);
 
   const openKetcherExportRaw = useCallback((request: {
@@ -235,7 +235,7 @@ export function useAppKetcherActions({
     setKetcherImportRequest(request);
     openKetcherTab({ kind: "ketcher", importRequestId: request.id, importRequest: request });
     setStructureDragActive(false);
-    pushStatus(`Adding ${cleanTitle} to Ketcher`);
+    pushStatus(`Adding ${cleanTitle} to the molecular editor`);
   }, [nextKetcherImportRequestId, openKetcherTab, pushStatus, setStructureDragActive]);
 
   const applyKetcherToGridRow = useCallback((request: {
