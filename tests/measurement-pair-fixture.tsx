@@ -59,6 +59,7 @@ globalThis.Worker = HeldWorker;
 const { SourceEditingProvider } = await import("../apps/desktop/src/lib/source-editing/context");
 const { useSourceEditingController } = await import("../apps/desktop/src/hooks/use-source-editing");
 const { useGraphDraft: useFocusedGraphDraft } = await import("../apps/desktop/src/lib/workbench/use-graph-draft");
+const { recordRightToolReveals } = await import("./support/right-tool-reveals");
 let serial = 0;
 /** `render` adds components that edit the same document inside the source-editing provider. */
 export async function fixture(format: "sdf" | "mol" = "sdf", useAdapter: typeof useFocusedGraphDraft = useFocusedGraphDraft, sourceText?: string, render?: (document: ViewerDocument) => React.ReactNode) {
@@ -68,13 +69,13 @@ export async function fixture(format: "sdf" | "mol" = "sdf", useAdapter: typeof 
   let controller!: ReturnType<typeof useSourceEditingController>, graph!: ReturnType<typeof useFocusedGraphDraft>, focused!: ReturnType<typeof useFocusedGraphDraft>;
   let writeMode: "normal" | "throw" | "noop" = "normal";
   let afterWrite: (() => void) | undefined;
-  const dockTabs: string[] = [];
+  const { tools: dockTabs, stop: stopRecordingTabs } = await recordRightToolReveals();
   const draftOptions: unknown[] = [];
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   function Probe() { graph = useAdapter(doc); focused = useFocusedGraphDraft(doc); return null; }
   function Fixture() {
     controller = useSourceEditingController({ activeDocument: doc, preferences: {} as ViewerPreferences,
-      pushErrorStatus() {}, setDockOpen() {}, setDockActiveTab(_side, tab) { dockTabs.push(tab); } });
+      pushErrorStatus() {}, setDockOpen() {}, setDockActiveTab() {} });
     return <SourceEditingProvider value={{ ...controller, updateDraft(document, content, options) {
       if (writeMode === "throw") throw new Error("Draft write rejected.");
       if (writeMode === "noop") return;
@@ -98,6 +99,6 @@ export async function fixture(format: "sdf" | "mol" = "sdf", useAdapter: typeof 
     async apply(operation: Parameters<typeof graph.apply>[0], options?: Parameters<typeof graph.apply>[1]) {
       let result: Awaited<ReturnType<typeof graph.apply>> = null; await act(async () => { result = await graph.apply(operation, options); }); return result;
     },
-    close: async () => { await act(async () => root.unmount()); host.remove(); sourceOverrides.delete(doc.path); },
+    close: async () => { stopRecordingTabs(); await act(async () => root.unmount()); host.remove(); sourceOverrides.delete(doc.path); },
   };
 }

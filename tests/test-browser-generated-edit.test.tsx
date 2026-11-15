@@ -29,6 +29,7 @@ const { useSourceEditingController } = await import("../apps/desktop/src/hooks/u
 const { SourceEditingProvider } = await import("../apps/desktop/src/lib/source-editing/context");
 const { useGraphDraft } = await import("../apps/desktop/src/lib/workbench/use-graph-draft");
 const { useMoleculeStore } = await import("../apps/desktop/src/stores/molecule-store");
+const { recordRightToolReveals } = await import("./support/right-tool-reveals");
 const source = readFileSync(new URL("../samples/collections/sdf/single.sdf", import.meta.url), "utf8");
 let serial = 0;
 const opened: ViewerDocument[] = [];
@@ -45,15 +46,15 @@ async function generated() {
 }
 async function fixture(doc: ViewerDocument) {
   let controller!: ReturnType<typeof useSourceEditingController>, graph!: ReturnType<typeof useGraphDraft>;
-  const errors: unknown[] = [], targets: string[] = [];
+  const errors: unknown[] = [], { tools: targets, stop: stopRecordingTargets } = await recordRightToolReveals();
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   function Graph() { graph = useGraphDraft(doc); return null; }
   function Fixture() {
-    controller = useSourceEditingController({ activeDocument: doc, preferences, pushErrorStatus: error => errors.push(error), setDockOpen() {}, setDockActiveTab(_area, tab) { targets.push(tab); } });
+    controller = useSourceEditingController({ activeDocument: doc, preferences, pushErrorStatus: error => errors.push(error), setDockOpen() {}, setDockActiveTab() {} });
     return <SourceEditingProvider value={controller}><Graph /></SourceEditingProvider>;
   }
   await act(async () => root.render(<Fixture />));
-  return { errors, targets, get controller() { return controller; }, get graph() { return graph; }, async close() { await act(async () => root.unmount()); host.remove(); } };
+  return { errors, targets, get controller() { return controller; }, get graph() { return graph; }, async close() { stopRecordingTargets(); await act(async () => root.unmount()); host.remove(); } };
 }
 async function settle(ready: () => boolean) {
   for (let attempt = 0; attempt < 200 && !ready(); attempt++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
@@ -182,7 +183,7 @@ test("existing Text sessions cannot bypass expired graph ownership",async()=>{
 test("XYZ Text reuse remains available but cannot reveal Edit",async()=>{
  const opened=await openBrowserDevTextDocument(`reuse-${++serial}.xyz`,'xyz','1\nsource\nC 0 0 0\n',preferences);
  const doc={...opened,virtual:false},view=await fixture(doc);
- try{await act(async()=>view.controller.beginEditing(doc,'text'));await act(async()=>view.controller.beginEditing(doc,'text'));expect(view.controller.sessionForDocument(doc)?.content).toBe('1\nsource\nC 0 0 0\n');expect(view.targets).toEqual(['text','text']);await act(async()=>view.controller.beginEditing(doc,'structure-edit'));expect(view.targets).toEqual(['text','text']);expect(view.errors).toHaveLength(1);}
+ try{await act(async()=>view.controller.beginEditing(doc,'text'));await act(async()=>view.controller.beginEditing(doc,'text'));expect(view.controller.sessionForDocument(doc)?.content).toBe('1\nsource\nC 0 0 0\n');expect(view.targets).toEqual(['text']);await act(async()=>view.controller.beginEditing(doc,'structure-edit'));expect(view.targets).toEqual(['text']);expect(view.errors).toHaveLength(1);}
  finally{await view.close();deleteBrowserDevVirtualTextDocument(doc.path);}
 });
 

@@ -135,6 +135,12 @@ async function choose(label: string) {
   expect(button).toBeTruthy(); await act(async () => button!.click());
 }
 
+// Closes the right workspace pages that editing pinned to a source path.
+function closePinnedTools(path: string) {
+  const store = useMoleculeStore.getState();
+  store.closeTabs(store.tabs.filter(tab => tab.location.kind === "tool" && tab.location.sourcePath === path).map(tab => tab.id));
+}
+
 test("compiled browser source dialog preserves Cancel/Escape/close and retires real jobs only after Discard", async () => {
   const observed = await ok({ operation: "observe" });
   const jobs: string[] = [];
@@ -191,7 +197,11 @@ test("compiled browser source dialog preserves Cancel/Escape/close and retires r
       documents = useMoleculeStore.getState().documents;
     });
     await render();
-    expect([canClose, sourceEditing.sessionForDocument(source), documents]).toEqual([true, null, []]);
+    // The Text page that editing pinned keeps its source until that page closes too.
+    expect([canClose, sourceEditing.sessionForDocument(source), documents.map(doc => doc.id)]).toEqual([true, null, [source.id]]);
+    await act(async () => { closePinnedTools(source.path); documents = useMoleculeStore.getState().documents; });
+    await render();
+    expect(documents).toEqual([]);
     for (const jobId of jobs) {
       const closed = (await ok({ operation: "status", jobId })).job;
       expect([closed.status, closed.binding, closed.summary, closed.artifacts]).toEqual(["source_closed", "source_closed", null, []]);
@@ -235,7 +245,7 @@ test("Discard closes the captured document while a separate document stays open"
   await act(async () => { closing = sourceEditing.closeDocuments([captured.id]); });
   expect((await confirmation()).textContent).toContain(`“${captured.title}”`);
   await choose("Discard");
-  await act(async () => { expect(await closing).toBe(true); useMoleculeStore.getState().closeDocument(captured.id); documents = useMoleculeStore.getState().documents; });
+  await act(async () => { expect(await closing).toBe(true); useMoleculeStore.getState().closeDocument(captured.id); closePinnedTools(captured.path); documents = useMoleculeStore.getState().documents; });
   await render();
   expect(documents.map(doc => doc.id)).toEqual([other.id]);
   expect(await readFile(captured.path, "utf8")).toBe(sourceText);

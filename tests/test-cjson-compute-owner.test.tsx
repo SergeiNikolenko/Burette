@@ -152,7 +152,7 @@ test('owning scene page offers only the builders for plain MOL/SDF and preserves
 });
 
 
-test('Spectra keeps legacy Files hidden while Add panel still places the same file in a split', async () => {
+test('Spectra keeps legacy Files hidden while Add panel still opens Files', async () => {
  const view = await fixture();
  try {
   const tabs = [
@@ -181,8 +181,9 @@ test('Spectra keeps legacy Files hidden while Add panel still places the same fi
   const files=[...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item=>item.textContent==='Files');
   expect(files).not.toBeUndefined();expect(files!.getAttribute('aria-disabled')).not.toBe('true');
   await act(async()=>files!.click());await settle();
-  expect(useMoleculeStore.getState().tabs.map(tab=>({id:tab.id,pane:tab.pane??null}))).toEqual([{id:'previous-main',pane:null},{id:view.workspace,pane:'right'}]);
-  expect(getTabWorkspace(view.workspace).right.open).toBe(false);
+  // Files is a right dock tab now; adding it leaves the workspace tabs where they are.
+  expect(useMoleculeStore.getState().tabs).toEqual(tabs);
+  expect(view.host.querySelector('[role="tab"][aria-label="Files"]')?.getAttribute('aria-selected')).toBe('true');
   expect(useMoleculeStore.getState().documents.find(doc=>doc.id===view.current.id)).toBe(view.current);
   expect(scientificStateFor(view.current.id,text).revision).toBe(source.revision);
   expect(scientificStateFor(view.current.id,text).original).toBe(source.original);

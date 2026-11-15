@@ -1,5 +1,4 @@
 import { expect, mock, test } from "bun:test";
-import type { DockTabKind } from "../apps/desktop/src/lib/dock";
 import type { ViewerDocument } from "../apps/desktop/src/types";
 import { plugin } from "bun";
 import { readFileSync } from "node:fs";
@@ -31,6 +30,7 @@ const { defaultPreferences } = await import("../apps/desktop/src/stores/settings
 const { useSourceEditingController } = await import("../apps/desktop/src/hooks/use-source-editing");
 const { encodeScienceSession, decodeScienceSession } = await import("../apps/desktop/src/lib/science-session/codec");
 const { adoptLogicalSource, releaseClosedScienceSessions } = await import("../apps/desktop/src/lib/science-session/state");
+const { recordRightToolReveals } = await import("./support/right-tool-reveals");
 const source = readFileSync(new URL("../samples/collections/sdf/single.sdf", import.meta.url), "utf8");
 const edited = source.replace("$$$$", "> <EDIT_MARKER>\nchanged\n\n$$$$");
 const binding = { structureRef: "s", modelRef: "m", trajectoryRef: "t", frameIndex: 0, frameCount: 1, atomCount: 3 };
@@ -46,11 +46,11 @@ async function adopt(documentId: string, text = source) {
 async function fixture() {
   const doc = { id: `logical-sdf-${++serial}`, path: `/Scenes/logical-${serial}.molx`, title: "Restored molecule.MOLX", extension: "molx", renderer: "molstar", runtimePath: "original scene" } as any;
   let controller!: ReturnType<typeof useSourceEditingController>;
-  const dockTargets: ["right" | "bottom", DockTabKind][] = [];
+  const reveals = await recordRightToolReveals();
   const errors: unknown[] = [], host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
-  function Probe() { controller = useSourceEditingController({ activeDocument: doc, preferences: { ...defaultPreferences, rendererMode: "molstar" } as any, pushErrorStatus: error => errors.push(error), setDockOpen() {}, setDockActiveTab(area, tab) { dockTargets.push([area, tab]); } }); return null; }
+  function Probe() { controller = useSourceEditingController({ activeDocument: doc, preferences: { ...defaultPreferences, rendererMode: "molstar" } as any, pushErrorStatus: error => errors.push(error), setDockOpen() {}, setDockActiveTab() {} }); return null; }
   await act(async () => root.render(<Probe />));
-  return { doc, errors, dockTargets, get controller() { return controller; }, async close() { await act(async () => root.unmount()); host.remove(); releaseClosedScienceSessions(new Set()); native = false; } };
+  return { doc, errors, get dockTargets() { return reveals.tools.map(tool => ["right", tool] as const); }, get controller() { return controller; }, async close() { reveals.stop(); await act(async () => root.unmount()); host.remove(); releaseClosedScienceSessions(new Set()); native = false; } };
 }
 test("validated logical SDF opens without archive text I/O and stages an actual SDF browser runtime", async () => {
   const view = await fixture();

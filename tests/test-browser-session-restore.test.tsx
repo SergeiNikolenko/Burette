@@ -46,6 +46,10 @@ const { useAgentFocusLayout, applyAgentFocusLayout } = await import("../apps/des
 const { useAppStartupEffects } = await import("../apps/desktop/src/hooks/use-app-startup-effects");
 const { useTabWorkspaceStore, WINDOW_TOOLS_ID } = await import("../apps/desktop/src/stores/tab-workspace-store");
 const { useShellStore } = await import("../apps/desktop/src/stores/shell-store");
+const { openRightTool, rightPanelSelection } = await import("../apps/desktop/src/lib/right-workspace-panel");
+const { useWorkspacePanesStore } = await import("../apps/desktop/src/stores/workspace-panes-store");
+// The right panel is open when it has a selected tab and its group is not closed.
+const rightPanelOpen = () => { const model = useMoleculeStore.getState(), panes = useWorkspacePanesStore.getState(); return Boolean(rightPanelSelection(model.tabs, model.activeTabId, panes.selectedTabs.right)) && !panes.closedGroups.right; };
 const { workspaceStorage, isBrowserSessionWorkspace } = await import("../apps/desktop/src/lib/window-scope");
 async function fixture(restore = false) {
   const original = useMoleculeStore.getState().documents, ordinary: string[] = [], errors: unknown[] = [];
@@ -191,7 +195,7 @@ test("focus defaults still close fresh browser, explicit server, native and embe
   useTabWorkspaceStore.setState({workspaces:{}});
   browser.sessionStorage.removeItem("burette.tab-workspaces");
   expect(applyAgentFocusLayout()).toBe(true);
-  expect([useTabWorkspaceStore.getState().workspaces[tabId].right.open, useTabWorkspaceStore.getState().workspaces[WINDOW_TOOLS_ID].bottom.open]).toEqual([false,false]);
+  expect([rightPanelOpen(), useTabWorkspaceStore.getState().workspaces[WINDOW_TOOLS_ID].bottom.open]).toEqual([false,false]);
   const cases = [
     {query:"agentLayout=focus&devFiles=/private/server.fchk"},
     {query:"agentLayout=focus&devFolder=/private/server"},
@@ -206,10 +210,10 @@ test("focus defaults still close fresh browser, explicit server, native and embe
     if (scenario.native) Object.assign(browser,{__TAURI_INTERNALS__:{}});
     if (scenario.embedded) Object.assign(browser,{BuretteMcpWorkspace:{storage:browser.localStorage,sessionId:"focus-test"}});
     try {
-      useTabWorkspaceStore.getState().openDockTab(tabId,"right","vibrations");
+      openRightTool("vibrations");
       useTabWorkspaceStore.getState().setDockOpen(tabId,"bottom",true);
       expect(applyAgentFocusLayout()).toBe(true);
-      expect([useTabWorkspaceStore.getState().workspaces[tabId].right.open, useTabWorkspaceStore.getState().workspaces[WINDOW_TOOLS_ID].bottom.open]).toEqual([false,false]);
+      expect([rightPanelOpen(), useTabWorkspaceStore.getState().workspaces[WINDOW_TOOLS_ID].bottom.open]).toEqual([false,false]);
     } finally { Reflect.deleteProperty(browser,"__TAURI_INTERNALS__"); Reflect.deleteProperty(browser,"BuretteMcpWorkspace"); }
   } } finally { browser.happyDOM.setURL("http://localhost/"); }
 });
@@ -225,9 +229,9 @@ test("bottom-only restored workspace preserves global loaded sidebar and derived
     expect(useTabWorkspaceStore.getState().workspaces[tabId]).toBeUndefined();
     expect(applyAgentFocusLayout()).toBe(false);
     expect([useTabWorkspaceStore.getState().workspaces[WINDOW_TOOLS_ID].bottom.open,useShellStore.getState().sidebarOpen]).toEqual([true,true]);
-    useTabWorkspaceStore.getState().openDockTab(tabId,"right","vibrations");
+    openRightTool("vibrations");
     browser.sessionStorage.removeItem("burette.tab-workspaces");
     expect(applyAgentFocusLayout()).toBe(true);
-    expect([useTabWorkspaceStore.getState().workspaces[tabId].right.open,useTabWorkspaceStore.getState().workspaces[WINDOW_TOOLS_ID].bottom.open,useShellStore.getState().sidebarOpen]).toEqual([false,false,false]);
+    expect([rightPanelOpen(),useTabWorkspaceStore.getState().workspaces[WINDOW_TOOLS_ID].bottom.open,useShellStore.getState().sidebarOpen]).toEqual([false,false,false]);
   } finally {browser.happyDOM.setURL("http://localhost/");}
 });

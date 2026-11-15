@@ -88,7 +88,7 @@ function Harness({ expose }: { expose: (hooks: Hooks) => void }) {
   const openActions = useAppOpenActions({ openPaths: fileOpen.openPaths, openStructureRecords: async () => [], pushErrorStatus: (error) => status(error, "error"), pushStatus: status, recentStructures: [] } as never);
   const openDockPayload = useAppDockPayloadOpen({
     preferences, addBackgroundDocuments: addStructures, addBackgroundTextDocuments: addTexts,
-    captureDockTarget: () => ({ workspaceId: "test", addDockDrop: noop, setDockDocument: noop, setDockTool: noop }),
+    captureDockTarget: () => ({ workspaceId: "test", addDockDrop: noop, setDockDocument: noop, setDockTool: noop, openRightInputs: noop }),
     detectContentSpectrumPaths, documents: [], openStructureRecordDocuments: async () => ({ opened: [], errors: [] }),
     pushErrorStatus: (error) => status(error, "error"), pushStatus: status, rememberRecentStructures: noop, textDocuments: [],
   } as never);
