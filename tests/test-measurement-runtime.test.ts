@@ -67,7 +67,7 @@ test("actual MOL/SDF providers bind raw bytes and filtered ordered loci, rejecti
       const describe = () => runtime.describe(v, [distance!.representation.cell], science);
       expect((await describe()).atoms).toEqual([2, 0]);
       const roots = v.plugin.managers.structure.hierarchy.current.structures; roots.push(roots[0]);
-      await expect(science.graphBinding(v)).rejects.toThrow("exactly one structure"); roots.pop();
+      await expect(science.graphBinding(v)).rejects.toThrow("one source structure"); roots.pop();
       const trajectory = v.trajectory.cell!, original = trajectory.transform.transformer;
       duringDigest = () => { trajectory.transform = { ...trajectory.transform, transformer: { ...original, id: format === "mol" ? "ms-plugin.trajectory-from-sdf" : "ms-plugin.trajectory-from-mol" } as never }; };
       await expect(science.graphBinding(v)).rejects.toThrow("changed"); trajectory.transform = { ...trajectory.transform, transformer: original };
@@ -87,7 +87,7 @@ test("actual MOL/SDF providers bind raw bytes and filtered ordered loci, rejecti
       Object.defineProperty(v.root, "models", { configurable: true, value: [v.root.models[0], v.root.models[0]] });
       await expect(describe()).rejects.toThrow("across models"); delete (v.root as any).models;
       const trajectoryData = v.trajectory.cell!.obj!.data; Object.defineProperty(trajectoryData, "frameCount", { configurable: true, value: 2 });
-      await expect(describe()).rejects.toThrow("one MOL or SDF record");
+      await expect(describe()).rejects.toThrow("single geometry");
     } finally { duringDigest = undefined; v.plugin.dispose(); }
   }
 });
