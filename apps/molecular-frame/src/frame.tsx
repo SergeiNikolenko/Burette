@@ -49,6 +49,13 @@ function Frame() {
           }
           case 'snapshot': result({ molfile: editor.current.getMolfile(), smiles: editor.current.getSmiles(), state: editor.current.getState() }); break
           case 'svg': result(editor.current.getSvg()); break
+          case 'atoms': result(editor.current.getAtomLayout()); break
+          case 'tool': {
+            if (!['hand', 'select', 'erase', 'chain'].includes(message.value)) throw new Error('Unknown editor tool')
+            editor.current.setTool(message.value)
+            result(null)
+            break
+          }
           case 'zoom': {
             if (typeof message.value !== 'number' || !Number.isFinite(message.value) || message.value <= 0) throw new Error('Invalid zoom')
             const zoom = editor.current.getState()?.zoom ?? 100

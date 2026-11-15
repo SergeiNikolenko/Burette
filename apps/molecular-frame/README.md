@@ -27,8 +27,11 @@ const { molfile, smiles, state } = await editor.snapshot();
 ```
 
 The public contract is `public/molecular-frame.d.ts`. The asynchronous API
-supports loading, snapshots, SVG export, commands, zoom and change/state/error
-events. The synchronous `editor` property requires a ready same-origin frame.
+supports loading, snapshots, SVG export, commands, zoom, tool choice, atom
+positions and change/state/error events. The atom layout gives the canvas
+bounds and atom centres (molfile order) in the frame's viewport pixels; add the
+iframe's offset to place host overlays, and refresh them when `state.view` or
+`state.revision` changes. The synchronous `editor` property requires a ready same-origin frame.
 MCP hosts provide `BuretteMcpWorkspace` to resolve packaged assets.
 
 The host supplies `--background`, `--foreground`, `--popover`, `--muted`,

@@ -12,11 +12,27 @@ export class Editor {
         wasm.__wbg_editor_free(ptr, 0);
     }
     /**
+     * @returns {Float64Array}
+     */
+    atom_positions() {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.editor_atom_positions(retptr, this.__wbg_ptr);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var v1 = getArrayF64FromWasm0(r0, r1).slice();
+            wasm.__wbindgen_export(r0, r1 * 8, 8);
+            return v1;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
      * @param {string} name
      * @returns {boolean}
      */
     command(name) {
-        const ptr0 = passStringToWasm0(name, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const ptr0 = passStringToWasm0(name, wasm.__wbindgen_export2, wasm.__wbindgen_export3);
         const len0 = WASM_VECTOR_LEN;
         const ret = wasm.editor_command(this.__wbg_ptr, ptr0, len0);
         return ret !== 0;
@@ -36,7 +52,7 @@ export class Editor {
     highlight_atoms(indexes) {
         try {
             const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            const ptr0 = passArray32ToWasm0(indexes, wasm.__wbindgen_export);
+            const ptr0 = passArray32ToWasm0(indexes, wasm.__wbindgen_export2);
             const len0 = WASM_VECTOR_LEN;
             wasm.editor_highlight_atoms(retptr, this.__wbg_ptr, ptr0, len0);
             var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
@@ -54,7 +70,7 @@ export class Editor {
     insert(text) {
         try {
             const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            const ptr0 = passStringToWasm0(text, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const ptr0 = passStringToWasm0(text, wasm.__wbindgen_export2, wasm.__wbindgen_export3);
             const len0 = WASM_VECTOR_LEN;
             wasm.editor_insert(retptr, this.__wbg_ptr, ptr0, len0);
             var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
@@ -74,7 +90,7 @@ export class Editor {
      * @returns {boolean}
      */
     key(key, shift, primary, alt) {
-        const ptr0 = passStringToWasm0(key, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const ptr0 = passStringToWasm0(key, wasm.__wbindgen_export2, wasm.__wbindgen_export3);
         const len0 = WASM_VECTOR_LEN;
         const ret = wasm.editor_key(this.__wbg_ptr, ptr0, len0, shift, primary, alt);
         return ret !== 0;
@@ -85,7 +101,7 @@ export class Editor {
     load(text) {
         try {
             const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            const ptr0 = passStringToWasm0(text, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const ptr0 = passStringToWasm0(text, wasm.__wbindgen_export2, wasm.__wbindgen_export3);
             const len0 = WASM_VECTOR_LEN;
             wasm.editor_load(retptr, this.__wbg_ptr, ptr0, len0);
             var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
@@ -121,7 +137,7 @@ export class Editor {
             return getStringFromWasm0(ptr1, len1);
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
-            wasm.__wbindgen_export3(deferred2_0, deferred2_1, 1);
+            wasm.__wbindgen_export(deferred2_0, deferred2_1, 1);
         }
     }
     /**
@@ -140,7 +156,7 @@ export class Editor {
             return getStringFromWasm0(r0, r1);
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
-            wasm.__wbindgen_export3(deferred1_0, deferred1_1, 1);
+            wasm.__wbindgen_export(deferred1_0, deferred1_1, 1);
         }
     }
     constructor() {
@@ -212,7 +228,7 @@ export class Editor {
             return getStringFromWasm0(r0, r1);
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
-            wasm.__wbindgen_export3(deferred1_0, deferred1_1, 1);
+            wasm.__wbindgen_export(deferred1_0, deferred1_1, 1);
         }
     }
     /**
@@ -222,9 +238,9 @@ export class Editor {
     set_selection(atoms, bonds) {
         try {
             const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            const ptr0 = passArray32ToWasm0(atoms, wasm.__wbindgen_export);
+            const ptr0 = passArray32ToWasm0(atoms, wasm.__wbindgen_export2);
             const len0 = WASM_VECTOR_LEN;
-            const ptr1 = passArray32ToWasm0(bonds, wasm.__wbindgen_export);
+            const ptr1 = passArray32ToWasm0(bonds, wasm.__wbindgen_export2);
             const len1 = WASM_VECTOR_LEN;
             wasm.editor_set_selection(retptr, this.__wbg_ptr, ptr0, len0, ptr1, len1);
             var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
@@ -246,7 +262,7 @@ export class Editor {
     set_template(molfile, atom, bond) {
         try {
             const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            const ptr0 = passStringToWasm0(molfile, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const ptr0 = passStringToWasm0(molfile, wasm.__wbindgen_export2, wasm.__wbindgen_export3);
             const len0 = WASM_VECTOR_LEN;
             wasm.editor_set_template(retptr, this.__wbg_ptr, ptr0, len0, atom, bond);
             var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
@@ -262,7 +278,7 @@ export class Editor {
      * @param {string} tool
      */
     set_tool(tool) {
-        const ptr0 = passStringToWasm0(tool, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const ptr0 = passStringToWasm0(tool, wasm.__wbindgen_export2, wasm.__wbindgen_export3);
         const len0 = WASM_VECTOR_LEN;
         wasm.editor_set_tool(this.__wbg_ptr, ptr0, len0);
     }
@@ -282,7 +298,7 @@ export class Editor {
             return getStringFromWasm0(r0, r1);
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
-            wasm.__wbindgen_export3(deferred1_0, deferred1_1, 1);
+            wasm.__wbindgen_export(deferred1_0, deferred1_1, 1);
         }
     }
     /**
@@ -301,7 +317,7 @@ export class Editor {
             return getStringFromWasm0(r0, r1);
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
-            wasm.__wbindgen_export3(deferred1_0, deferred1_1, 1);
+            wasm.__wbindgen_export(deferred1_0, deferred1_1, 1);
         }
     }
     /**
@@ -320,7 +336,7 @@ export class Editor {
             return getStringFromWasm0(r0, r1);
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
-            wasm.__wbindgen_export3(deferred1_0, deferred1_1, 1);
+            wasm.__wbindgen_export(deferred1_0, deferred1_1, 1);
         }
     }
     /**
@@ -359,7 +375,7 @@ export function thumbnail(molfile, width, height) {
     let deferred3_1;
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passStringToWasm0(molfile, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const ptr0 = passStringToWasm0(molfile, wasm.__wbindgen_export2, wasm.__wbindgen_export3);
         const len0 = WASM_VECTOR_LEN;
         wasm.thumbnail(retptr, ptr0, len0, width, height);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
@@ -377,7 +393,7 @@ export function thumbnail(molfile, width, height) {
         return getStringFromWasm0(ptr2, len2);
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
-        wasm.__wbindgen_export3(deferred3_0, deferred3_1, 1);
+        wasm.__wbindgen_export(deferred3_0, deferred3_1, 1);
     }
 }
 function __wbg_get_imports() {
@@ -416,12 +432,25 @@ function dropObject(idx) {
     heap_next = idx;
 }
 
+function getArrayF64FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getFloat64ArrayMemory0().subarray(ptr / 8, ptr / 8 + len);
+}
+
 let cachedDataViewMemory0 = null;
 function getDataViewMemory0() {
     if (cachedDataViewMemory0 === null || cachedDataViewMemory0.buffer.detached === true || (cachedDataViewMemory0.buffer.detached === undefined && cachedDataViewMemory0.buffer !== wasm.memory.buffer)) {
         cachedDataViewMemory0 = new DataView(wasm.memory.buffer);
     }
     return cachedDataViewMemory0;
+}
+
+let cachedFloat64ArrayMemory0 = null;
+function getFloat64ArrayMemory0() {
+    if (cachedFloat64ArrayMemory0 === null || cachedFloat64ArrayMemory0.byteLength === 0) {
+        cachedFloat64ArrayMemory0 = new Float64Array(wasm.memory.buffer);
+    }
+    return cachedFloat64ArrayMemory0;
 }
 
 function getStringFromWasm0(ptr, len) {
@@ -536,6 +565,7 @@ function __wbg_finalize_init(instance, module) {
     wasm = instance.exports;
     wasmModule = module;
     cachedDataViewMemory0 = null;
+    cachedFloat64ArrayMemory0 = null;
     cachedUint32ArrayMemory0 = null;
     cachedUint8ArrayMemory0 = null;
     return wasm;

@@ -51,6 +51,8 @@ export type EditorState = {
   zoom: number
   /** Why the last command or action could not run; '' when there is nothing to report. */
   message: string
+  /** Canvas transform `[scale, x, y]`; changes on pan, zoom and resize. */
+  view: [number, number, number]
 }
 
 let ready: Promise<typeof Editor> | undefined

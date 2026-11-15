@@ -101,6 +101,10 @@ impl Editor {
         self.core.set_selection(atoms, bonds).map_err(|e| JsError::new(&e))
     }
 
+    pub fn atom_positions(&self) -> Vec<f64> {
+        self.core.atom_positions()
+    }
+
     pub fn smiles(&self) -> String {
         self.core.smiles()
     }
