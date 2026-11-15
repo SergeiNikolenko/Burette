@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { loadDerivedEngines, type RGroupDecomposition } from "../lib/derived-columns";
 import { NativeSelect, NativeSelectOption } from "./ui/native-select";
 import { Button } from "./ui/button";
@@ -36,11 +36,26 @@ function changedPart(rdkit: Rdkit, mol: RdkitMol, json: MolJson, constant: strin
 }
 
 /** A 2D drawing of a SMILES or molblock in the current theme's ink; `label` names it when the source text is not readable.
- * `attachments` writes `[*:N]` points as RN; `constant` marks the atoms that differ from that fragment. */
+ * `attachments` writes `[*:N]` points as RN; `constant` marks the atoms that differ from that fragment.
+ * The SVG is drawn at the size of its box, measured once laid out; `width` and `height` are used until then. */
 export function Structure({ smiles, label = smiles, width = 260, height = 150, attachments = false, constant }: {
   smiles: string; label?: string; width?: number; height?: number; attachments?: boolean; constant?: string;
 }) {
   const [image, setImage] = useState("");
+  const box = useRef<HTMLDivElement>(null);
+  const [measured, setMeasured] = useState<[number, number] | null>(null);
+  useEffect(() => {
+    const node = box.current;
+    if (!node || typeof ResizeObserver !== "function") return;
+    const observer = new ResizeObserver(([entry]) => {
+      const next: [number, number] = [Math.round(entry.contentRect.width), Math.round(entry.contentRect.height)];
+      if (next[0] > 0 && next[1] > 0) setMeasured((current) => (current?.[0] === next[0] && current[1] === next[1] ? current : next));
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  // A drawing scaled down by CSS shrinks its labels with it; drawn at the box size, they keep their minimum.
+  const [drawWidth, drawHeight] = measured ?? [width, height];
   useEffect(() => {
     setImage("");
     let active = true;
@@ -61,7 +76,7 @@ export function Structure({ smiles, label = smiles, width = 260, height = 150, a
           // Every place this is drawn in is wider than tall: lay the molecule's long axis across it.
           // One bond length for every drawing keeps a lone substituent at the scale of the core
           // beside it instead of stretched across its cell; larger molecules still shrink to fit.
-          const svg = mol.get_svg_with_highlights(JSON.stringify({ width, height, rotate: depictionLongAxisAngle(mol.get_molblock()),
+          const svg = mol.get_svg_with_highlights(JSON.stringify({ width: drawWidth, height: drawHeight, rotate: depictionLongAxisAngle(mol.get_molblock()),
             backgroundColour: [0, 0, 0, 0], atomColourPalette: { 0: ink, 1: ink, 6: ink, ...(dark ? DARK_STRUCTURE_PALETTE : {}) }, padding: 0.08,
             fixedBondLength: 18, minFontSize: 11, maxFontSize: 13, bondLineWidth: 1.2, dummiesAreAttachments: !labels,
             ...(labels ? { atomLabels: labels } : {}), ...(changed ? { atoms: changed.atoms, bonds: changed.bonds } : {}) }));
@@ -73,8 +88,8 @@ export function Structure({ smiles, label = smiles, width = 260, height = 150, a
     const observer = new MutationObserver(() => { void draw(); });
     observer.observe(document.querySelector(".app-shell") ?? document.documentElement, { attributes: true, attributeFilter: ["data-effective-theme"] });
     return () => { active = false; observer.disconnect(); };
-  }, [smiles, width, height, attachments, constant]);
-  return <div className="rgroup-structure" role="img" aria-label={label} title={label} dangerouslySetInnerHTML={{ __html: image }} />;
+  }, [smiles, drawWidth, drawHeight, attachments, constant]);
+  return <div ref={box} className="rgroup-structure" role="img" aria-label={label} title={label} dangerouslySetInnerHTML={{ __html: image }} />;
 }
 
 export function RGroupPreviewResults({ result, total }: { result: RGroupDecomposition; total: number }) {

@@ -84,6 +84,7 @@ import { ShortcutTooltip } from "./shortcut-tooltip";
 import { useChemicalSpaceSetting } from "../hooks/use-chemical-space-setting";
 import { useThemePortalContainer } from "./radix-menu";
 import { requestContextualGuide } from "./onboarding/request";
+import { Structure } from "./rgroup-preview";
 
 const ChemicalSpace3D = lazy(() => import("./chemical-space-3d").then((module) => ({
   default: module.ChemicalSpace3D,
@@ -1913,16 +1914,19 @@ function CliffTable({
           tell a chemist nothing about which change caused the jump. */}
       {activeCliff ? (
         <div className="flex flex-col gap-1 border-b border-border px-2 py-1.5">
-          <div className="grid grid-cols-2 gap-1">
+          {/* Side by side when the panel is wide enough for two drawings at full scale, stacked otherwise. */}
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-1">
             {[activeCliff.sourceA, activeCliff.sourceB].map((sourceRecordId) => {
               const molecule = previews.get(sourceRecordId) ?? null;
               const activity = activityValues.get(sourceRecordId);
               return (
                 <div key={sourceRecordId} className="flex min-w-0 flex-col gap-0.5">
-                  {molecule?.svgUrl ? (
-                    <img className="h-20 w-full rounded bg-white object-contain" src={molecule.svgUrl} alt="" />
+                  {molecule?.smiles ? (
+                    <div className="[&_.rgroup-structure]:h-[130px]"><Structure smiles={molecule.smiles} label={molecule.name} width={240} height={130} /></div>
+                  ) : molecule?.svgUrl ? (
+                    <img className="h-[130px] w-full rounded bg-white object-contain" src={molecule.svgUrl} alt="" />
                   ) : (
-                    <div className="h-20 w-full animate-pulse rounded bg-muted" />
+                    <div className="h-[130px] w-full animate-pulse rounded bg-muted" />
                   )}
                   <span className="truncate text-[10px] text-foreground">
                     {molecule?.name ?? `#${sourceRecordId + 1}`}
@@ -2707,13 +2711,14 @@ function ChemicalSpace2D({
       />
       {preview && hovered === preview.sourceRecordId && cursor ? (
         <div
-          className="pointer-events-none absolute z-10 w-52 overflow-hidden rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-lg"
+          className="pointer-events-none absolute z-10 w-72 overflow-hidden rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-lg"
           style={{
-            left: Math.min(Math.max(8, viewport.width - 220), Math.max(8, cursor.x + 12)),
-            top: Math.min(Math.max(8, viewport.height - 188), Math.max(8, cursor.y + 12)),
+            left: Math.min(Math.max(8, viewport.width - 296), Math.max(8, cursor.x + 12)),
+            top: Math.min(Math.max(8, viewport.height - 230), Math.max(8, cursor.y + 12)),
           }}
         >
-          {preview.svgUrl ? <img className="h-28 w-full rounded-lg bg-white object-contain" src={preview.svgUrl} alt="" /> : null}
+          {preview.smiles ? <div className="[&_.rgroup-structure]:h-[150px]"><Structure smiles={preview.smiles} label={preview.name} width={272} height={150} /></div>
+            : preview.svgUrl ? <img className="h-[150px] w-full rounded-lg bg-white object-contain" src={preview.svgUrl} alt="" /> : null}
           <div className="mt-1 truncate text-xs font-medium">{preview.name}</div>
           {preview.smiles ? <div className="truncate font-mono text-[10px] text-muted-foreground">{preview.smiles}</div> : null}
         </div>

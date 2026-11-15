@@ -69,9 +69,9 @@ console.log("Inspector large-drawing path checks passed.");
     shown: { smiles: "CCO", highlightAtoms: [2], highlightBonds: [1] },
     svgCache: new Map(), wellNodeRef: { current: null }, theme: "light",
     setSvg() {}, setInvalidSource() {}, paperColour: () => [1, 1, 1],
-    structurePalette: () => undefined, PREVIEW_RENDER_SCALE: 2, SVG_CACHE_LIMIT: 200,
+    structurePalette: () => undefined, PREVIEW_RENDER_SCALE: 2, SVG_CACHE_LIMIT: 200, depictionLongAxisAngle: () => 0,
     loadDerivedEngines: async () => ({ rdkit: { get_mol: () => ({
-      get_smiles: () => "CCO", set_new_coords() { coordsReset += 1; }, delete() {},
+      get_smiles: () => "CCO", set_new_coords() { coordsReset += 1; }, delete() {}, get_molblock: () => "",
       add_hs_in_place() {}, remove_hs_in_place() {},
       get_svg_with_highlights: (value) => { options = JSON.parse(value); return "<svg/>"; },
     }) } }),

@@ -16,6 +16,7 @@ import { simplifyLassoPolygon } from "../lib/chemical-space-lasso";
 
 import { useChemicalSpaceSetting } from "../hooks/use-chemical-space-setting";
 import { ChemicalSpaceViewControls } from "./chemical-space-view-controls";
+import { Structure } from "./rgroup-preview";
 
 type CameraPose = { position: number[]; target: number[] };
 
@@ -819,13 +820,14 @@ export function ChemicalSpace3D({
       />
       {preview && hovered === preview.sourceRecordId && previewAnchor ? (
         <div
-          className="pointer-events-none absolute w-52 overflow-hidden rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-lg"
+          className="pointer-events-none absolute w-72 overflow-hidden rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-lg"
           style={{
-            left: `clamp(8px, ${previewAnchor.x + 12}px, calc(100% - 220px))`,
-            top: `clamp(8px, ${previewAnchor.y + 12}px, calc(100% - 188px))`,
+            left: `clamp(8px, ${previewAnchor.x + 12}px, calc(100% - 296px))`,
+            top: `clamp(8px, ${previewAnchor.y + 12}px, calc(100% - 230px))`,
           }}
         >
-          {preview.svgUrl ? <img className="h-28 w-full rounded-lg bg-white object-contain" src={preview.svgUrl} alt="" /> : null}
+          {preview.smiles ? <div className="[&_.rgroup-structure]:h-[150px]"><Structure smiles={preview.smiles} label={preview.name} width={272} height={150} /></div>
+            : preview.svgUrl ? <img className="h-[150px] w-full rounded-lg bg-white object-contain" src={preview.svgUrl} alt="" /> : null}
           <div className="mt-1 truncate text-xs font-medium">{preview.name}</div>
           {preview.smiles ? <div className="truncate font-mono text-[10px] text-muted-foreground">{preview.smiles}</div> : null}
         </div>
