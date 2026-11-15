@@ -236,7 +236,8 @@ test("restored logical MOLX topology stages its own model, retains Original and 
     await act(async () => button("Redo").click()); await wait(() => field()!.getAttribute("aria-valuenow") === "0.9672", "R redo");
     // An old frame response held across promotion cannot authorize the new model.
     holdNextRead = true;
-    const oldRead = Promise.resolve(send(document, { type: "geometry_binding", label: "Geometry", notify: false }))
+    // The held read outlives the promotion below, which can take longer than send's 1 s on CI.
+    const oldRead = requestViewerAction(document.id, { type: "geometry_binding", label: "Geometry", notify: false }, 30_000)
       .then(() => null, (error: unknown) => error);
     await wait(() => heldRead !== null, "old frame ACK held");
     await addAtom();
