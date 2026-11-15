@@ -7,6 +7,8 @@ import type { MoleculeTab } from "../../stores/molecule-store";
 import { useMoleculeStore } from "../../stores/molecule-store";
 import { requestViewerAction, activeViewerIframeForDocument } from "../../lib/viewer-bridge";
 import { focusSceneDocument } from "../../hooks/workspace-scene-import";
+import { captureWorkspaceSceneSnapshot } from "../../hooks/workspace-scene-snapshot";
+import { sameSceneSource, waitForSceneScienceRestore } from "../../lib/science-session/restore";
 import { isTauriRuntime, trackTauriListener } from "../../lib/tauri";
 import { toast } from "../ui/toast";
 import { useSourceEditing, type SourceEditingContextValue, type SourceEditingTransfer } from "../../lib/source-editing/context";
@@ -54,21 +56,26 @@ function currentDocument(tabId: string) {
 
 async function checkpoint(tabId: string, signal?: AbortSignal) {
   const document = currentDocument(tabId);
-  await focusSceneDocument(document, useMoleculeStore.getState().setActiveDocument, signal);
+  if (sourceEditing?.sessionForDocument(document)?.saving) throw new Error("Wait for source changes to finish saving.");
+  const snapshot = await captureWorkspaceSceneSnapshot(document, { sourceEditing, sceneFileCount: new Set(document.sceneSourcePaths ?? [document.path]).size, scientificData: "require", signal });
   signal?.throwIfAborted();
-  const source = sourceEditing?.sessionForDocument(document);
-  if (source?.saving) throw new Error("Wait for source changes to finish saving.");
-  if (document.renderer === "molstar") {
-    const story = await requestViewerAction(document.id, { type: "observe_story" });
+  if (snapshot.document.renderer === "molstar") {
+    const story = await requestViewerAction(snapshot.document.id, { type: "observe_story" });
     if (Number(story.count) > 1) throw new Error("Keep this Story in its workspace.");
   }
   signal?.throwIfAborted();
-  const archive = await requestViewerAction(document.id, { type: "workspace_scene_snapshot" });
-  signal?.throwIfAborted();
-  const identity = { sourcePath: document.path, sceneUnsaved: document.sceneUnsaved === true, sceneSourcePaths: document.sceneSourcePaths ?? [] };
-  if (archive.sheet) return invoke<string>("save_popout_sheet", { ...identity, recoveryPath: document.recoveryPath, sheet: archive.sheet });
-  if (typeof archive.dataBase64 !== "string") throw new Error("The scene could not be captured.");
-  return invoke<string>("save_popout_scene", { ...identity, dataBase64: archive.dataBase64 });
+  // A transferred draft travels with the tab, so only an in-flight save blocks the move.
+  const confirm = async () => {
+    await snapshot.confirm();
+    if (sourceEditing?.sessionForDocument(snapshot.document)?.saving) throw new Error("Wait for source changes to finish saving.");
+  };
+  await confirm();
+  const captured = snapshot.document;
+  const identity = { sourcePath: captured.path, sceneUnsaved: captured.sceneUnsaved === true, sceneSourcePaths: captured.sceneSourcePaths ?? [] };
+  const path = snapshot.result.kind === "sheet"
+    ? await invoke<string>("save_popout_sheet", { ...identity, recoveryPath: captured.recoveryPath, sheet: snapshot.result.sheet })
+    : await invoke<string>("save_popout_scene", { ...identity, dataBase64: snapshot.result.dataBase64 });
+  return { path, confirm };
 }
 
 function tell(peer: string, message: Offer) {
@@ -108,7 +115,8 @@ export async function popOutNativeScene(tabId: string, targetWindow?: string, op
     const sourceDraft = sourceEditing?.beginTransfer?.(document) ?? undefined;
     surface = activeViewerIframeForDocument(currentDocument(tabId).id)?.closest<HTMLElement>(".page-surface");
     if (surface) surface.inert = true;
-    const path = await checkpoint(tabId);
+    const captured = await checkpoint(tabId);
+    const path = captured.path;
     if (targetWindow === getCurrentWindow().label) return;
     peer = targetWindow ?? await invoke<string>("open_new_workspace_window", { paths: [], screenPosition: options.screenPosition });
     createdWindow = !targetWindow;
@@ -116,6 +124,7 @@ export async function popOutNativeScene(tabId: string, targetWindow?: string, op
       path, sourcePath: document.path, sourceDraft, title: tab.title ?? document.title, targetPosition: options.targetPosition, targetViewportWidth: options.targetViewportWidth };
     await tell(peer, handoff);
     transferred = true;
+    await captured.confirm();
     if (await sourceEditing?.finishTransfer?.(document, true) === false) throw new Error("The source editor could not finish moving. Try again.");
     // Only an acknowledged, nonempty loaded destination can retire the original scene.
     useMoleculeStore.getState().closeTab(tabId);
@@ -156,8 +165,10 @@ export async function returnNativePopout(tabId?: string): Promise<boolean> {
     const sourceDraft = sourceEditing?.beginTransfer?.(document) ?? undefined;
     surface = activeViewerIframeForDocument(currentDocument(owner.tabId).id)?.closest<HTMLElement>(".page-surface");
     if (surface) surface.inert = true;
-    const path = await checkpoint(owner.tabId);
+    const captured = await checkpoint(owner.tabId);
+    const path = captured.path;
     if (!await Window.getByLabel(owner.parent)) {
+      await captured.confirm();
       retainCheckpoint(owner.tabId, path);
       forgetOwner(tabId);
       return false;
@@ -167,6 +178,7 @@ export async function returnNativePopout(tabId?: string): Promise<boolean> {
       kind: "return", id: crypto.randomUUID(), from: getCurrentWindow().label, path, sourcePath: document.path, sourceDraft };
     await tell(owner.parent, handoff);
     transferred = true;
+    await captured.confirm();
     if (await sourceEditing?.finishTransfer?.(document, true) === false) throw new Error("The source editor could not finish moving. Try again.");
     useMoleculeStore.getState().closeTab(owner.tabId);
     forgetOwner(tabId);
@@ -237,11 +249,12 @@ export async function checkpointNativeScenesForClose(tabIds: string[], signal?: 
           controller.signal.throwIfAborted();
           const documentId = currentDocument(tab.id).id;
           const documentPath = currentDocument(tab.id).path;
-          const path = await checkpoint(tab.id, controller.signal);
+          const captured = await checkpoint(tab.id, controller.signal);
+          await captured.confirm();
           controller.signal.throwIfAborted();
           const current = currentDocument(tab.id);
           if (current.id !== documentId || current.path !== documentPath) throw new Error("The tab changed while its scene was being saved. Try closing it again.");
-          retainCheckpoint(tab.id, path);
+          retainCheckpoint(tab.id, captured.path);
         }
       })(),
       new Promise<never>((_, reject) => {
@@ -377,6 +390,9 @@ export function useNativePopoutSession(actions: ShellActions) {
           if (stage.surface) stage.surface.inert = true;
           const ready = await requestViewerAction(document.id, { type: "workspace_scene_state" });
           if (!ready.ready) return false;
+          const confirmRestore = await waitForSceneScienceRestore(document);
+          confirmRestore?.();
+          if (!useMoleculeStore.getState().documents.some(current => current.id === document.id && sameSceneSource(current, document))) return false;
           if (payload.sourceDraft) {
             if (!sourceEditing?.receiveTransfer) return false;
             await sourceEditing.receiveTransfer(document, payload.sourceDraft);

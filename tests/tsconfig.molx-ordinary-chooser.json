@@ -1,0 +1,18 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "allowJs": true,
+    "types": [
+      "bun"
+    ]
+  },
+  "include": [
+    "test-molx-ordinary-chooser.test.tsx",
+    "../apps/desktop/src/vite-env.d.ts",
+    "../apps/desktop/src/types/plotly-basic-dist-min.d.ts",
+    "../apps/desktop/src/lib/gifenc.d.ts",
+    "../apps/desktop/src/components/ui/utif.d.ts",
+    "scientific-import-compiled-preload.ts"
+  ]
+}

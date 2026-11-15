@@ -44,8 +44,8 @@
     {
       "path": "PreviewExtension/Web/molstar.js",
       "package": "molstar",
-      "bytes": 5447766,
-      "sha256": "sha256-EUZF9YmXQHTuI1VTtx+fv6CAkff7HAC64a+pC59O53o="
+      "bytes": 5546207,
+      "sha256": "sha256-47yEk0QzxRS0PYNvuYKPhMlGYD2qO6wXn0LQ14K1EIk="
     },
     {
       "path": "scripts/mvs-schema-validator.mjs",
@@ -62,8 +62,8 @@
     {
       "path": "PreviewExtension/Web/mesoscale.js",
       "package": "molstar",
-      "bytes": 4291104,
-      "sha256": "sha256-WgDKmwgUh5wRtABMWfZMsUaFw9SkuwHZrRxA/EppYRo="
+      "bytes": 4298171,
+      "sha256": "sha256-PNKv/5vhBHBK/RuMRFXDJTBeRUY+Fvrojnd+upe6nSg="
     },
     {
       "path": "PreviewExtension/Web/mesoscale.css",
@@ -98,24 +98,34 @@
     {
       "path": "PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.js",
       "package": "burette-rdkit-conformer",
-      "bytes": 36992,
-      "sha256": "sha256-VnVbCrMEui4TSnI9gHL3nLKCdWm2EI9LTAw8ieSkq7o="
+      "bytes": 53623,
+      "sha256": "sha256-v/izl0rJ3cw8ShPcAgkn+az/3tG2eKUHGFGwv3/vcJM="
     },
     {
       "path": "PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.wasm",
       "package": "burette-rdkit-conformer",
-      "bytes": 2218771,
-      "sha256": "sha256-i6irdqmqMcDuAvnlD9zUB4UguILWqYyyVKFld1NIpYk="
+      "bytes": 2313084,
+      "sha256": "sha256-Y59Z/ZbslTNudI2HVWtxmQgMIYB0QGksa9ll5niR0Bk="
     },
     {
       "path": "PreviewExtension/Web/openchemlib/openchemlib.js",
       "package": "openchemlib",
       "bytes": 1104184,
       "sha256": "sha256-Turw1Xa2ag0+dGTMeKEX4l0rXCBu2bHjLp7Q82lsK1g="
+    },
+    {
+      "path": "PreviewExtension/Web/openchemlib/LICENSE",
+      "package": "openchemlib",
+      "bytes": 1515,
+      "sha256": "sha256-ONw67T3vjMTdFayHnapK+bDXGvhv74JhHKF1JJfG9GQ="
     }
   ],
   "profiles": {
     "desktop-molstar": [
+      "geometry-preview.js",
+      "polymer-pick.js",
+      "atom-drag.js",
+      "scene-media.js",
       "molstar.js",
       "molstar.css",
       "viewer-runtime.css",
@@ -125,6 +135,7 @@
       "molstar-preset-preview-controller.js",
       "superposition-panel.js",
       "molecule-preview-interactions.js",
+      "molecule-preview-ocl.js",
       "renderer-view-state.js",
       "xyzrender-3d-editor.js",
       "color-picker.js",
@@ -134,6 +145,8 @@
       "sdf-collection-scene.js",
       "svg-sanitizer.js",
       "viewer.js",
+      "openchemlib/openchemlib.js",
+      "openchemlib/LICENSE",
       "rdkit/RDKit_minimal.js",
       "rdkit/RDKit_minimal.wasm"
     ],
@@ -145,6 +158,7 @@
       "native-viewer-menus.js",
       "grid-viewer.js",
       "openchemlib/openchemlib.js",
+      "openchemlib/LICENSE",
       "grid.css",
       "rdkit/RDKit_minimal.js",
       "rdkit/RDKit_minimal.wasm"
@@ -156,6 +170,10 @@
       "rdkit-compute/RDKit_minimal.wasm"
     ],
     "quicklook-molstar": [
+      "geometry-preview.js",
+      "polymer-pick.js",
+      "atom-drag.js",
+      "scene-media.js",
       "molstar.js",
       "molstar.css",
       "viewer-runtime.css",
@@ -165,6 +183,7 @@
       "molstar-preset-preview-controller.js",
       "superposition-panel.js",
       "molecule-preview-interactions.js",
+      "molecule-preview-ocl.js",
       "renderer-view-state.js",
       "xyzrender-3d-editor.js",
       "color-picker.js",
@@ -174,6 +193,8 @@
       "sdf-collection-scene.js",
       "svg-sanitizer.js",
       "viewer.js",
+      "openchemlib/openchemlib.js",
+      "openchemlib/LICENSE",
       "rdkit/RDKit_minimal.js",
       "rdkit/RDKit_minimal.wasm"
     ],
@@ -185,11 +206,16 @@
       "native-viewer-menus.js",
       "grid-viewer.js",
       "openchemlib/openchemlib.js",
+      "openchemlib/LICENSE",
       "grid.css",
       "rdkit/RDKit_minimal.js",
       "rdkit/RDKit_minimal.wasm"
     ],
     "external-artifact": [
+      "geometry-preview.js",
+      "polymer-pick.js",
+      "atom-drag.js",
+      "scene-media.js",
       "native-viewer-menus.js",
       "viewer-runtime.css",
       "viewer-shell.js",

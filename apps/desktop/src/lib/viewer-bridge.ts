@@ -1,3 +1,4 @@
+import { retainGeometryActionStatus } from "./geometry-action-status";
 import { isViewerFrameVisible } from "./viewer-frame-visibility";
 
 export type ActiveViewerIframeForDocument = (documentId: string, renderer?: string) => HTMLIFrameElement | null;
@@ -76,24 +77,64 @@ export function postToXyzrenderViewer(documentId: string | undefined, body: Reco
   for (const frame of frames) frame.contentWindow?.postMessage({ source: "burette-host", body }, "*");
 }
 
+/** A caller-owned target for work queued before dispatch; never retarget a new scene. */
+export type ViewerActionTarget = Readonly<{
+  documentId: string;
+  source: Window;
+  isCurrent: () => boolean;
+}>;
+export type ViewerActionOptions = { target?: ViewerActionTarget | null };
+
+export function captureViewerActionTarget(documentId: string, sourceIsCurrent: () => boolean = () => true): ViewerActionTarget | null {
+  const frame = activeViewerIframeForDocument(documentId);
+  if (!frame?.contentWindow || frame.dataset.readOnly === "true") return null;
+  const source = frame.contentWindow;
+  const sourceAttributes = ["src", "srcdoc", "data-source-preview-request-id", "data-source-preview-revision"] as const;
+  const values = sourceAttributes.map(name => frame.getAttribute(name));
+  return {
+    documentId,
+    source,
+    isCurrent: () => activeViewerIframeForDocument(documentId) === frame
+      && frame.contentWindow === source && frame.dataset.readOnly !== "true"
+      && sourceAttributes.every((name, index) => frame.getAttribute(name) === values[index])
+      && sourceIsCurrent(),
+  };
+}
+
 // Request/ack transport for workspace commands that must finish before the next
 // operation. Both the frame and request id are checked, including hidden tabs.
-export async function requestViewerAction(documentId: string, action: Record<string, unknown>, timeoutMs = 60000) {
-  const frame = activeViewerIframeForDocument(documentId);
-  if (!frame?.contentWindow || frame.dataset.readOnly === "true") throw new Error("Open the scene and wait for it to load.");
-  const source = frame.contentWindow;
+export async function requestViewerAction(documentId: string, action: Record<string, unknown>, timeoutMs = 60000, signal?: AbortSignal, options: ViewerActionOptions = {}) {
+  signal?.throwIfAborted();
+  const target = options.target === undefined ? captureViewerActionTarget(documentId) : options.target;
+  if (!target) throw new Error("Open the scene and wait for it to load.");
+  if (target.documentId !== documentId || !target.isCurrent()) throw new Error("The viewer changed before the action could run.");
+  const source = target.source;
   const id = `workspace-${crypto.randomUUID()}`;
   return new Promise<Record<string, unknown>>((resolve, reject) => {
-    const finish = () => { window.clearTimeout(timer); window.removeEventListener("message", receive); };
+    const polymerPick = action.type === "polymer_pick_atom" || action.type === "polymer_source_binding";
+    const status = polymerPick || action.type === "polymer_source_validate" || action.type === "select_source_atom" || action.type === "geometry_binding" || action.type === "scalar_field_binding"
+      || action.type === "scalar_field_validate" || action.type === "show_scalar_field"
+      ? retainGeometryActionStatus(id, target, action.type === "select_source_atom" ? 60_000 : timeoutMs) : null;
+    const finish = (retired = false) => { if (retired) status?.retire(); else status?.settle(); window.clearTimeout(timer); window.removeEventListener("message", receive); signal?.removeEventListener("abort", abort); };
+    const cancelSelection = () => {
+      // A recording keeps turning the camera until the viewer is told to stop.
+      if (action.type === "select_source_atom" || polymerPick || action.type === "record_movie") {
+        try { source.postMessage({ source: "burette-agent-host", body: { type: "agent-action-cancel", id } }, "*"); } catch { /* A closed frame is already cancelled. */ }
+      }
+    };
+    const abort = () => { finish(true); cancelSelection(); reject(new DOMException("Viewer request cancelled.", "AbortError")); };
     const receive = (event: MessageEvent) => {
       const body = event.data?.source === "burette-agent-viewer" ? event.data.body : null;
       if (event.source !== source || body?.type !== "agent-action-result" || body.id !== id) return;
       finish();
-      if (body.result?.ok) resolve(body.result.result ?? {});
+      if (!target.isCurrent()) reject(new Error("The viewer changed before the response arrived."));
+      else if (body.result?.ok) resolve(body.result.result ?? {});
       else reject(new Error(body.result?.error?.message ?? body.result?.message ?? "The viewer could not complete this action."));
     };
-    const timer = window.setTimeout(() => { finish(); reject(new Error("The scene did not respond. Check it before retrying.")); }, timeoutMs);
+    const timer = window.setTimeout(() => { finish(action.type === "select_source_atom" || polymerPick); cancelSelection(); reject(new Error("The scene did not respond. Check it before retrying.")); }, timeoutMs);
     window.addEventListener("message", receive);
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) { abort(); return; }
     try {
       source.postMessage({ source: "burette-agent-host", body: { type: "agent-action", id, action } }, "*");
     } catch (error) {

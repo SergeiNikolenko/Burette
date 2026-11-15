@@ -1,0 +1,14 @@
+ChEMBL ID,Class,MW,Source,target,pchembl_value,Source_2,comment
+CHEMBL25,NSAID,180.16,handbook,COX-1,5.8,assay A,
+CHEMBL25,NSAID,180.16,handbook,COX-2,4.6,assay B,"weak, reversible"
+CHEMBL521,NSAID,206.28,handbook,COX-1,5.3,assay A,
+CHEMBL154,NSAID,230.26,handbook,COX-2,6.1,assay B,
+CHEMBL139,NSAID,296.15,handbook,COX-2,7.4,assay B,
+CHEMBL112,Analgesic,151.16,handbook,,,,
+CHEMBL113,Stimulant,194.19,handbook,Adenosine A2a,4.9,assay C,
+CHEMBL190,Stimulant,180.17,handbook,,5.1,assay C,
+CHEMBL3,Stimulant,162.24,,,,,
+CHEMBL12,,284.75,handbook,,,,
+,Solvent,78.11,,,,,
+CHEMBL25,NSAID,180.16,supplier,COX-1,5.8,assay A,
+CHEMBL25,NSAID,180.16,supplier,COX-2,4.6,assay B,"weak, reversible"

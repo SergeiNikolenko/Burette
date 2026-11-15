@@ -172,9 +172,11 @@ export function useAppKetcherActions({
     title: string;
     extension: string;
     text: string;
+    beforeWrite?: () => Promise<void>;
   }): Promise<TextFileSaveOutcome> => {
     const title = safeExportFileName(request.title);
     if (!isTauriRuntime()) {
+      await request.beforeWrite?.();
       downloadTextFile(title, request.text);
       pushStatus(`Saved ${title}`);
       return { status: "saved", path: null };
@@ -185,6 +187,7 @@ export function useAppKetcherActions({
         filters: exportDialogFilters(title, "text/plain"),
       });
       if (!outputPath) return { status: "cancelled" };
+      await request.beforeWrite?.();
       const savedPath = await invoke<string>("save_text_as", {
         text: request.text,
         outputPath,

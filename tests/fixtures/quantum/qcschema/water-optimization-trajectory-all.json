@@ -1,0 +1,1280 @@
+{
+ "energies": [
+  -74.96135089015313,
+  -74.96411120797642,
+  -74.96597801375562,
+  -74.96598955474346,
+  -74.96599011197428
+ ],
+ "error": null,
+ "extras": {},
+ "final_molecule": {
+  "extras": {},
+  "fix_com": true,
+  "fix_orientation": true,
+  "geometry": [
+   0.0,
+   -9.097588173529885e-17,
+   -0.13435208935235715,
+   0.0,
+   -1.4325774457673899,
+   1.0671760446761782,
+   0.0,
+   1.4325774457673897,
+   1.0671760446761784
+  ],
+  "molecular_charge": 0.0,
+  "molecular_multiplicity": 1,
+  "name": "H2O",
+  "provenance": {
+   "creator": "QCElemental",
+   "routine": "qcelemental.molparse.from_schema",
+   "version": "0.51.4"
+  },
+  "schema_name": "qcschema_molecule",
+  "schema_version": 2,
+  "symbols": [
+   "O",
+   "H",
+   "H"
+  ],
+  "validated": true
+ },
+ "hash_index": null,
+ "id": null,
+ "initial_molecule": {
+  "extras": {},
+  "fix_com": true,
+  "fix_orientation": true,
+  "geometry": [
+   0.0,
+   0.0,
+   -0.1,
+   0.0,
+   -1.55,
+   1.05,
+   0.0,
+   1.55,
+   1.05
+  ],
+  "molecular_charge": 0.0,
+  "molecular_multiplicity": 1,
+  "name": "H2O",
+  "provenance": {
+   "creator": "QCElemental",
+   "routine": "qcelemental.molparse.from_schema",
+   "version": "0.51.4"
+  },
+  "schema_name": "qcschema_molecule",
+  "schema_version": 2,
+  "symbols": [
+   "O",
+   "H",
+   "H"
+  ],
+  "validated": true
+ },
+ "input_specification": {
+  "driver": "gradient",
+  "extras": {},
+  "keywords": {},
+  "model": {
+   "basis": "sto-3g",
+   "method": "hf"
+  },
+  "schema_name": "qcschema_input",
+  "schema_version": 1
+ },
+ "keywords": {
+  "program": "psi4"
+ },
+ "protocols": {
+  "trajectory": "all"
+ },
+ "schema_name": "qcschema_optimization_output",
+ "schema_version": 1,
+ "stderr": null,
+ "success": true,
+ "trajectory": [
+  {
+   "driver": "gradient",
+   "error": null,
+   "extras": {
+    "qcvars": {
+     "CURRENT DIPOLE": [
+      0.0,
+      0.0,
+      0.6400524372387492
+     ],
+     "CURRENT ENERGY": -74.96135089015313,
+     "CURRENT GRADIENT": [
+      [
+       -1.0304495574449467e-29,
+       0.0,
+       -0.014257088614591129
+      ],
+      [
+       1.2851844332644988e-18,
+       -0.04197730918511755,
+       0.0071285443073074994
+      ],
+      [
+       -1.285184433254145e-18,
+       0.04197730918511755,
+       0.0071285443073074994
+      ]
+     ],
+     "CURRENT REFERENCE ENERGY": -74.96135089015313,
+     "DD SOLVATION ENERGY": 0.0,
+     "HF KINETIC ENERGY": 74.45711519567682,
+     "HF POTENTIAL ENERGY": -149.41846608582995,
+     "HF TOTAL ENERGY": -74.96135089015313,
+     "HF TOTAL GRADIENT": [
+      [
+       -1.0304495574449467e-29,
+       0.0,
+       -0.014257088614591129
+      ],
+      [
+       1.2851844332644988e-18,
+       -0.04197730918511755,
+       0.0071285443073074994
+      ],
+      [
+       -1.285184433254145e-18,
+       0.04197730918511755,
+       0.0071285443073074994
+      ]
+     ],
+     "HF VIRIAL RATIO": 2.0067721626489443,
+     "NUCLEAR REPULSION ENERGY": 8.612624807574726,
+     "ONE-ELECTRON ENERGY": -121.35254663686942,
+     "PCM POLARIZATION ENERGY": 0.0,
+     "PE ENERGY": 0.0,
+     "SCF DIPOLE": [
+      0.0,
+      0.0,
+      0.6400524372387492
+     ],
+     "SCF ITERATION ENERGY": -74.96135089015313,
+     "SCF ITERATIONS": 7.0,
+     "SCF TOTAL ENERGIES": [
+      -74.07245575608954,
+      -74.90463155551647,
+      -74.96011933709283,
+      -74.96126312359792,
+      -74.96134901350129,
+      -74.96135087035792,
+      -74.96135089015297,
+      -74.96135089015313
+     ],
+     "SCF TOTAL ENERGY": -74.96135089015313,
+     "SCF TOTAL GRADIENT": [
+      [
+       -1.0304495574449467e-29,
+       0.0,
+       -0.014257088614591129
+      ],
+      [
+       1.2851844332644988e-18,
+       -0.04197730918511755,
+       0.0071285443073074994
+      ],
+      [
+       -1.285184433254145e-18,
+       0.04197730918511755,
+       0.0071285443073074994
+      ]
+     ],
+     "TWO-ELECTRON ENERGY": 37.778570939141574
+    }
+   },
+   "id": null,
+   "keywords": {},
+   "model": {
+    "basis": "sto-3g",
+    "method": "hf"
+   },
+   "molecule": {
+    "atom_labels": [
+     "",
+     "",
+     ""
+    ],
+    "atomic_numbers": [
+     8,
+     1,
+     1
+    ],
+    "extras": {},
+    "fix_com": true,
+    "fix_orientation": true,
+    "fragment_charges": [
+     0.0
+    ],
+    "fragment_multiplicities": [
+     1
+    ],
+    "fragments": [
+     [
+      0,
+      1,
+      2
+     ]
+    ],
+    "geometry": [
+     0.0,
+     0.0,
+     -0.1,
+     4.745506346695993e-17,
+     -1.55,
+     1.05,
+     -4.745506346695993e-17,
+     1.55,
+     1.05
+    ],
+    "mass_numbers": [
+     16,
+     1,
+     1
+    ],
+    "masses": [
+     15.99491461957,
+     1.00782503223,
+     1.00782503223
+    ],
+    "molecular_charge": 0.0,
+    "molecular_multiplicity": 1,
+    "name": "H2O",
+    "provenance": {
+     "creator": "QCElemental",
+     "routine": "qcelemental.molparse.from_schema",
+     "version": "0.51.4"
+    },
+    "real": [
+     true,
+     true,
+     true
+    ],
+    "schema_name": "qcschema_molecule",
+    "schema_version": 2,
+    "symbols": [
+     "O",
+     "H",
+     "H"
+    ],
+    "validated": true
+   },
+   "native_files": {},
+   "properties": {
+    "calcinfo_nalpha": 5,
+    "calcinfo_natom": 3,
+    "calcinfo_nbasis": 7,
+    "calcinfo_nbeta": 5,
+    "calcinfo_nmo": 7,
+    "nuclear_repulsion_energy": 8.612624807574726,
+    "return_energy": -74.96135089015313,
+    "return_gradient": [
+     -1.0304495574449467e-29,
+     0.0,
+     -0.014257088614591129,
+     1.2851844332644988e-18,
+     -0.04197730918511755,
+     0.0071285443073074994,
+     -1.285184433254145e-18,
+     0.04197730918511755,
+     0.0071285443073074994
+    ],
+    "scf_dipole_moment": [
+     0.0,
+     0.0,
+     0.6400524372387492
+    ],
+    "scf_iterations": 7,
+    "scf_one_electron_energy": -121.35254663686942,
+    "scf_total_energy": -74.96135089015313,
+    "scf_total_gradient": [
+     -1.0304495574449467e-29,
+     0.0,
+     -0.014257088614591129,
+     1.2851844332644988e-18,
+     -0.04197730918511755,
+     0.0071285443073074994,
+     -1.285184433254145e-18,
+     0.04197730918511755,
+     0.0071285443073074994
+    ],
+    "scf_two_electron_energy": 37.778570939141574
+   },
+   "protocols": {
+    "error_correction": {
+     "default_policy": true,
+     "policies": null
+    },
+    "native_files": "none",
+    "stdout": true,
+    "wavefunction": "none"
+   },
+   "return_result": [
+    -1.0304495574449467e-29,
+    0.0,
+    -0.014257088614591129,
+    1.2851844332644988e-18,
+    -0.04197730918511755,
+    0.0071285443073074994,
+    -1.285184433254145e-18,
+    0.04197730918511755,
+    0.0071285443073074994
+   ],
+   "schema_name": "qcschema_output",
+   "schema_version": 1,
+   "stderr": null,
+   "success": true,
+   "wavefunction": null
+  },
+  {
+   "driver": "gradient",
+   "error": null,
+   "extras": {
+    "qcvars": {
+     "CURRENT DIPOLE": [
+      0.0,
+      -2.220446049250313e-16,
+      0.6915435662344869
+     ],
+     "CURRENT ENERGY": -74.96411120797642,
+     "CURRENT GRADIENT": [
+      [
+       -6.015064402310215e-30,
+       0.0,
+       0.0007034360569387887
+      ],
+      [
+       -7.756514223180404e-19,
+       0.025334698065137343,
+       -0.00035171802847128175
+      ],
+      [
+       7.756514223237103e-19,
+       -0.025334698065137343,
+       -0.00035171802847128175
+      ]
+     ],
+     "CURRENT REFERENCE ENERGY": -74.96411120797642,
+     "DD SOLVATION ENERGY": 0.0,
+     "HF KINETIC ENERGY": 74.55187123792714,
+     "HF POTENTIAL ENERGY": -149.51598244590355,
+     "HF TOTAL ENERGY": -74.96411120797642,
+     "HF TOTAL GRADIENT": [
+      [
+       -6.015064402310215e-30,
+       0.0,
+       0.0007034360569387887
+      ],
+      [
+       -7.756514223180404e-19,
+       0.025334698065137343,
+       -0.00035171802847128175
+      ],
+      [
+       7.756514223237103e-19,
+       -0.025334698065137343,
+       -0.00035171802847128175
+      ]
+     ],
+     "HF VIRIAL RATIO": 2.0055295724064877,
+     "NUCLEAR REPULSION ENERGY": 9.03247479456758,
+     "ONE-ELECTRON ENERGY": -122.02336705614061,
+     "PCM POLARIZATION ENERGY": 0.0,
+     "PE ENERGY": 0.0,
+     "SCF DIPOLE": [
+      0.0,
+      -2.220446049250313e-16,
+      0.6915435662344869
+     ],
+     "SCF ITERATION ENERGY": -74.96411120797642,
+     "SCF ITERATIONS": 7.0,
+     "SCF TOTAL ENERGIES": [
+      -74.18185780046865,
+      -74.90806537301712,
+      -74.96306409926491,
+      -74.96405267991258,
+      -74.96411074369699,
+      -74.96411119966652,
+      -74.96411120797463,
+      -74.96411120797642
+     ],
+     "SCF TOTAL ENERGY": -74.96411120797642,
+     "SCF TOTAL GRADIENT": [
+      [
+       -6.015064402310215e-30,
+       0.0,
+       0.0007034360569387887
+      ],
+      [
+       -7.756514223180404e-19,
+       0.025334698065137343,
+       -0.00035171802847128175
+      ],
+      [
+       7.756514223237103e-19,
+       -0.025334698065137343,
+       -0.00035171802847128175
+      ]
+     ],
+     "TWO-ELECTRON ENERGY": 38.02678105359662
+    }
+   },
+   "id": null,
+   "keywords": {},
+   "model": {
+    "basis": "sto-3g",
+    "method": "hf"
+   },
+   "molecule": {
+    "atom_labels": [
+     "",
+     "",
+     ""
+    ],
+    "atomic_numbers": [
+     8,
+     1,
+     1
+    ],
+    "extras": {},
+    "fix_com": true,
+    "fix_orientation": true,
+    "fragment_charges": [
+     0.0
+    ],
+    "fragment_multiplicities": [
+     1
+    ],
+    "fragments": [
+     [
+      0,
+      1,
+      2
+     ]
+    ],
+    "geometry": [
+     3.3815429759141827e-66,
+     0.0,
+     -0.16811272009961117,
+     4.155653839656996e-17,
+     -1.3573395504892758,
+     1.0840563600498057,
+     -4.155653839656996e-17,
+     1.3573395504892756,
+     1.0840563600498057
+    ],
+    "mass_numbers": [
+     16,
+     1,
+     1
+    ],
+    "masses": [
+     15.99491461957,
+     1.00782503223,
+     1.00782503223
+    ],
+    "molecular_charge": 0.0,
+    "molecular_multiplicity": 1,
+    "name": "H2O",
+    "provenance": {
+     "creator": "QCElemental",
+     "routine": "qcelemental.molparse.from_schema",
+     "version": "0.51.4"
+    },
+    "real": [
+     true,
+     true,
+     true
+    ],
+    "schema_name": "qcschema_molecule",
+    "schema_version": 2,
+    "symbols": [
+     "O",
+     "H",
+     "H"
+    ],
+    "validated": true
+   },
+   "native_files": {},
+   "properties": {
+    "calcinfo_nalpha": 5,
+    "calcinfo_natom": 3,
+    "calcinfo_nbasis": 7,
+    "calcinfo_nbeta": 5,
+    "calcinfo_nmo": 7,
+    "nuclear_repulsion_energy": 9.03247479456758,
+    "return_energy": -74.96411120797642,
+    "return_gradient": [
+     -6.015064402310215e-30,
+     0.0,
+     0.0007034360569387887,
+     -7.756514223180404e-19,
+     0.025334698065137343,
+     -0.00035171802847128175,
+     7.756514223237103e-19,
+     -0.025334698065137343,
+     -0.00035171802847128175
+    ],
+    "scf_dipole_moment": [
+     0.0,
+     -2.220446049250313e-16,
+     0.6915435662344869
+    ],
+    "scf_iterations": 7,
+    "scf_one_electron_energy": -122.02336705614061,
+    "scf_total_energy": -74.96411120797642,
+    "scf_total_gradient": [
+     -6.015064402310215e-30,
+     0.0,
+     0.0007034360569387887,
+     -7.756514223180404e-19,
+     0.025334698065137343,
+     -0.00035171802847128175,
+     7.756514223237103e-19,
+     -0.025334698065137343,
+     -0.00035171802847128175
+    ],
+    "scf_two_electron_energy": 38.02678105359662
+   },
+   "protocols": {
+    "error_correction": {
+     "default_policy": true,
+     "policies": null
+    },
+    "native_files": "none",
+    "stdout": true,
+    "wavefunction": "none"
+   },
+   "return_result": [
+    -6.015064402310215e-30,
+    0.0,
+    0.0007034360569387887,
+    -7.756514223180404e-19,
+    0.025334698065137343,
+    -0.00035171802847128175,
+    7.756514223237103e-19,
+    -0.025334698065137343,
+    -0.00035171802847128175
+   ],
+   "schema_name": "qcschema_output",
+   "schema_version": 1,
+   "stderr": null,
+   "success": true,
+   "wavefunction": null
+  },
+  {
+   "driver": "gradient",
+   "error": null,
+   "extras": {
+    "qcvars": {
+     "CURRENT DIPOLE": [
+      -1.8488927466117464e-32,
+      -2.220446049250313e-16,
+      0.6711410186933353
+     ],
+     "CURRENT ENERGY": -74.96597801375562,
+     "CURRENT GRADIENT": [
+      [
+       1.786646690809151e-28,
+       0.0,
+       0.001702965343719054
+      ],
+      [
+       3.713650960580158e-20,
+       -0.0012129704571426092,
+       -0.0008514826718536428
+      ],
+      [
+       -3.713650978419816e-20,
+       0.0012129704571426092,
+       -0.0008514826718536428
+      ]
+     ],
+     "CURRENT REFERENCE ENERGY": -74.96597801375562,
+     "DD SOLVATION ENERGY": 0.0,
+     "HF KINETIC ENERGY": 74.5180262301906,
+     "HF POTENTIAL ENERGY": -149.48400424394623,
+     "HF TOTAL ENERGY": -74.96597801375562,
+     "HF TOTAL GRADIENT": [
+      [
+       1.786646690809151e-28,
+       0.0,
+       0.001702965343719054
+      ],
+      [
+       3.713650960580158e-20,
+       -0.0012129704571426092,
+       -0.0008514826718536428
+      ],
+      [
+       -3.713650978419816e-20,
+       0.0012129704571426092,
+       -0.0008514826718536428
+      ]
+     ],
+     "HF VIRIAL RATIO": 2.0060113211021084,
+     "NUCLEAR REPULSION ENERGY": 8.904668097513557,
+     "ONE-ELECTRON ENERGY": -121.83390953133856,
+     "PCM POLARIZATION ENERGY": 0.0,
+     "PE ENERGY": 0.0,
+     "SCF DIPOLE": [
+      -1.8488927466117464e-32,
+      -2.220446049250313e-16,
+      0.6711410186933353
+     ],
+     "SCF ITERATION ENERGY": -74.96597801375562,
+     "SCF ITERATIONS": 7.0,
+     "SCF TOTAL ENERGIES": [
+      -74.14781848840583,
+      -74.91114984982721,
+      -74.96491498950544,
+      -74.96590984352552,
+      -74.96597709470299,
+      -74.96597800404716,
+      -74.96597801375391,
+      -74.96597801375562
+     ],
+     "SCF TOTAL ENERGY": -74.96597801375562,
+     "SCF TOTAL GRADIENT": [
+      [
+       1.786646690809151e-28,
+       0.0,
+       0.001702965343719054
+      ],
+      [
+       3.713650960580158e-20,
+       -0.0012129704571426092,
+       -0.0008514826718536428
+      ],
+      [
+       -3.713650978419816e-20,
+       0.0012129704571426092,
+       -0.0008514826718536428
+      ]
+     ],
+     "TWO-ELECTRON ENERGY": 37.963263420069396
+    }
+   },
+   "id": null,
+   "keywords": {},
+   "model": {
+    "basis": "sto-3g",
+    "method": "hf"
+   },
+   "molecule": {
+    "atom_labels": [
+     "",
+     "",
+     ""
+    ],
+    "atomic_numbers": [
+     8,
+     1,
+     1
+    ],
+    "extras": {},
+    "fix_com": true,
+    "fix_orientation": true,
+    "fragment_charges": [
+     0.0
+    ],
+    "fragment_multiplicities": [
+     1
+    ],
+    "fragments": [
+     [
+      0,
+      1,
+      2
+     ]
+    ],
+    "geometry": [
+     4.4629384843006866e-66,
+     0.0,
+     -0.1300645896077823,
+     4.4027395224288493e-17,
+     -1.4380438590111726,
+     1.065032294803891,
+     -4.402739522428851e-17,
+     1.4380438590111724,
+     1.065032294803891
+    ],
+    "mass_numbers": [
+     16,
+     1,
+     1
+    ],
+    "masses": [
+     15.99491461957,
+     1.00782503223,
+     1.00782503223
+    ],
+    "molecular_charge": 0.0,
+    "molecular_multiplicity": 1,
+    "name": "H2O",
+    "provenance": {
+     "creator": "QCElemental",
+     "routine": "qcelemental.molparse.from_schema",
+     "version": "0.51.4"
+    },
+    "real": [
+     true,
+     true,
+     true
+    ],
+    "schema_name": "qcschema_molecule",
+    "schema_version": 2,
+    "symbols": [
+     "O",
+     "H",
+     "H"
+    ],
+    "validated": true
+   },
+   "native_files": {},
+   "properties": {
+    "calcinfo_nalpha": 5,
+    "calcinfo_natom": 3,
+    "calcinfo_nbasis": 7,
+    "calcinfo_nbeta": 5,
+    "calcinfo_nmo": 7,
+    "nuclear_repulsion_energy": 8.904668097513557,
+    "return_energy": -74.96597801375562,
+    "return_gradient": [
+     1.786646690809151e-28,
+     0.0,
+     0.001702965343719054,
+     3.713650960580158e-20,
+     -0.0012129704571426092,
+     -0.0008514826718536428,
+     -3.713650978419816e-20,
+     0.0012129704571426092,
+     -0.0008514826718536428
+    ],
+    "scf_dipole_moment": [
+     -1.8488927466117464e-32,
+     -2.220446049250313e-16,
+     0.6711410186933353
+    ],
+    "scf_iterations": 7,
+    "scf_one_electron_energy": -121.83390953133856,
+    "scf_total_energy": -74.96597801375562,
+    "scf_total_gradient": [
+     1.786646690809151e-28,
+     0.0,
+     0.001702965343719054,
+     3.713650960580158e-20,
+     -0.0012129704571426092,
+     -0.0008514826718536428,
+     -3.713650978419816e-20,
+     0.0012129704571426092,
+     -0.0008514826718536428
+    ],
+    "scf_two_electron_energy": 37.963263420069396
+   },
+   "protocols": {
+    "error_correction": {
+     "default_policy": true,
+     "policies": null
+    },
+    "native_files": "none",
+    "stdout": true,
+    "wavefunction": "none"
+   },
+   "return_result": [
+    1.786646690809151e-28,
+    0.0,
+    0.001702965343719054,
+    3.713650960580158e-20,
+    -0.0012129704571426092,
+    -0.0008514826718536428,
+    -3.713650978419816e-20,
+    0.0012129704571426092,
+    -0.0008514826718536428
+   ],
+   "schema_name": "qcschema_output",
+   "schema_version": 1,
+   "stderr": null,
+   "success": true,
+   "wavefunction": null
+  },
+  {
+   "driver": "gradient",
+   "error": null,
+   "extras": {
+    "qcvars": {
+     "CURRENT DIPOLE": [
+      0.0,
+      0.0,
+      0.6724086398495721
+     ],
+     "CURRENT ENERGY": -74.96598955474346,
+     "CURRENT GRADIENT": [
+      [
+       -2.5824101289508466e-28,
+       0.0,
+       -0.0007247457113295774
+      ],
+      [
+       6.565719155036893e-22,
+       -2.1445261991270836e-05,
+       0.0003623728556644418
+      ],
+      [
+       -6.565716571517428e-22,
+       2.1445261991270836e-05,
+       0.0003623728556644418
+      ]
+     ],
+     "CURRENT REFERENCE ENERGY": -74.96598955474346,
+     "DD SOLVATION ENERGY": 0.0,
+     "HF KINETIC ENERGY": 74.51793324291997,
+     "HF POTENTIAL ENERGY": -149.4839227976634,
+     "HF TOTAL ENERGY": -74.96598955474346,
+     "HF TOTAL GRADIENT": [
+      [
+       -2.5824101289508466e-28,
+       0.0,
+       -0.0007247457113295774
+      ],
+      [
+       6.565719155036893e-22,
+       -2.1445261991270836e-05,
+       0.0003623728556644418
+      ],
+      [
+       -6.565716571517428e-22,
+       2.1445261991270836e-05,
+       0.0003623728556644418
+      ]
+     ],
+     "HF VIRIAL RATIO": 2.006012731329556,
+     "NUCLEAR REPULSION ENERGY": 8.904204340372951,
+     "ONE-ELECTRON ENERGY": -121.82911320368021,
+     "PCM POLARIZATION ENERGY": 0.0,
+     "PE ENERGY": 0.0,
+     "SCF DIPOLE": [
+      0.0,
+      0.0,
+      0.6724086398495721
+     ],
+     "SCF ITERATION ENERGY": -74.96598955474346,
+     "SCF ITERATIONS": 7.0,
+     "SCF TOTAL ENERGIES": [
+      -74.14775630178245,
+      -74.91087766572113,
+      -74.96492136211387,
+      -74.96592235593992,
+      -74.96598869198775,
+      -74.96598954485444,
+      -74.9659895547419,
+      -74.96598955474346
+     ],
+     "SCF TOTAL ENERGY": -74.96598955474346,
+     "SCF TOTAL GRADIENT": [
+      [
+       -2.5824101289508466e-28,
+       0.0,
+       -0.0007247457113295774
+      ],
+      [
+       6.565719155036893e-22,
+       -2.1445261991270836e-05,
+       0.0003623728556644418
+      ],
+      [
+       -6.565716571517428e-22,
+       2.1445261991270836e-05,
+       0.0003623728556644418
+      ]
+     ],
+     "TWO-ELECTRON ENERGY": 37.958919308563786
+    }
+   },
+   "id": null,
+   "keywords": {},
+   "model": {
+    "basis": "sto-3g",
+    "method": "hf"
+   },
+   "molecule": {
+    "atom_labels": [
+     "",
+     "",
+     ""
+    ],
+    "atomic_numbers": [
+     8,
+     1,
+     1
+    ],
+    "extras": {},
+    "fix_com": true,
+    "fix_orientation": true,
+    "fragment_charges": [
+     0.0
+    ],
+    "fragment_multiplicities": [
+     1
+    ],
+    "fragments": [
+     [
+      0,
+      1,
+      2
+     ]
+    ],
+    "geometry": [
+     7.073250285531934e-66,
+     0.0,
+     -0.13541775048885243,
+     4.383903412651153e-17,
+     -1.4318915186659198,
+     1.067708875244426,
+     -4.383903412651153e-17,
+     1.4318915186659198,
+     1.067708875244426
+    ],
+    "mass_numbers": [
+     16,
+     1,
+     1
+    ],
+    "masses": [
+     15.99491461957,
+     1.00782503223,
+     1.00782503223
+    ],
+    "molecular_charge": 0.0,
+    "molecular_multiplicity": 1,
+    "name": "H2O",
+    "provenance": {
+     "creator": "QCElemental",
+     "routine": "qcelemental.molparse.from_schema",
+     "version": "0.51.4"
+    },
+    "real": [
+     true,
+     true,
+     true
+    ],
+    "schema_name": "qcschema_molecule",
+    "schema_version": 2,
+    "symbols": [
+     "O",
+     "H",
+     "H"
+    ],
+    "validated": true
+   },
+   "native_files": {},
+   "properties": {
+    "calcinfo_nalpha": 5,
+    "calcinfo_natom": 3,
+    "calcinfo_nbasis": 7,
+    "calcinfo_nbeta": 5,
+    "calcinfo_nmo": 7,
+    "nuclear_repulsion_energy": 8.904204340372951,
+    "return_energy": -74.96598955474346,
+    "return_gradient": [
+     -2.5824101289508466e-28,
+     0.0,
+     -0.0007247457113295774,
+     6.565719155036893e-22,
+     -2.1445261991270836e-05,
+     0.0003623728556644418,
+     -6.565716571517428e-22,
+     2.1445261991270836e-05,
+     0.0003623728556644418
+    ],
+    "scf_dipole_moment": [
+     0.0,
+     0.0,
+     0.6724086398495721
+    ],
+    "scf_iterations": 7,
+    "scf_one_electron_energy": -121.82911320368021,
+    "scf_total_energy": -74.96598955474346,
+    "scf_total_gradient": [
+     -2.5824101289508466e-28,
+     0.0,
+     -0.0007247457113295774,
+     6.565719155036893e-22,
+     -2.1445261991270836e-05,
+     0.0003623728556644418,
+     -6.565716571517428e-22,
+     2.1445261991270836e-05,
+     0.0003623728556644418
+    ],
+    "scf_two_electron_energy": 37.958919308563786
+   },
+   "protocols": {
+    "error_correction": {
+     "default_policy": true,
+     "policies": null
+    },
+    "native_files": "none",
+    "stdout": true,
+    "wavefunction": "none"
+   },
+   "return_result": [
+    -2.5824101289508466e-28,
+    0.0,
+    -0.0007247457113295774,
+    6.565719155036893e-22,
+    -2.1445261991270836e-05,
+    0.0003623728556644418,
+    -6.565716571517428e-22,
+    2.1445261991270836e-05,
+    0.0003623728556644418
+   ],
+   "schema_name": "qcschema_output",
+   "schema_version": 1,
+   "stderr": null,
+   "success": true,
+   "wavefunction": null
+  },
+  {
+   "driver": "gradient",
+   "error": null,
+   "extras": {
+    "qcvars": {
+     "CURRENT DIPOLE": [
+      -6.162975822039155e-33,
+      0.0,
+      0.6723293809933113
+     ],
+     "CURRENT ENERGY": -74.96599011197428,
+     "CURRENT GRADIENT": [
+      [
+       -1.6925996797648335e-28,
+       0.0,
+       0.00011064435862057076
+      ],
+      [
+       -6.233957294070012e-22,
+       2.0361652500883176e-05,
+       -5.532217929353489e-05
+      ],
+      [
+       6.233958986176654e-22,
+       -2.0361652500883176e-05,
+       -5.532217929353489e-05
+      ]
+     ],
+     "CURRENT REFERENCE ENERGY": -74.96599011197428,
+     "DD SOLVATION ENERGY": 0.0,
+     "HF KINETIC ENERGY": 74.5185305063,
+     "HF POTENTIAL ENERGY": -149.48452061827427,
+     "HF TOTAL ENERGY": -74.96599011197428,
+     "HF TOTAL GRADIENT": [
+      [
+       -1.6925996797648335e-28,
+       0.0,
+       0.00011064435862057076
+      ],
+      [
+       -6.233957294070012e-22,
+       2.0361652500883176e-05,
+       -5.532217929353489e-05
+      ],
+      [
+       6.233958986176654e-22,
+       -2.0361652500883176e-05,
+       -5.532217929353489e-05
+      ]
+     ],
+     "HF VIRIAL RATIO": 2.00600467565093,
+     "NUCLEAR REPULSION ENERGY": 8.906785761700885,
+     "ONE-ELECTRON ENERGY": -121.8344249850004,
+     "PCM POLARIZATION ENERGY": 0.0,
+     "PE ENERGY": 0.0,
+     "SCF DIPOLE": [
+      -6.162975822039155e-33,
+      0.0,
+      0.6723293809933113
+     ],
+     "SCF ITERATION ENERGY": -74.96599011197428,
+     "SCF ITERATIONS": 7.0,
+     "SCF TOTAL ENERGIES": [
+      -74.14841312386557,
+      -74.91096543369117,
+      -74.96492448266996,
+      -74.96592278132545,
+      -74.96598923979388,
+      -74.96599010218779,
+      -74.9659901119727,
+      -74.96599011197428
+     ],
+     "SCF TOTAL ENERGY": -74.96599011197428,
+     "SCF TOTAL GRADIENT": [
+      [
+       -1.6925996797648335e-28,
+       0.0,
+       0.00011064435862057076
+      ],
+      [
+       -6.233957294070012e-22,
+       2.0361652500883176e-05,
+       -5.532217929353489e-05
+      ],
+      [
+       6.233958986176654e-22,
+       -2.0361652500883176e-05,
+       -5.532217929353489e-05
+      ]
+     ],
+     "TWO-ELECTRON ENERGY": 37.96164911132523
+    }
+   },
+   "id": null,
+   "keywords": {},
+   "model": {
+    "basis": "sto-3g",
+    "method": "hf"
+   },
+   "molecule": {
+    "atom_labels": [
+     "",
+     "",
+     ""
+    ],
+    "atomic_numbers": [
+     8,
+     1,
+     1
+    ],
+    "extras": {},
+    "fix_com": true,
+    "fix_orientation": true,
+    "fragment_charges": [
+     0.0
+    ],
+    "fragment_multiplicities": [
+     1
+    ],
+    "fragments": [
+     [
+      0,
+      1,
+      2
+     ]
+    ],
+    "geometry": [
+     4.7330055369847594e-66,
+     0.0,
+     -0.13420569770733864,
+     4.386163429125098e-17,
+     -1.432629696065483,
+     1.067102848853669,
+     -4.3861634291250983e-17,
+     1.432629696065483,
+     1.067102848853669
+    ],
+    "mass_numbers": [
+     16,
+     1,
+     1
+    ],
+    "masses": [
+     15.99491461957,
+     1.00782503223,
+     1.00782503223
+    ],
+    "molecular_charge": 0.0,
+    "molecular_multiplicity": 1,
+    "name": "H2O",
+    "provenance": {
+     "creator": "QCElemental",
+     "routine": "qcelemental.molparse.from_schema",
+     "version": "0.51.4"
+    },
+    "real": [
+     true,
+     true,
+     true
+    ],
+    "schema_name": "qcschema_molecule",
+    "schema_version": 2,
+    "symbols": [
+     "O",
+     "H",
+     "H"
+    ],
+    "validated": true
+   },
+   "native_files": {},
+   "properties": {
+    "calcinfo_nalpha": 5,
+    "calcinfo_natom": 3,
+    "calcinfo_nbasis": 7,
+    "calcinfo_nbeta": 5,
+    "calcinfo_nmo": 7,
+    "nuclear_repulsion_energy": 8.906785761700885,
+    "return_energy": -74.96599011197428,
+    "return_gradient": [
+     -1.6925996797648335e-28,
+     0.0,
+     0.00011064435862057076,
+     -6.233957294070012e-22,
+     2.0361652500883176e-05,
+     -5.532217929353489e-05,
+     6.233958986176654e-22,
+     -2.0361652500883176e-05,
+     -5.532217929353489e-05
+    ],
+    "scf_dipole_moment": [
+     -6.162975822039155e-33,
+     0.0,
+     0.6723293809933113
+    ],
+    "scf_iterations": 7,
+    "scf_one_electron_energy": -121.8344249850004,
+    "scf_total_energy": -74.96599011197428,
+    "scf_total_gradient": [
+     -1.6925996797648335e-28,
+     0.0,
+     0.00011064435862057076,
+     -6.233957294070012e-22,
+     2.0361652500883176e-05,
+     -5.532217929353489e-05,
+     6.233958986176654e-22,
+     -2.0361652500883176e-05,
+     -5.532217929353489e-05
+    ],
+    "scf_two_electron_energy": 37.96164911132523
+   },
+   "protocols": {
+    "error_correction": {
+     "default_policy": true,
+     "policies": null
+    },
+    "native_files": "none",
+    "stdout": true,
+    "wavefunction": "none"
+   },
+   "return_result": [
+    -1.6925996797648335e-28,
+    0.0,
+    0.00011064435862057076,
+    -6.233957294070012e-22,
+    2.0361652500883176e-05,
+    -5.532217929353489e-05,
+    6.233958986176654e-22,
+    -2.0361652500883176e-05,
+    -5.532217929353489e-05
+   ],
+   "schema_name": "qcschema_output",
+   "schema_version": 1,
+   "stderr": null,
+   "success": true,
+   "wavefunction": null
+  }
+ ]
+}

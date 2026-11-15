@@ -105,6 +105,23 @@ decoded UTF-8 replacement expansion is bounded too. No partial structure is
 returned. Browser CORS rules remain applicable; these transport bounds do not
 grant the browser native access to local files or private networks.
 
+## Avogadro Plugins
+
+Settings Extensions reads the Avogadro plugin index from one fixed address
+(`https://avogadro.cc/plugins2.json`, 1 MiB, 20 seconds) when the section opens;
+the browser shell fetches it without credentials, the desktop shell through the
+native HTTP guard above. Index text is display data only. The desktop shell
+installs a package only by name and revision: it takes the archive address and
+SHA-256 from its own index copy, verifies the bytes and unpacks them with a
+validating reader into a private folder below app data; installing never runs
+package code. Package code runs only after the user confirms `Set up`
+(`pixi install`) and then chooses a command; each run is a bounded,
+cancellable Jobs entry. A declared energy model runs only from an explicit
+Optimize or Calculate Energy with that model: one process per run, owned by the
+window, killed with its process group on Cancel, close, window close or quit,
+with bounded input, replies and stderr. The browser shell has no install or run route. See
+[Avogadro extension contracts](avogadro-extensions.md#command-and-script-extensions-by-surface).
+
 ## Compute Data Root
 
 The native Compute Layer stores its coordinator database, immutable molecular

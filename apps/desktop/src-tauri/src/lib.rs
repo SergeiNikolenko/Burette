@@ -1,5 +1,7 @@
 #![allow(deprecated, unexpected_cfgs)]
 #![allow(clippy::items_after_test_module, clippy::too_many_arguments)]
+// The native menu state fixture is one large serde_json::json! literal.
+#![recursion_limit = "256"]
 
 mod commands;
 mod compute;
@@ -312,6 +314,20 @@ pub fn run() {
                 perf_trace::append_perf_trace,
                 preview::trajectory::read_indexed_trajectory_frame,
                 commands::shell::open_external_url,
+                commands::avogadro_plugins::fetch_avogadro_plugin_index,
+                commands::avogadro_plugins::open_avogadro_plugin_link,
+                commands::avogadro_plugins::avogadro_plugins_installed,
+                commands::avogadro_plugins::avogadro_plugin_install,
+                commands::avogadro_plugins::avogadro_plugin_remove,
+                commands::avogadro_plugins::avogadro_plugin_prepare,
+                commands::avogadro_plugins::avogadro_plugin_run,
+                commands::avogadro_plugins::avogadro_plugin_options,
+                commands::avogadro_plugins::avogadro_plugin_cancel,
+                commands::energy_models::energy_models_list,
+                commands::energy_models::energy_model_open,
+                commands::energy_models::energy_model_evaluate,
+                commands::energy_models::energy_model_evaluate_batch,
+                commands::energy_models::energy_model_close,
                 commands::shell::existing_paths,
                 commands::shell::watch_project_roots,
                 commands::shell::open_new_workspace_window,
@@ -407,6 +423,7 @@ pub fn run() {
                 menu::request_quit(app);
             }
         }
+        RunEvent::Exit => commands::energy_models::close_all(),
         _ => {}
     });
 }

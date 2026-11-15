@@ -39,7 +39,7 @@ test("selection toolbar follows live scene state and retains one action binding 
     viewportQueryMenu: () => {}, viewportApplyMenu: () => {},
     openViewportMenu: (button: HTMLButtonElement, name: string) => { button.setAttribute("aria-expanded", "true"); calls.push(["open", name]); },
   };
-  const methods = ["initViewportControls", "updateSelectionBar", "runSelectionBarAction", "closeViewportMenu"].map(source).join("\n");
+  const methods = ["initViewportControls", "installViewportKeyboardCamera", "updateSelectionBar", "runSelectionBarAction", "closeViewportMenu"].map(source).join("\n");
   const api = new Function(...Object.keys(bindings), `let viewportControlsDisposers = []; let viewportSelectionControls = null; let viewportMenuControls = null; let viewportRailControls = null;
     ${methods}; return { init: initViewportControls, update: updateSelectionBar, dispose: () => {
       viewportSelectionControls?.dispose(); viewportRailControls?.dispose(); viewportControlsDisposers.forEach(dispose => dispose());

@@ -75,6 +75,7 @@ export type NativeMenuState = {
   canRunCrest: boolean;
   canRunPrism: boolean;
   canRunXtb: boolean;
+  canOptimizeGeometry: boolean;
   rgroupRuntimeAvailable: boolean;
   openDocumentPaths: string[];
   recentDocuments: Array<{ path: string; title: string }> | null;

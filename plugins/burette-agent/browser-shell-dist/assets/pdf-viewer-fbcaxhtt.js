@@ -1,1 +1,0 @@
-import{a as e}from"./document-page-CLGZM2z6.js";export{e as PdfResourceContent};

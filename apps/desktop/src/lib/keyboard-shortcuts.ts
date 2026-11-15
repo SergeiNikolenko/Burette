@@ -65,6 +65,7 @@ export const SHORTCUT_DEFINITIONS = [
   { id: "file.show-active-metadata", label: "Get Info", description: "Show renderer, format, path, and file size for the active structure.", scope: "menu", defaultAccelerator: "CmdOrCtrl+I" },
   { id: "file.export-preview-png", label: "Export preview as PNG", description: "Save the active external preview as a PNG file.", scope: "menu", defaultAccelerator: "CmdOrCtrl+Shift+E" },
   { id: "file.export-preview-svg", label: "Export preview as SVG", description: "Save the active external preview as an SVG file.", scope: "menu", defaultAccelerator: "CmdOrCtrl+Alt+E" },
+  { id: "structure.optimize-geometry", label: "Optimize Geometry", description: "Optimize the active structure in its Edit or Geometry panel.", scope: "menu", defaultAccelerator: "CmdOrCtrl+Alt+O" },
   {
     id: "view.jump-to-structure",
     label: "Jump to structure",

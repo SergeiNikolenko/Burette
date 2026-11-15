@@ -231,6 +231,9 @@ type StructureFileBundle = {
 };
 const DEV_FILE_EXTENSIONS = new Set([
   ...previewFormatRegistry.documentTypes.extensions,
+  // VASP POSCAR/CONTCAR: browser crystal tools only, no native preview registration.
+  "vasp",
+  "poscar",
   "pdf",
   "docx",
   "xlsx",
@@ -3680,6 +3683,7 @@ function isDevFileReadAllowed(path: string) {
 function fileExtension(path: string) {
   const lower = path.toLowerCase();
   if (lower.endsWith(".mae.gz")) return "maegz";
+  if (/^(?:POSCAR|CONTCAR)(?:[_-][^.]*)?$/u.test(path.replace(/\\/g, "/").split("/").pop() ?? "")) return "vasp";
   const index = lower.lastIndexOf(".");
   return index >= 0 ? lower.slice(index + 1) : "";
 }

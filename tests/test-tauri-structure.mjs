@@ -937,6 +937,7 @@ assert.deepEqual(vendorAssetsLock.assets.map((asset) => asset.path).toSorted(), 
   'PreviewExtension/Web/mesoscale.js',
   'PreviewExtension/Web/molstar.css',
   'PreviewExtension/Web/molstar.js',
+  'PreviewExtension/Web/openchemlib/LICENSE',
   'PreviewExtension/Web/openchemlib/openchemlib.js',
   'PreviewExtension/Web/rdkit-compute/RDKit_minimal.js',
   'PreviewExtension/Web/rdkit-compute/RDKit_minimal.wasm',
@@ -1247,6 +1248,12 @@ assertSourceIncludesAll(nativeMenuSource, [
   'structure.crest-generate',
   'structure.prism-prune',
   'structure.xtb',
+  'structure.optimize-geometry',
+  'structure.auto-optimize',
+  'structure.calculate-energy',
+  'structure.configure-optimization',
+  'structure.freeze-atoms',
+  'structure.unfreeze-atoms',
   'structure.xtb-optimize',
   'structure.xtb-properties',
   'structure.xtb-frequencies',
@@ -1272,6 +1279,7 @@ assertSourceIncludesAll(nativeMenuSource, [
   'collection.reaction.extract-products',
   'collection.reaction.extract-transformation',
   'collection.reaction.perform',
+  'collection.reaction.enumerate',
   'collection.delete-rows.selected',
   'collection.delete-rows.duplicates',
   'collection.delete-columns',
@@ -1314,6 +1322,12 @@ assertSourceIncludesAll(menuEvents, [
   'edit.find',
   'structure.crest-generate',
   'structure.prism-prune',
+  'structure.optimize-geometry',
+  'structure.auto-optimize',
+  'structure.calculate-energy',
+  'structure.configure-optimization',
+  'structure.freeze-atoms',
+  'structure.unfreeze-atoms',
   'structure.xtb-optimize',
   'structure.xtb-properties',
   'structure.xtb-frequencies',
@@ -1335,6 +1349,7 @@ assertSourceIncludesAll(menuEvents, [
   'collection.reaction.extract-reactants',
   'collection.reaction.extract-transformation',
   'collection.reaction.perform',
+  'collection.reaction.enumerate',
   'database.search-chembl',
   'database.chembl-actives',
   'database.search-cod',
@@ -1422,6 +1437,7 @@ for (const field of [
   'can_run_crest',
   'can_run_prism',
   'can_run_xtb',
+  'can_optimize_geometry',
 ]) {
   assert.match(nativeMenuSource, new RegExp(`\\b${field}:`));
 }
@@ -1441,6 +1457,7 @@ assert.match(nativeMenuSource, /"structure\.generate-3d",\s*state\.can_generate_
 assert.match(nativeMenuSource, /"structure\.crest-generate", state\.can_run_crest/);
 assert.match(nativeMenuSource, /"structure\.prism-prune", state\.can_run_prism/);
 assert.match(nativeMenuSource, /"structure\.xtb-optimize", state\.can_run_xtb/);
+assert.match(nativeMenuSource, /set_enabled\(&app, id, state\.can_optimize_geometry\)/);
 assert.match(nativeMenuSource, /"collection\.copy-selected", has_grid_selection/);
 assert.match(nativeMenuSource, /"collection\.calculate-descriptors",\s*state\.is_grid && state\.grid_has_molecules && !state\.grid_dirty/s);
 // The Reaction submenu follows the reaction flag the grid reports, so it stays
@@ -1825,7 +1842,7 @@ assert.match(previewRuntimeUtils, /pub\(crate\) fn prune_runtime_dirs/);
 assert.match(quickLookPreviewController, /viewer-runtime\.css/);
 assert.match(quickLookPreviewController, /viewer-shell\.js/);
 assert.match(viewerJS, /function appendCacheBuster\(url, cb\)/);
-assert.match(viewerJS, /startsWith\('asset:\/\/'\)/);
+assert.match(viewerJS, /\^\(asset:\\\/\\\/\|blob:\)/);
 assert.match(viewerJS, /function runtimeURL\(globalName, fallback\)/);
 assert.match(viewerJS, /runtimeURL\('BurettePreviewConfigURL', '\.\/preview-config\.js'\)/);
 assert.match(viewerJS, /runtimeURL\('BurettePreviewDataScriptURL', '\.\/preview-data\.js'\)/);

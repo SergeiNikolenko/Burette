@@ -15,8 +15,11 @@ import { workspaceFileMenu } from "./workspace-file-menu";
 import { menuItem, menuSections, submenu, fileCapabilities } from "./workspace-menu-items";
 import { FolderOpenDialog } from "./folder-open-dialog";
 import { toast } from "./ui/toast";
+import { availableFormats, formatsForPath, openWithAvogadroFormat } from "../lib/extensions/avogadro-formats";
+import { avogadroPluginRunner } from "../lib/extensions/avogadro-plugin-runner";
 
 type Menus = {
+  saveScene?: (document: ViewerDocument) => void;
   scene: (document: ViewerDocument) => MenuItemSpec[];
   files: (paths: string[]) => Promise<MenuItemSpec[]>;
   folder: (project: SidebarProject, path: string, root: boolean, rename: () => void) => MenuItemSpec[];
@@ -48,10 +51,14 @@ export function WorkspaceMenus({ state, actions, children }: { state: ShellViewS
     const menu = workspaceFileMenu(paths, state, actions, workflows,
       paths.length === 1 ? diskMenu(paths[0]) : batchFiles.items(paths), run, localBatch.open);
     if (isTauriRuntime() && paths.length === 1) {
+      const opening = menu.find(entry => entry.kind === "submenu" && entry.id === "file-open");
+      const readers = formatsForPath(availableFormats(avogadroPluginRunner().getSnapshot().installed), paths[0]);
+      const external = opening?.kind === "submenu" ? opening.items.find(entry => entry.kind === "submenu" && entry.id === "open-external") : undefined;
+      // Plugin readers sit just above the external applications.
+      if (opening?.kind === "submenu" && readers.length) opening.items.splice(external ? opening.items.indexOf(external) : opening.items.length, 0,
+        ...readers.map(reader => menuItem(`open-reader-${reader.id}`, `With ${reader.format.name}`, run(() => openWithAvogadroFormat(reader, paths[0], actions)))));
       try {
         const targets = await actions.listChemicalEditorTargets(paths[0]);
-        const opening = menu.find(entry => entry.kind === "submenu" && entry.id === "file-open");
-        const external = opening?.kind === "submenu" ? opening.items.find(entry => entry.kind === "submenu" && entry.id === "open-external") : null;
         if (external?.kind === "submenu") external.items.push(...targets.slice(0, 12).map((target, index) =>
           menuItem(`open-editor-${index}`, target.name, run(() => actions.openPathInChemicalEditor(paths[0], target.id, target.name)))));
       } catch { /* The default application remains available if discovery fails. */ }
@@ -101,7 +108,7 @@ export function WorkspaceMenus({ state, actions, children }: { state: ShellViewS
     ...submenu("merge-scene", "Add to scene", workflows.mergeTargets(document).map((target, index) =>
       menuItem(`merge-scene-${index}`, target.title, run(() => workflows.mergeScene(document, target))))),
   ] : [];
-  return <Context.Provider value={{ scene, files, folder, selected, select, batch: localBatch }}>{children}{batchFiles.dialog}<SceneNameDialog document={renamingScene} onClose={() => setRenamingScene(null)} />
+  return <Context.Provider value={{ scene, files, folder, selected, select, batch: localBatch, saveScene: document => run(() => workflows.saveScene(document))() }}>{children}{batchFiles.dialog}<SceneNameDialog document={renamingScene} onClose={() => setRenamingScene(null)} />
     <FolderOpenDialog path={batch?.path ?? null} initialMode={batch?.mode ?? "tabs"} workflows={workflows} state={state} actions={actions} openBatch={localBatch.open} cancelBatch={localBatch.cancel} progress={localBatch.progress} onClose={() => setBatch(null)} />
   </Context.Provider>;
 }

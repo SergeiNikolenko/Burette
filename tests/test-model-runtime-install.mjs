@@ -1,15 +1,65 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveModelPython } from "../scripts/model-runtime-path.mjs";
-import { registerBrowserDevModelRuntimeRoutes } from "../apps/desktop/vite/browser-dev/model-runtime.ts";
+import * as filesystem from "node:fs/promises";
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 if (process.argv[2] === "child") {
   let handler;
+  const boundary = process.env.BURETTE_TEST_CANCEL_BOUNDARY;
+  const runtime = process.env.BURETTE_CHEMICAL_SPACE_MODEL_RUNTIME_DIR;
+  let boundaryReached = false, promoted = false, cleanupObserved = false;
+  if (boundary) {
+    const real = { ...filesystem };
+    const { mock } = await import("bun:test");
+    mock.module("node:fs/promises", () => ({
+      ...real,
+      async writeFile(path, ...args) {
+        const stamp = String(path).includes(".staging-") && String(path).endsWith("burette-install.json");
+        if (stamp && boundary === "stamp-before") {
+          boundaryReached = true;
+          request("POST", "/cancel-install");
+        }
+        const result = await real.writeFile(path, ...args);
+        if (stamp && boundary === "stamp-after") {
+          boundaryReached = true;
+          request("POST", "/cancel-install");
+        }
+        return result;
+      },
+      async rename(from, to) {
+        const result = await real.rename(from, to);
+        if (String(from).includes(".staging-") && to === runtime) promoted = true;
+        if (from === runtime && String(to).includes(".legacy-") && boundary === "backup") {
+          boundaryReached = true;
+          request("POST", "/cancel-install");
+        }
+        return result;
+      },
+      async rm(path, options) {
+        if (String(path).includes(".staging-") || String(path).includes(".legacy-")) {
+          cleanupObserved = true;
+          if (boundary === "committed") {
+            boundaryReached = true;
+            request("POST", "/cancel-install");
+          }
+          assert.equal(request("GET", "/").installPhase, "installing");
+          // Restart requests during asynchronous rollback/cleanup must remain
+          // attached to this installation; no second staging tree may appear.
+          request("POST", "/install");
+          await new Promise(done => setTimeout(done, 20));
+          assert.equal(request("GET", "/").installPhase, "installing");
+          assert.equal(readdirSync(dirname(runtime)).filter(name => name.includes(".staging-")).length, promoted ? 0 : 1);
+        }
+        return real.rm(path, options);
+      },
+    }));
+  }
+  const { registerBrowserDevModelRuntimeRoutes } = await import("../apps/desktop/vite/browser-dev/model-runtime.ts");
   registerBrowserDevModelRuntimeRoutes({ middlewares: { use(_path, value) { handler = value; } } }, repo);
   function request(method, url) {
     let body;
@@ -22,7 +72,7 @@ if (process.argv[2] === "child") {
   for (let count = 0; count < 200; count += 1) {
     const result = request("GET", "/");
     if (result.installPhase !== "installing") {
-      process.stdout.write(JSON.stringify({ ...result, beforeInstalled: before.installed }));
+      process.stdout.write(JSON.stringify({ ...result, beforeInstalled: before.installed, boundaryReached, promoted, cleanupObserved }));
       process.exit(0);
     }
     await new Promise((done) => setTimeout(done, 20));
@@ -93,7 +143,22 @@ if (args[1] === 'sync' && process.env.BURETTE_TEST_FAIL_SYNC === '1') process.ex
     assert.equal(override.beforeInstalled, true);
     assert.equal(override.source, "override");
     assert.equal(readFileSync(join(runtime, "preserved"), "utf8"), "existing runtime");
-    console.log("Managed model install verifies lock policy, ignores ambient overrides, and preserves failed replacement.");
+    for (const boundary of ["stamp-before", "stamp-after", "backup", "committed"]) {
+      const previousStamp = JSON.stringify({ requirements: `previous-${boundary}` });
+      writeFileSync(join(runtime, "burette-install.json"), previousStamp);
+      writeFileSync(join(runtime, "bin/python3"), "previous runtime");
+      const result = invoke({ BURETTE_TEST_CANCEL_BOUNDARY: boundary });
+      assert.equal(result.boundaryReached, true, boundary);
+      assert.equal(result.cleanupObserved, true, boundary);
+      assert.equal(result.promoted, boundary === "committed", boundary);
+      assert.equal(result.installPhase, boundary === "committed" ? "completed" : "cancelled", boundary);
+      if (boundary !== "committed") {
+        assert.equal(readFileSync(join(runtime, "burette-install.json"), "utf8"), previousStamp, boundary);
+        assert.equal(readFileSync(join(runtime, "bin/python3"), "utf8"), "previous runtime", boundary);
+      } else assert.equal(result.installed, true);
+      assert.deepEqual(readdirSync(temporary).filter(name => /\.(staging|legacy)-/u.test(name)), [], boundary);
+    }
+    console.log("Managed model install verifies lock policy, atomic cancellation/commit, cleanup admission, and failed replacement.");
   } finally {
     rmSync(temporary, { recursive: true, force: true });
   }

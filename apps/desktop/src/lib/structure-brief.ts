@@ -1,4 +1,5 @@
 import type { ViewerDocument } from "../types";
+import type { CifStructureClassification } from "./cif-structure-classification";
 import { isTrajectoryDocumentRequest } from "./docking-documents";
 
 export type StructureBriefRow = {
@@ -17,10 +18,10 @@ export type StructureBriefModel = {
   notes: string[];
 };
 
-export function structureBriefForDocument(document: ViewerDocument, sizeLabel: string): StructureBriefModel {
+export function structureBriefForDocument(document: ViewerDocument, sizeLabel: string, cifKind: CifStructureClassification["kind"] = null): StructureBriefModel {
   const format = document.extension ? document.extension.toUpperCase() : "FILE";
   const renderer = rendererLabel(document.renderer);
-  const kind = documentKind(document);
+  const kind = documentKind(document, cifKind);
   const badges = [
     kind,
     renderer,
@@ -44,7 +45,7 @@ export function structureBriefForDocument(document: ViewerDocument, sizeLabel: s
   };
 }
 
-export function documentKind(document: ViewerDocument) {
+export function documentKind(document: ViewerDocument, cifKind: CifStructureClassification["kind"] = null) {
   if (document.dockingRequest?.sceneMode) return "Structure scene";
   if (isTrajectoryDocumentRequest(document.dockingRequest)) return "Trajectory";
   if (document.dockingRequest) return "Docking view";
@@ -55,7 +56,8 @@ export function documentKind(document: ViewerDocument) {
   if (["xyz", "extxyz", "dtr", "xtc", "trr"].includes(extension)) return "Structure frames";
   if (["cube", "cub"].includes(extension)) return "Volume data";
   if (isMaestroExtension(extension)) return "Maestro structure";
-  if (["pdb", "pdbqt", "cif", "mmcif", "bcif", "gro", "mae", "maegz", "cms"].includes(extension)) return "Macromolecule";
+  if (["cif", "mmcif", "bcif"].includes(extension)) return cifKind ?? "Molecular structure";
+  if (["pdb", "pdbqt", "gro", "mae", "maegz", "cms"].includes(extension)) return "Macromolecule";
   return "Molecular file";
 }
 
@@ -165,7 +167,7 @@ function structureNotes(document: ViewerDocument) {
 }
 
 function normalizedExtension(document: ViewerDocument) {
-  return document.extension.toLowerCase();
+  return document.extension.replace(/^\./u, "").toLowerCase();
 }
 
 function isMaestroExtension(extension: string) {

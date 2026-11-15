@@ -1,0 +1,1 @@
+{"extends":"./tsconfig.mcd-companion-picker.json","files":["test-mcd-companion-activation.test.tsx","mcd-picker-compiled-preload.ts"],"include":["../apps/desktop/src/**/*.d.ts"]}

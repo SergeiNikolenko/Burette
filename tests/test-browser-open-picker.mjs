@@ -7,7 +7,7 @@ const original = process.argv[2]
   : readFileSync(path, "utf8");
 const source = new Bun.Transpiler({ loader: "ts" }).transformSync(original.replace(/^import .*;\n/gm, "").replace(/^export (?=(?:async )?function\b)/gm, ""));
 const hook = new Function("useCallback", "isTauriRuntime", "isWebDemoWorkspace", "pickWebDemoFiles", "open", "previewFormatRegistry", source + "\nreturn useAppOpenActions;")(
-  fn => fn, () => false, () => false, async () => ({ paths: ["/OpenedFiles/a.sdf"] }),
+  fn => fn, () => false, () => false, async () => ({ paths: ["/OpenedFiles/a.sdf"], scientific: [], errors: [] }),
   () => { throw new Error("Native dialog invoked in browser"); }, { documentTypes: { extensions: [] } },
 );
 const opened = [], errors = [];

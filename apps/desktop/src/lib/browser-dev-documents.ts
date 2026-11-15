@@ -1,6 +1,15 @@
-import { inflateStructureBytes } from "./structure-inflate";
+import { unzipSync } from "fflate";
+import { readBrowserImport } from "./browser-import-storage";
+import { isExplicitBrowserDevServerPath } from "./browser-dev-paths";
+import { isTauriRuntime } from "./tauri";
+import { compressedName, compressionFromSignature, supportedCompressedName, supportedInnerExtension } from "./compressed-files/formats";
+import { assertCompressedSourceCurrent, compressedSourceFor, decodeCompressedSource, registerCompressedSource } from "./compressed-files/sources";
+import { loadBrowserCompressedSource } from "./compressed-files/browser-source";
+import { decodeCompressedFile } from "./compressed-files/task";
 import { demoLibraryUrl } from "./web-demo-library";
 import { standaloneDemoSnapshot } from "./web-demo-scenes";
+import { crystalPreviewData } from "./crystal-preview";
+import { isPoscarFileName } from "./molecular-workbench/poscar";
 import { collectionExtension, mergeCollectionSources, parseReactionCollectionRecords, parseSdfCollectionRecords } from "./collection-documents";
 import { assertConcreteConformerSource } from "./conformer-input";
 import { runBrowserDevMetalConformer } from "./browser-dev-compute";
@@ -152,6 +161,7 @@ const TRAJECTORY_PAIR_EXTENSIONS = new Set([
   "top", "psf", "prmtop", "tpr",
 ]);
 const browserDevVirtualTextDocuments = new Map<string, string>();
+const browserDevPickedBinaries = new Map<string, Blob>();
 const MESOSCALE_EXTENSIONS = new Set(["molj", "molx", "mesozip"]);
 
 type ResolvedPreviewVisuals = {
@@ -277,10 +287,13 @@ export async function openBrowserDevTextDocument(
   preferences: ViewerPreferences,
   reloadOptions?: ViewerReloadOptions,
   documentId?: string,
+  options: { newDocument?: boolean } = {},
 ): Promise<ViewerDocument> {
   const cleanExtension = extension.toLowerCase().replace(/^\./u, "");
   const cleanTitle = fileTitle(title).replace(/[\\/]/gu, "").trim() || `ketcher-sketch.${cleanExtension}`;
-  const path = `burette-ketcher://${stableId(`${cleanTitle}:${text}`)}/${cleanTitle}`;
+  // Match native text imports: a requested new document owns its own source path.
+  const sourceId = options.newDocument ? crypto.randomUUID() : stableId(`${cleanTitle}:${text}`);
+  const path = `burette-ketcher://${sourceId}/${cleanTitle}`;
   const bytes = new TextEncoder().encode(text);
   browserDevVirtualTextDocuments.set(path, text);
   const document = await openBrowserDevDocumentFromBytes(path, cleanExtension, bytes, bytes.length, preferences, reloadOptions, documentId);
@@ -616,7 +629,7 @@ export async function appendToBrowserDevCollection(
 }
 
 export async function readBrowserDevCollectionText(path: string) {
-  const virtualText = browserDevVirtualTextDocuments.get(path);
+  const virtualText = await readBrowserVirtualText(path);
   if (virtualText !== undefined) return virtualText;
   const extension = collectionExtension(path);
   const url = browserDevReadUrl(path, extension);
@@ -633,6 +646,66 @@ export async function readBrowserDevCollectionText(path: string) {
 
 export function readBrowserDevVirtualTextDocument(path: string) {
   return browserDevVirtualTextDocuments.get(path) ?? null;
+}
+
+export function writeBrowserDevPickedBinary(path: string, file: Blob) {
+  browserDevVirtualTextDocuments.delete(path);
+  browserDevPickedBinaries.set(path, file);
+}
+
+export function readBrowserDevPickedBinary(path: string) {
+  return browserDevPickedBinaries.get(path) ?? null;
+}
+
+/** Text already owned by this browser runtime; a virtual path alone is not ownership. */
+export function isBrowserDraftSource(document: Pick<ViewerDocument, "path">) {
+  return !isTauriRuntime() && browserDevVirtualTextDocuments.has(document.path);
+}
+
+/**
+ * Restore immutable original text only when no current draft exists. A compressed
+ * file (a browser import or an explicitly selected server file) is decoded once by
+ * the shared bounded decoder; from then on its text is an ordinary draft. Scientific
+ * compressed imports stay with their scientific owner.
+ */
+export async function readBrowserVirtualText(path: string) {
+  const unread = () => !browserDevVirtualTextDocuments.has(path) && !browserDevPickedBinaries.has(path) && !compressedSourceFor(path);
+  let imported = false;
+  if (!isTauriRuntime() && !isExplicitBrowserDevServerPath(path) && unread()) {
+    const record = await readBrowserImport(path);
+    imported = record !== null;
+    if (record && unread()) {
+      if (record.kind === "binary" || (record.kind === "text" && /\.molx$/iu.test(record.name))) {
+        writeBrowserDevPickedBinary(path, record.file);
+      } else if (record.kind === "text") {
+        const restored = await record.file.text();
+        if (!browserDevVirtualTextDocuments.has(path)) browserDevVirtualTextDocuments.set(path, restored);
+      } else if (record.kind === "compressed" && !record.scientific) {
+        registerCompressedSource(path, record.name, record.file, supportedCompressedName(record.name));
+      }
+    }
+  }
+  // The native Codex workspace host serves compressed files already inflated.
+  if (!isTauriRuntime() && !imported && unread() && compressedName(fileTitle(path)) && !(typeof window !== "undefined" && window.BuretteMcpWorkspace)) {
+    supportedCompressedName(fileTitle(path));
+    // Vite serves .gz from /@fs with Content-Encoding: gzip. Fetch would
+    // decompress it before validation or preservation of the original bytes.
+    const url = import.meta.env.DEV && /\.gz$/iu.test(path)
+      ? `/__burette/read-file?rawGzip=1&path=${encodeURIComponent(path)}`
+      : fsUrl(path);
+    await loadBrowserCompressedSource(path, url);
+  }
+  const text = browserDevVirtualTextDocuments.get(path);
+  const source = compressedSourceFor(path);
+  if (text !== undefined || !source) return text;
+  const decoded = await decodeCompressedSource(path);
+  // Other reactions to the same decode run first: only the file still registered
+  // here fills the cache, and text written meanwhile is kept.
+  assertCompressedSourceCurrent(path, source);
+  const current = browserDevVirtualTextDocuments.get(path);
+  if (current !== undefined) return current;
+  browserDevVirtualTextDocuments.set(path, decoded);
+  return decoded;
 }
 
 export function deleteBrowserDevVirtualTextDocument(path: string) {
@@ -665,19 +738,26 @@ async function openBrowserDevDocument(
   documentId?: string,
 ): Promise<ViewerDocument> {
   const extension = fileExtension(path);
-  const virtualText = browserDevVirtualTextDocuments.get(path);
+  const virtualText = await readBrowserVirtualText(path);
   if (virtualText !== undefined) {
     const bytes = new TextEncoder().encode(virtualText);
     if (bytes.length === 0) throw new Error(`${path} is empty`);
     return openBrowserDevDocumentFromBytes(
       path,
-      extension,
+      // Browser text is decoded already, a Maestro gzip file included.
+      extension === "maegz" ? "mae" : extension,
       bytes,
       bytes.length,
       preferences,
       reloadOptions,
       documentId,
     );
+  }
+  const picked = browserDevPickedBinaries.get(path);
+  if (picked) {
+    const bytes = new Uint8Array(await picked.arrayBuffer());
+    if (bytes.length === 0) throw new Error(`${path} is empty`);
+    return openBrowserDevDocumentFromBytes(path, extension, bytes, bytes.length, preferences, reloadOptions, documentId);
   }
   const amberNcPreview = await requestBrowserDevAmberNcPreview(path, extension);
   if (amberNcPreview) {
@@ -855,7 +935,7 @@ async function openBrowserDevDocumentFromBytes(
     );
     return browserDocument(path, extension, "molstar", html, sourceByteCount, documentId, undefined, "mesoscale");
   }
-  const text = await decodeStructureText(bytes, extension);
+  const text = await decodeStructureText(path, bytes, extension);
   const grid = gridPayload(path, extension, text);
   const sdfRecordCount = isSdfExtension(extension) ? parseSdfCollectionRecords(text).length : 0;
   const initialRenderer = typeof window !== "undefined" && !reloadOptions
@@ -882,9 +962,13 @@ async function openBrowserDevDocumentFromBytes(
   const pharmacophorePreview = isPharmacophorePreviewExtension(extension)
     ? convertedDataFromText(text, extension, fileTitle(path))
     : null;
+  // A small-molecule CIF or a POSCAR reaches Mol* as its full cell with a Lattice.
+  const crystalPreview: ConvertedStructureData | null = await crystalPreviewData(text, extension);
   const sourceXyzFrameCount = countXyzFrames(text);
   const format = pharmacophorePreview
     ? { molstarFormat: "pdb", binary: false, externalOnly: false, canOpenInVesta: false }
+    : crystalPreview
+    ? { molstarFormat: "xyz", binary: false, externalOnly: false, canOpenInVesta: formatForExtension(extension).canOpenInVesta }
     : sourceXyzFrameCount > 0 && shouldTreatTextAsXyzFrames(extension)
     ? { molstarFormat: "xyz", binary: false, externalOnly: false, canOpenInVesta: false }
     : formatForExtension(extension);
@@ -900,10 +984,10 @@ async function openBrowserDevDocumentFromBytes(
     ? { ...format, molstarFormat: maestroPreview.molstarFormat, binary: false, externalOnly: false }
     : format;
   const sourceXyzBytes = xyzDataFromText(text, extension, fileTitle(path));
-  const convertedMolstarData = pharmacophorePreview ?? maestroPreview ?? convertedDataFromText(text, extension, fileTitle(path));
-  const molstarBytes: Uint8Array | null = convertedMolstarData?.bytes && shouldUseConvertedMolstarData(format, convertedMolstarData, extension)
+  const convertedMolstarData = pharmacophorePreview ?? maestroPreview ?? crystalPreview ?? convertedDataFromText(text, extension, fileTitle(path));
+  const molstarBytes: Uint8Array | null = crystalPreview?.bytes ?? (convertedMolstarData?.bytes && shouldUseConvertedMolstarData(format, convertedMolstarData, extension)
     ? convertedMolstarData.bytes
-    : null;
+    : null);
   const runtimeFrameText = maestroPreview?.bytes ? decodeUtf8(maestroPreview.bytes) : text;
   const xyzFrameCount = runtimeFormat.molstarFormat === "xyz" && !runtimeFormat.binary ? Math.max(sourceXyzFrameCount, countXyzFrames(runtimeFrameText)) : 0;
   const pdbModelCount = runtimeFormat.molstarFormat === "pdb" && !runtimeFormat.binary ? countPdbModels(runtimeFrameText) : 0;
@@ -1020,10 +1104,10 @@ function isCoordinateTrajectoryPayload(payload: BrowserDevDockingPayload) {
 
 async function readBrowserDevDockingPayload(path: string): Promise<BrowserDevDockingPayload> {
   const extension = fileExtension(path);
-  const virtualText = browserDevVirtualTextDocuments.get(path);
+  const virtualText = await readBrowserVirtualText(path);
   if (virtualText !== undefined) {
     const bytes = new TextEncoder().encode(virtualText);
-    return browserDevDockingPayloadFromBytes(path, extension, bytes, bytes.length);
+    return browserDevDockingPayloadFromBytes(path, extension === "maegz" ? "mae" : extension, bytes, bytes.length);
   }
   const response = await fetch(browserDevReadUrl(path, extension));
   assertBrowserDevFileResponse(path, extension, response);
@@ -1042,7 +1126,7 @@ async function browserDevDockingPayloadFromBytes(
   byteCount: number,
 ): Promise<BrowserDevDockingPayload> {
   const title = fileTitle(path);
-  const text = await decodeStructureText(originalBytes, extension);
+  const text = await decodeStructureText(path, originalBytes, extension);
   const sourceXyzFrameCount = countXyzFrames(text);
   const format = sourceXyzFrameCount > 0 && shouldTreatTextAsXyzFrames(extension)
     ? { molstarFormat: "xyz", binary: false, externalOnly: false, canOpenInVesta: false }
@@ -1192,6 +1276,13 @@ function isMesoscaleDocument(path: string, extension: string, bytes: Uint8Array)
         entry.snapshot?.data?.tree?.transforms?.some(transform => transform.transformer === "ms-plugin.mesoscale-state"));
     } catch { /* Let the session viewer report invalid files. */ }
   }
+  if (extension === "molx") {
+    // Ordinary Mol* scene archives use the structure viewer; unreadable states keep the session fallback.
+    try {
+      const state = unzipSync(bytes, { filter: file => file.name === "state.json" && file.originalSize <= 64 * 1024 * 1024 })["state.json"];
+      if (state) return isMesoscaleDocument(path, "molj", state);
+    } catch { /* The session viewer reports unreadable archives. */ }
+  }
   if (MESOSCALE_EXTENSIONS.has(extension)) return true;
   const normalizedPath = path.toLowerCase();
   if (extension === "bcif") {
@@ -1310,7 +1401,7 @@ function viewerHtml(
   // The prebuilt plugin shell has no desktop native-compute transport. Vite
   // development and packaged desktop runtimes retain their own capabilities.
   if (import.meta.env.PROD && import.meta.env.VITE_BURETTE_AGENT_SHELL === "1") {
-    Object.assign(config, { visualizationOnly: true });
+    Object.assign(config, { nativeMolecularComputeUnavailable: true });
   }
   if (mesoscale) {
     return mesoscaleViewerHtml(label, bytes, config, visuals.transparentBackground);
@@ -1361,6 +1452,7 @@ function viewerHtml(
   <script src="${viewerAsset("sequence-panel.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("native-viewer-menus.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("scene-file-actions.js")}?v=${runtimeAssetVersion}"></script>
+  <script src="${viewerAsset("geometry-preview.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("svg-sanitizer.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("viewer.js")}?v=${runtimeAssetVersion}"></script>
 </body>
@@ -2139,15 +2231,14 @@ function gridRequiresPreview(extension: string) {
   );
 }
 
-// gzip and BGZF copies of coordinate files keep the inner format: 1abc.pdb.gz
-// opens as pdb.
-const COMPRESSED_STRUCTURE_NAME = /\.(pdb|ent|cif|mmcif)\.(?:gz|bgz|bgzf)$/iu;
-
 function fileExtension(path: string) {
   const name = fileTitle(path);
+  // VASP names its structures POSCAR and CONTCAR, usually without a suffix.
+  if (isPoscarFileName(name)) return "vasp";
   if (name.toLowerCase().endsWith(".mae.gz")) return "maegz";
-  const compressed = COMPRESSED_STRUCTURE_NAME.exec(name);
-  if (compressed) return compressed[1].toLowerCase();
+  // gzip, BGZF, XZ and Zstandard copies keep the format inside: 1abc.pdb.gz opens as pdb.
+  const inner = /\.maegz$/iu.test(name) ? null : supportedInnerExtension(name);
+  if (inner) return inner;
   const index = name.lastIndexOf(".");
   if (index >= 0) return name.slice(index + 1).toLowerCase();
   return /^in(?:_|$)/iu.test(name) ? "in" : "";
@@ -2195,20 +2286,18 @@ function decodeUtf8(bytes: Uint8Array) {
   return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
 }
 
-// The native Codex workspace serves these files already inflated (its server
-// also reads multi-member BGZF). Other surfaces get the gzip bytes; the
-// browser's DecompressionStream reads single-member gzip only.
+// Only the native Codex workspace reaches this read with a compressed name; its
+// host serves those files already inflated (multi-member BGZF included). Bytes
+// that still carry a compression signature use the shared bounded decoder.
 async function inflateCompressedStructure(path: string, bytes: Uint8Array) {
-  if (!COMPRESSED_STRUCTURE_NAME.test(fileTitle(path)) || bytes[0] !== 0x1f || bytes[1] !== 0x8b) return bytes;
-  return inflateStructureBytes(bytes, MAX_STRUCTURE_FILE_SIZE);
+  const name = fileTitle(path);
+  if (!compressedName(name) || fileExtension(path) === "maegz" || !compressionFromSignature(bytes)) return bytes;
+  return new TextEncoder().encode((await decodeCompressedFile(name, new Blob([bytes as BlobPart]))).text);
 }
 
-async function decodeStructureText(bytes: Uint8Array, extension: string) {
+async function decodeStructureText(path: string, bytes: Uint8Array, extension: string) {
   if (extension !== "maegz") return decodeUtf8(bytes);
-  if (typeof DecompressionStream !== "function") {
-    throw new Error("This browser cannot decompress Maestro gzip files");
-  }
-  return decodeUtf8(await inflateStructureBytes(bytes, 64 * 1024 * 1024));
+  return (await decodeCompressedFile(fileTitle(path), new Blob([bytes as BlobPart]), { maxBytes: MAESTRO_PREVIEW_READ_LIMIT })).text;
 }
 
 function browserDevSourceByteCount(response: Response, fallback: number) {

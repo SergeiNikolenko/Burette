@@ -43,7 +43,7 @@ export type ViewerBridgeMessageHandlers = {
   handleSdfViewerMessage: AsyncBodyMessageHandler;
   handleViewerConformerMessage: BodyEventMessageHandler;
   handleViewerFileMessage: BodyEventMessageHandler;
-  handleViewerHostMessage: SourceMessageHandler;
+  handleViewerHostMessage: SourceEventMessageHandler;
   handleViewerRuntimeFileMessage: SourceEventMessageHandler;
   handleViewerRuntimeMessage: BodyMessageHandler;
   handleViewerStateMessage: SourceEventMessageHandler;
@@ -90,7 +90,7 @@ export async function dispatchViewerBridgeMessage(
   if (!handlers.isKnownViewerMessageSource(eventSource, viewerBridgeBodyDocumentId(body))) {
     return false;
   }
-  if (handlers.handleViewerHostMessage(source, body)) {
+  if (handlers.handleViewerHostMessage(source, body, eventSource)) {
     return true;
   }
   if (handlers.handleViewerStateMessage(source, body, eventSource)) {

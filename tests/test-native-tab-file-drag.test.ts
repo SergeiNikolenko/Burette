@@ -18,6 +18,14 @@ mock.module("../apps/desktop/src/lib/viewer-bridge", () => ({ requestViewerActio
   viewerCalls.push([id, action]); return { dataBase64: btoa(exported) };
 } }));
 mock.module("../apps/desktop/src/lib/ketcher-agent", () => ({ getKetcherAgentController: () => sketchController }));
+// UI/file-materialization tests use the captured-archive boundary; real scientific captures
+// run separately against Mol* and the live source controller.
+mock.module("../apps/desktop/src/lib/science-session/restore", () => ({ isScienceSessionCandidate: () => false }));
+mock.module("../apps/desktop/src/hooks/workspace-scene-snapshot", () => ({ captureWorkspaceSceneSnapshot: async (document: any) => {
+  const { requestViewerAction } = await import("../apps/desktop/src/lib/viewer-bridge");
+  const result = await requestViewerAction(document.id, { type: "workspace_scene_snapshot" });
+  return { document, result: { kind: "molx", dataBase64: result.dataBase64 }, confirm: async () => {}, omissionReason: null };
+} }));
 const { tabFileDragPayload } = await import("../apps/desktop/src/components/editor-area/tab-file-drag");
 const { startNativeFileDrag, nativeFileDragTabId, nativeFileDragPayload } = await import("../apps/desktop/src/lib/native-file-drag");
 const state = { documents: [] as any[], textDocuments: [] as any[], dirtyGridDocuments: new Set<string>() };

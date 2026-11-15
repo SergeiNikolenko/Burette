@@ -29,6 +29,9 @@ mock.module("../apps/desktop/src/components/ketcher-editor", () => ({
   loadKetcherRuntime: async () => {},
   KetcherEditor: ({ onReady }: { onReady: (api: unknown) => void }) => { React.useEffect(() => onReady(editorApi), [onReady]); return null; },
 }));
+mock.module("../apps/desktop/src/components/molecular-editor", () => ({
+  MolecularEditorView: ({ onReady }: { onReady: (api: unknown) => void }) => { React.useEffect(() => onReady(editorApi), [onReady]); return null; },
+}));
 
 const { createRoot } = await import("react-dom/client");
 const { contextualGuideRequestEvent, registerContextualGuideHost } = await import("../apps/desktop/src/components/onboarding/request");
@@ -85,7 +88,7 @@ afterEach(async () => {
 const molecule = (id: string, extension = "pdb") => ({ id, title: `${id}.${extension}`, path: `/${id}.${extension}`, extension, renderer: "molstar", runtimePath: "<html></html>", byteCount: 10 }) as ViewerDocument;
 
 test("Ketcher introduces itself once the editor is ready in the active tab", async () => {
-  const state = { preferences: defaultPreferences, rightDockOpen: false, documents: [], textDocuments: [], sidebarProjects: [] } as unknown as ShellViewState;
+  const state = { preferences: defaultPreferences, rightDockOpen: false, documents: [], textDocuments: [], sidebarProjects: [], tabs: [], activeTabId: null } as unknown as ShellViewState;
   const page = (isActive: boolean) => <KetcherPage tabId="ketcher-guide" location={{ kind: "ketcher" }} state={state} actions={actions} isActive={isActive} />;
   await render(page(false));
   await frame();
@@ -125,6 +128,20 @@ test("Edit source explains editing after the session opens, never for a restored
   expect(requests).toEqual([]);
   await render(<TextFileViewer document={text} sourceEditing={editing(true)} />);
   expect(requests).toEqual([{ id: "source-edit", anchor: mount.querySelector(".text-file-toolbar") }]);
+});
+
+test.each([false, true])("completed Apply hands focus to text only while the action owns it (moved=%s)", async moved => {
+  const text = { id: "apply", title: "source.pdb", path: "/source.pdb", extension: "pdb", content: "END\n", byteCount: 4, truncated: false } as TextFileDocument;
+  const editing = { editable: true, content: text.content, status: "Updating Preview…", dirty: false, saving: false, showApplyPreview: true };
+  await render(<TextFileViewer document={text} sourceEditing={editing} />);
+  const button = [...mount.querySelectorAll("button")].find(item => item.textContent === "Apply Preview")!;
+  await act(async () => button.focus());
+  await render(<TextFileViewer document={text} sourceEditing={{ ...editing, status: "Still updating" }} />);
+  expect(document.activeElement).toBe(button);
+  const find = mount.querySelector<HTMLButtonElement>('button[aria-label="Find in text"]')!;
+  if (moved) await act(async () => find.focus());
+  await render(<TextFileViewer document={text} sourceEditing={{ ...editing, status: "Saved", showApplyPreview: false }} />);
+  expect(document.activeElement).toBe(moved ? find : mount.querySelector(".cm-content"));
 });
 
 test("opening a structure's text in a dock points at the Text tab or the file tab", async () => {

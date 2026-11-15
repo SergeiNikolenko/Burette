@@ -2,6 +2,7 @@
 
 use std::io::{self, Read, Write};
 use std::process::{Child, Command, Output, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
@@ -44,6 +45,17 @@ fn read_bounded(pipe: impl Read, limit: usize) -> io::Result<Vec<u8>> {
 /// Run a child without buffering unlimited output or blocking deadline checks
 /// on stdin. No partial output is returned on IO failure, overflow or timeout.
 pub fn run(command: &mut Command, input: &[u8], limits: Limits) -> io::Result<Output> {
+    run_cancellable(command, input, limits, &AtomicBool::new(false))
+}
+
+/// [`run`] that also stops, killing the process group, once `cancel` is set.
+/// Cancellation reports [`io::ErrorKind::Interrupted`].
+pub fn run_cancellable(
+    command: &mut Command,
+    input: &[u8],
+    limits: Limits,
+    cancel: &AtomicBool,
+) -> io::Result<Output> {
     if Instant::now() >= limits.deadline {
         return Err(io::Error::new(
             io::ErrorKind::TimedOut,
@@ -94,6 +106,9 @@ pub fn run(command: &mut Command, input: &[u8], limits: Limits) -> io::Result<Ou
             let mut written = false;
             let mut status = None;
             loop {
+                if cancel.load(Ordering::Relaxed) {
+                    return Err(io::Error::new(io::ErrorKind::Interrupted, "cancelled"));
+                }
                 let remaining = limits.deadline.saturating_duration_since(Instant::now());
                 if remaining.is_zero() {
                     return Err(io::Error::new(
@@ -174,6 +189,26 @@ mod tests {
             assert_eq!(error.kind(), io::ErrorKind::Other);
             assert!(start.elapsed() < Duration::from_secs(2));
         }
+    }
+
+    #[test]
+    fn cancellation_kills_the_process_group_promptly() {
+        let cancel = std::sync::Arc::new(AtomicBool::new(false));
+        let flag = cancel.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(100));
+            flag.store(true, Ordering::Relaxed);
+        });
+        let start = Instant::now();
+        let error = run_cancellable(
+            Command::new("/bin/sh").args(["-c", "sleep 20 & sleep 20"]),
+            b"",
+            limits(4, 4),
+            &cancel,
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::Interrupted);
+        assert!(start.elapsed() < Duration::from_secs(2));
     }
 
     #[test]

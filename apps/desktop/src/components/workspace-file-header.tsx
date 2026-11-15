@@ -10,8 +10,9 @@ import type { ShellActions } from "./types";
 import type { MenuItemSpec } from "./menu-types";
 import "./workspace-file-header.css";
 
-export function WorkspaceFileHeader({ activeFile, bandDocumentId = null, rightDockOpen, defaultApplicationIconUrl, items, actions, fileActionsAvailable = true, onOpen, openLabel = "Open with default app", navigation }: {
+export function WorkspaceFileHeader({ activeFile, bandDocumentId = null, rightDockOpen, defaultApplicationIconUrl, items, actions, fileActionsAvailable = true, onOpen, openLabel = "Open with default app", navigation, fileAction }: {
   navigation?: ReactNode;
+  fileAction?: ReactNode;
   activeFile: { path: string; label: string };
   /** A viewer document whose own controls share this row. */
   bandDocumentId?: string | null;
@@ -56,6 +57,7 @@ export function WorkspaceFileHeader({ activeFile, bandDocumentId = null, rightDo
             </ShortcutTooltip>
           )} />
       </div> : null}
+      {fileAction}
       <FullViewExitButton />
       <ShortcutTooltip label={rightDockOpen ? "Hide right panel" : "Show right panel"}>
         <button type="button" className="chrome-button" aria-label="Toggle right panel" aria-pressed={rightDockOpen}

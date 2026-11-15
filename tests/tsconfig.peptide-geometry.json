@@ -1,0 +1,6 @@
+{
+  "extends":"../tsconfig.json",
+  "compilerOptions":{"types":["bun"]},
+  "files":["test-peptide-geometry.test.ts"],
+  "include":["../apps/desktop/src/**/*.d.ts"]
+}

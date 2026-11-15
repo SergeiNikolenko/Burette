@@ -1,0 +1,56 @@
+{
+  "baseVersion": "4.14.8",
+  "upstreamCommit": "c19f0a93a96e4f214e9bd7b77eaec155f31f50d7",
+  "sourcePatchSha256": "1da26927df67fd75552d13c1d9f84894c35180c194133a51b5ed022f6f362a23",
+  "files": [
+    {
+      "file": "react-resizable-panels.js",
+      "registry": "9cf22a59eed18edff207565212aff1eb142703dcd261cb9748c74d8f9cde45b4",
+      "baselineBuild": "9cf22a59eed18edff207565212aff1eb142703dcd261cb9748c74d8f9cde45b4",
+      "equal": true,
+      "candidateSha256": "3528e391d0977098304937f6958e361ea90b4afc0d4d9a0745f377349eed6e46",
+      "candidateEqualsRegistry": false
+    },
+    {
+      "file": "react-resizable-panels.cjs",
+      "registry": "f7db9ad23678f3b8230e709ddcf7a5efffe3293344d2222096ab75c3fa3d21e5",
+      "baselineBuild": "f7db9ad23678f3b8230e709ddcf7a5efffe3293344d2222096ab75c3fa3d21e5",
+      "equal": true,
+      "candidateSha256": "ce37aef31600b400604188902345f53c08216460167793c96b6cbbdd1edb4f90",
+      "candidateEqualsRegistry": false
+    },
+    {
+      "file": "react-resizable-panels.d.ts",
+      "registry": "45d0bf00978f6855d14c6c5a187d7a90de0e44665d64a62623f11575ebac0b40",
+      "baselineBuild": "45d0bf00978f6855d14c6c5a187d7a90de0e44665d64a62623f11575ebac0b40",
+      "equal": true,
+      "candidateSha256": "45d0bf00978f6855d14c6c5a187d7a90de0e44665d64a62623f11575ebac0b40",
+      "candidateEqualsRegistry": true
+    },
+    {
+      "file": "react-resizable-panels.cjs.map",
+      "registry": "2d15a18d6eb2f46e49dd14a5f9a77b018cbb5a240e62f4272445a6557bfdc0a1",
+      "baselineBuild": "2d15a18d6eb2f46e49dd14a5f9a77b018cbb5a240e62f4272445a6557bfdc0a1",
+      "equal": true,
+      "candidateSha256": "e75aa095e463571db1956eee85851a89900b60a9db92ac5cf3f783815fee2a79",
+      "candidateEqualsRegistry": false
+    },
+    {
+      "file": "react-resizable-panels.js.map",
+      "registry": "af5c284ee48fbd5a70c4981f5e9e91ef18a7abc6872625c01b6034945d8e76ca",
+      "baselineBuild": "af5c284ee48fbd5a70c4981f5e9e91ef18a7abc6872625c01b6034945d8e76ca",
+      "equal": true,
+      "candidateSha256": "a3dcc16acda3c1ea30ee5ab974a85761c35bda19a23be3025c3bac5efab0c4cb",
+      "candidateEqualsRegistry": false
+    }
+  ],
+  "packagePatch": {
+    "path": "patches/react-resizable-panels@4.14.8.patch",
+    "sha256": "aa3e04307ddeb1b31866e701623f1a673ff635f657ee8b56bc86b0b19730bd72"
+  },
+  "upstreamRepository": "https://github.com/bvaughn/react-resizable-panels",
+  "officialSynchronizationCommit": "625ef2d83a839eb6fb1a1c7e2703f27598136472",
+  "sourcePatch": "patches/react-resizable-panels@4.14.8.source.patch",
+  "generatedPatch": "patches/react-resizable-panels@4.14.8.patch",
+  "regenerationDocumentation": "docs/react-resizable-panels-patch.md"
+}

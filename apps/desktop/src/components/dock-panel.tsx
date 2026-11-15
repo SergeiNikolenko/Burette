@@ -1,3 +1,14 @@
+import { plotsDockArea, usePlotsAvailable } from "../lib/workbench/plots-tool";
+import { useScientificSpectraAvailable } from "../lib/workbench/scientific-spectra-tool";
+import { useOrbitalsAvailable } from "../lib/workbench/orbitals-tool";
+import { usePotentialAvailable } from "../lib/workbench/potential-tool";
+import { useFieldsAvailable } from "../lib/workbench/fields-tool";
+import { useScientificSourceLifetime } from "../lib/workbench/scientific-source-lifetime";
+import { useVibrationsAvailable } from "../lib/workbench/vibrations-tool";
+import { useCrystalAvailable } from "../lib/workbench/use-crystal-draft";
+import { useSymmetryAvailable } from "../lib/workbench/symmetry-tools";
+import { geometryPanelAvailable } from "../lib/geometry-editing";
+import { structureEditAvailable } from "../lib/workbench/graph-draft";
 import { dockScreenLocation, openDockScreen } from "./workspace-panes/dock-screen";
 import { chemicalSpaceDocument as resolveCollection, chemicalSpaceSourceMatches } from "../lib/chemical-space-documents";
 import { Spinner } from "@/components/ui/spinner";
@@ -31,6 +42,7 @@ import { ViewerFrame } from "./editor-area/viewer-frame";
 import { TextFileViewer } from "./text-file-viewer";
 import { MarkdownRichViewer } from "./text-file-viewer/markdown-rich-viewer";
 import { useSourceEditing } from "../lib/source-editing/context";
+import { useLogicalSource } from "../lib/science-session/state";
 import { TextDocumentInfoPanel } from "./text-document-info-panel";
 import { FileInfoPanel } from "./file-info-panel";
 import { basename } from "../lib/sidebar-projects";
@@ -54,6 +66,18 @@ import { MesoscaleInfoPanel } from "./mesoscale/mesoscale-info-panel";
 const ChemicalSpacePanel = lazy(() => import("./chemical-space-panel").then((module) => ({
   default: module.ChemicalSpacePanel,
 })));
+const CollectionChartPanel = lazy(() => import("./collection-chart-panel").then(module => ({ default: module.CollectionChartPanel })));
+// The tool panels pull charts, chemistry and parsers that a plain structure never needs.
+const OrbitalsDockContent = lazy(() => import("./workbench/orbitals-dock-content").then(module => ({ default: module.OrbitalsDockContent })));
+const FieldsDockContent = lazy(() => import("./workbench/fields-dock-content").then(module => ({ default: module.FieldsDockContent })));
+const PotentialDockContent = lazy(() => import("./workbench/potential-dock-content").then(module => ({ default: module.PotentialDockContent })));
+const PlotsDockContent = lazy(() => import("./workbench/plots-dock-content").then(module => ({ default: module.PlotsDockContent })));
+const ScientificSpectraDockContent = lazy(() => import("./workbench/scientific-spectra-dock-content").then(module => ({ default: module.ScientificSpectraDockContent })));
+const VibrationsDockContent = lazy(() => import("./workbench/vibrations-dock-content").then(module => ({ default: module.VibrationsDockContent })));
+const GeometryPanel = lazy(() => import("./geometry-panel").then(module => ({ default: module.GeometryPanel })));
+const SymmetryPanel = lazy(() => import("./workbench/symmetry-panel").then(module => ({ default: module.SymmetryPanel })));
+const CrystalPanel = lazy(() => import("./workbench/crystal-panel").then(module => ({ default: module.CrystalPanel })));
+const StructureEditPanel = lazy(() => import("./workbench/structure-edit-panel").then(module => ({ default: module.StructureEditPanel })));
 
 type DockPanelProps = {
   area: DockArea;
@@ -72,6 +96,7 @@ function resolveChemicalSpaceDocument(
 }
 
 export function DockPanel({ area, state, actions, readOnly = false }: DockPanelProps) {
+  useScientificSourceLifetime(area, state.documents);
   const panelId = useId();
   const panel = useRef<HTMLElement>(null);
   const [dropActive, setDropActive] = useState(false);
@@ -94,17 +119,46 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
   const spectrumDocumentActive = activeStructureDocument?.renderer === "spectrum";
   const spectrumDockAvailable = area === "bottom" && (dockDocument?.renderer === "spectrum" || state.activeDocument?.renderer === "spectrum");
   const chemicalSpaceDockAvailable = Boolean(resolveChemicalSpaceDocument(state, dockDocument));
+  const hasOrbitals = useOrbitalsAvailable(activeStructureDocument);
+  const orbitalsDockAvailable = area === "right" && hasOrbitals;
+  const potentialDockAvailable = area === "right" && usePotentialAvailable(activeStructureDocument);
+  const fieldsDockAvailable = area === "right" && useFieldsAvailable(activeStructureDocument);
+  const hasPlots = usePlotsAvailable(activeStructureDocument);
+  const plotsDockAvailable = area === plotsDockArea() && hasPlots;
+  const hasScientificSpectra = useScientificSpectraAvailable(activeStructureDocument);
+  const scientificSpectraDockAvailable = area === "right" && hasScientificSpectra;
+  const hasVibrations = useVibrationsAvailable(activeStructureDocument);
+  const vibrationsDockAvailable = area === "right" && hasVibrations;
+  const geometryDockAvailable = area === "right" && geometryPanelAvailable(activeStructureDocument);
+  const structureEditDockAvailable = area === "right" && structureEditAvailable(activeStructureDocument);
+  const hasCrystal = useCrystalAvailable(activeStructureDocument);
+  const crystalDockAvailable = area === "right" && hasCrystal;
+  const hasSymmetry = useSymmetryAvailable(activeStructureDocument);
+  const symmetryDockAvailable = area === "right" && hasSymmetry;
   const storedActiveTabKind = area === "right" ? state.rightDockActiveTab : state.bottomDockActiveTab;
   const foldingState = useFoldingResult(area === "bottom" && open ? activeStructureDocument : null);
   const foldingDockAvailable = area === "bottom" && (foldingState.loading || Boolean(foldingState.bundle));
   const foldingDockRequested = area === "bottom" && storedActiveTabKind === "folding" && rawTabs.some((tab) => tab.kind === "folding");
   const pluginSurface = isHostedMcpWidget() || (typeof window !== "undefined" && Boolean(window.BuretteMcpWorkspace));
-  const catalog = dockTabCatalog(area).filter(kind => !pluginSurface || !["jobs", "chemical-space", "folding"].includes(kind));
+  const catalog = dockTabCatalog(area).filter(kind => !pluginSurface || !["jobs", "chemical-space", "collection-chart", "folding"].includes(kind));
   const tabs = rawTabs.filter((tab) => {
     if (!catalog.includes(tab.kind)) return false;
+    // Files is opened from +. Hide the former default in restored layouts,
+    // while allowing an explicitly active legacy Files view to finish migrating.
+    if (area === "right" && tab.kind === "files" && storedActiveTabKind !== "files") return false;
+    if (tab.kind === "orbitals") return orbitalsDockAvailable;
+    if (tab.kind === "potential") return potentialDockAvailable;
+    if (tab.kind === "fields") return fieldsDockAvailable;
+    if (tab.kind === "plots") return plotsDockAvailable;
+    if (tab.kind === "scientific-spectra") return scientificSpectraDockAvailable;
+    if (tab.kind === "vibrations") return vibrationsDockAvailable;
+    if (tab.kind === "geometry") return geometryDockAvailable;
+    if (tab.kind === "crystal") return crystalDockAvailable;
+    if (tab.kind === "symmetry") return symmetryDockAvailable;
+    if (tab.kind === "structure-edit") return structureEditDockAvailable;
     if (tab.kind === "spectrum") return spectrumDockAvailable;
     if (tab.kind === "folding") return foldingDockAvailable || foldingDockRequested;
-    if (tab.kind === "chemical-space") return chemicalSpaceDockAvailable;
+    if (tab.kind === "chemical-space" || tab.kind === "collection-chart") return chemicalSpaceDockAvailable;
     return true;
   });
   // A restored desktop layout can contain only panels unavailable in a plugin.
@@ -137,6 +191,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
     ...contentSource,
     [area === "right" ? "rightDockOpen" : "bottomDockOpen"]: open,
   }), [area, contentSource, open]);
+  const contentDocumentId = area === "right" ? contentState?.rightDockDocumentId : contentState?.bottomDockDocumentId;
   const fileSelection = dockFileDocuments(state, area);
   const mediaPath = dockMediaPath(dockDocumentId) ?? (!dockDocumentId && !dockTool && state.activeTab?.location.kind === "document" ? state.activeTab.location.path : null);
   const filesTabDragPayload = mediaPath ? { paths: [mediaPath], records: [] } : dockFilesDragPayload(fileSelection.document, fileSelection.textDocument, dockTool);
@@ -172,11 +227,21 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
     const rect = event.currentTarget.getBoundingClientRect();
     void showNativeContextMenu(
       catalog.filter((kind) => {
+        if (kind === "orbitals") return orbitalsDockAvailable;
+        if (kind === "potential") return potentialDockAvailable;
+        if (kind === "fields") return fieldsDockAvailable;
+        if (kind === "plots") return plotsDockAvailable;
+        if (kind === "scientific-spectra") return scientificSpectraDockAvailable;
+        if (kind === "vibrations") return vibrationsDockAvailable;
+        if (kind === "geometry") return geometryDockAvailable;
+        if (kind === "crystal") return crystalDockAvailable;
+        if (kind === "symmetry") return symmetryDockAvailable;
+        if (kind === "structure-edit") return structureEditDockAvailable;
         if (kind === "spectrum") return spectrumDockAvailable;
         if (kind === "folding") return foldingDockAvailable;
         if (kind === "xyzrender") return Boolean(xyzrenderDockDocument);
         if (kind === "scene") return Boolean(mesoscaleDockDocument);
-        if (kind === "chemical-space") return chemicalSpaceDockAvailable;
+        if (kind === "chemical-space" || kind === "collection-chart") return chemicalSpaceDockAvailable;
         if (kind === "story") return Boolean(state.structureStory);
         return true;
       }).map((kind) => ({
@@ -219,6 +284,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
       ref={panel}
       className="dock-panel"
       data-area={area}
+      data-document-id={activeStructureDocument?.id}
       data-workspace-id={contentState?.activeTab?.id}
       data-active-tab={activeTab.kind}
       data-open={open ? "true" : "false"}
@@ -243,13 +309,14 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
           openScreenLabel={area === "right" && activeTab.kind === "files" && !dockTool ? "Open Files in Main Tabs" : undefined}
           onAdd={showAddMenu} onHide={() => actions.setDockOpen(area, false)} />
         <div className="dock-panel-body" role="tabpanel" id={panelId} aria-labelledby={`${panelId}-${activeTab.kind}`} tabIndex={0}>
-        {contentState && filesVisited.current && <div key={contentState.activeTab?.id} className="dock-files-view" hidden={contentKind !== "files"}
+        {contentState && filesVisited.current && <div key={`files:${contentState.activeTab?.id}`} className="dock-files-view" hidden={contentKind !== "files"}
           inert={contentKind !== "files"} style={contentKind === "files" ? undefined : { display: "none" }}>
           <DockPanelContent area={area} activeTabKind="files" state={contentState} actions={actions} filesVisible={open && contentKind === "files"}
             dockDrops={contentState.dockDroppedStructures.filter(item => item.area === area && item.tabKind === "files")} />
         </div>}
         {contentState && contentKind !== "files" && <DockPanelContent
-          key={contentState.activeTab?.id}
+          // A dock pinned to a document keeps that document's tool, with its local history, across page switches such as Settings.
+          key={contentDocumentId ? `tool:document:${contentDocumentId}` : `tool:${contentState.activeTab?.id}`}
           area={area} activeTabKind={contentKind} state={contentState} actions={actions} dockDrops={dockDrops}
         />}
         </div>
@@ -426,6 +493,22 @@ export function DockPanelContent({
       />
     );
   }
+  const toolPanel = activeTabKind === "orbitals" ? <OrbitalsDockContent document={dockStructureDocument} actions={actions} />
+    : activeTabKind === "potential" ? <PotentialDockContent document={dockStructureDocument} actions={actions} />
+    : activeTabKind === "fields" ? <FieldsDockContent document={dockStructureDocument} actions={actions} />
+    : activeTabKind === "plots" ? <PlotsDockContent document={dockStructureDocument} actions={actions} />
+    : activeTabKind === "scientific-spectra" ? <ScientificSpectraDockContent document={dockStructureDocument} actions={actions} />
+    : activeTabKind === "vibrations" ? <VibrationsDockContent document={dockStructureDocument} actions={actions} />
+    : activeTabKind === "geometry" ? geometryPanelAvailable(dockStructureDocument)
+      ? <GeometryPanel key={dockStructureDocument.id} document={dockStructureDocument} actions={actions} />
+      : <DockEmptyState title="No molecule selected" />
+    : activeTabKind === "symmetry" ? <SymmetryPanel key={dockStructureDocument?.id ?? ""} document={dockStructureDocument} actions={actions} />
+    : activeTabKind === "crystal" ? <CrystalPanel key={dockStructureDocument?.id ?? ""} document={dockStructureDocument} actions={actions} />
+    : activeTabKind === "structure-edit" ? structureEditAvailable(dockStructureDocument)
+      ? <StructureEditPanel key={dockStructureDocument.id} document={dockStructureDocument} actions={actions} />
+      : <DockEmptyState title="No molecule selected" />
+    : null;
+  if (toolPanel) return <Suspense fallback={null}>{toolPanel}</Suspense>;
   if (activeTabKind === "chemical-space") {
     return (
       <Suspense fallback={null}>
@@ -436,6 +519,16 @@ export function DockPanelContent({
             && chemicalSpaceSourceMatches(document, chemicalSpaceDocument)) ?? null}
           visible={area === "right" ? state.rightDockOpen : state.bottomDockOpen}
           inspectorOpen={state.rightDockOpen && state.rightDockActiveTab === "inspector"}
+        />
+      </Suspense>
+    );
+  }
+  if (activeTabKind === "collection-chart") {
+    return (
+      <Suspense fallback={null}>
+        <CollectionChartPanel
+          document={chemicalSpaceDocument}
+          visible={area === "right" ? state.rightDockOpen : state.bottomDockOpen}
         />
       </Suspense>
     );
@@ -1118,6 +1211,8 @@ function SingleDocumentTextPanel({
   onStructureSelection: ShellActions["selectTextStructure"];
 }) {
   const sourceEditing = useSourceEditing();
+  // A restored scene shows the source saved inside it rather than the archive.
+  const logical = useLogicalSource(activeDocument?.id ?? null);
   const textPreviewLimit = isMaestroStructure(activeDocument) ? 1_500_000 : 3_000_000;
   const existingDocument = activeTextDocument ?? (activeDocument
     ? textDocuments.find((document) => document.path === activeDocument.path) ?? null
@@ -1130,7 +1225,7 @@ function SingleDocumentTextPanel({
     setError(null);
     if (!activeDocument || activeTextDocument || existingDocument) return undefined;
     let cancelled = false;
-    const virtualText = readBrowserDevVirtualTextDocument(activeDocument.path);
+    const virtualText = logical?.text ?? readBrowserDevVirtualTextDocument(activeDocument.path);
     const documentPromise = virtualText === null
       ? readStructureTextDocument(activeDocument.path, {
         id: activeDocument.id,
@@ -1139,7 +1234,7 @@ function SingleDocumentTextPanel({
         extension: activeDocument.extension,
         byteCount: activeDocument.byteCount,
       }, { maxBytes: textPreviewLimit })
-      : Promise.resolve(textDocumentFromVirtualText(activeDocument, virtualText));
+      : Promise.resolve(textDocumentFromVirtualText(activeDocument, virtualText, logical?.extension));
     void documentPromise
       .then((document) => {
         if (cancelled) return;
@@ -1152,7 +1247,7 @@ function SingleDocumentTextPanel({
     return () => {
       cancelled = true;
     };
-  }, [activeDocument, activeTextDocument, existingDocument, textPreviewLimit]);
+  }, [activeDocument, activeTextDocument, existingDocument, logical, textPreviewLimit]);
 
   if (!activeDocument && !activeTextDocument) {
     return (
@@ -1166,6 +1261,7 @@ function SingleDocumentTextPanel({
     const sourceEditingProps = activeDocument && activeDocument.path === document.path && sourceEditing
       ? sourceSession
         ? {
+          sessionId: sourceSession.sessionId,
           editable: sourceSession.editable,
           content: sourceSession.content,
           status: sourceSession.status,
@@ -1174,7 +1270,9 @@ function SingleDocumentTextPanel({
           saving: sourceSession.saving,
           diagnostic: sourceSession.diagnostic,
           saveDisabledReason: sourceSession.saveDisabledReason,
-          showApplyPreview: sourceSession.previewMode === "manual" && sourceSession.dirty,
+          saveLabel: sourceSession.saveLabel,
+          showApplyPreview: sourceSession.previewMode === "manual"
+            && (sourceSession.dirty || (sourceSession.previewState ?? "current") !== "current"),
           onChange: (content: string) => sourceEditing.updateDraft(activeDocument, content),
           onSave: () => sourceEditing.save(activeDocument),
           onApplyPreview: () => sourceEditing.applyPreview(activeDocument),
@@ -1324,13 +1422,13 @@ function textPreviewLimitForExtension(extension: string) {
   return ["mae", "maegz", "cms"].includes(extension.toLowerCase()) ? 1_500_000 : 3_000_000;
 }
 
-function textDocumentFromVirtualText(document: ViewerDocument, content: string): TextFileDocument {
+function textDocumentFromVirtualText(document: ViewerDocument, content: string, extension = document.extension): TextFileDocument {
   return {
     id: document.id,
     path: document.path,
     title: document.title,
-    extension: document.extension,
-    language: document.extension,
+    extension,
+    language: extension,
     byteCount: content.length,
     content,
     truncated: false,

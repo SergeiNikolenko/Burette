@@ -1,20 +1,10 @@
 import { dockingRequestForDrop } from "./docking-documents";
 import { isTauriRuntime } from "./tauri";
 import type { DockingDocumentRequest, DockingSceneMode } from "../types";
-import { initializeWebDemoWorkspace, isWebDemoWorkspace } from "./web-demo-workspace";
+import { initializeBrowserImportedFiles, initializeWebDemoWorkspace, isWebDemoWorkspace } from "./web-demo-workspace";
 
-// Vite's /@fs/ endpoint only serves absolute filesystem paths; a relative path
-// falls through to the SPA fallback and index.html gets rendered as the file
-// contents. Resolve every URL-provided dev path against the repo root before
-// any consumer builds a /@fs/ URL from it.
-const BROWSER_DEV_REPO_ROOT = String(import.meta.env.BURETTE_REPO_ROOT || "");
-
-export function absoluteBrowserDevPath(path: string, repoRoot = BROWSER_DEV_REPO_ROOT) {
-  const normalized = path.replace(/\\/g, "/");
-  const root = repoRoot.replace(/\/+$/u, "");
-  if (!root || normalized.startsWith("/")) return normalized;
-  return `${root}/${normalized}`;
-}
+import { absoluteBrowserDevPath, hasExplicitBrowserDevServerWorkspace, splitDevFiles } from "./browser-dev-paths";
+export { absoluteBrowserDevPath, splitDevFiles } from "./browser-dev-paths";
 
 const BROWSER_DEV_FOLDER_ROOT_LIMIT = 16;
 const BROWSER_DEV_FOLDER_FILE_LIMIT = 2_000;
@@ -28,7 +18,15 @@ export type BrowserDevFolderScan = {
   scannedDirectories: number;
 };
 
-export async function browserDevFilesFromLocation() {
+export async function browserDevFilesFromLocation(onImportRestoreError?: (error: unknown) => void) {
+  const explicitServerWorkspace = hasExplicitBrowserDevServerWorkspace();
+  if (!isTauriRuntime() && (onImportRestoreError || !explicitServerWorkspace)) {
+    try { await initializeBrowserImportedFiles(); }
+    catch (error) {
+      if (!onImportRestoreError || !explicitServerWorkspace) throw error;
+      onImportRestoreError(error);
+    }
+  }
   if (window.BuretteMcpWorkspace) return window.BuretteMcpWorkspace.initialPaths;
   const params = new URLSearchParams(window.location.search);
   if (params.has("quickLookFile")) return [];
@@ -51,10 +49,6 @@ export function browserDevFoldersFromLocation() {
 
 export function browserDevFolderFromLocation() {
   return browserDevFoldersFromLocation()[0] ?? null;
-}
-
-export function splitDevFiles(rawFiles: string) {
-  return rawFiles.split("\n").map((path) => path.trim()).filter(Boolean);
 }
 
 export function browserDevQuickLookFileFromLocation() {

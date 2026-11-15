@@ -1,0 +1,1 @@
+{"extends":"../tsconfig.json","compilerOptions":{"types":["bun"]},"files":["test-metal-complex-builder.test.ts"],"include":["../apps/desktop/src/**/*.d.ts"]}

@@ -1,0 +1,32 @@
+/* One sequential scale from the lowest cell mean to the highest; text flips to stay readable. */
+.sar-table, .sar-table-legend { --sar-low: #e3edfd; --sar-high: #1d4ed8; --sar-strong-text: #fff; }
+.app-shell[data-effective-theme="dark"] :is(.sar-table, .sar-table-legend) { --sar-low: #1d2a40; --sar-high: #8ab8ff; --sar-strong-text: #0d0d0d; }
+.sar-table-head { display: flex; align-items: center; gap: 16px; }
+/* Sized for a drug-like core at the standard bond length: a smaller box shrinks the rings under labels that cannot shrink. */
+.sar-table-core { flex: 0 0 280px; margin: 0; }
+.sar-table-core .rgroup-structure { height: 180px; }
+.sar-table-controls { flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
+.sar-table-scroll { min-width: 0; max-height: min(48vh, 420px); overflow: auto; overscroll-behavior: contain; }
+.sar-table { border-collapse: separate; border-spacing: 2px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.sar-table th { padding: 0; font-weight: 500; background: var(--color-surface-elevated-secondary); }
+.sar-table thead th { position: sticky; top: 0; z-index: 1; }
+.sar-table tbody th { position: sticky; left: 0; z-index: 1; }
+.sar-table thead th:first-child { left: 0; z-index: 2; }
+.sar-table .rgroup-structure { width: 84px; height: 48px; }
+.sar-table-hydrogen { display: grid; place-items: center; width: 84px; height: 48px; font-size: 13px; }
+.sar-table td { min-width: 56px; padding: 4px 8px; border-radius: 4px; text-align: center; cursor: default; }
+/* A cell that holds molecules is a tile even when none of them has a value. */
+.sar-table td[tabindex] { background: var(--line-subtler); }
+.sar-table td[tabindex][style] { background: color-mix(in oklch, var(--sar-high) var(--sar-shade), var(--sar-low)); color: var(--text-primary); }
+.sar-table td[data-strong] { color: var(--sar-strong-text); }
+.sar-table-legend { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); }
+.sar-table-ramp { width: 160px; height: 8px; border-radius: 4px; background: linear-gradient(to right in oklch, var(--sar-low), var(--sar-high)); }
+.sar-table td[aria-selected="true"] { outline: 2px solid var(--text-primary); outline-offset: -2px; }
+.sar-table td:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.sar-table-molecules { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) auto; align-items: center; gap: 8px; min-height: 198px; }
+.sar-table-molecules figure { margin: 0; padding: 6px; border: 1px solid var(--line-subtler); border-radius: 6px; overflow: hidden; }
+.sar-table-molecules img, .sar-table-molecule-pending { display: block; width: 100%; height: 160px; border-radius: 4px; }
+.sar-table-molecules img { background: #fff; object-fit: contain; }
+.sar-table-molecules .rgroup-structure { height: 160px; }
+.sar-table-molecule-pending { background: var(--line-subtler); }
+.sar-table-molecules figcaption { display: flex; justify-content: space-between; gap: 8px; padding-top: 4px; font-size: 12px; color: var(--text-secondary); }

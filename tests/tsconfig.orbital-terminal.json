@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.orbital-cli.json",
+  "include": [
+    "test-orbital-terminal-publication.test.ts",
+    "../apps/desktop/src/**/*.d.ts"
+  ],
+  "compilerOptions": {
+    "types": [
+      "vite/client",
+      "bun"
+    ]
+  }
+}

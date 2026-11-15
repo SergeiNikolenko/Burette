@@ -15,11 +15,11 @@ let openSource = async () => ({
 });
 const errors = [];
 globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
-globalThis.window = { location: { search: "" }, confirm() { throw new Error("Native source close used window.confirm"); }, alert() { throw new Error("Native source close used window.alert"); }, setTimeout: () => 1, clearTimeout() {} };
+globalThis.window = { location: { search: "" }, addEventListener() {}, removeEventListener() {}, confirm() { throw new Error("Native source close used window.confirm"); }, alert() { throw new Error("Native source close used window.alert"); }, setTimeout: () => 1, clearTimeout() {} };
 const react = await import("react");
 mock.module("react", () => ({
   ...react,
-  useCallback: callback => callback, useMemo: callback => callback(), useEffect() {},
+  useCallback: callback => callback, useMemo: callback => callback(), useEffect() {}, useLayoutEffect() {},
   useRef: current => ({ current }), useState: initial => [initial, value => { sessions = value; }],
 }));
 const core = await import("@tauri-apps/api/core");
@@ -30,7 +30,9 @@ mock.module("@tauri-apps/api/core", () => ({ ...core, invoke: async (command, ar
   if (command === "save_source_document") return saveSource();
   if (command === "open_text_structure") return { runtimePath: "/tmp/source-candidate.html" };
 } }));
+const dialogExports = await import("@tauri-apps/plugin-dialog");
 mock.module("@tauri-apps/plugin-dialog", () => ({
+  ...dialogExports,
   confirm: async (text, options) => { dialogs.push(["confirm", text, options]); return confirm(); },
   message: async (text, options) => { dialogs.push(["message", text, options]); return message(); },
 }));
@@ -55,6 +57,12 @@ await controller.beginEditing(document);
 assert.deepEqual(useMoleculeStore.getState().tabs.filter(tab => tab.pane === "right").map(tab => tab.id), [sourceTab.id], "Editing the same source reuses its right-group tab");
 controller.updateDraft(document, "ATOM draft\n");
 const draft = sessions[document.path];
+const callsBeforeWrongOwnerSave = calls.length;
+const draftBeforeWrongOwnerSave = sessions[document.path];
+await controller.save({ ...document, id: "another-document-at-same-path" });
+assert.equal(calls.length, callsBeforeWrongOwnerSave, "another document cannot save this session through native IPC");
+assert.equal(sessions[document.path], draftBeforeWrongOwnerSave, "another document cannot alter the original dirty session");
+const operation = controller.captureOperation(document);
 
 function shellActions() {
   useMoleculeStore.getState().setDocuments([document]);
@@ -79,20 +87,25 @@ for (const route of ["closeTab", "clearAllDocuments"]) {
   await actions[route](tabs[0].id);
   assert.deepEqual(useMoleculeStore.getState().tabs, tabs);
   assert.equal(sessions[document.path], draft);
+  assert.equal(operation.isCurrent(), true, "Cancel keeps the pending edit's document lifetime");
 }
 assert.equal(calls.filter(([command]) => command === "close_opened_source_documents").length, 0);
 assert.deepEqual(dialogs.at(-1)[2], { title: "Unsaved Source Changes", kind: "warning", okLabel: "Discard", cancelLabel: "Cancel" });
 
-let answer;
-confirm = () => new Promise(resolve => { answer = resolve; });
+let answer, promptShown;
+const promptReady = new Promise(resolve => { promptShown = resolve; });
+confirm = () => new Promise(resolve => { answer = resolve; promptShown(); });
 const prompting = controller.closeDocuments([document.id]);
+await promptReady;
 controller.updateDraft(document, "must not replace draft during confirmation");
 await controller.save(document);
 assert.equal(await controller.closeDocuments([document.id]), false, "overlapping closes cannot bypass the pending prompt");
 assert.equal(sessions[document.path], draft);
 assert.equal(controller.getWindowDirtySnapshot().closeTransitionActive, true);
+assert.equal(operation.isCurrent(), false, "an edit cannot write during the close prompt");
 answer(false);
 assert.equal(await prompting, false);
+assert.equal(operation.isCurrent(), true);
 assert.equal(controller.getWindowDirtySnapshot().closeTransitionActive, false);
 confirm = async () => { throw new Error("dialog unavailable"); };
 assert.equal(await controller.closeDocuments([document.id]), false);
@@ -103,6 +116,7 @@ confirm = async () => true;
 close = async () => { throw new Error("source_commit_uncertain"); };
 assert.equal(await controller.closeDocuments([document.id]), false);
 assert.equal(sessions[document.path], draft, "a rejected native release preserves the full editable draft");
+assert.equal(operation.isCurrent(), true, "a failed native release cannot invalidate pending edits");
 assert.equal(errors.length, 1);
 
 let release;
@@ -110,13 +124,15 @@ let closeStarted;
 const closing = new Promise(resolve => { closeStarted = resolve; });
 close = () => { closeStarted(); return new Promise(resolve => { release = resolve; }); };
 const pending = controller.closeDocuments([document.id]);
+await closing;
 controller.updateDraft(document, "must not replace draft during close");
 await controller.save(document);
 assert.equal(sessions[document.path], draft);
 assert.equal(controller.getWindowDirtySnapshot().closeTransitionActive, true);
-await closing;
 release();
 assert.equal(await pending, true);
+assert.equal(operation.isCurrent(), false, "the close acknowledgement permanently invalidates the pending edit");
+operation.release();
 assert.deepEqual(sessions, {});
 assert.equal(controller.getWindowDirtySnapshot().closeTransitionActive, false);
 assert.equal(calls.filter(([command]) => command === "close_source_edit_session").length, 0,

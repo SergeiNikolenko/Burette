@@ -1,0 +1,51 @@
+{
+  "status": "passed",
+  "scope": "native comparison transaction API and host scene save/reopen; not UI All acceptance",
+  "archives": [
+    {
+      "name": "comparison-native.molx",
+      "sha256": "218faad7234bb0fda3e5fe27630bf5144d6d5dea45f97c4c1157c4c450691a78"
+    },
+    {
+      "name": "native-all-create.molx",
+      "sha256": "965f0bd285e4fbb14174933bde388f1581dd065f440378075e46e038ce904f80"
+    },
+    {
+      "name": "native-all-reopen.molx",
+      "sha256": "1078c9a4989d5b87506d7d8a7dd6fee33d287c7e8fccdfb794a46077decb8d83"
+    }
+  ],
+  "scientific_manifest_and_attachment_bytes_unchanged": true,
+  "created_frame_indices": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "reopened_roots": 6,
+  "roots_after_removing_owned_comparisons": 2,
+  "coordinate_values_checked": 960,
+  "max_coordinate_error_angstrom": 1.748046871696829e-07,
+  "served_viewer_sha256": [
+    "52b477e5bdf896aa9aa8bfef5e658b9e3d3eab9c5417549701d5757645f44836",
+    "52b477e5bdf896aa9aa8bfef5e658b9e3d3eab9c5417549701d5757645f44836"
+  ],
+  "oracle_script_sha256": "65d4b3c7e40fae360e5d196dec5dab19dcc631d301f29ef75a31185e7a3d6f3f",
+  "limitations": [
+    "All/Align controls are not yet connected",
+    "No aligned coordinates",
+    "Tab-close and concurrent editing lifecycle still require UI integration",
+    "Final two-root archive audited but not reopened",
+    "No native or manual IAB acceptance"
+  ],
+  "served_scene_file_actions_sha256": [
+    "32d349a7acd408ffa1da2e19466809f1c5176f6e48952ae5f93555103f3b5616",
+    "32d349a7acd408ffa1da2e19466809f1c5176f6e48952ae5f93555103f3b5616"
+  ],
+  "cleanup": {
+    "owned_servers_terminated": 2,
+    "ports_closed": true
+  }
+}

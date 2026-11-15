@@ -305,10 +305,50 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
             &xtb_fukui,
         ])
         .build()?;
+    // Avogadro's Extensions › Optimize Geometry and Calculate commands, run by the
+    // Edit (SDF/MOL) or Geometry (XYZ) panel of the active structure.
+    let optimize_geometry =
+        MenuItemBuilder::with_id("structure.optimize-geometry", "Optimize Geometry")
+            .enabled(false)
+            .accelerator("CmdOrCtrl+Alt+O")
+            .build(app)?;
+    let auto_optimize = MenuItemBuilder::with_id("structure.auto-optimize", "Auto Optimize")
+        .enabled(false)
+        .build(app)?;
+    let calculate_energy =
+        MenuItemBuilder::with_id("structure.calculate-energy", "Calculate Energy")
+            .enabled(false)
+            .build(app)?;
+    let configure_optimization = MenuItemBuilder::with_id(
+        "structure.configure-optimization",
+        "Configure Optimization…",
+    )
+    .enabled(false)
+    .build(app)?;
+    let freeze_atoms = MenuItemBuilder::with_id("structure.freeze-atoms", "Freeze Selected Atoms")
+        .enabled(false)
+        .build(app)?;
+    let unfreeze_atoms =
+        MenuItemBuilder::with_id("structure.unfreeze-atoms", "Unfreeze Selected Atoms")
+            .enabled(false)
+            .build(app)?;
+    let calculate = SubmenuBuilder::with_id(app, "structure.calculate", "Calculate")
+        .items(&[
+            &calculate_energy,
+            &configure_optimization,
+            &PredefinedMenuItem::separator(app)?,
+            &freeze_atoms,
+            &unfreeze_atoms,
+        ])
+        .build()?;
     let structure_menu = SubmenuBuilder::with_id(app, "structure.menu", "Structure")
         .items(&[
             &open_in_molstar,
             &edit_in_ketcher,
+            &PredefinedMenuItem::separator(app)?,
+            &optimize_geometry,
+            &auto_optimize,
+            &calculate,
             &PredefinedMenuItem::separator(app)?,
             &conformers,
             &xtb,
@@ -406,6 +446,18 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
     let merge_rows = MenuItemBuilder::with_id("collection.merge-rows", "Merge Equivalent Rows")
         .enabled(false)
         .build(app)?;
+    let pivot = MenuItemBuilder::with_id("collection.pivot", "Pivot…")
+        .enabled(false)
+        .build(app)?;
+    let unpivot = MenuItemBuilder::with_id("collection.unpivot", "Unpivot…")
+        .enabled(false)
+        .build(app)?;
+    let merge_by_key = MenuItemBuilder::with_id("collection.merge-by-key", "Merge File by Key…")
+        .enabled(false)
+        .build(app)?;
+    let record_view = MenuItemBuilder::with_id("collection.record-view", "Record View")
+        .enabled(false)
+        .build(app)?;
     let reaction_add_smiles =
         MenuItemBuilder::with_id("collection.reaction.add-smiles", "Add Reaction SMILES")
             .enabled(false)
@@ -432,6 +484,10 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
         MenuItemBuilder::with_id("collection.reaction.perform", "Perform Reaction…")
             .enabled(false)
             .build(app)?;
+    let reaction_enumerate =
+        MenuItemBuilder::with_id("collection.reaction.enumerate", "Enumerate Library…")
+            .enabled(false)
+            .build(app)?;
     let reaction = SubmenuBuilder::with_id(app, "collection.reaction", "Reaction")
         .items(&[
             &reaction_extract_reactants,
@@ -441,6 +497,8 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
             &PredefinedMenuItem::separator(app)?,
             &reaction_add_smiles,
             &reaction_perform,
+            &PredefinedMenuItem::separator(app)?,
+            &reaction_enumerate,
         ])
         .build()?;
     let delete_rows_selected =
@@ -462,12 +520,16 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
             &copy_selected,
             &select_all,
             &clear_selection,
+            &record_view,
             &PredefinedMenuItem::separator(app)?,
             &calculate_descriptors,
             &add_column,
             &transform,
             &merge_columns,
             &merge_rows,
+            &pivot,
+            &unpivot,
+            &merge_by_key,
             &reaction,
             &PredefinedMenuItem::separator(app)?,
             &delete_rows,
@@ -483,10 +545,19 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
         MenuItemBuilder::with_id("analyze.correlation-matrix", "Show Correlation Matrix…")
             .enabled(false)
             .build(app)?;
+    let analyze_chart = MenuItemBuilder::with_id("analyze.chart", "Chart Columns…")
+        .enabled(false)
+        .build(app)?;
     let analyze_scaffolds = MenuItemBuilder::with_id("analyze.scaffolds", "Analyse Scaffolds")
         .enabled(false)
         .build(app)?;
     let analyze_rgroups = MenuItemBuilder::with_id("analyze.rgroups", "Decompose R-Groups…")
+        .enabled(false)
+        .build(app)?;
+    let analyze_matched_pairs = MenuItemBuilder::with_id("analyze.matched-pairs", "Matched Pairs…")
+        .enabled(false)
+        .build(app)?;
+    let analyze_sar_table = MenuItemBuilder::with_id("analyze.sar-table", "SAR Table…")
         .enabled(false)
         .build(app)?;
     let analyze_substructure_count =
@@ -506,11 +577,14 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
     let analyze_menu = SubmenuBuilder::with_id(app, "analyze.menu", "Analyze")
         .items(&[
             &analyze_chemical_space,
+            &analyze_chart,
             &analyze_cluster,
             &analyze_diverse,
             &PredefinedMenuItem::separator(app)?,
             &analyze_scaffolds,
             &analyze_rgroups,
+            &analyze_sar_table,
+            &analyze_matched_pairs,
             &PredefinedMenuItem::separator(app)?,
             &analyze_substructure_count,
             &analyze_find_similar,

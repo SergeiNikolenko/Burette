@@ -1,7 +1,13 @@
+// Keep codec coverage in the established trajectory check while testing the pure layer separately.
+import './test-trr-codecs.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { Window } from 'happy-dom';
+import { decodeTrrFrame } from '../scripts/trr-frame.mjs';
+import { BROWSER_TRR_LIMITS, indexTrrFrames } from '../scripts/trr-index.mjs';
+import { indexDcdFrames, indexXtcFrames } from '../scripts/xtc-dcd-index.mjs';
+import { readActiveTrajectoryFrame } from '../scripts/trajectory-frame-data.mjs';
 import { Task } from '@molstar/core/task';
 import { Coordinates, Time } from '@molstar/model/model/structure/coordinates';
 import { Cell } from '@molstar/core/math/geometry/spacegroup/cell';
@@ -22,10 +28,11 @@ class ObservedMap extends Map {
   constructor(entries) { super(entries); if (entries) observedCaches.push(this); }
 }
 class TrajectoryObject { constructor(data) { this.data = data; } }
-const context = vm.createContext({ Task, Coordinates, Time, Cell, Vec3, parseXtc, DataView, Float32Array, AbortController, Map: ObservedMap,
+const context = vm.createContext({ indexTrrFrames, indexXtcFrames, indexDcdFrames, BROWSER_TRR_LIMITS, readActiveTrajectoryFrame, decodeTrrFrame, Task, Coordinates, Time, Cell, Vec3, parseXtc, DataView, Float32Array, AbortController, Map: ObservedMap,
   PluginStateTransform: { BuiltIn: () => definition => definition }, PluginStateObject: { Root: {}, Molecule: { Trajectory: TrajectoryObject, Topology: { type: 'topology' } } },
-  PD: { Text: () => ({}), Value: () => ({}) },
-  Model: { trajectoryFromModelAndCoordinates: (_template, coords) => ({ representative: { frame: coords.frames[0] } }), TrajectoryInfo: { set: (model, info) => { model.info = info; } } }
+  PD: { Text: () => ({}), Value: () => ({}), Numeric: () => ({}), Select: () => ({}) },
+  // Like Mol*, every frame model gets fresh dynamic property data.
+  Model: { trajectoryFromModelAndCoordinates: (_template, coords) => ({ representative: { ..._template, frame: coords.frames[0], _dynamicPropertyData: Object.create(null) } }), TrajectoryInfo: { set: (model, info) => { model.info = info; } } }
 });
 vm.runInContext(`${source}\nglobalThis.adapter = { decodeFrame, createTrajectory, readers, IndexedTrajectory, BuretteIndexedTrajectory };`, context);
 const { decodeFrame, createTrajectory, readers, IndexedTrajectory, BuretteIndexedTrajectory } = context.adapter;
@@ -74,6 +81,75 @@ for (const precision of [4, 8]) for (const box of [true, false]) {
   assert.equal(frame.time.value, 2.75); assert.equal(frame.time.unit, 'ps');
   assert.deepEqual(frame.cell ? Array.from(frame.cell.size) : undefined, box ? [10, 20, 30] : undefined);
 }
+
+// The adapter preserves the pure decoder's units/time and maps its optional
+// vectors into model atom order below. Codec boundary cases live in test-trr-codecs.mjs.
+const vectorBytes = new Uint8Array(readFileSync(new URL('./fixtures/trajectory/vectors.trr', import.meta.url)));
+const forceBytes = new Uint8Array(readFileSync(new URL('./fixtures/trajectory/forces-only.trr', import.meta.url)));
+const vectorFrame = await decodeFrame('trr', vectorBytes, null, ctx);
+const forceFrame = await decodeFrame('trr', forceBytes, null, ctx);
+const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-6, `${actual} != ${expected}`);
+assert.deepEqual({ x: [...vectorFrame.x], y: [...vectorFrame.y], z: [...vectorFrame.z], time: vectorFrame.time.value,
+  timeUnit: vectorFrame.time.unit, step: vectorFrame.step }, {
+  x: [1.25, 10, -10], y: [-2.5, 20, 0], z: [15, 30, 5], time: 2.75, timeUnit: 'ps', step: 125,
+});
+
+const vectorTrajectory = createTrajectory({ atomicHierarchy: { atomSourceIndex: { value: index => [2, 0, 1][index] } } },
+  { frameCount: 2, atomCount: 3, format: 'trr', segmentIndex: 3 }, vectorFrame,
+  async () => ({ bytes: forceBytes }));
+const firstPage = BuretteIndexedTrajectory.frameData(vectorTrajectory.representative, { offset: 1, limit: 1, includeSummary: true });
+assert.deepEqual(JSON.parse(JSON.stringify({ ...firstPage, sourceId: undefined, modelId: undefined, summary: undefined, atoms: firstPage.atoms.map(atom => ({ ...atom, velocity: atom.velocity.map(n => +n.toFixed(6)), force: atom.force.map(n => +n.toFixed(6)) })) })), {
+  frameIndex: 0, frameCount: 2, segmentIndex: 3, time: { value: 2.75, unit: 'ps' }, step: 125,
+  units: { position: 'angstrom', velocity: 'angstrom/ps', force: 'kcal/mol/angstrom' }, offset: 1, total: 3,
+  atoms: [{ index: 1, sourceAtomIndex: 0, position: [1.25, -2.5, 15], velocity: [.1, -.2, .3], force: [1, -2, 3] }],
+});
+const nextModel = await vectorTrajectory.getFrameAtIndex(1).run();
+const nextPage = BuretteIndexedTrajectory.frameData(nextModel, { offset: 0, limit: 1 });
+assert.equal(nextPage.frameIndex, 1); assert.equal(nextPage.step, 175);
+assert.equal(nextPage.time.value, 4.25); assert.equal(nextPage.atoms[0].sourceAtomIndex, 2);
+assert.equal(nextPage.atoms[0].velocity, undefined); assert.equal(nextPage.units.velocity, undefined);
+near(nextPage.atoms[0].force[2], .6);
+assert.throws(() => BuretteIndexedTrajectory.frameData(nextModel, { limit: 101 }), /page/);
+assert.equal(BuretteIndexedTrajectory.frameData({}), null);
+// Availability and per-atom reads must not scan an entire frame during playback.
+let velocityReads = 0;
+const probedFrame = { ...vectorFrame, velocities: { ...vectorFrame.velocities, vx: new Proxy(vectorFrame.velocities.vx, {
+  get(target, key) { if (typeof key === 'string' && /^\d+$/.test(key)) velocityReads++; return Reflect.get(target, key, target); }
+}) } };
+const probeTrajectory = createTrajectory({}, { frameCount: 1, atomCount: 3, format: 'trr' }, probedFrame, async () => ({ bytes: vectorBytes }));
+const probeModel = probeTrajectory.representative;
+assert.deepEqual(JSON.parse(JSON.stringify(BuretteIndexedTrajectory.frameData(probeModel, { limit: 1 }).summary)), {});
+assert.equal(velocityReads, 1, 'a lightweight probe reads only its requested atom');
+const requestedStatistics = BuretteIndexedTrajectory.frameData(probeModel, { limit: 1, includeSummary: true }).summary;
+assert.equal(velocityReads, 5, 'the first explicit statistics request scans three atoms plus its one-atom page');
+near(requestedStatistics.maxForce, Math.sqrt(14));
+BuretteIndexedTrajectory.frameData(probeModel, { limit: 1, includeSummary: true });
+assert.equal(velocityReads, 6, 'statistics are cached; subsequent requests only read their page');
+assert.deepEqual(JSON.parse(JSON.stringify(BuretteIndexedTrajectory.frameData(probeModel, { limit: 1 }).summary)), {}, 'default reads remain lightweight even after statistics were cached');
+probeTrajectory.dispose();
+
+near(firstPage.summary.maxForce, Math.sqrt(14));
+near(firstPage.summary.rmsForce, Math.sqrt((14 + .14 + .5) / 3));
+const structure = model => ({ cell: { transform: { ref: 'structure-1' }, obj: { data: { models: [model] } } } });
+const active = { plugin: { managers: { structure: { hierarchy: { current: { structures: [structure(vectorTrajectory.representative)] } } } } } };
+const page = BuretteIndexedTrajectory.readActiveFrame(active, { type: 'indexed_trajectory_frame', limit: 1, includeSummary: true });
+assert.equal(page.available, true);
+assert.equal(page.structureRef, 'structure-1');
+const expected = { sourceId: page.sourceId, modelId: page.modelId, structureRef: page.structureRef, frameIndex: page.frameIndex, segmentIndex: page.segmentIndex };
+assert.equal(BuretteIndexedTrajectory.readActiveFrame(active, { offset: 2, limit: 1, expected }).atoms[0].sourceAtomIndex, 1);
+active.plugin.managers.structure.hierarchy.current.structures = [structure(nextModel)];
+assert.throws(() => BuretteIndexedTrajectory.readActiveFrame(active, { expected }), /changed/);
+const forcePage = BuretteIndexedTrajectory.readActiveFrame(active, { expected: { frameIndex: 1 } });
+assert.equal(forcePage.summary.rmsSpeed, undefined);
+assert.notEqual(forcePage.modelId, page.modelId);
+assert.equal(forcePage.sourceId, page.sourceId);
+active.plugin.managers.structure.hierarchy.current.structures.push(structure(nextModel));
+assert.throws(() => BuretteIndexedTrajectory.readActiveFrame(active, {}), /Choose one/);
+active.plugin.managers.structure.hierarchy.current.structures.pop();
+assert.throws(() => BuretteIndexedTrajectory.readActiveFrame(active, { limit: 101 }), /1–100/);
+vectorTrajectory.dispose();
+assert.equal(BuretteIndexedTrajectory.readActiveFrame(active, {}).available, false);
+assert.throws(() => BuretteIndexedTrajectory.readActiveFrame(active, { expected }), /changed/);
 
 // Independently written by MDAnalysis/XDR, not by the adapter under test.
 // 48 atoms force the compressed XTC path (>9), including negative positions
@@ -146,6 +222,12 @@ for (const index of [9, 5, 6]) {
 }
 assert.equal(byteCache.size, 2);
 byteBound.dispose();
+
+// Optional vectors count towards the same cache budget, including the first frame.
+const vectorLargeFirst = { ...largeFirst, velocities: { vx: new Float64Array(largeCount), vy: new Float64Array(largeCount), vz: new Float64Array(largeCount) } };
+const vectorByteBound = createTrajectory({}, { frameCount: 1, atomCount: largeCount, format: 'trr' }, vectorLargeFirst, async () => assert.fail('no frame read expected'));
+assert.equal(observedCaches.at(-1).size, 0, '36 MB positions plus velocities cannot enter the 32 MiB cache');
+vectorByteBound.dispose();
 
 let validates = 0;
 const changed = createTrajectory({}, { frameCount: 2, atomCount: 2, format: 'dcd' }, dcd, async (_index, _signal, validateOnly) => {
@@ -300,22 +382,33 @@ const prepareEnd = viewerSource.indexOf('    if (isMolViewSpecFormat(normalized)
 const loadStart = viewerSource.indexOf('  async function loadPreparedStructure(');
 const loadEnd = viewerSource.indexOf('    cancelScheduledMolstarWaterRepresentation();', loadStart);
 const archiveBytes = new Uint8Array([80, 75, 3, 4]);
-const archiveContext = vm.createContext({ File, Uint8Array,
+const archiveContext = vm.createContext({ File, Uint8Array, window: {}, crypto,
   normalizeFormat: value => value, structureSceneEntriesFromConfig: () => [], rawStructureData: () => archiveBytes,
   activeMolstarPrepared: null, activeDockingPrepared: null, installDockingPoseControls: () => {},
   nativeTrajectoryModelTransform: () => null,
 });
+vm.runInContext(readFileSync(new URL('../PreviewExtension/Web/scene-file-actions.js', import.meta.url), 'utf8'), archiveContext);
 vm.runInContext(`${viewerSource.slice(prepareStart, prepareEnd)}}\n${viewerSource.slice(loadStart, loadEnd)}}\nglobalThis.prepare = structureDataForMolstar; globalThis.load = loadPreparedStructure;`, archiveContext);
 const preparedArchive = archiveContext.prepare({ format: 'molx', label: 'saved scene' });
 assert.equal(preparedArchive.kind, 'session');
 let loadedArchive;
+// Mol* reports a successful read only through its `opened` event.
+const openedListeners = new Set();
+const opened = { subscribe: listener => { openedListeners.add(listener); return { unsubscribe: () => openedListeners.delete(listener) }; } };
+const archiveSnapshot = (open) => ({ open, events: { opened }, state: { current: 'saved' },
+  getEntry: id => { assert.equal(id, 'saved'); return { snapshot: { camera: { current: { radius: 5 } } } }; },
+  setStateSnapshot: () => assert.fail('MOLX must load its archive assets') });
 await archiveContext.load({ plugin: { managers: {
-  snapshot: { open: async file => { loadedArchive = file; }, state: { current: 'saved' },
-    getEntry: id => { assert.equal(id, 'saved'); return { snapshot: { camera: { current: { radius: 5 } } } }; },
-    setStateSnapshot: () => assert.fail('MOLX must load its archive assets') },
+  snapshot: archiveSnapshot(async file => { loadedArchive = file; openedListeners.forEach(listener => listener()); }),
+  asset: { assets: [] },
   camera: { reset: () => assert.fail('The saved scene camera must survive') },
 } } }, preparedArchive);
+assert.equal(openedListeners.size, 0, 'the open listener is released');
 assert.equal(loadedArchive.name, 'scene.molx');
+// A read Mol* only logs as failed is an error, never an empty scene.
+await assert.rejects(archiveContext.load({ plugin: { managers: {
+  snapshot: archiveSnapshot(async () => {}), asset: { assets: [] }, camera: { reset() {} },
+} } }, archiveContext.prepare({ format: 'molx', label: 'broken scene' })), /could not be read/);
 assert.deepEqual(new Uint8Array(await loadedArchive.arrayBuffer()), archiveBytes);
 assert.equal(preparedArchive.hasSessionCamera, true);
 
@@ -342,11 +435,12 @@ const controlsViewer = { plugin: {
     },
   },
   managers: { structure: { hierarchy: { selection: { structures: [{ model: { cell: modelCell } }] } } },
-    snapshot: { open: async () => {}, state: { current: 'saved' }, getEntry: () => ({ snapshot: { camera: { current: { radius: 5 } } } }) },
+    snapshot: archiveSnapshot(async () => openedListeners.forEach(listener => listener())), asset: { assets: [] },
     camera: { reset: () => assert.fail('Installing restored frame controls must preserve the camera') } },
 } };
 controlsWindow.sessionStorage.setItem('burette.trajectoryControl.saved_scene', '42');
 const controlContext = vm.createContext({
+  crypto,
   syncSceneTreeClearance: () => {},
   trajectoryControlIndices: new Map(), window: controlsWindow, document: controlsDocument, File, console, sessionStorage: controlsWindow.sessionStorage,
   activeViewer: controlsViewer, activeConfig: { documentId: 'saved_scene', activeModel: 0 }, activeMolstarPrepared: null, activeDockingPrepared: null,
@@ -362,13 +456,14 @@ const controlContext = vm.createContext({
   restoreDockingPoseControlsPosition: () => {}, installScrubNumberField: () => {}, installDockingPoseInteractionIsolation: () => {}, installDockingPoseHoverSuppression: () => {}, initDockingPoseControlsDrag: () => {},
   clearMolstarTrajectoryHover: () => {}, afterNativeTrajectoryPaint: () => Promise.resolve(), readNativeTrajectoryPositionFromDom: () => null,
 });
-const controlFunctions = ['nativeTrajectoryFrameCount', 'nativeTrajectoryModelTransform', 'readNativeTrajectoryPosition', 'readTrajectoryControlIndex',
-  'trajectoryControlStorageKey', 'writeTrajectoryControlIndex', 'setNativeTrajectoryPoseDirect', 'setNativeTrajectoryPose', 'installNativeTrajectoryPoseSync', 'notifyChemicalSpaceMolecule', 'notifyDockingPoseChanged', 'dockingPinnedPoseIndices', 'installDockingPoseControls'];
+const controlFunctions = ['agentActionFailure', 'agentFrameIndexFailure', 'setStructurePoseFromAction', 'nativeTrajectoryFrameCount', 'nativeTrajectoryModelTransform', 'readNativeTrajectoryPosition', 'readTrajectoryControlIndex',
+  'trajectoryControlStorageKey', 'writeTrajectoryControlIndex', 'setNativeTrajectoryPoseDirect', 'setNativeTrajectoryPose', 'installNativeTrajectoryPoseSync', 'notifyChemicalSpaceMolecule', 'notifyDockingPoseChanged', 'dockingPinnedPoseIndices', 'createSceneFrameComparisonControls', 'installDockingPoseControls'];
 const extractedControls = controlFunctions.map(name => {
   const fn = viewerSource.match(new RegExp(`\\n  (?:async )?function ${name}\\([\\s\\S]*?\\n  \\}`, 'u'))?.[0];
   assert.ok(fn, name);
   return fn;
 }).join('\n');
+vm.runInContext(readFileSync(new URL('../PreviewExtension/Web/scene-file-actions.js', import.meta.url), 'utf8'), controlContext);
 vm.runInContext(`${extractedControls}\n${viewerSource.slice(loadStart, loadEnd)}}\nglobalThis.load = loadPreparedStructure;`, controlContext);
 const restoredControls = { kind: 'session', format: 'molx', data: archiveBytes };
 await controlContext.load(controlsViewer, restoredControls);
@@ -387,6 +482,43 @@ frameSlider.dispatchEvent(new controlsWindow.Event('change'));
 await until(() => modelCell.transform.params.modelIndex === 9);
 assert.equal(shownModel.frame.x[0], 9);
 assert.equal(controlContext.readTrajectoryControlIndex(controlContext.activeConfig, restoredControls, restoredControls.poseCount), 9);
+// The graph being ready must not permit frame edits before science adoption.
+const importApi = controlContext.window.BuretteSceneFiles.science;
+const pendingToken = importApi.beginImport(controlsViewer.plugin);
+const nextFrameButton = controlsDocument.querySelector('[aria-label="Next frame"]');
+assert.equal(nextFrameButton.disabled, true);
+assert.equal(frameSlider.disabled, true);
+assert.equal(controlsDocument.querySelector('.buret-docking-poses').getAttribute('aria-busy'), 'true');
+const blockedAction = await controlContext.setStructurePoseFromAction({ index: 10 });
+assert.deepEqual(JSON.parse(JSON.stringify(blockedAction)), {
+  ok: false, command: 'set_structure_pose',
+  error: { code: 'ACTION_ERROR', message: 'Wait for scientific data to finish restoring, then change frames.' },
+});
+assert.equal(modelCell.transform.params.modelIndex, 9, 'programmatic stepping cannot race scientific restoration');
+assert.equal(importApi.completeImport(controlsViewer.plugin, 'stale-token'), false);
+assert.equal(nextFrameButton.disabled, true);
+assert.equal(importApi.completeImport(controlsViewer.plugin, pendingToken), true);
+assert.equal(nextFrameButton.disabled, false);
+assert.equal(frameSlider.disabled, false);
+assert.equal(controlsDocument.querySelector('.buret-docking-poses').getAttribute('aria-busy'), 'false');
+const retriedAction = await controlContext.setStructurePoseFromAction({ index: 10 });
+assert.deepEqual(JSON.parse(JSON.stringify(retriedAction)), { ok: true, command: 'set_structure_pose', result: { index: 10 } });
+assert.equal(modelCell.transform.params.modelIndex, 10);
+assert.equal(shownModel.frame.x[0], 10);
+// A decoder/update failure also reaches the command caller; UI state rolls back.
+const workingUpdate = controlsViewer.plugin.state.updateTransform;
+controlsViewer.plugin.state.updateTransform = async () => { throw new Error('Trajectory frame could not be decoded.'); };
+const failedUpdate = await controlContext.setStructurePoseFromAction({ index: 11 });
+assert.deepEqual(JSON.parse(JSON.stringify(failedUpdate)), {
+  ok: false, command: 'set_structure_pose',
+  error: { code: 'ACTION_ERROR', message: 'Trajectory frame could not be decoded.' },
+});
+assert.equal(modelCell.transform.params.modelIndex, 10);
+assert.equal(controlContext.readTrajectoryControlIndex(controlContext.activeConfig, restoredControls, restoredControls.poseCount), 10);
+controlsViewer.plugin.state.updateTransform = workingUpdate;
+const recoveredUpdate = await controlContext.setStructurePoseFromAction({ index: 11 });
+assert.deepEqual(JSON.parse(JSON.stringify(recoveredUpdate)), { ok: true, command: 'set_structure_pose', result: { index: 11 } });
+assert.equal(shownModel.frame.x[0], 11);
 controlContext.dockingPoseControlsDisposer();
 controlContext.dockingPoseKeydownDisposer();
 IndexedTrajectory.dispose({ b: playable });

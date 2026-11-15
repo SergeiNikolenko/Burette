@@ -1,0 +1,5 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "types": ["bun"], "allowJs": true, "checkJs": false },
+  "include": ["test-spectrum-atom-selection-runtime.test.ts", "test-spectrum-atom-selection-bridge.test.ts", "../apps/desktop/src/**/*.d.ts"]
+}

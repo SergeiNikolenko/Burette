@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": [
+      "bun"
+    ],
+    "allowJs": true,
+    "checkJs": false
+  },
+  "include": [
+    "test-polymer-pick.test.ts",
+    "../apps/desktop/src/**/*.d.ts"
+  ]
+}

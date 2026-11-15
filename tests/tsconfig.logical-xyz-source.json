@@ -1,0 +1,20 @@
+{
+  "extends": "../tsconfig.json",
+  "include": [
+    "test-logical-xyz-source.test.tsx",
+    "../apps/desktop/src/hooks/use-source-editing.ts",
+    "../apps/desktop/src/vite-env.d.ts",
+    "../apps/desktop/src/types/plotly-basic-dist-min.d.ts",
+    "../apps/desktop/src/lib/gifenc.d.ts",
+    "../apps/desktop/src/components/ui/utif.d.ts"
+  ],
+  "compilerOptions": {
+    "types": [
+      "bun"
+    ],
+    "typeRoots": [
+      "../apps/desktop/node_modules/@types",
+      "../node_modules/@types"
+    ]
+  }
+}

@@ -8,3 +8,27 @@ PreviewExtension/Web/mesoscale.js whitespace=-blank-at-eol,-blank-at-eof,-space-
 plugins/burette-agent/preview-web/mesoscale.js whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
 # Preserve the pinned upstream CRLF reference table byte-for-byte.
 compute/semiempirical/reference/parameters_PM6_MOPAC.csv -text whitespace=-blank-at-eol
+# Preserve fixed-width FCHK reference columns and pinned source bytes.
+tests/fixtures/quantum/gaussian16-water-raman.fchk -text whitespace=-blank-at-eol
+# Preserve printed Gaussian orientation columns in the pinned reference excerpt.
+tests/fixtures/quantum/gaussian-water-optimization.log -text whitespace=-blank-at-eol
+
+# Preserve literal context lines in the reviewed dependency patches.
+patches/react-resizable-panels@4.14.8.patch whitespace=-blank-at-eol
+patches/react-resizable-panels@4.14.8.source.patch whitespace=-blank-at-eol
+
+# Preserve the pinned upstream libmsym license, including its final blank line.
+compute/symmetry-wasm/LIBMSYM_LICENSE.txt -text whitespace=-blank-at-eof
+
+# Keep reviewed upstream spectrum fixture and license bytes exact.
+tests/fixtures/quantum/orca-3.0.2-methane.hess -text whitespace=-blank-at-eol,-blank-at-eof
+tests/fixtures/quantum/opan-LICENSE.txt -text whitespace=-blank-at-eof
+
+# Preserve the exact upstream ORCA shielding table, including row padding.
+tests/fixtures/quantum/spectra-orca-nmr.out -text whitespace=-blank-at-eol,-blank-at-eof
+
+# Preserve the exact upstream optical tables, including printed row padding.
+tests/fixtures/quantum/spectra-orca-camphor.out -text whitespace=-blank-at-eol,-blank-at-eof
+
+# Preserve the reviewed explicit-H SDF fixture and its original CRLF bytes.
+tests/fixtures/to-ocl-boundary/interspersed-h.sdf -text whitespace=cr-at-eol

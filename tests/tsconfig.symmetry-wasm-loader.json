@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": [
+      "bun"
+    ]
+  },
+  "files": [
+    "test-symmetry-wasm-loader.test.ts",
+    "test-symmetry-wasm-assets.test.ts",
+    "test-symmetry-wasm-diagnostics.test.ts"
+  ],
+  "include": []
+}

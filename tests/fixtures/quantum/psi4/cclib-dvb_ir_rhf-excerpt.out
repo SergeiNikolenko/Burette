@@ -1,0 +1,1681 @@
+
+    -----------------------------------------------------------------------
+          Psi4: An Open-Source Ab Initio Electronic Structure Package
+                               Psi4 1.7 release
+
+                         Git: Rev {HEAD} 6ce35a5 
+
+
+    D. G. A. Smith, L. A. Burns, A. C. Simmonett, R. M. Parrish,
+    M. C. Schieber, R. Galvelis, P. Kraus, H. Kruse, R. Di Remigio,
+    A. Alenaizan, A. M. James, S. Lehtola, J. P. Misiewicz, M. Scheurer,
+    R. A. Shaw, J. B. Schriber, Y. Xie, Z. L. Glick, D. A. Sirianni,
+    J. S. O'Brien, J. M. Waldrop, A. Kumar, E. G. Hohenstein,
+    B. P. Pritchard, B. R. Brooks, H. F. Schaefer III, A. Yu. Sokolov,
+    K. Patkowski, A. E. DePrince III, U. Bozkaya, R. A. King,
+    F. A. Evangelista, J. M. Turney, T. D. Crawford, C. D. Sherrill,
+    J. Chem. Phys. 152(18) 184108 (2020). https://doi.org/10.1063/5.0006002
+
+                            Additional Code Authors
+    E. T. Seidl, C. L. Janssen, E. F. Valeev, M. L. Leininger,
+    J. F. Gonthier, R. M. Richard, H. R. McAlexander, M. Saitow, X. Wang,
+    P. Verma, M. H. Lechner, A. Jiang, S. Behnle, A. G. Heide,
+    M. F. Herbst, and D. L. Poole
+
+             Previous Authors, Complete List of Code Contributors,
+                       and Citations for Specific Modules
+    https://github.com/psi4/psi4/blob/master/codemeta.json
+    https://github.com/psi4/psi4/graphs/contributors
+    http://psicode.org/psi4manual/master/introduction.html#citing-psifour
+
+    -----------------------------------------------------------------------
+
+
+    Psi4 started on: Sunday, 11 June 2023 10:51PM
+
+    Process ID: 69074
+    Host:       osmium
+    PSIDATADIR: /home/eric/.pyenv/versions/miniforge3-4.10.1-3/envs/psi4-dev/share/psi4
+    Memory:     500.0 MiB
+    Threads:    1
+    
+  ==> Input File <==
+
+--------------------------------------------------------------------------
+molecule dvb {
+    0 1
+    C    -1.4152533224   0.2302217854   0.0000000000
+    C     1.4152533224  -0.2302217854   0.0000000000
+    C    -0.4951331558   1.3144608674   0.0000000000
+    C     0.4951331558  -1.3144608674   0.0000000000
+    C     0.8894090436   1.0909493743   0.0000000000
+    C    -0.8894090436  -1.0909493743   0.0000000000
+    H    -0.8795511985   2.3437343748   0.0000000000
+    H     0.8795511985  -2.3437343748   0.0000000000
+    H     1.5779041557   1.9450061275   0.0000000000
+    H    -1.5779041557  -1.9450061275   0.0000000000
+    C     2.8845844962  -0.5210893778   0.0000000000
+    C    -2.8845844962   0.5210893778   0.0000000000
+    H     3.1403356810  -1.5919605685   0.0000000000
+    H    -3.1403356810   1.5919605685   0.0000000000
+    C     3.8800428103   0.3822535424   0.0000000000
+    C    -3.8800428103  -0.3822535424   0.0000000000
+    H     3.6946765858   1.4624389570   0.0000000000
+    H    -3.6946765858  -1.4624389570   0.0000000000
+    H     4.9316453546   0.0711049543   0.0000000000
+    H    -4.9316453546  -0.0711049543   0.0000000000
+}
+
+set {
+    basis sto-3g
+    fd_project true
+}
+
+frequencies('scf', dertype='gradient')
+--------------------------------------------------------------------------
+
+         ----------------------------------------------------------
+                                   FINDIF
+                     R. A. King and Jonathon Misiewicz
+         ----------------------------------------------------------
+
+  Using finite-differences of gradients to determine vibrational frequencies and 
+  normal modes. Resulting frequencies are only valid at stationary points.
+    Generating geometries for use with 3-point formula.
+    Displacement size will be 5.00e-03.
+    Number of atoms is 20.
+    Number of irreps is 4.
+    Number of SALCs is 54.
+    Translations projected? 1. Rotations projected? 1.
+    Index of SALCs per irrep:
+      1 :  0  1  2  3  4  5  6  7  8  9  10  11  12  13  14  15  16  17  18 
+      2 :  19  20  21  22  23  24  25  26 
+      3 :  27  28  29  30  31  32  33  34  35 
+      4 :  36  37  38  39  40  41  42  43  44  45  46  47  48  49  50  51  52  53 
+    Number of SALCs per irrep:
+      Irrep 1: 19
+      Irrep 2: 8
+      Irrep 3: 9
+      Irrep 4: 18
+    Number of geometries (including reference) is 74.
+    Number of displacements per irrep:
+      Irrep 1: 38
+      Irrep 2: 8
+      Irrep 3: 9
+      Irrep 4: 18
+ 74 displacements needed ...
+
+  //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>//
+  //    FiniteDifference Computations  //
+  //<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<//
+
+
+    -----------------------------------------------------------------------
+          Psi4: An Open-Source Ab Initio Electronic Structure Package
+                               Psi4 1.7 release
+
+                         Git: Rev {HEAD} 6ce35a5 
+
+
+    D. G. A. Smith, L. A. Burns, A. C. Simmonett, R. M. Parrish,
+    M. C. Schieber, R. Galvelis, P. Kraus, H. Kruse, R. Di Remigio,
+    A. Alenaizan, A. M. James, S. Lehtola, J. P. Misiewicz, M. Scheurer,
+    R. A. Shaw, J. B. Schriber, Y. Xie, Z. L. Glick, D. A. Sirianni,
+    J. S. O'Brien, J. M. Waldrop, A. Kumar, E. G. Hohenstein,
+    B. P. Pritchard, B. R. Brooks, H. F. Schaefer III, A. Yu. Sokolov,
+    K. Patkowski, A. E. DePrince III, U. Bozkaya, R. A. King,
+    F. A. Evangelista, J. M. Turney, T. D. Crawford, C. D. Sherrill,
+    J. Chem. Phys. 152(18) 184108 (2020). https://doi.org/10.1063/5.0006002
+
+                            Additional Code Authors
+    E. T. Seidl, C. L. Janssen, E. F. Valeev, M. L. Leininger,
+    J. F. Gonthier, R. M. Richard, H. R. McAlexander, M. Saitow, X. Wang,
+    P. Verma, M. H. Lechner, A. Jiang, S. Behnle, A. G. Heide,
+    M. F. Herbst, and D. L. Poole
+
+             Previous Authors, Complete List of Code Contributors,
+                       and Citations for Specific Modules
+    https://github.com/psi4/psi4/blob/master/codemeta.json
+    https://github.com/psi4/psi4/graphs/contributors
+    http://psicode.org/psi4manual/master/introduction.html#citing-psifour
+
+    -----------------------------------------------------------------------
+
+
+    Psi4 started on: Sunday, 11 June 2023 10:51PM
+
+    Process ID: 69074
+    Host:       osmium
+    PSIDATADIR: /home/eric/.pyenv/versions/miniforge3-4.10.1-3/envs/psi4-dev/share/psi4
+    Memory:     500.0 MiB
+    Threads:    1
+    
+  ==> Input QCSchema <==
+
+--------------------------------------------------------------------------
+{'driver': 'gradient',
+ 'extras': {'psiapi': True, 'wfn_qcvars_only': True},
+ 'id': None,
+ 'keywords': {'FD_PROJECT': 1,
+              'PARENT_SYMMETRY': 'C2h(Z)',
+              'SCF__D_CONVERGENCE': 1e-08,
+              'SCF__E_CONVERGENCE': 1e-08,
+              'function_kwargs': {}},
+ 'model': {'basis': 'sto-3g', 'method': 'scf'},
+ 'molecule': {'atom_labels': ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+              'atomic_numbers': [6, 6, 6, 6, 6, 6, 1, 1, 1, 1, 6, 6, 1, 1, 6, 6, 1, 1, 1, 1],
+              'fix_com': True,
+              'fix_orientation': True,
+              'fragment_charges': [0.0],
+              'fragment_multiplicities': [1],
+              'fragments': [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]],
+              'geometry': [-2.6744411774802703, 0.43505612251992554, 0.0, 2.6744411774802703, -0.43505612251992554, 0.0,
+                           -0.9356660600956412, 2.483971042017738, 0.0, 0.9356660600956412, -2.483971042017738, 0.0,
+                           1.6807395059093801, 2.061595534166581, 0.0, -1.6807395059093801, -2.061595534166581, 0.0,
+                           -1.6621108784831937, 4.429016079193129, 0.0, 1.6621108784831937, -4.429016079193129, 0.0,
+                           2.9818067064947664, 3.6755288933123094, 0.0, -2.9818067064947664, -3.6755288933123094, 0.0,
+                           5.451074683559747, -0.9847162109272242, 0.0, -5.451074683559747, 0.9847162109272242, 0.0,
+                           5.9343743790931, -3.0083694769931464, 0.0, -5.9343743790931, 3.0083694769931464, 0.0,
+                           7.332218266518722, 0.7223545056220818, 0.0, -7.332218266518722, -0.7223545056220818, 0.0,
+                           6.9819268693035905, 2.7636091039301975, 0.0, -6.9819268693035905, -2.7636091039301975, 0.0,
+                           9.319459068080354, 0.1343688897901952, 0.0, -9.319459068080354, -0.1343688897901952, 0.0],
+              'mass_numbers': [12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 12, 12, 1, 1, 12, 12, 1, 1, 1, 1],
+              'masses': [12.0, 12.0, 12.0, 12.0, 12.0, 12.0, 1.00782503223, 1.00782503223, 1.00782503223, 1.00782503223,
+                         12.0, 12.0, 1.00782503223, 1.00782503223, 12.0, 12.0, 1.00782503223, 1.00782503223,
+                         1.00782503223, 1.00782503223],
+              'molecular_charge': 0.0,
+              'molecular_multiplicity': 1,
+              'name': 'dvb',
+              'provenance': {'creator': 'QCElemental',
+                             'routine': 'qcelemental.molparse.from_string',
+                             'version': 'v0.25.1'},
+              'real': [True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True,
+                       True, True, True, True],
+              'schema_name': 'qcschema_molecule',
+              'schema_version': 2,
+              'symbols': ['C', 'C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'C', 'C', 'H', 'H', 'C', 'C', 'H', 'H', 'H',
+                          'H'],
+              'validated': True},
+ 'protocols': {'stdout': True},
+ 'provenance': {'creator': 'QCElemental', 'routine': 'qcelemental.models.results', 'version': 'v0.25.1'},
+ 'schema_name': 'qcschema_input',
+ 'schema_version': 1}
+--------------------------------------------------------------------------
+
+Scratch directory: /tmp/
+gradient() will perform analytic gradient computation.
+
+*** tstart() called on osmium
+*** at Sun Jun 11 22:51:09 2023
+
+   => Loading Basis Set <=
+
+    Name: STO-3G
+    Role: ORBITAL
+    Keyword: BASIS
+    atoms 1-6, 11-12, 15-16  entry C          line    61 file /home/eric/.pyenv/versions/miniforge3-4.10.1-3/envs/psi4-dev/share/psi4/basis/sto-3g.gbs 
+    atoms 7-10, 13-14, 17-20 entry H          line    19 file /home/eric/.pyenv/versions/miniforge3-4.10.1-3/envs/psi4-dev/share/psi4/basis/sto-3g.gbs 
+
+
+         ---------------------------------------------------------
+                                   SCF
+               by Justin Turney, Rob Parrish, Andy Simmonett
+                          and Daniel G. A. Smith
+                              RHF Reference
+                        1 Threads,    500 MiB Core
+         ---------------------------------------------------------
+
+  ==> Geometry <==
+
+    Molecular point group: c2h
+    Full point group: C2h
+
+    Geometry (in Bohr), charge = 0, multiplicity = 1:
+
+       Center              X                  Y                   Z               Mass       
+    ------------   -----------------  -----------------  -----------------  -----------------
+         C           -2.674441177480     0.435056122520     0.000000000000    12.000000000000
+         C            2.674441177480    -0.435056122520     0.000000000000    12.000000000000
+         C           -0.935666060096     2.483971042018     0.000000000000    12.000000000000
+         C            0.935666060096    -2.483971042018     0.000000000000    12.000000000000
+         C            1.680739505909     2.061595534167     0.000000000000    12.000000000000
+         C           -1.680739505909    -2.061595534167     0.000000000000    12.000000000000
+         H           -1.662110878483     4.429016079193     0.000000000000     1.007825032230
+         H            1.662110878483    -4.429016079193     0.000000000000     1.007825032230
+         H            2.981806706495     3.675528893312     0.000000000000     1.007825032230
+         H           -2.981806706495    -3.675528893312     0.000000000000     1.007825032230
+         C            5.451074683560    -0.984716210927     0.000000000000    12.000000000000
+         C           -5.451074683560     0.984716210927     0.000000000000    12.000000000000
+         H            5.934374379093    -3.008369476993     0.000000000000     1.007825032230
+         H           -5.934374379093     3.008369476993     0.000000000000     1.007825032230
+         C            7.332218266519     0.722354505622     0.000000000000    12.000000000000
+         C           -7.332218266519    -0.722354505622     0.000000000000    12.000000000000
+         H            6.981926869304     2.763609103930     0.000000000000     1.007825032230
+         H           -6.981926869304    -2.763609103930     0.000000000000     1.007825032230
+         H            9.319459068080     0.134368889790     0.000000000000     1.007825032230
+         H           -9.319459068080    -0.134368889790     0.000000000000     1.007825032230
+
+  Running in c2h symmetry.
+
+  Rotational constants: A =      0.15403  B =      0.02287  C =      0.01992 [cm^-1]
+  Rotational constants: A =   4617.84335  B =    685.76183  C =    597.09209 [MHz]
+  Nuclear repulsion =  445.936979867057005
+
+  Charge       = 0
+  Multiplicity = 1
+  Electrons    = 70
+  Nalpha       = 35
+  Nbeta        = 35
+
+  ==> Algorithm <==
+
+  SCF Algorithm Type is DF.
+  DIIS enabled.
+  MOM disabled.
+  Fractional occupation disabled.
+  Guess Type is SAD.
+  Energy threshold   = 1.00e-08
+  Density threshold  = 1.00e-08
+  Integral threshold = 1.00e-12
+
+  ==> Primary Basis <==
+
+  Basis Set: STO-3G
+    Blend: STO-3G
+    Number of shells: 40
+    Number of basis functions: 60
+    Number of Cartesian functions: 60
+    Spherical Harmonics?: true
+    Max angular momentum: 1
+
+   => Loading Basis Set <=
+
+    Name: (STO-3G AUX)
+    Role: JKFIT
+    Keyword: DF_BASIS_SCF
+    atoms 1-6, 11-12, 15-16  entry C          line   198 file /home/eric/.pyenv/versions/miniforge3-4.10.1-3/envs/psi4-dev/share/psi4/basis/def2-universal-jkfit.gbs 
+    atoms 7-10, 13-14, 17-20 entry H          line    18 file /home/eric/.pyenv/versions/miniforge3-4.10.1-3/envs/psi4-dev/share/psi4/basis/def2-universal-jkfit.gbs 
+
+  ==> Integral Setup <==
+
+  DFHelper Memory: AOs need 0.031 GiB; user supplied 0.366 GiB. Using in-core AOs.
+
+  ==> MemDFJK: Density-Fitted J/K Matrices <==
+
+    J tasked:                   Yes
+    K tasked:                   Yes
+    wK tasked:                   No
+    OpenMP threads:               1
+    Memory [MiB]:               375
+    Algorithm:                 Core
+    Schwarz Cutoff:           1E-12
+    Mask sparsity (%):       4.1111
+    Fitting Condition:        1E-10
+
+   => Auxiliary Basis Set <=
+
+  Basis Set: (STO-3G AUX)
+    Blend: DEF2-UNIVERSAL-JKFIT
+    Number of shells: 310
+    Number of basis functions: 930
+    Number of Cartesian functions: 1090
+    Spherical Harmonics?: true
+    Max angular momentum: 4
+
+  Minimum eigenvalue in the overlap matrix is 1.8581922389E-01.
+  Reciprocal condition number of the overlap matrix is 7.9091442526E-02.
+    Using symmetric orthogonalization.
+
+  ==> Pre-Iterations <==
+
+  SCF Guess: Superposition of Atomic Densities via on-the-fly atomic UHF (no occupation information).
+
+   -------------------------
+    Irrep   Nso     Nmo    
+   -------------------------
+     Ag        25      25 
+     Bg         5       5 
+     Au         5       5 
+     Bu        25      25 
+   -------------------------
+    Total      60      60
+   -------------------------
+
+  ==> Iterations <==
+
+                           Total Energy        Delta E     RMS |[F,P]|
+
+   @DF-RHF iter SAD:  -372.47056554287332   -3.72471e+02   0.00000e+00 
+   @DF-RHF iter   1:  -379.75143612088391   -7.28087e+00   3.88904e-03 ADIIS/DIIS
+   @DF-RHF iter   2:  -379.76852818743407   -1.70921e-02   1.09122e-03 ADIIS/DIIS
+   @DF-RHF iter   3:  -379.76985302818827   -1.32484e-03   4.95800e-04 ADIIS/DIIS
+   @DF-RHF iter   4:  -379.77009936003589   -2.46332e-04   7.34200e-05 DIIS
+   @DF-RHF iter   5:  -379.77011074264163   -1.13826e-05   1.71712e-05 DIIS
+   @DF-RHF iter   6:  -379.77011148376397   -7.41122e-07   4.55111e-06 DIIS
+   @DF-RHF iter   7:  -379.77011151891111   -3.51471e-08   8.19727e-07 DIIS
+   @DF-RHF iter   8:  -379.77011152002797   -1.11686e-09   2.91693e-07 DIIS
+   @DF-RHF iter   9:  -379.77011152014319   -1.15222e-10   9.94222e-08 DIIS
+   @DF-RHF iter  10:  -379.77011152016132   -1.81331e-11   1.86867e-08 DIIS
+   @DF-RHF iter  11:  -379.77011152016200   -6.82121e-13   4.99341e-09 DIIS
+  Energy and wave function converged.
+
+
+  ==> Post-Iterations <==
+
+    Orbital Energies [Eh]
+    ---------------------
+
+    Doubly Occupied:                                                      
+
+       1Bu   -11.040746     1Ag   -11.040684     2Bu   -11.031748  
+       2Ag   -11.031748     3Bu   -11.029111     3Ag   -11.028980  
+       4Bu   -11.028767     4Ag   -11.028743     5Bu   -11.017634  
+       5Ag   -11.017633     6Ag    -1.090317     6Bu    -1.020272  
+       7Ag    -0.974940     7Bu    -0.950318     8Bu    -0.909651  
+       8Ag    -0.799896     9Ag    -0.762837     9Bu    -0.727642  
+      10Ag    -0.696780    11Ag    -0.628047    10Bu    -0.605675  
+      11Bu    -0.572947    12Bu    -0.553601    12Ag    -0.553162  
+      13Bu    -0.525353    14Bu    -0.496696    13Ag    -0.492528  
+       1Au    -0.463721    15Bu    -0.446434    14Ag    -0.421659  
+      15Ag    -0.415628     1Bg    -0.376953     2Au    -0.315119  
+       2Bg    -0.278351     3Bg    -0.222179  
+
+    Virtual:                                                              
+
+       3Au     0.199016     4Au     0.268538     4Bg     0.308849  
+       5Au     0.397102     5Bg     0.521790    16Ag     0.565048  
+      16Bu     0.575601    17Ag     0.621585    17Bu     0.625837  
+      18Ag     0.658247    18Bu     0.659407    19Bu     0.677207  
+      19Ag     0.694199    20Bu     0.706717    20Ag     0.740152  
+      21Ag     0.802255    21Bu     0.825687    22Ag     0.860640  
+      22Bu     0.887794    23Bu     0.921040    23Ag     0.939977  
+      24Ag     0.990323    24Bu     1.027295    25Ag     1.107747  
+      25Bu     1.124962  
+
+    Final Occupation by Irrep:
+             Ag    Bg    Au    Bu 
+    DOCC [    15,    3,    2,   15 ]
+    NA   [    15,    3,    2,   15 ]
+    NB   [    15,    3,    2,   15 ]
+
+  @DF-RHF Final Energy:  -379.77011152016200
+
+   => Energetics <=
+
+    Nuclear Repulsion Energy =            445.9369798670570049
+    One-Electron Energy =               -1400.2211867681148760
+    Two-Electron Energy =                 574.5140953808958102
+    Total Energy =                       -379.7701115201620041
+
+Computation Completed
+
+
+Properties will be evaluated at   0.000000,   0.000000,   0.000000 [a0]
+
+Properties computed using the SCF density matrix
+
+
+ Multipole Moments:
+
+ ------------------------------------------------------------------------------------
+     Multipole            Electronic (a.u.)      Nuclear  (a.u.)        Total (a.u.)
+ ------------------------------------------------------------------------------------
+
+ L = 1.  Multiply by 2.5417464519 to convert [e a0] to [Debye]
+ Dipole X            :          0.0000000            0.0000000            0.0000000
+ Dipole Y            :          0.0000000            0.0000000            0.0000000
+ Dipole Z            :          0.0000000            0.0000000            0.0000000
+ Magnitude           :                                                    0.0000000
+
+ ------------------------------------------------------------------------------------
+
+*** tstop() called on osmium at Sun Jun 11 22:51:12 2023
+Module time:
+	user time   =       2.23 seconds =       0.04 minutes
+	system time =       0.03 seconds =       0.00 minutes
+	total time  =          3 seconds =       0.05 minutes
+Total time:
+	user time   =       2.23 seconds =       0.04 minutes
+	system time =       0.03 seconds =       0.00 minutes
+	total time  =          3 seconds =       0.05 minutes
+
+*** tstart() called on osmium
+*** at Sun Jun 11 22:51:12 2023
+
+
+         ------------------------------------------------------------
+                                   SCF GRAD                          
+                          Rob Parrish, Justin Turney,                
+                       Andy Simmonett, and Alex Sokolov              
+         ------------------------------------------------------------
+
+  ==> Geometry <==
+
+    Molecular point group: c2h
+    Full point group: C2h
+
+    Geometry (in Bohr), charge = 0, multiplicity = 1:
+
+       Center              X                  Y                   Z               Mass       
+    ------------   -----------------  -----------------  -----------------  -----------------
+         C           -2.674441177480     0.435056122520     0.000000000000    12.000000000000
+         C            2.674441177480    -0.435056122520     0.000000000000    12.000000000000
+         C           -0.935666060096     2.483971042018     0.000000000000    12.000000000000
+         C            0.935666060096    -2.483971042018     0.000000000000    12.000000000000
+         C            1.680739505909     2.061595534167     0.000000000000    12.000000000000
+         C           -1.680739505909    -2.061595534167     0.000000000000    12.000000000000
+         H           -1.662110878483     4.429016079193     0.000000000000     1.007825032230
+         H            1.662110878483    -4.429016079193     0.000000000000     1.007825032230
+         H            2.981806706495     3.675528893312     0.000000000000     1.007825032230
+         H           -2.981806706495    -3.675528893312     0.000000000000     1.007825032230
+         C            5.451074683560    -0.984716210927     0.000000000000    12.000000000000
+         C           -5.451074683560     0.984716210927     0.000000000000    12.000000000000
+         H            5.934374379093    -3.008369476993     0.000000000000     1.007825032230
+         H           -5.934374379093     3.008369476993     0.000000000000     1.007825032230
+         C            7.332218266519     0.722354505622     0.000000000000    12.000000000000
+         C           -7.332218266519    -0.722354505622     0.000000000000    12.000000000000
+         H            6.981926869304     2.763609103930     0.000000000000     1.007825032230
+         H           -6.981926869304    -2.763609103930     0.000000000000     1.007825032230
+         H            9.319459068080     0.134368889790     0.000000000000     1.007825032230
+         H           -9.319459068080    -0.134368889790     0.000000000000     1.007825032230
+
+  Nuclear repulsion =  445.936979867057005
+
+  ==> Basis Set <==
+
+  Basis Set: STO-3G
+    Blend: STO-3G
+    Number of shells: 40
+    Number of basis functions: 60
+    Number of Cartesian functions: 60
+    Spherical Harmonics?: true
+    Max angular momentum: 1
+
+  ==> DFJKGrad: Density-Fitted SCF Gradients <==
+
+    Gradient:                    1
+    J tasked:                  Yes
+    K tasked:                  Yes
+    wK tasked:                  No
+    OpenMP threads:              1
+    Integrals threads:           1
+    Memory [MiB]:              375
+    Schwarz Cutoff:          1E-12
+    Fitting Condition:       1E-10
+
+   => Auxiliary Basis Set <=
+
+  Basis Set: (STO-3G AUX)
+    Blend: DEF2-UNIVERSAL-JKFIT
+    Number of shells: 310
+    Number of basis functions: 930
+    Number of Cartesian functions: 1090
+    Spherical Harmonics?: true
+    Max angular momentum: 4
+
+
+  -Total Gradient:
+     Atom            X                  Y                   Z
+    ------   -----------------  -----------------  -----------------
+       1       -0.024735470928     0.003903936932     0.000000000000
+       2        0.024735470928    -0.003903936932     0.000000000000
+       3       -0.002952720244     0.014282098017     0.000000000000
+       4        0.002952720244    -0.014282098017     0.000000000000
+       5        0.005586719066     0.013581181151     0.000000000000
+       6       -0.005586719066    -0.013581181151     0.000000000000
+       7       -0.005023796921     0.013071606853     0.000000000000
+       8        0.005023796921    -0.013071606853     0.000000000000
+       9        0.009852580442     0.009824272477     0.000000000000
+      10       -0.009852580442    -0.009824272477     0.000000000000
+      11       -0.032893324696    -0.017480376847     0.000000000000
+      12        0.032893324696     0.017480376847     0.000000000000
+      13        0.003237907294    -0.014105398809     0.000000000000
+      14       -0.003237907294     0.014105398809     0.000000000000
+      15        0.023997630686     0.021039090528     0.000000000000
+      16       -0.023997630686    -0.021039090528     0.000000000000
+      17       -0.003373006231     0.013513875589     0.000000000000
+      18        0.003373006231    -0.013513875589     0.000000000000
+      19        0.013258825864    -0.003904042521     0.000000000000
+      20       -0.013258825864     0.003904042521     0.000000000000
+
+
+*** tstop() called on osmium at Sun Jun 11 22:51:13 2023
+Module time:
+	user time   =       1.74 seconds =       0.03 minutes
+	system time =       0.03 seconds =       0.00 minutes
+	total time  =          1 seconds =       0.02 minutes
+Total time:
+	user time   =       3.97 seconds =       0.07 minutes
+	system time =       0.06 seconds =       0.00 minutes
+	total time  =          4 seconds =       0.07 minutes
+
+    Psi4 stopped on: Sunday, 11 June 2023 10:51PM
+    Psi4 wall time for execution: 0:00:04.12
+
+
+    -----------------------------------------------------------------------
+          Psi4: An Open-Source Ab Initio Electronic Structure Package
+                               Psi4 1.7 release
+
+                         Git: Rev {HEAD} 6ce35a5 
+
+
+    D. G. A. Smith, L. A. Burns, A. C. Simmonett, R. M. Parrish,
+    M. C. Schieber, R. Galvelis, P. Kraus, H. Kruse, R. Di Remigio,
+    A. Alenaizan, A. M. James, S. Lehtola, J. P. Misiewicz, M. Scheurer,
+    R. A. Shaw, J. B. Schriber, Y. Xie, Z. L. Glick, D. A. Sirianni,
+    J. S. O'Brien, J. M. Waldrop, A. Kumar, E. G. Hohenstein,
+    B. P. Pritchard, B. R. Brooks, H. F. Schaefer III, A. Yu. Sokolov,
+    K. Patkowski, A. E. DePrince III, U. Bozkaya, R. A. King,
+    F. A. Evangelista, J. M. Turney, T. D. Crawford, C. D. Sherrill,
+    J. Chem. Phys. 152(18) 184108 (2020). https://doi.org/10.1063/5.0006002
+
+                            Additional Code Authors
+    E. T. Seidl, C. L. Janssen, E. F. Valeev, M. L. Leininger,
+    J. F. Gonthier, R. M. Richard, H. R. McAlexander, M. Saitow, X. Wang,
+    P. Verma, M. H. Lechner, A. Jiang, S. Behnle, A. G. Heide,
+    M. F. Herbst, and D. L. Poole
+
+             Previous Authors, Complete List of Code Contributors,
+                       and Citations for Specific Modules
+    https://github.com/psi4/psi4/blob/master/codemeta.json
+    https://github.com/psi4/psi4/graphs/contributors
+    http://psicode.org/psi4manual/master/introduction.html#citing-psifour
+
+    -----------------------------------------------------------------------
+
+
+    Psi4 started on: Sunday, 11 June 2023 10:51PM
+
+    Process ID: 69074
+    Host:       osmium
+    PSIDATADIR: /home/eric/.pyenv/versions/miniforge3-4.10.1-3/envs/psi4-dev/share/psi4
+    Memory:     500.0 MiB
+    Threads:    1
+    
+  ==> Input QCSchema <==
+
+--------------------------------------------------------------------------
+{'driver': 'gradient',
+ 'extras': {'psiapi': True, 'wfn_qcvars_only': True},
+ 'id': None,
+ 'keywords': {'FD_PROJECT': 1,
+              'PARENT_SYMMETRY': 'C2h(Z)',
+              'SCF__D_CONVERGENCE': 1e-08,
+              'SCF__E_CONVERGENCE': 1e-08,
+              'function_kwargs': {}},
+ 'model': {'basis': 'sto-3g', 'method': 'scf'},
+ 'molecule': {'atom_labels': ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+              'atomic_numbers': [6, 6, 6, 6, 6, 6, 1, 1, 1, 1, 6, 6, 1, 1, 6, 6, 1, 1, 1, 1],
+              'fix_com': True,
+              'fix_orientation': True,
+              'fragment_charges': [0.0],
+              'fragment_multiplicities': [1],
+              'fragments': [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]],
+              'geometry': [-2.675461030975942, 0.43506555893295096, 0.0, 2.675461030975942, -0.43506555893295096, 0.0,
+                           -0.9356572957313722, 2.483974343392048, 0.0, 0.9356572957313722, -2.483974343392048, 0.0,
+                           1.680746779977367, 2.0615896038988675, 0.0, -1.680746779977367, -2.0615896038988675, 0.0,
+                           -1.6620952512839975, 4.429021943732187, 0.0, 1.6620952512839975, -4.429021943732187, 0.0,
+                           2.981819675113787, 3.6755183724005462, 0.0, -2.981819675113787, -3.6755183724005462, 0.0,
+                           5.451071209118448, -0.9847354443254305, 0.0, -5.451071209118448, 0.9847354443254305, 0.0,
+                           5.934363764458103, -3.008390415650598, 0.0, -5.934363764458103, 3.008390415650598, 0.0,
+                           7.332220815251341, 0.7223286348568029, 0.0, -7.332220815251341, -0.7223286348568029, 0.0,
+                           6.981936620333886, 2.763584469121922, 0.0, -6.981936620333886, -2.763584469121922, 0.0,
+                           9.319459542183262, 0.13433600730779854, 0.0, -9.319459542183262, -0.13433600730779854, 0.0],
+              'mass_numbers': [12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 12, 12, 1, 1, 12, 12, 1, 1, 1, 1],
+              'masses': [12.0, 12.0, 12.0, 12.0, 12.0, 12.0, 1.00782503223, 1.00782503223, 1.00782503223, 1.00782503223,
+                         12.0, 12.0, 1.00782503223, 1.00782503223, 12.0, 12.0, 1.00782503223, 1.00782503223,
+                         1.00782503223, 1.00782503223],
+              'molecular_charge': 0.0,
+              'molecular_multiplicity': 1,
+              'name': 'dvb',
+              'provenance': {'creator': 'QCElemental',
+                             'routine': 'qcelemental.molparse.from_string',
+                             'version': 'v0.25.1'},
+              'real': [True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True,
+                       True, True, True, True],
+              'schema_name': 'qcschema_molecule',
+              'schema_version': 2,
+              'symbols': ['C', 'C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'C', 'C', 'H', 'H', 'C', 'C', 'H', 'H', 'H',
+                          'H'],
+              'validated': True},
+ 'protocols': {'stdout': True},
+ 'provenance': {'creator': 'QCElemental', 'routine': 'qcelemental.models.results', 'version': 'v0.25.1'},
+ 'schema_name': 'qcschema_input',
+ 'schema_version': 1}
+--------------------------------------------------------------------------
+
+Scratch directory: /tmp/
+gradient() will perform analytic gradient computation.
+
+*** tstart() called on osmium
+*** at Sun Jun 11 22:51:14 2023
+
+   => Loading Basis Set <=
+
+    Name: STO-3G
+    Role: ORBITAL
+    Keyword: BASIS
+    atoms 1-6, 11-12, 15-16  entry C          line    61 file /home/eric/.pyenv/versions/miniforge3-4.10.1-3/envs/psi4-dev/share/psi4/basis/sto-3g.gbs 
+    atoms 7-10, 13-14, 17-20 entry H          line    19 file /home/eric/.pyenv/versions/miniforge3-4.10.1-3/envs/psi4-dev/share/psi4/basis/sto-3g.gbs 
+
+
+         ---------------------------------------------------------
+                                   SCF
+               by Justin Turney, Rob Parrish, Andy Simmonett
+                          and Daniel G. A. Smith
+                              RHF Reference
+                        1 Threads,    500 MiB Core
+         ---------------------------------------------------------
+
+  ==> Geometry <==
+
+    Molecular point group: c2h
+    Full point group: C2h
+
+    Geometry (in Bohr), charge = 0, multiplicity = 1:
+
+       Center              X                  Y                   Z               Mass       
+    ------------   -----------------  -----------------  -----------------  -----------------
+         C           -2.675461030976     0.435065558933     0.000000000000    12.000000000000
+         C            2.675461030976    -0.435065558933     0.000000000000    12.000000000000
+         C           -0.935657295731     2.483974343392     0.000000000000    12.000000000000
+         C            0.935657295731    -2.483974343392     0.000000000000    12.000000000000
+         C            1.680746779977     2.061589603899     0.000000000000    12.000000000000
+         C           -1.680746779977    -2.061589603899     0.000000000000    12.000000000000
+         H           -1.662095251284     4.429021943732     0.000000000000     1.007825032230
+         H            1.662095251284    -4.429021943732     0.000000000000     1.007825032230
+         H            2.981819675114     3.675518372401     0.000000000000     1.007825032230
+         H           -2.981819675114    -3.675518372401     0.000000000000     1.007825032230
+         C            5.451071209118    -0.984735444325     0.000000000000    12.000000000000
+         C           -5.451071209118     0.984735444325     0.000000000000    12.000000000000
+         H            5.934363764458    -3.008390415651     0.000000000000     1.007825032230
+         H           -5.934363764458     3.008390415651     0.000000000000     1.007825032230
+         C            7.332220815251     0.722328634857     0.000000000000    12.000000000000
+         C           -7.332220815251    -0.722328634857     0.000000000000    12.000000000000
+         H            6.981936620334     2.763584469122     0.000000000000     1.007825032230
+         H           -6.981936620334    -2.763584469122     0.000000000000     1.007825032230
+         H            9.319459542183     0.134336007308     0.000000000000     1.007825032230
+         H           -9.319459542183    -0.134336007308     0.000000000000     1.007825032230
+
+  Running in c2h symmetry.
+
+  Rotational constants: A =      0.15403  B =      0.02287  C =      0.01992 [cm^-1]
+  Rotational constants: A =   4617.84215  B =    685.72769  C =    597.06619 [MHz]
+  Nuclear repulsion =  445.928891554728693
+
+  Charge       = 0
+  Multiplicity = 1
+  Electrons    = 70
+  Nalpha       = 35
+  Nbeta        = 35
+
+  ==> Algorithm <==
+
+  SCF Algorithm Type is DF.
+  DIIS enabled.
+  MOM disabled.
+  Fractional occupation disabled.
+  Guess Type is SAD.
+  Energy threshold   = 1.00e-08
+  Density threshold  = 1.00e-08
+  Integral threshold = 1.00e-12
+
+  ==> Primary Basis <==
+
+  Basis Set: STO-3G
+    Blend: STO-3G
+    Number of shells: 40
+    Number of basis functions: 60
+    Number of Cartesian functions: 60
+    Spherical Harmonics?: true
+    Max angular momentum: 1
+
+   => Loading Basis Set <=
+
+    Name: (STO-3G AUX)
+    Role: JKFIT
+    Keyword: DF_BASIS_SCF
+    atoms 1-6, 11-12, 15-16  entry C          line   198 file /home/eric/.pyenv/versions/miniforge3-4.10.1-3/envs/psi4-dev/share/psi4/basis/def2-universal-jkfit.gbs 
+    atoms 7-10, 13-14, 17-20 entry H          line    18 file /home/eric/.pyenv/versions/miniforge3-4.10.1-3/envs/psi4-dev/share/psi4/basis/def2-universal-jkfit.gbs 
+
+  ==> Integral Setup <==
+
+  DFHelper Memory: AOs need 0.031 GiB; user supplied 0.366 GiB. Using in-core AOs.
+
+  ==> MemDFJK: Density-Fitted J/K Matrices <==
+
+    J tasked:                   Yes
+    K tasked:                   Yes
+    wK tasked:                   No
+    OpenMP threads:               1
+    Memory [MiB]:               375
+    Algorithm:                 Core
+    Schwarz Cutoff:           1E-12
+    Mask sparsity (%):       4.1111
+    Fitting Condition:        1E-10
+
+   => Auxiliary Basis Set <=
+
+  Basis Set: (STO-3G AUX)
+    Blend: DEF2-UNIVERSAL-JKFIT
+    Number of shells: 310
+    Number of basis functions: 930
+    Number of Cartesian functions: 1090
+    Spherical Harmonics?: true
+    Max angular momentum: 4
+
+  Minimum eigenvalue in the overlap matrix is 1.8589104232E-01.
+  Reciprocal condition number of the overlap matrix is 7.9092669293E-02.
+    Using symmetric orthogonalization.
+
+  ==> Pre-Iterations <==
+
+  SCF Guess: Superposition of Atomic Densities via on-the-fly atomic UHF (no occupation information).
+
+   -------------------------
+    Irrep   Nso     Nmo    
+   -------------------------
+     Ag        25      25 
+     Bg         5       5 
+     Au         5       5 
+     Bu        25      25 
+   -------------------------
+    Total      60      60
+   -------------------------
+
+  ==> Iterations <==
+
+                           Total Energy        Delta E     RMS |[F,P]|
+
+   @DF-RHF iter SAD:  -372.47024095659549   -3.72470e+02   0.00000e+00 
+   @DF-RHF iter   1:  -379.75137827987794   -7.28114e+00   3.88924e-03 ADIIS/DIIS
+   @DF-RHF iter   2:  -379.76847513320376   -1.70969e-02   1.09152e-03 ADIIS/DIIS
+   @DF-RHF iter   3:  -379.76980126075932   -1.32613e-03   4.96002e-04 ADIIS/DIIS
+   @DF-RHF iter   4:  -379.77004792843132   -2.46668e-04   7.35027e-05 DIIS
+   @DF-RHF iter   5:  -379.77005935420306   -1.14258e-05   1.71978e-05 DIIS
+   @DF-RHF iter   6:  -379.77006009831643   -7.44113e-07   4.55611e-06 DIIS
+   @DF-RHF iter   7:  -379.77006013354605   -3.52296e-08   8.20506e-07 DIIS
+   @DF-RHF iter   8:  -379.77006013466490   -1.11885e-09   2.92081e-07 DIIS
+   @DF-RHF iter   9:  -379.77006013477944   -1.14539e-10   9.95359e-08 DIIS
+   @DF-RHF iter  10:  -379.77006013479820   -1.87583e-11   1.86993e-08 DIIS
+   @DF-RHF iter  11:  -379.77006013479900   -7.95808e-13   5.00548e-09 DIIS
+  Energy and wave function converged.
+
+
+  ==> Post-Iterations <==
+
+    Orbital Energies [Eh]
+    ---------------------
+
+    Doubly Occupied:                                                      
+
+       1Bu   -11.040740     1Ag   -11.040678     2Bu   -11.031774  
+       2Ag   -11.031774     3Bu   -11.029087     3Ag   -11.028957  
+       4Bu   -11.028742     4Ag   -11.028719     5Bu   -11.017661  
+       5Ag   -11.017661     6Ag    -1.090230     6Bu    -1.020335  
+       7Ag    -0.974974     7Bu    -0.950247     8Bu    -0.909607  
+       8Ag    -0.799954     9Ag    -0.762801     9Bu    -0.727692  
+      10Ag    -0.696723    11Ag    -0.628044    10Bu    -0.605732  
+      11Bu    -0.572927    12Bu    -0.553591    12Ag    -0.553183  
+      13Bu    -0.525276    14Bu    -0.496652    13Ag    -0.492548  
+       1Au    -0.463659    15Bu    -0.446496    14Ag    -0.421677  
+      15Ag    -0.415603     1Bg    -0.377018     2Au    -0.315123  
+       2Bg    -0.278320     3Bg    -0.222049  
+
+    Virtual:                                                              
+
+       3Au     0.198852     4Au     0.268590     4Bg     0.308802  
+       5Au     0.397161     5Bg     0.521750    16Ag     0.565232  
+      16Bu     0.575556    17Ag     0.621548    17Bu     0.626077  
+      18Ag     0.658177    18Bu     0.659390    19Bu     0.677308  
+      19Ag     0.694224    20Bu     0.706678    20Ag     0.740055  
+      21Ag     0.802168    21Bu     0.825483    22Ag     0.860609  
+      22Bu     0.887782    23Bu     0.921054    23Ag     0.940056  
+      24Ag     0.990390    24Bu     1.027259    25Ag     1.107609  
+      25Bu     1.124852  
+
+    Final Occupation by Irrep:
+             Ag    Bg    Au    Bu 
+    DOCC [    15,    3,    2,   15 ]
+    NA   [    15,    3,    2,   15 ]
+    NB   [    15,    3,    2,   15 ]
+
+  @DF-RHF Final Energy:  -379.77006013479900
+
+   => Energetics <=
+
+    Nuclear Repulsion Energy =            445.9288915547286933
+    One-Electron Energy =               -1400.2053906016667497
+    Two-Electron Energy =                 574.5064389121390604
+    Total Energy =                       -379.7700601347989959
+
+Computation Completed
+
+
+Properties will be evaluated at   0.000000,   0.000000,   0.000000 [a0]
+
+Properties computed using the SCF density matrix
+
+
+ Multipole Moments:
+
+ ------------------------------------------------------------------------------------
+     Multipole            Electronic (a.u.)      Nuclear  (a.u.)        Total (a.u.)
+ ------------------------------------------------------------------------------------
+
+ L = 1.  Multiply by 2.5417464519 to convert [e a0] to [Debye]
+ Dipole X            :          0.0000000            0.0000000            0.0000000
+ Dipole Y            :          0.0000000            0.0000000            0.0000000
+ Dipole Z            :          0.0000000            0.0000000            0.0000000
+ Magnitude           :                                                    0.0000000
+
+ ------------------------------------------------------------------------------------
+
+*** tstop() called on osmium at Sun Jun 11 22:51:16 2023
+Module time:
+	user time   =       2.14 seconds =       0.04 minutes
+	system time =       0.01 seconds =       0.00 minutes
+	total time  =          2 seconds =       0.03 minutes
+Total time:
+	user time   =       6.16 seconds =       0.10 minutes
+	system time =       0.07 seconds =       0.00 minutes
+	total time  =          7 seconds =       0.12 minutes
+
+*** tstart() called on osmium
+*** at Sun Jun 11 22:51:16 2023
+
+
+         ------------------------------------------------------------
+                                   SCF GRAD                          
+                          Rob Parrish, Justin Turney,                
+                       Andy Simmonett, and Alex Sokolov              
+         ------------------------------------------------------------
+
+  ==> Geometry <==
+
+    Molecular point group: c2h
+    Full point group: C2h
+
+    Geometry (in Bohr), charge = 0, multiplicity = 1:
+
+       Center              X                  Y                   Z               Mass       
+    ------------   -----------------  -----------------  -----------------  -----------------
+         C           -2.675461030976     0.435065558933     0.000000000000    12.000000000000
+         C            2.675461030976    -0.435065558933     0.000000000000    12.000000000000
+         C           -0.935657295731     2.483974343392     0.000000000000    12.000000000000
+         C            0.935657295731    -2.483974343392     0.000000000000    12.000000000000
+         C            1.680746779977     2.061589603899     0.000000000000    12.000000000000
+         C           -1.680746779977    -2.061589603899     0.000000000000    12.000000000000
+         H           -1.662095251284     4.429021943732     0.000000000000     1.007825032230
+         H            1.662095251284    -4.429021943732     0.000000000000     1.007825032230
+         H            2.981819675114     3.675518372401     0.000000000000     1.007825032230
+         H           -2.981819675114    -3.675518372401     0.000000000000     1.007825032230
+         C            5.451071209118    -0.984735444325     0.000000000000    12.000000000000
+         C           -5.451071209118     0.984735444325     0.000000000000    12.000000000000
+         H            5.934363764458    -3.008390415651     0.000000000000     1.007825032230
+         H           -5.934363764458     3.008390415651     0.000000000000     1.007825032230
+         C            7.332220815251     0.722328634857     0.000000000000    12.000000000000
+         C           -7.332220815251    -0.722328634857     0.000000000000    12.000000000000
+         H            6.981936620334     2.763584469122     0.000000000000     1.007825032230
+         H           -6.981936620334    -2.763584469122     0.000000000000     1.007825032230
+         H            9.319459542183     0.134336007308     0.000000000000     1.007825032230
+         H           -9.319459542183    -0.134336007308     0.000000000000     1.007825032230
+
+  Nuclear repulsion =  445.928891554728693
+
+  ==> Basis Set <==
+
+  Basis Set: STO-3G
+    Blend: STO-3G
+    Number of shells: 40
+    Number of basis functions: 60
+    Number of Cartesian functions: 60
+    Spherical Harmonics?: true
+    Max angular momentum: 1
+
+  ==> DFJKGrad: Density-Fitted SCF Gradients <==
+
+    Gradient:                    1
+    J tasked:                  Yes
+    K tasked:                  Yes
+    wK tasked:                  No
+    OpenMP threads:              1
+    Integrals threads:           1
+    Memory [MiB]:              375
+    Schwarz Cutoff:          1E-12
+    Fitting Condition:       1E-10
+
+   => Auxiliary Basis Set <=
+
+  Basis Set: (STO-3G AUX)
+    Blend: DEF2-UNIVERSAL-JKFIT
+    Number of shells: 310
+    Number of basis functions: 930
+    Number of Cartesian functions: 1090
+    Spherical Harmonics?: true
+    Max angular momentum: 4
+
+
+  -Total Gradient:
+     Atom            X                  Y                   Z
+    ------   -----------------  -----------------  -----------------
+       1       -0.025570845515     0.003896944510     0.000000000000
+       2        0.025570845515    -0.003896944510     0.000000000000
+       3       -0.002717713979     0.014473187367     0.000000000000
+       4        0.002717713979    -0.014473187367     0.000000000000
+       5        0.005449794958     0.013702044043     0.000000000000
+       6       -0.005449794958    -0.013702044043     0.000000000000
+       7       -0.005043069995     0.013056152276     0.000000000000
+       8        0.005043069995    -0.013056152276     0.000000000000
+       9        0.009873641434     0.009796587544     0.000000000000
+      10       -0.009873641434    -0.009796587544     0.000000000000
+      11       -0.033188486547    -0.017415349435     0.000000000000
+      12        0.033188486547     0.017415349435     0.000000000000
+      13        0.003231754467    -0.014110631732     0.000000000000
+      14       -0.003231754467     0.014110631732     0.000000000000
+      15        0.023950495130     0.021027118604     0.000000000000
+      16       -0.023950495130    -0.021027118604     0.000000000000
+      17       -0.003371086677     0.013514557236     0.000000000000
+      18        0.003371086677    -0.013514557236     0.000000000000
+      19        0.013257704686    -0.003905409653     0.000000000000
+      20       -0.013257704686     0.003905409653     0.000000000000
+
+
+*** tstop() called on osmium at Sun Jun 11 22:51:17 2023
+Module time:
+	user time   =       1.72 seconds =       0.03 minutes
+	system time =       0.02 seconds =       0.00 minutes
+	total time  =          1 seconds =       0.02 minutes
+Total time:
+	user time   =       7.89 seconds =       0.13 minutes
+	system time =       0.09 seconds =       0.00 minutes
+	total time  =          8 seconds =       0.13 minutes
+
+    Psi4 stopped on: Sunday, 11 June 2023 10:51PM
+    Psi4 wall time for execution: 0:00:03.95
+
+
+  //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>//
+  //      FiniteDifference Results     //
+  //<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<//
+
+  Computing second-derivative from gradients using projected, 
+  symmetry-adapted, cartesian coordinates.
+
+  74 gradients passed in, including the reference geometry.
+  Generating complete list of displacements from unique ones.
+
+    Operation 2 takes plus displacements of irrep Bg to minus ones.
+    Operation 3 takes plus displacements of irrep Au to minus ones.
+    Operation 2 takes plus displacements of irrep Bu to minus ones.
+
+-------------------------------------------------------------
+
+
+  ==> Harmonic Vibrational Analysis <==
+
+  non-mass-weighted Hessian:       Symmetric? True   Hermitian? True   Lin Dep Dim?  6 (0)
+  projection of translations (True) and rotations (False) removed 3 degrees of freedom (6)
+  total projector:                 Symmetric? True   Hermitian? True   Lin Dep Dim?  3 (3)
+  mass-weighted Hessian:           Symmetric? True   Hermitian? True   Lin Dep Dim?  6 (0)
+  pre-proj  low-frequency mode:    0.0000i [cm^-1]
+  pre-proj  low-frequency mode:    0.0000i [cm^-1]
+  pre-proj  low-frequency mode:    0.0000i [cm^-1]
+  pre-proj  low-frequency mode:    0.0000i [cm^-1]
+  pre-proj  low-frequency mode:    0.0000  [cm^-1]
+  pre-proj  low-frequency mode:    0.0000  [cm^-1]
+  pre-proj  all modes:['0.0000i' '0.0000i' '0.0000i' '0.0000i' '0.0000' '0.0000' '137.2531'
+ '244.0758' '247.5649' '319.6159' '339.4832' '414.4598' '452.2471'
+ '522.1326' '546.2237' '597.7306' '663.3425' '729.5645' '791.1124'
+ '806.7015' '861.5098' '923.6819' '937.4614' '997.8482' '1062.5313'
+ '1078.4882' '1160.7726' '1181.6014' '1181.6719' '1197.5788' '1221.6206'
+ '1231.4233' '1236.3306' '1280.8282' '1281.0559' '1328.2308' '1381.2807'
+ '1387.7807' '1426.8887' '1533.3267' '1542.5455' '1558.1267' '1636.2900'
+ '1714.6594' '1726.9039' '1787.1012' '1807.3508' '1874.2978' '1942.4014'
+ '1944.9352' '3519.8432' '3521.1277' '3565.5984' '3565.8797' '3575.6043'
+ '3582.4287' '3602.9058' '3605.7876' '3680.4151' '3680.4324']
+  projected mass-weighted Hessian: Symmetric? True   Hermitian? True   Lin Dep Dim?  6 (3)
+  post-proj low-frequency mode:    0.0000i [cm^-1] (-)
+  post-proj low-frequency mode:    0.0000i [cm^-1] (-)
+  post-proj low-frequency mode:    0.0000  [cm^-1] (-)
+  post-proj low-frequency mode:    0.0000  [cm^-1] (-)
+  post-proj low-frequency mode:    0.0000  [cm^-1] (-)
+  post-proj low-frequency mode:    0.0000  [cm^-1] (-)
+  post-proj  all modes:['0.0000i' '0.0000i' '0.0000' '0.0000' '0.0000' '0.0000' '137.2531'
+ '244.0758' '247.5649' '319.6159' '339.4832' '414.4598' '452.2471'
+ '522.1326' '546.2237' '597.7306' '663.3425' '729.5645' '791.1124'
+ '806.7015' '861.5098' '923.6819' '937.4614' '997.8482' '1062.5313'
+ '1078.4882' '1160.7726' '1181.6014' '1181.6719' '1197.5788' '1221.6206'
+ '1231.4233' '1236.3306' '1280.8282' '1281.0559' '1328.2308' '1381.2807'
+ '1387.7807' '1426.8887' '1533.3267' '1542.5455' '1558.1267' '1636.2900'
+ '1714.6594' '1726.9039' '1787.1012' '1807.3508' '1874.2978' '1942.4014'
+ '1944.9352' '3519.8432' '3521.1277' '3565.5984' '3565.8797' '3575.6043'
+ '3582.4287' '3602.9058' '3605.7876' '3680.4151' '3680.4324']
+
+  Note that "Vibration"s include 3 un-projected rotation-like modes.
+  Vibration                       7                   8                   9           
+  Freq [cm^-1]                 137.2531            244.0758            247.5649       
+  Irrep                           Au                  Bg                  Bu          
+  Reduced mass [u]              4.5433              3.1411              3.8635        
+  Force const [mDyne/A]         0.0504              0.1103              0.1395        
+  Turning point v=0 [a0]        0.4394              0.3963              0.3548        
+  RMS dev v=0 [a0 u^1/2]        0.6623              0.4966              0.4931        
+  IR activ [km/mol]             0.0544              0.0000              0.0655        
+  Char temp [K]                197.4767            351.1707            356.1908       
+  ----------------------------------------------------------------------------------
+      1   C                0.00 -0.00 -0.11    0.00 -0.00 -0.14    0.02 -0.12  0.00   
+      2   C                0.00 -0.00 -0.11    0.00 -0.00  0.14    0.02 -0.12 -0.00   
+      3   C               -0.00 -0.00 -0.17   -0.00 -0.00  0.02    0.02 -0.13  0.00   
+      4   C               -0.00 -0.00 -0.17    0.00 -0.00 -0.02    0.02 -0.13  0.00   
+      5   C               -0.00 -0.00 -0.17   -0.00 -0.00  0.17    0.01 -0.13 -0.00   
+      6   C                0.00 -0.00 -0.17    0.00 -0.00 -0.17    0.01 -0.13  0.00   
+      7   H               -0.00 -0.00 -0.16    0.00 -0.00  0.04    0.03 -0.13  0.00   
+      8   H                0.00 -0.00 -0.16    0.00 -0.00 -0.04    0.03 -0.13  0.00   
+      9   H               -0.00 -0.00 -0.17   -0.00 -0.00  0.29   -0.00 -0.13 -0.00   
+     10   H                0.00 -0.00 -0.17    0.00 -0.00 -0.29   -0.00 -0.13  0.00   
+     11   C                0.00  0.00  0.11    0.00  0.00  0.14    0.05  0.09 -0.00   
+     12   C                0.00 -0.00  0.11    0.00  0.00 -0.14    0.05  0.09  0.00   
+     13   H                0.00  0.00  0.11    0.00  0.00  0.34    0.22  0.13 -0.00   
+     14   H                0.00  0.00  0.11    0.00  0.00 -0.34    0.22  0.13  0.00   
+     15   C               -0.00  0.00  0.29   -0.00  0.00 -0.17   -0.09  0.25 -0.00   
+     16   C               -0.00  0.00  0.29   -0.00  0.00  0.17   -0.09  0.25 -0.00   
+     17   H               -0.00  0.00  0.30   -0.00  0.00 -0.40   -0.24  0.22  0.00   
+     18   H               -0.00  0.00  0.30   -0.00  0.00  0.40   -0.24  0.22 -0.00   
+     19   H               -0.00  0.00  0.43   -0.00  0.00 -0.20   -0.05  0.40 -0.00   
+     20   H               -0.00  0.00  0.43   -0.00  0.00  0.20   -0.05  0.40 -0.00   
+
+  Vibration                       10                  11                  12          
+  Freq [cm^-1]                 319.6159            339.4832            414.4598       
+  Irrep                           Au                  Ag                  Bg          
+  Reduced mass [u]              2.0580              3.7774              2.3791        
+  Force const [mDyne/A]         0.1239              0.2565              0.2408        
+  Turning point v=0 [a0]        0.4278              0.3064              0.3494        
+  RMS dev v=0 [a0 u^1/2]        0.4340              0.4211              0.3811        
+  IR activ [km/mol]             0.0355              0.0000              0.0000        
+  Char temp [K]                459.8561            488.4408            596.3154       
+  ----------------------------------------------------------------------------------
+      1   C                0.00  0.00  0.01   -0.07 -0.11 -0.00    0.00 -0.00  0.17   
+      2   C               -0.00  0.00  0.01    0.07  0.11  0.00    0.00  0.00 -0.17   
+      3   C               -0.00  0.00 -0.04   -0.10 -0.07  0.00    0.00  0.00  0.14   
+      4   C               -0.00  0.00 -0.04    0.10  0.07  0.00    0.00  0.00 -0.14   
+      5   C               -0.00  0.00 -0.05   -0.06  0.07 -0.00    0.00  0.00 -0.08   
+      6   C                0.00  0.00 -0.05    0.06 -0.07 -0.00    0.00  0.00  0.08   
+      7   H               -0.00  0.00 -0.03   -0.17 -0.10  0.00    0.00  0.00  0.20   
+      8   H               -0.00  0.00 -0.03    0.17  0.10  0.00    0.00  0.00 -0.20   
+      9   H               -0.00  0.00 -0.05   -0.14  0.14 -0.00    0.00  0.00 -0.09   
+     10   H                0.00  0.00 -0.05    0.14 -0.14 -0.00    0.00  0.00  0.09   
+     11   C               -0.00  0.00  0.18    0.09  0.04 -0.00    0.00 -0.00  0.10   
+     12   C               -0.00 -0.00  0.18   -0.09 -0.04  0.00   -0.00 -0.00 -0.10   
+     13   H               -0.00  0.00  0.50   -0.02  0.01 -0.00    0.00 -0.00  0.44   
+     14   H               -0.00 -0.00  0.50    0.02 -0.01  0.00   -0.00 -0.00 -0.44   
+     15   C               -0.00  0.00 -0.10    0.24 -0.11 -0.00    0.00 -0.00 -0.00   
+     16   C                0.00 -0.00 -0.10   -0.24  0.11 -0.00   -0.00  0.00  0.00   
+     17   H               -0.00  0.00 -0.44    0.41 -0.08  0.00    0.00 -0.00 -0.35   
+     18   H                0.00 -0.00 -0.44   -0.41  0.08 -0.00   -0.00  0.00  0.35   
+     19   H               -0.00  0.00  0.01    0.19 -0.29 -0.00    0.00 -0.00  0.26   
+     20   H                0.00 -0.00  0.01   -0.19  0.29  0.00   -0.00  0.00 -0.26   
+
+  Vibration                       13                  14                  15          
+  Freq [cm^-1]                 452.2471            522.1326            546.2237       
+  Irrep                           Ag                  Au                  Bu          
+  Reduced mass [u]              4.5169              3.1775              3.4543        
+  Force const [mDyne/A]         0.5443              0.5104              0.6072        
+  Turning point v=0 [a0]        0.2428              0.2694              0.2526        
+  RMS dev v=0 [a0 u^1/2]        0.3648              0.3396              0.3320        
+  IR activ [km/mol]             0.0000              0.0297              2.2872        
+  Char temp [K]                650.6828            751.2326            785.8943       
+  ----------------------------------------------------------------------------------
+      1   C               -0.11  0.16 -0.00    0.00  0.00  0.01   -0.06 -0.02  0.00   
+      2   C                0.11 -0.16  0.00    0.00 -0.00  0.01   -0.06 -0.02  0.00   
+      3   C                0.08  0.03 -0.00    0.00  0.00  0.22   -0.11 -0.07  0.00   
+      4   C               -0.08 -0.03 -0.00   -0.00  0.00  0.22   -0.11 -0.07 -0.00   
+      5   C                0.08 -0.16  0.00    0.00  0.00 -0.22   -0.11 -0.07 -0.00   
+      6   C               -0.08  0.16  0.00   -0.00  0.00 -0.22   -0.11 -0.07 -0.00   
+      7   H                0.27  0.10 -0.00    0.00  0.00  0.42   -0.12 -0.07 -0.00   
+      8   H               -0.27 -0.10 -0.00   -0.00  0.00  0.42   -0.12 -0.07 -0.00   
+      9   H                0.12 -0.19  0.00    0.00 -0.00 -0.47   -0.11 -0.07 -0.00   
+     10   H               -0.12  0.19  0.00   -0.00  0.00 -0.47   -0.11 -0.07 -0.00   
+     11   C                0.22  0.00  0.00    0.00  0.00 -0.01    0.04  0.16  0.00   
+     12   C               -0.22 -0.00  0.00   -0.00 -0.00 -0.01    0.04  0.16  0.00   
+     13   H                0.35  0.03  0.00    0.00  0.00 -0.01    0.04  0.16 -0.00   
+     14   H               -0.35 -0.03  0.00   -0.00 -0.00 -0.01    0.04  0.16 -0.00   
+     15   C                0.15  0.11  0.00    0.00  0.00  0.00    0.21  0.01 -0.00   
+     16   C               -0.15 -0.11  0.00   -0.00 -0.00  0.00    0.21  0.01 -0.00   
+     17   H                0.08  0.10  0.00   -0.00  0.00  0.03    0.49  0.06  0.00   
+     18   H               -0.08 -0.10  0.00   -0.00 -0.00  0.03    0.49  0.06  0.00   
+     19   H                0.18  0.19  0.00    0.00  0.00 -0.02    0.14 -0.26 -0.00   
+     20   H               -0.18 -0.19  0.00   -0.00 -0.00 -0.02    0.14 -0.26 -0.00   
+
+  Vibration                       16                  17                  18          
+  Freq [cm^-1]                 597.7306            663.3425            729.5645       
+  Irrep                           Au                  Ag                  Ag          
+  Reduced mass [u]              2.3270              2.9751              6.9221        
+  Force const [mDyne/A]         0.4898              0.7713              2.1708        
+  Turning point v=0 [a0]        0.2942              0.2470              0.1544        
+  RMS dev v=0 [a0 u^1/2]        0.3174              0.3013              0.2873        
+  IR activ [km/mol]             2.5660              0.0000              0.0000        
+  Char temp [K]                860.0013            954.4022           1049.6809       
+  ----------------------------------------------------------------------------------
+      1   C                0.00  0.00  0.22    0.12  0.05  0.00    0.00 -0.12 -0.00   
+      2   C                0.00 -0.00  0.22   -0.12 -0.05  0.00   -0.00  0.12  0.00   
+      3   C                0.00  0.00 -0.08    0.06  0.14 -0.00    0.26 -0.23  0.00   
+      4   C                0.00 -0.00 -0.08   -0.06 -0.14 -0.00   -0.26  0.23 -0.00   
+      5   C                0.00  0.00 -0.07    0.02 -0.01 -0.00    0.32  0.17 -0.00   
+      6   C                0.00 -0.00 -0.07   -0.02  0.01  0.00   -0.32 -0.17  0.00   
+      7   H                0.00  0.00 -0.32    0.07  0.15 -0.00    0.16 -0.27  0.00   
+      8   H                0.00 -0.00 -0.32   -0.07 -0.15 -0.00   -0.16  0.27 -0.00   
+      9   H                0.00 -0.00 -0.29    0.17 -0.13 -0.00    0.26  0.22 -0.00   
+     10   H                0.00 -0.00 -0.29   -0.17  0.13 -0.00   -0.26 -0.22  0.00   
+     11   C               -0.00 -0.00  0.03   -0.10  0.18  0.00   -0.01  0.06  0.00   
+     12   C               -0.00  0.00  0.03    0.10 -0.18  0.00    0.01 -0.06 -0.00   
+     13   H                0.00 -0.00 -0.25   -0.08  0.18 -0.00   -0.02  0.06 -0.00   
+     14   H               -0.00  0.00 -0.25    0.08 -0.18 -0.00    0.02 -0.06  0.00   
+     15   C               -0.00 -0.00 -0.02    0.08  0.01 -0.00    0.02  0.04 -0.00   
+     16   C               -0.00 -0.00 -0.02   -0.08 -0.01 -0.00   -0.02 -0.04  0.00   
+     17   H               -0.00 -0.00  0.27    0.43  0.07  0.00    0.11  0.05  0.00   
+     18   H                0.00  0.00  0.27   -0.43 -0.07  0.00   -0.11 -0.05 -0.00   
+     19   H               -0.00  0.00 -0.35   -0.02 -0.33 -0.00    0.00 -0.03 -0.00   
+     20   H               -0.00 -0.00 -0.35    0.02  0.33 -0.00   -0.00  0.03  0.00   
+
+  Vibration                       19                  20                  21          
+  Freq [cm^-1]                 791.1124            806.7015            861.5098       
+  Irrep                           Bg                  Bu                  Au          
+  Reduced mass [u]              1.9952              3.1514              1.4403        
+  Force const [mDyne/A]         0.7357              1.2083              0.6298        
+  Turning point v=0 [a0]        0.2762              0.2176              0.3115        
+  RMS dev v=0 [a0 u^1/2]        0.2759              0.2732              0.2643        
+  IR activ [km/mol]             0.0000              7.4410              0.0045        
+  Char temp [K]               1138.2346           1160.6639           1239.5208       
+  ----------------------------------------------------------------------------------
+      1   C                0.00 -0.00  0.08    0.02 -0.03  0.00    0.00  0.00  0.08   
+      2   C               -0.00  0.00 -0.08    0.02 -0.03  0.00   -0.00 -0.00  0.08   
+      3   C                0.00 -0.00 -0.11   -0.11  0.07 -0.00   -0.00  0.00  0.01   
+      4   C               -0.00  0.00  0.11   -0.11  0.07  0.00    0.00 -0.00  0.01   
+      5   C                0.00  0.00  0.11   -0.14  0.04  0.00   -0.00 -0.00  0.01   
+      6   C               -0.00 -0.00 -0.11   -0.14  0.04 -0.00    0.00  0.00  0.01   
+      7   H                0.00 -0.00 -0.17   -0.20  0.04 -0.00   -0.00  0.00 -0.26   
+      8   H               -0.00  0.00  0.17   -0.20  0.04  0.00   -0.00 -0.00 -0.26   
+      9   H                0.00  0.00  0.21   -0.19  0.09  0.00   -0.00 -0.00 -0.25   
+     10   H               -0.00 -0.00 -0.21   -0.19  0.09 -0.00    0.00  0.00 -0.25   
+     11   C               -0.00  0.00 -0.12    0.18 -0.14 -0.00   -0.00 -0.00 -0.11   
+     12   C               -0.00  0.00  0.12    0.18 -0.14  0.00   -0.00  0.00 -0.11   
+     13   H               -0.00  0.00  0.21    0.22 -0.14  0.00    0.00 -0.00  0.21   
+     14   H               -0.00  0.00 -0.21    0.22 -0.14 -0.00    0.00  0.00  0.21   
+     15   C                0.00  0.00  0.02    0.06  0.03 -0.00   -0.00 -0.00  0.02   
+     16   C               -0.00 -0.00 -0.02    0.06  0.03 -0.00   -0.00  0.00  0.02   
+     17   H                0.00  0.00 -0.32   -0.28 -0.03 -0.00    0.00 -0.00 -0.30   
+     18   H                0.00 -0.00  0.32   -0.28 -0.03  0.00    0.00  0.00 -0.30   
+     19   H               -0.00 -0.00  0.49    0.17  0.37  0.00   -0.00 -0.00  0.47   
+     20   H               -0.00 -0.00 -0.49    0.17  0.37 -0.00   -0.00 -0.00  0.47   
+
+  Vibration                       22                  23                  24          
+  Freq [cm^-1]                 923.6819            937.4614            997.8482       
+  Irrep                           Ag                  Bg                  Bu          
+  Reduced mass [u]              4.6661              2.7314              6.8698        
+  Force const [mDyne/A]         2.3456              1.4143              4.0302        
+  Turning point v=0 [a0]        0.1671              0.2168              0.1325        
+  RMS dev v=0 [a0 u^1/2]        0.2553              0.2534              0.2456        
+  IR activ [km/mol]             0.0000              0.0000              1.8808        
+  Char temp [K]               1328.9726           1348.7983           1435.6814       
+  ----------------------------------------------------------------------------------
+      1   C                0.05 -0.01 -0.00    0.00  0.00  0.22    0.07  0.31  0.00   
+      2   C               -0.05  0.01 -0.00   -0.00  0.00 -0.22    0.07  0.31  0.00   
+      3   C               -0.01  0.25 -0.00   -0.00 -0.00 -0.09   -0.28 -0.08  0.00   
+      4   C                0.01 -0.25  0.00   -0.00  0.00  0.09   -0.28 -0.08  0.00   
+      5   C                0.07  0.26  0.00    0.00 -0.00  0.08    0.22 -0.18 -0.00   
+      6   C               -0.07 -0.26 -0.00    0.00  0.00 -0.08    0.22 -0.18  0.00   
+      7   H               -0.19  0.20  0.00    0.00 -0.00 -0.24   -0.18 -0.04 -0.00   
+      8   H                0.19 -0.20  0.00   -0.00  0.00  0.24   -0.18 -0.04 -0.00   
+      9   H                0.18  0.20  0.00   -0.00 -0.00  0.23    0.11 -0.09  0.00   
+     10   H               -0.18 -0.20  0.00    0.00  0.00 -0.23    0.11 -0.09 -0.00   
+     11   C                0.11 -0.10  0.00   -0.00  0.00  0.12    0.02 -0.03 -0.00   
+     12   C               -0.11  0.10 -0.00    0.00 -0.00 -0.12    0.02 -0.03  0.00   
+     13   H                0.14 -0.10 -0.00   -0.00  0.00 -0.18   -0.19 -0.07 -0.00   
+     14   H               -0.14  0.10  0.00    0.00 -0.00  0.18   -0.19 -0.07 -0.00   
+     15   C                0.05  0.01  0.00    0.00 -0.00 -0.02    0.01 -0.01 -0.00   
+     16   C               -0.05 -0.01  0.00    0.00  0.00  0.02    0.01 -0.01 -0.00   
+     17   H               -0.21 -0.03  0.00   -0.00 -0.00  0.27   -0.26 -0.06 -0.00   
+     18   H                0.21  0.03 -0.00   -0.00 -0.00 -0.27   -0.26 -0.06  0.00   
+     19   H                0.14  0.30 -0.00    0.00  0.00 -0.45    0.08  0.25  0.00   
+     20   H               -0.14 -0.30  0.00    0.00  0.00  0.45    0.08  0.25 -0.00   
+
+  Vibration                       25                  26                  27          
+  Freq [cm^-1]                1062.5313           1078.4882           1160.7726       
+  Irrep                           Au                  Bg                  Bu          
+  Reduced mass [u]              1.5075              1.2493              3.1678        
+  Force const [mDyne/A]         1.0028              0.8561              2.5148        
+  Turning point v=0 [a0]        0.2742              0.2989              0.1810        
+  RMS dev v=0 [a0 u^1/2]        0.2380              0.2363              0.2277        
+  IR activ [km/mol]            17.5928              0.0000              0.4156        
+  Char temp [K]               1528.7459           1551.7043           1670.0934       
+  ----------------------------------------------------------------------------------
+      1   C                0.00 -0.00  0.10    0.00 -0.00 -0.00    0.04 -0.01  0.00   
+      2   C               -0.00 -0.00  0.10    0.00 -0.00  0.00    0.04 -0.01 -0.00   
+      3   C               -0.00 -0.00 -0.07   -0.00 -0.00 -0.07    0.01  0.22 -0.00   
+      4   C               -0.00 -0.00 -0.07   -0.00 -0.00  0.07    0.01  0.22  0.00   
+      5   C                0.00  0.00 -0.08    0.00  0.00 -0.08   -0.06 -0.21  0.00   
+      6   C                0.00  0.00 -0.08    0.00  0.00  0.08   -0.06 -0.21 -0.00   
+      7   H               -0.00 -0.00  0.47   -0.00 -0.00  0.48    0.28  0.34  0.00   
+      8   H               -0.00 -0.00  0.47   -0.00 -0.00 -0.48    0.28  0.34 -0.00   
+      9   H                0.00  0.00  0.48    0.00  0.00  0.50    0.17 -0.41 -0.00   
+     10   H                0.00  0.00  0.48    0.00  0.00 -0.50    0.17 -0.41  0.00   
+     11   C                0.00  0.00 -0.05   -0.00 -0.00  0.00   -0.00  0.00  0.00   
+     12   C                0.00 -0.00 -0.05    0.00 -0.00 -0.00   -0.00  0.00 -0.00   
+     13   H                0.00  0.00  0.02    0.00  0.00 -0.00   -0.01  0.00  0.00   
+     14   H                0.00 -0.00  0.02    0.00  0.00  0.00   -0.01  0.00  0.00   
+     15   C               -0.00  0.00  0.00   -0.00  0.00  0.00   -0.02  0.00  0.00   
+     16   C               -0.00  0.00  0.00   -0.00  0.00 -0.00   -0.02  0.00  0.00   
+     17   H                0.00  0.00 -0.08    0.00  0.00 -0.00    0.05  0.01  0.00   
+     18   H                0.00  0.00 -0.08    0.00  0.00  0.00    0.05  0.01 -0.00   
+     19   H               -0.00 -0.00  0.15   -0.00 -0.00 -0.02   -0.04 -0.07  0.00   
+     20   H               -0.00 -0.00  0.15   -0.00 -0.00  0.02   -0.04 -0.07  0.00   
+
+  Vibration                       28                  29                  30          
+  Freq [cm^-1]                1181.6014           1181.6719           1197.5788       
+  Irrep                           Au                  Bg                  Bg          
+  Reduced mass [u]              1.3453              1.3471              1.2614        
+  Force const [mDyne/A]         1.1066              1.1083              1.0659        
+  Turning point v=0 [a0]        0.2752              0.2750              0.2823        
+  RMS dev v=0 [a0 u^1/2]        0.2257              0.2257              0.2242        
+  IR activ [km/mol]            29.7354              0.0000              0.0000        
+  Char temp [K]               1700.0614           1700.1628           1723.0492       
+  ----------------------------------------------------------------------------------
+      1   C                0.00 -0.00 -0.00    0.00 -0.00  0.00    0.00  0.00  0.02   
+      2   C               -0.00 -0.00 -0.00    0.00 -0.00 -0.00    0.00  0.00 -0.02   
+      3   C               -0.00 -0.00 -0.00   -0.00 -0.00 -0.00   -0.00 -0.00 -0.08   
+      4   C               -0.00 -0.00 -0.00   -0.00 -0.00  0.00   -0.00 -0.00  0.08   
+      5   C                0.00  0.00  0.01    0.00  0.00 -0.00    0.00  0.00  0.07   
+      6   C                0.00  0.00  0.01    0.00  0.00  0.00    0.00  0.00 -0.07   
+      7   H               -0.00 -0.00  0.03   -0.00 -0.00  0.01   -0.00 -0.00  0.50   
+      8   H               -0.00 -0.00  0.03   -0.00 -0.00 -0.01   -0.00 -0.00 -0.50   
+      9   H               -0.00  0.00 -0.03   -0.00  0.00  0.00   -0.00  0.00 -0.48   
+     10   H               -0.00  0.00 -0.03    0.00  0.00 -0.00   -0.00  0.00  0.48   
+     11   C               -0.00 -0.00  0.04    0.00 -0.00  0.04    0.00 -0.00  0.01   
+     12   C                0.00 -0.00  0.04    0.00 -0.00 -0.04    0.00 -0.00 -0.01   
+     13   H               -0.00 -0.00 -0.01    0.00  0.00 -0.01    0.00  0.00  0.03   
+     14   H                0.00 -0.00 -0.01    0.00 -0.00  0.01    0.00 -0.00 -0.03   
+     15   C                0.00 -0.00 -0.12   -0.00  0.00 -0.12   -0.00  0.00  0.00   
+     16   C               -0.00 -0.00 -0.12   -0.00 -0.00  0.12   -0.00  0.00 -0.00   
+     17   H               -0.00 -0.00  0.49    0.00  0.00  0.49    0.00  0.00  0.02   
+     18   H                0.00 -0.00  0.49    0.00  0.00 -0.49    0.00  0.00 -0.02   
+     19   H                0.00  0.00  0.49   -0.00 -0.00  0.49   -0.00 -0.00 -0.04   
+     20   H               -0.00 -0.00  0.49   -0.00 -0.00 -0.49   -0.00 -0.00  0.04   
+
+  Vibration                       31                  32                  33          
+  Freq [cm^-1]                1221.6206           1231.4233           1236.3306       
+  Irrep                           Au                  Ag                  Bu          
+  Reduced mass [u]              1.3118              1.5356              1.4641        
+  Force const [mDyne/A]         1.1535              1.3720              1.3185        
+  Turning point v=0 [a0]        0.2741              0.2523              0.2579        
+  RMS dev v=0 [a0 u^1/2]        0.2220              0.2211              0.2207        
+  IR activ [km/mol]             0.0412              0.0000              7.1033        
+  Char temp [K]               1757.6400           1771.7439           1778.8045       
+  ----------------------------------------------------------------------------------
+      1   C                0.00 -0.00  0.00    0.09 -0.03 -0.00   -0.04  0.03  0.00   
+      2   C                0.00 -0.00  0.00   -0.09  0.03  0.00   -0.04  0.03  0.00   
+      3   C               -0.00  0.00 -0.08    0.04 -0.02 -0.00    0.07 -0.03 -0.00   
+      4   C               -0.00  0.00 -0.08   -0.04  0.02 -0.00    0.07 -0.03 -0.00   
+      5   C                0.00  0.00  0.08   -0.03 -0.04  0.00   -0.05 -0.02  0.00   
+      6   C                0.00  0.00  0.08    0.03  0.04  0.00   -0.05 -0.02  0.00   
+      7   H               -0.00 -0.00  0.50    0.07 -0.02  0.00    0.28  0.04  0.00   
+      8   H               -0.00 -0.00  0.50   -0.07  0.02  0.00    0.28  0.04  0.00   
+      9   H                0.00  0.00 -0.48    0.01 -0.09 -0.00   -0.11  0.01 -0.00   
+     10   H                0.00 -0.00 -0.48   -0.01  0.09 -0.00   -0.11  0.01 -0.00   
+     11   C                0.00 -0.00 -0.00   -0.02  0.03 -0.00   -0.03  0.04 -0.00   
+     12   C                0.00 -0.00 -0.00    0.02 -0.03 -0.00   -0.03  0.04 -0.00   
+     13   H                0.00  0.00  0.01   -0.30 -0.04  0.00   -0.31 -0.02  0.00   
+     14   H                0.00  0.00  0.01    0.30  0.04  0.00   -0.31 -0.02  0.00   
+     15   C               -0.00  0.00  0.01    0.09 -0.03  0.00    0.07 -0.04  0.00   
+     16   C               -0.00  0.00  0.01   -0.09  0.03  0.00    0.07 -0.04  0.00   
+     17   H                0.00  0.00 -0.03   -0.35 -0.11  0.00   -0.33 -0.11  0.00   
+     18   H                0.00  0.00 -0.03    0.35  0.11  0.00   -0.33 -0.11  0.00   
+     19   H               -0.00 -0.00 -0.02    0.24  0.43 -0.00    0.19  0.36 -0.00   
+     20   H               -0.00 -0.00 -0.02   -0.24 -0.43 -0.00    0.19  0.36 -0.00   
+
+  Vibration                       34                  35                  36          
+  Freq [cm^-1]                1280.8282           1281.0559           1328.2308       
+  Irrep                           Au                  Bg                  Bu          
+  Reduced mass [u]              1.0985              1.0998              1.6262        
+  Force const [mDyne/A]         1.0618              1.0634              1.6903        
+  Turning point v=0 [a0]        0.2925              0.2923              0.2361        
+  RMS dev v=0 [a0 u^1/2]        0.2168              0.2168              0.2129        
+  IR activ [km/mol]             9.2403              0.0000              5.6123        
+  Char temp [K]               1842.8266           1843.1543           1911.0283       
+  ----------------------------------------------------------------------------------
+      1   C                0.00 -0.00  0.00    0.00  0.00 -0.00   -0.10 -0.08  0.00   
+      2   C                0.00 -0.00  0.00   -0.00  0.00  0.00   -0.10 -0.08 -0.00   
+      3   C               -0.00  0.00 -0.00    0.00 -0.00  0.00   -0.02  0.05 -0.00   
+      4   C               -0.00  0.00 -0.00    0.00 -0.00 -0.00   -0.02  0.05 -0.00   
+      5   C                0.00  0.00  0.00   -0.00 -0.00 -0.00    0.07  0.04  0.00   
+      6   C                0.00 -0.00  0.00   -0.00  0.00  0.00    0.07  0.04  0.00   
+      7   H               -0.00 -0.00  0.01    0.00  0.00 -0.03   -0.28 -0.04  0.00   
+      8   H               -0.00 -0.00  0.01    0.00  0.00  0.03   -0.28 -0.04 -0.00   
+      9   H                0.00  0.00  0.02   -0.00 -0.00  0.03    0.49 -0.28 -0.00   
+     10   H                0.00 -0.00  0.02   -0.00  0.00 -0.03    0.49 -0.28 -0.00   
+     11   C                0.00 -0.00 -0.06   -0.00  0.00 -0.06   -0.02  0.01 -0.00   
+     12   C                0.00 -0.00 -0.06   -0.00  0.00  0.06   -0.02  0.01  0.00   
+     13   H                0.00  0.00  0.58   -0.00 -0.00  0.58   -0.06 -0.00 -0.00   
+     14   H                0.00  0.00  0.58   -0.00 -0.00 -0.58   -0.06 -0.00 -0.00   
+     15   C               -0.00  0.00  0.01    0.00 -0.00  0.01    0.05 -0.01 -0.00   
+     16   C               -0.00  0.00  0.01    0.00 -0.00 -0.01    0.05 -0.01 -0.00   
+     17   H                0.00  0.00  0.32   -0.00 -0.00  0.32   -0.09 -0.03 -0.00   
+     18   H                0.00  0.00  0.32   -0.00 -0.00 -0.32   -0.09 -0.03  0.00   
+     19   H               -0.00 -0.00 -0.24    0.00  0.00 -0.24    0.12  0.22 -0.00   
+     20   H               -0.00 -0.00 -0.24    0.00  0.00  0.24    0.12  0.22 -0.00   
+
+  Vibration                       37                  38                  39          
+  Freq [cm^-1]                1381.2807           1387.7807           1426.8887       
+  Irrep                           Ag                  Ag                  Bu          
+  Reduced mass [u]              2.5807              1.3132              1.9711        
+  Force const [mDyne/A]         2.9011              1.4902              2.3645        
+  Turning point v=0 [a0]        0.1838              0.2570              0.2069        
+  RMS dev v=0 [a0 u^1/2]        0.2088              0.2083              0.2054        
+  IR activ [km/mol]             0.0000              0.0000              0.2444        
+  Char temp [K]               1987.3554           1996.7074           2052.9751       
+  ----------------------------------------------------------------------------------
+      1   C                0.21  0.01  0.00    0.03  0.00  0.00    0.17 -0.06 -0.00   
+      2   C               -0.21 -0.01  0.00   -0.03 -0.00 -0.00    0.17 -0.06 -0.00   
+      3   C                0.03 -0.08 -0.00    0.07 -0.00 -0.00    0.00  0.04 -0.00   
+      4   C               -0.03  0.08  0.00   -0.07  0.00  0.00    0.00  0.04 -0.00   
+      5   C               -0.07 -0.01  0.00   -0.07  0.03  0.00   -0.03 -0.01  0.00   
+      6   C                0.07  0.01  0.00    0.07 -0.03  0.00   -0.03 -0.01 -0.00   
+      7   H               -0.35 -0.24  0.00    0.44  0.13  0.00   -0.53 -0.16  0.00   
+      8   H                0.35  0.24 -0.00   -0.44 -0.13 -0.00   -0.53 -0.16  0.00   
+      9   H                0.08 -0.15 -0.00   -0.41  0.30 -0.00   -0.10  0.05 -0.00   
+     10   H               -0.08  0.15  0.00    0.41 -0.30 -0.00   -0.10  0.05 -0.00   
+     11   C                0.06 -0.09 -0.00    0.01 -0.02 -0.00   -0.04  0.08  0.00   
+     12   C               -0.06  0.09 -0.00   -0.01  0.02  0.00   -0.04  0.08 -0.00   
+     13   H                0.40 -0.03 -0.00    0.09 -0.01 -0.00   -0.32  0.03  0.00   
+     14   H               -0.40  0.03  0.00   -0.09  0.01 -0.00   -0.32  0.03  0.00   
+     15   C                0.01  0.04 -0.00    0.00  0.01 -0.00   -0.00 -0.03  0.00   
+     16   C               -0.01 -0.04 -0.00   -0.00 -0.01 -0.00   -0.00 -0.03  0.00   
+     17   H                0.22  0.09 -0.00    0.06  0.02 -0.00   -0.17 -0.07  0.00   
+     18   H               -0.22 -0.09  0.00   -0.06 -0.02 -0.00   -0.17 -0.07 -0.00   
+     19   H               -0.01 -0.05 -0.00   -0.01 -0.04 -0.00    0.01  0.02 -0.00   
+     20   H                0.01  0.05 -0.00    0.01  0.04  0.00    0.01  0.02  0.00   
+
+  Vibration                       40                  41                  42          
+  Freq [cm^-1]                1533.3267           1542.5455           1558.1267       
+  Irrep                           Ag                  Bu                  Ag          
+  Reduced mass [u]              1.4463              1.3670              1.3576        
+  Force const [mDyne/A]         2.0035              1.9165              1.9420        
+  Turning point v=0 [a0]        0.2330              0.2389              0.2386        
+  RMS dev v=0 [a0 u^1/2]        0.1981              0.1976              0.1966        
+  IR activ [km/mol]             0.0000             14.5285              0.0000        
+  Char temp [K]               2206.1157           2219.3795           2241.7974       
+  ----------------------------------------------------------------------------------
+      1   C                0.00  0.08 -0.00   -0.00 -0.00  0.00    0.01 -0.09 -0.00   
+      2   C               -0.00 -0.08 -0.00   -0.00 -0.00  0.00   -0.01  0.09 -0.00   
+      3   C                0.01 -0.01  0.00   -0.01  0.01  0.00   -0.01 -0.00 -0.00   
+      4   C               -0.01  0.01 -0.00   -0.01  0.01  0.00    0.01  0.00  0.00   
+      5   C                0.03 -0.00 -0.00    0.01 -0.00  0.00   -0.03  0.01 -0.00   
+      6   C               -0.03  0.00  0.00    0.01 -0.00 -0.00    0.03 -0.01 -0.00   
+      7   H               -0.26 -0.11  0.00    0.02  0.02  0.00    0.34  0.13  0.00   
+      8   H                0.26  0.11 -0.00    0.02  0.02 -0.00   -0.34 -0.13 -0.00   
+      9   H               -0.23  0.21  0.00   -0.01  0.01 -0.00    0.28 -0.25  0.00   
+     10   H                0.23 -0.21  0.00   -0.01  0.01 -0.00   -0.28  0.25  0.00   
+     11   C               -0.01  0.08  0.00    0.01  0.08 -0.00    0.03  0.04  0.00   
+     12   C                0.01 -0.08  0.00    0.01  0.08  0.00   -0.03 -0.04 -0.00   
+     13   H                0.39  0.19 -0.00    0.54  0.22 -0.00    0.38  0.13  0.00   
+     14   H               -0.39 -0.19  0.00    0.54  0.22 -0.00   -0.38 -0.13  0.00   
+     15   C               -0.00 -0.08  0.00   -0.02 -0.09 -0.00   -0.03 -0.05  0.00   
+     16   C                0.00  0.08  0.00   -0.02 -0.09 -0.00    0.03  0.05  0.00   
+     17   H               -0.30 -0.14 -0.00   -0.34 -0.16 -0.00   -0.18 -0.09  0.00   
+     18   H                0.30  0.14 -0.00   -0.34 -0.16 -0.00    0.18  0.09 -0.00   
+     19   H                0.02  0.00  0.00   -0.02 -0.04 -0.00   -0.04 -0.07  0.00   
+     20   H               -0.02 -0.00  0.00   -0.02 -0.04 -0.00    0.04  0.07  0.00   
+
+  Vibration                       43                  44                  45          
+  Freq [cm^-1]                1636.2900           1714.6594           1726.9039       
+  Irrep                           Bu                  Ag                  Bu          
+  Reduced mass [u]              2.1957              1.4029              1.3173        
+  Force const [mDyne/A]         3.4637              2.4301              2.3145        
+  Turning point v=0 [a0]        0.1831              0.2237              0.2301        
+  RMS dev v=0 [a0 u^1/2]        0.1918              0.1874              0.1867        
+  IR activ [km/mol]            16.9086              0.0000              4.4927        
+  Char temp [K]               2354.2570           2467.0131           2484.6302       
+  ----------------------------------------------------------------------------------
+      1   C               -0.00  0.14 -0.00   -0.03  0.03 -0.00    0.02  0.04 -0.00   
+      2   C               -0.00  0.14 -0.00    0.03 -0.03 -0.00    0.02  0.04 -0.00   
+      3   C                0.10 -0.06 -0.00   -0.04 -0.02 -0.00    0.04  0.01 -0.00   
+      4   C                0.10 -0.06 -0.00    0.04  0.02 -0.00    0.04  0.01 -0.00   
+      5   C               -0.13  0.01 -0.00    0.01  0.03 -0.00   -0.02 -0.03 -0.00   
+      6   C               -0.13  0.01  0.00   -0.01 -0.03 -0.00   -0.02 -0.03 -0.00   
+      7   H               -0.27 -0.23 -0.00    0.12  0.04  0.00   -0.17 -0.08  0.00   
+      8   H               -0.27 -0.23 -0.00   -0.12 -0.04 -0.00   -0.17 -0.08 -0.00   
+      9   H                0.35 -0.41  0.00    0.06 -0.01  0.00   -0.07  0.01  0.00   
+     10   H                0.35 -0.41 -0.00   -0.06  0.01  0.00   -0.07  0.01  0.00   
+     11   C                0.07 -0.01  0.00   -0.11 -0.03  0.00   -0.09 -0.03  0.00   
+     12   C                0.07 -0.01 -0.00    0.11  0.03 -0.00   -0.09 -0.03 -0.00   
+     13   H                0.01 -0.02  0.00    0.28  0.06  0.00    0.31  0.06  0.00   
+     14   H                0.01 -0.02  0.00   -0.28 -0.06  0.00    0.31  0.06  0.00   
+     15   C               -0.04 -0.01  0.00    0.01 -0.02  0.00   -0.00 -0.03  0.00   
+     16   C               -0.04 -0.01  0.00   -0.01  0.02  0.00   -0.00 -0.03  0.00   
+     17   H               -0.06 -0.02  0.00    0.36  0.05  0.00    0.37  0.05  0.00   
+     18   H               -0.06 -0.02 -0.00   -0.36 -0.05 -0.00    0.37  0.05 -0.00   
+     19   H               -0.09 -0.15  0.00    0.17  0.46  0.00    0.15  0.43  0.00   
+     20   H               -0.09 -0.15  0.00   -0.17 -0.46  0.00    0.15  0.43  0.00   
+
+  Vibration                       46                  47                  48          
+  Freq [cm^-1]                1787.1012           1807.3508           1874.2978       
+  Irrep                           Bu                  Ag                  Ag          
+  Reduced mass [u]              2.1534              3.5320              4.5293        
+  Force const [mDyne/A]         4.0520              6.7976              9.3748        
+  Turning point v=0 [a0]        0.1769              0.1373              0.1191        
+  RMS dev v=0 [a0 u^1/2]        0.1835              0.1825              0.1792        
+  IR activ [km/mol]            15.4143              0.0000              0.0000        
+  Char temp [K]               2571.2407           2600.3754           2696.6973       
+  ----------------------------------------------------------------------------------
+      1   C                0.14 -0.03  0.00    0.03  0.23 -0.00   -0.18  0.04  0.00   
+      2   C                0.14 -0.03 -0.00   -0.03 -0.23 -0.00    0.18 -0.04 -0.00   
+      3   C               -0.10 -0.07  0.00   -0.10 -0.14 -0.00    0.25  0.02 -0.00   
+      4   C               -0.10 -0.07  0.00    0.10  0.14 -0.00   -0.25 -0.02  0.00   
+      5   C               -0.07  0.10  0.00   -0.05  0.16 -0.00   -0.23  0.10  0.00   
+      6   C               -0.07  0.10 -0.00    0.05 -0.16  0.00    0.23 -0.10 -0.00   
+      7   H                0.44  0.12 -0.00    0.33 -0.00  0.00   -0.34 -0.22  0.00   
+      8   H                0.44  0.12  0.00   -0.33  0.00 -0.00    0.34  0.22 -0.00   
+      9   H                0.37 -0.23  0.00    0.33 -0.11 -0.00    0.26 -0.32 -0.00   
+     10   H                0.37 -0.23 -0.00   -0.33  0.11 -0.00   -0.26  0.32 -0.00   
+     11   C               -0.03  0.02 -0.00    0.00  0.02  0.00   -0.03  0.02  0.00   
+     12   C               -0.03  0.02  0.00   -0.00 -0.02 -0.00    0.03 -0.02 -0.00   
+     13   H               -0.01  0.03 -0.00   -0.19 -0.03  0.00    0.01  0.03 -0.00   
+     14   H               -0.01  0.03 -0.00    0.19  0.03  0.00   -0.01 -0.03  0.00   
+     15   C               -0.02 -0.03 -0.00    0.04  0.03  0.00   -0.01 -0.01  0.00   
+     16   C               -0.02 -0.03 -0.00   -0.04 -0.03  0.00    0.01  0.01  0.00   
+     17   H                0.14  0.00 -0.00   -0.27 -0.02  0.00    0.04 -0.01  0.00   
+     18   H                0.14  0.00  0.00    0.27  0.02 -0.00   -0.04  0.01 -0.00   
+     19   H                0.04  0.18 -0.00   -0.04 -0.23  0.00    0.01  0.07  0.00   
+     20   H                0.04  0.18 -0.00    0.04  0.23  0.00   -0.01 -0.07  0.00   
+
+  Vibration                       49                  50                  51          
+  Freq [cm^-1]                1942.4014           1944.9352           3519.8432       
+  Irrep                           Ag                  Bu                  Bu          
+  Reduced mass [u]              2.9394              2.9545              1.0639        
+  Force const [mDyne/A]         6.5341              6.5847              7.7658        
+  Turning point v=0 [a0]        0.1452              0.1448              0.1793        
+  RMS dev v=0 [a0 u^1/2]        0.1760              0.1759              0.1308        
+  IR activ [km/mol]             0.0000              0.9364             146.3398       
+  Char temp [K]               2794.6831           2798.3287           5064.2707       
+  ----------------------------------------------------------------------------------
+      1   C                0.04  0.05 -0.00   -0.05 -0.02 -0.00   -0.00 -0.00  0.00   
+      2   C               -0.04 -0.05  0.00   -0.05 -0.02 -0.00   -0.00 -0.00  0.00   
+      3   C               -0.00 -0.02 -0.00   -0.01  0.01  0.00    0.00 -0.00 -0.00   
+      4   C                0.00  0.02  0.00   -0.01  0.01  0.00    0.00 -0.00 -0.00   
+      5   C               -0.01  0.02 -0.00    0.02 -0.01 -0.00    0.00  0.00  0.00   
+      6   C                0.01 -0.02 -0.00    0.02 -0.01 -0.00    0.00  0.00  0.00   
+      7   H                0.03 -0.02  0.00   -0.00  0.02  0.00   -0.01  0.02  0.00   
+      8   H               -0.03  0.02 -0.00   -0.00  0.02 -0.00   -0.01  0.02  0.00   
+      9   H                0.00  0.02 -0.00   -0.06  0.07  0.00   -0.02 -0.03 -0.00   
+     10   H               -0.00 -0.02  0.00   -0.06  0.07  0.00   -0.02 -0.03 -0.00   
+     11   C                0.18  0.11  0.00    0.19  0.11  0.00    0.01 -0.01 -0.00   
+     12   C               -0.18 -0.11 -0.00    0.19  0.11 -0.00    0.01 -0.01  0.00   
+     13   H               -0.30  0.02  0.00   -0.29  0.02  0.00   -0.05  0.21  0.00   
+     14   H                0.30 -0.02  0.00   -0.29  0.02  0.00   -0.05  0.21  0.00   
+     15   C               -0.15 -0.12  0.00   -0.15 -0.12  0.00   -0.04 -0.03  0.00   
+     16   C                0.15  0.12  0.00   -0.15 -0.12  0.00   -0.04 -0.03  0.00   
+     17   H                0.43 -0.05  0.00    0.43 -0.05  0.00   -0.08  0.45 -0.00   
+     18   H               -0.43  0.05 -0.00    0.43 -0.05 -0.00   -0.08  0.45 -0.00   
+     19   H               -0.04  0.37  0.00   -0.05  0.36 -0.00    0.46 -0.14 -0.00   
+     20   H                0.04 -0.37  0.00   -0.05  0.36  0.00    0.46 -0.14 -0.00   
+
+  Vibration                       52                  53                  54          
+  Freq [cm^-1]                3521.1277           3565.5984           3565.8797       
+  Irrep                           Ag                  Bu                  Ag          
+  Reduced mass [u]              1.0638              1.0995              1.0996        
+  Force const [mDyne/A]         7.7711              8.2355              8.2378        
+  Turning point v=0 [a0]        0.1793              0.1752              0.1752        
+  RMS dev v=0 [a0 u^1/2]        0.1308              0.1299              0.1299        
+  IR activ [km/mol]             0.0000             10.9325              0.0000        
+  Char temp [K]               5066.1188           5130.1022           5130.5069       
+  ----------------------------------------------------------------------------------
+      1   C                0.00  0.00  0.00   -0.00  0.00  0.00    0.00 -0.00  0.00   
+      2   C               -0.00 -0.00  0.00   -0.00  0.00  0.00   -0.00  0.00  0.00   
+      3   C               -0.00 -0.00 -0.00    0.00  0.00 -0.00   -0.00  0.00  0.00   
+      4   C                0.00  0.00  0.00    0.00  0.00 -0.00    0.00 -0.00 -0.00   
+      5   C                0.00  0.00  0.00   -0.00 -0.00  0.00   -0.00 -0.00  0.00   
+      6   C               -0.00 -0.00 -0.00   -0.00 -0.00 -0.00    0.00  0.00 -0.00   
+      7   H               -0.00  0.00 -0.00    0.00 -0.00 -0.00    0.00 -0.01 -0.00   
+      8   H                0.00 -0.00 -0.00    0.00 -0.00  0.00   -0.00  0.01  0.00   
+      9   H               -0.02 -0.02  0.00    0.01  0.01 -0.00    0.01  0.01 -0.00   
+     10   H                0.02  0.02 -0.00    0.01  0.01 -0.00   -0.01 -0.01 -0.00   
+     11   C                0.01 -0.01  0.00    0.01 -0.06 -0.00    0.01 -0.06  0.00   
+     12   C               -0.01  0.01  0.00    0.01 -0.06  0.00   -0.01  0.06  0.00   
+     13   H               -0.05  0.21  0.00   -0.15  0.65 -0.00   -0.15  0.65 -0.00   
+     14   H                0.05 -0.21 -0.00   -0.15  0.65 -0.00    0.15 -0.65 -0.00   
+     15   C               -0.04 -0.03 -0.00    0.01  0.02 -0.00    0.01  0.02 -0.00   
+     16   C                0.04  0.03 -0.00    0.01  0.02 -0.00   -0.01 -0.02 -0.00   
+     17   H               -0.08  0.46  0.00    0.03 -0.16 -0.00    0.03 -0.16  0.00   
+     18   H                0.08 -0.46  0.00    0.03 -0.16 -0.00   -0.03  0.16 -0.00   
+     19   H                0.46 -0.14  0.00   -0.13  0.04 -0.00   -0.13  0.04 -0.00   
+     20   H               -0.46  0.14 -0.00   -0.13  0.04 -0.00    0.13 -0.04 -0.00   
+
+  Vibration                       55                  56                  57          
+  Freq [cm^-1]                3575.6043           3582.4287           3602.9058       
+  Irrep                           Bu                  Ag                  Bu          
+  Reduced mass [u]              1.0930              1.0946              1.0994        
+  Force const [mDyne/A]         8.2331              8.2764              8.4084        
+  Turning point v=0 [a0]        0.1755              0.1752              0.1743        
+  RMS dev v=0 [a0 u^1/2]        0.1298              0.1296              0.1293        
+  IR activ [km/mol]             1.8605              0.0000              5.2569        
+  Char temp [K]               5144.4985           5154.3173           5183.7792       
+  ----------------------------------------------------------------------------------
+      1   C                0.00  0.00  0.00    0.00  0.00  0.00    0.00  0.00  0.00   
+      2   C                0.00  0.00  0.00   -0.00 -0.00  0.00    0.00  0.00  0.00   
+      3   C                0.02 -0.05 -0.00    0.02 -0.06  0.00    0.01 -0.02 -0.00   
+      4   C                0.02 -0.05  0.00   -0.02  0.06 -0.00    0.01 -0.02 -0.00   
+      5   C                0.01  0.02 -0.00    0.01  0.02  0.00   -0.04 -0.04  0.00   
+      6   C                0.01  0.02  0.00   -0.01 -0.02 -0.00   -0.04 -0.04  0.00   
+      7   H               -0.22  0.60 -0.00   -0.23  0.62  0.00   -0.10  0.27 -0.00   
+      8   H               -0.22  0.60  0.00    0.23 -0.62  0.00   -0.10  0.27  0.00   
+      9   H               -0.18 -0.23  0.00   -0.16 -0.20 -0.00    0.40  0.50  0.00   
+     10   H               -0.18 -0.23  0.00    0.16  0.20 -0.00    0.40  0.50 -0.00   
+     11   C               -0.00  0.00  0.00    0.00 -0.00  0.00    0.00 -0.00  0.00   
+     12   C               -0.00  0.00  0.00   -0.00  0.00 -0.00    0.00 -0.00  0.00   
+     13   H                0.00 -0.00  0.00   -0.00  0.01 -0.00    0.00 -0.00 -0.00   
+     14   H                0.00 -0.00  0.00    0.00 -0.01  0.00    0.00 -0.00  0.00   
+     15   C                0.00  0.00  0.00    0.00  0.00 -0.00   -0.00  0.00  0.00   
+     16   C                0.00  0.00  0.00   -0.00 -0.00 -0.00   -0.00  0.00  0.00   
+     17   H                0.00 -0.02  0.00    0.00 -0.00 -0.00   -0.00  0.00  0.00   
+     18   H                0.00 -0.02  0.00   -0.00  0.00 -0.00   -0.00  0.00 -0.00   
+     19   H               -0.03  0.01  0.00   -0.01  0.00 -0.00    0.03 -0.01 -0.00   
+     20   H               -0.03  0.01  0.00    0.01 -0.00  0.00    0.03 -0.01  0.00   
+
+  Vibration                       58                  59                  60          
+  Freq [cm^-1]                3605.7876           3680.4151           3680.4324       
+  Irrep                           Ag                  Ag                  Bu          
+  Reduced mass [u]              1.0997              1.1197              1.1198        
+  Force const [mDyne/A]         8.4244              8.9362              8.9369        
+  Turning point v=0 [a0]        0.1742              0.1709              0.1709        
+  RMS dev v=0 [a0 u^1/2]        0.1292              0.1279              0.1279        
+  IR activ [km/mol]             0.0000              0.0000              0.1911        
+  Char temp [K]               5187.9256           5295.2980           5295.3228       
+  ----------------------------------------------------------------------------------
+      1   C                0.00 -0.00  0.00    0.00  0.00 -0.00   -0.00 -0.00 -0.00   
+      2   C               -0.00  0.00  0.00   -0.00 -0.00  0.00   -0.00 -0.00 -0.00   
+      3   C                0.01 -0.02 -0.00    0.00 -0.00  0.00    0.00 -0.00  0.00   
+      4   C               -0.01  0.02 -0.00   -0.00  0.00 -0.00    0.00 -0.00 -0.00   
+      5   C               -0.04 -0.05 -0.00   -0.00 -0.00 -0.00   -0.00 -0.00 -0.00   
+      6   C                0.04  0.05  0.00    0.00  0.00 -0.00   -0.00 -0.00  0.00   
+      7   H               -0.09  0.23  0.00   -0.00  0.00 -0.00   -0.00  0.00 -0.00   
+      8   H                0.09 -0.23  0.00    0.00 -0.00  0.00   -0.00  0.00 -0.00   
+      9   H                0.42  0.51 -0.00    0.02  0.02  0.00    0.02  0.02  0.00   
+     10   H               -0.42 -0.51 -0.00   -0.02 -0.02  0.00    0.02  0.02  0.00   
+     11   C                0.00  0.00 -0.00    0.00 -0.00 -0.00    0.00 -0.00  0.00   
+     12   C               -0.00 -0.00 -0.00   -0.00  0.00 -0.00    0.00 -0.00  0.00   
+     13   H                0.00 -0.00  0.00   -0.00  0.03  0.00   -0.00  0.03 -0.00   
+     14   H               -0.00  0.00  0.00    0.00 -0.03 -0.00   -0.00  0.03 -0.00   
+     15   C               -0.00  0.00  0.00    0.05 -0.05  0.00    0.05 -0.05 -0.00   
+     16   C                0.00 -0.00 -0.00   -0.05  0.05  0.00    0.05 -0.05  0.00   
+     17   H               -0.00  0.00 -0.00   -0.09  0.50 -0.00   -0.09  0.50  0.00   
+     18   H                0.00 -0.00 -0.00    0.09 -0.50 -0.00   -0.09  0.50  0.00   
+     19   H                0.03 -0.01 -0.00   -0.47  0.14 -0.00   -0.47  0.14  0.00   
+     20   H               -0.03  0.01  0.00    0.47 -0.14 -0.00   -0.47  0.14 -0.00   
+
+  ==> Thermochemistry Components <==
+
+  Entropy, S
+    Electronic S            0.000 [cal/(mol K)]        0.000 [J/(mol K)]       0.00000000 [mEh/K] (multiplicity = 1)
+    Translational S        40.502 [cal/(mol K)]      169.460 [J/(mol K)]       0.06454379 [mEh/K] (mol. weight = 130.0783 [u], P = 101325.00 [Pa])
+    Rotational S           28.143 [cal/(mol K)]      117.751 [J/(mol K)]       0.04484891 [mEh/K] (symmetry no. = 2)
+    Vibrational S          14.372 [cal/(mol K)]       60.131 [J/(mol K)]       0.02290253 [mEh/K]
+  Total S                  83.017 [cal/(mol K)]      347.341 [J/(mol K)]       0.13229523 [mEh/K]
+  Correction S              0.000 [cal/(mol K)]        0.000 [J/(mol K)]       0.00000000 [mEh/K]
+
+  Constant volume heat capacity, Cv
+    Electronic Cv           0.000 [cal/(mol K)]        0.000 [J/(mol K)]       0.00000000 [mEh/K]
+    Translational Cv        2.981 [cal/(mol K)]       12.472 [J/(mol K)]       0.00475022 [mEh/K]
+    Rotational Cv           2.981 [cal/(mol K)]       12.472 [J/(mol K)]       0.00475022 [mEh/K]
+    Vibrational Cv         22.922 [cal/(mol K)]       95.905 [J/(mol K)]       0.03652842 [mEh/K]
+  Total Cv                 28.884 [cal/(mol K)]      120.849 [J/(mol K)]       0.04602885 [mEh/K]
+  Correction Cv             0.000 [cal/(mol K)]        0.000 [J/(mol K)]       0.00000000 [mEh/K]
+
+  Constant pressure heat capacity, Cp
+    Electronic Cp           0.000 [cal/(mol K)]        0.000 [J/(mol K)]       0.00000000 [mEh/K]
+    Translational Cp        4.968 [cal/(mol K)]       20.786 [J/(mol K)]       0.00791703 [mEh/K]
+    Rotational Cp           2.981 [cal/(mol K)]       12.472 [J/(mol K)]       0.00475022 [mEh/K]
+    Vibrational Cp         22.922 [cal/(mol K)]       95.905 [J/(mol K)]       0.03652842 [mEh/K]
+  Total Cp                 30.871 [cal/(mol K)]      129.163 [J/(mol K)]       0.04919566 [mEh/K]
+  Correction Cp             0.000 [cal/(mol K)]        0.000 [J/(mol K)]       0.00000000 [mEh/K]
+
+  ==> Thermochemistry Energy Analysis <==
+
+  Raw electronic energy, E0
+  Total E0, Electronic energy at well bottom at 0 [K]                 -379.77011152 [Eh]
+
+  Zero-point energy, ZPE_vib = Sum_i nu_i / 2
+    Electronic ZPE          0.000 [kcal/mol]        0.000 [kJ/mol]       0.00000000 [Eh]
+    Translational ZPE       0.000 [kcal/mol]        0.000 [kJ/mol]       0.00000000 [Eh]
+    Rotational ZPE          0.000 [kcal/mol]        0.000 [kJ/mol]       0.00000000 [Eh]
+    Vibrational ZPE       120.281 [kcal/mol]      503.257 [kJ/mol]       0.19168059 [Eh]       42069.027 [cm^-1]
+  Correction ZPE          120.281 [kcal/mol]      503.257 [kJ/mol]       0.19168059 [Eh]       42069.027 [cm^-1]
+  Total ZPE, Electronic energy at 0 [K]                               -379.57843093 [Eh]
+
+  Thermal Energy, E (includes ZPE)
+    Electronic E            0.000 [kcal/mol]        0.000 [kJ/mol]       0.00000000 [Eh]
+    Translational E         0.889 [kcal/mol]        3.718 [kJ/mol]       0.00141628 [Eh]
+    Rotational E            0.889 [kcal/mol]        3.718 [kJ/mol]       0.00141628 [Eh]
+    Vibrational E         123.027 [kcal/mol]      514.746 [kJ/mol]       0.19605637 [Eh]
+  Correction E            124.805 [kcal/mol]      522.183 [kJ/mol]       0.19888892 [Eh]
+  Total E, Electronic energy at  298.15 [K]                           -379.57122260 [Eh]
+
+  Enthalpy, H_trans = E_trans + k_B * T
+    Electronic H            0.000 [kcal/mol]        0.000 [kJ/mol]       0.00000000 [Eh]
+    Translational H         1.481 [kcal/mol]        6.197 [kJ/mol]       0.00236046 [Eh]
+    Rotational H            0.889 [kcal/mol]        3.718 [kJ/mol]       0.00141628 [Eh]
+    Vibrational H         123.027 [kcal/mol]      514.746 [kJ/mol]       0.19605637 [Eh]
+  Correction H            125.397 [kcal/mol]      524.662 [kJ/mol]       0.19983311 [Eh]
+  Total H, Enthalpy at  298.15 [K]                                    -379.57027841 [Eh]
+
+  Gibbs free energy, G = H - T * S
+    Electronic G            0.000 [kcal/mol]        0.000 [kJ/mol]       0.00000000 [Eh]
+    Translational G       -10.594 [kcal/mol]      -44.327 [kJ/mol]      -0.01688327 [Eh]
+    Rotational G           -7.502 [kcal/mol]      -31.389 [kJ/mol]      -0.01195543 [Eh]
+    Vibrational G         118.742 [kcal/mol]      496.818 [kJ/mol]       0.18922798 [Eh]
+  Correction G            100.646 [kcal/mol]      421.102 [kJ/mol]       0.16038928 [Eh]
+  Total G, Free enthalpy at  298.15 [K]                               -379.60972224 [Eh]
+
+    Psi4 stopped on: Sunday, 11 June 2023 10:55PM
+    Psi4 wall time for execution: 0:04:44.80
+
+*** Psi4 exiting successfully. Buy a developer a beer!

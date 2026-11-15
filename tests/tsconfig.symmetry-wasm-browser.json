@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": []
+  },
+  "files": [
+    "../apps/desktop/src/lib/molecular-workbench/symmetry/wasm-module.ts"
+  ],
+  "include": []
+}

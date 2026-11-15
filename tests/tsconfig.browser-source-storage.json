@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.browser-source-checkpoint.json",
+  "files": [
+    "test-browser-source-storage.test.ts",
+    "test-browser-source-storage-upgrade.test.ts",
+    "../apps/desktop/src/lib/native-mcp-workspace.ts"
+  ],
+  "include": [
+    "../apps/desktop/src/**/*.d.ts"
+  ]
+}

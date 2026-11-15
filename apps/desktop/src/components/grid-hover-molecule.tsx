@@ -3,6 +3,7 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 
 import { loadDerivedEngines } from "../lib/derived-columns";
 import { DARK_STRUCTURE_PALETTE } from "../lib/structure-palette";
+import { depictionLongAxisAngle } from "../lib/depiction-axis";
 import { describePropValue } from "../lib/grid-value-stats.mjs";
 import { writeClipboardText } from "../lib/clipboard";
 import { postGridCommand } from "../lib/viewer-bridge";
@@ -313,7 +314,8 @@ export function GridHoverMoleculeCard({
               } finally { query?.delete(); }
             }
           }
-          if (showingScaffold || !shown?.useInputCoords) mol.set_new_coords();
+          const generated = showingScaffold || !shown?.useInputCoords;
+          if (generated) mol.set_new_coords();
           const palette = structurePalette(theme);
           const rendered = mol.get_svg_with_highlights(JSON.stringify({
             width: wellSize.width * PREVIEW_RENDER_SCALE,
@@ -321,6 +323,12 @@ export function GridHoverMoleculeCard({
             backgroundColour: paper,
             padding: 0.04,
             bondLineWidth: 2,
+            // Same scale rules as every other drawing: capped bond length, labels of
+            // 11 to 15 px, generated layouts turned to lie across the well.
+            fixedBondLength: 26 * PREVIEW_RENDER_SCALE,
+            minFontSize: 11 * PREVIEW_RENDER_SCALE,
+            maxFontSize: 15 * PREVIEW_RENDER_SCALE,
+            rotate: generated ? depictionLongAxisAngle(mol.get_molblock()) : 0,
             atoms,
             bonds,
             ...(palette ? { atomColourPalette: palette } : {}),

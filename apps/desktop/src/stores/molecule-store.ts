@@ -38,7 +38,9 @@ import {
 } from "../lib/global-recent-structures";
 import { isTauriRuntime } from "../lib/tauri";
 import { clearNativeRecentStructures } from "../lib/clear-recent-structures";
-import { workspaceStorageKey } from "../lib/window-scope";
+import { workspaceStorageKey, workspaceStorage, isBrowserSessionWorkspace } from "../lib/window-scope";
+import { webDemoProjectStructures } from "../lib/web-demo-workspace";
+import { importedOriginalFor } from "../lib/workbench/scientific-source-state";
 import { useSettingsStore } from "./settings-store";
 
 // Placement belongs to the view; activeTabId names the focused view in any group.
@@ -357,7 +359,7 @@ function persistedTabs(tabs: MoleculeTab[]) {
 function moleculeSessionStorage(): PersistStorage<PersistedMoleculeState> | undefined {
   let storage: Pick<Storage, "getItem" | "setItem" | "removeItem">;
   try {
-    storage = window.BuretteMcpWorkspace?.storage ?? localStorage;
+    storage = workspaceStorage();
   } catch {
     return undefined;
   }
@@ -569,7 +571,7 @@ function buildFileTabs(documents: ViewerDocument[]) {
 
 function shouldIgnorePersistedSession() {
   if (typeof window === "undefined") return false;
-  if (window.BuretteMcpWorkspace) return false;
+  if (window.BuretteMcpWorkspace || isBrowserSessionWorkspace()) return false;
   if (new URLSearchParams(window.location.search).has("devFiles")) return true;
   return window.location.protocol === "http:" && (window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost");
 }
@@ -832,8 +834,13 @@ export const useMoleculeStore = create<MoleculeState>()(
           return { textDocuments, tabs: nextTabs, activeTabId, activeDocumentId: activeDocumentIdFrom(nextTabs, activeTabId, state.documents) };
         }),
       rememberRecentStructures: (incoming) => {
+        // Generated scientific geometry reopens through its already-stored browser Original.
+        const importedPaths = isBrowserSessionWorkspace()
+          ? new Set(webDemoProjectStructures().map(item => item.path)) : null;
         const remembered = normalizeGlobalRecentStructures(incoming
-          .filter(isPersistentViewerDocument)
+          .filter(document => isPersistentViewerDocument(document) || (document.virtual
+            && !isTemporaryDocumentPath(document.path) && importedPaths?.has(document.path)
+            && Boolean(importedOriginalFor(document.id))))
           .map(toRecentStructure));
         if (remembered.length === 0) return;
         set((state) => {

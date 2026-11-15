@@ -1,0 +1,1 @@
+import{t as e}from"./worker-task-uCZzEDtO.js";function t(t,n={}){return t.text.length>2e7?Promise.reject(Error(`Assembly input exceeds 20 MB.`)):e(()=>new Worker(new URL(new URL(`assembly-worker-CPm_6D4M.js`,import.meta.url).href,``+import.meta.url),{type:`module`}),t,n)}export{t};

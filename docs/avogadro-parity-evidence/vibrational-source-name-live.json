@@ -1,0 +1,51 @@
+{
+  "runtime": "vite-dev",
+  "status": "succeeded",
+  "source": {
+    "name": "gaussian16-water-raman.fchk",
+    "format": "fchk",
+    "frame": 1,
+    "frameCount": 1
+  },
+  "settingsSource": {
+    "sourceName": "gaussian16-water-raman.fchk",
+    "format": "fchk",
+    "frame": 1,
+    "frameCount": 1,
+    "scope": "frame",
+    "frameIndex": 0
+  },
+  "csvHeader": "# source: gaussian16-water-raman.fchk",
+  "artifacts": [
+    {
+      "name": "source",
+      "fileName": "gaussian16-water-raman-frame-1-raman-source.json",
+      "mimeType": "application/json",
+      "byteCount": 1877,
+      "sha256": "sha256-2879ee9d73389655229769dc240aeaafd9c04c16487165608e781c613a982a32"
+    },
+    {
+      "name": "source_csv",
+      "fileName": "gaussian16-water-raman-frame-1-raman-source.csv",
+      "mimeType": "text/csv",
+      "byteCount": 970,
+      "sha256": "sha256-000284041462e397a2bb836502ac286a1dae3378225cfa7b5e0418fb0e6a60d1"
+    },
+    {
+      "name": "display",
+      "fileName": "gaussian16-water-raman-frame-1-raman-display.csv",
+      "mimeType": "text/csv",
+      "byteCount": 56921,
+      "sha256": "sha256-1cbf0703f042ce5a701945568c56652822a661f84be6bfe0545a96b9a37fe5cf"
+    },
+    {
+      "name": "settings",
+      "fileName": "gaussian16-water-raman-frame-1-raman-settings.json",
+      "mimeType": "application/json",
+      "byteCount": 531,
+      "sha256": "sha256-a3362dea39c326dceca7b935454e7c16f864711dc76a2c1d860faeae8c89c7b6"
+    }
+  ],
+  "fileSourceUiCsvByteIdentical": true,
+  "fileSourceCsvBytes": 972
+}

@@ -1,0 +1,19 @@
+*** bromochlorofluoromethane RDKit ETKDGv3 MMFF94
+!file,2,INSERT WAVEFUNCTION FILE LOCATION HERE
+!memory,INSERT MEMORY HERE
+!basis,INSERT BASIS SET HERE
+
+geomtyp=xyz
+geometry={
+5
+Geometry specification:
+  F,       -0.21511,       -1.13115,       -0.82351
+  C,       -0.05845,       -0.11760,        0.06474
+ Cl,       -1.28216,        1.12009,       -0.21510
+ Br,        1.71463,        0.64262,       -0.10423
+  H,       -0.15891,       -0.51396,        1.07811
+}
+
+!INSERT QM METHODS HERE
+!hf
+---

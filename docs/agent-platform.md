@@ -92,11 +92,13 @@ result back to the user.
 
 | Surface | Path | Use |
 | --- | --- | --- |
+| Coordinate converter | `bun scripts/burette-agent.mjs convert` | Converts bounded XYZ/ZMAT with absolute coordinates and full definitions. |
 | Workspace opener | `bun scripts/burette-agent.mjs open` | Opens browser preview, browser agent shell, or desktop app sessions. |
 | Workspace observer | `bun scripts/burette-agent.mjs observe` | Reads typed state from a session directory. |
 | Browser server shutdown | `bun scripts/burette-agent.mjs close --session-dir <session>` | Stops the CLI-owned server and its descendants; repeated close is safe. |
 | Workspace action | `bun scripts/burette-agent.mjs act` | Sends typed shell or Mol* actions and waits for completion. |
 | Viewer capture | `bun scripts/burette-agent.mjs capture` | Renders the active Mol* view to a PNG/JPEG/WebP file and prints its path, MIME type, size, and dimensions. |
+| 3D model export | `bun scripts/burette-agent.mjs export-model` | Writes the visible scene as glTF binary (default), PLY, OBJ, X3D, VRML or POV-Ray in scene coordinates (Å), up to 16 MiB, and prints its path, size, vertex and face counts. |
 | Workspace facade tools | `burette.get_context` / `burette.open_workspace` / `burette.observe_workspace` / `burette.control_viewer` / `burette.capture_view` / `burette.render_panel` | Short MCP facade over the CLI for external agents, routed by the `external-agent-contract` skill. |
 | Ketcher surface | `burette.open_ketcher` / `burette.control_ketcher` | Opens and controls the active chemical editor with bounded, revision-checked actions. |
 | MolViewSpec Story | `story-schema` / `story-template-list` / `story-template-create` / `story-create` / `story-validate`; `burette.get_mvs_authoring_reference` / `burette.list_story_templates` / `burette.create_story_from_template` / `burette.create_story` / `burette.validate_story` / `burette.observe_story` / `burette.control_story` | Discovers the version-matched MVS schema, lists reusable scientific scaffolds, authors schema-valid multi-state MVSJ/MVSX, verifies resources, and exposes typed Story state and playback. |
@@ -120,6 +122,43 @@ chemical-editor mutation has different revision, payload, export, and
 user-persistence rules. Reuse the workspace session and action-file transport;
 do not invent a second local session protocol.
 
+## Coordinate Conversion
+
+```bash
+bun scripts/burette-agent.mjs convert --file molecule.xyz --format zmat --output molecule.zmat
+bun scripts/burette-agent.mjs convert --file molecule.zmat --format xyz --output molecule.xyz
+```
+
+Conversion accepts one plain XYZ frame or a headerless ZMAT. The shared
+[interchange contract](coordinate-interchange.md) preserves exact absolute
+Cartesian coordinates and the full definition, including signed/shared/unused
+variables and dummy references, through one versioned comment marker. XYZ body
+coordinates and ZMAT body definitions are authoritative; conflicting markers
+are rejected. Human comments and import tokens survive the roundtrip.
+
+Input and final output are each bounded to 1 MiB; UTF-8 decoding is fatal.
+The 512-row limit includes dummy rows. Validation finishes before the output
+is opened. Its parent must exist. Existing outputs require `--overwrite`;
+output symlinks and input/output identity, including hard links, are rejected
+before truncation. Success follows `burette-agent-cli/v1`, with `result` fields
+`inputPath`, `outputPath`, `inputFormat`, `format`, `atomCount` and `byteCount`.
+Structure content stays in the output file. Conversion does not open the app,
+infer bonds, optimize structures or add an MCP tool.
+
+Run `vp run test:coordinate-cli` and `vp run test:coordinate-cli-packaged`.
+The latter copies the generated plugin scripts outside the repository and runs
+both subprocess suites there without module-path fallbacks. Ordinary browser
+Copy/export/reopen remains a separate acceptance surface.
+
+## Scene serialization
+
+Runtime `exportSession` returns `BUSY` while native trajectory comparisons are
+being created or removed; retry after that operation finishes. Host
+`workspace_scene_snapshot` also refuses during this transaction, whether or not
+it carries scientific data. Comparison mutations refuse while any of these
+serializations is in progress. Plain scene snapshots retain existing attachments;
+bounded agent session exports still refuse unadopted scientific attachments.
+
 ## Surfaces
 
 | Mode | Use When | Notes |
@@ -128,6 +167,12 @@ do not invent a second local session protocol.
 | `browser-agent-shell` | The user needs the normal app UI in the Browser: sidebar, tabs, docks, command palette, or shell workflows. | Starts a local browser-dev shell with agent-session endpoints. `browser-dev-shell` is accepted as a legacy alias and normalized to this mode. |
 | `browser-preview` | The user needs tokenized typed observe/act against a preview surface. | Prints the session URL; the Browser plugin navigates it. |
 | `desktop-app` | The user explicitly asks for packaged/native app behavior. | Requires the installed app and a desktop agent session. `--no-launch` skips launching the app when it is already running. |
+
+Tokenized previews route `.cube` and `.cub` through Mol*'s native Cube volume
+provider, retaining its atom structure and dataset controls. Cube payloads remain
+text; CCP4/MRC and MTZ payloads remain binary. Run `vp run test:cube-preview-route`
+for the actual HTTP-to-viewer/native-provider startup check. This route is separate
+from the workbench scientific importer and does not add native dataset Undo UI.
 
 Browser means the in-app Browser plugin unless the user explicitly asks for an
 external browser. Computer/native UI control is a QA fallback, not the primary
@@ -194,6 +239,10 @@ browser-dev and native app validation remain separate surfaces.
   returned as a JPEG preview (long edge 1280 px) written next to the capture;
   `result.inlineImage` names the file that was inlined. The capture works in
   a hidden Browser tab, so an agent-owned shell needs no visible window.
+- `set_camera_projection` (`mode`: `perspective` or `orthographic`) and
+  `view_axis` (`axis`: `+x`, `-x`, `+y`, `-y`, `+z`, `-z`) are the 3D
+  toolbar's projection switch and axis views; `observe` reports the camera
+  `mode`.
 - Screenshot interpretation must not replace typed `observe`, validation
   output, or CLI/MCP errors.
 - Session `act` rejects action types that neither the shell nor the Mol* viewer
@@ -612,3 +661,508 @@ random directory below `BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT` (by default
 permissions. This root is already included in browser workspace file grants, so
 subsequent results can open as tabs without authorizing arbitrary temporary files.
 The generated root must be owned by the current user and not writable by others.
+
+
+## Orbital Cube jobs through the browser shell
+
+The repository CLI exposes `orbital_cube` in
+`browser-agent-shell` and `desktop-app` sessions. Import an FCHK or Molden file into a single final
+geometry document through the scientific importer. Its generated XYZ document
+retains the original Gaussian basis and orbitals. The shell's raw-file allowlist
+is unchanged; this command does not open raw FCHK/Molden files itself.
+
+```bash
+node scripts/burette-agent.mjs workbench --session-dir "$SESSION" '{"operation":"capabilities"}'
+node scripts/burette-agent.mjs workbench --session-dir "$SESSION" '{"operation":"observe"}'
+node scripts/burette-agent.mjs workbench --session-dir "$SESSION" '{"operation":"orbitals","offset":0,"limit":20}'
+```
+
+Copy `sourceRevision` from `observe`, and use an application-owned `operationId`
+for idempotent submission. Orbital indices are zero-based array positions; the
+paged list also reports the source's orbital number and spin.
+
+```json
+{"operation":"submit","operationId":"orbital-1","expectedSourceRevision":"sha256-<64 hex from observe>","job":{"kind":"orbital_cube","params":{"field":"orbital","orbitalIndex":0,"spacingAngstrom":0.3,"paddingAngstrom":3}}}
+```
+
+Pass the request as the command's JSON argument, through `--stdin`, or with
+`--action-file`. Poll `{"operation":"status","operationId":"orbital-1"}` until
+terminal. `jobs` is paginated; `cancel` takes a `jobId`. Export a succeeded job:
+
+```bash
+node scripts/burette-agent.mjs workbench --session-dir "$SESSION" '{"operation":"export","jobId":"<jobId>","artifact":"cube"}' --output result.cube
+```
+
+`field` also accepts `density` and `spin-density`, without `orbitalIndex`.
+`spacingAngstrom` is 0.1–1 Å and `paddingAngstrom` 0–10 Å around the atoms.
+Instead of both, `grid` takes an explicit, possibly rotated or sheared lattice
+in Å, `{"origin":[x,y,z],"axes":[a,b,c],"dimensions":[na,nb,nc]}`, evaluated at
+`origin + i·a + j·b + k·c` in Cube order (the last axis fastest); it holds at most
+one million points and each voxel encloses at least 0.001 Å³. The job summary
+reports the grid's `dimensions`, `origin` and `axes`.
+`sourceRevision` hashes the source text digest, the full immutable scientific
+payload and the bounded chemical graph, including its source atom order. The
+quantum worker separately projects only its calculation input. `sourceTextSha256` separately
+identifies the exact text. Unsaved drafts are visible when the host supplies its
+source editor accessor. Changing the text or attached calculation data makes old
+results stale; `allowStale:true` explicitly exports the earlier result. Closing or
+replacing the source releases results. Permanent page exit terminates workers.
+Jobs never modify an open document.
+
+The existing registry allows two running workers, eight queued jobs and 32 retained
+terminal jobs. Requests are limited to 256 KiB, ordinary responses to 64 KiB, source
+text to 12 MiB, captured scientific data to the existing 20 MiB scene budget,
+and each artifact to 16 MiB. Capturing a chemical graph does not advertise a new
+job kind. Numerical inputs and grid work also have
+the accepted quantum-worker limits. The field worker has a 60-second deadline;
+Cube serialization uses the 120-second worker deadline. Artifact publication
+verifies bytes and SHA-256, uses an atomic file write, and refuses an existing file
+unless `--overwrite` is explicit. CLI output and the completed action log contain
+artifact paths, sizes and digests, without inline Cube contents.
+
+Validation: `vp run test:orbital-agent` exercises the actual compiled host hook,
+HTTP session server, CLI subprocess, reader/quantum/Cube workers, numerical values,
+byte integrity, cancellation and stale/closed/error outcomes. This proves the
+source implementation in the browser shell; it does not prove a rebuilt packaged
+plugin, a live Browser user session, native app or hosted deployment. Optimization,
+3D preparation, conformer, frame-batch, metadata and pair-distribution jobs, plus the
+Python client, are described in
+[Optimization, conformers and frame batches](#optimization-conformers-and-frame-batches).
+
+
+### Crystal and molecular symmetry jobs
+
+The same `workbench` contract runs the Crystal and Symmetry panels' calculations
+in `browser-agent-shell` and `desktop-app` sessions. `observe` reports `crystal` (format, atom count
+and lattice vectors) for a small-molecule CIF, a POSCAR/CONTCAR or an extended XYZ
+with a `Lattice`, and the availability of each job:
+
+| Kind | Params (defaults) | Artifacts |
+| --- | --- | --- |
+| `point_group` | `tolerance`: `tight`, `normal`, `loose`, `very-loose` (`normal`) | `symmetrized` (XYZ in chemical-graph atom order) |
+| `space_group` | `toleranceAngstrom` 0.0001–0.5 (0.01) | none; the summary carries the group, Hall number, sites and standard cells |
+| `powder_xrd` | `wavelengthAngstrom` 0.1–5 (Cu Kα1), `twoThetaMinDegrees`/`twoThetaMaxDegrees` 0–170 (10, 90), `profile` `gaussian`, `lorentzian` or `null` (sticks only), `fwhmDegrees` 0.001–5 (0.1) with a profile | `peaks` (CSV), `pattern` (JSON, with the broadened profile when one is set) |
+| `spectrum` | `kind` (`vcd`, `mcd`, `nmr`, `electronic`, `ecd`, `dos`), `source` (`file`, `frame`, `companion`), explicit `frameIndex` for frame/companion; NMR `atomicNumber`; optional `scale`, `offset`, `fwhm`, `axisStart`, `axisEnd` | `source` (JSON), `source_csv`, `display` (CSV), `settings` (JSON) |
+| `pair_distribution` | `rMax` 1–100 Å (10), `binWidth` 0.001–1 Å (0.1), `centre`, `neighbour` element or `null` | `distribution` (JSON), `csv`; runs on the full cell (CIF symmetry expanded) |
+| `crystal_transform` | `operation` and its fields, below | `structure` |
+
+`crystal_transform` operations: `set_cell` (`cell`: three lattice vectors in Å,
+`keep`: `fractional` or `cartesian`), `wrap`, `standard_orientation`,
+`scale_volume` (`volumeCubicAngstrom`), `supercell` (`repeats`: three integers
+1–20), `niggli`, `primitive`, `conventional`, `symmetrize`, `asymmetric_unit`
+(`toleranceAngstrom`) and `fill` (`hallNumber` 1–530). The structure artifact is
+in the source's own format; an asymmetric unit of an XYZ or POSCAR source is a
+CIF with its symmetry operations. Summaries keep at most 50 rows of sites or peaks; the artifacts hold the full data. As for every job, nothing is
+applied to an open document; the Crystal and Symmetry panels make the same edits
+as undoable revisions of the source draft.
+
+```json
+{"operation":"submit","operationId":"supercell-1","expectedSourceRevision":"sha256-<64 hex from observe>","job":{"kind":"crystal_transform","params":{"operation":"supercell","repeats":[2,2,1]}}}
+```
+
+Validation: `bun run test:crystal-agent` runs every kind through the controller
+and its workers against the pymatgen, spglib and ASE references in
+`tests/fixtures/crystals/`.
+
+
+### Private Geometry and scalar-field transports
+
+`geometry_binding`, `update_geometry`, `atom_drag`, `atom_draw`, `select_command`, `export_svg`, `record_movie`, `scalar_field_binding`,
+`scalar_field_validate` and `show_scalar_field` are private desktop-host routes,
+not public CLI/MCP actions. They use retained source/iframe leases; Geometry edits
+stage through source ownership and scalar display carries a full Cube payload.
+The public CLI rejects them before queueing, including malformed payloads. See
+[Geometry ownership](renderer-support.md#private-geometry-runtime-ownership) and
+[scalar source ownership](scalar-field-binding.md). Orbital jobs use the typed
+`workbench` contract and path-based export instead.
+
+`select_source_atom` is also a private source-bound NMR selection route. The public
+CLI rejects it before queueing; typed orbital jobs do not expose atom-selection
+transport payloads.
+
+`geometry_topology_scene_capture` and `geometry_topology_scene_validate` are private
+source-owner topology checkpoint routes, likewise rejected before CLI queueing.
+
+`calculation_overlay` draws the Info dock's dipole arrow or charge labels
+(`{ kind: "dipole" | "charges", overlay }`, or no `overlay` to remove it). It is a
+private host route: the overlay follows the dock's frame and is not public CLI state.
+
+
+### Read the displayed indexed trajectory frame
+
+`act '{"type":"indexed_trajectory_frame","offset":0,"limit":100}'` is a
+read-only page of the current indexed model; it does not seek or scan a
+trajectory. A page contains at most 100 atoms in model order with source atom
+indices, Å positions, optional Å/ps velocities and kcal/(mol·Å) forces. Absent
+blocks omit their units and vectors. `includeSummary:true` explicitly requests
+whole-active-frame RMS speed and force summaries; the default reads only its page.
+No energy or temperature is inferred. A non-indexed scene returns
+`{available:false}`; multiple eligible structures require `structureRef`.
+
+For subsequent pages supply `expected` with the returned `sourceId`, `modelId`,
+`structureRef`, `frameIndex` and `segmentIndex` (optionally `frameCount`). A seek,
+source replacement, close or new runtime rejects a mismatched identity. The
+request accepts only its typed page/identity fields; unknown fields and limits
+outside 1–100 fail before queueing. This public read does not expose private
+Geometry/scalar lease commands or add computation to hosted widgets.
+
+### Retained scientific trajectory addresses
+
+`scene_science_binding` with `sourceExtension: "xyz"` returns the exact bounded XYZ parser-input SHA-256 in addition to its existing model/trajectory/frame binding. This is a private host read, not a new public CLI command. `set_structure_pose` accepts an optional `expected` XYZ source binding (SHA-256, structure/model/trajectory refs, current frame index/count). It refuses a changed source before seeking; existing callers that omit this field retain their behavior.
+
+Retained scientific coordinate-set indices are distinct from native poses. An exact registered CJSON MOL graph uses `graph.activeFrameIndex` and native pose 0/1; a final-only XYZ uses the declared `referenceFrameIndex` and native pose 0/1; legacy multi-frame history without a declared reference has no retained cursor. Neither makes the other retained sets seekable. Only a matching XYZ trajectory source enables direct indexed seeking. Full graph-preserving coordinate-set activation and trajectory-range calculations remain separate operations.
+
+The focused Plots route opens in the existing bottom dock from Compute or the command palette. It plots retained geometry and explicitly imported energy, temperature and force metadata; it does not infer energy or kinetic temperature. A retained CJSON coordinate-set cursor is displayed without making those sets native poses. Materializing another graph-preserving set, indexed range analysis and calculated force batches remain separate workflows.
+
+An indexed trajectory that the viewer streams (XTC, TRR, DCD and other Mol* coordinate sources) gets Plots once a frame is displayed. It samples only displayed frames through the bounded `indexed_trajectory_frame` read: RMS speed, maximum and RMS force when the frame states velocities or forces, and a distance, angle or dihedral of 2–4 typed atom numbers. History keeps at most 256 visited frames per source, sparse frame numbers stay sparse, and chart keys seek the viewer. **Export frame** pages the displayed frame into CSV (`frame,atom,source_atom,element,x_A,…`, velocity and force columns only when present, 16 MiB limit); a seek, replacement or Cancel during paging saves nothing. No temperature is derived from positions. A dock pinned to a document keeps its tool and history across page switches such as Settings.
+
+The `vite-dev` browser acceptance used the topology and the two MDAnalysis
+frames in [the TRR reference](../tests/fixtures/trajectory/TRR.md). Show plots
+reported 0.931 Å/ps RMS speed and 3.742 kcal/(mol·Å) maximum force at 2.750 ps.
+ArrowRight on the force chart moved the viewer to frame 2 at 4.250 ps, where the
+maximum force was 7.483 kcal/(mol·Å) and the speed had no value. The dock retained
+two samples. Atoms 1 and 2 gave 28.422 Å on frame 2, matching the reference
+positions. Paged CSV content and cancellation were exercised in `test:indexed-plots`.
+
+## Molecular properties through the browser shell
+
+`properties` uses the same revision-pinned job owner, queue, cancellation and
+terminal publication rules. Its source must provide a complete chemical graph
+with 1–256 atoms, following the existing Properties UI policy: explicit MOL/SDF
+connection tables or a neutral common-valence XYZ graph saturated by its explicit
+atoms. Incomplete XYZ graphs and multi-record SDF collections are refused.
+
+```json
+{"operation":"submit","operationId":"properties-1","expectedSourceRevision":"sha256-<64 hex from observe>","job":{"kind":"properties","params":{}}}
+```
+
+The default summary contains formula, masses, source atom/bond counts, formal
+charge and molecular descriptors. Optional `params.chargeModel:"Gasteiger"`
+adds `partialCharges` with model `Gasteiger`, unit `e`, 12 iterations and charges
+in the submitted source atom order. All hydrogens must already be explicit for
+that calculation; no atoms are added automatically. Both calculation phases share
+one 120-second deadline. Results contain no structure artifact and never modify
+the open source or its original file.
+
+The existing MCP `control_viewer` tool accepts the same request with
+`type:"workbench"`; its CLI bridge uses the shared validation and mounted job
+controller. No separate calculation service or tool is introduced. Validation:
+`vp run test:properties-agent` covers real CLI and stdio MCP requests against the
+HTTP/SSE host, browser-target chemistry worker, pinned WASM and fixed RDKit charge
+references. The fixture uses already-open physical SDF files; ordinary chooser,
+live Browser and native surfaces remain separate acceptance lanes.
+
+### Read-only energy and forces
+
+`energy` and `energy_forces` use the same immutable graph/source revision and
+job lifecycle as Properties. `params.forceField` accepts `MMFF94` (default),
+`MMFF94s`, `UFF` or `LJ` (Avogadro's Lennard-Jones); unknown options fail before
+queueing. Energy supports 1–256 atoms and forces 1–64, with the same
+complete-graph policy for the graph fields; `LJ` needs only coordinates, so an
+XYZ without a perceived graph still runs it. Explicit
+hydrogens are required; parameter failures never substitute another field.
+
+`energy`, `energy_forces`, `frame_energy_forces` and `optimize` also accept an
+external model id: exactly `xtb:gfn2`, `xtb:gfn1` or `xtb:gfnff`, or
+`avogadro:<package>/<identifier>` with a package of 1–64 lowercase letters,
+digits, `.`, `_` or `-` (starting with a letter or digit) and an identifier of
+1–64 letters, digits, `.`, `_` or `-` (starting with a letter or digit). Any
+other id fails validation; `prepare_3d`, `conformers` and `smiles` stay on the
+built-in fields. External models run only in the Burette desktop app, over the
+same native sessions as its Optimize and Calculate Energy commands: the job
+lists the models again and fails with `xtb:gfn2 is not available in this
+Burette.`, the model's own reason (for example a package that is not set up),
+or, in the browser shell, `External energy models run only in the Burette
+desktop app.` They need 3D coordinates (a flat drawing is refused before
+queueing) but no bond graph, and take charge and multiplicity from the
+structure's formal charges and electron count. The summary `method`/`model`
+is the model's display name; forces are the negated model gradient, reported
+as `analytic`. A `frame_energy_forces` page runs in one session; SDF records
+must repeat the first record's atoms in order. The 120-second job deadline
+bounds the whole run.
+Neither job adds atoms, relaxes coordinates or changes the source document.
+
+Energy returns a summary in `kcal/mol` with its model and no artifact. Forces
+add a `forces` JSON artifact whose zero-based indices, elements and vectors
+follow source atom order. Vectors are `-dE/dr` in `kcal/(mol·Å)`. MMFF reports
+`central-difference` and `stepAngstrom: 0.0001`; UFF and LJ report `analytic` without
+a numerical step. The summary includes maximum and RMS vector magnitudes.
+Existing export hashes, no-overwrite behavior and explicit stale-result opt-in
+apply. The shared timeout, queue, cancellation and source-close guards remain
+unchanged.
+
+`vp run test:energy-agent` exercises the contract/controller and actual
+CLI/MCP through emitted host code and a browser-target chemistry worker with
+the pinned WASM. It retains Properties and orbital checks. This is transport
+and numeric acceptance, not an ordinary chooser, live Browser, native app or
+Python/batch acceptance.
+
+## Optimization, conformers and frame batches
+
+These job kinds share the revision pin, `operationId` deduplication, queue,
+cancellation, stale/closed binding and path-based export described above.
+`capabilities` lists every kind with its engine, requirements, parameters and
+artifacts; the validator resolves defaults, so `status` reports the parameters
+that ran. All energies are kcal/mol, distances Å, angles degrees, gradients and
+forces kcal/(mol·Å). No job modifies the open document.
+
+| Kind | Parameters | Artifacts |
+| --- | --- | --- |
+| `optimize` | `forceField` (`MMFF94`, `MMFF94s`, `UFF`, `LJ`, or an external model id on desktop), `method` (`bfgs`, `lbfgs`, `fire`, `abc-fire`, `hybrid`), `maxIterations` 1–1000 (250), `constraints` | `structure` (SDF), `xyz`, `trajectory` |
+| `prepare_3d` | `forceField`, `method`, `seed` 0–2147483639 (1), `maxIterations` | `structure`, `xyz`, `trajectory` |
+| `conformers` | `forceField`, `count` 1–32 samples (8), `seed` | `conformers` (multi-record SDF) |
+| `frame_energy_forces` | `forceField` (also `LJ` and external model ids on desktop), `offset` (0), `count` 1–64 | `forces` (JSON), `extxyz` |
+| `metadata_edit` | `atoms` (index, `atomName`, `residue`), `conformerLabel` | `structure` |
+| `spectrum` | `kind` (`vcd`, `mcd`, `nmr`, `electronic`, `ecd`, `dos`), `source` (`file`, `frame`, `companion`), explicit `frameIndex` for frame/companion; NMR `atomicNumber`; optional `scale`, `offset`, `fwhm`, `axisStart`, `axisEnd` | `source` (JSON), `source_csv`, `display` (CSV), `settings` (JSON) |
+| `pair_distribution` | `rMax` 1–100 Å (10), `binWidth` 0.001–1 Å (0.1), `centre`, `neighbour` | `distribution` (JSON), `csv` |
+| `biological_assembly` | `assemblyId`, `modelNumber`; each is required only when the PDB or mmCIF source defines several | `structure` (mmCIF); the source stays unchanged |
+| `structure_export` | `format` `xyz`, `mol` or `cjson` (required), as Export → Structure writes it: MOL of an SDF is its first record as written, XYZ and CJSON keep a crystal cell | `structure` |
+| `quantum_input` | `program` `orca`, `gaussian`, `psi4` or `cp2k` (required), `task` `energy`, `optimize` or `frequencies`, `method` and `basis` (the Export input file defaults per program), `charge`, `multiplicity`, `coordinates` `cartesian` or `zmatrix` (not CP2K), `constraints` without targets (optimize only), `periodic` (CP2K takes the source cell; true) | `input` (`.inp`, `.gjf` or `.dat`); nothing runs |
+
+`optimize` defaults to `bfgs` for unconstrained MMFF and to `lbfgs` for UFF, LJ
+or any constraint. All five methods support all four models, including
+frozen atoms and restraints. The Cartesian limit is 256 atoms including added
+hydrogens. UFF uses the RDKit kernel. MMFF uses analytic gradients from the
+RDKit term table when available and consistent with the OpenChemLib energy at
+the input geometry. Disconnected MMFF graphs use central differences so that
+interactions between fragments are retained. If the job needs central
+differences, the worker enforces a 64-atom limit. More than 64 constraints,
+out-of-range atom indices and undefined input constraints (a linear angle or a
+dihedral with collinear atoms) return `JOB_UNAVAILABLE` before queueing. A constraint is `{"kind":"freeze","atoms":[i]}`
+or a `distance`/`angle`/`dihedral` over 2/3/4 zero-based source atoms with an
+optional `target` (default: the current value). Frozen atoms are exact; the other
+constraints are harmonic restraints of 10⁴·Δ² kcal/mol (Δ in Å or radians).
+
+The optimize summary reports `method`, `gradient` (`analytic` or
+`central-difference`), `initialEnergy`, `energy`, `iterations` (accepted steps),
+`stopReason` (`converged`, `iterations`, `line-search`, `stalled`, `no-variables`;
+`stalled` means quasi-Newton steps reached the energy's numerical noise floor
+after one restart from steepest descent),
+`maxGradient`, `frameSampling` (`steps`), `frameCount`, `frozenAtoms` and
+`constraintResiduals` (kind, atoms, target, value, signed error, unit).
+`converged` requires both the solver's gradient threshold and residuals within
+0.01 Å or 1°. The `trajectory` artifact includes the initial frame and one XYZ frame
+per accepted step with `Step <i> Energy=<E> kcal/mol` comments, which Burette's
+trajectory reader and Plots tab parse back. `structure` keeps the source atom
+order; for SDF/MOL sources it also keeps the title, data items and atom identities.
+
+`prepare_3d` accepts an explicit SDF/MOL graph whose z coordinates are all zero,
+adds hydrogens after the source atoms, embeds it and relaxes it. An embedding
+whose stereochemistry differs from the input is discarded and the next of up to
+eight consecutive seeds is tried; the summary's `preparation` reports
+`addedHydrogens`, the `seed` used and `attempts`. `conformers` relaxes each
+torsion sample to a converged minimum, drops minima whose sorted heavy-atom
+distances differ by less than 0.05 Å RMS, and returns the distinct minima lowest
+first with `energies`, `relativeEnergies`, `samples` and `duplicates`; each SDF
+record carries `Burette conformer`, `<FF> energy (kcal/mol)` and
+`<FF> relative energy (kcal/mol)` data items.
+
+`frame_energy_forces` evaluates a page of a multi-frame XYZ (one perceived graph)
+or of a multi-record SDF. Every SDF record must repeat the first record's
+elements, bonds and graph in the same atom order; otherwise the job fails and
+names the record. A page holds at most 64 frames and 2048 atom-frames; without
+`count` the page is as large as fits. The summary reports `source`
+(`frames` or `sdf-records`), `totalFrames`, `offset`, `frameCount`, `nextOffset`
+(null on the last page) and per-frame `energies`. `forces` holds
+`frames[].{frameIndex, energy, forces}`; `extxyz` writes the same frames with
+`Properties=species:S:1:pos:R:3:forces:R:3`. An `offset` beyond the last frame is
+refused before queueing. `observe` reports `frames: {count, source}`.
+
+The `atoms` operation pages source-order atoms (`offset`, `limit` ≤ 100,
+optional `frameIndex`) with element and Å positions, pinned with
+`expectedSourceRevision` like `orbitals`.
+
+### Structure editing and builder jobs
+
+`measurement_set` and `coordinate_align` take one explicit MOL or SDF record
+of up to 256 atoms. Both export a new `structure` artifact and leave the source
+revision and its Undo history untouched. Indices are zero-based source rows.
+
+- `measurement_set` takes `measurement` (`distance`, `angle` or `dihedral`),
+  ordered `atoms` (two, three or four), and either `valueAngstrom` for a
+  distance or `valueDegrees` for an angle or dihedral. `fragment` can be
+  `smaller` (default), `first` or `last`. The summary reports the old and new
+  values, units, chosen fragment and moved rows. A ring bond cannot split
+  into two fragments.
+- `coordinate_align` moves `originAtom` to (0, 0, 0). With a distinct
+  `axisAtom` it also rotates the molecule to place that atom on the positive
+  `axis` (`x` by default, `y` or `z`). The summary includes translation in
+  Å and the proper rotation matrix applied after translation.
+
+`insert_fragment`, `hydrogens`, `polymer` and `graph_edit` are `submit` jobs on an open
+explicit MOL/SDF source; they share the revision pinning, queue, cancellation,
+stale/closed handling and export rules above. Each succeeded job has one
+`structure` artifact: a new V3000 record under the source title, as SDF (with
+`$$$$`) for SDF sources and bare MOL for MOL sources. Results never edit the open
+document or its Undo history; open the exported file explicitly.
+
+- `insert_fragment`: exactly one of `library` (an id such as `alkanes/ethyl`
+  from the Edit-tab library) or `smiles` (one `*` marks the attachment point),
+  and an optional zero-based `atomIndex` to attach to. Without `atomIndex` the
+  fragment is added as a separate molecule. The summary reports formula, net
+  formal charge, counts, `addedAtoms`, `anchorAtom`, `replacedAtom`,
+  `bondLengthAngstrom` and `sourceAtomIndices` (`-1` for new atoms).
+- `hydrogens`: `mode` `add`, `remove` or `ph` (with `pH` 0–14), the same
+  operations as the Edit tab. `ph` also reports `pH`, the per-site `changes`
+  (output atom, group, pKa, protonated/deprotonated) and `omittedChanges`; see
+  [hydrogen-protonation.md](hydrogen-protonation.md).
+- `graph_edit`: `edits`, 1–16 Edit-tab changes applied in order, all or
+  none; each zero-based index refers to the structure after the previous edit:
+  `add_atom` (`element`, `position` in Å), `update_atom` (`index` and any of
+  `element`, `charge`, `isotope`, `position`), `delete_atoms` (`indices`) and
+  `set_bond` (`a`, `b`, `order` 0 to remove, 1, 2, 3 or 9 for dative). The
+  summary reports formula, counts, `editCount` and `sourceAtomIndices`.
+- `polymer`: zero-based `head`, `tail`, `headLeaving`, `tailLeaving`, `count`
+  1–500, `bondLengthAngstrom` (default 1.54), optional `tacticity`, `headEnd` and
+  `tailEnd` (`hydrogen`, `methyl`, `hydroxyl`, `phenyl`, `tert-butyl`) and
+  `relax`. Atactic choices are sampled once per job; the summary returns
+  `repeatAlternatives` and, when requested, the `relaxation` energies of the
+  `optimize` engine (MMFF94, `bfgs`).
+
+`build` is a separate operation for new structures without a source document:
+`{"operation":"build","operationId":"pep-1","job":{"kind":"peptide","params":{"sequence":"AGS"}}}`.
+It accepts `operationId` and `job` only; `expectedSourceRevision` is refused.
+Build jobs report `documentId`, `sourceRevision` and `sourceTextSha256` as null
+and `binding: "none"`; closing documents does not release them. `peptide`
+accepts `sequence`, `codes` (`one`/`three`), `chirality` (`L`/`D`), `phiDegrees`,
+`psiDegrees`, `nTerminus` (`amine`/`ammonium`), `cTerminus` (`acid`/`carboxylate`)
+and `chain`, and exports the same mmCIF as the Build peptide dialog. `smiles` accepts one
+`smiles` string plus `forceField`, `method`, `seed` and `maxIterations`: the
+OpenChemLib conformer used when a SMILES is opened (embedding `seed`) is relaxed by
+the `optimize` engine, with the optimize summary and `structure`/`xyz`/`trajectory`
+artifacts. `metal_complex` accepts `metal` (element symbol), `oxidationState`
+(−2–8), `geometry` (`linear`, `trigonal-planar`, `tetrahedral`, `square-planar`,
+`trigonal-bipyramidal`, `square-pyramidal`, `octahedral`, `trigonal-prismatic`,
+`pentagonal-bipyramidal`, `hexagonal-bipyramidal`, `square-antiprismatic`), up to 8
+`ligands` (`{ ligand, sites, distanceAngstrom? }`, one site per donor and one for a
+haptic ring, zero-based in the polyhedron's site order; three or more donors keep
+their template distances and take no `distanceAngstrom`) and `format`
+(`sdf`/`mol`). It exports the same file as the Build metal complex dialog
+(coordination bonds as V2000 type 9 with `M  CHG`); invalid site assignments
+and overlapping ligands fail the job. See
+[metal-complex-builder.md](metal-complex-builder.md). `nucleic_acid` accepts
+`sequence`, `type` (`DNA`/`RNA`), `form` (`B`, `A`, `Z`; RNA is A only),
+`strands` (`double`/`single`) and `fivePrime` (`hydroxyl`/`phosphate`) and
+exports the Build DNA/RNA dialog's mmCIF; the summary reports `strands`,
+`residueCount`, `atomCount`, Hill `formula` and `formalCharge`.
+
+`bun run test:builder-agent` drives the actual controller and workers: RDKit
+reads each exported structure as the independent product (diethyl ether,
+ethanol/water, ethanol with and without hydrogens, the frozen isotactic
+polypropylene hexamer, the glycine zwitterion), the Ala-Gly-Ser mmCIF has
+C8H15N3O5, `smiles` builds keep their stereo, every `metal_complex` sample
+equals the file RDKit and Open Babel checked, every `nucleic_acid` reference
+case has RDKit's formula, charge and atom count, and invalid parameters, XYZ
+sources, out-of-range atoms and failed placements are refused.
+
+### Python and Jupyter client
+
+`plugins/burette-agent/python/burette_workbench.py` is a standard-library client
+over the same CLI route. It resolves `../scripts/burette-agent.mjs` next to
+itself (override with `BURETTE_AGENT_CLI`; Node from `BURETTE_NODE` or `PATH`).
+
+```python
+import sys; sys.path.insert(0, "<plugin>/python")
+from burette_workbench import Workbench, WorkbenchError
+wb = Workbench(session_dir)
+job = wb.run("optimize", {"method": "lbfgs", "constraints": [{"kind": "freeze", "atoms": [0]}]})
+wb.export(job.job_id, "trajectory", "steps.xyz")
+energies = [frame["energy"] for frame in wb.iter_frame_energy_forces("UFF", batch_size=16, operation_prefix="run-1")]
+```
+
+`build(kind, params)` runs a documentless `build` job (`smiles`, `peptide`) and
+waits for it. `open(*paths)` opens files, such as an exported artifact, in the
+session's workspace; later jobs run on the new active document. `iter_atoms`/`iter_orbitals` page with the first page's revision pinned.
+`iter_frame_energy_forces` pins the revision once and submits one job per page
+with operation ids `<operation_prefix>-<offset>`, so rerunning an interrupted
+loop reuses finished pages and an edited source raises `REVISION_CONFLICT`.
+Every failure raises `WorkbenchError` with the protocol code.
+
+### Adding a typed job kind
+
+1. Add one entry to `JOB_DEFINITIONS` in `scripts/workbench-agent-contract.mjs`:
+   `describe` (what `capabilities` advertises) and `params(value)`, which rejects
+   unknown fields and returns normalized parameters with defaults resolved.
+   Add the parameter type to `WorkbenchJobParams` in
+   `scripts/workbench-agent-contract.d.mts` and copy the contract to
+   `plugins/burette-agent/scripts/`.
+2. Add one `AgentJobRunner` to `AGENT_JOBS` in
+   `apps/desktop/src/lib/workbench/agent-jobs.ts` (the mapped type rejects a
+   missing kind): `unavailable(snapshot)` for `observe`, optional
+   `paramsUnavailable(snapshot, params)` for refusals before queueing, and
+   `run(snapshot, params, context)` returning a bounded summary and artifacts built
+   with `context.artifact`. Run work in a worker with `context.signal` and
+   `context.timeoutMs`; the controller owns queueing, deduplication, cancellation,
+   stale/closed binding and export. A kind that needs no source document sets
+   `build: true` in its definition, is requested with operation `build`, and has
+   an `AgentBuildRunner` (`run(params, context)`) in `AGENT_BUILDS` instead.
+3. Keep summaries under the 64 KiB response limit; bulk data belongs in artifacts.
+
+Validation: `vp run test:workbench-automation-jobs` runs the controller with real
+workers against Python RDKit references; `vp run test:workbench-python-client`
+drives the Python client through the packaged CLI, the HTTP session server, the
+production host hook and the stdio MCP tool. Packaged-plugin rebuilds, a live
+Browser session and the native app remain separate acceptance lanes.
+
+### Typed scientific spectrum export
+
+`spectrum` uses the same cancellable worker and defaults as the Spectra panel.
+It binds to the submitted source revision and does not apply results to the live
+panel. `source` defaults to `file`; `frame` and `companion` require a zero-based
+`frameIndex`, never implicitly using the current animation frame. IR/Raman and
+mode-displacement automation are separate operations and are not advertised by
+this job. NMR references are approximate starting values, as in the UI.
+
+```python
+job = wb.run("spectrum", {"kind": "nmr", "atomicNumber": 6})
+wb.export(job.job_id, "display", output="carbon-nmr.csv")
+wb.export(job.job_id, "settings", output="carbon-nmr-settings.json")
+```
+
+`source`/`source_csv` retain the complete selected spectrum in original producer
+units and source row/atom order (including other NMR elements). `display` contains
+`position_<unit>,smoothed,stick` for every numeric grid point of the selected
+spectrum/element; `settings` records reference, axis direction, conversions and
+float32 peak-height arithmetic. The grid is stored in increasing coordinate order;
+axis direction is retained separately in settings, as in the interactive panel.
+The worker enforces at most 200000 points and 100000000 evaluations; the common
+artifact byte limit also applies. Unsupported source selections fail before
+queueing. Invalid grids fail in the worker without artifacts. Cancellation,
+replay, stale-result export and source closure use the shared job owner.
+
+
+### Typed IR and Raman export
+
+`vibrational_spectrum` selects `kind: "ir" | "raman"` and `source: "file" | "frame"`
+(default `file`, the document-level final-geometry modes). Frame source requires
+an explicit zero-based `frameIndex`; no current-frame fallback or companion is
+accepted. This exports existing source modes, not a Hessian calculation or a
+normal-mode displacement trajectory. Every mode must contain the requested IR
+intensity or Raman activity; absent quantities are never synthesized as zero.
+
+```python
+job = wb.run("vibrational_spectrum", {"kind": "raman", "source": "frame", "frameIndex": 0})
+wb.export(job.job_id, "display", output="raman.csv")
+wb.export(job.job_id, "settings", output="raman-settings.json")
+```
+
+The cancellable worker shares the Vibrations panel's float32 peak-height kernel.
+Optional `scale`, `offsetCm1`, `fwhmCm1`, `axisStartCm1`, `axisEndCm1` override the
+panel's initial defaults. Automatic axes expand to cover source bands; an explicit
+endpoint replaces that endpoint. Unlike UI preferences, agent defaults are stable
+across runs. Source CSV/JSON retain all scalar mode columns and source numbering;
+missing unrelated values remain empty/null. Displacements are not included.
+`display` is the full ascending `wavenumber_cm-1,smoothed,stick` grid. `settings`
+records axis direction, provenance, parameters and IR's conventional transforms
+`100*(1-sum/125)` (Gaussian) and `100*(1-sum/100)` (sticks), which are not physical
+transmittance predictions. Raman retains activity units (angstrom^4/amu).
+Bounds: 10000 modes, 20000 grid points, 20000000 evaluations and the shared artifact
+byte limit. Only scalar quantities are cloned to the worker. Common job ownership
+provides source revision pinning, replay, cancellation and stale export checks.
+
+
+Vibrational exports capture the registered original filename with their scientific
+snapshot, so imported FCHK data is not relabeled as the materialized XYZ. That name
+participates in the opaque source revision; replacing it requires a fresh observe.
+Exports from an older snapshot retain their original name, including explicit stale
+exports. Sources without an attached original use the document title.

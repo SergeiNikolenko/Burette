@@ -29,6 +29,11 @@ import {
 } from "../lib/native-menu-paths";
 import type { DerivedColumnKind } from "../lib/derived-columns";
 import { nativeMenuAccelerators } from "../lib/keyboard-shortcuts";
+import { openEnumerateLibrary } from "../lib/library-enumeration-task";
+import { structureEditAvailable } from "../lib/workbench/graph-draft";
+import { geometryPanelAvailable } from "../lib/geometry-editing";
+import { openWorkbenchDialog } from "../lib/workbench/dialog-store";
+import { requestOptimizationCommand, type OptimizationCommand } from "../lib/workbench/optimization-commands";
 import { useSettingsStore } from "../stores/settings-store";
 import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 import { postGridCommand } from "../lib/viewer-bridge";
@@ -94,6 +99,15 @@ const postGridMenuCommand = postGridCommand;
 async function openExternalUrl(url: string) {
   await invoke("open_external_url", { url });
 }
+
+const OPTIMIZATION_MENU_COMMANDS: Record<string, OptimizationCommand> = {
+  "structure.optimize-geometry": "optimize",
+  "structure.auto-optimize": "auto-optimize",
+  "structure.calculate-energy": "calculate-energy",
+  "structure.configure-optimization": "configure",
+  "structure.freeze-atoms": "freeze",
+  "structure.unfreeze-atoms": "unfreeze",
+};
 
 export function useAppNativeMenu({
   state,
@@ -163,6 +177,9 @@ export function useAppNativeMenu({
     && activeDocumentReadable
     && canInspectConformerEnsemble(extension)
     && state.conformerStatus?.prism.installed === true);
+  // Avogadro's Optimize Geometry and Calculate commands run in the panel that edits the coordinates.
+  const optimizationPanel = structureEditAvailable(activeDocument) ? "structure-edit" : geometryPanelAvailable(activeDocument) ? "geometry" : null;
+  const canOptimizeGeometry = Boolean(!isGrid && optimizationPanel);
   const canRunXtb = Boolean(activeDocument
     && !isGrid
     && activeDocumentReadable
@@ -261,10 +278,11 @@ export function useAppNativeMenu({
     canRunCrest,
     canRunPrism,
     canRunXtb,
+    canOptimizeGeometry,
     rgroupRuntimeAvailable: state.rgroupRuntimeAvailable,
     openDocumentPaths,
     recentDocuments: null,
-  }), [activeDocument, activeTabClosable, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, closableTabCount, canOpenCollectionAnalysis, documentRegistryRevision, gridMenuState, isGrid, openDocumentPaths, selectedMoleculeCount, shellEditingText, sourceSaveEnabled, state.activeTab, state.rgroupRuntimeAvailable, state.bottomDockOpen, state.rightDockOpen, state.sidebarOpen, state.tabs.length, windowDocumentDirty]);
+  }), [activeDocument, activeTabClosable, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, canOptimizeGeometry, closableTabCount, canOpenCollectionAnalysis, documentRegistryRevision, gridMenuState, isGrid, openDocumentPaths, selectedMoleculeCount, shellEditingText, sourceSaveEnabled, state.activeTab, state.rgroupRuntimeAvailable, state.bottomDockOpen, state.rightDockOpen, state.sidebarOpen, state.tabs.length, windowDocumentDirty]);
   const nativeStateRef = useRef<NativeMenuState>({ ...nativeState, recentDocuments });
   const closingWindowRef = useRef(false);
   const closeRequestInFlightRef = useRef(false);
@@ -566,6 +584,7 @@ export function useAppNativeMenu({
       case "collection.copy-selected":
       case "collection.select-all":
       case "collection.clear-selection":
+      case "collection.record-view":
         gridCommand();
         return;
       case "collection.calculate-descriptors":
@@ -599,6 +618,9 @@ export function useAppNativeMenu({
       case "analyze.chemical-space":
         if (isGrid) actions.openDockTab("bottom", "chemical-space");
         return;
+      case "analyze.chart":
+        if (isGrid) actions.openDockTab("bottom", "collection-chart");
+        return;
       case "analyze.cluster":
       case "analyze.diverse":
         // Clustering lives in the grid; the command is forwarded whole and the
@@ -616,6 +638,12 @@ export function useAppNativeMenu({
         return;
       case "analyze.rgroups":
         if (activeDocument && isGrid) actions.openRGroupDecomposition(activeDocument.id);
+        return;
+      case "analyze.matched-pairs":
+        if (activeDocument && isGrid) actions.openMatchedPairs(activeDocument.id);
+        return;
+      case "analyze.sar-table":
+        if (activeDocument && isGrid) actions.openSarTable(activeDocument.id);
         return;
       case "collection.add-column.calculated":
         if (activeDocument && isGrid) actions.openCalculatedColumn(activeDocument.id);
@@ -645,10 +673,24 @@ export function useAppNativeMenu({
         // Molecules already uses, and the merge is one undo entry.
         if (activeDocument && isGrid) actions.mergeEquivalentGridRows(activeDocument.id);
         return;
+      case "collection.pivot":
+      case "collection.unpivot":
+      case "collection.merge-by-key":
+        // The dialog reads the table out of the grid and the grid applies the
+        // reshaped rows through its edit layer, so nothing goes through actions.
+        if (activeDocument && isGrid) {
+          openWorkbenchDialog({ kind: command.slice("collection.".length) as "pivot" | "unpivot" | "merge-by-key", document: activeDocument });
+        }
+        return;
       case "collection.reaction.perform":
         // Runs a reaction over the collection's molecules, so it opens a dialog
         // for the reaction rather than reading one off the rows.
         if (activeDocument && isGrid) actions.openPerformReaction(activeDocument.id);
+        return;
+      case "collection.reaction.enumerate":
+        // The result is a new collection, so this one only offers itself as the
+        // first building-block list.
+        openEnumerateLibrary(activeDocument && isGrid ? activeDocument : null);
         return;
       case "collection.transform.logarithmic":
         // The same dialog, opened with the transform already written: naming the
@@ -717,6 +759,15 @@ export function useAppNativeMenu({
         if (!activeDocument || isGrid || !canRunPrism) return;
         await actions.runConformerOperation("prism-prune", activeDocument);
         return;
+      case "structure.optimize-geometry":
+      case "structure.auto-optimize":
+      case "structure.calculate-energy":
+      case "structure.configure-optimization":
+      case "structure.freeze-atoms":
+      case "structure.unfreeze-atoms":
+        if (!activeDocument || !canOptimizeGeometry || !optimizationPanel) return;
+        requestOptimizationCommand(actions, activeDocument, optimizationPanel, OPTIMIZATION_MENU_COMMANDS[command]);
+        return;
       case "structure.xtb-optimize":
         if (!activeDocument || isGrid || !canRunXtb) return;
         await actions.runXtbActiveOperation("optimize");
@@ -748,7 +799,7 @@ export function useAppNativeMenu({
       default:
         console.warn(`Unknown native menu command: ${command}`);
     }
-  }, [actions, activeDocument, activeTabClosable, canOpenCollectionAnalysis, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, closeCurrentWindow, conformerSelection, isGrid, openDocuments, saveActiveSource, sourceSaveEnabled, state.activeTabId, state.activeTab?.pinned, state.tabs]);
+  }, [actions, activeDocument, activeTabClosable, canOpenCollectionAnalysis, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, canOptimizeGeometry, optimizationPanel, closeCurrentWindow, conformerSelection, isGrid, openDocuments, saveActiveSource, sourceSaveEnabled, state.activeTabId, state.activeTab?.pinned, state.tabs]);
 
   // Grid commands need the mounted grid and its records, not just a new document.
   // Cancel if the user leaves the target tab while it is opening.

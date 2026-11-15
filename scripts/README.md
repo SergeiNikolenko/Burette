@@ -38,6 +38,11 @@ Deleting the bundle by hand leaves its Launch Services record behind; clean
 existing leftovers with `./scripts/prune-launch-services.sh [--dry-run]`
 (`install.sh` also runs it).
 
+`BURETTE_BUILD_TARGET=x86_64-apple-darwin` (local builds only, needs
+`rustup target add x86_64-apple-darwin`) builds an Intel bundle for the
+x86_64 macOS VMs on Orion (`macvm`). It ships without the xyzrender runtime,
+because the locked RDKit has no macOS x86_64 wheel.
+
 Preview checks:
 
 ```bash
@@ -65,10 +70,20 @@ bun scripts/burette-agent.mjs open --mode browser-preview samples/mini.pdb
 bun scripts/burette-agent.mjs open --mode browser-agent-shell samples/mini.pdb
 bun scripts/burette-agent.mjs observe --session-dir /tmp/burette-agent-session
 bun scripts/burette-agent.mjs act --session-dir /tmp/burette-agent-session '{"type":"reset_camera"}'
+bun scripts/burette-agent.mjs convert --file molecule.xyz --format zmat --output molecule.zmat
+bun scripts/burette-agent.mjs convert --file molecule.zmat --format xyz --output molecule.xyz
 ```
 
 See `docs/agent-platform.md` and `plugins/burette-agent/AGENTS.md` before
 changing CLI, MCP, or skill behavior.
+
+`convert` preserves absolute Cartesian coordinates, atom order, human comments
+and the complete internal-coordinate definition through the bounded
+[interchange contract](../docs/coordinate-interchange.md). Input and output are
+each limited to 1 MiB, with 512 definition rows including dummy reference points.
+Existing outputs require `--overwrite`; source aliases and output symlinks are
+rejected. Run `vp run test:coordinate-cli` and
+`vp run test:coordinate-cli-packaged` for repository and isolated plugin checks.
 
 ## Validation And CI Helpers
 
@@ -140,6 +155,22 @@ resolves each atom pair's group IDs once. Probe/grid traversal, distances and gr
 unchanged. `bun tests/test-molstar-surface-loop.mjs` compares fields and meshes
 bit-for-bit with upstream, including sparse selections and cancellation.
 
+`molstar-topology-environment.js` retains the exact native-default camera bindings
+with secondary-button triggers removed by Burette's context menu. Other authored
+bindings remain unsupported. `vp run test:xyz-topology-viewer-default` executes
+the real app binding setup, native scene/MOLX roundtrips and continued topology
+restoration, including read-only rejection of unknown bindings. Rebuild Mol* and
+the agent-shell mirror after changing this module; Browser acceptance is separate.
+
+Topology scene transfers retain at most 2 MiB of UTF-8 JSON, within the existing
+32-component/eight-representations-per-component limits. Their transient reload
+envelope permits another 8 KiB for measurement transfer and framing; measurement
+transfers keep their existing 6 KiB bound. Ordinary camera checkpoints and native
+non-topology reloads keep their 8 KiB limit. `vp run test:topology-transfer-budget`
+checks the actual Browser MOLX, complete field retention at maximum object counts,
+exact byte boundaries, and the compiled host-to-native receiver path. The paired
+native boundary test is `renderer_view_state_keeps_ordinary_views_small_and_bounds_topology_reload_bytes`.
+
 Scripts such as `dev-namespace.mjs`, `preview-content-type.mjs`,
 `patch-web-assets.sh`, vendor scripts, and release signing helpers are
 implementation details for the public commands above. Use them directly only
@@ -186,6 +217,44 @@ Release builds should not use `BURETTE_DEV_FLAVOR`.
 and `controls.tsx` into `PreviewExtension/Web/sequence-panel.js`. Rebuild after
 changing these sources or their shared Select/Resizable components. The runtime
 uses the same primitives as the desktop docks with preview theme tokens.
+
+
+Typed workbench jobs (properties, energies and forces, optimization, 3D
+preparation, conformers, frame batches, metadata, measurement edits, coordinate
+alignment, pair distribution, point and
+space groups, powder patterns, crystal transforms and orbital Cubes) use
+`burette-agent.mjs workbench` in a browser-agent-shell session. The shared request contract is `workbench-agent-contract.mjs`, whose `JOB_DEFINITIONS`
+lists every kind; the CLI and shell consume it at their transport boundaries.
+`workbench-artifact.mjs` publishes verified exports and session JSON atomically. See
+[Orbital Cube jobs](../docs/agent-platform.md#orbital-cube-jobs-through-the-browser-shell)
+and [Optimization, conformers and frame batches](../docs/agent-platform.md#optimization-conformers-and-frame-batches)
+for requests, limits, the Python client and how to add a job kind. Run
+`vp run test:orbital-agent` and `vp run test:workbench-automation-jobs` for the
+focused controller and compiled host/HTTP/CLI proofs. Crystal and point-group jobs
+are described in
+[Crystal and molecular symmetry jobs](../docs/agent-platform.md#crystal-and-molecular-symmetry-jobs).
+
+
+`test:indexed-trajectory-runtime` covers the source-owned indexed Mol* adapter
+with the independent MDAnalysis TRR fixtures, DCD/XTC seeks, disposal and native
+state-tree reopen. Optional velocities/forces are preserved in model atom order;
+missing blocks remain absent. The cache accounts for all vector bytes (32 MiB,
+at most three frames), separately from active/pending/source storage. Raw-browser
+TRR retains one snapshot-owned binary source within the existing 75 MiB/100,000
+frame limits. No energy or temperature is inferred. Rebuild `vendor:molstar` and
+plugin mirrors before enabling a host consumer of the new frame-page methods.
+
+## Native XYZ Lattice
+
+`molstar-xyz-lattice.mjs` is a version-locked build adapter used by both
+`vp run vendor:molstar` and `vp run build:mesoscale`. It attaches admitted
+per-frame XYZ `Lattice` metadata through the existing native symmetry provider,
+preserving the full Cartesian cell frame and physical volume. Missing, malformed,
+or partial-periodic metadata keeps ordinary XYZ atom-opening behavior.
+
+After rebuilding the native runtime, `vp run test:built-xyz-lattice` checks
+real provider/state seeks, unit-cell geometry, and native MOLX round trips.
+This prerequisite does not add Niggli actions, cell editing, or cell export.
 
 ## Local diagnostics capture
 

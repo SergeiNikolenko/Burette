@@ -1,3 +1,7 @@
+import { isHostedMcpWidget } from "./hosted-mcp-widget";
+import { isTauriRuntime } from "./tauri";
+import { hasExplicitBrowserDevServerWorkspace } from "./browser-dev-paths";
+
 type WorkspaceStorageKeyOptions = {
   windowScoped?: boolean;
 };
@@ -18,4 +22,17 @@ function currentWindowStorageSuffix() {
 export function workspaceStorageKey(baseKey: string, options: WorkspaceStorageKeyOptions = {}) {
   if (options.windowScoped === false) return baseKey;
   return `${baseKey}${currentWindowStorageSuffix()}`;
+}
+
+/** Browser tabs retain their own workspace on reload without adopting another window's tabs. */
+export function isBrowserSessionWorkspace() {
+  return import.meta.env.VITE_BURETTE_AGENT_SHELL === "1"
+    && typeof window !== "undefined" && !isTauriRuntime()
+    && !window.BuretteMcpWorkspace && !isHostedMcpWidget() && !hasExplicitBrowserDevServerWorkspace()
+    && import.meta.env.VITE_BURETTE_WEB_DEMO !== "1";
+}
+
+export function workspaceStorage() {
+  return window.BuretteMcpWorkspace?.storage
+    ?? (isBrowserSessionWorkspace() ? window.sessionStorage : localStorage);
 }

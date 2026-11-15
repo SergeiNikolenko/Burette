@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { ViewerDocument } from "../types";
 import { readStructureTextDocument } from "../lib/structure-text";
-import { pathExtension } from "../lib/file-routing";
+import { openRoutingExtension } from "../lib/file-routing";
 import { isTauriRuntime } from "../lib/tauri";
 import { abortOpenDocumentClaims } from "../lib/open-document-claims";
 import { useMoleculeStore } from "../stores/molecule-store";
@@ -13,7 +13,7 @@ export async function createFileBatchScene(path: string, signal: AbortSignal) {
   const source = await readStructureTextDocument(path, undefined, { maxBytes: 24 * 1024 * 1024 });
   signal.throwIfAborted();
   if (source.truncated) throw new Error("Scene imports are limited to 24 MB at a time.");
-  const extension = pathExtension(path);
+  const extension = openRoutingExtension(path);
   const title = `Scene: ${path.split("/").pop() ?? "Structures"}`;
   const preferences = { ...useSettingsStore.getState().preferences, rendererMode: "molstar" as const };
   const native = isTauriRuntime();

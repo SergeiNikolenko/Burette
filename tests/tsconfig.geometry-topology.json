@@ -1,0 +1,5 @@
+{
+  "extends": "../apps/desktop/tsconfig.json",
+  "compilerOptions": { "strict": true, "noEmit": true, "allowJs": true, "checkJs": false, "typeRoots": ["../node_modules/@types", "../apps/desktop/node_modules/@types"], "types": ["bun"] },
+  "include": ["../apps/desktop/src/**/*.d.ts", "./test-geometry-topology-source-session.test.tsx"]
+}

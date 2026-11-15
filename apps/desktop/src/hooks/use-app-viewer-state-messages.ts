@@ -4,10 +4,19 @@ import type { StructureOverlayMode, ViewerLigandSelection } from "../components/
 import type { ViewerDocument, ViewerPreferences } from "../types";
 import type { DockTabKind } from "../lib/dock";
 import { updateHostedMcpSelectionContext } from "../lib/hosted-mcp-widget";
+import { rememberViewerAtomSelection } from "../lib/workbench/selection";
+import { openWorkbenchDialog } from "../lib/workbench/dialog-store";
+import { readMeasurementRequest, readXyzMeasurementAtoms } from "../lib/workbench/measurement-request";
+import { requestGeometryFocus } from "../lib/workbench/geometry-focus";
+import { geometryPanelAvailable } from "../lib/geometry-editing";
+import { structureEditAvailable } from "../lib/workbench/graph-draft";
+import { sourceExtension } from "../lib/science-session/state";
+import { isViewerFrameVisible } from "../lib/viewer-frame-visibility";
 import { structureStoryFromViewerMessage, type StructureStory } from "../lib/structure-story";
 import { rendererViewReloadOptions } from "../lib/renderer-view-state";
 import { dockCameraRestore } from "../lib/dock-camera-transfer";
 import { postMessageToViewerSource } from "../lib/viewer-bridge";
+import { openSmartsSelect } from "../lib/workbench/select-commands";
 
 type ViewerStateMessageBody = Record<string, unknown> | null | undefined;
 type SetViewerLigandSelections = (
@@ -38,6 +47,7 @@ function dispatchXyzrenderSelection(body: Record<string, unknown>) {
 }
 
 type UseAppViewerStateMessagesOptions = {
+  ownsCurrentSourceFrame: (document: ViewerDocument, frame: HTMLIFrameElement) => boolean;
   updateDirtyGridDocument: (documentId: string, dirty: boolean) => void;
   activeDocument: ViewerDocument | null;
   addDocuments: (documents: ViewerDocument[]) => void;
@@ -63,6 +73,7 @@ function bodyString(value: unknown) {
 }
 
 export function useAppViewerStateMessages({
+  ownsCurrentSourceFrame,
   updateDirtyGridDocument,
   activeDocument,
   addDocuments,
@@ -78,6 +89,36 @@ export function useAppViewerStateMessages({
   toggleDock,
 }: UseAppViewerStateMessagesOptions) {
   const handleViewerStateMessage = useCallback((sourceName: unknown, body: ViewerStateMessageBody, eventSource: MessageEventSource | null) => {
+    if (sourceName === "burette-viewer" && body?.type === "editMeasurementCoordinate") {
+      // Only the active, editable frame of the active graph document can open its own measurement.
+      const request = readMeasurementRequest(body.measurement);
+      const frame = activeDocument ? activeViewerIframeForDocument(activeDocument.id, "molstar") : null;
+      const extension = activeDocument ? sourceExtension(activeDocument) : null;
+      const xyzAtoms = readXyzMeasurementAtoms(body.measurement);
+      const ownFrame = Boolean(eventSource && activeDocument && frame && activeDocument.id === body.documentId
+        && frame.contentWindow === eventSource && !isReadOnlyViewerMessageSource(eventSource) && ownsCurrentSourceFrame(activeDocument, frame));
+      if (xyzAtoms && ownFrame && extension === "xyz" && geometryPanelAvailable(activeDocument)) {
+        requestGeometryFocus(activeDocument!.id, xyzAtoms);
+        openDockTab("right", "geometry");
+        return true;
+      }
+      if (request && eventSource && activeDocument && frame && activeDocument.id === body.documentId && structureEditAvailable(activeDocument)
+        && (extension === "sd" ? "sdf" : extension) === request.sourceFormat
+        && frame.contentWindow === eventSource && !isReadOnlyViewerMessageSource(eventSource) && ownsCurrentSourceFrame(activeDocument, frame)) {
+        openWorkbenchDialog({
+          kind: "measurement",
+          document: activeDocument,
+          measurement: { ...request, frameSource: eventSource, requestId: crypto.randomUUID() },
+        });
+      }
+      return true;
+    }
+    if (sourceName === "burette-viewer" && body?.type === "selectBySmarts") {
+      // The frame identifies the document; its runtime id can differ from the shell's.
+      const document = documents.find(document => activeViewerIframeForDocument(document.id, "molstar")?.contentWindow === eventSource);
+      if (document) openSmartsSelect(document);
+      return true;
+    }
     if (sourceName === "burette-viewer" && body?.type === "rendererViewStateRequest") {
       const document = documents.find(document => document.id === body.documentId);
       if (document && typeof body.requestId === "string" && body.requestId.length <= 128) {
@@ -213,6 +254,12 @@ export function useAppViewerStateMessages({
       const selection = body.selection && typeof body.selection === "object"
         ? body.selection as Record<string, unknown>
         : null;
+      const document = documents.find(document => document.id === documentId);
+      const frame = document ? activeViewerIframeForDocument(documentId, "molstar") : null;
+      if (document && frame && isViewerFrameVisible(frame) && frame.contentWindow === eventSource
+        && !isReadOnlyViewerMessageSource(eventSource) && ownsCurrentSourceFrame(document, frame)) {
+        rememberViewerAtomSelection(documentId, selection);
+      }
       updateHostedMcpSelectionContext(selection, documentId);
       const atomCount = selection?.atoms == null ? null : Number(selection.atoms);
       setViewerLigandSelections((previous) => ({
@@ -266,7 +313,7 @@ export function useAppViewerStateMessages({
     }
 
     return false;
-  }, [activeDocument, addDocuments, documents, openCommandPalette, openDockTab, toggleDockTab, setPreference, setStructureOverlayModes, setStructureStories, setViewerLigandSelections, toggleSidebar, toggleDock, updateDirtyGridDocument]);
+  }, [activeDocument, addDocuments, documents, openCommandPalette, openDockTab, toggleDockTab, ownsCurrentSourceFrame, setPreference, setStructureOverlayModes, setStructureStories, setViewerLigandSelections, toggleSidebar, toggleDock, updateDirtyGridDocument]);
 
   return { handleViewerStateMessage };
 }

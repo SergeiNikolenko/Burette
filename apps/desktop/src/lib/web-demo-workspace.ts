@@ -1,11 +1,17 @@
+import { BROWSER_IMPORT_MAX_FILE_BYTES, listBrowserImports, saveBrowserImport, type BrowserImport } from "./browser-import-storage";
 import { isDocumentMediaPath, documentViewerExtensions } from "./file-routing";
+import { COMPRESSED_FILE_ACCEPT, isCompressedName, supportedCompressedName, supportedInnerExtension } from "./compressed-files/formats";
+import { checkCompressedFile, compressedSourceFor, registerCompressedSource } from "./compressed-files/sources";
+import { decodeCompressedFile } from "./compressed-files/task";
+import { pickBrowserFiles } from "./browser-file-picker";
+import { isScientificFile, SCIENTIFIC_FILE_ACCEPT, SCIENTIFIC_FILE_LIMIT } from "./workbench/scientific-files";
 import { demoLibraryFiles } from "./web-demo-library";
 import { standaloneDemoScenes } from "./web-demo-scenes";
 import kras from "../../../../samples/structures/proteins/7rpz.pdb?raw";
 import imatinibPoses from "../../../../samples/structures/small-molecules/imatinib-poses.sdf?raw";
 import mosesProperties from "../../../../samples/collections/tables/moses-properties.csv?raw";
 import type { SidebarProjectStructure } from "./sidebar-projects";
-import { writeBrowserDevVirtualTextDocument } from "./browser-dev-documents";
+import { readBrowserDevPickedBinary, readBrowserDevVirtualTextDocument, writeBrowserDevPickedBinary, writeBrowserDevVirtualTextDocument } from "./browser-dev-documents";
 import moses10k from "../../../../samples/collections/tables/moses-10k.csv?raw";
 import extxyzCell from "../../../../samples/extxyz-cell.xyz?raw";
 import ketcher2dBenzene from "../../../../samples/ketcher-2d-benzene.sdf?raw";
@@ -36,10 +42,19 @@ const WEB_DEMO_ROOT = "/BuretteDemo";
 const WEB_DEMO_ENABLED = import.meta.env.VITE_BURETTE_WEB_DEMO === "1";
 const MAX_FILE_BYTES = 3 * 1024 * 1024;
 const listeners = new Set<() => void>();
-const binaryFiles = new Map<string, File>();
+const binaryFiles = new Map<string, Blob>();
 export function readBrowserPickedFile(path: string) { return binaryFiles.get(path) ?? null; }
 const files = new Map<string, SidebarProjectStructure>();
 let standaloneInitialized = false;
+let importsInitialized: Promise<void> | undefined;
+
+export function initializeBrowserImportedFiles() {
+  importsInitialized ??= listBrowserImports().then(async (imports) => {
+    for (const record of imports) await registerImportedFile(record);
+    if (imports.length) emitChange();
+  }).catch(error => { importsInitialized = undefined; throw error; });
+  return importsInitialized;
+}
 
 const methaneXyz = `5
 Methane
@@ -102,11 +117,11 @@ export async function initializeWebDemoWorkspace() {
       if (!response.ok) throw new Error(`Could not load demo file ${scene.asset}`);
       return { path: `${WEB_DEMO_ROOT}/${scene.path}`, text: await response.text() };
     }));
-    files.clear();
     for (const source of sources) registerText(source.path, source.text);
     for (const file of demoLibraryFiles) {
       const title = file.path.split("/").pop()!;
       const path = `${WEB_DEMO_ROOT}/${file.path}`;
+      if (files.has(path)) continue;
       files.set(path, { path, title, extension: title.split(".").pop()!.toLowerCase(), renderer: "molstar", byteCount: file.byteCount, openedAt: null });
     }
     emitChange();
@@ -146,31 +161,87 @@ export async function pickWebDemoFiles(options: { directory?: boolean } = {}) {
     ? cleanSegment(selected[0]?.webkitRelativePath.split("/")[0] || "LocalProject")
     : "OpenedFiles";
   const root = `/${rootName}`;
-  const paths: string[] = [];
+  const paths: string[] = [], scientific: string[] = [], errors: string[] = [];
   for (const file of selected) {
-    if (file.size > MAX_FILE_BYTES) continue;
     const relativePath = options.directory ? file.webkitRelativePath : file.name;
-    const path = `${root}/${relativePath.split("/").slice(options.directory ? 1 : 0).map(cleanSegment).join("/")}`;
-    if (!path || path.endsWith("/")) continue;
-    if (isDocumentMediaPath(path)) {
-      if (!binaryFiles.has(path) && binaryFiles.size >= 32) throw new Error("Too many open documents");
-      binaryFiles.set(path, file);
-      registerFile(path, file.size);
-    } else registerText(path, await file.text(), file.size);
-    paths.push(path);
+    try {
+      const isScientific = await isScientificFile(file);
+      const maxBytes = isScientific ? SCIENTIFIC_FILE_LIMIT : /\.molx$/iu.test(file.name) ? BROWSER_IMPORT_MAX_FILE_BYTES : MAX_FILE_BYTES;
+      if (file.size > maxBytes) throw new Error(`larger than the ${maxBytes === SCIENTIFIC_FILE_LIMIT ? "16 MiB" : maxBytes === BROWSER_IMPORT_MAX_FILE_BYTES ? "24 MiB" : "3 MB"} browser file limit`);
+      const path = `${root}/${relativePath.split("/").slice(options.directory ? 1 : 0).map(cleanSegment).join("/")}`;
+      if (!path || path.endsWith("/")) continue;
+      (isScientific && !options.directory ? scientific : paths).push(await importFile(path, file, maxBytes, isScientific));
+    } catch (error) { errors.push(fileError(relativePath || file.name, error)); }
   }
   emitChange();
-  return paths.length > 0 ? { root, paths } : null;
+  return { root, paths, scientific, errors };
+}
+
+/** Decoder messages already start with the file name. */
+function fileError(name: string, error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.startsWith(name.split("/").pop() || name) ? message : `${name}: ${message}`;
+}
+
+/**
+ * The one admission of picked and dropped files. A compressed file keeps its
+ * compressed name and exact bytes as the Original; unless a scientific import
+ * owns it, it is decoded completely here, so a corrupt, truncated, mislabelled or
+ * oversized file is refused by name before anything is stored or published.
+ */
+async function importFile(path: string, file: File, maxInputBytes: number, scientific = false) {
+  const kind = isCompressedName(file.name) ? "compressed" : /\.molx$/iu.test(file.name) ? "binary" : isDocumentMediaPath(path) ? "media" : "text";
+  if (kind === "compressed") await checkCompressedFile(file.name, file, maxInputBytes);
+  if (file.size > maxInputBytes) throw new Error("File exceeds the browser import limit");
+  if (kind === "media" && binaryFiles.size >= 32) throw new Error("Too many open documents");
+  const text = kind === "text" ? await file.text()
+    : kind === "compressed" && !scientific ? (await decodeCompressedFile(file.name, file)).text : undefined;
+  const record = await saveBrowserImport({ path, name: file.name, file, kind, ...(scientific ? { scientific: true } : {}) }, files.keys());
+  await registerImportedFile(record, text);
+  return record.path;
+}
+
+async function registerImportedFile(record: BrowserImport, text?: string) {
+  const { path, file, kind } = record;
+  if (files.has(path)) return;
+  // Scientific compressed originals are decoded by their import owner, not published as text.
+  if (kind === "compressed" && record.scientific) { registerFile(path, file.size); return; }
+  if (kind === "compressed") {
+    // A restored file decodes on its first read; a fresh import has its text already.
+    if (!compressedSourceFor(path)) registerCompressedSource(path, record.name, file, supportedCompressedName(record.name));
+    if (text !== undefined && readBrowserDevVirtualTextDocument(path) === null) writeBrowserDevVirtualTextDocument(path, text);
+  } else if (kind === "binary" || (kind === "text" && /\.molx$/iu.test(record.name))) {
+    // Older imports retained exact MOLX Blobs but labelled them as text.
+    if (!readBrowserDevPickedBinary(path)) writeBrowserDevPickedBinary(path, file);
+  } else if (kind === "media") binaryFiles.set(path, file);
+  else {
+    const restored = text ?? await file.text();
+    if (readBrowserDevVirtualTextDocument(path) === null) writeBrowserDevVirtualTextDocument(path, restored);
+  }
+  registerFile(path, file.size);
+}
+
+export async function registerDroppedBrowserFiles(selected: File[], maxInputBytes: number, options: { scientific?: boolean } = {}) {
+  const paths: string[] = [], errors: string[] = [];
+  for (const file of selected) {
+    try {
+      paths.push(await importFile(`/OpenedFiles/${cleanSegment(file.name)}`, file, Math.min(maxInputBytes, BROWSER_IMPORT_MAX_FILE_BYTES), options.scientific));
+    } catch (error) { errors.push(fileError(file.name, error)); }
+  }
+  if (paths.length) emitChange();
+  return { paths, errors };
 }
 
 function registerText(path: string, text: string, byteCount = new TextEncoder().encode(text).length) {
+  if (files.has(path)) return;
   writeBrowserDevVirtualTextDocument(path, text);
   registerFile(path, byteCount);
 }
 
 function registerFile(path: string, byteCount: number) {
   const title = path.split("/").filter(Boolean).pop() || path;
-  const extension = title.includes(".") ? title.split(".").pop()?.toLowerCase() || "" : "";
+  // A compressed copy is listed as the format inside it.
+  const extension = supportedInnerExtension(title) ?? (title.includes(".") ? title.split(".").pop()?.toLowerCase() || "" : "");
   files.set(path, {
     path,
     title,
@@ -182,15 +253,8 @@ function registerFile(path: string, byteCount: number) {
 }
 
 function selectFiles(directory: boolean) {
-  return new Promise<File[]>((resolve) => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.multiple = true;
-    if (directory) input.setAttribute("webkitdirectory", "");
-    input.accept = [".pdb,.ent,.pdbqt,.pqr,.cif,.mmcif,.mcif,.sdf,.sd,.mol,.mol2,.xyz,.gro,.txt,.md,.log,.out,.json,.csv,.tsv", ...Array.from(documentViewerExtensions, extension => `.${extension}`)].join(",");
-    input.addEventListener("cancel", () => resolve([]), { once: true });
-    input.addEventListener("change", () => resolve(Array.from(input.files ?? [])), { once: true });
-    input.click();
+  return pickBrowserFiles({ multiple: true, directory,
+    accept: [".pdb,.ent,.pdbqt,.pqr,.cif,.mmcif,.mcif,.sdf,.sd,.mol,.mol2,.xyz,.vasp,.poscar,.gro,.txt,.md,.log,.out,.json,.csv,.tsv", SCIENTIFIC_FILE_ACCEPT, COMPRESSED_FILE_ACCEPT, ...Array.from(documentViewerExtensions, extension => `.${extension}`)].join(","),
   });
 }
 

@@ -1,0 +1,16 @@
+{
+  "extends": "../apps/desktop/tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": false,
+    "types": [
+      "bun"
+    ]
+  },
+  "include": [
+    "test-indexed-trajectory-frame-bridge.test.ts",
+    "../apps/desktop/src/vite-env.d.ts"
+  ]
+}

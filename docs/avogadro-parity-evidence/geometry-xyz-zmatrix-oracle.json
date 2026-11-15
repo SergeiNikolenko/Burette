@@ -1,0 +1,61 @@
+{
+ "passed": 11,
+ "total": 11,
+ "checks": [
+  {
+   "name": "focus lands on the C2 bond cell",
+   "pass": true,
+   "detail": "Bond of C2, \u00c5"
+  },
+  {
+   "name": "edit sets C1-C2 to 1.6 A",
+   "pass": true,
+   "detail": "1.600000"
+  },
+  {
+   "name": "Undo restores every source coordinate",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "Redo replays the edit",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "Redo is spent after replay",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "exported Z-matrix keeps atom order and elements",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "exported Z-matrix rebuilds the edited geometry",
+   "pass": true,
+   "detail": "max distance deviation 9.28e-08 A"
+  },
+  {
+   "name": "copied Z-matrix rebuilds the saved geometry",
+   "pass": true,
+   "detail": "max distance deviation 1.58e-07 A"
+  },
+  {
+   "name": "conversion leaves the scene geometry unchanged",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "no console or page errors beyond the base shell",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "reopened .zmat shows the edited geometry",
+   "pass": true,
+   "detail": "max distance deviation 0.00e+00 A"
+  }
+ ]
+}

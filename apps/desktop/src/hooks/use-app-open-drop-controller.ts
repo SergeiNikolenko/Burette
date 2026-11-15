@@ -1,3 +1,4 @@
+import type { ShellActions } from "../components/types";
 import { useDeepLinks } from "./use-deep-links";
 import { useAgentSession } from "./use-agent-session";
 import { useAppClipboard } from "./use-app-clipboard";
@@ -24,7 +25,7 @@ type OpenDockingStructureRecords = (
   ligandPaths: string[],
   records: StructureDragRecord[],
 ) => void | Promise<void>;
-type OpenStructureRecords = (records: StructureDragRecord[], directory?: string) => void | Promise<void>;
+type OpenStructureRecords = ShellActions["openStructureRecords"];
 type OpenKetcherWithStructures = (
   paths: string[],
   fragments?: Array<{ title: string; text: string }>,
@@ -61,6 +62,7 @@ type UseAppOpenDropControllerOptions = {
   openTextDocuments: OpenTextDocuments;
   pushErrorStatus: PushErrorStatus;
   pushStatus: PushStatus;
+  sourceDraftForDocument?: (document: ViewerDocument) => string | null;
   setDockDocument: (area: DockArea, documentId: string | null) => void;
 };
 
@@ -90,6 +92,7 @@ export function useAppOpenDropController({
   pushErrorStatus,
   pushStatus,
   setDockDocument,
+  sourceDraftForDocument,
 }: UseAppOpenDropControllerOptions) {
   useOpenEvents(openPaths, pushErrorStatus);
   const activateSession = useAgentSession({
@@ -105,6 +108,7 @@ export function useAppOpenDropController({
     openPaths,
     pushErrorStatus,
     setDockDocument,
+    sourceDraftForDocument,
   });
   useDeepLinks({ openPaths, fetchPdbStructure, activateSession, pushErrorStatus });
   const {

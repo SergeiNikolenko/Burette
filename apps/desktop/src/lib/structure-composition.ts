@@ -1,3 +1,4 @@
+import type { ScalarSourceIdentity } from "./workbench/scalar-source";
 export type StructureSummaryRow = {
   label: string;
   value: string;
@@ -6,6 +7,8 @@ export type StructureSummaryRow = {
 };
 
 export type StructureCompositionSummary = {
+  /** Native summaries and subsequent row updates share one viewer-owned subscription. */
+  sceneRequestId?: string;
   rows: StructureSummaryRow[];
   componentRows: StructureSummaryRow[];
   maestroRows?: StructureSummaryRow[];
@@ -25,6 +28,38 @@ export type CompositionSceneEdit =
   | { operation: "color"; value: string };
 
 export type StructureViewerAction =
+  | { type: "polymer_source_binding"; lease: string; expected: { format: "mol" | "sdf"; sourceSha256: string; atoms: import("./molecular-workbench/types").MolecularAtom[] }; label: string; notify: false }
+  | { type: "polymer_pick_atom" | "polymer_source_release" | "polymer_source_validate"; lease: string; label: string; notify: false }
+  | { type: "select_source_atom"; sourceSha256: string; frameIndex: number; frameCount: number; atomIndex: number; label: string; notify: false }
+  | { type: "scalar_field_binding"; expected: ScalarSourceIdentity; label: string; notify: false }
+  | { type: "scalar_field_validate"; lease: string; label: string; notify: false }
+  | { type: "show_scalar_field"; lease: string; label: string; cube: string; isovalue: number; signed: boolean; alpha?: number;
+      /** 0xRRGGBB of the positive and negative lobes; blue and red when absent. */
+      positiveColor?: number; negativeColor?: number;
+      /**
+       * Colours the isosurface of a two-field Cube's first field by its second, red at `min`
+       * through white to blue at `max`; `signed` is then ignored.
+       */
+      coloring?: { min: number; max: number };
+      /**
+       * Draws the grid plane `index` along cube axis `axis` (0 is the slowest) coloured red at `min`
+       * through white to blue at `max`, in place of isosurfaces; `isovalue` is then ignored.
+       */
+      slice?: { axis: 0 | 1 | 2; index: number; min: number; max: number };
+      notify: false }
+  | { type: "geometry_binding"; label: string; notify: false }
+  | { type: "geometry_topology_scene_capture"; label: string; notify: false; lease: string }
+  | { type: "geometry_topology_scene_validate"; label: string; notify: false; lease: string; receipt: string }
+  | { type: "measurement_preview_capture"; label: string; notify: false; sourceExtension: "xyz"; lease: string }
+  | { type: "update_geometry"; label: string; text: string; lease: string; notify: false }
+  | { type: "atom_drag"; label: string; enabled: boolean; lease: string; notify: false; manipulate?: true }
+  | { type: "atom_draw"; label: string; enabled: boolean; lease: string; notify: false }
+  | { type: "select_command"; label: string; command: "all" | "none" | "invert" | "residues" | "enlarge"; notify: false }
+  | { type: "select_command"; label: string; command: "atoms"; atoms: number[]; notify: false }
+  | { type: "export_svg"; label: string; notify: false }
+  | { type: "record_movie"; label: string; notify: false; seconds: number; fps: number; spin: boolean }
+  // Model-local atom_index values, matching the viewer selection contract.
+  | { type: "preview_geometry"; label: string; atoms: number[]; kind?: "bond" | "angle" | "dihedral"; notify: false }
   | { type: "open_components_menu"; label: string; query: string; componentLabel: string; kind: "polymer" | "ligand" | "ion" | "water"; x: number; y: number; notify: false }
   | { type: "edit_components"; label: string; query: string; componentLabel: string; kind: "polymer" | "ligand" | "ion" | "water"; edit: CompositionSceneEdit }
   | { type: "focus_selection"; label: string; selector: StructureViewerSelector }
@@ -33,7 +68,8 @@ export type StructureViewerAction =
       label: string;
       notify?: boolean;
       selector: StructureViewerSelector;
-      granularity: "residue";
+      /** "atom" with an `atom_index` selector selects exactly those model atoms. */
+      granularity: "residue" | "atom";
       mode?: "replace";
     }
   | {
@@ -78,6 +114,7 @@ export type StructureViewerAction =
       type: "set_structure_pose";
       label: string;
       index: number;
+      expected?: { sourceExtension: "xyz"; sourceSha256: string; structureRef: string; modelRef: string; trajectoryRef: string; frameIndex: number; frameCount: number };
     }
   | {
       type: "show_assembly_symmetry" | "hide_assembly_symmetry";
@@ -620,6 +657,30 @@ function parseXyzComposition(text: string): StructureCompositionSummary | null {
   };
 }
 
+/**
+ * A periodic crystal summarized by the full unit cell the viewer shows. A CIF keeps its
+ * site rows, so "Atoms" (the cell) and "Atom sites" (the asymmetric unit) read together.
+ */
+export function unitCellComposition(sites: StructureCompositionSummary | null, atoms: readonly { element: string }[]): StructureCompositionSummary {
+  const elements = new Map<string, number>();
+  for (const atom of atoms) increment(elements, atom.element, 1);
+  return {
+    rows: [
+      { label: "Atoms", value: formatInteger(atoms.length) },
+      ...(sites?.rows ?? []).filter((row) => row.label !== "Elements"),
+      { label: "Elements", value: formatElementCounts(elements, 8) },
+    ],
+    componentRows: [
+      { label: "Unit cell", value: `${formatInteger(atoms.length)} ${plural(atoms.length, "atom")}` },
+      ...(sites?.componentRows ?? []).filter((row) => row.label !== "Asymmetric unit"),
+    ],
+    polymerRows: [],
+    ligandRows: [],
+    solventRows: [],
+    notes: sites?.notes ?? [],
+  };
+}
+
 function summarizeCrystalCif(
   sites: number,
   elements: Map<string, number>,
@@ -697,7 +758,10 @@ function parseSdfComposition(text: string): StructureCompositionSummary | null {
     const { atoms, bonds } = parseMolCounts(molecule);
     atomTotal += atoms;
     bondTotal += bonds;
-    for (const match of molecule.matchAll(/^>\s*<([^>]+)>/gm)) properties.add(match[1].trim());
+    for (const match of molecule.matchAll(/^>\s*<([^>]+)>/gm)) {
+      const name = match[1].trim();
+      if (name !== "BURETTE_METADATA_V1") properties.add(name);
+    }
     const label = sdfMoleculeLabel(titles[index], duplicateTitles, index);
     return {
       label,

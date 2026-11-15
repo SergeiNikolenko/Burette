@@ -18,7 +18,7 @@ const savedSources: string[] = [];
 const path = "/private/popout-scenes/01234567-1234-1234-1234-123456789012.molx";
 const frame = document.createElement("iframe");
 const surface = document.createElement("div"); surface.className = "page-surface"; surface.append(frame); document.body.append(surface);
-const doc = { id: "scene", path: "/data/protein.pdb", recoveryPath: path, title: "Protein", renderer: "molstar" };
+const doc = { id: "scene", path: "/data/protein.pdb", recoveryPath: path, title: "Protein", extension: "pdb", renderer: "molstar" };
 const tab = { id: "tab", title: "Protein", location: { kind: "file", documentId: "scene", path: doc.path, recoveryPath: path } };
 let state: any;
 function reset() { state = { tabs: [tab], documents: [doc], setActiveDocument() {}, renameTab() {}, togglePinnedTab() {}, moveTab() {}, closeTab(id: string) { state.tabs = state.tabs.filter((item: any) => item.id !== id); } }; latest = {}; failSave = false; closedWindows = []; }
@@ -38,6 +38,8 @@ mock.module("@tauri-apps/api/core", () => ({ convertFileSrc: (path: string) => p
   if (command === "open_new_workspace_window") return "workspace-peer";
   if (command === "relay_popout_handoff") latest = { ...args.message, target: args.target };
 } }));
+// Restore acknowledgement has its own scientific-consumer tests; these cases exercise handoff and rollback.
+mock.module("../apps/desktop/src/lib/science-session/restore", () => ({ waitForSceneScienceRestore: async () => () => {}, sameSceneSource: () => true }));
 const { useNativePopoutSession, popOutNativeScene, returnNativePopout, nativePopoutBusy, checkpointNativePopoutForExit, checkpointNativeScenesForClose, isNativePopoutTab } = await import("../apps/desktop/src/components/workspace-panes/native-scene-window");
 function Listener() { useNativePopoutSession({ openStructurePaths: async () => openIncoming() } as any); return null; }
 async function withListener(run: () => Promise<void>) {

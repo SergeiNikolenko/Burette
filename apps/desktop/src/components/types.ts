@@ -1,5 +1,9 @@
+import type { ViewerActionOptions } from "../lib/viewer-bridge";
+import type { CrystalOpenRequest } from "../lib/extensions/open-crystal";
 import type { ConformerJob, ConformerOperation, ConformerSettings, ConformerStatus, DerivedColumnJob, HoveredGridRow, DockingSceneMode, FepSetupRequest, OpenDocumentsMode, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XtbJob, XtbOperation, XtbRunRequest, XtbSettings, XtbStatus, DatabaseJob } from "../types";
 import type { DatabaseQueryDraft } from "../hooks/use-app-database";
+import type { ResourceJob } from "../lib/extensions/resource-install-runner";
+import type { InstalledResource } from "../lib/extensions/resource-bundle";
 import type { DatabaseProvider } from "../lib/database";
 import type { TextFileSaveOutcome } from "../lib/file-export";
 import type { MoleculeTab } from "../stores/molecule-store";
@@ -15,6 +19,8 @@ import type { DockArea, DockDropInput, DockDroppedStructure, DockTab, DockTabKin
 import type { StructureStory } from "../lib/structure-story";
 
 export type { AppSettingsSectionId } from "../lib/settings-sections";
+
+export type StructureViewerActionOptions = ViewerActionOptions & { signal?: AbortSignal };
 
 export type AppPage = "viewer" | "settings";
 export type StatusKind = "info" | "success" | "error";
@@ -135,12 +141,20 @@ export type ChemicalEditorTarget = {
 
 export type FileOpenOptions = { shouldApply?: () => boolean; requireSuccess?: boolean; preferredPath?: string; preserveActiveTab?: boolean };
 
+export type StructureRecordsOpenOptions = {
+  shouldApply?: () => boolean;
+  newDocument?: boolean;
+  /** Host-only validation after preparation, immediately before the final adoption guard. */
+  validateBeforeAdopt?: () => Promise<boolean>;
+};
+
 export type ShellActions = {
   chooseFiles: () => void | Promise<void>;
   openStructurePaths: (paths: string[], options?: { mode?: OpenDocumentsMode; rendererMode?: "molstar" | "grid2d" | "xyzrender-external"; gridViewMode?: "cards" | "table"; gridViewState?: string; shouldApply?: () => boolean }) => void | Promise<void>;
   openTextPaths: (paths: string[]) => void | Promise<void>;
   openPaths: (paths: string[], options?: FileOpenOptions) => void | Promise<void>;
-  openStructureRecords: (records: StructureDragPayload["records"], directory?: string) => void | Promise<void>;
+  /** Prepared records are published only while shouldApply remains true; discarded results are released. */
+  openStructureRecords: (records: StructureDragPayload["records"], directory?: string, options?: StructureRecordsOpenOptions) => Promise<ViewerDocument[]>;
   openStructureUrlInMolstar: (url: string) => void | Promise<void>;
   openRecentStructure: (structure: RecentStructure) => void | Promise<void>;
   openMostRecentStructure: () => void | Promise<void>;
@@ -172,6 +186,7 @@ export type ShellActions = {
     title: string;
     extension: string;
     text: string;
+    beforeWrite?: () => Promise<void>;
   }) => Promise<TextFileSaveOutcome>;
   openFepNetworkPreview: (request?: { title?: string; graphmlText?: string }) => void;
   applyKetcherToGridRow: (request: {
@@ -208,6 +223,8 @@ export type ShellActions = {
   openSubstructureCount: (documentId: string) => void;
   findSimilarInFile: (documentId: string) => void | Promise<void>;
   openRGroupDecomposition: (documentId: string) => void;
+  openMatchedPairs: (documentId: string) => void;
+  openSarTable: (documentId: string) => void;
   checkConformerStatus: () => void | Promise<void>;
   runConformerOperation: (operation: ConformerOperation, document?: ViewerDocument | null, selection?: StructureViewerAction | null, target?: { scenePath?: string }) => void | Promise<void>;
   cancelConformerJob: (jobId: string) => void | Promise<void>;
@@ -215,6 +232,12 @@ export type ShellActions = {
   clearConformerJobs: () => void;
   openDatabaseQuery: (provider: DatabaseProvider, seed?: Partial<DatabaseQueryDraft>) => void;
   clearDatabaseJobs: () => void;
+  openCrystalsStructure: (request: CrystalOpenRequest) => Promise<string>;
+  installCrystals: () => Promise<ResourceJob>;
+  removeCrystals: () => Promise<ResourceJob>;
+  refreshResourceExtensions: () => Promise<void>;
+  cancelResourceJob: (jobId: string) => void;
+  clearResourceJobs: () => void;
   checkXtbStatus: () => void | Promise<void>;
   chooseXtbExecutable: () => void | Promise<void>;
   clearXtbExecutableSelection: () => void | Promise<void>;
@@ -241,7 +264,11 @@ export type ShellActions = {
   toggleDockTab: (area: DockArea, kind: DockTabKind) => void;
   setDockOpen: (area: DockArea, open: boolean) => void;
   setDockSize: (area: DockArea, size: number) => void;
-  setGridColumnFilter: (columnId: string, part: "min" | "max" | "text", value: string) => void;
+  setGridColumnFilter: {
+    (columnId: string, part: "min" | "max" | "text", value: string): void;
+    /** A category filter: the rows whose cell is one of these values. */
+    (columnId: string, part: "values", value: string[]): void;
+  };
   clearGridColumnFilters: (columnId?: string) => void;
   openDockTab: (area: DockArea, kind: DockTabKind) => void;
   closeDockTab: (area: DockArea, tabId: string) => void;
@@ -282,7 +309,7 @@ export type ShellActions = {
   showTextFileMetadata: (document: TextFileDocument) => void | Promise<void>;
   closeQuickLookPreview: () => void;
   generate3DConformer: (document: ViewerDocument) => void | Promise<void>;
-  runStructureViewerAction: (document: ViewerDocument, action: StructureViewerAction) => void;
+  runStructureViewerAction: (document: ViewerDocument, action: StructureViewerAction, options?: StructureViewerActionOptions) => void | Promise<unknown>;
   reloadXyzrenderDocument: (document: ViewerDocument, options: ViewerReloadOptions) => void | Promise<void>;
   selectTextStructure: (document: TextFileDocument, selection: TextStructureSelection | null) => void;
   exportActivePreviewAsPng: () => void | Promise<void>;
@@ -307,7 +334,9 @@ export type GridFilterColumn = {
   id: string;
   label: string;
   type: "number" | "text";
-  filter?: { min: string; max: string; text: string };
+  filter?: { min: string; max: string; text: string; values?: string[] };
+  /** Value and row count of a text column whose values repeat, most frequent first; "" counts the empty cells. */
+  categories?: Array<[string, number]>;
   min?: number;
   max?: number;
   allowedMin?: number;
@@ -321,6 +350,8 @@ export type GridFilterColumn = {
 
 export type GridFilterModel = {
   documentId: string | null;
+  /** The row list the grid shows on its own, if any. */
+  rowListFilter?: string | null;
   visible: number;
   total: number;
   columns: GridFilterColumn[];
@@ -384,6 +415,8 @@ export type ShellViewState = {
   conformerSettings: ConformerSettings;
   conformerJobs: ConformerJob[];
   databaseJobs: DatabaseJob[];
+  resourceJobs: readonly ResourceJob[];
+  resourceExtensions: { installed: InstalledResource | null; initialized: boolean; error: string | null };
   viewerLigandSelection: ViewerLigandSelection | null;
   structureStory: StructureStory | null;
   structureOverlayMode: StructureOverlayMode;

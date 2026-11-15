@@ -1,0 +1,17 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": [
+      "bun"
+    ]
+  },
+  "files": [
+    "test-geometry-foundation.test.tsx",
+    "test-geometry-preview-lifetime.test.tsx",
+    "test-geometry-reader-independent.test.tsx",
+    "test-geometry-compiled-document-independent.test.tsx"
+  ],
+  "include": [
+    "../apps/desktop/src/**/*.d.ts"
+  ]
+}

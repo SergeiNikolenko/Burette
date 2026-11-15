@@ -1,0 +1,1975 @@
+{
+ "tools": {
+  "MDAnalysis": "2.8.0",
+  "gemmi": "0.7.5",
+  "numpy": "1.26.4",
+  "pymol": "3.2.0a"
+ },
+ "structures": {
+  "1bna-core": {
+   "nucleotides": [
+    {
+     "chain": "A",
+     "resid": 4,
+     "resname": "DG",
+     "beta": -179.91,
+     "gamma": 57.23,
+     "delta": 155.66,
+     "epsilon": -155.34,
+     "zeta": -152.52,
+     "chi": -93.4,
+     "phase": 166.63
+    },
+    {
+     "chain": "A",
+     "resid": 5,
+     "resname": "DA",
+     "alpha": -43.02,
+     "beta": 142.81,
+     "gamma": 52.43,
+     "delta": 119.6,
+     "epsilon": 179.94,
+     "zeta": -92.2,
+     "chi": -126.25,
+     "phase": 128.79
+    },
+    {
+     "chain": "A",
+     "resid": 6,
+     "resname": "DA",
+     "alpha": -73.26,
+     "beta": 179.71,
+     "gamma": 66.03,
+     "delta": 121.1,
+     "epsilon": 173.66,
+     "zeta": -88.48,
+     "chi": -122.15,
+     "phase": 127.27
+    },
+    {
+     "chain": "A",
+     "resid": 7,
+     "resname": "DT",
+     "alpha": -56.62,
+     "beta": -179.17,
+     "gamma": 52.22,
+     "delta": 98.91,
+     "epsilon": 173.58,
+     "zeta": -85.86,
+     "chi": -127.34,
+     "phase": 101.51
+    },
+    {
+     "chain": "A",
+     "resid": 8,
+     "resname": "DT",
+     "alpha": -59.16,
+     "beta": 173.36,
+     "gamma": 64.08,
+     "delta": 108.9,
+     "epsilon": 170.6,
+     "zeta": -89.35,
+     "chi": -125.71,
+     "phase": 115.9
+    },
+    {
+     "chain": "A",
+     "resid": 9,
+     "resname": "DC",
+     "alpha": -58.54,
+     "beta": -179.5,
+     "gamma": 60.5,
+     "delta": 128.69,
+     "chi": -119.51,
+     "phase": 140.69
+    },
+    {
+     "chain": "B",
+     "resid": 16,
+     "resname": "DG",
+     "beta": 171.06,
+     "gamma": 73.24,
+     "delta": 135.92,
+     "epsilon": 174.14,
+     "zeta": -98.39,
+     "chi": -114.77,
+     "phase": 149.48
+    },
+    {
+     "chain": "B",
+     "resid": 17,
+     "resname": "DA",
+     "alpha": -56.62,
+     "beta": -169.54,
+     "gamma": 53.84,
+     "delta": 146.6,
+     "epsilon": 176.95,
+     "zeta": -97.12,
+     "chi": -106.44,
+     "phase": 169.45
+    },
+    {
+     "chain": "B",
+     "resid": 18,
+     "resname": "DA",
+     "alpha": -57.08,
+     "beta": -173.62,
+     "gamma": 47.72,
+     "delta": 130.22,
+     "epsilon": 174.42,
+     "zeta": -101.3,
+     "chi": -108.3,
+     "phase": 147.55
+    },
+    {
+     "chain": "B",
+     "resid": 19,
+     "resname": "DT",
+     "alpha": -58.29,
+     "beta": 173.59,
+     "gamma": 60.04,
+     "delta": 109.21,
+     "epsilon": 178.77,
+     "zeta": -88.28,
+     "chi": -131.27,
+     "phase": 116.7
+    },
+    {
+     "chain": "B",
+     "resid": 20,
+     "resname": "DT",
+     "alpha": -58.62,
+     "beta": 179.49,
+     "gamma": 55.33,
+     "delta": 122.39,
+     "epsilon": 178.54,
+     "zeta": -94.5,
+     "chi": -120.45,
+     "phase": 129.94
+    },
+    {
+     "chain": "B",
+     "resid": 21,
+     "resname": "DC",
+     "alpha": -59.1,
+     "beta": -175.42,
+     "gamma": 44.95,
+     "delta": 110.35,
+     "chi": -114.28,
+     "phase": 113.91
+    }
+   ],
+   "pairs": [
+    {
+     "a": 4,
+     "b": 21,
+     "pair": "GC",
+     "hbonds": {
+      "O6-N4": 2.61,
+      "N1-N3": 2.719,
+      "N2-O2": 2.736
+     },
+     "c1c1": 10.353
+    },
+    {
+     "a": 5,
+     "b": 20,
+     "pair": "AT",
+     "hbonds": {
+      "N6-O4": 2.912,
+      "N1-N3": 2.695
+     },
+     "c1c1": 10.442
+    },
+    {
+     "a": 6,
+     "b": 19,
+     "pair": "AT",
+     "hbonds": {
+      "N6-O4": 3.232,
+      "N1-N3": 2.85
+     },
+     "c1c1": 10.461
+    },
+    {
+     "a": 7,
+     "b": 18,
+     "pair": "AT",
+     "hbonds": {
+      "N6-O4": 3.249,
+      "N1-N3": 2.796
+     },
+     "c1c1": 10.233
+    },
+    {
+     "a": 8,
+     "b": 17,
+     "pair": "AT",
+     "hbonds": {
+      "N6-O4": 2.875,
+      "N1-N3": 2.776
+     },
+     "c1c1": 10.491
+    },
+    {
+     "a": 9,
+     "b": 16,
+     "pair": "GC",
+     "hbonds": {
+      "O6-N4": 2.719,
+      "N1-N3": 2.81,
+      "N2-O2": 2.826
+     },
+     "c1c1": 10.591
+    }
+   ],
+   "steps": [
+    {
+     "chain": "A",
+     "from": 4,
+     "to": 5,
+     "twist": 47.24,
+     "rise": 2.079
+    },
+    {
+     "chain": "A",
+     "from": 5,
+     "to": 6,
+     "twist": 40.5,
+     "rise": 3.62
+    },
+    {
+     "chain": "A",
+     "from": 6,
+     "to": 7,
+     "twist": 34.99,
+     "rise": 3.254
+    },
+    {
+     "chain": "A",
+     "from": 7,
+     "to": 8,
+     "twist": 34.36,
+     "rise": 3.395
+    },
+    {
+     "chain": "A",
+     "from": 8,
+     "to": 9,
+     "twist": 34.98,
+     "rise": 3.425
+    },
+    {
+     "chain": "B",
+     "from": 16,
+     "to": 17,
+     "twist": 39.04,
+     "rise": 3.975
+    },
+    {
+     "chain": "B",
+     "from": 17,
+     "to": 18,
+     "twist": 41.65,
+     "rise": 3.32
+    },
+    {
+     "chain": "B",
+     "from": 18,
+     "to": 19,
+     "twist": 42.65,
+     "rise": 2.531
+    },
+    {
+     "chain": "B",
+     "from": 19,
+     "to": 20,
+     "twist": 33.32,
+     "rise": 3.809
+    },
+    {
+     "chain": "B",
+     "from": 20,
+     "to": 21,
+     "twist": 30.33,
+     "rise": 3.352
+    }
+   ]
+  },
+  "1rna-core": {
+   "nucleotides": [
+    {
+     "chain": "A",
+     "resid": 5,
+     "resname": "A",
+     "beta": 167.92,
+     "gamma": 69.9,
+     "delta": 75.93,
+     "epsilon": -141.73,
+     "zeta": -73.07,
+     "chi": -163.47,
+     "phase": 18.22
+    },
+    {
+     "chain": "A",
+     "resid": 6,
+     "resname": "U",
+     "alpha": -62.77,
+     "beta": -179.4,
+     "gamma": 52.53,
+     "delta": 80.33,
+     "epsilon": -151.7,
+     "zeta": -66.31,
+     "chi": -156.88,
+     "phase": 17.59
+    },
+    {
+     "chain": "A",
+     "resid": 7,
+     "resname": "A",
+     "alpha": -77.58,
+     "beta": -168.67,
+     "gamma": 60.68,
+     "delta": 77.52,
+     "epsilon": -158.62,
+     "zeta": -71.45,
+     "chi": -154.67,
+     "phase": 15.77
+    },
+    {
+     "chain": "A",
+     "resid": 8,
+     "resname": "U",
+     "alpha": -85.47,
+     "beta": -164.74,
+     "gamma": 66.01,
+     "delta": 85.18,
+     "epsilon": -154.86,
+     "zeta": -80.93,
+     "chi": -149.88,
+     "phase": 18.9
+    },
+    {
+     "chain": "A",
+     "resid": 9,
+     "resname": "A",
+     "alpha": -48.05,
+     "beta": -175.66,
+     "gamma": 42.9,
+     "delta": 79.21,
+     "epsilon": -171.32,
+     "zeta": -60.99,
+     "chi": -150.5,
+     "phase": 18.07
+    },
+    {
+     "chain": "A",
+     "resid": 10,
+     "resname": "U",
+     "alpha": -69.23,
+     "beta": 165.48,
+     "gamma": 59.45,
+     "delta": 79.53,
+     "chi": -153.29,
+     "phase": 20.94
+    },
+    {
+     "chain": "B",
+     "resid": 19,
+     "resname": "A",
+     "beta": 167.48,
+     "gamma": 45.18,
+     "delta": 82.62,
+     "epsilon": -150.18,
+     "zeta": -78.96,
+     "chi": -160.95,
+     "phase": 16.9
+    },
+    {
+     "chain": "B",
+     "resid": 20,
+     "resname": "U",
+     "alpha": -86.91,
+     "beta": 155.92,
+     "gamma": 75.18,
+     "delta": 77.89,
+     "epsilon": -115.66,
+     "zeta": -112.77,
+     "chi": -169.66,
+     "phase": 17.73
+    },
+    {
+     "chain": "B",
+     "resid": 21,
+     "resname": "A",
+     "alpha": -48.82,
+     "beta": 147.21,
+     "gamma": 51.05,
+     "delta": 83.54,
+     "epsilon": -134.04,
+     "zeta": -88.16,
+     "chi": -163.14,
+     "phase": 20.7
+    },
+    {
+     "chain": "B",
+     "resid": 22,
+     "resname": "U",
+     "alpha": -80.61,
+     "beta": 165.43,
+     "gamma": 76.45,
+     "delta": 80.72,
+     "epsilon": -139.02,
+     "zeta": -80.59,
+     "chi": -162.76,
+     "phase": 16.62
+    },
+    {
+     "chain": "B",
+     "resid": 23,
+     "resname": "A",
+     "alpha": -54.04,
+     "beta": 167.36,
+     "gamma": 52.32,
+     "delta": 67.48,
+     "epsilon": -167.02,
+     "zeta": -61.86,
+     "chi": -158.22,
+     "phase": 19.52
+    },
+    {
+     "chain": "B",
+     "resid": 24,
+     "resname": "U",
+     "alpha": -149.34,
+     "beta": -177.33,
+     "gamma": 127.4,
+     "delta": 75.8,
+     "chi": -174.48,
+     "phase": 14.83
+    }
+   ],
+   "pairs": [
+    {
+     "a": 5,
+     "b": 24,
+     "pair": "AU",
+     "hbonds": {
+      "N6-O4": 2.963,
+      "N1-N3": 2.821
+     },
+     "c1c1": 10.32
+    },
+    {
+     "a": 6,
+     "b": 23,
+     "pair": "AU",
+     "hbonds": {
+      "N6-O4": 2.931,
+      "N1-N3": 2.798
+     },
+     "c1c1": 10.426
+    },
+    {
+     "a": 7,
+     "b": 22,
+     "pair": "AU",
+     "hbonds": {
+      "N6-O4": 2.917,
+      "N1-N3": 2.837
+     },
+     "c1c1": 10.587
+    },
+    {
+     "a": 8,
+     "b": 21,
+     "pair": "AU",
+     "hbonds": {
+      "N6-O4": 2.889,
+      "N1-N3": 2.941
+     },
+     "c1c1": 10.822
+    },
+    {
+     "a": 9,
+     "b": 20,
+     "pair": "AU",
+     "hbonds": {
+      "N6-O4": 2.939,
+      "N1-N3": 2.837
+     },
+     "c1c1": 10.438
+    },
+    {
+     "a": 10,
+     "b": 19,
+     "pair": "AU",
+     "hbonds": {
+      "N6-O4": 2.938,
+      "N1-N3": 2.843
+     },
+     "c1c1": 10.528
+    }
+   ],
+   "steps": [
+    {
+     "chain": "A",
+     "from": 5,
+     "to": 6,
+     "twist": 33.38,
+     "rise": 1.87
+    },
+    {
+     "chain": "A",
+     "from": 6,
+     "to": 7,
+     "twist": 30.75,
+     "rise": 1.78
+    },
+    {
+     "chain": "A",
+     "from": 7,
+     "to": 8,
+     "twist": 32.4,
+     "rise": 3.385
+    },
+    {
+     "chain": "A",
+     "from": 8,
+     "to": 9,
+     "twist": 40.42,
+     "rise": 2.085
+    },
+    {
+     "chain": "A",
+     "from": 9,
+     "to": 10,
+     "twist": 30.83,
+     "rise": 3.335
+    },
+    {
+     "chain": "B",
+     "from": 19,
+     "to": 20,
+     "twist": 32.63,
+     "rise": 1.973
+    },
+    {
+     "chain": "B",
+     "from": 20,
+     "to": 21,
+     "twist": 35.07,
+     "rise": 3.085
+    },
+    {
+     "chain": "B",
+     "from": 21,
+     "to": 22,
+     "twist": 30.11,
+     "rise": 3.259
+    },
+    {
+     "chain": "B",
+     "from": 22,
+     "to": 23,
+     "twist": 37.95,
+     "rise": 1.336
+    },
+    {
+     "chain": "B",
+     "from": 23,
+     "to": 24,
+     "twist": 30.91,
+     "rise": 3.168
+    }
+   ]
+  },
+  "1dcg-core": {
+   "nucleotides": [
+    {
+     "chain": "A",
+     "resid": 2,
+     "resname": "DG",
+     "beta": -172.35,
+     "gamma": 178.5,
+     "delta": 90.89,
+     "epsilon": -120.08,
+     "zeta": -65.32,
+     "chi": 60.26,
+     "phase": 39.01
+    },
+    {
+     "chain": "A",
+     "resid": 3,
+     "resname": "DC",
+     "alpha": -147.26,
+     "beta": -121.02,
+     "gamma": 50.13,
+     "delta": 148.14,
+     "epsilon": -99.93,
+     "zeta": 81.02,
+     "chi": -150.3,
+     "phase": 146.1
+    },
+    {
+     "chain": "A",
+     "resid": 4,
+     "resname": "DG",
+     "alpha": 64.45,
+     "beta": -173.74,
+     "gamma": 179.48,
+     "delta": 91.82,
+     "epsilon": -178.86,
+     "zeta": 69.26,
+     "chi": 58.57,
+     "phase": 25.91
+    },
+    {
+     "chain": "A",
+     "resid": 5,
+     "resname": "DC",
+     "alpha": 166.35,
+     "beta": 159.88,
+     "gamma": 48.26,
+     "delta": 141.92,
+     "chi": -152.0,
+     "phase": 150.85
+    },
+    {
+     "chain": "B",
+     "resid": 8,
+     "resname": "DG",
+     "beta": -171.28,
+     "gamma": 172.36,
+     "delta": 101.0,
+     "epsilon": -123.62,
+     "zeta": -24.76,
+     "chi": 61.31,
+     "phase": 36.35
+    },
+    {
+     "chain": "B",
+     "resid": 9,
+     "resname": "DC",
+     "alpha": -161.86,
+     "beta": -163.61,
+     "gamma": 55.14,
+     "delta": 140.03,
+     "epsilon": -91.64,
+     "zeta": 73.76,
+     "chi": -154.3,
+     "phase": 152.86
+    },
+    {
+     "chain": "B",
+     "resid": 10,
+     "resname": "DG",
+     "alpha": 64.35,
+     "beta": -174.61,
+     "gamma": 178.93,
+     "delta": 95.99,
+     "epsilon": -115.67,
+     "zeta": -69.82,
+     "chi": 62.07,
+     "phase": 34.86
+    },
+    {
+     "chain": "B",
+     "resid": 11,
+     "resname": "DC",
+     "alpha": -150.17,
+     "beta": -119.29,
+     "gamma": 56.31,
+     "delta": 142.18,
+     "chi": -156.29,
+     "phase": 151.15
+    }
+   ],
+   "pairs": [
+    {
+     "a": 2,
+     "b": 11,
+     "pair": "GC",
+     "hbonds": {
+      "O6-N4": 2.828,
+      "N1-N3": 2.905,
+      "N2-O2": 2.945
+     },
+     "c1c1": 10.778
+    },
+    {
+     "a": 3,
+     "b": 10,
+     "pair": "GC",
+     "hbonds": {
+      "O6-N4": 2.814,
+      "N1-N3": 2.922,
+      "N2-O2": 2.863
+     },
+     "c1c1": 10.806
+    },
+    {
+     "a": 4,
+     "b": 9,
+     "pair": "GC",
+     "hbonds": {
+      "O6-N4": 2.84,
+      "N1-N3": 2.954,
+      "N2-O2": 2.931
+     },
+     "c1c1": 10.857
+    },
+    {
+     "a": 5,
+     "b": 8,
+     "pair": "GC",
+     "hbonds": {
+      "O6-N4": 2.912,
+      "N1-N3": 2.921,
+      "N2-O2": 2.886
+     },
+     "c1c1": 10.815
+    }
+   ],
+   "steps": [
+    {
+     "chain": "A",
+     "from": 2,
+     "to": 4,
+     "twist": -58.94,
+     "rise": 7.447
+    },
+    {
+     "chain": "B",
+     "from": 8,
+     "to": 10,
+     "twist": -60.2,
+     "rise": 7.583
+    }
+   ]
+  },
+  "2f8w-core": {
+   "nucleotides": [
+    {
+     "chain": "A",
+     "resid": 2,
+     "resname": "DA",
+     "beta": -177.97,
+     "gamma": 175.08,
+     "delta": 104.76,
+     "epsilon": -98.13,
+     "zeta": -72.89,
+     "chi": 62.12,
+     "phase": 13.31
+    },
+    {
+     "chain": "A",
+     "resid": 3,
+     "resname": "DC",
+     "alpha": -157.53,
+     "beta": -141.03,
+     "gamma": 66.08,
+     "delta": 147.98,
+     "epsilon": -91.1,
+     "zeta": 74.89,
+     "chi": -157.09,
+     "phase": 159.06
+    },
+    {
+     "chain": "A",
+     "resid": 4,
+     "resname": "DG",
+     "alpha": 70.59,
+     "beta": -166.58,
+     "gamma": 176.24,
+     "delta": 95.33,
+     "epsilon": -124.33,
+     "zeta": -48.68,
+     "chi": 57.86,
+     "phase": 32.08
+    },
+    {
+     "chain": "A",
+     "resid": 5,
+     "resname": "DT",
+     "alpha": -169.5,
+     "beta": -135.62,
+     "gamma": 56.29,
+     "delta": 138.45,
+     "chi": -154.06,
+     "phase": 146.34
+    },
+    {
+     "chain": "B",
+     "resid": 8,
+     "resname": "DA",
+     "beta": -171.41,
+     "gamma": -178.36,
+     "delta": 95.84,
+     "epsilon": -159.51,
+     "zeta": 61.38,
+     "chi": 53.93,
+     "phase": 23.86
+    },
+    {
+     "chain": "B",
+     "resid": 9,
+     "resname": "DC",
+     "alpha": 167.9,
+     "beta": 150.6,
+     "gamma": 48.46,
+     "delta": 141.51,
+     "epsilon": -92.13,
+     "zeta": 75.13,
+     "chi": -151.33,
+     "phase": 148.35
+    },
+    {
+     "chain": "B",
+     "resid": 10,
+     "resname": "DG",
+     "alpha": 64.1,
+     "beta": -174.23,
+     "gamma": 178.92,
+     "delta": 99.52,
+     "epsilon": -134.9,
+     "zeta": -53.09,
+     "chi": 60.31,
+     "phase": 32.68
+    },
+    {
+     "chain": "B",
+     "resid": 11,
+     "resname": "DT",
+     "alpha": -151.83,
+     "beta": -143.06,
+     "gamma": 55.63,
+     "delta": 139.92,
+     "chi": -165.43,
+     "phase": 148.42
+    }
+   ],
+   "pairs": [
+    {
+     "a": 2,
+     "b": 11,
+     "pair": "AT",
+     "hbonds": {
+      "N6-O4": 2.836,
+      "N1-N3": 2.78
+     },
+     "c1c1": 10.623
+    },
+    {
+     "a": 3,
+     "b": 10,
+     "pair": "GC",
+     "hbonds": {
+      "O6-N4": 2.857,
+      "N1-N3": 2.906,
+      "N2-O2": 2.817
+     },
+     "c1c1": 10.783
+    },
+    {
+     "a": 4,
+     "b": 9,
+     "pair": "GC",
+     "hbonds": {
+      "O6-N4": 2.775,
+      "N1-N3": 2.863,
+      "N2-O2": 2.755
+     },
+     "c1c1": 10.746
+    },
+    {
+     "a": 5,
+     "b": 8,
+     "pair": "AT",
+     "hbonds": {
+      "N6-O4": 2.803,
+      "N1-N3": 2.875
+     },
+     "c1c1": 10.78
+    }
+   ],
+   "steps": [
+    {
+     "chain": "A",
+     "from": 2,
+     "to": 4,
+     "twist": -65.61,
+     "rise": 7.004
+    },
+    {
+     "chain": "B",
+     "from": 8,
+     "to": 10,
+     "twist": -68.19,
+     "rise": 8.058
+    }
+   ]
+  },
+  "fnab-b-dna": {
+   "nucleotides": [
+    {
+     "chain": "A",
+     "resid": 1,
+     "resname": "DG",
+     "beta": 136.38,
+     "gamma": 31.1,
+     "delta": 143.42,
+     "epsilon": -140.79,
+     "zeta": -160.51,
+     "chi": -97.97,
+     "phase": 154.34
+    },
+    {
+     "chain": "A",
+     "resid": 2,
+     "resname": "DA",
+     "alpha": -29.87,
+     "beta": 136.37,
+     "gamma": 31.11,
+     "delta": 143.4,
+     "epsilon": -140.77,
+     "zeta": -160.49,
+     "chi": -97.96,
+     "phase": 154.39
+    },
+    {
+     "chain": "A",
+     "resid": 3,
+     "resname": "DT",
+     "alpha": -29.88,
+     "beta": 136.41,
+     "gamma": 31.07,
+     "delta": 143.45,
+     "epsilon": -140.75,
+     "zeta": -160.53,
+     "chi": -97.94,
+     "phase": 154.38
+    },
+    {
+     "chain": "A",
+     "resid": 4,
+     "resname": "DT",
+     "alpha": -29.89,
+     "beta": 136.37,
+     "gamma": 31.12,
+     "delta": 143.4,
+     "epsilon": -140.79,
+     "zeta": -160.49,
+     "chi": -97.93,
+     "phase": 154.36
+    },
+    {
+     "chain": "A",
+     "resid": 5,
+     "resname": "DA",
+     "alpha": -29.9,
+     "beta": 136.38,
+     "gamma": 31.11,
+     "delta": 143.43,
+     "epsilon": -140.78,
+     "zeta": -160.51,
+     "chi": -98.0,
+     "phase": 154.32
+    },
+    {
+     "chain": "A",
+     "resid": 6,
+     "resname": "DC",
+     "alpha": -29.87,
+     "beta": 136.38,
+     "gamma": 31.1,
+     "delta": 143.42,
+     "epsilon": -140.77,
+     "zeta": -160.52,
+     "chi": -97.96,
+     "phase": 154.34
+    },
+    {
+     "chain": "A",
+     "resid": 7,
+     "resname": "DA",
+     "alpha": -29.87,
+     "beta": 136.37,
+     "gamma": 31.11,
+     "delta": 143.4,
+     "epsilon": -140.77,
+     "zeta": -160.52,
+     "chi": -98.0,
+     "phase": 154.36
+    },
+    {
+     "chain": "A",
+     "resid": 8,
+     "resname": "DG",
+     "alpha": -29.86,
+     "beta": 136.34,
+     "gamma": 31.12,
+     "delta": 143.42,
+     "epsilon": -140.8,
+     "zeta": -160.51,
+     "chi": -97.96,
+     "phase": 154.31
+    },
+    {
+     "chain": "A",
+     "resid": 9,
+     "resname": "DC",
+     "alpha": -29.87,
+     "beta": 136.4,
+     "gamma": 31.06,
+     "delta": 143.44,
+     "chi": -97.99,
+     "phase": 154.35
+    },
+    {
+     "chain": "B",
+     "resid": 1,
+     "resname": "DG",
+     "beta": 136.41,
+     "gamma": 31.07,
+     "delta": 143.45,
+     "epsilon": -140.74,
+     "zeta": -160.51,
+     "chi": -98.0,
+     "phase": 154.34
+    },
+    {
+     "chain": "B",
+     "resid": 2,
+     "resname": "DC",
+     "alpha": -29.93,
+     "beta": 136.43,
+     "gamma": 31.09,
+     "delta": 143.47,
+     "epsilon": -140.78,
+     "zeta": -160.52,
+     "chi": -97.94,
+     "phase": 154.34
+    },
+    {
+     "chain": "B",
+     "resid": 3,
+     "resname": "DT",
+     "alpha": -29.9,
+     "beta": 136.38,
+     "gamma": 31.11,
+     "delta": 143.43,
+     "epsilon": -140.76,
+     "zeta": -160.52,
+     "chi": -97.96,
+     "phase": 154.32
+    },
+    {
+     "chain": "B",
+     "resid": 4,
+     "resname": "DG",
+     "alpha": -29.89,
+     "beta": 136.38,
+     "gamma": 31.1,
+     "delta": 143.42,
+     "epsilon": -140.79,
+     "zeta": -160.51,
+     "chi": -97.97,
+     "phase": 154.34
+    },
+    {
+     "chain": "B",
+     "resid": 5,
+     "resname": "DT",
+     "alpha": -29.87,
+     "beta": 136.37,
+     "gamma": 31.11,
+     "delta": 143.4,
+     "epsilon": -140.77,
+     "zeta": -160.52,
+     "chi": -97.92,
+     "phase": 154.39
+    },
+    {
+     "chain": "B",
+     "resid": 6,
+     "resname": "DA",
+     "alpha": -29.86,
+     "beta": 136.34,
+     "gamma": 31.12,
+     "delta": 143.42,
+     "epsilon": -140.81,
+     "zeta": -160.53,
+     "chi": -97.94,
+     "phase": 154.35
+    },
+    {
+     "chain": "B",
+     "resid": 7,
+     "resname": "DA",
+     "alpha": -29.83,
+     "beta": 136.34,
+     "gamma": 31.09,
+     "delta": 143.37,
+     "epsilon": -140.77,
+     "zeta": -160.47,
+     "chi": -98.02,
+     "phase": 154.37
+    },
+    {
+     "chain": "B",
+     "resid": 8,
+     "resname": "DT",
+     "alpha": -29.9,
+     "beta": 136.38,
+     "gamma": 31.14,
+     "delta": 143.4,
+     "epsilon": -140.78,
+     "zeta": -160.51,
+     "chi": -97.96,
+     "phase": 154.36
+    },
+    {
+     "chain": "B",
+     "resid": 9,
+     "resname": "DC",
+     "alpha": -29.87,
+     "beta": 136.38,
+     "gamma": 31.1,
+     "delta": 143.42,
+     "chi": -97.96,
+     "phase": 154.34
+    }
+   ],
+   "pairs": [
+    {
+     "a": 1,
+     "b": 9,
+     "pair": "GC",
+     "hbonds": {
+      "O6-N4": 2.853,
+      "N1-N3": 2.847,
+      "N2-O2": 2.848
+     },
+     "c1c1": 10.688
+    },
+    {
+     "a": 2,
+     "b": 8,
+     "pair": "AT",
+     "hbonds": {
+      "N6-O4": 2.95,
+      "N1-N3": 2.881
+     },
+     "c1c1": 10.689
+    },
+    {
+     "a": 3,
+     "b": 7,
+     "pair": "AT",
+     "hbonds": {
+      "N6-O4": 2.95,
+      "N1-N3": 2.88
+     },
+     "c1c1": 10.687
+    },
+    {
+     "a": 4,
+     "b": 6,
+     "pair": "AT",
+     "hbonds": {
+      "N6-O4": 2.95,
+      "N1-N3": 2.881
+     },
+     "c1c1": 10.688
+    },
+    {
+     "a": 5,
+     "b": 5,
+     "pair": "AT",
+     "hbonds": {
+      "N6-O4": 2.951,
+      "N1-N3": 2.881
+     },
+     "c1c1": 10.688
+    },
+    {
+     "a": 6,
+     "b": 4,
+     "pair": "GC",
+     "hbonds": {
+      "O6-N4": 2.853,
+      "N1-N3": 2.847,
+      "N2-O2": 2.848
+     },
+     "c1c1": 10.688
+    },
+    {
+     "a": 7,
+     "b": 3,
+     "pair": "AT",
+     "hbonds": {
+      "N6-O4": 2.95,
+      "N1-N3": 2.88
+     },
+     "c1c1": 10.687
+    },
+    {
+     "a": 8,
+     "b": 2,
+     "pair": "GC",
+     "hbonds": {
+      "O6-N4": 2.854,
+      "N1-N3": 2.848,
+      "N2-O2": 2.847
+     },
+     "c1c1": 10.688
+    },
+    {
+     "a": 9,
+     "b": 1,
+     "pair": "GC",
+     "hbonds": {
+      "O6-N4": 2.854,
+      "N1-N3": 2.848,
+      "N2-O2": 2.848
+     },
+     "c1c1": 10.687
+    }
+   ],
+   "steps": [
+    {
+     "chain": "A",
+     "from": 1,
+     "to": 2,
+     "twist": 35.99,
+     "rise": 3.375
+    },
+    {
+     "chain": "A",
+     "from": 2,
+     "to": 3,
+     "twist": 36.03,
+     "rise": 3.375
+    },
+    {
+     "chain": "A",
+     "from": 3,
+     "to": 4,
+     "twist": 35.97,
+     "rise": 3.376
+    },
+    {
+     "chain": "A",
+     "from": 4,
+     "to": 5,
+     "twist": 36.0,
+     "rise": 3.375
+    },
+    {
+     "chain": "A",
+     "from": 5,
+     "to": 6,
+     "twist": 36.01,
+     "rise": 3.374
+    },
+    {
+     "chain": "A",
+     "from": 6,
+     "to": 7,
+     "twist": 35.98,
+     "rise": 3.375
+    },
+    {
+     "chain": "A",
+     "from": 7,
+     "to": 8,
+     "twist": 36.02,
+     "rise": 3.376
+    },
+    {
+     "chain": "A",
+     "from": 8,
+     "to": 9,
+     "twist": 36.01,
+     "rise": 3.373
+    },
+    {
+     "chain": "B",
+     "from": 1,
+     "to": 2,
+     "twist": 36.01,
+     "rise": 3.376
+    },
+    {
+     "chain": "B",
+     "from": 2,
+     "to": 3,
+     "twist": 35.98,
+     "rise": 3.375
+    },
+    {
+     "chain": "B",
+     "from": 3,
+     "to": 4,
+     "twist": 36.01,
+     "rise": 3.374
+    },
+    {
+     "chain": "B",
+     "from": 4,
+     "to": 5,
+     "twist": 35.99,
+     "rise": 3.375
+    },
+    {
+     "chain": "B",
+     "from": 5,
+     "to": 6,
+     "twist": 36.02,
+     "rise": 3.376
+    },
+    {
+     "chain": "B",
+     "from": 6,
+     "to": 7,
+     "twist": 35.98,
+     "rise": 3.374
+    },
+    {
+     "chain": "B",
+     "from": 7,
+     "to": 8,
+     "twist": 36.02,
+     "rise": 3.376
+    },
+    {
+     "chain": "B",
+     "from": 8,
+     "to": 9,
+     "twist": 35.99,
+     "rise": 3.375
+    }
+   ]
+  },
+  "fnab-a-dna": {
+   "nucleotides": [
+    {
+     "chain": "A",
+     "resid": 1,
+     "resname": "DG",
+     "beta": 174.79,
+     "gamma": 41.73,
+     "delta": 79.04,
+     "epsilon": -147.77,
+     "zeta": -75.1,
+     "chi": -157.21,
+     "phase": 7.87
+    },
+    {
+     "chain": "A",
+     "resid": 2,
+     "resname": "DA",
+     "alpha": -51.67,
+     "beta": 174.78,
+     "gamma": 41.75,
+     "delta": 79.02,
+     "epsilon": -147.75,
+     "zeta": -75.08,
+     "chi": -157.21,
+     "phase": 7.86
+    },
+    {
+     "chain": "A",
+     "resid": 3,
+     "resname": "DT",
+     "alpha": -51.65,
+     "beta": 174.79,
+     "gamma": 41.73,
+     "delta": 79.02,
+     "epsilon": -147.77,
+     "zeta": -75.06,
+     "chi": -157.21,
+     "phase": 7.84
+    },
+    {
+     "chain": "A",
+     "resid": 4,
+     "resname": "DT",
+     "alpha": -51.66,
+     "beta": 174.79,
+     "gamma": 41.74,
+     "delta": 79.0,
+     "epsilon": -147.77,
+     "zeta": -75.08,
+     "chi": -157.21,
+     "phase": 7.84
+    },
+    {
+     "chain": "A",
+     "resid": 5,
+     "resname": "DA",
+     "alpha": -51.66,
+     "beta": 174.78,
+     "gamma": 41.7,
+     "delta": 79.06,
+     "epsilon": -147.79,
+     "zeta": -75.08,
+     "chi": -157.23,
+     "phase": 7.94
+    },
+    {
+     "chain": "A",
+     "resid": 6,
+     "resname": "DC",
+     "alpha": -51.67,
+     "beta": 174.78,
+     "gamma": 41.74,
+     "delta": 79.04,
+     "epsilon": -147.79,
+     "zeta": -75.07,
+     "chi": -157.21,
+     "phase": 7.84
+    },
+    {
+     "chain": "A",
+     "resid": 7,
+     "resname": "DA",
+     "alpha": -51.68,
+     "beta": 174.8,
+     "gamma": 41.71,
+     "delta": 79.07,
+     "epsilon": -147.8,
+     "zeta": -75.05,
+     "chi": -157.22,
+     "phase": 7.93
+    },
+    {
+     "chain": "A",
+     "resid": 8,
+     "resname": "DG",
+     "alpha": -51.7,
+     "beta": 174.8,
+     "gamma": 41.75,
+     "delta": 79.01,
+     "epsilon": -147.8,
+     "zeta": -75.07,
+     "chi": -157.19,
+     "phase": 7.85
+    },
+    {
+     "chain": "A",
+     "resid": 9,
+     "resname": "DC",
+     "alpha": -51.67,
+     "beta": 174.79,
+     "gamma": 41.72,
+     "delta": 79.09,
+     "chi": -157.2,
+     "phase": 7.89
+    },
+    {
+     "chain": "B",
+     "resid": 1,
+     "resname": "DG",
+     "beta": 174.79,
+     "gamma": 41.76,
+     "delta": 79.0,
+     "epsilon": -147.75,
+     "zeta": -75.07,
+     "chi": -157.2,
+     "phase": 7.88
+    },
+    {
+     "chain": "B",
+     "resid": 2,
+     "resname": "DC",
+     "alpha": -51.67,
+     "beta": 174.79,
+     "gamma": 41.76,
+     "delta": 79.02,
+     "epsilon": -147.77,
+     "zeta": -75.12,
+     "chi": -157.21,
+     "phase": 7.89
+    },
+    {
+     "chain": "B",
+     "resid": 3,
+     "resname": "DT",
+     "alpha": -51.64,
+     "beta": 174.78,
+     "gamma": 41.73,
+     "delta": 79.06,
+     "epsilon": -147.78,
+     "zeta": -75.09,
+     "chi": -157.21,
+     "phase": 7.87
+    },
+    {
+     "chain": "B",
+     "resid": 4,
+     "resname": "DG",
+     "alpha": -51.66,
+     "beta": 174.8,
+     "gamma": 41.71,
+     "delta": 79.05,
+     "epsilon": -147.82,
+     "zeta": -75.06,
+     "chi": -157.21,
+     "phase": 7.9
+    },
+    {
+     "chain": "B",
+     "resid": 5,
+     "resname": "DT",
+     "alpha": -51.65,
+     "beta": 174.79,
+     "gamma": 41.71,
+     "delta": 79.09,
+     "epsilon": -147.81,
+     "zeta": -75.12,
+     "chi": -157.21,
+     "phase": 7.88
+    },
+    {
+     "chain": "B",
+     "resid": 6,
+     "resname": "DA",
+     "alpha": -51.66,
+     "beta": 174.79,
+     "gamma": 41.73,
+     "delta": 79.07,
+     "epsilon": -147.77,
+     "zeta": -75.14,
+     "chi": -157.23,
+     "phase": 7.84
+    },
+    {
+     "chain": "B",
+     "resid": 7,
+     "resname": "DA",
+     "alpha": -51.63,
+     "beta": 174.79,
+     "gamma": 41.71,
+     "delta": 79.08,
+     "epsilon": -147.78,
+     "zeta": -75.08,
+     "chi": -157.23,
+     "phase": 7.87
+    },
+    {
+     "chain": "B",
+     "resid": 8,
+     "resname": "DT",
+     "alpha": -51.67,
+     "beta": 174.79,
+     "gamma": 41.72,
+     "delta": 79.05,
+     "epsilon": -147.78,
+     "zeta": -75.08,
+     "chi": -157.21,
+     "phase": 7.9
+    },
+    {
+     "chain": "B",
+     "resid": 9,
+     "resname": "DC",
+     "alpha": -51.67,
+     "beta": 174.79,
+     "gamma": 41.73,
+     "delta": 79.04,
+     "chi": -157.2,
+     "phase": 7.87
+    }
+   ],
+   "pairs": [
+    {
+     "a": 1,
+     "b": 9,
+     "pair": "GC",
+     "hbonds": {
+      "O6-N4": 2.826,
+      "N1-N3": 2.849,
+      "N2-O2": 2.811
+     },
+     "c1c1": 10.681
+    },
+    {
+     "a": 2,
+     "b": 8,
+     "pair": "AT",
+     "hbonds": {
+      "N6-O4": 2.9,
+      "N1-N3": 2.88
+     },
+     "c1c1": 10.681
+    },
+    {
+     "a": 3,
+     "b": 7,
+     "pair": "AT",
+     "hbonds": {
+      "N6-O4": 2.9,
+      "N1-N3": 2.88
+     },
+     "c1c1": 10.681
+    },
+    {
+     "a": 4,
+     "b": 6,
+     "pair": "AT",
+     "hbonds": {
+      "N6-O4": 2.9,
+      "N1-N3": 2.88
+     },
+     "c1c1": 10.681
+    },
+    {
+     "a": 5,
+     "b": 5,
+     "pair": "AT",
+     "hbonds": {
+      "N6-O4": 2.9,
+      "N1-N3": 2.881
+     },
+     "c1c1": 10.682
+    },
+    {
+     "a": 6,
+     "b": 4,
+     "pair": "GC",
+     "hbonds": {
+      "O6-N4": 2.826,
+      "N1-N3": 2.849,
+      "N2-O2": 2.81
+     },
+     "c1c1": 10.681
+    },
+    {
+     "a": 7,
+     "b": 3,
+     "pair": "AT",
+     "hbonds": {
+      "N6-O4": 2.9,
+      "N1-N3": 2.881
+     },
+     "c1c1": 10.681
+    },
+    {
+     "a": 8,
+     "b": 2,
+     "pair": "GC",
+     "hbonds": {
+      "O6-N4": 2.825,
+      "N1-N3": 2.85,
+      "N2-O2": 2.811
+     },
+     "c1c1": 10.681
+    },
+    {
+     "a": 9,
+     "b": 1,
+     "pair": "GC",
+     "hbonds": {
+      "O6-N4": 2.825,
+      "N1-N3": 2.85,
+      "N2-O2": 2.811
+     },
+     "c1c1": 10.682
+    }
+   ],
+   "steps": [
+    {
+     "chain": "A",
+     "from": 1,
+     "to": 2,
+     "twist": 32.7,
+     "rise": 2.548
+    },
+    {
+     "chain": "A",
+     "from": 2,
+     "to": 3,
+     "twist": 32.7,
+     "rise": 2.55
+    },
+    {
+     "chain": "A",
+     "from": 3,
+     "to": 4,
+     "twist": 32.7,
+     "rise": 2.544
+    },
+    {
+     "chain": "A",
+     "from": 4,
+     "to": 5,
+     "twist": 32.7,
+     "rise": 2.55
+    },
+    {
+     "chain": "A",
+     "from": 5,
+     "to": 6,
+     "twist": 32.7,
+     "rise": 2.549
+    },
+    {
+     "chain": "A",
+     "from": 6,
+     "to": 7,
+     "twist": 32.7,
+     "rise": 2.546
+    },
+    {
+     "chain": "A",
+     "from": 7,
+     "to": 8,
+     "twist": 32.7,
+     "rise": 2.551
+    },
+    {
+     "chain": "A",
+     "from": 8,
+     "to": 9,
+     "twist": 32.71,
+     "rise": 2.546
+    },
+    {
+     "chain": "B",
+     "from": 1,
+     "to": 2,
+     "twist": 32.71,
+     "rise": 2.548
+    },
+    {
+     "chain": "B",
+     "from": 2,
+     "to": 3,
+     "twist": 32.7,
+     "rise": 2.549
+    },
+    {
+     "chain": "B",
+     "from": 3,
+     "to": 4,
+     "twist": 32.71,
+     "rise": 2.546
+    },
+    {
+     "chain": "B",
+     "from": 4,
+     "to": 5,
+     "twist": 32.69,
+     "rise": 2.549
+    },
+    {
+     "chain": "B",
+     "from": 5,
+     "to": 6,
+     "twist": 32.7,
+     "rise": 2.546
+    },
+    {
+     "chain": "B",
+     "from": 6,
+     "to": 7,
+     "twist": 32.71,
+     "rise": 2.55
+    },
+    {
+     "chain": "B",
+     "from": 7,
+     "to": 8,
+     "twist": 32.68,
+     "rise": 2.546
+    },
+    {
+     "chain": "B",
+     "from": 8,
+     "to": 9,
+     "twist": 32.7,
+     "rise": 2.549
+    }
+   ]
+  },
+  "fnab-a-rna": {
+   "nucleotides": [
+    {
+     "chain": "A",
+     "resid": 1,
+     "resname": "G",
+     "beta": 174.79,
+     "gamma": 41.73,
+     "delta": 79.04,
+     "epsilon": -147.8,
+     "zeta": -75.09,
+     "chi": -157.21,
+     "phase": 7.87
+    },
+    {
+     "chain": "A",
+     "resid": 2,
+     "resname": "A",
+     "alpha": -51.65,
+     "beta": 174.78,
+     "gamma": 41.74,
+     "delta": 79.0,
+     "epsilon": -147.75,
+     "zeta": -75.08,
+     "chi": -157.22,
+     "phase": 7.86
+    },
+    {
+     "chain": "A",
+     "resid": 3,
+     "resname": "U",
+     "alpha": -51.64,
+     "beta": 174.79,
+     "gamma": 41.69,
+     "delta": 79.01,
+     "epsilon": -147.84,
+     "zeta": -75.02,
+     "chi": -157.24,
+     "phase": 7.87
+    },
+    {
+     "chain": "A",
+     "resid": 4,
+     "resname": "U",
+     "alpha": -51.68,
+     "beta": 174.8,
+     "gamma": 41.66,
+     "delta": 79.08,
+     "epsilon": -147.87,
+     "zeta": -75.05,
+     "chi": -157.23,
+     "phase": 7.97
+    },
+    {
+     "chain": "A",
+     "resid": 5,
+     "resname": "A",
+     "alpha": -51.72,
+     "beta": 174.75,
+     "gamma": 41.77,
+     "delta": 79.08,
+     "epsilon": -147.83,
+     "zeta": -75.14,
+     "chi": -157.2,
+     "phase": 7.9
+    },
+    {
+     "chain": "A",
+     "resid": 6,
+     "resname": "C",
+     "alpha": -51.64,
+     "beta": 174.77,
+     "gamma": 41.69,
+     "delta": 79.07,
+     "epsilon": -147.79,
+     "zeta": -75.07,
+     "chi": -157.16,
+     "phase": 7.85
+    },
+    {
+     "chain": "A",
+     "resid": 7,
+     "resname": "A",
+     "alpha": -51.69,
+     "beta": 174.8,
+     "gamma": 41.72,
+     "delta": 79.07,
+     "epsilon": -147.82,
+     "zeta": -75.1,
+     "chi": -157.21,
+     "phase": 7.86
+    },
+    {
+     "chain": "A",
+     "resid": 8,
+     "resname": "G",
+     "alpha": -51.66,
+     "beta": 174.75,
+     "gamma": 41.74,
+     "delta": 79.01,
+     "epsilon": -147.75,
+     "zeta": -75.07,
+     "chi": -157.18,
+     "phase": 7.87
+    },
+    {
+     "chain": "A",
+     "resid": 9,
+     "resname": "C",
+     "alpha": -51.71,
+     "beta": 174.83,
+     "gamma": 41.7,
+     "delta": 79.07,
+     "chi": -157.2,
+     "phase": 7.87
+    }
+   ],
+   "pairs": [],
+   "steps": [
+    {
+     "chain": "A",
+     "from": 1,
+     "to": 2,
+     "twist": 32.7,
+     "rise": 2.548
+    },
+    {
+     "chain": "A",
+     "from": 2,
+     "to": 3,
+     "twist": 32.69,
+     "rise": 2.549
+    },
+    {
+     "chain": "A",
+     "from": 3,
+     "to": 4,
+     "twist": 32.7,
+     "rise": 2.547
+    },
+    {
+     "chain": "A",
+     "from": 4,
+     "to": 5,
+     "twist": 32.72,
+     "rise": 2.549
+    },
+    {
+     "chain": "A",
+     "from": 5,
+     "to": 6,
+     "twist": 32.69,
+     "rise": 2.549
+    },
+    {
+     "chain": "A",
+     "from": 6,
+     "to": 7,
+     "twist": 32.69,
+     "rise": 2.547
+    },
+    {
+     "chain": "A",
+     "from": 7,
+     "to": 8,
+     "twist": 32.69,
+     "rise": 2.549
+    },
+    {
+     "chain": "A",
+     "from": 8,
+     "to": 9,
+     "twist": 32.71,
+     "rise": 2.547
+    }
+   ]
+  }
+ }
+}

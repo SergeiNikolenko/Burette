@@ -44,12 +44,12 @@ const makeCache = (count = 2000, bytes = 128, entry = 64) => new Function(
   const drawingState = {
     svgCache: makeCache(2000, 128, 64), smartsMatches: new Map(), rdkitUseInputCoords: false,
     rdkit: {
-      get_mol(text) { moleculeCalls++; return { get_svg: () => text === 'large' ? oversized : normal, delete() {} }; },
+      get_mol(text) { moleculeCalls++; const svg = () => text === 'large' ? oversized : normal; return { get_svg: svg, get_svg_with_highlights: svg, get_molblock: () => '', delete() {} }; },
       get_rxn(text) { reactionCalls++; return { get_svg: () => text === 'large' ? oversized : normal, delete() {} }; },
     },
   };
   const dependencies = {
-    state: drawingState, RDKIT_SVG_SIZE: 200, RDKIT_REACTION_SVG_WIDTH: 300, RDKIT_REACTION_SVG_HEIGHT: 100,
+    state: drawingState, RDKIT_SVG_SIZE: 200, RDKIT_DRAWINGS: { card: {}, table: {}, fragment: {} }, depictionLongAxisAngle: () => 0, tableBondLineWidth: () => 2, RDKIT_REACTION_SVG_WIDTH: 300, RDKIT_REACTION_SVG_HEIGHT: 100,
     rowReactionText: row => row.reaction || '', rdkitCardKey: row => row.key,
     hasMolblockInputCoordinates: () => false, applyHydrogenDisplay: (_mol, match) => match,
     sanitizeSVG: value => value, stripSVGClipping: value => value, padSVGViewBox: value => value,

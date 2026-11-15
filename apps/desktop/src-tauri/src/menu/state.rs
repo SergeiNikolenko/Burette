@@ -60,6 +60,7 @@ pub(crate) struct NativeMenuState {
     can_run_crest: bool,
     can_run_prism: bool,
     can_run_xtb: bool,
+    can_optimize_geometry: bool,
     rgroup_runtime_available: bool,
     open_document_paths: Vec<String>,
     recent_documents: Option<Vec<RecentMenuDocument>>,
@@ -817,6 +818,17 @@ pub(super) fn sync_native_menu<R: Runtime>(
     )?;
     set_enabled(&app, "structure.crest-generate", state.can_run_crest)?;
     set_enabled(&app, "structure.prism-prune", state.can_run_prism)?;
+    for id in [
+        "structure.optimize-geometry",
+        "structure.auto-optimize",
+        "structure.calculate",
+        "structure.calculate-energy",
+        "structure.configure-optimization",
+        "structure.freeze-atoms",
+        "structure.unfreeze-atoms",
+    ] {
+        set_enabled(&app, id, state.can_optimize_geometry)?;
+    }
     set_enabled(&app, "structure.xtb-optimize", state.can_run_xtb)?;
     set_enabled(&app, "structure.xtb-properties", state.can_run_xtb)?;
     set_enabled(&app, "structure.xtb-frequencies", state.can_run_xtb)?;
@@ -872,6 +884,17 @@ pub(super) fn sync_native_menu<R: Runtime>(
     // which is the grid's own virtual edit layer rather than the collection
     // database, so it follows the same rule.
     set_enabled(&app, "collection.transform.split-rows", state.is_grid)?;
+    // Pivot, Unpivot and Merge File by Key rewrite cells and rows through the
+    // same edit layer, so they are reachable on an edited grid as well. The
+    // record view only reads the rows.
+    for id in [
+        "collection.pivot",
+        "collection.unpivot",
+        "collection.merge-by-key",
+        "collection.record-view",
+    ] {
+        set_enabled(&app, id, state.is_grid)?;
+    }
     set_enabled(&app, "collection.transform", state.is_grid)?;
     // The reaction columns only mean anything for a collection that holds
     // reactions, so they follow what the grid reports. Perform Reaction is the
@@ -888,6 +911,13 @@ pub(super) fn sync_native_menu<R: Runtime>(
         set_enabled(&app, id, can_add_reaction_column)?;
     }
     set_enabled(&app, "collection.reaction.perform", can_add_derived_column)?;
+    // Enumerate Library reads the collection's molecules as building blocks, so
+    // it follows the same rule; the command palette offers it without one.
+    set_enabled(
+        &app,
+        "collection.reaction.enumerate",
+        can_add_derived_column,
+    )?;
     set_enabled(
         &app,
         "collection.reaction",
@@ -915,10 +945,17 @@ pub(super) fn sync_native_menu<R: Runtime>(
     let can_analyze_columns = can_add_derived_column || state.can_open_collection_analysis;
     set_enabled(&app, "analyze.menu", true)?;
     set_enabled(&app, "analyze.chemical-space", can_analyze_collection)?;
+    // A chart reads columns, so it also serves tables that hold no molecules.
+    set_enabled(&app, "analyze.chart", state.is_grid)?;
     set_enabled(&app, "analyze.correlation-matrix", can_analyze_collection)?;
     // Clustering runs inside the grid, which re-checks its own capability; the
     // menu only asks for a molecular grid to exist.
     for id in ["analyze.cluster", "analyze.diverse"] {
+        set_enabled(&app, id, can_analyze_collection)?;
+    }
+    // Matched pairs and the SAR table only read the collection, the way the
+    // correlation matrix does.
+    for id in ["analyze.matched-pairs", "analyze.sar-table"] {
         set_enabled(&app, id, can_analyze_collection)?;
     }
     // The SAR analyses all write derived columns, so they follow the same rule
@@ -1630,6 +1667,7 @@ mod tests {
             "canRunCrest": false,
             "canRunPrism": false,
             "canRunXtb": false,
+            "canOptimizeGeometry": false,
             "rgroupRuntimeAvailable": false,
             "openDocumentPaths": ["/tmp/molecules.sdf"],
             "recentDocuments": null

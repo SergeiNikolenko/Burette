@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { Window } from "happy-dom";
 import React, { act } from "react";
+import type { ViewerDocument } from "../apps/desktop/src/types";
 const browser = new Window();
 for (const key of ["DocumentFragment", "HTMLFormElement", "HTMLSelectElement", "MouseEvent"] as const) {
   Object.defineProperty(globalThis, key, { configurable: true, value: browser[key] });
@@ -642,13 +643,14 @@ test("context menu uses its explicit container and Escape does not select", asyn
 });
 
 const { useAppXyzrenderSheetMessages } = await import("../apps/desktop/src/hooks/use-app-xyzrender-sheet-messages");
+const { useGeometryFocusRequest } = await import("../apps/desktop/src/lib/workbench/geometry-focus");
 test("browser viewer menu keeps the bridge open for live edits, commits on dismiss, and replaces previous menus", async () => {
   const shell = document.createElement("div"); shell.className = "app-shell"; document.body.append(shell);
   const root = createRoot(shell);
   const replies: unknown[] = [];
   let handle!: ReturnType<typeof useAppXyzrenderSheetMessages>["handleXyzrenderSheetMessage"];
   function Harness() {
-    ({ handleXyzrenderSheetMessage: handle } = useAppXyzrenderSheetMessages({ documents: [], postMessageToViewerSource: (_source, payload) => replies.push(payload) }));
+    ({ handleXyzrenderSheetMessage: handle } = useAppXyzrenderSheetMessages({ documents: [], postMessageToViewerSource: (_source, payload) => replies.push(payload), openDockTab: () => {} }));
     return null;
   }
   const request = (requestId: string) => ({ type: "molstarContextMenu", requestId, clientX: 20, clientY: 20, items: [
@@ -680,6 +682,34 @@ test("browser viewer menu keeps the bridge open for live edits, commits on dismi
     await act(flushFocus);
     expect(replies.slice(-2)).toEqual([reply("third", { event: "select", id: "focus" }), reply("third", { event: "closed" })]);
     expect(shell.querySelector('.radix-context-menu-mount')).toBeNull();
+  } finally {
+    await act(async () => window.dispatchEvent(new Event("pagehide"))); await act(flushFocus);
+    await act(async () => root.unmount()); shell.remove();
+  }
+});
+
+test("the 3D menu adds the document's editing tools after its title and opens Geometry at the picked atom", async () => {
+  const shell = document.createElement("div"); shell.className = "app-shell"; document.body.append(shell);
+  const root = createRoot(shell);
+  const docks: string[] = [];
+  const xyz = { id: "xyz-doc", title: "water.xyz", path: "/water.xyz", extension: "xyz", renderer: "molstar", runtimePath: "/viewer", byteCount: 10 } as ViewerDocument;
+  let handle!: ReturnType<typeof useAppXyzrenderSheetMessages>["handleXyzrenderSheetMessage"];
+  let focus: ReturnType<typeof useGeometryFocusRequest> = null;
+  function Harness() {
+    ({ handleXyzrenderSheetMessage: handle } = useAppXyzrenderSheetMessages({ documents: [xyz], postMessageToViewerSource: () => {}, openDockTab: (_area, kind) => docks.push(kind) }));
+    focus = useGeometryFocusRequest(xyz.id);
+    return null;
+  }
+  try {
+    await act(async () => root.render(<Harness />));
+    await act(async () => { handle("burette-viewer", { type: "molstarContextMenu", requestId: "tools", documentId: xyz.id, atomIndex: 2, clientX: 20, clientY: 20,
+      items: [{ kind: "label", text: "O1" }, { kind: "separator" }, { kind: "item", id: "focus", text: "Focus" }] }, null); });
+    await act(flushFocus);
+    const rows = [...shell.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+    expect(rows.map(row => row.textContent)).toEqual(["Edit geometry", "Properties…", "Focus"]);
+    await act(async () => rows[0].click());
+    await act(flushFocus);
+    expect([docks, focus?.atoms]).toEqual([["geometry"], [2]]);
   } finally {
     await act(async () => window.dispatchEvent(new Event("pagehide"))); await act(flushFocus);
     await act(async () => root.unmount()); shell.remove();

@@ -1,0 +1,102 @@
+{
+  "runtime": "vite-dev",
+  "commit": "f6aefb6e983538435fbc2ee332e60fbda4658adb",
+  "fixture": "tests/fixtures/quantum/spectra-orca-camphor.out",
+  "results": {
+    "electronic": {
+      "status": "succeeded",
+      "source": "frame",
+      "frameIndex": 0,
+      "sourceRows": 15,
+      "allRawNumericColumnsExact": true,
+      "sourceRowIdsExact": true,
+      "points": 600,
+      "axisStart": 9,
+      "axisEnd": 3,
+      "maxAbsoluteGaussianError": 8.177522163935191e-08,
+      "minSignal": 0.0,
+      "maxSignal": 0.027110746130347252,
+      "artifacts": [
+        {
+          "name": "source",
+          "fileName": "spectra-orca-camphor-frame-1-electronic-source.json",
+          "mimeType": "application/json",
+          "byteCount": 4083,
+          "sha256": "sha256-1eaacadb27029877f0a684eeac7ee7148339fced0e002b0fc6a5dc5b3008a13f"
+        },
+        {
+          "name": "source_csv",
+          "fileName": "spectra-orca-camphor-frame-1-electronic-source.csv",
+          "mimeType": "text/csv",
+          "byteCount": 1417,
+          "sha256": "sha256-3bc8df69669954c12762febd1fad52cde970785a224c11bb61b91b97bed492af"
+        },
+        {
+          "name": "display",
+          "fileName": "spectra-orca-camphor-frame-1-electronic-display.csv",
+          "mimeType": "text/csv",
+          "byteCount": 21708,
+          "sha256": "sha256-a48b9f0f14265751b7524b189d4815d4e44ef0e865df01030553274a769aef0e"
+        },
+        {
+          "name": "settings",
+          "fileName": "spectra-orca-camphor-frame-1-electronic-settings.json",
+          "mimeType": "application/json",
+          "byteCount": 478,
+          "sha256": "sha256-ad16af149ca0d6016a38d1602c8feb8038480fdc24306125377b94a924ce3e4a"
+        }
+      ]
+    },
+    "ecd": {
+      "status": "succeeded",
+      "source": "frame",
+      "frameIndex": 0,
+      "sourceRows": 15,
+      "allRawNumericColumnsExact": true,
+      "sourceRowIdsExact": true,
+      "points": 600,
+      "axisStart": 9,
+      "axisEnd": 3,
+      "maxAbsoluteGaussianError": 2.7398486878382755e-05,
+      "minSignal": -12.82989501953125,
+      "maxSignal": 8.380361557006836,
+      "artifacts": [
+        {
+          "name": "source",
+          "fileName": "spectra-orca-camphor-frame-1-ecd-source.json",
+          "mimeType": "application/json",
+          "byteCount": 3615,
+          "sha256": "sha256-40e9e1495956a7d0537c3a1e79da6f307764b6b8059d0d007946ee75d4b27380"
+        },
+        {
+          "name": "source_csv",
+          "fileName": "spectra-orca-camphor-frame-1-ecd-source.csv",
+          "mimeType": "text/csv",
+          "byteCount": 1224,
+          "sha256": "sha256-3119e80ed42841d1c7288c7d16d000cc55d4704d7e84e5170daa87efe01d156a"
+        },
+        {
+          "name": "display",
+          "fileName": "spectra-orca-camphor-frame-1-ecd-display.csv",
+          "mimeType": "text/csv",
+          "byteCount": 21386,
+          "sha256": "sha256-b7668356281cf5291e8094ed871e6f65bc73279ca66746b831567aeaea440827"
+        },
+        {
+          "name": "settings",
+          "fileName": "spectra-orca-camphor-frame-1-ecd-settings.json",
+          "mimeType": "application/json",
+          "byteCount": 471,
+          "sha256": "sha256-7a75ee2261be269eb06e8f6313f6332eb3698d0e5449c74c499dffc2afcc835c"
+        }
+      ]
+    }
+  },
+  "refusals": {
+    "('file', {})": "JOB_UNAVAILABLE",
+    "('frame', {'frameIndex': 1})": "JOB_UNAVAILABLE",
+    "('companion', {'frameIndex': 0})": "JOB_UNAVAILABLE"
+  },
+  "uiSourceCsvByteIdentical": true,
+  "uiSourceCsvBytes": 1224
+}

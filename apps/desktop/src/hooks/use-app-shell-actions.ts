@@ -2,7 +2,8 @@ import { checkpointNativeScenesForClose } from "../components/workspace-panes/na
 import { nativeWindowTransferBusy } from "../lib/window-transfer";
 import { confirmUnsavedSceneClose } from "./file-batch-scene";
 import { rendererViewReloadOptions } from "../lib/renderer-view-state";
-import { useEffect, useMemo, useState } from "react";
+import { openInstalledCrystal, type CrystalOpenRequest } from "../lib/extensions/open-crystal";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ShellActions } from "../components/types";
 import type { DockDropInput } from "../lib/dock";
 import type { WindowCloseMutationPermit } from "../lib/window-mutation-barrier";
@@ -47,6 +48,8 @@ type UseAppShellActionsOptions = {
   openSubstructureCount: ShellActions["openSubstructureCount"];
   findSimilarInFile: ShellActions["findSimilarInFile"];
   openRGroupDecomposition: ShellActions["openRGroupDecomposition"];
+  openMatchedPairs: ShellActions["openMatchedPairs"];
+  openSarTable: ShellActions["openSarTable"];
   canNavigateBack: boolean;
   canNavigateForward: boolean;
   cancelConformerJob: ShellActions["cancelConformerJob"];
@@ -60,6 +63,11 @@ type UseAppShellActionsOptions = {
   chooseWorkspace: ShellActions["chooseWorkspace"];
   clearCache: ShellActions["clearCache"];
   clearDatabaseJobs: ShellActions["clearDatabaseJobs"];
+  installCrystals: ShellActions["installCrystals"];
+  removeCrystals: ShellActions["removeCrystals"];
+  refreshResourceExtensions: ShellActions["refreshResourceExtensions"];
+  cancelResourceJob: ShellActions["cancelResourceJob"];
+  clearResourceJobs: ShellActions["clearResourceJobs"];
   openDatabaseQuery: ShellActions["openDatabaseQuery"];
   clearDescriptorSource: ShellActions["clearDescriptorSource"];
   clearDirtyGridDocuments: () => void;
@@ -256,6 +264,8 @@ type GridShellActions = Pick<
   | "openSubstructureCount"
   | "findSimilarInFile"
   | "openRGroupDecomposition"
+  | "openMatchedPairs"
+  | "openSarTable"
   | "appendGridRecords"
   | "addXyzrenderSheetItems"
 >;
@@ -373,6 +383,12 @@ type MaintenanceShellActions = Pick<
 
 type SettingsShellActions = Pick<
   ShellActions,
+  | "openCrystalsStructure"
+  | "installCrystals"
+  | "removeCrystals"
+  | "refreshResourceExtensions"
+  | "cancelResourceJob"
+  | "clearResourceJobs"
   | "checkForUpdates"
   | "installUpdate"
   | "openUpdateRelease"
@@ -405,6 +421,7 @@ const workspaceHistoryActionSpecs = {
   openStructurePaths: { label: "Open structures", group: "documents" },
   openTextPaths: { label: "Open text files", group: "documents" },
   openPaths: { label: "Open files", group: "documents" },
+  openCrystalsStructure: { label: "Open crystal", group: "documents" },
   openStructureRecords: { label: "Open structures", group: "documents" },
   openRecentStructure: { label: "Open recent structure", group: "documents" },
   openMostRecentStructure: { label: "Open recent structure", group: "documents" },
@@ -492,6 +509,8 @@ const workspaceHistoryNoneActions = new Set<keyof ShellActions>([
   "openSubstructureCount",
   "findSimilarInFile",
   "openRGroupDecomposition",
+  "openMatchedPairs",
+  "openSarTable",
   "appendGridRecords",
   "addXyzrenderSheetItems",
   "checkConformerStatus",
@@ -500,6 +519,11 @@ const workspaceHistoryNoneActions = new Set<keyof ShellActions>([
   "clearConformerJobs",
   "openDatabaseQuery",
   "clearDatabaseJobs",
+  "installCrystals",
+  "removeCrystals",
+  "refreshResourceExtensions",
+  "cancelResourceJob",
+  "clearResourceJobs",
   "checkXtbStatus",
   "chooseXtbExecutable",
   "clearXtbExecutableSelection",
@@ -676,6 +700,8 @@ export function createAppShellActionSlices(actions: ShellActions): AppShellActio
       openSubstructureCount: actions.openSubstructureCount,
       findSimilarInFile: actions.findSimilarInFile,
       openRGroupDecomposition: actions.openRGroupDecomposition,
+      openMatchedPairs: actions.openMatchedPairs,
+      openSarTable: actions.openSarTable,
       appendGridRecords: actions.appendGridRecords,
       addXyzrenderSheetItems: actions.addXyzrenderSheetItems,
     },
@@ -777,6 +803,12 @@ export function createAppShellActionSlices(actions: ShellActions): AppShellActio
       exportDiagnostics: actions.exportDiagnostics,
     },
     settings: {
+      openCrystalsStructure: actions.openCrystalsStructure,
+      installCrystals: actions.installCrystals,
+      removeCrystals: actions.removeCrystals,
+      refreshResourceExtensions: actions.refreshResourceExtensions,
+      cancelResourceJob: actions.cancelResourceJob,
+      clearResourceJobs: actions.clearResourceJobs,
       checkForUpdates: actions.checkForUpdates,
       installUpdate: actions.installUpdate,
       openUpdateRelease: actions.openUpdateRelease,
@@ -814,6 +846,8 @@ export function useAppShellActions({
   openSubstructureCount,
   findSimilarInFile,
   openRGroupDecomposition,
+  openMatchedPairs,
+  openSarTable,
   canNavigateBack,
   canNavigateForward,
   cancelConformerJob,
@@ -827,6 +861,11 @@ export function useAppShellActions({
   chooseWorkspace,
   clearCache,
   clearDatabaseJobs,
+  installCrystals,
+  removeCrystals,
+  refreshResourceExtensions,
+  cancelResourceJob,
+  clearResourceJobs,
   openDatabaseQuery,
   clearDescriptorSource,
   clearDirtyGridDocuments,
@@ -966,6 +1005,9 @@ export function useAppShellActions({
     return () => window.removeEventListener("burette:molstar-edit-history-changed", onHistoryChanged);
   }, []);
 
+  const openCrystalsStructure = useCallback((request: CrystalOpenRequest) =>
+    openInstalledCrystal(request, { openPaths, openStructureRecords }), [openPaths, openStructureRecords]);
+
   const focusedPreviewHistory = activeDocument
     ? previewHistoryByDocument[activeDocument.id] ?? { canUndo: false, canRedo: false }
     : { canUndo: false, canRedo: false };
@@ -979,6 +1021,7 @@ export function useAppShellActions({
       await openTextDocuments(paths);
     },
     openPaths,
+    openCrystalsStructure,
     openStructureRecords,
     openStructureUrlInMolstar,
     openRecentStructure,
@@ -1032,11 +1075,18 @@ export function useAppShellActions({
     openSubstructureCount,
     findSimilarInFile,
     openRGroupDecomposition,
+    openMatchedPairs,
+    openSarTable,
     checkConformerStatus,
     runConformerOperation,
     cancelConformerJob,
     openDatabaseQuery,
     clearDatabaseJobs,
+    installCrystals,
+    removeCrystals,
+    refreshResourceExtensions,
+    cancelResourceJob,
+    clearResourceJobs,
     ...createJobHistoryShellActions({ pushStatus, setConformerJobs, setXtbJobs }),
     setConformerSettings,
     checkXtbStatus,
@@ -1136,7 +1186,7 @@ export function useAppShellActions({
     canRedoWorkspace,
     canUndoFocusedPreview: focusedPreviewHistory.canUndo,
     canUndoWorkspace,
-  }), [activeDocument, addDerivedGridColumn, addDockDrop, addXyzrenderSheetItemsToDocument, openCalculateProperties, deleteDuplicateGridRows, openCorrelationMatrix, openCalculatedColumn, openMergeColumns, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, clearDerivedColumnJobs, canNavigateForward, canRedoWorkspace, canUndoWorkspace, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearDirtyGridDocuments, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeQuickLookPreview, closeTab, confirmCloseSourceDocuments, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, exportDiagnostics, fetchPdbStructure, focusedPreviewHistory.canRedo, focusedPreviewHistory.canUndo, focusSidebarSearch, forgetDirtyGridDocument, forgetDirtyGridDocuments, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openStructureUrlInMolstar, openTextDocuments, openUpdateRelease, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectFolder, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runExternalRuntimeDoctor, runStructureViewerAction, saveKetcherDraft, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, openPerformReaction, addScaffoldGridColumns, openSubstructureCount, findSimilarInFile, openRGroupDecomposition]);
+  }), [openCrystalsStructure, installCrystals, removeCrystals, refreshResourceExtensions, cancelResourceJob, clearResourceJobs, activeDocument, addDerivedGridColumn, addDockDrop, addXyzrenderSheetItemsToDocument, openCalculateProperties, deleteDuplicateGridRows, openCorrelationMatrix, openCalculatedColumn, openMergeColumns, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, clearDerivedColumnJobs, canNavigateForward, canRedoWorkspace, canUndoWorkspace, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearDirtyGridDocuments, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeQuickLookPreview, closeTab, confirmCloseSourceDocuments, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, exportDiagnostics, fetchPdbStructure, focusedPreviewHistory.canRedo, focusedPreviewHistory.canUndo, focusSidebarSearch, forgetDirtyGridDocument, forgetDirtyGridDocuments, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openStructureUrlInMolstar, openTextDocuments, openUpdateRelease, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectFolder, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runExternalRuntimeDoctor, runStructureViewerAction, saveKetcherDraft, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, openPerformReaction, addScaffoldGridColumns, openSubstructureCount, findSimilarInFile, openRGroupDecomposition, openMatchedPairs, openSarTable]);
 }
 
 export function createJobHistoryShellActions({

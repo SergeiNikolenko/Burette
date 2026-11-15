@@ -1,0 +1,1 @@
+import{t as e}from"./worker-task-uCZzEDtO.js";function t(t,n={}){return t.sequence.length>1024||Array.isArray(t.options.chirality)&&t.options.chirality.length>64?Promise.reject(Error(`Use at most 64 amino-acid codes.`)):e(()=>new Worker(new URL(new URL(`peptide-worker-DbYrYhiI.js`,import.meta.url).href,``+import.meta.url),{type:`module`}),t,n)}export{t};

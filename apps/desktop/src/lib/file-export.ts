@@ -5,7 +5,10 @@ export type TextFileSaveOutcome =
   | { status: "failed"; message: string };
 
 export function downloadTextFile(fileName: string, text: string) {
-  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  downloadBlobFile(fileName, new Blob([text], { type: "text/plain;charset=utf-8" }));
+}
+
+export function downloadBlobFile(fileName: string, blob: Blob) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
