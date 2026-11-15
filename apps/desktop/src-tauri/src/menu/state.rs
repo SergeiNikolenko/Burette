@@ -773,18 +773,18 @@ pub(super) fn sync_native_menu<R: Runtime>(
         &app,
         "structure.edit-in-ketcher",
         if state.is_grid && state.selected_molecule_count > MAX_NATIVE_KETCHER_SELECTION {
-            format!("Open Selection in Ketcher (max {MAX_NATIVE_KETCHER_SELECTION})")
+            format!("Open Selection in Molecular Editor (max {MAX_NATIVE_KETCHER_SELECTION})")
         } else if state.is_grid && state.selected_molecule_count >= 2 {
             format!(
-                "Open {} Selected Molecules in Ketcher",
+                "Open {} Selected Molecules in Molecular Editor",
                 state.selected_molecule_count
             )
         } else if state.is_grid && state.selected_molecule_count == 0 {
-            "Edit Selection in Ketcher".into()
+            "Edit Selection in Molecular Editor".into()
         } else if state.is_grid {
-            "Edit Selected Molecule in Ketcher".into()
+            "Edit Selected Molecule in Molecular Editor".into()
         } else {
-            "Edit in Ketcher".into()
+            "Edit in Molecular Editor".into()
         },
     )?;
     set_text(
@@ -1024,7 +1024,7 @@ pub(super) fn reset_native_menu_for_no_windows<R: Runtime>(
         set_checked(app, id, false)?;
     }
     set_text(app, "structure.open-in-molstar", "Open Molecule in Mol*")?;
-    set_text(app, "structure.edit-in-ketcher", "Edit in Ketcher")?;
+    set_text(app, "structure.edit-in-ketcher", "Edit in Molecular Editor")?;
     set_text(app, "structure.generate-3d", "Generate 3D Conformer")?;
     ensure_standard_edit_history(app)
 }

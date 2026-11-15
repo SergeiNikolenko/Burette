@@ -264,7 +264,7 @@ export function useAppXtbWorkflows({
     options: XtbRunJobOptions = {},
   ) => {
     const title = options.title ?? xtbOperationLabel(request.operation);
-    const inputLabel = options.inputLabel ?? request.label ?? request.inputPath ?? "Ketcher sketch";
+    const inputLabel = options.inputLabel ?? request.label ?? request.inputPath ?? "Sketch";
     const guardMessage = await directChemistryJobGuardMessage("xTB", request.inputText ?? null, request.inputExtension ?? structureExtensionFromPath(request.inputPath ?? request.sourcePath), request.inputPath ?? request.sourcePath ?? null);
     if (guardMessage) {
       pushStatus(guardMessage, "error");
@@ -456,7 +456,7 @@ export function useAppXtbWorkflows({
       inputExtension: request.extension,
       label: request.title,
     }, {
-      title: "xTB Optimize Ketcher Sketch",
+      title: "xTB Optimize Sketch",
       inputLabel: request.title,
     });
   }, [runXtbJob]);

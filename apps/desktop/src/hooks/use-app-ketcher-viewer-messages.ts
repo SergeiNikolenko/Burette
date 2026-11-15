@@ -64,7 +64,7 @@ export function useAppKetcherViewerMessages({
               }
             : undefined, extension);
         } catch (error) {
-          pushStatus(`Open in Ketcher failed: ${error instanceof Error ? error.message : String(error)}`, "error");
+          pushStatus(`Opening the molecular editor failed: ${error instanceof Error ? error.message : String(error)}`, "error");
         }
         return true;
       }
@@ -105,7 +105,7 @@ export function useAppKetcherViewerMessages({
       if (fragments.length > 0) {
         openKetcherWithStructures([], fragments);
       } else {
-        pushStatus("Open in Ketcher failed: selected molecules do not have structure data.", "error");
+        pushStatus("Opening the molecular editor failed: selected molecules do not have structure data.", "error");
       }
       return true;
     }

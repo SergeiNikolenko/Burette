@@ -501,7 +501,7 @@ assert.match(documentsCommand, /"mode": mode/);
 assert.match(documentsCommand, /"candidateCount": candidate_count/);
 assert.match(documentsCommand, /"rmsdCutoff": rmsd_cutoff/);
 assert.match(documentsCommand, /include_str!\(concat!\([\s\S]*env!\("CARGO_MANIFEST_DIR"\),[\s\S]*"\/\.\.\/\.\.\/\.\.\/scripts\/rdkit_conformer\.py"/);
-assert.match(rdkitConformerScript, /Cannot preserve the original 3D pose because the original core no longer matches the current Ketcher sketch/);
+assert.match(rdkitConformerScript, /Cannot preserve the original 3D pose because the original core no longer matches the current sketch/);
 assert.match(rdkitConformerScript, /This legacy conformer endpoint supports RDKit only; use native compute for Metal/);
 assert.match(rdkitConformerScript, /ff\.AddFixedPoint\(int\(atom_idx\)\)/);
 assert.match(rdkitConformerScript, /method = "ETKDG\+" \+ family \+ \("\+fixed-core" if core is not None else "\+ensemble"\)/);

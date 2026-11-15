@@ -85,7 +85,7 @@ export function useAppDockPayloadOpen({
     if (ketcherItem && cleanPaths.length === 0 && cleanRecords.length === 0) {
       setDockTool(input.area, "ketcher");
       addDockDrop(input);
-      pushStatus(`Opened Ketcher in ${input.area === "right" ? "right panel" : "bottom dock"}`);
+      pushStatus(`Opened the molecular editor in ${input.area === "right" ? "right panel" : "bottom dock"}`);
       return;
     }
     if (cleanPaths.length === 0 && cleanRecords.length === 0) {

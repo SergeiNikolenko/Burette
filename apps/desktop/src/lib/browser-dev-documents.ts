@@ -599,7 +599,7 @@ export async function appendToBrowserDevCollection(
     { path: `ketcher-sketch.${record.extension}`, extension: record.extension, text: record.text },
   ]);
   const grid = gridPayload(receiverPath, merged.extension, merged.text);
-  if (!grid) throw new Error("Ketcher sketch did not produce a supported molecule collection record.");
+  if (!grid) throw new Error("The sketch did not produce a supported molecule collection record.");
   browserDevVirtualTextDocuments.set(receiverPath, merged.text);
   const bytes = new TextEncoder().encode(merged.text);
   const html = await gridHtml(receiverPath, receiverId, grid.records, grid.format, preferences, bytes.length);

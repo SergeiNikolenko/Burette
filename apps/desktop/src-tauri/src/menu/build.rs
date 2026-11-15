@@ -258,9 +258,10 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
         MenuItemBuilder::with_id("structure.open-in-molstar", "Open Molecule in Mol*")
             .enabled(false)
             .build(app)?;
-    let edit_in_ketcher = MenuItemBuilder::with_id("structure.edit-in-ketcher", "Edit in Ketcher")
-        .enabled(false)
-        .build(app)?;
+    let edit_in_ketcher =
+        MenuItemBuilder::with_id("structure.edit-in-ketcher", "Edit in Molecular Editor")
+            .enabled(false)
+            .build(app)?;
     let generate_3d = MenuItemBuilder::with_id("structure.generate-3d", "Generate 3D Conformer")
         .enabled(false)
         .build(app)?;
