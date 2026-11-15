@@ -1,0 +1,32 @@
+/* tslint:disable */
+/* eslint-disable */
+export const memory: WebAssembly.Memory;
+export const __wbg_editor_free: (a: number, b: number) => void;
+export const editor_command: (a: number, b: number, c: number) => number;
+export const editor_double_click: (a: number, b: number, c: number) => number;
+export const editor_highlight_atoms: (a: number, b: number, c: number, d: number) => void;
+export const editor_insert: (a: number, b: number, c: number, d: number) => void;
+export const editor_key: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
+export const editor_load: (a: number, b: number, c: number, d: number) => void;
+export const editor_molfile: (a: number, b: number) => void;
+export const editor_molfile_3d: (a: number, b: number) => void;
+export const editor_new: () => number;
+export const editor_pointer_down: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
+export const editor_pointer_leave: (a: number) => number;
+export const editor_pointer_move: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
+export const editor_pointer_up: (a: number, b: number, c: number) => number;
+export const editor_resize: (a: number, b: number, c: number) => void;
+export const editor_selection_molfile: (a: number, b: number) => void;
+export const editor_set_selection: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+export const editor_set_template: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+export const editor_set_tool: (a: number, b: number, c: number) => void;
+export const editor_smiles: (a: number, b: number) => void;
+export const editor_state: (a: number, b: number) => void;
+export const editor_svg: (a: number, b: number) => void;
+export const editor_wheel: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
+export const editor_zoom_by: (a: number, b: number) => number;
+export const thumbnail: (a: number, b: number, c: number, d: number, e: number) => void;
+export const __wbindgen_export: (a: number, b: number) => number;
+export const __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
+export const __wbindgen_add_to_stack_pointer: (a: number) => number;
+export const __wbindgen_export3: (a: number, b: number, c: number) => void;

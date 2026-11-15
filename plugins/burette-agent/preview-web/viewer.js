@@ -772,6 +772,12 @@
       return agentActionFailure(type, 'NO_VIEWER', 'BuretteAgent is not available in this viewer runtime.');
     }
     if (type === 'focus_ligand') {
+      if (action.dockingPose === true) {
+        const structureId = activeDockingPoseCollectionState?.activeRefs?.[0]
+          || activeMolstarPrepared?.activeLigandRefs?.[0];
+        if (!structureId) return agentActionFailure(type, 'NO_POSES', 'The active docking pose is not available.');
+        action = { ...action, selector: { kind: 'ligand', structureId } };
+      }
       const previewTarget = molstarMoleculePreviewTargetForAction(action);
       const result = await window.BuretteAgent.run({
         command: 'focusLigand',
@@ -847,6 +853,13 @@
     }
     if (type === 'set_trajectory_smoothing_view') {
       return setTrajectorySmoothingViewFromAction(action);
+    }
+    if (type === 'set_trajectory_playback') {
+      const control = activeTrajectoryPlaybackControl;
+      if (!control) return agentActionFailure(type, 'NO_TRAJECTORY', 'The active scene has no frame playback.');
+      if (action.playing === true) control.play();
+      else await control.stop();
+      return { ok: true, command: type, result: { playing: control.isPlaying() } };
     }
     if (type === 'set_molstar_style') {
       return setMolstarStyleFromAction(action);
@@ -6583,9 +6596,16 @@
     }
   }
 
-  function molstarHydrogenRepresentation(representation) {
-    return { ...representation, typeParams: { ...representation.typeParams,
-      ignoreHydrogens: !molstarShowHydrogens, ignoreHydrogensVariant: 'all' } };
+  // Mol* gives the illustrative flat shading only to representations its own
+  // presets build; setOptions never pushes it to existing ones. Pass the plugin
+  // when building a new representation so it matches the rest of the scene.
+  function molstarHydrogenRepresentation(representation, plugin) {
+    const typeParams = { ...representation.typeParams,
+      ignoreHydrogens: !molstarShowHydrogens, ignoreHydrogensVariant: 'all' };
+    if (typeParams.ignoreLight === undefined && plugin?.managers?.structure?.component?.state?.options?.ignoreLight === true) {
+      typeParams.ignoreLight = true;
+    }
+    return { ...representation, typeParams };
   }
 
   function installMolstarToolbarActionDelegates() {
@@ -7633,18 +7653,6 @@
   function updateToolbarButtons() {
     const toolbar = document.getElementById('buret-toolbar');
     if (!toolbar) return;
-    for (const [side, icon] of [['left', 'SidebarLeft'], ['right', 'SidebarRight']]) {
-      const button = toolbar.querySelector(`[data-buret-toggle="${side}"]`);
-      if (!button) continue;
-      const open = layoutState[side] === 'full';
-      button.classList.toggle('active', open);
-      const slot = button.querySelector('[data-buret-mode-icon]');
-      const name = open ? icon : `${icon}Hidden`;
-      if (slot && slot.dataset.buretModeIcon !== name) {
-        slot.dataset.buretModeIcon = name;
-        slot.replaceChildren(sceneTreeIconElement(APP_ICON_DATA[name]));
-      }
-    }
     toolbar.querySelector('[data-buret-toggle="sequence"]')?.classList.toggle('active', layoutState.top === 'full');
     toolbar.querySelector('[data-buret-toggle="log"]')?.classList.toggle('active', layoutState.bottom === 'full');
   }
@@ -10847,7 +10855,6 @@ SOFTWARE.
     const motion = viewportMotionState().name;
     return {
       motion: playing ? 'playing' : (motion !== 'off' ? motion : (viewportWiggleState()?.name === 'off' ? 'off' : 'wiggle')),
-      illumination: plugin?.canvas3d?.props?.illumination?.enabled === true,
       selectionMode: plugin?.selectionMode === true,
       hasSelection: Number(plugin?.managers?.structure?.selection?.stats?.elementCount) > 0
     };
@@ -11150,10 +11157,6 @@ SOFTWARE.
       openViewportMenu(control, 'Animate', viewportAnimateMenu);
     } else if (action === 'screenshot') {
       openViewportMenu(control, 'Screenshot', viewportScreenshotMenu);
-    } else if (action === 'illumination') {
-      const enabled = plugin.canvas3d?.props?.illumination?.enabled !== true;
-      plugin.canvas3d?.setProps({ illumination: { enabled } });
-      viewportRailControls?.refresh();
     } else if (action === 'select-mode') {
       const enabled = plugin.selectionMode !== true;
       plugin.selectionMode = enabled;
@@ -15896,7 +15899,9 @@ SOFTWARE.
           sdfPoseRecordCount: records.length,
           collectionResidues: collection.residues,
           collectionSinglePdbs: collection.singlePdbs,
-          collectionMolecules: collection.molecules
+          collectionMolecules: collection.molecules,
+          // Scene-tree row names: the molfile title, numbered when titles repeat.
+          collectionLabels: sdfCollectionLabels(records)
         };
       }
       const activeRecord = readTrajectoryControlIndex(config, { controlLabel }, records.length);
@@ -15955,6 +15960,13 @@ SOFTWARE.
       format: 'xyz',
       label
     };
+  }
+
+  function sdfCollectionLabels(records) {
+    const titles = records.map(record => record.split('\n', 1)[0].trim());
+    const uses = new Map();
+    for (const title of titles) uses.set(title, (uses.get(title) || 0) + 1);
+    return titles.map((title, index) => title && uses.get(title) > 1 ? `${title} (${index + 1})` : title);
   }
 
   function splitSdfRecords(text) {
@@ -16865,7 +16877,7 @@ SOFTWARE.
             continue;
           }
           const representation = item.representations[component.role];
-          const selector = representationBuilder.buildRepresentation(representations, component.ref, molstarHydrogenRepresentation(representation));
+          const selector = representationBuilder.buildRepresentation(representations, component.ref, molstarHydrogenRepresentation(representation, plugin));
           if (selector) item.added.push({ ref: selector.ref, representation, role: component.role });
         }
         // Unusual structures keep their parsed data and take the builders.
@@ -16975,7 +16987,7 @@ SOFTWARE.
         await loadScript(runtimeURL('BuretteSdfCollectionURL', './sdf-collection-scene.js'), 'collection scene', 10000);
       }
       await window.BuretteSdfCollection.show(plugin, {
-        molecules: prepared.collectionMolecules, index: activeIndex, all: allMode,
+        molecules: prepared.collectionMolecules, labels: prepared.collectionLabels, index: activeIndex, all: allMode,
         spread: allMode && activeSdfCollectionLayout === 'spread',
         spreadCells: activeConfig?.sdfCollectionSpreadCells,
         spreadMolecules: spreadSdfCollectionMolecules, foreground, background
@@ -17152,7 +17164,12 @@ SOFTWARE.
       const receptorStructures = prepared.receptorEntry
         ? await loadMolstarEntryWithStructureRefs(viewer, prepared.receptorEntry)
         : [];
-      if (receptorStructures.length) await applySdfCollectionMolstarStyle(viewer, style, receptorStructures, 1, 'colored');
+      if (receptorStructures.length) {
+        await applySdfCollectionMolstarStyle(viewer, style, receptorStructures, 1, 'colored');
+        // Receptor waters take the viewer's water style, as in a plain structure;
+        // otherwise they stay element-coloured ball-and-stick oxygens.
+        await applyMolstarWaterLineRepresentation(viewer);
+      }
       state = { viewer, key: stateKey, receptorRefs: molstarStructureRefsOf(receptorStructures),
         layers: new Map(), activeRefs: [], activeIndex: -1 };
       activeDockingPoseCollectionState = state;
@@ -17864,7 +17881,7 @@ SOFTWARE.
 
   async function addCollectionRepresentation(plugin, structure, component, representation, role) {
     if (!component) return false;
-    const result = await plugin.builders.structure.representation.addRepresentation(component.cell || component, molstarHydrogenRepresentation(representation));
+    const result = await plugin.builders.structure.representation.addRepresentation(component.cell || component, molstarHydrogenRepresentation(representation, plugin));
     if (!result) throw new Error('Mol* could not build this representation.');
     if (result.ref && structure.cell) recordCollectionRepresentation(plugin, structure.cell, result.ref, representation, role);
     return true;
@@ -18033,6 +18050,25 @@ SOFTWARE.
     });
   }
 
+  // Mol* pushes a component option to representations only when its value
+  // changes. Docking pose layers and other structures added after the appearance
+  // was set would keep the lit default, so they take the scene's value here.
+  async function syncMolstarIgnoreLight(plugin, ignoreLight) {
+    const update = plugin.state.data.build();
+    let changed = false;
+    for (const structure of plugin.managers.structure.hierarchy.current.structures) {
+      for (const component of structure.components) {
+        for (const representation of component.representations) {
+          const params = representation.cell.transform.params?.type?.params;
+          if (!params || !('ignoreLight' in params) || params.ignoreLight === ignoreLight) continue;
+          update.to(representation.cell).update(old => ({ ...old, type: { ...old.type, params: { ...old.type.params, ignoreLight } } }));
+          changed = true;
+        }
+      }
+    }
+    if (changed) await update.commit();
+  }
+
   async function applyMolstarNonIllustrativePostprocessing(viewer) {
     const plugin = viewer?.plugin;
     if (!plugin) return;
@@ -18040,6 +18076,7 @@ SOFTWARE.
       ...plugin.managers.structure.component.state.options,
       ignoreLight: false
     });
+    await syncMolstarIgnoreLight(plugin, false);
     resetMolstarPostprocessing(viewer);
   }
 
@@ -18055,6 +18092,7 @@ SOFTWARE.
       ...plugin.managers.structure.component.state.options,
       ignoreLight: true
     });
+    await syncMolstarIgnoreLight(plugin, true);
     enableMolstarIllustrativeOutline(viewer, options);
   }
 
@@ -19448,7 +19486,8 @@ SOFTWARE.
     }
     for (const entry of prepared.entries) {
       if (isDockingTrajectoryPairEntry(entry, prepared.trajectoryPair)) continue;
-      await loadMolstarEntry(viewer, entry);
+      const structures = await loadMolstarEntryWithStructureRefs(viewer, entry);
+      if (entry === prepared.poses?.[prepared.activePose]) prepared.activeLigandRefs = molstarStructureRefsOf(structures);
     }
     // A derived topology has coordinates but no chemical identity. Keep its
     // point representation intact instead of applying chemistry-dependent
@@ -20125,6 +20164,9 @@ SOFTWARE.
     };
   }
 
+  // Narrowest one-row layout of the pose controls: play, steppers, a truncated
+  // name with its counter, and All.
+  const DOCKING_POSE_ROW_MIN_WIDTH = 224;
   function dockingPoseControlsBounds(mainRect = visibleRect('.msp-plugin .msp-layout-main'), top = TOOLBAR_MARGIN) {
     const margin = TOOLBAR_MARGIN;
     const left = mainRect ? Math.max(margin, Math.ceil(mainRect.left + margin)) : margin;
@@ -20138,12 +20180,19 @@ SOFTWARE.
     const clearedRight = viewportRailRect
       ? Math.min(right, Math.floor(viewportRailRect.left - FLOATING_LAYOUT_GAP))
       : right;
+    // On the main toolbar's row the controls end where the toolbar starts, as long
+    // as that leaves room for their compact layout; the file name truncates.
+    const toolbarRect = visibleRect('#buret-toolbar');
+    const rowRight = toolbarRect && Math.abs(toolbarRect.top - top) < toolbarRect.height
+      && toolbarRect.left - FLOATING_LAYOUT_GAP - clearedLeft >= DOCKING_POSE_ROW_MIN_WIDTH
+      ? Math.min(clearedRight, Math.floor(toolbarRect.left - FLOATING_LAYOUT_GAP))
+      : clearedRight;
     // The sequence panel pushes the viewport down; the controls stay inside the
     // viewport instead of covering the sequence header.
     const viewportTop = mainRect ? Math.max(margin, Math.ceil(mainRect.top + margin)) : margin;
     return {
       left: clearedLeft,
-      right: Math.max(clearedLeft, clearedRight),
+      right: Math.max(clearedLeft, rowRight),
       top: viewportTop,
       bottom: window.innerHeight - margin
     };
@@ -20232,7 +20281,9 @@ SOFTWARE.
   function defaultDockingPoseControlsTop(root, bounds) {
     const toolbarRect = visibleRect('#buret-toolbar');
     if (!toolbarRect) return bounds.top;
-    const width = root.offsetWidth || root.getBoundingClientRect().width || 180;
+    // The controls shrink to the room beside the toolbar, so only a row too short
+    // for their compact layout sends them below it.
+    const width = Math.min(root.offsetWidth || DOCKING_POSE_ROW_MIN_WIDTH, DOCKING_POSE_ROW_MIN_WIDTH);
     const overlapsToolbar = bounds.left < toolbarRect.right + FLOATING_LAYOUT_GAP
       && bounds.left + width > toolbarRect.left - FLOATING_LAYOUT_GAP;
     return overlapsToolbar ? Math.ceil(toolbarRect.bottom + FLOATING_LAYOUT_GAP) : bounds.top;
@@ -20560,6 +20611,7 @@ SOFTWARE.
       type: 'dockingPoseChanged',
       activePose: index,
       sourceRecordId: pose?.poseIndex ?? index,
+      ligandIndex: pose?.ligandIndex ?? 0,
       poseCount: poses.length,
       poseMode: activeSdfPoseMode === 'all' ? 'all' : 'single',
       sourcePath: pose?.sourcePath || ''
@@ -21070,17 +21122,26 @@ SOFTWARE.
     if (!activeViewer || !Number.isFinite(poseCount) || poseCount <= 0) {
       return agentActionFailure('set_sdf_pose_index', 'NO_POSES', 'The active Mol* viewer has no selectable poses.');
     }
-    const index = Math.trunc(Number(action.index) || 0);
+    const index = action.sourceRecordId == null ? Math.trunc(Number(action.index) || 0)
+      : prepared.kind === 'docking' ? prepared.poses.findIndex(pose => pose.poseIndex === action.sourceRecordId
+        && (action.ligandIndex == null || pose.ligandIndex === action.ligandIndex)) : -1;
     const outOfRange = agentFrameIndexFailure('set_sdf_pose_index', index, poseCount);
     if (outOfRange) return outOfRange;
+    if (prepared.kind === 'docking' && poseCount === 1 && !prepared.nativeTrajectoryControls) {
+      notifyDockingPoseChanged(0, prepared);
+      return { ok: true, command: 'set_sdf_pose_index', result: { index: 0, poseCount } };
+    }
     try {
-      if (activeSdfPoseMode === 'all' && structureOverlayAvailable(prepared)) {
+      // An embedding host selects poses from its own list and keeps the user's All view.
+      if (activeSdfPoseMode === 'all' && structureOverlayAvailable(prepared) && action.keepPoseMode !== true) {
         setSdfPoseMode('single');
         notifyStructureOverlayModeChanged(prepared);
         updateSdfPoseButton(prepared);
       }
       writeTrajectoryControlIndex(activeConfig, prepared, index);
-      if (prepared.nativeTrajectoryControls && activeSdfPoseMode !== 'all' && !xyzSingleFrameSceneActive(activeViewer)) {
+      if (activeStructurePoseSetter) {
+        await activeStructurePoseSetter(index, { throwOnError: true });
+      } else if (prepared.nativeTrajectoryControls && activeSdfPoseMode !== 'all' && !xyzSingleFrameSceneActive(activeViewer)) {
         const switched = await setNativeTrajectoryPose(index, poseCount);
         if (!switched) throw new Error('Mol* trajectory controls are not available.');
       } else if (prepared.xyzFrameOverlayAvailable === true) {
@@ -21092,7 +21153,7 @@ SOFTWARE.
       } else {
         await reloadActiveMolstarStructure();
       }
-      notifyDockingPoseChanged(index, prepared);
+      if (!activeStructurePoseSetter) notifyDockingPoseChanged(index, prepared);
       return {
         ok: true,
         command: 'set_sdf_pose_index',
@@ -21473,7 +21534,10 @@ SOFTWARE.
     if (!prepared) return;
     const overlayAvailable = structureOverlayAvailable(prepared);
     const overlayToggleAvailable = structureOverlayToggleAvailable(prepared);
-    if (prepared.poseCount <= 1 && !overlayAvailable) return;
+    if (prepared.poseCount <= 1 && !overlayAvailable) {
+      if (prepared.poseCount === 1) notifyDockingPoseChanged(0, prepared);
+      return;
+    }
     document.body.classList.add('buret-docking-pose-controls-active');
     const root = document.createElement('div');
     root.className = 'buret-docking-poses';
@@ -22435,6 +22499,7 @@ SOFTWARE.
         // already rolled back to the frame still on screen, which is the honest report.
         // eslint-disable-next-line no-console
         console.error(error);
+        if (options.throwOnError === true) throw error;
       }
     };
     // Dots and files show or hide poses until the next step; a pin keeps a pose
@@ -22833,7 +22898,18 @@ SOFTWARE.
       if (loopActive) void trajectoryPlaybackControl.stop();
       else trajectoryPlaybackControl.play();
     });
-    smooth.addEventListener('click', () => {
+    smooth.addEventListener('click', async () => {
+      // Hosts without the desktop Info panel (the embed) smooth in this runtime.
+      if (activeConfig?.trajectorySmoothing === 'in-viewer') {
+        const result = trajectorySmoothingState
+          ? await setTrajectorySmoothingViewFromAction({ view: trajectorySmoothingState.view === 'smoothed' ? 'original' : 'smoothed' })
+          : await applyTrajectorySmoothingFromAction();
+        if (result?.ok === false) {
+          setStatus(`[web] ${result.error?.message || 'Smooth motion failed.'}`);
+          setTimeout(hideStatus, 3000);
+        }
+        return;
+      }
       const posted = postHostMessage({
         type: 'openTrajectorySmoothing',
         documentId: activeConfig?.documentId || ''
@@ -22922,7 +22998,9 @@ SOFTWARE.
       window.removeEventListener('keydown', onKeyDown);
     };
     mainRow.append(animation, previous, label, next);
-    const smoothAvailable = (prepared.kind === 'trajectory' || prepared.kind === 'xyz-frame-overlay' || prepared.nativeTrajectoryControls);
+    const smoothAvailable = (prepared.kind === 'trajectory' || prepared.kind === 'xyz-frame-overlay' || prepared.nativeTrajectoryControls)
+      && (activeConfig?.trajectorySmoothing !== 'in-viewer'
+        || (!activeMolstarPrepared?.trajectoryPair && ['pdb', 'xyz'].includes(normalizeFormat(activeMolstarPrepared?.format))));
     const toggleRow = prepared.dockingSceneMode ? document.createElement('div') : null;
     if (smoothAvailable && toggleRow) mainRow.append(smooth);
     if (toggleRow) {
@@ -24421,6 +24499,17 @@ SOFTWARE.
     return poses[index] || poses[0] || null;
   }
 
+  // The pose a picked ligand structure shows. Pinned poses and All keep several
+  // pose structures on screen, so the pick decides, not the stepper position.
+  function dockingPoseSourceForStructure(prepared, structure) {
+    const ref = structure?.cell?.transform?.ref;
+    if (!ref) return null;
+    for (const [index, layer] of activeDockingPoseCollectionState?.layers || []) {
+      if (layer.activeRefs.includes(ref)) return prepared?.poses?.[index] || null;
+    }
+    return null;
+  }
+
   const MOLSTAR_CONTEXT_STANDARD_RESIDUES = new Set([
     'ALA', 'ARG', 'ASN', 'ASP', 'CYS', 'GLN', 'GLU', 'GLY', 'HIS', 'ILE',
     'LEU', 'LYS', 'MET', 'PHE', 'PRO', 'SER', 'THR', 'TRP', 'TYR', 'VAL',
@@ -25075,7 +25164,9 @@ SOFTWARE.
         : molstarContextTargetLabel(targetStructures));
     if (activeConfig?.docking && activeDockingPrepared) {
       if (pickedAtom && pickedScope === 'ligand') {
-        const ligand = pdbEntryForResidue(activeDockingPrepared.receptorEntry, pickedAtom);
+        // A pose is its own file; only the receptor's ligands are cut from it.
+        const ligand = dockingPoseSourceForStructure(activeDockingPrepared, targetStructure)
+          || pdbEntryForResidue(activeDockingPrepared.receptorEntry, pickedAtom);
         return {
           structures: targetStructures,
           structure: targetStructure,
@@ -25121,7 +25212,8 @@ SOFTWARE.
         };
       }
       if (picked && picked.index > 0) {
-        const pose = currentDockingPoseSource(activeDockingPrepared);
+        const pose = dockingPoseSourceForStructure(activeDockingPrepared, targetStructure)
+          || currentDockingPoseSource(activeDockingPrepared);
         return {
           structures: targetStructures,
           structure: targetStructure,
@@ -25252,16 +25344,36 @@ SOFTWARE.
     return molecule?.atoms?.map(atom => ({ x: atom.x, y: atom.y, z: atom.z })) || [];
   }
 
+  // Every hover and selection resolves the residue under the pointer. Keep the
+  // last PDB text's atom lines by residue number, and its CONECT lines, so a
+  // lookup does not split and parse the whole file again.
+  let pdbResidueIndex = null;
+  function pdbResidueIndexFor(data) {
+    if (pdbResidueIndex?.data === data) return pdbResidueIndex;
+    const atomLines = new Map();
+    const conect = [];
+    for (const line of data.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')) {
+      if (line.startsWith('CONECT')) conect.push(line);
+      if (!line.startsWith('ATOM  ') && !line.startsWith('HETATM')) continue;
+      const seqId = line.slice(22, 27).trim();
+      const residue = atomLines.get(seqId);
+      if (residue) residue.push(line);
+      else atomLines.set(seqId, [line]);
+    }
+    pdbResidueIndex = { data, atomLines, conect };
+    return pdbResidueIndex;
+  }
+
   function pdbLinesForResidue(receptor, atom) {
     if (!receptor || normalizeFormat(receptor.format) !== 'pdb') return null;
     const compId = String(atom?.auth_comp_id || atom?.label_comp_id || '').trim();
     const chainId = String(atom?.auth_asym_id || atom?.label_asym_id || '').trim();
     const seqId = String(atom?.auth_seq_id ?? atom?.label_seq_id ?? '').trim();
     if (!seqId) return null;
-    const lines = String(receptor.data || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(line => {
+    const lines = (pdbResidueIndexFor(String(receptor.data || '')).atomLines.get(seqId) || []).filter(line => {
       const parsed = parsePdbAtomLine(line);
       if (!parsed) return false;
-      return (!compId || parsed.compId === compId) && parsed.seqId === seqId && (!chainId || parsed.chainId === chainId);
+      return (!compId || parsed.compId === compId) && (!chainId || parsed.chainId === chainId);
     });
     return lines.length ? { lines, compId, chainId, seqId } : null;
   }
@@ -25273,8 +25385,7 @@ SOFTWARE.
     const firstAtom = parsePdbAtomLine(lines[0]);
     const resolvedCompId = compId || firstAtom?.compId || 'Ligand';
     const serials = new Set(lines.map(line => parsePdbAtomLine(line).serial));
-    const conect = String(receptor.data || '').split(/\r?\n/u)
-      .filter(line => line.startsWith('CONECT'))
+    const conect = pdbResidueIndexFor(String(receptor.data || '')).conect
       .map(line => filteredPdbConectLine(line, serials)).filter(Boolean);
     return {
       data: ['HEADER    BURETTE PICKED SELECTION', ...lines, ...conect, 'END', ''].join('\n'),
@@ -28028,7 +28139,7 @@ SOFTWARE.
         <button type="button" class="buret-molecule-card-icon" data-buret-molecule-preview-action="close" aria-label="Hide preview" title="Hide preview">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.close)}</button>
       </div>
       <div class="buret-molecule-card-toolbar" role="toolbar" aria-label="Molecule preview actions">
-        <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="ketcher" aria-label="Open in Ketcher" title="Open in Ketcher">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.ketcher)}<span>Edit</span></button>
+        ${activeConfig?.visualizationOnly === true ? '' : `<button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="ketcher" aria-label="Open in Ketcher" title="Open in Ketcher">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.ketcher)}<span>Edit</span></button>`}
         <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="copy-smiles" aria-label="Copy SMILES" title="Copy SMILES">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.copy)}<span>SMILES</span></button>
         <button type="button" class="buret-molecule-card-button" data-buret-hydrogens data-buret-molecule-preview-action="hydrogens" aria-label="${molstarShowHydrogens ? 'Hide' : 'Show'} hydrogens" aria-pressed="${molstarShowHydrogens}" title="${molstarShowHydrogens ? 'Hide' : 'Show'} hydrogens">H</button>
         <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="lasso" aria-label="Lasso atoms in 2D" aria-pressed="false" title="Select atoms by drawing a lasso · Esc to exit">${molstarMoleculePreviewIconHTML(['M7 17c-3-1-5-3-5-6 0-5 5-8 11-8s9 3 9 7-5 8-11 8', 'M7 15c-3 0-4 2-3 4s4 2 5 0-1-4-2-4', 'M7 21c2 2 5 2 7 0'])}<span>Lasso</span></button>

@@ -197,3 +197,14 @@ plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-tns_
 plugins/burette-agent/browser-shell-dist/assets/native-viewer-menus-D9NK3wlE.js
 plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-w58iwFRc.js
 plugins/burette-agent/browser-shell-dist/assets/index-laV_2sV6.css
+# Shared molecular frame: staged editor and embedded viewer runtime, plus the editor core WASM.
+apps/desktop/public/molecular-frame/assets/indigo-ketcher-1.46.0-f_xBxuuS.wasm
+apps/desktop/public/molecular-frame/assets/index.modern-C7D2JuZo.js
+apps/desktop/public/molecular-frame/assets/molecule_editor_bg-PSb2VGQp.wasm
+apps/desktop/public/molecular-frame/burette-embed/molstar.js
+apps/desktop/public/molecular-frame/burette-embed/native-viewer-menus.js
+apps/desktop/public/molecular-frame/burette-embed/rdkit/RDKit_minimal.wasm
+apps/desktop/public/molecular-frame/burette-embed/viewer.js
+apps/desktop/public/molecular-frame/templates.json
+apps/molecular-frame/public/templates.json
+apps/molecular-frame/src/components/molecular/molecule-editor/core/molecule_editor_bg.wasm

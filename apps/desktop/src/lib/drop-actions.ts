@@ -151,7 +151,7 @@ export function resolveDropActionChoices(
       return [defaultWorkspaceDropChoice(payload, source)];
     }
     return withOpenSeparatelyChoices(payload, [
-      choice("import-ketcher-structures", "Add to Ketcher", "default", {
+      choice("import-ketcher-structures", "Add to molecular editor", "default", {
         kind: "import-ketcher-structures",
         payload: importPayload,
       }, source),

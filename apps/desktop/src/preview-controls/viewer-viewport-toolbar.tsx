@@ -3,14 +3,14 @@ import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { ToolbarButton } from "../components/ui/toolbar-button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
-import { CameraPhoto as Snapshot, Sun as Lighting, X } from "../components/ui/app-icons";
+import { CameraPhoto as Snapshot, X } from "../components/ui/app-icons";
 
-export { Lighting, Snapshot };
+export { Snapshot };
 
 type RailIcon = React.ComponentType<{ size?: number; "aria-hidden"?: boolean }>;
 
-type RailState = { illumination: boolean; selectionMode: boolean; hasSelection: boolean; motion: string };
-type RailAction = "camera" | "screenshot" | "illumination" | "animate" | "select-mode" | "clear-selection";
+type RailState = { selectionMode: boolean; hasSelection: boolean; motion: string };
+type RailAction = "camera" | "screenshot" | "animate" | "select-mode" | "clear-selection";
 type RailOptions = {
   read: () => RailState;
   onAction: (action: RailAction, button: HTMLButtonElement) => void;
@@ -37,7 +37,6 @@ function ViewportToolbar({ options, state }: { options: RailOptions; state: Rail
   const controls: { action: RailAction; label: string; Icon: RailIcon; popup?: "menu" | "dialog"; selected?: boolean }[] = [
     { action: "camera", label: "Camera", Icon: Aim, popup: "menu" },
     { action: "screenshot", label: "Save a screenshot", Icon: Snapshot, popup: "menu" },
-    { action: "illumination", label: "Realistic lighting", Icon: Lighting, selected: state.illumination },
     { action: "animate", label: "Animate the scene", Icon: Motion, popup: "dialog", selected: state.motion !== "off" },
     { action: "select-mode", label: "Selection mode", Icon: Pick, selected: state.selectionMode },
   ];

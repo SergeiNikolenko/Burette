@@ -357,7 +357,7 @@ export function GridHoverMoleculeCard({
       {
         kind: "item",
         id: "edit-in-ketcher",
-        text: "Edit in Ketcher",
+        text: "Edit in molecular editor",
         detail: shown.name,
         action: editInKetcher,
       },

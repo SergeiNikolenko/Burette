@@ -350,7 +350,7 @@ export function DockPanelContent({
       return (
         <DockEmptyState
           title="Sketch text lives in Export"
-          description="While Ketcher is open, its molfile is available from the Export panel in the bottom dock."
+          description="While molecular editor is open, its molfile is available from the Export panel in the bottom dock."
         />
       );
     }
@@ -1062,7 +1062,7 @@ function KetcherInspectorPanel({ state }: { state: ShellViewState }) {
   return (
     <div className="ketcher-dock-portal" data-ketcher-dock-portal="right">
       <div className="dock-content dock-content-empty">
-        <div className="dock-empty">{state.activeTab?.location.kind === "ketcher" ? <Spinner className="mx-auto" aria-label="Loading structure text" /> : "Open Ketcher to import or export a structure"}</div>
+        <div className="dock-empty">{state.activeTab?.location.kind === "ketcher" ? <Spinner className="mx-auto" aria-label="Loading structure text" /> : "Open molecular editor to import or export a structure"}</div>
       </div>
     </div>
   );
@@ -1418,7 +1418,7 @@ function dockFilesDragPayload(
     return {
       paths: [],
       records: [],
-      items: [{ kind: "ketcher", title: "Ketcher", detail: "Sketcher" }],
+      items: [{ kind: "ketcher", title: "Molecular editor", detail: "Sketcher" }],
     };
   }
   return null;

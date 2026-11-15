@@ -125,7 +125,7 @@ export function FileBrowser({
       records: [],
       items: [{
         kind: "ketcher",
-        title: "Ketcher",
+        title: "Molecular editor",
         detail: "Molecule sketch editor",
       }],
     }),
@@ -198,7 +198,7 @@ export function FileBrowser({
           <span className="sidebar-tool-label">{entry.text}</span>
         </button>;
       })}
-      {sidebar && <SidebarTooltip label="Open Ketcher">
+      {sidebar && <SidebarTooltip label="Open molecular editor">
         <button
           type="button"
           className="sidebar-tool-row"
@@ -214,12 +214,12 @@ export function FileBrowser({
           onDragLeave={handleKetcherDragLeave}
           onDrop={handleKetcherDrop}
           data-drop-active={ketcherDropActive || undefined}
-          aria-label="Open Ketcher"
+          aria-label="Open molecular editor"
         >
           <span className="sidebar-tool-icon" aria-hidden="true">
             <AnimatedOrbitIcon size={16} />
           </span>
-          <span className="sidebar-tool-label">Ketcher</span>
+          <span className="sidebar-tool-label">Molecular editor</span>
         </button>
       </SidebarTooltip>}
       {hasPinned && (

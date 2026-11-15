@@ -413,7 +413,7 @@ async function writeObserve(
         }
       : {
           ready: false,
-          note: activeKetcher ? "The active surface is a Ketcher editor." : "No active document is open in the desktop app.",
+          note: activeKetcher ? "The active surface is the molecular editor." : "No active document is open in the desktop app.",
         },
     documents: documents.slice(0, MAX_OBSERVED_DOCUMENTS).map((document) => ({
       id: document.id,
@@ -484,7 +484,7 @@ function observedTab(
   const kind = tab.location.kind;
   const title = document?.title ?? ({
     launcher: "New tab",
-    ketcher: "Ketcher",
+    ketcher: "Molecular editor",
     settings: "Settings",
     "fep-setup": "FEP setup",
     "fep-network": "FEP network",
@@ -580,13 +580,13 @@ async function executeDesktopAgentAction(
   }
   if (type === "control_ketcher") {
     if (activeTabKind !== "ketcher") {
-      return agentFailure(type, "STALE_TARGET", "Ketcher actions require the observed active Ketcher tab.");
+      return agentFailure(type, "STALE_TARGET", "Molecular editor actions require the observed active molecular editor tab.");
     }
     const ketcherAgent = await loadKetcherAgentModule();
     const controller = ketcherAgent.getKetcherAgentController(activeTabId);
-    if (!controller) return agentFailure(type, "STALE_TARGET", "The observed Ketcher surface is no longer mounted.");
+    if (!controller) return agentFailure(type, "STALE_TARGET", "The observed molecular editor surface is no longer mounted.");
     if (item.action.surfaceId !== controller.surfaceId) {
-      return agentFailure(type, "STALE_TARGET", "The requested Ketcher surface is not the active observed tab.");
+      return agentFailure(type, "STALE_TARGET", "The requested molecular editor surface is not the active observed tab.");
     }
     return controller.execute(item.action);
   }

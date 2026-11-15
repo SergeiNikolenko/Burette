@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { observeSharedStore, refreshSharedActions } from "./shared-store";
 import type { ViewerPreferences } from "../types";
+import { defaultPreferences } from "../lib/default-preferences";
 import { normalizeShortcutOverrides } from "../lib/keyboard-shortcuts";
 
 type SettingsState = {
@@ -14,54 +15,7 @@ export type SettingsStoreSnapshot = {
   preferences: ViewerPreferences;
 };
 
-const systemFont = "-apple-system-body, ui-sans-serif, -apple-system, system-ui, \"Segoe UI\", Helvetica, \"Apple Color Emoji\", Arial, sans-serif, \"Segoe UI Emoji\", \"Segoe UI Symbol\"";
-
-export const defaultPreferences: ViewerPreferences = {
-  theme: "auto",
-  canvasBackground: "auto",
-  openInDefaultDestination: "finder",
-  rendererMode: "auto",
-  molstarStyle: "illustrative",
-  desktopPreviewLimitMiB: 1024,
-  conformerCandidateCount: 128,
-  conformerRmsdCutoff: 0.75,
-  themeLightAccent: "#AF52DE",
-  themeLightBackground: "#FFFFFF",
-  themeLightForeground: "#0D0D0D",
-  themeLightUiFont: systemFont,
-  themeLightEditorFont: systemFont,
-  themeLightTranslucent: 30,
-  themeLightContrast: 20,
-  themeDarkAccent: "#AF52DE",
-  themeDarkBackground: "#111111",
-  themeDarkForeground: "#FCFCFC",
-  themeDarkUiFont: systemFont,
-  themeDarkEditorFont: systemFont,
-  themeDarkTranslucent: 20,
-  themeDarkContrast: 16,
-  interfaceScale: 1,
-  restoreSessionOnLaunch: true,
-  notifyOnJobCompletion: true,
-  preventSleepDuringJobs: true,
-  computeBackend: "auto",
-  // Existing history stays intact until the user chooses a retention period.
-  jobHistoryRetentionDays: 0,
-  pythonPath: "",
-  uvPath: "",
-  screenshotResolution: "viewport",
-  screenshotFormat: "png",
-  screenshotTransparent: false,
-  gridViewMode: "cards",
-  gridCardRenderer: "rdkit",
-  // 0 keeps the grid's fluid card width; a positive value is a fixed minimum in px.
-  gridCardSize: 0,
-  hydrogenDisplay: "none",
-  quickLookGridSdf: true,
-  quickLookGridSmiles: true,
-  quickLookGridCsv: true,
-  quickLookGridTsv: true,
-  shortcutOverrides: {},
-};
+export { defaultPreferences };
 
 function cloneJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;

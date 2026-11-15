@@ -16,8 +16,6 @@
     app.insertAdjacentHTML('afterend', `
       <div id="buret-toolbar" role="toolbar" aria-label="Burette preview controls">
         <div class="buret-toolbar-content" data-buret-toolbar-content>
-          <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle object tree"><span data-buret-mode-icon="SidebarLeft" aria-hidden="true"></span><span class="buret-tooltip" role="tooltip">Toggle object tree</span></button>
-          <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="right" aria-label="Toggle right panel" title="Toggle properties panel"><span data-buret-mode-icon="SidebarRight" aria-hidden="true"></span><span class="buret-tooltip" role="tooltip">Toggle properties panel</span></button>
           <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel">Seq<span class="buret-tooltip" role="tooltip">Toggle sequence panel</span></button>
           <div class="buret-molstar-preset-slot" data-buret-molstar-preset-slot>
             <button id="buret-molstar-preset-trigger" class="buret-button buret-molstar-preset-trigger" type="button" data-buret-molstar-preset-trigger aria-label="Representation preset" aria-haspopup="menu" aria-controls="buret-molstar-preset-menu" aria-expanded="false" title="Representation preset">

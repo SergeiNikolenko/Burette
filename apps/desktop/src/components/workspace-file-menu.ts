@@ -56,7 +56,7 @@ export function workspaceFileMenu(paths: string[], state: ShellViewState, action
   // Codex row menus separate intent groups only: open/edit, file commands, trash.
   return menuSections([
     ...submenu("file-open", "Open", opening, "arrow.up.forward"),
-    ...submenu("file-edit", "Edit", caps.every(cap => cap.molecule) ? [command("edit-ketcher", "Ketcher", () => actions.openKetcherWithStructures(paths))] : []),
+    ...submenu("file-edit", "Edit", caps.every(cap => cap.molecule) ? [command("edit-ketcher", "Molecular editor", () => actions.openKetcherWithStructures(paths))] : []),
   ], [
     ...(single && path.split("/").includes("ssh-previews") ? take("save-file-copy").map(entry => ({ ...entry, id: "download", text: "Download…" })) : []),
     ...take("rename-file"), command("pin-files", pinned ? "Unpin" : "Pin", () => {

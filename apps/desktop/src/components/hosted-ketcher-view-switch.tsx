@@ -6,7 +6,7 @@ import type { ShellActions, ShellViewState } from "./types";
 type HostedKetcherView = "ketcher" | "molstar" | "xyzrender";
 
 const VIEWS: ReadonlyArray<{ value: HostedKetcherView; label: string }> = [
-  { value: "ketcher", label: "Ketcher" },
+  { value: "ketcher", label: "Molecular editor" },
   { value: "molstar", label: "Interactive 3D" },
   { value: "xyzrender", label: "3D render" },
 ];

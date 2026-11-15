@@ -88,7 +88,7 @@ export const SCREEN_ENTRIES: { id: string; text: string; icon: keyof typeof AppI
   { id: "screen-files", text: "Files", icon: "Folder", location: { kind: "tool", tool: "files", area: "right" } },
   { id: "screen-jobs", text: "Jobs", icon: "Stopwatch", location: { kind: "jobs" } },
   { id: "screen-chemical-space", text: "Chemical space", icon: "Orbit", location: { kind: "chemical-space" } },
-  { id: "screen-ketcher", text: "Ketcher", icon: "Edit", location: { kind: "ketcher" } },
+  { id: "screen-ketcher", text: "Molecular editor", icon: "Edit", location: { kind: "ketcher" } },
 ];
 
 // "Pop out", "Move to New Window" and "Move to Main Window" for one screen, shared by the tab context

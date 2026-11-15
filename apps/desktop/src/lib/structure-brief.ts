@@ -111,7 +111,7 @@ export function usefulElements(document: ViewerDocument): StructureBriefRow[] {
     return [
       { label: "Molecule data", value: "Atoms and bonds in source file" },
       { label: "Properties", value: extension === "sdf" ? "SDF fields when present" : "File metadata" },
-      { label: "Chem editor", value: "Open with Ketcher from file actions" },
+      { label: "Chem editor", value: "Open with molecular editor from file actions" },
     ];
   }
   if (["xyz", "extxyz", "dtr", "xtc", "trr"].includes(extension)) {

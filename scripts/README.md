@@ -127,6 +127,13 @@ repeat Surface visits, not a cold calculation, and never combines molecules.
 Run `bun tests/test-molstar-surface-field-cache.mjs` and `vp run vendor:molstar`
 after changes; rebuild the agent-shell mirror and check the vendor lock.
 
+`molstar-hover-pick.mjs` keeps a hover from blocking the page. Mol* links the
+pick variant of a program on its first pick and waits for the GPU compiler, so a
+hover right after a click added geometry froze the viewer for the whole compile
+(about two seconds for the first focus on a residue). A hover pick now starts
+the link and is retried on the next tick; clicks and direct picks still wait.
+Run `bun run vendor:molstar` after changes and refresh the plugin mirror.
+
 `molstar-surface-loop.mjs` also patches the version-locked cold calculation: it
 skips nonpositive grid cells before distance arithmetic. Upstream already
 resolves each atom pair's group IDs once. Probe/grid traversal, distances and group assignments stay

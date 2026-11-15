@@ -1,17 +1,22 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="buret-viewer-booting">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Burette Preview</title>
-  <link rel="stylesheet" href="./molstar.css" />
-  <link rel="stylesheet" href="./viewer-runtime.css" />
+  <!-- Guard the first paint before external styles and viewer scripts load. -->
+  <style>
+    html.buret-viewer-booting, html.buret-viewer-booting body { background: transparent !important; color-scheme: normal; }
+    html.buret-viewer-booting body { opacity: 0 !important; }
+  </style>
   <script>
     (function () {
+      window.setTimeout(function () { document.documentElement.classList.remove('buret-viewer-booting'); }, 8000);
       function post(type, message) {
         try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burette.postMessage({ type: type, message: message || '' }); } catch (_) {}
       }
       function reportRuntimeError(message) {
+        document.documentElement.classList.remove('buret-viewer-booting');
         var el = document.getElementById('status');
         if (el) { el.textContent = 'Preview could not be updated.'; el.classList.add('error'); el.classList.remove('hidden'); }
         post('error', message);
@@ -28,6 +33,8 @@
       });
     })();
   </script>
+  <link rel="stylesheet" href="./molstar.css" />
+  <link rel="stylesheet" href="./viewer-runtime.css" />
 </head>
 <body>
   <div id="app"></div>
