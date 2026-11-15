@@ -1,15 +1,15 @@
 {
-  "pluginVersion": "0.2.82-molecular-frame.20261115",
-  "applicationSource": "/home/nikolenko/work/Experiments/Burette/2026-11/molecular-plugin-0.2.82/source",
-  "transportSource": "/home/nikolenko/work/Experiments/Burette/2026-11/molecular-plugin-0.2.82/transport",
-  "molecularFrameVersion": "b0e265f3def9",
-  "nativeManifestSha256": "e5f8f9732e9ab788e6c678b3db350e8eeb4a3189a5283877e520400faa9248e0",
+  "pluginVersion": "0.2.83-molecular-frame.20261115",
+  "applicationSource": "/home/nikolenko/work/Experiments/Burette/2026-11/molecular-plugin-0.2.83/source",
+  "transportSource": "/home/nikolenko/work/Experiments/Burette/2026-11/molecular-plugin-0.2.83/transport",
+  "molecularFrameVersion": "c6166d0430d3",
+  "nativeManifestSha256": "538a63f3718d1099a9853e3344e8c2e8a01965830ebbc624911117b79f674616",
   "previewManifestVersion": 1,
   "previewAssets": {
     "burette-agent.js": "f10b4bc80a127fbc4897acb8cf0424f8068a552d5d2a7e0afff8a5168e8c1931",
     "color-picker.js": "2f117fda2171d55f79512982aa5458390485a324805371dd445e73709aff5732",
-    "grid-ui.js": "9d57a3056a62067f87a6b52a8553e37be8696f3733d9af319e327061bfc57e78",
-    "grid-viewer.js": "6f4901ad6d4637fd6c15746e38c0f71bc5f699eb979bf0ee923c482c6951b065",
+    "grid-ui.js": "28d4c63dd4a7822b92c3315e27c8eaa0910f74323c7c23f33374fccaccfefca7",
+    "grid-viewer.js": "794541ae5c32417f49e4ff6b277bec6eab0aad28f92d83290f95f200f0a4677d",
     "grid.css": "43ed30896f73437c7c5254825372c8a1a03721c86b03eaa67cf362f7b2f5f6fa",
     "index.html": "68d86b55192bd7b302d4eca0058b9106914e7ae763c7e1991e4423647c46cd66",
     "mesoscale.css": "f6a24e1b5c29a7833a6892b67f69e1c6f6707baca4c236c8afbed70d8ec7d89b",
@@ -39,8 +39,8 @@
     "trajectory-smoothing.js": "6ccd7883bb66a3ff96973c03c67746b3b646239374ee7684762441b422181048",
     "viewer-bootstrap.js": "e93c2c98104f10ac7a69930e1a48781f95da802fdb96f248c09947af01128c56",
     "viewer-runtime.css": "efca3fca8123a6b63a7e304f889d0e8e8d1bbe29ebdb9e2251f65973acefbc56",
-    "viewer-shell.js": "24e6478773e8d724aba02728639549809287d37f2d31469aca6e8654c8b346c8",
-    "viewer.js": "819262fa4e3b5e57c3052527402846603aaed4913fe28fc8d2d1e8ec26f8a3fa",
+    "viewer-shell.js": "2d5ed18b6c596d26c891dd8045ec7397b5c7cd8dac5fa5850108001e321dce6d",
+    "viewer.js": "79005fcbb968786b3a32fcec46767391b9f3d5556b381ff5a890f43409329cac",
     "xyzrender-3d-editor.js": "03496b674a0bfb540ccf7020a591eb076cc2b96ec7c3023799117cf52f886d68"
   }
 }

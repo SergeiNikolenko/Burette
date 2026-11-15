@@ -16,7 +16,13 @@ export interface MolecularSnapshot {
     hydrogens: boolean;
     cursor: string;
     message: string;
+    /** Canvas transform `[scale, x, y]`; changes on pan, zoom and resize. */
+    view: [number, number, number];
   };
+}
+export interface MolecularAtomLayout {
+  canvas: { x: number; y: number; width: number; height: number };
+  atoms: { x: number; y: number }[];
 }
 export interface MolecularEditor {
   readonly editor: {
@@ -30,6 +36,8 @@ export interface MolecularEditor {
     getMolfile3d(): string;
     getSvg(): string;
     getState(): MolecularSnapshot['state'] | null;
+    /** Canvas bounds and atom centres (molfile order) in the frame's viewport pixels. */
+    getAtomLayout(): MolecularAtomLayout;
     zoom(factor: number): void;
     command(name: string): void;
     setTool(tool: string): void;
@@ -39,6 +47,8 @@ export interface MolecularEditor {
   load(text: string): Promise<void>;
   snapshot(): Promise<MolecularSnapshot>;
   svg(): Promise<string>;
+  atoms(): Promise<MolecularAtomLayout>;
+  setTool(tool: 'hand' | 'select' | 'erase' | 'chain'): Promise<void>;
   command(name: string): Promise<void>;
   setZoom(zoom: number): Promise<void>;
   syncAppearance(): Promise<void>;

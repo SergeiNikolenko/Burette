@@ -2673,7 +2673,7 @@
     if (now < state.ketcherOpenPendingUntil) return;
     const rows = selectedMolstarRows();
     if (!rows.length) {
-      setStatus('[grid] Select one or more molecules before opening Ketcher.', 'error');
+      setStatus('[grid] Select one or more molecules before opening the molecular editor.', 'error');
       return;
     }
     const fragments = rows.map(row => {
@@ -2688,17 +2688,17 @@
       };
     }).filter(Boolean);
     if (!fragments.length) {
-      setStatus('[grid] Selected molecules do not have structure data for Ketcher.', 'error');
+      setStatus('[grid] Selected molecules do not have structure data for the molecular editor.', 'error');
       return;
     }
-    post('openSdfKetcherDocument', '[grid] Open selected molecules in Ketcher.', {
+    post('openSdfKetcherDocument', '[grid] Open selected molecules in the molecular editor.', {
       documentId: cfg?.documentId || null,
       fragments
     });
     state.ketcherOpenPendingUntil = now + 1200;
     updateChrome(cfg);
     window.setTimeout(() => updateChrome(cfg), 1250);
-    setStatus(`[grid] Opening ${fragments.length.toLocaleString()} selected molecule${fragments.length === 1 ? '' : 's'} in Ketcher.`);
+    setStatus(`[grid] Opening ${fragments.length.toLocaleString()} selected molecule${fragments.length === 1 ? '' : 's'} in the molecular editor.`);
   }
 
   function selectedMolstarRows() {
@@ -3221,7 +3221,7 @@
     const record = gridDragRecord(row);
     const label = row?.name || `Molecule ${Number(row?.index) + 1 || 1}`;
     if (!record) {
-      setStatus(`[grid] ${label} has no structure data for Ketcher.`, 'error');
+      setStatus(`[grid] ${label} has no structure data for the molecular editor.`, 'error');
       return;
     }
     const sourceRow = Number(row?.props?.['CSV row']);
@@ -3236,7 +3236,7 @@
       ...(Number.isSafeInteger(sourceRow) && sourceRow > 0 ? { sourceRow } : {}),
       ...(structureColumn ? { structureColumn } : {})
     };
-    const message = `[grid] Open ${label} in Ketcher.`;
+    const message = `[grid] Open ${label} in the molecular editor.`;
     post('openInKetcher', message, payload);
   }
 
@@ -6659,14 +6659,14 @@
     if (!capabilities(cfg).editing) return;
     const rowIndex = Number(body.rowIndex);
     if (!Number.isFinite(rowIndex)) {
-      setStatus('[grid] Ketcher Apply did not identify a grid row.', 'error');
+      setStatus('[grid] Editor apply did not identify a grid row.', 'error');
       return;
     }
     const text = String(body.text || '').trim();
     const extension = String(body.extension || 'sdf').trim().toLowerCase().replace(/^\./u, '') || 'sdf';
     const row = [...state.rows, ...state.all].find(candidate => Number(candidate.index) === rowIndex);
     if (!row) {
-      setStatus('[grid] Ketcher Apply target row is no longer visible.', 'error');
+      setStatus('[grid] Editor apply target row is no longer visible.', 'error');
       return;
     }
     const patch = recordToGridRowPatch({
@@ -6675,7 +6675,7 @@
       text
     }, row);
     if (!patch) {
-      setStatus('[grid] Ketcher Apply returned an unsupported molecule record.', 'error');
+      setStatus('[grid] Editor apply returned an unsupported molecule record.', 'error');
       return;
     }
     patch.name = row.name || `Molecule ${rowIndex + 1}`;
@@ -6690,16 +6690,16 @@
         && sourceRow > 0
         && structureColumn
         && patch.smiles) {
-        post('saveGridRow', `[grid] Save Ketcher edit to ${label}.`, {
+        post('saveGridRow', `[grid] Save edited structure to ${label}.`, {
           sourceRow,
           structureColumn,
           value: patch.smiles
         });
-        setStatus(`[grid] Saving Ketcher edit to ${label}.`);
+        setStatus(`[grid] Saving edited structure to ${label}.`);
       } else if (body.save === true) {
         void saveGrid(cfg);
       } else {
-        setStatus(`[grid] Applied Ketcher edit to ${label}. Unsaved changes.`);
+        setStatus(`[grid] Applied edited structure to ${label}. Unsaved changes.`);
       }
     }
   }
@@ -7711,7 +7711,7 @@
           <div class="buret-grid-molecule-detail-actions">
             <button type="button" data-buret-detail-action="descriptors">Calculate descriptors</button>
             <button type="button" data-buret-detail-action="molstar">Open in new tab</button>
-            <button type="button" data-buret-detail-action="ketcher">Edit in Ketcher</button>
+            <button type="button" data-buret-detail-action="ketcher">Edit in molecular editor</button>
             <button type="button" data-buret-detail-action="generate3d">Generate 3D</button>
             <button type="button" data-buret-detail-action="copy">Copy structure</button>
             <button type="button" data-buret-detail-action="export">Export molecule...</button>
@@ -8014,7 +8014,7 @@
       void requestSingleMolstarDocument(row, cfg);
     } else if (action === 'ketcher') {
       requestOpenInKetcher(row, cfg);
-      setStatus(`[grid] Opening ${label} in Ketcher.`);
+      setStatus(`[grid] Opening ${label} in the molecular editor.`);
     } else if (action === 'duplicate') {
       duplicateGridRow(row, cfg);
       setStatus(`[grid] Duplicated ${label}. Unsaved changes.`);
@@ -8050,7 +8050,7 @@
       ['molstar', 'Open in 3D'],
       ...(editing ? [
         ['rename', 'Rename…'],
-        ['ketcher', 'Edit in Ketcher'],
+        ['ketcher', 'Edit in molecular editor'],
         ['duplicate', 'Duplicate'],
         ['remove', 'Delete from collection']
       ] : []),

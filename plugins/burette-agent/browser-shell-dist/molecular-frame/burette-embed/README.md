@@ -92,6 +92,11 @@ If a scene command times out, the viewer discards that scene and its pending
 commands. Call `open` again to recover.
 
 Use the client API to control the scene. The renderer and its internal DOM
-are private to the component. The client and frame match messages to their
+are private to the component.
+
+A host page that boots the runtime scripts of this directory itself, instead
+of opening `index.html`, reads Burette's default style, canvas background,
+theme tokens and viewer defaults from `defaults.json`, so its scenes look the
+same as the frame's. The client and frame match messages to their
 own window and origin. Self-host trusted assets and serve the frame over HTTPS
 in production.
