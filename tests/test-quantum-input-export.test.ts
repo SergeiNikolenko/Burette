@@ -22,6 +22,29 @@ test("quantum exports enforce spin and index conventions and reject input inject
   expect(() => generateQuantumInput(water, { ...base, engine: "orca", constraints: [{ kind: "freeze", atoms: [3] }] })).toThrow("indices");
 });
 
+test("solvation, dispersion, SCF, resources and transition states use each program's own syntax", () => {
+  const base = { charge: 0, multiplicity: 1, method: "B3LYP", basis: "def2-SVP", solvation: { model: "smd" as const, solvent: "dmso" as const }, dispersion: "d3bj" as const, scf: "tight" as const, cores: 8, memory: 16384, title: "Water in DMSO" };
+  const orca = generateQuantumInput(water, { ...base, engine: "orca", task: "transition-state" }).text;
+  expect(orca.split("\n").slice(0, 10)).toEqual(["# Water in DMSO", "! B3LYP def2-SVP OptTS Freq D3BJ TightSCF CPCM(dmso)", "%pal nprocs 8 end", "%maxcore 1536",
+    "%cpcm", "  smd true", '  SMDsolvent "dmso"', "end", "%geom", "  Calc_Hess true"]);
+  const gaussian = generateQuantumInput(water, { ...base, engine: "gaussian", task: "optimize-frequencies", checkpoint: "water.chk", constraints: [{ kind: "freeze", atoms: [0] }] }).text;
+  expect(gaussian.split("\n").slice(0, 7)).toEqual(["%chk=water.chk", "%nprocshared=8", "%mem=16384MB",
+    "#p B3LYP/def2-SVP Opt=ModRedundant Freq EmpiricalDispersion=GD3BJ SCF=Tight SCRF=(SMD,Solvent=DiMethylSulfoxide)", "", "Water in DMSO", ""]);
+  const psi = generateQuantumInput(water, { ...base, engine: "psi4", method: "b3lyp", solvation: { model: "cpcm", solvent: "dmso" }, task: "transition-state" }).text;
+  expect(psi.startsWith("# Water in DMSO\nmemory 16384 MB\nset_num_threads(8)\n\nmolecule molecule {")).toBe(true);
+  for (const line of ["  e_convergence 1e-8", "  pcm true", "    SolverType = CPCM", "    Solvent = DMSO", "  opt_type ts", "optimize('b3lyp-d3bj')\nfrequency('b3lyp-d3bj')"]) expect(psi).toContain(line);
+  const cp2k = generateQuantumInput(water, { engine: "cp2k", charge: 0, multiplicity: 1, method: "PBE", basis: "DZVP-MOLOPT-SR-GTH", dispersion: "d3bj", scf: "very-tight" }).text;
+  expect(cp2k).toContain("EPS_SCF 1.0E-8");
+  expect(cp2k).toContain("TYPE DFTD3(BJ)\n          PARAMETER_FILE_NAME dftd3.dat\n          REFERENCE_FUNCTIONAL PBE");
+  expect(() => generateQuantumInput(water, { ...base, engine: "psi4", method: "b3lyp" })).toThrow("solvent model");
+  expect(() => generateQuantumInput(water, { ...base, engine: "psi4", method: "b3lyp", solvation: { model: "cpcm", solvent: "hexane" } })).toThrow("solvent model");
+  expect(() => generateQuantumInput(water, { ...base, solvation: undefined, engine: "gaussian", dispersion: "d4" })).toThrow("dispersion");
+  expect(() => generateQuantumInput(water, { engine: "cp2k", charge: 0, multiplicity: 1, method: "PBE", basis: "DZVP-MOLOPT-SR-GTH", task: "transition-state" })).toThrow("task");
+  expect(() => generateQuantumInput(water, { engine: "cp2k", charge: 0, multiplicity: 1, method: "PBE", basis: "DZVP-MOLOPT-SR-GTH", cores: 4 })).toThrow("launcher");
+  expect(() => generateQuantumInput(water, { ...base, engine: "orca", title: "x\n! Opt" })).toThrow("one line");
+  expect(() => generateQuantumInput(water, { ...base, engine: "orca", task: "transition-state", constraints: [{ kind: "freeze", atoms: [0] }] })).toThrow("Constraints");
+});
+
 test("CP2K emits a padded isolated box or the explicit periodic cell", () => {
   const base = { engine: "cp2k" as const, charge: 0, multiplicity: 1, method: "PBE", basis: "DZVP-MOLOPT-SR-GTH" };
   const isolated = generateQuantumInput(water, base).text;

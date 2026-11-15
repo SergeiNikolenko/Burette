@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { generateQuantumInput, QUANTUM_INPUT_DEFAULTS as DEFAULTS, ZMATRIX_ENGINES, type CoordinateStyle, type InputConstraint, type QuantumEngine } from "../../lib/molecular-workbench/input-export";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { generateQuantumInput, QUANTUM_INPUT_DEFAULTS as DEFAULTS, QUANTUM_INPUT_FEATURES as FEATURES, SOLVENTS, ZMATRIX_ENGINES,
+  type CoordinateStyle, type Dispersion, type InputConstraint, type QuantumEngine, type QuantumTask, type ScfConvergence, type Solvent, type SolventModel } from "../../lib/molecular-workbench/input-export";
 import type { MolecularAtom } from "../../lib/molecular-workbench/types";
 import type { ZmatrixDocument } from "../../../../../scripts/zmatrix-document.mjs";
 import { useStructureSourceText } from "../../lib/source-editing/use-structure-source-text";
@@ -23,8 +24,25 @@ import { Textarea } from "../ui/textarea";
 import { useWorkbenchSource } from "./use-workbench-source";
 import { PluginInputForm } from "./plugin-input-form";
 
-type Task = "energy" | "optimize" | "frequencies";
 const ENGINES: [QuantumEngine, string][] = [["orca", "ORCA"], ["gaussian", "Gaussian"], ["psi4", "Psi4"], ["cp2k", "CP2K"]];
+const TASKS: Record<QuantumTask, string> = { energy: "Single-point energy", optimize: "Geometry optimization", frequencies: "Frequencies",
+  "optimize-frequencies": "Optimization and frequencies", "transition-state": "Transition state" };
+const OPTIMIZING: QuantumTask[] = ["optimize", "optimize-frequencies"];
+const SOLVENT_MODELS: Record<SolventModel, string> = { cpcm: "CPCM", smd: "SMD" };
+const DISPERSIONS: Record<Dispersion, string> = { d3bj: "D3(BJ)", d4: "D4" };
+const SCF: Record<ScfConvergence, string> = { tight: "Tight", "very-tight": "Very tight" };
+const CORES = [2, 4, 8, 16, 32, 64];
+const MEMORY_GB = [2, 4, 8, 16, 32, 64, 128];
+// Suggestions only: any single keyword the program reads can still be typed.
+const SUGGESTIONS: Record<QuantumEngine, { methods: string[]; bases: string[] }> = {
+  orca: { methods: ["B3LYP", "PBE0", "PBE", "TPSS", "r2SCAN", "M06-2X", "wB97X-V", "CAM-B3LYP", "HF", "MP2", "RI-MP2", "DLPNO-CCSD(T)"],
+    bases: ["def2-SVP", "def2-TZVP", "def2-TZVPP", "def2-QZVPP", "ma-def2-TZVP", "6-31G(d)", "6-311+G(d,p)", "cc-pVDZ", "cc-pVTZ", "aug-cc-pVTZ"] },
+  gaussian: { methods: ["B3LYP", "PBE1PBE", "PBEPBE", "M062X", "wB97XD", "CAM-B3LYP", "HF", "MP2", "CCSD(T)"],
+    bases: ["6-31G(d)", "6-31+G(d,p)", "6-311+G(d,p)", "6-311++G(2d,2p)", "def2SVP", "def2TZVP", "cc-pVDZ", "cc-pVTZ", "aug-cc-pVTZ"] },
+  psi4: { methods: ["b3lyp", "pbe0", "pbe", "wb97x-v", "m06-2x", "hf", "mp2", "ccsd", "ccsd(t)"],
+    bases: ["def2-svp", "def2-tzvp", "def2-tzvpp", "6-31g*", "6-311+g**", "cc-pvdz", "cc-pvtz", "aug-cc-pvtz"] },
+  cp2k: { methods: ["PBE", "BLYP"], bases: ["DZVP-MOLOPT-SR-GTH", "DZVP-MOLOPT-GTH", "TZVP-MOLOPT-GTH", "TZV2P-MOLOPT-GTH"] },
+};
 const NO_CONSTRAINTS: InputConstraint[] = [];
 const CONSTRAINT_LABELS: Record<InputConstraint["kind"], string> = { freeze: "Frozen atom", distance: "Distance", angle: "Angle", dihedral: "Dihedral" };
 
@@ -53,7 +71,7 @@ export function InputExportDialogBody({ document, actions, atoms: editedAtoms, c
   }, [source.source]);
   const cell = cellRead.cell;
   const [engine, setEngine] = useState<QuantumEngine>("orca");
-  const [task, setTask] = useState<Task>(requestedConstraints.length ? "optimize" : "energy");
+  const [task, setTask] = useState<QuantumTask>(requestedConstraints.length ? "optimize" : "energy");
   const [method, setMethod] = useState(DEFAULTS.orca.method);
   const [basis, setBasis] = useState(DEFAULTS.orca.basis);
   const [charge, setCharge] = useState(0);
@@ -61,6 +79,19 @@ export function InputExportDialogBody({ document, actions, atoms: editedAtoms, c
   const [useConstraints, setUseConstraints] = useState(requestedConstraints.length > 0);
   const [useCell, setUseCell] = useState(true);
   const [coordinates, setCoordinates] = useState<CoordinateStyle>(definition ? "zmatrix" : "cartesian");
+  const [solventModel, setSolventModel] = useState<SolventModel | "">("");
+  const [solvent, setSolvent] = useState<Solvent>("water");
+  const [dispersion, setDispersion] = useState<Dispersion | "">("");
+  const [scf, setScf] = useState<ScfConvergence | "">("");
+  const [cores, setCores] = useState(0);
+  const [memoryGb, setMemoryGb] = useState(0);
+  const [title, setTitle] = useState("");
+  const [checkpoint, setCheckpoint] = useState(false);
+  const listId = useId();
+  const features = FEATURES[engine];
+  const solvents = (Object.keys(SOLVENTS) as Solvent[]).filter(id => engine in SOLVENTS[id]);
+  const solvation = solventModel && features.solvation.includes(solventModel) ? { model: solventModel, solvent: solvents.includes(solvent) ? solvent : "water" as const } : undefined;
+  const effectiveDispersion = dispersion && features.dispersion.includes(dispersion) ? dispersion : undefined;
   const zmatrixEngine = ZMATRIX_ENGINES.includes(engine);
   const [copied, setCopied] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -83,16 +114,20 @@ export function InputExportDialogBody({ document, actions, atoms: editedAtoms, c
     bonds: bonds && bonds.source === source.source && source.source?.atoms.length === atoms.length ? bonds.bonds : [],
   }, [atoms, cell, plugin, bonds, source.source]);
 
-  const constraints = useConstraints && task === "optimize" ? requestedConstraints : NO_CONSTRAINTS;
+  const constraints = useConstraints && OPTIMIZING.includes(task) ? requestedConstraints : NO_CONSTRAINTS;
+  const checkpointName = engine === "gaussian" && checkpoint ? `${fileStem(document.title).replace(/[^A-Za-z0-9_.-]+/g, "_").slice(0, 60) || "burette"}.chk` : undefined;
   const generated = useMemo(() => {
     if (!atoms || awaitingCell) return null;
     try {
       return { result: generateQuantumInput(atoms, { engine, task, method: method.trim(), basis: basis.trim(), charge, multiplicity, constraints, cell: engine === "cp2k" && useCell && cell ? cell : undefined,
-        coordinates: zmatrixEngine ? coordinates : "cartesian", definition }), error: null };
+        coordinates: zmatrixEngine ? coordinates : "cartesian", definition, solvation, dispersion: effectiveDispersion, scf: scf || undefined,
+        cores: features.resources && cores ? cores : undefined, memory: features.resources && memoryGb ? memoryGb * 1024 : undefined,
+        title: title.trim() ? title.trim() : undefined, checkpoint: checkpointName }), error: null };
     } catch (error) {
       return { result: null, error: error instanceof Error ? error.message : String(error) };
     }
-  }, [atoms, engine, task, method, basis, charge, multiplicity, constraints, useCell, cell, awaitingCell, coordinates, zmatrixEngine, definition]);
+  }, [atoms, engine, task, method, basis, charge, multiplicity, constraints, useCell, cell, awaitingCell, coordinates, zmatrixEngine, definition,
+    solvation?.model, solvation?.solvent, effectiveDispersion, scf, features, cores, memoryGb, title, checkpointName]);
   const currentOutput = useRef(generated?.result);
   currentOutput.current = generated?.result;
   useEffect(() => { setCopied(false); setExportError(null); }, [generated]);
@@ -112,6 +147,7 @@ export function InputExportDialogBody({ document, actions, atoms: editedAtoms, c
             const next = value as QuantumEngine;
             setPluginId(null);
             setEngine(next);
+            if (!FEATURES[next].tasks.includes(task)) setTask(OPTIMIZING.includes(task) ? "optimize" : "energy");
             setMethod(DEFAULTS[next].method);
             setBasis(DEFAULTS[next].basis);
           }}>
@@ -134,19 +170,19 @@ export function InputExportDialogBody({ document, actions, atoms: editedAtoms, c
         <div className="workbench-grid">
           <label className="workbench-field">
             <span>Calculation</span>
-            <NativeSelect size="sm" aria-label="Calculation" value={task} onChange={(event) => setTask(event.target.value as Task)}>
-              <NativeSelectOption value="energy">Single-point energy</NativeSelectOption>
-              <NativeSelectOption value="optimize">Geometry optimization</NativeSelectOption>
-              <NativeSelectOption value="frequencies">Frequencies</NativeSelectOption>
+            <NativeSelect size="sm" aria-label="Calculation" value={task} onChange={(event) => setTask(event.target.value as QuantumTask)}>
+              {features.tasks.map(value => <NativeSelectOption key={value} value={value}>{TASKS[value]}</NativeSelectOption>)}
             </NativeSelect>
           </label>
           <label className="workbench-field">
             <span>Method</span>
-            <Input variant="compact" value={method} spellCheck={false} autoComplete="off" onChange={(event) => setMethod(event.target.value)} />
+            <Input variant="compact" value={method} list={`${listId}-methods`} spellCheck={false} autoComplete="off" onChange={(event) => setMethod(event.target.value)} />
+            <datalist id={`${listId}-methods`}>{SUGGESTIONS[engine].methods.map(value => <option key={value} value={value} />)}</datalist>
           </label>
           <label className="workbench-field">
             <span>Basis set</span>
-            <Input variant="compact" value={basis} spellCheck={false} autoComplete="off" onChange={(event) => setBasis(event.target.value)} />
+            <Input variant="compact" value={basis} list={`${listId}-bases`} spellCheck={false} autoComplete="off" onChange={(event) => setBasis(event.target.value)} />
+            <datalist id={`${listId}-bases`}>{SUGGESTIONS[engine].bases.map(value => <option key={value} value={value} />)}</datalist>
           </label>
           <label className="workbench-field">
             <span>Charge, e</span>
@@ -167,10 +203,67 @@ export function InputExportDialogBody({ document, actions, atoms: editedAtoms, c
               </NativeSelect>
             </label>
           ) : null}
+          {features.solvation.length ? <>
+            <label className="workbench-field">
+              <span>Solvation</span>
+              <NativeSelect size="sm" aria-label="Solvation" value={solvation?.model ?? ""} onChange={(event) => setSolventModel(event.target.value as SolventModel | "")}>
+                <NativeSelectOption value="">Gas phase</NativeSelectOption>
+                {features.solvation.map(value => <NativeSelectOption key={value} value={value}>{SOLVENT_MODELS[value]}</NativeSelectOption>)}
+              </NativeSelect>
+            </label>
+            {solvation ? (
+              <label className="workbench-field">
+                <span>Solvent</span>
+                <NativeSelect size="sm" aria-label="Solvent" value={solvation.solvent} onChange={(event) => setSolvent(event.target.value as Solvent)}>
+                  {solvents.map(value => <NativeSelectOption key={value} value={value}>{SOLVENTS[value].label}</NativeSelectOption>)}
+                </NativeSelect>
+              </label>
+            ) : null}
+          </> : null}
+          <label className="workbench-field">
+            <span>Dispersion</span>
+            <NativeSelect size="sm" aria-label="Dispersion" value={effectiveDispersion ?? ""} onChange={(event) => setDispersion(event.target.value as Dispersion | "")}>
+              <NativeSelectOption value="">None</NativeSelectOption>
+              {features.dispersion.map(value => <NativeSelectOption key={value} value={value}>{DISPERSIONS[value]}</NativeSelectOption>)}
+            </NativeSelect>
+          </label>
+          <label className="workbench-field">
+            <span>SCF convergence</span>
+            <NativeSelect size="sm" aria-label="SCF convergence" value={scf} onChange={(event) => setScf(event.target.value as ScfConvergence | "")}>
+              <NativeSelectOption value="">Default</NativeSelectOption>
+              {(Object.keys(SCF) as ScfConvergence[]).map(value => <NativeSelectOption key={value} value={value}>{SCF[value]}</NativeSelectOption>)}
+            </NativeSelect>
+          </label>
+          {features.resources ? <>
+            <label className="workbench-field">
+              <span>Cores</span>
+              <NativeSelect size="sm" aria-label="Cores" value={String(cores)} onChange={(event) => setCores(Number(event.target.value))}>
+                <NativeSelectOption value="0">Default</NativeSelectOption>
+                {CORES.map(value => <NativeSelectOption key={value} value={String(value)}>{value}</NativeSelectOption>)}
+              </NativeSelect>
+            </label>
+            <label className="workbench-field">
+              <span>Memory</span>
+              <NativeSelect size="sm" aria-label="Memory" value={String(memoryGb)} onChange={(event) => setMemoryGb(Number(event.target.value))}>
+                <NativeSelectOption value="0">Default</NativeSelectOption>
+                {MEMORY_GB.map(value => <NativeSelectOption key={value} value={String(value)}>{value} GB</NativeSelectOption>)}
+              </NativeSelect>
+            </label>
+          </> : null}
+          <label className="workbench-field">
+            <span>Title</span>
+            <Input variant="compact" value={title} maxLength={80} placeholder={engine === "gaussian" ? "Burette calculation" : undefined} spellCheck={false} autoComplete="off" onChange={(event) => setTitle(event.target.value)} />
+          </label>
         </div>
+        {engine === "gaussian" ? (
+          <label className="workbench-switch">
+            <Switch checked={checkpoint} onCheckedChange={setCheckpoint} />
+            <span>Checkpoint file</span>
+          </label>
+        ) : null}
         {requestedConstraints.length ? (
-          <label className="workbench-switch" title={task === "optimize" ? undefined : "Constraints apply to geometry optimizations"}>
-            <Switch checked={useConstraints && task === "optimize"} disabled={task !== "optimize"} onCheckedChange={setUseConstraints} />
+          <label className="workbench-switch" title={OPTIMIZING.includes(task) ? undefined : "Constraints apply to geometry optimizations"}>
+            <Switch checked={useConstraints && OPTIMIZING.includes(task)} disabled={!OPTIMIZING.includes(task)} onCheckedChange={setUseConstraints} />
             <span>Constraints: {Object.entries(constraintSummary).map(([kind, count]) => `${count} ${CONSTRAINT_LABELS[kind as InputConstraint["kind"]].toLowerCase()}${count === 1 ? "" : "s"}`).join(", ")}</span>
           </label>
         ) : null}

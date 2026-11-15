@@ -16,7 +16,7 @@ export function InputExportDialogHost({ actions }: { actions: ShellActions }) {
   const input = request?.kind === "input" && request.document ? request : null;
   return (
     <Dialog open={Boolean(input)} onOpenChange={(open) => { if (!open && input) closeWorkbenchDialog(); }}>
-      {input ? <DialogContent variant="form" size="wide" className="flex max-h-[88vh] flex-col gap-4 overflow-y-auto" aria-describedby={undefined}>
+      {input ? <DialogContent variant="form" size="xwide" className="flex max-h-[88vh] flex-col gap-4 overflow-y-auto" aria-describedby={undefined}>
         <Suspense fallback={<Spinner aria-label="Opening input export" />}>
           <InputExportDialogBody key={lifetime.revision} document={input.document!} actions={actions} atoms={input.atoms} constraints={input.constraints} definition={input.definition} />
         </Suspense>
