@@ -321,7 +321,7 @@ fn evaluate_batch(owner: &str, id: &str, coordinates: &[f64]) -> Result<Vec<f64>
     let size = 3 * session.atoms;
     let sets = coordinates.len() / size;
     if coordinates.is_empty()
-        || coordinates.len() % size != 0
+        || !coordinates.len().is_multiple_of(size)
         || sets > MAX_BATCH_SETS
         || 8 * coordinates.len() > MAX_BATCH_BYTES
         || !coordinates.iter().all(|v| v.is_finite())

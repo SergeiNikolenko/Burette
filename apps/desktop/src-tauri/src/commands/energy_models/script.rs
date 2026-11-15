@@ -511,8 +511,10 @@ fn binary_frame(bytes: &[u8]) -> Result<(u16, usize, &[u8]), Parsed> {
 
 fn doubles(bytes: &[u8]) -> Vec<f64> {
     bytes
-        .chunks_exact(8)
-        .map(|chunk| f64::from_le_bytes(chunk.try_into().unwrap()))
+        .as_chunks::<8>()
+        .0
+        .iter()
+        .map(|chunk| f64::from_le_bytes(*chunk))
         .collect()
 }
 
