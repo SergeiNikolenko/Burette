@@ -49,7 +49,7 @@ function Frame() {
           }
           case 'snapshot': result({ molfile: editor.current.getMolfile(), smiles: editor.current.getSmiles(), state: editor.current.getState() }); break
           case 'svg': result(editor.current.getSvg()); break
-          case 'atoms': result(editor.current.getAtomPositions()); break
+          case 'atoms': result(editor.current.getAtomLayout()); break
           case 'tool': {
             if (!['hand', 'select', 'erase', 'chain'].includes(message.value)) throw new Error('Unknown editor tool')
             editor.current.setTool(message.value)
