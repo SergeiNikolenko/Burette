@@ -332,7 +332,7 @@
     if (command === 'loadMVS') return commandLoadMVS(args, warnings);
     if (command === 'observeStory') return commandObserveStory();
     if (command === 'controlStory') return commandControlStory(args);
-    if (command === 'exportSession') return commandExportSession(args);
+    if (command === 'exportSession') return commandExportSession(args, warnings);
     if (command === 'exportMVS') return commandExportMVS(args, warnings);
     const error = new Error(`Unsupported BuretteAgent command: ${command}`);
     error.code = 'NOT_IMPLEMENTED';
@@ -900,6 +900,8 @@
       applyMolstarInteractivity({ atom_index: bin.atomIndices }, 'select', { mode: 'replace', granularity: 'atom', warnings });
       await component.applyTheme({ action: { name: 'color', params: { color: bin.color } }, selection: query });
     }
+    // The bins were painted through the selection; leave none behind.
+    try { state.viewer?.structureInteractivity?.({ action: 'select' }); } catch (_) {}
     try { state.plugin?.managers?.structure?.selection?.clear?.(); } catch (_) {}
     state.sceneVersion++;
     return {
@@ -971,11 +973,26 @@
     return { action, ...storySummary() };
   }
 
-  async function commandExportSession(args = {}) {
+  async function commandExportSession(args = {}, warnings = []) {
     const manager = state.plugin?.managers?.snapshot;
     if (typeof manager?.serialize !== 'function') throw coded('NOT_IMPLEMENTED', 'Mol* session serialization is unavailable.');
     const type = ['molx', 'molj', 'json'].includes(args.type) ? args.type : 'molx';
-    const blob = await manager.serialize({ type, params: args.params });
+    // Host-owned science is saved through Export → Scene, not the bounded agent session.
+    const science = window.BuretteSceneFiles?.science;
+    const serialize = () => {
+      // Ownership can change while an earlier scientific operation finishes.
+      if (science?.present(state.plugin)) warnings.push('Scientific workbench data (source, Z-matrix, grids, Hessians, original file) is not included; save it with Export → Scene in Burette.');
+      return manager.serialize({ type, params: args.params });
+    };
+    let blob;
+    try {
+      blob = science ? await science.exclusive(state.plugin, serialize) : await serialize();
+    } catch (error) {
+      if (science && /scientific attachments/.test(error?.message || '')) throw coded('BUSY', 'The scene is being saved. Export the session again.');
+      if (science && error?.message === 'Wait for the scene to finish opening.') throw coded('BUSY', 'The scene is opening. Export the session again.');
+      if (science && error?.message === 'Wait for the frame comparison to finish.') throw coded('BUSY', 'The frame comparison is being updated. Export the session again.');
+      throw error;
+    }
     const requestedMaxBytes = Number(args.maxBytes);
     const maxBytes = Number.isFinite(requestedMaxBytes) && requestedMaxBytes > 0
       ? Math.min(MAX_INLINE_SESSION_BYTES, Math.floor(requestedMaxBytes))
@@ -1540,7 +1557,10 @@
       optimizeDirection: options.optimizeDirection !== false,
       zoomOut: options.zoomOut !== false
     };
-    for (const schema of schemas) {
+    // Each Mol* call replaces the selection and highlight, so they get every schema at once;
+    // focus moves to the first schema that resolves.
+    const batches = action === 'focus' || schemas.length < 2 ? schemas : [{ items: schemas }];
+    for (const schema of batches) {
       try {
         viewer.structureInteractivity({
           elements: schema,
