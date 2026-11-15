@@ -529,7 +529,7 @@ console.log('Docking pose visibility edits follow pins, sets and All, and recove
     applyLabel() {}, previous: {}, next: {}, slider: { dataset: {} }, storyStep: null,
     refreshNativeTrajectoryStandalonePreview() {}, postHostMessage() {}, activeConfig: {}, loopActive: false,
     updateViewportAnimateState() {}, activeViewer: {}, activeMolstarPrepared: prepared,
-    structureOverlayAvailable: () => true, structureOverlayNoun: () => 'poses',
+    structureOverlayAvailable: () => true, structureOverlayNoun: () => 'poses', sceneComparison: null,
     setSdfPoseMode: mode => { context.activeSdfPoseMode = mode; },
     notifyStructureOverlayModeChanged() {}, updateSdfPoseButton() {}, setStatus() {}, readTrajectoryControlIndex: () => 0,
     notifyChemicalSpaceMolecule() {},
