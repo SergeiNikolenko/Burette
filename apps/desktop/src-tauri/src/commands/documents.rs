@@ -1192,7 +1192,7 @@ pub(crate) fn read_structure_text(path: String) -> Result<String, String> {
     }
     if metadata.len() > KETCHER_IMPORT_MAX_STRUCTURE_FILE_SIZE {
         return Err(format!(
-            "{} is too large for Ketcher import",
+            "{} is too large for the molecular editor",
             input_path.display()
         ));
     }
@@ -2022,7 +2022,7 @@ pub(crate) fn create_molecule_collection<R: Runtime>(
         );
     }
     if output_family != CollectionFamily::Sdf {
-        return Err("Ketcher sketches can only create SDF collections".to_string());
+        return Err("Molecular editor sketches can only create SDF collections".to_string());
     }
     if request.text.trim().is_empty() {
         return Err("Structure text is empty".to_string());

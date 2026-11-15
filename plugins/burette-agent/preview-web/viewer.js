@@ -4157,7 +4157,7 @@
   function requestOpenInKetcher() {
     const config = activeConfig || window.BuretteConfig || {};
     if (config.ketcherEditable !== true) {
-      setStatus('This structure is too large or not supported by Ketcher.', 'error');
+      setStatus('This structure is too large or not supported by the molecular editor.', 'error');
       return;
     }
     const payload = {
@@ -4170,7 +4170,7 @@
       payload.textBase64 = config.ketcherSourceTextBase64.trim();
     }
     const sent = postHostMessage(payload);
-    if (!sent) setStatus('Ketcher handoff is available only in the app viewer.', 'error');
+    if (!sent) setStatus('The molecular editor is available only in the app viewer.', 'error');
   }
 
   function sdfGridPathForConfig(config) {
@@ -28139,7 +28139,7 @@ SOFTWARE.
         <button type="button" class="buret-molecule-card-icon" data-buret-molecule-preview-action="close" aria-label="Hide preview" title="Hide preview">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.close)}</button>
       </div>
       <div class="buret-molecule-card-toolbar" role="toolbar" aria-label="Molecule preview actions">
-        ${activeConfig?.visualizationOnly === true ? '' : `<button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="ketcher" aria-label="Open in Ketcher" title="Open in Ketcher">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.ketcher)}<span>Edit</span></button>`}
+        ${activeConfig?.visualizationOnly === true ? '' : `<button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="ketcher" aria-label="Open in molecular editor" title="Open in molecular editor">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.ketcher)}<span>Edit</span></button>`}
         <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="copy-smiles" aria-label="Copy SMILES" title="Copy SMILES">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.copy)}<span>SMILES</span></button>
         <button type="button" class="buret-molecule-card-button" data-buret-hydrogens data-buret-molecule-preview-action="hydrogens" aria-label="${molstarShowHydrogens ? 'Hide' : 'Show'} hydrogens" aria-pressed="${molstarShowHydrogens}" title="${molstarShowHydrogens ? 'Hide' : 'Show'} hydrogens">H</button>
         <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="lasso" aria-label="Lasso atoms in 2D" aria-pressed="false" title="Select atoms by drawing a lasso · Esc to exit">${molstarMoleculePreviewIconHTML(['M7 17c-3-1-5-3-5-6 0-5 5-8 11-8s9 3 9 7-5 8-11 8', 'M7 15c-3 0-4 2-3 4s4 2 5 0-1-4-2-4', 'M7 21c2 2 5 2 7 0'])}<span>Lasso</span></button>
@@ -28160,7 +28160,7 @@ SOFTWARE.
       || molstarMoleculePreviewEntry(target);
     const text = String(entry?.data || '').trimEnd();
     if (!text) {
-      setStatus('[web] This molecule has no structure text to open in Ketcher.', 'error');
+      setStatus('[web] This molecule has no structure text to open in the molecular editor.', 'error');
       return;
     }
     const label = target?.label || entry?.label || 'ligand';
@@ -28172,7 +28172,7 @@ SOFTWARE.
       extension,
       textBase64: bytesToBase64(new TextEncoder().encode(text))
     });
-    if (!ok) setStatus('[web] Ketcher is unavailable in this preview host.', 'error');
+    if (!ok) setStatus('[web] The molecular editor is unavailable in this preview host.', 'error');
   }
 
   function molstarMoleculePreviewClamp(popover) {

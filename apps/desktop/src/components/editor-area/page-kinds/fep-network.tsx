@@ -401,7 +401,7 @@ function FepNetworkPreview({ actions, location, preferences }: { actions: ShellA
       {
         kind: "item",
         id: "open-ketcher",
-        text: "Open in Ketcher",
+        text: "Open in molecular editor",
         action: () => actions.openKetcherWithStructures([], [ketcherFragment]),
       },
       {

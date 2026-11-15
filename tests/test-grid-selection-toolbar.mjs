@@ -39,7 +39,7 @@ assert.deepEqual(['select-all', 'open-selected-ketcher', 'open-selected-molstar'
 button('open-selected-ketcher').click();
 button('open-selected-molstar').click();
 assert.deepEqual(calls, [], 'disabled shared buttons must not dispatch open actions');
-assert.equal(button('open-selected-ketcher').getAttribute('aria-description'), 'Select molecules to edit in Ketcher');
+assert.equal(button('open-selected-ketcher').getAttribute('aria-description'), 'Select molecules to edit in the molecular editor');
 // Hints are portaled outside the clipped toolbar and never activate an action.
 button('select-all').focus();
 await waitFor(() => document.querySelector('[role="tooltip"]'), 'selection hint opens');

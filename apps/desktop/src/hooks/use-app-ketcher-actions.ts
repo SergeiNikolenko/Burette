@@ -127,7 +127,7 @@ export function useAppKetcherActions({
         setStructureDragActive(false);
         setKetcherDraftMolfile(draftMolfile);
         setKetcherImportRequest(null);
-        pushStatus(`Opened ${fragment.title.trim() || "structure"} in Ketcher`);
+        pushStatus(`Opened ${fragment.title.trim() || "structure"} in the molecular editor`);
         return;
       }
     }
@@ -209,7 +209,7 @@ export function useAppKetcherActions({
       setStructureDragActive(false);
       setKetcherDraftMolfile(draftMolfile);
       setKetcherImportRequest(null);
-      pushStatus(`Opened ${cleanTitle} in Ketcher`);
+      pushStatus(`Opened ${cleanTitle} in the molecular editor`);
       return;
     }
     const request: KetcherImportRequest = {
