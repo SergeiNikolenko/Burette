@@ -687,9 +687,6 @@ export function useAppNativeMenu({
       case "analyze.correlation-matrix":
         if (activeDocument && isGrid) actions.openCorrelationMatrix(activeDocument.id);
         return;
-      case "analyze.build-model":
-        if (activeDocument && isGrid) openWorkbenchDialog({ kind: "model", document: activeDocument });
-        return;
       case "file.close-tab":
         await actions.closeActiveDocument();
         return;

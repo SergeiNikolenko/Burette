@@ -356,26 +356,10 @@ Database menus. These stages cover what it left out.
   (Rust/WASM or the compute crate).
 - **Done when:** a public solubility set reproduces the R² of scikit-learn's
   kNN and random forest within 0.02 on the same split.
-- **Done (1c4311b8a, f3474f5e8, 04f0bfa6c, be3434ea4):** **Build Model…** sits
-  in Analyze and in the command palette for an open collection. The dialog
-  takes the column to predict, a descriptor set and a method: nearest
-  neighbours, partial least squares or random forest. A numeric column gives a
-  regression with cross-validated R² and RMSE; a text column gives a
-  classification with cross-validated accuracy. The rows without a value are
-  listed with their predictions, and selecting one shows its nearest training
-  rows with their values and distances. **Fill N missing values** writes the
-  predictions into the empty cells and **Add column** writes a prediction for
-  every row as `Predicted <column>`. Models train in a worker on the 18
-  structure properties, five folds, with a fixed seed.
-  `tests/fixtures/property-models` holds the ESOL set (1128 molecules) and the
-  scikit-learn reference on the same matrix and folds: nearest neighbours R²
-  0.8787 against 0.8793, random forest 0.9206 against 0.9194, partial least
-  squares 0.825621 on both sides. Gauss acceptance in both themes on the first
-  60 ESOL molecules with six values removed: random forest reports R² 0.856 and
-  RMSE 0.848 on 54 training rows and predicts −0.883 for thiophene, whose
-  nearest rows are benzothiazole, benzonitrile and 2-methylphenol; filling
-  leaves no empty cells, and a three-class solubility column gives 79.6%
-  accuracy. `test:property-models` covers the models, the worker and the dialog.
+- **Removed (2026-11-15):** the product owner judged descriptor models an
+  outdated workflow for Burette, so Build Model…, its dialog, the models and
+  their tests were taken out. The implementation is in git history from
+  be3434ea4 back to 1c4311b8a.
 
 ### Stage 25. Combinatorial enumeration
 

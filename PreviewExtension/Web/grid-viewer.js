@@ -20,7 +20,6 @@
   const GRID_SELECTION_BRIDGE_LIMIT = 100000;
   const CHEMICAL_SPACE_RECORD_LIMIT = 20000;
   const CHEMICAL_SPACE_INPUT_BYTES_LIMIT = 8 * 1024 * 1024;
-  const GRID_TABLE_INPUT_BYTES_LIMIT = 64 * 1024 * 1024;
   const COLLECTION_CHART_COLUMN_LIMIT = 6;
   const COLLECTION_CHART_TEXT_LIMIT = 120;
   const CONFORMER_VARIANT_STORAGE_KEY = 'buret.grid.conformerVariant';
@@ -929,14 +928,6 @@
       }
       if (body.type === 'gridSplitRows') {
         void splitGridMultipleValueRows(body, config());
-        return;
-      }
-      if (body.type === 'gridRequestTableRows') {
-        void postGridTableRows(body, config());
-        return;
-      }
-      if (body.type === 'gridFillEmptyCells') {
-        void fillGridEmptyCells(body, config());
         return;
       }
       if (body.type === 'gridRequestTable') {
@@ -6807,93 +6798,6 @@
     if (state.remoteMode) void render(cfg);
     else refresh(cfg);
     setStatus(`[grid] Split ${plan.patches.length.toLocaleString()} row${plan.patches.length === 1 ? '' : 's'} of ${label} into ${(plan.patches.length + plan.inserts.length).toLocaleString()}.`);
-  }
-
-  // Build Model reads the whole collection rather than the loaded window: the
-  // named columns as display text or as numbers, and the structures on request.
-  async function postGridTableRows(body, cfg) {
-    const requestId = String(body.requestId || '');
-    const textIds = (Array.isArray(body.textColumnIds) ? body.textColumnIds : []).slice(0, 16).map(String);
-    const numberIds = (Array.isArray(body.numberColumnIds) ? body.numberColumnIds : []).slice(0, 2048).map(String);
-    const failedDescriptor = (row, id) => {
-      const cell = id.startsWith('descriptor:') ? row.descriptors?.[id.slice('descriptor:'.length)] : null;
-      return !!(cell?.errorText || cell?.missingKind);
-    };
-    try {
-      const pool = state.remoteMode
-        ? await collectAllRemoteRows(cfg, '', 'index', 'the table', 'collection')
-        : currentLocalCollectionRows();
-      const rows = [];
-      let inputBytes = 0;
-      let truncated = false;
-      for (const row of pool) {
-        const index = Number(row?.index);
-        if (!Number.isSafeInteger(index) || index < 0) continue;
-        const entry = {
-          index,
-          name: tableColumnRawDisplayValue(row, 'name'),
-          text: textIds.map(id => failedDescriptor(row, id) ? '' : String(tableColumnDisplayValue(row, id) ?? '').slice(0, 4096)),
-          numbers: numberIds.map(id => {
-            const value = tableColumnNumericValue(row, id);
-            return Number.isFinite(value) ? value : null;
-          })
-        };
-        if (body.includeStructures === true) {
-          entry.molblock = String(row.molblock || '').trim() ? String(row.molblock) : null;
-          entry.smiles = entry.molblock ? null : String(row.smiles || '').trim() || null;
-          inputBytes += (entry.molblock || entry.smiles || '').length;
-        }
-        if (rows.length >= CHEMICAL_SPACE_RECORD_LIMIT || inputBytes > GRID_TABLE_INPUT_BYTES_LIMIT) {
-          truncated = true;
-          break;
-        }
-        rows.push(entry);
-      }
-      post('gridTableRows', '', { requestId, rows, truncated });
-    } catch (_) {
-      post('gridTableRows', '', { requestId, failed: true });
-    }
-  }
-
-  // Predict Missing Values: a value lands only in a cell that is still empty,
-  // and the whole fill is one undo entry.
-  async function fillGridEmptyCells(body, cfg) {
-    const requestId = String(body.requestId || '');
-    const columnId = String(body.columnId || '');
-    const propKey = columnId.startsWith('prop:') ? columnId.slice('prop:'.length) : '';
-    const values = new Map((Array.isArray(body.values) ? body.values : [])
-      .map(entry => [Number(entry?.[0]), String(entry?.[1] ?? '').trim()]));
-    if (!propKey || state.closeTransitionActive || state.saveAsPending
-      || !capabilities(cfg).editing || !requireCollectionIndexReady('filling values')) {
-      post('gridCellsFilled', '', { requestId, refused: true });
-      return;
-    }
-    const rows = state.remoteMode
-      ? await collectAllRemoteRows(cfg, '', 'index', 'the fill', 'collection')
-      : currentLocalCollectionRows();
-    const filled = new Map();
-    for (const row of rows) {
-      const value = values.get(Number(row.index));
-      if (!value || String(row.props?.[propKey] ?? '').trim() !== '') continue;
-      filled.set(Number(row.index), { ...row, props: { ...row.props, [propKey]: value } });
-    }
-    if (filled.size && !state.closeTransitionActive && !state.saveAsPending) {
-      pushUndoSnapshot('Predict Missing Values');
-      for (const [index, row] of filled) {
-        state.rowPatches.set(index, { name: row.name, molblock: row.molblock, smiles: row.smiles, props: row.props });
-      }
-      const replace = candidate => filled.has(Number(candidate.index))
-        ? { ...candidate, props: filled.get(Number(candidate.index)).props }
-        : candidate;
-      state.rows = state.rows.map(replace);
-      if (!state.remoteMode) state.all = state.all.map(replace);
-      invalidateTableColumnCatalog();
-      markGridDirty('row edits');
-      if (state.remoteMode) void render(cfg);
-      else refresh(cfg);
-      setStatus(`[grid] Filled ${filled.size.toLocaleString()} empty cell${filled.size === 1 ? '' : 's'} of ${String(body.columnLabel || propKey)}.`);
-    }
-    post('gridCellsFilled', '', { requestId, filled: filled.size });
   }
 
   // Pivot, Unpivot and Merge File by Key are worked out by the host over the

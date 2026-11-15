@@ -916,7 +916,6 @@ pub(super) fn sync_native_menu<R: Runtime>(
     // A chart reads columns, so it also serves tables that hold no molecules.
     set_enabled(&app, "analyze.chart", state.is_grid)?;
     set_enabled(&app, "analyze.correlation-matrix", can_analyze_collection)?;
-    set_enabled(&app, "analyze.build-model", can_analyze_collection)?;
     // Clustering runs inside the grid, which re-checks its own capability; the
     // menu only asks for a molecular grid to exist.
     for id in ["analyze.cluster", "analyze.diverse"] {

@@ -10,7 +10,6 @@ import { PropertiesDialogHost } from "./components/workbench/properties-dialog-h
 import { SmartsSelectDialogHost } from "./components/workbench/smarts-select-dialog-host";
 import { MovieDialogHost } from "./components/workbench/movie-dialog-host";
 import { EnumerateLibraryDialogHost } from "./components/workbench/enumerate-library-dialog-host";
-import { BuildModelDialogHost } from "./components/build-model-dialog";
 import { DataShapingDialogHost } from "./components/data-shaping/data-shaping-dialog-host";
 import { useMoleculeStore } from "./stores/molecule-store";
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
@@ -1389,7 +1388,6 @@ export default function App() {
       <SmartsSelectDialogHost actions={actions} onError={pushErrorStatus} />
       <MovieDialogHost actions={actions} />
       <EnumerateLibraryDialogHost actions={actions} onStatus={pushStatus} />
-      <BuildModelDialogHost onStatus={pushStatus} />
       <DataShapingDialogHost />
       <PeptideBuilderDialogHost actions={actions} />
       <MetalComplexBuilderDialogHost actions={actions} />
