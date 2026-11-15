@@ -53,10 +53,12 @@
   // axis lies across the box. A 260-unit card squeezed into a 52 px table cell
   // left 3 px letters.
   const RDKIT_DRAWINGS = {
-    card: { width: RDKIT_SVG_SIZE, height: RDKIT_SVG_SIZE, fixedBondLength: 24, minFontSize: 10, maxFontSize: 14 },
-    table: { width: 104, height: 104, fixedBondLength: 36, minFontSize: 6, maxFontSize: 22 },
+    // flagCloseContactsDist: RDKit marks atoms closer than 3 px with red boxes,
+    // which in a thumbnail is every ring.
+    card: { width: RDKIT_SVG_SIZE, height: RDKIT_SVG_SIZE, fixedBondLength: 24, minFontSize: 10, maxFontSize: 14, flagCloseContactsDist: -1 },
+    table: { width: 104, height: 104, fixedBondLength: 36, minFontSize: 6, maxFontSize: 22, flagCloseContactsDist: -1 },
     // R-group and scaffold cells: attachment points as the usual wavy line.
-    fragment: { width: 192, height: 104, fixedBondLength: 36, minFontSize: 18, maxFontSize: 24, dummiesAreAttachments: true }
+    fragment: { width: 192, height: 104, fixedBondLength: 36, minFontSize: 18, maxFontSize: 24, dummiesAreAttachments: true, flagCloseContactsDist: -1 }
   };
   // A reaction is drawn as a row of structures around an arrow, so it needs a
   // landscape box rather than the square one a single molecule gets.
@@ -8866,10 +8868,12 @@
         }
         const drawing = RDKIT_DRAWINGS[row.fragment ? 'fragment' : row.drawing === 'table' ? 'table' : 'card'];
         // A file's own layout is kept as drawn; generated coordinates are turned.
-        const rotate = useInputCoords ? 0 : depictionLongAxisAngle(mol.get_molblock());
+        const molblock = mol.get_molblock();
+        const rotate = useInputCoords ? 0 : depictionLongAxisAngle(molblock);
         html = mol.get_svg_with_highlights(JSON.stringify({
           ...drawing,
           rotate,
+          ...(drawing === RDKIT_DRAWINGS.table ? { bondLineWidth: tableBondLineWidth(molblock, rotate) } : {}),
           ...(match ? { atoms: match.atoms, bonds: match.bonds } : {})
         }));
       } catch (_) {
@@ -8900,12 +8904,7 @@
   // The angle of the principal axis of a molblock's atom positions, for RDKit's
   // rotate option; mirrors lib/depiction-axis.ts in the app.
   function depictionLongAxisAngle(molblock) {
-    const points = [];
-    for (const line of String(molblock || '').split('\n').slice(4)) {
-      const atom = /^\s*(-?\d+\.\d+)\s+(-?\d+\.\d+)\s+-?\d+\.\d+\s+[A-Za-z*]/.exec(line);
-      if (atom) points.push([Number(atom[1]), Number(atom[2])]);
-      else if (points.length) break;
-    }
+    const { points } = depictionPoints(molblock);
     if (points.length < 2) return 0;
     const meanX = points.reduce((sum, point) => sum + point[0], 0) / points.length;
     const meanY = points.reduce((sum, point) => sum + point[1], 0) / points.length;
@@ -8916,6 +8915,44 @@
       xy += (x - meanX) * (y - meanY);
     }
     return 0.5 * Math.atan2(2 * xy, xx - yy) * 180 / Math.PI;
+  }
+
+  // Atom positions and the mean bond length of a V2000 molblock.
+  function depictionPoints(molblock) {
+    const lines = String(molblock || '').split('\n');
+    const points = [];
+    for (const line of lines.slice(4)) {
+      const atom = /^\s*(-?\d+\.\d+)\s+(-?\d+\.\d+)\s+-?\d+\.\d+\s+[A-Za-z*]/.exec(line);
+      if (atom) points.push([Number(atom[1]), Number(atom[2])]);
+      else if (points.length) break;
+    }
+    const bondCount = Number(lines[3]?.slice(3, 6)) || 0;
+    let total = 0;
+    let counted = 0;
+    for (const line of lines.slice(4 + points.length, 4 + points.length + bondCount)) {
+      const a = points[Number(line.slice(0, 3)) - 1];
+      const b = points[Number(line.slice(3, 6)) - 1];
+      if (!a || !b) continue;
+      total += Math.hypot(a[0] - b[0], a[1] - b[1]);
+      counted += 1;
+    }
+    return { points, bond: counted ? total / counted : 1.5 };
+  }
+
+  // A table thumbnail's lines are as thick as its bonds are long, about a tenth
+  // of the bond and 0.6 to 1.5 CSS px (the drawing is made at twice the cell
+  // size). A fixed 1 px line on a 3 px bond fills the rings in.
+  function tableBondLineWidth(molblock, rotate) {
+    const { points, bond } = depictionPoints(molblock);
+    if (points.length < 2) return 3;
+    const angle = rotate * Math.PI / 180;
+    const span = (x, y) => {
+      const projected = points.map(point => point[0] * x + point[1] * y);
+      return Math.max(...projected) - Math.min(...projected) || 1;
+    };
+    const { width, height, fixedBondLength } = RDKIT_DRAWINGS.table;
+    const fitted = Math.min(width * 0.88 / span(Math.cos(angle), Math.sin(angle)), height * 0.88 / span(-Math.sin(angle), Math.cos(angle))) * bond;
+    return Math.min(3, Math.max(1.2, 0.09 * Math.min(fixedBondLength, fitted)));
   }
 
   function applyHydrogenDisplay(mol, match) {

@@ -49,7 +49,7 @@ const makeCache = (count = 2000, bytes = 128, entry = 64) => new Function(
     },
   };
   const dependencies = {
-    state: drawingState, RDKIT_SVG_SIZE: 200, RDKIT_DRAWINGS: { card: {}, table: {}, fragment: {} }, depictionLongAxisAngle: () => 0, RDKIT_REACTION_SVG_WIDTH: 300, RDKIT_REACTION_SVG_HEIGHT: 100,
+    state: drawingState, RDKIT_SVG_SIZE: 200, RDKIT_DRAWINGS: { card: {}, table: {}, fragment: {} }, depictionLongAxisAngle: () => 0, tableBondLineWidth: () => 2, RDKIT_REACTION_SVG_WIDTH: 300, RDKIT_REACTION_SVG_HEIGHT: 100,
     rowReactionText: row => row.reaction || '', rdkitCardKey: row => row.key,
     hasMolblockInputCoordinates: () => false, applyHydrogenDisplay: (_mol, match) => match,
     sanitizeSVG: value => value, stripSVGClipping: value => value, padSVGViewBox: value => value,
