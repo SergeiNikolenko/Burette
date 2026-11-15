@@ -1,4 +1,4 @@
-const VERSION = "65f87b42cad3";
+const VERSION = "7cbe0c53372e";
 const LOAD_TIMEOUT_MS = 60_000;
 const COMMAND_TIMEOUT_MS = 30_000;
 const MAX_SCENE_BYTES = 100 * 1024 * 1024;
