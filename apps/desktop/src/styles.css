@@ -5614,6 +5614,18 @@ img.radix-menu-item-icon {
   overflow: hidden;
   isolation: isolate;
 }
+/* In a workspace tab the editor is a window of its own size in the middle of
+   the page; the dock and the hosted widget give it all of their space. */
+.app-shell:not([data-hosted-mcp-widget]) .ketcher-page-body:not(.dock-viewer *) {
+  place-items: center;
+}
+.app-shell:not([data-hosted-mcp-widget]) .ketcher-page-body:not(.dock-viewer *) > .ketcher-editor-shell {
+  width: min(100%, 1040px);
+  height: min(100%, 720px);
+  border-color: var(--line-subtle);
+  border-radius: var(--workspace-frame-radius, 12px);
+  box-shadow: var(--shadow-regular);
+}
 .ketcher-editor-scale-frame {
   position: absolute;
   inset: 0;
