@@ -5794,7 +5794,8 @@
     if (column.html) return column.html(row, cfg);
     const value = String(column.get(row) ?? '');
     const id = column.id.replace(/^(?:descriptor|prop):/u, '');
-    if (value && /^(?:Scaffold|RGroup_(?:Core|R[1-9][0-9]*|Components))$/u.test(id)) {
+    // Enumerate library writes each product's reactants as Reactant N columns.
+    if (value && /^(?:Scaffold|RGroup_(?:Core|R[1-9][0-9]*|Components)|Reactant [1-9][0-9]*)$/u.test(id)) {
       // A hydrogen substituent has nothing to draw but its letter.
       if (/^(?:\[\*(?::\d+)?\]\[H\]|\[H\]\[\*(?::\d+)?\])$/u.test(value)) {
         return `<div class="buret-grid-table-fragment buret-grid-table-hydrogen" role="img" aria-label="H" title="${escapeAttr(value)}">H</div>`;
