@@ -54,9 +54,9 @@
   // left 3 px letters.
   const RDKIT_DRAWINGS = {
     card: { width: RDKIT_SVG_SIZE, height: RDKIT_SVG_SIZE, fixedBondLength: 24, minFontSize: 10, maxFontSize: 14 },
-    table: { width: 304, height: 160, fixedBondLength: 36, minFontSize: 16, maxFontSize: 22 },
+    table: { width: 104, height: 104, fixedBondLength: 36, minFontSize: 6, maxFontSize: 22 },
     // R-group and scaffold cells: attachment points as the usual wavy line.
-    fragment: { width: 240, height: 160, fixedBondLength: 36, minFontSize: 18, maxFontSize: 24, dummiesAreAttachments: true }
+    fragment: { width: 192, height: 104, fixedBondLength: 36, minFontSize: 18, maxFontSize: 24, dummiesAreAttachments: true }
   };
   // A reaction is drawn as a row of structures around an arrow, so it needs a
   // landscape box rather than the square one a single molecule gets.
@@ -5643,7 +5643,7 @@
     const override = state.tableColumnWidths.get(column.id);
     if (Number.isFinite(override)) return override;
     if (column.id === 'index') return 44;
-    if (column.id === 'molecule') return 172;
+    if (column.id === 'molecule') return 74;
     if (column.id === 'name') return 160;
     if (column.id === 'smiles') return 180;
     return TABLE_DEFAULT_COLUMN_WIDTH;
