@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Chart } from "@/components/ui/app-icons";
 import { Button } from "@/components/ui/button";
+import { requestContextualGuide } from "@/components/onboarding/request";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { PanelEmptyState } from "@/components/ui/panel-empty-state";
 import { Spinner } from "@/components/ui/spinner";
@@ -98,6 +99,7 @@ function CollectionChart({ documentId, visible }: { documentId: string; visible:
     && config.requests.every(request => table.series.has(chartSeriesKey(request))));
 
   const type = config?.type ?? "scatter";
+  useEffect(() => { if (visible && ready) requestContextualGuide("collection-chart", bodyRef.current); }, [visible, ready]);
   const yTitle = type === "histogram" || (type === "bar" && !config?.y?.column)
     ? "Count"
     : type === "bar" ? `Mean ${config?.y?.column?.label ?? ""}` : config?.y?.column?.label ?? "";

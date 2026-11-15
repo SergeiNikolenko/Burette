@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Button } from "./ui/button";
+import { requestContextualGuide } from "./onboarding/request";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import { ArrowRight } from "./ui/app-icons";
 import { NativeSelect, NativeSelectOption } from "./ui/native-select";
@@ -138,6 +139,9 @@ export function MatchedPairsDialog({ request, onDismiss }: { request: MatchedPai
   };
   const name = (id: number) => analysis?.names.get(id) || `Molecule ${id + 1}`;
   const value = (id: number) => { const number = values?.get(id); return number === undefined ? "" : number.toFixed(2); };
+  const transformations = useRef<HTMLTableElement>(null);
+  const found = Boolean(analysis) && rows.length > 0;
+  useEffect(() => { if (found) requestContextualGuide("matched-pairs", transformations.current); }, [found]);
 
   return <Dialog open={request !== null} onOpenChange={(open) => { if (!open) onDismiss(); }}>
     <DialogContent variant="form" size="xwide" className="min-w-0 overscroll-contain">
@@ -165,7 +169,7 @@ export function MatchedPairsDialog({ request, onDismiss }: { request: MatchedPai
               </NativeSelect>
             </label>
           </div>
-          <Table className="matched-pairs-table" aria-label="Transformations">
+          <Table ref={transformations} className="matched-pairs-table" aria-label="Transformations">
             <TableHeader>
               <TableRow>
                 <TableHead>Replacement</TableHead>

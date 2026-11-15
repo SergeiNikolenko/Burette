@@ -9,6 +9,7 @@ import { captureViewerActionTarget, type ViewerActionTarget } from "../../lib/vi
 import type { ShellActions } from "../types";
 import type { ViewerDocument } from "../../types";
 import { Button } from "../ui/button";
+import { requestContextualGuide } from "../onboarding/request";
 import { ColorPalette } from "../ui/color-palette";
 import { NativeSelect, NativeSelectOption } from "../ui/native-select";
 import { ScrubNumberField } from "../ui/scrub-number-input";
@@ -213,8 +214,11 @@ export function OrbitalsPanel({ document, actions, science, sourceText, sourceKi
   const homo = science.orbitals.find((orbital, index) => orbital.spin === spin && frontier.get(index) === "HOMO");
   const lumo = science.orbitals.find((orbital, index) => orbital.spin === spin && frontier.get(index) === "LUMO");
 
+  const panel = useRef<HTMLDivElement>(null);
+  const hasLevels = science.orbitals.length > 0;
+  useEffect(() => { if (hasLevels) requestContextualGuide("orbitals", panel.current); }, [hasLevels]);
   return (
-    <div className="dock-content workbench-panel orbitals-panel">
+    <div ref={panel} className="dock-content workbench-panel orbitals-panel">
       {fieldKinds.length > 0 ? (
         <div className="workbench-controls">
           {fieldKinds.length > 1 ? (

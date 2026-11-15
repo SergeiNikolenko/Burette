@@ -29,6 +29,9 @@ mock.module("../apps/desktop/src/components/ketcher-editor", () => ({
   loadKetcherRuntime: async () => {},
   KetcherEditor: ({ onReady }: { onReady: (api: unknown) => void }) => { React.useEffect(() => onReady(editorApi), [onReady]); return null; },
 }));
+mock.module("../apps/desktop/src/components/molecular-editor", () => ({
+  MolecularEditorView: ({ onReady }: { onReady: (api: unknown) => void }) => { React.useEffect(() => onReady(editorApi), [onReady]); return null; },
+}));
 
 const { createRoot } = await import("react-dom/client");
 const { contextualGuideRequestEvent, registerContextualGuideHost } = await import("../apps/desktop/src/components/onboarding/request");
@@ -85,7 +88,7 @@ afterEach(async () => {
 const molecule = (id: string, extension = "pdb") => ({ id, title: `${id}.${extension}`, path: `/${id}.${extension}`, extension, renderer: "molstar", runtimePath: "<html></html>", byteCount: 10 }) as ViewerDocument;
 
 test("Ketcher introduces itself once the editor is ready in the active tab", async () => {
-  const state = { preferences: defaultPreferences, rightDockOpen: false, documents: [], textDocuments: [], sidebarProjects: [] } as unknown as ShellViewState;
+  const state = { preferences: defaultPreferences, rightDockOpen: false, documents: [], textDocuments: [], sidebarProjects: [], tabs: [], activeTabId: null } as unknown as ShellViewState;
   const page = (isActive: boolean) => <KetcherPage tabId="ketcher-guide" location={{ kind: "ketcher" }} state={state} actions={actions} isActive={isActive} />;
   await render(page(false));
   await frame();

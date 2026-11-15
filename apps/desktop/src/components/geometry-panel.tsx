@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import "./workbench/workbench-layout.css";
 import "./workbench/geometry.css";
 import { Button } from "./ui/button";
+import { requestContextualGuide } from "./onboarding/request";
 import { IconAction, InternalCoordinateInput } from "./workbench/geometry-fields";
 import { ArrowCurvedRight, CompareArrows, Copy, Download, FileBlank, FileCode, Undo } from "./ui/app-icons";
 import { measureGeometry } from "../../../../scripts/molecular-geometry.js";
@@ -250,6 +251,8 @@ function CartesianGeometryPanel({ document, actions, convert }: {
           needsReferencePoint: NEEDS_REFERENCE_POINT.has((error as { code?: string } | null)?.code ?? "") });
       });
   }, [sourceText, logical, session?.previewState, runtimeScope]);
+  const hasEditor = editor !== null;
+  useEffect(() => { if (hasEditor) requestContextualGuide("geometry-edit", table.current); }, [hasEditor]);
 
   if (sourceError) {
     const convertible = sourceError.needsReferencePoint && convert && convert.text === sourceText;

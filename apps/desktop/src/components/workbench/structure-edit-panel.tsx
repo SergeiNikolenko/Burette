@@ -19,6 +19,7 @@ import { ShortcutTooltip } from "../shortcut-tooltip";
 import { ArrowCurvedRight, DotsHorizontal, Edit, FileBlank, Move, Plus, Undo } from "../ui/app-icons";
 import type { AtomDragEvent } from "../../lib/atom-drag";
 import { Button } from "../ui/button";
+import { requestContextualGuide } from "../onboarding/request";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import { Input } from "../ui/input";
 import { PanelEmptyState } from "../ui/panel-empty-state";
@@ -362,11 +363,11 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
         </form>
         <ShortcutTooltip label="Draw atoms and bonds in the 3D view">
           <Button type="button" variant={tool === "draw" ? "secondary" : "ghost"} size="xs" aria-pressed={tool === "draw"} disabled={auto.running}
-            onClick={() => { setInputError(null); setTool((current) => current === "draw" ? null : "draw"); }}><Edit aria-hidden />Draw</Button>
+            onClick={(event) => { setInputError(null); if (tool !== "draw") requestContextualGuide("draw-mode", event.currentTarget); setTool((current) => current === "draw" ? null : "draw"); }}><Edit aria-hidden />Draw</Button>
         </ShortcutTooltip>
         <ShortcutTooltip label={`Drag atoms in the 3D view; drag a bond to turn it, ${IS_MAC ? "⌥" : "Alt"}-drag to rotate the selection or stretch the bond`}>
           <Button type="button" variant={tool === "move" ? "secondary" : "ghost"} size="xs" aria-pressed={tool === "move"} disabled={auto.running}
-            onClick={() => { setInputError(null); setTool((current) => current === "move" ? null : "move"); }}><Move aria-hidden />Move</Button>
+            onClick={(event) => { setInputError(null); if (tool !== "move") requestContextualGuide("move-mode", event.currentTarget); setTool((current) => current === "move" ? null : "move"); }}><Move aria-hidden />Move</Button>
         </ShortcutTooltip>
         <OptimizeButton atomCount={structure.atoms.length} elements={structure.atoms.map((atom) => atom.element)} constraintCount={constraints.length} unavailableReason={constraintError} size="xs" variant="secondary" disabled={busy}
           configureOpen={configuring} onConfigureOpenChange={setConfiguring}

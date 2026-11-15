@@ -67,7 +67,7 @@ explains.
 | --- | --- | --- | --- |
 | `view-modes` | carousel | File or tab menu → Open → As → Interactive 3D / 3D render | After you first open a file that supports both views with Open → As → Interactive 3D or 3D render. |
 | `grid` | carousel | Collection → Cards / Table | The first time you switch between Cards and Table in a collection. |
-| `ketcher` | announcement | Ketcher tab | The first time you open Ketcher, once the editor is ready. |
+| `ketcher` | announcement | Molecular editor tab | The first time you open the molecular editor, once the editor is ready. |
 | `scene-compose` | education | Selected files → Open → In one scene → scene tree toggle | After a scene first holds several files, once the last file has loaded. |
 | `pose-compare` | carousel | Selected MOL/SDF files → Open → As poses, or a docking view → pose switcher | The first time you switch poses with the pose list, arrows, slider, or arrow keys. |
 | `trajectory` | education | Multi-frame XYZ trajectory → playback controls → Align | The first time Align finishes superimposing the frames. |
@@ -80,3 +80,11 @@ explains.
 | `xyz-editor` | education | XYZRender → drawing menu → 3D & Animation…, or Style → Orientation & animation… | The first time the orientation and animation editor opens in XYZRender. |
 | `spectra` | first-use | Spectrum → peak selection | The first time a spectrum opens, once its plot is drawn. |
 | `chemical-space` | carousel | Chemical space → property coloring → point selection | The first time Chemical space opens for a collection, once the map is ready. |
+| `geometry-edit` | first-use | 3D context menu → Edit geometry, or right dock → Geometry | The first time the Geometry panel opens with the atoms of a structure. |
+| `draw-mode` | education | 3D context menu → Edit atoms and bonds → Draw | The first time you turn on Draw. |
+| `move-mode` | first-use | 3D context menu → Edit atoms and bonds → Move | The first time you turn on Move. |
+| `orbitals` | first-use | Calculation file → Compute → Show orbitals | The first time the Orbitals panel shows the levels of a calculation. |
+| `collection-chart` | first-use | Collection → bottom dock → Chart | The first time a collection chart is drawn. |
+| `matched-pairs` | first-use | Analyze → Matched pairs | The first time Matched pairs finds replacements in a collection. |
+| `library-enumeration` | first-use | Collection → Enumerate library… | The first time an enumeration opens its library. |
+| `data-shaping` | first-use | Collection → Pivot… | The first time Pivot changes a collection. |

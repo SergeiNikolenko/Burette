@@ -3,6 +3,7 @@ import { columnKey, isDataColumn, pivotRowEdits } from "../../lib/grid-reshape";
 import { applyGridRowEdits } from "../../lib/grid-table-bridge";
 import { categoryCounts, pivotTable, type PivotDuplicates } from "../../lib/table-shaping";
 import { Button } from "../ui/button";
+import { requestContextualGuide } from "../onboarding/request";
 import { DialogFooter } from "../ui/dialog";
 import { NativeSelect, NativeSelectOption } from "../ui/native-select";
 import { ColumnSelect, Outcome, plural } from "./fields";
@@ -92,6 +93,7 @@ export function PivotForm({ documentId, snapshot, onDone }: { documentId: string
         ...pivotRowEdits(snapshot.table, result, [columnKey(category), columnKey(value)]),
       });
       onDone();
+      requestContextualGuide("data-shaping");
     } catch (error) {
       setFailure(error instanceof Error ? error.message : String(error));
       setBusy(false);

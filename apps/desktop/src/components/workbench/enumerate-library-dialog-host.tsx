@@ -19,6 +19,7 @@ import { REACTION_PRESETS } from "../perform-reaction-dialog";
 import { ShortcutTooltip } from "../shortcut-tooltip";
 import type { ShellActions, StatusKind } from "../types";
 import { Button } from "../ui/button";
+import { requestContextualGuide } from "../onboarding/request";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Input } from "../ui/input";
 import { NativeSelect, NativeSelectOption } from "../ui/native-select";
@@ -179,6 +180,7 @@ function EnumerateLibraryForm({ document, actions, onStatus, run }: Props & { do
         ...(result.withoutProduct ? [`${plural(result.withoutProduct, "combination")} without a product`] : []),
         ...(result.capped ? [`stopped at ${LIBRARY_PRODUCT_LIMIT.toLocaleString()} products`] : []),
       ].join(", "), "success");
+      requestContextualGuide("library-enumeration");
     } catch (caught) {
       if (!isAbortError(caught)) setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
