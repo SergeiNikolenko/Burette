@@ -3,8 +3,8 @@ import { afterAll, beforeAll, expect, mock, test } from "bun:test";
 import { plugin } from "bun";
 import { transformSync } from "@babel/core";
 import { readFileSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
-import { execFile, spawn } from "node:child_process";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -118,7 +118,7 @@ afterAll(async () => {
   if (mounted && !unmounted) await act(async () => mounted.unmount()); await Bun.sleep(20);
   server?.kill("SIGTERM"); releaseClosedImports(new Set()); releaseClosedScienceSessions(new Set()); globalThis.fetch = originalFetch;
   for (const [key, descriptor] of prior) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key); }
-  if (root) await new Promise<void>((done, reject) => execFile("timeout", ["30", "/usr/bin/trash", root], error => error ? reject(error) : done()));
+  if (root) await rm(root, { recursive: true, force: true });
 });
 
 async function confirmation() {

@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { createRequire } from 'node:module';
 import { readFileSync, writeFileSync, copyFileSync, mkdirSync, mkdtempSync, readdirSync, symlinkSync, rmSync } from 'node:fs';
-import { spawnSync, execFileSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { gunzipSync } from 'node:zlib';
@@ -126,7 +126,6 @@ syncBuiltinESMExports();
     }
     expect(readdirSync(dirname(output))).toEqual(['openchemistry-crystals.bin']);
   } finally {
-    if (process.platform === 'darwin') execFileSync('timeout', ['30', '/usr/bin/trash', directory]);
-    else rmSync(directory, { recursive: true, force: true });
+    rmSync(directory, { recursive: true, force: true });
   }
 });
