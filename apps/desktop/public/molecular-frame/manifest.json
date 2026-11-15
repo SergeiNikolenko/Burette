@@ -1,6 +1,6 @@
 {
   "name": "burette-molecular-frame",
-  "version": "b5fea79e84f3",
+  "version": "0f607c908ee3",
   "files": {
     "assets/burette-view-DNqEvyD4.js": "14fff68cd069c467803c9419de6e2a7c86b34a199bec0a3b17524658006af6d9",
     "assets/conformer-worker-BEZfXfUa.js": "7edfbbc7216d8a889388c360ea347ef6b19a7e48bfb6c5ee17a82b6e5c90e833",
@@ -8,7 +8,7 @@
     "assets/eve-TIg1q2Am.js": "2fcc1e43f9c12792e8f3989cae61a21595b162487379a93c0c4171dcb2f5cca3",
     "assets/focus-CMudp7Dq.js": "869b3dbd8d1b1e3b386e5e19c64631989829b2df52c648e75784b5afe8a51562",
     "assets/index-BifWBHl_.css": "3fd29ce5cd4f569c58f4c82b572489816366a8f5740da2559238d1ba61ff5720",
-    "assets/index-BSo6m1io.js": "e127f22f5ed760206c8b2b4c0b0f19d1254e6f24412f46e513296f44da544bfa",
+    "assets/index-Dxcja_zW.js": "726c1c8ba5f032e1c595f755926d767efb5a6bead3ac135a03cdd9a168c52202",
     "assets/index.modern-C7D2JuZo.js": "3348a484ec20ce3ddaea25fbd1b682ea68415a976d8ee172b7a7a9b061d142ce",
     "assets/indigo-ketcher-1.46.0-f_xBxuuS.wasm": "fce4bf2c93e5cc3188883c254a1b9f2a6558fcb999c974305a3b1dbdc764f120",
     "assets/indigoWorker-d22340fa-BlusscOH.js": "ad8a4ae0bc8d8c6f111ed473934f448e6309330f8b1be4551855d5aa41d30388",
@@ -28,7 +28,7 @@
     "burette-embed/frame.js": "32ea9d78eda45d0c6800d8597ec4b0384eeb0dd649675318bb4e50a660b5d456",
     "burette-embed/index.html": "fa29c3b7d427357eafb5264b0dbff5f39e5126e301fe12946c5810d8a611b0d2",
     "burette-embed/LICENSE": "d547e1c4afbc34619797b17737d8a8aab55f35c21a75541b0272b0bd7a925334",
-    "burette-embed/manifest.json": "7e0b4b5c19e5a9db076a9a3c36704882ceb7ec2d8dc38db504500444c0cd4c62",
+    "burette-embed/manifest.json": "92ab32c0b2badd55d55b065e8f42009bb1c959a23413e54f217bbd5288229e43",
     "burette-embed/molecule-preview-interactions.js": "5b891b45c9a60cc196a243aaaf2965b768cfb26cd7a63056375ee440cba5ae9e",
     "burette-embed/molstar-preset-preview-controller.js": "5fdc0296ae5d2e678b4dc5b0a0fc19a6b9c27d2088d8a46168fe9f0ee56e5b1e",
     "burette-embed/molstar.css": "bef46e4da8a4f4798bc7812b8e39f34d91ea5556dd91b8813522f409af421c3f",
@@ -52,10 +52,10 @@
     "burette-embed/viewer-runtime.css": "efca3fca8123a6b63a7e304f889d0e8e8d1bbe29ebdb9e2251f65973acefbc56",
     "burette-embed/viewer-shell.js": "24e6478773e8d724aba02728639549809287d37f2d31469aca6e8654c8b346c8",
     "burette-embed/viewer.js": "819262fa4e3b5e57c3052527402846603aaed4913fe28fc8d2d1e8ec26f8a3fa",
-    "index.html": "f7f77b450107e14c5195ac65e8489484c723657f1c98704d47eed5eac9533a29",
+    "index.html": "a372652267f37c412066785ed85bdcd931e6e91f3cd76850f35f1beb6a9ffa38",
     "molecular-formats.d.ts": "c91e5eb660c2c66db146f678af116a1f0994b86fdb390fd472e4caff3552f4ac",
     "molecular-formats.js": "a3fe6493afc7f948825651dda94f66c997c6f09ee4d0796ef67d1c49a2937af4",
-    "molecular-frame.d.ts": "f395fd8179dc38da2422e81457199ce5692bfff9b0e77d7617f189dcd0382156",
+    "molecular-frame.d.ts": "906cd250697e04bf3cf408e01cec4dfb316afd2c3da7abddeee764ec374617aa",
     "molecular-frame.js": "99057744662259859860fd22747238c2c9b51c93b43c1d1624622101ca57b9cd",
     "templates.json": "2eee81037939d2b819882fe34ac67fad853aaedd96b721547254a0a5acf52b46"
   }
