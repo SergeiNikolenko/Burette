@@ -21,6 +21,8 @@ function touchGesture(points: Iterable<Position>): Gesture | null {
   return b ? { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, distance: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)) } : null
 }
 
+export type AtomLayout = { canvas: { x: number; y: number; width: number; height: number }; atoms: { x: number; y: number }[] }
+
 export type MoleculeEditorHandle = {
   load(text: string): boolean
   insert(text: string): void
@@ -32,6 +34,8 @@ export type MoleculeEditorHandle = {
   getMolfile3d(): string
   getSvg(): string
   getState(): EditorState | null
+  /** Canvas bounds and atom centres (molfile order) in the frame's viewport pixels. */
+  getAtomLayout(): AtomLayout
   zoom(factor: number): void
   command(name: CommandId): void
   setTool(tool: ToolId): void
@@ -326,6 +330,15 @@ export function MoleculeEditor({ ref, defaultValue = '', onChange, onReady, onOp
     getSmiles: () => { if (!editor.current) throw new Error('The editor is still loading'); return editor.current.smiles() },
     getMolfile: () => { if (!editor.current) throw new Error('The editor is still loading'); return editor.current.molfile() },
     getState: () => editor.current ? JSON.parse(editor.current.state()) as EditorState : null,
+    getAtomLayout: () => {
+      if (!editor.current || !host.current) throw new Error('The editor is still loading')
+      const { left, top, width, height } = host.current.getBoundingClientRect()
+      const flat = editor.current.atom_positions()
+      return {
+        canvas: { x: left, y: top, width, height },
+        atoms: Array.from({ length: flat.length / 2 }, (_, i) => ({ x: left + flat[2 * i], y: top + flat[2 * i + 1] })),
+      }
+    },
     getSvg: () => {
       if (editor.current && drawing.current) drawing.current.innerHTML = editor.current.svg()
       const source = drawing.current?.querySelector('svg')

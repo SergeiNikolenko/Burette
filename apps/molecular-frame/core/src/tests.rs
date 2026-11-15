@@ -11,6 +11,26 @@ const NAD: &str = "NC(=O)c1ccc[n+](c1)[C@@H]1O[C@H](COP([O-])(=O)OP(=O)(O)OC[C@H
 const NAD_PAGE: &str = "NC(=O)c1ccc[n+]([C@@H]2O[C@H](COP(=O)([O-])OP(=O)(O)OC[C@H]3O[C@@H](n4cnc5c(N)ncnc54)[C@H](O)[C@@H]3O)[C@@H](O)[C@H]2O)c1";
 
 #[test]
+fn host_atom_positions_follow_the_view() {
+    let mut e = editor();
+    e.load("CCO").unwrap();
+    let before = e.atom_positions();
+    assert_eq!(before.len(), 6);
+    let view = state_view(&e);
+    e.wheel(400., 300., 30., 20., false);
+    let after = e.atom_positions();
+    for (b, a) in before.chunks(2).zip(after.chunks(2)) {
+        assert!((b[0] - 30. - a[0]).abs() < 1e-9 && (b[1] - 20. - a[1]).abs() < 1e-9);
+    }
+    assert_ne!(state_view(&e), view);
+}
+
+fn state_view(e: &Editor) -> String {
+    let s = e.state();
+    s[s.find("\"view\":").unwrap()..].to_string()
+}
+
+#[test]
 fn host_selection_is_exact_and_invalid_indices_preserve_it() {
     let mut e = editor();
     e.load("CCO").unwrap();

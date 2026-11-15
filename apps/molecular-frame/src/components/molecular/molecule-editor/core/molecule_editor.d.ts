@@ -4,6 +4,7 @@
 export class Editor {
     free(): void;
     [Symbol.dispose](): void;
+    atom_positions(): Float64Array;
     command(name: string): boolean;
     double_click(x: number, y: number): boolean;
     highlight_atoms(indexes: Uint32Array): void;
@@ -44,6 +45,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_editor_free: (a: number, b: number) => void;
+    readonly editor_atom_positions: (a: number, b: number) => void;
     readonly editor_command: (a: number, b: number, c: number) => number;
     readonly editor_double_click: (a: number, b: number, c: number) => number;
     readonly editor_highlight_atoms: (a: number, b: number, c: number, d: number) => void;
@@ -68,10 +70,10 @@ export interface InitOutput {
     readonly editor_wheel: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
     readonly editor_zoom_by: (a: number, b: number) => number;
     readonly thumbnail: (a: number, b: number, c: number, d: number, e: number) => void;
-    readonly __wbindgen_export: (a: number, b: number) => number;
-    readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
-    readonly __wbindgen_export3: (a: number, b: number, c: number) => void;
+    readonly __wbindgen_export: (a: number, b: number, c: number) => void;
+    readonly __wbindgen_export2: (a: number, b: number) => number;
+    readonly __wbindgen_export3: (a: number, b: number, c: number, d: number) => number;
 }
 
 export type SyncInitInput = BufferSource | WebAssembly.Module;
