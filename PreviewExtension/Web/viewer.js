@@ -18451,7 +18451,13 @@ SOFTWARE.
 
   async function addCollectionRepresentation(plugin, structure, component, representation, role) {
     if (!component) return false;
-    const result = await plugin.builders.structure.representation.addRepresentation(component.cell || component, molstarHydrogenRepresentation(representation));
+    // The representation builder ignores the component manager's options, and
+    // setOptions only revisits structures in the hierarchy selection, which
+    // overlay layers are not part of; without this they lose the illustrative look.
+    const built = molstarHydrogenRepresentation(representation);
+    const { ignoreLight } = plugin.managers.structure.component.state.options;
+    const result = await plugin.builders.structure.representation.addRepresentation(component.cell || component,
+      { ...built, typeParams: { ignoreLight, ...built.typeParams } });
     if (!result) throw new Error('Mol* could not build this representation.');
     if (result.ref && structure.cell) recordCollectionRepresentation(plugin, structure.cell, result.ref, representation, role);
     return true;
