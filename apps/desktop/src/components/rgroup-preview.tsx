@@ -59,8 +59,11 @@ export function Structure({ smiles, label = smiles, width = 260, height = 150, a
           const labels = attachments && json ? attachmentLabels(smiles, json) : null;
           const changed = constant && json ? changedPart(rdkit, mol, json, constant) : null;
           // Every place this is drawn in is wider than tall: lay the molecule's long axis across it.
+          // One bond length for every drawing keeps a lone substituent at the scale of the core
+          // beside it instead of stretched across its cell; larger molecules still shrink to fit.
           const svg = mol.get_svg_with_highlights(JSON.stringify({ width, height, rotate: depictionLongAxisAngle(mol.get_molblock()),
-            backgroundColour: [0, 0, 0, 0], atomColourPalette: { 0: ink, 1: ink, 6: ink, ...(dark ? DARK_STRUCTURE_PALETTE : {}) }, padding: 0.1,
+            backgroundColour: [0, 0, 0, 0], atomColourPalette: { 0: ink, 1: ink, 6: ink, ...(dark ? DARK_STRUCTURE_PALETTE : {}) }, padding: 0.08,
+            fixedBondLength: 18, minFontSize: 11, maxFontSize: 13, bondLineWidth: 1.2, dummiesAreAttachments: !labels,
             ...(labels ? { atomLabels: labels } : {}), ...(changed ? { atoms: changed.atoms, bonds: changed.bonds } : {}) }));
           if (active && version === current) setImage(svg);
         } finally { mol.delete(); }
