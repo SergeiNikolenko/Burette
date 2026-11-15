@@ -3,7 +3,7 @@ import { isSpectrumPath } from "./spectrum";
 import { isTauriRuntime } from "./tauri";
 
 export async function expandBrowserDevStructureBundles(paths: string[]) {
-  if (isTauriRuntime()) return paths;
+  if (isTauriRuntime() || import.meta.env.VITE_BURETTE_WEB_DEMO === "1") return paths;
   const expanded: string[] = [];
   const seen = new Set<string>();
   const addPath = (path: string) => {

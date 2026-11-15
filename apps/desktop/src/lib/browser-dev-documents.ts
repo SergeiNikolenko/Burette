@@ -1010,7 +1010,9 @@ async function openBrowserDevDocumentFromBytes(
   const xyzrenderInputBytes = extension === "cub" || extension === "cube"
     ? null
     : selectedXyzFrameBytes(xyzrenderFrameSourceBytes, reloadOptions?.activeModel) ?? sourceXyzBytes;
-  const virtualXyzrenderInputBytes = xyzrenderInputBytes ?? (browserDevVirtualTextDocuments.has(path) ? bytes : null);
+  const inlineOriginal = browserDevVirtualTextDocuments.has(path)
+    || (WEB_DEMO_ENABLED && extension !== "cub" && extension !== "cube");
+  const virtualXyzrenderInputBytes = xyzrenderInputBytes ?? (inlineOriginal ? bytes : null);
   const xyzrenderInputExtension = xyzrenderInputBytes ? "xyz" : extension;
   const { renderer, externalRendererStatus, externalArtifact, xyzrenderPresetOptions, xyzrenderControls } =
     await browserRendererPlan(
@@ -1407,7 +1409,7 @@ function viewerHtml(
     return mesoscaleViewerHtml(label, bytes, config, visuals.transparentBackground);
   }
   const hostedMcpBootstrap = config.hostedMcpWidgetBootstrap === true;
-  const viewerAsset = (name: string) => hostedMcpBootstrap
+  const viewerAsset = (name: string) => hostedMcpBootstrap || WEB_DEMO_ENABLED
     ? `${WEB_ASSETS_BASE.replace(/\/$/u, "")}/${name}`
     : name;
   const rendererAssets =
@@ -1607,7 +1609,7 @@ async function gridHtml(
   byteCount: number,
 ) {
   const hosted = isHostedMcpWidget();
-  const gridAsset = (name: string) => hosted ? `${WEB_ASSETS_BASE.replace(/\/$/u, "")}/${name}` : name;
+  const gridAsset = (name: string) => hosted || WEB_DEMO_ENABLED ? `${WEB_ASSETS_BASE.replace(/\/$/u, "")}/${name}` : name;
   const label = fileTitle(path);
   const visuals = resolvePreviewVisuals(preferences);
   const hasMoleculeRecords = records.some((record) => Boolean(record.smiles?.trim() || record.molblock?.trim() || record.idcode?.trim()));

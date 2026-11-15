@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { isTauriRuntime } from "./tauri";
 import { readBrowserVirtualText } from "./browser-dev-documents";
 import { supportedInnerExtension } from "./compressed-files/formats";
+import { readWebDemoTextDocument } from "./web-demo-text";
 
 type TextFileReadResult = {
   id?: string;
@@ -33,6 +34,8 @@ export async function readStructureText(path: string, options: StructureTextRead
   if (virtualText !== undefined) {
     return options.maxBytes === undefined ? virtualText : virtualText.slice(0, options.maxBytes);
   }
+  const demoDocument = await readWebDemoTextDocument(path, options.maxBytes);
+  if (demoDocument) return demoDocument.content;
   if (options.maxBytes !== undefined || isCompressedMaestroPath(path)) {
     const document = await readStructureTextDocument(path, undefined, options);
     return document.content;
@@ -75,6 +78,8 @@ async function readTextFileDocument(path: string, maxBytes?: number) {
       modifiedAt: null,
     };
   }
+  const demoDocument = await readWebDemoTextDocument(path, maxBytes);
+  if (demoDocument) return demoDocument;
   const query = maxBytes !== undefined ? `&maxBytes=${encodeURIComponent(String(maxBytes))}` : "";
   if (isCompressedMaestroPath(path)) {
     if (isTauriRuntime()) {

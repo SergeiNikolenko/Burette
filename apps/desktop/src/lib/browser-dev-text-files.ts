@@ -1,6 +1,7 @@
 import type { OpenTextFilesResult, TextFileDocument } from "../types";
 import { readBrowserVirtualText } from "./browser-dev-documents";
 import { supportedInnerExtension } from "./compressed-files/formats";
+import { readWebDemoTextDocument } from "./web-demo-text";
 
 const INLINE_IMAGE_BATCH_LIMIT = 48 * 1024 * 1024;
 
@@ -47,6 +48,8 @@ async function readBrowserDevTextFile(path: string, maxImageBytes: number): Prom
       modifiedAt: null,
     };
   }
+  const demoDocument = await readWebDemoTextDocument(path);
+  if (demoDocument) return demoDocument;
   const response = await fetch(
     `/__burette/read-text-file?path=${encodeURIComponent(path)}&maxImageBytes=${maxImageBytes}`,
     {

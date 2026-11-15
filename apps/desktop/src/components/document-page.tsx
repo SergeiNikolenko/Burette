@@ -1,3 +1,4 @@
+import { demoLibraryUrl } from "../lib/web-demo-library";
 import { readBrowserPickedFile } from "../lib/web-demo-workspace";
 import { FileViewerErrorState, FileViewerLoadingState } from "./ui/file-viewer-state";
 import "katex/dist/katex.min.css";
@@ -112,7 +113,8 @@ function useDocumentSource(path: string): DocumentSourceState & { retry: () => v
     }
     return {
       kind: "url",
-      url: `/__burette/read-file?path=${encodeURIComponent(path)}`,
+      url: (import.meta.env.VITE_BURETTE_WEB_DEMO === "1" ? demoLibraryUrl(path) : undefined)
+        ?? `/__burette/read-file?path=${encodeURIComponent(path)}`,
       fileName: basename(path),
       identityKey: path,
     };
