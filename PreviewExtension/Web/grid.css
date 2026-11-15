@@ -48,7 +48,9 @@
   --buret-picture-bg-soft: transparent;
   --buret-card-effective-min: var(--buret-card-auto-min);
   --buret-card-gap: clamp(5px, calc(var(--buret-card-effective-min) * 0.06), 12px);
-  --buret-card-auto-min: clamp(136px, 18vw, 190px);
+  /* A drug-sized molecule needs about 260 px at the standard bond length, the
+     size cards are drawn at; capped at 190 px they shrank to 5 px labels. */
+  --buret-card-auto-min: clamp(136px, 18vw, 260px);
   --buret-card-min: clamp(calc((100% - (var(--buret-card-gap) * 29)) / 30), var(--buret-card-auto-min), max(min(136px, 100%), calc((100% - (var(--buret-card-gap) * 2)) / 3)));
   --buret-picture-min-height: clamp(136px, 18vw, 190px);
   --buret-drawing-max-width: 100%;
@@ -1049,8 +1051,9 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
 .buret-grid-table-molecule {
   display: grid;
   place-items: center;
-  width: 52px;
-  height: 52px;
+  /* Twice the size the table drawing is made for, so labels stay 8 px or more. */
+  width: 152px;
+  height: 80px;
   box-sizing: border-box;
   overflow: hidden;
   background: var(--buret-picture-bg);
@@ -1080,7 +1083,8 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
   left: 0;
   top: 0;
   z-index: 1200;
-  width: min(148px, calc(100vw - 24px));
+  /* Shows the 260-unit card drawing at its own size. */
+  width: min(276px, calc(100vw - 24px));
   box-sizing: border-box;
   padding: 6px;
   pointer-events: none;
@@ -2568,13 +2572,15 @@ td:hover .buret-cell-marquee > span { transform: translateX(calc(-1 * var(--marq
 /* Scaffold and R-group columns retain text values for filtering/copy/export. */
 .buret-grid-table-fragment {
   width: 100%;
-  min-width: 96px;
-  height: 52px;
+  min-width: 120px;
+  height: 80px;
   display: grid;
   place-items: center;
   background: var(--buret-picture-bg);
   overflow: hidden;
 }
+/* Fragment cells keep a white paper in both themes, so the letter keeps dark ink. */
+.buret-grid-table-hydrogen { font-size: 13px; color: #1e1e1e; }
 .buret-grid-table-fragment > div:not(.buret-molecule-loading),
 .buret-grid-table-fragment svg {
   display: block;

@@ -47,6 +47,17 @@
   const MAX_CARD_MIN = 360;
   const DEFAULT_CARD_MIN = 174;
   const RDKIT_SVG_SIZE = 260;
+  // Each picture is drawn for the box that shows it, in drawing units of about
+  // one CSS pixel (table cells twice that, for sharp edges), with the bond length
+  // capped so a small molecule is not blown up and labels kept readable. The long
+  // axis lies across the box. A 260-unit card squeezed into a 52 px table cell
+  // left 3 px letters.
+  const RDKIT_DRAWINGS = {
+    card: { width: RDKIT_SVG_SIZE, height: RDKIT_SVG_SIZE, fixedBondLength: 24, minFontSize: 10, maxFontSize: 14 },
+    table: { width: 304, height: 160, fixedBondLength: 36, minFontSize: 16, maxFontSize: 22 },
+    // R-group and scaffold cells: attachment points as the usual wavy line.
+    fragment: { width: 240, height: 160, fixedBondLength: 36, minFontSize: 18, maxFontSize: 24, dummiesAreAttachments: true }
+  };
   // A reaction is drawn as a row of structures around an arrow, so it needs a
   // landscape box rather than the square one a single molecule gets.
   const RDKIT_REACTION_SVG_WIDTH = 560;
@@ -5438,7 +5449,7 @@
       { id: 'index', label: '#', type: 'number', fixed: true, get: row => String(Number(row.index) + 1) },
       ...(effectiveMolecularGrid(safeConfig())
         ? [
-            { id: 'molecule', label: 'Mol', type: 'none', fixed: true, html: (row, cfg) => `<div class="buret-grid-table-molecule" data-buret-molecule-picture>${draw(row, cfg)}</div>` },
+            { id: 'molecule', label: 'Mol', type: 'none', fixed: true, html: (row, cfg) => `<div class="buret-grid-table-molecule" data-buret-molecule-picture>${draw({ ...row, drawing: 'table' }, cfg)}</div>` },
             { id: 'name', label: 'Name', type: 'text', fixed: true, get: row => row.name || `Molecule ${Number(row.index) + 1}` },
             { id: 'smiles', label: 'SMILES', type: 'text', fixed: true, get: row => rowSmiles(row) }
           ]
@@ -5632,7 +5643,7 @@
     const override = state.tableColumnWidths.get(column.id);
     if (Number.isFinite(override)) return override;
     if (column.id === 'index') return 44;
-    if (column.id === 'molecule') return 74;
+    if (column.id === 'molecule') return 172;
     if (column.id === 'name') return 160;
     if (column.id === 'smiles') return 180;
     return TABLE_DEFAULT_COLUMN_WIDTH;
@@ -5757,6 +5768,10 @@
     const value = String(column.get(row) ?? '');
     const id = column.id.replace(/^(?:descriptor|prop):/u, '');
     if (value && /^(?:Scaffold|RGroup_(?:Core|R[1-9][0-9]*|Components))$/u.test(id)) {
+      // A hydrogen substituent has nothing to draw but its letter.
+      if (/^(?:\[\*(?::\d+)?\]\[H\]|\[H\]\[\*(?::\d+)?\])$/u.test(value)) {
+        return `<div class="buret-grid-table-fragment buret-grid-table-hydrogen" role="img" aria-label="H" title="${escapeAttr(value)}">H</div>`;
+      }
       const fragment = { index: 'fragment', smiles: value, fragment: true };
       return `<div class="buret-grid-table-fragment" data-buret-fragment-smiles="${escapeAttr(value)}" data-buret-molecule-picture role="img" aria-label="${escapeAttr(value)}" title="${escapeAttr(value)}">${drawRdkitPlaceholder(fragment)}</div>`;
     }
@@ -8666,7 +8681,7 @@
     const match = state.smartsMatches.get(Number(row.index));
     const source = sourceAtomHighlightFor(row);
     const useInputCoords = state.rdkitUseInputCoords && hasMolblockInputCoordinates(row.molblock);
-    return `${row.index}|${row.smiles || ''}|${hash(row.molblock || '')}|${state.smarts}|${useInputCoords ? 'file-coords' : 'new-coords'}|H:${state.hydrogenDisplay}|${match ? `${match.atoms.join(',')}:${match.bonds.join(',')}` : ''}${source ? `|text:${source.atoms.join(',')}` : ''}`;
+    return `${row.index}|${row.smiles || ''}|${hash(row.molblock || '')}|${state.smarts}|${useInputCoords ? 'file-coords' : 'new-coords'}|H:${state.hydrogenDisplay}|${match ? `${match.atoms.join(',')}:${match.bonds.join(',')}` : ''}${source ? `|text:${source.atoms.join(',')}` : ''}${row.drawing ? `|draw:${row.drawing}` : ''}`;
   }
 
   function sourceAtomHighlightFor(row) {
@@ -8756,7 +8771,8 @@
       state.svgCache.set(key, html);
       return html;
     }
-    return `<div class="buret-molecule-loading" data-buret-rdkit-card-key="${escapeAttr(key)}" aria-label="Rendering molecule"></div>`;
+    const drawing = row.drawing ? ` data-buret-rdkit-drawing="${escapeAttr(row.drawing)}"` : '';
+    return `<div class="buret-molecule-loading" data-buret-rdkit-card-key="${escapeAttr(key)}"${drawing} aria-label="Rendering molecule"></div>`;
   }
 
   // A row carries a reaction when its structure is an MDL $RXN block (.rxn,
@@ -8848,14 +8864,14 @@
         if (!useInputCoords) {
           try { mol.set_new_coords?.(); } catch (_) {}
         }
-        html = match && typeof mol.get_svg_with_highlights === 'function'
-          ? mol.get_svg_with_highlights(JSON.stringify({
-              atoms: match.atoms,
-              bonds: match.bonds,
-              width: RDKIT_SVG_SIZE,
-              height: RDKIT_SVG_SIZE
-            }))
-          : mol.get_svg(RDKIT_SVG_SIZE, RDKIT_SVG_SIZE);
+        const drawing = RDKIT_DRAWINGS[row.fragment ? 'fragment' : row.drawing === 'table' ? 'table' : 'card'];
+        // A file's own layout is kept as drawn; generated coordinates are turned.
+        const rotate = useInputCoords ? 0 : depictionLongAxisAngle(mol.get_molblock());
+        html = mol.get_svg_with_highlights(JSON.stringify({
+          ...drawing,
+          rotate,
+          ...(match ? { atoms: match.atoms, bonds: match.bonds } : {})
+        }));
       } catch (_) {
         html = mol.get_svg();
       }
@@ -8881,6 +8897,27 @@
 
   // Added H are appended after the heavy atoms, so a match found on the file's
   // atoms still holds; removal renumbers atoms, so the highlight is re-matched.
+  // The angle of the principal axis of a molblock's atom positions, for RDKit's
+  // rotate option; mirrors lib/depiction-axis.ts in the app.
+  function depictionLongAxisAngle(molblock) {
+    const points = [];
+    for (const line of String(molblock || '').split('\n').slice(4)) {
+      const atom = /^\s*(-?\d+\.\d+)\s+(-?\d+\.\d+)\s+-?\d+\.\d+\s+[A-Za-z*]/.exec(line);
+      if (atom) points.push([Number(atom[1]), Number(atom[2])]);
+      else if (points.length) break;
+    }
+    if (points.length < 2) return 0;
+    const meanX = points.reduce((sum, point) => sum + point[0], 0) / points.length;
+    const meanY = points.reduce((sum, point) => sum + point[1], 0) / points.length;
+    let xx = 0, yy = 0, xy = 0;
+    for (const [x, y] of points) {
+      xx += (x - meanX) ** 2;
+      yy += (y - meanY) ** 2;
+      xy += (x - meanX) * (y - meanY);
+    }
+    return 0.5 * Math.atan2(2 * xy, xx - yy) * 180 / Math.PI;
+  }
+
   function applyHydrogenDisplay(mol, match) {
     if (state.hydrogenDisplay === 'all') {
       try { mol.add_hs_in_place?.(); } catch (_) {}
@@ -8984,9 +9021,10 @@
       const key = target.getAttribute('data-buret-rdkit-card-key');
       if (!key) continue;
       const fragment = target.closest('[data-buret-fragment-smiles]');
+      const drawing = target.getAttribute('data-buret-rdkit-drawing');
       const source = fragment
         ? { index: 'fragment', smiles: fragment.getAttribute('data-buret-fragment-smiles'), fragment: true }
-        : row;
+        : drawing ? { ...row, drawing } : row;
       const start = () => enqueueRdkitCard(source, key, target);
       state.rdkitCardLazyJobs.set(target, start);
       state.rdkitCardLazyTargets.push(target);
