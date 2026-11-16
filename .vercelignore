@@ -1,5 +1,6 @@
 **/node_modules/
 .codegraph/
+.tmp/
 target/
 build/
 outputs/
