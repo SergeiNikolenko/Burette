@@ -80,6 +80,18 @@
         "destructive_justification": "Cannot delete, overwrite, send, revoke, or perform another irreversible action."
       }
     },
+    "open_app": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Opens the empty Burette workspace from the sidebar and reads nothing.",
+        "open_world_justification": "Runs only inside the Burette app panel and contacts no external system.",
+        "destructive_justification": "Cannot delete, overwrite, send, revoke, or perform another irreversible action."
+      }
+    },
     "open_structure_file": {
       "annotations": {
         "readOnlyHint": true,
@@ -113,6 +125,18 @@
       "justifications": {
         "read_only_justification": "Summarizes the text of a file the user opened in Burette in memory and stores nothing.",
         "open_world_justification": "Processes only the text the widget sends and contacts no external system.",
+        "destructive_justification": "Cannot delete, overwrite, send, revoke, or perform another irreversible action."
+      }
+    },
+    "search_pdb_mentions": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Searches public PDB entry identifiers and titles for composer suggestions and changes nothing.",
+        "open_world_justification": "Queries the public RCSB search and data services with the text the user typed after @Burette.",
         "destructive_justification": "Cannot delete, overwrite, send, revoke, or perform another irreversible action."
       }
     }

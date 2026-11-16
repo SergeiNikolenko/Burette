@@ -147,11 +147,29 @@ describe("MCP wire contract", () => {
       fetch: async () => ({ ok: true, text: async () => '<html><head><script type="module" src="./assets/index.js"></script></head></html>' }),
     });
     const transport = widgetWindow.BuretteHostedFrameTransport as { prepareFrame(href: string): Promise<string> };
-    // The sandbox refuses cross-origin frames and inline scripts in srcdoc
-    // children: the child gets a base URL, the host origin and this script.
-    expect(await transport.prepareFrame("https://burette.example/viewer-shell/molecular-frame/index.html?hostOrigin=x")).toBe(
-      `<html><head><base href="https://burette.example/viewer-shell/molecular-frame/"><meta name="burette-host-origin" content="https://sandbox.example"><script src="${frameScript}" data-burette-frame-child></script><script type="module" src="./assets/index.js"></script></head></html>`,
+    // The sandbox refuses cross-origin frames, inline scripts in srcdoc
+    // children and <base> (base-uri 'self'): the child gets absolute asset
+    // URLs, its asset directory, the host origin and this script.
+    const directory = "https://burette.example/viewer-shell/molecular-frame/";
+    expect(await transport.prepareFrame(`${directory}index.html?hostOrigin=x`)).toBe(
+      `<html><head><meta name="burette-frame-base" content="${directory}"><meta name="burette-host-origin" content="https://sandbox.example"><script src="${frameScript}" data-burette-frame-child></script><script type="module" src="${directory}assets/index.js"></script></head></html>`,
     );
+
+    const fetched: string[] = [];
+    const child = { origin: "https://sandbox.example", fetch: async (input: string) => { fetched.push(String(input)); } } as Record<string, unknown>;
+    const childDocument = {
+      baseURI: "about:srcdoc",
+      currentScript: { src: frameScript, hasAttribute: (name: string) => name === "data-burette-frame-child" },
+      querySelector: () => ({ content: directory }),
+    };
+    runInNewContext(readFileSync(new URL("../assets/burette-hosted-frame.js", import.meta.url), "utf8"), {
+      window: child, URL, Blob, document: childDocument,
+    });
+    await (child.fetch as (input: string) => Promise<void>)("templates.json");
+    await (child.fetch as (input: string) => Promise<void>)("https://rcsb.example/1crn.cif");
+    expect([childDocument.baseURI, (child.BuretteResolveRuntimeAsset as (name: string) => string)("burette-embed/frame.js"), ...fetched]).toEqual([
+      directory, `${directory}burette-embed/frame.js`, `${directory}templates.json`, "https://rcsb.example/1crn.cif",
+    ]);
     const Worker = widgetWindow.Worker as new (url: string, options?: { type?: string }) => unknown;
     const script = "https://burette.example/viewer-shell/assets/indigoWorker.js";
     new Worker(script, { type: "module" });
@@ -313,6 +331,7 @@ describe("MCP wire contract", () => {
     const tools = payload.result?.tools ?? [];
     expect(tools.map((tool) => tool.name).sort()).toEqual([
       "control_ketcher",
+      "open_app",
       "open_ketcher",
       "open_sketch_file",
       "open_structure_file",
@@ -321,6 +340,7 @@ describe("MCP wire contract", () => {
       "preview_molecular_file",
       "preview_pdb_structure",
       "render_molecular_scene",
+      "search_pdb_mentions",
     ]);
     for (const tool of tools) {
       expect(tool.outputSchema).toBeDefined();

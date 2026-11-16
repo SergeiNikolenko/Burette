@@ -38,7 +38,9 @@ seeds (RXN) still open in Ketcher until the shared editor supports reactions.
 
 Viewer and editor resources declare fullscreen as the preferred display mode,
 so Codex opens them as a tab in its side panel. `open_workspace_tab` adds a
-Burette tab with recent PDB entries to the thread, and `open_structure_file`
+Burette tab with recent PDB entries to the thread, `open_app` opens the same
+workspace from the Codex sidebar, `search_pdb_mentions` answers `@Burette`
+composer mentions from the public RCSB search, and `open_structure_file`
 and `open_sketch_file` register file entrypoints. For a file entrypoint the
 host reads the file and hands it to the widget; the widget forwards at most
 3 MiB to `prepare_structure_content` or `open_ketcher`. These app-only tools
