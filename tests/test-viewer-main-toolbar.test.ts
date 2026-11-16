@@ -73,7 +73,7 @@ test("shared toolbar appearance retains command nodes, dynamic labels, disabled 
   const gripScope = {
     document, toolbar, grip,
     setXyzrenderPopoverVisibility() {}, hideMolstarPresetMenu() {}, hideGenerate3DMenu() {}, closeViewportMenu() {},
-    repositionToolbar() {}, updateFloatingLayoutOffsets() {}, scheduleViewerResize() {},
+    repositionToolbar() {}, updateFloatingLayoutOffsets() {}, scheduleViewerResize() {}, syncCompactViewerChrome() {},
   };
   for (const collapsed of [true, false]) {
     const expectedLabel = collapsed ? "Expand controls" : "Collapse controls";
