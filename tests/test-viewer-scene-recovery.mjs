@@ -363,6 +363,7 @@ assert.equal(alignmentCommits, 1);
   assert.ok(start > 0 && end > start);
   runInNewContext(source.slice(start, end) + '}', {
     document, fileList, hasPoseGroups: true, activePose: 0, poseGroups, fileButtons, fileTargets,
+    requestAnimationFrame: window.requestAnimationFrame.bind(window),
     groupControls: [], prepared: {}, editPoseVisibility() {}, openPickerMenu() {}, poseActions() {}, poseDots: [],
     createPoseDot: () => document.createElement('button'),
     createPosePin: () => Object.assign(document.createElement('button'), { className: 'buret-docking-pose-pin' }),
@@ -542,18 +543,24 @@ console.log('Docking pose visibility edits follow pins, sets and All, and recove
   const selectionEnd = source.indexOf('    const isFileListOpen =', selectionStart);
   Object.assign(context, runInNewContext(source.slice(selectionStart, selectionEnd)
     + '\n({ selectedPoseIndices, updateControls, setFileListOpen })', context));
-  runInNewContext(extract('reloadSdfPoseMode') + extract('toggleSdfPoseMode') + extract('setSdfPoseModeFromAction'), context);
-  const reload = context.reloadSdfPoseMode;
   let modeChange;
-  context.reloadSdfPoseMode = () => (modeChange = reload());
+  context.trackModeChange = promise => (modeChange = promise);
+  // Wrap in the same VM evaluation: replacing the context property afterward
+  // does not update Bun's internal binding used by toggleSdfPoseMode.
+  runInNewContext(extract('reloadSdfPoseMode') + extract('toggleSdfPoseMode') + extract('setSdfPoseModeFromAction') + `
+    const originalReloadSdfPoseMode = reloadSdfPoseMode;
+    reloadSdfPoseMode = () => trackModeChange(originalReloadSdfPoseMode());
+  `, context);
   const checks = () => fileButtons.map(button => button.dataset.shown);
   try {
     context.updateControls();
     assert.deepEqual(checks(), ['true', 'false', 'true']);
     context.toggleSdfPoseMode();
+    assert.equal(typeof modeChange?.then, 'function', 'observe the real asynchronous reload');
     await modeChange;
     assert.deepEqual({ visible, checked: checks() }, { visible: [0, 1, 2], checked: ['true', 'true', 'true'] });
     context.toggleSdfPoseMode();
+    assert.equal(typeof modeChange?.then, 'function', 'observe the real asynchronous reload');
     await modeChange;
     assert.deepEqual({ visible, checked: checks() }, { visible: [0, 2], checked: ['true', 'false', 'true'] });
     await context.setSdfPoseModeFromAction({ mode: 'all' });

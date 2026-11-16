@@ -1,5 +1,9 @@
 # Interaction Performance Audit — 2026-11-16
 
+The [primary-controls follow-up](primary-controls-performance-audit-2026-11-16.md)
+records the subsequent slider/menu fixes, continuous-drag checks, regenerated
+runtime mirrors, and the separate small-VM validation attempt.
+
 ## Scope and evidence
 
 This audit covers Burette's interaction latency: menus, panels, sliders,
