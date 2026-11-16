@@ -116,6 +116,12 @@ the packaged plugin mirror. `vendor-assets.lock.json` tracks source identity and
 all generated renderer/schema hashes. The Bun preload prepares the same source
 for integration tests; run `bun run test:renderers` after renderer upgrades.
 
+`molstar-camera-controls.mjs` enables live FOV, fog intensity and clipping
+sliders. Camera-only edits send partial canvas settings and skip unrelated
+panel-layout and graphics-context updates; other settings keep Mol*'s normal
+mapping. `bun tests/test-molstar-camera-controls.mjs` checks actual slider drags
+through that mapping, including mixed-setting fallback.
+
 `molstar-surface-field-cache.mjs` adapts the version-locked Mol* unit-surface
 calculation during vendoring. Its 64 MiB LRU stores CPU scalar/group fields,
 never GPU resources or molecule objects. Exact coordinates, radii, atom/group
