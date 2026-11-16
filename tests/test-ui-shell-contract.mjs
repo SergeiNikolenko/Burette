@@ -6661,7 +6661,6 @@ assert.match(previewViewer, /activeMolstarPrepared\?\.kind === 'docking' && acti
 assert.match(previewViewer, /activeMolstarPrepared\?\.kind === 'docking' && activeMolstarPrepared\?\.sdfPoseOverlayAvailable === true[\s\S]*await applyDockingPoseCollectionVisibility\(activeViewer, activeMolstarPrepared, activePose, \{ focus: false \}\);/);
 assert.match(previewViewer, /prepared\.kind === 'docking' && prepared\.dockingSceneMode[\s\S]*await applyDockingSceneVisibility\(viewer, activeMolstarPrepared \|\| prepared, nextIndex, \{ focus: false \}\);[\s\S]*activePose = nextIndex;/);
 assert.match(previewViewer, /prepared\.kind === 'docking' && prepared\.sdfPoseOverlayAvailable === true[\s\S]*await applyDockingPoseCollectionVisibility\(viewer, activeMolstarPrepared \|\| prepared, nextIndex, \{ focus: false \}\);[\s\S]*activePose = nextIndex;/);
-assert.match(previewViewer, /const sceneStructures = \[\];[\s\S]*sceneStructures\.push\(\.\.\.await loadMolstarEntryWithStructureRefs\(viewer, entry, \{ representationPreset: 'empty' \}\)\);[\s\S]*await applySdfCollectionMolstarStyle\(viewer, resolvedContextStyle, sceneStructures, 1, 'colored'\);/);
 assert.match(previewViewer, /function minimumTrajectoryLoopDelay\(prepared\)/);
 assert.doesNotMatch(previewViewer, /buret-docking-pose-speed-skip/);
 assert.doesNotMatch(previewViewer, /NATIVE_TRAJECTORY_LOOP_MAX_FPS/);
@@ -6809,9 +6808,6 @@ assert.match(previewViewer, /\.filter\(structure => !before\.has\(structure\?\.c
 assert.match(previewViewer, /async function applyDockingSceneVisibilityNow\(viewer, prepared, activePose = 0, options = \{\}\)/);
 assert.match(previewViewer, /const resolvedContextStyle = dockingSceneBackgroundStyle\(contextStyle, style\)/);
 assert.match(previewViewer, /const backgroundEntries = poses\.filter\(\(_, index\) => index !== activeIndex\)/);
-assert.match(previewViewer, /if \(resolvedContextStyle === 'default' \|\| resolvedContextStyle === 'illustrative'\) \{/);
-assert.match(previewViewer, /for \(const entry of \[\.\.\.backgroundEntries, activeEntry\]\)/);
-assert.match(previewViewer, /applySdfCollectionMolstarStyle\(viewer, resolvedContextStyle, sceneStructures, 1, 'colored'\)/);
 assert.match(previewViewer, /for \(const entry of backgroundEntries\) \{\s*contextStructures\.push\(\.\.\.await loadMolstarEntryWithStructureRefs\(viewer, entry, \{ representationPreset: 'empty' \}\)\);\s*\}/s);
 assert.match(previewViewer, /const contextColor = readSdfCollectionContextColor\(activeConfig\);/);
 assert.match(previewViewer, /if \(contextStructures\.length\) \{\s*await applySdfCollectionMolstarStyle\(viewer, resolvedContextStyle, contextStructures, contextOpacity, contextColor\);\s*\}/s);

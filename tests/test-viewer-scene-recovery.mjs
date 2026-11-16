@@ -37,6 +37,7 @@ for (const failureStage of [1, 2, 3]) {
   const style = new Function('applySdfCollectionMolstarStyle', 'applyMolstarWaterLineRepresentation', `
     const dockingSceneStructuresByPose = (_viewer, refs) => refs;
     const normalizeMolstarStyle = value => value;
+    ${extract('dockingSceneStyleNeedsReload')}
     ${extract('styleDockingScenePoses')}
     return styleDockingScenePoses;
   `)(work, work);
@@ -94,6 +95,7 @@ const context = {
     ] });
   },
   applyMolstarStyle: async () => {}, applyMolstarWaterLineRepresentation: async () => {},
+  applyDockingSceneMatchAppearance: async () => {},
   applySdfCollectionMolstarStyle: async () => { if (failBuild) throw new Error('build failed'); },
   activeStructureAlignmentControl: { restoreAfterSceneReload: async () => { restores++; structures.forEach(s => { s.aligned = true; }); } },
   dockingSceneBackgroundStyle: value => value, readSdfCollectionContextStyle: () => 'line',

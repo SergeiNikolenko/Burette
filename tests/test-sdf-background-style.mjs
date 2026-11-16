@@ -315,3 +315,139 @@ console.log('Pose selection survives denied storage and subsequent background ap
   assert.deepEqual(plain(posted), [{ type: 'sdfContextChanged', documentId: 'doc-1', style: 'molecular-surface', opacity: 0.4, color: 'colored' }]);
 }
 console.log('Background agent actions validate values and notify the inspector');
+
+// Match must fade the loaded preset's mixed representations, not replace a
+// ligand's ball-and-stick with a cartoon or silently leave every pose opaque.
+{
+  let structures = [], loads = 0, focuses = 0, outlineSyncs = 0, waterPasses = 0;
+  const hidden = new Map();
+  const originalParams = role => ({
+    type: { name: role === 2 ? 'line' : role ? 'ball-and-stick' : 'cartoon', params: { alpha: role === 1 ? 0.3 : 1, sizeFactor: role ? 0.2 : 0.8 } },
+    colorTheme: { name: role ? 'element-symbol' : 'chain-id', params: { value: role } },
+  });
+  const sceneViewer = { plugin: {
+    clear: async () => { structures = []; hidden.clear(); },
+    state: { data: {
+      get cells() {
+        return new Map(structures.flatMap(s => s.components.flatMap(c => c.representations.map(r => [r.cell.transform.ref, r.cell]))));
+      },
+      updateCellState: (ref, value) => hidden.set(ref, value.isHidden),
+      build: () => {
+        const updates = [];
+        return {
+          to: ref => ({ update: change => updates.push([ref, change]) }),
+          commit: async () => {
+            for (const [ref, change] of updates) {
+              const representation = structures.flatMap(s => s.components.flatMap(c => c.representations))
+                .find(r => r.cell.transform.ref === ref);
+              representation.cell.transform.params = change(representation.cell.transform.params);
+            }
+          },
+        };
+      },
+    } },
+  } };
+  const prepared = { kind: 'docking', dockingSceneMode: 'structureAll', poses: ['a', 'b', 'c'] };
+  const config = { style: 'illustrative', contextStyle: 'match', opacity: 0.4, color: 'gray' };
+  const ctx = {
+    activeConfig: config, activeSdfPoseMode: 'all', activeDockingSceneVisibilityState: null,
+    dockingSceneStateKey: (_prepared, style) => style, molstarCurrentStructures: () => structures,
+    normalizeMolstarStyle: value => value, configuredMolstarStyle: value => value.style,
+    readSdfCollectionContextStyle: value => value.contextStyle,
+    readSdfCollectionContextOpacity: value => value.opacity, readSdfCollectionContextColor: value => value.color,
+    resetXyzFrameOverlayState() {}, resetSdfCollectionVisibilityState() {}, resetDockingPoseCollectionState() {},
+    loadMolstarEntry: async (_viewer, ref) => {
+      loads++;
+      structures.push({ cell: { transform: { ref } }, components: [0, 1, 2].map(role => ({
+        key: role === 2 ? 'water' : 'polymer',
+        cell: { transform: { ref: `${ref}-c${role}` } },
+        representations: [{ cell: { transform: { ref: `${ref}-r${role}`, params: originalParams(role) } } }],
+      })) });
+    },
+    applyMolstarStyle: async () => {},
+    applyMolstarWaterLineRepresentation: async () => {
+      waterPasses++;
+      for (const structure of structures) {
+        structure.components[2].representations[0].cell.transform.params = originalParams(2);
+      }
+    },
+    applySdfCollectionMolstarStyle: async (_viewer, style, targets, alpha) => {
+      for (const structure of targets) for (const component of structure.components) {
+        component.representations[0].cell.transform.params = { type: { name: style, params: { alpha } }, colorTheme: { name: 'uniform' } };
+      }
+    },
+    isMolstarWaterComponent: component => component.key === 'water', isMolstarBoxComponent: () => false,
+    syncMolstarOutlineTransparency: () => outlineSyncs++, activeStructureAlignmentControl: null,
+    document: { querySelector: () => null }, updateStructureOverlayToggleButton() {},
+    scheduleMolstarStructureFocus: () => focuses++,
+  };
+  runInNewContext(['resetDockingSceneVisibilityState', 'molstarStructureCellRefs', 'dockingSceneVisibilityStateStillLoaded',
+    'setDockingSceneRefsHidden', 'dockingSceneStructuresByPose', 'dockingSceneStyleNeedsReload', 'applyDockingSceneMatchAppearance',
+    'styleDockingScenePoses', 'ensureDockingSceneState', 'showDockingScenePoses', 'applyDockingSceneSinglePose',
+    'applyDockingSceneOverlayPoses', 'dockingSceneBackgroundStyle', 'applyDockingSceneVisibilityNow'].map(extract).join('\n'), ctx);
+  const all = index => ctx.applyDockingSceneOverlayPoses(sceneViewer, prepared, index, { focus: false });
+  const params = index => structures[index].components.map(c => c.representations[0].cell.transform.params);
+  const alphas = index => params(index).map(p => Number(p.type.params.alpha.toFixed(6)));
+  await all(0);
+  const originalComponents = structures.flatMap(s => s.components);
+  assert.deepEqual(alphas(0), [1, 0.3, 1]);
+  assert.deepEqual(alphas(1), [0.4, 0.12, 0.4]);
+  assert.deepEqual(params(1).map(p => p.type.name), ['cartoon', 'ball-and-stick', 'line']);
+  config.opacity = 0.19;
+  await all(0);
+  assert.deepEqual(alphas(1), [0.19, 0.057, 0.19]);
+  structures.flatMap(s => s.components).forEach((component, index) => assert.equal(component, originalComponents[index]));
+  assert.equal(loads, 3, 'opacity does not reload the scene');
+  assert.equal(focuses, 1, 'opacity does not refocus the camera');
+  config.color = 'colored'; await all(0);
+  assert.deepEqual(plain(params(1).map(p => p.colorTheme)), [originalParams(0).colorTheme, originalParams(1).colorTheme, originalParams(2).colorTheme]);
+  await all(1);
+  assert.deepEqual(alphas(0), [0.19, 0.057, 0.19]);
+  assert.deepEqual(alphas(1), [1, 0.3, 1]);
+  await ctx.applyDockingSceneSinglePose(sceneViewer, prepared, 2, { focus: false });
+  assert.deepEqual(alphas(2), [1, 0.3, 1]);
+  assert.equal(hidden.get('c'), false); assert.equal(hidden.get('a'), true);
+  assert.equal(loads, 3, 'Match pose switches and Single reuse the loaded geometry');
+  assert.equal(waterPasses, 1, 'Match edits must not rebuild water or reset background alpha');
+  await all(0);
+  const edited = sceneViewer.plugin.state.data.cells.get('b-r0');
+  const red = { name: 'uniform', params: { value: 0xff0000 } };
+  edited.transform.params = { ...edited.transform.params, colorTheme: red };
+  ctx.activeMolstarViewer = () => sceneViewer;
+  ctx.updateSceneTreeRepresentation = async (ref, change) => {
+    const update = sceneViewer.plugin.state.data.build();
+    update.to(ref).update(change);
+    await update.commit();
+  };
+  runInNewContext(extract('applySceneTreeReprAlpha'), ctx);
+  await ctx.applySceneTreeReprAlpha('b-r0', 0.6);
+  await ctx.applyDockingSceneSinglePose(sceneViewer, prepared, 1, { focus: false });
+  assert.equal(params(1)[0].type.params.alpha, 0.6, 'Single immediately preserves a later explicit alpha edit');
+  assert.deepEqual(plain(params(1)[0].colorTheme), red);
+  await all(0);
+  config.opacity = 0.2; await all(0);
+  assert.equal(params(1)[0].type.params.alpha, 0.12, 'a subsequent context factor uses the explicit alpha as its base');
+  assert.deepEqual(plain(params(1)[0].colorTheme), red, 'opacity must retain a later custom colour');
+  await ctx.applyDockingSceneSinglePose(sceneViewer, prepared, 1, { focus: false });
+  assert.equal(params(1)[0].type.params.alpha, 0.6, 'Single restores the explicit scene-tree alpha, not the first cached value');
+  assert.deepEqual(plain(params(1)[0].colorTheme), red);
+  config.opacity = 0.19;
+  config.contextStyle = 'line'; await all(2);
+  assert.equal(params(0)[0].type.name, 'line');
+  await all(0);
+  assert.deepEqual(alphas(0), [1, 1, 1], 'a non-Match backdrop becoming foreground uses the existing full-opacity restyler');
+  assert.equal(params(0)[0].type.name, 'illustrative', 'the old backdrop type must not become a cached native preset');
+  config.contextStyle = 'match'; await all(2);
+  assert.equal(loads, 6, 'replaced non-Match geometry restores the native preset through the existing reload');
+  assert.deepEqual(params(0).map(p => p.type.name), ['cartoon', 'ball-and-stick', 'line']);
+  assert.deepEqual(alphas(0), [0.19, 0.057, 0.19]);
+  assert.ok(outlineSyncs > 0);
+  // The legacy renderer fallback also loads native presets rather than asking
+  // for an empty preset and replacing it with a generic cartoon.
+  delete sceneViewer.plugin.state.data.updateCellState;
+  await ctx.applyDockingSceneVisibilityNow(sceneViewer, prepared, 0, { focus: false });
+  assert.deepEqual(params(0).map(p => p.type.name), ['cartoon', 'ball-and-stick', 'line']);
+  assert.deepEqual(alphas(0), [0.19, 0.057, 0.19]);
+  assert.deepEqual(alphas(2), [1, 0.3, 1]);
+}
+console.log('Docking Match preserves native geometry, fades background, restores foreground and Single, and reuses poses');
