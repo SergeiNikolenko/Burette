@@ -42,6 +42,9 @@ export const defaultPreferences: ViewerPreferences = {
   // 0 keeps the grid's fluid card width; a positive value is a fixed minimum in px.
   gridCardSize: 0,
   hydrogenDisplay: "none",
+  ligandCardContent: "diagram",
+  ligandCardDiagramStyle: "style-schrodinger",
+  ligandCardDisplay: "hover",
   quickLookGridSdf: true,
   quickLookGridSmiles: true,
   quickLookGridCsv: true,

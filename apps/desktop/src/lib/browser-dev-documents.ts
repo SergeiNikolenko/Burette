@@ -19,6 +19,7 @@ import { isHostedMcpWidget } from "./hosted-mcp-widget";
 import { validatePdbMolecule } from "./pdb-chemistry";
 import { previewBackgroundStyle, viewerThemePreference } from "./theme";
 import { previewThemeTokens, previewViewerDefaults } from "./preview-defaults";
+import { INTERACTION_DIAGRAM_PAGE, canMapInteractions } from "./interaction-diagram";
 import type { DockingDocumentRequest, DockingSceneMode, OpenDocumentsResult, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XyzrenderControls } from "../types";
 import previewFormatRegistry from "../../../../config/preview-formats.json";
 
@@ -1343,6 +1344,7 @@ function viewerHtml(
     previewByteCount: bytes.length,
     dataPath: renderer === "xyzrender-external" ? browserDevReadUrl(path, extension) : undefined,
     sourcePath: path,
+    interactionDiagramPage: canMapInteractions(path) ? INTERACTION_DIAGRAM_PAGE : undefined,
     mvsSourceUrl: extension === "mvsj" ? new URL(`/@fs${path.split("/").map(encodeURIComponent).join("/")}`, window.location.href).href : undefined,
     sourceExtension: extension,
     viewerProfile: mesoscale ? "mesoscale" : "structure",

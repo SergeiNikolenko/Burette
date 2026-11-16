@@ -31,5 +31,8 @@ export function previewViewerDefaults(preferences: ViewerPreferences) {
     gridCardRenderer: preferences.gridCardRenderer,
     gridCardSize: preferences.gridCardSize,
     hydrogenDisplay: preferences.hydrogenDisplay,
+    ligandCardContent: preferences.ligandCardContent,
+    ligandCardDiagramStyle: preferences.ligandCardDiagramStyle,
+    ligandCardDisplay: preferences.ligandCardDisplay,
   };
 }

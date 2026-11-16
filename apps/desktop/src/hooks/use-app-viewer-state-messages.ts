@@ -3,6 +3,7 @@ import { useCallback } from "react";
 import type { StructureOverlayMode, ViewerLigandSelection } from "../components/types";
 import type { ViewerDocument, ViewerPreferences } from "../types";
 import type { DockTabKind } from "../lib/dock";
+import { computeInteractionDiagram, readDiagramRequest, requestInteractionsLigand } from "../lib/interaction-diagram";
 import { updateHostedMcpSelectionContext } from "../lib/hosted-mcp-widget";
 import { rememberViewerAtomSelection } from "../lib/workbench/selection";
 import { openWorkbenchDialog } from "../lib/workbench/dialog-store";
@@ -191,6 +192,26 @@ export function useAppViewerStateMessages({
         openDockTab("right", "xyzrender");
         dispatchXyzrenderSelection(body);
         window.dispatchEvent(new CustomEvent("burette:xyzrender-animation", { detail: body }));
+      }
+      return true;
+    }
+
+    // The frame identifies the document; its runtime id can differ from the shell's.
+    // A click on the map in the ligand card shows that ligand's map in the dock.
+    if (sourceName === "burette-viewer" && body?.type === "openInteractionsPanel") {
+      const document = documents.find(document => activeViewerIframeForDocument(document.id, "molstar")?.contentWindow === eventSource);
+      if (document && typeof body.ligand === "string") requestInteractionsLigand(document.id, body.ligand);
+      openDockTab("right", "interactions");
+      return true;
+    }
+
+    // The ligand card's map asks for its diagram.
+    if (sourceName === "burette-viewer" && body?.type === "interactionDiagramRequest") {
+      const document = documents.find(document => activeViewerIframeForDocument(document.id, "molstar")?.contentWindow === eventSource);
+      const request = readDiagramRequest({ type: "diagram-request", id: body.requestId, ligand: body.ligand, rules: body.rules });
+      if (document && request) {
+        void computeInteractionDiagram(document.path, request).then(({ id, ...answer }) =>
+          postMessageToViewerSource(eventSource, { source: "burette-host", body: { type: "interactionDiagram", requestId: id, ...answer } }));
       }
       return true;
     }

@@ -533,6 +533,11 @@ export type ViewerPreferences = {
   gridCardRenderer: "rdkit" | "xyzrender";
   gridCardSize: number;
   hydrogenDisplay: "none" | "all";
+  // The ligand card in the 3D view: what it shows first, the design of its
+  // interaction map and whether it opens on hover or stays open.
+  ligandCardContent: "diagram" | "molecule";
+  ligandCardDiagramStyle: string;
+  ligandCardDisplay: "hover" | "always";
   quickLookGridSdf: boolean;
   quickLookGridSmiles: boolean;
   quickLookGridCsv: boolean;

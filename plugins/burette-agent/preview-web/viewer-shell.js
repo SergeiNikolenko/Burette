@@ -4,6 +4,10 @@
   // Hidden until viewer.js reports the first rendered frame or an error (see
   // revealViewer there). The timer only guards against viewer.js never running.
   document.documentElement.classList.add('buret-viewer-booting');
+  try {
+    const hostScheme = window.frameElement && getComputedStyle(window.frameElement).colorScheme;
+    if (hostScheme && hostScheme !== 'normal') document.documentElement.style.setProperty('--buret-boot-color-scheme', hostScheme);
+  } catch (_) {}
   if (window.name === 'burette-editable' || window.name === 'burette-read-only') {
     document.documentElement.setAttribute('data-burette-app-chrome', '');
   }

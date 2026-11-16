@@ -163,6 +163,11 @@ pub(crate) struct ViewerDefaults {
     /// 0 keeps the grid's fluid card width.
     pub(crate) grid_card_size: f64,
     pub(crate) hydrogen_display: String,
+    /// The ligand card in the 3D view: what it shows first, its map design and
+    /// whether it opens on hover or stays open.
+    pub(crate) ligand_card_content: String,
+    pub(crate) ligand_card_diagram_style: String,
+    pub(crate) ligand_card_display: String,
     pub(crate) quick_look_grid_sdf: bool,
     pub(crate) quick_look_grid_smiles: bool,
     pub(crate) quick_look_grid_csv: bool,
@@ -179,6 +184,9 @@ impl Default for ViewerDefaults {
             grid_card_renderer: "rdkit".to_string(),
             grid_card_size: 0.0,
             hydrogen_display: "none".to_string(),
+            ligand_card_content: "diagram".to_string(),
+            ligand_card_diagram_style: DEFAULT_LIGAND_CARD_DIAGRAM_STYLE.to_string(),
+            ligand_card_display: "hover".to_string(),
             quick_look_grid_sdf: true,
             quick_look_grid_smiles: true,
             quick_look_grid_csv: true,
@@ -186,6 +194,8 @@ impl Default for ViewerDefaults {
         }
     }
 }
+
+const DEFAULT_LIGAND_CARD_DIAGRAM_STYLE: &str = "style-schrodinger";
 
 // Mirrors MIN_CARD_MIN/MAX_CARD_MIN in PreviewExtension/Web/grid-viewer.js.
 const MIN_GRID_CARD_SIZE: f64 = 86.0;
@@ -209,6 +219,17 @@ impl ViewerDefaults {
         } else {
             0.0
         };
+        // The diagram page lists the map designs; any well-formed id is kept.
+        let diagram_style = if !self.ligand_card_diagram_style.is_empty()
+            && self
+                .ligand_card_diagram_style
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+        {
+            self.ligand_card_diagram_style.as_str()
+        } else {
+            DEFAULT_LIGAND_CARD_DIAGRAM_STYLE
+        };
         json!({
             "screenshotResolution": choice(
                 &self.screenshot_resolution,
@@ -220,6 +241,9 @@ impl ViewerDefaults {
             "gridCardRenderer": choice(&self.grid_card_renderer, &["rdkit", "xyzrender"]),
             "gridCardSize": card_size,
             "hydrogenDisplay": choice(&self.hydrogen_display, &["none", "all"]),
+            "ligandCardContent": choice(&self.ligand_card_content, &["diagram", "molecule"]),
+            "ligandCardDiagramStyle": diagram_style,
+            "ligandCardDisplay": choice(&self.ligand_card_display, &["hover", "always"]),
         })
     }
 
@@ -513,7 +537,8 @@ mod viewer_preferences_tests {
             "molstarStyle": "illustrative", "screenshotResolution": "full-hd",
             "screenshotFormat": "tiff", "screenshotTransparent": true,
             "gridViewMode": "table", "gridCardSize": 9000, "hydrogenDisplay": "all",
-            "quickLookGridCsv": false
+            "ligandCardContent": "molecule", "ligandCardDiagramStyle": "../moe",
+            "ligandCardDisplay": "always", "quickLookGridCsv": false
         }))
         .unwrap();
         assert_eq!(
@@ -521,7 +546,9 @@ mod viewer_preferences_tests {
             serde_json::json!({
                 "screenshotResolution": "full-hd", "screenshotFormat": "png",
                 "screenshotTransparent": true, "gridViewMode": "table",
-                "gridCardRenderer": "rdkit", "gridCardSize": 360.0, "hydrogenDisplay": "all"
+                "gridCardRenderer": "rdkit", "gridCardSize": 360.0, "hydrogenDisplay": "all",
+                "ligandCardContent": "molecule", "ligandCardDiagramStyle": "style-schrodinger",
+                "ligandCardDisplay": "always"
             })
         );
         assert_eq!(

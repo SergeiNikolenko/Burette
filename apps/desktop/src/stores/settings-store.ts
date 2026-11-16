@@ -81,6 +81,12 @@ function normalizeViewerDefaults(preferences: ViewerPreferences) {
   preferences.gridCardRenderer = normalizeChoice(preferences.gridCardRenderer, ["rdkit", "xyzrender"], fallback.gridCardRenderer);
   preferences.gridCardSize = normalizeGridCardSize(preferences.gridCardSize);
   preferences.hydrogenDisplay = normalizeChoice(preferences.hydrogenDisplay, ["none", "all"], fallback.hydrogenDisplay);
+  preferences.ligandCardContent = normalizeChoice(preferences.ligandCardContent, ["diagram", "molecule"], fallback.ligandCardContent);
+  // Map designs come from the diagram service; any well-formed id is kept.
+  preferences.ligandCardDiagramStyle = typeof preferences.ligandCardDiagramStyle === "string" && /^[a-z0-9-]+$/.test(preferences.ligandCardDiagramStyle)
+    ? preferences.ligandCardDiagramStyle
+    : fallback.ligandCardDiagramStyle;
+  preferences.ligandCardDisplay = normalizeChoice(preferences.ligandCardDisplay, ["hover", "always"], fallback.ligandCardDisplay);
   preferences.quickLookGridSdf = normalizeBoolean(preferences.quickLookGridSdf, fallback.quickLookGridSdf);
   preferences.quickLookGridSmiles = normalizeBoolean(preferences.quickLookGridSmiles, fallback.quickLookGridSmiles);
   preferences.quickLookGridCsv = normalizeBoolean(preferences.quickLookGridCsv, fallback.quickLookGridCsv);

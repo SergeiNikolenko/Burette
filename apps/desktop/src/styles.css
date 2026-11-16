@@ -1262,13 +1262,11 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   overflow: hidden;
 }
 /* The titlebar belongs to the backdrop. The workspace below it shares one
-   inset frame, including when its right tab group is open. */
+   inset frame, including when its right tab group is open, and keeps its
+   rounded corners beside the sidebar too. */
 .app-shell:not([data-settings-mode], [data-hosted-mcp-widget], [data-hero-embed]) {
   --workspace-frame-radius: 12px;
   --workspace-frame-start: var(--workspace-frame-radius);
-}
-.app-shell[data-sidebar-open="true"] {
-  --workspace-frame-start: 0px;
 }
 .app-shell:not([data-settings-mode], [data-hosted-mcp-widget], [data-hero-embed]) .workbench {
   margin-inline-end: 4px;

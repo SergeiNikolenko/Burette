@@ -155,13 +155,14 @@ export function SceneComputeMenu({ document, actions, iframeRef }: {
     optionLabels: Object.fromEntries([[THIS_MAC, "This Mac"], ...connections.map(connection => [connection.host, connection.name])]),
     action: value => setComputeHost(value === THIS_MAC ? null : value),
   });
-  // Opaque base under the soft secondary pill so the scene never shows through it.
-  return <div ref={anchor} className={`absolute right-12 top-14 z-20 rounded-(--radius-button-toolbar) bg-(--app-shell-sidebar-popover-background)${iframeRef ? " invisible" : ""}`}>
+  // The same opaque capsule as the viewer's toolbar and rail, so the scene never
+  // shows through and the button reads as one of them.
+  return <div ref={anchor} className={`absolute right-12 top-14 z-20 rounded-full p-0.5 bg-(--color-surface-elevated) shadow-(--shadow-viewer-surface) backdrop-blur-(--blur-xl) dark:bg-(--color-surface-elevated-secondary) dark:shadow-[0_0_0_var(--border-width-hairline)_var(--color-border),var(--shadow-xl-spread)]${iframeRef ? " invisible" : ""}`}>
     <RadixDropdownMenu
       align="end"
       items={items}
       onOpenChange={(open) => { if (open && combined) void sceneFileStates(document).then(setFiles).catch(() => {}); }}
-      trigger={<Button variant="secondary" size="toolbar" aria-label="Open molecular compute menu">{pendingLabel || "Compute"}<ChevronDown data-icon="inline-end" aria-hidden="true" /></Button>}
+      trigger={<Button variant="ghost" size="toolbar" className="rounded-full text-(--color-text)" aria-label="Open molecular compute menu">{pendingLabel || "Compute"}<ChevronDown data-icon="inline-end" aria-hidden="true" /></Button>}
     />
   </div>;
 }
