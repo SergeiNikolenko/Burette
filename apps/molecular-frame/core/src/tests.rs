@@ -420,6 +420,29 @@ fn hydrogens_toggle_both_ways() {
 }
 
 #[test]
+fn stereo_command_removes_wedges_and_puts_them_back_until_the_drawing_changes() {
+    let mut e = editor();
+    e.load("C[C@H](N)C(=O)O").unwrap();
+    let (drawn, smiles) = (e.mol().clone(), e.smiles());
+    let flags = |e: &Editor| (state(e, "stereo"), state(e, "canRestoreStereo"));
+    assert_eq!(flags(&e), ("true".into(), "false".into()));
+    assert!(e.command("stereo"));
+    assert!(!e.smiles().contains('@'));
+    assert_eq!(flags(&e), ("false".into(), "true".into()));
+    assert!(e.command("stereo"));
+    assert_eq!((e.mol(), e.smiles()), (&drawn, smiles.clone()));
+    // Another edit leaves nothing to put back until it is undone.
+    e.command("stereo");
+    e.command("hydrogens");
+    assert_eq!(flags(&e), ("false".into(), "false".into()));
+    assert!(e.command("stereo"));
+    assert_eq!(state(&e, "message"), "No stereochemistry to remove");
+    e.command("undo");
+    assert!(e.command("stereo"));
+    assert_eq!(e.smiles(), smiles);
+}
+
+#[test]
 fn undo_redo_and_revision() {
     let mut e = editor();
     assert_eq!(state(&e, "revision"), "0");

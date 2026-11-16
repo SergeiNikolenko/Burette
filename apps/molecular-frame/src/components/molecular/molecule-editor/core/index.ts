@@ -25,6 +25,7 @@ export type CommandId =
   | 'clean'
   | 'aromatic'
   | 'cip'
+  | 'stereo'
   | 'hydrogens'
   | 'select-all'
   | 'delete'
@@ -41,6 +42,10 @@ export type EditorState = {
   aromatic: boolean
   cip: boolean
   hydrogens: boolean
+  /** The drawing has wedge or hash bonds. */
+  stereo: boolean
+  /** The stereo command can put back the wedges it removed. */
+  canRestoreStereo: boolean
   empty: boolean
   selection: number
   selectedAtoms: number[]
