@@ -71,13 +71,13 @@
             {
               "description": "Create a temporary chemical sketch",
               "prompt": "Draw ethanol from SMILES CCO in the Burette editor.",
-              "tools_triggered": "open_ketcher",
+              "tools_triggered": "open_molecular_editor",
               "expected_behavior": "Open the interactive Burette molecular editor seeded with ethanol. Explain that sketches are temporary if persistence is requested."
             },
             {
               "description": "Read and change the active sketch",
               "prompt": "In the ethanol editor, read the current structure, then replace it with ethylamine (CCN).",
-              "tools_triggered": "control_ketcher",
+              "tools_triggered": "control_molecular_editor",
               "expected_behavior": "Use the returned surface ID and current revision to read and replace the structure. The revision increases; a stale revision must not overwrite it. Report an expired session if the server instance no longer holds it."
             }
           ],

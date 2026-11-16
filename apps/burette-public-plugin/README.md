@@ -16,8 +16,8 @@ widget omits desktop document tabs, sidebars, and docks while preserving the
 native interactive viewer controls, sequence, selection, measurements, and
 representations. The package does not expose a separate branded viewer page:
 the root URL redirects to the public plugin documentation.
-Hosted viewer and Ketcher cards omit the Compute menu because this service
-does not provide calculation jobs. Ketcher mounts directly inside its card.
+Hosted viewer and editor cards omit the Compute menu because this service
+does not provide calculation jobs. The molecular editor mounts directly inside its card.
 
 ## MCP contract
 
@@ -30,12 +30,12 @@ an isolated Ketcher editor contract:
 | `preview_molecular_file` | Reads one ChatGPT-authorized PDB, ENT, PDBQT, CIF, mmCIF, SDF, SD, XYZ, or extXYZ attachment. |
 | `preview_pdb_structure` | Retrieves one public RCSB structure from an explicit four-character PDB ID. |
 | `render_molecular_scene` | Re-renders one PDB entry or authorized attachment with bounded select, focus, clear, reset, and component visibility actions. |
-| `open_ketcher` | Creates an ephemeral Ketcher editor surface and optionally seeds one bounded inline KET, MOL, RXN, or SMILES structure. |
-| `control_ketcher` | Applies a revision-checked Ketcher action and returns a bounded editor snapshot plus widget seed. |
+| `open_molecular_editor` | Creates an ephemeral molecular editor surface and optionally seeds one bounded inline KET, MOL, RXN, or SMILES structure. |
+| `control_molecular_editor` | Applies a revision-checked editor action and returns a bounded editor snapshot plus widget seed. |
 
-The three public-structure tools are read-only and idempotent. Ketcher actions
+The three public-structure tools are read-only and idempotent. Editor actions
 are scoped to an in-memory relay, are bounded and revision-checked, and never
-write files or the public internet. Each Ketcher result renders
+write files or the public internet. Each editor result renders
 `ui://burette/ketcher-editor-v1.html`; the structure-preview tools render
 `ui://burette/molecular-viewer-v21.html`, both with MIME type
 `text/html;profile=mcp-app`.
@@ -49,7 +49,7 @@ version.
 The widgets use the MCP Apps handshake before publishing bounded selection,
 scene, or chemical-editor state through `ui/update-model-context`. Lasso
 selection includes up to 96 atom identities and residues, and clearing the
-selection explicitly clears the model-visible state. Ketcher mutations run
+selection explicitly clears the model-visible state. Editor mutations run
 through the revision-checked relay; the server does not persist a shared
 molecular workspace.
 
@@ -68,7 +68,7 @@ from the model and conversation transcript.
   and Host header, preventing a second DNS resolution from changing the target.
 - Downloads time out after 15 seconds and are bounded while streaming.
 - PDB lookups use the fixed `files.rcsb.org` download origin.
-- Hosted Ketcher surfaces are process-local and ephemeral. Inline structure
+- Hosted editor surfaces are process-local and ephemeral. Inline structure
   content is capped at 64 KiB, atom-index lists at 256 entries, and inline
   exports at 64 KiB. `contentRef` is rejected until a scoped artifact relay is
   deployed.

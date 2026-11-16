@@ -21,10 +21,10 @@ Use Burette for bounded molecular inspection and transient chemical sketching.
   it loads the structure and applies the actions, so a preliminary preview is
   unnecessary. Do not split opening, selecting, focusing, and hiding waters
   across multiple cards.
-- Use `open_ketcher` when the user asks to draw or edit a small chemical
+- Use `open_molecular_editor` when the user asks to draw or edit a small chemical
   structure in the hosted widget. Seed only bounded inline KET, MOL, RXN, or
   SMILES content when it is supplied.
-- Use `control_ketcher` for a follow-up Ketcher action. First use the current
+- Use `control_molecular_editor` for a follow-up editor action. First use the current
   `surfaceId` and `structureRevision` from the editor snapshot; send a
   revision-checked `set_structure`, `clear_structure`, `highlight_atoms`, or
   `get_structure` action. `request_persist` only reaches a user-confirmation

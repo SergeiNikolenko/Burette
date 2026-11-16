@@ -134,7 +134,7 @@ drawing for a teaching note or structure discussion.
 > salicylic acid from SMILES O=C(O)c1ccccc1O. Keep the carboxylic acid and the
 > adjacent phenolic OH visible, so I can inspect the substitution pattern.
 
-**Primary tool:** `open_ketcher` with the supplied SMILES.
+**Primary tool:** `open_molecular_editor` with the supplied SMILES.
 
 **Expected:** one molecule, 10 heavy atoms, 10 bonds; structure revision 1 for
 a newly seeded surface. The drawing has the ortho substitution pattern, not
@@ -156,8 +156,8 @@ not the starting material or a blank result card.
 > from the editor and return its SMILES. Keep the final drawing visible so I
 > can check it against the export. This is a drawing edit, not a synthesis.
 
-**Primary tool:** `control_ketcher`; prerequisite in the same prompt:
-`open_ketcher`. Use returned surface ID/revision; `set_structure` takes public
+**Primary tool:** `control_molecular_editor`; prerequisite in the same prompt:
+`open_molecular_editor`. Use returned surface ID/revision; `set_structure` takes public
 `action.format` and `action.content`, not the internal normalized `input` field.
 Follow with `get_structure` for `smiles` using the updated revision.
 

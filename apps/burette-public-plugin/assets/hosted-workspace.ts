@@ -76,7 +76,7 @@ export function installHostedWorkspace(app: App, callServerTool: CallServerTool,
       const content = await readHostFile(file.resourceUri);
       const sketch = SKETCH_FORMATS[file.name.split(".").pop()?.toLowerCase() ?? ""];
       deliverToolResult(sketch
-        ? await callServerTool("open_ketcher", { structure: { format: sketch, content } })
+        ? await callServerTool("open_molecular_editor", { structure: { format: sketch, content } })
         : await callServerTool("prepare_structure_content", { fileName: file.name, content }));
     } catch (error) {
       deliverToolResult({

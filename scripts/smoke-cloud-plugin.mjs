@@ -27,7 +27,7 @@ const init = await rpc('initialize', { protocolVersion: '2025-06-18', capabiliti
 protocol = init.protocolVersion;
 assert.ok(protocol);
 const listed = await rpc('tools/list', {});
-const expected = ['preview_pdb_structure', 'preview_molecular_file', 'render_molecular_scene', 'open_ketcher', 'control_ketcher',
+const expected = ['preview_pdb_structure', 'preview_molecular_file', 'render_molecular_scene', 'open_molecular_editor', 'control_molecular_editor',
   'open_workspace_tab', 'open_app', 'open_structure_file', 'open_sketch_file', 'prepare_structure_content',
   'search_pdb_mentions'];
 assert.deepEqual(listed.tools.map((tool) => tool.name).sort(), expected.sort());
@@ -41,10 +41,10 @@ const scene = await call('render_molecular_scene', { source: 'pdb', pdbId: '1CRN
 assert.ok(!scene.isError, 'Scene preparation failed');
 const privateFile = await call('preview_molecular_file', { structureFile: { file_id: 'smoke-denied', download_url: 'https://127.0.0.1/secret.pdb', file_name: 'secret.pdb' } });
 assert.equal(privateFile.isError, true, 'Private-network URL must be rejected');
-const sketch = await call('open_ketcher', { structure: { format: 'smiles', content: 'CCO' } });
+const sketch = await call('open_molecular_editor', { structure: { format: 'smiles', content: 'CCO' } });
 assert.equal(sketch.structuredContent.ok, true, 'Ketcher creation failed');
 assert.ok(sketch.structuredContent.surfaceId);
-const control = (command, expectedRevision, extra = {}) => call('control_ketcher', { action: {
+const control = (command, expectedRevision, extra = {}) => call('control_molecular_editor', { action: {
   apiVersion: 'burette-ketcher-agent/v1', type: 'control_ketcher',
   surfaceId: sketch.structuredContent.surfaceId, command, expectedRevision, ...extra,
 } });

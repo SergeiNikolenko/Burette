@@ -105,7 +105,7 @@ supported.
   nonblank and interactive before resubmitting.
 - Separately test all five tools in ChatGPT Developer Mode on web and mobile,
   including `render_molecular_scene` selection/focus/visibility, the two-step
-  `open_ketcher` then `control_ketcher` edit/export flow, Ketcher revision
+  `open_molecular_editor` then `control_molecular_editor` edit/export flow, editor revision
   conflicts, and resizing of the inline preview/editor.
 - Capture the required submission screenshots from the real ChatGPT widget
   after the Developer Mode checks; do not substitute a direct shell URL or a
