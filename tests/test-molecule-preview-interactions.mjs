@@ -214,7 +214,7 @@ console.log('2D preview zoom, lasso, cancellation and replacement passed');
     molstarMoleculePreviewRDKitSVG: () => new Promise((resolve, reject) => pending.push({ resolve, reject })),
     selectMolstarMoleculePreviewAtoms: target => { selected = target; },
     updateMolstarHydrogenButtons() {},
-    molstarMoleculePreviewDiagram: () => null, configureMolstarMoleculePreviewDiagram() {},
+    molstarMoleculePreviewDiagram: () => null, configureMolstarMoleculePreviewDiagram() {}, requestMolstarDiagramLigandMolblock() {},
     molstarMoleculePreviewClamp() {}, molstarMoleculePreviewFitHeight: () => 0,
     molstarMoleculePreviewIsExpanded: () => true, presentMolstarMoleculePreview() {}, molstarContextResidueLabel: () => '',
   };
