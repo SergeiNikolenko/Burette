@@ -95,7 +95,10 @@ export function sanitizeViewerActions(value: unknown): UnknownRecord[] {
       actions.push({ type, ...(selector ? { selector } : {}) });
     }
   }
-  return actions;
+  // Component visibility rebuilds the scene and reframes the camera, so a
+  // focus requested earlier in the list would be lost. Apply it first.
+  const isVisibility = (action: UnknownRecord) => action.type === "hide_components" || action.type === "show_components";
+  return [...actions.filter(isVisibility), ...actions.filter((action) => !isVisibility(action))];
 }
 
 function boundedIdentity(value: unknown) {
