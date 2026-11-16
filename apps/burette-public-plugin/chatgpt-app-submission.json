@@ -4,7 +4,7 @@
   "app_info": {
     "display_name": "Burette",
     "subtitle": "Explore molecular structures",
-    "description": "Burette opens supported molecular structure attachments and explicit public PDB entries as interactive 3D scenes, with bounded composition summaries for chains, residues, ligands, molecules, and elements. It also opens an isolated Ketcher editor for sketching small molecules and exporting them without writing files.",
+    "description": "Burette opens supported molecular structure attachments and explicit public PDB entries as interactive 3D scenes, with bounded composition summaries for chains, residues, ligands, molecules, and elements. It also opens Burette's molecular editor for sketching small molecules and exporting them without writing files.",
     "category": "EDUCATION"
   },
   "tools": {
@@ -63,9 +63,57 @@
         "destructiveHint": true
       },
       "justifications": {
-        "read_only_justification": "Edits only the ephemeral Ketcher surface in the current widget; it never mutates the source attachment or local files.",
+        "read_only_justification": "Edits only the ephemeral molecular editor surface in the current widget; it never mutates the source attachment or local files.",
         "open_world_justification": "Revision-checked actions stay inside the isolated Burette relay and do not publish content or call third-party systems.",
         "destructive_justification": "Clear and replace can discard the current transient sketch. Revision checks prevent stale edits, but do not provide durable undo or recovery. No source file is changed."
+      }
+    },
+    "open_workspace_tab": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Opens an empty Burette workspace beside the conversation and reads nothing.",
+        "open_world_justification": "Runs only inside the conversation panel and contacts no external system.",
+        "destructive_justification": "Cannot delete, overwrite, send, revoke, or perform another irreversible action."
+      }
+    },
+    "open_structure_file": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Opens a molecular file the user chose in the host's viewer; the host reads the file and the tool only acknowledges it.",
+        "open_world_justification": "The tool contacts no external system; the file stays with the host until the widget sends its text for a bounded preview.",
+        "destructive_justification": "Cannot delete, overwrite, send, revoke, or perform another irreversible action."
+      }
+    },
+    "open_sketch_file": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Opens a molecule or reaction file the user chose in the molecular editor; the host reads the file and the tool only acknowledges it.",
+        "open_world_justification": "The tool contacts no external system; the file stays with the host until the widget seeds the editor.",
+        "destructive_justification": "Cannot delete, overwrite, send, revoke, or perform another irreversible action."
+      }
+    },
+    "prepare_structure_content": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Summarizes the text of a file the user opened in Burette in memory and stores nothing.",
+        "open_world_justification": "Processes only the text the widget sends and contacts no external system.",
+        "destructive_justification": "Cannot delete, overwrite, send, revoke, or perform another irreversible action."
       }
     }
   },
@@ -98,7 +146,7 @@
     },
     {
       "description": "Create an editable salicylic acid reference sketch for a teaching note.",
-      "user_prompt": "I'm preparing a chemistry teaching note. Open an editable Ketcher sketch of salicylic acid from SMILES O=C(O)c1ccccc1O. Keep the carboxylic acid and the adjacent phenolic OH visible, so I can inspect the substitution pattern.",
+      "user_prompt": "I'm preparing a chemistry teaching note. Open an editable molecular editor sketch of salicylic acid from SMILES O=C(O)c1ccccc1O. Keep the carboxylic acid and the adjacent phenolic OH visible, so I can inspect the substitution pattern.",
       "file_attachment_urls": null,
       "tools_triggered": "open_ketcher",
       "expected_output": "Shows a nonblank salicylic acid sketch from O=C(O)c1ccccc1O: one molecule, 10 heavy atoms, 10 bonds, newly seeded revision 1. The phenolic OH is adjacent to the carboxylic acid. Does not claim 3D conformer generation or file persistence.",
@@ -106,7 +154,7 @@
     },
     {
       "description": "Edit a reference sketch and verify that the final exported structure matches the drawing.",
-      "user_prompt": "Start a new Ketcher sketch with salicylic acid, O=C(O)c1ccccc1O. Then replace that sketch with aspirin, CC(=O)Oc1ccccc1C(=O)O. Read the final structure back from the editor and return its SMILES. Keep the final drawing visible so I can check it against the export. This is a drawing edit, not a synthesis.",
+      "user_prompt": "Start a new molecular editor sketch with salicylic acid, O=C(O)c1ccccc1O. Then replace that sketch with aspirin, CC(=O)Oc1ccccc1C(=O)O. Read the final structure back from the editor and return its SMILES. Keep the final drawing visible so I can check it against the export. This is a drawing edit, not a synthesis.",
       "file_attachment_urls": null,
       "tools_triggered": "control_ketcher",
       "expected_output": "In this independent conversation, first open_ketcher creates salicylic acid. control_ketcher set_structure replaces it with aspirin using the current surface ID/revision, then get_structure reads SMILES. Final molecule has 13 heavy atoms and 13 bonds, and SMILES chemically equivalent to CC(=O)Oc1ccccc1C(=O)O. Mutation increments the revision; read does not. Both the final mutation and export cards show aspirin, not a blank or stale sketch. No local file write or synthesis claim.",

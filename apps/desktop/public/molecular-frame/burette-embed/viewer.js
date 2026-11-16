@@ -29092,6 +29092,9 @@ SOFTWARE.
     if (target.structure && activeMolstarPrepared?.kind === 'sdf-collection') {
       return molstarContextSourceEntryForActiveConfig(target.structure);
     }
+    const diagram = molstarMoleculePreviewDiagram(target);
+    const molblock = diagram ? molstarDiagramLigandMolblocks.get(diagram.ligand) : '';
+    if (molblock) return { data: `${molblock.trimEnd()}\n$$$$\n`, format: 'sdf', label: target.label || diagram.ligand };
     const sdfEntry = molstarMoleculePreviewSdfEntry(target);
     if (sdfEntry) return sdfEntry;
     const entry = target.selectedEntry || target.ligand || null;
@@ -29306,9 +29309,23 @@ SOFTWARE.
   }
 
   // Where the host draws interaction maps (config.interactionDiagramPage, the
-  // desktop app and browser-dev), a ligand's card shows its map. The molecule
-  // drawn otherwise has bonds guessed from distances and no bond orders, so the
-  // map is also the faithful 2D picture of it.
+  // desktop app and browser-dev), a ligand's card shows its map. The map engine
+  // also returns the ligand's molblock with the bond orders and charges of its
+  // dictionary entry; the card's molecule is drawn from it, since a PDB ligand
+  // alone only gives bonds guessed from distances.
+  const molstarDiagramLigandMolblocks = new Map();
+  // The card's own requests have negative ids, apart from the map frame's.
+  const molstarDiagramMolblockRequests = new Map();
+  let molstarDiagramMolblockRequestId = 0;
+
+  function requestMolstarDiagramLigandMolblock(diagram) {
+    if (!diagram || molstarDiagramLigandMolblocks.has(diagram.ligand)) return;
+    if ([...molstarDiagramMolblockRequests.values()].includes(diagram.ligand)) return;
+    const id = --molstarDiagramMolblockRequestId;
+    molstarDiagramMolblockRequests.set(id, diagram.ligand);
+    postHostMessage({ type: 'interactionDiagramRequest', requestId: id, ligand: diagram.ligand, rules: {} });
+  }
+
   function molstarMoleculePreviewDiagram(target) {
     const page = (activeConfig || window.BuretteConfig || {}).interactionDiagramPage;
     const atom = target?.atom;
@@ -29449,6 +29466,17 @@ SOFTWARE.
   window.addEventListener('message', event => {
     const body = event.data?.source === 'burette-host' ? event.data.body : null;
     if (event.source !== window.parent || body?.type !== 'interactionDiagram') return;
+    const ligand = body.result?.diagram?.ligand;
+    if (typeof ligand?.id === 'string' && typeof ligand.molblock === 'string') molstarDiagramLigandMolblocks.set(ligand.id, ligand.molblock);
+    const requested = molstarDiagramMolblockRequests.get(body.requestId);
+    if (requested !== undefined) {
+      molstarDiagramMolblockRequests.delete(body.requestId);
+      // a failed map keeps the inferred drawing and is not asked for again
+      if (!molstarDiagramLigandMolblocks.has(requested)) molstarDiagramLigandMolblocks.set(requested, '');
+      const target = molstarMoleculePreviewTarget;
+      if (target && molstarMoleculePreviewDiagram(target)?.ligand === requested) showMolstarMoleculePreview(target);
+      return;
+    }
     const frame = molstarMoleculePreview?.querySelector('.buret-molecule-card-diagram iframe');
     frame?.contentWindow?.postMessage({ source: 'burette-lid-host', type: 'diagram', id: body.requestId, result: body.result, error: body.error }, '*');
   });
@@ -30254,6 +30282,7 @@ SOFTWARE.
       configureMolstarMoleculePreviewDiagram();
       return;
     }
+    requestMolstarDiagramLigandMolblock(available);
     void molstarMoleculePreviewRDKitSVG(entry)
       .then(svg => {
         if (!svg || molstarMoleculePreview !== popover || molstarMoleculePreviewTarget !== target || popover.dataset.buretPreviewKey !== key) return;

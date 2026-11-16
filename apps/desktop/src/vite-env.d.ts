@@ -24,6 +24,8 @@ interface Window {
   __BURETTE_HOSTED_OPENAI_GLOBALS__?: { toolOutput?: unknown; toolResponseMetadata?: unknown };
   __BURETTE_HOSTED_MCP_WIDGET__?: boolean;
   __BURETTE_HOSTED_KETCHER_WIDGET__?: boolean;
+  /** Mounts Burette frames as same-origin srcdoc documents in hosted widgets. */
+  BuretteHostedFrameTransport?: import("../public/molecular-frame/molecular-frame.js").MolecularFrameTransport;
   __BURETTE_HOSTED_KETCHER_SEED__?: {
     surfaceId?: string;
     format: "ket" | "mol" | "rxn" | "smiles";
@@ -39,6 +41,8 @@ interface Window {
       arguments_?: Record<string, unknown>,
     ) => Promise<unknown>;
     sanitizeViewerActions: (actions: unknown) => Record<string, unknown>[];
+    /** Present in a workspace the user opened beside the conversation. */
+    home?: import("./lib/native-mcp-workspace").NativeWorkspaceHome;
   };
   __BURETTE_HOSTED_APP_QUEUE__?: Array<{ method: string; args: unknown[] }>;
   __BURETTE_HOSTED_APP_READY__?: (ready: boolean) => void;

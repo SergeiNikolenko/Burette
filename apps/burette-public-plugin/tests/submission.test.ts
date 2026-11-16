@@ -42,6 +42,15 @@ const publicToolAnnotations = {
   control_ketcher: { readOnlyHint: false, openWorldHint: false, destructiveHint: true },
 } as const;
 
+// Entrypoints and widget helpers the model never calls; the portal still scans them.
+const appOnlyToolNames = [
+  "open_workspace_tab",
+  "open_structure_file",
+  "open_sketch_file",
+  "prepare_structure_content",
+] as const;
+const appOnlyAnnotations = { readOnlyHint: true, openWorldHint: false, destructiveHint: false } as const;
+
 describe("plugin submission bundle", () => {
   test("keeps listing metadata within portal limits", () => {
     expect(submission.schema_version).toBe(1);
@@ -49,9 +58,12 @@ describe("plugin submission bundle", () => {
   });
 
   test("covers every public tool with explicit safe annotations", () => {
-    expect(Object.keys(submission.tools).sort()).toEqual([...publicToolNames].sort());
+    expect(Object.keys(submission.tools).sort()).toEqual([...publicToolNames, ...appOnlyToolNames].sort());
     for (const toolName of publicToolNames) {
       expect(submission.tools[toolName]?.annotations).toEqual(publicToolAnnotations[toolName]);
+    }
+    for (const toolName of appOnlyToolNames) {
+      expect(submission.tools[toolName]?.annotations).toEqual(appOnlyAnnotations);
     }
   });
 

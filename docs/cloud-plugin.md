@@ -22,15 +22,27 @@ to prove visual rendering and applied scene actions.
 | Public PDB and composition summary | Supported | Supported |
 | Molecular attachment | Host downloadable reference, <=3 MiB | Local path |
 | Viewer selection/focus/visibility | Bounded hosted scene actions | Local workspace actions |
-| Chemical sketch | Ephemeral Ketcher | Local editor |
+| Chemical sketch | Ephemeral Burette molecular editor | Local editor |
+| Side panel tab and local files | Codex thread and file entrypoints | Local workspace |
 | Local folders and desktop control | Unavailable | Local bridge |
 | Contacts, SASA, alignment, PNG jobs | Unavailable in this endpoint | Local molecular sessions |
 | Durable workspace or large trajectory | Unavailable | Local workflow |
 
-Hosted viewer and Ketcher cards omit the Compute menu. They do not request
+Hosted viewer and editor cards omit the Compute menu. They do not request
 compute anchors from the viewer or expose desktop calculation workflows.
-Hosted sketches mount Ketcher directly in the card so editor loading does not
-depend on a desktop molecular-frame URL across the host's sandbox origin.
+Hosted sketches use the shared Burette molecular editor. The host sandbox runs
+the widget on a different origin from the asset host, so
+`burette-hosted-frame.js` fetches the editor frame HTML and mounts it as a
+same-origin `srcdoc` child with a `<base>` pointing at the asset host. Reaction
+seeds (RXN) still open in Ketcher until the shared editor supports reactions.
+
+Viewer and editor resources declare fullscreen as the preferred display mode,
+so Codex opens them as a tab in its side panel. `open_workspace_tab` adds a
+Burette tab with recent PDB entries to the thread, and `open_structure_file`
+and `open_sketch_file` register file entrypoints. For a file entrypoint the
+host reads the file and hands it to the widget; the widget forwards at most
+3 MiB to `prepare_structure_content` or `open_ketcher`. These app-only tools
+are hidden from the model.
 
 This release is a bounded inspection product, not feature parity with the local
 plugin. Existing tools and service deployment are reused without schema changes.
@@ -55,7 +67,7 @@ subject to the published policy. No upload bucket or secret is introduced.
 Private-network URLs, credential-bearing URLs, redirects to private addresses,
 and oversized streams remain rejected by the existing structure service.
 
-The Ketcher relay is process-local: serverless instance changes can invalidate
+The editor relay is process-local: serverless instance changes can invalidate
 a surface. Report expiry and offer a fresh editor seeded with known input;
 do not silently reconstruct unsaved edits or claim durability. Hosting outages
 must be visible and must not trigger installation of the local plugin.
@@ -65,7 +77,7 @@ must be visible and must not trigger installation of the local plugin.
 1. Build a fresh allowlisted ZIP; validate all referenced components inside it.
 2. Run the live HTTPS smoke with public data. It checks initialization, tool
    discovery, PDB parsing, scene preparation, private-address rejection,
-   Ketcher creation and MCP App HTML delivery.
+   editor creation and MCP App HTML delivery.
 3. Install/upload as a separate identity and verify a mounted Codex card and
    host-provided attachment. These host gates cannot be inferred from HTTP tests.
 4. Obtain portal validation and review. A URL-only manifest removes the local

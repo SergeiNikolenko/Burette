@@ -1,6 +1,6 @@
 ---
 name: preview-molecular-structures
-description: Preview supported molecular attachments or an explicit public PDB ID in Burette's interactive viewer, or use the bounded hosted Ketcher editor for transient chemical sketches.
+description: Preview supported molecular attachments or an explicit public PDB ID in Burette's interactive viewer, or use the bounded hosted Burette molecular editor for transient chemical sketches.
 ---
 
 # Preview molecular structures
@@ -22,9 +22,9 @@ Use Burette for bounded molecular inspection and transient chemical sketching.
   unnecessary. Do not split opening, selecting, focusing, and hiding waters
   across multiple cards.
 - Use `open_ketcher` when the user asks to draw or edit a small chemical
-  structure in the hosted widget. Seed only bounded inline KET, MOL, RXN, or
+  structure in the hosted Burette molecular editor. Seed only bounded inline KET, MOL, RXN, or
   SMILES content when it is supplied.
-- Use `control_ketcher` for a follow-up Ketcher action. First use the current
+- Use `control_ketcher` for a follow-up editor action. First use the current
   `surfaceId` and `structureRevision` from the editor snapshot; send a
   revision-checked `set_structure`, `clear_structure`, `highlight_atoms`, or
   `get_structure` action. `request_persist` only reaches a user-confirmation
@@ -57,7 +57,7 @@ Use Burette for bounded molecular inspection and transient chemical sketching.
   explain the limitation without opening a preview as a substitute. Offer
   inspection separately; a PDB ID in a docking request is not an inspection request.
 - Do not claim that this public plugin edits, overwrites, or deletes molecular
-  source files. Ketcher edits exist only in the ephemeral hosted widget relay.
+  source files. Editor edits exist only in the ephemeral hosted widget relay.
 - Do not claim local macOS app control, docking, simulation, structure
   prediction, or remote job execution. Those are outside this hosted plugin.
 - Do not treat a molecular preview as medical diagnosis, clinical advice, or
@@ -84,7 +84,7 @@ Use Burette for bounded molecular inspection and transient chemical sketching.
   supported in the current host and ask for an accessible attachment or PDB ID.
 - On network/service failure, report the failed operation. Do not silently
   fall back to a local installation.
-- An expired Ketcher surface is not recoverable from its ID. Offer to reopen
+- An expired editor surface is not recoverable from its ID. Offer to reopen
   it from the last user-supplied structure; never claim unsaved edits survived.
 - If the host does not mount MCP Apps resources, report the returned summary
   and explicitly say the interactive viewer has not been displayed.

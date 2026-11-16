@@ -5,7 +5,7 @@ import { z } from "zod/v4";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { KETCHER_AGENT_API_VERSION } from "@burette/ketcher-agent-contract";
-import { createKetcherWidgetHtml } from "../lib/widget";
+import { createKetcherWidgetHtml, VIEWER_FRAME_SCRIPT_PATH } from "../lib/widget";
 import {
   exposeNoauthSecuritySchemes,
   NOAUTH_SECURITY_SCHEMES,
@@ -124,7 +124,7 @@ describe("MCP wire contract", () => {
     expect(seedEvents).toBe(3);
   });
 
-  test("starts cross-origin workers through a same-origin blob that keeps the script location", () => {
+  test("starts cross-origin workers through a same-origin blob and mounts frames as same-origin documents", async () => {
     const blobs = new Map<string, string>();
     const started: Array<{ url: string; options?: { type?: string } }> = [];
     class FakeWorker {
@@ -137,14 +137,21 @@ describe("MCP wire contract", () => {
         return url;
       },
     });
-    const widgetWindow = { parent: {}, Worker: FakeWorker, addEventListener: () => {} } as Record<string, unknown>;
-    const bootstrap = createKetcherWidgetHtml("https://burette.example").match(/<script>([\s\S]*?)<\/script>/u)?.[1];
-    runInNewContext(bootstrap!, {
-      window: widgetWindow, TextEncoder, CustomEvent, URL: FakeURL,
+    const widgetWindow = { parent: {}, origin: "https://sandbox.example", Worker: FakeWorker } as Record<string, unknown>;
+    const frameScript = `https://burette.example${VIEWER_FRAME_SCRIPT_PATH}`;
+    expect(createKetcherWidgetHtml("https://burette.example")).toContain(`<script src="${frameScript}?v=`);
+    runInNewContext(readFileSync(new URL("../assets/burette-hosted-frame.js", import.meta.url), "utf8"), {
+      window: widgetWindow, URL: FakeURL,
       Blob: class { source: string; constructor(parts: string[]) { this.source = parts.join(""); } },
-      document: { baseURI: "https://sandbox.example/widget" },
-      location: { origin: "https://sandbox.example" },
+      document: { baseURI: "https://sandbox.example/widget", currentScript: { src: frameScript, hasAttribute: () => false } },
+      fetch: async () => ({ ok: true, text: async () => '<html><head><script type="module" src="./assets/index.js"></script></head></html>' }),
     });
+    const transport = widgetWindow.BuretteHostedFrameTransport as { prepareFrame(href: string): Promise<string> };
+    // The sandbox refuses cross-origin frames and inline scripts in srcdoc
+    // children: the child gets a base URL, the host origin and this script.
+    expect(await transport.prepareFrame("https://burette.example/viewer-shell/molecular-frame/index.html?hostOrigin=x")).toBe(
+      `<html><head><base href="https://burette.example/viewer-shell/molecular-frame/"><meta name="burette-host-origin" content="https://sandbox.example"><script src="${frameScript}" data-burette-frame-child></script><script type="module" src="./assets/index.js"></script></head></html>`,
+    );
     const Worker = widgetWindow.Worker as new (url: string, options?: { type?: string }) => unknown;
     const script = "https://burette.example/viewer-shell/assets/indigoWorker.js";
     new Worker(script, { type: "module" });
@@ -281,7 +288,7 @@ describe("MCP wire contract", () => {
       } }),
     }));
     const payload = await readSseResponse(response) as { result: { content: Array<{ text: string }> } };
-    expect(payload.result.content[0]!.text).toBe("Ketcher editor is ready with a molecule of 8 atoms and 7 bonds (SMILES c1ccncc1O.[Na+]) at structure revision 1. Nothing was written to a file.");
+    expect(payload.result.content[0]!.text).toBe("Molecular editor is ready with a molecule of 8 atoms and 7 bonds (SMILES c1ccncc1O.[Na+]) at structure revision 1. Nothing was written to a file.");
   });
 
   test("publishes output schemas and the submitted annotations for every public Burette tool", async () => {
@@ -307,6 +314,10 @@ describe("MCP wire contract", () => {
     expect(tools.map((tool) => tool.name).sort()).toEqual([
       "control_ketcher",
       "open_ketcher",
+      "open_sketch_file",
+      "open_structure_file",
+      "open_workspace_tab",
+      "prepare_structure_content",
       "preview_molecular_file",
       "preview_pdb_structure",
       "render_molecular_scene",
