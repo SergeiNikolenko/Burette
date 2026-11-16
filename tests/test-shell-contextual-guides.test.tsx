@@ -27,10 +27,10 @@ const editorApi = new Proxy({}, {
 });
 mock.module("../apps/desktop/src/components/ketcher-editor", () => ({
   loadKetcherRuntime: async () => {},
-  KetcherEditor: ({ onReady }: { onReady: (api: unknown) => void }) => { React.useEffect(() => onReady(editorApi), [onReady]); return null; },
+  KetcherEditor: ({ onReady }: { onReady: (api: unknown) => void }) => { React.useEffect(() => onReady(editorApi), [onReady]); return <div data-editor="ketcher" />; },
 }));
 mock.module("../apps/desktop/src/components/molecular-editor", () => ({
-  MolecularEditorView: ({ onReady }: { onReady: (api: unknown) => void }) => { React.useEffect(() => onReady(editorApi), [onReady]); return null; },
+  MolecularEditorView: ({ onReady }: { onReady: (api: unknown) => void }) => { React.useEffect(() => onReady(editorApi), [onReady]); return <div data-editor="molecular" />; },
 }));
 
 const { createRoot } = await import("react-dom/client");
@@ -83,6 +83,7 @@ afterEach(async () => {
   window.removeEventListener(contextualGuideRequestEvent, collect);
   unregister();
   localStorage.clear();
+  delete window.__BURETTE_HOSTED_KETCHER_WIDGET__;
 });
 
 const molecule = (id: string, extension = "pdb") => ({ id, title: `${id}.${extension}`, path: `/${id}.${extension}`, extension, renderer: "molstar", runtimePath: "<html></html>", byteCount: 10 }) as ViewerDocument;
@@ -96,6 +97,18 @@ test("Ketcher introduces itself once the editor is ready in the active tab", asy
   await render(page(true));
   await waitFor(() => requests.length, "Ketcher never requested its guide");
   expect(requests).toEqual([{ id: "ketcher", anchor: null }]);
+});
+
+test("hosted sketches mount an in-document editor while desktop uses the molecular frame", async () => {
+  const state = { preferences: defaultPreferences, rightDockOpen: false, documents: [], textDocuments: [], sidebarProjects: [], tabs: [], activeTabId: null } as unknown as ShellViewState;
+  const page = (key: string) => <KetcherPage key={key} tabId={key} location={{ kind: "ketcher" }} state={state} actions={actions} isActive />;
+  await render(page("desktop"));
+  await waitFor(() => mount.querySelector('[data-editor="molecular"]'), "Desktop editor did not mount");
+  window.__BURETTE_HOSTED_KETCHER_WIDGET__ = true;
+  await render(page("hosted"));
+  await waitFor(() => mount.querySelector('[data-editor="ketcher"]'), "Hosted editor did not mount");
+  expect(mount.querySelector('[data-editor="molecular"]')).toBeNull();
+  expect(mount.querySelector('[aria-label="Open molecular compute menu"]')).toBeNull();
 });
 
 test("the XYZRender editor guide points at its launch control when the editor opens", async () => {

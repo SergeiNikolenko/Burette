@@ -8,6 +8,7 @@ import { runShellDropActionChoices, shellDropActionChoices } from "../../drop-ac
 import type { ShellActions } from "../../types";
 import { ViewerFrame } from "../viewer-frame";
 import { SceneComputeMenu } from "../scene-compute-menu";
+import { isHostedMcpWidget } from "../../../lib/hosted-mcp-widget";
 import { showNativeContextMenu } from "../../native-context-menu";
 import { definePageKind } from "./types";
 import { SpectrumViewer } from "../../spectrum-viewer";
@@ -98,7 +99,7 @@ function StructureViewerSurface({
 
   const handleViewerLoad = useCallback((frame: HTMLIFrameElement, active: boolean) => {
     postViewerVisibility(frame, active);
-    if (active && isActive && !window.BuretteMcpWorkspace && (document.renderer === "molstar" || document.renderer === "xyzrender-external")) {
+    if (active && isActive && !window.BuretteMcpWorkspace && !isHostedMcpWidget() && (document.renderer === "molstar" || document.renderer === "xyzrender-external")) {
       frame.contentWindow?.postMessage({
         source: "burette-host",
         body: { type: "sceneComputeAnchorRequest", documentId: document.id },

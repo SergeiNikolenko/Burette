@@ -273,7 +273,7 @@ function createServer(): McpServer {
       outputSchema: controlKetcherOutputSchema,
       annotations: {
         readOnlyHint: false,
-        destructiveHint: false,
+        destructiveHint: true,
         idempotentHint: false,
         openWorldHint: false,
       },

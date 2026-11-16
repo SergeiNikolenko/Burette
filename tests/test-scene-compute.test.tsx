@@ -13,6 +13,25 @@ mock.module("../apps/desktop/src/lib/viewer-bridge", () => ({ ...viewerBridge, r
 const { createRoot } = await import("react-dom/client");
 const { SceneComputeMenu } = await import("../apps/desktop/src/components/editor-area/scene-compute-menu");
 
+test("hosted scenes omit Compute and never request a compute anchor", async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const postMessage = mock(() => {});
+  const iframeRef = { current: { contentWindow: { postMessage } } as unknown as HTMLIFrameElement };
+  const target = { id: "cloud", path: "/1CRN.pdb", extension: "pdb", renderer: "molstar" } as ViewerDocument;
+  window.__BURETTE_HOSTED_MCP_WIDGET__ = true;
+  try {
+    await act(async () => root.render(<SceneComputeMenu document={target} actions={{} as ShellActions} iframeRef={iframeRef} />));
+    expect(container.childElementCount).toBe(0);
+    expect(postMessage).not.toHaveBeenCalled();
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    delete window.__BURETTE_HOSTED_MCP_WIDGET__;
+  }
+});
+
 test("Compute follows the active viewer's anchor after a frame replacement", async () => {
   const container = document.createElement("div");
   document.body.append(container);

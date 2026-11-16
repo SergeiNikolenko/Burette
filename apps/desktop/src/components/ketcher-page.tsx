@@ -1264,7 +1264,7 @@ export function KetcherPage({
               <TooltipContent showArrow={false}>Open sketch as a rendered image</TooltipContent>
             </Tooltip>
           </div>
-          {!window.BuretteMcpWorkspace && !(import.meta.env.PROD && import.meta.env.VITE_BURETTE_AGENT_SHELL === "1") && <Tooltip>
+          {!window.BuretteMcpWorkspace && !isHostedKetcherWidget() && !(import.meta.env.PROD && import.meta.env.VITE_BURETTE_AGENT_SHELL === "1") && <Tooltip>
           <RadixDropdownMenu
             align="end"
             contentClassName="ketcher-ui-menu"
@@ -1889,7 +1889,9 @@ function KetcherEditorLoader({
     setLoadError(null);
     setEditorComponent(null);
 
-    const editor = reaction
+    // Hosted cards cannot use the molecular frame's same-origin synchronous
+    // API across ChatGPT's sandbox origin. Keep their editor in the card.
+    const editor = reaction || isHostedKetcherWidget()
       ? import("./ketcher-editor").then(module => module.KetcherEditor)
       : import("./molecular-editor").then(module => module.MolecularEditorView);
     void editor

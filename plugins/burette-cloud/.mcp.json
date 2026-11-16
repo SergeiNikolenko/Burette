@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "burette_cloud": {
+      "url": "https://burette-plugin.vercel.app/mcp?client=burette-cloud"
+    }
+  }
+}
