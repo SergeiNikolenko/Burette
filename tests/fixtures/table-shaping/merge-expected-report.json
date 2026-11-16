@@ -1,0 +1,27 @@
+{
+  "matchedRows": 7,
+  "unmatchedLeft": [
+    4,
+    7,
+    8
+  ],
+  "emptyLeftKeys": [
+    9
+  ],
+  "unmatchedRight": [
+    "CHEMBL118"
+  ],
+  "emptyRightKeys": 1,
+  "duplicateRight": [
+    {
+      "key": "CHEMBL25",
+      "count": 2
+    }
+  ],
+  "duplicateLeft": [
+    {
+      "key": "CHEMBL25",
+      "count": 2
+    }
+  ]
+}

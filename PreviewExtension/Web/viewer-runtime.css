@@ -6,9 +6,11 @@
 #app.buret-molstar-initializing .msp-plugin,
 #app.buret-inspector-updating .msp-plugin canvas { visibility: hidden; }
 /* Until the first frame the page paints nothing of its own, so the host surface
-   shows through instead of the black default shell and half-mounted chrome. */
+   shows through instead of the black default shell and half-mounted chrome. A
+   frame whose color scheme differs from its host frame's is painted opaque
+   (white for normal), so viewer-shell.js copies the host frame's scheme. */
 html.buret-viewer-booting,
-html.buret-viewer-booting body { background: transparent !important; }
+html.buret-viewer-booting body { background: transparent !important; color-scheme: var(--buret-boot-color-scheme, normal); }
 /* Opacity rather than visibility: Mol* marks parts of its layout visible, which
    would override an inherited visibility: hidden. */
 html.buret-viewer-booting body { opacity: 0 !important; }
@@ -57,6 +59,9 @@ html, body, #app { width: 100%; height: 100%; margin: 0; padding: 0; overflow: h
    Molecular colors and representations are deliberately unaffected. */
 body .msp-plugin [class*="msp-accent-color"] { color: var(--buret-molstar-text) !important; }
 body .msp-plugin :is(button,input,select,[tabindex]):is(:hover,:focus,:focus-visible) { outline-color: var(--buret-molstar-border) !important; }
+/* The 3D view takes keyboard camera steps; only keyboard focus draws a ring. */
+body .msp-plugin canvas[data-buret-keyboard-camera]:focus { outline: none !important; }
+body .msp-plugin canvas[data-buret-keyboard-camera]:focus-visible { outline: 2px solid var(--buret-molstar-accent) !important; outline-offset: -2px; }
 body #buret-toolbar { border-radius:18px; gap:2px; box-shadow:0 1px 4px rgb(0 0 0 / 8%); }
 body #buret-viewport-rail, body #buret-scene-tree-toggle, body .buret-docking-poses { border-radius:18px; box-shadow:0 1px 4px rgb(0 0 0 / 8%); }
 body #buret-toolbar .buret-toolbar-content { gap:2px; }
@@ -69,7 +74,7 @@ body:is(.buret-theme-light,.buret-theme-dark) :is(
   .buret-xyzrender-popover,.buret-story-hover-card
 ) {
   border:1px solid var(--buret-toolbar-border);
-  border-radius:18px; background:var(--buret-toolbar-background);
+  border-radius:18px; background:var(--buret-toolbar-solid-background, var(--buret-menu-background));
   color:var(--buret-toolbar-color); box-shadow:0 4px 16px rgb(0 0 0 / 8%);
 }
 body:is(.buret-theme-light,.buret-theme-dark) .buret-docking-poses.buret-molstar-story {
@@ -540,7 +545,13 @@ body .msp-plugin .msp-highlight-info {
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
 }
-/* Long labels (e.g. a whole polymer sequence) keep their last lines, where the residue and chain are. */
+/* Clear the app shell's Compute button (12px inset, 28px tall) in the same corner. */
+body.buret-app-viewer:not(.burette-mobile-host) .msp-plugin .msp-highlight-toast-wrapper {
+  bottom: 52px;
+}
+/* Long labels (e.g. a whole polymer sequence) keep their last lines, where the residue and chain are.
+   Overflow is clipped at the padding box, so the vertical inset is a transparent border filled by the
+   background: clipped text stops short of the edge. The visible outline is a shadow. */
 body .msp-plugin .msp-highlight-info {
   box-sizing: content-box;
   display: flex;
@@ -548,12 +559,12 @@ body .msp-plugin .msp-highlight-info {
   justify-content: flex-end;
   max-height: calc(4 * 1.4em);
   padding-block: 0;
+  border: solid transparent;
+  border-width: 7px 0;
+  box-shadow: 0 0 0 1px var(--buret-molstar-border);
   line-height: 1.4em;
   overflow: hidden;
   overflow-wrap: anywhere;
-}
-body .msp-plugin .msp-highlight-info > :last-child {
-  padding-bottom: 3px;
 }
 body .msp-plugin .msp-snapshot-description-wrapper *,
 body .msp-plugin .msp-highlight-info * {
@@ -812,6 +823,21 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   backdrop-filter: blur(24px);
   box-shadow: 0 8px 28px var(--buret-molstar-shadow);
   font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  transition: opacity 140ms cubic-bezier(.2, .8, .2, 1), visibility 0s;
+}
+/* Folded into the chip: still laid out, so its map frame stays loaded and sized. */
+.buret-molstar-molecule-preview.buret-molecule-card-collapsed {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 100ms ease-in, visibility 0s linear 100ms;
+}
+@starting-style {
+  .buret-molstar-molecule-preview { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .buret-molstar-molecule-preview,
+  .buret-molstar-molecule-preview.buret-molecule-card-collapsed { transition: none; }
 }
 /* Only the header and the drawing are the grab area; the buttons under them keep a
    pointer so the card never looks like it is about to move when it is not. */
@@ -923,8 +949,7 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   outline: 2px solid var(--buret-molstar-accent);
   outline-offset: 1px;
 }
-/* Minimized preview: a small pill parked in the bottom-left corner that pops the
-   same molecule back out when clicked. */
+/* The folded card: a small pill in the bottom-left corner that opens the card. */
 .buret-molecule-preview-chip {
   position: fixed;
   left: 12px;
@@ -932,24 +957,26 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   z-index: 42;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  max-width: 220px;
-  height: 30px;
-  padding: 0 10px;
+  gap: 6px;
+  max-width: 200px;
+  height: 26px;
+  padding: 0 9px;
   border: 1px solid var(--buret-molstar-border);
-  border-radius: 9px;
+  border-radius: 8px;
   background: color-mix(in srgb, var(--buret-molstar-panel-background) 92%, transparent);
   -webkit-backdrop-filter: blur(24px);
   backdrop-filter: blur(24px);
-  color: var(--buret-molstar-text);
-  box-shadow: 0 2px 8px var(--buret-molstar-shadow);
+  color: var(--buret-molstar-muted-text);
   font: 500 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   cursor: pointer;
-  transition: background 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+  transition: background 140ms ease, color 140ms ease, transform 140ms ease;
+}
+.buret-molecule-preview-chip[hidden] {
+  display: none;
 }
 .buret-molecule-preview-chip:hover {
+  color: var(--buret-molstar-text);
   background: var(--buret-molstar-hover-background);
-  box-shadow: 0 3px 12px var(--buret-molstar-shadow);
 }
 .buret-molecule-preview-chip:active {
   transform: scale(.97);
@@ -959,10 +986,9 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   outline-offset: 2px;
 }
 .buret-molecule-preview-chip > svg {
-  width: 13px;
-  height: 13px;
+  width: 12px;
+  height: 12px;
   flex: 0 0 auto;
-  color: var(--buret-molstar-muted-text);
 }
 @media (prefers-reduced-motion: reduce) {
   .buret-molecule-preview-chip { transition: none; }
@@ -1022,6 +1048,57 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
 }
 .buret-molecule-card-button[data-buret-molecule-preview-action="lasso"] {
   margin-left: auto;
+}
+/* The map's design, picked next to the card's title. */
+.buret-molecule-card-style {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--buret-molstar-muted-text);
+}
+.buret-molecule-card-style:hover {
+  color: var(--buret-molstar-text);
+}
+.buret-molecule-card-style > select {
+  appearance: none;
+  -webkit-appearance: none;
+  min-width: 0;
+  max-width: 132px;
+  height: 22px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 20px 0 7px;
+  color: inherit;
+  background: transparent;
+  font: 500 10.5px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+.buret-molecule-card-style > select:hover {
+  background: var(--buret-molstar-hover-background);
+}
+.buret-molecule-card-style > select:focus-visible {
+  outline: 1px solid var(--buret-molstar-muted-text);
+  outline-offset: 1px;
+}
+.buret-molecule-card-style > svg {
+  position: absolute;
+  right: 5px;
+  width: 11px;
+  height: 11px;
+  pointer-events: none;
+}
+.buret-molecule-card-view {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+.buret-molecule-card-button[data-buret-molecule-preview-action="lasso"] ~ .buret-molecule-card-view {
+  margin-left: 4px;
 }
 .buret-molecule-card-button[aria-pressed="true"] {
   color: var(--buret-molstar-text);
@@ -1141,6 +1218,20 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
 }
 .buret-molstar-molecule-preview-image svg {
   padding: 6px;
+}
+.buret-molstar-molecule-preview.buret-molecule-card-has-diagram {
+  max-width: min(560px, calc(100vw - 16px));
+  max-height: min(520px, calc(100vh - 16px));
+}
+.buret-molecule-card-diagram {
+  display: block;
+}
+.buret-molecule-card-diagram iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
 }
 .buret-theme-dark .buret-molstar-molecule-preview-image {
   --depiction-carbon: #e6e8ed;
@@ -2352,8 +2443,6 @@ body.burette-mobile-host .msp-plugin .msp-btn {
     gap: 4px;
     padding: 4px;
   }
-  #buret-toolbar[data-active-renderer="xyzrender-external"] [data-buret-toggle="left"],
-  #buret-toolbar[data-active-renderer="xyzrender-external"] [data-buret-toggle="right"],
   #buret-toolbar[data-active-renderer="xyzrender-external"] [data-buret-toggle="sequence"],
   #buret-toolbar[data-active-renderer="xyzrender-external"] [data-buret-toggle="log"] {
     display: none;
@@ -2596,6 +2685,10 @@ body.burette-mobile-host .buret-docking-poses button {
    the name is cut. Hovering walks the name through that window to show its tail.
    The moving part is an inner element driven by transform: it composites, where
    animating text-indent or width would relay out the line on every frame. */
+.buret-docking-poses .buret-docking-pose-current-text {
+  /* The control's spans reserve 76px; a squeezed name must end in an ellipsis. */
+  min-width: 0;
+}
 .buret-docking-pose-current-text {
   display: inline-block;
   max-width: 100%;
@@ -3117,6 +3210,10 @@ body.burette-mobile-host .buret-docking-poses button {
 .buret-docking-poses:not(.buret-docking-poses-compact) .buret-docking-pose-slider {
   max-width: 96px;
 }
+/* Without Smooth nothing holds the right edge, so the scrubber runs to it. */
+.buret-docking-poses:not(.buret-docking-poses-compact) .buret-docking-pose-animation:not(:has(.buret-trajectory-smooth-button)) .buret-docking-pose-slider {
+  max-width: none;
+}
 .buret-docking-poses:not(.buret-docking-poses-compact) .buret-docking-pose-animation .buret-trajectory-smooth-button {
   margin-left: auto;
 }
@@ -3223,6 +3320,12 @@ body.burette-mobile-host .buret-docking-poses button {
 .buret-docking-poses-compact .buret-docking-pose-slider {
   flex: 1 1 100%;
   width: 100%;
+}
+/* Only the frame stepper's playback row grows a second line. Elsewhere the row
+   is one line high, so the scrubber stays beside Loop instead of being cut off. */
+.buret-docking-poses-compact:not(.buret-docking-poses-frames) .buret-docking-pose-slider {
+  flex: 1 1 0;
+  width: 0;
 }
 @media (max-width: 360px) {
   .buret-docking-poses {
@@ -4671,7 +4774,7 @@ body .msp-plugin .buret-seq-enhanced > .msp-sequence-select { display: none; }
 .buret-seq-header [data-role="Molecule"] {
   order: -2;
   flex: 1;
-  min-width: 40px;
+  min-width: 0;
   text-align: left;
   text-overflow: ellipsis;
   overflow: hidden;
@@ -4684,7 +4787,7 @@ body .msp-plugin .buret-seq-enhanced > .msp-sequence-select { display: none; }
 .buret-seq-button {
   appearance: none;
   border: 0;
-  border-radius: 6px;
+  border-radius: 999px;
   padding: 6px 8px;
   background: transparent;
   color: inherit;
@@ -4692,7 +4795,7 @@ body .msp-plugin .buret-seq-enhanced > .msp-sequence-select { display: none; }
   cursor: pointer;
   white-space: nowrap;
 }
-.buret-seq-control { display: inline-flex; min-width: 0; }
+.buret-seq-control { position: relative; display: inline-flex; min-width: 0; }
 .buret-seq-control > .buret-seq-button {
   display: flex;
   align-items: center;
@@ -4701,8 +4804,10 @@ body .msp-plugin .buret-seq-enhanced > .msp-sequence-select { display: none; }
   width: 100%;
   min-width: 0;
 }
-.buret-seq-control > .buret-seq-button > span { overflow: hidden; text-overflow: ellipsis; }
-.buret-seq-control svg { width: 14px; height: 14px; flex-shrink: 0; color: var(--buret-molstar-muted-text); }
+.buret-seq-header .buret-seq-context,
+.buret-seq-control .atlas-select-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.buret-seq-control .atlas-select-indicator { flex: 0 0 auto; }
+.buret-seq-control .atlas-select-icon { display: block; width: 8px; height: 12px; color: var(--buret-molstar-muted-text); }
 .buret-seq-button:hover, .buret-seq-button[aria-expanded="true"] {
   background-color: var(--buret-molstar-hover-background);
 }
@@ -5229,46 +5334,45 @@ html[data-burette-header-band] .msp-plugin-content.msp-layout-expanded { top: va
    viewer below the band. */
 html[data-burette-header-band] .buret-sequence-layout { top: var(--burette-header-band-height, 48px); }
 html[data-burette-header-band] .buret-viewport-corner { top: 8px !important; left: var(--burette-header-band-corner-left, 8px) !important; }
-html[data-burette-header-band] body :is(#buret-toolbar, #buret-scene-tree-toggle, #buret-viewport-rail, #buret-selection-bar) {
+/* Shared Codex capsule appearance. Header-band positioning stays widget-only. */
+html:is([data-burette-header-band], [data-burette-app-chrome]) body :is(#buret-toolbar:where(:not(.collapsed, .buret-suppressed-by-molstar-panel)), #buret-scene-tree-toggle, #buret-viewport-rail, #buret-selection-bar) {
   box-sizing: border-box; border: 0; border-radius: var(--radius-full); color: var(--color-text);
   background: var(--color-surface-elevated); box-shadow: var(--shadow-viewer-surface);
   font: var(--text-sm)/20px var(--font-sans);
   -webkit-backdrop-filter: blur(var(--blur-xl)); backdrop-filter: blur(var(--blur-xl));
 }
-html[data-burette-header-band] body.buret-theme-dark :is(#buret-toolbar, #buret-scene-tree-toggle, #buret-viewport-rail, #buret-selection-bar) {
+html:is([data-burette-header-band], [data-burette-app-chrome]) body.buret-theme-dark :is(#buret-toolbar:where(:not(.collapsed, .buret-suppressed-by-molstar-panel)), #buret-scene-tree-toggle, #buret-viewport-rail, #buret-selection-bar) {
   background: var(--color-surface-elevated-secondary);
   box-shadow: 0 0 0 var(--border-width-hairline) var(--color-border), var(--shadow-xl-spread);
 }
-html[data-burette-header-band] body #buret-scene-tree-toggle { width: 32px; height: 32px; }
-html[data-burette-header-band] body #buret-scene-tree-toggle:hover {
+html:is([data-burette-header-band], [data-burette-app-chrome]) body #buret-scene-tree-toggle { width: 32px; height: 32px; }
+html:is([data-burette-header-band], [data-burette-app-chrome]) body #buret-scene-tree-toggle:hover {
   background-image: linear-gradient(var(--color-background-primary-ghost-hover) 0 0);
 }
 /* The capsule shadow above replaces the toggle's own box-shadow focus ring. */
-html[data-burette-header-band] body #buret-scene-tree-toggle:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 0; }
-/* Codex marks a pressed viewer control with a blue-tinted surface; on dark
-   themes its text is chart blue lifted toward white by the theme contrast. */
-html[data-burette-header-band] body #buret-scene-tree-toggle[aria-expanded="true"] {
-  background: color-mix(in srgb, var(--color-surface) 90%, var(--color-chart-blue)); color: var(--color-text-info);
+html:is([data-burette-header-band], [data-burette-app-chrome]) body #buret-scene-tree-toggle:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 0; }
+/* Codex shows a pressed ghost toggle with the neutral ghost fill and full-contrast
+   text (Atlas "ghostActive"); accent colors are reserved for status. */
+html:is([data-burette-header-band], [data-burette-app-chrome]) body #buret-scene-tree-toggle[aria-expanded="true"] {
+  background-image: linear-gradient(var(--color-background-secondary-ghost-hover) 0 0); color: var(--color-text);
 }
 /* The toolbar's content box clips anything outside its buttons, so focus rings
    sit inside them, as on Codex's inset-ring chips. */
-html[data-burette-header-band] body :is(#buret-toolbar, #buret-viewport-rail, #buret-selection-bar) .atlas-button {
+html:is([data-burette-header-band], [data-burette-app-chrome]) body :is(#buret-toolbar, #buret-viewport-rail, #buret-selection-bar) .atlas-button {
   border-radius: var(--radius-full); --button-ring-offset: -2px;
   --button-text-color: var(--color-text); --button-text-color-hover: var(--color-text);
 }
-html[data-burette-header-band] body :is(#buret-toolbar, #buret-viewport-rail) .atlas-button[data-selected] {
-  --button-background-color: color-mix(in srgb, var(--color-surface) 90%, var(--color-chart-blue));
-  --button-text-color-hover: var(--color-text-info);
-}
-html[data-burette-header-band] body.buret-theme-dark :is(#buret-toolbar, #buret-viewport-rail) .atlas-button[data-selected] {
-  --button-text-color-hover: color-mix(in srgb, var(--color-chart-blue), var(--white) calc(19.5% + var(--codex-base-contrast) * 0.325% + max(0, var(--codex-base-contrast) - 60) * 0.325%));
-}
-html[data-burette-header-band] body.buret-theme-dark #buret-scene-tree-toggle[aria-expanded="true"] {
-  color: color-mix(in srgb, var(--color-chart-blue), var(--white) calc(19.5% + var(--codex-base-contrast) * 0.325% + max(0, var(--codex-base-contrast) - 60) * 0.325%));
-}
-html[data-burette-header-band] body #buret-viewport-rail .atlas-button[data-buret-viewport-action="clear-selection"] {
+html:is([data-burette-header-band], [data-burette-app-chrome]) body #buret-viewport-rail .atlas-button[data-buret-viewport-action="clear-selection"] {
   --button-text-color: var(--color-text-danger); --button-text-color-hover: var(--color-text-danger);
 }
+
+html[data-burette-app-chrome] #buret-toolbar:not(.collapsed, .buret-suppressed-by-molstar-panel),
+html[data-burette-app-chrome] #buret-viewport-rail {
+  padding: 2px;
+  gap: 0;
+}
+html[data-burette-app-chrome] #buret-toolbar .buret-toolbar-content { gap: 0; }
+html[data-burette-app-chrome] #buret-viewport-rail { width: 32px; }
 html[data-burette-header-band] #buret-toolbar {
   top: var(--burette-header-band-toolbar-top, 8px) !important; left: auto !important; right: var(--burette-header-band-right, 8px) !important;
   height: 32px; padding: 2px; gap: 0;
@@ -5277,7 +5381,7 @@ html[data-burette-header-band] #buret-toolbar {
 html[data-burette-header-band] #buret-toolbar .buret-toolbar-content {
   min-width: 0; max-width: 100% !important; gap: 0;
 }
-html[data-burette-header-band] #buret-toolbar :is([data-buret-toggle="left"], [data-buret-toggle="right"], [data-drag-handle]) { display: none !important; }
+html[data-burette-header-band] #buret-toolbar [data-drag-handle] { display: none !important; }
 /* The rail normally hangs under the toolbar; here it keeps the right edge
    below the header row, and the selection bar stands beside it. */
 html[data-burette-header-band] #buret-viewport-rail {
@@ -5335,13 +5439,14 @@ body:not(.burette-mobile-host) .buret-molecule-context-submenu {
   line-height: 18.5px;
 }
 /* The menus that predate the shared chrome surface take it too, so a context menu
-   and the tree menu it opens beside are one material. */
+   and the tree menu it opens beside are one material. Menus are opaque: they carry
+   no backdrop blur, and a submenu nested in a blurred parent could not have one. */
 body:is(.buret-theme-light, .buret-theme-dark) .buret-seq-menu,
 body:is(.buret-theme-light, .buret-theme-dark):not(.burette-mobile-host) .buret-molecule-context-menu,
 body:is(.buret-theme-light, .buret-theme-dark):not(.burette-mobile-host) .buret-molecule-context-menu:not(.buret-xyzrender-context-menu),
 body:is(.buret-theme-light, .buret-theme-dark):not(.burette-mobile-host) .buret-molecule-context-submenu {
   color: var(--buret-toolbar-color);
-  background: var(--buret-toolbar-background);
+  background: var(--buret-toolbar-solid-background, var(--buret-menu-background));
 }
 body .buret-tree-menu { width: 208px; }
 body .buret-tree-menu.buret-viewport-menu { width: 232px; }
@@ -5814,15 +5919,15 @@ body .buret-docking-poses { view-transition-name: buret-pose-controls; }
   object-position: left top;
 }
 
-/* After the first layout, islands glide to the place a resize or a
-   neighbour's new shape gives them; dragging still moves them directly. */
+/* Geometry must follow live viewport bounds without an easing tail. Discrete
+   toolbar changes already use view transitions; interpolating measured left/top
+   also makes dependent rails chase intermediate positions during resizing. */
 html.buret-chrome-settled #buret-toolbar:not(.buret-dragging) {
-  transition: background 180ms ease, box-shadow 180ms ease,
-    left 260ms cubic-bezier(0.32, 0.72, 0, 1), top 260ms cubic-bezier(0.32, 0.72, 0, 1);
+  transition: background 180ms ease, box-shadow 180ms ease;
 }
 html.buret-chrome-settled body .buret-docking-poses:not(.buret-docking-poses-dragging),
 html.buret-chrome-settled #buret-viewport-rail:not(.buret-dragging) {
-  transition: left 260ms cubic-bezier(0.32, 0.72, 0, 1), top 260ms cubic-bezier(0.32, 0.72, 0, 1);
+  transition: none;
 }
 
 /* A pane narrower than the toolbar wraps its buttons onto a second row
@@ -5833,6 +5938,9 @@ html.buret-chrome-settled #buret-viewport-rail:not(.buret-dragging) {
   row-gap: 2px;
   overflow: visible;
 }
+/* Centred between wrapped rows the grip read as one more button; it holds the
+   top corner instead. */
+#buret-toolbar.buret-toolbar-docked.buret-toolbar-wrapped { align-items: flex-start; }
 @media (prefers-reduced-motion: reduce) {
   html.buret-chrome-settled #buret-toolbar:not(.buret-dragging),
   html.buret-chrome-settled body .buret-docking-poses:not(.buret-docking-poses-dragging),

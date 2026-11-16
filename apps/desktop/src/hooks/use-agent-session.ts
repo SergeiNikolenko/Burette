@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
+import { withScientificExportWarning, type ScientificExportOwner } from "../lib/agent-scientific-export";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { DockingSceneMode, ViewerDocument } from "../types";
@@ -7,8 +8,9 @@ import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 import type { DockArea } from "../lib/dock";
 import { executeAgentTabAction, type AgentTabActions } from "../lib/agent-tab-actions";
 import { agentGridState, recordAgentGridState } from "../lib/agent-grid-state";
-import { setAgentWorkspacePanel } from "../lib/agent-workspace-panel";
+import { setAgentRightPanel, setAgentWorkspacePanel } from "../lib/agent-workspace-panel";
 import { perfNow, tracePerf } from "../lib/perf-trace";
+import { createWorkbenchAgentController, readWorkbenchAgentSource, type WorkbenchAgentController } from "../lib/workbench/agent-controller";
 import type { MoleculeTab } from "../stores/molecule-store";
 import { createSelectionContext } from "../../../burette-public-plugin/lib/hosted-context";
 
@@ -124,6 +126,8 @@ type UseAgentSessionArgs = {
   openPaths: OpenPaths;
   pushErrorStatus: (error: unknown, prefix?: string) => void;
   setDockDocument: (area: DockArea, documentId: string | null) => void;
+  /** Unsaved editor text of a document; without it, workbench reads use the saved source. */
+  sourceDraftForDocument?: (document: ViewerDocument) => string | null;
 };
 
 export function useAgentSession({
@@ -139,6 +143,7 @@ export function useAgentSession({
   openPaths,
   pushErrorStatus,
   setDockDocument,
+  sourceDraftForDocument,
 }: UseAgentSessionArgs) {
   const sessionDirRef = useRef<string | null>(null);
   const activeDocumentRef = useRef<ViewerDocument | null | undefined>(activeDocument);
@@ -155,9 +160,14 @@ export function useAgentSession({
   const setDockDocumentRef = useRef(setDockDocument);
   const pollingRef = useRef<Promise<void> | null>(null);
   const activationRef = useRef(Promise.resolve());
-  const pendingViewerActionsRef = useRef(new Map<string, (result: unknown) => void>());
+  const pendingViewerActionsRef = useRef(new Map<string, (result: unknown, source?: MessageEventSource | null) => void>());
   const workspacePanelsRef = useRef<AgentWorkspacePanel[]>([]);
   const viewerAgentStatesRef = useRef<Record<string, ViewerAgentState>>({});
+  const sourceDraftRef = useRef(sourceDraftForDocument);
+  sourceDraftRef.current = sourceDraftForDocument;
+  activeDocumentRef.current = activeDocument;
+  const workbenchRef = useRef<WorkbenchAgentController | null>(null);
+  const draftsVisible = Boolean(sourceDraftForDocument);
 
   activeTabIdRef.current = activeTabId;
   activeTabKindRef.current = activeTabKind;
@@ -169,6 +179,33 @@ export function useAgentSession({
     documentsRef.current = documents;
     void writeObserve(sessionDirRef.current, activeDocument, documents, tabs, workspacePanelsRef.current, viewerAgentStatesRef.current, activeTabIdRef.current, activeTabKindRef.current);
   }, [activeDocument, activeTabId, activeTabKind, documents, tabs]);
+
+  // One workbench controller per mounted session. Unmounting, or a page that is
+  // going away for good, terminates its workers and refuses later actions.
+  useEffect(() => {
+    const workbench = createWorkbenchAgentController({
+      runtime: window.BuretteMcpWorkspace ? "plugin-widget" : isBrowserAgentShell ? "browser-agent-shell" : "desktop-app",
+      documents: () => documentsRef.current,
+      activeDocument: () => activeDocumentRef.current,
+      readSource: (document) => readWorkbenchAgentSource(document, sourceDraftRef.current),
+      draftsVisible,
+    });
+    workbenchRef.current = workbench;
+    const onPageHide = (event: PageTransitionEvent) => {
+      if (!event.persisted) workbench.dispose();
+    };
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      window.removeEventListener("pagehide", onPageHide);
+      workbench.dispose();
+      if (workbenchRef.current === workbench) workbenchRef.current = null;
+    };
+  }, [draftsVisible]);
+
+  // Workbench jobs of closed documents are cancelled and their results released.
+  useEffect(() => {
+    workbenchRef.current?.documentsChanged(new Set(documents.map((document) => document.id)));
+  }, [documents]);
 
   useEffect(() => {
     openPathsRef.current = openPaths;
@@ -206,14 +243,17 @@ export function useAgentSession({
   useEffect(() => {
     if (!isTauriRuntime()) return undefined;
     let cancelled = false;
-    void invoke<string | null>("startup_agent_session")
+    const drainSession = () => invoke<string | null>("startup_agent_session")
       .then((sessionDir) => {
-        if (!cancelled && !sessionDirRef.current) void activateSession(sessionDir);
+        if (!cancelled) void activateSession(sessionDir);
       })
       .catch((error) => pushErrorStatusRef.current(error, "Agent session startup failed"));
 
-    const cleanup = trackTauriListener(listen<string>("agent-session", (event) => {
-      activateSession(event.payload);
+    const cleanup = trackTauriListener(listen("agent-session", () => {
+      void drainSession();
+    }).then((unlisten) => {
+      void drainSession();
+      return unlisten;
     }), "agent-session");
 
     return () => {
@@ -255,7 +295,7 @@ export function useAgentSession({
         const resolve = pendingViewerActionsRef.current.get(body.id);
         if (!resolve) return;
         pendingViewerActionsRef.current.delete(body.id);
-        resolve(body.result);
+        resolve(body.result, event.source);
         return;
       }
       if (
@@ -344,6 +384,8 @@ export function useAgentSession({
         viewerAgentStatesRef.current,
         activeTabIdRef.current,
         activeTabKindRef.current,
+        workbenchRef.current,
+        { current: () => activeDocumentRef.current, draft: document => sourceDraftRef.current?.(document) ?? null },
       )
         .then((processed) => processed ? writeObserve(
           sessionDirRef.current, activeDocumentRef.current, documentsRef.current,
@@ -410,7 +452,7 @@ async function writeObserve(
         }
       : {
           ready: false,
-          note: activeKetcher ? "The active surface is a Ketcher editor." : "No active document is open in the desktop app.",
+          note: activeKetcher ? "The active surface is the molecular editor." : "No active document is open in the desktop app.",
         },
     documents: documents.slice(0, MAX_OBSERVED_DOCUMENTS).map((document) => ({
       id: document.id,
@@ -481,7 +523,7 @@ function observedTab(
   const kind = tab.location.kind;
   const title = document?.title ?? ({
     launcher: "New tab",
-    ketcher: "Ketcher",
+    ketcher: "Molecular editor",
     settings: "Settings",
     "fep-setup": "FEP setup",
     "fep-network": "FEP network",
@@ -505,7 +547,7 @@ async function pollAgentActions(
   openKetcherTab: OpenKetcherTab,
   openTextDocuments: OpenTextDocuments,
   setDockDocument: (area: DockArea, documentId: string | null) => void,
-  pendingViewerActions: Map<string, (result: unknown) => void>,
+  pendingViewerActions: Map<string, (result: unknown, source?: MessageEventSource | null) => void>,
   workspacePanels: AgentWorkspacePanel[],
   activeDocument: ViewerDocument | null | undefined,
   documents: ViewerDocument[],
@@ -514,6 +556,8 @@ async function pollAgentActions(
   viewerAgentStates: Record<string, ViewerAgentState>,
   activeTabId: string | null | undefined,
   activeTabKind: string | null | undefined,
+  workbench: WorkbenchAgentController | null,
+  exportOwner: ScientificExportOwner,
 ) {
   const actionsPath = joinSessionPath(sessionDir, "actions.json");
   const actionsFile = await readJson<AgentActionsFile>(actionsPath, { apiVersion: AGENT_API_VERSION, actions: [] });
@@ -539,6 +583,8 @@ async function pollAgentActions(
     activeTabKind,
     tabs,
     tabActions,
+    workbench,
+    exportOwner,
   );
   tracePerf("agent:action", {
     at: startedAt,
@@ -560,7 +606,7 @@ async function executeDesktopAgentAction(
   openKetcherTab: OpenKetcherTab,
   openTextDocuments: OpenTextDocuments,
   setDockDocument: (area: DockArea, documentId: string | null) => void,
-  pendingViewerActions: Map<string, (result: unknown) => void>,
+  pendingViewerActions: Map<string, (result: unknown, source?: MessageEventSource | null) => void>,
   workspacePanels: AgentWorkspacePanel[],
   activeDocument: ViewerDocument | null | undefined,
   viewerAgentStates: Record<string, ViewerAgentState>,
@@ -568,6 +614,8 @@ async function executeDesktopAgentAction(
   activeTabKind: string | null | undefined,
   tabs: MoleculeTab[],
   tabActions: AgentTabActions,
+  workbench: WorkbenchAgentController | null,
+  exportOwner: ScientificExportOwner,
 ) {
   const type = String(item.action?.type || "");
   if (type === 'set_workspace_panel') return setAgentWorkspacePanel(item.action, activeTabId, tabs);
@@ -577,13 +625,13 @@ async function executeDesktopAgentAction(
   }
   if (type === "control_ketcher") {
     if (activeTabKind !== "ketcher") {
-      return agentFailure(type, "STALE_TARGET", "Ketcher actions require the observed active Ketcher tab.");
+      return agentFailure(type, "STALE_TARGET", "Molecular editor actions require the observed active molecular editor tab.");
     }
     const ketcherAgent = await loadKetcherAgentModule();
     const controller = ketcherAgent.getKetcherAgentController(activeTabId);
-    if (!controller) return agentFailure(type, "STALE_TARGET", "The observed Ketcher surface is no longer mounted.");
+    if (!controller) return agentFailure(type, "STALE_TARGET", "The observed molecular editor surface is no longer mounted.");
     if (item.action.surfaceId !== controller.surfaceId) {
-      return agentFailure(type, "STALE_TARGET", "The requested Ketcher surface is not the active observed tab.");
+      return agentFailure(type, "STALE_TARGET", "The requested molecular editor surface is not the active observed tab.");
     }
     return controller.execute(item.action);
   }
@@ -635,7 +683,12 @@ async function executeDesktopAgentAction(
   if (type === "render_panel") {
     return renderPanel(item.action, openTextDocuments, setDockDocument, workspacePanels);
   }
-  return postActionToActiveViewer(item, pendingViewerActions, activeDocument, viewerAgentStates);
+  // Workbench reads and jobs run in the shell; they never reach the Mol* viewer.
+  if (type === "workbench") {
+    return workbench?.execute(item.action) ?? agentFailure(type, "WORKBENCH_CLOSED", "The workspace closed; workbench actions are not accepted.");
+  }
+  return withScientificExportWarning(item.action, activeDocument, exportOwner, frame =>
+    postActionToActiveViewer(item, pendingViewerActions, activeDocument, viewerAgentStates, frame));
 }
 
 async function renderPanel(
@@ -662,7 +715,8 @@ async function renderPanel(
     );
   }
   const area: DockArea = action.area === "bottom" ? "bottom" : "right";
-  setDockDocument(area, document.id);
+  if (area === "right") setAgentRightPanel(true, document.id);
+  else setDockDocument(area, document.id);
   const panel = {
     id: `agent-panel:${area}:${kind}:${document.title}`,
     area,
@@ -689,9 +743,10 @@ async function renderPanel(
 
 async function postActionToActiveViewer(
   item: AgentActionItem,
-  pendingViewerActions: Map<string, (result: unknown) => void>,
+  pendingViewerActions: Map<string, (result: unknown, source?: MessageEventSource | null) => void>,
   activeDocument: ViewerDocument | null | undefined,
   viewerAgentStates: Record<string, ViewerAgentState>,
+  exportFrame?: HTMLIFrameElement,
 ) {
   if (!activeDocument || activeDocument.renderer !== "molstar") {
     return agentFailure(String(item.action?.type || ""), "NO_VIEWER", "No active Mol* viewer document is available.");
@@ -700,11 +755,11 @@ async function postActionToActiveViewer(
   if (!agentState?.agentReady) {
     return agentFailure(String(item.action?.type || ""), "NO_VIEWER", "The active Mol* viewer has not reported BuretteAgent readiness yet.");
   }
-  const iframe = activeDocument.id
+  const iframe = exportFrame ?? (activeDocument.id
     ? Array.from(document.querySelectorAll<HTMLIFrameElement>("iframe.viewer-iframe[data-document-id]")).find(
         (item) => item.dataset.documentId === activeDocument.id,
       )
-    : null;
+    : null);
   if (!iframe?.contentWindow) {
     return agentFailure(String(item.action?.type || ""), "NO_VIEWER", "No active viewer iframe is available.");
   }
@@ -713,9 +768,10 @@ async function postActionToActiveViewer(
       pendingViewerActions.delete(item.id);
       resolve(agentFailure(String(item.action?.type || ""), "ACTION_TIMEOUT", "The active viewer did not report an action result."));
     }, SLOW_VIEWER_ACTION_TYPES.has(String(item.action?.type || "")) ? 30000 : 5000);
-    pendingViewerActions.set(item.id, (value) => {
+    pendingViewerActions.set(item.id, (value, source) => {
       window.clearTimeout(timeout);
-      resolve(value);
+      resolve(exportFrame && source !== exportFrame.contentWindow
+        ? agentFailure(String(item.action?.type || ""), "STALE_TARGET", "The export response came from a different viewer.") : value);
     });
     iframe.contentWindow?.postMessage({
       source: "burette-agent-host",

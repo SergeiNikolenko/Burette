@@ -1,0 +1,1 @@
+{"extends":"./tsconfig.assembly-dialog.json","files":["test-assembly-activation.test.tsx"],"include":["../apps/desktop/src/**/*.d.ts"]}

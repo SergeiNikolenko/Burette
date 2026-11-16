@@ -50,6 +50,19 @@ pub(crate) struct DockingRuntimeSource {
     pub(crate) indexed_trajectory: Option<super::trajectory::IndexedTrajectory>,
 }
 
+// Full topology scenes travel only in transient reload options; ordinary views keep their 8 KiB cap.
+fn supported_renderer_view_state(value: &str) -> bool {
+    if value.len() <= 8192 {
+        return true;
+    }
+    if value.len() > 2 * 1024 * 1024 + 8192 {
+        return false;
+    }
+    serde_json::from_str::<serde_json::Value>(value)
+        .ok()
+        .is_some_and(|state| state["version"] == 1 && state["topologyScene"]["version"] == 1)
+}
+
 pub(crate) fn create_runtime<R: Runtime>(
     app: &tauri::AppHandle<R>,
     file_path: &Path,
@@ -60,6 +73,12 @@ pub(crate) fn create_runtime<R: Runtime>(
     preferences: &ViewerPreferences,
     reload_options: Option<&ViewerReloadOptions>,
 ) -> Result<CreatedRuntime, String> {
+    let popout_sheet = crate::commands::popout_scene::sheet_checkpoint(app, file_path)?;
+    let source_identity = crate::commands::popout_scene::recovery_source(app, file_path)?;
+    let file_path = source_identity
+        .as_ref()
+        .map(|source| source.source_path.as_path())
+        .unwrap_or(file_path);
     let base = app
         .path()
         .app_cache_dir()
@@ -128,7 +147,6 @@ pub(crate) fn create_runtime<R: Runtime>(
     let trajectory_frame_count = xyz_frame_count.max(pdb_model_count);
     let is_trajectory = trajectory_frame_count > 1;
     let xyzrender_available = xyzrender_available_for_document(format, data);
-    let popout_sheet = crate::commands::popout_scene::sheet_checkpoint(app, file_path)?;
     let mut renderer = renderer.to_string();
     let requested_renderer = normalize_renderer_mode(&preferences.renderer_mode);
     if is_trajectory && requested_renderer == "auto" && renderer != "molstar" {
@@ -268,11 +286,14 @@ pub(crate) fn create_runtime<R: Runtime>(
         "defaultLayoutState": { "left": "hidden", "right": "hidden", "top": "hidden", "bottom": "hidden" }
     });
     config["viewerDefaults"] = preferences.viewer_defaults.runtime_config();
+    if renderer == "molstar" && crate::commands::interaction_diagram::maps_interactions(extension) {
+        config["interactionDiagramPage"] = json!(interaction_diagram_page(app));
+    }
     config["xyzrenderAnimationSourcePath"] = json!(source_path);
     config["autoFocusStructure"] = json!(true);
     config["rendererViewState"] = json!(reload_options
         .and_then(|options| options.renderer_view_state.as_deref())
-        .filter(|value| value.len() <= 8192));
+        .filter(|value| supported_renderer_view_state(value)));
     config["viewerProfile"] = json!(if mesoscale { "mesoscale" } else { "structure" });
     if mesoscale {
         config["graphicsMode"] = json!("balanced");
@@ -841,6 +862,30 @@ mod tests {
     use std::path::Path;
 
     #[test]
+    fn renderer_view_state_keeps_ordinary_views_small_and_bounds_topology_reload_bytes() {
+        assert!(super::supported_renderer_view_state(&"x".repeat(8192)));
+        assert!(!super::supported_renderer_view_state(&"x".repeat(8193)));
+        for value in [
+            serde_json::json!({"version": 1, "camera": {"padding": "x".repeat(8192)}}),
+            serde_json::json!({"version": 2, "topologyScene": {"version": 1}, "padding": "x".repeat(8192)}),
+            serde_json::json!({"version": 1, "topologyScene": {"version": 2}, "padding": "x".repeat(8192)}),
+        ] {
+            assert!(!super::supported_renderer_view_state(&value.to_string()));
+        }
+        let prefix = r#"{"version":1,"topologyScene":{"version":1},"padding":""#;
+        let suffix = r#""}"#;
+        let remaining = 2 * 1024 * 1024 + 8192 - prefix.len() - suffix.len();
+        let padding = format!(
+            "{}{}",
+            "界".repeat(remaining / 3),
+            "x".repeat(remaining % 3)
+        );
+        let exact = format!("{prefix}{padding}{suffix}");
+        assert!(super::supported_renderer_view_state(&exact));
+        assert!(!super::supported_renderer_view_state(&format!("{exact} ")));
+    }
+
+    #[test]
     fn ordinary_and_mesoscale_sessions_choose_their_own_runtime() {
         for (transformer, expected) in [
             ("ms-plugin.raw-data", false),
@@ -1284,6 +1329,9 @@ impl AssetProfile {
                 "color-picker.js",
                 "native-viewer-menus.js",
                 "scene-file-actions.js",
+                "geometry-preview.js",
+                "atom-drag.js",
+                "scene-media.js",
                 "sdf-collection-scene.js",
                 "sequence-panel.js",
                 "svg-sanitizer.js",
@@ -1309,6 +1357,9 @@ impl AssetProfile {
                 "color-picker.js",
                 "native-viewer-menus.js",
                 "scene-file-actions.js",
+                "geometry-preview.js",
+                "atom-drag.js",
+                "scene-media.js",
                 "sequence-panel.js",
                 "svg-sanitizer.js",
                 "viewer.js",
@@ -1445,6 +1496,19 @@ fn write_rdkit_wasm_data_if_needed(source: &Path, destination: &Path) -> Result<
     .map_err(|error| format!("write RDKit wasm data: {error}"))
 }
 
+// The 2D interaction map page, a bundle resource beside the viewer assets. The
+// viewer's ligand card frames it and the app computes its diagrams.
+fn interaction_diagram_page<R: Runtime>(app: &tauri::AppHandle<R>) -> Option<String> {
+    let page = app
+        .path()
+        .resolve(
+            "interaction-diagram/index.html",
+            tauri::path::BaseDirectory::Resource,
+        )
+        .ok()?;
+    page.is_file().then(|| asset_url(&page))
+}
+
 fn bundled_web_dir<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String> {
     if let Ok(resource) = app
         .path()
@@ -1552,6 +1616,9 @@ fn viewer_html(
         asset_url(&assets.join("molstar-preset-preview-controller.js"));
     let native_menus_js = asset_url(&assets.join("native-viewer-menus.js"));
     let scene_files_js = asset_url(&assets.join("scene-file-actions.js"));
+    let geometry_preview_js = asset_url(&assets.join("geometry-preview.js"));
+    let atom_drag_js = asset_url(&assets.join("atom-drag.js"));
+    let scene_media_js = asset_url(&assets.join("scene-media.js"));
     let sdf_collection_js = asset_url(&assets.join("sdf-collection-scene.js"));
     let superposition_panel_js = asset_url(&assets.join("superposition-panel.js"));
     let color_picker_js = asset_url(&assets.join("color-picker.js"));
@@ -1592,6 +1659,9 @@ fn viewer_html(
     window.BurettePreviewDataScriptURL = {data_js:?};
     window.BuretteDataURL = {data_bin_js:?};
     window.BuretteSceneFilesURL = {scene_files_js:?};
+    window.BuretteGeometryPreviewURL = {geometry_preview_js:?};
+    window.BuretteAtomDragURL = {atom_drag_js:?};
+    window.BuretteSceneMediaURL = {scene_media_js:?};
     window.BuretteSdfCollectionURL = {sdf_collection_js:?};
     window.BuretteMolstarURL = {molstar_js:?};
     window.BuretteRDKitJSURL = {rdkit_js:?};

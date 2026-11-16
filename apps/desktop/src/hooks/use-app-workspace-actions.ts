@@ -4,6 +4,7 @@ import { openPath } from "@tauri-apps/plugin-opener";
 import { parentDirectory } from "../lib/sidebar-projects";
 import type { RecentStructure } from "../types";
 import { isWebDemoWorkspace, pickWebDemoFiles } from "../lib/web-demo-workspace";
+import { summarizeErrors } from "../lib/file-routing";
 
 type PushStatus = (message: string, kind?: "info" | "success" | "error", details?: string[]) => void;
 type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => void;
@@ -34,6 +35,8 @@ export function useAppWorkspaceActions({
       if (isWebDemoWorkspace()) {
         const selection = await pickWebDemoFiles({ directory: true });
         if (!selection) return;
+        if (selection.errors.length) pushStatus(summarizeErrors(selection.errors), "error", selection.errors);
+        if (!selection.paths.length) return;
         setWorkspacePath(selection.root);
         addProjectRoot(selection.root);
         pushStatus("Project folder added");

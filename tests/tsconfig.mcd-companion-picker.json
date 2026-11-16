@@ -1,0 +1,1 @@
+{"extends":"./tsconfig.browser-source-recovery.json","files":["test-mcd-companion-picker.test.tsx","mcd-picker-compiled-preload.ts"],"include":["../apps/desktop/src/**/*.d.ts"]}

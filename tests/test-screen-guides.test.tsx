@@ -287,7 +287,7 @@ test("an announcement or an unanchored guide opens as a dialog", async () => {
   const view = await mountOnboarding();
   try {
     await act(async () => { expect(requestContextualGuide("ketcher")).toBe(true); });
-    expect(title()).toBe("Meet Ketcher");
+    expect(title()).toBe("Meet the molecular editor");
     await click("Got it");
     expect(panel()).toBeNull();
   } finally { await view.dispose(); }

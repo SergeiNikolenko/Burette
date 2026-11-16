@@ -31,7 +31,8 @@
 
 Burette brings molecular previews, structure inspection, and collection browsing
 into one Mac workspace. Explore a protein and its ligand, step through a
-trajectory, filter compounds by their properties, or edit a molecule in Ketcher.
+trajectory, filter compounds by their properties, or edit a molecule in the
+built-in molecular editor.
 Project folders, tabs, and side panels keep related files together.
 
 Use it in four ways:
@@ -123,8 +124,9 @@ Opening Burette directly gives you a compact molecular workspace:
 - tabbed previews that keep renderer state alive while you switch files
 - a project sidebar for folders, nested structures, recent files, and search
 - a command palette for opening files, switching renderers, maintenance actions,
-  exports, project navigation, Ketcher, and FEP network previews
-- right and bottom docks for comparing structures, text files, Ketcher, grids,
+  exports, project navigation, the molecular editor, and FEP network previews
+- right and bottom docks for comparing structures, text files, the molecular
+  editor, grids,
   and workflow panels
 - "Open In" actions for Finder, the default app, or discovered chemistry editors
 - text and structure source viewing with live editing and save for logs,
@@ -174,17 +176,16 @@ The mobile app focuses on phone-first inspection:
 See [ios/BuretteMobile/README.md](ios/BuretteMobile/README.md) for the target
 layout, build command, signing notes, and real-device install flow.
 
-## Molecule Collections and Ketcher
+## Molecule Collections and the Molecular Editor
 
 Burette includes an RDKit-powered collection grid for SDF, SMILES, CSV, and TSV
 files. The grid supports search, sorting, SMARTS filtering/highlighting,
 selection, infinite loading, append/merge workflows, and export.
 
-The desktop app also includes a Ketcher small-molecule editor. You can sketch a
-molecule, import/export common small-molecule formats, send a sketch to Mol*,
-`xyzrender`, or a collection grid, and edit grid rows through Ketcher.
-
-Macromolecule editing is not enabled in the current Ketcher integration.
+The desktop app also includes a molecular editor with a 2D sketcher and a 3D
+switch. You can sketch a molecule, import/export common small-molecule formats,
+send a sketch to Mol*, `xyzrender`, or a collection grid, and edit grid rows in
+the editor. Reaction drawings still open in Ketcher.
 
 ## Workspace Workflows
 
@@ -269,6 +270,9 @@ Burette settings cover:
 - Files, recent structures, and project folders
 - Burette/Codex integration status
 - Quick Look reset, preview cache cleanup, logs, diagnostics, and maintenance
+- Extensions: the Crystals structure library and the Avogadro plugin index;
+  the desktop app installs Avogadro plugins, sets them up after a confirmation
+  and runs their commands from Compute › Extensions
 
 Optional integrations include a local `xyzrender` executable, VESTA, external
 chemistry editors discovered by macOS, and managed or detected scientific

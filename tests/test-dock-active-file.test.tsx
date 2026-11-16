@@ -13,6 +13,11 @@ import type { ViewerDocument, TextFileDocument } from "../apps/desktop/src/types
 const { renderToStaticMarkup } = await import("react-dom/server");
 const { DockPanel } = await import("../apps/desktop/src/components/dock-panel");
 const { createRoot } = await import("react-dom/client");
+const { RightDockToggle } = await import("../apps/desktop/src/components/workspace-panes/right-dock-toggle");
+const { useDockLayout } = await import("../apps/desktop/src/hooks/use-dock-layout");
+const { useMoleculeStore } = await import("../apps/desktop/src/stores/molecule-store");
+const { useTabWorkspaceStore } = await import("../apps/desktop/src/stores/tab-workspace-store");
+const { useWorkspacePanesStore } = await import("../apps/desktop/src/stores/workspace-panes-store");
 
 const molecule = (id: string) => ({ id, title: `${id}.sdf`, path: `/${id}.sdf`, extension: "sdf", renderer: "molstar", runtimePath: "<html></html>", byteCount: 10 }) as ViewerDocument;
 const a = molecule("a"), b = molecule("b");
@@ -88,6 +93,52 @@ test("Files follows the active structure, while an explicit pin keeps its read-o
     expect(shell.querySelector('[role="tablist"][aria-label="right dock files"] [aria-selected="true"]')?.textContent).toBe(`${expected}.sdf`);
     expect(shell.querySelector('[role="tab"][aria-label="Files"]')?.getAttribute("draggable")).toBe("true");
     expect(shell.textContent).not.toContain("No file selected");
+  }
+});
+
+test("Files joins the right tab group, and its selection survives hiding the group", async () => {
+  const previous = useMoleculeStore.getState();
+  const previousDocks = useTabWorkspaceStore.getState();
+  const previousPanes = useWorkspacePanesStore.getState();
+  const scene = { id: "files-source", location: { kind: "file" as const, path: a.path, documentId: a.id }, back: [], forward: [] };
+  const right = { id: "files-right", location: { kind: "launcher" as const }, pane: "right" as const, back: [], forward: [] };
+  useMoleculeStore.setState({ tabs: [scene, right], documents: [a], activeTabId: scene.id, activeDocumentId: a.id });
+  useTabWorkspaceStore.setState({ workspaces: {} });
+  useWorkspacePanesStore.setState({ selectedTabs: { main: scene.id }, closedGroups: { right: true } });
+  const host = document.createElement("main"); host.className = "app-shell"; document.body.append(host);
+  const root = createRoot(host);
+  function Fixture() {
+    const layout = useDockLayout(useMoleculeStore(store => store.activeTabId));
+    return <>
+      <RightDockToggle open={layout.rightDockOpen} toggle={() => layout.toggleDock("right")} />
+      <button onClick={() => layout.openDockTab("right", "files")}>Open Files</button>
+      <output>{layout.rightDockActiveTab}</output>
+    </>;
+  }
+  const toggle = hostSelector('button[aria-label="Toggle right panel"]');
+  function hostSelector(selector: string) {
+    return async () => act(async () => host.querySelector<HTMLButtonElement>(selector)!.click());
+  }
+  try {
+    await act(async () => root.render(<Fixture />));
+    await toggle();
+    await hostSelector("button:nth-of-type(2)")();
+    const { tabs, activeTabId } = useMoleculeStore.getState();
+    expect(tabs).toHaveLength(3);
+    expect(tabs.find(tab => tab.id === activeTabId)).toMatchObject({ pane: "right", location: { kind: "tool", tool: "files" } });
+    await toggle();
+    expect(useMoleculeStore.getState().activeTabId).toBe(scene.id);
+    expect(useWorkspacePanesStore.getState().closedGroups.right).toBe(true);
+    await toggle();
+    expect(useWorkspacePanesStore.getState().selectedTabs.right).toBe(activeTabId!);
+    expect(host.querySelector("output")?.textContent).toBe("files");
+    expect(useMoleculeStore.getState().tabs).toEqual(tabs);
+    expect(useTabWorkspaceStore.getState().workspaces[scene.id]).toBeUndefined();
+  } finally {
+    await act(async () => root.unmount()); host.remove();
+    useMoleculeStore.setState(previous, true);
+    useTabWorkspaceStore.setState(previousDocks, true);
+    useWorkspacePanesStore.setState(previousPanes, true);
   }
 });
 

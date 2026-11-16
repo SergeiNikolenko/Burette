@@ -1,0 +1,81 @@
+{
+  "status": "passed",
+  "scope": "scientific restore acknowledgement gates frame edits; controls recover and scene saves and reopens",
+  "archives": [
+    {
+      "name": "comparison-native.molx",
+      "sha256": "218faad7234bb0fda3e5fe27630bf5144d6d5dea45f97c4c1157c4c450691a78",
+      "scientific_manifest_unchanged_except_active_frame": true,
+      "attachment_bytes_unchanged": true
+    },
+    {
+      "name": "restore-controls.molx",
+      "sha256": "4d957a077e00b885608f5c229f5c5dee5169b9059c323d6740783cab5aacd40c",
+      "scientific_manifest_unchanged_except_active_frame": true,
+      "attachment_bytes_unchanged": true
+    },
+    {
+      "name": "restore-controls-reopened.molx",
+      "sha256": "43f8cbee5690faa0813dd3a6601dff1e9560588df89b2ca43e4c355040734b7f",
+      "scientific_manifest_unchanged_except_active_frame": true,
+      "attachment_bytes_unchanged": true
+    }
+  ],
+  "source_uuid": "83b37b4d-3c03-4b80-b723-ebc727590e7c",
+  "binding": {
+    "structureRef": "iEmWIT2UABECoxAAAAAAFz",
+    "modelRef": "iEmWIT2UABECoxAAAAAAFt",
+    "trajectoryRef": "iEmWIT2UABECoxAAAAAAFe",
+    "frameIndex": 2,
+    "frameCount": 6,
+    "atomCount": 20
+  },
+  "all_scientific_attachment_bytes_unchanged": true,
+  "only_manifest_change": "binding.frameIndex: 1 to 2",
+  "fresh_reopen_root_count": 2,
+  "source_coordinate_values_checked": 60,
+  "source_coordinate_max_error_angstrom": 1.4971923789630637e-07,
+  "source_coordinate_tolerance_angstrom": 2e-07,
+  "oracle_script_sha256": "83c99415a8b3f98f58b46dd80e787f3aa2f2e10978185e932e3e1c0909e26602",
+  "limitations": [
+    "Comparison created through Mol* builder API, not All button",
+    "No aligned coordinates",
+    "Final archive not reopened",
+    "No native or manual IAB acceptance",
+    "Corrupt-archive error UX, restored autoplay, other mutation controls and full accessibility still need acceptance"
+  ],
+  "stepper_observations_zero_based": {
+    "baseline": {
+      "owner_before": 1,
+      "owner_after": 1,
+      "comparison_before": 4,
+      "comparison_after": 2
+    },
+    "fixed": {
+      "owner_before": 1,
+      "owner_after": 2,
+      "comparison_before": 4,
+      "comparison_after": 4
+    }
+  },
+  "saved_model_indices_preserved_through_reopen": true,
+  "served_viewer_sha256": [
+    "7088439594c88f531f9cbfee1b7b02cf0dc03e674289331ded44ea26b8ef7eb3",
+    "7088439594c88f531f9cbfee1b7b02cf0dc03e674289331ded44ea26b8ef7eb3"
+  ],
+  "held_acknowledgement": {
+    "before": 1,
+    "after": 1,
+    "disabled": true,
+    "ariaBusy": true,
+    "description": "Restoring scientific data. Frame controls will be available when restoration finishes."
+  },
+  "served_scene_file_actions_sha256": [
+    "4ea6ba47bfd71b9d313a006f41602538df6a6d45ffec6884675e3366300959dd",
+    "4ea6ba47bfd71b9d313a006f41602538df6a6d45ffec6884675e3366300959dd"
+  ],
+  "cleanup": {
+    "owned_servers_terminated": 2,
+    "ports_closed": true
+  }
+}

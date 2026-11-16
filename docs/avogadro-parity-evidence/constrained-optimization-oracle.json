@@ -1,0 +1,99 @@
+{
+ "passed": 18,
+ "total": 18,
+ "target": 2.645,
+ "reference_energy_gap": 2.3658398760062482e-06,
+ "reference_rmsd": 2.9959291538133115e-05,
+ "checks": [
+  {
+   "name": "scene shows the source geometry",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "both frozen atoms keep their exact coordinates",
+   "pass": true,
+   "detail": "[0.0, 0.0]"
+  },
+  {
+   "name": "held C3-O5 distance reaches its new target within 0.01 A",
+   "pass": true,
+   "detail": "2.64162 vs 2.645"
+  },
+  {
+   "name": "residual row shows the measured value and its signed deviation",
+   "pass": true,
+   "detail": "['C3\u2013O5\\n2.642 \u00c5\\n\u22120.003 \u00c5']"
+  },
+  {
+   "name": "result line names UFF and L-BFGS with energies and steps",
+   "pass": true,
+   "detail": "UFF, L-BFGS 4.37 \u2192 11.27 kcal/mol, 94 steps\nConverged\nOpen steps"
+  },
+  {
+   "name": "start energy equals RDKit UFF of the source",
+   "pass": true,
+   "detail": "4.37 vs 4.3734"
+  },
+  {
+   "name": "final energy equals RDKit UFF of the displayed result",
+   "pass": true,
+   "detail": "11.27 vs 11.2706"
+  },
+  {
+   "name": "step count respects the 1000-step limit",
+   "pass": true,
+   "detail": "94"
+  },
+  {
+   "name": "physical UFF energy matches the RDKit constrained minimum within 0.05 kcal/mol",
+   "pass": true,
+   "detail": "+0.0000"
+  },
+  {
+   "name": "geometry matches the RDKit constrained minimum (RMSD < 0.02 A)",
+   "pass": true,
+   "detail": "0.0000"
+  },
+  {
+   "name": "running status reported minimizer steps",
+   "pass": true,
+   "detail": "['Applying\u2026', '', 'Step 1, 23.20 kcal/mol']"
+  },
+  {
+   "name": "Optimize title states the field, method and step limit",
+   "pass": true,
+   "detail": "UFF, L-BFGS, up to 1000 steps"
+  },
+  {
+   "name": "constraints stay listed after Optimize",
+   "pass": true,
+   "detail": "['C1\\nFrozen', 'C2\\nFrozen', 'C3\u2013O5\\n\u00c5']"
+  },
+  {
+   "name": "Open steps adds the optimization trajectory tab",
+   "pass": true,
+   "detail": "['butanol-optimization.xyz']"
+  },
+  {
+   "name": "steps trajectory renders one frame per recorded step",
+   "pass": true,
+   "detail": "95 frames for 94 steps"
+  },
+  {
+   "name": "Undo restores the source geometry",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "Undo drops the result line of the undone run",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "no page or console errors beyond the base shell",
+   "pass": true,
+   "detail": "[]"
+  }
+ ]
+}

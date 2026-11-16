@@ -54,7 +54,7 @@ assert.throws(
   /Could not parse XYZ coordinates\.; viewer readiness was withheld/,
 );
 assert.equal(readinessContext.assertMolstarLoadReady({ structureCount: 0 }, { kind: 'volume' }), undefined);
-assert.match(viewerSource, /await withTimeout\(\s*loadPreparedStructure\(viewer, prepared\)[\s\S]*?assertMolstarLoadReady\(viewer, prepared\);\s*if \(config\.demoSnapshotUrl\)/);
+assert.match(viewerSource, /await withTimeout\(\s*loadPreparedStructure\(viewer, prepared\)[\s\S]*?assertMolstarLoadReady\(viewer, prepared\);\s*applyDefaultUnitCellVisibility\(viewer, prepared\);\s*if \(config\.demoSnapshotUrl\)/);
 const readinessCall = viewerSource.indexOf('    assertMolstarLoadReady(viewer, prepared);', viewerSource.indexOf('async function startMolstar'));
 const agentReady = viewerSource.indexOf("postHostMessage({ type: 'agentReady'", readinessCall);
 const sceneReady = viewerSource.indexOf('window.BuretteNativeSceneReady();', readinessCall);
@@ -108,6 +108,12 @@ try {
   assert.equal(sequence.status, 200);
   assert.match(sequence.headers.get('content-type'), /^text\/javascript/);
   assert.match(await sequence.text(), /BuretteSequencePanel/);
+  for (const name of ['polymer-pick.js', 'atom-drag.js', 'scene-media.js']) for (const path of [`/__burette/runtime/${name}`, `/@fs/workspace/PreviewExtension/Web/${name}`]) {
+    const response = await fetch(`${base}${path}`, { headers });
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-type'), /^text\/javascript/);
+    assert.equal(await response.text(), await readFile(`PreviewExtension/Web/${name}`, 'utf8'));
+  }
   assert.equal((await fetch(`${base}/__burette/runtime/not-a-runtime-asset.js`, { headers })).status, 404);
   for (const [path, method] of [['observe.json', 'GET'], ['actions.json', 'PUT']]) {
     const url = `${base}/__burette/agent-session/${path}`;
@@ -139,6 +145,17 @@ try {
   assert.equal(await read.text(), 'HEADER ALLOWED');
   const listing = await fetch(`${base}/__burette/dev-files?${new URLSearchParams({ root: allowed })}`, { headers });
   assert.deepEqual((await listing.json()).files, [join(allowed, 'ordinary.pdb')]);
+  // MOLX restoration must read the original archive before another Save scene.
+  const archive = Buffer.from('504b0506000000000000000000000000000000000000', 'hex');
+  await writeFile(join(allowed, 'scene.molx'), archive);
+  const sceneRead = await fetch(`${base}/__burette/read-file?${new URLSearchParams({ path: join(allowed, 'scene.molx') })}`, { headers });
+  assert.equal(sceneRead.status, 200);
+  assert.deepEqual(Buffer.from(await sceneRead.arrayBuffer()), archive);
+  await writeFile(join(outside, 'scene.molx'), archive);
+  await symlink(join(outside, 'scene.molx'), join(allowed, 'linked.molx'));
+  for (const path of [join(outside, 'scene.molx'), join(allowed, 'linked.molx')]) {
+    assert.equal((await fetch(`${base}/__burette/read-file?${new URLSearchParams({ path })}`, { headers })).status, 400);
+  }
   // Workspace bytes are data even when their filename is an active web type.
   for (const extension of ['html', 'htm', 'js', 'mjs', 'svg', 'xml', 'css', 'pdb']) {
     const file = join(allowed, `untrusted.${extension}`);

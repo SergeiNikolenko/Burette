@@ -82,7 +82,7 @@ let closeActiveContextMenu: (() => void) | undefined;
 
 // Resolve after tracking ends, like NSMenu: viewer edits and undo transactions
 // remain alive while controls are being changed inside the popup.
-export function showRadixContextMenu(spec: MenuItemSpec[], at?: { x: number; y: number }): Promise<void> {
+export function showRadixContextMenu(spec: MenuItemSpec[], at?: { x: number; y: number }, contentClassName?: string): Promise<void> {
   closeActiveContextMenu?.();
   const host = document.querySelector<HTMLElement>(".app-shell") ?? document.body;
   const mount = document.createElement("div");
@@ -108,7 +108,7 @@ export function showRadixContextMenu(spec: MenuItemSpec[], at?: { x: number; y: 
     // A click back into the molecular iframe does not bubble to this document.
     window.addEventListener("blur", cleanup);
     window.addEventListener("pagehide", cleanup);
-    root.render(<RadixContextMenuLauncher items={spec} at={at} container={host} onClose={cleanup} />);
+    root.render(<RadixContextMenuLauncher items={spec} at={at} container={host} contentClassName={contentClassName} onClose={cleanup} />);
   });
 }
 
@@ -116,11 +116,13 @@ function RadixContextMenuLauncher({
   items,
   at,
   container,
+  contentClassName,
   onClose,
 }: {
   items: MenuItemSpec[];
   at?: { x: number; y: number };
   container: HTMLElement;
+  contentClassName?: string;
   onClose: () => void;
 }) {
   const triggerRef = useRef<HTMLSpanElement | null>(null);
@@ -150,7 +152,7 @@ function RadixContextMenuLauncher({
           aria-hidden="true"
         />
       </ContextMenuTrigger>
-      <ContextMenuContent container={container} collisionPadding={6}>
+      <ContextMenuContent container={container} className={contentClassName} collisionPadding={6}>
         {items.map((item, index) => renderContextItem(item, index))}
       </ContextMenuContent>
     </ContextMenu>

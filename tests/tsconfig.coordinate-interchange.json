@@ -1,0 +1,6 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "types": ["bun"] },
+  "files": ["test-coordinate-interchange.test.ts"],
+  "include": []
+}

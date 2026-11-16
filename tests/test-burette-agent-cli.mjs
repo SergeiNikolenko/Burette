@@ -541,6 +541,9 @@ try {
     const invalidCapture = runCli(['capture', '--session-dir', sessionDir, '--width', '800']);
     assert.equal(invalidCapture.status, 2);
     assert.equal(JSON.parse(invalidCapture.stderr).error.code, 'INVALID_ARGS');
+    const invalidModel = runCli(['export-model', '--session-dir', sessionDir, '--format', 'stl']);
+    assert.equal(invalidModel.status, 2);
+    assert.equal(JSON.parse(invalidModel.stderr).error.code, 'INVALID_ARGS');
     const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYPj/HwADAgH/eL9GtQAAAABJRU5ErkJggg==';
     const capturePath = resolve(sessionDir, 'view.png');
     const captureChild = spawn(process.execPath, ['scripts/burette-agent.mjs', 'capture', '--session-dir', sessionDir, '--output', capturePath, '--width', '800', '--height', '600', '--wait-ms', '10000'], {
@@ -585,12 +588,25 @@ try {
 
     // Unknown action types fail up front, whatever document kind is active.
     const actionsBeforeUnsupported = await readFile(resolve(sessionDir, 'actions.json'), 'utf8');
-    for (const actionText of ['{"type":"grid_sort"}', '{"label":"missing type"}']) {
+    for (const actionText of ['{"type":"grid_sort"}', '{"label":"missing type"}', '{"type":"preview_geometry","atoms":[0],"notify":false}',
+      ...['geometry_binding', 'update_geometry', 'scalar_field_binding', 'scalar_field_validate', 'show_scalar_field', 'select_source_atom', 'geometry_topology_scene_capture', 'geometry_topology_scene_validate']
+        .map(type => JSON.stringify({ type, lease: null, expected: {}, text: 42 }))]) {
       const unsupported = runCli(['act', '--session-dir', sessionDir, actionText, '--wait-ms', '1000']);
       assert.equal(unsupported.status, 2, actionText);
       const unsupportedError = JSON.parse(unsupported.stderr).error;
       assert.equal(unsupportedError.code, 'UNSUPPORTED_ACTION', actionText);
       assert.equal(unsupportedError.details.supportedTypes.includes('reset_camera'), true);
+    }
+    assert.equal(await readFile(resolve(sessionDir, 'actions.json'), 'utf8'), actionsBeforeUnsupported);
+    for (const request of [
+      { type: 'indexed_trajectory_frame', limit: 101 },
+      { type: 'indexed_trajectory_frame', includeSummary: 'yes' },
+      { type: 'indexed_trajectory_frame', expected: { frameIndex: 2, frameCount: 2 } },
+      { type: 'indexed_trajectory_frame', rawSource: 'not an allowed field' },
+    ]) {
+      const invalid = runCli(['act', '--session-dir', sessionDir, JSON.stringify(request), '--wait-ms', '1000']);
+      assert.equal(invalid.status, 2);
+      assert.equal(JSON.parse(invalid.stderr).error.code, 'INVALID_ARGS');
     }
     assert.equal(await readFile(resolve(sessionDir, 'actions.json'), 'utf8'), actionsBeforeUnsupported);
   } finally {
@@ -617,14 +633,23 @@ try {
   ])].sort();
   const viewerSource = await readFile('PreviewExtension/Web/viewer.js', 'utf8');
   const shellSource = await readFile('apps/desktop/src/hooks/use-agent-session.ts', 'utf8');
-  for (const privateAction of ['workspace_scene_snapshot']) {
-    assert.ok(!cliTypeList('SESSION_VIEWER_ACTION_TYPES').includes(privateAction), `${privateAction} must not expose large snapshots through the public CLI`);
+  // Geometry edits, atom drags, scalar fields and polymer role picks use host-owned source/iframe leases. They do
+  // not belong to the public CLI: edits stage through the source, and fields carry
+  // a full Cube payload. See renderer-support.md and scalar-field-binding.md.
+  const hostOnlyViewerActions = [
+    'workspace_scene_snapshot', 'scene_source_paths', 'scene_science_binding', 'scene_science_restore_ack', 'measurement_preview_capture', 'preview_geometry',
+    'geometry_binding', 'update_geometry', 'scalar_field_binding', 'scalar_field_validate', 'show_scalar_field', 'select_source_atom', 'geometry_topology_scene_capture', 'geometry_topology_scene_validate',
+    'atom_drag', 'atom_draw', 'select_command', 'export_svg', 'record_movie', 'indexed_trajectory_scan', 'calculation_overlay', 'polymer_source_binding', 'polymer_pick_atom', 'polymer_source_release', 'polymer_source_validate',
+    'focus_residue',
+  ];
+  for (const privateAction of hostOnlyViewerActions) {
+    assert.ok(!cliTypeList('SESSION_VIEWER_ACTION_TYPES').includes(privateAction), `${privateAction} must stay outside the public CLI`);
   }
   assert.deepEqual(
     cliTypeList('SESSION_VIEWER_ACTION_TYPES'),
     // Native window handoff and the shell's scene file probe stay outside the public MCP/CLI action contract.
     quotedTypes(sourceBody(viewerSource, 'async function executeBuretteAgentAction(', 'async function captureAgentScene('))
-      .filter(type => !['workspace_scene_snapshot', 'scene_source_paths'].includes(type)),
+      .filter(type => !hostOnlyViewerActions.includes(type)),
   );
   assert.deepEqual(
     cliTypeList('SESSION_SHELL_ACTION_TYPES'),

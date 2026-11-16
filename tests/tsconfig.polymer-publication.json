@@ -1,0 +1,16 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": [
+      "bun"
+    ],
+    "allowJs": true,
+    "checkJs": false
+  },
+  "files": [
+    "test-polymer-publication.test.tsx"
+  ],
+  "include": [
+    "../apps/desktop/src/**/*.d.ts"
+  ]
+}

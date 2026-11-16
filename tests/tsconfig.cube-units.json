@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": [
+      "bun"
+    ],
+    "allowJs": true
+  },
+  "include": [
+    "test-molstar-cube-units.test.ts",
+    "../apps/desktop/src/vite-env.d.ts"
+  ]
+}

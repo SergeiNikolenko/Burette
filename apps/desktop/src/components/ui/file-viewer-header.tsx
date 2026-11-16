@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { SidebarLeft as PanelLeft, SidebarRight as PanelRight } from "@/components/ui/app-icons";
+import { SidebarLeft, SidebarLeftHidden, SidebarRight, SidebarRightHidden } from "@/components/ui/app-icons";
 
 import { cn } from "@/lib/utils";
 
@@ -205,7 +205,10 @@ export function FileViewerSidebarTrigger({
     toggleSidebar,
   } = useFileViewerShell("FileViewerSidebarTrigger");
   const isDisabled = Boolean(disabled || loading || !canToggleSidebar);
-  const Icon = side === "right" ? PanelRight : PanelLeft;
+  const open = sidebarState === "expanded";
+  const Icon = side === "right"
+    ? (open ? SidebarRight : SidebarRightHidden)
+    : (open ? SidebarLeft : SidebarLeftHidden);
   const setTriggerElement = React.useCallback(
     (element: HTMLButtonElement | null) => {
       elementRegistry.registerSidebarTriggerElement(element);

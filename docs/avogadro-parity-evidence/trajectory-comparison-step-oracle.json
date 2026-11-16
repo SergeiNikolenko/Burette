@@ -1,0 +1,70 @@
+{
+  "status": "passed",
+  "scope": "source frame stepping with selected fixed comparison, save and fresh reopen",
+  "archives": [
+    {
+      "name": "comparison-native.molx",
+      "sha256": "218faad7234bb0fda3e5fe27630bf5144d6d5dea45f97c4c1157c4c450691a78",
+      "scientific_manifest_unchanged_except_active_frame": true,
+      "attachment_bytes_unchanged": true
+    },
+    {
+      "name": "comparison-step.molx",
+      "sha256": "ccd0cc3f2fe6f9e4ff5d15eb8d5a08ae165ef4299aed5dd008a6d8a47ec37afe",
+      "scientific_manifest_unchanged_except_active_frame": true,
+      "attachment_bytes_unchanged": true
+    },
+    {
+      "name": "comparison-step-reopened.molx",
+      "sha256": "c5b72ba7974a636964f0ad7c46516f36337db69adaa36543e8e3be1122901e46",
+      "scientific_manifest_unchanged_except_active_frame": true,
+      "attachment_bytes_unchanged": true
+    }
+  ],
+  "source_uuid": "83b37b4d-3c03-4b80-b723-ebc727590e7c",
+  "binding": {
+    "structureRef": "iEmWIT2UABECoxAAAAAAFz",
+    "modelRef": "iEmWIT2UABECoxAAAAAAFt",
+    "trajectoryRef": "iEmWIT2UABECoxAAAAAAFe",
+    "frameIndex": 2,
+    "frameCount": 6,
+    "atomCount": 20
+  },
+  "all_scientific_attachment_bytes_unchanged": true,
+  "only_manifest_change": "binding.frameIndex: 1 to 2",
+  "fresh_reopen_root_count": 2,
+  "source_coordinate_values_checked": 60,
+  "source_coordinate_max_error_angstrom": 1.4971923789630637e-07,
+  "source_coordinate_tolerance_angstrom": 2e-07,
+  "oracle_script_sha256": "14317d9e6c0f91df35870cb7970ca18408a256b70b16008abbc9c74641999a8e",
+  "limitations": [
+    "Comparison created through Mol* builder API, not All button",
+    "No aligned coordinates",
+    "Final archive not reopened",
+    "No native or manual IAB acceptance",
+    "Early stepping before scientific restore acknowledgement produced no scene download; cause and recovery remain open"
+  ],
+  "stepper_observations_zero_based": {
+    "baseline": {
+      "owner_before": 1,
+      "owner_after": 1,
+      "comparison_before": 4,
+      "comparison_after": 2
+    },
+    "fixed": {
+      "owner_before": 1,
+      "owner_after": 2,
+      "comparison_before": 4,
+      "comparison_after": 4
+    }
+  },
+  "saved_model_indices_preserved_through_reopen": true,
+  "served_viewer_sha256": [
+    "53d9860277ae85354d67ab68dbcf10d131625e0d8e86ef814be83d0bed30401b",
+    "53d9860277ae85354d67ab68dbcf10d131625e0d8e86ef814be83d0bed30401b"
+  ],
+  "cleanup": {
+    "owned_servers_terminated": 2,
+    "ports_closed": true
+  }
+}

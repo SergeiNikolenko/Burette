@@ -1,0 +1,1 @@
+{"extends":"../tsconfig.json","compilerOptions":{"types":["bun"]},"files":["test-nucleic-acid-builder.test.ts"],"include":["../apps/desktop/src/**/*.d.ts"]}

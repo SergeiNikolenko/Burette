@@ -74,9 +74,9 @@ and a way to recover when renderer or Quick Look infrastructure needs attention.
 - Switch between Mol*, RDKit grids, text/spectrum fallbacks, and external
   `xyzrender` when the file or workflow requires it.
 - Inspect SDF/SMILES/CSV/TSV collections with search, sorting, filtering,
-  selection, append/merge, export, and Ketcher handoff.
-- Sketch or edit small molecules in Ketcher and send them to preview or
-  collection workflows.
+  selection, append/merge, export, and molecular editor handoff.
+- Sketch or edit small molecules in the molecular editor and send them to
+  preview or collection workflows.
 - Review focused workflow artifacts such as docking/pose surfaces and FEP
   network GraphML previews.
 - Diagnose and repair local preview infrastructure: Quick Look reset, cache
@@ -113,7 +113,7 @@ and a way to recover when renderer or Quick Look infrastructure needs attention.
 ## Non-Goals
 
 - Replace full molecular modeling environments.
-- Provide macromolecule editing inside Ketcher.
+- Provide macromolecule editing in the molecular editor.
 - Hide local tool requirements behind silent cloud execution.
 - Turn the desktop shell into a marketing-style dashboard.
 - Treat the source-built iPhone app as part of the Homebrew macOS release.

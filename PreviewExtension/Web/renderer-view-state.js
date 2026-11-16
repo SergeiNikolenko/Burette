@@ -40,6 +40,7 @@
     if (!value || !['scale', 'x', 'y'].every(key => Number.isFinite(value[key]))) return null;
     if (value.scale < 0.05 || value.scale > 8) return null;
     const result = { scale: value.scale, x: value.x, y: value.y };
+    if (value.responsive === true) result.responsive = true;
     if (value.item && ['left', 'top', 'width', 'height', 'rotation'].every(key => Number.isFinite(value.item[key]))) {
       result.item = Object.fromEntries(['left', 'top', 'width', 'height', 'rotation'].map(key => [key, value.item[key]]));
     }
@@ -51,8 +52,9 @@
   // Keep the user's zoom and sheet geometry when docks resize the viewport.
   // Pin responsive item sizes once; move layout centers by the viewport delta.
   function observeSheetViewport(root, initialViewport) {
-    let width = initialViewport?.width || root.clientWidth;
-    let height = initialViewport?.height || root.clientHeight;
+    const initial = viewport(initialViewport);
+    let width = initial?.width || root.clientWidth;
+    let height = initial?.height || root.clientHeight;
     const pinned = new WeakSet();
     const resize = () => {
       const nextWidth = root.clientWidth, nextHeight = root.clientHeight;
@@ -60,6 +62,14 @@
       const dx = width ? (nextWidth - width) / 2 : 0;
       const dy = height ? (nextHeight - height) / 2 : 0;
       for (const item of root.querySelectorAll('.buret-xyzrender-sheet-item')) {
+        // The untouched base artwork still belongs to the responsive layout.
+        // Only authored or restored pixel geometry should be pinned.
+        if (!initial && item.classList?.contains('buret-xyzrender-sheet-item-base')
+          && item.dataset.buretSheetPositioned !== 'true') {
+          item.style.left = '50%';
+          item.style.top = '50%';
+          continue;
+        }
         if (!pinned.has(item)) {
           item.style.width = `${item.offsetWidth}px`;
           item.style.height = `${item.offsetHeight}px`;

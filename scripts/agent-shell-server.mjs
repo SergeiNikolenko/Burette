@@ -9,6 +9,7 @@ import { homedir } from 'node:os';
 import { gunzipSync } from 'node:zlib';
 import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { writeWorkbenchArtifact } from './workbench-artifact.mjs';
 import { resolveModelPython } from './model-runtime-path.mjs';
 
 const TEXT_FILE_READ_LIMIT = 12 * 1024 * 1024;
@@ -23,11 +24,12 @@ const AMBER_NC_PREVIEW_FRAME_LIMIT = 100;
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const STRUCTURE_EXTENSIONS = new Set([
   'pdb', 'ent', 'pdbqt', 'pqr', 'xpdb',
-  'cif', 'mmcif', 'mcif', 'bcif', 'mmtf',
+  'cif', 'mmcif', 'mcif', 'bcif', 'mmtf', 'molx',
   'sdf', 'sd', 'smi', 'smiles', 'csv', 'tsv', 'dwar',
   'mol', 'mol2', 'xyz', 'gro', 'mae', 'maegz', 'cms', 'dtr',
   'xtc', 'trr', 'dcd', 'nctraj', 'nc', 'ncdf', 'netcdf', 'ncrst', 'lammpstrj',
   'top', 'psf', 'prmtop', 'tpr',
+  'vasp', 'poscar',
 ]);
 const AMBER_NC_EXTENSIONS = new Set(['nc', 'ncdf', 'netcdf', 'ncrst']);
 const TOPOLOGY_PREVIEW_EXTENSIONS = new Set(['pdb', 'ent', 'pdbqt', 'pqr', 'xpdb']);
@@ -68,12 +70,18 @@ const RUNTIME_ASSET_PATHS = new Set([
   'trajectory-smoothing.js',
   'superposition-panel.js',
   'molecule-preview-interactions.js',
+  'molecule-preview-ocl.js',
   'renderer-view-state.js',
   'xyzrender-3d-editor.js',
   'color-picker.js',
   'sequence-panel.js',
   'native-viewer-menus.js',
   'scene-file-actions.js',
+  'geometry-preview.js',
+  'polymer-pick.js',
+  'atom-drag.js',
+  'scene-media.js',
+  'measurement-coordinate.js',
   'sdf-collection-scene.js',
   'molstar.css',
   'molstar.js',
@@ -84,6 +92,7 @@ const RUNTIME_ASSET_PATHS = new Set([
   'grid-ui.js',
   'grid.css',
   'openchemlib/openchemlib.js',
+  'openchemlib/LICENSE',
   'rdkit/RDKit_minimal.js',
   'rdkit/RDKit_minimal.wasm',
 ]);
@@ -385,7 +394,7 @@ async function handleAgentSession(req, res, method, url) {
       return;
     }
     const body = await readJsonBody(req);
-    await writeFile(filePath, `${JSON.stringify(body, null, 2)}\n`);
+    await writeWorkbenchArtifact(filePath, Buffer.from(`${JSON.stringify(body, null, 2)}\n`), { overwrite: true });
     sendJson(res, 200, { ok: true });
     return;
   }
@@ -576,6 +585,9 @@ async function createTrajectoryPairPayload(filePath) {
     byteCount: coordinateInfo.size + modelInfo.size,
     sourcePath: filePath,
     sourceExtension: extension,
+    // As the browser-dev server (apps/desktop/vite/browser-dev/files.ts); the shell reads both.
+    topologyPath: modelPath,
+    trajectoryPath: coordinatePath,
     docking: {
       activePose: null,
       sceneMode: null,
@@ -1162,6 +1174,8 @@ function isWithin(path, root) {
 function fileExtension(path) {
   const lower = path.toLowerCase();
   if (lower.endsWith('.mae.gz')) return 'maegz';
+  // Extensionless VASP structures are named by convention.
+  if (/^(?:POSCAR|CONTCAR)(?:[_-][^.]*)?$/u.test(basename(path))) return 'vasp';
   const extension = extname(lower).replace(/^\./u, '');
   return extension;
 }

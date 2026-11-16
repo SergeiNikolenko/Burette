@@ -1,11 +1,38 @@
+import type { ImportedRevision } from "../workbench/scientific-source-state";
+import type { GeometryBinding } from "../geometry-binding";
+import type { TextFileSaveOutcome } from "../file-export";
+import type { DockTabKind } from "../dock";
 import { createContext, useContext, type ReactNode } from "react";
+import type { SourceCloseConfirmationRequest } from "../../hooks/use-source-close-confirmation";
+import { SourceCloseConfirmationDialog } from "../../components/source-close-confirmation-dialog";
+import { SourceDraftRecoveryDialog } from "../../components/source-draft-recovery-dialog";
 import type { ViewerDocument } from "../../types";
 import type { SourcePreviewFrameSnapshot, SourcePreviewIdentity } from "../source-preview/types";
+import type { FileRevision } from "./types";
+import type { SourceEditorViewState } from "./view-state";
+
+export type SourceEditingTransfer = {
+  path: string;
+  content: string;
+  baseContent: string;
+  expectedRevision: FileRevision | null;
+  viewState?: SourceEditorViewState;
+};
+
+/** Whether the scene shows the draft while its replacement preview loads. */
+export type SourcePreviewState = "current" | "queued" | "staging" | "manual" | "paused" | "unsupported";
 
 export type SourceEditingView = {
+  /** The source session lifetime; retained across its own revisions, replaced after close or restore. */
+  readonly sessionId: string;
+  /** Monotonic draft revision, including edits that restore identical text. */
+  readonly revision: number;
+  viewState?: SourceEditorViewState;
   documentId: string;
   path: string;
   content: string;
+  /** Last acknowledged file content, for detecting replacement before export. */
+  baseContent?: string;
   editable: boolean;
   dirty: boolean;
   saving: boolean;
@@ -13,7 +40,9 @@ export type SourceEditingView = {
   diagnostic: string | null;
   previewMode: "live" | "manual";
   saveDisabledReason: string | null;
+  saveLabel?: "Save" | "Save copy";
   sourcePreview: SourcePreviewFrameSnapshot | null;
+  previewState?: SourcePreviewState;
 };
 
 export type SourceEditingWindowDirtySnapshot = {
@@ -22,10 +51,43 @@ export type SourceEditingWindowDirtySnapshot = {
   closeTransitionActive: boolean;
 };
 
+/** A prepared edit retains its original renderer receipt; it never reads a replacement owner. */
+export type PreparedGeometryTopology = Readonly<{
+  fromText: string; text: string; rendererViewState: string; selection: readonly number[];
+  canPublish: () => boolean;
+  validate: (isCurrent: () => boolean, signal?: AbortSignal) => Promise<void>;
+  accepted: () => void;
+}>;
+
+/** Acknowledged geometry edits avoid staging; graph edits may retain the current camera. */
+export type DraftUpdateOptions = { previewApplied: true; geometryBinding?: GeometryBinding } | { view: "keep" | "fit"; geometryBinding?: GeometryBinding; topology?: PreparedGeometryTopology };
+
+/** A pending edit retains its document/source lifetime until release or successful close. */
+/** Reuse the editor baseline captured before its transient Geometry preview. */
+export type SourceEditingBeginOptions = { geometryBinding?: GeometryBinding; /** Startup recovery keeps the selected tool. */ reveal?: boolean; /** Recovery reports admission failures once at its own boundary. */ failure?: "throw" };
+
+export type SourceEditingOperation = { isCurrent: () => boolean; release: () => void };
+
+export type SourceDraftRecoveryDraft = Readonly<{
+  sessionId: string; documentId: string; path: string; title: string; extension: string; content: string;
+}>;
+export type SourceDraftRecoveryRequest = Readonly<{
+  requestId: string;
+  drafts: readonly SourceDraftRecoveryDraft[];
+  isCurrent: () => boolean;
+  cancel: () => void;
+  discard: () => void;
+  saveCopy: (sessionId: string) => Promise<TextFileSaveOutcome>;
+}>;
+
 export type SourceEditingContextValue = {
+  recovery?: SourceDraftRecoveryRequest | null;
+  closeConfirmation?: SourceCloseConfirmationRequest | null;
   sessionForDocument: (document: ViewerDocument | null) => SourceEditingView | null;
-  beginEditing: (document: ViewerDocument) => void | Promise<void>;
-  updateDraft: (document: ViewerDocument, content: string) => void;
+  captureOperation: (document: ViewerDocument) => SourceEditingOperation;
+  beginEditing: (document: ViewerDocument, revealTab?: DockTabKind, options?: SourceEditingBeginOptions) => void | Promise<void>;
+  prepareGeometryTopology?: (document: ViewerDocument, target: ImportedRevision, binding: GeometryBinding) => Promise<PreparedGeometryTopology>;
+  updateDraft: (document: ViewerDocument, content: string, options?: DraftUpdateOptions) => void;
   applyPreview: (document: ViewerDocument) => void | Promise<void>;
   save: (document: ViewerDocument) => void | Promise<void>;
   stagingLoaded: (document: ViewerDocument, identity: SourcePreviewIdentity, frame: HTMLIFrameElement) => void;
@@ -33,12 +95,15 @@ export type SourceEditingContextValue = {
   confirmCloseWindow: () => Promise<boolean>;
   getWindowDirtySnapshot: () => SourceEditingWindowDirtySnapshot;
   hasUnsavedOrSavingSessions: boolean;
+  beginTransfer?: (document: ViewerDocument) => SourceEditingTransfer | null;
+  finishTransfer?: (document: ViewerDocument, committed: boolean) => Promise<boolean>;
+  receiveTransfer?: (document: ViewerDocument, snapshot: SourceEditingTransfer) => Promise<void>;
 };
 
 const SourceEditingContext = createContext<SourceEditingContextValue | null>(null);
 
 export function SourceEditingProvider({ value, children }: { value: SourceEditingContextValue; children: ReactNode }) {
-  return <SourceEditingContext.Provider value={value}>{children}</SourceEditingContext.Provider>;
+  return <SourceEditingContext.Provider value={value}>{children}<SourceDraftRecoveryDialog request={value.recovery ?? null} /><SourceCloseConfirmationDialog request={value.closeConfirmation ?? null} /></SourceEditingContext.Provider>;
 }
 
 export function useSourceEditing() {

@@ -1,7 +1,6 @@
 // The generated Emscripten module is hash-locked and verified by the native
 // coordinator before conformer submission is exposed.
-// @ts-expect-error generated pinned RDKit module has no authored declarations
-import initializeExtractor from "../../../../PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.js";
+import initializeExtractor, { type RDKitConformerModule as ExtractorModule } from "../../../../PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.js";
 import { assertConcreteConformerInput } from "../lib/conformer-input";
 import type {
   ConformerExtractionWorkerRequest,
@@ -18,14 +17,6 @@ const wasmUrl = new URL(
   "../../../../PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.wasm",
   import.meta.url,
 ).href;
-
-type ExtractorModule = {
-  conformer_extractor_abi_version(): number;
-  extract_conformer_parameters(input: string, inputFormat: number, variant: number): Uint8Array;
-  extract_mmff_parameters(input: string, inputFormat: number, variant: number): Uint8Array;
-  mmff_extractor_abi_version(): number;
-  rdkit_source_revision(): string;
-};
 
 let extractorPromise: Promise<ExtractorModule> | null = null;
 
@@ -172,7 +163,7 @@ async function loadExtractor(): Promise<ExtractorModule> {
       const module = await initializeExtractor({
         locateFile: () => wasmUrl,
         wasmBinary: new Uint8Array(await response.arrayBuffer()),
-      }) as ExtractorModule;
+      });
       if (module.conformer_extractor_abi_version() !== EXPECTED_ABI_VERSION) {
         throw new Error("Conformer extractor ABI differs from BCEX v1.");
       }

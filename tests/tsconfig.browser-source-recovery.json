@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": [
+      "bun"
+    ]
+  },
+  "files": [
+    "test-browser-source-recovery.test.tsx",
+    "browser-source-compiled-preload.ts"
+  ],
+  "include": [
+    "../apps/desktop/src/**/*.d.ts"
+  ]
+}

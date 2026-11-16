@@ -1,0 +1,20 @@
+/* Avogadro plugin catalog: settings-card rows with an inline details list. */
+.avogadro-plugins-toolbar { display: flex; align-items: center; gap: 8px; padding: 8px 16px; }
+.avogadro-plugins-search { flex: 1; min-width: 0; margin: 0; }
+.avogadro-plugins-list { margin: 0; padding: 0; list-style: none; }
+.avogadro-plugins-item { position: relative; }
+.avogadro-plugins-item::before { content: ""; position: absolute; top: 0; inset-inline: 16px; height: 1px; background: var(--color-border); pointer-events: none; }
+.avogadro-plugins-row { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 8px 16px; color: var(--color-text); }
+.avogadro-plugins-details { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 16px; margin: 0; padding: 0 16px 12px 56px; font-size: var(--text-sm); line-height: 1.42857143; }
+.avogadro-plugins-details dt { color: var(--color-text-secondary); }
+.avogadro-plugins-details dd { margin: 0; min-width: 0; overflow-wrap: anywhere; color: var(--color-text); }
+.avogadro-plugins-links { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px; margin-inline-start: -12px; }
+
+@container field-group (max-width: 520px) {
+  .avogadro-plugins-row { flex-wrap: wrap; }
+  .avogadro-plugins-details { grid-template-columns: minmax(0, 1fr); padding-inline-start: 16px; }
+  .avogadro-plugins-links { margin-inline-start: -12px; }
+}
+.avogadro-plugins-alert { padding-inline-start: 56px; }
+.avogadro-plugins-dialog-details { padding: 0; }
+.avogadro-plugins-license { max-height: 50vh; margin: 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-mono, ui-monospace, monospace); font-size: var(--text-xs); line-height: 16px; color: var(--color-text); }

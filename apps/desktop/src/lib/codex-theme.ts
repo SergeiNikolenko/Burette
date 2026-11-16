@@ -30,7 +30,7 @@ const LEGACY_DEFAULTS: Record<CodexThemeVariant, CodexTheme> = {
   dark: { accent: "#af52de", surface: "#111111", ink: "#fcfcfc", contrast: 16 },
 };
 
-export type CodexThemeTokens = { accent?: string; background?: string; foreground?: string; contrast?: number };
+export type CodexThemeTokens = { accent?: string; background?: string; foreground?: string; contrast?: number; preserveColors?: boolean };
 
 // Resolves saved appearance tokens (shell preferences or viewer theme tokens).
 export function codexThemeFromTokens(tokens: CodexThemeTokens | undefined, variant: CodexThemeVariant): CodexTheme {
@@ -38,7 +38,7 @@ export function codexThemeFromTokens(tokens: CodexThemeTokens | undefined, varia
   const fallback = CODEX_DEFAULT_THEME[variant];
   const color = (value: string | undefined, key: "accent" | "surface" | "ink") => {
     const normalized = value?.trim().toLowerCase() ?? "";
-    return /^#[0-9a-f]{6}$/.test(normalized) && normalized !== legacy[key] ? normalized : fallback[key];
+    return /^#[0-9a-f]{6}$/.test(normalized) && (tokens?.preserveColors || normalized !== legacy[key]) ? normalized : fallback[key];
   };
   const contrast = typeof tokens?.contrast === "number" ? tokens.contrast : Number.NaN;
   return {

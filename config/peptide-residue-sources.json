@@ -1,0 +1,180 @@
+{
+  "sources": [
+    {
+      "repository": "OpenChemistry/fragments",
+      "commit": "7d842f435aec4729a308b23ad7f9501bdd44aa02",
+      "path": "LICENSE",
+      "sha256": "5d5fe72233c63b97cbf8d94856ba79ca70f8a39e7300b6b60613602a4fa6e7e6",
+      "bytes": 1522
+    },
+    {
+      "repository": "OpenChemistry/fragments",
+      "commit": "7d842f435aec4729a308b23ad7f9501bdd44aa02",
+      "path": "amino/ALA.zmat",
+      "sha256": "22cdc66e27d5b5038ac4895f5e43358d190c6541810d8579307e48cf29efe1cc",
+      "bytes": 576
+    },
+    {
+      "repository": "OpenChemistry/fragments",
+      "commit": "7d842f435aec4729a308b23ad7f9501bdd44aa02",
+      "path": "amino/ARG.zmat",
+      "sha256": "bb41a5f81a06b64b2d49e903d1df53c8e1d1f2618618757925808926004fe70e",
+      "bytes": 1248
+    },
+    {
+      "repository": "OpenChemistry/fragments",
+      "commit": "7d842f435aec4729a308b23ad7f9501bdd44aa02",
+      "path": "amino/ASN.zmat",
+      "sha256": "b9f6e4aeb61c4bb2fe90088f94ccb52329de67031012bd81c684703f5c3e308d",
+      "bytes": 768
+    },
+    {
+      "repository": "OpenChemistry/fragments",
+      "commit": "7d842f435aec4729a308b23ad7f9501bdd44aa02",
+      "path": "amino/ASP.zmat",
+      "sha256": "abd01db3124f8fe9bf3b32ec634b9265aa5d8d065ef06248218aca2d98dcde6a",
+      "bytes": 720
+    },
+    {
+      "repository": "OpenChemistry/fragments",
+      "commit": "7d842f435aec4729a308b23ad7f9501bdd44aa02",
+      "path": "amino/CYS.zmat",
+      "sha256": "3875b438f4f308ab4f12bb2cd27f18350ce2e40666cb843e3beb7c6aa01cc4ec",
+      "bytes": 624
+    },
+    {
+      "repository": "OpenChemistry/fragments",
+      "commit": "7d842f435aec4729a308b23ad7f9501bdd44aa02",
+      "path": "amino/GLN.zmat",
+      "sha256": "038176d046d98c3d901939673c2c16141b62c0b0c2f98faa76109450aafc9cb0",
+      "bytes": 912
+    },
+    {
+      "repository": "OpenChemistry/fragments",
+      "commit": "7d842f435aec4729a308b23ad7f9501bdd44aa02",
+      "path": "amino/GLU.zmat",
+      "sha256": "6eb631178c3ab4d49aa29a1e0b35f7d1f79df4b662f6273ee2cdd5a4b8459fc2",
+      "bytes": 864
+    },
+    {
+      "repository": "OpenChemistry/fragments",
+      "commit": "7d842f435aec4729a308b23ad7f9501bdd44aa02",
+      "path": "amino/GLY.zmat",
+      "sha256": "c8d5df5db11d74d909c25ab336a63e79805b3f3816712d7fea7ba07a6d7893a4",
+      "bytes": 432
+    },
+    {
+      "repository": "OpenChemistry/fragments",
+      "commit": "7d842f435aec4729a308b23ad7f9501bdd44aa02",
+      "path": "amino/HIS.zmat",
+      "sha256": "8753838f025490f427243750780e3cdf41b814276a121e44974392e655b298ad",
+      "bytes": 960
+    },
+    {
+      "repository": "OpenChemistry/fragments",
+      "commit": "7d842f435aec4729a308b23ad7f9501bdd44aa02",
+      "path": "amino/ILE.zmat",
+      "sha256": "508ce546a9c43d845126ff09924353ffdb6a3d608937cb552e08daa85476f260",
+      "bytes": 1008
+    },
+    {
+      "repository": "OpenChemistry/fragments",
+      "commit": "7d842f435aec4729a308b23ad7f9501bdd44aa02",
+      "path": "amino/LEU.zmat",
+      "sha256": "d39f9ca8d8614d0bcc4f0290fa01be2f91afa50f2b0432219cf884e33acd27c8",
+      "bytes": 1008
+    },
+    {
+      "repository": "OpenChemistry/fragments",
+      "commit": "7d842f435aec4729a308b23ad7f9501bdd44aa02",
+      "path": "amino/LYS.zmat",
+      "sha256": "18c462de89ed1a33b61a9867f99d3fa803d17454c670705b0bcc009958f13840",
+      "bytes": 1152
+    },
+    {
+      "repository": "OpenChemistry/fragments",
+      "commit": "7d842f435aec4729a308b23ad7f9501bdd44aa02",
+      "path": "amino/MET.zmat",
+      "sha256": "838f4ed8bd0686488bccd1665cc1ccbd23b88ca5366f4e0f2983fad450deac79",
+      "bytes": 912
+    },
+    {
+      "repository": "OpenChemistry/fragments",
+      "commit": "7d842f435aec4729a308b23ad7f9501bdd44aa02",
+      "path": "amino/PHE.zmat",
+      "sha256": "75404538c958fca68f906914a8651e73f1ea2b874753a9823e3ec17f7f1ffecc",
+      "bytes": 1056
+    },
+    {
+      "repository": "OpenChemistry/fragments",
+      "commit": "7d842f435aec4729a308b23ad7f9501bdd44aa02",
+      "path": "amino/PRO.zmat",
+      "sha256": "d7764107df0e44ef52f6e5ed4cd08696a2aed3d1d131aad1450d533255beb9db",
+      "bytes": 816
+    },
+    {
+      "repository": "OpenChemistry/fragments",
+      "commit": "7d842f435aec4729a308b23ad7f9501bdd44aa02",
+      "path": "amino/SER.zmat",
+      "sha256": "340b734947891d9ac03e2e8664de162301db0e761a26147e735010cd69242a93",
+      "bytes": 624
+    },
+    {
+      "repository": "OpenChemistry/fragments",
+      "commit": "7d842f435aec4729a308b23ad7f9501bdd44aa02",
+      "path": "amino/THR.zmat",
+      "sha256": "7de29e1a3f9d834535628d74cb5e3e963ffceee0b3ea13a8e7bb61ff361b3acc",
+      "bytes": 768
+    },
+    {
+      "repository": "OpenChemistry/fragments",
+      "commit": "7d842f435aec4729a308b23ad7f9501bdd44aa02",
+      "path": "amino/TRP.zmat",
+      "sha256": "05f0b612faac49d57311c81dfedebaa330c5796b65c93140d621dba1e63dabe1",
+      "bytes": 1248
+    },
+    {
+      "repository": "OpenChemistry/fragments",
+      "commit": "7d842f435aec4729a308b23ad7f9501bdd44aa02",
+      "path": "amino/TYR.zmat",
+      "sha256": "cdfb46f0b1f7b3d615a048cb343e37f9b427baa905dab69d9b043a0126ae3cf0",
+      "bytes": 1104
+    },
+    {
+      "repository": "OpenChemistry/fragments",
+      "commit": "7d842f435aec4729a308b23ad7f9501bdd44aa02",
+      "path": "amino/VAL.zmat",
+      "sha256": "d1e99ec1cebefc436fd5fae659a051e62dc44a1b9daf10a8e3def6c0251ce22b",
+      "bytes": 864
+    },
+    {
+      "repository": "OpenChemistry/avogadrolibs",
+      "commit": "d250eb3c62a61470b1e0cdf205dcfe26b06f991f",
+      "path": "avogadro/core/residuedata.h",
+      "sha256": "0e9eee79c4541aef244d6d8e670d33e3cd1e28253b29a126dc30f5196e75f7a7",
+      "bytes": 118333
+    }
+  ],
+  "residues": {
+    "A": "ALA",
+    "R": "ARG",
+    "N": "ASN",
+    "D": "ASP",
+    "C": "CYS",
+    "Q": "GLN",
+    "E": "GLU",
+    "G": "GLY",
+    "H": "HIS",
+    "I": "ILE",
+    "L": "LEU",
+    "K": "LYS",
+    "M": "MET",
+    "F": "PHE",
+    "P": "PRO",
+    "S": "SER",
+    "T": "THR",
+    "W": "TRP",
+    "Y": "TYR",
+    "V": "VAL"
+  }
+}

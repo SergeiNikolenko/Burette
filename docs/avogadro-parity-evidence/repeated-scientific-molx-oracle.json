@@ -1,0 +1,160 @@
+{
+  "status": "passed",
+  "oracle": "Python standard library, independent FCHK arrays, no application imports",
+  "source_sha256": "e1efe5671e883277418def683e4e0b56461485f7da31abd805212098ca1c9d7a",
+  "source_bytes": 4546,
+  "runtime_source": {
+    "head": "406aedb6b928614af26c03925ebf1e1b6733e6ed",
+    "files": 1528,
+    "mismatch": [],
+    "tracked_changes_in_manifest": [],
+    "manifest_sha256": "bdbe5d9b72b608a56a32fdc018bc5ca0a671459ad1cf526d78855798d6576c7b",
+    "remote_mismatches": []
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "archive_sha256": "748aac1884a605d249f623aa10ff3681a5922f66e17f0413255248c5a210fc69",
+      "manifest_sha256": "f6e92f3d5f7f59d7f5b9625cd05218a521d7a306e4db425090be4a18e2780d03",
+      "attachments": {
+        "burette-science-attachment-0": "57860cacaa38fd7b0576ff6afd0736351b3e4e7e3f9a099007a05dfa61ff4988",
+        "burette-science-attachment-1": "07b14c5a61d0942a9039d8266fa75f1e370eee6b596ea19d4097e906857706df",
+        "burette-science-attachment-2": "801c28035dfd2a641f37aa0aa8418693960ebcc4ec7d456bb6ee7ea39f473981",
+        "burette-science-attachment-3": "e1efe5671e883277418def683e4e0b56461485f7da31abd805212098ca1c9d7a"
+      },
+      "xyz_max_abs_error_angstrom": 0.0,
+      "science_coordinates_max_abs_error_angstrom": 0.0,
+      "vib_e2_supported_scalar_count": 21,
+      "vib_e2_supported_max_abs_error": 0.0,
+      "mode_displacements_exact": 27,
+      "hessian_exact_values": 81,
+      "hessian_symmetry_error": 0,
+      "atomic_masses_exact": 3
+    },
+    {
+      "round": 2,
+      "archive_sha256": "cae3683aec4d20eba02e22181824979bf04c0ddc92b93e6ebe42387b4cf85933",
+      "manifest_sha256": "f6e92f3d5f7f59d7f5b9625cd05218a521d7a306e4db425090be4a18e2780d03",
+      "attachments": {
+        "burette-science-attachment-0": "57860cacaa38fd7b0576ff6afd0736351b3e4e7e3f9a099007a05dfa61ff4988",
+        "burette-science-attachment-1": "07b14c5a61d0942a9039d8266fa75f1e370eee6b596ea19d4097e906857706df",
+        "burette-science-attachment-2": "801c28035dfd2a641f37aa0aa8418693960ebcc4ec7d456bb6ee7ea39f473981",
+        "burette-science-attachment-3": "e1efe5671e883277418def683e4e0b56461485f7da31abd805212098ca1c9d7a"
+      },
+      "xyz_max_abs_error_angstrom": 0.0,
+      "science_coordinates_max_abs_error_angstrom": 0.0,
+      "vib_e2_supported_scalar_count": 21,
+      "vib_e2_supported_max_abs_error": 0.0,
+      "mode_displacements_exact": 27,
+      "hessian_exact_values": 81,
+      "hessian_symmetry_error": 0,
+      "atomic_masses_exact": 3
+    },
+    {
+      "round": 3,
+      "archive_sha256": "025062764be55e148fb4c087c7dfb3b683327734d42cdff484ab28b464f8a37d",
+      "manifest_sha256": "f6e92f3d5f7f59d7f5b9625cd05218a521d7a306e4db425090be4a18e2780d03",
+      "attachments": {
+        "burette-science-attachment-0": "57860cacaa38fd7b0576ff6afd0736351b3e4e7e3f9a099007a05dfa61ff4988",
+        "burette-science-attachment-1": "07b14c5a61d0942a9039d8266fa75f1e370eee6b596ea19d4097e906857706df",
+        "burette-science-attachment-2": "801c28035dfd2a641f37aa0aa8418693960ebcc4ec7d456bb6ee7ea39f473981",
+        "burette-science-attachment-3": "e1efe5671e883277418def683e4e0b56461485f7da31abd805212098ca1c9d7a"
+      },
+      "xyz_max_abs_error_angstrom": 0.0,
+      "science_coordinates_max_abs_error_angstrom": 0.0,
+      "vib_e2_supported_scalar_count": 21,
+      "vib_e2_supported_max_abs_error": 0.0,
+      "mode_displacements_exact": 27,
+      "hessian_exact_values": 81,
+      "hessian_symmetry_error": 0,
+      "atomic_masses_exact": 3
+    }
+  ],
+  "attachment_bytes_identical_all_rounds": true,
+  "uuid_and_atom_ids_stable": true,
+  "uuid": "d637bfda-ca51-437c-b134-af874d0534ad",
+  "referenceFrameIndex": 0,
+  "frequencies_cm1": [
+    2169.87538,
+    4141.29177,
+    4392.3985
+  ],
+  "csv": {
+    "sha256": "c87f1be6f27c3c0a14095c34309862ce964c1d362d73492dfbe91457a4009619",
+    "rows": 3,
+    "source_scalar_values_compared": 21,
+    "max_abs_error": 0.0
+  },
+  "coverage_note": "All 42 Vib-E2 values retained byte-identically in Original. Seven named property blocks (21 values) also checked in structured science and UI CSV. Remaining 21 values have no named structured fields; semantic interpretation not claimed.",
+  "animation_pixel_evidence": {
+    "source_sha256": "759e359fb8638fa2ea5fe5c2321d8cf1582f3d5f4859be7e26e1b6b5aacc1632",
+    "comparison": {
+      "before-a": {
+        "changedPixels": 5738,
+        "bounds": [
+          175,
+          337,
+          393,
+          401
+        ]
+      },
+      "a-b": {
+        "changedPixels": 3187,
+        "bounds": [
+          175,
+          337,
+          386,
+          401
+        ]
+      },
+      "before-after": {
+        "changedPixels": 0,
+        "bounds": null
+      }
+    },
+    "scope": "Parent PIL canvas comparison: visible animation and exact stopped image restoration; displaced geometry not numerically audited."
+  },
+  "browser_acceptance": {
+    "runtime": "prebuilt-static",
+    "host": "Gauss",
+    "menu_downloads": 3,
+    "fresh_context_reopens": 2,
+    "original_hidden_for_both_reopens_and_saves": true,
+    "first_archive_hidden_for_second_reopen_and_save": true,
+    "ui_export": "Compute → Show vibrations → Export → Spectrum as CSV",
+    "viewports": [
+      {
+        "width": 900,
+        "height": 800,
+        "theme": "dark"
+      },
+      {
+        "width": 1400,
+        "height": 900,
+        "theme": "light"
+      }
+    ],
+    "cleanup": {
+      "sessions": [
+        {
+          "processId": 2892481,
+          "port": 46051,
+          "portClosed": true
+        },
+        {
+          "processId": 4026086,
+          "port": 44889,
+          "portClosed": true
+        },
+        {
+          "processId": 144024,
+          "port": 33273,
+          "portClosed": true
+        }
+      ],
+      "temporarilyHiddenSourcesRestored": true
+    },
+    "oracle_script": "/tmp/burette-repeat-science-audit.py",
+    "oracle_script_sha256": "c1884d9d2e87d6451a60c5744d6a1d1ec22badb7fa873fd3b9d93d7d2b77d434"
+  }
+}

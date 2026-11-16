@@ -37,11 +37,11 @@ if [[ "$SCOPE" == "all" || "$SCOPE" == "js" ]]; then
   for workspace_test in \
     tests/test-workspace-split.test.tsx \
     tests/test-dock-screen.test.ts \
+    ./tests/test-agent-workspace-panel.mjs \
     tests/test-native-page-window.test.tsx \
     tests/test-workspace-source-binding.test.tsx; do
     bun test "$workspace_test"
   done
-  node --test tests/test-agent-workspace-panel.mjs
   bun run test:responsiveness
   bun run test:tauri-structure
   bun run test:compute-metal

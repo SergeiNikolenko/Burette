@@ -1,7 +1,7 @@
 import { findIndexedDocument } from "./document-index";
 import type { ShellViewState } from "../types";
 import { FileKindIcon, fileKindForPath } from "../sidebar/file-kind-icon";
-import { Chart, Compare, Edit, Flask, Plus, SettingsCog, Stopwatch } from "../ui/app-icons";
+import { Chart, Compare, Edit, FileDocument, Flask, Folder, InfoCircle, Plus, SettingsCog, Stopwatch } from "../ui/app-icons";
 import type { Location } from "./page-kinds";
 import "../workspace-panes/workspace-panes.css";
 
@@ -20,6 +20,10 @@ export function TabKindIcon({ location, state }: { location: Location; state: Pi
     case "launcher":
       return <Plus size={16} aria-hidden />;
     case "tool":
+      if (location.tool === "files") return <Folder size={16} aria-hidden />;
+      if (location.tool === "inspector") return <InfoCircle size={16} aria-hidden />;
+      if (location.tool === "text") return <FileDocument size={16} aria-hidden />;
+      return <SettingsCog size={16} aria-hidden />;
     case "settings":
       return <SettingsCog size={16} aria-hidden />;
     case "ketcher":

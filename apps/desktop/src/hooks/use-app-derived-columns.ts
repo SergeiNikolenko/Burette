@@ -116,7 +116,7 @@ export function requestGridRecords(documentId: string): Promise<Array<DerivedCom
 // Merge Columns joins whatever the cells say, so it reads display text rather
 // than the numeric view - the numeric channel drops every non-number, which for
 // a name or an identifier column is the whole column.
-function requestGridColumnText(documentId: string, columnId: string): Promise<Map<number, string>> {
+export function requestGridColumnText(documentId: string, columnId: string): Promise<Map<number, string>> {
   return new Promise((resolve, reject) => {
     const iframe = activeViewerIframeForDocument(documentId, "grid2d");
     if (!iframe?.contentWindow) {
@@ -196,7 +196,7 @@ export function requestGridColumns(documentId: string): Promise<GridColumnChoice
   });
 }
 
-function requestGridColumnValues(documentId: string, columnId: string): Promise<Map<number, number>> {
+export function requestGridColumnValues(documentId: string, columnId: string): Promise<Map<number, number>> {
   return new Promise((resolve, reject) => {
     const iframe = activeViewerIframeForDocument(documentId, "grid2d");
     if (!iframe?.contentWindow) {

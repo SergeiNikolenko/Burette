@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.browser-source-recovery.json",
+  "files": [
+    "test-browser-mcd-admission.test.tsx"
+  ],
+  "include": [
+    "../apps/desktop/src/**/*.d.ts"
+  ]
+}

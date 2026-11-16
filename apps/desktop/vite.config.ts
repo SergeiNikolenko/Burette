@@ -60,6 +60,7 @@ import {
   selectedBrowserDevXtbPath,
 } from "./vite/browser-dev/xtb-runtime";
 import { registerBrowserDevXyzrenderRoute } from "./vite/browser-dev/xyzrender";
+import { registerBrowserDevInteractionDiagramRoute } from "./vite/browser-dev/interaction-diagram";
 
 const desktopRoot = fileURLToPath(new URL(".", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
@@ -231,6 +232,9 @@ type StructureFileBundle = {
 };
 const DEV_FILE_EXTENSIONS = new Set([
   ...previewFormatRegistry.documentTypes.extensions,
+  // VASP POSCAR/CONTCAR: browser crystal tools only, no native preview registration.
+  "vasp",
+  "poscar",
   "pdf",
   "docx",
   "xlsx",
@@ -3610,6 +3614,13 @@ export function browserDevXyzrenderPlugin() {
       registerBrowserDevModelRuntimeRoutes(server, repoRoot);
       registerBrowserDevFileContentRoutes(server, fileRoutes);
       registerBrowserDevFoldingResultRoute(server, { isDevFileReadAllowed });
+      registerBrowserDevInteractionDiagramRoute(server, {
+        runnerPath: join(repoRoot, "apps/desktop/src-tauri/src/commands/interaction_diagram_runner.py"),
+        componentsDir: BROWSER_DEV_CCD_CACHE_ROOT,
+        isDevFileReadAllowed,
+        resolveXyzrenderExecutable,
+        pythonCandidates: browserDevDescriptorPythonCandidates,
+      });
       registerBrowserDevXyzrenderRoute(server, {
         buildArgs: buildXyzrenderArgs,
         execFileAsync,
@@ -3680,6 +3691,7 @@ function isDevFileReadAllowed(path: string) {
 function fileExtension(path: string) {
   const lower = path.toLowerCase();
   if (lower.endsWith(".mae.gz")) return "maegz";
+  if (/^(?:POSCAR|CONTCAR)(?:[_-][^.]*)?$/u.test(path.replace(/\\/g, "/").split("/").pop() ?? "")) return "vasp";
   const index = lower.lastIndexOf(".");
   return index >= 0 ? lower.slice(index + 1) : "";
 }

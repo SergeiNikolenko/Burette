@@ -1,0 +1,1 @@
+{"extends":"./tsconfig.molx-ordinary-chooser.json","include":["test-native-scene-info.test.tsx","test-native-scene-composition.test.ts","native-info-compiled-preload.ts","../apps/desktop/src/**/*.d.ts"]}

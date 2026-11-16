@@ -1,0 +1,42 @@
+.workbench-plots { min-width: 0; grid-template-columns: minmax(0, 1fr); padding-top: 8px; gap: 8px; }
+.workbench-plots .workbench-field-inline { min-width: 120px; }
+.workbench-plots .workbench-actions { display: flex; min-width: 0; max-width: 100%; flex-wrap: wrap; align-items: center; gap: 4px; margin-left: auto; }
+.workbench-plots .workbench-source { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--color-text); }
+.workbench-plots .workbench-charts {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+  gap: 12px;
+}
+.workbench-plots .workbench-charts > section {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 4px;
+}
+.workbench-plots .workbench-chart-title {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 400;
+}
+.workbench-plots .workbench-chart-header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.workbench-plots .workbench-chart-current {
+  margin-left: 6px;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+.workbench-plots .workbench-chart {
+  min-width: 0;
+  border-radius: 6px;
+}
+.workbench-plots .workbench-chart:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}

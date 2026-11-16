@@ -1,0 +1,55 @@
+import type { MeasurementCoordinateEdit } from "../molecular-workbench/measurement-coordinate";
+import { normalizeElement } from "../science-session/contracts";
+import { positionsMatch, sha256Hex } from "../source-editing/source-identity";
+import { checkBindingReport, checkSceneShowsSource } from "../science-session/scene-binding";
+
+export type MeasurementRequest = Pick<MeasurementCoordinateEdit, "kind" | "atoms"> & {
+  structureRef: string; modelRef: string; trajectoryRef: string;
+  frameIndex: number; frameCount: number; atomCount: number; sourceSha256: string;
+  sourceFormat: "sdf" | "mol";
+};
+export type MeasurementDialogRequest = MeasurementRequest & { frameSource: MessageEventSource; requestId: string };
+const refs = ["structureRef", "modelRef", "trajectoryRef"] as const;
+
+/** Ordered, bounded identities; selectionChanged deliberately sorts its atoms and cannot serve this contract. */
+export function readMeasurementRequest(value: unknown): MeasurementRequest | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as MeasurementRequest;
+  const size = { distance: 2, angle: 3, dihedral: 4 }[v.kind];
+  if (!size || !["sdf", "mol"].includes(v.sourceFormat) || !Array.isArray(v.atoms) || v.atoms.length !== size || new Set(v.atoms).size !== size
+    || !Number.isInteger(v.atomCount) || v.atomCount < size || v.atomCount > 256
+    || Array.from(v.atoms).some(index => !Number.isInteger(index) || index < 0 || index >= v.atomCount)
+    || !refs.every(key => typeof v[key] === "string" && v[key].length > 0 && v[key].length <= 128)
+    || v.frameIndex !== 0 || v.frameCount !== 1 || typeof v.sourceSha256 !== "string" || !/^[a-f0-9]{64}$/u.test(v.sourceSha256)) return null;
+  return { kind: v.kind, atoms: [...v.atoms], structureRef: v.structureRef, modelRef: v.modelRef, trajectoryRef: v.trajectoryRef,
+    frameIndex: 0, frameCount: 1, atomCount: v.atomCount, sourceSha256: v.sourceSha256, sourceFormat: v.sourceFormat };
+}
+
+/** An XYZ measurement only names ordered atoms; Geometry edits it through its own rows. */
+export function readXyzMeasurementAtoms(value: unknown): number[] | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as { kind?: unknown; atoms?: unknown; atomCount?: unknown; sourceFormat?: unknown; frameCount?: unknown };
+  const size = ({ distance: 2, angle: 3, dihedral: 4 } as Record<string, number>)[String(v.kind)];
+  if (!size || v.sourceFormat !== "xyz" || v.frameCount !== 1 || !Array.isArray(v.atoms) || v.atoms.length !== size || new Set(v.atoms).size !== size
+    || !Number.isInteger(v.atomCount) || (v.atomCount as number) > 10_000
+    || v.atoms.some(index => !Number.isInteger(index) || index < 0 || index >= (v.atomCount as number))) return null;
+  return [...v.atoms] as number[];
+}
+
+/** Both the displayed parser input and the draft must still be the requested revision. */
+export async function checkMeasurementSource(request: MeasurementRequest, text: string, value: Record<string, unknown>) {
+  if (value.atomCount !== request.atomCount || value.sourceFormat !== request.sourceFormat) throw new Error("The structure changed. Open the measurement again.");
+  const report = checkBindingReport(value);
+  if (text.length > 2_000_000 || report.sourceSha256 !== request.sourceSha256 || await sha256Hex(text) !== request.sourceSha256
+    || !([...refs, "frameIndex", "frameCount", "atomCount"] as const).every(key => report[key] === request[key])) {
+    throw new Error("The structure changed. Open the measurement again.");
+  }
+  if (request.sourceFormat === "sdf") await checkSceneShowsSource(report, text, "sdf");
+  else {
+    // The molfile reader reaches the chemistry toolkit, which the viewer message path never needs.
+    const { parseMolecule } = await import("../molecular-workbench/molecular-graph");
+    const { atoms } = parseMolecule(text, "mol");
+    if (atoms.length !== report.atomCount || atoms.some((atom, index) => normalizeElement(atom.element) !== normalizeElement(report.elements[index]))
+      || !positionsMatch(atoms.flatMap(atom => [atom.x, atom.y, atom.z]), report.positions)) throw new Error("The structure changed. Open the measurement again.");
+  }
+}

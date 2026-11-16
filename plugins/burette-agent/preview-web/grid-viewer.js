@@ -20,6 +20,8 @@
   const GRID_SELECTION_BRIDGE_LIMIT = 100000;
   const CHEMICAL_SPACE_RECORD_LIMIT = 20000;
   const CHEMICAL_SPACE_INPUT_BYTES_LIMIT = 8 * 1024 * 1024;
+  const COLLECTION_CHART_COLUMN_LIMIT = 6;
+  const COLLECTION_CHART_TEXT_LIMIT = 120;
   const CONFORMER_VARIANT_STORAGE_KEY = 'buret.grid.conformerVariant';
   const MMFF_VARIANT_STORAGE_KEY = 'buret.grid.mmffVariant';
   const SEMIEMPIRICAL_METHOD_STORAGE_KEY = 'buret.grid.semiempiricalMethod';
@@ -45,6 +47,19 @@
   const MAX_CARD_MIN = 360;
   const DEFAULT_CARD_MIN = 174;
   const RDKIT_SVG_SIZE = 260;
+  // Each picture is drawn for the box that shows it, in drawing units of about
+  // one CSS pixel (table cells twice that, for sharp edges), with the bond length
+  // capped so a small molecule is not blown up and labels kept readable. The long
+  // axis lies across the box. A 260-unit card squeezed into a 52 px table cell
+  // left 3 px letters.
+  const RDKIT_DRAWINGS = {
+    // flagCloseContactsDist: RDKit marks atoms closer than 3 px with red boxes,
+    // which in a thumbnail is every ring.
+    card: { width: RDKIT_SVG_SIZE, height: RDKIT_SVG_SIZE, fixedBondLength: 24, minFontSize: 10, maxFontSize: 14, flagCloseContactsDist: -1 },
+    table: { width: 104, height: 104, fixedBondLength: 36, minFontSize: 6, maxFontSize: 22, flagCloseContactsDist: -1 },
+    // R-group and scaffold cells: attachment points as the usual wavy line.
+    fragment: { width: 192, height: 104, fixedBondLength: 36, minFontSize: 18, maxFontSize: 24, dummiesAreAttachments: true, flagCloseContactsDist: -1 }
+  };
   // A reaction is drawn as a row of structures around an arrow, so it needs a
   // landscape box rather than the square one a single molecule gets.
   const RDKIT_REACTION_SVG_WIDTH = 560;
@@ -138,6 +153,8 @@
     filterColumnStatsCache: new Map(),
     filterColumnVariationCache: new Map(),
     filterColumnStatsRows: null,
+    filterCategoryPins: new Map(),
+    rowListFilter: null,
     reactionRowsCache: null,
     tableColumnPanelOutsideController: null,
     tableScrollLeft: 0,
@@ -160,6 +177,7 @@
     chemicalSpaceVisibilityRequest: null,
     chemicalSpaceVisibilityGeneration: 0,
     chemicalSpaceVisibilityScanning: false,
+    collectionChartRequests: new Map(),
     ketcherOpenPendingUntil: 0,
     selectionAnchorIndex: null,
     selectionKeydownHandler: null,
@@ -682,6 +700,25 @@
       }
       if (!data || (data.source !== 'burette-grid-host' && data.source !== 'burette-host')) return;
       const body = data.body || {};
+      if (body.type === 'gridRestoreViewMode') {
+        if (event.source !== window.parent || state.hostViewModeSession) return;
+        state.hostViewModeSession = true;
+        if (typeof body.snapshot === 'string' && body.snapshot) {
+          void restoreGridPresentation(body.snapshot);
+          return;
+        }
+        if (body.value === 'cards' || body.value === 'table') {
+          const cfg = config();
+          setGridViewMode(effectiveMolecularGrid(cfg) ? body.value : 'table', cfg);
+        }
+        notifyGridMenuState(config());
+        return;
+      }
+      if (body.type === 'gridWindowCapture' || body.type === 'gridWindowRestore' || body.type === 'gridWindowReady') {
+        if (event.source !== window.parent || typeof body.requestId !== 'string' || body.requestId.length > 120) return;
+        void handleGridWindowTransfer(body);
+        return;
+      }
       // Applied in place like the structure viewer: the config already carries
       // the token sets for both themes, so a theme change never reopens the grid.
       if (body.type === 'setViewerTheme') {
@@ -841,6 +878,10 @@
         postChemicalSpaceColumnText(body.requestId, body.columnId);
         return;
       }
+      if (body.type === 'collectionChartRequestData') {
+        void postCollectionChartData(body, config());
+        return;
+      }
       if (body.type === 'chemicalSpaceHoverChanged') {
         // Number(null) is 0, so leaving the map used to read as "hover row 0"
         // and pinned the first molecule instead of clearing.
@@ -919,6 +960,27 @@
       }
       if (body.type === 'gridSplitRows') {
         void splitGridMultipleValueRows(body, config());
+        return;
+      }
+      if (body.type === 'gridRequestTable') {
+        void postGridTable(body, config());
+        return;
+      }
+      if (body.type === 'gridRequestSelection') {
+        post('gridSelection', '', {
+          requestId: String(body.requestId || ''),
+          indexes: [...state.selected].map(Number).filter(index => Number.isSafeInteger(index) && index >= 0)
+            .slice(0, GRID_SELECTION_BRIDGE_LIMIT).sort((a, b) => a - b),
+          truncated: state.selected.size > GRID_SELECTION_BRIDGE_LIMIT
+        });
+        return;
+      }
+      if (body.type === 'gridRowListCommand') {
+        applyRowListCommand(body, config());
+        return;
+      }
+      if (body.type === 'gridApplyRowEdits') {
+        void applyGridRowEdits(body, config());
         return;
       }
       if (body.type === 'gridDescriptorControls') {
@@ -1217,6 +1279,12 @@
         if (!caps.selection) return;
         clearSelection(cfgValue);
         return;
+      case 'collection.record-view': {
+        // Opens on the first selected row the view shows, or on its first row.
+        const row = state.rows.find(candidate => state.selected.has(Number(candidate.index))) || state.rows[0];
+        if (row) showMoleculeDetail(row, cfgValue);
+        return;
+      }
       case 'collection.delete-rows.selected': {
         if (!caps.editing || !caps.selection) return;
         const removed = hideGridRowIndexes([...state.selected], 'Delete Selected Molecules');
@@ -1312,6 +1380,7 @@
 
   function notifyGridMenuState(cfg) {
     if (cfg?.appViewer !== true) return;
+    publishGridPresentation();
     const undoEntry = state.undoStack[state.undoStack.length - 1] || null;
     const redoEntry = state.redoStack[state.redoStack.length - 1] || null;
     const caps = capabilities(cfg);
@@ -2653,7 +2722,7 @@
     if (now < state.ketcherOpenPendingUntil) return;
     const rows = selectedMolstarRows();
     if (!rows.length) {
-      setStatus('[grid] Select one or more molecules before opening Ketcher.', 'error');
+      setStatus('[grid] Select one or more molecules before opening the molecular editor.', 'error');
       return;
     }
     const fragments = rows.map(row => {
@@ -2668,17 +2737,17 @@
       };
     }).filter(Boolean);
     if (!fragments.length) {
-      setStatus('[grid] Selected molecules do not have structure data for Ketcher.', 'error');
+      setStatus('[grid] Selected molecules do not have structure data for the molecular editor.', 'error');
       return;
     }
-    post('openSdfKetcherDocument', '[grid] Open selected molecules in Ketcher.', {
+    post('openSdfKetcherDocument', '[grid] Open selected molecules in the molecular editor.', {
       documentId: cfg?.documentId || null,
       fragments
     });
     state.ketcherOpenPendingUntil = now + 1200;
     updateChrome(cfg);
     window.setTimeout(() => updateChrome(cfg), 1250);
-    setStatus(`[grid] Opening ${fragments.length.toLocaleString()} selected molecule${fragments.length === 1 ? '' : 's'} in Ketcher.`);
+    setStatus(`[grid] Opening ${fragments.length.toLocaleString()} selected molecule${fragments.length === 1 ? '' : 's'} in the molecular editor.`);
   }
 
   function selectedMolstarRows() {
@@ -3201,7 +3270,7 @@
     const record = gridDragRecord(row);
     const label = row?.name || `Molecule ${Number(row?.index) + 1 || 1}`;
     if (!record) {
-      setStatus(`[grid] ${label} has no structure data for Ketcher.`, 'error');
+      setStatus(`[grid] ${label} has no structure data for the molecular editor.`, 'error');
       return;
     }
     const sourceRow = Number(row?.props?.['CSV row']);
@@ -3216,7 +3285,7 @@
       ...(Number.isSafeInteger(sourceRow) && sourceRow > 0 ? { sourceRow } : {}),
       ...(structureColumn ? { structureColumn } : {})
     };
-    const message = `[grid] Open ${label} in Ketcher.`;
+    const message = `[grid] Open ${label} in the molecular editor.`;
     post('openInKetcher', message, payload);
   }
 
@@ -3336,7 +3405,10 @@
     state.searchTimer = 0;
     resetGridWindowForNewResultSet();
     if (state.remoteMode) {
-      if (state.chemicalSpaceFilterActive) {
+      // A SMARTS query walks the collection itself and applies the client-side
+      // filters to what it finds.
+      const clientFiltered = clientRowFiltersActive() && !state.smarts.trim();
+      if (state.chemicalSpaceFilterActive && !clientFiltered) {
         const loaded = new Set(state.rows.map(row => Number(row.index)));
         const allLoaded = [...state.selected].every(index => loaded.has(Number(index)));
         if (allLoaded) {
@@ -3344,8 +3416,8 @@
           state.totalRows = state.rows.length;
           return render(cfg);
         }
-        return refreshRemoteChemicalSpaceSelection(cfg);
       }
+      if (state.chemicalSpaceFilterActive || clientFiltered) return refreshRemoteChemicalSpaceSelection(cfg);
       return refreshRemote(cfg);
     }
     const query = state.smarts.trim() ? '' : normalize(state.query);
@@ -3381,6 +3453,7 @@
     return !!state.query.trim()
       || !!state.smarts.trim()
       || remoteTableColumnFilters().length > 0
+      || clientRowFiltersActive()
       || mergedDescriptorFilters().length > 0
       || mergedAnalysisFilters().length > 0;
   }
@@ -3498,8 +3571,40 @@
 
   function filterByTableColumnControls(rows) {
     const filters = Object.entries(state.tableColumnFilters || {});
-    if (!filters.length) return rows;
-    return rows.filter(row => filters.every(([columnId, filter]) => tableColumnFilterMatches(row, columnId, filter)));
+    const list = state.rowListFilter?.indexes;
+    if (!filters.length && !list) return rows;
+    return rows.filter(row => (!list || list.has(Number(row.index)))
+      && filters.every(([columnId, filter]) => tableColumnFilterMatches(row, columnId, filter)));
+  }
+
+  // Row lists are named selections the host keeps per document. The grid only
+  // ever sees the rows of one: to select them, to show nothing else, or to
+  // export them. Showing a list is a filter of its own - it survives a change
+  // of selection, which is what tells it apart from the selection it was saved from.
+  function applyRowListCommand(body, cfg) {
+    const indexes = (Array.isArray(body.indexes) ? body.indexes : [])
+      .slice(0, GRID_SELECTION_BRIDGE_LIMIT).map(Number)
+      .filter(index => Number.isSafeInteger(index) && index >= 0);
+    if (body.action === 'filter') {
+      state.rowListFilter = body.id && indexes.length
+        ? { id: String(body.id), name: String(body.name || '').slice(0, 120), indexes: new Set(indexes) }
+        : null;
+      void refresh(cfg);
+      return;
+    }
+    if (!capabilities(cfg).selection || !indexes.length) return;
+    const wasFilteringSelection = state.chemicalSpaceFilterActive;
+    state.selected = new Set(indexes);
+    state.chemicalSpaceFilterActive = false;
+    state.selectionAnchorIndex = indexes[indexes.length - 1];
+    if (wasFilteringSelection) void refresh(cfg);
+    else {
+      syncRenderedSelection();
+      updateChrome(cfg);
+    }
+    // The export commands take the selection, so the list is what they write.
+    if (body.action === 'export-csv' && capabilities(cfg).export) void exportCSV(cfg);
+    else if (body.action === 'export-smiles' && capabilities(cfg).export) void exportSmiles(cfg);
   }
 
   // A cleared bound is stored as an empty string, and Number('') is 0, so the
@@ -3520,9 +3625,30 @@
       if (Number.isFinite(max) && value > max) return false;
       return true;
     }
+    const display = tableColumnDisplayValue(row, columnId);
+    // A category filter keeps the rows whose cell is one of the picked values;
+    // the empty string among them stands for the empty cells.
+    if (filter.values?.length && !filter.values.includes(display.trim())) return false;
     const text = String(filter.text || '').trim().toLowerCase();
     if (!text) return true;
-    return tableColumnDisplayValue(row, columnId).toLowerCase().includes(text);
+    return display.toLowerCase().includes(text);
+  }
+
+  // The collection database filters a page by "contains" and by number range.
+  // A list of picked values and a row list are not something it evaluates, so
+  // on a paged collection those filters are applied here to the pages as they
+  // are walked.
+  function clientRowFiltersActive() {
+    return state.rowListFilter !== null
+      || Object.values(state.tableColumnFilters || {}).some(filter => filter?.values?.length > 0);
+  }
+
+  function rowPassesClientFilters(row) {
+    if (state.rowListFilter && !state.rowListFilter.indexes.has(Number(row.index))) return false;
+    for (const [columnId, filter] of Object.entries(state.tableColumnFilters || {})) {
+      if (filter?.values?.length && !filter.values.includes(tableColumnDisplayValue(row, columnId).trim())) return false;
+    }
+    return true;
   }
 
   function filterBySMARTS(rows) {
@@ -3645,6 +3771,7 @@
   }
 
   function handleGridScroll(cfg) {
+    scheduleGridPresentation();
     updateGridToolbarCondensed();
     scheduleVirtualWindowRender(cfg);
     maybeLoadMore(cfg);
@@ -3668,7 +3795,7 @@
     if (!rect || rect.top <= window.innerHeight + GRID_LOAD_AHEAD_PX) loadMore(cfg);
   }
 
-  async function render(cfg) {
+  async function render(cfg, { visibleCount } = {}) {
     const token = ++state.token;
     const grid = document.getElementById('grid');
     cancelVirtualWindowRender();
@@ -3680,7 +3807,9 @@
     state.renderedCount = 0;
     state.windowStart = 0;
     state.windowEnd = 0;
-    state.visibleCount = state.remoteMode ? Math.min(loadBatchSize(cfg), state.rows.length) : state.rows.length;
+    state.visibleCount = Number.isSafeInteger(visibleCount) && visibleCount >= 0
+      ? Math.min(visibleCount, state.rows.length)
+      : state.remoteMode ? Math.min(loadBatchSize(cfg), state.rows.length) : state.rows.length;
     if (!state.rows.length) {
       grid.innerHTML = '<div class="buret-empty">No molecules match this search.</div>';
       updateChrome(cfg);
@@ -3691,6 +3820,7 @@
   }
 
   async function loadMore(cfg) {
+    if (state.restoringGridPresentation) return;
     if (state.remoteMode) {
       await loadMoreRemote(cfg);
       return;
@@ -3727,7 +3857,7 @@
     updateChrome(cfg);
     try {
       if (state.smarts.trim()) {
-        const matches = await scanRemoteBySMARTS(cfg, token);
+        const matches = (await scanRemoteBySMARTS(cfg, token)).filter(rowPassesClientFilters);
         if (token !== state.dataToken) return;
         if (!shouldFallbackSMARTSToTextSearch()) {
           state.rows = matches;
@@ -3770,11 +3900,13 @@
   // A chemical-space lasso can select molecules far past the loaded window, so
   // filtering the fetched rows alone showed a handful of the selection. Page
   // through the collection like the SMARTS scan does and keep every selected row.
+  // The same walk serves the filters only the grid can evaluate - a category
+  // filter's picked values - with or without a selection to keep to.
   async function refreshRemoteChemicalSpaceSelection(cfg) {
     const token = ++state.dataToken;
     const loadToken = ++state.remoteLoadToken;
     state.token += 1;
-    const wanted = new Set([...state.selected].map(Number));
+    const wanted = state.chemicalSpaceFilterActive ? new Set([...state.selected].map(Number)) : null;
     state.smartsError = '';
     state.smartsMatches = new Map();
     state.rows = [];
@@ -3791,7 +3923,7 @@
       let offset = 0;
       let total = null;
       const limit = Math.max(120, loadBatchSize(cfg));
-      while ((total === null || offset < total) && matches.length < wanted.size) {
+      while ((total === null || offset < total) && (!wanted || matches.length < wanted.size)) {
         if (token !== state.dataToken) return;
         const result = await hostRequest('gridFetchPage', gridFetchPayload({
           query: state.query || '',
@@ -3804,11 +3936,13 @@
         applyGridPageState(result);
         total = Number(result.totalRows || 0);
         for (const row of pageRows) {
-          if (wanted.has(Number(row.index))) matches.push(row);
+          if ((!wanted || wanted.has(Number(row.index))) && rowPassesClientFilters(row)) matches.push(row);
         }
-        offset += pageRows.length;
-        if (!pageRows.length) break;
-        setStatus(`[grid] Loading selection ${matches.length.toLocaleString()} / ${wanted.size.toLocaleString()} molecules...`);
+        offset += Math.max(pageRows.length, Number(result.rows?.length || 0));
+        if (!result.rows?.length) break;
+        setStatus(wanted
+          ? `[grid] Loading selection ${matches.length.toLocaleString()} / ${wanted.size.toLocaleString()} molecules...`
+          : `[grid] Filtering ${Math.min(offset, total).toLocaleString()} / ${total.toLocaleString()} rows...`);
       }
       if (token !== state.dataToken) return;
       state.rows = matches;
@@ -3816,7 +3950,11 @@
       state.totalRows = matches.length;
       state.visibleCount = Math.min(loadBatchSize(cfg), state.rows.length);
       await renderVirtualWindow(cfg, state.token, { force: true });
-      setStatus(`[grid] Showing ${matches.length.toLocaleString()} selected molecule${matches.length === 1 ? '' : 's'}.`);
+      // A lasso's own selection must not feed back into the map; a filter does.
+      if (!wanted) postChemicalSpaceVisibility(matches);
+      setStatus(wanted
+        ? `[grid] Showing ${matches.length.toLocaleString()} selected molecule${matches.length === 1 ? '' : 's'}.`
+        : `[grid] Showing ${matches.length.toLocaleString()} of ${Number(total || 0).toLocaleString()} rows.`);
     } catch (error) {
       if (token !== state.dataToken) return;
       const message = error?.message || String(error);
@@ -4075,6 +4213,7 @@
     const next = Math.max(0, Math.round(wrapper.scrollLeft || 0));
     if (next === state.tableScrollLeft) return;
     state.tableScrollLeft = next;
+    scheduleGridPresentation();
     if (state.tableColumnScrollFrame || state.rendering || !state.rows.length) return;
     state.tableColumnScrollFrame = window.requestAnimationFrame(() => {
       state.tableColumnScrollFrame = 0;
@@ -4881,6 +5020,7 @@
     if (caps.selection) {
       el.tabIndex = 0;
       el.role = 'button';
+      el.setAttribute('aria-label', row.name || `Molecule ${index + 1}`);
       el.addEventListener('click', event => handleCardSelection(event, row, cfg, el));
       el.addEventListener('keydown', event => {
         if (event.key === ' ' || event.key === 'Enter') {
@@ -4899,6 +5039,8 @@
 
 
   const FILTER_BINS = 32;
+  const FILTER_CATEGORY_LIMIT = 60;
+  const FILTER_CATEGORY_VALUE_CHARS = 80;
 
   function filterModelColumns() {
     // Remote collections expose their loaded columns here while filter
@@ -4942,6 +5084,55 @@
     const statsRows = state.filterColumnStatsRows.length;
     const statsTotal = remoteCollectionTotal();
     return { ...stats, statsRows, statsTotal, statsComplete: state.indexReady && statsTotal > 0 && statsRows >= statsTotal };
+  }
+
+  // How often each value of a column occurs, most frequent first; the empty
+  // string counts the empty cells. Pure on purpose, and null as soon as the
+  // column turns out to be free text: more distinct values than `limit`, or a
+  // value too long to be a category. Same counting as categoryCounts in
+  // apps/desktop/src/lib/table-shaping.ts, which the grid frame cannot import.
+  function categoryValueCounts(rows, read, limit, maxLength) {
+    const counts = new Map();
+    for (const row of rows) {
+      const value = String(read(row) ?? '').trim();
+      const count = counts.get(value);
+      if (count !== undefined) {
+        counts.set(value, count + 1);
+        continue;
+      }
+      if (counts.size >= limit || value.length > maxLength) return null;
+      counts.set(value, 1);
+    }
+    return [...counts].sort((a, b) => b[1] - a[1]
+      || a[0].localeCompare(b[0], undefined, { numeric: true, sensitivity: 'base' }));
+  }
+
+  // A text column is offered as a category filter when its values repeat: on
+  // average every value at least twice, which leaves names and identifiers
+  // out. The counts are taken over every loaded row, like the numeric
+  // distribution, so they stay put while other filters narrow the view.
+  function filterColumnCategories(column) {
+    const rows = state.filterColumnStatsRows ??= tableColumnDiscoveryRows();
+    const key = `categories:${column.id}`;
+    if (!state.filterColumnStatsCache.has(key)) {
+      const counts = categoryValueCounts(rows, row => tableColumnDisplayValue(row, column.id), FILTER_CATEGORY_LIMIT, FILTER_CATEGORY_VALUE_CHARS);
+      state.filterColumnStatsCache.set(key, counts && counts.length > 1 && counts.length * 2 <= rows.length ? counts : null);
+    }
+    const categories = state.filterColumnStatsCache.get(key);
+    if (!state.remoteMode) return categories ? { categories } : null;
+    // A paged collection only holds the rows its filters let through, so the
+    // values a column offered when its own filter was set stay on offer;
+    // otherwise picking one value would take the others off the list.
+    if (state.tableColumnFilters[column.id]?.values?.length && state.filterCategoryPins.has(column.id)) {
+      return state.filterCategoryPins.get(column.id);
+    }
+    const statsRows = rows.length;
+    const statsTotal = remoteCollectionTotal();
+    const offered = categories
+      ? { categories, statsRows, statsTotal, statsComplete: state.indexReady && statsTotal > 0 && statsRows >= statsTotal }
+      : null;
+    state.filterCategoryPins.set(column.id, offered);
+    return offered;
   }
 
   function filterColumnVaries(column) {
@@ -4999,7 +5190,14 @@
         state.filterColumnVariationCache.set(column.id, filterColumnVaries(column) && !filterColumnIsRowIndex(column));
       }
       entry.varied = state.filterColumnVariationCache.get(column.id);
-      if (filter) entry.filter = { min: filter.min ?? '', max: filter.max ?? '', text: filter.text ?? '' };
+      if (filter) {
+        entry.filter = { min: filter.min ?? '', max: filter.max ?? '', text: filter.text ?? '' };
+        if (filter.values?.length) entry.filter.values = filter.values;
+      }
+      if (column.type !== 'number') {
+        const categories = filterColumnCategories(column);
+        if (categories) Object.assign(entry, categories);
+      }
       if (column.type === 'number') {
         const stats = filterColumnStats(column);
         if (stats) Object.assign(entry, stats);
@@ -5010,6 +5208,7 @@
     });
     return {
       documentId: cfg?.documentId || null,
+      rowListFilter: state.rowListFilter ? state.rowListFilter.id : null,
       visible: state.remoteMode ? state.totalRows : state.rows.length,
       total: state.remoteMode
         ? remoteCollectionTotal(cfg)
@@ -5054,7 +5253,11 @@
         if (String(filter.min ?? '').trim() && Number.isFinite(Number(filter.min))) row.min = Number(filter.min);
         if (String(filter.max ?? '').trim() && Number.isFinite(Number(filter.max))) row.max = Number(filter.max);
       } else {
-        row.text = gridAgentText(String(filter.text || '').trim());
+        // A category filter reads as the values it lets through.
+        row.text = gridAgentText([
+          String(filter.text || '').trim(),
+          (filter.values || []).map(value => value || '(empty)').join(' | ')
+        ].filter(Boolean).join(' & '));
       }
       filters.push(row);
     }
@@ -5122,10 +5325,15 @@
   }
 
   function applyGridColumnFilter(cfg, columnId, part, value) {
-    if (!columnId || !['min', 'max', 'text'].includes(part)) return;
+    if (!columnId || !['min', 'max', 'text', 'values'].includes(part)) return;
     const current = { ...state.tableColumnFilters[columnId] };
-    current.type = part === 'text' ? 'text' : 'number';
-    current[part] = String(value ?? '');
+    current.type = part === 'text' || part === 'values' ? 'text' : 'number';
+    if (part === 'values') {
+      current.values = [...new Set((Array.isArray(value) ? value : []).map(item => String(item ?? '').trim()))]
+        .slice(0, FILTER_CATEGORY_LIMIT);
+    } else {
+      current[part] = String(value ?? '');
+    }
     if (tableColumnFilterEmpty(current)) delete state.tableColumnFilters[columnId];
     else state.tableColumnFilters[columnId] = current;
     void refresh(cfg);
@@ -5268,7 +5476,7 @@
       { id: 'index', label: '#', type: 'number', fixed: true, get: row => String(Number(row.index) + 1) },
       ...(effectiveMolecularGrid(safeConfig())
         ? [
-            { id: 'molecule', label: 'Mol', type: 'none', fixed: true, html: (row, cfg) => `<div class="buret-grid-table-molecule" data-buret-molecule-picture>${draw(row, cfg)}</div>` },
+            { id: 'molecule', label: 'Mol', type: 'none', fixed: true, html: (row, cfg) => `<div class="buret-grid-table-molecule" data-buret-molecule-picture>${draw({ ...row, drawing: 'table' }, cfg)}</div>` },
             { id: 'name', label: 'Name', type: 'text', fixed: true, get: row => row.name || `Molecule ${Number(row.index) + 1}` },
             { id: 'smiles', label: 'SMILES', type: 'text', fixed: true, get: row => rowSmiles(row) }
           ]
@@ -5586,7 +5794,12 @@
     if (column.html) return column.html(row, cfg);
     const value = String(column.get(row) ?? '');
     const id = column.id.replace(/^(?:descriptor|prop):/u, '');
-    if (value && /^(?:Scaffold|RGroup_(?:Core|R[1-9][0-9]*|Components))$/u.test(id)) {
+    // Enumerate library writes each product's reactants as Reactant N columns.
+    if (value && /^(?:Scaffold|RGroup_(?:Core|R[1-9][0-9]*|Components)|Reactant [1-9][0-9]*)$/u.test(id)) {
+      // A hydrogen substituent has nothing to draw but its letter.
+      if (/^(?:\[\*(?::\d+)?\]\[H\]|\[H\]\[\*(?::\d+)?\])$/u.test(value)) {
+        return `<div class="buret-grid-table-fragment buret-grid-table-hydrogen" role="img" aria-label="H" title="${escapeAttr(value)}">H</div>`;
+      }
       const fragment = { index: 'fragment', smiles: value, fragment: true };
       return `<div class="buret-grid-table-fragment" data-buret-fragment-smiles="${escapeAttr(value)}" data-buret-molecule-picture role="img" aria-label="${escapeAttr(value)}" title="${escapeAttr(value)}">${drawRdkitPlaceholder(fragment)}</div>`;
     }
@@ -5847,7 +6060,7 @@
   function tableColumnFilterEmpty(filter) {
     if (!filter) return true;
     if (filter.type === 'number') return !String(filter.min || '').trim() && !String(filter.max || '').trim();
-    return !String(filter.text || '').trim();
+    return !String(filter.text || '').trim() && !(filter.values?.length > 0);
   }
 
   function inferPropColumnType(rows, key) {
@@ -6630,18 +6843,148 @@
     setStatus(`[grid] Split ${plan.patches.length.toLocaleString()} row${plan.patches.length === 1 ? '' : 's'} of ${label} into ${(plan.patches.length + plan.inserts.length).toLocaleString()}.`);
   }
 
+  // Pivot, Unpivot and Merge File by Key are worked out by the host over the
+  // whole collection, so it reads the cells here first: one array per row, the
+  // row's index followed by the text of every asked column. The revision lets
+  // the edit that comes back be refused if the collection changed meanwhile.
+  async function postGridTable(body, cfg) {
+    const requestId = String(body.requestId || '');
+    const columnIds = (Array.isArray(body.columnIds) ? body.columnIds : []).map(id => String(id || '')).filter(Boolean);
+    try {
+      if (!requireCollectionIndexReady('reading the table')) throw new Error('The collection is still being indexed.');
+      const rows = await collectCurrentCollectionRows(cfg);
+      post('gridTable', '', {
+        requestId,
+        sourceRevision: state.sourceRevision,
+        rows: rows.map(row => [Number(row.index), ...columnIds.map(id => tableColumnRawDisplayValue(row, id))])
+      });
+    } catch (error) {
+      post('gridTable', '', { requestId, error: error?.message || String(error) });
+    }
+  }
+
+  // A row edit planned outside the grid arrives as cell changes: `set` writes
+  // cells, an empty text clears one, `remove` drops cells by name.
+  function editedRowProps(props, edit) {
+    const next = { ...props };
+    for (const key of Array.isArray(edit?.remove) ? edit.remove : []) delete next[String(key)];
+    for (const [key, value] of Object.entries(edit?.set && typeof edit.set === 'object' ? edit.set : {})) {
+      const text = String(value ?? '');
+      if (!key.trim()) continue;
+      if (text.trim()) next[key] = text;
+      else delete next[key];
+    }
+    return next;
+  }
+
+  // Pure on purpose. An inserted row is a copy of the row it follows - the
+  // structure with it - as that row was before its own patch, so a reshape can
+  // describe every output row from the same source row.
+  function planGridRowEdits(rows, body, firstNewIndex) {
+    const byIndex = new Map(rows.map(row => [Number(row.index), row]));
+    const hide = [...new Set((Array.isArray(body.hide) ? body.hide : []).map(Number))].filter(index => byIndex.has(index));
+    const hidden = new Set(hide);
+    const patches = [];
+    const inserts = [];
+    let nextIndex = Number(firstNewIndex) || 0;
+    for (const patch of Array.isArray(body.patches) ? body.patches : []) {
+      const row = byIndex.get(Number(patch?.index));
+      if (!row || hidden.has(Number(row.index))) continue;
+      patches.push({ index: Number(row.index), row: { ...row, props: editedRowProps(row.props || {}, patch) } });
+    }
+    for (const insert of Array.isArray(body.inserts) ? body.inserts : []) {
+      const row = byIndex.get(Number(insert?.afterIndex));
+      if (!row || hidden.has(Number(row.index))) continue;
+      inserts.push({
+        afterIndex: Number(row.index),
+        row: { ...row, index: nextIndex++, props: editedRowProps(row.props || {}, insert) }
+      });
+    }
+    return { patches, inserts, hide };
+  }
+
+  async function applyGridRowEdits(body, cfg) {
+    const requestId = String(body.requestId || '');
+    const refuse = error => post('gridRowEditsApplied', '', { requestId, error });
+    if (state.closeTransitionActive || state.saveAsPending || !capabilities(cfg).editing) {
+      refuse('The collection cannot be edited right now.');
+      return;
+    }
+    if (Number(body.sourceRevision) !== state.sourceRevision) {
+      refuse('The collection changed in the meantime. Run the command again.');
+      return;
+    }
+    if (!requireCollectionIndexReady('editing the table')) {
+      refuse('The collection is still being indexed.');
+      return;
+    }
+    const rows = await collectCurrentCollectionRows(cfg);
+    if (state.closeTransitionActive || state.saveAsPending || Number(body.sourceRevision) !== state.sourceRevision) {
+      refuse('The collection changed in the meantime. Run the command again.');
+      return;
+    }
+    const plan = planGridRowEdits(rows, body, nextGridRowIndex(rows));
+    if (plan.patches.length + plan.inserts.length + plan.hide.length > 0) {
+      pushUndoSnapshot(String(body.label || 'Edit Rows').slice(0, 80));
+      for (const patch of plan.patches) {
+        state.rowPatches.set(patch.index, {
+          name: patch.row.name,
+          molblock: patch.row.molblock,
+          smiles: patch.row.smiles,
+          props: patch.row.props
+        });
+      }
+      const doomed = new Set(plan.hide);
+      for (const index of doomed) {
+        state.selected.delete(index);
+        state.hiddenRows.add(index);
+      }
+      // Inserts that follow the same row are placed last one first, so they end
+      // up in the order they were listed.
+      const inserts = plan.inserts.slice().reverse();
+      if (state.remoteMode) {
+        state.rows = applyVirtualGridEdits(state.rows);
+        const loaded = new Set(state.rows.map(row => Number(row.index)));
+        for (const insert of inserts) {
+          state.insertedRows.push(insert.row);
+          if (loaded.has(insert.afterIndex)) insertAfterRow(state.rows, insert.afterIndex, insert.row);
+        }
+        const delta = inserts.length - doomed.size;
+        state.totalRows = Math.max(0, state.totalRows + delta);
+        const previousTotalHint = Number(state.recordsTotalHint);
+        state.recordsTotalHint = Number.isFinite(previousTotalHint)
+          ? Math.max(0, previousTotalHint + delta)
+          : state.totalRows;
+      } else {
+        state.all = state.all.filter(row => !doomed.has(Number(row.index)));
+        for (const insert of inserts) insertAfterRow(state.all, insert.afterIndex, insert.row);
+      }
+      invalidateTableColumnCatalog();
+      markGridDirty('row edits');
+      if (state.remoteMode) void render(cfg);
+      else refresh(cfg);
+      if (body.summary) setStatus(`[grid] ${String(body.summary).slice(0, 240)}`);
+    }
+    post('gridRowEditsApplied', '', {
+      requestId,
+      patched: plan.patches.length,
+      inserted: plan.inserts.length,
+      hidden: plan.hide.length
+    });
+  }
+
   function applyKetcherGridRow(body, cfg) {
     if (!capabilities(cfg).editing) return;
     const rowIndex = Number(body.rowIndex);
     if (!Number.isFinite(rowIndex)) {
-      setStatus('[grid] Ketcher Apply did not identify a grid row.', 'error');
+      setStatus('[grid] Editor apply did not identify a grid row.', 'error');
       return;
     }
     const text = String(body.text || '').trim();
     const extension = String(body.extension || 'sdf').trim().toLowerCase().replace(/^\./u, '') || 'sdf';
     const row = [...state.rows, ...state.all].find(candidate => Number(candidate.index) === rowIndex);
     if (!row) {
-      setStatus('[grid] Ketcher Apply target row is no longer visible.', 'error');
+      setStatus('[grid] Editor apply target row is no longer visible.', 'error');
       return;
     }
     const patch = recordToGridRowPatch({
@@ -6650,7 +6993,7 @@
       text
     }, row);
     if (!patch) {
-      setStatus('[grid] Ketcher Apply returned an unsupported molecule record.', 'error');
+      setStatus('[grid] Editor apply returned an unsupported molecule record.', 'error');
       return;
     }
     patch.name = row.name || `Molecule ${rowIndex + 1}`;
@@ -6665,16 +7008,16 @@
         && sourceRow > 0
         && structureColumn
         && patch.smiles) {
-        post('saveGridRow', `[grid] Save Ketcher edit to ${label}.`, {
+        post('saveGridRow', `[grid] Save edited structure to ${label}.`, {
           sourceRow,
           structureColumn,
           value: patch.smiles
         });
-        setStatus(`[grid] Saving Ketcher edit to ${label}.`);
+        setStatus(`[grid] Saving edited structure to ${label}.`);
       } else if (body.save === true) {
         void saveGrid(cfg);
       } else {
-        setStatus(`[grid] Applied Ketcher edit to ${label}. Unsaved changes.`);
+        setStatus(`[grid] Applied edited structure to ${label}. Unsaved changes.`);
       }
     }
   }
@@ -6952,6 +7295,78 @@
       }
     }
     post('chemicalSpaceColumnValues', '', { requestId: String(requestId || ''), columnId: id, values });
+  }
+
+  // The Chart tab plots whole columns, so it reads up to the selection bridge
+  // limit instead of the chemical-space one and takes every column it draws in
+  // one answer. A paged collection holds only the loaded window, so there the
+  // rows come from one walk over the unfiltered pages; a newer request from the
+  // same chart replaces a walk that is still running.
+  async function postCollectionChartData(body, cfg) {
+    const requestId = String(body.requestId || '');
+    const subscriberId = String(body.subscriberId || '');
+    if (!requestId || !subscriberId) return;
+    const columns = (Array.isArray(body.columns) ? body.columns : [])
+      .slice(0, COLLECTION_CHART_COLUMN_LIMIT)
+      .map(column => ({ id: String(column?.id || ''), numeric: column?.valueType === 'number', values: [] }))
+      .filter(column => column.id);
+    const sourceRecordIds = [];
+    const append = rows => {
+      for (const row of rows) {
+        if (sourceRecordIds.length >= GRID_SELECTION_BRIDGE_LIMIT) return;
+        const index = Number(row?.index);
+        if (!Number.isSafeInteger(index) || index < 0) continue;
+        sourceRecordIds.push(index);
+        for (const column of columns) {
+          if (column.numeric) {
+            const value = tableColumnNumericValue(row, column.id);
+            column.values.push(Number.isFinite(value) ? value : null);
+          } else {
+            column.values.push(String(tableColumnDisplayValue(row, column.id) ?? '').slice(0, COLLECTION_CHART_TEXT_LIMIT));
+          }
+        }
+      }
+    };
+    const sourceRevision = state.sourceRevision;
+    state.collectionChartRequests.set(subscriberId, requestId);
+    const current = () => state.collectionChartRequests.get(subscriberId) === requestId
+      && sourceRevision === state.sourceRevision && safeConfig()?.documentId === cfg.documentId;
+    let total = 0;
+    try {
+      if (!state.remoteMode) {
+        const rows = currentLocalCollectionRows();
+        total = rows.length;
+        append(rows);
+      } else {
+        let offset = 0;
+        let pageTotal = null;
+        const limit = Math.max(120, loadBatchSize(cfg));
+        while ((pageTotal === null || offset < pageTotal) && sourceRecordIds.length < GRID_SELECTION_BRIDGE_LIMIT) {
+          const result = await hostRequest('gridFetchPage', { query: '', sort: 'index', offset, limit });
+          if (!current()) return;
+          const pageRows = Array.isArray(result.rows) ? result.rows : [];
+          pageTotal = Number(result.totalRows || 0);
+          append(applyVirtualGridEdits(pageRows));
+          offset += pageRows.length;
+          if (!pageRows.length) break;
+        }
+        const walked = new Set(sourceRecordIds);
+        const inserted = applyVirtualGridEdits(state.insertedRows).filter(row => !walked.has(Number(row.index)));
+        append(inserted);
+        total = Math.max(0, Number(pageTotal || 0) - state.hiddenRows.size) + inserted.length;
+      }
+      post('collectionChartData', '', {
+        requestId,
+        sourceRevision,
+        sourceRecordIds,
+        columns: columns.map(column => ({ id: column.id, valueType: column.numeric ? 'number' : 'text', values: column.values })),
+        total: Math.max(total, sourceRecordIds.length)
+      });
+    } catch (_) {
+      if (current()) post('collectionChartData', '', { requestId, failed: true });
+    } finally {
+      if (state.collectionChartRequests.get(subscriberId) === requestId) state.collectionChartRequests.delete(subscriberId);
+    }
   }
 
   function toggleSelection(index, cfg) {
@@ -7357,6 +7772,194 @@
     });
   }
 
+  async function handleGridWindowTransfer(body) {
+    const cfg = config();
+    try {
+      if (body.type === 'gridWindowReady') {
+        if (collectionIndexReady() && !state.remoteLoading && !state.restoringGridPresentation) post('gridWindowResult', '', { requestId: body.requestId, ok: true });
+        return;
+      }
+      if (!collectionIndexReady() || state.remoteLoading || state.restoringGridPresentation || state.searchTimer || state.tableFilterTimer || state.saveAsPending
+        || state.clustering || state.generating3d || state.aligningPoses || state.evaluatingSemiempirical || state.findingSimilar || state.exportingClusterRepresentatives) {
+        throw new Error('Wait for the collection to finish its current operation.');
+      }
+      if (body.type === 'gridWindowCapture') {
+        if (!state.closeTransitionActive) throw new Error('The collection is not locked for transfer.');
+        post('gridWindowResult', '', { requestId: body.requestId, ok: true, snapshot: captureGridWindowState() });
+      } else {
+        if (state.lastGridWindowRestoreId !== body.requestId) {
+          const scrollY = restoreGridWindowState(body.snapshot);
+          refreshGridControls(cfg);
+          applyGridPreferences(cfg);
+          await render(cfg, { visibleCount: state.visibleCount });
+          window.scrollTo({ top: scrollY, behavior: 'instant' });
+          state.lastGridWindowRestoreId = body.requestId;
+        }
+        notifyGridMenuState(cfg);
+        post('gridWindowResult', '', { requestId: body.requestId, ok: true });
+      }
+    } catch (error) {
+      post('gridWindowResult', '', { requestId: body.requestId, ok: false, error: String(error?.message || error) });
+    }
+  }
+
+  function captureGridWindowState() {
+    const encode = value => JSON.parse(JSON.stringify(value, (_key, entry) => entry instanceof Set
+      ? { collection: 'set', entries: [...entry] }
+      : entry instanceof Map ? { collection: 'map', entries: [...entry] } : entry));
+    const view = {};
+    for (const key of gridWindowViewKeys()) view[key] = state[key];
+    const snapshot = JSON.stringify({ version: 1, scrollY: scrollTop(), visibleCount: state.visibleCount, edit: encode(snapshotGridEditState()),
+      undo: encode(state.undoStack), redo: encode(state.redoStack), view: encode(view) });
+    if (new TextEncoder().encode(snapshot).length > 1500 * 1024) throw new Error('This collection is too large to move with its edits. Keep it in this window.');
+    return snapshot;
+  }
+
+  function gridWindowViewKeys() {
+    return ['query', 'smarts', 'sort', 'descriptorFilters', 'descriptorSort', 'showProperties', 'viewMode',
+      'tableHiddenColumns', 'tablePinnedColumns', 'tableColumnWidths', 'tableColumnFilters', 'tableScrollLeft',
+      'remoteDescriptorIds', 'remoteAnalysisColumns', 'cardRenderer', 'xyzrenderPreset', 'xyzrenderUse3DCoords',
+      'rdkitUseInputCoords', 'hydrogenDisplay', 'cardMin', 'chemicalSpaceFilterActive', 'selectionAnchorIndex'];
+  }
+
+  // Restart checkpoints contain presentation only. Rows, edits and undo history
+  // belong to the transfer protocol, never to the persisted tab location.
+  function gridPresentationKeys() {
+    return gridWindowViewKeys().filter(key => key !== 'remoteDescriptorIds' && key !== 'remoteAnalysisColumns');
+  }
+
+  function captureGridPresentation() {
+    if (state.visibleCount > 100000 || state.selected.size > 100000) return '';
+    const view = {};
+    for (const key of gridPresentationKeys()) view[key] = state[key] instanceof Set ? [...state[key]]
+      : state[key] instanceof Map ? Object.fromEntries(state[key]) : state[key];
+    const snapshot = JSON.stringify({ version: 1, view, selected: [...state.selected],
+      scrollY: scrollTop(), visibleCount: state.visibleCount });
+    // Empty checkpoints explicitly invalidate a previous, now stale selection.
+    return snapshot.length <= 32768 ? snapshot : '';
+  }
+
+  function readGridPresentation(serialized) {
+    if (typeof serialized !== 'string' || serialized.length > 32768) return null;
+    try {
+      const saved = JSON.parse(serialized);
+      if (saved?.version !== 1 || !saved.view || typeof saved.view !== 'object'
+        || !Number.isFinite(saved.scrollY) || saved.scrollY < 0 || saved.scrollY > 1e9
+        || !Number.isSafeInteger(saved.visibleCount) || saved.visibleCount < 0 || saved.visibleCount > 100000
+        || !Array.isArray(saved.selected) || !saved.selected.every(index => Number.isSafeInteger(index) && index >= 0)
+        || !['cards', 'table'].includes(saved.view.viewMode)) return null;
+      for (const key of gridPresentationKeys()) {
+        const value = saved.view[key], current = state[key];
+        if (current instanceof Set ? !Array.isArray(value) || !value.every(item => typeof item === 'string')
+          : Array.isArray(current) ? !Array.isArray(value)
+          : current !== null ? typeof value !== typeof current || value === null
+          : value !== null && typeof value !== 'object' && typeof value !== 'number' && typeof value !== 'string') return null;
+      }
+      if (!Number.isFinite(saved.view.tableScrollLeft) || saved.view.tableScrollLeft < 0) return null;
+      const view = saved.view;
+      const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+      const optionalNumber = value => value === undefined || Number.isFinite(value);
+      if (!record(view.tableColumnWidths) || !Object.values(view.tableColumnWidths).every(value => Number.isFinite(value) && value > 0 && value <= 10000)
+        || !record(view.tableColumnFilters) || !Object.values(view.tableColumnFilters).every(filter => record(filter)
+          && Object.values(filter).every(value => typeof value === 'string' || typeof value === 'boolean' || Number.isFinite(value)))
+        || !view.descriptorFilters.every(filter => record(filter) && typeof filter.id === 'string' && optionalNumber(filter.min) && optionalNumber(filter.max))
+        || (view.descriptorSort !== null && (!record(view.descriptorSort) || typeof view.descriptorSort.id !== 'string' || !['asc', 'desc'].includes(view.descriptorSort.direction)))
+        || (view.selectionAnchorIndex !== null && (!Number.isSafeInteger(view.selectionAnchorIndex) || view.selectionAnchorIndex < 0))
+        || (view.cardMin !== null && (!Number.isSafeInteger(view.cardMin) || view.cardMin < 0 || view.cardMin > 4096))
+        || !['none', 'all'].includes(view.hydrogenDisplay) || !['rdkit', 'xyzrender'].includes(view.cardRenderer)) return null;
+      return saved;
+    } catch { return null; }
+  }
+
+  function publishGridPresentation() {
+    if (!state.hostViewModeSession || !state.gridPresentationReady || state.restoringGridPresentation) return;
+    post('gridViewModeChanged', '', { value: state.viewMode, snapshot: captureGridPresentation() });
+  }
+
+  function scheduleGridPresentation() {
+    if (state.gridPresentationTimer) return;
+    state.gridPresentationTimer = window.setTimeout(() => {
+      state.gridPresentationTimer = 0;
+      publishGridPresentation();
+    }, 100);
+  }
+
+  async function restoreGridPresentation(serialized) {
+    const generation = state.gridPresentationGeneration || 0;
+    const cancelled = () => generation !== (state.gridPresentationGeneration || 0);
+    state.restoringGridPresentation = true;
+    try {
+      await state.gridPresentationInitialization;
+      if (cancelled()) return;
+      const saved = readGridPresentation(serialized);
+      if (!saved) return;
+      for (const key of gridPresentationKeys()) state[key] = state[key] instanceof Set ? new Set(saved.view[key])
+        : state[key] instanceof Map ? new Map(Object.entries(saved.view[key])) : saved.view[key];
+      state.selected = new Set(saved.selected);
+      const cfg = config();
+      if (!effectiveMolecularGrid(cfg)) state.viewMode = 'table';
+      const search = document.getElementById('search');
+      if (search) search.value = state.query;
+      refreshGridControls(cfg);
+      applyGridPreferences(cfg);
+      const refreshing = refresh(cfg);
+      // Capture the refresh generation before yielding: a newer query may
+      // replace its result set while the initial page is still loading.
+      const token = state.dataToken;
+      await refreshing;
+      if (cancelled() || token !== state.dataToken) return;
+      while (state.remoteMode && state.visibleCount < saved.visibleCount && hasMoreRows()) {
+        const before = state.visibleCount;
+        await loadMoreRemote(cfg);
+        if (cancelled() || token !== state.dataToken) return;
+        if (state.visibleCount <= before) break;
+      }
+      if (token !== state.dataToken) return;
+      await render(cfg, { visibleCount: saved.visibleCount });
+      if (cancelled()) return;
+      window.scrollTo({ top: saved.scrollY, behavior: 'instant' });
+      await renderVirtualWindow(cfg, state.token, { force: true });
+    } catch (error) {
+      setStatus(error?.message || String(error), 'error');
+    } finally {
+      state.restoringGridPresentation = false;
+      publishGridPresentation();
+    }
+  }
+
+  function restoreGridWindowState(serialized) {
+    if (typeof serialized !== 'string' || new TextEncoder().encode(serialized).length > 1500 * 1024) throw new Error('Invalid collection transfer.');
+    const snapshot = JSON.parse(serialized, (_key, entry) => {
+      if (entry?.collection === 'set' && Array.isArray(entry.entries)) return new Set(entry.entries);
+      if (entry?.collection === 'map' && Array.isArray(entry.entries) && entry.entries.every(pair => Array.isArray(pair) && pair.length === 2)) return new Map(entry.entries);
+      return entry;
+    });
+    const validEdit = edit => edit && ['rows', 'all', 'insertedRows'].every(key => Array.isArray(edit[key]) && edit[key].every(row => row && typeof row === 'object' && Number.isSafeInteger(row.index)))
+      && ['hiddenRows', 'selected', 'deletedPropColumns'].every(key => edit[key] instanceof Set)
+      && ['rowPatches', 'columnValueRanges'].every(key => edit[key] instanceof Map)
+      && typeof edit.dirty === 'boolean' && typeof edit.dirtyReason === 'string'
+      && Number.isFinite(edit.totalRows) && (edit.recordsTotalHint === null || Number.isFinite(edit.recordsTotalHint));
+    const validHistory = history => Array.isArray(history) && history.length <= GRID_EDIT_HISTORY_LIMIT
+      && history.every(entry => typeof entry.label === 'string' && validEdit(entry.snapshot));
+    if (snapshot?.version !== 1 || !Number.isFinite(snapshot.scrollY) || snapshot.scrollY < 0 || !validEdit(snapshot.edit) || !validHistory(snapshot.undo) || !validHistory(snapshot.redo) || !snapshot.view || typeof snapshot.view !== 'object') throw new Error('Invalid collection transfer.');
+    if (snapshot.visibleCount !== undefined && (!Number.isSafeInteger(snapshot.visibleCount) || snapshot.visibleCount < 0 || snapshot.visibleCount > snapshot.edit.rows.length)) throw new Error('Invalid collection visible row count.');
+    for (const key of gridWindowViewKeys()) {
+      const value = snapshot.view[key], current = state[key];
+      if (current instanceof Set ? !(value instanceof Set) : current instanceof Map ? !(value instanceof Map)
+        : Array.isArray(current) ? !Array.isArray(value) : current !== null && typeof value !== typeof current) throw new Error('Invalid collection view.');
+    }
+    restoreGridEditState(snapshot.edit);
+    state.visibleCount = snapshot.visibleCount ?? state.rows.length;
+    state.undoStack = snapshot.undo;
+    state.redoStack = snapshot.redo;
+    for (const key of gridWindowViewKeys()) state[key] = snapshot.view[key];
+    state.searchTextCache = new WeakMap();
+    state.smartsMatches.clear();
+    const search = document.getElementById('search');
+    if (search) search.value = state.query;
+    return snapshot.scrollY;
+  }
+
   function snapshotGridEditState() {
     return {
       rows: state.rows.slice(),
@@ -7451,10 +8054,18 @@
     return parts.join(' · ');
   }
 
-  function showMoleculeDetail(row, cfg) {
+  // The detail overlay is also the record view: one row at a time with its
+  // structure and every field, stepping through the rows the grid shows - the
+  // filters and the sort order apply. `carry` is what a step keeps from the
+  // record it left: the element to give focus back to on close, the open tab
+  // and which step button had focus.
+  function showMoleculeDetail(row, cfg, carry = null) {
     hideMoleculeDetail();
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousFocus = carry?.previousFocus
+      || (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     const index = Number(row.index);
+    const position = state.rows.findIndex(candidate => Number(candidate.index) === index);
+    const total = Math.max(state.rows.length, state.remoteMode ? Number(state.totalRows) || 0 : 0);
     const overlay = document.createElement('div');
     overlay.className = 'buret-grid-molecule-detail-overlay';
     overlay.dataset.buretDetailRowIndex = Number.isFinite(index) ? String(index) : '';
@@ -7472,6 +8083,11 @@
             <div>
               <h2 id="buret-grid-molecule-detail-title">${escapeHTML(row.name || `Molecule ${index + 1}`)}</h2>
             </div>
+            ${position >= 0 && total > 1 ? `<div class="buret-grid-molecule-detail-nav" role="group" aria-label="Record">
+              <button type="button" data-buret-detail-step="-1" aria-label="Previous record" title="Previous record (←)"${position === 0 ? ' disabled' : ''}>&lsaquo;</button>
+              <span class="buret-grid-molecule-detail-position">${(position + 1).toLocaleString()} of ${total.toLocaleString()}</span>
+              <button type="button" data-buret-detail-step="1" aria-label="Next record" title="Next record (→)"${position >= total - 1 ? ' disabled' : ''}>&rsaquo;</button>
+            </div>` : ''}
             <button type="button" data-buret-detail-close aria-label="Close molecule detail" title="Close">&times;</button>
           </div>
           <div class="buret-grid-molecule-detail-tabs" role="tablist" aria-label="Molecule preview sections">
@@ -7498,7 +8114,7 @@
           <div class="buret-grid-molecule-detail-actions">
             <button type="button" data-buret-detail-action="descriptors">Calculate descriptors</button>
             <button type="button" data-buret-detail-action="molstar">Open in new tab</button>
-            <button type="button" data-buret-detail-action="ketcher">Edit in Ketcher</button>
+            <button type="button" data-buret-detail-action="ketcher">Edit in molecular editor</button>
             <button type="button" data-buret-detail-action="generate3d">Generate 3D</button>
             <button type="button" data-buret-detail-action="copy">Copy structure</button>
             <button type="button" data-buret-detail-action="export">Export molecule...</button>
@@ -7528,10 +8144,22 @@
     });
     installMoleculeDetailTabs(overlay);
     installMoleculeDetailDescriptorSearch(overlay);
+    if (carry?.tab) overlay.querySelector(`[data-buret-detail-tab="${carry.tab}"]`)?.click();
+    const step = delta => void stepMoleculeDetail(overlay, position + delta, delta, cfg);
+    overlay.querySelectorAll('[data-buret-detail-step]').forEach(button => {
+      button.addEventListener('click', () => step(Number(button.getAttribute('data-buret-detail-step'))));
+    });
     const onKey = event => {
       if (event.key === 'Escape') {
         event.preventDefault();
         hideMoleculeDetail();
+        return;
+      }
+      // The arrow keys step through the records unless they are moving a caret.
+      if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && position >= 0
+        && !event.metaKey && !event.ctrlKey && !event.altKey && !isEditableShortcutTarget(event.target)) {
+        event.preventDefault();
+        step(event.key === 'ArrowLeft' ? -1 : 1);
         return;
       }
       if (event.key !== 'Tab') return;
@@ -7552,7 +8180,32 @@
     document.addEventListener('keydown', onKey);
     scheduleRdkitCard(overlay, row);
     scheduleXyzrenderCard(overlay, row, cfg);
-    overlay.querySelector('[data-buret-detail-close]')?.focus?.();
+    const stepButton = carry?.step ? overlay.querySelector(`[data-buret-detail-step="${carry.step}"]:not([disabled])`) : null;
+    (stepButton || overlay.querySelector('[data-buret-detail-close]'))?.focus?.();
+  }
+
+  // A paged collection holds only the pages it has shown, so stepping past the
+  // last loaded row loads through the one that is asked for first.
+  async function stepMoleculeDetail(overlay, position, delta, cfg) {
+    if (overlay._buretDetailStepping || position < 0) return;
+    if (position >= state.rows.length) {
+      if (!state.remoteMode || position >= state.totalRows) return;
+      overlay._buretDetailStepping = true;
+      const token = state.dataToken;
+      try {
+        await loadRemoteRowsThrough(position, cfg);
+      } finally {
+        overlay._buretDetailStepping = false;
+      }
+      if (token !== state.dataToken || !overlay.isConnected) return;
+    }
+    const row = state.rows[position];
+    if (!row) return;
+    showMoleculeDetail(row, cfg, {
+      previousFocus: overlay._buretDetailPreviousFocus,
+      tab: overlay.querySelector('[data-buret-detail-tab][aria-selected="true"]')?.getAttribute('data-buret-detail-tab'),
+      step: delta
+    });
   }
 
   function moleculeDetailPropertyHTML(key, value, column) {
@@ -7801,7 +8454,7 @@
       void requestSingleMolstarDocument(row, cfg);
     } else if (action === 'ketcher') {
       requestOpenInKetcher(row, cfg);
-      setStatus(`[grid] Opening ${label} in Ketcher.`);
+      setStatus(`[grid] Opening ${label} in the molecular editor.`);
     } else if (action === 'duplicate') {
       duplicateGridRow(row, cfg);
       setStatus(`[grid] Duplicated ${label}. Unsaved changes.`);
@@ -7837,7 +8490,7 @@
       ['molstar', 'Open in 3D'],
       ...(editing ? [
         ['rename', 'Rename…'],
-        ['ketcher', 'Edit in Ketcher'],
+        ['ketcher', 'Edit in molecular editor'],
         ['duplicate', 'Duplicate'],
         ['remove', 'Delete from collection']
       ] : []),
@@ -8244,7 +8897,7 @@
     const match = state.smartsMatches.get(Number(row.index));
     const source = sourceAtomHighlightFor(row);
     const useInputCoords = state.rdkitUseInputCoords && hasMolblockInputCoordinates(row.molblock);
-    return `${row.index}|${row.smiles || ''}|${hash(row.molblock || '')}|${state.smarts}|${useInputCoords ? 'file-coords' : 'new-coords'}|H:${state.hydrogenDisplay}|${match ? `${match.atoms.join(',')}:${match.bonds.join(',')}` : ''}${source ? `|text:${source.atoms.join(',')}` : ''}`;
+    return `${row.index}|${row.smiles || ''}|${hash(row.molblock || '')}|${state.smarts}|${useInputCoords ? 'file-coords' : 'new-coords'}|H:${state.hydrogenDisplay}|${match ? `${match.atoms.join(',')}:${match.bonds.join(',')}` : ''}${source ? `|text:${source.atoms.join(',')}` : ''}${row.drawing ? `|draw:${row.drawing}` : ''}`;
   }
 
   function sourceAtomHighlightFor(row) {
@@ -8334,7 +8987,8 @@
       state.svgCache.set(key, html);
       return html;
     }
-    return `<div class="buret-molecule-loading" data-buret-rdkit-card-key="${escapeAttr(key)}" aria-label="Rendering molecule"></div>`;
+    const drawing = row.drawing ? ` data-buret-rdkit-drawing="${escapeAttr(row.drawing)}"` : '';
+    return `<div class="buret-molecule-loading" data-buret-rdkit-card-key="${escapeAttr(key)}"${drawing} aria-label="Rendering molecule"></div>`;
   }
 
   // A row carries a reaction when its structure is an MDL $RXN block (.rxn,
@@ -8426,14 +9080,16 @@
         if (!useInputCoords) {
           try { mol.set_new_coords?.(); } catch (_) {}
         }
-        html = match && typeof mol.get_svg_with_highlights === 'function'
-          ? mol.get_svg_with_highlights(JSON.stringify({
-              atoms: match.atoms,
-              bonds: match.bonds,
-              width: RDKIT_SVG_SIZE,
-              height: RDKIT_SVG_SIZE
-            }))
-          : mol.get_svg(RDKIT_SVG_SIZE, RDKIT_SVG_SIZE);
+        const drawing = RDKIT_DRAWINGS[row.fragment ? 'fragment' : row.drawing === 'table' ? 'table' : 'card'];
+        // A file's own layout is kept as drawn; generated coordinates are turned.
+        const molblock = mol.get_molblock();
+        const rotate = useInputCoords ? 0 : depictionLongAxisAngle(molblock);
+        html = mol.get_svg_with_highlights(JSON.stringify({
+          ...drawing,
+          rotate,
+          ...(drawing === RDKIT_DRAWINGS.table ? { bondLineWidth: tableBondLineWidth(molblock, rotate) } : {}),
+          ...(match ? { atoms: match.atoms, bonds: match.bonds } : {})
+        }));
       } catch (_) {
         html = mol.get_svg();
       }
@@ -8459,6 +9115,60 @@
 
   // Added H are appended after the heavy atoms, so a match found on the file's
   // atoms still holds; removal renumbers atoms, so the highlight is re-matched.
+  // The angle of the principal axis of a molblock's atom positions, for RDKit's
+  // rotate option; mirrors lib/depiction-axis.ts in the app.
+  function depictionLongAxisAngle(molblock) {
+    const { points } = depictionPoints(molblock);
+    if (points.length < 2) return 0;
+    const meanX = points.reduce((sum, point) => sum + point[0], 0) / points.length;
+    const meanY = points.reduce((sum, point) => sum + point[1], 0) / points.length;
+    let xx = 0, yy = 0, xy = 0;
+    for (const [x, y] of points) {
+      xx += (x - meanX) ** 2;
+      yy += (y - meanY) ** 2;
+      xy += (x - meanX) * (y - meanY);
+    }
+    return 0.5 * Math.atan2(2 * xy, xx - yy) * 180 / Math.PI;
+  }
+
+  // Atom positions and the mean bond length of a V2000 molblock.
+  function depictionPoints(molblock) {
+    const lines = String(molblock || '').split('\n');
+    const points = [];
+    for (const line of lines.slice(4)) {
+      const atom = /^\s*(-?\d+\.\d+)\s+(-?\d+\.\d+)\s+-?\d+\.\d+\s+[A-Za-z*]/.exec(line);
+      if (atom) points.push([Number(atom[1]), Number(atom[2])]);
+      else if (points.length) break;
+    }
+    const bondCount = Number(lines[3]?.slice(3, 6)) || 0;
+    let total = 0;
+    let counted = 0;
+    for (const line of lines.slice(4 + points.length, 4 + points.length + bondCount)) {
+      const a = points[Number(line.slice(0, 3)) - 1];
+      const b = points[Number(line.slice(3, 6)) - 1];
+      if (!a || !b) continue;
+      total += Math.hypot(a[0] - b[0], a[1] - b[1]);
+      counted += 1;
+    }
+    return { points, bond: counted ? total / counted : 1.5 };
+  }
+
+  // A table thumbnail's lines are as thick as its bonds are long, about a tenth
+  // of the bond and 0.6 to 1.5 CSS px (the drawing is made at twice the cell
+  // size). A fixed 1 px line on a 3 px bond fills the rings in.
+  function tableBondLineWidth(molblock, rotate) {
+    const { points, bond } = depictionPoints(molblock);
+    if (points.length < 2) return 3;
+    const angle = rotate * Math.PI / 180;
+    const span = (x, y) => {
+      const projected = points.map(point => point[0] * x + point[1] * y);
+      return Math.max(...projected) - Math.min(...projected) || 1;
+    };
+    const { width, height, fixedBondLength } = RDKIT_DRAWINGS.table;
+    const fitted = Math.min(width * 0.88 / span(Math.cos(angle), Math.sin(angle)), height * 0.88 / span(-Math.sin(angle), Math.cos(angle))) * bond;
+    return Math.min(3, Math.max(1.2, 0.09 * Math.min(fixedBondLength, fitted)));
+  }
+
   function applyHydrogenDisplay(mol, match) {
     if (state.hydrogenDisplay === 'all') {
       try { mol.add_hs_in_place?.(); } catch (_) {}
@@ -8562,9 +9272,10 @@
       const key = target.getAttribute('data-buret-rdkit-card-key');
       if (!key) continue;
       const fragment = target.closest('[data-buret-fragment-smiles]');
+      const drawing = target.getAttribute('data-buret-rdkit-drawing');
       const source = fragment
         ? { index: 'fragment', smiles: fragment.getAttribute('data-buret-fragment-smiles'), fragment: true }
-        : row;
+        : drawing ? { ...row, drawing } : row;
       const start = () => enqueueRdkitCard(source, key, target);
       state.rdkitCardLazyJobs.set(target, start);
       state.rdkitCardLazyTargets.push(target);
@@ -8846,6 +9557,8 @@
     state.rowPatches = new Map();
     state.insertedRows = [];
     state.columnValueRanges = new Map();
+    state.filterCategoryPins = new Map();
+    state.rowListFilter = null;
     state.xyzrenderPreset = null;
     state.selectionAnchorIndex = null;
     state.visibleCount = 0;
@@ -9787,6 +10500,8 @@
   }
 
   async function main() {
+    let finishPresentationInitialization;
+    state.gridPresentationInitialization = new Promise(resolve => { finishPresentationInitialization = resolve; });
     try {
       const cfg = config();
       resetDocumentRuntimeState();
@@ -9801,21 +10516,22 @@
       normalizeCardRenderer(cfg);
       normalizeGridViewMode(cfg);
       buildUI(cfg);
+      post('gridViewModeReady', '', {});
       installGridTextFocusListeners();
       installRowHoverPreview(cfg);
-      refresh(cfg);
+      await refresh(cfg);
       try {
         await initRDKit();
         pumpRdkitCardQueue();
         const filledSmiles = !state.remoteMode && fillMissingSmilesFromMolblocks();
         if (state.cardRenderer === 'rdkit') {
           if (state.remoteMode) {
-            if (state.rows.length) void renderVirtualWindow(cfg, state.token, { force: true });
+            if (state.rows.length) await renderVirtualWindow(cfg, state.token, { force: true });
           } else {
-            render(cfg);
+            await render(cfg);
           }
         } else if (filledSmiles) {
-          refresh(cfg);
+          await refresh(cfg);
         }
       } catch {
         // initRDKit already recorded the failure and reported it; the queue
@@ -9825,8 +10541,19 @@
     } catch (error) {
       const message = error?.message || String(error);
       setStatus(message, 'error');
+    } finally {
+      state.gridPresentationReady = true;
+      finishPresentationInitialization();
+      publishGridPresentation();
     }
   }
+
+  window.addEventListener('pagehide', publishGridPresentation);
+  for (const type of ['pointerdown', 'keydown', 'wheel']) window.addEventListener(type, event => {
+    if (event.isTrusted && state.restoringGridPresentation) {
+      state.gridPresentationGeneration = (state.gridPresentationGeneration || 0) + 1;
+    }
+  }, { capture: true, passive: true });
 
   window.addEventListener('beforeunload', event => {
     if (!state.dirty) return;

@@ -1,0 +1,32 @@
+title
+water-dimer RDKit ETKDGv3 MMFF94
+
+#
+# NB: Class I directives (e.g. memory, multiplicity, charge etc) go here
+#
+# For more information see: http://www.cfs.dl.ac.uk/docs/index.shtml
+#
+
+geometry angstrom
+     0.00506299      0.39778283      0.00000000   8   O
+     3.00506322     -0.00000000      0.39778275   8   O
+     0.76087462     -0.20860839      0.00000000   1   H
+    -0.76593761     -0.18917444      0.00000000   1   H
+     3.76087446     -0.00000000     -0.20860826   1   H
+     2.23406231     -0.00000000     -0.18917450   1   H
+end
+
+
+basis 6-31G
+
+#
+# NB: Class II directives go here
+#
+# To perform a dft calculation with b3lyp and medium quadrature uncomment the below
+# dft b3lyp
+# dft quadrature medium
+#
+
+runtype scf
+
+enter

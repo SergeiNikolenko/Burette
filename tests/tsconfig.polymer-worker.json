@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": [
+      "bun"
+    ]
+  },
+  "files": [
+    "test-polymer-worker.test.ts",
+    "test-polymer-source.test.tsx"
+  ],
+  "include": [
+    "../apps/desktop/src/**/*.d.ts"
+  ]
+}

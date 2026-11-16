@@ -14,6 +14,11 @@ app, and native Finder Quick Look are different runtimes.
   tab or an unknown server from another worktree.
 - Keep the server process visible or record its `processId` and `logPath`.
   Stop the server after the check.
+- Keep source files and package manifests unchanged during a browser acceptance
+  run; use a separate physical source snapshot when implementation continues
+  elsewhere. Manifest changes can reload the shell and invalidate transient UI
+  state. Versioned runtime scripts may remain cached: after changing them, start
+  a fresh server and verify its runtime before repeating the affected workflow.
 - Set `BURETTE_DEV_FS_ALLOW` when the browser-dev server must read files outside
   the repository root.
 - Browser success does not prove packaged desktop app or Finder Quick Look
@@ -36,12 +41,16 @@ debugging the renderer generically.
 ## Dev Server: Full Browser Shell
 
 For agent-owned Browser shell testing, prefer the CLI. It allocates a fresh
-port, starts `vp dev`, writes a session directory, and prints JSON with `url`,
-`sessionDir`, `logPath`, and `processId`.
+port, writes a session directory, and prints JSON with `url`, `sessionDir`,
+`logPath`, `processId`, and the selected `runtime`. An available prebuilt shell
+is preferred by default. Force Vite when verifying current source changes:
 
 ```bash
-bun scripts/burette-agent.mjs open --mode browser-agent-shell samples/mini.pdb
+BURETTE_AGENT_SHELL_FORCE_VP=1 bun scripts/burette-agent.mjs open --mode browser-agent-shell --no-launch samples/mini.pdb
 ```
+
+Confirm `runtime: vite-dev` for this source check. A `prebuilt-static` result
+checks the selected bundle, which may have been built from a different revision.
 
 `--mode browser-dev-shell` is accepted as a legacy alias and normalized to
 `browser-agent-shell`; use the canonical name in new material.
@@ -204,6 +213,15 @@ extension sees the file. `quicklook-preview-smoke.sh` reports those inputs as
 `SKIP`; verify Burette grid rendering through browser-dev or the packaged
 desktop app instead.
 
+## Packaged App In An x86_64 macOS VM
+
+The macOS VMs on Orion (`ssh Orion macvm create NAME medium`) are x86_64 and
+cannot run the default arm64 bundle. Build an Intel bundle with
+`BURETTE_BUILD_TARGET=x86_64-apple-darwin BURETTE_DEV_FLAVOR=<slug> ./scripts/build.sh`,
+copy `build/<bundle>.app` into the guest's `/Applications`, and drive it over the
+VM's VNC port. This bundle has no xyzrender runtime, so xyzrender renders and the
+Quick Look xyzrender path are not covered there.
+
 ## Contract Checks
 
 Run the smallest focused contract first. Common narrow checks:
@@ -261,3 +279,35 @@ atom counts. It does not build or open Burette, create windows, or alter saved
 sessions. Use this alongside `bun tests/test-inspector-molstar-runtime.mjs` and
 `bun tests/test-grid-preview-bootstrap.mjs` when changing the inspector's iframe
 transport; browser-only checks do not cover WebKit's message source identity.
+
+## Browser Agent Shell Reload
+
+Without explicit `devFiles`, `devFolder`, `quickLookFile`, or `devDocking`, the
+browser agent shell keeps its tab, pane, dock and renderer-view checkpoints in
+that browser tab's sessionStorage. Reload restores only paths already committed
+to the bounded browser-import IndexedDB store, after its file registry is ready.
+Scientific originals are reparsed through the normal open path, retaining Original
+bytes and creating fresh scientific ownership; renderer leases are never restored.
+The `agentLayout=focus` layout is a first-start default. An existing ordinary
+browser session retains its chosen sidebar and dock visibility during reload.
+A fresh browser tab has its own workspace. Native, embedded MCP, hosted widgets,
+web demo, explicit startup paths, global settings and recent files retain their
+existing storage policies. No saved path grants server filesystem access.
+
+`vp run test:browser-session-restore` exercises the real startup hook, file opener,
+scientific parser and IndexedDB with session rehydration, missing paths and a held
+open closed before publication. `vp run check:browser-session-restore` checks the
+imported source and test types. Actual browser reload remains a separate check.
+Imported scientific source drafts also have bounded, tab-scoped IndexedDB
+checkpoints. A matching checkpoint creates a fresh dirty editing session after
+normal import reopening, with exact current text and matching internal-coordinate
+data. Original bytes remain unchanged; renderer leases and edit history are not
+restored. Logical MOLX sources and companion-file persistence are not covered.
+See [Browser Source Checkpoints](../browser-source-checkpoints.md) for limits and
+source-admission tests. Actual edited-draft browser reload remains a separate gate.
+
+Browser acceptance at `25fc8c40` used a normal file chooser without `devFiles`:
+Gaussian FCHK reloaded with all three vibration modes, unchanged Original bytes,
+selected Vibrations dock, and the chosen camera. Both open and closed panel states
+survived same-tab reload. This is browser agent-shell evidence only; edited-draft
+recovery and packaged runtimes require their own checks.

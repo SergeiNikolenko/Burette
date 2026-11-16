@@ -1,0 +1,61 @@
+{
+  "head": "6582b8584",
+  "date": "2026-11-04",
+  "runtime": "vite-dev",
+  "sceneSha256": "c4ea9c7930980868e8643387fd2b1f849c94db1974e9c34aed3a7f32d1a8c7a0",
+  "sceneEntries": [
+    "state.json"
+  ],
+  "export": {
+    "format": "mmcif",
+    "atoms": 3,
+    "elements": [
+      "O",
+      "H",
+      "H"
+    ],
+    "maxCoordinateErrorAngstrom": 0.00014170859860740403,
+    "precision": "3 decimal places",
+    "sha256": "b46609f572e1e89a5e3c04637982a1c23d5864c36c69ea4a1d92f26d77783278"
+  },
+  "pdbExport": {
+    "status": "failed",
+    "result": {
+      "ok": false,
+      "command": "export_scene_structure",
+      "error": {
+        "code": "ACTION_ERROR",
+        "message": "PDB fallback export is unavailable for this structure."
+      }
+    }
+  },
+  "reopenedObserve": {
+    "sourceRevision": "sha256-c0d05aa6bb5ffbd2883b2670adcf167f21f8dda109bec1b7fa3922574b39a01a",
+    "sourceTextSha256": "sha256-b46609f572e1e89a5e3c04637982a1c23d5864c36c69ea4a1d92f26d77783278",
+    "document": {
+      "id": "browser-1fq3pzr",
+      "path": "/OpenedFiles/recovered-geometry.cif",
+      "title": "recovered-geometry.cif",
+      "extension": "cif",
+      "renderer": "molstar",
+      "active": true
+    },
+    "source": {
+      "origin": "file",
+      "byteCount": 1131,
+      "draftsVisible": true
+    },
+    "structure": null,
+    "frames": {
+      "count": 0,
+      "source": "frames"
+    },
+    "scientific": null,
+    "sourceError": "Supported scientific inputs are ORCA output/Hessian/property files, Gaussian log/FCHK/cube, GAMESS, NWChem, Psi4, Q-Chem, Molpro and xtb outputs, Molden, QCSchema, Chemical JSON and XYZ trajectories.",
+    "properties": {
+      "available": false,
+      "reason": "The CIF unit-cell parameters are incomplete."
+    }
+  },
+  "propertiesError": "JOB_UNAVAILABLE: properties cannot run on recovered-geometry.cif: The CIF unit-cell parameters are incomplete."
+}

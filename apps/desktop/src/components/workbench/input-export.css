@@ -1,0 +1,17 @@
+.workbench-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.workbench-code {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 180px;
+  /* The text grows with the file; capped, it scrolls and the Save button stays on screen. */
+  max-height: min(34vh, 280px);
+  overflow: auto;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  white-space: pre;
+}

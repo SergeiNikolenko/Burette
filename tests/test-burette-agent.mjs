@@ -258,11 +258,11 @@ const selectedAtomRange = await context.window.BuretteAgent.run({
 });
 assert.equal(selectedAtomRange.ok, true);
 assert.equal(selectedAtomRange.result.counts.atoms, 3);
+// Mol* replaces the selection on every call, so the three atoms go in one call.
 assert.deepEqual(
-  interactions.filter(x => x.action === 'select' && x.elements).map(x => x.elements.atom_index),
-  [1, 2, 3],
+  JSON.parse(JSON.stringify(interactions.filter(x => x.action === 'select' && x.elements).map(x => x.elements))),
+  [{ items: [{ atom_index: 1 }, { atom_index: 2 }, { atom_index: 3 }] }],
 );
-assert.ok(interactions.every(x => !Array.isArray(x.elements?.atom_index)));
 
 const focus = await context.window.BuretteAgent.run({ command: 'focusSelection', args: { selection: 'last' } });
 assert.equal(focus.ok, true);

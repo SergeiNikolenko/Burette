@@ -432,10 +432,10 @@ assert.match(startupSource, /paths_by_window: Mutex<HashMap<String, Vec<String>>
 assert.match(startupSource, /push_for_window/);
 assert.match(startupSource, /drain_for_window/);
 assert.match(startupCommand, /window: tauri::WebviewWindow<R>/);
-assert.match(lib, /startup::emit_agent_session\(app, session_dir\)/);
+assert.match(lib, /startup::emit_agent_session\(app, window.label\(\), session_dir\)/);
 assert.match(agentSessionHook, /invoke<string \| null>\("startup_agent_session"\)/);
-assert.match(agentSessionHook, /listen<string>\("agent-session"/);
-assert.match(agentSessionHook, /trackTauriListener\(listen<string>\("agent-session"/);
+assert.match(agentSessionHook, /listen\("agent-session"/);
+assert.match(agentSessionHook, /trackTauriListener\(listen\("agent-session"/);
 assert.match(agentSessionHook, /VITE_BURETTE_AGENT_SHELL/);
 assert.match(agentSessionHook, /BROWSER_AGENT_SESSION_DIR/);
 assert.match(agentSessionHook, /activateSession\(BROWSER_AGENT_SESSION_DIR\)/);
@@ -501,7 +501,7 @@ assert.match(documentsCommand, /"mode": mode/);
 assert.match(documentsCommand, /"candidateCount": candidate_count/);
 assert.match(documentsCommand, /"rmsdCutoff": rmsd_cutoff/);
 assert.match(documentsCommand, /include_str!\(concat!\([\s\S]*env!\("CARGO_MANIFEST_DIR"\),[\s\S]*"\/\.\.\/\.\.\/\.\.\/scripts\/rdkit_conformer\.py"/);
-assert.match(rdkitConformerScript, /Cannot preserve the original 3D pose because the original core no longer matches the current Ketcher sketch/);
+assert.match(rdkitConformerScript, /Cannot preserve the original 3D pose because the original core no longer matches the current sketch/);
 assert.match(rdkitConformerScript, /This legacy conformer endpoint supports RDKit only; use native compute for Metal/);
 assert.match(rdkitConformerScript, /ff\.AddFixedPoint\(int\(atom_idx\)\)/);
 assert.match(rdkitConformerScript, /method = "ETKDG\+" \+ family \+ \("\+fixed-core" if core is not None else "\+ensemble"\)/);
@@ -937,6 +937,7 @@ assert.deepEqual(vendorAssetsLock.assets.map((asset) => asset.path).toSorted(), 
   'PreviewExtension/Web/mesoscale.js',
   'PreviewExtension/Web/molstar.css',
   'PreviewExtension/Web/molstar.js',
+  'PreviewExtension/Web/openchemlib/LICENSE',
   'PreviewExtension/Web/openchemlib/openchemlib.js',
   'PreviewExtension/Web/rdkit-compute/RDKit_minimal.js',
   'PreviewExtension/Web/rdkit-compute/RDKit_minimal.wasm',
@@ -1247,6 +1248,12 @@ assertSourceIncludesAll(nativeMenuSource, [
   'structure.crest-generate',
   'structure.prism-prune',
   'structure.xtb',
+  'structure.optimize-geometry',
+  'structure.auto-optimize',
+  'structure.calculate-energy',
+  'structure.configure-optimization',
+  'structure.freeze-atoms',
+  'structure.unfreeze-atoms',
   'structure.xtb-optimize',
   'structure.xtb-properties',
   'structure.xtb-frequencies',
@@ -1272,6 +1279,7 @@ assertSourceIncludesAll(nativeMenuSource, [
   'collection.reaction.extract-products',
   'collection.reaction.extract-transformation',
   'collection.reaction.perform',
+  'collection.reaction.enumerate',
   'collection.delete-rows.selected',
   'collection.delete-rows.duplicates',
   'collection.delete-columns',
@@ -1314,6 +1322,12 @@ assertSourceIncludesAll(menuEvents, [
   'edit.find',
   'structure.crest-generate',
   'structure.prism-prune',
+  'structure.optimize-geometry',
+  'structure.auto-optimize',
+  'structure.calculate-energy',
+  'structure.configure-optimization',
+  'structure.freeze-atoms',
+  'structure.unfreeze-atoms',
   'structure.xtb-optimize',
   'structure.xtb-properties',
   'structure.xtb-frequencies',
@@ -1335,6 +1349,7 @@ assertSourceIncludesAll(menuEvents, [
   'collection.reaction.extract-reactants',
   'collection.reaction.extract-transformation',
   'collection.reaction.perform',
+  'collection.reaction.enumerate',
   'database.search-chembl',
   'database.chembl-actives',
   'database.search-cod',
@@ -1371,10 +1386,17 @@ for (const [id, accelerator] of [
   ['view.zoom-actual', 'CmdOrCtrl+0'],
   ['view.zoom-in', 'CmdOrCtrl+='],
   ['view.zoom-out', 'CmdOrCtrl+-'],
-  ['window.previous-tab', 'Ctrl+Shift+Tab'],
-  ['window.next-tab', 'Ctrl+Tab'],
 ]) {
   assertMenuItemAccelerator(nativeMenuSource, id, accelerator);
+}
+for (const [id, mac, other] of [
+  ['window.previous-tab', 'CmdOrCtrl+Shift+[', 'Ctrl+Shift+Tab'],
+  ['window.next-tab', 'CmdOrCtrl+Shift+]', 'Ctrl+Tab'],
+]) {
+  const start = nativeMenuSource.indexOf(`with_id("${id}"`);
+  const item = nativeMenuSource.slice(start, nativeMenuSource.indexOf('.build(app)', start));
+  const compact = item.replace(/\s+/g, ' ');
+  assert.ok(compact.includes(`.accelerator(if cfg!(target_os = "macos") { "${mac}" } else { "${other}" })`), `${id} platform accelerator`);
 }
 assert.match(menuEvents, /crate::zoom::handle_menu_command/);
 // Settings > Keyboard shortcuts: every customizable menu row in the shared
@@ -1415,6 +1437,7 @@ for (const field of [
   'can_run_crest',
   'can_run_prism',
   'can_run_xtb',
+  'can_optimize_geometry',
 ]) {
   assert.match(nativeMenuSource, new RegExp(`\\b${field}:`));
 }
@@ -1434,6 +1457,7 @@ assert.match(nativeMenuSource, /"structure\.generate-3d",\s*state\.can_generate_
 assert.match(nativeMenuSource, /"structure\.crest-generate", state\.can_run_crest/);
 assert.match(nativeMenuSource, /"structure\.prism-prune", state\.can_run_prism/);
 assert.match(nativeMenuSource, /"structure\.xtb-optimize", state\.can_run_xtb/);
+assert.match(nativeMenuSource, /set_enabled\(&app, id, state\.can_optimize_geometry\)/);
 assert.match(nativeMenuSource, /"collection\.copy-selected", has_grid_selection/);
 assert.match(nativeMenuSource, /"collection\.calculate-descriptors",\s*state\.is_grid && state\.grid_has_molecules && !state\.grid_dirty/s);
 // The Reaction submenu follows the reaction flag the grid reports, so it stays
@@ -1475,7 +1499,7 @@ assert.match(nativeMenuSource, /emit_command_to_window\(&window, "file\.open-rec
 assert.match(nativeMenuSource, /PendingNativeMenuCommands/);
 assert.match(nativeMenuSource, /MAX_PENDING_COMMANDS_PER_WINDOW/);
 assert.match(nativeMenuSource, /pending\.drain\(window\.label\(\)\)/);
-assert.match(nativeMenuSource, /window\.emit\(MENU_COMMAND_EVENT, \(\)\)/);
+assert.match(nativeMenuSource, /emit_to\(window\.label\(\), MENU_COMMAND_EVENT, \(\)\)/);
 assert.doesNotMatch(nativeMenuSource, /strictly_focused_window/);
 assert.doesNotMatch(nativeMenuSource, /DirtyWindowRegistry/);
 assert.match(nativeMenuSource, /ExitPreflightCoordinator/);
@@ -1661,8 +1685,8 @@ assert.match(previewRuntimeGrid, /grid-ui-v\d+/);
 assert.match(previewXyzrender, /std::env::current_exe\(\)/);
 assert.match(previewXyzrender, /xyzrender-runtime/);
 assert.match(gridViewerJS, /resetDocumentRuntimeState\(\);\n\s+state\.remoteMode = isRemoteMode\(cfg\);/);
-assert.match(gridViewerJS, /buildUI\(cfg\);\n\s+installGridTextFocusListeners\(\);\n\s+installRowHoverPreview\(cfg\);\n\s+refresh\(cfg\);\n\s+try \{\n\s+await initRDKit\(\);/);
-assert.match(gridViewerJS, /if \(state\.cardRenderer === 'rdkit'\) \{\n\s+if \(state\.remoteMode\) \{\n\s+if \(state\.rows\.length\) void renderVirtualWindow\(cfg, state\.token, \{ force: true \}\);\n\s+\} else \{\n\s+render\(cfg\);\n\s+\}\n\s+\}/);
+assert.match(gridViewerJS, /buildUI\(cfg\);\n\s+post\('gridViewModeReady', '', \{\}\);\n\s+installGridTextFocusListeners\(\);\n\s+installRowHoverPreview\(cfg\);\n\s+await refresh\(cfg\);\n\s+try \{\n\s+await initRDKit\(\);/);
+assert.match(gridViewerJS, /if \(state\.cardRenderer === 'rdkit'\) \{\n\s+if \(state\.remoteMode\) \{\n\s+if \(state\.rows\.length\) await renderVirtualWindow\(cfg, state\.token, \{ force: true \}\);\n\s+\} else \{\n\s+await render\(cfg\);\n\s+\}\n\s+\}/);
 assert.match(gridViewerJS, /function supportsXyzrenderCards\(cfg\)/);
 assert.match(gridViewerJS, /cfg\?\.appViewer === true && \(\s*cfg\?\.gridDataMode === 'bridge'/);
 assert.doesNotMatch(gridViewerJS, /return \(cfg\?\.appViewer === true && cfg\?\.gridDataMode === 'bridge'\)\s*\|\|\s*\(typeof cfg\?\.xyzrenderEndpoint === 'string'/);
@@ -1818,7 +1842,7 @@ assert.match(previewRuntimeUtils, /pub\(crate\) fn prune_runtime_dirs/);
 assert.match(quickLookPreviewController, /viewer-runtime\.css/);
 assert.match(quickLookPreviewController, /viewer-shell\.js/);
 assert.match(viewerJS, /function appendCacheBuster\(url, cb\)/);
-assert.match(viewerJS, /startsWith\('asset:\/\/'\)/);
+assert.match(viewerJS, /\^\(asset:\\\/\\\/\|blob:\)/);
 assert.match(viewerJS, /function runtimeURL\(globalName, fallback\)/);
 assert.match(viewerJS, /runtimeURL\('BurettePreviewConfigURL', '\.\/preview-config\.js'\)/);
 assert.match(viewerJS, /runtimeURL\('BurettePreviewDataScriptURL', '\.\/preview-data\.js'\)/);

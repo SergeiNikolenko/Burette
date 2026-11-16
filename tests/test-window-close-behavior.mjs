@@ -107,21 +107,34 @@ let onClose;
 let confirmResult;
 let closeResult;
 let windowCount = 2;
+let previewOpen = false;
+let queuedMenuCommands = [];
 const commands = [];
 const events = new Map();
+const windowEvents = new Map();
+const preflightResponses = [];
+const journalEntries = [];
+mock.module("../apps/desktop/src/lib/action-journal.ts", () => ({
+  journalAction: (kind, action, fields) => journalEntries.push({ kind, action, ...fields }),
+}));
 mock.module("@tauri-apps/api/core", () => ({
   convertFileSrc: (path) => path,
-  invoke: async (command) => {
+  invoke: async (command, args) => {
     commands.push(command);
+    if (command === "respond_to_exit_preflight") preflightResponses.push(args);
     if (command === "close_workspace_window") return closeResult();
-    if (command === "drain_native_menu_commands") return [];
+    if (command === "drain_native_menu_commands") return queuedMenuCommands.splice(0);
     return null;
   },
 }));
 mock.module("@tauri-apps/api/window", () => ({
   Window: class { static async getByLabel() { return null; } },
-  getAllWindows: async () => Array.from({ length: windowCount }, () => ({})),
+  getAllWindows: async () => [
+    ...Array.from({ length: windowCount }, (_, index) => ({ label: index === 0 ? "main" : `workspace-${index}` })),
+    ...(previewOpen ? [{ label: "workspace-preview-test" }] : []),
+  ],
   getCurrentWindow: () => ({
+    listen: async (name, callback) => { windowEvents.set(name, callback); return () => windowEvents.delete(name); },
     onCloseRequested: async (callback) => { onClose = callback; return () => {}; },
     onFocusChanged: async () => () => {},
   }),
@@ -135,13 +148,13 @@ mock.module("@tauri-apps/plugin-dialog", () => ({
 const { createRoot } = await import("react-dom/client");
 const { useAppNativeMenu } = await import("../apps/desktop/src/hooks/use-app-native-menu.ts");
 const { runWindowMutation, resumeWindowMutations } = await import("../apps/desktop/src/lib/window-mutation-barrier.ts");
-const { EXIT_TRANSITION_RESUMED_EVENT } = await import("../apps/desktop/src/lib/native-menu.ts");
+const { EXIT_PREFLIGHT_EVENT, EXIT_TRANSITION_RESUMED_EVENT } = await import("../apps/desktop/src/lib/native-menu.ts");
 const host = document.createElement("div");
 document.body.append(host);
 const root = createRoot(host);
 const state = { tabs: [], documents: [], textDocuments: [], recentStructures: [] };
 function Harness() {
-  useAppNativeMenu({ state, actions: {}, openDocuments: async () => {},
+  useAppNativeMenu({ state, actions: { closeActiveDocument: () => { commands.push("close-active-tab"); } }, openDocuments: async () => {},
     getWindowDocumentDirtySnapshot: () => ({ dirty: true, gridDirty: false, sourceDirty: false, sceneDirty: true, revision: 1, closeTransitionActive: false }),
     confirmSourceCloseWindow: async () => true, windowDocumentDirty: true,
     sourceSaveEnabled: false, saveActiveSource: async () => {},
@@ -152,34 +165,83 @@ const warnings = [];
 const previousWarn = console.warn;
 console.warn = (...args) => warnings.push(args);
 try {
-  for (const scenario of ["cancel", "dialog-error", "destroy-error", "became-last", "last-window"]) {
+  for (const scenario of ["cancel", "dialog-error", "destroy-error", "became-last", "last-window", "last-workspace-with-preview", "empty-close-shortcut", "close-preview", "launcher-with-document"]) {
     resumeWindowMutations();
-    windowCount = scenario === "last-window" ? 1 : 2;
+    const shortcut = ["empty-close-shortcut", "launcher-with-document"].includes(scenario);
+    state.tabs = scenario === "launcher-with-document" ? [
+      { id: "launcher", location: { kind: "launcher" } }, { id: "jobs", location: { kind: "jobs" } },
+    ] : [];
+    state.activeTab = state.tabs[0];
+    state.activeTabId = state.activeTab?.id;
+    dom.happyDOM.setURL(`http://localhost/?buretteWindow=${scenario === "close-preview" ? "workspace-preview-test" : "workspace-2"}`);
+    const quitting = ["last-window", "last-workspace-with-preview", "empty-close-shortcut"].includes(scenario);
+    windowCount = quitting || scenario === "close-preview" ? 1 : 2;
+    previewOpen = scenario === "last-workspace-with-preview";
     confirmResult = async () => {
       if (scenario === "dialog-error") throw new Error("dialog unavailable");
       return scenario !== "cancel";
     };
     closeResult = async () => {
       if (scenario === "destroy-error") throw new Error("destroy failed");
-      return false;
+      return scenario !== "became-last";
     };
     dom.localStorage.setItem("burette.tab-workspaces.workspace-2", "saved-workspace");
     await React.act(async () => root.render(React.createElement(Harness, { key: scenario })));
     commands.length = 0;
     let prevented = false;
-    await React.act(async () => { onClose({ preventDefault() { prevented = true; } }); });
-    assert.equal(prevented, true);
+    await React.act(async () => {
+      if (shortcut) {
+        queuedMenuCommands.push({ command: "file.close-tab" });
+        events.get("menu:command")();
+      } else onClose({ preventDefault() { prevented = true; } });
+    });
+    assert.equal(prevented, !shortcut);
+    assert.equal(commands.includes("close-active-tab"), scenario === "launcher-with-document");
     assert.equal(dom.localStorage.getItem("burette.tab-workspaces.workspace-2"), "saved-workspace", scenario);
     if (scenario === "became-last") events.get(EXIT_TRANSITION_RESUMED_EVENT)();
-    assert.equal(await runWindowMutation("test", async () => "editable"), "editable", scenario);
-    assert.equal(commands.includes("close_workspace_window"), ["destroy-error", "became-last"].includes(scenario), scenario);
-    assert.equal(commands.includes("request_app_quit"), scenario === "last-window", scenario);
+    if (["cancel", "dialog-error", "destroy-error", "became-last", "launcher-with-document"].includes(scenario)) {
+      assert.equal(await runWindowMutation("test", async () => "editable"), "editable", scenario);
+    }
+    assert.equal(commands.includes("close_workspace_window"), !["cancel", "dialog-error", "launcher-with-document"].includes(scenario), scenario);
+    assert.equal(commands.includes("request_app_quit"), false, scenario);
   }
   assert.equal(warnings.length, 2, "only injected failures log warnings");
+  journalEntries.length = 0;
+  // Tauri's global listeners receive even events addressed to another window.
+  // A quit checks each window separately. This hook must capture its scene only
+  // for its own request, or the second capture reports the first one as busy.
+  resumeWindowMutations();
+  dom.happyDOM.setURL("http://localhost/?buretteWindow=workspace-2");
+  await React.act(async () => root.render(React.createElement(Harness, { key: "quit-targeting" })));
+  await React.act(async () => {
+    for (const target of ["main", "workspace-2"]) {
+      const event = { payload: { requestId: "native-quit" } };
+      events.get(EXIT_PREFLIGHT_EVENT)?.(event);
+      if (target === "workspace-2") windowEvents.get(EXIT_PREFLIGHT_EVENT)?.(event);
+    }
+  });
+  assert.equal(preflightResponses.length, 1, "only the current window's preflight is handled");
+  assert.equal(preflightResponses[0].closeTransitionActive, false, "the scene checkpoint must not race itself");
+  assert.equal(preflightResponses[0].dirty, true, "the unsaved-change decision remains required");
+  assert.deepEqual(journalEntries, [], "successful preflight does not log a rejection");
+  events.get(EXIT_TRANSITION_RESUMED_EVENT)();
+  let finishMutation;
+  const mutation = runWindowMutation("test", () => new Promise(resolve => { finishMutation = resolve; }));
+  await React.act(async () => {
+    windowEvents.get(EXIT_PREFLIGHT_EVENT)({ payload: { requestId: "busy-quit" } });
+  });
+  assert.equal(preflightResponses.at(-1).closeTransitionActive, true);
+  assert.deepEqual(journalEntries, [{ kind: "status", action: "exit-preflight-blocked", detail: {
+    requestId: "busy-quit", documentTransition: false, transferBusy: false,
+    checkpointFailed: false, closeTransition: false, pendingMutations: 1,
+  } }]);
+  finishMutation();
+  await mutation;
+
 } finally {
   console.warn = previousWarn;
   await React.act(async () => root.unmount());
   resumeWindowMutations();
   await dom.happyDOM.abort();
 }
-console.log("native window-close hook integration: 5 scenarios pass");
+console.log("native window-close hook integration: 9 scenarios pass");

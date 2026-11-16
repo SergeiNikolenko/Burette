@@ -1080,7 +1080,8 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
   left: 0;
   top: 0;
   z-index: 1200;
-  width: min(148px, calc(100vw - 24px));
+  /* Shows the 260-unit card drawing at its own size. */
+  width: min(276px, calc(100vw - 24px));
   box-sizing: border-box;
   padding: 6px;
   pointer-events: none;
@@ -1463,6 +1464,28 @@ body.buret-grid-rail-dragging .buret-grid-rail-tick-pill {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--buret-accent) 78%, transparent);
 }
 
+/* Dark cards are outlined on the canvas, as the light ones are on white paper: a grey fill behind every molecule
+   turned the grid into a wall of blocks. The fill stays for hover and selection. */
+.buret-theme-dark .buret-card {
+  border-color: var(--buret-border);
+  background: transparent;
+  box-shadow: none;
+}
+.buret-theme-dark .buret-card:hover {
+  border-color: var(--buret-border-strong);
+  background: var(--buret-surface);
+  box-shadow: none;
+}
+.buret-theme-dark .buret-card.selected {
+  border-color: var(--buret-accent);
+  background: color-mix(in srgb, var(--buret-accent) 10%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--buret-accent) 72%, transparent);
+}
+.buret-theme-dark .buret-card.external-hover:not(.selected) {
+  border-color: color-mix(in srgb, var(--buret-accent) 55%, transparent);
+  background: color-mix(in srgb, var(--buret-accent) 7%, transparent);
+}
+
 .buret-structure-drag-preview {
   position: fixed;
   top: 0;
@@ -1641,6 +1664,33 @@ body.buret-grid-rail-dragging .buret-grid-rail-tick-pill {
   letter-spacing: 0;
 }
 
+.buret-grid-molecule-detail-title-row > div:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Record view: previous and next sit beside the close button and step through
+   the rows the grid shows. */
+.buret-grid-molecule-detail-nav {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  color: var(--buret-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.buret-grid-molecule-detail-position {
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+.buret-grid-molecule-detail-nav button:disabled {
+  opacity: 0.35;
+}
+
+.buret-grid-molecule-detail-nav button,
 .buret-grid-molecule-detail [data-buret-detail-close] {
   display: grid;
   place-items: center;
@@ -2526,6 +2576,8 @@ td:hover .buret-cell-marquee > span { transform: translateX(calc(-1 * var(--marq
   background: var(--buret-picture-bg);
   overflow: hidden;
 }
+/* Fragment cells keep a white paper in both themes, so the letter keeps dark ink. */
+.buret-grid-table-hydrogen { font-size: 13px; color: #1e1e1e; }
 .buret-grid-table-fragment > div:not(.buret-molecule-loading),
 .buret-grid-table-fragment svg {
   display: block;

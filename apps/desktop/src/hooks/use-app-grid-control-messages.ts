@@ -93,7 +93,7 @@ export function useAppGridControlMessages({
               }
             : undefined, extension);
         } catch (error) {
-          pushStatus(`Open in Ketcher failed: ${error instanceof Error ? error.message : String(error)}`, "error");
+          pushStatus(`Opening the molecular editor failed: ${error instanceof Error ? error.message : String(error)}`, "error");
         }
         return true;
       }

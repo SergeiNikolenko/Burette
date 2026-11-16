@@ -717,11 +717,11 @@ function GridActionToolbar(props: GridControlProps) {
       ) : null}
       {props.selectionEnabled && (props.ketcherOpen || props.molstarOpen) ? (
         <div id="selected-open-actions" className="buret-selected-open-actions" role="group" aria-label="Open selection">
-          {props.ketcherOpen ? <ControlTooltip label={props.selectedCount ? "Edit selected molecules in Ketcher" : "Select molecules to edit in Ketcher"}><Button variant="ghost" size="icon-sm"
+          {props.ketcherOpen ? <ControlTooltip label={props.selectedCount ? "Edit selected molecules in the molecular editor" : "Select molecules to edit in the molecular editor"}><Button variant="ghost" size="icon-sm"
             id="open-selected-ketcher"
             className="ab-btn ab-btn-icon"
             type="button"
-            aria-label="Open in Ketcher"
+            aria-label="Open in molecular editor"
             disabled={props.selectedCount === 0 || props.ketcherPending}
             onClick={props.onOpenKetcher}
           >

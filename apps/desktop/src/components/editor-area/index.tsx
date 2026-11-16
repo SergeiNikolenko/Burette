@@ -1,8 +1,8 @@
 import { useNativePageWindowSession } from "../workspace-panes/native-page-window";
 import { useMoleculeStore } from "../../stores/molecule-store";
-import { WorkspaceSplitLayout, WorkspaceGroupHeader } from "../workspace-panes/workspace-split-layout";
+import { WorkspaceSplitLayout } from "../workspace-panes/workspace-split-layout";
 import { useWorkspacePanesStore } from "../../stores/workspace-panes-store";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ShellActions, ShellViewState } from "../types";
 import { pageKind, type Location } from "./page-kinds";
 import { TabHistoryPages } from "./tab-history-pages";
@@ -28,6 +28,18 @@ export function ViewerArea({ state, actions }: { state: ShellViewState; actions:
   const activeTabId = state.activeTabId ?? state.activeTab?.id;
   const tabs = state.tabs.length > 0 ? state.tabs : [{ id: "fallback", location: activeLocation(state), back: [], forward: [] }];
   const activeTabIndex = tabs.findIndex((tab) => tab.id === activeTabId);
+  const previousSurfaceOrder = useRef<string[]>([]);
+  const surfaceTabs = useMemo(() => {
+    const pending = new Map(tabs.map(tab => [tab.id, tab]));
+    const ordered: MoleculeTab[] = [];
+    for (const id of previousSurfaceOrder.current) {
+      const tab = pending.get(id);
+      if (tab) ordered.push(tab);
+      pending.delete(id);
+    }
+    return [...ordered, ...pending.values()];
+  }, [tabs]);
+  useLayoutEffect(() => { previousSurfaceOrder.current = surfaceTabs.map(tab => tab.id); }, [surfaceTabs]);
   const [recentlyUsedTabIds, setRecentlyUsedTabIds] = useState<string[]>([]);
   const residentPageKeys = useRef<ReadonlySet<string>>(new Set());
   const [overridePageKeys, setOverridePageKeys] = useState<ReadonlySet<string>>(new Set());
@@ -72,11 +84,11 @@ export function ViewerArea({ state, actions }: { state: ShellViewState; actions:
 
   // Every screen stays a child of this one stack wherever it is shown: the
   // floating window only repositions its surface. Moving an
-  // iframe to another parent reloads it, which would rebuild the Mol* scene.
+  // iframe to another parent or reordering its existing DOM node reloads it.
   return (
     <WorkspaceSplitLayout tabs={tabs} state={state} actions={actions}>
-      {tabs.map((tab, index) => {
-        const isActive = index === activeTabIndex;
+      {surfaceTabs.map(tab => {
+        const isActive = tab.id === activeTabId;
         const kind = pageKind(tab.location);
         const shown = paneVisibility(tab);
         // Non-file pane controls have local UI state and no molecular viewer
@@ -153,8 +165,7 @@ const MountedPageSurface = memo(function MountedPageSurface({
     >
       {/* The header slot is always present so that inserting the header never
           shifts the page's own nodes: React keeps the iframe where it is. */}
-      {pane === "floating" && fullViewTabId !== tab.id ? <FloatingPaneHeader tab={tab} state={state} actions={actions} minimized={shown === "minimized"} />
-        : pane && fullViewTabId !== tab.id ? <WorkspaceGroupHeader group={pane} state={state} actions={actions} tab={tab} /> : null}
+      {pane === "floating" && fullViewTabId !== tab.id ? <FloatingPaneHeader tab={tab} state={state} actions={actions} minimized={shown === "minimized"} /> : null}
       {mountContent ? <TabHistoryPages tab={tab} state={state} actions={actions} isActive={contentVisible} retainedHistoryKeys={retainedHistoryKeys} protectedDocumentIds={protectedDocumentIds}
         pausedPage={paused ? <FileViewerEmptyState title="Scene paused" icon={null} action={<Button variant="outline" size="sm" onClick={() => resumePage(scenePageKey(tab.id, tab.location))}>Open scene</Button>} /> : undefined} /> : null}
     </div>

@@ -212,6 +212,7 @@ pub(crate) enum WorkspaceOpenTarget {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // Keep existing command arguments compatible.
 pub(crate) fn open_new_workspace_window<R: Runtime>(
     app: tauri::AppHandle<R>,
     window: WebviewWindow<R>,
@@ -220,7 +221,14 @@ pub(crate) fn open_new_workspace_window<R: Runtime>(
     presentation: Option<windows::WindowPresentation>,
     scene: Option<PreviewScene>,
     structure: Option<super::documents::TextStructureRequest>,
+    screen_position: Option<windows::NativeScreenPosition>,
 ) -> Result<String, String> {
+    if screen_position
+        .as_ref()
+        .is_some_and(|point| !point.x.is_finite() || !point.y.is_finite())
+    {
+        return Err("Invalid window position.".into());
+    }
     let mut paths = paths.unwrap_or_default();
     if paths.len() > 200
         || paths
@@ -296,6 +304,11 @@ pub(crate) fn open_new_workspace_window<R: Runtime>(
     } else {
         windows::open_new_workspace_window(&app, presentation)?
     };
+    if target != WorkspaceOpenTarget::MainWindow {
+        if let (Some(position), Some(created)) = (screen_position, app.get_webview_window(&label)) {
+            windows::place_workspace_window(&created, position)?;
+        }
+    }
     crate::startup::signal_open_documents_for_window(&app, &label, paths);
     Ok(label)
 }
@@ -332,22 +345,36 @@ impl PreviewScene {
     }
 }
 
-/// Close the calling workspace window. With other windows still open the window
-/// is destroyed on its own (its per-window registries unwind on `Destroyed`)
-/// and `true` is returned. The last window keeps the quit behaviour instead:
-/// closing it runs the shared quit flow with the unsaved-changes preflight, and
-/// `false` tells the caller that flow now owns the window.
+/// Close the calling window after its frontend dirty-state preflight.
+/// macOS keeps running without windows; other platforms quit on the last
+/// workspace. `false` means the app quit flow took ownership of the window.
 #[tauri::command]
 pub(crate) fn close_workspace_window<R: Runtime>(
     app: tauri::AppHandle<R>,
     window: WebviewWindow<R>,
 ) -> Result<bool, String> {
-    if app.webview_windows().len() > 1 {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app;
         window.destroy().map_err(|error| error.to_string())?;
-        return Ok(true);
+        Ok(true)
     }
-    crate::menu::request_quit(&app);
-    Ok(false)
+    #[cfg(not(target_os = "macos"))]
+    {
+        if !windows::is_workspace_window_label(window.label())
+            || app
+                .webview_windows()
+                .keys()
+                .filter(|label| windows::is_workspace_window_label(label))
+                .count()
+                > 1
+        {
+            window.destroy().map_err(|error| error.to_string())?;
+            return Ok(true);
+        }
+        crate::menu::request_quit(&app);
+        Ok(false)
+    }
 }
 
 #[tauri::command]
@@ -536,8 +563,14 @@ fn is_allowed_external_url(url: &str) -> bool {
     const PROJECT_URL: &str = "https://github.com/SergeiNikolenko/Burette";
     const RELEASES_URL: &str = "https://github.com/SergeiNikolenko/Burette/releases";
     const NEW_ISSUE_URL: &str = "https://github.com/SergeiNikolenko/Burette/issues/new";
+    // Settings > Extensions links for the reviewed Crystals resource.
+    const CRYSTALS_URLS: [&str; 2] = [
+        "https://github.com/OpenChemistry/crystals",
+        "https://github.com/OpenChemistry/crystals/issues",
+    ];
 
-    url == PROJECT_URL
+    CRYSTALS_URLS.contains(&url)
+        || url == PROJECT_URL
         || url == NEW_ISSUE_URL
         || url == RELEASES_URL
         || url.starts_with(&(String::from(RELEASES_URL) + "/"))
@@ -844,6 +877,18 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
 
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn closing_last_workspace_destroys_window_without_requesting_quit() {
+        use tauri::test::{mock_builder, mock_context, noop_assets};
+        let app = mock_builder().build(mock_context(noop_assets())).unwrap();
+        let window = tauri::WebviewWindowBuilder::new(&app, "main", tauri::WebviewUrl::default())
+            .build()
+            .unwrap();
+        // No QuitGuard is registered: a close must never enter the quit flow.
+        assert!(super::close_workspace_window(app.handle().clone(), window).unwrap());
+    }
+
     #[test]
     fn app_log_rotates_with_one_bounded_previous_copy() {
         let dir = temp_dir("bounded-log");
@@ -910,6 +955,8 @@ mod tests {
             "https://github.com/SergeiNikolenko/Burette/releases",
             "https://github.com/SergeiNikolenko/Burette/releases/tag/v1.0.0",
             "https://github.com/SergeiNikolenko/Burette/issues/new",
+            "https://github.com/OpenChemistry/crystals",
+            "https://github.com/OpenChemistry/crystals/issues",
         ] {
             assert!(is_allowed_external_url(url), "expected {url} to be allowed");
         }
@@ -920,6 +967,7 @@ mod tests {
             "https://github.com/SergeiNikolenko/Burette/issues/new/extra",
             "https://github.com/SergeiNikolenko/Burette/releases.evil.example",
             "https://github.com.evil.example/SergeiNikolenko/Burette/releases",
+            "https://github.com/OpenChemistry/crystals/pulls",
         ] {
             assert!(
                 !is_allowed_external_url(url),

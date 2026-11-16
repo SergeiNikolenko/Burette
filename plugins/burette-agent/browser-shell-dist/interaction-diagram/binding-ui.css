@@ -1,0 +1,89 @@
+.binding .app { grid-template-rows: auto minmax(0, 1fr); }
+.binding .toolbar { min-height: 46px; flex-wrap: wrap; padding: 8px 10px; gap: 6px; background: var(--panel); }
+.binding .field { border-radius: 8px; }
+.binding .toolbar .source { min-width: 0; }
+.binding .toolbar select { max-width: 190px; min-width: 0; }
+.binding .toolbar #ligand { max-width: 140px; }
+.binding .toolbar #style { width: 180px; }
+.binding .binding-gallery-link { color: var(--muted); text-decoration: none; padding: 4px 8px; border-radius: 8px; white-space: nowrap; }
+.binding .binding-gallery-menu-link { display: flex; min-height: 28px; align-items: center; padding: 0 8px; color: inherit; text-decoration: none; border-radius: 6px; }
+.binding .binding-gallery-menu-link:hover { background: var(--hover); }
+.binding .binding-gallery-link:hover { color: var(--fg); background: var(--hover); }
+.binding :where(a, button, input, select):focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.binding button { border-radius: 8px; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.binding button:disabled { opacity: .4; cursor: default; }
+.binding .binding-modes { flex-shrink: 0; }
+.binding .main { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+.binding .main > .viewer3d, .binding .side { display: none; }
+.binding .main[data-mode="3d"] > .canvas { display: none; }
+.binding .main[data-mode="3d"] > .viewer3d { display: block; border: 0; }
+.binding .main[data-mode="split"] { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.binding .main[data-mode="split"] > .viewer3d { display: block; border: 0; border-left: 1px solid var(--border); }
+.binding .main.with-inspector { grid-template-columns: minmax(0, 1fr) 290px; }
+.binding .main.with-inspector[data-mode="split"] { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 290px; }
+.binding .main.with-inspector > .side { display: flex; min-width: 0; overflow: hidden; border-top: 0; border-left: 1px solid var(--border); }
+.binding .inspector { display: flex; flex: 1; flex-direction: column; min-width: 0; padding: 0 8px 8px; }
+.binding .binding-inspector-header { display: flex; align-items: center; justify-content: space-between; min-height: 42px; gap: 8px; }
+.binding .binding-inspector-header h2 { font: inherit; font-weight: 500; margin: 0 6px; }
+.binding .binding-inspector-header button { color: var(--muted); }
+.binding .binding-contact-detail { padding: 8px 6px 12px; margin-bottom: 8px; border-bottom: 1px solid var(--border); }
+.binding .binding-contact-detail h3 { font: inherit; font-weight: 600; margin: 0 0 10px; }
+.binding .binding-contact-detail dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0 0 8px; }
+.binding .binding-contact-detail dt { color: var(--muted); }
+.binding .binding-contact-detail dd { margin: 0; text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.binding .binding-contact-detail button { margin-left: -8px; }
+.binding #types { flex: none; }
+.binding #contacts { flex: 1; overflow: auto; overscroll-behavior: contain; }
+.binding .binding-tools { display: flex; align-items: center; gap: 2px; position: absolute; z-index: 2; left: 12px; top: 12px; padding: 3px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); box-shadow: 0 2px 8px #00000008; }
+.binding .binding-tools .group { padding: 0; background: transparent; }
+.binding .binding-tools .group button { height: 28px; padding: 0 9px; }
+.binding .binding-tools .group button[aria-pressed="true"] { background: var(--active); box-shadow: none; }
+.binding .binding-tools .icon { flex-shrink: 0; }
+.binding .binding-3d-error { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; position: absolute; inset: 0; background: var(--bg); z-index: 4; }
+.binding .menu-list { max-height: calc(100dvh - 100px); overflow: auto; }
+@media (max-width: 1000px) {
+  .binding .toolbar .source { flex: 1; }
+  .binding .toolbar .spacer { display: none; }
+  .binding .binding-modes { margin-right: auto; }
+  .binding .toolbar { row-gap: 8px; }
+  .binding .main.with-inspector > .side { position: absolute; right: 0; top: 0; bottom: 0; width: min(310px, 86vw); z-index: 4; box-shadow: -8px 0 20px #0000000a; }
+  .binding .main { position: relative; }
+  .binding .main.with-inspector { grid-template-columns: minmax(0, 1fr); }
+  .binding .main.with-inspector[data-mode="split"] { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+@media (max-width: 620px) {
+  .binding .toolbar { padding: 8px; gap: 4px; }
+  .binding .toolbar .source { display: grid; grid-template-columns: 54px minmax(70px, 1fr) minmax(100px, 1.2fr); gap: 5px; flex-basis: 100%; }
+  .binding .toolbar .source .field { width: 100%; max-width: none; padding: 0 6px; }
+  .binding .toolbar #style, .binding .toolbar #ligand { width: 100%; max-width: none; }
+  .binding .binding-gallery-link { display: none; }
+  .binding .binding-modes button { padding: 0 8px; }
+  .binding .binding-modes { order: 1; margin-right: auto; }
+  .binding .toolbar > .menu, .binding #binding-inspector-toggle, .binding #theme { order: 3; }
+  .binding .toolbar > .menu > button { padding: 0 6px; gap: 2px; }
+  .binding #binding-inspector-toggle { padding: 0 6px; }
+  .binding .main[data-mode="split"], .binding .main.with-inspector[data-mode="split"] { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
+  .binding .main[data-mode="split"] > .viewer3d { border-left: 0; border-top: 1px solid var(--border); }
+  .binding .binding-tools { top: 8px; left: 8px; }
+  .binding .legend { font-size: 10px; gap: 3px 10px; }
+}
+
+/* keyboard focus inside the diagram: a quiet ring instead of the browser's heavy default box */
+#draw-area [data-contact-index]:focus, #draw-area .binding-residue:focus { outline: none; }
+#draw-area [data-contact-index]:focus-visible, #draw-area .binding-residue:focus-visible {
+  outline: 1.5px solid #a1a1aa; outline-offset: 3px; border-radius: 4px;
+}
+
+/* Motion: hover dimming eases, labels step aside while something is dragged, the grab cursor holds everywhere. */
+#draw-area [data-contact-index] { transition: opacity 150ms ease; }
+.lid-moving #draw-area .lid-distances,
+.lid-moving #draw-area :is(.lid-study, .lid-study-under) text:not(.binding-residue *):not([data-contact-index] *) {
+  opacity: 0; transition: opacity 100ms ease;
+}
+.lid-dragging, .lid-dragging * { cursor: grabbing !important; user-select: none; }
+#draw-area [data-binding-selection] { animation: lid-fade-in 150ms ease; }
+@keyframes lid-fade-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  #draw-area [data-contact-index], .lid-moving #draw-area * { transition: none; }
+  #draw-area [data-binding-selection] { animation: none; }
+}

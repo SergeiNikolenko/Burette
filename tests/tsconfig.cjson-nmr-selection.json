@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.cjson-import.json",
+  "include": ["test-cjson-nmr-selection.test.tsx", "../apps/desktop/src/**/*.d.ts"]
+}

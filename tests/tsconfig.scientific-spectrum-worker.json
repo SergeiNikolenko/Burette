@@ -1,0 +1,1 @@
+{"extends":"../tsconfig.json","compilerOptions":{"types":["bun"],"noEmit":true},"include":["test-scientific-spectrum-worker.test.ts","../apps/desktop/src/lib/workbench/scientific-spectrum-worker.ts"]}

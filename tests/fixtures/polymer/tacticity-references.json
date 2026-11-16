@@ -1,0 +1,117 @@
+{
+  "rdkitVersion": "2026.03.6",
+  "note": "CIP symbols are finite-chain priority-dependent. Validate mapped local parity and graph against these references; do not assert all R means isotactic. Terminal sites can be non-stereogenic.",
+  "references": [
+    {
+      "name": "isotactic",
+      "repeatCount": 6,
+      "flipPattern": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "source": "Declared hydrogen-capped finite-chain derivative of pinned propylene.smi; not an upstream full product",
+      "smiles": "C[C@@H](C)C[C@@H](C)C[C@@H](C)C[C@@H](C)C[C@@H](C)C[C@@H](C)[H]",
+      "canonicalSmiles": "[H]C(C)C[C@H](C)C[C@H](C)C[C@H](C)C[C@H](C)CC(C)C",
+      "formula": "C18H38",
+      "allExplicitAtomCount": 56,
+      "allExplicitBondCount": 55,
+      "rdkitCip": [
+        [
+          4,
+          "(R)"
+        ],
+        [
+          7,
+          "(R)"
+        ],
+        [
+          10,
+          "(S)"
+        ],
+        [
+          13,
+          "(S)"
+        ]
+      ],
+      "radicalElectrons": 0
+    },
+    {
+      "name": "syndiotactic",
+      "repeatCount": 6,
+      "flipPattern": [
+        0,
+        1,
+        0,
+        1,
+        0,
+        1
+      ],
+      "source": "Declared hydrogen-capped finite-chain derivative of pinned propylene.smi; not an upstream full product",
+      "smiles": "C[C@@H](C)C[C@H](C)C[C@@H](C)C[C@H](C)C[C@@H](C)C[C@H](C)[H]",
+      "canonicalSmiles": "[H]C(C)C[C@H](C)C[C@@H](C)C[C@H](C)C[C@@H](C)CC(C)C",
+      "formula": "C18H38",
+      "allExplicitAtomCount": 56,
+      "allExplicitBondCount": 55,
+      "rdkitCip": [
+        [
+          4,
+          "(S)"
+        ],
+        [
+          7,
+          "(R)"
+        ],
+        [
+          10,
+          "(R)"
+        ],
+        [
+          13,
+          "(S)"
+        ]
+      ],
+      "radicalElectrons": 0
+    },
+    {
+      "name": "atacticFixture",
+      "repeatCount": 6,
+      "flipPattern": [
+        0,
+        1,
+        1,
+        0,
+        1,
+        0
+      ],
+      "source": "Declared hydrogen-capped finite-chain derivative of pinned propylene.smi; not an upstream full product",
+      "smiles": "C[C@@H](C)C[C@H](C)C[C@H](C)C[C@@H](C)C[C@H](C)C[C@@H](C)[H]",
+      "canonicalSmiles": "[H]C(C)C[C@@H](C)C[C@H](C)C[C@@H](C)C[C@@H](C)CC(C)C",
+      "formula": "C18H38",
+      "allExplicitAtomCount": 56,
+      "allExplicitBondCount": 55,
+      "rdkitCip": [
+        [
+          4,
+          "(S)"
+        ],
+        [
+          7,
+          "(S)"
+        ],
+        [
+          10,
+          "(S)"
+        ],
+        [
+          13,
+          "(R)"
+        ]
+      ],
+      "radicalElectrons": 0
+    }
+  ]
+}

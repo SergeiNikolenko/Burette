@@ -479,6 +479,19 @@ assert.deepEqual(Object.fromEntries(useMoleculeStore.getState().tabs.filter(tab 
   { [mainTabId]: "right", [otherTabId]: "bottom" });
 
 const sessionKey = useMoleculeStore.persist.getOptions().name;
+// Explicit document closes participate in the same reopen history as tab closes.
+{
+  const { takeClosedTab } = await import("../apps/desktop/src/stores/closed-tabs.ts");
+  while (takeClosedTab()) { /* Isolate this user's close history. */ }
+  const snapshot = useMoleculeStore.getState();
+  const closingDocument = document("explicit-close", "/tmp/explicit-close.pdb");
+  useMoleculeStore.getState().addDocuments([closingDocument]);
+  const closingTab = useMoleculeStore.getState().tabs.find(tab => tab.location.kind === "file" && tab.location.documentId === closingDocument.id);
+  useMoleculeStore.getState().closeDocument(closingDocument.id);
+  assert.deepEqual(takeClosedTab()?.tab, closingTab);
+  assert.equal(takeClosedTab(), undefined);
+  useMoleculeStore.setState(snapshot);
+}
 // Screens saved in the retired side panel come back in the main strip.
 const legacySession = JSON.parse(storage.get(sessionKey));
 legacySession.state.tabs.push({ id: "legacy-side", pane: "side", location: { kind: "jobs" }, back: [], forward: [] });

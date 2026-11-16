@@ -1,0 +1,40 @@
+{
+  "runtime": "prebuilt-static",
+  "sourceCommit": "9002eb594b57e0503bfbd8ebe068fac91b4c28ca",
+  "scenario": "Open two mini PDB structures together (structureAll); second translated +20 A on x; wait for two structures; align_scene_files; export_scene_structure mmcif",
+  "atomsBefore": 18,
+  "atomsAfter": 18,
+  "alignment": {
+    "aligned": true
+  },
+  "beforePairDistancesAngstrom": [
+    20.0,
+    20.0,
+    20.0,
+    20.0,
+    20.0,
+    20.0,
+    20.0,
+    20.0,
+    20.0
+  ],
+  "afterPairDistancesAngstrom": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "maxReferenceDisplacementAngstrom": 0.0,
+  "coordinatesPreservedAfterAlignment": true,
+  "limitations": [
+    "Translation-only fixture; rotation and ANISOU not tested",
+    "No PDB transformed export acceptance",
+    "No saved MOLX reopen or manual export/download acceptance",
+    "No theme, compact or accessibility matrix"
+  ]
+}

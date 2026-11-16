@@ -28,10 +28,13 @@ const VIEWER_FILES = [
   "trajectory-smoothing.js",
   "superposition-panel.js",
   "molecule-preview-interactions.js",
+  "molecule-preview-ocl.js",
   "color-picker.js",
   "sequence-panel.js",
   "native-viewer-menus.js",
   "scene-file-actions.js",
+  "geometry-preview.js",
+  "measurement-coordinate.js",
   "renderer-view-state.js",
   "svg-sanitizer.js",
   "viewer.js",
@@ -56,6 +59,11 @@ await Promise.all([
     path.join(OUTPUT_VIEWER_ROOT, "rdkit"),
     { recursive: true },
   ),
+  cp(
+    path.join(SOURCE_VIEWER_ROOT, "openchemlib"),
+    path.join(OUTPUT_VIEWER_ROOT, "openchemlib"),
+    { recursive: true },
+  ),
   cp(MOBILE_VIEWER_SOURCE, MOBILE_VIEWER_OUTPUT),
 ]);
 
@@ -78,6 +86,9 @@ if ((await readFile(HOSTED_APP_OUTPUT, "utf8")).includes("__require")) {
   throw new Error("The hosted Apps bridge bundle references an undefined __require.");
 }
 
+// The desktop builds run outside the root bunfig preload, so prepare the pinned
+// Mol* packages that their `@molstar/*` imports resolve to.
+await run("bun", ["scripts/prepare-molstar-source.mjs"], { cwd: REPO_ROOT, env: process.env });
 await run("bun", ["run", "build"], {
   cwd: path.join(REPO_ROOT, "apps/desktop"),
   env: {

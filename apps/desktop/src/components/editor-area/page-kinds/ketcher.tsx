@@ -34,13 +34,13 @@ export type KetcherLocation = {
 
 const KetcherPage = lazy(() => {
   // Load the editor alongside the page, without delaying the shell or its error UI.
-  void import("../../ketcher-editor").then((module) => module.loadKetcherRuntime()).catch(() => {});
+  void import("../../molecular-editor").catch(() => {});
   return import("../../ketcher-page").then((module) => ({ default: module.KetcherPage }));
 });
 
 export const ketcherKind = definePageKind<"ketcher", KetcherLocation>({
   kind: "ketcher",
-  title: () => "Ketcher",
+  title: () => "Molecule editor",
   description: "Molecule sketch editor",
   Component: ({ tabId, location, state, actions, isActive }) => (
     <Suspense fallback={null}>

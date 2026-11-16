@@ -1,0 +1,62 @@
+{
+  "date": "2026-11-04",
+  "baseHead": "0d754e344",
+  "runtime": "vite-dev",
+  "freshExportMatchesPreviousBytes": true,
+  "observe": {
+    "sourceTextSha256": "sha256-b46609f572e1e89a5e3c04637982a1c23d5864c36c69ea4a1d92f26d77783278",
+    "document": {
+      "id": "browser-17nf7r5",
+      "path": "/OpenedFiles/burette-recovered-geometry.cif",
+      "title": "burette-recovered-geometry.cif",
+      "extension": "cif",
+      "renderer": "molstar",
+      "active": true
+    },
+    "source": {
+      "origin": "file",
+      "byteCount": 1131,
+      "draftsVisible": true
+    },
+    "structure": {
+      "atomCount": 3,
+      "bondCount": 2,
+      "graph": "perceived",
+      "graphComplete": true
+    },
+    "scientific": null,
+    "sourceError": null
+  },
+  "properties": {
+    "status": "succeeded",
+    "binding": "current",
+    "summary": {
+      "method": "OpenChemLib",
+      "formula": "H2O",
+      "molecularWeight": 18.01488,
+      "exactMass": 18.010565,
+      "atomCount": 3,
+      "bondCount": 2,
+      "charge": 0,
+      "hydrogenBondDonors": 1,
+      "hydrogenBondAcceptors": 1,
+      "rotatableBonds": 0,
+      "polarSurfaceArea": 9.229999542236328,
+      "logP": 0
+    }
+  },
+  "ui": {
+    "formula": "H2O",
+    "atoms": 3,
+    "bonds": 2,
+    "molecularWeight": "18.015 g/mol",
+    "exactMass": "18.0106 Da"
+  },
+  "limits": [
+    "One coordinate block and one model",
+    "No explicit alternate conformations or partial occupancy",
+    "Cartesian molecular coordinates only; fractional CIF uses existing crystal reader",
+    "No declared CIF bond topology is imported; graph is perceived from coordinates",
+    "Explicit nonzero CIF formal charges require a charge-preserving graph"
+  ]
+}

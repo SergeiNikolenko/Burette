@@ -4,6 +4,13 @@
   // Hidden until viewer.js reports the first rendered frame or an error (see
   // revealViewer there). The timer only guards against viewer.js never running.
   document.documentElement.classList.add('buret-viewer-booting');
+  try {
+    const hostScheme = window.frameElement && getComputedStyle(window.frameElement).colorScheme;
+    if (hostScheme && hostScheme !== 'normal') document.documentElement.style.setProperty('--buret-boot-color-scheme', hostScheme);
+  } catch (_) {}
+  if (window.name === 'burette-editable' || window.name === 'burette-read-only') {
+    document.documentElement.setAttribute('data-burette-app-chrome', '');
+  }
   window.setTimeout(() => document.documentElement.classList.remove('buret-viewer-booting'), 8000);
 
   function mountToolbar() {
@@ -13,8 +20,6 @@
     app.insertAdjacentHTML('afterend', `
       <div id="buret-toolbar" role="toolbar" aria-label="Burette preview controls">
         <div class="buret-toolbar-content" data-buret-toolbar-content>
-          <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle object tree"><span data-buret-mode-icon="SidebarLeft" aria-hidden="true"></span><span class="buret-tooltip" role="tooltip">Toggle object tree</span></button>
-          <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="right" aria-label="Toggle right panel" title="Toggle properties panel"><span data-buret-mode-icon="SidebarRight" aria-hidden="true"></span><span class="buret-tooltip" role="tooltip">Toggle properties panel</span></button>
           <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel">Seq<span class="buret-tooltip" role="tooltip">Toggle sequence panel</span></button>
           <div class="buret-molstar-preset-slot" data-buret-molstar-preset-slot>
             <button id="buret-molstar-preset-trigger" class="buret-button buret-molstar-preset-trigger" type="button" data-buret-molstar-preset-trigger aria-label="Representation preset" aria-haspopup="menu" aria-controls="buret-molstar-preset-menu" aria-expanded="false" title="Representation preset">
@@ -31,7 +36,7 @@
           </button>
           <button class="buret-button" type="button" data-buret-action="theme" aria-label="Theme: Auto (system)" title="Theme: Auto (system)"><span class="buret-tooltip" role="tooltip">Theme: Auto (system)</span></button>
           <button class="buret-button buret-save-modified hidden" type="button" data-buret-action="save-modified-structure" aria-label="Save modified structure" title="Save modified structure">Save<span class="buret-tooltip" role="tooltip">Save modified structure</span></button>
-          <button class="buret-button buret-mode-button hidden" type="button" data-buret-action="ketcher" aria-label="Open in Ketcher" title="Open in Ketcher"><span data-buret-mode-icon="Edit" aria-hidden="true"></span><span class="buret-tooltip" role="tooltip">Open this structure in Ketcher</span></button>
+          <button class="buret-button buret-mode-button hidden" type="button" data-buret-action="ketcher" aria-label="Open in molecular editor" title="Open in molecular editor"><span data-buret-mode-icon="Edit" aria-hidden="true"></span><span class="buret-tooltip" role="tooltip">Open this structure in the molecular editor</span></button>
           <button class="buret-button buret-xyzrender-inspector" type="button" data-buret-action="xyzrender-inspector" aria-label="Appearance">Appearance<span class="buret-tooltip" role="tooltip">Rendering appearance settings</span></button>
           <div class="buret-xyzrender-preset-slot" data-buret-xyzrender-preset-slot>
             <select class="buret-select" data-buret-xyzrender-preset aria-label="Rendering preset" title="Rendering preset"></select>

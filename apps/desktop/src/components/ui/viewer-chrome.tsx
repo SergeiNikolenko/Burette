@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { SidebarLeft as PanelLeft, SidebarRight as PanelRight } from "@/components/ui/app-icons";
+import { SidebarLeft, SidebarLeftHidden, SidebarRight, SidebarRightHidden } from "@/components/ui/app-icons";
 
 import { cn } from "@/lib/utils";
 
@@ -71,7 +71,9 @@ export function ViewerSidebarTrigger({
   const isDisabled = Boolean(
     disabled || loading || isAriaDisabled(ariaDisabled) || !canToggleSidebar,
   );
-  const Icon = sidebarSide === "right" ? PanelRight : PanelLeft;
+  const Icon = sidebarSide === "right"
+    ? (open ? SidebarRight : SidebarRightHidden)
+    : (open ? SidebarLeft : SidebarLeftHidden);
 
   return (
     <Button

@@ -1,0 +1,15 @@
+/* The released MCP host reserves its whole top edge for the compact file
+   header. When the shared shell renders expanded chrome, restore its layout
+   within the widget without affecting compact cards from that same host. */
+#root .app-shell[data-native-workspace-chrome] {
+  --chrome-height: var(--workspace-chrome-height);
+  --chrome-drag-height: var(--chrome-height);
+}
+
+#root .app-shell[data-native-workspace-chrome] :is(.topbar, .chrome-leading-controls, .chrome-trailing-controls) {
+  display: flex;
+}
+
+#root .app-shell[data-native-workspace-chrome] .workspace-sidebar-handle {
+  display: block;
+}

@@ -34,6 +34,25 @@ and side effects; `src/lib` should make those hooks smaller and easier to test.
 - If a helper is pure, test it directly instead of validating it only through a
   full app smoke.
 
+## Queued Viewer Requests
+
+Capture `captureViewerActionTarget(documentId, sourceIsCurrent)` before queuing work.
+For acknowledged `geometry_binding`/`update_geometry` actions, pass its result in
+`runStructureViewerAction`'s third options argument, or in
+`requestViewerAction`'s fifth options argument; the fourth argument remains AbortSignal.
+Sender options may include `signal`, forwarded only through that existing fourth argument.
+The target's read-only `isCurrent()` checks the original frame/window, source attributes,
+read-only status and optional source-owner predicate before dispatch and acknowledgement.
+Explicit `target: null` must fail rather than acquire a later frame. This target does not
+identify internal Mol* Undo/restore: geometry writes also require a runtime owner receipt.
+`geometry_binding` returns one `{ lease, text }` pair before a model is built; every
+`update_geometry` carries that retained lease. Never acquire a new lease for an edit
+computed from an older baseline. Legacy fire-and-forget actions keep their existing path.
+`atom-drag.ts` turns the viewer's drag mode on and off for a binding
+(`setAtomDragMode`, with `manipulate` for the Move tool) and receives its `atom-drag` gestures (`subscribeAtomDrag`).
+Gestures are accepted from the binding's frame window and lease, not from the
+body's `documentId`, which carries the viewer's runtime id.
+
 ## Validation
 
 Pick the narrow test that covers the helper boundary:

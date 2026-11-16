@@ -1,7 +1,9 @@
-import { isNativePopoutTab, nativePopoutBusy, returnNativePopout } from "../components/workspace-panes/native-scene-window";
+import { checkpointNativeScenesForClose } from "../components/workspace-panes/native-scene-window";
+import { nativeWindowTransferBusy } from "../lib/window-transfer";
 import { confirmUnsavedSceneClose } from "./file-batch-scene";
 import { rendererViewReloadOptions } from "../lib/renderer-view-state";
-import { useEffect, useMemo, useState } from "react";
+import { openInstalledCrystal, type CrystalOpenRequest } from "../lib/extensions/open-crystal";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ShellActions } from "../components/types";
 import type { DockDropInput } from "../lib/dock";
 import type { WindowCloseMutationPermit } from "../lib/window-mutation-barrier";
@@ -46,6 +48,8 @@ type UseAppShellActionsOptions = {
   openSubstructureCount: ShellActions["openSubstructureCount"];
   findSimilarInFile: ShellActions["findSimilarInFile"];
   openRGroupDecomposition: ShellActions["openRGroupDecomposition"];
+  openMatchedPairs: ShellActions["openMatchedPairs"];
+  openSarTable: ShellActions["openSarTable"];
   canNavigateBack: boolean;
   canNavigateForward: boolean;
   cancelConformerJob: ShellActions["cancelConformerJob"];
@@ -59,6 +63,11 @@ type UseAppShellActionsOptions = {
   chooseWorkspace: ShellActions["chooseWorkspace"];
   clearCache: ShellActions["clearCache"];
   clearDatabaseJobs: ShellActions["clearDatabaseJobs"];
+  installCrystals: ShellActions["installCrystals"];
+  removeCrystals: ShellActions["removeCrystals"];
+  refreshResourceExtensions: ShellActions["refreshResourceExtensions"];
+  cancelResourceJob: ShellActions["cancelResourceJob"];
+  clearResourceJobs: ShellActions["clearResourceJobs"];
   openDatabaseQuery: ShellActions["openDatabaseQuery"];
   clearDescriptorSource: ShellActions["clearDescriptorSource"];
   clearDirtyGridDocuments: () => void;
@@ -255,6 +264,8 @@ type GridShellActions = Pick<
   | "openSubstructureCount"
   | "findSimilarInFile"
   | "openRGroupDecomposition"
+  | "openMatchedPairs"
+  | "openSarTable"
   | "appendGridRecords"
   | "addXyzrenderSheetItems"
 >;
@@ -372,6 +383,12 @@ type MaintenanceShellActions = Pick<
 
 type SettingsShellActions = Pick<
   ShellActions,
+  | "openCrystalsStructure"
+  | "installCrystals"
+  | "removeCrystals"
+  | "refreshResourceExtensions"
+  | "cancelResourceJob"
+  | "clearResourceJobs"
   | "checkForUpdates"
   | "installUpdate"
   | "openUpdateRelease"
@@ -404,6 +421,7 @@ const workspaceHistoryActionSpecs = {
   openStructurePaths: { label: "Open structures", group: "documents" },
   openTextPaths: { label: "Open text files", group: "documents" },
   openPaths: { label: "Open files", group: "documents" },
+  openCrystalsStructure: { label: "Open crystal", group: "documents" },
   openStructureRecords: { label: "Open structures", group: "documents" },
   openRecentStructure: { label: "Open recent structure", group: "documents" },
   openMostRecentStructure: { label: "Open recent structure", group: "documents" },
@@ -415,11 +433,11 @@ const workspaceHistoryActionSpecs = {
   openSettingsSection: { label: "Open settings section", group: "navigation" },
   backToApp: { label: "Back to app", group: "navigation" },
   moveTab: { label: "Move tab", group: "navigation" },
-  openKetcher: { label: "Open Ketcher", group: "ketcher" },
-  openKetcherWithStructures: { label: "Import into Ketcher", group: "ketcher" },
-  openKetcherExportRaw: { label: "Open Ketcher export", group: "ketcher" },
-  openKetcherSketch: { label: "Open Ketcher sketch", group: "ketcher" },
-  clearKetcherImportRequest: { label: "Clear Ketcher import", group: "ketcher" },
+  openKetcher: { label: "Open molecular editor", group: "ketcher" },
+  openKetcherWithStructures: { label: "Import into molecular editor", group: "ketcher" },
+  openKetcherExportRaw: { label: "Open molecular editor export", group: "ketcher" },
+  openKetcherSketch: { label: "Open molecular editor sketch", group: "ketcher" },
+  clearKetcherImportRequest: { label: "Clear molecular editor import", group: "ketcher" },
   openFepNetworkPreview: { label: "Open FEP network", group: "docking" },
   openFepSetupWorkspace: { label: "Open FEP setup", group: "docking" },
   openDescriptorSource: { label: "Open descriptor source", group: "grid" },
@@ -491,6 +509,8 @@ const workspaceHistoryNoneActions = new Set<keyof ShellActions>([
   "openSubstructureCount",
   "findSimilarInFile",
   "openRGroupDecomposition",
+  "openMatchedPairs",
+  "openSarTable",
   "appendGridRecords",
   "addXyzrenderSheetItems",
   "checkConformerStatus",
@@ -499,6 +519,11 @@ const workspaceHistoryNoneActions = new Set<keyof ShellActions>([
   "clearConformerJobs",
   "openDatabaseQuery",
   "clearDatabaseJobs",
+  "installCrystals",
+  "removeCrystals",
+  "refreshResourceExtensions",
+  "cancelResourceJob",
+  "clearResourceJobs",
   "checkXtbStatus",
   "chooseXtbExecutable",
   "clearXtbExecutableSelection",
@@ -675,6 +700,8 @@ export function createAppShellActionSlices(actions: ShellActions): AppShellActio
       openSubstructureCount: actions.openSubstructureCount,
       findSimilarInFile: actions.findSimilarInFile,
       openRGroupDecomposition: actions.openRGroupDecomposition,
+      openMatchedPairs: actions.openMatchedPairs,
+      openSarTable: actions.openSarTable,
       appendGridRecords: actions.appendGridRecords,
       addXyzrenderSheetItems: actions.addXyzrenderSheetItems,
     },
@@ -776,6 +803,12 @@ export function createAppShellActionSlices(actions: ShellActions): AppShellActio
       exportDiagnostics: actions.exportDiagnostics,
     },
     settings: {
+      openCrystalsStructure: actions.openCrystalsStructure,
+      installCrystals: actions.installCrystals,
+      removeCrystals: actions.removeCrystals,
+      refreshResourceExtensions: actions.refreshResourceExtensions,
+      cancelResourceJob: actions.cancelResourceJob,
+      clearResourceJobs: actions.clearResourceJobs,
       checkForUpdates: actions.checkForUpdates,
       installUpdate: actions.installUpdate,
       openUpdateRelease: actions.openUpdateRelease,
@@ -813,6 +846,8 @@ export function useAppShellActions({
   openSubstructureCount,
   findSimilarInFile,
   openRGroupDecomposition,
+  openMatchedPairs,
+  openSarTable,
   canNavigateBack,
   canNavigateForward,
   cancelConformerJob,
@@ -826,6 +861,11 @@ export function useAppShellActions({
   chooseWorkspace,
   clearCache,
   clearDatabaseJobs,
+  installCrystals,
+  removeCrystals,
+  refreshResourceExtensions,
+  cancelResourceJob,
+  clearResourceJobs,
   openDatabaseQuery,
   clearDescriptorSource,
   clearDirtyGridDocuments,
@@ -965,19 +1005,23 @@ export function useAppShellActions({
     return () => window.removeEventListener("burette:molstar-edit-history-changed", onHistoryChanged);
   }, []);
 
+  const openCrystalsStructure = useCallback((request: CrystalOpenRequest) =>
+    openInstalledCrystal(request, { openPaths, openStructureRecords }), [openPaths, openStructureRecords]);
+
   const focusedPreviewHistory = activeDocument
     ? previewHistoryByDocument[activeDocument.id] ?? { canUndo: false, canRedo: false }
     : { canUndo: false, canRedo: false };
 
   return useMemo<ShellActions>(() => createWorkspaceHistoryShellActions(createAppShellActions({
     chooseFiles,
-    openStructurePaths: async (paths: string[], options?: { mode?: OpenDocumentsMode; rendererMode?: "molstar" | "grid2d" | "xyzrender-external"; shouldApply?: () => boolean }) => {
+    openStructurePaths: async (paths: string[], options?: { mode?: OpenDocumentsMode; rendererMode?: "molstar" | "grid2d" | "xyzrender-external"; gridViewMode?: "cards" | "table"; gridViewState?: string; shouldApply?: () => boolean }) => {
       await openDocuments(paths, options?.rendererMode ? rendererViewReloadOptions(paths[0]) : undefined, options?.rendererMode ? { rendererMode: options.rendererMode } : undefined, options);
     },
     openTextPaths: async (paths: string[]) => {
       await openTextDocuments(paths);
     },
     openPaths,
+    openCrystalsStructure,
     openStructureRecords,
     openStructureUrlInMolstar,
     openRecentStructure,
@@ -1031,11 +1075,18 @@ export function useAppShellActions({
     openSubstructureCount,
     findSimilarInFile,
     openRGroupDecomposition,
+    openMatchedPairs,
+    openSarTable,
     checkConformerStatus,
     runConformerOperation,
     cancelConformerJob,
     openDatabaseQuery,
     clearDatabaseJobs,
+    installCrystals,
+    removeCrystals,
+    refreshResourceExtensions,
+    cancelResourceJob,
+    clearResourceJobs,
     ...createJobHistoryShellActions({ pushStatus, setConformerJobs, setXtbJobs }),
     setConformerSettings,
     checkXtbStatus,
@@ -1135,7 +1186,7 @@ export function useAppShellActions({
     canRedoWorkspace,
     canUndoFocusedPreview: focusedPreviewHistory.canUndo,
     canUndoWorkspace,
-  }), [activeDocument, addDerivedGridColumn, addDockDrop, addXyzrenderSheetItemsToDocument, openCalculateProperties, deleteDuplicateGridRows, openCorrelationMatrix, openCalculatedColumn, openMergeColumns, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, clearDerivedColumnJobs, canNavigateForward, canRedoWorkspace, canUndoWorkspace, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearDirtyGridDocuments, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeQuickLookPreview, closeTab, confirmCloseSourceDocuments, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, exportDiagnostics, fetchPdbStructure, focusedPreviewHistory.canRedo, focusedPreviewHistory.canUndo, focusSidebarSearch, forgetDirtyGridDocument, forgetDirtyGridDocuments, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openStructureUrlInMolstar, openTextDocuments, openUpdateRelease, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectFolder, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runExternalRuntimeDoctor, runStructureViewerAction, saveKetcherDraft, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, openPerformReaction, addScaffoldGridColumns, openSubstructureCount, findSimilarInFile, openRGroupDecomposition]);
+  }), [openCrystalsStructure, installCrystals, removeCrystals, refreshResourceExtensions, cancelResourceJob, clearResourceJobs, activeDocument, addDerivedGridColumn, addDockDrop, addXyzrenderSheetItemsToDocument, openCalculateProperties, deleteDuplicateGridRows, openCorrelationMatrix, openCalculatedColumn, openMergeColumns, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, clearDerivedColumnJobs, canNavigateForward, canRedoWorkspace, canUndoWorkspace, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearDirtyGridDocuments, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeQuickLookPreview, closeTab, confirmCloseSourceDocuments, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, exportDiagnostics, fetchPdbStructure, focusedPreviewHistory.canRedo, focusedPreviewHistory.canUndo, focusSidebarSearch, forgetDirtyGridDocument, forgetDirtyGridDocuments, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openStructureUrlInMolstar, openTextDocuments, openUpdateRelease, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectFolder, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runExternalRuntimeDoctor, runStructureViewerAction, saveKetcherDraft, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, openPerformReaction, addScaffoldGridColumns, openSubstructureCount, findSimilarInFile, openRGroupDecomposition, openMatchedPairs, openSarTable]);
 }
 
 export function createJobHistoryShellActions({
@@ -1200,7 +1251,7 @@ export function createDockDropShellActions({
     addDockDrop: (input) => {
       addDockDrop(input);
       const count = input.payload.paths.length + input.payload.records.length + (input.payload.items?.length ?? 0);
-      const target = input.area === "right" ? "right dock" : "bottom dock";
+      const target = input.area === "right" ? "right panel" : "bottom dock";
       pushStatus(`Added ${count} item${count === 1 ? "" : "s"} to ${target}`);
     },
   };
@@ -1208,9 +1259,7 @@ export function createDockDropShellActions({
 
 export function createDocumentCloseShellActions({
   activeDocument,
-  clearDirtyGridDocuments,
   closeActiveDocument,
-  closeAllDocuments,
   closeDocument,
   closeGridRuntime,
   closeTab,
@@ -1251,7 +1300,7 @@ export function createDocumentCloseShellActions({
   // for good and blocked every later close.
   const completeClose = (permit: WindowCloseMutationPermit, close: () => void) => {
     try {
-      if (!nativePopoutBusy()) close();
+      if (!nativeWindowTransferBusy()) close();
     } finally {
       permit.release();
     }
@@ -1280,14 +1329,21 @@ export function createDocumentCloseShellActions({
     return [...new Set([...additionalIds, ...targets.flatMap(documentIdsForTab)])]
       .filter(id => !retained.has(id));
   };
-  const confirmClose = async (documentIds: string[]) => {
+  const confirmClose = async (documentIds: string[], targets: MoleculeTab[]) => {
     if (!confirmSceneClose(documentIds)) return null;
     const permit = await confirmDiscardDirtyGridDocuments(documentIds);
     if (!permit) return null;
     try {
+      await checkpointNativeScenesForClose(targets.map(tab => tab.id));
+    } catch (error) {
+      permit.release();
+      pushStatus(error instanceof Error ? error.message : "Could not save the scene before closing. The tab is still open.", "error");
+      return null;
+    }
+    try {
       // Source disposal is the final acknowledgement: a cancelled Grid prompt
       // must leave the source draft and its recovery handle intact.
-      if (nativePopoutBusy() || !await confirmCloseSourceDocuments(documentIds)) {
+      if (nativeWindowTransferBusy() || !await confirmCloseSourceDocuments(documentIds)) {
         permit.release();
         return null;
       }
@@ -1297,20 +1353,16 @@ export function createDocumentCloseShellActions({
       throw error;
     }
   };
-  const returnOwner = async (targets: MoleculeTab[]) => {
-    if (nativePopoutBusy()) return false;
-    if (!targets.some(tab => isNativePopoutTab(tab.id))) return true;
-    // The handoff owns closing its tab. A failed handoff leaves all targets intact.
-    await returnNativePopout();
-    return false;
-  };
+  // Closing a moved tab closes it here like any other tab. Sending it back is
+  // the explicit Move to Main Window action: a close that waited on another
+  // window's viewer (asleep in its own fullscreen Space) never finished.
 
-  return {
+  const closeActions: Pick<ShellActions, "closeDocument" | "closeTab" | "closeOtherTabs" | "closeTabs" | "closeActiveDocument" | "clearAllDocuments"> = {
     closeDocument: async (id: string) => {
       const targets = tabs.filter(tab => tab.location.kind === "file" && (tab.location.documentId === id || tab.location.path === documents.find(doc => doc.id === id)?.path));
-      if (!await returnOwner(targets)) return;
+      if (nativeWindowTransferBusy()) return;
       const documentIds = documentIdsClosingWithTabs(targets, [id]);
-      const permit = await confirmClose(documentIds);
+      const permit = await confirmClose(documentIds, targets);
       if (!permit) return;
       completeClose(permit, () => {
         for (const documentId of documentIds) closeGridRuntime(documentId);
@@ -1320,9 +1372,9 @@ export function createDocumentCloseShellActions({
     },
     closeTab: async (id: string) => {
       const tab = tabs.find((candidate) => candidate.id === id);
-      if (!await returnOwner(tab ? [tab] : [])) return;
+      if (nativeWindowTransferBusy()) return;
       const documentIds = documentIdsClosingWithTabs(tab ? [tab] : []);
-      const permit = await confirmClose(documentIds);
+      const permit = await confirmClose(documentIds, tab ? [tab] : []);
       if (!permit) return;
       completeClose(permit, () => {
         for (const documentId of documentIds) closeGridRuntime(documentId);
@@ -1332,17 +1384,10 @@ export function createDocumentCloseShellActions({
     },
     closeTabs: async (ids: string[]) => {
       const wanted = new Set(ids);
-      let targets = tabs.filter(tab => wanted.has(tab.id));
-      if (!targets.length || nativePopoutBusy()) return;
-      if (targets.some(tab => isNativePopoutTab(tab.id))) {
-        const owners = new Set(targets.filter(tab => isNativePopoutTab(tab.id)).map(tab => tab.id));
-        await returnNativePopout();
-        const remaining = useMoleculeStore.getState().tabs;
-        targets = targets.filter(tab => !owners.has(tab.id) && remaining.some(candidate => candidate.id === tab.id));
-      }
-      if (!targets.length) return;
+      const targets = tabs.filter(tab => wanted.has(tab.id));
+      if (!targets.length || nativeWindowTransferBusy()) return;
       const documentIds = documentIdsClosingWithTabs(targets);
-      const permit = await confirmClose(documentIds);
+      const permit = await confirmClose(documentIds, targets);
       if (!permit) return;
       completeClose(permit, () => {
         for (const documentId of documentIds) closeGridRuntime(documentId);
@@ -1352,17 +1397,10 @@ export function createDocumentCloseShellActions({
     },
     closeOtherTabs: async (id: string) => {
       const pane = tabs.find(tab => tab.id === id)?.pane ?? null;
-      let otherTabs = tabs.filter((tab) => tab.id !== id && !tab.pinned && (tab.pane ?? null) === pane);
-      if (otherTabs.length === 0 || nativePopoutBusy()) return;
-      if (otherTabs.some(tab => isNativePopoutTab(tab.id))) {
-        const owners = new Set(otherTabs.filter(tab => isNativePopoutTab(tab.id)).map(tab => tab.id));
-        await returnNativePopout();
-        const remaining = useMoleculeStore.getState().tabs;
-        otherTabs = otherTabs.filter(tab => !owners.has(tab.id) && remaining.some(candidate => candidate.id === tab.id));
-      }
-      if (!otherTabs.length) return;
+      const otherTabs = tabs.filter((tab) => tab.id !== id && !tab.pinned && (tab.pane ?? null) === pane);
+      if (otherTabs.length === 0 || nativeWindowTransferBusy()) return;
       const documentIds = documentIdsClosingWithTabs(otherTabs);
-      const permit = await confirmClose(documentIds);
+      const permit = await confirmClose(documentIds, otherTabs);
       if (!permit) return;
       completeClose(permit, () => {
         for (const documentId of documentIds) closeGridRuntime(documentId);
@@ -1374,9 +1412,9 @@ export function createDocumentCloseShellActions({
     closeActiveDocument: async () => {
       const activeTab = tabs.find(tab => tab.id === useMoleculeStore.getState().activeTabId)
         ?? tabs.find(tab => tab.location.kind === "file" && tab.location.documentId === activeDocument?.id);
-      if (!await returnOwner(activeTab ? [activeTab] : [])) return;
+      if (nativeWindowTransferBusy()) return;
       const documentIds = documentIdsClosingWithTabs(activeTab ? [activeTab] : []);
-      const permit = await confirmClose(documentIds);
+      const permit = await confirmClose(documentIds, activeTab ? [activeTab] : []);
       if (!permit) return;
       completeClose(permit, () => {
         for (const documentId of documentIds) closeGridRuntime(documentId);
@@ -1386,18 +1424,10 @@ export function createDocumentCloseShellActions({
       });
     },
     clearAllDocuments: async () => {
-      if (!await returnOwner(tabs)) return;
-      const documentIds = documents.map((document) => document.id);
-      const permit = await confirmClose(documentIds);
-      if (!permit) return;
-      completeClose(permit, () => {
-        for (const document of documents) closeGridRuntime(document.id);
-        clearDirtyGridDocuments();
-        closeAllDocuments();
-        pushStatus("Closed all tabs");
-      });
+      await closeActions.closeTabs(tabs.filter(tab => !tab.pinned && tab.location.kind !== "launcher").map(tab => tab.id));
     },
   };
+  return closeActions;
 }
 
 export function createRecentShellActions({

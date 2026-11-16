@@ -60,6 +60,7 @@ pub(crate) struct NativeMenuState {
     can_run_crest: bool,
     can_run_prism: bool,
     can_run_xtb: bool,
+    can_optimize_geometry: bool,
     rgroup_runtime_available: bool,
     open_document_paths: Vec<String>,
     recent_documents: Option<Vec<RecentMenuDocument>>,
@@ -114,6 +115,36 @@ enum WritePermitMode {
 }
 
 impl OpenDocumentRegistry {
+    pub(crate) fn has_snapshots(&self, labels: &[String]) -> bool {
+        self.state.lock().is_ok_and(|state| {
+            labels
+                .iter()
+                .all(|label| state.paths_by_window.contains_key(label))
+        })
+    }
+
+    pub(crate) fn owner_for_path(
+        &self,
+        path: &Path,
+        candidates: &[String],
+        preferred: Option<&str>,
+    ) -> Option<String> {
+        let path = normalized_document_path(path);
+        let state = self.state.lock().ok()?;
+        let owns = |label: &str| {
+            crate::windows::is_workspace_window_label(label)
+                && candidates.iter().any(|candidate| candidate == label)
+                && state
+                    .paths_by_window
+                    .get(label)
+                    .is_some_and(|snapshot| snapshot.paths.contains(&path))
+        };
+        preferred
+            .filter(|label| owns(label))
+            .map(str::to_string)
+            .or_else(|| candidates.iter().filter(|label| owns(label)).min().cloned())
+    }
+
     fn replace(&self, window_label: &str, revision: u64, paths: &[String]) -> Result<(), String> {
         let normalized: HashSet<PathBuf> = paths
             .iter()
@@ -607,6 +638,7 @@ pub(super) fn sync_native_menu<R: Runtime>(
             state.document_registry_revision,
             &state.open_document_paths,
         )?;
+    crate::startup::flush_external_open_documents(&app);
     sync_document_edited(&window, state.document_dirty)?;
 
     if !window.is_focused().map_err(|error| error.to_string())? {
@@ -657,7 +689,8 @@ pub(super) fn sync_native_menu<R: Runtime>(
         "file.export-preview-svg",
         state.can_export_external_preview,
     )?;
-    set_enabled(&app, "file.close-tab", state.active_tab_closable)?;
+    // Close falls back to closing the window when no document tab is active.
+    set_enabled(&app, "file.close-tab", true)?;
     set_enabled(
         &app,
         "file.close-other-tabs",
@@ -741,18 +774,18 @@ pub(super) fn sync_native_menu<R: Runtime>(
         &app,
         "structure.edit-in-ketcher",
         if state.is_grid && state.selected_molecule_count > MAX_NATIVE_KETCHER_SELECTION {
-            format!("Open Selection in Ketcher (max {MAX_NATIVE_KETCHER_SELECTION})")
+            format!("Open Selection in Molecular Editor (max {MAX_NATIVE_KETCHER_SELECTION})")
         } else if state.is_grid && state.selected_molecule_count >= 2 {
             format!(
-                "Open {} Selected Molecules in Ketcher",
+                "Open {} Selected Molecules in Molecular Editor",
                 state.selected_molecule_count
             )
         } else if state.is_grid && state.selected_molecule_count == 0 {
-            "Edit Selection in Ketcher".into()
+            "Edit Selection in Molecular Editor".into()
         } else if state.is_grid {
-            "Edit Selected Molecule in Ketcher".into()
+            "Edit Selected Molecule in Molecular Editor".into()
         } else {
-            "Edit in Ketcher".into()
+            "Edit in Molecular Editor".into()
         },
     )?;
     set_text(
@@ -785,6 +818,17 @@ pub(super) fn sync_native_menu<R: Runtime>(
     )?;
     set_enabled(&app, "structure.crest-generate", state.can_run_crest)?;
     set_enabled(&app, "structure.prism-prune", state.can_run_prism)?;
+    for id in [
+        "structure.optimize-geometry",
+        "structure.auto-optimize",
+        "structure.calculate",
+        "structure.calculate-energy",
+        "structure.configure-optimization",
+        "structure.freeze-atoms",
+        "structure.unfreeze-atoms",
+    ] {
+        set_enabled(&app, id, state.can_optimize_geometry)?;
+    }
     set_enabled(&app, "structure.xtb-optimize", state.can_run_xtb)?;
     set_enabled(&app, "structure.xtb-properties", state.can_run_xtb)?;
     set_enabled(&app, "structure.xtb-frequencies", state.can_run_xtb)?;
@@ -840,6 +884,17 @@ pub(super) fn sync_native_menu<R: Runtime>(
     // which is the grid's own virtual edit layer rather than the collection
     // database, so it follows the same rule.
     set_enabled(&app, "collection.transform.split-rows", state.is_grid)?;
+    // Pivot, Unpivot and Merge File by Key rewrite cells and rows through the
+    // same edit layer, so they are reachable on an edited grid as well. The
+    // record view only reads the rows.
+    for id in [
+        "collection.pivot",
+        "collection.unpivot",
+        "collection.merge-by-key",
+        "collection.record-view",
+    ] {
+        set_enabled(&app, id, state.is_grid)?;
+    }
     set_enabled(&app, "collection.transform", state.is_grid)?;
     // The reaction columns only mean anything for a collection that holds
     // reactions, so they follow what the grid reports. Perform Reaction is the
@@ -856,6 +911,13 @@ pub(super) fn sync_native_menu<R: Runtime>(
         set_enabled(&app, id, can_add_reaction_column)?;
     }
     set_enabled(&app, "collection.reaction.perform", can_add_derived_column)?;
+    // Enumerate Library reads the collection's molecules as building blocks, so
+    // it follows the same rule; the command palette offers it without one.
+    set_enabled(
+        &app,
+        "collection.reaction.enumerate",
+        can_add_derived_column,
+    )?;
     set_enabled(
         &app,
         "collection.reaction",
@@ -883,10 +945,17 @@ pub(super) fn sync_native_menu<R: Runtime>(
     let can_analyze_columns = can_add_derived_column || state.can_open_collection_analysis;
     set_enabled(&app, "analyze.menu", true)?;
     set_enabled(&app, "analyze.chemical-space", can_analyze_collection)?;
+    // A chart reads columns, so it also serves tables that hold no molecules.
+    set_enabled(&app, "analyze.chart", state.is_grid)?;
     set_enabled(&app, "analyze.correlation-matrix", can_analyze_collection)?;
     // Clustering runs inside the grid, which re-checks its own capability; the
     // menu only asks for a molecular grid to exist.
     for id in ["analyze.cluster", "analyze.diverse"] {
+        set_enabled(&app, id, can_analyze_collection)?;
+    }
+    // Matched pairs and the SAR table only read the collection, the way the
+    // correlation matrix does.
+    for id in ["analyze.matched-pairs", "analyze.sar-table"] {
         set_enabled(&app, id, can_analyze_collection)?;
     }
     // The SAR analyses all write derived columns, so they follow the same rule
@@ -992,7 +1061,7 @@ pub(super) fn reset_native_menu_for_no_windows<R: Runtime>(
         set_checked(app, id, false)?;
     }
     set_text(app, "structure.open-in-molstar", "Open Molecule in Mol*")?;
-    set_text(app, "structure.edit-in-ketcher", "Edit in Ketcher")?;
+    set_text(app, "structure.edit-in-ketcher", "Edit in Molecular Editor")?;
     set_text(app, "structure.generate-3d", "Generate 3D Conformer")?;
     ensure_standard_edit_history(app)
 }
@@ -1497,6 +1566,64 @@ mod tests {
         contextual_history_title, recent_menu_titles, validate_recent_documents, NativeMenuState,
         OpenDocumentRegistry, RecentMenuDocument, RecentMenuSnapshot, MAX_MENU_TITLE_CHARS,
     };
+
+    #[test]
+    fn cold_external_owner_is_unknown_until_all_restored_snapshots_arrive() {
+        let registry = OpenDocumentRegistry::default();
+        let labels = vec!["main".into(), "workspace-restored".into()];
+        let path = "/tmp/burette-cold-owned.xyz";
+        assert!(!registry.has_snapshots(&labels));
+        registry.replace("main", 1, &[]).unwrap();
+        assert!(!registry.has_snapshots(&labels));
+        registry
+            .replace("workspace-restored", 1, &[path.into()])
+            .unwrap();
+        assert!(registry.has_snapshots(&labels));
+        assert_eq!(
+            registry.owner_for_path(std::path::Path::new(path), &labels, Some("main")),
+            Some("workspace-restored".into())
+        );
+        registry.remove_window("workspace-restored");
+        assert!(registry.has_snapshots(&["main".into()]));
+    }
+
+    #[test]
+    fn external_open_reuses_live_workspace_owner_and_excludes_preview() {
+        let registry = OpenDocumentRegistry::default();
+        let path = "/tmp/burette-owned-structure.pdb";
+        registry
+            .replace("workspace-other", 1, &[path.into()])
+            .unwrap();
+        registry
+            .replace("workspace-preview-test", 1, &[path.into()])
+            .unwrap();
+        let candidates = vec![
+            "main".into(),
+            "workspace-other".into(),
+            "workspace-preview-test".into(),
+        ];
+        assert_eq!(
+            registry.owner_for_path(std::path::Path::new(path), &candidates, Some("main")),
+            Some("workspace-other".into())
+        );
+        assert_eq!(
+            registry.owner_for_path(
+                std::path::Path::new(path),
+                &candidates,
+                Some("workspace-preview-test")
+            ),
+            Some("workspace-other".into())
+        );
+        assert_eq!(
+            registry.owner_for_path(std::path::Path::new(path), &["main".into()], Some("main")),
+            None
+        );
+        registry.replace("main", 1, &[path.into()]).unwrap();
+        assert_eq!(
+            registry.owner_for_path(std::path::Path::new(path), &candidates, Some("main")),
+            Some("main".into())
+        );
+    }
     use serde_json::json;
     use std::path::Path;
 
@@ -1540,6 +1667,7 @@ mod tests {
             "canRunCrest": false,
             "canRunPrism": false,
             "canRunXtb": false,
+            "canOptimizeGeometry": false,
             "rgroupRuntimeAvailable": false,
             "openDocumentPaths": ["/tmp/molecules.sdf"],
             "recentDocuments": null

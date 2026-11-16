@@ -150,6 +150,18 @@ jobs:
           eval "$(bun scripts/dev-namespace.mjs shell-env)"
           ditto -c -k --sequesterRsrc --keepParent "build/$BURETTE_APP_BUNDLE_NAME" build/native-acceptance.zip
 
+      # The bundled xyzrender runtime also runs the interaction diagram engine.
+      # Bytecode would be written into the sealed bundle, so it is disabled.
+      - name: Run the interaction diagram engine in the bundled runtime
+        env:
+          BURETTE_DEV_FLAVOR: pr${{ github.event.number }}
+        run: |
+          eval "$(bun scripts/dev-namespace.mjs shell-env)"
+          resources="build/$BURETTE_APP_BUNDLE_NAME/Contents/Resources"
+          site_packages=("$resources"/xyzrender-runtime/lib/python3.*/site-packages)
+          PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="${site_packages[0]}" OMP_NUM_THREADS=1 \
+            "$resources/xyzrender-python/bin/python3" tests/test-interaction-diagram-engine.py
+
       - name: Upload native acceptance app
         uses: actions/upload-artifact@v4
         with:

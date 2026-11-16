@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.cjson-compute-owner.json",
+  "include": [
+    "test-dock-file-tool-identity.test.tsx",
+    "../apps/desktop/src/**/*.d.ts"
+  ]
+}

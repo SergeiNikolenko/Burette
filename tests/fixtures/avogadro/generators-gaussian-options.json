@@ -1,0 +1,132 @@
+{
+  "tabs": [
+    "Standard",
+    "Alternate"
+  ],
+  "Title": {
+    "tab": "Standard",
+    "type": "string",
+    "default": ""
+  },
+  "Calculation Type": {
+    "tab": "Standard",
+    "type": "stringList",
+    "default": 1,
+    "values": [
+      "Single Point",
+      "Equilibrium Geometry",
+      "Frequencies"
+    ]
+  },
+  "Theory": {
+    "tab": "Standard",
+    "type": "stringList",
+    "default": 3,
+    "values": [
+      "AM1",
+      "PM3",
+      "RHF",
+      "B3LYP",
+      "WB97XD",
+      "MP2",
+      "CCSD"
+    ]
+  },
+  "Basis": {
+    "tab": "Standard",
+    "type": "stringList",
+    "default": 2,
+    "values": [
+      "STO-3G",
+      "3-21G",
+      "6-31G(d)",
+      "6-31G(d,p)",
+      "LANL2DZ",
+      "cc-pVDZ",
+      "cc-pVTZ",
+      "cc-pVQZ",
+      "cc-pV5Z",
+      "cc-pV6Z",
+      "aug-cc-pVDZ",
+      "aug-cc-pVTZ",
+      "aug-cc-pVQZ",
+      "aug-cc-pV5Z",
+      "aug-cc-pV6Z",
+      "Def2SV",
+      "Def2TZV",
+      "Def2QZV",
+      "Def2SVP",
+      "Def2TZVP",
+      "Def2QZVP",
+      "Def2SVPP",
+      "Def2TZVPP",
+      "Def2QZVPP"
+    ]
+  },
+  "Filename Base": {
+    "tab": "Standard",
+    "type": "string",
+    "default": "job"
+  },
+  "Processor Cores": {
+    "tab": "Standard",
+    "type": "integer",
+    "default": 8,
+    "minimum": 1
+  },
+  "Memory": {
+    "tab": "Standard",
+    "type": "integer",
+    "default": 28,
+    "minimum": 1
+  },
+  "Multiplicity": {
+    "tab": "Standard",
+    "type": "integer",
+    "default": 1,
+    "minimum": 1,
+    "maximum": 5
+  },
+  "Charge": {
+    "tab": "Standard",
+    "type": "integer",
+    "default": 0,
+    "minimum": -9,
+    "maximum": 9
+  },
+  "Output Format": {
+    "tab": "Standard",
+    "type": "stringList",
+    "default": 0,
+    "values": [
+      "Standard",
+      "Molden",
+      "Molekel"
+    ]
+  },
+  "Write Checkpoint File": {
+    "tab": "Standard",
+    "type": "boolean",
+    "default": true
+  },
+  "Alternate Theory": {
+    "tab": "Alternate",
+    "type": "string",
+    "default": ""
+  },
+  "Alternate Basis Set": {
+    "tab": "Alternate",
+    "type": "string",
+    "default": ""
+  },
+  "Coordinates": {
+    "type": "stringList",
+    "default": 0,
+    "values": [
+      "Cartesian",
+      "Z-Matrix / Internal"
+    ],
+    "toolTip": "Write the geometry as Cartesian coordinates or as a z-matrix of bond lengths, angles and torsions.",
+    "tab": "Standard"
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "repository": "OpenChemistry/avogadrodata",
+  "license": "BSD-3-Clause; molecules/LICENSE",
+  "files": [
+    {
+      "path": "L-alanine.cjson",
+      "upstream": "data/bondorders/molecules/amino_acids/L-alanine.cjson",
+      "commit": "67ab090bb4cc1ec9417d420f8df1f316c6a214f3",
+      "originalSha256": "74982f4bcdc17b60f848821ce4eed36cfed6466ba9850d24190fa238da881331",
+      "graphExtractSha256": "4e7c7c95d0cf8ed9a04b20f3fb9f3fba354fbe47f20b61fd50315ba4c327041d",
+      "extraction": "Exact elements,3d coordinates,formalCharges and complete bonds; unrelated vibrations/partial charges/properties omitted from the test graph extract only."
+    },
+    {
+      "path": "D-alanine.cjson",
+      "upstream": "data/bondorders/molecules/amino_acids/D-alanine.cjson",
+      "commit": "67ab090bb4cc1ec9417d420f8df1f316c6a214f3",
+      "originalSha256": "ec0d4e0b803ed5ee95ffd4e5855f2a8a5b30d238073be54b427964b87c570e05",
+      "graphExtractSha256": "77d29ca9b1fe18452243b35378172c03aaf9f4baa271639fc429603bf7bbd231",
+      "extraction": "Exact elements,3d coordinates,formalCharges and complete bonds; unrelated vibrations/partial charges/properties omitted from the test graph extract only."
+    },
+    {
+      "path": "avogadro-formaldehyde-orbitals.cjson",
+      "upstream": "data/cjson/formaldehyde.cjson",
+      "commit": "4a1de2f591796e190b5789463e0195c3100097fa",
+      "originalSha256": "332386ee315eee4abc9b5780bd7e079d2ada0f95e11e3789b6ef9da0e0b7acb0",
+      "extractSha256": "9e331aafb56bcb650b8dcf71c2701edad2f61f7d3a44b251c72d528e3ce98e5c",
+      "extraction": "Avogadro's cube cache, layer settings, partial charges, view matrices and file name removed; coordinates, bonds, basis, orbitals, vibrations and properties kept exactly."
+    },
+    {
+      "path": "avogadro-formaldehyde-raman.cjson",
+      "upstream": "data/cjson/raman.cjson",
+      "commit": "4a1de2f591796e190b5789463e0195c3100097fa",
+      "originalSha256": "3ace18c7e18fb691ed44199e35d19a9752733d63d168933b89b94cbaeb4706fe",
+      "extractSha256": "57137e855a7964f61ebd06fb5feb4738690f39313cd042462360663bf91667ff",
+      "extraction": "Avogadro's cube cache, layer settings, partial charges, view matrices, file name and empty orbitals removed; coordinates, bonds, vibrations and properties kept exactly."
+    },
+    {
+      "path": "avogadro-rutile.cjson",
+      "upstream": "data/cjson/rutile.cjson",
+      "commit": "4a1de2f591796e190b5789463e0195c3100097fa",
+      "originalSha256": "e797b04299ac22f023051645a72e6b8582923a13ec4083d6b1c956889f194fe1",
+      "extractSha256": "e797b04299ac22f023051645a72e6b8582923a13ec4083d6b1c956889f194fe1",
+      "extraction": "Unchanged."
+    },
+    {
+      "path": "avogadro-ch2-triplet-uhf.cjson",
+      "writer": "OpenChemistry/avogadrolibs cb0e9485 Io::CjsonFormat after QuantumIO::MoldenFile",
+      "input": "PySCF 2.15.0 UHF/STO-3G triplet CH2 written by pyscf.tools.molden (avogadro-written/uhf.py)",
+      "generator": "avogadro-written/README.md",
+      "sha256": "a6b58c66e7fad9af107c5b0e7106c84af8a6d515409c17d5304c559a60a16e40",
+      "extraction": "Unchanged writer output."
+    },
+    {
+      "path": "avogadro-water-hessians.cjson",
+      "writer": "OpenChemistry/avogadrolibs cb0e9485 Io::CjsonFormat",
+      "input": "PySCF 2.15.0 HF/STO-3G water optimization: four coordinate sets, Hessians and IR intensities at sets 0 and 3 (avogadro-written/vib.py)",
+      "generator": "avogadro-written/README.md",
+      "sha256": "580f03176163d826c1d7d68ff32652beccceec160c0d310f5aab38ac847e1685",
+      "extraction": "Unchanged writer output."
+    }
+  ]
+}

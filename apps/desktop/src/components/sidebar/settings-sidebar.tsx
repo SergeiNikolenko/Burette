@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { settingsNavGroups, type SettingsSectionId } from "../../lib/settings-sections";
-import { SidebarGlobe, Atom, Flask, Stopwatch, Agent as Bot, FolderOpen, Keyboard, Sun, Reload as RefreshCw, SettingsCog, SettingsWrench as Wrench, type AppIconType as LucideIcon } from "@/components/ui/app-icons";
+import { SidebarGlobe, Atom, Cube, Flask, Stopwatch, Agent as Bot, FolderOpen, Keyboard, Sun, Reload as RefreshCw, SettingsCog, SettingsWrench as Wrench, type AppIconType as LucideIcon } from "@/components/ui/app-icons";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -94,6 +94,7 @@ const SETTINGS_SECTION_ICONS: Record<SettingsSectionId, LucideIcon> = {
   jobs: Stopwatch,
   xtb: Flask,
   agent: Bot,
+  extensions: Cube,
   connections: SidebarGlobe,
   maintenance: Wrench,
 };

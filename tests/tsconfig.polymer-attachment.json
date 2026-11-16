@@ -1,0 +1,5 @@
+{
+  "extends": "../apps/desktop/tsconfig.json",
+  "compilerOptions": { "types": ["bun"], "strict": true, "noEmit": true },
+  "include": ["test-polymer-attachment.test.ts"]
+}

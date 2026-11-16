@@ -1,0 +1,15 @@
+$atoms
+1
+H 1.0079 0 0 1
+$vibrational_frequencies
+3
+0 0
+1 0
+2 100
+$normal_modes
+3 3
+0 1 2
+0 1.0 0.0 0.0
+1 0.0 1.0 0.0
+2 0.0 0.0 1.0
+$end

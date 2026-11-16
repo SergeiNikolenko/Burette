@@ -1,0 +1,1 @@
+{"files": [{"filename": "water.inp", "contents": "# File Generated with Avogadro\n# \n#\n!Opt r2SCAN-3c PrintMOs PrintBasis \n* int 0 1\n$$zmatpad:____S_I_J_K_R_A_T$$\n*\n\n\n", "highlightStyles": ["default"]}], "mainFile": "water.inp"}

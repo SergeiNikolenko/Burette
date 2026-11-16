@@ -1,0 +1,2776 @@
+{
+ "generator": "pymatgen 2026.10.16 XRDCalculator",
+ "cases": {
+  "nacl-cu": {
+   "wavelength": 1.5405929,
+   "twoThetaMin": 10,
+   "twoThetaMax": 90,
+   "lattice": [
+    [
+     5.6402,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     5.6402,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     5.6402
+    ]
+   ],
+   "sites": [
+    {
+     "element": "Na",
+     "fractional": [
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "element": "Na",
+     "fractional": [
+      0.0,
+      0.5,
+      0.5
+     ]
+    },
+    {
+     "element": "Na",
+     "fractional": [
+      0.5,
+      0.0,
+      0.5
+     ]
+    },
+    {
+     "element": "Na",
+     "fractional": [
+      0.5,
+      0.5,
+      0.0
+     ]
+    },
+    {
+     "element": "Cl",
+     "fractional": [
+      0.5,
+      0.5,
+      0.5
+     ]
+    },
+    {
+     "element": "Cl",
+     "fractional": [
+      0.5,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "element": "Cl",
+     "fractional": [
+      0.0,
+      0.5,
+      0.0
+     ]
+    },
+    {
+     "element": "Cl",
+     "fractional": [
+      0.0,
+      0.0,
+      0.5
+     ]
+    }
+   ],
+   "peaks": [
+    {
+     "twoTheta": 27.366083738679514,
+     "d": 3.256370988283328,
+     "relativeIntensity": 8.07717735573401,
+     "multiplicity": 8,
+     "families": [
+      [
+       1,
+       1,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 31.70300740464379,
+     "d": 2.8201000000000005,
+     "relativeIntensity": 100.0,
+     "multiplicity": 6,
+     "families": [
+      [
+       2,
+       0,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 45.44713548419799,
+     "d": 1.9941118336241832,
+     "relativeIntensity": 65.63744268424573,
+     "multiplicity": 12,
+     "families": [
+      [
+       2,
+       2,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 53.86749161541789,
+     "d": 1.7005842856875029,
+     "relativeIntensity": 1.9462896755197336,
+     "multiplicity": 24,
+     "families": [
+      [
+       3,
+       1,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 56.47157748813196,
+     "d": 1.628185494141664,
+     "relativeIntensity": 21.228026372904374,
+     "multiplicity": 8,
+     "families": [
+      [
+       2,
+       2,
+       2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 66.22574658815313,
+     "d": 1.4100500000000002,
+     "relativeIntensity": 9.319661103141282,
+     "multiplicity": 6,
+     "families": [
+      [
+       4,
+       0,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 73.06888531413819,
+     "d": 1.2939506221767427,
+     "relativeIntensity": 0.9080420056881252,
+     "multiplicity": 24,
+     "families": [
+      [
+       3,
+       3,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 75.29054067269638,
+     "d": 1.2611870606694318,
+     "relativeIntensity": 24.746196406636376,
+     "multiplicity": 24,
+     "families": [
+      [
+       4,
+       2,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 83.99005059658205,
+     "d": 1.1513010039371405,
+     "relativeIntensity": 18.223590202778723,
+     "multiplicity": 24,
+     "families": [
+      [
+       4,
+       2,
+       2
+      ]
+     ]
+    }
+   ]
+  },
+  "nacl-mo": {
+   "wavelength": 0.7093171,
+   "twoThetaMin": 5,
+   "twoThetaMax": 60,
+   "lattice": [
+    [
+     5.6402,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     5.6402,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     5.6402
+    ]
+   ],
+   "sites": [
+    {
+     "element": "Na",
+     "fractional": [
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "element": "Na",
+     "fractional": [
+      0.0,
+      0.5,
+      0.5
+     ]
+    },
+    {
+     "element": "Na",
+     "fractional": [
+      0.5,
+      0.0,
+      0.5
+     ]
+    },
+    {
+     "element": "Na",
+     "fractional": [
+      0.5,
+      0.5,
+      0.0
+     ]
+    },
+    {
+     "element": "Cl",
+     "fractional": [
+      0.5,
+      0.5,
+      0.5
+     ]
+    },
+    {
+     "element": "Cl",
+     "fractional": [
+      0.5,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "element": "Cl",
+     "fractional": [
+      0.0,
+      0.5,
+      0.0
+     ]
+    },
+    {
+     "element": "Cl",
+     "fractional": [
+      0.0,
+      0.0,
+      0.5
+     ]
+    }
+   ],
+   "peaks": [
+    {
+     "twoTheta": 12.505225714085945,
+     "d": 3.256370988283328,
+     "relativeIntensity": 7.908842155053368,
+     "multiplicity": 8,
+     "families": [
+      [
+       1,
+       1,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 14.449407478752622,
+     "d": 2.8201000000000005,
+     "relativeIntensity": 100.0,
+     "multiplicity": 6,
+     "families": [
+      [
+       2,
+       0,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 20.489443104729453,
+     "d": 1.9941118336241832,
+     "relativeIntensity": 71.01740755224482,
+     "multiplicity": 12,
+     "families": [
+      [
+       2,
+       2,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 24.07490107200136,
+     "d": 1.7005842856875029,
+     "relativeIntensity": 2.2145602316033957,
+     "multiplicity": 24,
+     "families": [
+      [
+       3,
+       1,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 25.16256476251022,
+     "d": 1.628185494141664,
+     "relativeIntensity": 24.505515860978203,
+     "multiplicity": 8,
+     "families": [
+      [
+       2,
+       2,
+       2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 29.135185316338383,
+     "d": 1.4100500000000002,
+     "relativeIntensity": 11.221310684907381,
+     "multiplicity": 6,
+     "families": [
+      [
+       4,
+       0,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 31.815548278500152,
+     "d": 1.2939506221767427,
+     "relativeIntensity": 1.1049017529784422,
+     "multiplicity": 24,
+     "families": [
+      [
+       3,
+       3,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 32.66488206382392,
+     "d": 1.2611870606694318,
+     "relativeIntensity": 30.06923962474462,
+     "multiplicity": 24,
+     "families": [
+      [
+       4,
+       2,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 35.883536176058776,
+     "d": 1.1513010039371405,
+     "relativeIntensity": 21.399728847727847,
+     "multiplicity": 24,
+     "families": [
+      [
+       4,
+       2,
+       2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 38.141641654947506,
+     "d": 1.0854569960944427,
+     "relativeIntensity": 1.2100426612875812,
+     "multiplicity": 32,
+     "families": [
+      [
+       5,
+       1,
+       1
+      ],
+      [
+       3,
+       3,
+       3
+      ]
+     ]
+    },
+    {
+     "twoTheta": 41.67341208130176,
+     "d": 0.9970559168120916,
+     "relativeIntensity": 6.102509863966001,
+     "multiplicity": 12,
+     "families": [
+      [
+       4,
+       4,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 43.67877240154268,
+     "d": 0.9533678055039562,
+     "relativeIntensity": 1.5801373877946794,
+     "multiplicity": 48,
+     "families": [
+      [
+       5,
+       3,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 44.33096721176032,
+     "d": 0.9400333333333335,
+     "relativeIntensity": 12.010163418213548,
+     "multiplicity": 30,
+     "families": [
+      [
+       6,
+       0,
+       0
+      ],
+      [
+       4,
+       4,
+       2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 46.867840373386144,
+     "d": 0.8917939229440849,
+     "relativeIntensity": 7.719114006840192,
+     "multiplicity": 24,
+     "families": [
+      [
+       6,
+       2,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 48.703195891670184,
+     "d": 0.860122436389957,
+     "relativeIntensity": 0.654617405833894,
+     "multiplicity": 24,
+     "families": [
+      [
+       5,
+       3,
+       3
+      ]
+     ]
+    },
+    {
+     "twoTheta": 49.3035182147398,
+     "d": 0.8502921428437514,
+     "relativeIntensity": 6.306560659615344,
+     "multiplicity": 24,
+     "families": [
+      [
+       6,
+       2,
+       2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 51.65317381608989,
+     "d": 0.814092747070832,
+     "relativeIntensity": 1.7421922210846992,
+     "multiplicity": 8,
+     "families": [
+      [
+       4,
+       4,
+       4
+      ]
+     ]
+    },
+    {
+     "twoTheta": 53.366336234059624,
+     "d": 0.7897859729934784,
+     "relativeIntensity": 1.0298507450574683,
+     "multiplicity": 48,
+     "families": [
+      [
+       7,
+       1,
+       1
+      ],
+      [
+       5,
+       5,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 53.92891293243823,
+     "d": 0.7821550116873845,
+     "relativeIntensity": 4.385774020612598,
+     "multiplicity": 24,
+     "families": [
+      [
+       6,
+       4,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 56.14059444626741,
+     "d": 0.7537034283172281,
+     "relativeIntensity": 7.442539318438605,
+     "multiplicity": 48,
+     "families": [
+      [
+       6,
+       4,
+       2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 57.76228539272,
+     "d": 0.7342914957140431,
+     "relativeIntensity": 1.174884835778753,
+     "multiplicity": 72,
+     "families": [
+      [
+       7,
+       3,
+       1
+      ],
+      [
+       5,
+       5,
+       3
+      ]
+     ]
+    }
+   ]
+  },
+  "diamond-cu": {
+   "wavelength": 1.5405929,
+   "twoThetaMin": 10,
+   "twoThetaMax": 140,
+   "lattice": [
+    [
+     3.56679,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     3.56679,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     3.56679
+    ]
+   ],
+   "sites": [
+    {
+     "element": "C",
+     "fractional": [
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "element": "C",
+     "fractional": [
+      0.0,
+      0.5,
+      0.5
+     ]
+    },
+    {
+     "element": "C",
+     "fractional": [
+      0.5,
+      0.0,
+      0.5
+     ]
+    },
+    {
+     "element": "C",
+     "fractional": [
+      0.5,
+      0.5,
+      0.0
+     ]
+    },
+    {
+     "element": "C",
+     "fractional": [
+      0.25,
+      0.25,
+      0.25
+     ]
+    },
+    {
+     "element": "C",
+     "fractional": [
+      0.25,
+      0.75,
+      0.75
+     ]
+    },
+    {
+     "element": "C",
+     "fractional": [
+      0.75,
+      0.25,
+      0.75
+     ]
+    },
+    {
+     "element": "C",
+     "fractional": [
+      0.75,
+      0.75,
+      0.25
+     ]
+    }
+   ],
+   "peaks": [
+    {
+     "twoTheta": 43.93242357026139,
+     "d": 2.059287166642865,
+     "relativeIntensity": 100.0,
+     "multiplicity": 8,
+     "families": [
+      [
+       1,
+       1,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 75.30009914138928,
+     "d": 1.261050698034183,
+     "relativeIntensity": 38.40412375550129,
+     "multiplicity": 12,
+     "families": [
+      [
+       2,
+       2,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 91.49473726053431,
+     "d": 1.0754276487265215,
+     "relativeIntensity": 24.422337912728935,
+     "multiplicity": 24,
+     "families": [
+      [
+       3,
+       1,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 119.50420652124056,
+     "d": 0.8916975,
+     "relativeIntensity": 11.864174441311453,
+     "multiplicity": 6,
+     "families": [
+      [
+       4,
+       0,
+       0
+      ]
+     ]
+    }
+   ]
+  },
+  "triclinic-cu": {
+   "wavelength": 1.5405929,
+   "twoThetaMin": 10,
+   "twoThetaMax": 80,
+   "lattice": [
+    [
+     4.07753977100992,
+     0.0,
+     0.4285666993973791
+    ],
+    [
+     1.7845027488525964,
+     4.84604089124404,
+     1.192240588022484
+    ],
+    [
+     0.0,
+     0.0,
+     6.2
+    ]
+   ],
+   "sites": [
+    {
+     "element": "Fe",
+     "fractional": [
+      0.1,
+      0.2,
+      0.3
+     ]
+    },
+    {
+     "element": "O",
+     "fractional": [
+      0.62,
+      0.41,
+      0.17
+     ]
+    },
+    {
+     "element": "Si",
+     "fractional": [
+      0.33,
+      0.78,
+      0.69
+     ]
+    }
+   ],
+   "peaks": [
+    {
+     "twoTheta": 14.656482787780673,
+     "d": 6.039006619034086,
+     "relativeIntensity": 50.43899316076867,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       0,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 18.292348575428043,
+     "d": 4.84604089124404,
+     "relativeIntensity": 17.92305323276291,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       1,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 21.044028811383587,
+     "d": 4.218183677966038,
+     "relativeIntensity": 100.0,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       1,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 23.227532825163568,
+     "d": 3.8263569149302925,
+     "relativeIntensity": 20.0062604407784,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       0,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 24.126712268006955,
+     "d": 3.685749345623957,
+     "relativeIntensity": 43.318515257669894,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       1,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 25.769483643473254,
+     "d": 3.4543909606319723,
+     "relativeIntensity": 30.03970511107225,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       1,
+       -1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 25.949350443094698,
+     "d": 3.430853441371261,
+     "relativeIntensity": 17.477934130849274,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       1,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 27.23884338941784,
+     "d": 3.2712928260024166,
+     "relativeIntensity": 3.2321505234795542,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       0,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 27.907301587357274,
+     "d": 3.1944362385328966,
+     "relativeIntensity": 25.38791796009242,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       0,
+       -1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 29.55985174202143,
+     "d": 3.019503309517043,
+     "relativeIntensity": 23.565738427167663,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       0,
+       2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 30.567952770493832,
+     "d": 2.9221807481286666,
+     "relativeIntensity": 7.074425310724733,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       1,
+       -1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 31.563283436802458,
+     "d": 2.8322645652978746,
+     "relativeIntensity": 11.41802224554501,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       1,
+       2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 34.4942576416508,
+     "d": 2.5980194708790165,
+     "relativeIntensity": 3.442875528886481,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       -1,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 34.85117465942289,
+     "d": 2.5722255918337575,
+     "relativeIntensity": 1.2112678491910307,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       1,
+       2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 36.08044285729316,
+     "d": 2.4873582944440713,
+     "relativeIntensity": 15.234556210905348,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       2,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 36.35881281816953,
+     "d": 2.468950680887787,
+     "relativeIntensity": 6.414714218691347,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       -1,
+       -1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 36.363053701141794,
+     "d": 2.4686724655095533,
+     "relativeIntensity": 6.300673135659778,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       2,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 37.05246310010679,
+     "d": 2.4243072336790616,
+     "relativeIntensity": 1.7067257126391076,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       2,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 37.072856787480156,
+     "d": 2.42302044562202,
+     "relativeIntensity": 9.483473650825811,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       2,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 37.42146225525649,
+     "d": 2.4012453954185444,
+     "relativeIntensity": 15.610884478538834,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       0,
+       2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 38.13537387998631,
+     "d": 2.3579185677519514,
+     "relativeIntensity": 6.178303042790828,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       1,
+       -2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 38.42830829903137,
+     "d": 2.340615645155805,
+     "relativeIntensity": 2.3709087754068574,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       0,
+       -2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 38.92526676549851,
+     "d": 2.311869407053131,
+     "relativeIntensity": 16.42979161356606,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       -1,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 41.75269697640092,
+     "d": 2.1616147280272324,
+     "relativeIntensity": 6.449681652830199,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       2,
+       2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 41.89842220669007,
+     "d": 2.1544328110274047,
+     "relativeIntensity": 15.142552003132192,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       1,
+       -2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 42.49960127844633,
+     "d": 2.1253380190455564,
+     "relativeIntensity": 14.245648579396407,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       2,
+       -1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 42.84305793399158,
+     "d": 2.109091838983019,
+     "relativeIntensity": 11.797198852941273,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       2,
+       2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 42.897256039856444,
+     "d": 2.1065525461294747,
+     "relativeIntensity": 4.472866263821581,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       2,
+       -1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 43.831648113277105,
+     "d": 2.063787787333121,
+     "relativeIntensity": 6.090898232495871,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       -1,
+       -2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 44.4622683659087,
+     "d": 2.035969299268945,
+     "relativeIntensity": 9.54776234441565,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       1,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 44.99715682854662,
+     "d": 2.0130022063446953,
+     "relativeIntensity": 4.501017261911133,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       0,
+       3
+      ]
+     ]
+    },
+    {
+     "twoTheta": 45.11058187447804,
+     "d": 2.008203974616922,
+     "relativeIntensity": 6.96569306948478,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       1,
+       3
+      ]
+     ]
+    },
+    {
+     "twoTheta": 45.335873515763694,
+     "d": 1.9987467430396852,
+     "relativeIntensity": 2.8049397439528545,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       1,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 47.38898436331315,
+     "d": 1.9168290556779104,
+     "relativeIntensity": 6.196375460584906,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       1,
+       3
+      ]
+     ]
+    },
+    {
+     "twoTheta": 47.4849601701421,
+     "d": 1.9131784574651463,
+     "relativeIntensity": 2.1778729027533936,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       0,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 48.18944724742203,
+     "d": 1.886842010748632,
+     "relativeIntensity": 2.3569779343210775,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       -1,
+       2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 48.74627953709547,
+     "d": 1.8665823344911496,
+     "relativeIntensity": 1.0123286685824013,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       1,
+       -1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 48.99008366028618,
+     "d": 1.8578618374357858,
+     "relativeIntensity": 5.853826032569106,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       2,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 49.41504440073635,
+     "d": 1.8428746728119785,
+     "relativeIntensity": 0.6883013684509367,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       2,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 49.56054079476405,
+     "d": 1.83780462020971,
+     "relativeIntensity": 7.448320886257813,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       0,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 50.36878806121265,
+     "d": 1.8101927944193228,
+     "relativeIntensity": 7.326237387871911,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       0,
+       -1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 50.640196799353305,
+     "d": 1.8011258470713023,
+     "relativeIntensity": 2.2746418602840293,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       0,
+       3
+      ]
+     ]
+    },
+    {
+     "twoTheta": 51.07115514032925,
+     "d": 1.7869344253558792,
+     "relativeIntensity": 7.556109436065396,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       -2,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 51.16295297832007,
+     "d": 1.783943620835273,
+     "relativeIntensity": 6.200355530315046,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       1,
+       2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 51.25399085505644,
+     "d": 1.780988574109243,
+     "relativeIntensity": 1.88911763935562,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       -2,
+       -1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 51.772790520830384,
+     "d": 1.7643548045224529,
+     "relativeIntensity": 0.4113811796629792,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       2,
+       3
+      ]
+     ]
+    },
+    {
+     "twoTheta": 51.83069047905085,
+     "d": 1.7625198997290752,
+     "relativeIntensity": 7.0585928034173095,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       0,
+       -3
+      ]
+     ]
+    },
+    {
+     "twoTheta": 51.96552677038268,
+     "d": 1.7582633029859212,
+     "relativeIntensity": 2.636467819679192,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       3,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 52.59264575697708,
+     "d": 1.7387645747653255,
+     "relativeIntensity": 0.39369982462899344,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       1,
+       -3
+      ]
+     ]
+    },
+    {
+     "twoTheta": 52.828113607712424,
+     "d": 1.7315677981924882,
+     "relativeIntensity": 1.1866071986115032,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       2,
+       -2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 52.895228657775654,
+     "d": 1.7295287436343678,
+     "relativeIntensity": 2.9607530932905215,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       2,
+       3
+      ]
+     ]
+    },
+    {
+     "twoTheta": 52.9722460318173,
+     "d": 1.7271954803159861,
+     "relativeIntensity": 0.7140621383496122,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       2,
+       -2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 53.35582512102474,
+     "d": 1.7156794577290897,
+     "relativeIntensity": 6.147218271186276,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       3,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 53.36430838494927,
+     "d": 1.7154267206856304,
+     "relativeIntensity": 1.705957423127039,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       2,
+       2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 54.55786642845993,
+     "d": 1.6806854528490578,
+     "relativeIntensity": 1.8384811525438185,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       2,
+       -1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 55.0853295942888,
+     "d": 1.6658336380447536,
+     "relativeIntensity": 0.45928674954197046,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       -1,
+       -3
+      ]
+     ]
+    },
+    {
+     "twoTheta": 55.22552294627095,
+     "d": 1.661936151685283,
+     "relativeIntensity": 3.7842845444115447,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       3,
+       2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 55.54485954374817,
+     "d": 1.6531352614317099,
+     "relativeIntensity": 1.1942111381519036,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       -2,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 55.76741406336957,
+     "d": 1.6470641238067796,
+     "relativeIntensity": 1.5839790654310004,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       1,
+       -3
+      ]
+     ]
+    },
+    {
+     "twoTheta": 55.81974780414623,
+     "d": 1.645643864640287,
+     "relativeIntensity": 2.6385441402866574,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       3,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 56.06141527000711,
+     "d": 1.6391214386857118,
+     "relativeIntensity": 1.8935138148637125,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       -2,
+       -2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 56.1910698368166,
+     "d": 1.6356464130012083,
+     "relativeIntensity": 2.3850613028965775,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       0,
+       2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 56.96121659195577,
+     "d": 1.6153469637480133,
+     "relativeIntensity": 2.0376514596764856,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       3,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 57.316510166545406,
+     "d": 1.6061753076202643,
+     "relativeIntensity": 1.3853958752138713,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       1,
+       -2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 57.53458911387456,
+     "d": 1.6006047440133535,
+     "relativeIntensity": 4.475695916658636,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       -1,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 57.66802600054916,
+     "d": 1.5972181192664483,
+     "relativeIntensity": 1.000739176106025,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       0,
+       -2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 58.98734184440012,
+     "d": 1.5646019841049241,
+     "relativeIntensity": 0.9007385759437685,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       -1,
+       -1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 59.1154155471689,
+     "d": 1.5615174704816788,
+     "relativeIntensity": 0.2161168634190724,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       3,
+       2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 59.17135328441598,
+     "d": 1.560174695258305,
+     "relativeIntensity": 0.44507054222258385,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       3,
+       -1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 59.44504527567104,
+     "d": 1.5536432417769128,
+     "relativeIntensity": 0.369730282080663,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       3,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 60.37380452910102,
+     "d": 1.5319454921318112,
+     "relativeIntensity": 2.3681590751791837,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       1,
+       4
+      ]
+     ]
+    },
+    {
+     "twoTheta": 60.44401939595738,
+     "d": 1.5303338069146961,
+     "relativeIntensity": 1.2555363106313553,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       -1,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 60.64010672451779,
+     "d": 1.5258538266750694,
+     "relativeIntensity": 3.5327941376365204,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       -1,
+       3
+      ]
+     ]
+    },
+    {
+     "twoTheta": 60.89756014261443,
+     "d": 1.5200182330644074,
+     "relativeIntensity": 1.7244703095636176,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       3,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 60.90978969206378,
+     "d": 1.5197423316588206,
+     "relativeIntensity": 2.5589347784071825,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       1,
+       3
+      ]
+     ]
+    },
+    {
+     "twoTheta": 61.35617214651036,
+     "d": 1.5097516547585215,
+     "relativeIntensity": 0.1681432769486705,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       0,
+       4
+      ]
+     ]
+    },
+    {
+     "twoTheta": 61.824068950267055,
+     "d": 1.4994437558037483,
+     "relativeIntensity": 2.7464618847431024,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       2,
+       3
+      ]
+     ]
+    },
+    {
+     "twoTheta": 62.0749450316343,
+     "d": 1.4939848507392435,
+     "relativeIntensity": 1.2075362899584898,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       1,
+       4
+      ]
+     ]
+    },
+    {
+     "twoTheta": 62.27185383511376,
+     "d": 1.4897329880320274,
+     "relativeIntensity": 2.3478018165418844,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       3,
+       2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 62.38452676194772,
+     "d": 1.487312875213012,
+     "relativeIntensity": 0.7560587599605113,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       3,
+       -1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 62.64641801217425,
+     "d": 1.481723469607499,
+     "relativeIntensity": 2.4520290132572202,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       3,
+       3
+      ]
+     ]
+    },
+    {
+     "twoTheta": 63.63381567697905,
+     "d": 1.4610903740643333,
+     "relativeIntensity": 2.488821039990686,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       2,
+       -2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 64.0180948087645,
+     "d": 1.4532437368264508,
+     "relativeIntensity": 3.0089080027450423,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       -2,
+       2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 64.6222108055489,
+     "d": 1.441109715660572,
+     "relativeIntensity": 3.365058930413684,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       -1,
+       -2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 64.75705077561874,
+     "d": 1.4384344215197284,
+     "relativeIntensity": 1.9934277586571951,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       2,
+       4
+      ]
+     ]
+    },
+    {
+     "twoTheta": 64.80760787710888,
+     "d": 1.4374344137101092,
+     "relativeIntensity": 1.7854593769295264,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       -2,
+       -3
+      ]
+     ]
+    },
+    {
+     "twoTheta": 65.85107191982414,
+     "d": 1.4171620446262927,
+     "relativeIntensity": 2.3914497297530426,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       0,
+       4
+      ]
+     ]
+    },
+    {
+     "twoTheta": 65.90503948956008,
+     "d": 1.4161322826489373,
+     "relativeIntensity": 1.8241408226959304,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       2,
+       4
+      ]
+     ]
+    },
+    {
+     "twoTheta": 65.9992540336637,
+     "d": 1.4143388963472625,
+     "relativeIntensity": 2.9589233902261465,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       2,
+       -3
+      ]
+     ]
+    },
+    {
+     "twoTheta": 66.04275760151694,
+     "d": 1.413512654423648,
+     "relativeIntensity": 1.6633201881465807,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       2,
+       -3
+      ]
+     ]
+    },
+    {
+     "twoTheta": 66.43789468667455,
+     "d": 1.4060612259886796,
+     "relativeIntensity": 2.3320910439048372,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       3,
+       3
+      ]
+     ]
+    },
+    {
+     "twoTheta": 66.4655096922003,
+     "d": 1.4055440264164423,
+     "relativeIntensity": 2.2959710263826576,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       3,
+       -1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 66.47641968236519,
+     "d": 1.405339821273914,
+     "relativeIntensity": 0.6440191231448609,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       0,
+       3
+      ]
+     ]
+    },
+    {
+     "twoTheta": 67.20042981232416,
+     "d": 1.391947713011268,
+     "relativeIntensity": 1.1881138014550037,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       0,
+       -4
+      ]
+     ]
+    },
+    {
+     "twoTheta": 67.37628196228644,
+     "d": 1.388741718400732,
+     "relativeIntensity": 0.5880450424822539,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       -1,
+       2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 68.48623684730764,
+     "d": 1.3689154475210912,
+     "relativeIntensity": 0.8079516110687436,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       0,
+       -3
+      ]
+     ]
+    },
+    {
+     "twoTheta": 68.69564168630218,
+     "d": 1.3652525825593864,
+     "relativeIntensity": 2.2202322450139866,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       1,
+       -4
+      ]
+     ]
+    },
+    {
+     "twoTheta": 68.71414084102094,
+     "d": 1.3649301602544588,
+     "relativeIntensity": 1.3554526236658606,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       3,
+       -2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 69.00697375580643,
+     "d": 1.3598512849608528,
+     "relativeIntensity": 2.3514331265151545,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       -1,
+       -4
+      ]
+     ]
+    },
+    {
+     "twoTheta": 69.07719969889207,
+     "d": 1.3586402212833713,
+     "relativeIntensity": 0.711531356914051,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       3,
+       3
+      ]
+     ]
+    },
+    {
+     "twoTheta": 69.1745966303695,
+     "d": 1.356964995899949,
+     "relativeIntensity": 1.723112524161511,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       1,
+       -3
+      ]
+     ]
+    },
+    {
+     "twoTheta": 69.34917252433137,
+     "d": 1.3539750528574193,
+     "relativeIntensity": 0.9847843982201657,
+     "multiplicity": 2,
+     "families": [
+      [
+       3,
+       1,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 69.7966586362169,
+     "d": 1.3463850470832417,
+     "relativeIntensity": 2.656163247967301,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       -3,
+       -1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 69.8420281820238,
+     "d": 1.3456214061447187,
+     "relativeIntensity": 0.6719357084654325,
+     "multiplicity": 2,
+     "families": [
+      [
+       3,
+       1,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 69.99633907690789,
+     "d": 1.3430321551318702,
+     "relativeIntensity": 1.3831195173943809,
+     "multiplicity": 2,
+     "families": [
+      [
+       3,
+       2,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 70.50253028378297,
+     "d": 1.33462497356843,
+     "relativeIntensity": 2.3220916112145873,
+     "multiplicity": 2,
+     "families": [
+      [
+       3,
+       2,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 70.64249947545333,
+     "d": 1.3323233838051922,
+     "relativeIntensity": 0.4098079328010929,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       -3,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 71.15465295620011,
+     "d": 1.3239857624731515,
+     "relativeIntensity": 2.03534770666544,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       4,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 71.53142382206798,
+     "d": 1.3179351450574044,
+     "relativeIntensity": 2.5211365869504694,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       3,
+       -2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 71.5970539061805,
+     "d": 1.3168882861575126,
+     "relativeIntensity": 1.3561383851662174,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       1,
+       -4
+      ]
+     ]
+    },
+    {
+     "twoTheta": 72.73858687674067,
+     "d": 1.2990097354395083,
+     "relativeIntensity": 0.48492917481192477,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       -2,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 72.80321112182908,
+     "d": 1.298015939411425,
+     "relativeIntensity": 2.21087990886674,
+     "multiplicity": 2,
+     "families": [
+      [
+       3,
+       1,
+       -1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 72.89253366801276,
+     "d": 1.296645510213177,
+     "relativeIntensity": 0.9194804513830339,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       -3,
+       -2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 72.9261411192807,
+     "d": 1.296130841315555,
+     "relativeIntensity": 0.997359826473547,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       4,
+       2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 73.0494624518219,
+     "d": 1.2942467301981584,
+     "relativeIntensity": 1.907858064107449,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       -2,
+       -1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 73.30087757120725,
+     "d": 1.2904271289169051,
+     "relativeIntensity": 0.1112903274631756,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       4,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 73.42228831616472,
+     "d": 1.2885928847788761,
+     "relativeIntensity": 0.5827111580544871,
+     "multiplicity": 2,
+     "families": [
+      [
+       3,
+       2,
+       2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 73.52879492709934,
+     "d": 1.2869892849605435,
+     "relativeIntensity": 0.1480454425293706,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       3,
+       4
+      ]
+     ]
+    },
+    {
+     "twoTheta": 73.5871524807709,
+     "d": 1.2861127959168788,
+     "relativeIntensity": 1.758340855022913,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       2,
+       4
+      ]
+     ]
+    },
+    {
+     "twoTheta": 73.72875492289366,
+     "d": 1.2839923649577962,
+     "relativeIntensity": 0.4643001527352376,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       1,
+       4
+      ]
+     ]
+    },
+    {
+     "twoTheta": 73.92694279139265,
+     "d": 1.2810395857204222,
+     "relativeIntensity": 0.7282564629265147,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       -1,
+       -3
+      ]
+     ]
+    },
+    {
+     "twoTheta": 74.24836543893564,
+     "d": 1.276287601479121,
+     "relativeIntensity": 1.2952579214434305,
+     "multiplicity": 2,
+     "families": [
+      [
+       3,
+       1,
+       2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 74.30518295397648,
+     "d": 1.275452304976764,
+     "relativeIntensity": 0.5362794501406518,
+     "multiplicity": 2,
+     "families": [
+      [
+       3,
+       0,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 74.9079412194642,
+     "d": 1.2666768635984398,
+     "relativeIntensity": 0.3924422563549019,
+     "multiplicity": 2,
+     "families": [
+      [
+       3,
+       2,
+       -1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 74.96113060874556,
+     "d": 1.2659099612809244,
+     "relativeIntensity": 1.2359965040403125,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       4,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 75.3750764778398,
+     "d": 1.2599823852958516,
+     "relativeIntensity": 1.7010673595345511,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       -3,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 75.59122462806145,
+     "d": 1.2569157155167447,
+     "relativeIntensity": 1.1060036783702634,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       -1,
+       4
+      ]
+     ]
+    },
+    {
+     "twoTheta": 75.69107791906039,
+     "d": 1.2555055570489102,
+     "relativeIntensity": 0.4243160915150713,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       3,
+       -2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 75.75468715151106,
+     "d": 1.2546093931362503,
+     "relativeIntensity": 1.2609728484034426,
+     "multiplicity": 2,
+     "families": [
+      [
+       3,
+       0,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 75.79841847399021,
+     "d": 1.2539942465612093,
+     "relativeIntensity": 0.7780265029144028,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       -2,
+       3
+      ]
+     ]
+    },
+    {
+     "twoTheta": 75.92139132568977,
+     "d": 1.252268654241603,
+     "relativeIntensity": 0.29342970762494763,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       2,
+       -3
+      ]
+     ]
+    },
+    {
+     "twoTheta": 76.20283079779571,
+     "d": 1.2483426224511134,
+     "relativeIntensity": 1.5810932785416882,
+     "multiplicity": 2,
+     "families": [
+      [
+       3,
+       3,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 76.30000906738968,
+     "d": 1.2469944577700438,
+     "relativeIntensity": 0.41476348534253804,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       -2,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 76.540156740116,
+     "d": 1.2436791472220357,
+     "relativeIntensity": 0.17452460833280364,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       4,
+       2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 76.7103973541683,
+     "d": 1.2413428775787276,
+     "relativeIntensity": 0.47310757337359916,
+     "multiplicity": 2,
+     "families": [
+      [
+       3,
+       0,
+       -1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 76.82448699462158,
+     "d": 1.2397836219785048,
+     "relativeIntensity": 0.09667048965399301,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       -2,
+       -4
+      ]
+     ]
+    },
+    {
+     "twoTheta": 77.02962404667637,
+     "d": 1.2369929372801334,
+     "relativeIntensity": 0.8275408119802845,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       4,
+       1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 77.2157354527847,
+     "d": 1.2344753404438935,
+     "relativeIntensity": 0.31619703240335645,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       -2,
+       -2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 77.2260480635012,
+     "d": 1.2343362327547767,
+     "relativeIntensity": 1.4026407130084007,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       4,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 77.22659754047257,
+     "d": 1.2343288219730748,
+     "relativeIntensity": 0.9840736114856906,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       3,
+       4
+      ]
+     ]
+    },
+    {
+     "twoTheta": 77.41672416066864,
+     "d": 1.2317716184477945,
+     "relativeIntensity": 0.07883823256850082,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       1,
+       5
+      ]
+     ]
+    },
+    {
+     "twoTheta": 77.65525358196031,
+     "d": 1.2285831152079856,
+     "relativeIntensity": 0.37436963702577813,
+     "multiplicity": 2,
+     "families": [
+      [
+       3,
+       3,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 77.81894307459844,
+     "d": 1.2264076247510611,
+     "relativeIntensity": 1.189848565461163,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       -1,
+       3
+      ]
+     ]
+    },
+    {
+     "twoTheta": 78.51484579350215,
+     "d": 1.2172717663458947,
+     "relativeIntensity": 1.0265888369785194,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       4,
+       3
+      ]
+     ]
+    },
+    {
+     "twoTheta": 78.57424264522021,
+     "d": 1.2165003729346409,
+     "relativeIntensity": 1.277811860000179,
+     "multiplicity": 2,
+     "families": [
+      [
+       3,
+       3,
+       2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 78.78241561605074,
+     "d": 1.2138070786332136,
+     "relativeIntensity": 1.096585441465976,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       1,
+       5
+      ]
+     ]
+    },
+    {
+     "twoTheta": 78.91082974278105,
+     "d": 1.2121536168395308,
+     "relativeIntensity": 1.0314517436936088,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       4,
+       2
+      ]
+     ]
+    },
+    {
+     "twoTheta": 78.96092499146778,
+     "d": 1.21151022281101,
+     "relativeIntensity": 0.5761878573450565,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       4,
+       0
+      ]
+     ]
+    },
+    {
+     "twoTheta": 79.2457278962429,
+     "d": 1.2078696988302569,
+     "relativeIntensity": 0.8746840154191282,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       4,
+       -1
+      ]
+     ]
+    },
+    {
+     "twoTheta": 79.25109900781514,
+     "d": 1.2078013238068168,
+     "relativeIntensity": 1.2225491583253008,
+     "multiplicity": 2,
+     "families": [
+      [
+       0,
+       0,
+       5
+      ]
+     ]
+    },
+    {
+     "twoTheta": 79.40515348720874,
+     "d": 1.2058446043926863,
+     "relativeIntensity": 0.9433661447700464,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       3,
+       4
+      ]
+     ]
+    },
+    {
+     "twoTheta": 79.7526964594564,
+     "d": 1.2014614470706049,
+     "relativeIntensity": 0.6427442943793246,
+     "multiplicity": 2,
+     "families": [
+      [
+       1,
+       -3,
+       -3
+      ]
+     ]
+    },
+    {
+     "twoTheta": 79.81959144657611,
+     "d": 1.2006226977092722,
+     "relativeIntensity": 1.090980816582258,
+     "multiplicity": 2,
+     "families": [
+      [
+       2,
+       0,
+       4
+      ]
+     ]
+    }
+   ]
+  }
+ }
+}

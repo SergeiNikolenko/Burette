@@ -12,7 +12,7 @@ export type PerformReactionRequest = {
 // The reactions DataWarrior ships as examples, written as the SMARTS RDKit's
 // reaction runner reads. Each one takes the collection's structure as its first
 // reactant, which is why the co-reactant field carries the rest.
-const REACTION_PRESETS = [
+export const REACTION_PRESETS = [
   {
     id: "amidation",
     label: "Amidation",

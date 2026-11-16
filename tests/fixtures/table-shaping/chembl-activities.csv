@@ -1,0 +1,10 @@
+molecule_chembl_id,target,pchembl_value,Source,comment
+CHEMBL25,COX-1,5.8,assay A,
+CHEMBL25,COX-2,4.6,assay B,"weak, reversible"
+CHEMBL521,COX-1,5.3,assay A,
+CHEMBL154,COX-2,6.1,assay B,
+CHEMBL139,COX-2,7.4,assay B,
+CHEMBL113,Adenosine A2a,4.9,assay C,
+CHEMBL190,,5.1,assay C,
+CHEMBL118,COX-2,7.9,assay B,not in the collection
+,COX-1,6.0,assay A,row without a key

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef } from "react";
-import { defaultKeymap } from "@codemirror/commands";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { defaultKeymap, history, historyField, historyKeymap } from "@codemirror/commands";
 import { json, jsonLanguage } from "@codemirror/lang-json";
 import { jsonDisplayContent } from "./text-file-viewer/json-display";
 import { tags } from "@lezer/highlight";
@@ -22,8 +22,14 @@ import { createTextSearchPanel, toggleTextSearch } from "./text-file-viewer/text
 import { registerTextFind } from "../lib/text-find";
 import { classifySourceEditEligibility, classifySourceShape, sourceNotEditableMessage } from "../lib/source-editing/policy";
 import { requestContextualGuide } from "./onboarding/request";
+import { registerSourceEditor, restoreSourceEditorView, type SourceEditorViewState } from "../lib/source-editing/view-state";
 
 const AGENT_SHELL_BUILD = import.meta.env.VITE_BURETTE_AGENT_SHELL === "1";
+
+// A draft keeps Undo across dock tabs only within its actual editing session.
+// Exact text also prevents an older keystroke from overwriting a newer source edit.
+const parkedHistories = new Map<string, unknown>();
+const PARKED_HISTORY_LIMIT = 16;
 
 export function TextFileViewer({
   document,
@@ -35,6 +41,8 @@ export function TextFileViewer({
   openPaths?: MarkdownOpenPaths;
   onStructureSelection?: (document: TextFileDocument, selection: TextStructureSelection | null) => void;
   sourceEditing?: {
+    sessionId?: string;
+    viewState?: SourceEditorViewState;
     editable: boolean;
     content: string;
     status: string;
@@ -42,6 +50,7 @@ export function TextFileViewer({
     saving: boolean;
     diagnostic?: string | null;
     saveDisabledReason?: string | null;
+    saveLabel?: "Save" | "Save copy";
     showApplyPreview?: boolean;
     onBeginEditing?: () => void;
     onChange?: (content: string) => void;
@@ -51,6 +60,13 @@ export function TextFileViewer({
 }) {
   const parentRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
+  const applyPreviewRef = useCallback((button: HTMLButtonElement | null) => {
+    if (!button) return;
+    return () => {
+      // Hand focus to the editor before removing the completed action.
+      if (button.ownerDocument.activeElement === button) viewRef.current?.focus();
+    };
+  }, []);
   const selectionTimeoutRef = useRef<number | null>(null);
   const onStructureSelectionRef = useRef(onStructureSelection);
   const onContentChangeRef = useRef(sourceEditing?.onChange);
@@ -61,7 +77,10 @@ export function TextFileViewer({
   const lineDragStartRef = useRef<{ from: number; to: number } | null>(null);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const editRequestedRef = useRef(false);
+  const restoredViewRef = useRef<SourceEditorViewState | undefined>(undefined);
   const languageCompartment = useMemo(() => new Compartment(), [document.id]);
+  const historySessionId = sourceEditing?.sessionId;
+  const historyCompartment = useMemo(() => new Compartment(), [document.id]);
   const markdownDocument = isMarkdown(document);
   const maestroDocument = isMaestroText(document);
   const imageDocument = isImageDocument(document);
@@ -107,66 +126,71 @@ export function TextFileViewer({
       }, 120);
     };
 
+    const extensions = [
+      historyCompartment.of(editable ? history() : []),
+      lineNumbers(),
+      highlightActiveLineGutter(),
+      highlightSpecialChars(),
+      foldGutter(),
+      drawSelection(),
+      indentOnInput(),
+      bracketMatching(),
+      highlightActiveLine(),
+      highlightSelectionMatches(),
+      search({
+        top: true,
+        literal: true,
+        createPanel: createTextSearchPanel,
+        scrollToMatch: (range) => EditorView.scrollIntoView(range, { y: "center" }),
+      }),
+      EditorView.contentAttributes.of({ tabindex: "0", "aria-label": `${document.title} text` }),
+      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+      syntaxHighlighting(jsonHighlightStyle),
+      ...(editable
+        ? [EditorState.readOnly.of(false), EditorView.editable.of(true)]
+        : [EditorState.readOnly.of(true), EditorView.editable.of(false)]),
+      EditorView.updateListener.of((update) => {
+        if (update.docChanged && !syncingContentRef.current) {
+          onContentChangeRef.current?.(update.state.doc.toString());
+        }
+        if (!update.selectionSet) return;
+        const range = update.state.selection.main;
+        // A collapsed caret releases highlights that only mirror the text.
+        if (range.empty) {
+          emitStructureSelection(() => null);
+          return;
+        }
+        emitStructureSelection(() => textStructureSelectionFromRange(documentRef.current, range.from, range.to));
+      }),
+      keymap.of([
+        {
+          key: "Mod-s",
+          preventDefault: true,
+          run: () => {
+            if (!saveSourceRef.current) return false;
+            void saveSourceRef.current();
+            return true;
+          },
+        },
+        { key: "Mod-f", run: toggleTextSearch, preventDefault: true },
+        ...searchKeymap,
+        ...historyKeymap,
+        ...defaultKeymap,
+      ]),
+      textViewerTheme,
+      languageCompartment.of(baseLanguageSupport(document)),
+    ];
+    const parked = editable && historySessionId ? parkedHistories.get(historySessionId) as { doc?: unknown } | undefined : undefined;
+    if (historySessionId) parkedHistories.delete(historySessionId);
     const view = new EditorView({
       parent,
-      state: EditorState.create({
-        doc: editorContent,
-        extensions: [
-          lineNumbers(),
-          highlightActiveLineGutter(),
-          highlightSpecialChars(),
-          foldGutter(),
-          drawSelection(),
-          indentOnInput(),
-          bracketMatching(),
-          highlightActiveLine(),
-          highlightSelectionMatches(),
-          search({
-            top: true,
-            literal: true,
-            createPanel: createTextSearchPanel,
-            scrollToMatch: (range) => EditorView.scrollIntoView(range, { y: "center" }),
-          }),
-          EditorView.contentAttributes.of({ tabindex: "0", "aria-label": `${document.title} text` }),
-          syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-          syntaxHighlighting(jsonHighlightStyle),
-          ...(editable
-            ? [EditorState.readOnly.of(false), EditorView.editable.of(true)]
-            : [EditorState.readOnly.of(true), EditorView.editable.of(false)]),
-          EditorView.updateListener.of((update) => {
-            if (update.docChanged && !syncingContentRef.current) {
-              onContentChangeRef.current?.(update.state.doc.toString());
-            }
-            if (!update.selectionSet) return;
-            const range = update.state.selection.main;
-            // A collapsed caret releases highlights that only mirror the text.
-            if (range.empty) {
-              emitStructureSelection(() => null);
-              return;
-            }
-            emitStructureSelection(() => textStructureSelectionFromRange(documentRef.current, range.from, range.to));
-          }),
-          keymap.of([
-            {
-              key: "Mod-s",
-              preventDefault: true,
-              run: () => {
-                if (!saveSourceRef.current) return false;
-                void saveSourceRef.current();
-                return true;
-              },
-            },
-            { key: "Mod-f", run: toggleTextSearch, preventDefault: true },
-            ...searchKeymap,
-            ...defaultKeymap,
-          ]),
-          textViewerTheme,
-          languageCompartment.of(baseLanguageSupport(document)),
-        ],
-      }),
+      state: parked?.doc === editorContent
+        ? EditorState.fromJSON(parked, { extensions }, { history: historyField })
+        : EditorState.create({ doc: editorContent, extensions }),
     });
     viewRef.current = view;
     const unregisterFind = registerTextFind(view.dom, () => { toggleTextSearch(view); });
+    const unregisterSource = editable ? registerSourceEditor(document.path, view) : () => {};
     const lineRangeFromElement = (lineElement: HTMLElement) => {
       const line = view.state.doc.lineAt(view.posAtDOM(lineElement, 0));
       return { from: line.from, to: line.to };
@@ -268,22 +292,39 @@ export function TextFileViewer({
       parent.removeEventListener("pointerup", onPointerUp);
       parent.removeEventListener("pointercancel", onPointerCancel);
       parent.removeEventListener("pointerleave", onPointerLeave);
+      if (editable && historySessionId) {
+        parkedHistories.set(historySessionId, view.state.toJSON({ history: historyField }));
+        for (const path of parkedHistories.keys()) if (parkedHistories.size > PARKED_HISTORY_LIMIT) parkedHistories.delete(path);
+      }
       view.destroy();
       unregisterFind();
+      unregisterSource();
       viewRef.current = null;
     };
-  }, [document.id, editable, languageCompartment, nonEditorDocument]);
+  }, [document.id, editable, historySessionId, historyCompartment, languageCompartment, nonEditorDocument]);
 
   useEffect(() => {
     if (nonEditorDocument) return;
     const view = viewRef.current;
     if (!view || view.state.doc.toString() === editorContent) return;
+    // Text changed elsewhere, such as a Geometry edit, ends this editor's undo history:
+    // undoing an earlier keystroke must never write over the newer source.
     syncingContentRef.current = true;
     view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: editorContent },
+      effects: historyCompartment.reconfigure([]),
     });
+    if (editable) view.dispatch({ effects: historyCompartment.reconfigure(history()) });
     syncingContentRef.current = false;
-  }, [editorContent, nonEditorDocument]);
+  }, [editable, editorContent, historyCompartment, nonEditorDocument]);
+
+  useEffect(() => {
+    const state = sourceEditing?.viewState;
+    const view = viewRef.current;
+    if (!state || !view || !editable || restoredViewRef.current === state) return;
+    restoreSourceEditorView(view, state);
+    restoredViewRef.current = state;
+  }, [editable, editorContent, sourceEditing?.viewState]);
 
   useEffect(() => {
     if (nonEditorDocument) return undefined;
@@ -342,11 +383,11 @@ export function TextFileViewer({
             )
           )}
           {sourceEditing?.showApplyPreview && sourceEditing.editable && (
-            <Button type="button" variant="secondary" size="xs" onClick={() => void sourceEditing.onApplyPreview?.()}>Apply Preview</Button>
+            <Button ref={applyPreviewRef} type="button" variant="secondary" size="xs" onClick={() => void sourceEditing.onApplyPreview?.()}>Apply Preview</Button>
           )}
           {sourceEditing?.editable && (
             <ShortcutTooltip
-              label={sourceEditing.saveDisabledReason ?? "Save source"}
+              label={sourceEditing.saveDisabledReason ?? sourceEditing.saveLabel ?? "Save source"}
               shortcut={sourceEditing.saveDisabledReason ? undefined : "⌘S"}
             >
               <span className="inline-flex">
@@ -357,7 +398,7 @@ export function TextFileViewer({
                   disabled={sourceEditing.saving || Boolean(sourceEditing.saveDisabledReason) || !sourceEditing.dirty}
                   onClick={() => void sourceEditing.onSave?.()}
                 >
-                  Save
+                  {sourceEditing.saveLabel ?? "Save"}
                 </Button>
               </span>
             </ShortcutTooltip>
@@ -365,7 +406,9 @@ export function TextFileViewer({
         </div>
       </div>
       {sourceEditing?.diagnostic && (
-        <div className="source-edit-diagnostic" role="status">{sourceEditing.diagnostic}</div>
+        <div className="source-edit-diagnostic" role="status">{sourceEditing.diagnostic.startsWith("[web] Burette web renderer failed to load this file.")
+          ? "Check the structure text for incomplete atom or bond records. The last valid preview is still shown."
+          : sourceEditing.diagnostic}</div>
       )}
       </div>
       {markdownDocument ? (
@@ -465,12 +508,16 @@ const textViewerTheme = EditorView.theme({
     fontKerning: "none",
     overflowX: "auto",
   },
+  ".cm-cursor, .cm-dropCursor": {
+    borderLeftColor: "var(--text-primary)",
+  },
   ".cm-panels": {
     backgroundColor: "var(--shadcn-background)",
     color: "var(--text-primary)",
     borderColor: "var(--line-subtler)",
   },
   ".cm-content": {
+    cursor: "text",
     padding: "16px 0 32px",
     minHeight: "100%",
     minWidth: "100%",

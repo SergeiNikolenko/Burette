@@ -1,0 +1,60 @@
+{
+  "status": "passed",
+  "scope": "MOLX native graph capability probe, not restored Align/All UI",
+  "archive_sha256": "b1b0af797e0cfe59ad764d7387e27057cb452658c72834b9022646382de126c4",
+  "producer_sha256": "f4e280b32b0d9f25ac7a21cfe47e810fe5cecb8b669e8d9751329a0ffded260d",
+  "graph_xyz_matches_scientific_attachment": true,
+  "source_sha256": "2c797e96dc2a53d7e384fdf88372ac08096a11684af132d3f702c73bb0aaa589",
+  "frames": 6,
+  "atoms_per_frame": 20,
+  "coordinate_values_checked": 360,
+  "max_native_coordinate_error_angstrom": 1.748046871696829e-07,
+  "coordinate_tolerance_angstrom": 2e-07,
+  "source_order_and_elements_match": true,
+  "saved_binding_refs_preserved": true,
+  "derived_model_uses_original_trajectory": true,
+  "derived_frame_index": 4,
+  "additional_root_rejected": "Scientific data is saved with scenes of exactly one structure.",
+  "binding_and_positions_exact_after_removal": true,
+  "frame_index_after_removal": 1,
+  "controls": {
+    "align": 0,
+    "all": 0
+  },
+  "ancestors": [
+    {
+      "ref": "iEmWIT2UABECoxAAAAAAFe",
+      "parent": "iEmWIT2UABECoxAAAAAAFb",
+      "type": "ms-plugin.trajectory-from-xyz",
+      "dataType": "object"
+    },
+    {
+      "ref": "iEmWIT2UABECoxAAAAAAFb",
+      "parent": "-=root=-",
+      "type": "ms-plugin.raw-data",
+      "dataType": "string",
+      "bytes": 2952
+    },
+    {
+      "ref": "-=root=-",
+      "parent": "-=root=-",
+      "type": "build-in.root",
+      "dataType": "object"
+    }
+  ],
+  "probe_sha256": "4f26ba65a0e688e4dbe9172aaa2984bee8af45f5e467d5a1733b12a191a0bfca",
+  "probe_script_sha256": "7da416ac897edf6d643e22b5887ce280fca0c3ff1e3b1698dd274649dc9c8533",
+  "oracle_script_sha256": "46f6e8831d84613e9b72d3be1eb76906a41a54ecf30cedfeb1d2c982a1350222",
+  "limitations": [
+    "No production change",
+    "No Align/All UI fix",
+    "No native or manual IAB acceptance",
+    "No save or reopen of the temporary derived model"
+  ],
+  "viewer_sha256": "69fb11d799c4d236cf9e493790db05c357383cef62c9a54f9f195283617459af",
+  "cleanup": {
+    "owned_server_terminated": true,
+    "port_closed": true,
+    "temporary_model_removed": true
+  }
+}

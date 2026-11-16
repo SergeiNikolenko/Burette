@@ -156,7 +156,7 @@ console.log('Scene switching, hidden presets, aligned reloads and partial builde
 // Selection/All/pins must never clear or reload the receptor. Only selected
 // ligand structures belong in the live hierarchy; parsed offscreen data is cached.
 {
-  let clears = 0, parses = 0, receptorLoads = 0, receptorStyles = 0, appearances = 0, fail = false;
+  let clears = 0, parses = 0, receptorLoads = 0, receptorStyles = 0, waterStyles = 0, appearances = 0, fail = false;
   const live = new Set(), deleted = [], children = new Map();
   const pins = new Set(), selection = new Set(), references = new Set();
   const docking = { kind: 'docking', sdfPoseOverlayAvailable: true, receptorEntry: { label: 'receptor' },
@@ -187,6 +187,7 @@ console.log('Scene switching, hidden presets, aligned reloads and partial builde
     applySdfCollectionMolstarStyle: async (_viewer, _style, refs) => {
       if (refs.includes('receptor')) receptorStyles++;
     },
+    applyMolstarWaterLineRepresentation: async () => { waterStyles++; },
     applySdfCollectionMolstarRepresentations: async () => {
       if (fail) { fail = false; throw new Error('representation failed'); }
     },
@@ -237,8 +238,8 @@ console.log('Scene switching, hidden presets, aligned reloads and partial builde
   assert.deepEqual([...live].sort(), ['pose1', 'receptor'], 'a hidden stepper pose leaves the scene');
   context.dockingPinnedPoseState.activeHidden = false; await render(0);
   await context.resyncDockingSceneAfterRestyle(poseViewer);
-  assert.deepEqual({ clears, receptorLoads, receptorStyles, camera: camera.view, manualReset: camera.props.camera.manualReset },
-    { clears: 1, receptorLoads: 1, receptorStyles: 1, camera: { zoom: 3, rotation: [1, 2, 3] }, manualReset: false });
+  assert.deepEqual({ clears, receptorLoads, receptorStyles, waterStyles, camera: camera.view, manualReset: camera.props.camera.manualReset },
+    { clears: 1, receptorLoads: 1, receptorStyles: 1, waterStyles: 1, camera: { zoom: 3, rotation: [1, 2, 3] }, manualReset: false });
   selection.clear(); pins.clear();
   for (let i = 0; i < 8; i++) await render(i);
   assert.ok(context.activeDockingPoseCollectionState.layers.size <= 5, 'inactive parsed cache is bounded');
@@ -528,7 +529,7 @@ console.log('Docking pose visibility edits follow pins, sets and All, and recove
     applyLabel() {}, previous: {}, next: {}, slider: { dataset: {} }, storyStep: null,
     refreshNativeTrajectoryStandalonePreview() {}, postHostMessage() {}, activeConfig: {}, loopActive: false,
     updateViewportAnimateState() {}, activeViewer: {}, activeMolstarPrepared: prepared,
-    structureOverlayAvailable: () => true, structureOverlayNoun: () => 'poses',
+    structureOverlayAvailable: () => true, structureOverlayNoun: () => 'poses', sceneComparison: null,
     setSdfPoseMode: mode => { context.activeSdfPoseMode = mode; },
     notifyStructureOverlayModeChanged() {}, updateSdfPoseButton() {}, setStatus() {}, readTrajectoryControlIndex: () => 0,
     notifyChemicalSpaceMolecule() {},
@@ -564,3 +565,43 @@ console.log('Docking pose visibility edits follow pins, sets and All, and recove
   } finally { await window.happyDOM.close(); }
 }
 console.log('Docking All control and agent changes keep picker checks synchronized');
+
+// While Align builds a one-frame overlay, Mol* publishes its model before the
+// overlay cache owns the new refs. That transient model cannot move the source pager.
+{
+  let changed, position = { index: 1, total: 6 }, disposed = false;
+  const indices = [];
+  const activeViewer = { plugin: { state: { data: { events: { changed: {
+    subscribe(fn) { changed = fn; return { unsubscribe() { disposed = true; } }; },
+  } } } } } };
+  const install = new Function('activeViewer', 'xyzSingleFrameSceneActive', 'readNativeTrajectoryPosition',
+    `${extract('installNativeTrajectoryPoseSync')} return installNativeTrajectoryPoseSync;`)(activeViewer, () => false, () => position);
+  const dispose = install(6, index => indices.push(index));
+  position = { index: 0, total: 1 }; changed();
+  position = { index: 1, total: 6 }; changed();
+  assert.deepEqual(indices, [1, 1]);
+  dispose(); assert.equal(disposed, true);
+}
+
+// Selecting a derived reference must not redirect the source frame stepper.
+{
+  const fs = await import('node:fs');
+  const vm = await import('node:vm');
+  const viewer = fs.readFileSync(new URL('../PreviewExtension/Web/viewer.js', import.meta.url), 'utf8');
+  const body = viewer.match(/\n  function nativeTrajectoryModelTransform\([\s\S]*?\n  \}/u)?.[0];
+  assert.ok(body);
+  const owner = { transform: { ref: 'source-model', params: { modelIndex: 1 }, transformer: { id: 'model-from-trajectory' } } };
+  const comparison = { transform: { ref: 'comparison-model', params: { modelIndex: 4 }, transformer: { id: 'model-from-trajectory' } } };
+  let validated = true;
+  const plugin = { state: { data: { cells: new Map([['comparison-model', comparison], ['source-model', owner]]) } },
+    managers: { structure: { hierarchy: { current: { structures: [{}, {}] }, selection: { structures: [{ model: { cell: comparison } }] } } } } };
+  const scope = vm.createContext({ activeViewer: { plugin }, nativeTrajectoryFrameCount: () => 6,
+    window: { BuretteSceneFiles: { science: { binding() { if (!validated) throw Error('Unrelated roots'); return { modelRef: 'source-model' }; } } } } });
+  vm.runInContext(`${body}; globalThis.pick = nativeTrajectoryModelTransform;`, scope);
+  assert.equal(scope.pick(6).ref, 'source-model', 'scientific owner wins over selected comparison and cell order');
+  assert.equal(scope.pick(100).ref, 'source-model', 'stale frame total must not redirect playback');
+  validated = false;
+  assert.equal(scope.pick(6).ref, 'comparison-model', 'ordinary unrelated structures retain selection semantics');
+  delete plugin.managers;
+  assert.equal(scope.pick(6).ref, 'comparison-model', 'minimal runtimes without a hierarchy retain cell fallback');
+}

@@ -14,7 +14,7 @@ new Function('require', 'exports', ts.transpile(readFileSync('apps/desktop/src/h
     useRef: value => { const i = cursor++; if (!(i in stateValues)) stateValues[i] = { current: value }; return stateValues[i]; },
   };
   if (name === './use-menu-events') return { useMenuEvents: options => { handler = options.handleNativeMenuCommand; } };
-  if (name === '../lib/native-menu-paths') return { fileBackedViewerDocumentPath: doc => doc.path, isAbsoluteNativeFilePath: path => path.startsWith('/'), nativeOpenDocumentPaths: () => [] };
+  if (name === '../lib/native-menu-paths') return { fileBackedViewerDocumentPath: doc => doc.path, isAbsoluteNativeFilePath: path => path.startsWith('/'), nativeOpenDocumentPaths: () => [], nativeTabDocumentPaths: () => [] };
   if (name === '../lib/native-menu') return { nextDocumentRegistryRevision: () => 1 };
   if (name === '../lib/tauri') return { isTauriRuntime: () => false };
   return new Proxy({}, { get: () => () => {} });

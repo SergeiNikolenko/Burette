@@ -1,6 +1,10 @@
+import { polymerSourceFormat } from "./workbench/polymer-tool";
+import { openWorkbenchDialog } from "./workbench/dialog-store";
+import { inputExportSupportsDocument } from "./workbench/structure";
 import type { ShellActions, ShellViewState } from "../components/types";
 import { parsePdbFetchCommand, parseSmilesCommand } from "./structure-fetch";
 import type { ViewerPreferences } from "../types";
+import { postGridCommand } from "./viewer-bridge";
 
 export type ShellCommand = {
   id: string;
@@ -40,6 +44,30 @@ export function buildShellCommands(
       run: actions.chooseFiles,
     },
     ...shellCommandsForQuery(query, actions),
+    ...(polymerSourceFormat(state.activeDocument) ? [{
+      id: "workbench-polymer", group: "Suggested", label: "Build polymer…", description: "",
+      run: () => openWorkbenchDialog({ kind: "builder", builder: "polymer", document: state.activeDocument }),
+    }] : []),
+    {
+      id: "workbench-peptide", group: "Suggested", label: "Build peptide…", description: "",
+      run: () => openWorkbenchDialog({ kind: "builder", builder: "peptide", document: state.activeDocument }),
+    },
+    {
+      id: "workbench-metal", group: "Suggested", label: "Build metal complex…", description: "",
+      run: () => openWorkbenchDialog({ kind: "builder", builder: "metal", document: state.activeDocument }),
+    },
+    {
+      id: "workbench-nucleic", group: "Suggested", label: "Build DNA or RNA…", description: "Create a DNA or RNA helix",
+      run: () => openWorkbenchDialog({ kind: "builder", builder: "nucleic", document: state.activeDocument }),
+    },
+    ...(inputExportSupportsDocument(state.activeDocument) ? [{
+      id: "workbench-input-export", group: "Suggested", label: "Export input file…", description: "",
+      run: () => openWorkbenchDialog({ kind: "input", document: state.activeDocument }),
+    }] : []),
+    {
+      id: "workbench-assembly", group: "Suggested", label: "Build biological assembly…", description: "",
+      run: () => openWorkbenchDialog({ kind: "assembly", document: state.activeDocument }),
+    },
     {
       id: "open-clipboard",
       group: "Suggested",
@@ -85,7 +113,7 @@ export function buildShellCommands(
     {
       id: "open-ketcher",
       group: "Suggested",
-      label: "Ketcher",
+      label: "Molecular editor",
       description: "Open molecule sketch tab",
       run: actions.openKetcher,
     },
@@ -116,6 +144,12 @@ export function buildShellCommands(
       description: "Correlate the numeric columns of the active collection",
       run: () => actions.openCorrelationMatrix(state.activeDocument!.id),
     }, {
+      id: "chart-columns",
+      group: "Suggested",
+      label: "Chart columns",
+      description: "Scatter, histogram, bar and box charts of the active collection",
+      run: () => actions.openDockTab("bottom", "collection-chart"),
+    }, {
       id: "add-calculated-values",
       group: "Suggested",
       label: "Add calculated values",
@@ -137,11 +171,49 @@ export function buildShellCommands(
       description: "Count how often a SMARTS query occurs in each molecule",
       run: () => actions.openSubstructureCount(state.activeDocument!.id),
     }, {
+      id: "matched-pairs",
+      group: "Suggested",
+      label: "Matched pairs",
+      description: "Find molecules that differ in one substituent and how a column changes between them",
+      run: () => actions.openMatchedPairs(state.activeDocument!.id),
+    }, {
+      id: "sar-table",
+      group: "Suggested",
+      label: "SAR table",
+      description: "Lay the R-group decomposition out as a matrix of two positions",
+      run: () => actions.openSarTable(state.activeDocument!.id),
+    }, {
       id: "delete-duplicate-rows",
       group: "Suggested",
       label: "Delete duplicate molecules",
       description: "Remove repeated structures from the active collection",
       run: () => actions.deleteDuplicateGridRows(state.activeDocument!.id),
+    }, {
+      id: "pivot-collection",
+      group: "Suggested",
+      label: "Pivot…",
+      description: "",
+      run: () => openWorkbenchDialog({ kind: "pivot", document: state.activeDocument }),
+    }, {
+      id: "unpivot-collection",
+      group: "Suggested",
+      label: "Unpivot…",
+      description: "",
+      run: () => openWorkbenchDialog({ kind: "unpivot", document: state.activeDocument }),
+    }, {
+      id: "merge-file-by-key",
+      group: "Suggested",
+      label: "Merge file by key…",
+      description: "",
+      run: () => openWorkbenchDialog({ kind: "merge-by-key", document: state.activeDocument }),
+    }, {
+      // One row at a time with all its fields; the grid opens it on the first
+      // selected row, or on the first row it shows.
+      id: "record-view",
+      group: "Suggested",
+      label: "Record view",
+      description: "",
+      run: () => postGridCommand(state.activeDocument!.id, "collection.record-view"),
     }] : []),
     {
       id: "toggle-sidebar",
@@ -276,7 +348,7 @@ export function shellCommandsForQuery(query: string, actions: ShellActions): She
     items.push({
       id: `draw-smiles-${smilesCommand.smiles}`,
       group: "Commands",
-      label: `Draw SMILES in Ketcher: ${shortCommandValue(smilesCommand.smiles)}`,
+      label: `Draw SMILES in molecular editor: ${shortCommandValue(smilesCommand.smiles)}`,
       description: `Command: ${smilesCommand.command} · Import SMILES into the molecule sketcher`,
       run: () => actions.openKetcherWithStructures([], [{
         title,

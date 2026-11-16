@@ -34,7 +34,7 @@ and included in session snapshots and closed-tab restoration.
 `activeTabId` names the focused view in any group. Activating a placed screen
 preserves its placement. Right and bottom splits have independent tab selection
 and resizable bounds. Full View hides other groups without moving or rebuilding
-the selected view; Exit Full View restores the split. Tabs saved by older
+the selected view. Exit Full View in the title bar restores the split. Tabs saved by older
 builds in the retired side panel (`pane: "side"`) load into the main strip.
 Settings temporarily hides placed surfaces.
 
@@ -46,7 +46,9 @@ Settings temporarily hides placed surfaces.
 | Bottom dock | Shared tools (Jobs, logs) | Cmd+J only; the title bar has no button for it |
 
 Context tools can be opened as workspace tabs, then placed in either split or
-Full View. The Files entry opens the existing editable screen in that group.
+Full View. Selecting Files inside a dock keeps the current workspace tabs in
+place. The right dock's Open Files in Main Tabs action opens the project file
+browser in the main strip. The new-tab menu can open that browser in any group.
 The right inspector remains contextual; bottom tools use one window-owned
 workspace (`window-tools`) and survive source tab changes and closure. Source
 pins persist by path, resolving the new document ID after restoration. Missing
@@ -126,8 +128,12 @@ handoff carries the tab label, pin state and original order for return.
   neighboring sidecars. Applied GIFs preserve their encoded frames, timing and
   transparency, but start playback from the beginning in the new window. An
   active animation preview must be applied or cancelled before transfer.
-- Unsaved or saving source drafts must be saved before transfer. Trajectory
-  formats, MVS stories and non-scene docking views are not eligible. A live
+- Source editing sessions move with their current text, base revision and editor
+  selection/scroll state, including unsaved drafts. Editing and saving are locked
+  during handoff; an in-progress save must finish before transfer. The receiver
+  retains the draft without writing the source file and marks its preview as
+  not applied. A source already being edited in the destination rejects the move.
+- Trajectory formats, MVS stories and non-scene docking views are not eligible. A live
   Mol* Story with multiple snapshots is also rejected rather than silently
   discarding current changes. Mol* and illustration undo stacks are not
   transferred to the destination runtime.
@@ -146,7 +152,7 @@ may still reference them.
 | --- | --- |
 | Full View, Move to Right/Bottom Split, Move to Main Tabs, Open in New Window, Pop out, Move to New Window | tab context menu, pane switcher |
 | Switch screen, show a main tab here, open Jobs, Chemical space, Ketcher | pane switcher (title and chevron) |
-| New screen of any kind | right-click "+" in the tab strip; click "+" is New Tab (Cmd+T) |
+| New screen | click or right-click "+" in a group's tab strip; Cmd+T opens a blank tab |
 | Hide or show the right dock | panel button at the end of the title bar, or Opt+Cmd+B |
 | Hide or show the bottom dock | Cmd+J |
 | Move, resize, minimize the floating window | drag the header, drag the bottom-right corner, "-" button |
@@ -189,6 +195,23 @@ transport used for complete scene archives has a 24 MiB bound; the public agent
 `export_session` transport retains its independent 2 MiB limit.
 
 ## Implementation And Validation Boundaries
+
+### Codex Reference Semantics
+
+Reference: InterfaceAtlas `snapshot-26.1027/assets/app-initial-60f141238751.js`
+and `src/atlas/kit/workspace.js` (Tab strip and New tab menu). The minified
+function names below identify this captured build only.
+
+| Interaction | Codex implementation | Burette behavior |
+| --- | --- | --- |
+| Choose an existing screen | Controller `F` activates the tab in its existing panel and restores focus | Pane switcher calls the normal tab-selection action without moving the tab |
+| Add a tool from the menu | Menu targets the current panel; an empty tab is replaced | Both `+` and pane Open use the same group-aware creation action; a matching screen elsewhere is not moved implicitly |
+| Close the active tab | `v8r` uses a live opener relationship first; `y8r` falls back to the next tab, then the previous tab | Select the next surviving tab in the same group, otherwise the previous one; Burette has no browser opener lineage |
+| Cycle tabs | Controller `I` uses `N8r` to wrap within its own panel | Keyboard cycling stays in the active tab's group |
+
+These source comparisons describe the intended behavior, not runtime acceptance.
+`test-dock-screen.test.ts` covers group-local selection, independent screen
+creation and close fallback with the real stores and menu actions.
 
 - Placement and panel content: `components/workspace-panes`, `dock-panel.tsx`,
   `dock-header.tsx`, `app-layout.tsx` and the two workspace stores.

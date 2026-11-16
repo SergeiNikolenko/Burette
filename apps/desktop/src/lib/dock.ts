@@ -1,5 +1,7 @@
 import { isDocumentMediaPath, documentFallbackExtensions, pathExtension } from "./file-routing";
 import { basename } from "./sidebar-projects";
+import { defaultBuildInfo } from "./build-info";
+import { isAgentPluginSurface } from "./native-mcp-workspace";
 import type { StructureDragPayload } from "./structure-drag";
 import type { TextFileDocument, ViewerDocument } from "../types";
 
@@ -12,6 +14,16 @@ export type DockTabKind =
   | "files"
   | "spectrum"
   | "text"
+  | "vibrations"
+  | "scientific-spectra"
+  | "plots"
+  | "orbitals"
+  | "potential"
+  | "fields"
+  | "geometry"
+  | "crystal"
+  | "symmetry"
+  | "structure-edit"
   | "inspector"
   | "story"
   | "folding"
@@ -21,7 +33,9 @@ export type DockTabKind =
   | "diagnostics"
   | "review"
   | "compare"
-  | "chemical-space";
+  | "chemical-space"
+  | "collection-chart"
+  | "interactions";
 
 export type DockTab = {
   id: string;
@@ -90,6 +104,16 @@ export const DOCK_TAB_LABELS: Record<DockTabKind, string> = {
   files: "Files",
   spectrum: "Spectrum",
   text: "Text",
+  vibrations: "Vibrations",
+  "scientific-spectra": "Spectra",
+  plots: "Plots",
+  orbitals: "Orbitals",
+  potential: "Potential",
+  fields: "Fields",
+  geometry: "Geometry",
+  crystal: "Crystal",
+  symmetry: "Symmetry",
+  "structure-edit": "Edit",
   inspector: "Info",
   story: "Story",
   folding: "Folding",
@@ -100,6 +124,8 @@ export const DOCK_TAB_LABELS: Record<DockTabKind, string> = {
   review: "Review",
   compare: "Compare",
   "chemical-space": "Chemical space",
+  "collection-chart": "Chart",
+  interactions: "Interactions",
 };
 
 // Structure Basket, Compare and Review render and accept drops, but no catalog
@@ -122,15 +148,28 @@ const RIGHT_DOCK_TAB_CATALOG: DockTabKind[] = [
   "scene",
   "xyzrender",
   "chemical-space",
+  "collection-chart",
   "inspector",
+  "interactions",
   "story",
   "text",
+  "vibrations",
+  "scientific-spectra",
+  "orbitals",
+  "potential",
+  "fields",
+  "geometry",
+  "crystal",
+  "symmetry",
+  "structure-edit",
   "files",
 ];
 
 const BOTTOM_DOCK_TAB_CATALOG: DockTabKind[] = [
+  "plots",
   "files",
   "chemical-space",
+  "collection-chart",
   "jobs",
   "folding",
   "spectrum",
@@ -167,8 +206,12 @@ export function ensureDefaultDockTabs(area: DockArea, tabs: DockTab[]) {
   return [...defaults, ...extras];
 }
 
+// The agent surfaces have no bottom dock, so Plots joins the right dock there.
+const AGENT_RIGHT_DOCK_TAB_CATALOG: DockTabKind[] = [...RIGHT_DOCK_TAB_CATALOG, "plots"];
+
 export function dockTabCatalog(area: DockArea) {
-  return area === "right" ? RIGHT_DOCK_TAB_CATALOG : BOTTOM_DOCK_TAB_CATALOG;
+  if (area === "bottom") return BOTTOM_DOCK_TAB_CATALOG;
+  return isAgentPluginSurface(defaultBuildInfo.isAgentShell) ? AGENT_RIGHT_DOCK_TAB_CATALOG : RIGHT_DOCK_TAB_CATALOG;
 }
 
 export function dockTabLoadsDroppedDocument(kind: DockTabKind) {
@@ -276,7 +319,7 @@ export function dockFileEntries({
       key: `tool:${tool}`,
       kind: "tool",
       tool,
-      title: tool === "ketcher" ? "Ketcher" : tool,
+      title: tool === "ketcher" ? "Molecular editor" : tool,
       detail: "Tool",
     });
   };
