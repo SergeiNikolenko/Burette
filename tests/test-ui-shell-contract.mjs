@@ -2926,7 +2926,7 @@ assert.match(structureInfoPanel, /<InspectorSection className="structure-inspect
 assert.match(structureInfoPanel, /actions: Array<StructureViewerAction & \{ type: "set_structure_pose" \}>/);
 assert.match(structureInfoPanel, /type: "set_structure_pose"/);
 assert.doesNotMatch(structureInfoPanel, /if \(document\.dockingRequest\) \{\s*setState\(\{ documentId: document\.id, loading: false, summary: null, error: null \}\);\s*return undefined;\s*\}/);
-assert.match(structureInfoPanel, /const summary = parseStructureComposition\(text, source\.extension\);\s*setState\(\{[^}]*\bsummary,/);
+assert.match(structureInfoPanel, /const summary = parseStructureComposition\(text, source\.extension\);\s*const parsed: StructureCompositionState = \{[^}]*\bsummary,[^}]*\};\s*setState\(parsed\);/);
 assert.doesNotMatch(structureInfoPanel, /function inspectorCompositionPath\(document: ViewerDocument\)/);
 assert.doesNotMatch(structureInfoPanel, /function inspectorCompositionExtension\(document: ViewerDocument\)/);
 assert.match(structureInfoPanel, /type: "set_sdf_context_style"/);
@@ -5760,7 +5760,7 @@ assert.match(previewViewer, /const observer = new ResizeObserver\(handleSizeChan
 // chrome layout pass per frame; the frame observer skips a size already placed.
 assert.match(previewViewer, /const schedule = \(\) => \{\s*floatingResizeToolbar = toolbar;\s*scheduleFloatingLayoutRefresh\(\);\s*\};/s);
 assert.match(previewViewer, /`\$\{window\.innerWidth\}x\$\{window\.innerHeight\}` !== floatingLayoutPassSize\) schedule\(\);/);
-assert.match(previewViewer, /if \(toolbar\?\.isConnected\) \{\s*\/\/ Every repositionToolbar branch ends in updateFloatingLayoutOffsets\(\)\.\s*repositionToolbar\(toolbar\);/s);
+assert.match(previewViewer, /if \(toolbar\?\.isConnected\) \{[\s\S]*?\/\/ Every repositionToolbar branch ends in updateFloatingLayoutOffsets\(\)\.\s*repositionToolbar\(toolbar\);/);
 assert.match(previewViewer, /floatingLayoutObserver\?\.takeRecords\(\);/);
 assert.match(previewViewer, /const presetSlot = toolbar\.querySelector\('\[data-buret-xyzrender-preset-slot\]'\)/);
 assert.match(previewViewer, /presetSlot\?\.classList\.toggle\('visible', renderer === 'xyzrender-external'\)/);
@@ -5774,7 +5774,7 @@ assert.match(previewViewer, /function fitToolbarToViewport\(toolbar\)/);
 assert.match(previewViewer, /const availableWidth = toolbarViewportBounds\(\)\.width;/);
 assert.match(previewViewer, /toolbar\.style\.maxWidth = Math\.max\(0, availableWidth - TOOLBAR_MARGIN \* 2\) \+ 'px'/);
 assert.match(previewViewer, /const content = toolbar\.querySelector\('\[data-buret-toolbar-content\]'\)/);
-assert.match(previewViewer, /content\.style\.maxWidth = Math\.max\(0, availableWidth - TOOLBAR_MARGIN \* 2 - 36\) \+ 'px'/);
+assert.match(previewViewer, /const contentMaxWidth = Math\.max\(0, availableWidth - TOOLBAR_MARGIN \* 2 - 36\);\s*content\.style\.maxWidth = contentMaxWidth \+ 'px';/);
 assert.match(previewViewer, /dockToolbar\(toolbar\);\s*fitToolbarToViewport\(toolbar\);/);
 assert.match(previewViewer, /toolbar\.dataset\.defaultPosition = '1';/);
 assert.match(previewViewer, /updateFloatingLayoutOffsets\(\)/);
