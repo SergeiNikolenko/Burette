@@ -63,8 +63,9 @@ export async function fixture() {
     postHostMessage: (message: unknown) => notifications.push(message), debug() {}, setStatus() {}, hideStatus() {}, setTimeout, isQuickLookHost: () => false,
     setMolstarStructureDirty() {}, syncMolstarIllustrativeOutline() {}, scheduleSceneTreeRender() {},
     SCENE_TREE_UNIFORM_COLORS: [], sceneTreeColorHex: (value: number) => String(value), positionOpenViewportMenu() {}, addViewportSelectionComponent() {}, paintViewportSelection() {} };
-  const methods = ["installMolstarCubeDatasetHistory", "captureMolstarSceneUndoSnapshot", "pushMolstarHistorySnapshot", "notifyMolstarEditHistoryChanged", "pushMolstarEditUndoSnapshot", "runMolstarSceneEdit", "clearMolstarEditUndoHistory", "restoreMolstarSceneUndoSnapshot", "restoreMolstarEditUndoSnapshot", "undoMolstarLastEdit", "captureMolstarHistoryCounterpart", "redoMolstarLastEdit", "runViewportMenuAction", "viewportApplyMenu"].map(method).join("\n");
+  const methods = ["waitForSceneTreeControlUpdates", "installMolstarCubeDatasetHistory", "captureMolstarSceneUndoSnapshot", "pushMolstarHistorySnapshot", "notifyMolstarEditHistoryChanged", "pushMolstarEditUndoSnapshot", "runMolstarSceneEdit", "clearMolstarEditUndoHistory", "restoreMolstarSceneUndoSnapshot", "restoreMolstarEditUndoSnapshot", "undoMolstarLastEdit", "captureMolstarHistoryCounterpart", "redoMolstarLastEdit", "runViewportMenuAction", "viewportApplyMenu"].map(method).join("\n");
   const api = new Function(...Object.keys(bindings), `let activeViewer=null, molstarStructureDirty=false, activeStructureAlignmentControl=null, viewportMenuControls=null, menu=null;
+    let sceneTreeParamDrain=null, sceneTreeAlphaDrain=null, sceneTreeMeasurementDrain=null;
     const molstarEditUndoStack=[], molstarEditRedoStack=[]; ${source.match(/const MOLSTAR_EDIT_HISTORY_LIMIT = \d+;/)![0]}
     function closeViewportMenu(){viewportMenuControls?.dispose();viewportMenuControls=null;menu?.remove();menu=null;}
     ${methods}

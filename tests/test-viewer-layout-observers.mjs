@@ -96,7 +96,7 @@ for (const reducedMotion of [false, true]) {
 }
 // Execute the collision repair from the floating-layout pass. It must derive
 // each position from the anchor, not repeatedly push the last repaired position.
-const computePlacement = source.slice(source.indexOf("    const computeRect = visibleRect('[data-buret-action=\"generate-3d-conformer\"]');"), source.indexOf("    const bottomLimit = visibleRectTop", source.indexOf('function updateFloatingLayoutOffsets')));
+const computePlacement = source.slice(source.indexOf("    const computeRect = visibleRect('[data-buret-action=\"generate-3d-conformer\"]');"), source.indexOf("    const panelMaxHeight", source.indexOf('function updateFloatingLayoutOffsets')));
 assert.ok(computePlacement.length > 0);
 for (const [posesRect, viewportControlsTop, expected] of [
   [{ left: 12, right: 334, top: 104, bottom: 140 }, 104, 152],
@@ -107,7 +107,7 @@ for (const [posesRect, viewportControlsTop, expected] of [
   const positions = [];
   let reanchors = 0;
   const layout = vm.createContext({
-    window: { innerHeight: 600 }, viewportControlsTop, TOOLBAR_MARGIN: 12, FLOATING_LAYOUT_GAP: 12,
+    frameHeight: 600, viewportControlsTop, TOOLBAR_MARGIN: 12, FLOATING_LAYOUT_GAP: 12,
     visibleRect: selector => selector === '.buret-docking-poses' ? posesRect : { left: 235, right: 339, height: 36 },
     root: { style: { setProperty: (name, value) => positions.push([name, value]) } },
     positionGenerate3DMenu: () => reanchors++,

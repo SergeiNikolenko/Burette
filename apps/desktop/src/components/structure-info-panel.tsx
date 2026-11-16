@@ -2156,23 +2156,44 @@ function XtbArtifactInfoCard({
   );
 }
 
+type StructureCompositionState = {
+  documentId: string | null;
+  sourceIdentity: object | null;
+  cifKind: CifStructureClassification["kind"];
+  /** A periodic crystal (CIF with fractional sites, POSCAR, XYZ with a Lattice). */
+  periodic: boolean;
+  loading: boolean;
+  summary: StructureCompositionSummary | null;
+  error: string | null;
+};
+
+// Closing the right panel unmounts the inspector, and reopening it used to
+// reread and reparse the file behind a skeleton. A document object stays the
+// same until its source changes, so its last parsed composition is reused.
+const parsedCompositions = new WeakMap<ViewerDocument, { logical: unknown; draft: string | undefined; state: StructureCompositionState }>();
+
+function cachedComposition(document: ViewerDocument | null, logical: unknown, draft: string | undefined) {
+  const entry = document ? parsedCompositions.get(document) : undefined;
+  return entry && entry.logical === logical && entry.draft === draft ? entry.state : null;
+}
+
 function useStructureComposition(document: ViewerDocument | null) {
   const logical = useLogicalSource(document?.id);
   const native = useNativeSceneComposition(document?.renderer === "molstar" && document.extension.replace(/^\./u, "").toLowerCase() === "molx" && !logical ? document : null);
   const draft = useSourceEditing()?.sessionForDocument(document)?.content;
   const sourceIdentity = useMemo(() => ({ document, logical, draft }), [document, logical, draft]);
-  const [state, setState] = useState<{
-    documentId: string | null;
-    sourceIdentity: object | null;
-    cifKind: CifStructureClassification["kind"];
-    /** A periodic crystal (CIF with fractional sites, POSCAR, XYZ with a Lattice). */
-    periodic: boolean;
-    loading: boolean;
-    summary: StructureCompositionSummary | null;
-    error: string | null;
-  }>({ documentId: null, sourceIdentity: null, cifKind: null, periodic: false, loading: false, summary: null, error: null });
+  const [state, setState] = useState<StructureCompositionState>(() => {
+    const cached = cachedComposition(document, logical, draft);
+    return cached ? { ...cached, sourceIdentity }
+      : { documentId: null, sourceIdentity: null, cifKind: null, periodic: false, loading: false, summary: null, error: null };
+  });
 
   useEffect(() => {
+    const cached = cachedComposition(document, logical, draft);
+    if (cached) {
+      setState(current => current.sourceIdentity === sourceIdentity ? current : { ...cached, sourceIdentity });
+      return undefined;
+    }
     // A MOLX is an archive, not coordinate text. Its validated logical source
     // arrives asynchronously; foreign scenes have no text composition to parse.
     if (!document || (document.extension.replace(/^\./u, "").toLowerCase() === "molx" && !logical)) {
@@ -2192,18 +2213,24 @@ function useStructureComposition(document: ViewerDocument | null) {
           ? (await classifyCifStructure(text)).kind : null;
         const format = text.length <= SOURCE_EDIT_MAX_BYTES ? periodicCrystalFormat(source.extension.replace(/^\./u, "").toLowerCase(), text) : null;
         const summary = parseStructureComposition(text, source.extension);
-        setState({
+        const parsed: StructureCompositionState = {
           documentId: document.id,
           sourceIdentity, cifKind, periodic: format !== null,
           loading: false,
           summary,
           error: null,
-        });
+        };
+        setState(parsed);
         // A crystal is shown as its full unit cell, so it is counted that way once it is read.
-        if (!format || format === "xyz") return;
+        if (!format || format === "xyz") {
+          parsedCompositions.set(document, { logical, draft, state: parsed });
+          return;
+        }
         const cell = await runReaderTask({ action: "crystal", format, text }).catch(() => null);
-        if (cancelled || !cell) return;
-        setState((current) => current.sourceIdentity === sourceIdentity ? { ...current, summary: unitCellComposition(summary, cell.atoms) } : current);
+        if (cancelled) return;
+        const complete = cell ? { ...parsed, summary: unitCellComposition(summary, cell.atoms) } : parsed;
+        parsedCompositions.set(document, { logical, draft, state: complete });
+        if (cell) setState((current) => current.sourceIdentity === sourceIdentity ? complete : current);
       })
       .catch((error) => {
         if (cancelled) return;

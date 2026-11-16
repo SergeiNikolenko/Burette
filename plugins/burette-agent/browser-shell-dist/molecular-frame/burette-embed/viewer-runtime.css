@@ -659,6 +659,11 @@ body.buret-toolbar-collapsed #buret-viewport-rail,
 body.buret-toolbar-collapsed #buret-selection-bar {
   display: none !important;
 }
+/* A pane too narrow for the toolbar keeps only the collapsed grip. */
+body.buret-compact-chrome #buret-scene-tree-toggle,
+body.buret-compact-chrome #buret-scene-tree {
+  display: none !important;
+}
 .buret-selection-bar {
   position: fixed;
   top: var(--buret-selection-controls-top, calc(var(--buret-toolbar-safe-top) + 48px));

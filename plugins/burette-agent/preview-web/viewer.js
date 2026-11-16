@@ -11,6 +11,9 @@
   const DOCKING_POSE_POSITION_VERSION = '8';
   const TOOLBAR_MARGIN = 12;
   const FLOATING_LAYOUT_GAP = 12;
+  // Below this pane width the toolbar wraps into rows over the structure.
+  const COMPACT_CHROME_ENTER_WIDTH = 280;
+  const COMPACT_CHROME_EXIT_WIDTH = 320;
   // The host's Compute capsule size for hit tests (the iframe cannot measure host DOM).
   const HOST_COMPUTE_SIZE = { width: 112, height: 32 };
   const TOOLBAR_CORNER_SNAP_DISTANCE = 64;
@@ -2607,6 +2610,9 @@
   let themeListenerInstalled = false;
   let floatingPanelTrackingInstalled = false;
   let floatingLayoutFrame = 0;
+  let floatingLayoutObserver = null;
+  let floatingResizeToolbar = null;
+  let floatingLayoutPassSize = '';
   let molstarViewportPanelOpen = false;
   let molstarSelectionControlsOpen = false;
   const previewDockState = { right: false, bottom: false };
@@ -6981,18 +6987,12 @@
 
     let lastWidth = 0;
     let lastHeight = 0;
-    let frame = 0;
 
+    // Shares the resize pass: a private frame here repeated the whole chrome
+    // layout one frame after the window resize had already placed it.
     const schedule = () => {
-      if (frame) return;
-      frame = requestAnimationFrame(() => {
-        frame = 0;
-        if (toolbar.dataset.defaultPosition === '1') {
-          applyDefaultToolbarPosition(toolbar);
-        } else {
-          repositionToolbar(toolbar);
-        }
-      });
+      floatingResizeToolbar = toolbar;
+      scheduleFloatingLayoutRefresh();
     };
 
     const handleSizeChange = () => {
@@ -7012,7 +7012,9 @@
       if (content) observer.observe(content);
       // A preserved tab can mount while hidden; its first useful bounds arrive
       // when activated. The frame can also resize without the toolbar changing.
-      const viewportObserver = new ResizeObserver(schedule);
+      const viewportObserver = new ResizeObserver(() => {
+        if (`${window.innerWidth}x${window.innerHeight}` !== floatingLayoutPassSize) schedule();
+      });
       viewportObserver.observe(document.documentElement);
     }
 
@@ -7454,6 +7456,13 @@
     setToolbarCollapsed(toolbar, collapsed, viewer, false);
   }
 
+  // In a narrow pane a collapsed toolbar is the only floating control left.
+  function syncCompactViewerChrome(collapsed) {
+    const compact = document.body?.classList.contains('buret-compact-chrome') === true;
+    document.body?.classList.toggle('buret-compact-chrome',
+      collapsed && window.innerWidth < (compact ? COMPACT_CHROME_EXIT_WIDTH : COMPACT_CHROME_ENTER_WIDTH));
+  }
+
   function setToolbarCollapsed(toolbar, collapsed, viewer, persist = true) {
     if (collapsed) {
       setXyzrenderPopoverVisibility(toolbar, false);
@@ -7461,8 +7470,14 @@
       hideGenerate3DMenu();
       closeViewportMenu();
     }
+    if (persist) {
+      // A choice made in a narrow pane stands until the pane widens again.
+      delete toolbar.dataset.compactCollapsed;
+      if (!collapsed && window.innerWidth < COMPACT_CHROME_EXIT_WIDTH) toolbar.dataset.compactDeclined = '1';
+    }
     toolbar.classList.toggle('collapsed', collapsed);
     document.body?.classList.toggle('buret-toolbar-collapsed', collapsed);
+    syncCompactViewerChrome(collapsed);
     const grip = toolbar.querySelector('[data-drag-handle]');
     if (grip) {
       grip.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
@@ -7606,21 +7621,12 @@
       toolbar.classList.remove('buret-dragging');
       drag = null;
     });
+    // Resize steps run before animation frame callbacks, so the repositioning
+    // pass still lands in the frame that changed the size. Running it here
+    // directly repeated the whole chrome layout two more times per frame.
     window.addEventListener('resize', () => {
-      repositionToolbar(toolbar);
-      updateFloatingLayoutOffsets();
-      positionXyzrenderPopover(toolbar);
-      positionGenerate3DMenu();
-      const presetMenu = document.querySelector('[data-buret-molstar-preset-menu]');
-      if (presetMenu && !presetMenu.classList.contains('hidden')) {
-        positionMolstarPresetMenu();
-        const presetItem = presetMenu.querySelector(`[data-buret-molstar-preset="${CSS.escape(molstarPresetPreviewPreset)}"]`);
-        const { preview } = molstarPresetPreviewElements();
-        if (presetItem && preview && !preview.classList.contains('hidden')) {
-          positionMolstarPresetPreview(presetItem);
-          scheduleMolstarPresetPreviewResize(presetItem);
-        }
-      }
+      floatingResizeToolbar = toolbar;
+      scheduleFloatingLayoutRefresh();
     });
   }
 
@@ -7790,12 +7796,15 @@
     toolbar.style.maxWidth = Math.max(0, availableWidth - TOOLBAR_MARGIN * 2) + 'px';
     const content = toolbar.querySelector('[data-buret-toolbar-content]');
     if (content) {
-      content.style.maxWidth = Math.max(0, availableWidth - TOOLBAR_MARGIN * 2 - 36) + 'px';
+      const contentMaxWidth = Math.max(0, availableWidth - TOOLBAR_MARGIN * 2 - 36);
+      content.style.maxWidth = contentMaxWidth + 'px';
       // A pane narrower than the toolbar wraps its buttons onto a second row
       // instead of clipping them under the grip.
       content.style.width = '';
       toolbar.classList.remove('buret-toolbar-wrapped');
-      const wrapped = !toolbar.classList.contains('collapsed') && content.scrollWidth > content.clientWidth + 1;
+      // max-width animates, so the box can still be at the previous pane's
+      // width. Compare the unwrapped row with the width it is heading for.
+      const wrapped = !toolbar.classList.contains('collapsed') && content.scrollWidth > contentMaxWidth + 1;
       toolbar.classList.toggle('buret-toolbar-wrapped', wrapped);
       // A wrapping row box keeps the full available width, leaving a blank strip
       // beside the shorter row, often with one button alone under it. Take the
@@ -7833,9 +7842,28 @@
 
   function updateFloatingLayoutOffsets() {
     const root = document.documentElement;
+    // Read once: in a WebKit subframe each innerWidth/innerHeight read can
+    // first lay out the host page, and the size cannot change during this pass.
+    const frameWidth = window.innerWidth;
+    const frameHeight = window.innerHeight;
+    floatingLayoutPassSize = `${frameWidth}x${frameHeight}`;
+    // The custom properties written below inherit through the whole document,
+    // so every measurement taken after a write restyles all of Mol*. Take the
+    // measurements those writes cannot move first; only the selection bar is
+    // measured after them.
+    const safeTop = toolbarSafeTop();
     const panelState = refreshMolstarViewportPanelState();
     const toolbar = document.getElementById('buret-toolbar');
     const toolbarRect = toolbar && !panelState.open ? toolbar.getBoundingClientRect() : null;
+    const viewportRail = document.getElementById('buret-viewport-rail');
+    const viewportRailHeight = viewportRail?.offsetHeight || viewportRail?.getBoundingClientRect().height || 172;
+    const viewportRailWidth = viewportRail?.offsetWidth || viewportRail?.getBoundingClientRect().width || 36;
+    const ownRailVisible = !!visibleRect('#buret-viewport-rail');
+    const viewportControls = document.querySelector('.msp-plugin .msp-viewport-controls');
+    const viewportControlsRect = viewportControls ? viewportControls.getBoundingClientRect() : null;
+    const viewportControlRailRect = visibleRect('.msp-plugin .msp-viewport-controls-buttons');
+    const mainRect = visibleRect('.msp-plugin .msp-layout-main');
+    const bottomLimit = visibleRectTop('.msp-plugin .msp-layout-bottom') || frameHeight;
     root.style.setProperty('--buret-toolbar-current-width', toolbarRect ? Math.ceil(toolbarRect.width) + 'px' : '0px');
     root.style.setProperty('--buret-toolbar-current-height', toolbarRect ? Math.ceil(toolbarRect.height) + 'px' : '0px');
     // The selection bar is a control of its own, not a drawer of the toolbar, so it
@@ -7845,7 +7873,7 @@
     const toolbarCollapsed = document.body?.classList.contains('buret-toolbar-collapsed') === true;
     const selectionBarWidth = toolbarRect && !toolbarCollapsed
       ? Math.ceil(toolbarRect.width)
-      : Math.min(430, Math.max(240, window.innerWidth - TOOLBAR_MARGIN * 2));
+      : Math.min(430, Math.max(240, frameWidth - TOOLBAR_MARGIN * 2));
     const selectionBarLeft = toolbarRect
       ? Math.max(TOOLBAR_MARGIN, Math.ceil(toolbarRect.right - selectionBarWidth))
       : TOOLBAR_MARGIN;
@@ -7855,23 +7883,20 @@
     // edge it collapsed along with the toolbar, capping the bar at 180px — the two
     // coincide while the toolbar is open, so nothing changes there.
     root.style.setProperty('--buret-selection-controls-max-width',
-      Math.max(180, Math.floor(window.innerWidth - selectionBarLeft - TOOLBAR_MARGIN)) + 'px');
+      Math.max(180, Math.floor(frameWidth - selectionBarLeft - TOOLBAR_MARGIN)) + 'px');
     root.style.setProperty('--buret-selection-controls-top', toolbarRect ? Math.ceil(toolbarRect.bottom - 1) + 'px' : `calc(var(--buret-toolbar-safe-top) + 48px)`);
-    const toolbarBottom = toolbarRect ? toolbarRect.bottom + FLOATING_LAYOUT_GAP : toolbarSafeTop() + 40;
-    const viewportRail = document.getElementById('buret-viewport-rail');
-    const viewportRailHeight = viewportRail?.offsetHeight || viewportRail?.getBoundingClientRect().height || 172;
-    const viewportRailWidth = viewportRail?.offsetWidth || viewportRail?.getBoundingClientRect().width || 36;
+    const toolbarBottom = toolbarRect ? toolbarRect.bottom + FLOATING_LAYOUT_GAP : safeTop + 40;
     const dockCorner = toolbar?.dataset.dockCorner;
-    const toolbarCenterX = toolbarRect ? toolbarRect.left + toolbarRect.width / 2 : window.innerWidth;
+    const toolbarCenterX = toolbarRect ? toolbarRect.left + toolbarRect.width / 2 : frameWidth;
     let railHorizontal = dockCorner?.endsWith('left') ? 'left'
       : dockCorner?.endsWith('right') ? 'right'
-      : viewportRail?.dataset.horizontalPlacement || (toolbarCenterX < window.innerWidth / 2 ? 'left' : 'right');
+      : viewportRail?.dataset.horizontalPlacement || (toolbarCenterX < frameWidth / 2 ? 'left' : 'right');
     if (!dockCorner && toolbarRect) {
-      if (railHorizontal === 'left' && toolbarCenterX > window.innerWidth / 2 + TOOLBAR_ORIENTATION_HYSTERESIS) railHorizontal = 'right';
-      if (railHorizontal === 'right' && toolbarCenterX < window.innerWidth / 2 - TOOLBAR_ORIENTATION_HYSTERESIS) railHorizontal = 'left';
+      if (railHorizontal === 'left' && toolbarCenterX > frameWidth / 2 + TOOLBAR_ORIENTATION_HYSTERESIS) railHorizontal = 'right';
+      if (railHorizontal === 'right' && toolbarCenterX < frameWidth / 2 - TOOLBAR_ORIENTATION_HYSTERESIS) railHorizontal = 'left';
     }
-    const spaceBelowToolbar = toolbarRect ? window.innerHeight - toolbarRect.bottom - TOOLBAR_MARGIN : window.innerHeight;
-    const spaceAboveToolbar = toolbarRect ? toolbarRect.top - toolbarSafeTop() : 0;
+    const spaceBelowToolbar = toolbarRect ? frameHeight - toolbarRect.bottom - TOOLBAR_MARGIN : frameHeight;
+    const spaceAboveToolbar = toolbarRect ? toolbarRect.top - safeTop : 0;
     const requiredRailSpace = viewportRailHeight + FLOATING_LAYOUT_GAP;
     let railVertical = dockCorner?.startsWith('bottom') ? 'above'
       : dockCorner?.startsWith('top') ? 'below'
@@ -7888,16 +7913,14 @@
       ? railHorizontal === 'left'
         ? toolbarRect.left
         : toolbarRect.right - viewportRailWidth
-      : window.innerWidth - TOOLBAR_MARGIN - viewportRailWidth;
+      : frameWidth - TOOLBAR_MARGIN - viewportRailWidth;
     root.style.setProperty('--buret-viewport-rail-left', Math.round(viewportRailLeft) + 'px');
-    const viewportControls = document.querySelector('.msp-plugin .msp-viewport-controls');
-    const viewportControlsRect = viewportControls ? viewportControls.getBoundingClientRect() : null;
-    const viewportControlRailRect = visibleRect('.msp-plugin .msp-viewport-controls-buttons');
     // Our own rail stands where Mol*'s used to; whichever of the two is on screen is
-    // the edge the compute button has to keep clear of.
-    const railRect = visibleRect('#buret-viewport-rail') || viewportControlRailRect;
+    // the edge the compute button has to keep clear of. The rail's left edge is
+    // exactly the property just written.
+    const railRect = ownRailVisible ? { left: Math.round(viewportRailLeft) } : viewportControlRailRect;
     const generate3DControlRight = railRect
-      ? Math.max(TOOLBAR_MARGIN, Math.ceil(window.innerWidth - railRect.left + FLOATING_LAYOUT_GAP * 2))
+      ? Math.max(TOOLBAR_MARGIN, Math.ceil(frameWidth - railRect.left + FLOATING_LAYOUT_GAP * 2))
       : 70;
     root.style.setProperty('--buret-generate-3d-control-right', generate3DControlRight + 'px');
     const selectionToolbarRect = visibleRect('.msp-plugin .msp-selection-viewport-controls > .msp-flex-row')
@@ -7906,7 +7929,6 @@
     // the toolbar is a grip somewhere above and the bar keeps its own rounding.
     document.body?.classList.toggle('buret-selection-toolbar-open',
       !!selectionToolbarRect && !!toolbarRect && !toolbarCollapsed);
-    const mainRect = visibleRect('.msp-plugin .msp-layout-main');
     const mainTop = mainRect ? mainRect.top : 0;
     const defaultViewportTop = mainTop + 56;
     const panelOpenTop = selectionToolbarRect
@@ -7930,8 +7952,8 @@
       ? selectionToolbarRect.bottom + FLOATING_LAYOUT_GAP
       : toolbarBottom;
     const viewportRailTop = Math.min(
-      Math.max(toolbarSafeTop(), Math.ceil(preferredViewportRailTop)),
-      Math.max(toolbarSafeTop(), window.innerHeight - viewportRailHeight - TOOLBAR_MARGIN)
+      Math.max(safeTop, Math.ceil(preferredViewportRailTop)),
+      Math.max(safeTop, frameHeight - viewportRailHeight - TOOLBAR_MARGIN)
     );
     root.style.setProperty('--buret-viewport-rail-top', viewportRailTop + 'px');
     // The desktop menu belongs to the host, but only the iframe knows when
@@ -7939,15 +7961,17 @@
     if (hostComputeAnchorRequested && hostViewerVisible && !panelState.open) {
       // Top-aligned with the rail beside it, on the same gap as the rest of the chrome.
       const top = Math.ceil(Math.max(
-        toolbarSafeTop(),
-        !toolbarRect || toolbarRect.top < window.innerHeight / 2 ? toolbarBottom : 0,
+        safeTop,
+        !toolbarRect || toolbarRect.top < frameHeight / 2 ? toolbarBottom : 0,
         (selectionToolbarRect?.bottom ?? 0) + FLOATING_LAYOUT_GAP,
       ));
       const right = railRect && railHorizontal === 'right'
-        ? Math.ceil(window.innerWidth - viewportRailLeft + FLOATING_LAYOUT_GAP)
+        ? Math.ceil(frameWidth - viewportRailLeft + FLOATING_LAYOUT_GAP)
         : TOOLBAR_MARGIN;
-      // Host chrome paints above the iframe, so it yields while a viewer menu is open.
-      const menuCovered = Array.from(document.querySelectorAll('.buret-atlas-menu, .atlas-popover-surface')).some(isVisible);
+      // Host chrome paints above the iframe, so it yields while a viewer menu is
+      // open, and folds away with the rest of the controls in a narrow pane.
+      const menuCovered = document.body?.classList.contains('buret-compact-chrome') === true
+        || Array.from(document.querySelectorAll('.buret-atlas-menu, .atlas-popover-surface')).some(isVisible);
       hostComputeAnchor = { top, right, menuCovered };
       postHostComputeAnchor();
     }
@@ -7960,13 +7984,12 @@
       && computeTop < posesRect.bottom + FLOATING_LAYOUT_GAP
       && computeTop + computeRect.height > posesRect.top - FLOATING_LAYOUT_GAP) {
       const below = posesRect.bottom + FLOATING_LAYOUT_GAP;
-      computeTop = below + computeRect.height <= window.innerHeight - TOOLBAR_MARGIN
+      computeTop = below + computeRect.height <= frameHeight - TOOLBAR_MARGIN
         ? below : Math.max(TOOLBAR_MARGIN, posesRect.top - FLOATING_LAYOUT_GAP - computeRect.height);
     }
     root.style.setProperty('--buret-compute-control-top', `${Math.ceil(computeTop)}px`);
     positionGenerate3DMenu();
 
-    const bottomLimit = visibleRectTop('.msp-plugin .msp-layout-bottom') || window.innerHeight;
     const panelMaxHeight = Math.max(160, Math.floor(bottomLimit - viewportControlsViewportTop - FLOATING_LAYOUT_GAP));
     root.style.setProperty('--buret-viewport-panel-max-height', panelMaxHeight + 'px');
     positionOpenViewportMenu();
@@ -8001,6 +8024,7 @@
     const observer = new MutationObserver(records => {
       if (hasEffectiveLayoutMutation(records)) scheduleFloatingLayoutRefresh();
     });
+    floatingLayoutObserver = observer;
     observer.observe(document.body, {
       childList: true,
       subtree: true,
@@ -8019,7 +8043,43 @@
     if (floatingLayoutFrame) return;
     floatingLayoutFrame = requestAnimationFrame(() => {
       floatingLayoutFrame = 0;
-      updateFloatingLayoutOffsets();
+      const toolbar = floatingResizeToolbar;
+      floatingResizeToolbar = null;
+      if (toolbar?.isConnected) {
+        // A pane too narrow for the toolbar folds the floating controls into the
+        // collapsed grip instead of stacking wrapped rows over the structure.
+        // Only that automatic fold is undone when the pane widens again.
+        const width = window.innerWidth;
+        if (width >= COMPACT_CHROME_EXIT_WIDTH) delete toolbar.dataset.compactDeclined;
+        if (width > 0 && !window.BuretteNativeFirstFrame && width < COMPACT_CHROME_ENTER_WIDTH
+          && !toolbar.classList.contains('collapsed') && toolbar.dataset.compactDeclined !== '1') {
+          toolbar.dataset.compactCollapsed = '1';
+          setToolbarCollapsed(toolbar, true, resizeState.viewer, false);
+        } else if (toolbar.dataset.compactCollapsed === '1' && width >= COMPACT_CHROME_EXIT_WIDTH) {
+          delete toolbar.dataset.compactCollapsed;
+          setToolbarCollapsed(toolbar, false, resizeState.viewer, false);
+        }
+        syncCompactViewerChrome(toolbar.classList.contains('collapsed'));
+        // Every repositionToolbar branch ends in updateFloatingLayoutOffsets().
+        repositionToolbar(toolbar);
+        positionXyzrenderPopover(toolbar);
+        positionGenerate3DMenu();
+        const presetMenu = document.querySelector('[data-buret-molstar-preset-menu]');
+        if (presetMenu && !presetMenu.classList.contains('hidden')) {
+          positionMolstarPresetMenu();
+          const presetItem = presetMenu.querySelector(`[data-buret-molstar-preset="${CSS.escape(molstarPresetPreviewPreset)}"]`);
+          const { preview } = molstarPresetPreviewElements();
+          if (presetItem && preview && !preview.classList.contains('hidden')) {
+            positionMolstarPresetPreview(presetItem);
+            scheduleMolstarPresetPreviewResize(presetItem);
+          }
+        }
+      } else {
+        updateFloatingLayoutOffsets();
+      }
+      // The pass measured the live DOM after its own style writes. Records
+      // from those writes would only schedule an identical pass next frame.
+      floatingLayoutObserver?.takeRecords();
     });
   }
 

@@ -98,6 +98,20 @@ test("a source-editing draft replaces the classification on the same document wi
   } finally { await f.close(); }
 });
 
+test("reopening Info for an unchanged document shows its composition at once without rereading the file", async () => {
+  const first = await fixture(), document = doc("reopen");
+  try { await first.render(document); await first.resolve(document, polymer); } finally { await first.close(); }
+  const reopened = await fixture();
+  try {
+    await reopened.render(document);
+    expect(reopened.layout[0]).toBe("Macromolecule");
+    expect(reopened.host.querySelector(".structure-inspector-loading")).toBeNull();
+    expect(reopened.reads).toEqual([]);
+    await reopened.render({ ...document });
+    expect(reopened.reads).toEqual([document.path]);
+  } finally { await reopened.close(); }
+});
+
 test("Info counts a CIF crystal by the unit cell the viewer shows, keeping its asymmetric-unit sites", async () => {
   const f = await fixture(), document = doc("urea");
   try {

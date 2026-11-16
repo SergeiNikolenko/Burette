@@ -5212,7 +5212,7 @@ assert.match(previewRuntimeCss, /body\.buret-toolbar-collapsed \.buret-generate-
 assert.match(previewRuntimeCss, /body:has\(\.msp-viewport-controls-buttons \.msp-hover-box-wrapper:hover\) \.buret-generate-3d-menu/);
 assert.match(previewViewer, /if \(collapsed\) \{[\s\S]*hideGenerate3DMenu\(\);/);
 assert.match(previewViewer, /const viewportControlRailRect = visibleRect\('\.msp-plugin \.msp-viewport-controls-buttons'\);/);
-assert.match(previewViewer, /const railRect = visibleRect\('#buret-viewport-rail'\) \|\| viewportControlRailRect;/);
+assert.match(previewViewer, /const railRect = ownRailVisible \? \{ left: Math\.round\(viewportRailLeft\) \} : viewportControlRailRect;/);
 // The vertical viewport rail is the second half of the toolbar group: it follows
 // either drag handle, flips toward the canvas at each corner, and rolls up with it.
 assert.match(previewRuntimeCss, /\.buret-viewport-rail \{[^}]*right: auto;[^}]*left: var\(--buret-viewport-rail-left, auto\);/s);
@@ -5342,7 +5342,7 @@ assert.doesNotMatch(
   previewViewer.slice(previewViewer.indexOf("function viewportCameraMenu"), previewViewer.indexOf("function viewportAnimateMenu")),
   /viewportMotionControls/,
 );
-assert.match(previewViewer, /window\.innerWidth - railRect\.left \+ FLOATING_LAYOUT_GAP \* 2/);
+assert.match(previewViewer, /frameWidth - railRect\.left \+ FLOATING_LAYOUT_GAP \* 2/);
 assert.match(previewViewer, /root\.style\.setProperty\('--buret-generate-3d-control-right', generate3DControlRight \+ 'px'\);/);
 assert.match(previewRuntimeCss, /\.buret-xyzrender-preset-slot \{ display: none; align-items: center; \}/);
 assert.match(previewRuntimeCss, /\.buret-xyzrender-preset-slot\.visible \{ display: flex; \}/);
@@ -5756,7 +5756,12 @@ assert.match(previewViewer, /const saved = saveMolstarModifiedStructure\(\);[\s\
 assert.match(previewViewer, /installToolbarAutoLayoutTracking\(toolbar\);/);
 assert.match(previewViewer, /function installToolbarAutoLayoutTracking\(toolbar\)/);
 assert.match(previewViewer, /const observer = new ResizeObserver\(handleSizeChange\);/);
-assert.match(previewViewer, /if \(toolbar\.dataset\.defaultPosition === '1'\) \{\s*applyDefaultToolbarPosition\(toolbar\);\s*\} else \{\s*repositionToolbar\(toolbar\);\s*\}/s);
+// Toolbar size observers, the frame observer and window resize share one
+// chrome layout pass per frame; the frame observer skips a size already placed.
+assert.match(previewViewer, /const schedule = \(\) => \{\s*floatingResizeToolbar = toolbar;\s*scheduleFloatingLayoutRefresh\(\);\s*\};/s);
+assert.match(previewViewer, /`\$\{window\.innerWidth\}x\$\{window\.innerHeight\}` !== floatingLayoutPassSize\) schedule\(\);/);
+assert.match(previewViewer, /if \(toolbar\?\.isConnected\) \{\s*\/\/ Every repositionToolbar branch ends in updateFloatingLayoutOffsets\(\)\.\s*repositionToolbar\(toolbar\);/s);
+assert.match(previewViewer, /floatingLayoutObserver\?\.takeRecords\(\);/);
 assert.match(previewViewer, /const presetSlot = toolbar\.querySelector\('\[data-buret-xyzrender-preset-slot\]'\)/);
 assert.match(previewViewer, /presetSlot\?\.classList\.toggle\('visible', renderer === 'xyzrender-external'\)/);
 assert.match(previewViewer, /toolbar\.classList\.add\('buret-dragging'\)/);
