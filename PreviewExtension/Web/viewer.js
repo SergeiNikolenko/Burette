@@ -11,6 +11,8 @@
   const DOCKING_POSE_POSITION_VERSION = '8';
   const TOOLBAR_MARGIN = 12;
   const FLOATING_LAYOUT_GAP = 12;
+  // The host's Compute capsule size for hit tests (the iframe cannot measure host DOM).
+  const HOST_COMPUTE_SIZE = { width: 112, height: 32 };
   const TOOLBAR_CORNER_SNAP_DISTANCE = 64;
   const TOOLBAR_CORNER_RELEASE_DISTANCE = 96;
   const TOOLBAR_ORIENTATION_HYSTERESIS = 48;
@@ -216,11 +218,12 @@
   // The card is destroyed and rebuilt whenever the selection changes, so the size
   // and the corner the user dragged it to live out here instead of on the element.
   let molstarMoleculePreviewGeometry = null;
-  // Hiding the card leaves the selection alone and parks it in a restore chip.
-  // The hidden state lasts until explicit restore or document teardown.
-  let molstarMoleculePreviewSuppressed = false;
-  let molstarMoleculePreviewMinimized = false;
-  let molstarMoleculePreviewMinimizedTarget = null;
+  // The card is either open or folded into a small chip in the bottom-left
+  // corner. Null follows the Settings default until the user opens or folds it.
+  let molstarMoleculePreviewExpanded = null;
+  // The pointer rests on a ligand; a card set to open on hover is open meanwhile.
+  let molstarMoleculePreviewHovered = false;
+  let molstarMoleculePreviewHoverTimer = 0;
   let molstarMoleculePreviewChip = null;
   let molstarSelectionHostSignature = '';
   let molstarPreviewRdkit = null;
@@ -345,6 +348,28 @@
   let molstarControlTooltip = null;
   let molstarControlTooltipTarget = null;
   const molstarControlTitleLabels = new WeakMap();
+  let lastHostComputeAnchor = '';
+  let hostComputeAnchor = null;
+
+  // Host chrome paints above the iframe, so the host button also yields while a
+  // viewer hint would sit under it.
+  function postHostComputeAnchor() {
+    if (!hostComputeAnchor) return;
+    const { top, right, menuCovered } = hostComputeAnchor;
+    const hint = molstarControlTooltip?.classList.contains('visible') ? molstarControlTooltip.getBoundingClientRect() : null;
+    const boxRight = window.innerWidth - right;
+    const hintCovers = Boolean(hint && hint.width && hint.left < boxRight && hint.right > boxRight - HOST_COMPUTE_SIZE.width
+      && hint.top < top + HOST_COMPUTE_SIZE.height && hint.bottom > top);
+    // The host button appears with the rest of the chrome, not over a loading page.
+    const booting = document.documentElement.classList.contains('buret-viewer-booting');
+    const covered = booting || menuCovered || hintCovers;
+    const operations = hostComputeOperations();
+    const pendingLabel = generate3dPending ? (generate3dPendingMode === 'ensemble' ? 'Generating set...' : 'Generating 3D...') : '';
+    const key = JSON.stringify([top, right, covered, operations, pendingLabel]);
+    if (key === lastHostComputeAnchor) return;
+    lastHostComputeAnchor = key;
+    postHostMessage({ type: 'sceneComputeAnchor', top, right, covered, operations, pendingLabel });
+  }
 
   function installMolstarControlTooltips() {
     if (window.__buretteMolstarControlTooltipsInstalled) return;
@@ -455,6 +480,7 @@
     tooltip.setAttribute('aria-hidden', 'false');
     if (tooltip.hasAttribute('popover')) tooltip.showPopover();
     positionMolstarControlTooltip(control);
+    postHostComputeAnchor();
   }
 
   function positionMolstarControlTooltip(control) {
@@ -485,6 +511,7 @@
     molstarControlTooltip.classList.remove('visible');
     if (molstarControlTooltip.hasAttribute('popover')) molstarControlTooltip.hidePopover();
     molstarControlTooltip.setAttribute('aria-hidden', 'true');
+    postHostComputeAnchor();
   }
 
   installMolstarControlTooltips();
@@ -2363,7 +2390,6 @@
   };
   let hostViewerVisible = true;
   let hostComputeAnchorRequested = false;
-  let lastHostComputeAnchor = '';
   // Explicit host gestures keep the shared buffer hold alive even when the
   // pointer pauses. Discrete layout changes draw at their actual bounds.
   let hostLayoutGestureActive = false;
@@ -4023,6 +4049,18 @@
     }
     if (body.type === 'setScreenshotTransparentDefault') {
       setViewportScreenshotDefault('screenshotTransparent', body.value === true);
+      return;
+    }
+    if (body.type === 'setLigandCardContentDefault') {
+      setMolstarLigandCardDefault('ligandCardContent', body.value);
+      return;
+    }
+    if (body.type === 'setLigandCardDiagramStyleDefault') {
+      setMolstarLigandCardDefault('ligandCardDiagramStyle', body.value);
+      return;
+    }
+    if (body.type === 'setLigandCardDisplayDefault') {
+      setMolstarLigandCardDefault('ligandCardDisplay', body.value);
       return;
     }
     if (body.type === 'setXyzrenderControls') {
@@ -7212,12 +7250,16 @@
     const manager = activeMolstarViewer()?.plugin?.managers.structure.component;
     if (!manager || molstarHydrogensPending) return;
     const restoreFocus = document.activeElement?.matches('[data-buret-molecule-preview-action="hydrogens"]');
+    // Rebuilding the components drops the selection for a moment. The card stays
+    // put meanwhile (see scheduleMolstarSelectedMoleculePreview) and is redrawn
+    // in place afterwards.
+    const previewTarget = molstarMoleculePreviewTarget;
     molstarHydrogensPending = true;
     updateMolstarHydrogenButtons();
     try {
       await manager.setOptions({ ...manager.state.options, hydrogens: molstarShowHydrogens ? 'hide-all' : 'all' });
       molstarShowHydrogens = !molstarShowHydrogens;
-      if (molstarMoleculePreviewTarget) showMolstarMoleculePreview(molstarMoleculePreviewTarget);
+      if (previewTarget && molstarMoleculePreview) showMolstarMoleculePreview(previewTarget);
     } catch (error) {
       setStatus('Could not change hydrogen visibility: ' + (error?.message || error), 'error');
     } finally {
@@ -7751,9 +7793,37 @@
       content.style.maxWidth = Math.max(0, availableWidth - TOOLBAR_MARGIN * 2 - 36) + 'px';
       // A pane narrower than the toolbar wraps its buttons onto a second row
       // instead of clipping them under the grip.
+      content.style.width = '';
       toolbar.classList.remove('buret-toolbar-wrapped');
-      toolbar.classList.toggle('buret-toolbar-wrapped', !toolbar.classList.contains('collapsed')
-        && content.scrollWidth > content.clientWidth + 1);
+      const wrapped = !toolbar.classList.contains('collapsed') && content.scrollWidth > content.clientWidth + 1;
+      toolbar.classList.toggle('buret-toolbar-wrapped', wrapped);
+      // A wrapping row box keeps the full available width, leaving a blank strip
+      // beside the shorter row, often with one button alone under it. Take the
+      // narrowest width that keeps the row count, so the rows come out even.
+      if (wrapped) {
+        const left = content.getBoundingClientRect().left;
+        const widest = Math.ceil(Math.max(0, ...Array.from(content.children)
+          .filter(child => child.getClientRects().length)
+          .map(child => child.getBoundingClientRect().right - left)));
+        if (widest > 0) {
+          // The row animates its width; measure each candidate without it.
+          content.style.transition = 'none';
+          content.style.width = widest + 'px';
+          const height = content.scrollHeight;
+          const rows = Math.max(1, Math.round(height / (content.firstElementChild?.offsetHeight || height)));
+          let low = Math.floor(widest / rows);
+          let high = widest;
+          while (low < high) {
+            const width = (low + high) >> 1;
+            content.style.width = width + 'px';
+            if (content.scrollHeight > height + 1 || content.scrollWidth > content.clientWidth + 1) low = width + 1;
+            else high = width;
+          }
+          content.style.width = high + 'px';
+          void content.offsetWidth;
+          content.style.transition = '';
+        }
+      }
     }
   }
 
@@ -7867,6 +7937,7 @@
     // The desktop menu belongs to the host, but only the iframe knows when
     // Sequence or a wrapped toolbar has moved the controls below it.
     if (hostComputeAnchorRequested && hostViewerVisible && !panelState.open) {
+      // Top-aligned with the rail beside it, on the same gap as the rest of the chrome.
       const top = Math.ceil(Math.max(
         toolbarSafeTop(),
         !toolbarRect || toolbarRect.top < window.innerHeight / 2 ? toolbarBottom : 0,
@@ -7876,14 +7947,9 @@
         ? Math.ceil(window.innerWidth - viewportRailLeft + FLOATING_LAYOUT_GAP)
         : TOOLBAR_MARGIN;
       // Host chrome paints above the iframe, so it yields while a viewer menu is open.
-      const covered = Array.from(document.querySelectorAll('.buret-atlas-menu, .atlas-popover-surface')).some(isVisible);
-      const operations = hostComputeOperations();
-      const pendingLabel = generate3dPending ? (generate3dPendingMode === 'ensemble' ? 'Generating set...' : 'Generating 3D...') : '';
-      const key = JSON.stringify([top, right, covered, operations, pendingLabel]);
-      if (key !== lastHostComputeAnchor) {
-        lastHostComputeAnchor = key;
-        postHostMessage({ type: 'sceneComputeAnchor', top, right, covered, operations, pendingLabel });
-      }
+      const menuCovered = Array.from(document.querySelectorAll('.buret-atlas-menu, .atlas-popover-surface')).some(isVisible);
+      hostComputeAnchor = { top, right, menuCovered };
+      postHostComputeAnchor();
     }
     repositionDockingPoseControlsForLayout(mainRect);
 
@@ -12596,6 +12662,7 @@ SOFTWARE.
   // error) replaces it in one step.
   function revealViewer() {
     document.documentElement.classList.remove('buret-viewer-booting');
+    postHostComputeAnchor();
   }
 
   function hideStatus(payload = null) {
@@ -29238,22 +29305,180 @@ SOFTWARE.
       </span>`;
   }
 
-  function molstarMoleculePreviewCardHTML(label, image) {
+  // Where the host draws interaction maps (config.interactionDiagramPage, the
+  // desktop app and browser-dev), a ligand's card shows its map. The molecule
+  // drawn otherwise has bonds guessed from distances and no bond orders, so the
+  // map is also the faithful 2D picture of it.
+  function molstarMoleculePreviewDiagram(target) {
+    const page = (activeConfig || window.BuretteConfig || {}).interactionDiagramPage;
+    const atom = target?.atom;
+    if (typeof page !== 'string' || !page || !atom || target.scope === 'ion') return null;
+    const name = String(atom.auth_comp_id || atom.label_comp_id || '').trim();
+    const chain = String(atom.auth_asym_id || atom.label_asym_id || '').trim();
+    const number = atom.auth_seq_id ?? atom.label_seq_id;
+    return name && chain && number != null ? { page, ligand: `${name}_${chain}_${number}` } : null;
+  }
+
+  // App Settings choose what the card shows first, the design of its map and
+  // whether it opens on hover or stays open (config.viewerDefaults).
+  function molstarLigandCardDefaults() {
+    const defaults = (activeConfig || window.BuretteConfig || {}).viewerDefaults || {};
+    return {
+      content: defaults.ligandCardContent === 'molecule' ? 'molecule' : 'diagram',
+      style: typeof defaults.ligandCardDiagramStyle === 'string' && defaults.ligandCardDiagramStyle ? defaults.ligandCardDiagramStyle : 'style-schrodinger',
+      display: defaults.ligandCardDisplay === 'always' ? 'always' : 'hover'
+    };
+  }
+
+  function setMolstarLigandCardDefault(name, value) {
+    for (const config of new Set([activeConfig, window.BuretteConfig].filter(Boolean))) {
+      config.viewerDefaults = { ...(config.viewerDefaults || {}), [name]: value };
+    }
+    // A new behaviour starts from its own default, not from the last click.
+    if (name === 'ligandCardDisplay') molstarMoleculePreviewExpanded = null;
+    if (name === 'ligandCardDiagramStyle') molstarMoleculePreviewStyle = null;
+    if (molstarMoleculePreviewTarget) showMolstarMoleculePreview(molstarMoleculePreviewTarget);
+    else if (name === 'ligandCardDiagramStyle') configureMolstarMoleculePreviewDiagram();
+  }
+
+  // The card shows either the interaction map or the plain molecule. Until the
+  // user picks one, it shows what Settings say, but the molecule while the
+  // host's Interactions panel already shows that map at full size.
+  let molstarMoleculePreviewView = null;
+  let interactionsPanelOpen = false;
+
+  function molstarMoleculePreviewShowsDiagram() {
+    return (molstarMoleculePreviewView ?? (interactionsPanelOpen ? 'molecule' : molstarLigandCardDefaults().content)) === 'diagram';
+  }
+
+  // The map's designs, as the map frame reports them; the one picked in the
+  // card holds for this document, Settings give the one it starts with.
+  let molstarMoleculePreviewStyles = [];
+  let molstarMoleculePreviewStyle = null;
+
+  function molstarMoleculePreviewDiagramStyle() {
+    return molstarMoleculePreviewStyle ?? molstarLigandCardDefaults().style;
+  }
+
+  function molstarMoleculePreviewStyleHTML() {
+    const current = molstarMoleculePreviewDiagramStyle();
+    const options = molstarMoleculePreviewStyles.map(style =>
+      `<option value="${escapeHTML(style.id)}"${style.id === current ? ' selected' : ''}>${escapeHTML(style.label)}</option>`).join('');
+    return `<span class="buret-molecule-card-style"><select data-buret-molecule-preview-style aria-label="Map style">${options}</select><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>`;
+  }
+
+  function setMolstarMoleculePreviewStyle(style) {
+    if (!molstarMoleculePreviewStyles.some(entry => entry.id === style)) return;
+    molstarMoleculePreviewStyle = style;
+    configureMolstarMoleculePreviewDiagram();
+  }
+
+  // A click on the map's free space shows it at full size in the host's
+  // Interactions panel; the card goes back to the molecule meanwhile.
+  function openMolstarMoleculePreviewDiagramInPanel() {
+    const diagram = molstarMoleculePreviewDiagram(molstarMoleculePreviewTarget);
+    if (!diagram) return;
+    molstarMoleculePreviewView = null;
+    postHostMessage({ type: 'openInteractionsPanel', ligand: diagram.ligand });
+  }
+
+  function molstarMoleculePreviewViewHTML(showsDiagram) {
+    const option = (view, text, active) =>
+      `<button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="view-${view}" aria-pressed="${active}">${text}</button>`;
+    return `<span class="buret-molecule-card-view" role="group" aria-label="Preview">${option('diagram', 'Map', showsDiagram)}${option('molecule', 'Molecule', !showsDiagram)}</span>`;
+  }
+
+  function setMolstarMoleculePreviewView(view) {
+    molstarMoleculePreviewView = view;
+    if (molstarMoleculePreviewTarget) showMolstarMoleculePreview(molstarMoleculePreviewTarget);
+  }
+
+  function molstarMoleculePreviewDiagramHTML(diagram) {
+    const query = new URLSearchParams({
+      embed: '1',
+      collection: 'binding',
+      ligand: diagram.ligand,
+      style: molstarMoleculePreviewDiagramStyle(),
+      theme: resolveViewerTheme(),
+      hydrogens: molstarShowHydrogens ? '1' : '0',
+      // A card is a glance: the contacts without the rest of the pocket, no
+      // legend, and a smaller floor for the drawing scale than a side panel.
+      detail: 'compact',
+      legend: '0',
+      minscale: '1.4'
+    });
+    return `<div class="buret-molstar-molecule-preview-image buret-molecule-card-diagram"><iframe title="Interaction diagram" src="${escapeHTML(`${diagram.page}?${query}`)}"></iframe></div>`;
+  }
+
+  function configureMolstarMoleculePreviewDiagram() {
+    const frame = molstarMoleculePreview?.querySelector('.buret-molecule-card-diagram iframe');
+    const diagram = molstarMoleculePreviewDiagram(molstarMoleculePreviewTarget);
+    if (!frame?.contentWindow || !diagram) return;
+    frame.contentWindow.postMessage({
+      source: 'burette-lid-host', type: 'configure',
+      ligand: diagram.ligand, style: molstarMoleculePreviewDiagramStyle(), theme: resolveViewerTheme(), hydrogens: molstarShowHydrogens
+    }, '*');
+  }
+
+  // A contact picked in the card's diagram is shown with its surroundings. The
+  // selection stays on the ligand, so the card keeps showing it.
+  async function focusMolstarMoleculePreviewContact(contact) {
+    const residue = contact.residue;
+    const result = await executeBuretteAgentAction({ type: 'focus_residue', selector: { chain: residue.chain, auth_seq_id: residue.number }, ligand: contact.ligand, links: contact.links });
+    if (result?.ok === false) debug('diagram contact focus failed: ' + (result.error?.message || 'no residue'));
+  }
+
+  window.addEventListener('message', event => {
+    const message = event.data;
+    if (message?.source !== 'burette-lid') return;
+    const frame = molstarMoleculePreview?.querySelector('.buret-molecule-card-diagram iframe');
+    if (!frame || event.source !== frame.contentWindow) return;
+    if (message.type === 'ready') configureMolstarMoleculePreviewDiagram();
+    // The app computes the diagram; the answer comes back below.
+    else if (message.type === 'diagram-request') postHostMessage({ type: 'interactionDiagramRequest', requestId: message.id, ligand: message.ligand, rules: message.rules });
+    else if (message.type === 'contact' && message.contact?.residue) void focusMolstarMoleculePreviewContact(message.contact);
+    else if (message.type === 'open') openMolstarMoleculePreviewDiagramInPanel();
+    else if (message.type === 'styles' && Array.isArray(message.styles)) {
+      molstarMoleculePreviewStyles = message.styles
+        .filter(style => typeof style?.id === 'string' && typeof style?.label === 'string')
+        .map(style => ({ id: style.id, label: style.label }));
+      if (molstarMoleculePreviewTarget) showMolstarMoleculePreview(molstarMoleculePreviewTarget);
+    }
+  });
+
+  window.addEventListener('message', event => {
+    const body = event.data?.source === 'burette-host' ? event.data.body : null;
+    if (event.source !== window.parent || body?.type !== 'interactionDiagram') return;
+    const frame = molstarMoleculePreview?.querySelector('.buret-molecule-card-diagram iframe');
+    frame?.contentWindow?.postMessage({ source: 'burette-lid-host', type: 'diagram', id: body.requestId, result: body.result, error: body.error }, '*');
+  });
+
+  window.addEventListener('message', event => {
+    const message = event.data;
+    if (event.source !== window.parent || message?.source !== 'burette-interactions-panel' || typeof message.open !== 'boolean') return;
+    if (message.open === interactionsPanelOpen) return;
+    interactionsPanelOpen = message.open;
+    if (molstarMoleculePreviewView === null && molstarMoleculePreview && molstarMoleculePreviewTarget) showMolstarMoleculePreview(molstarMoleculePreviewTarget);
+  });
+
+  function molstarMoleculePreviewCardHTML(label, image, diagram = null, hasDiagram = false) {
     return `
       <div class="buret-molecule-card-header" data-buret-molecule-preview-drag>
         <span class="buret-molecule-card-heading">
           <span class="buret-molecule-card-title" title="${escapeHTML(label)}">${escapeHTML(label)}</span>
         </span>
+        ${diagram && molstarMoleculePreviewStyles.length ? molstarMoleculePreviewStyleHTML() : ''}
         ${molstarMoleculePreviewNavHTML()}
-        <button type="button" class="buret-molecule-card-icon" data-buret-molecule-preview-action="close" aria-label="Hide preview" title="Hide preview">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.close)}</button>
+        <button type="button" class="buret-molecule-card-icon" data-buret-molecule-preview-action="collapse" aria-label="Collapse card" title="Collapse">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.close)}</button>
       </div>
       <div class="buret-molecule-card-toolbar" role="toolbar" aria-label="Molecule preview actions">
         ${activeConfig?.visualizationOnly === true ? '' : `<button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="ketcher" aria-label="Open in molecular editor" title="Open in molecular editor">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.ketcher)}<span>Edit</span></button>`}
         <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="copy-smiles" aria-label="Copy SMILES" title="Copy SMILES">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.copy)}<span>SMILES</span></button>
         <button type="button" class="buret-molecule-card-button" data-buret-hydrogens data-buret-molecule-preview-action="hydrogens" aria-label="${molstarShowHydrogens ? 'Hide' : 'Show'} hydrogens" aria-pressed="${molstarShowHydrogens}" title="${molstarShowHydrogens ? 'Hide' : 'Show'} hydrogens">H</button>
-        <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="lasso" aria-label="Lasso atoms in 2D" aria-pressed="false" title="Select atoms by drawing a lasso · Esc to exit">${molstarMoleculePreviewIconHTML(['M7 17c-3-1-5-3-5-6 0-5 5-8 11-8s9 3 9 7-5 8-11 8', 'M7 15c-3 0-4 2-3 4s4 2 5 0-1-4-2-4', 'M7 21c2 2 5 2 7 0'])}<span>Lasso</span></button>
+        ${diagram ? '' : `<button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="lasso" aria-label="Lasso atoms in 2D" aria-pressed="false" title="Select atoms by drawing a lasso · Esc to exit">${molstarMoleculePreviewIconHTML(['M7 17c-3-1-5-3-5-6 0-5 5-8 11-8s9 3 9 7-5 8-11 8', 'M7 15c-3 0-4 2-3 4s4 2 5 0-1-4-2-4', 'M7 21c2 2 5 2 7 0'])}<span>Lasso</span></button>`}
+        ${hasDiagram ? molstarMoleculePreviewViewHTML(!!diagram) : ''}
       </div>
-      <div class="buret-molstar-molecule-preview-image" data-buret-molecule-preview-drag>${image}</div>
+      ${diagram ? molstarMoleculePreviewDiagramHTML(diagram) : `<div class="buret-molstar-molecule-preview-image" data-buret-molecule-preview-drag>${image}</div>`}
       ${molstarMoleculePreviewResizeHandlesHTML()}`;
   }
 
@@ -29424,63 +29649,84 @@ SOFTWARE.
   }
 
   function runMolstarMoleculePreviewAction(action, control) {
-    if (action === 'close') dismissMolstarMoleculePreview();
-    else if (action === 'minimize') minimizeMolstarMoleculePreview();
+    if (action === 'collapse') setMolstarMoleculePreviewExpanded(false);
+    else if (action === 'style') setMolstarMoleculePreviewStyle(control.value);
     else if (action === 'ketcher') openMolstarMoleculePreviewInKetcher(molstarMoleculePreviewTarget);
     else if (action === 'copy-smiles') void copyMolstarMoleculePreviewSmiles(molstarMoleculePreviewTarget);
     else if (action === 'hydrogens') void toggleMolstarHydrogens();
     else if (action === 'lasso') molstarMoleculePreview?.querySelector('.buret-molstar-molecule-preview-image')?.dispatchEvent(new Event('burette-toggle-lasso'));
     else if (action === 'prev') stepMolstarMoleculePreview(-1);
     else if (action === 'next') stepMolstarMoleculePreview(1);
+    else if (action === 'view-diagram') setMolstarMoleculePreviewView('diagram');
+    else if (action === 'view-molecule') setMolstarMoleculePreviewView('molecule');
   }
 
-  // Hidden state belongs to this viewer document, not its current selection.
-  // Only the bottom restore button or document teardown clears it.
-  function dismissMolstarMoleculePreview() {
-    molstarMoleculePreviewSuppressed = true;
-    minimizeMolstarMoleculePreview();
+  // The card stays in the document while folded, so its map frame keeps the
+  // loaded diagram and opening the card again shows it at once.
+  function molstarMoleculePreviewIsExpanded() {
+    // Once the user has opened or folded the card, hover no longer decides.
+    const display = molstarLigandCardDefaults().display;
+    if (molstarMoleculePreviewExpanded !== null) return molstarMoleculePreviewExpanded;
+    return display === 'always' || molstarMoleculePreviewHovered;
   }
 
-  // Minimize tucks the card into a small chip in the bottom-left corner. The
-  // selection stays, the card stays out of the way, and the chip is the one way
-  // back - hover will not pop it open again.
-  function minimizeMolstarMoleculePreview() {
-    const label = molstarMoleculePreview?.querySelector('.buret-molecule-card-title')?.textContent
-      || molstarMoleculePreviewTarget?.label || 'Molecule';
-    molstarMoleculePreviewMinimizedTarget = molstarMoleculePreviewTarget;
-    molstarMoleculePreviewMinimized = true;
-    hideMolstarMoleculePreview({ force: true });
-    showMolstarMoleculePreviewChip(label);
+  // A click on the chip opens the card and a click on its header folds it back;
+  // that choice holds until the next click or a change of the Settings default.
+  function setMolstarMoleculePreviewExpanded(expanded, { focus = false } = {}) {
+    molstarMoleculePreviewExpanded = expanded;
+    clearTimeout(molstarMoleculePreviewHoverTimer);
+    molstarMoleculePreviewHoverTimer = 0;
+    molstarMoleculePreviewHovered = false;
+    presentMolstarMoleculePreview({ focus });
   }
 
-  function restoreMolstarMoleculePreview() {
-    molstarMoleculePreviewMinimized = false;
-    molstarMoleculePreviewSuppressed = false;
-    removeMolstarMoleculePreviewChip();
-    // Prefer whatever is selected now, so restoring after picking a different
-    // ligand shows that one rather than the molecule that was parked.
-    const target = molstarSelectedMoleculePreviewTarget() || molstarMoleculePreviewMinimizedTarget;
-    molstarMoleculePreviewMinimizedTarget = null;
-    if (target) showMolstarMoleculePreview(target);
-    else scheduleMolstarSelectedMoleculePreview();
+  function presentMolstarMoleculePreview({ focus = false } = {}) {
+    const popover = molstarMoleculePreview;
+    if (!popover) {
+      molstarMoleculePreviewChip?.remove();
+      molstarMoleculePreviewChip = null;
+      return;
+    }
+    const expanded = molstarMoleculePreviewIsExpanded();
+    const hadFocus = popover.contains(document.activeElement);
+    popover.classList.toggle('buret-molecule-card-collapsed', !expanded);
+    const chip = molstarMoleculePreviewChipElement();
+    const label = popover.querySelector('.buret-molecule-card-title')?.textContent || 'Molecule';
+    const chipLabel = chip.querySelector('.buret-molecule-preview-chip-label');
+    if (chipLabel.textContent !== label) {
+      chipLabel.textContent = label;
+      chip.setAttribute('aria-label', `Open ${label} card`);
+    }
+    chip.hidden = expanded;
+    if (focus) (expanded ? popover : chip).focus({ preventScroll: true });
+    else if (hadFocus && !expanded) chip.focus({ preventScroll: true });
   }
 
-  function showMolstarMoleculePreviewChip(label) {
-    removeMolstarMoleculePreviewChip();
+  function molstarMoleculePreviewChipElement() {
+    if (molstarMoleculePreviewChip) return molstarMoleculePreviewChip;
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'buret-molecule-preview-chip';
-    chip.setAttribute('aria-label', `Restore ${label} preview`);
-    chip.title = `Restore ${label} preview`;
-    chip.innerHTML = `${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.molecule)}<span class="buret-molecule-preview-chip-label">${escapeHTML(label)}</span>`;
-    chip.addEventListener('click', () => restoreMolstarMoleculePreview());
+    chip.innerHTML = `${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.molecule)}<span class="buret-molecule-preview-chip-label"></span>`;
+    // A keyboard press moves focus into the opened card; a pointer leaves it be.
+    chip.addEventListener('click', event => setMolstarMoleculePreviewExpanded(true, { focus: event.detail === 0 }));
     document.body.appendChild(chip);
     molstarMoleculePreviewChip = chip;
+    return chip;
   }
 
-  function removeMolstarMoleculePreviewChip() {
-    molstarMoleculePreviewChip?.remove();
-    molstarMoleculePreviewChip = null;
+  // The pointer left the ligand. A card hover opened folds a moment later, so
+  // crossing the gap between two atoms or moving onto the card keeps it open;
+  // only then does it go back to the selected ligand.
+  function releaseMolstarMoleculePreviewHover() {
+    if (molstarMoleculePreviewHoverTimer) return;
+    molstarMoleculePreviewHoverTimer = setTimeout(() => {
+      molstarMoleculePreviewHoverTimer = 0;
+      if (molstarMoleculePreviewIsActive()) return;
+      molstarMoleculePreviewHovered = false;
+      presentMolstarMoleculePreview();
+      scheduleMolstarSelectedMoleculePreview();
+    }, 400);
   }
 
   function installMolstarMoleculePreviewResize(popover) {
@@ -29491,8 +29737,13 @@ SOFTWARE.
     const maxHeight = 420;
     const margin = 8;
     const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+    // A press on the header that does not move folds the card. The captured
+    // pointer sends that click to the card itself, so the press is noted here.
+    let headerPressed = false;
+    let dragMoved = false;
     const finish = (event) => {
       if (!molstarMoleculePreviewDrag || molstarMoleculePreviewDrag.popover !== popover) return;
+      dragMoved = molstarMoleculePreviewDrag.moved;
       try { popover.releasePointerCapture?.(molstarMoleculePreviewDrag.pointerId); } catch (_) {}
       popover.classList.remove('buret-molstar-molecule-preview-resizing');
       popover.classList.remove('buret-molstar-molecule-preview-moving');
@@ -29502,10 +29753,12 @@ SOFTWARE.
     };
     popover.addEventListener('pointerdown', event => {
       const handle = event.target instanceof Element ? event.target.closest('[data-buret-molecule-preview-resize]') : null;
+      dragMoved = false;
+      headerPressed = !handle && !!event.target.closest?.('.buret-molecule-card-header');
       if (event.button !== 0) return;
       // Header controls must keep their pointer target through click. Capturing
       // their pointer on the card turns a close/minimize click into a drag.
-      if (event.target.closest?.('[data-buret-molecule-preview-action]')) return;
+      if (event.target.closest?.('[data-buret-molecule-preview-action], select')) return;
       // Only the header background and the drawing move the card.
       if (!handle && !event.target.closest?.('[data-buret-molecule-preview-drag]')) return;
       const direction = handle?.getAttribute('data-buret-molecule-preview-resize') || '';
@@ -29582,14 +29835,29 @@ SOFTWARE.
     });
     popover.addEventListener('pointerup', finish);
     popover.addEventListener('pointercancel', finish);
+    popover.addEventListener('pointerleave', () => {
+      if (molstarMoleculePreviewHovered) releaseMolstarMoleculePreviewHover();
+    });
+    popover.addEventListener('change', event => {
+      const select = event.target instanceof Element ? event.target.closest('[data-buret-molecule-preview-style]') : null;
+      if (select) runMolstarMoleculePreviewAction('style', select);
+    });
     popover.addEventListener('click', event => {
       const control = event.target instanceof Element
         ? event.target.closest('[data-buret-molecule-preview-action]')
         : null;
-      // Everything the card does now has a button; a click on the drawing or the
-      // header is only ever the tail of a drag and must stay inert.
+      // Everything the card does has a button. A click on the header folds the
+      // card into its chip; one on the drawing is the tail of a drag.
       event.stopPropagation();
-      if (!control) return;
+      if (event.target.closest?.('select')) {
+        headerPressed = false;
+        return;
+      }
+      if (!control) {
+        if (headerPressed && !dragMoved) runMolstarMoleculePreviewAction('collapse');
+        headerPressed = false;
+        return;
+      }
       event.preventDefault();
       runMolstarMoleculePreviewAction(control.dataset.buretMoleculePreviewAction, control);
     });
@@ -29911,15 +30179,15 @@ SOFTWARE.
     scheduleSceneTreeRender();
   }
 
-  function showMolstarMoleculePreview(target) {
+  // `hover`: the pointer rests on this ligand, which opens a card set to open on hover.
+  function showMolstarMoleculePreview(target, { hover = false } = {}) {
     const entry = molstarMoleculePreviewEntry(target);
-    if (normalizeFormat(entry?.format) !== 'sdf') {
-      hideMolstarMoleculePreview();
-      return;
+    if (normalizeFormat(entry?.format) !== 'sdf') return;
+    if (hover) {
+      clearTimeout(molstarMoleculePreviewHoverTimer);
+      molstarMoleculePreviewHoverTimer = 0;
+      molstarMoleculePreviewHovered = true;
     }
-    // Parked by × or tucked into the chip: stay hidden until the user asks for it
-    // back, not the moment the pointer drifts back over the selected ligand.
-    if (molstarMoleculePreviewSuppressed || molstarMoleculePreviewMinimized) return;
     const key = molstarPreviewKey(entry);
     const image = molstarPreviewSvgCache.get(key) || '';
     const label = target?.label || entry?.label || (target?.scope === 'ion' ? 'Ion' : 'Ligand');
@@ -29931,6 +30199,9 @@ SOFTWARE.
       popover.className = 'buret-molstar-molecule-preview';
       popover.setAttribute('role', 'dialog');
       popover.tabIndex = 0;
+      // Folded from the first frame; measuring the card below would otherwise
+      // start a fade-out of a card that was never shown.
+      popover.classList.toggle('buret-molecule-card-collapsed', !molstarMoleculePreviewIsExpanded());
       installMolstarMoleculePreviewResize(popover);
       document.body.appendChild(popover);
       molstarMoleculePreview = popover;
@@ -29940,14 +30211,48 @@ SOFTWARE.
     // markup each time destroys the button under the cursor between pointerdown and
     // click, so nothing in the footer can be pressed and a resize handle grabbed
     // mid-rebuild belongs to no card. Only redraw when the card would differ.
-    const signature = `${key}\n${label}`;
-    if (popover.dataset.buretPreviewSignature !== signature) {
-      popover.innerHTML = molstarMoleculePreviewCardHTML(label, image || escapeHTML('Rendering 2D preview...'));
-      popover.dataset.buretPreviewSignature = signature;
+    // The diagram redraws its hydrogens in place, so they are not part of its card.
+    // The map frame of a complex is kept across its ligands: it is told the new
+    // ligand instead of loading the diagram page again.
+    const available = molstarMoleculePreviewDiagram(target);
+    const diagram = available && molstarMoleculePreviewShowsDiagram() ? available : null;
+    const body = diagram ? 'diagram' : `molecule:${key}`;
+    // The picked style is not part of it: the select already shows the pick, and
+    // a header swapped between pointerdown and pointerup swallows the click.
+    const chrome = `${label}\n${target?.atom ? molstarContextResidueLabel(target.atom) : ''}\n${diagram ? `diagram:${molstarMoleculePreviewStyles.length}` : 'molecule'}\n${available ? 'map' : ''}`;
+    if (popover.dataset.buretPreviewBody === body && popover.dataset.buretPreviewChrome !== chrome && !molstarMoleculePreviewDrag) {
+      const next = document.createElement('template');
+      next.innerHTML = molstarMoleculePreviewCardHTML(label, '', diagram, !!available);
+      for (const part of ['.buret-molecule-card-header', '.buret-molecule-card-toolbar']) {
+        const replacement = next.content.querySelector(part);
+        if (replacement) popover.querySelector(part)?.replaceWith(replacement);
+      }
+      popover.dataset.buretPreviewChrome = chrome;
+      updateMolstarHydrogenButtons();
+    }
+    if (popover.dataset.buretPreviewBody !== body) {
+      popover.innerHTML = molstarMoleculePreviewCardHTML(label, image || escapeHTML('Rendering 2D preview...'), diagram, !!available);
+      popover.dataset.buretPreviewBody = body;
+      popover.dataset.buretPreviewChrome = chrome;
       popover.dataset.buretPreviewKey = key;
       if (created) applyMolstarMoleculePreviewGeometry(popover);
+      // A diagram needs more room than a molecule thumbnail.
+      popover.classList.toggle('buret-molecule-card-has-diagram', !!diagram);
+      // and a card that can switch to the diagram needs room for the switch
+      if (available && popover.getBoundingClientRect().width < 340) {
+        popover.style.width = '380px';
+        if (diagram) popover.style.height = `${molstarMoleculePreviewFitHeight(popover, 400)}px`;
+        molstarMoleculePreviewClamp(popover);
+      }
       rememberMolstarMoleculePreviewGeometry(popover);
       updateMolstarHydrogenButtons();
+    }
+    const styleSelect = popover.querySelector('[data-buret-molecule-preview-style]');
+    if (styleSelect && styleSelect.value !== molstarMoleculePreviewDiagramStyle()) styleSelect.value = molstarMoleculePreviewDiagramStyle();
+    presentMolstarMoleculePreview();
+    if (diagram) {
+      configureMolstarMoleculePreviewDiagram();
+      return;
     }
     void molstarMoleculePreviewRDKitSVG(entry)
       .then(svg => {
@@ -30036,23 +30341,33 @@ SOFTWARE.
   }
 
   function scheduleMolstarSelectedMoleculePreview(fallbackTarget = null) {
-    if (molstarMoleculePreviewSuppressed || molstarMoleculePreviewMinimized) return;
+    if (molstarHydrogensPending) return;
     const hasCandidate = Boolean(molstarSelectedMoleculePreviewTarget() || fallbackTarget);
     if (!hasCandidate) {
-      hideMolstarMoleculePreview({ force: true });
+      showMolstarResidentMoleculePreview();
       return;
     }
     if (showMolstarSelectedMoleculePreview(fallbackTarget)) return;
     if (molstarMoleculePreviewFrame) cancelAnimationFrame(molstarMoleculePreviewFrame);
-    const showOrHide = () => {
-      if (!showMolstarSelectedMoleculePreview(fallbackTarget)) hideMolstarMoleculePreview({ force: true });
+    const showOrSettle = () => {
+      if (!showMolstarSelectedMoleculePreview(fallbackTarget)) showMolstarResidentMoleculePreview();
     };
     molstarMoleculePreviewFrame = requestAnimationFrame(() => {
       molstarMoleculePreviewFrame = 0;
       if (showMolstarSelectedMoleculePreview(fallbackTarget)) return;
-      setTimeout(showOrHide, 250);
-      setTimeout(showOrHide, 900);
+      setTimeout(showOrSettle, 250);
+      setTimeout(showOrSettle, 900);
     });
+  }
+
+  // With nothing selected the card keeps the ligand it showed last, or the
+  // first ligand of the structure, so the chip in the corner is always there.
+  function showMolstarResidentMoleculePreview() {
+    const shown = molstarMoleculePreviewTarget && molstarMoleculePreviewEntry(molstarMoleculePreviewTarget) ? molstarMoleculePreviewTarget : null;
+    const first = shown ? null : molstarPreviewLigandEntries().find(entry => entry.scope === 'ligand');
+    const target = shown || (first ? molstarPreviewLigandTarget(first) : null);
+    if (target && molstarMoleculePreviewEntry(target)) showMolstarMoleculePreview(target);
+    else removeMolstarMoleculePreview();
   }
 
   function molstarMoleculePreviewIsActive() {
@@ -30061,28 +30376,40 @@ SOFTWARE.
       molstarMoleculePreview.contains(document.activeElement);
   }
 
+  // Escape, a cleared selection or a resized window fold what hover opened; the
+  // card and the user's open/folded choice stay. Document teardown resets both.
   function clearMolstarPersistentMoleculePreview({ reset = false } = {}) {
-    if (!reset && (molstarMoleculePreviewSuppressed || molstarMoleculePreviewMinimized)) {
-      hideMolstarMoleculePreview({ force: true });
+    if (!reset) {
+      hideMolstarMoleculePreview();
       return;
     }
-    molstarMoleculePreviewSuppressed = false;
-    molstarMoleculePreviewMinimized = false;
-    molstarMoleculePreviewMinimizedTarget = null;
-    removeMolstarMoleculePreviewChip();
-    hideMolstarMoleculePreview({ force: true });
+    molstarMoleculePreviewExpanded = null;
+    removeMolstarMoleculePreview();
   }
 
-  function hideMolstarMoleculePreview(options = {}) {
+  // Folds a card that only hover opened, at once (a lasso, a scroll).
+  function hideMolstarMoleculePreview() {
     if (molstarMoleculePreviewFrame) {
       cancelAnimationFrame(molstarMoleculePreviewFrame);
       molstarMoleculePreviewFrame = 0;
     }
-    if (!molstarMoleculePreview) return;
-    rememberMolstarMoleculePreviewGeometry(molstarMoleculePreview);
-    molstarMoleculePreview.remove();
+    clearTimeout(molstarMoleculePreviewHoverTimer);
+    molstarMoleculePreviewHoverTimer = 0;
+    if (!molstarMoleculePreviewHovered) return;
+    molstarMoleculePreviewHovered = false;
+    presentMolstarMoleculePreview();
+  }
+
+  function removeMolstarMoleculePreview() {
+    hideMolstarMoleculePreview();
+    molstarMoleculePreviewHovered = false;
+    if (molstarMoleculePreview) {
+      rememberMolstarMoleculePreviewGeometry(molstarMoleculePreview);
+      molstarMoleculePreview.remove();
+    }
     molstarMoleculePreview = null;
     molstarMoleculePreviewTarget = null;
+    presentMolstarMoleculePreview();
   }
 
   function hideMolstarContextMenu(options = {}) {
@@ -31232,16 +31559,20 @@ SOFTWARE.
       if (pick?.loci && !molstarLociIsEmpty(pick.loci)) {
         const previewTarget = molstarContextTargetForPick({ ...pick, position: event.position });
         if (previewTarget.scope === 'ligand' || previewTarget.scope === 'ion') {
-          showMolstarMoleculePreview(previewTarget);
+          showMolstarMoleculePreview(previewTarget, { hover: true });
           return;
         }
       }
-      scheduleMolstarSelectedMoleculePreview();
+      // Off the ligand a hover-opened card folds after a moment and then goes
+      // back to the selection.
+      if (molstarMoleculePreviewHovered) releaseMolstarMoleculePreviewHover();
+      else scheduleMolstarSelectedMoleculePreview();
     };
     const moleculeHoverSubscription = viewer.plugin.behaviors.interaction.hover.subscribe(updateMoleculePreviewFromHover);
     const hideMoleculePreviewFromEvent = (event) => {
       if (event.target instanceof Element && event.target.closest('.buret-molstar-molecule-preview')) return;
-      scheduleMolstarSelectedMoleculePreview();
+      if (molstarMoleculePreviewHovered) releaseMolstarMoleculePreviewHover();
+      else scheduleMolstarSelectedMoleculePreview();
     };
     const onKeyDown = (event) => {
       if (event.defaultPrevented || (event.target instanceof Element && event.target.closest('.buret-molecule-context-menu'))) {
@@ -31252,9 +31583,9 @@ SOFTWARE.
         clearMolstarPersistentMoleculePreview();
         return;
       }
-      // Arrows walk the ligands while the card is up. Typing anywhere — a field, the
-      // sequence, a menu — keeps its own arrow behaviour.
-      if (!molstarMoleculePreview) return;
+      // Arrows walk the ligands while the card is open. Typing anywhere — a field,
+      // the sequence, a menu — keeps its own arrow behaviour.
+      if (!molstarMoleculePreview || !molstarMoleculePreviewIsExpanded()) return;
       const step = event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1
         : event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1
         : 0;
@@ -31267,6 +31598,7 @@ SOFTWARE.
     const onResize = () => {
       hideMolstarContextMenu();
       clearMolstarPersistentMoleculePreview();
+      if (molstarMoleculePreview) molstarMoleculePreviewClamp(molstarMoleculePreview);
     };
     document.addEventListener('contextmenu', onContextMenu, true);
     document.addEventListener('pointerdown', onPointerDown, true);
@@ -31812,6 +32144,8 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     }
     await applyMolstarContextFocus(config);
     notifyMolstarSelectionChanged(molstarSelectedMoleculePreviewTarget());
+    // The ligand card is there from the start, folded or open as Settings say.
+    scheduleMolstarSelectedMoleculePreview();
     void reportBuretteAgentState();
     startBuretteAgentActionPolling();
     trackMolstarOrientation(viewer, config);

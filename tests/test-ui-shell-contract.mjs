@@ -6397,7 +6397,7 @@ assert.match(previewViewer, /function standalonePreviewSdfFromAtoms\(atoms, labe
 assert.match(previewViewer, /normalizedAtoms\.length > MOLSTAR_STANDALONE_PREVIEW_MAX_ATOMS/);
 assert.match(previewViewer, /function inferStandalonePreviewBonds\(atoms\)/);
 assert.match(previewViewer, /function standalonePreviewBondLimit\(a, b\)/);
-assert.match(previewViewer, /function showMolstarMoleculePreview\(target\)/);
+assert.match(previewViewer, /function showMolstarMoleculePreview\(target[,)]/);
 assert.match(previewViewer, /function molstarMoleculePreviewSdfEntry\(target\)/);
 assert.match(previewViewer, /pdbLigandSdfEntryForResidue\(target\.receptor, target\.atom\)/);
 assert.match(previewViewer, /pdbLigandSdfEntryForResidue\(target\.sourceEntry, target\.atom\)/);
@@ -6406,7 +6406,7 @@ assert.match(previewViewer, /if \(normalizeFormat\(entry\?\.format\) === 'sdf'\)
 assert.match(previewViewer, /return molstarStandaloneMoleculePreviewEntryForTarget\(target, entry\);/);
 assert.doesNotMatch(previewViewer, /return molstarStandaloneMoleculePreviewEntryForTarget\(target, entry\) \|\| entry;/);
 assert.doesNotMatch(previewViewer, /sourceFormat !== 'xyz'/);
-assert.match(previewViewer, /if \(normalizeFormat\(entry\?\.format\) !== 'sdf'\) \{\s*hideMolstarMoleculePreview\(\);\s*return;\s*\}/);
+assert.match(previewViewer, /if \(normalizeFormat\(entry\?\.format\) !== 'sdf'\) return;/);
 assert.match(previewViewer, /const image = molstarPreviewSvgCache\.get\(key\) \|\| ''/);
 assert.match(previewViewer, /function molstarPreviewParseMolblock2D\(data\)/);
 assert.match(previewViewer, /function molstarMoleculePreviewFallbackSVG\(entry, showHydrogens = molstarShowHydrogens\)/);
@@ -6415,7 +6415,7 @@ assert.match(previewViewer, /const molblock = splitSdfRecords\(String\(entry\.da
 assert.match(previewViewer, /normalizeFormat\(target\.sourceEntry\?\.format\) === 'sdf'[\s\S]*?return target\.sourceEntry;/);
 assert.match(previewViewer, /format !== 'pdb' && format !== 'pdbqt' && format !== 'sdf'/);
 assert.doesNotMatch(previewViewer, /if \(!image\) \{\s*hideMolstarMoleculePreview\(\);\s*return;\s*\}/);
-assert.match(previewViewer, /molstarMoleculePreviewCardHTML\(label, image \|\| escapeHTML\('Rendering 2D preview\.\.\.'\)\)/);
+assert.match(previewViewer, /molstarMoleculePreviewCardHTML\(label, image \|\| escapeHTML\('Rendering 2D preview\.\.\.'\), diagram, !!available\)/);
 assert.match(previewViewer, /function molstarPreviewLoadRDKitScript\(\)/);
 assert.match(previewViewer, /runtimeURL\('BuretteRDKitJSURL', '\.\.\/assets\/rdkit\/RDKit_minimal\.js'\)/);
 assert.match(previewViewer, /function molstarPreviewRDKitWasmCandidates\(\)/);

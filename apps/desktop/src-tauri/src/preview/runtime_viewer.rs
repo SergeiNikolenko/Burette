@@ -286,6 +286,9 @@ pub(crate) fn create_runtime<R: Runtime>(
         "defaultLayoutState": { "left": "hidden", "right": "hidden", "top": "hidden", "bottom": "hidden" }
     });
     config["viewerDefaults"] = preferences.viewer_defaults.runtime_config();
+    if renderer == "molstar" && crate::commands::interaction_diagram::maps_interactions(extension) {
+        config["interactionDiagramPage"] = json!(interaction_diagram_page(app));
+    }
     config["xyzrenderAnimationSourcePath"] = json!(source_path);
     config["autoFocusStructure"] = json!(true);
     config["rendererViewState"] = json!(reload_options
@@ -1491,6 +1494,19 @@ fn write_rdkit_wasm_data_if_needed(source: &Path, destination: &Path) -> Result<
         format!("{fingerprint}\nwindow.BuretteRDKitWasmBase64 = \"{base64}\";\n").as_bytes(),
     )
     .map_err(|error| format!("write RDKit wasm data: {error}"))
+}
+
+// The 2D interaction map page, a bundle resource beside the viewer assets. The
+// viewer's ligand card frames it and the app computes its diagrams.
+fn interaction_diagram_page<R: Runtime>(app: &tauri::AppHandle<R>) -> Option<String> {
+    let page = app
+        .path()
+        .resolve(
+            "interaction-diagram/index.html",
+            tauri::path::BaseDirectory::Resource,
+        )
+        .ok()?;
+    page.is_file().then(|| asset_url(&page))
 }
 
 fn bundled_web_dir<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String> {

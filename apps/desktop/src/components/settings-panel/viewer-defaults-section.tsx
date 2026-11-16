@@ -1,10 +1,13 @@
+import { useEffect, useState } from "react";
 import type { ViewerPreferences } from "../../types";
 import { defaultPreferences } from "../../stores/settings-store";
+import { fetchDiagramStyles } from "../../lib/interaction-diagram";
 import type { ShellActions } from "../types";
 import { SettingsSection, ToggleControl, selectPreferenceRow, type SettingRow } from "./setting-control";
 
 type SetPreference = ShellActions["setPreference"];
-type ChoiceKey = "screenshotResolution" | "screenshotFormat" | "gridViewMode" | "gridCardRenderer" | "hydrogenDisplay";
+type ChoiceKey = "screenshotResolution" | "screenshotFormat" | "gridViewMode" | "gridCardRenderer" | "hydrogenDisplay"
+  | "ligandCardContent" | "ligandCardDiagramStyle" | "ligandCardDisplay";
 type ToggleKey = "screenshotTransparent" | "quickLookGridSdf" | "quickLookGridSmiles" | "quickLookGridCsv" | "quickLookGridTsv";
 
 const RESOLUTION_LABELS: Record<ViewerPreferences["screenshotResolution"], string> = {
@@ -18,6 +21,8 @@ const FORMAT_LABELS: Record<ViewerPreferences["screenshotFormat"], string> = { p
 const VIEW_LABELS: Record<ViewerPreferences["gridViewMode"], string> = { cards: "Cards", table: "Table" };
 const CARD_DRAWING_LABELS: Record<ViewerPreferences["gridCardRenderer"], string> = { rdkit: "2D drawing", xyzrender: "3D render" };
 const HYDROGEN_LABELS: Record<ViewerPreferences["hydrogenDisplay"], string> = { none: "Hidden", all: "Shown" };
+const LIGAND_CARD_CONTENT_LABELS: Record<ViewerPreferences["ligandCardContent"], string> = { diagram: "Interaction map", molecule: "Molecule" };
+const LIGAND_CARD_DISPLAY_LABELS: Record<ViewerPreferences["ligandCardDisplay"], string> = { hover: "On hover", always: "Always" };
 // 0 keeps the fluid card width; the rest are fixed minimum widths in px.
 const CARD_SIZE_LABELS: Record<number, string> = { 0: "Auto", 120: "Small", 174: "Medium", 240: "Large" };
 
@@ -64,6 +69,19 @@ function cardSizeRow(preferences: ViewerPreferences, setPreference: SetPreferenc
   );
 }
 
+// The map rows appear once the designs have loaded.
+function useDiagramStyleLabels() {
+  const [labels, setLabels] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let current = true;
+    fetchDiagramStyles()
+      .then((styles) => { if (current) setLabels(Object.fromEntries(styles.map(([id, style]) => [id, style.label]))); })
+      .catch(() => {});
+    return () => { current = false; };
+  }, []);
+  return labels;
+}
+
 export function ViewerDefaultsSection({
   preferences,
   actions,
@@ -72,6 +90,8 @@ export function ViewerDefaultsSection({
   actions: Pick<ShellActions, "setPreference">;
 }) {
   const setPreference = actions.setPreference;
+  const diagramStyles = useDiagramStyleLabels();
+  const hasDiagrams = Object.keys(diagramStyles).length > 0;
   return (
     <>
       <SettingsSection
@@ -89,6 +109,16 @@ export function ViewerDefaultsSection({
           choiceRow("Card drawing", "gridCardRenderer", CARD_DRAWING_LABELS, preferences, setPreference),
           cardSizeRow(preferences, setPreference),
           choiceRow("Hydrogens", "hydrogenDisplay", HYDROGEN_LABELS, preferences, setPreference),
+        ]}
+      />
+      <SettingsSection
+        title="Ligand card"
+        rows={[
+          ...(hasDiagrams ? [
+            choiceRow("Content", "ligandCardContent", LIGAND_CARD_CONTENT_LABELS, preferences, setPreference),
+            choiceRow("Map style", "ligandCardDiagramStyle", diagramStyles, preferences, setPreference),
+          ] : []),
+          choiceRow("Show card", "ligandCardDisplay", LIGAND_CARD_DISPLAY_LABELS, preferences, setPreference),
         ]}
       />
       <SettingsSection

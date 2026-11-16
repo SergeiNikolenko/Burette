@@ -41,6 +41,9 @@ const LIVE_APPLIED_PREFERENCE_MESSAGES = {
   gridCardRenderer: "setGridCardRendererDefault",
   gridCardSize: "setGridCardSizeDefault",
   hydrogenDisplay: "setGridHydrogenDisplayDefault",
+  ligandCardContent: "setLigandCardContentDefault",
+  ligandCardDiagramStyle: "setLigandCardDiagramStyleDefault",
+  ligandCardDisplay: "setLigandCardDisplayDefault",
   // Read only by the Quick Look extension (synced through sync_viewer_preferences).
   quickLookGridSdf: null,
   quickLookGridSmiles: null,

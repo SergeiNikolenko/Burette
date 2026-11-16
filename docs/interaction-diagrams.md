@@ -12,6 +12,17 @@ user has open, with no server and no account.
   structure shown in the dock's document: a ligand picker, a design picker,
   and the map, which fills the panel. Picking a residue or a contact in the
   map focuses it in the 3D view with the contact's atom pairs and distances.
+- **Ligand card** in the 3D view. Pointing at a ligand opens its card with a
+  compact map: only the residues in contact, no legend. The header switches
+  between the map and the plain molecule and picks the design. A click on free
+  space in the map shows it at full size in the Interactions tab; while that
+  tab is open the card shows the molecule. A click on the header or on ×
+  folds the card into a chip in the corner, and hover no longer opens it until
+  the chip is clicked.
+  Settings → Structure rendering → Ligand card sets what the card shows first
+  (`ligandCardContent`: interaction map or molecule), its design
+  (`ligandCardDiagramStyle`) and whether it opens on hover or stays open
+  (`ligandCardDisplay`).
 - The map is offered for PDB and mmCIF files (`.pdb`, `.ent`, `.cif`,
   `.mmcif`) in the desktop app and in browser-dev. Quick Look, the agent shell
   and hosted builds have no engine and do not offer it.
@@ -80,7 +91,12 @@ structure itself never leaves the machine.
 
 The page is `apps/desktop/public/interaction-diagram/index.html`, a static
 module served with the app. It runs in a frame with `embed=1` and talks to its
-host over `postMessage`:
+host over `postMessage`. The Interactions tab is its host directly. In the
+ligand card the viewer is the host: it relays `diagram-request` to the app as
+`interactionDiagramRequest` and the answer back. The viewer learns the page's
+address from `interactionDiagramPage` in its configuration: an `asset:` URL of
+the copy in the app's resources in the desktop app (the viewer runs at an
+`asset:` origin), the dev server's copy in browser-dev, and none elsewhere.
 
 | Direction | Message | Meaning |
 | --- | --- | --- |
