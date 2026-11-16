@@ -5,6 +5,7 @@ import {
   createSelectionContext,
   sanitizeViewerActions,
 } from "../lib/hosted-context";
+import { installHostedWorkspace, type HostedWorkspaceHome } from "./hosted-workspace";
 
 declare global {
   interface Window {
@@ -18,6 +19,7 @@ declare global {
         arguments_?: Record<string, unknown>,
       ) => ReturnType<App["callServerTool"]>;
       sanitizeViewerActions: (actions: unknown) => Record<string, unknown>[];
+      home?: HostedWorkspaceHome;
     };
     __BURETTE_HOSTED_APP_QUEUE__?: Array<{ method: string; args: unknown[] }>;
     __BURETTE_HOSTED_APP_READY__?: (ready: boolean) => void;
@@ -41,6 +43,11 @@ const app = new App(
   {},
   { autoResize: true, strict: true },
 );
+
+installHostedWorkspace(app, (name, arguments_) => callServerTool(name, arguments_), (home) => {
+  bridge.home = home;
+  window.dispatchEvent(new Event("burette-hosted-home"));
+});
 
 let sourceDescriptor: unknown;
 let connected = false;
@@ -77,7 +84,7 @@ const queuedCalls = Array.isArray(window.__BURETTE_HOSTED_APP_QUEUE__)
 // The viewer reports an empty selection on load; only clear the model context
 // after something was selected, so hosts do not show an empty context card.
 let selectionShared = false;
-const bridge = {
+const bridge: NonNullable<Window["BuretteHostedAppBridge"]> = {
   setSource(source: unknown) {
     sourceDescriptor = source;
   },

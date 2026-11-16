@@ -1894,9 +1894,7 @@ function KetcherEditorLoader({
     setLoadError(null);
     setEditorComponent(null);
 
-    // Hosted cards cannot use the molecular frame's same-origin synchronous
-    // API across ChatGPT's sandbox origin. Keep their editor in the card.
-    const editor = reaction || isHostedKetcherWidget()
+    const editor = reaction
       ? import("./ketcher-editor").then(module => module.KetcherEditor)
       : import("./molecular-editor").then(module => module.MolecularEditorView);
     void editor

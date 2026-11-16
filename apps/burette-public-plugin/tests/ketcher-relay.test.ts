@@ -114,7 +114,7 @@ describe("hosted Ketcher widget contract", () => {
     expect("resourceUri" in meta.ui).toBe(false);
     expect(meta.ui.domain).toBe("https://burette.example");
     expect(meta.ui.csp.connectDomains).toEqual(["https://burette.example"]);
-    expect(meta["openai/widgetDescription"]).toContain("Ketcher");
+    expect(meta["openai/widgetDescription"]).toContain("molecular editor");
     expect(toolMeta.ui.resourceUri).toBe(KETCHER_RESOURCE_URI);
     expect(toolMeta["openai/widgetAccessible"]).toBe(true);
   });

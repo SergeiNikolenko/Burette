@@ -1,7 +1,7 @@
 {
   "name": "burette-cloud-viewer",
-  "version": "1.0.0",
-  "description": "Inspect public PDB entries and supported attachments in a hosted molecular viewer, and sketch molecules in Ketcher. No local server or desktop installation required.",
+  "version": "1.1.0",
+  "description": "Inspect public PDB entries and supported attachments in a hosted molecular viewer, and sketch molecules in the Burette molecular editor. No local server or desktop installation required.",
   "author": {
     "name": "Burette contributors",
     "url": "https://github.com/SergeiNikolenko/Burette"
@@ -21,7 +21,7 @@
   "interface": {
     "displayName": "Burette Cloud",
     "shortDescription": "Explore molecular structures",
-    "longDescription": "Inspect public PDB entries and supported attachments in a hosted molecular viewer, and sketch molecules in Ketcher. No local server or desktop installation required. Attachments are processed by the hosted service, up to 3 MiB. Sketches are temporary. Local app control, docking, simulation, alignment and server-side image export are not included.",
+    "longDescription": "Inspect public PDB entries and supported attachments in a hosted molecular viewer, and sketch molecules in the Burette molecular editor. The viewer and editor open in the Codex side panel, and local structure files open from the file browser. No local server or desktop installation required. Attachments are processed by the hosted service, up to 3 MiB. Sketches are temporary. Local app control, docking, simulation, alignment and server-side image export are not included.",
     "developerName": "Burette",
     "category": "Education & Research",
     "capabilities": [
@@ -36,7 +36,7 @@
     "defaultPrompt": [
       "Open PDB 1HTB and show its ligands",
       "Preview my attached molecular structure",
-      "Draw aspirin in Ketcher"
+      "Draw aspirin in the Burette editor"
     ],
     "brandColor": "#14A39A",
     "composerIcon": "./assets/composer-icon.png",
@@ -70,9 +70,9 @@
             },
             {
               "description": "Create a temporary chemical sketch",
-              "prompt": "Draw ethanol from SMILES CCO in Ketcher.",
+              "prompt": "Draw ethanol from SMILES CCO in the Burette editor.",
               "tools_triggered": "open_ketcher",
-              "expected_behavior": "Open an interactive Ketcher editor seeded with ethanol. Explain that sketches are temporary if persistence is requested."
+              "expected_behavior": "Open the interactive Burette molecular editor seeded with ethanol. Explain that sketches are temporary if persistence is requested."
             },
             {
               "description": "Read and change the active sketch",
@@ -100,7 +100,7 @@
         "commerce_description": "No products are sold and no payments are processed."
       },
       "publication": {
-        "release_notes": "Initial HTTPS-only Burette Cloud package for public PDB entries, authorized supported attachments and temporary Ketcher sketches. No local executable or desktop installation."
+        "release_notes": "Burette Cloud 1.1.0 replaces Ketcher with Burette's own molecular editor, opens the viewer and editor in the Codex side panel, adds a Burette workspace tab with recent PDB entries, and opens structure and sketch files from the Codex file browser. No local executable or desktop installation."
       }
     }
   }

@@ -7,8 +7,13 @@ import {
 import { McpServer, WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/server";
 import { z } from "zod/v4";
 import {
+  APP_ONLY_TOOL_META,
+  entrypointToolMeta,
+  fileEntrypointInputSchema,
   fileReferenceSchema,
   molecularSceneInputSchema,
+  SKETCH_FILE_EXTENSIONS,
+  STRUCTURE_FILE_EXTENSIONS,
   exposeNoauthSecuritySchemes,
   NOAUTH_SECURITY_SCHEMES,
   NOAUTH_TOOL_SECURITY,
@@ -24,8 +29,10 @@ import {
 } from "@burette/ketcher-agent-contract";
 import { getAppOrigin } from "@/lib/origin";
 import {
+  MAX_PUBLIC_STRUCTURE_BYTES,
   prepareAttachedStructure,
   preparePdbStructure,
+  prepareStructureText,
   StructureServiceError,
   structureSummaryText,
 } from "@/lib/structure-service";
@@ -135,6 +142,8 @@ const controlKetcherOutputSchema = {
   error: ketcherErrorSchema.optional(),
 };
 
+const entrypointOutputSchema = { entrypoint: z.enum(["thread", "file"]) };
+
 function toolError(error: unknown) {
   const message =
     error instanceof StructureServiceError
@@ -148,9 +157,9 @@ function toolError(error: unknown) {
 
 function ketcherReadyText(snapshot: ReturnType<typeof hostedKetcherSnapshot> | undefined): string {
   const structure = snapshot?.structure;
-  if (!snapshot || !structure || structure.kind === "empty") return `Ketcher editor is ready with an empty canvas at structure revision ${snapshot?.structureRevision ?? 0}.`;
+  if (!snapshot || !structure || structure.kind === "empty") return `Molecular editor is ready with an empty canvas at structure revision ${snapshot?.structureRevision ?? 0}.`;
   const smiles = structure.smiles ? ` (SMILES ${structure.smiles})` : "";
-  return `Ketcher editor is ready with a ${structure.kind} of ${structure.atomCount} atoms and ${structure.bondCount} bonds${smiles} at structure revision ${snapshot.structureRevision}. Nothing was written to a file.`;
+  return `Molecular editor is ready with a ${structure.kind} of ${structure.atomCount} atoms and ${structure.bondCount} bonds${smiles} at structure revision ${snapshot.structureRevision}. Nothing was written to a file.`;
 }
 
 function createServer(): McpServer {
@@ -190,8 +199,8 @@ function createServer(): McpServer {
     "burette-ketcher-editor",
     KETCHER_RESOURCE_URI,
     {
-      title: "Burette Ketcher Editor",
-      description: "Revision-checked Ketcher editor surface for Burette agent actions.",
+      title: "Burette Molecular Editor",
+      description: "Revision-checked molecular editor surface for Burette agent actions.",
       mimeType: RESOURCE_MIME_TYPE,
     },
     async () => ({
@@ -210,8 +219,8 @@ function createServer(): McpServer {
     server,
     "open_ketcher",
     {
-      title: "Open Ketcher Editor",
-      description: "Open a bounded Ketcher chemical editor surface and optionally seed it with one inline structure.",
+      title: "Open Molecular Editor",
+      description: "Open Burette's molecular editor and optionally seed it with one inline structure (SMILES, MOL, KET, or an RXN reaction).",
       inputSchema: {
         structure: ketcherStructureSchema.optional(),
       },
@@ -223,7 +232,7 @@ function createServer(): McpServer {
         openWorldHint: false,
       },
       ...NOAUTH_TOOL_SECURITY,
-      _meta: ketcherToolMeta("Opening Ketcher editor…", "Ketcher editor ready"),
+      _meta: ketcherToolMeta("Opening molecular editor…", "Molecular editor ready"),
     },
     async ({ structure }: { structure?: z.infer<typeof ketcherStructureSchema> }) => {
       const created = createHostedKetcherSurface(structure);
@@ -265,8 +274,8 @@ function createServer(): McpServer {
     server,
     "control_ketcher",
     {
-      title: "Control Ketcher Editor",
-      description: "Apply a bounded, revision-checked action to a hosted Ketcher surface.",
+      title: "Control Molecular Editor",
+      description: "Apply a bounded, revision-checked action to an open molecular editor surface.",
       inputSchema: {
         action: ketcherActionInputSchema,
       },
@@ -278,7 +287,7 @@ function createServer(): McpServer {
         openWorldHint: false,
       },
       ...NOAUTH_TOOL_SECURITY,
-      _meta: ketcherToolMeta("Applying Ketcher action…", "Ketcher action complete"),
+      _meta: ketcherToolMeta("Applying editor action…", "Editor action complete"),
     },
     async ({ action: rawAction }: { action: z.infer<typeof ketcherActionInputSchema> }) => {
       const action = rawAction.actionId
@@ -294,7 +303,7 @@ function createServer(): McpServer {
       }
       const result = executeHostedKetcherAction(action);
       return {
-        content: [{ type: "text" as const, text: result.ok ? "Ketcher action complete." : result.error?.message || "Ketcher action failed." }],
+        content: [{ type: "text" as const, text: result.ok ? "Molecular editor action complete." : result.error?.message || "Molecular editor action failed." }],
         ...(result.ok ? {} : { isError: true }),
         structuredContent: {
           ok: result.ok,
@@ -439,6 +448,97 @@ function createServer(): McpServer {
               source: { kind: "pdb", pdbId: pdbId.toUpperCase() },
               actions: [],
             },
+          },
+        };
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  registerAppTool(
+    server,
+    "open_workspace_tab",
+    {
+      title: "Molecule Workspace",
+      description: "Open an empty Burette workspace beside the conversation.",
+      inputSchema: {},
+      outputSchema: entrypointOutputSchema,
+      annotations: TOOL_ANNOTATIONS,
+      ...NOAUTH_TOOL_SECURITY,
+      _meta: entrypointToolMeta(VIEWER_RESOURCE_URI, { type: "thread" }),
+    },
+    async () => ({
+      content: [{ type: "text" as const, text: "Burette workspace opened." }],
+      structuredContent: { entrypoint: "thread" as const },
+      _meta: { workspace: { entrypoint: "thread" } },
+    }),
+  );
+
+  // The widget reads the opened file from the host and sends its text to
+  // prepare_structure_content; the host never shares the file with the server.
+  registerAppTool(
+    server,
+    "open_structure_file",
+    {
+      title: "Burette",
+      description: "Open a molecular structure file in Burette's viewer.",
+      inputSchema: fileEntrypointInputSchema,
+      outputSchema: entrypointOutputSchema,
+      annotations: TOOL_ANNOTATIONS,
+      ...NOAUTH_TOOL_SECURITY,
+      _meta: entrypointToolMeta(VIEWER_RESOURCE_URI, { type: "file", extensions: STRUCTURE_FILE_EXTENSIONS }),
+    },
+    async ({ file }: { file: { name: string } }) => ({
+      content: [{ type: "text" as const, text: `Opening ${file.name} in Burette.` }],
+      structuredContent: { entrypoint: "file" as const },
+      _meta: { workspace: { entrypoint: "file" } },
+    }),
+  );
+
+  registerAppTool(
+    server,
+    "open_sketch_file",
+    {
+      title: "Burette Molecular Editor",
+      description: "Open a molecule or reaction file in Burette's molecular editor.",
+      inputSchema: fileEntrypointInputSchema,
+      outputSchema: entrypointOutputSchema,
+      annotations: TOOL_ANNOTATIONS,
+      ...NOAUTH_TOOL_SECURITY,
+      _meta: entrypointToolMeta(KETCHER_RESOURCE_URI, { type: "file", extensions: SKETCH_FILE_EXTENSIONS }),
+    },
+    async ({ file }: { file: { name: string } }) => ({
+      content: [{ type: "text" as const, text: `Opening ${file.name} in the molecular editor.` }],
+      structuredContent: { entrypoint: "file" as const },
+      _meta: { workspace: { entrypoint: "file" } },
+    }),
+  );
+
+  registerAppTool(
+    server,
+    "prepare_structure_content",
+    {
+      title: "Prepare molecular file content",
+      description: "Summarize the text of a molecular file the user opened in Burette and prepare it for the viewer.",
+      inputSchema: {
+        fileName: z.string().trim().min(1).max(255),
+        content: z.string().max(MAX_PUBLIC_STRUCTURE_BYTES),
+      },
+      outputSchema: z.object(publicStructureOutputSchema),
+      annotations: TOOL_ANNOTATIONS,
+      ...NOAUTH_TOOL_SECURITY,
+      _meta: APP_ONLY_TOOL_META,
+    },
+    async ({ fileName, content }: { fileName: string; content: string }) => {
+      try {
+        const prepared = prepareStructureText(content, fileName, "attachment");
+        return {
+          content: [{ type: "text" as const, text: structureSummaryText(prepared.summary) }],
+          structuredContent: prepared.summary,
+          _meta: {
+            structure: prepared.viewer,
+            scene: { source: { kind: "attachment", fileName: prepared.summary.fileName }, actions: [] },
           },
         };
       } catch (error) {
