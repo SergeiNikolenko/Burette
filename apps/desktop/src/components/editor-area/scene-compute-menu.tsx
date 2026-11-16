@@ -24,6 +24,7 @@ import { xtbOperationLabel } from "../../lib/chemistry-settings";
 import { setComputeHost, useComputeHost } from "../../lib/remote-jobs";
 import { useSshConnections } from "../../lib/ssh-projects";
 import { basename } from "../../lib/sidebar-projects";
+import { isHostedMcpWidget } from "../../lib/hosted-mcp-widget";
 
 const CALCULATIONS: [XtbOperation, string][] = [["properties", "Energy & charges"], ["optimize", "Optimize with xTB"], ["hessian", "Vibrational modes"], ["md", "Molecular dynamics"]];
 const THIS_MAC = "this-mac";
@@ -63,7 +64,7 @@ export function SceneComputeMenu({ document, actions, iframeRef }: {
   const connections = useSshConnections().filter(connection => connection.enabled);
   const combined = document.renderer === "molstar" && new Set(recordedScenePaths(document)).size > 1;
   const embeddedGraph = !combined && document.renderer === "molstar" && ["sdf", "sd", "mol"].includes(sourceExtension(document));
-  const available = !window.BuretteMcpWorkspace && ["molstar", "xyzrender-external"].includes(document.renderer);
+  const available = !window.BuretteMcpWorkspace && !isHostedMcpWidget() && ["molstar", "xyzrender-external"].includes(document.renderer);
   useEffect(() => {
     if (!available || !iframeRef) return;
     const onMessage = (event: MessageEvent) => {

@@ -1166,3 +1166,8 @@ snapshot, so imported FCHK data is not relabeled as the materialized XYZ. That n
 participates in the opaque source revision; replacing it requires a fresh observe.
 Exports from an older snapshot retain their original name, including explicit stale
 exports. Sources without an attached original use the document title.
+
+Hosted Ketcher cards mount the in-document Ketcher editor. The shared molecular
+frame requires same-origin synchronous access, which the HTTPS widget's ChatGPT
+sandbox cannot provide. Desktop and packaged MCP workspaces retain their shared
+molecular frame; the hosted resource does not request additional iframe domains.
