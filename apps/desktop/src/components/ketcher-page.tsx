@@ -1930,7 +1930,7 @@ function KetcherErrorPanel({ error, onRetry }: { error: Error; onRetry: () => vo
   return (
     <div className="ketcher-error-panel">
       <Alert variant="destructive" className="max-w-[520px]">
-        <AlertTitle>Ketcher failed to load</AlertTitle>
+        <AlertTitle>Molecular editor failed to load</AlertTitle>
         <AlertDescription>{error.message}</AlertDescription>
       </Alert>
       <Button type="button" variant="secondary" size="sm" onClick={onRetry}>Try again</Button>

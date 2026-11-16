@@ -33,7 +33,7 @@ export function HostedKetcherViewSwitch({ state, actions }: {
     setPending(view);
     try {
       await actions.openKetcherSketch({
-        title: "ketcher-sketch.sdf",
+        title: "molecule.sdf",
         extension: "sdf",
         text: `${molfile}\n$$$$\n`,
         draftMolfile: molfile,
