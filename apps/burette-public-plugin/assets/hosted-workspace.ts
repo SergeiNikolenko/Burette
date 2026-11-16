@@ -118,6 +118,7 @@ export function installHostedWorkspace(app: App, callServerTool: CallServerTool,
 
   app.ontoolresult = (result) => {
     rememberPdbEntry(result);
-    if (record(record(result._meta)?.workspace)?.entrypoint === "thread") showHome(home);
+    const entrypoint = record(record(result._meta)?.workspace)?.entrypoint;
+    if (entrypoint === "thread" || entrypoint === "global") showHome(home);
   };
 }

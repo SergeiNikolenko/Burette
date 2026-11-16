@@ -45,6 +45,7 @@ const publicToolAnnotations = {
 // Entrypoints and widget helpers the model never calls; the portal still scans them.
 const appOnlyToolNames = [
   "open_workspace_tab",
+  "open_app",
   "open_structure_file",
   "open_sketch_file",
   "prepare_structure_content",
@@ -58,13 +59,15 @@ describe("plugin submission bundle", () => {
   });
 
   test("covers every public tool with explicit safe annotations", () => {
-    expect(Object.keys(submission.tools).sort()).toEqual([...publicToolNames, ...appOnlyToolNames].sort());
+    expect(Object.keys(submission.tools).sort()).toEqual([...publicToolNames, ...appOnlyToolNames, "search_pdb_mentions"].sort());
     for (const toolName of publicToolNames) {
       expect(submission.tools[toolName]?.annotations).toEqual(publicToolAnnotations[toolName]);
     }
     for (const toolName of appOnlyToolNames) {
       expect(submission.tools[toolName]?.annotations).toEqual(appOnlyAnnotations);
     }
+    // The composer mention search reads public RCSB data.
+    expect(submission.tools.search_pdb_mentions?.annotations).toEqual({ ...appOnlyAnnotations, openWorldHint: true });
   });
 
   test("provides exactly five independent positive and three negative review cases", () => {
