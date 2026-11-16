@@ -42,7 +42,7 @@ owned here; the endpoint and schemas remain owned by
 ## Publication and rollback
 
 Upload the ZIP as a **new** Burette Cloud plugin. Its package identity is
-`burette-cloud`, and its connection is `burette_cloud`. Do not reuse the local
+`burette-cloud-viewer`, and its connection is `burette_cloud`. Do not reuse the local
 plugin's managed ID or try to remove its existing MCP connection. The previous
 local plugin draft and support cases remain independent.
 
