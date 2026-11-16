@@ -29466,7 +29466,7 @@ SOFTWARE.
   window.addEventListener('message', event => {
     const body = event.data?.source === 'burette-host' ? event.data.body : null;
     if (event.source !== window.parent || body?.type !== 'interactionDiagram') return;
-    const ligand = body.result?.ligand;
+    const ligand = body.result?.diagram?.ligand;
     if (typeof ligand?.id === 'string' && typeof ligand.molblock === 'string') molstarDiagramLigandMolblocks.set(ligand.id, ligand.molblock);
     const requested = molstarDiagramMolblockRequests.get(body.requestId);
     if (requested !== undefined) {
