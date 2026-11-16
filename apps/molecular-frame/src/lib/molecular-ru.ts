@@ -275,6 +275,8 @@ export const molecularRu: Record<string, string> = {
   "Layout": "Расположить",
   "Clean up": "Упорядочить",
   "Aromatic": "Ароматические связи",
+  "Stereochemistry": "Стереохимия",
+  "No stereochemistry to remove": "Стереохимии нет",
   "Stereo labels": "Стереометки",
   "Explicit hydrogens": "Явные атомы водорода",
   "Full screen": "На весь экран",

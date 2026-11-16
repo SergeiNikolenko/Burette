@@ -248,3 +248,12 @@ plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-emHp8bkr.js
 plugins/burette-agent/browser-shell-dist/assets/dist-Cj3SlgH_.js
 plugins/burette-agent/browser-shell-dist/assets/molecule-store-58hH_LMa.js
 plugins/burette-agent/browser-shell-dist/assets/viewer-CF076mAP.js
+apps/desktop/public/molecular-frame/assets/molecule_editor_bg-aUReMP2G.wasm
+plugins/burette-agent/browser-shell-dist/molecular-frame/assets/molecule_editor_bg-aUReMP2G.wasm
+plugins/burette-agent/browser-shell-dist/assets/molecule-store-B-8wuo5x.js
+plugins/burette-agent/browser-shell-dist/assets/dist-C9-k80Lo.js
+plugins/burette-agent/browser-shell-dist/assets/viewer-ps3qFU-s.js
+plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-Bf61Nt1f.js
+plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-DNDsc8Zu.js
+plugins/burette-agent/browser-shell-dist/assets/index-CuRHZD2h.css
+plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-cwwJdFFv.js

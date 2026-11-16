@@ -2,7 +2,7 @@
 //! selection and pointer gestures. Errors are short user-facing messages.
 use crate::chem;
 use crate::geometry::{DEFAULT_ANGLE, V2, box_gap, new_bond_angle, segment_distance, snap, v2};
-use crate::model::{Item, Mol, SGroup};
+use crate::model::{Item, Mol, SGroup, Stereo};
 use crate::render::{self, Cip, NATURAL_SCALE, Overlay, Preview, View};
 use crate::template::{self, Template};
 use crate::tools::{self, BondKind, MERGE, Tool};
@@ -55,6 +55,9 @@ pub struct Editor {
     marks: Cell<Option<(Mol, Vec<(V2, String)>)>>,
     /// The template tool's template.
     template: Option<Template>,
+    /// Wedges the stereo command removed and the drawing it left, so the
+    /// command can put them back while the atoms and bonds stay as they were.
+    removed_stereo: Option<(Mol, Vec<Stereo>)>,
     /// Why the last command or action could not run; cleared by the next
     /// successful change or command.
     message: String,
@@ -79,6 +82,12 @@ fn same_graph(a: &Mol, b: &Mol) -> bool {
         && a.bonds.iter().zip(&b.bonds).all(|(x, y)| (x.a, x.b, x.order, x.dative) == (y.a, y.b, y.order, y.dative))
 }
 
+/// The same atoms in the same places joined by the same bonds; stereo marks
+/// and aromatic display may differ.
+fn same_drawing(a: &Mol, b: &Mol) -> bool {
+    same_graph(a, b) && a.atoms.iter().zip(&b.atoms).all(|(x, y)| x.pos == y.pos)
+}
+
 impl Editor {
     pub fn new() -> Editor {
         Editor {
@@ -101,6 +110,7 @@ impl Editor {
             cip: None,
             marks: Cell::new(None),
             template: None,
+            removed_stereo: None,
             message: String::new(),
         }
     }
@@ -933,6 +943,28 @@ impl Editor {
                 self.cip = Some(labels);
                 true
             }
+            "stereo" => {
+                let next = if chem::has_wedges(&self.mol) {
+                    let mut next = self.mol.clone();
+                    let marks = next.bonds.iter_mut().map(|b| match b.stereo {
+                        Stereo::Wedge | Stereo::Hash => std::mem::replace(&mut b.stereo, Stereo::None),
+                        other => other,
+                    });
+                    let marks = marks.collect();
+                    self.removed_stereo = Some((next.clone(), marks));
+                    next
+                } else if let Some(marks) = self.restorable_stereo() {
+                    let mut next = self.mol.clone();
+                    next.bonds.iter_mut().zip(marks).for_each(|(b, s)| b.stereo = s);
+                    next
+                } else if empty {
+                    return self.say("Draw a structure first");
+                } else {
+                    return self.say("No stereochemistry to remove");
+                };
+                let base = std::mem::replace(&mut self.mol, next);
+                self.finish(base, false)
+            }
             "hydrogens" => {
                 let next = if explicit_h(&self.mol) {
                     chem::remove_hydrogens(&self.mol)
@@ -957,6 +989,13 @@ impl Editor {
             "cancel" => self.cancel(),
             _ => false,
         }
+    }
+
+    /// The wedges to put back when the drawing is still the one the stereo
+    /// command left.
+    fn restorable_stereo(&self) -> Option<Vec<Stereo>> {
+        let (left, marks) = self.removed_stereo.as_ref()?;
+        (!chem::has_wedges(&self.mol) && same_drawing(left, &self.mol)).then(|| marks.clone())
     }
 
     // ------------------------------------------------------------- output
@@ -1016,13 +1055,15 @@ impl Editor {
         let selection = self.atoms.iter().chain(&self.bonds).filter(|&&x| x).count();
         let message: String = self.message.chars().filter(|c| !c.is_control()).map(|c| if c == '"' { '\'' } else { c }).collect();
         format!(
-            "{{\"tool\":\"{}\",\"canUndo\":{},\"canRedo\":{},\"aromatic\":{},\"cip\":{},\"hydrogens\":{},\"empty\":{},\"selection\":{},\"cursor\":\"{}\",\"revision\":{},\"zoom\":{},\"message\":\"{}\",\"selectedAtoms\":{:?},\"selectedBonds\":{:?},\"view\":[{:.4},{:.2},{:.2}]}}",
+            "{{\"tool\":\"{}\",\"canUndo\":{},\"canRedo\":{},\"aromatic\":{},\"cip\":{},\"hydrogens\":{},\"stereo\":{},\"canRestoreStereo\":{},\"empty\":{},\"selection\":{},\"cursor\":\"{}\",\"revision\":{},\"zoom\":{},\"message\":\"{}\",\"selectedAtoms\":{:?},\"selectedBonds\":{:?},\"view\":[{:.4},{:.2},{:.2}]}}",
             self.tool.id(),
             !self.undo.is_empty(),
             !self.redo.is_empty(),
             self.mol.bonds.iter().any(|b| b.arom),
             self.cip.is_some(),
             explicit_h(&self.mol),
+            chem::has_wedges(&self.mol),
+            self.restorable_stereo().is_some(),
             self.mol.is_empty(),
             selection,
             self.cursor(),
@@ -1081,6 +1122,7 @@ impl Editor {
         if !base.is_empty() {
             self.push_undo(base);
         }
+        self.removed_stereo = None;
         self.redo.clear();
         self.atoms.clear();
         self.bonds.clear();

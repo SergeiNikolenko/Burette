@@ -28,6 +28,9 @@
     "gridViewMode": "cards",
     "gridCardRenderer": "rdkit",
     "gridCardSize": 0,
-    "hydrogenDisplay": "none"
+    "hydrogenDisplay": "none",
+    "ligandCardContent": "diagram",
+    "ligandCardDiagramStyle": "style-schrodinger",
+    "ligandCardDisplay": "hover"
   }
 }

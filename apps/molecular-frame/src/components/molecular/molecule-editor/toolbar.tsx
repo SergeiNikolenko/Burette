@@ -108,6 +108,7 @@ export const TopPanel = memo(function TopPanel({ state, view3d, fullscreen, cont
     {command('layout', 'Layout', <LayoutIcon />, { disabled: view3d || state.empty })}
     {command('clean', 'Clean up', <CleanIcon />, { disabled: view3d || state.empty })}
     {command('aromatic', 'Aromatic', <AromaticIcon />, { 'aria-pressed': state.aromatic })}
+    {command('stereo', 'Stereochemistry', <BondIcon type="wedge" />, { 'aria-pressed': state.stereo, disabled: view3d || !(state.stereo || state.canRestoreStereo) })}
     {command('cip', 'Stereo labels', <StereoIcon />, { 'aria-pressed': state.cip })}
     {command('hydrogens', 'Explicit hydrogens', <HydrogensIcon />, { 'aria-pressed': state.hydrogens })}
     <Divider />

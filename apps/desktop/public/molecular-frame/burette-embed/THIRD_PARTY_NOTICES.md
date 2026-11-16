@@ -8,9 +8,25 @@ The preview engines and MolViewSpec authoring schema are built from the immutabl
 
 This project follows the same broad product idea as QuickLookProtein: a host macOS app that packages a Quick Look extension and renders protein/3D structure files in a WebKit view. No QuickLookProtein source files are vendored here.
 
-## xyzrender
+## xyzrender and the bundled Python runtime
 
-Burette can call a user-installed `xyzrender` executable from the standalone app and Quick Look previews. The `xyzrender` Python package is MIT-licensed by Alister S. Goodfellow and contributors. `xyzrender` itself is not bundled with Burette.
+The app bundles a locked Python runtime (`config/xyzrender/requirements.txt`)
+in `Contents/Resources/xyzrender-python` and `xyzrender-runtime`. It carries
+xyzrender 0.3.9+burette.1 (MIT, Alister S. Goodfellow and contributors), RDKit
+(BSD-3-Clause), NumPy and SciPy (BSD-3-Clause), and gemmi 0.7.5 (MPL-2.0,
+Global Phasing Ltd) for ligand interaction diagrams. Each package keeps the
+license files from its wheel in the runtime's `site-packages`; gemmi's source
+is available at https://github.com/project-gemmi/gemmi. Burette can also call
+a user-installed `xyzrender` executable instead.
+
+## Ligand interaction diagram page
+
+`apps/desktop/public/interaction-diagram/vendor/` ships three libraries beside
+their licenses: InteractionDrawer (rareylab/InteractionDrawer, revision
+`59cf647`, BSD-3-Clause, Copyright (c) 2023 Konrad Diedrich, Matthias Rarey),
+minified with esbuild with its license comments kept; d3 7.9.0 (ISC, Copyright
+2010-2023 Mike Bostock); and Fraction.js 4.3.7 (MIT, Copyright (c) 2023 Robert
+Eisele).
 
 ## OpenChemLib
 

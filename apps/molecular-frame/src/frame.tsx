@@ -64,7 +64,7 @@ function Frame() {
             break
           }
           case 'command': {
-            if (!['undo', 'redo', 'layout', 'clean', 'aromatic', 'cip', 'hydrogens', 'select-all', 'delete', 'clear', 'fit', 'zoom-in', 'zoom-out', 'cancel'].includes(message.value)) throw new Error('Unknown editor command')
+            if (!['undo', 'redo', 'layout', 'clean', 'aromatic', 'cip', 'stereo', 'hydrogens', 'select-all', 'delete', 'clear', 'fit', 'zoom-in', 'zoom-out', 'cancel'].includes(message.value)) throw new Error('Unknown editor command')
             editor.current.command(message.value)
             result(null)
             break
