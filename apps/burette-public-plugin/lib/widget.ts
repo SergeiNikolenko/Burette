@@ -9,6 +9,7 @@ export const VIEWER_SHELL_STYLES_PATH =
 export const VIEWER_RUNTIME_ASSETS_PATH = "/burette-viewer/";
 export const VIEWER_MOBILE_SCRIPT_PATH = "/burette-hosted-mobile.js";
 export const VIEWER_APP_BRIDGE_SCRIPT_PATH = "/burette-hosted-app.js";
+export const VIEWER_FRAME_SCRIPT_PATH = "/burette-hosted-frame.js";
 const VIEWER_SHELL_ASSET_VERSION = "viewer-v23";
 
 function assetUrl(origin: string, assetPath: string): string {
@@ -41,6 +42,12 @@ export function createViewerResourceMeta(appOrigin: string) {
       resource_domains: [appOrigin],
     },
     "openai/widgetDomain": appOrigin,
+    // Codex shows fullscreen apps as a tab in the panel beside the chat; the
+    // user can still collapse the result into the conversation.
+    "openai/ui": {
+      availableDisplayModes: ["inline", "fullscreen"],
+      preferredDisplayMode: "fullscreen",
+    },
   } as const;
 }
 
@@ -48,7 +55,7 @@ export function createKetcherResourceMeta(appOrigin: string) {
   return {
     ...createViewerResourceMeta(appOrigin),
     "openai/widgetDescription":
-      "Focused Burette Ketcher chemical editor with a revision-checked agent bridge.",
+      "Burette molecular editor with a revision-checked agent bridge.",
   } as const;
 }
 
@@ -68,6 +75,7 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
   const viewerAssets = assetUrl(assetOrigin, VIEWER_RUNTIME_ASSETS_PATH);
   const mobileScript = `${assetUrl(assetOrigin, VIEWER_MOBILE_SCRIPT_PATH)}?v=${VIEWER_SHELL_ASSET_VERSION}`;
   const appBridgeScript = `${assetUrl(assetOrigin, VIEWER_APP_BRIDGE_SCRIPT_PATH)}?v=${VIEWER_SHELL_ASSET_VERSION}`;
+  const frameScript = `${assetUrl(assetOrigin, VIEWER_FRAME_SCRIPT_PATH)}?v=${VIEWER_SHELL_ASSET_VERSION}`;
   // Narrow viewports get the mobile viewer, which fills whatever height the
   // host gives it. Ketcher has no mobile variant, so it keeps its minimum
   // height; otherwise a narrow chat column squeezes the editor to a strip.
@@ -95,6 +103,7 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
       body { margin: 0; overflow: hidden; background: #ffffff; }
       @media (prefers-color-scheme: dark) { body { background: #000000; } }${narrowLayout}
     </style>
+    <script src="${frameScript}"></script>
     <script>
       (() => {
         const config = ${bootstrap};
@@ -105,28 +114,6 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
         window.__BURETTE_HOSTED_ANALYTICS_ORIGIN__ = config.analyticsOrigin;
         window.__BURETTE_HOSTED_MCP_RESULTS__ = [];
         window.__BURETTE_HOSTED_OPENAI_GLOBALS__ = {};
-        const NativeWorker = window.Worker;
-        if (typeof NativeWorker === "function") {
-          // The widget runs on a sandbox origin, so browsers refuse worker scripts
-          // from the asset origin (Ketcher's Indigo worker). Start a same-origin
-          // blob worker that loads the real script and reports its URL as the
-          // worker location, so the script still resolves its WASM next to itself.
-          // The worker is always classic: the host CSP sets worker-src to blob:
-          // only, which also governs static imports inside module workers, while
-          // importScripts falls under script-src. Vite emits workers as IIFE.
-          window.Worker = class extends NativeWorker {
-            constructor(url, options) {
-              const script = new URL(String(url), document.baseURI);
-              if (script.origin === location.origin || script.protocol !== "https:") {
-                super(url, options);
-                return;
-              }
-              const href = JSON.stringify(script.href);
-              const source = "Object.defineProperty(self, 'location', { value: new URL(" + href + "), configurable: true }); importScripts(" + href + ");";
-              super(URL.createObjectURL(new Blob([source], { type: "text/javascript" })), { ...options, type: "classic" });
-            }
-          };
-        }
         const appQueue = [];
         const appReady = new Promise((resolve) => { window.__BURETTE_HOSTED_APP_READY__ = resolve; });
         window.__BURETTE_HOSTED_APP_QUEUE__ = appQueue;

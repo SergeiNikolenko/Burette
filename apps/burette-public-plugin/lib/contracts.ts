@@ -195,6 +195,39 @@ export function viewerToolMeta(invoking: string, invoked: string) {
   } as const;
 }
 
+// Codex opens these files in Burette from the file tree or a chat file chip.
+// The host matches extensions with their leading dot and drops the whole
+// entrypoint list if any entry is malformed.
+export const STRUCTURE_FILE_EXTENSIONS = [".pdb", ".ent", ".pdbqt", ".cif", ".mmcif", ".sdf", ".sd", ".xyz", ".extxyz"];
+export const SKETCH_FILE_EXTENSIONS = [".mol", ".smi", ".smiles", ".ket", ".rxn"];
+
+// The host passes the opened file as an opaque resource the widget reads
+// through the host; the server never sees the file or its local path.
+export const fileEntrypointInputSchema = {
+  file: z.object({
+    name: z.string().trim().min(1).max(255),
+    resourceUri: z.string().trim().min(1).max(4096),
+  }),
+};
+
+type Entrypoint = { type: "thread" } | { type: "file"; extensions: string[] };
+
+/** Metadata for a tool the host invokes as an entrypoint, never the model. */
+export function entrypointToolMeta(resourceUri: string, entrypoint: Entrypoint) {
+  return {
+    securitySchemes: NOAUTH_SECURITY_SCHEMES,
+    ui: { resourceUri, visibility: ["app"] },
+    "openai/outputTemplate": resourceUri,
+    "openai/ui": { entrypoints: [entrypoint] },
+  } as const;
+}
+
+/** Metadata for a tool only the mounted widget calls. */
+export const APP_ONLY_TOOL_META = {
+  securitySchemes: NOAUTH_SECURITY_SCHEMES,
+  ui: { visibility: ["app"] },
+} as const;
+
 export function ketcherToolMeta(invoking: string, invoked: string) {
   return {
     securitySchemes: NOAUTH_SECURITY_SCHEMES,

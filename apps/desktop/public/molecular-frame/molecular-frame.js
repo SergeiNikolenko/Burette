@@ -22,7 +22,7 @@ export function readMolecularAppearance(container) {
 
 export function createMolecularEditor(container, options = {}) {
   const base = new URL(options.base ?? './', import.meta.url);
-  const transport = window.BuretteMcpWorkspace;
+  const transport = options.transport ?? window.BuretteMcpWorkspace;
   const sameHost = base.protocol === location.protocol && base.host === location.host;
   const frameOrigin = transport || sameHost ? window.origin : base.origin;
   const element = document.createElement('iframe');

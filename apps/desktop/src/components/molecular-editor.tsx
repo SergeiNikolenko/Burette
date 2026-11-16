@@ -3,6 +3,10 @@ import type { KetcherEditorApi } from './ketcher-editor';
 import type { MolecularEditor, createMolecularEditor } from '../../public/molecular-frame/molecular-frame.js';
 import { convertStructure, importStructure } from '../lib/molecular-codecs';
 
+// Hosted cards load the shell from the Burette origin; the frame is staged next
+// to the shell's assets directory. A variable keeps Vite from bundling it.
+const HOSTED_FRAME_CLIENT = '../molecular-frame/molecular-frame.js';
+
 function createEditorApi(frame: MolecularEditor): KetcherEditorApi {
   const changes = new Set<() => void>();
   const selections = new Set<() => void>();
@@ -76,11 +80,12 @@ export function MolecularEditorView({ onReady, onStatus, onLoadError, onOpenFile
       const url = new URL('molecular-frame/molecular-frame.js', document.baseURI).href;
       type EditorModule = { createMolecularEditor: typeof createMolecularEditor };
       const transport = (window as Window & { BuretteMcpWorkspace?: { importModule: (path: string) => Promise<EditorModule> } }).BuretteMcpWorkspace;
+      const hosted = window.BuretteHostedFrameTransport;
       const sdk: EditorModule = transport
         ? await transport.importModule('shell/molecular-frame/molecular-frame.js')
-        : await import(/* @vite-ignore */ url);
+        : await import(/* @vite-ignore */ hosted ? new URL(HOSTED_FRAME_CLIENT, import.meta.url).href : url);
       if (disposed) return;
-      frame = sdk.createMolecularEditor(host.current!, { onOpenFile: onOpenFile ? openFile : undefined });
+      frame = sdk.createMolecularEditor(host.current!, { onOpenFile: onOpenFile ? openFile : undefined, transport: hosted });
       frame.on('error', value => status(value.message));
       await frame.ready;
       if (!disposed) ready(createEditorApi(frame));

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Empty,
@@ -36,8 +36,14 @@ function HostedStructurePending() {
   );
 }
 
+const subscribeHostedHome = (listener: () => void) => {
+  window.addEventListener("burette-hosted-home", listener);
+  return () => window.removeEventListener("burette-hosted-home", listener);
+};
+
 export function WelcomeScreen({ actions }: { actions: ShellActions }) {
-  if (isHostedMcpWidget()) return <HostedStructurePending />;
+  const hostedHome = useSyncExternalStore(subscribeHostedHome, () => window.BuretteHostedAppBridge?.home);
+  if (isHostedMcpWidget()) return hostedHome ? <NativeWorkspaceHome actions={actions} home={hostedHome} /> : <HostedStructurePending />;
   const home = window.BuretteMcpWorkspace?.home;
   if (home) return <NativeWorkspaceHome actions={actions} home={home} />;
   // Codex new-chat hero: a 56px mark at 30% opacity, 24px above a 28px title,

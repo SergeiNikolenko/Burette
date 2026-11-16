@@ -12,12 +12,16 @@ required; private files still require explicit cloud-processing authorization.
 - Preview one supported attachment up to 3 MiB when the host provides a
   downloadable attachment reference.
 - Prepare selections, focus and component visibility changes in the MCP App.
-- Open a temporary Ketcher sketch and apply revision-checked edits.
+- Open a temporary sketch in the Burette molecular editor and apply
+  revision-checked edits.
+- Open the viewer and editor as a tab in the Codex side panel, add a Burette
+  workspace tab to a thread, and open structure or sketch files from the Codex
+  file browser (up to 3 MiB).
 
 A local filesystem path is not a remote attachment. Hosts without attachment
-references can use public PDB entries and bounded inline Ketcher inputs.
+references can use public PDB entries and bounded inline editor inputs.
 MCP Apps rendering depends on the host; a successful tool response alone does
-not prove a visible scene. Ketcher relay state is process-local and can expire
+not prove a visible scene. Editor relay state is process-local and can expire
 or disappear between serverless requests; it is not durable storage.
 
 Local desktop control, bulk local folders, trajectories, compute jobs, contacts,

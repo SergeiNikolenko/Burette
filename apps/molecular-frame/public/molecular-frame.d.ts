@@ -57,5 +57,10 @@ export interface MolecularEditor {
   on(name: 'error', listener: (value: { message: string }) => void): () => void;
   destroy(): void;
 }
-export function createMolecularEditor(container: HTMLElement, options?: { base?: string | URL; title?: string; onOpenFile?: () => void }): MolecularEditor;
+/** Loads the frame into a same-origin srcdoc document, for hosts whose own origin differs from the frame's. */
+export interface MolecularFrameTransport {
+  resolve(href: string): string;
+  prepareFrame(href: string): Promise<string>;
+}
+export function createMolecularEditor(container: HTMLElement, options?: { base?: string | URL; title?: string; onOpenFile?: () => void; transport?: MolecularFrameTransport }): MolecularEditor;
 export function readMolecularAppearance(container: HTMLElement): { theme: 'light' | 'dark'; locale: string; variables: Record<string, string> };
