@@ -237,6 +237,7 @@ pub fn run() {
                 commands::rgroups::rgroup_runtime_status,
                 commands::rgroups::rgroup_decompose,
                 commands::rgroup_results::rgroup_store_results,
+                commands::interaction_diagram::interaction_diagram,
                 commands::descriptors::descriptor_calculate,
                 commands::descriptors::descriptor_calculate_grid,
                 commands::descriptors::descriptor_start_grid,

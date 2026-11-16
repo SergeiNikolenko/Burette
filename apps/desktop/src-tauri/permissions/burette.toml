@@ -32,6 +32,7 @@ commands.allow = [
   "rgroup_runtime_status",
   "rgroup_decompose",
   "rgroup_store_results",
+  "interaction_diagram",
   "chemical_space_model_runtime_status",
   "chemical_space_model_runtime_install",
   "chemical_space_model_runtime_cancel_install",

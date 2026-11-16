@@ -705,6 +705,177 @@
     }
   }
 
+  // `atomName` narrows the residue to one atom (a contact's end).
+  function molstarResidueLoci(plugin, chain, number, atomName = null) {
+    const { StructureElement, StructureProperties } = window.molstar?.lib?.structure || {};
+    if (!StructureElement || !StructureProperties || !chain || !Number.isFinite(number)) return null;
+    const atomMatches = location => !atomName
+      || StructureProperties.atom.auth_atom_id(location) === atomName
+      || StructureProperties.atom.label_atom_id(location) === atomName;
+    for (const entry of plugin.managers.structure.hierarchy.current.structures) {
+      const structure = entry.cell.obj?.data;
+      if (!structure) continue;
+      const location = StructureElement.Location.create(structure);
+      const elements = [];
+      for (const unit of structure.units) {
+        location.unit = unit;
+        const indices = [];
+        for (let index = 0; index < unit.elements.length; index++) {
+          location.element = unit.elements[index];
+          if (StructureProperties.residue.auth_seq_id(location) === number
+            && StructureProperties.chain.auth_asym_id(location) === chain && atomMatches(location)) indices.push(index);
+        }
+        if (indices.length) elements.push({ unit, indices: new Int32Array(indices) });
+      }
+      if (elements.length) return StructureElement.Loci(structure, elements);
+    }
+    return null;
+  }
+
+  // A contact picked in an interaction diagram is drawn in 3D as a distance
+  // between its two atoms, and its residue stays marked like a selection until
+  // the next pick. Ring contacts have no single atom and keep only the mark.
+  const DIAGRAM_CONTACT_TAG = 'burette-diagram-contact';
+  let diagramMarkedLoci = null;
+
+  function diagramContactVisualParams() {
+    const dark = resolveViewerTheme() === 'dark';
+    return {
+      // the value sits above its line, which stays visible even when short
+      textSize: 0.9, textColor: dark ? 0xfafafa : 0x18181b, attachment: 'bottom-center', offsetZ: 2,
+      background: true, backgroundColor: dark ? 0x18181b : 0xffffff, backgroundOpacity: 0.85, backgroundMargin: 0.15,
+      linesSize: 0.07, linesColor: dark ? 0xfafafa : 0x18181b, dashLength: 0.18
+    };
+  }
+
+  // The pick whose distances are on screen and the theme they were drawn in.
+  let diagramContactAction = null;
+  let diagramContactTheme = null;
+
+  function molstarDiagramContactRefs(plugin) {
+    return [...plugin.state.data.cells.values()]
+      .filter(cell => cell.transform.tags?.includes(DIAGRAM_CONTACT_TAG))
+      .map(cell => cell.transform.ref);
+  }
+
+  async function clearMolstarDiagramContacts(plugin) {
+    const stale = molstarDiagramContactRefs(plugin);
+    if (!stale.length) return;
+    const update = plugin.build();
+    for (const ref of stale) update.delete(ref);
+    await update.commit();
+  }
+
+  // Distances keep the colours they were drawn with (updating the visual's
+  // parameters leaves its label background and lines as they were), so a theme
+  // change draws them again.
+  function restyleMolstarDiagramContacts() {
+    const plugin = activeMolstarViewer()?.plugin;
+    const action = diagramContactAction;
+    if (!plugin || !action || diagramContactTheme === resolveViewerTheme() || !molstarDiagramContactRefs(plugin).length) return;
+    clearMolstarDiagramContacts(plugin)
+      .then(() => diagramContactAction === action && drawMolstarDiagramContacts(plugin, action))
+      .catch(() => {});
+  }
+
+  async function showMolstarDiagramContacts(plugin, action, residueLoci) {
+    await clearMolstarDiagramContacts(plugin);
+    // Mol* MarkerAction: Select = 4, Deselect = 8
+    if (diagramMarkedLoci) plugin.canvas3d?.mark?.({ loci: diagramMarkedLoci }, 8);
+    diagramMarkedLoci = residueLoci;
+    diagramContactAction = action;
+    const ligandEnds = await drawMolstarDiagramContacts(plugin, action);
+    // new focus visuals are built after this call, so mark again once they exist
+    const mark = () => { if (diagramMarkedLoci === residueLoci) plugin.canvas3d?.mark?.({ loci: residueLoci }, 4); };
+    mark();
+    setTimeout(mark, 350);
+    setTimeout(mark, 1000);
+    return ligandEnds;
+  }
+
+  // Returns the ligand ends of the distances drawn.
+  async function drawMolstarDiagramContacts(plugin, action) {
+    diagramContactTheme = resolveViewerTheme();
+    const visualParams = diagramContactVisualParams();
+    const ligand = action.ligand;
+    const residue = action.selector || {};
+    const ligandEnds = [];
+    for (const link of Array.isArray(action.links) ? action.links : []) {
+      if (!ligand || !link.ligandAtom || !link.residueAtom || link.ligandAtom === 'ring' || link.residueAtom === 'ring') continue;
+      const a = molstarResidueLoci(plugin, String(ligand.chain), Number(ligand.number), String(link.ligandAtom));
+      const b = molstarResidueLoci(plugin, String(residue.chain), Number(residue.auth_seq_id), String(link.residueAtom));
+      if (!a || !b) continue;
+      ligandEnds.push(a);
+      await plugin.managers.structure.measurement.addDistance(a, b, { selectionTags: DIAGRAM_CONTACT_TAG, visualParams });
+    }
+    return ligandEnds;
+  }
+
+  // Of the side-on views around a contact, the one with the fewest atoms between
+  // the camera and the contact; nearer the current view on a tie.
+  function clearestSideDirection(structure, center, axis, side) {
+    const sideLength = Math.hypot(...side);
+    const u = side.map(value => value / sideLength);
+    const w = [axis[1] * u[2] - axis[2] * u[1], axis[2] * u[0] - axis[0] * u[2], axis[0] * u[1] - axis[1] * u[0]];
+    const near = [];
+    const position = [0, 0, 0];
+    for (const unit of structure?.units || []) {
+      for (let index = 0; index < unit.elements.length; index++) {
+        unit.conformation.position(unit.elements[index], position);
+        const offset = [position[0] - center[0], position[1] - center[1], position[2] - center[2]];
+        if (Math.hypot(...offset) < 16) near.push(offset);
+      }
+    }
+    let best = u, bestCost = Infinity;
+    for (let step = 0; step < 12; step++) {
+      const angle = step * Math.PI / 6;
+      const direction = [0, 1, 2].map(axisIndex => u[axisIndex] * Math.cos(angle) + w[axisIndex] * Math.sin(angle));
+      let blocking = 0;
+      for (const offset of near) {
+        // the camera looks along `direction`, so it sits on the negative side
+        const depth = -(offset[0] * direction[0] + offset[1] * direction[1] + offset[2] * direction[2]);
+        if (depth < 2 || depth > 14) continue;
+        const across = Math.hypot(offset[0] + depth * direction[0], offset[1] + depth * direction[1], offset[2] + depth * direction[2]);
+        if (across < 3.5) blocking++;
+      }
+      const cost = blocking + 2 * (1 - Math.cos(angle));
+      if (cost < bestCost) { best = direction; bestCost = cost; }
+    }
+    return best;
+  }
+
+  // Mol* clips everything nearer than the focus sphere, so a sphere around the
+  // residue alone cut off the ligand end of its contact and stretched the line
+  // towards the camera. The view takes in both ends and turns the contact
+  // side-on, so its full length is visible.
+  function focusMolstarDiagramContact(plugin, residueLoci, ligandEnds, extraRadius) {
+    const getBoundary = window.molstar?.lib?.structure?.StructureElement?.Loci?.getBoundary;
+    const camera = plugin.canvas3d?.camera;
+    if (!ligandEnds.length || !getBoundary || typeof camera?.getFocus !== 'function') {
+      plugin.managers.camera.focusLoci(residueLoci, { durationMs: 250, extraRadius });
+      return;
+    }
+    const boxes = [residueLoci, ...ligandEnds].map(loci => getBoundary(loci).box);
+    const min = [0, 1, 2].map(axis => Math.min(...boxes.map(box => box.min[axis])));
+    const max = [0, 1, 2].map(axis => Math.max(...boxes.map(box => box.max[axis])));
+    const center = [0, 1, 2].map(axis => (min[axis] + max[axis]) / 2);
+    const radius = Math.hypot(...[0, 1, 2].map(axis => (max[axis] - min[axis]) / 2)) + extraRadius;
+    const residueCenter = getBoundary(residueLoci).sphere.center;
+    const ligandCenter = [0, 1, 2].map(axis => ligandEnds.reduce((sum, end) => sum + getBoundary(end).sphere.center[axis], 0) / ligandEnds.length);
+    const along = [0, 1, 2].map(axis => ligandCenter[axis] - residueCenter[axis]);
+    const length = Math.hypot(...along) || 1;
+    const axisUnit = along.map(value => value / length);
+    const view = [0, 1, 2].map(axis => camera.state.target[axis] - camera.state.position[axis]);
+    const dot = [0, 1, 2].reduce((sum, axis) => sum + view[axis] * axisUnit[axis], 0);
+    const side = [0, 1, 2].map(axis => view[axis] - dot * axisUnit[axis]);
+    // a contact pointing straight at the camera keeps the current direction
+    const direction = Math.hypot(...side) > 1e-3 * Math.hypot(...view)
+      ? clearestSideDirection(residueLoci.structure, center, axisUnit, side)
+      : view;
+    const snapshot = camera.getFocus(center, radius, undefined, direction);
+    plugin.canvas3d.requestCameraReset({ snapshot, durationMs: 250 });
+  }
+
   let geometryPreviewRequest = 0;
   let scalarFieldRequest = 0, scalarBindingRequest = 0;
   let geometryPreviewLoading = null, atomDragLoading = null, sceneMediaLoading = null;
@@ -863,6 +1034,23 @@
       });
       if (result?.ok !== false) scheduleMolstarSelectedMoleculePreview(previewTarget);
       return result;
+    }
+    // A residue picked outside the scene (an interaction diagram) is shown the way
+    // a click in the scene shows it: focused with its surroundings, framed in one
+    // camera move and highlighted. The selection stays as it is.
+    if (type === 'focus_residue') {
+      const plugin = activeMolstarViewer()?.plugin;
+      // `atom` narrows the pick to one atom of the residue (an atom picked in a diagram)
+      const atomName = typeof action.atom === 'string' && action.atom ? action.atom : null;
+      const loci = plugin && molstarResidueLoci(plugin, String(action.selector?.chain ?? ''), Number(action.selector?.auth_seq_id), atomName);
+      if (!loci) return agentActionFailure(type, 'SELECTION_EMPTY', 'No residue matched the selector.');
+      plugin.managers.structure.focus.setFromLoci(loci);
+      const ligandEnds = await showMolstarDiagramContacts(plugin, action, loci);
+      // A drawn contact gets a tight margin: the clipping plane then also cuts
+      // away the chain in front of the pair.
+      const margin = Number.isFinite(action.extraRadius) ? action.extraRadius : ligandEnds.length ? 2 : 6;
+      focusMolstarDiagramContact(plugin, loci, ligandEnds, margin);
+      return { ok: true, command: 'focus_residue' };
     }
     if (type === 'show_ligands') {
       return window.BuretteAgent.run({ command: 'showLigands', args: action.args || {} });
@@ -2439,6 +2627,7 @@
     document.body.classList.toggle('burette-transparent-background', transparentBackground);
     document.body.classList.toggle('burette-opaque-background', !transparentBackground);
     applyViewerThemeTokens(resolvedTheme);
+    restyleMolstarDiagramContacts();
     document.documentElement.style.backgroundColor = canvasBackgroundCSS();
     document.documentElement.style.setProperty('--buret-canvas-background', canvasBackgroundCSS());
     document.documentElement.style.setProperty('--buret-overlay-opacity', overlayOpacity.toFixed(2));

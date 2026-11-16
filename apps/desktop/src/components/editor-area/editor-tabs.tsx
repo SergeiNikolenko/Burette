@@ -970,6 +970,7 @@ function showNewTabMenu(event: React.MouseEvent<HTMLButtonElement>, group: Works
   if (sourcePath) entries.push(
     { id: "screen-info", text: "Info", icon: "InfoCircle", location: { kind: "tool", tool: "inspector", area: "right", sourcePath } },
     { id: "screen-text", text: "Text", icon: "FileDocument", location: { kind: "tool", tool: "text", area: "right", sourcePath } },
+    { id: "screen-interactions", text: "Interactions", icon: "Focus", location: { kind: "tool", tool: "interactions", area: "right" } },
   );
   const items: MenuItemSpec[] = entries.map((entry) => ({
     kind: "item",

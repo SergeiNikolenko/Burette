@@ -17,7 +17,9 @@ def prune(runtime, python_root):
         raise ValueError("Expected exactly one staged xyzrender site-packages directory")
     site = sites[0].resolve()
     installed = {canonicalize_name(d.metadata["Name"]): d for d in distributions(path=[str(site)])}
-    pending = [Requirement("xyzrender"), Requirement("rdkit")]
+    # The interaction diagram engine runs in this runtime too and imports gemmi
+    # and SciPy itself, whatever xyzrender needs.
+    pending = [Requirement("xyzrender"), Requirement("rdkit"), Requirement("gemmi"), Requirement("scipy")]
     # Keep optional file-format support already installed by the packager.
     for raw in installed["xyzrender"].requires or []:
         req = Requirement(raw)

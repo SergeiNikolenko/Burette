@@ -34,7 +34,8 @@ export type DockTabKind =
   | "review"
   | "compare"
   | "chemical-space"
-  | "collection-chart";
+  | "collection-chart"
+  | "interactions";
 
 export type DockTab = {
   id: string;
@@ -124,6 +125,7 @@ export const DOCK_TAB_LABELS: Record<DockTabKind, string> = {
   compare: "Compare",
   "chemical-space": "Chemical space",
   "collection-chart": "Chart",
+  interactions: "Interactions",
 };
 
 // Structure Basket, Compare and Review render and accept drops, but no catalog
@@ -148,6 +150,7 @@ const RIGHT_DOCK_TAB_CATALOG: DockTabKind[] = [
   "chemical-space",
   "collection-chart",
   "inspector",
+  "interactions",
   "story",
   "text",
   "vibrations",

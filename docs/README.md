@@ -71,6 +71,8 @@ contains only documents that describe the active project.
   PRISM runs on SSH hosts, reattach after restart, results download.
 - [Renderer support](renderer-support.md): renderer modes, supported formats,
   Ketcher editing scope, artifacts, and checks.
+- [Ligand interaction diagrams](interaction-diagrams.md): where the 2D maps
+  appear, designs, the bundled engine, network use and page messages.
 - [Mesoscale viewer implementation plan](mesoscale-viewer-implementation-plan.md):
   shipped Mol* Mesoscale Explorer integration (#556) — the shipped-reality
   summary, format/routing contract, and the historical staged plan it

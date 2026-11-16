@@ -49,6 +49,8 @@ import { basename } from "../lib/sidebar-projects";
 import { pathExtension } from "../lib/file-routing";
 import { StructureInfoPanel } from "./structure-info-panel";
 import { JobsPanel } from "./jobs-panel";
+import { InteractionsPanel } from "./interactions-panel";
+import { canMapInteractions } from "../lib/interaction-diagram";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PanelEmptyState } from "./ui/panel-empty-state";
@@ -461,6 +463,11 @@ export function DockPanelContent({
             action={{ label: "Open structures", run: () => void actions.chooseFiles() }}
           />
         );
+  }
+  if (activeTabKind === "interactions") {
+    return dockStructureDocument && canMapInteractions(dockStructureDocument.path)
+      ? <InteractionsPanel key={dockStructureDocument.id} documentId={dockStructureDocument.id} path={dockStructureDocument.path} />
+      : <DockEmptyState title="No complex open" action={{ label: "Open structures", run: () => void actions.chooseFiles() }} />;
   }
   if (activeTabKind === "inspector") {
     if (area === "right" && activePageKind === "ketcher") return <KetcherInspectorPanel state={state} />;
