@@ -34,18 +34,40 @@
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;");
 
+  // A srcdoc child keeps the sandbox origin as its base URL, and the sandbox
+  // CSP sets base-uri 'self', so <base> cannot point it at the asset origin.
+  // The child instead receives its asset directory through a meta tag and
+  // resolves runtime URLs against it.
+  const frameBase = script.hasAttribute("data-burette-frame-child")
+    ? document.querySelector('meta[name="burette-frame-base"]')?.content
+    : undefined;
+  if (frameBase) {
+    const absolute = (value) => new URL(String(value), frameBase).href;
+    Object.defineProperty(document, "baseURI", { get: () => frameBase, configurable: true });
+    window.BuretteResolveRuntimeAsset = absolute;
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = (input, init) => nativeFetch(
+      typeof input === "string" || input instanceof URL ? absolute(input) : input,
+      init,
+    );
+  }
+
   // Frame documents keep no inline scripts: the sandbox CSP blocks them in
   // srcdoc children. This script is the only addition and runs before the
-  // frame's deferred module scripts.
+  // frame's own scripts.
   async function prepareFrame(href) {
     const response = await fetch(href, { credentials: "omit" });
     if (!response.ok) throw new Error(`Burette frame returned ${response.status}.`);
     const html = await response.text();
-    const head = `<base href="${attribute(new URL(".", href).href)}">`
+    const directory = new URL(".", href).href;
+    const head = `<meta name="burette-frame-base" content="${attribute(directory)}">`
       + `<meta name="burette-host-origin" content="${attribute(window.origin)}">`
       + `<script src="${attribute(scriptUrl)}" data-burette-frame-child></script>`;
     if (!/<head[^>]*>/iu.test(html)) throw new Error("Burette frame has no document head.");
-    return html.replace(/<head[^>]*>/iu, (tag) => tag + head);
+    const resolved = html.replace(/\b(src|href)="([^"]*)"/giu, (match, name, value) => (
+      /^(?:[a-z][a-z\d+.-]*:|#)/iu.test(value) ? match : `${name}="${attribute(new URL(value, directory).href)}"`
+    ));
+    return resolved.replace(/<head[^>]*>/iu, (tag) => tag + head);
   }
 
   const transport = { resolve: (href) => href, prepareFrame };
