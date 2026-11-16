@@ -309,6 +309,18 @@ describe("MCP wire contract", () => {
     expect(payload.result.content[0]!.text).toBe("Molecular editor is ready with a molecule of 8 atoms and 7 bonds (SMILES c1ccncc1O.[Na+]) at structure revision 1. Nothing was written to a file.");
   });
 
+  test("advertises the composer mention search as a server capability", async () => {
+    const response = await handleMcpPost(new Request("https://burette.example/mcp", {
+      method: "POST",
+      headers: { accept: "application/json, text/event-stream", "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: {
+        protocolVersion: LATEST_PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: "wire-test", version: "1.0.0" },
+      } }),
+    }));
+    const payload = await readSseResponse(response) as { result: { capabilities: { extensions?: unknown } } };
+    expect(payload.result.capabilities.extensions).toEqual({ "openai/mentions": { searchTool: "search_pdb_mentions" } });
+  });
+
   test("publishes output schemas and the submitted annotations for every public Burette tool", async () => {
     const response = await handleMcpPost(new Request("https://burette.example/mcp", {
       method: "POST",

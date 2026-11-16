@@ -181,6 +181,10 @@ function createServer(): McpServer {
     title: "Burette",
     version: "0.1.0",
     icons: [{ src: `${appOrigin}/icons/burette-app-icon.png`, mimeType: "image/png", sizes: ["512x512"] }],
+  }, {
+    // Codex finds the composer mention search through this capability; the
+    // per-tool "mentions/search" marker is only its deprecated fallback.
+    capabilities: { extensions: { "openai/mentions": { searchTool: "search_pdb_mentions" } } },
   });
 
   registerAppResource(
