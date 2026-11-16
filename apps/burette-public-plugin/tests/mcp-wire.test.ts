@@ -331,6 +331,7 @@ describe("MCP wire contract", () => {
     const tools = payload.result?.tools ?? [];
     expect(tools.map((tool) => tool.name).sort()).toEqual([
       "control_ketcher",
+      "open_app",
       "open_ketcher",
       "open_sketch_file",
       "open_structure_file",
@@ -339,6 +340,7 @@ describe("MCP wire contract", () => {
       "preview_molecular_file",
       "preview_pdb_structure",
       "render_molecular_scene",
+      "search_pdb_mentions",
     ]);
     for (const tool of tools) {
       expect(tool.outputSchema).toBeDefined();

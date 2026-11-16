@@ -28,6 +28,7 @@ import {
   validateKetcherAction,
 } from "@burette/ketcher-agent-contract";
 import { getAppOrigin } from "@/lib/origin";
+import { searchPdbMentions } from "@/lib/pdb-mentions";
 import {
   MAX_PUBLIC_STRUCTURE_BYTES,
   prepareAttachedStructure,
@@ -142,7 +143,17 @@ const controlKetcherOutputSchema = {
   error: ketcherErrorSchema.optional(),
 };
 
-const entrypointOutputSchema = { entrypoint: z.enum(["thread", "file"]) };
+const entrypointOutputSchema = { entrypoint: z.enum(["thread", "global", "file"]) };
+const mentionsOutputSchema = {
+  items: z.array(z.object({
+    type: z.literal("resource_link"),
+    uri: z.string(),
+    name: z.string(),
+    title: z.string(),
+    description: z.string(),
+    mimeType: z.literal("text/html"),
+  })),
+};
 
 function toolError(error: unknown) {
   const message =
@@ -456,23 +467,51 @@ function createServer(): McpServer {
     },
   );
 
-  registerAppTool(
-    server,
-    "open_workspace_tab",
+  // Thread and global entrypoints open the empty workspace as a tab beside the
+  // chat or as the Burette app in the sidebar. A thread tab title should not
+  // repeat the plugin name, while the sidebar app keeps it.
+  for (const [name, type, title, description] of [
+    ["open_workspace_tab", "thread", "Molecule Workspace", "Open an empty Burette workspace beside the conversation."],
+    ["open_app", "global", "Burette", "Open the Burette workspace from the sidebar."],
+  ] as const) {
+    registerAppTool(
+      server,
+      name,
+      {
+        title,
+        description,
+        inputSchema: {},
+        outputSchema: entrypointOutputSchema,
+        annotations: TOOL_ANNOTATIONS,
+        ...NOAUTH_TOOL_SECURITY,
+        _meta: entrypointToolMeta(VIEWER_RESOURCE_URI, { type }),
+      },
+      async () => ({
+        content: [{ type: "text" as const, text: "Burette workspace opened." }],
+        structuredContent: { entrypoint: type },
+        _meta: { workspace: { entrypoint: type } },
+      }),
+    );
+  }
+
+  server.registerTool(
+    "search_pdb_mentions",
     {
-      title: "Molecule Workspace",
-      description: "Open an empty Burette workspace beside the conversation.",
-      inputSchema: {},
-      outputSchema: entrypointOutputSchema,
-      annotations: TOOL_ANNOTATIONS,
+      title: "Burette structures",
+      description: "Composer at-mention search for PDB entries. Called by the host, not the model.",
+      inputSchema: { query: z.string().max(200) },
+      outputSchema: mentionsOutputSchema,
+      annotations: RCSB_TOOL_ANNOTATIONS,
       ...NOAUTH_TOOL_SECURITY,
-      _meta: entrypointToolMeta(VIEWER_RESOURCE_URI, { type: "thread" }),
+      _meta: { ...APP_ONLY_TOOL_META, "openai/extensions": { "mentions/search": {} } },
     },
-    async () => ({
-      content: [{ type: "text" as const, text: "Burette workspace opened." }],
-      structuredContent: { entrypoint: "thread" as const },
-      _meta: { workspace: { entrypoint: "thread" } },
-    }),
+    async ({ query }) => {
+      try {
+        return { content: [], structuredContent: { items: await searchPdbMentions(query) } };
+      } catch (error) {
+        return toolError(error);
+      }
+    },
   );
 
   // The widget reads the opened file from the host and sends its text to

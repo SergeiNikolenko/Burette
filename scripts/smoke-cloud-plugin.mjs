@@ -28,7 +28,8 @@ protocol = init.protocolVersion;
 assert.ok(protocol);
 const listed = await rpc('tools/list', {});
 const expected = ['preview_pdb_structure', 'preview_molecular_file', 'render_molecular_scene', 'open_ketcher', 'control_ketcher',
-  'open_workspace_tab', 'open_structure_file', 'open_sketch_file', 'prepare_structure_content'];
+  'open_workspace_tab', 'open_app', 'open_structure_file', 'open_sketch_file', 'prepare_structure_content',
+  'search_pdb_mentions'];
 assert.deepEqual(listed.tools.map((tool) => tool.name).sort(), expected.sort());
 const call = (name, args) => rpc('tools/call', { name, arguments: args });
 const preview = await call('preview_pdb_structure', { pdbId: '1CRN' });

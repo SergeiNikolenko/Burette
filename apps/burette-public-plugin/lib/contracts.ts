@@ -210,7 +210,7 @@ export const fileEntrypointInputSchema = {
   }),
 };
 
-type Entrypoint = { type: "thread" } | { type: "file"; extensions: string[] };
+type Entrypoint = { type: "thread" } | { type: "global" } | { type: "file"; extensions: string[] };
 
 /** Metadata for a tool the host invokes as an entrypoint, never the model. */
 export function entrypointToolMeta(resourceUri: string, entrypoint: Entrypoint) {

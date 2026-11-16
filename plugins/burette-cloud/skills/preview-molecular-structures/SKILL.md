@@ -12,7 +12,8 @@ Use Burette for bounded molecular inspection and transient chemical sketching.
 - Use `preview_molecular_file` when the user provides one supported molecular
   structure attachment.
 - Use `preview_pdb_structure` only when the user explicitly names a
-  four-character PDB ID or clearly asks to open that public PDB entry.
+  four-character PDB ID or clearly asks to open that public PDB entry. A PDB
+  entry the user picked with an `@Burette` mention counts as named.
 - Use `render_molecular_scene` when the user asks to select or focus a typed
   chain, residue range, or component; clear a selection; reset the camera; or
   hide/show polymers, ligands, ions, or water. Pass the same PDB ID or authorized
