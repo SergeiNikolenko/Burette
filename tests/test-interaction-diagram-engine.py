@@ -52,6 +52,12 @@ class InteractionDiagramEngineTests(unittest.TestCase):
             ("hbond", "ASP", 381), ("hbond", "ILE", 360), ("pi", "TYR", 253),
         }, contacts)
         self.assertEqual(len(diagram["scene"]["scene"]["structures"][0]["atoms"]), 37)
+        # The ligand card draws the molecule from this molblock: the dictionary's
+        # bond orders on the 3D pose, so it reads back as the same molecule.
+        from rdkit import Chem
+        molblock = Chem.MolFromMolBlock(diagram["ligand"]["molblock"])
+        self.assertEqual(Chem.MolToSmiles(molblock), diagram["ligand"]["smiles"])
+        self.assertEqual(molblock.GetNumConformers() and molblock.GetConformer().Is3D(), True)
 
     def test_rejects_unknown_rules_and_ligands(self):
         self.assertEqual(self.run_engine(ligand=None, rules={"partners": "bogus"}),
