@@ -37,6 +37,7 @@ import "./ketcher/workspace.css";
 import { KetcherTextPanel } from "./ketcher/text-panel";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -990,7 +991,10 @@ export function KetcherPage({
           texts.push(text);
         }
         const candidatesByStructure = texts.map(ketcherImportCandidates).filter(candidates => candidates.length > 0);
-        if (!candidatesByStructure.length) return "failure";
+        if (!candidatesByStructure.length) {
+          toast.add({ title: "The molecular editor could not open " + label, type: "error" });
+          return "failure";
+        }
         const editor = await selectImportEditor(ketcher, texts);
         for (const [index, candidates] of candidatesByStructure.entries()) {
           const loadCandidate = index === 0 ? loadInitialKetcherImportCandidate : loadAdditionalKetcherImportCandidate;
@@ -1017,7 +1021,10 @@ export function KetcherPage({
           retryEditorLoad();
           return "transient-failure";
         }
-        setStatus("Molecular editor import failed: " + (error instanceof Error ? error.message : String(error)));
+        const message = error instanceof Error ? error.message : String(error);
+        setStatus("Molecular editor import failed: " + message);
+        // The status line lives in the text panel, so a failed open would otherwise leave a silent blank canvas.
+        toast.add({ title: "The molecular editor could not open " + label, description: message, type: "error" });
         return "failure";
       }
     }

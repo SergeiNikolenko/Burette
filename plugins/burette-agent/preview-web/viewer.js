@@ -3041,7 +3041,9 @@
       toolbar.dataset.ketcherBound = '1';
     }
     const canGenerate3d = canGenerate3DConformerFromConfig(config, renderer);
-    generate3dButton?.classList.toggle('hidden', !canGenerate3d);
+    // The desktop host draws one Compute menu over the viewer and lists these
+    // operations in it, so a second trigger here would sit under it.
+    generate3dButton?.classList.toggle('hidden', !canGenerate3d || hostComputeAnchorRequested);
     generate3dMenu?.classList.toggle('hidden', true);
     if (generate3dButton) {
       generate3dButton.disabled = !canGenerate3d || generate3dPending;
@@ -3495,6 +3497,7 @@
     generate3dPendingMode = mode === 'ensemble' ? 'ensemble' : 'single';
     const button = document.querySelector('[data-buret-action="generate-3d-conformer"]');
     if (button) applyGenerate3DPendingState(button);
+    if (hostComputeAnchorRequested) scheduleFloatingLayoutRefresh();
   }
 
   function applyGenerate3DPendingState(button) {
@@ -3564,6 +3567,17 @@
       alignPoses: 'Aligning and comparing poses'
     };
     setStatus(`[web] ${labels[operation] || 'Starting molecular compute'} in the desktop native runtime...`);
+  }
+
+  // The operations of this viewer's own Compute menu, for the host menu that replaces it.
+  function hostComputeOperations() {
+    const config = activeConfig || window.BuretteConfig || {};
+    if (!canGenerate3DConformerFromConfig(config, normalizeRenderer(config.renderer))) return [];
+    return Array.from(document.querySelectorAll('[data-buret-generate-3d-menu] [data-buret-compute-operation]'), button => ({
+      operation: String(button.dataset.buretComputeOperation),
+      label: button.textContent.trim(),
+      disabled: button.disabled || generate3dPending,
+    }));
   }
 
   function canGenerate3DConformerFromConfig(config, renderer) {
@@ -3732,7 +3746,15 @@
       && body.documentId === window.BuretteConfig?.documentId) {
       hostComputeAnchorRequested = true;
       lastHostComputeAnchor = '';
+      hideGenerate3DMenu();
+      document.querySelector('[data-buret-action="generate-3d-conformer"]')?.classList.add('hidden');
       scheduleFloatingLayoutRefresh();
+      return;
+    }
+    if (event.source === window.parent && body.type === 'runComputeOperation'
+      && body.documentId === window.BuretteConfig?.documentId) {
+      const operation = hostComputeOperations().find(item => item.operation === body.operation && !item.disabled);
+      if (operation) requestMolecularCompute(operation.operation, { mode: operation.operation === 'generateEnsemble' ? 'ensemble' : 'single' });
       return;
     }
     if (body.type === 'viewerVisibilityChanged') {
@@ -7666,10 +7688,12 @@
         : TOOLBAR_MARGIN;
       // Host chrome paints above the iframe, so it yields while a viewer menu is open.
       const covered = Array.from(document.querySelectorAll('.buret-atlas-menu, .atlas-popover-surface')).some(isVisible);
-      const key = `${top}:${right}:${covered}`;
+      const operations = hostComputeOperations();
+      const pendingLabel = generate3dPending ? (generate3dPendingMode === 'ensemble' ? 'Generating set...' : 'Generating 3D...') : '';
+      const key = JSON.stringify([top, right, covered, operations, pendingLabel]);
       if (key !== lastHostComputeAnchor) {
         lastHostComputeAnchor = key;
-        postHostMessage({ type: 'sceneComputeAnchor', top, right, covered });
+        postHostMessage({ type: 'sceneComputeAnchor', top, right, covered, operations, pendingLabel });
       }
     }
     repositionDockingPoseControlsForLayout(mainRect);

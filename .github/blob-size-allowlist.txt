@@ -244,3 +244,7 @@ plugins/burette-agent/browser-shell-dist/molecular-frame/templates.json
 plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-DNmkleS_.js
 plugins/burette-agent/browser-shell-dist/assets/dist-BpSi-JkE.js
 plugins/burette-agent/browser-shell-dist/assets/molecule-store-Bod9bKI0.js
+plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-emHp8bkr.js
+plugins/burette-agent/browser-shell-dist/assets/dist-Cj3SlgH_.js
+plugins/burette-agent/browser-shell-dist/assets/molecule-store-58hH_LMa.js
+plugins/burette-agent/browser-shell-dist/assets/viewer-CF076mAP.js

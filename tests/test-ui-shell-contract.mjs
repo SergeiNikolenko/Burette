@@ -5097,7 +5097,7 @@ assert.doesNotMatch(previewShell, /data-buret-renderer="xyz-fast"/);
 assert.doesNotMatch(previewShell, /id="buret-open-in-app"/);
 assert.doesNotMatch(previewShell, /data-buret-action="open-burette"/);
 assert.match(previewViewer, /const generate3dButton = document\.querySelector\('\[data-buret-action="generate-3d-conformer"\]'\)/);
-assert.match(previewViewer, /generate3dButton\?\.classList\.toggle\('hidden', !canGenerate3d\)/);
+assert.match(previewViewer, /generate3dButton\?\.classList\.toggle\('hidden', !canGenerate3d \|\| hostComputeAnchorRequested\)/);
 assert.match(previewViewer, /generate3dButton\.addEventListener\('click', \(\) => showGenerate3DMenu\(generate3dButton\)\)/);
 assert.match(previewViewer, /function showGenerate3DMenu\(anchor\)/);
 assert.match(previewViewer, /function positionGenerate3DMenu\(anchor = document\.querySelector/);

@@ -211,10 +211,11 @@ console.log('Grid card scheduling: priority, frame budget, in-flight deduplicati
   const cell = new Function('escapeAttr', 'drawRdkitPlaceholder', 'tableHighlightedTextHTML', `${body('tableCellHTML')} return tableCellHTML;`)(
     value => value.replaceAll('"', '&quot;'), row => `<drawing>${row.smiles}</drawing>`, value => value,
   );
-  for (const id of ['descriptor:RGroup_Core', 'prop:RGroup_R1', 'prop:RGroup_Components', 'descriptor:Scaffold']) {
+  for (const id of ['descriptor:RGroup_Core', 'prop:RGroup_R1', 'prop:RGroup_Components', 'descriptor:Scaffold', 'prop:Reactant 1', 'prop:Reactant 12']) {
     assert.match(cell({}, { id, get: () => 'C[*:1]' }, {}), /data-buret-fragment-smiles="C\[\*:1\]"/);
   }
   assert.doesNotMatch(cell({}, { id: 'prop:RGroup_Status', get: () => 'Matched' }, {}), /drawing/);
+  assert.doesNotMatch(cell({}, { id: 'prop:Reactant 1 source', get: () => 'acids.smi #1' }, {}), /drawing/);
   assert.doesNotMatch(cell({}, { id: 'prop:RGroup_R1', get: () => '' }, {}), /drawing/);
 }
 

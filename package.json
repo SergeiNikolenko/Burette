@@ -1,6 +1,6 @@
 {
   "name": "burette",
-  "version": "2026.11.14",
+  "version": "2026.11.15",
   "private": true,
   "description": "macOS desktop app and Quick Look extension for molecular previews: Mol* 3D, xyzrender SVG, and RDKit grids.",
   "packageManager": "bun@1.4.2",
@@ -124,7 +124,7 @@
     "test:cif-classification": "bun test tests/test-cif-structure-classification.test.ts",
     "test:cif-info-classification": "bun test tests/test-structure-info-classification.test.tsx",
     "test:measurement-runtime": "bun test tests/test-measurement-runtime.test.ts",
-    "test:molecular-graph": "bun test tests/test-molecular-graph.test.ts",
+    "test:molecular-graph": "bun test tests/test-molecular-graph.test.ts tests/test-molecular-editor-3d-stereo.test.ts",
     "test:scene-source-binding": "bun test tests/test-scene-source-binding.test.ts",
     "test:graph-worker": "bun test tests/test-graph-worker.test.ts",
     "test:structure-source-text": "bun test tests/test-structure-source-text.test.tsx",
