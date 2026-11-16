@@ -44,7 +44,7 @@
         "destructive_justification": "Cannot modify the source file, persist a molecular edit, or perform an irreversible external action."
       }
     },
-    "open_ketcher": {
+    "open_molecular_editor": {
       "annotations": {
         "readOnlyHint": false,
         "openWorldHint": false,
@@ -56,7 +56,7 @@
         "destructive_justification": "The tool cannot delete, overwrite, or persist a file; persistence requires a separate user-confirmed action."
       }
     },
-    "control_ketcher": {
+    "control_molecular_editor": {
       "annotations": {
         "readOnlyHint": false,
         "openWorldHint": false,
@@ -172,7 +172,7 @@
       "description": "Create an editable salicylic acid reference sketch for a teaching note.",
       "user_prompt": "I'm preparing a chemistry teaching note. Open an editable molecular editor sketch of salicylic acid from SMILES O=C(O)c1ccccc1O. Keep the carboxylic acid and the adjacent phenolic OH visible, so I can inspect the substitution pattern.",
       "file_attachment_urls": null,
-      "tools_triggered": "open_ketcher",
+      "tools_triggered": "open_molecular_editor",
       "expected_output": "Shows a nonblank salicylic acid sketch from O=C(O)c1ccccc1O: one molecule, 10 heavy atoms, 10 bonds, newly seeded revision 1. The phenolic OH is adjacent to the carboxylic acid. Does not claim 3D conformer generation or file persistence.",
       "expected_output_url": null
     },
@@ -180,8 +180,8 @@
       "description": "Edit a reference sketch and verify that the final exported structure matches the drawing.",
       "user_prompt": "Start a new molecular editor sketch with salicylic acid, O=C(O)c1ccccc1O. Then replace that sketch with aspirin, CC(=O)Oc1ccccc1C(=O)O. Read the final structure back from the editor and return its SMILES. Keep the final drawing visible so I can check it against the export. This is a drawing edit, not a synthesis.",
       "file_attachment_urls": null,
-      "tools_triggered": "control_ketcher",
-      "expected_output": "In this independent conversation, first open_ketcher creates salicylic acid. control_ketcher set_structure replaces it with aspirin using the current surface ID/revision, then get_structure reads SMILES. Final molecule has 13 heavy atoms and 13 bonds, and SMILES chemically equivalent to CC(=O)Oc1ccccc1C(=O)O. Mutation increments the revision; read does not. Both the final mutation and export cards show aspirin, not a blank or stale sketch. No local file write or synthesis claim.",
+      "tools_triggered": "control_molecular_editor",
+      "expected_output": "In this independent conversation, first open_molecular_editor creates salicylic acid. control_molecular_editor set_structure replaces it with aspirin using the current surface ID/revision, then get_structure reads SMILES. Final molecule has 13 heavy atoms and 13 bonds, and SMILES chemically equivalent to CC(=O)Oc1ccccc1C(=O)O. Mutation increments the revision; read does not. Both the final mutation and export cards show aspirin, not a blank or stale sketch. No local file write or synthesis claim.",
       "expected_output_url": null
     }
   ],

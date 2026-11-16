@@ -30,16 +30,16 @@ const publicToolNames = [
   "preview_molecular_file",
   "preview_pdb_structure",
   "render_molecular_scene",
-  "open_ketcher",
-  "control_ketcher",
+  "open_molecular_editor",
+  "control_molecular_editor",
 ] as const;
 
 const publicToolAnnotations = {
   preview_molecular_file: { readOnlyHint: true, openWorldHint: false, destructiveHint: false },
   preview_pdb_structure: { readOnlyHint: true, openWorldHint: true, destructiveHint: false },
   render_molecular_scene: { readOnlyHint: true, openWorldHint: true, destructiveHint: false },
-  open_ketcher: { readOnlyHint: false, openWorldHint: false, destructiveHint: false },
-  control_ketcher: { readOnlyHint: false, openWorldHint: false, destructiveHint: true },
+  open_molecular_editor: { readOnlyHint: false, openWorldHint: false, destructiveHint: false },
+  control_molecular_editor: { readOnlyHint: false, openWorldHint: false, destructiveHint: true },
 } as const;
 
 // Entrypoints and widget helpers the model never calls; the portal still scans them.

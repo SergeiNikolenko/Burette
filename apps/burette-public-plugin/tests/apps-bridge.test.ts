@@ -44,7 +44,7 @@ describe("MCP Apps bridge", () => {
       structuredContent: { burette: { activeSelection: null } },
     });
     await app.callServerTool({
-      name: "control_ketcher",
+      name: "control_molecular_editor",
       arguments: { action: { command: "get_structure" } },
     });
     expect(methods).toEqual(["ui/initialize", "ui/update-model-context", "tools/call"]);

@@ -91,7 +91,7 @@ export function executeHostedKetcherAction(rawAction: unknown): HostedKetcherAct
   if (!validated.ok) return failure("control_ketcher", validated.error.code, validated.error.message);
   const action = validated.value;
   const surface = surfaces.get(action.surfaceId);
-  if (!surface) return failure(action.command, "STALE_TARGET", "The hosted Ketcher surface is no longer available.", action.actionId);
+  if (!surface) return failure(action.command, "STALE_TARGET", "The molecular editor is no longer available.", action.actionId);
   surface.updatedAt = Date.now();
   const actionHash = stableActionHash(action);
   const previous = surface.actionResults.get(action.actionId);
@@ -99,9 +99,9 @@ export function executeHostedKetcherAction(rawAction: unknown): HostedKetcherAct
     if (previous.hash !== actionHash) return failure(action.command, "REPLAY_CONFLICT", "actionId was already used for another payload.", action.actionId, surface);
     return previous.result;
   }
-  if (surface.state.phase !== "ready") return remember(surface, action, failure(action.command, "NOT_READY", "The hosted Ketcher surface is not ready.", action.actionId, surface), actionHash);
+  if (surface.state.phase !== "ready") return remember(surface, action, failure(action.command, "NOT_READY", "The molecular editor is not ready.", action.actionId, surface), actionHash);
   if (action.expectedRevision !== surface.state.structureRevision) {
-    return remember(surface, action, failure(action.command, "REVISION_CONFLICT", "The hosted Ketcher structure revision is stale.", action.actionId, surface), actionHash);
+    return remember(surface, action, failure(action.command, "REVISION_CONFLICT", "The molecular editor revision is stale.", action.actionId, surface), actionHash);
   }
 
   const result = action.command === "set_structure"

@@ -43,7 +43,7 @@ workspace from the Codex sidebar, `search_pdb_mentions` answers `@Burette`
 composer mentions from the public RCSB search, and `open_structure_file`
 and `open_sketch_file` register file entrypoints. For a file entrypoint the
 host reads the file and hands it to the widget; the widget forwards at most
-3 MiB to `prepare_structure_content` or `open_ketcher`. These app-only tools
+3 MiB to `prepare_structure_content` or `open_molecular_editor`. These app-only tools
 are hidden from the model.
 
 This release is a bounded inspection product, not feature parity with the local

@@ -64,13 +64,13 @@ describe("MCP wire contract", () => {
       data: { jsonrpc: "2.0", method: "ui/notifications/tool-result", params: result },
     });
 
-    const opened = await call("open_ketcher", { structure: { format: "smiles", content: "CCO" } });
+    const opened = await call("open_molecular_editor", { structure: { format: "smiles", content: "CCO" } });
     expect(opened.structuredContent.ok).toBe(true);
     deliver(opened);
     expect(widgetWindow.__BURETTE_HOSTED_KETCHER_SEED__?.content).toBe("CCO");
     const surfaceId = opened.structuredContent.surfaceId;
     async function control(command: string, extra: Record<string, unknown> = {}, expectedRevision = 1) {
-      return call("control_ketcher", { action: {
+      return call("control_molecular_editor", { action: {
         apiVersion: KETCHER_AGENT_API_VERSION, type: "control_ketcher", command,
         surfaceId, expectedRevision, ...extra,
       } });
@@ -302,7 +302,7 @@ describe("MCP wire contract", () => {
         "mcp-protocol-version": LATEST_PROTOCOL_VERSION,
       },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: {
-        name: "open_ketcher", arguments: { structure: { format: "smiles", content: "c1ccncc1O.[Na+]" } },
+        name: "open_molecular_editor", arguments: { structure: { format: "smiles", content: "c1ccncc1O.[Na+]" } },
       } }),
     }));
     const payload = await readSseResponse(response) as { result: { content: Array<{ text: string }> } };
@@ -330,9 +330,9 @@ describe("MCP wire contract", () => {
     };
     const tools = payload.result?.tools ?? [];
     expect(tools.map((tool) => tool.name).sort()).toEqual([
-      "control_ketcher",
+      "control_molecular_editor",
       "open_app",
-      "open_ketcher",
+      "open_molecular_editor",
       "open_sketch_file",
       "open_structure_file",
       "open_workspace_tab",

@@ -228,7 +228,7 @@ function createServer(): McpServer {
 
   registerAppTool(
     server,
-    "open_ketcher",
+    "open_molecular_editor",
     {
       title: "Open Molecular Editor",
       description: "Open Burette's molecular editor and optionally seed it with one inline structure (SMILES, MOL, KET, or an RXN reaction).",
@@ -283,7 +283,7 @@ function createServer(): McpServer {
 
   registerAppTool(
     server,
-    "control_ketcher",
+    "control_molecular_editor",
     {
       title: "Control Molecular Editor",
       description: "Apply a bounded, revision-checked action to an open molecular editor surface.",
