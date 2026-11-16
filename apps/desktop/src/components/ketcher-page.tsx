@@ -519,11 +519,16 @@ export function KetcherPage({
       molfile === undefined ? withKetcherTimeout(instance.getMolfile("v2000"), "Sketch draft export") : Promise.resolve(molfile),
       ket === undefined ? withKetcherTimeout(instance.getKet(), "Sketch KET draft export") : Promise.resolve(ket),
     ]);
-    if (serial !== draftExportSerialRef.current) return;
-    if (molResult.status === "rejected" && ketResult.status === "rejected") throw ketResult.reason;
+    if (molResult.status === "rejected" && ketResult.status === "rejected") {
+      if (serial !== draftExportSerialRef.current) return;
+      throw ketResult.reason;
+    }
     const draftMolfile = molResult.status === "fulfilled" ? molResult.value : "";
     const draftKet = ketResult.status === "fulfilled" ? ketResult.value : undefined;
     const hasCurrentSketch = !isBlankKetcherMolfile(draftMolfile) || Boolean(draftKet && !isBlankKetcherKet(draftKet));
+    // The change autosave that follows a load can overtake this export. The
+    // newer export publishes the draft; callers still get what this one read.
+    if (serial !== draftExportSerialRef.current) return hasCurrentSketch ? { molfile: draftMolfile, ket: draftKet } : undefined;
     if (editor && !hasCurrentSketch) return;
     if (draftRestoreBlockedRef.current) {
       draftRestoreBlockedRef.current = false;
