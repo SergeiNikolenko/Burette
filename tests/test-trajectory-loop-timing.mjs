@@ -139,3 +139,54 @@ assert.equal(pause.starts, 1);
 await pause.activeTrajectoryPlaybackControl.stop();
 release3(); assert.equal(pause.starts, 1, 'Stop during the rebuild must suppress auto-resume');
 console.log('nested rebuild pause and last-user-intent playback passed');
+
+// Exercise the shipped scrubber under uninterrupted 60 Hz input and a slow
+// renderer. A trailing debounce would never display a pose during the drag.
+const scrubStart = viewer.indexOf('    const flushPendingSliderInput = () => {');
+const scrubEnd = viewer.indexOf('    const setControlsCollapsed = ', scrubStart);
+assert.ok(scrubStart > 0 && scrubEnd > scrubStart);
+let scrubNow = 0, scrubTimerId = 0;
+const scrubTimers = new Map();
+const scrubFrames = [];
+let finishScrubFrame;
+const scrub = vm.createContext({
+  sliderInputBusy: false, pendingSliderIndex: null, sliderInputTimer: null,
+  prepared: { poseCount: 100 },
+  clearTimeout: id => scrubTimers.delete(id),
+  window: { setTimeout: (fn, delay) => {
+    const id = ++scrubTimerId;
+    scrubTimers.set(id, { fn, at: scrubNow + delay });
+    return id;
+  } },
+  setPose: index => {
+    assert.equal(finishScrubFrame, undefined, 'only one pose update may be in flight');
+    scrubFrames.push(index);
+    return new Promise(resolve => { finishScrubFrame = resolve; });
+  },
+});
+vm.runInContext(`${viewer.slice(scrubStart, scrubEnd)}\nglobalThis.input = scheduleSliderInputPose;`, scrub);
+for (let index = 0; index < 60; index++) {
+  scrubNow = index * 16;
+  for (const [id, timer] of scrubTimers) {
+    if (timer.at > scrubNow) continue;
+    scrubTimers.delete(id);
+    timer.fn();
+  }
+  scrub.input(index);
+  if (index % 5 === 4 && finishScrubFrame) {
+    const finish = finishScrubFrame;
+    finishScrubFrame = undefined;
+    finish();
+    await new Promise(resolve => setImmediate(resolve));
+  }
+}
+assert.ok(scrubFrames.length >= 10, 'poses must advance while the pointer keeps moving');
+assert.equal(scrubFrames.at(-1), 59, 'slow updates must consume the latest pending pose');
+assert.ok(scrubFrames.length < 60, 'intermediate inputs must not accumulate in a backlog');
+const finishLastScrubFrame = finishScrubFrame;
+finishScrubFrame = undefined;
+finishLastScrubFrame();
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(scrub.sliderInputBusy, false);
+assert.equal(scrub.pendingSliderIndex, null);
+console.log('continuous trajectory scrub advances, coalesces slow updates, and reaches the final pose');

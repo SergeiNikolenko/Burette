@@ -34,6 +34,16 @@ function render(changes) {
   hook(options); for (const effect of pending) effect();
 }
 render({});
+render({ preferences: { conformerCandidateCount: 232 } });
+render({ preferences: { conformerCandidateCount: 128 } });
+render({ activeTab: { id: "a", location: { kind: "file", path: "/a.pdb" } }, activeTabId: "a" });
+assert.deepEqual(opened, [], "returning from conformer settings must retain the loaded scene, even after a value round trip");
+render({ preferences: { conformerCandidateCount: 192, conformerRmsdCutoff: 1.25 } });
+render({ preferences: { shortcutOverrides: { "file.open": "CmdOrCtrl+Shift+O" }, openInDefaultDestination: "default-app" } });
+render({ preferences: {} });
+assert.deepEqual(opened, [], "job defaults, shell controls and equivalent snapshots must not reopen a loaded runtime");
+assert.deepEqual(messages, [], "host-only preferences need no viewer messages");
+render({ activeTab: { id: "settings", location: { kind: "settings" } }, activeTabId: "settings" });
 render({ preferences: { rendererMode: "xyzrender" } });
 assert.deepEqual(opened, []);
 render({ activeTab: { id: "a", location: { kind: "file", path: "/a.pdb" } }, activeTabId: "a" });

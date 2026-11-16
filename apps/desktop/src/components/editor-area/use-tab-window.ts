@@ -26,6 +26,10 @@ export function useTabWindow(tabs: readonly { id: string }[], activeId: string |
   const [viewport, setViewport] = useState({ left: 0, width: 800 });
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const windowed = tabs.length > WINDOW_THRESHOLD;
+  const windowedRef = useRef(windowed);
+  windowedRef.current = windowed;
+  const activeIdRef = useRef(activeId);
+  activeIdRef.current = activeId;
   const offsets = useMemo(() => {
     const result = [0];
     for (const tab of tabs) result.push(result[result.length - 1] + (widths.current.get(tab.id) ?? ESTIMATED_WIDTH) + GAP);
@@ -33,9 +37,11 @@ export function useTabWindow(tabs: readonly { id: string }[], activeId: string |
   }, [tabs, measurement]);
   const previousLayout = useRef({ tabs, offsets });
 
+  // Scroll position and width only choose the rendered window. Tracking them for
+  // an unwindowed strip re-rendered every tab on each frame of a panel slide.
   const syncViewport = useCallback(() => {
     const element = viewportRef.current;
-    if (!element) return;
+    if (!element || !windowedRef.current) return;
     setViewport(current => current.left === element.scrollLeft && current.width === element.clientWidth
       ? current : { left: element.scrollLeft, width: element.clientWidth });
   }, []);
@@ -44,16 +50,22 @@ export function useTabWindow(tabs: readonly { id: string }[], activeId: string |
     const element = viewportRef.current;
     if (!element) return;
     syncViewport();
-    const observer = new ResizeObserver(syncViewport);
+    const observer = new ResizeObserver(() => {
+      if (windowedRef.current) syncViewport();
+      // Every tab is rendered; a narrower strip only has to keep the active one in view.
+      else if (activeIdRef.current) revealRef.current(activeIdRef.current);
+    });
     observer.observe(element);
     return () => observer.disconnect();
-  }, [syncViewport]);
+  }, [syncViewport, windowed]);
 
   useLayoutEffect(() => {
     const previous = previousLayout.current;
     const element = viewportRef.current;
     let changed = false;
-    for (const [id, shell] of shells.current) {
+    // Natural widths only position a windowed strip. Measuring them after every
+    // render forced a layout of the whole window on each panel toggle.
+    for (const [id, shell] of windowed ? shells.current : []) {
       const width = shell.getBoundingClientRect().width;
       if (width > 0 && widths.current.get(id) !== width) {
         widths.current.set(id, width);

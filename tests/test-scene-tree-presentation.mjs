@@ -10,12 +10,12 @@ const fn = name => {
 const dependencies = {
   activeSdfCollectionVisibilityState: null, activeDockingPoseCollectionState: null, activeXyzFrameOverlayState: null,
   molstarStoryState: () => ({ available: false }), sceneTreeColorTargets: () => new Map(),
-  sceneTreeMeasurementTargets: () => [], sceneTreeMeasurementSource: () => '',
+  SCENE_TREE_MEASUREMENT_PARAM_KEYS: new Set(['linesSize']), sceneTreeMeasurementSource: () => '',
   sceneTreeMeasurementValue: () => undefined,
   sceneTreeRowLabel: (_cell, label) => ({ label }),
 };
 const read = new Function(...Object.keys(dependencies),
-  ['sceneTreeChildRefs', 'isSceneTreeDecorator', 'sceneTreeCellHidden', 'isUnitCellCell', 'sceneTreeCellNote', 'sceneTreeNodes'].map(fn).join('\n') + '\nreturn sceneTreeNodes;')(...Object.values(dependencies));
+  ['sceneTreeChildRefs', 'isSceneTreeDecorator', 'sceneTreeCellHidden', 'sceneTreeSubtreeRefs', 'sceneTreeMeasurementTargets', 'isUnitCellCell', 'sceneTreeCellNote', 'sceneTreeNodes'].map(fn).join('\n') + '\nreturn sceneTreeNodes;')(...Object.values(dependencies));
 const cells = new Map();
 const add = (ref, parent, name, label, data = {}, transformer = '', decorator = false) => cells.set(ref, {
   transform: { ref, parent, transformer: { id: transformer, definition: { isDecorator: decorator } } },
@@ -104,3 +104,32 @@ cells.get('distance').obj.data = [{ loci }];
 focus('distance');
 assert.deepEqual(focused.pop(), { loci: [loci], options: { durationMs: 250 } });
 console.log('Scene presentation: empty cells hidden, single-model plumbing flattened, multiple models and assemblies preserved');
+
+// Wide scenes must not rescan every sibling for every row. Count state reads
+// rather than wall time so the regression is independent of the test machine.
+for (const label of ['Data', 'Distance']) {
+  const wideSceneReads = [];
+  for (const count of [250, 500]) {
+    let reads = 0;
+    const wideCells = new class extends Map {
+      get(ref) { reads++; return super.get(ref); }
+      forEach(callback) { return super.forEach((cell, ref) => { reads++; callback(cell, ref); }); }
+    }();
+    wideCells.set('root', cells.get('root'));
+    const expected = [];
+    for (let index = 0; index < count; index++) {
+      const ref = `file-${index}`;
+      wideCells.set(ref, {
+        transform: { ref, parent: 'root', params: label === 'Distance' ? { linesSize: 1 } : {}, transformer: { id: '', definition: {} } },
+        obj: { type: { name: label, typeClass: 'Object' }, label, data: {} },
+        state: {},
+      });
+      expected.push([ref, []]);
+    }
+    assert.deepEqual(shape(read({ plugin: { state: { data: { cells: wideCells } } } })), expected);
+    wideSceneReads.push(reads);
+  }
+  assert.ok(wideSceneReads[1] <= wideSceneReads[0] * 2.5,
+    `doubling a wide ${label} scene must retain near-linear state reads: ${wideSceneReads}`);
+}
+console.log('Wide scene presentation scales linearly in state reads');

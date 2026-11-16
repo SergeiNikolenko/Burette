@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -208,6 +208,7 @@ export function RangeControl({
   step,
   suffix,
   onChange,
+  updateOn = "commit",
 }: {
   label?: string;
   value: number;
@@ -216,8 +217,12 @@ export function RangeControl({
   step: number;
   suffix?: string;
   onChange: (value: number) => void;
+  updateOn?: "change" | "commit";
 }) {
-  const displayValue = Number.isInteger(step) ? Math.round(value).toString() : value.toFixed(2).replace(/\.?0+$/u, "");
+  const [draft, setDraft] = useState<{ base: number; value: number } | null>(null);
+  useEffect(() => setDraft(null), [value]);
+  const current = draft?.base === value ? draft.value : value;
+  const displayValue = Number.isInteger(step) ? Math.round(current).toString() : current.toFixed(2).replace(/\.?0+$/u, "");
   return (
     <div className="settings-range-control">
       <Slider
@@ -225,10 +230,20 @@ export function RangeControl({
         min={min}
         max={max}
         step={step}
-        value={[value]}
+        value={[current]}
+        onPointerCancel={() => setDraft(null)}
+        onLostPointerCapture={() => setDraft(null)}
         onValueChange={(values) => {
           const nextValue = values[0];
-          if (nextValue !== undefined) onChange(nextValue);
+          if (nextValue === undefined) return;
+          setDraft({ base: value, value: nextValue });
+          if (updateOn === "change") onChange(nextValue);
+        }}
+        onValueCommit={(values) => {
+          setDraft(null);
+          const nextValue = values[0];
+          // Settings commits capture workspace history and sync native defaults.
+          if (updateOn === "commit" && nextValue !== undefined && nextValue !== value) onChange(nextValue);
         }}
       />
       <span>{suffix ? `${displayValue} ${suffix}` : displayValue}</span>
@@ -315,7 +330,7 @@ export function rangePreferenceRow(
   return {
     label,
     description,
-    control: <RangeControl label={label} value={value} min={0} max={100} step={1} onChange={onChange} />,
+    control: <RangeControl label={label} value={value} min={0} max={100} step={1} onChange={onChange} updateOn="change" />,
     reset: () => onChange(defaultValue),
     isModified: value !== defaultValue,
   };

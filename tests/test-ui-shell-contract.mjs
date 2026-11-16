@@ -2066,7 +2066,7 @@ assert.match(gridViewer, /const GRID_RAIL_PILL_WIDTH = 12;/);
 assert.match(gridViewer, /function gridRailPointInside\(ticks, clientX, clientY\)/);
 assert.match(gridViewer, /const keepHover = endEvent\.type === 'pointerup'\s*&& endEvent\.view === window\s*&& gridRailPointInside\(ticks, endEvent\.clientX, endEvent\.clientY\);/);
 assert.match(gridViewer, /if \(endEvent\.type === 'pointerup'\) state\.railPopoverSuppressed = true;\s*if \(state\.railPopoverSuppressed\) \{\s*updateGridRailLens\(null\);\s*hideGridRailPopover\(\);/);
-assert.match(gridViewer, /ticks\.innerHTML = railRows[\s\S]*?updateGridRailLens\(state\.railHoveredMarker\);/);
+assert.match(gridViewer, /ticks\.innerHTML = markup;[\s\S]*?updateGridRailLens\(state\.railHoveredMarker\);/);
 assert.match(gridViewer, /if \(!dragging && endEvent\.type === 'pointerup'\) scrollFromPoint\(lastClientY, 'smooth'\);/);
 assert.match(gridViewer, /document\.documentElement\.addEventListener\('pointerleave', onBoundaryExit\);/);
 assert.match(gridViewer, /window\.addEventListener\('blur', onBoundaryExit\);/);
@@ -2926,7 +2926,7 @@ assert.match(structureInfoPanel, /<InspectorSection className="structure-inspect
 assert.match(structureInfoPanel, /actions: Array<StructureViewerAction & \{ type: "set_structure_pose" \}>/);
 assert.match(structureInfoPanel, /type: "set_structure_pose"/);
 assert.doesNotMatch(structureInfoPanel, /if \(document\.dockingRequest\) \{\s*setState\(\{ documentId: document\.id, loading: false, summary: null, error: null \}\);\s*return undefined;\s*\}/);
-assert.match(structureInfoPanel, /const summary = parseStructureComposition\(text, source\.extension\);\s*setState\(\{[^}]*\bsummary,/);
+assert.match(structureInfoPanel, /const summary = parseStructureComposition\(text, source\.extension\);\s*const parsed: StructureCompositionState = \{[^}]*\bsummary,[^}]*\};\s*setState\(parsed\);/);
 assert.doesNotMatch(structureInfoPanel, /function inspectorCompositionPath\(document: ViewerDocument\)/);
 assert.doesNotMatch(structureInfoPanel, /function inspectorCompositionExtension\(document: ViewerDocument\)/);
 assert.match(structureInfoPanel, /type: "set_sdf_context_style"/);
@@ -2937,7 +2937,6 @@ assert.match(structureInfoPanel, /buret\.sdf\.contextStyle\.\$\{document\.id\}/)
 assert.match(structureInfoPanel, /SDF_CONTEXT_OPACITY_DEFAULT = 0\.4/);
 assert.match(structureInfoPanel, /function normalizeSdfContextOpacity/);
 assert.match(structureInfoPanel, /type: "set_sdf_context_opacity"/);
-assert.match(structureInfoPanel, /type: "set_sdf_context_opacity"[\s\S]*?notify: false[\s\S]*?opacity: normalized/);
 assert.match(structureInfoPanel, /<span>Opacity<\/span>/);
 assert.match(structureInfoPanel, /aria-label=\{copy\.opacityAriaLabel\}/);
 assert.doesNotMatch(structureInfoPanel, /opacityDisabled/);
@@ -4015,7 +4014,7 @@ assert.match(settingsPanel, /Conformer set RMSD pruning/);
 assert.match(settingsPanel, /actions\.setPreference\("conformerRmsdCutoff", conformerRmsdCutoff\)/);
 assert.match(settingControl, /export function SettingsSection/);
 assert.match(settingControl, /suffix\?: string/);
-assert.match(settingControl, /const displayValue = Number\.isInteger\(step\) \? Math\.round\(value\)\.toString\(\) : value\.toFixed\(2\)/);
+assert.match(settingControl, /const displayValue = Number\.isInteger\(step\) \? Math\.round\(current\)\.toString\(\) : current\.toFixed\(2\)/);
 assert.match(settingControl, /suffix \? `\$\{displayValue\} \$\{suffix\}` : displayValue/);
 assert.match(settingControl, /export function ToggleControl/);
 assert.match(settingControl, /import \{ Switch \} from "@\/components\/ui\/switch"/);
@@ -4068,7 +4067,7 @@ assert.match(commandPalette, /shouldFilter=\{false\}/);
 assert.match(commandPalette, /CommandInput/);
 assert.match(commandPalette, /CommandList/);
 assert.match(commandPalette, /CommandGroup/);
-assert.match(commandPalette, /CommandItem/);
+assert.match(commandPalette, /PaletteResultItem/);
 assert.match(commandPalette, /CommandEmpty/);
 assert.match(commandPalette, /shouldFilter=\{false\}/);
 assert.match(commandPalette, /value=\{selectedValue\}/);
@@ -5213,7 +5212,7 @@ assert.match(previewRuntimeCss, /body\.buret-toolbar-collapsed \.buret-generate-
 assert.match(previewRuntimeCss, /body:has\(\.msp-viewport-controls-buttons \.msp-hover-box-wrapper:hover\) \.buret-generate-3d-menu/);
 assert.match(previewViewer, /if \(collapsed\) \{[\s\S]*hideGenerate3DMenu\(\);/);
 assert.match(previewViewer, /const viewportControlRailRect = visibleRect\('\.msp-plugin \.msp-viewport-controls-buttons'\);/);
-assert.match(previewViewer, /const railRect = visibleRect\('#buret-viewport-rail'\) \|\| viewportControlRailRect;/);
+assert.match(previewViewer, /const railRect = ownRailVisible \? \{ left: Math\.round\(viewportRailLeft\) \} : viewportControlRailRect;/);
 // The vertical viewport rail is the second half of the toolbar group: it follows
 // either drag handle, flips toward the canvas at each corner, and rolls up with it.
 assert.match(previewRuntimeCss, /\.buret-viewport-rail \{[^}]*right: auto;[^}]*left: var\(--buret-viewport-rail-left, auto\);/s);
@@ -5343,7 +5342,7 @@ assert.doesNotMatch(
   previewViewer.slice(previewViewer.indexOf("function viewportCameraMenu"), previewViewer.indexOf("function viewportAnimateMenu")),
   /viewportMotionControls/,
 );
-assert.match(previewViewer, /window\.innerWidth - railRect\.left \+ FLOATING_LAYOUT_GAP \* 2/);
+assert.match(previewViewer, /frameWidth - railRect\.left \+ FLOATING_LAYOUT_GAP \* 2/);
 assert.match(previewViewer, /root\.style\.setProperty\('--buret-generate-3d-control-right', generate3DControlRight \+ 'px'\);/);
 assert.match(previewRuntimeCss, /\.buret-xyzrender-preset-slot \{ display: none; align-items: center; \}/);
 assert.match(previewRuntimeCss, /\.buret-xyzrender-preset-slot\.visible \{ display: flex; \}/);
@@ -5757,7 +5756,12 @@ assert.match(previewViewer, /const saved = saveMolstarModifiedStructure\(\);[\s\
 assert.match(previewViewer, /installToolbarAutoLayoutTracking\(toolbar\);/);
 assert.match(previewViewer, /function installToolbarAutoLayoutTracking\(toolbar\)/);
 assert.match(previewViewer, /const observer = new ResizeObserver\(handleSizeChange\);/);
-assert.match(previewViewer, /if \(toolbar\.dataset\.defaultPosition === '1'\) \{\s*applyDefaultToolbarPosition\(toolbar\);\s*\} else \{\s*repositionToolbar\(toolbar\);\s*\}/s);
+// Toolbar size observers, the frame observer and window resize share one
+// chrome layout pass per frame; the frame observer skips a size already placed.
+assert.match(previewViewer, /const schedule = \(\) => \{\s*floatingResizeToolbar = toolbar;\s*scheduleFloatingLayoutRefresh\(\);\s*\};/s);
+assert.match(previewViewer, /`\$\{window\.innerWidth\}x\$\{window\.innerHeight\}` !== floatingLayoutPassSize\) schedule\(\);/);
+assert.match(previewViewer, /if \(toolbar\?\.isConnected\) \{[\s\S]*?\/\/ Every repositionToolbar branch ends in updateFloatingLayoutOffsets\(\)\.\s*repositionToolbar\(toolbar\);/);
+assert.match(previewViewer, /floatingLayoutObserver\?\.takeRecords\(\);/);
 assert.match(previewViewer, /const presetSlot = toolbar\.querySelector\('\[data-buret-xyzrender-preset-slot\]'\)/);
 assert.match(previewViewer, /presetSlot\?\.classList\.toggle\('visible', renderer === 'xyzrender-external'\)/);
 assert.match(previewViewer, /toolbar\.classList\.add\('buret-dragging'\)/);
@@ -5770,7 +5774,7 @@ assert.match(previewViewer, /function fitToolbarToViewport\(toolbar\)/);
 assert.match(previewViewer, /const availableWidth = toolbarViewportBounds\(\)\.width;/);
 assert.match(previewViewer, /toolbar\.style\.maxWidth = Math\.max\(0, availableWidth - TOOLBAR_MARGIN \* 2\) \+ 'px'/);
 assert.match(previewViewer, /const content = toolbar\.querySelector\('\[data-buret-toolbar-content\]'\)/);
-assert.match(previewViewer, /content\.style\.maxWidth = Math\.max\(0, availableWidth - TOOLBAR_MARGIN \* 2 - 36\) \+ 'px'/);
+assert.match(previewViewer, /const contentMaxWidth = Math\.max\(0, availableWidth - TOOLBAR_MARGIN \* 2 - 36\);\s*content\.style\.maxWidth = contentMaxWidth \+ 'px';/);
 assert.match(previewViewer, /dockToolbar\(toolbar\);\s*fitToolbarToViewport\(toolbar\);/);
 assert.match(previewViewer, /toolbar\.dataset\.defaultPosition = '1';/);
 assert.match(previewViewer, /updateFloatingLayoutOffsets\(\)/);
@@ -6661,7 +6665,6 @@ assert.match(previewViewer, /activeMolstarPrepared\?\.kind === 'docking' && acti
 assert.match(previewViewer, /activeMolstarPrepared\?\.kind === 'docking' && activeMolstarPrepared\?\.sdfPoseOverlayAvailable === true[\s\S]*await applyDockingPoseCollectionVisibility\(activeViewer, activeMolstarPrepared, activePose, \{ focus: false \}\);/);
 assert.match(previewViewer, /prepared\.kind === 'docking' && prepared\.dockingSceneMode[\s\S]*await applyDockingSceneVisibility\(viewer, activeMolstarPrepared \|\| prepared, nextIndex, \{ focus: false \}\);[\s\S]*activePose = nextIndex;/);
 assert.match(previewViewer, /prepared\.kind === 'docking' && prepared\.sdfPoseOverlayAvailable === true[\s\S]*await applyDockingPoseCollectionVisibility\(viewer, activeMolstarPrepared \|\| prepared, nextIndex, \{ focus: false \}\);[\s\S]*activePose = nextIndex;/);
-assert.match(previewViewer, /const sceneStructures = \[\];[\s\S]*sceneStructures\.push\(\.\.\.await loadMolstarEntryWithStructureRefs\(viewer, entry, \{ representationPreset: 'empty' \}\)\);[\s\S]*await applySdfCollectionMolstarStyle\(viewer, resolvedContextStyle, sceneStructures, 1, 'colored'\);/);
 assert.match(previewViewer, /function minimumTrajectoryLoopDelay\(prepared\)/);
 assert.doesNotMatch(previewViewer, /buret-docking-pose-speed-skip/);
 assert.doesNotMatch(previewViewer, /NATIVE_TRAJECTORY_LOOP_MAX_FPS/);
@@ -6736,10 +6739,8 @@ assert.match(previewViewer, /if \(prepared\.kind === 'sdf-collection'\) \{\s*awa
 assert.match(previewViewer, /await applyXyzFrameOverlayVisibilityNow\(viewer, prepared, readTrajectoryControlIndex\(/);
 assert.match(previewViewer, /if \(prepared\.dockingSceneMode\) \{\s*await applyDockingSceneVisibilityNow\(viewer, prepared, prepared\.activePose\);/);
 assert.match(previewViewer, /if \(prepared\.sdfPoseOverlayAvailable === true\) \{\s*await applyDockingPoseCollectionVisibilityNow\(viewer, prepared, prepared\.activePose\);/);
-// The slider fires per pixel; the send is debounced while local state and the
-// stored preference update immediately.
-assert.match(structureInfoPanel, /const SDF_CONTEXT_OPACITY_SEND_DELAY_MS = 150/);
-assert.match(structureInfoPanel, /opacitySendTimer\.current = window\.setTimeout\(\(\) => \{[\s\S]*?type: "set_sdf_context_opacity",[\s\S]*?opacity: normalized,[\s\S]*?\}, SDF_CONTEXT_OPACITY_SEND_DELAY_MS\)/);
+// Background opacity streams during dragging and commits persistence on release.
+assert.match(structureInfoPanel, /onValueCommit=\{values => \{[\s\S]*?opacityUpdates\.commit\(\);/);
 // A ghost background surface over a whole collection would be re-sorted every
 // frame at full grid resolution; the coarser grid keeps it interactive.
 assert.match(previewViewer, /type: 'molecular-surface', typeParams: \{ \.\.\.typeParams, resolution: ghost \? 2 : 0\.5 \}/);
@@ -6811,9 +6812,6 @@ assert.match(previewViewer, /\.filter\(structure => !before\.has\(structure\?\.c
 assert.match(previewViewer, /async function applyDockingSceneVisibilityNow\(viewer, prepared, activePose = 0, options = \{\}\)/);
 assert.match(previewViewer, /const resolvedContextStyle = dockingSceneBackgroundStyle\(contextStyle, style\)/);
 assert.match(previewViewer, /const backgroundEntries = poses\.filter\(\(_, index\) => index !== activeIndex\)/);
-assert.match(previewViewer, /if \(resolvedContextStyle === 'default' \|\| resolvedContextStyle === 'illustrative'\) \{/);
-assert.match(previewViewer, /for \(const entry of \[\.\.\.backgroundEntries, activeEntry\]\)/);
-assert.match(previewViewer, /applySdfCollectionMolstarStyle\(viewer, resolvedContextStyle, sceneStructures, 1, 'colored'\)/);
 assert.match(previewViewer, /for \(const entry of backgroundEntries\) \{\s*contextStructures\.push\(\.\.\.await loadMolstarEntryWithStructureRefs\(viewer, entry, \{ representationPreset: 'empty' \}\)\);\s*\}/s);
 assert.match(previewViewer, /const contextColor = readSdfCollectionContextColor\(activeConfig\);/);
 assert.match(previewViewer, /if \(contextStructures\.length\) \{\s*await applySdfCollectionMolstarStyle\(viewer, resolvedContextStyle, contextStructures, contextOpacity, contextColor\);\s*\}/s);

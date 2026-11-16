@@ -1,5 +1,6 @@
 import { FolderExpandCollapseIcon } from "./folder-expand-collapse-icon";
 import { TreeCollapse } from "./tree-collapse";
+import { VirtualProjectItem } from "./virtual-project-item";
 import { useWorkspaceMenus } from "../workspace-menus";
 import { SidebarTooltip } from "./sidebar-tooltip";
 import { Pin, PinFilled, DotsHorizontal } from "../ui/app-icons";
@@ -238,6 +239,7 @@ export function ProjectGroup({
       expandedFolderPaths={expandedFolderPaths}
       showAllFolderPaths={showAllFolderPaths}
       forceExpanded={hasSidebarQuery}
+      virtualizeItems={project.items.length > 100}
       toggleFolderPath={toggleFolderPath}
       toggleFolderPathRecursive={toggleFolderPathRecursive}
       toggleShowAllFolderPath={toggleShowAllFolderPath}
@@ -375,6 +377,7 @@ function ProjectTreeNodeView({
   expandedFolderPaths,
   showAllFolderPaths,
   forceExpanded,
+  virtualizeItems,
   toggleFolderPath,
   toggleFolderPathRecursive,
   toggleShowAllFolderPath,
@@ -387,6 +390,7 @@ function ProjectTreeNodeView({
   expandedFolderPaths: Set<string>;
   showAllFolderPaths: Set<string>;
   forceExpanded: boolean;
+  virtualizeItems: boolean;
   toggleFolderPath: (path: string) => void;
   toggleFolderPathRecursive: (path: string) => void;
   toggleShowAllFolderPath: (path: string) => void;
@@ -394,7 +398,8 @@ function ProjectTreeNodeView({
 
   const menus = useWorkspaceMenus();
   if (node.kind === "item") {
-    return <ProjectItem item={node.item} state={state} actions={actions} depth={depth} />;
+    const renderItem = () => <ProjectItem item={node.item} state={state} actions={actions} depth={depth} />;
+    return virtualizeItems ? <VirtualProjectItem item={node.item} selected={menus.selected.has(node.item.path)} retainMounted={state.structureDragActive}>{renderItem}</VirtualProjectItem> : renderItem();
   }
 
   const expanded = forceExpanded || expandedFolderPaths.has(node.path);
@@ -456,6 +461,7 @@ function ProjectTreeNodeView({
       expandedFolderPaths={expandedFolderPaths}
       showAllFolderPaths={showAllFolderPaths}
       forceExpanded={forceExpanded}
+      virtualizeItems={virtualizeItems}
       toggleFolderPath={toggleFolderPath}
       toggleFolderPathRecursive={toggleFolderPathRecursive}
       toggleShowAllFolderPath={toggleShowAllFolderPath}

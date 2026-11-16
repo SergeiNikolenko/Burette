@@ -5,6 +5,8 @@ contains only documents that describe the active project.
 
 ## Current Docs
 
+- [Interaction performance audit, 2026-11-16](performance-audit-2026-11-16.md):
+  measured interaction fixes, production browser comparisons, native VM evidence, and coverage limits.
 - [Avogadro capability adoption](avogadro-adoption.md): complete twelve-stage
   functional contract and scientific acceptance requirements.
 - [Avogadro staged delivery plan](avogadro-stage-plan.md): the order of the

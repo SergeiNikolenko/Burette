@@ -10,9 +10,9 @@ import type { OpenDocumentsResult, ViewerDocument, ViewerPreferences } from "../
 type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => void;
 type OpenDocuments = (paths: string[], reloadOptions?: undefined, preferencesOverride?: undefined, options?: { preserveActiveTab?: boolean; shouldApply?: () => boolean }) => Promise<OpenDocumentsResult | null | undefined>;
 
-// Preferences the mounted viewers can apply without being rebuilt, each mapped to
-// the runtime message that applies it. Everything else is baked into the viewer
-// runtime HTML, so changing it still reopens the document. `theme` qualifies
+// Preferences that do not rebuild mounted viewers: runtime messages apply live
+// values, while null entries belong to host actions or future compute jobs.
+// Unlisted preferences change document preparation and reopen it. `theme` qualifies
 // because the runtime carries the token sets for both themes; `molstarStyle`
 // because the runtime can re-render into any style in place.
 const LIVE_APPLIED_PREFERENCE_MESSAGES = {
@@ -58,6 +58,11 @@ const LIVE_APPLIED_PREFERENCE_MESSAGES = {
   jobHistoryRetentionDays: null,
   pythonPath: null,
   uvPath: null,
+  openInDefaultDestination: null,
+  shortcutOverrides: null,
+  // Read when submitting a conformer job, not while displaying its source.
+  conformerCandidateCount: null,
+  conformerRmsdCutoff: null,
 } as const satisfies Partial<Record<keyof ViewerPreferences, string | null>>;
 
 type LiveAppliedPreferenceKey = keyof typeof LIVE_APPLIED_PREFERENCE_MESSAGES;

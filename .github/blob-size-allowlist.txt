@@ -226,7 +226,7 @@ plugins/burette-agent/browser-shell-dist/assets/index-LIX5aNdD.css
 plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-CtK0YPto.js
 plugins/burette-agent/browser-shell-dist/assets/metal-complex-worker-DRYtL8s5.js
 plugins/burette-agent/browser-shell-dist/assets/molecule-store-CLOTfJEz.js
-plugins/burette-agent/browser-shell-dist/assets/molstar-BJQWRUD5.js
+plugins/burette-agent/browser-shell-dist/assets/molstar-CUbt93pS.js
 plugins/burette-agent/browser-shell-dist/assets/moyo_wasm_bg-BNjhA5Ri.wasm
 plugins/burette-agent/browser-shell-dist/assets/native-viewer-menus-C9UTL4HT.js
 plugins/burette-agent/browser-shell-dist/assets/openchemlib-CbNIcicW.js
@@ -250,10 +250,10 @@ plugins/burette-agent/browser-shell-dist/assets/molecule-store-58hH_LMa.js
 plugins/burette-agent/browser-shell-dist/assets/viewer-CF076mAP.js
 apps/desktop/public/molecular-frame/assets/molecule_editor_bg-aUReMP2G.wasm
 plugins/burette-agent/browser-shell-dist/molecular-frame/assets/molecule_editor_bg-aUReMP2G.wasm
-plugins/burette-agent/browser-shell-dist/assets/molecule-store-B-8wuo5x.js
-plugins/burette-agent/browser-shell-dist/assets/dist-C9-k80Lo.js
-plugins/burette-agent/browser-shell-dist/assets/viewer-ps3qFU-s.js
-plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-Bf61Nt1f.js
-plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-DNDsc8Zu.js
+plugins/burette-agent/browser-shell-dist/assets/molecule-store-DvBNZavS.js
+plugins/burette-agent/browser-shell-dist/assets/dist-COLCB-H0.js
+plugins/burette-agent/browser-shell-dist/assets/viewer-Dvz9ZysQ.js
+plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-g9CEpbgs.js
+plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-CPsOeY9O.js
 plugins/burette-agent/browser-shell-dist/assets/index-CuRHZD2h.css
-plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-cwwJdFFv.js
+plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-B0I35g4P.js

@@ -20,7 +20,7 @@ const { defaultPreferences } = await import("../apps/desktop/src/stores/settings
 const file = readFileSync(new URL("../samples/mini.sdf", import.meta.url), "utf8");
 const molecule = { id: "context-controls-test", title: "mini.sdf", path: "/test-context/mini.sdf", extension: "sdf", renderer: "molstar", virtual: true, byteCount: file.length, runtimePath: "/test-viewer.html" } as ViewerDocument;
 
-test("collection style, color and debounced opacity keep exact viewer commands and persisted values", async () => {
+test("collection style, color and live opacity keep exact viewer commands and persisted values", async () => {
   writeBrowserDevVirtualTextDocument(molecule.path, file);
   const calls: unknown[] = [];
   const fileCalls: unknown[] = [];
@@ -64,9 +64,8 @@ test("collection style, color and debounced opacity keep exact viewer commands a
     expect(slider.getAttribute("aria-valuenow")).toBe("0.4");
     await act(async () => slider.focus());
     for (let i = 0; i < 3; i++) await act(async () => slider.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
-    expect(calls).toHaveLength(2);
-    await act(async () => { await Bun.sleep(180); });
-    expect(calls).toHaveLength(3);
+    expect(calls).toHaveLength(5);
+    expect(calls.slice(2).map(call => (call as [string, { opacity: number }])[1].opacity)).toEqual([0.41, 0.42, 0.43]);
     expect(calls.at(-1)).toEqual([molecule.id, { type: "set_sdf_context_opacity", label: "All background opacity: 43%", notify: false, opacity: 0.43 }]);
     expect(localStorage.getItem(`buret.sdf.contextStyle.${molecule.id}`)).toBe("line");
     expect(localStorage.getItem(`buret.sdf.contextColor.${molecule.id}`)).toBe("gray");
@@ -84,8 +83,21 @@ test("collection style, color and debounced opacity keep exact viewer commands a
     expect(slider.getAttribute("aria-valuenow")).toBe("0.7");
     expect(localStorage.getItem(`buret.sdf.contextStyle.${molecule.id}`)).toBe("molecular-surface");
     expect(localStorage.getItem(`buret.sdf.contextOpacity.${molecule.id}`)).toBe("0.70");
-    expect(calls).toHaveLength(3);
-    // Changing documents cancels pending opacity work and keeps named scene
+    expect(calls).toHaveLength(5);
+    // An external scene update must invalidate the last sent value: returning
+    // the thumb to 43% still needs a live command while the pointer is held.
+    const track = mount.querySelector<HTMLElement>('.structure-inspector-opacity-control [data-slot="slider"]')!;
+    track.getBoundingClientRect = () => new DOMRect(0, 0, 96, 20);
+    track.setPointerCapture = () => {};
+    track.hasPointerCapture = () => true;
+    track.releasePointerCapture = () => {};
+    await act(async () => track.dispatchEvent(new PointerEvent("pointerdown", { button: 0, pointerId: 1, clientX: 39, clientY: 10, bubbles: true })));
+    await act(async () => { await new Promise<void>(resolve => window.requestAnimationFrame(() => resolve())); });
+    expect(calls.at(-1)).toEqual([molecule.id, { type: "set_sdf_context_opacity", label: "All background opacity: 43%", notify: false, opacity: 0.43 }]);
+    expect(calls).toHaveLength(6);
+    await act(async () => track.dispatchEvent(new PointerEvent("pointerup", { button: 0, pointerId: 1, clientX: 39, clientY: 10, bubbles: true })));
+    expect(localStorage.getItem(`buret.sdf.contextOpacity.${molecule.id}`)).toBe("0.43");
+    // Changing documents keeps named scene
     // selections mapped to their original zero-based viewer index.
     await act(async () => slider.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })));
     const scene = { ...molecule, id: "scene-controls-test", dockingRequest: {
@@ -100,7 +112,6 @@ test("collection style, color and debounced opacity keep exact viewer commands a
     expect(rows.map(row => row.textContent)).toEqual(["1mini.sdf", "2second.sdf"]);
     expect(rows.every(row => row.getAttribute("data-slot") === "button")).toBe(true);
     await act(async () => rows[1].click());
-    await act(async () => { await Bun.sleep(180); });
     expect(calls).toEqual([[scene.id, { type: "set_structure_pose", label: "Show structure 2", index: 1 }]]);
     expect(rows.map(row => row.getAttribute("aria-pressed"))).toEqual(["false", "true"]);
   } finally {

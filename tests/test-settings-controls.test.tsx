@@ -9,7 +9,7 @@ for (const key of ["window", "document", "navigator", "HTMLElement", "HTMLInputE
 }
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const { createRoot } = await import("react-dom/client");
-const { SettingsSection, ToggleControl, SettingsActionButton, SelectControl } = await import("../apps/desktop/src/components/settings-panel/setting-control");
+const { SettingsSection, ToggleControl, SettingsActionButton, SelectControl, RangeControl } = await import("../apps/desktop/src/components/settings-panel/setting-control");
 const flushFocus = () => new Promise(resolve => setTimeout(resolve, 0));
 const findButton = (label: string) => Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(button => button.textContent === label)!;
 
@@ -67,4 +67,90 @@ test("settings keep named groups, switch/reset semantics, and guarded actions th
     await act(async () => document.querySelector<HTMLButtonElement>('[data-slot="alert-dialog-action"]')!.click());
     expect(actions).toBe(1);
   } finally { await act(async () => root.unmount()); shell.remove(); }
+});
+
+test("range gestures commit one preference history entry and keep keyboard and external updates", async () => {
+  const { useSettingsStore } = await import("../apps/desktop/src/stores/settings-store");
+  const { useWorkspaceHistoryStore } = await import("../apps/desktop/src/stores/workspace-history-store");
+  const original = useSettingsStore.getState().preferences.conformerCandidateCount;
+  useSettingsStore.getState().setPreference("conformerCandidateCount", 20);
+  useWorkspaceHistoryStore.getState().clearWorkspaceHistory();
+  const changes: number[] = [];
+  function Settings() {
+    const value = useSettingsStore(state => state.preferences.conformerCandidateCount);
+    return <RangeControl label="Candidates" value={value} min={0} max={100} step={1} onChange={next => {
+      changes.push(next);
+      useWorkspaceHistoryStore.getState().withWorkspaceHistory("Change preference", "settings", () => {
+        useSettingsStore.getState().setPreference("conformerCandidateCount", next);
+      });
+    }} />;
+  }
+  const mount = document.createElement("div"); document.body.append(mount);
+  const root = createRoot(mount);
+  try {
+    await act(async () => root.render(<Settings />));
+    const slider = mount.querySelector<HTMLElement>('[data-slot="slider"]')!;
+    const thumb = mount.querySelector<HTMLElement>('[role="slider"]')!;
+    slider.getBoundingClientRect = () => new DOMRect(0, 0, 100, 20);
+    let captured = false;
+    slider.setPointerCapture = () => { captured = true; };
+    slider.hasPointerCapture = () => captured;
+    slider.releasePointerCapture = () => {
+      captured = false;
+      slider.dispatchEvent(new PointerEvent("lostpointercapture", { pointerId: 1, bubbles: true }));
+    };
+    const pointer = async (type: string, clientX: number) => act(async () => {
+      slider.dispatchEvent(new PointerEvent(type, { button: 0, pointerId: 1, clientX, clientY: 10, bubbles: true }));
+    });
+    for (const termination of ["pointercancel", "lostpointercapture"]) {
+      await pointer("pointerdown", 30);
+      await pointer("pointermove", 70);
+      expect(thumb.getAttribute("aria-valuenow")).toBe("70");
+      captured = false;
+      await pointer(termination, 70);
+      expect([
+        thumb.getAttribute("aria-valuenow"),
+        useSettingsStore.getState().preferences.conformerCandidateCount,
+        changes,
+        useWorkspaceHistoryStore.getState().undoStack.length,
+      ]).toEqual(["20", 20, [], 0]);
+    }
+    await pointer("pointerdown", 25);
+    for (const value of [30, 40, 55, 70]) await pointer("pointermove", value);
+    expect([thumb.getAttribute("aria-valuenow"), changes, useWorkspaceHistoryStore.getState().undoStack.length]).toEqual(["70", [], 0]);
+    await pointer("pointerup", 70);
+    expect([changes, useWorkspaceHistoryStore.getState().undoStack.length]).toEqual([[70], 1]);
+    await act(async () => { useWorkspaceHistoryStore.getState().undoWorkspaceAction(); });
+    expect(thumb.getAttribute("aria-valuenow")).toBe("20");
+    await act(async () => thumb.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
+    expect([thumb.getAttribute("aria-valuenow"), changes]).toEqual(["21", [70, 21]]);
+    await act(async () => { useSettingsStore.getState().setPreference("conformerCandidateCount", 42); });
+    expect(thumb.getAttribute("aria-valuenow")).toBe("42");
+  } finally {
+    await act(async () => root.unmount()); mount.remove();
+    useSettingsStore.getState().setPreference("conformerCandidateCount", original);
+    useWorkspaceHistoryStore.getState().clearWorkspaceHistory();
+  }
+});
+
+test("appearance ranges retain live feedback while dragging", async () => {
+  const mount = document.createElement("div"); document.body.append(mount);
+  const root = createRoot(mount);
+  const changes: number[] = [];
+  function Settings() {
+    const [value, setValue] = useState(20);
+    return <RangeControl label="Contrast" value={value} min={0} max={100} step={1} updateOn="change" onChange={next => { changes.push(next); setValue(next); }} />;
+  }
+  try {
+    await act(async () => root.render(<Settings />));
+    const slider = mount.querySelector<HTMLElement>('[data-slot="slider"]')!;
+    slider.getBoundingClientRect = () => new DOMRect(0, 0, 100, 20);
+    slider.setPointerCapture = () => {};
+    slider.hasPointerCapture = () => true;
+    slider.releasePointerCapture = () => {};
+    for (const [type, clientX] of [["pointerdown", 30], ["pointermove", 60], ["pointerup", 60]] as const) {
+      await act(async () => slider.dispatchEvent(new PointerEvent(type, { button: 0, pointerId: 1, clientX, bubbles: true })));
+    }
+    expect(changes).toEqual([30, 60]);
+  } finally { await act(async () => root.unmount()); mount.remove(); }
 });

@@ -1,1 +1,0 @@
-import{a as e}from"./document-page-GtfE_OzE.js";export{e as PdfResourceContent};
