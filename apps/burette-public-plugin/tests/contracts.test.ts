@@ -383,6 +383,19 @@ describe("viewer resource contract", () => {
       { type: "select_residues", selector: { auth_asym_id: "A" }, mode: "add" },
     ])).toEqual([{ type: "hide_components", kind: "water" }]);
 
+    const ligand = { auth_asym_id: "A", auth_comp_id: "BTN", auth_seq_id: 300 };
+    expect(sanitizeViewerActions([
+      { type: "select_residues", selector: ligand, granularity: "residue" },
+      { type: "focus_selection", selector: ligand },
+      { type: "hide_components", kind: "water" },
+      { type: "show_components", kind: "polymer" },
+    ])).toEqual([
+      { type: "hide_components", kind: "water" },
+      { type: "show_components", kind: "polymer" },
+      { type: "select_residues", selector: ligand, mode: "replace", granularity: "residue" },
+      { type: "focus_selection", selector: ligand },
+    ]);
+
     const scene = createSceneContext({
       revision: 2,
       selection: null,
