@@ -3648,7 +3648,6 @@
     updateGridToolbarCondensed();
     scheduleVirtualWindowRender(cfg);
     maybeLoadMore(cfg);
-    updateGridRailActive();
     updateTableHeaderStick();
   }
 
@@ -4131,7 +4130,7 @@
     const startedAt = nowMs();
     const range = virtualWindowRange(grid);
     if (!options.force && range.start === state.windowStart && range.end === state.windowEnd) {
-      updateChrome(cfg);
+      updateGridRailActive();
       return;
     }
     state.rendering = true;
@@ -4439,13 +4438,12 @@
       hideGridRailPopover();
     });
     ticks.addEventListener('pointerdown', event => startGridRailTrackPointer(event, cfg));
-    window.addEventListener('scroll', updateGridRailActive, { passive: true });
-    window.addEventListener('resize', () => {
-      updateGridRail();
-      updateGridRailActive();
-    }, { passive: true });
+    window.addEventListener('resize', updateGridRail, { passive: true });
     updateGridRail();
   }
+
+  const gridRailMarkup = new WeakMap();
+  const gridRailRowPositions = new WeakMap();
 
   function updateGridRail() {
     const rail = root.querySelector('[data-buret-grid-rail]');
@@ -4457,13 +4455,17 @@
     rail.hidden = gridRailTotalRows() < 2 || (!hasMoreRows() && contentHeight <= viewportHeight() + 1);
     if (rail.hidden) return;
     const railRows = gridRailRows(rows).filter(({ row }) => !row || cardViewRows([row]).length > 0);
-    ticks.innerHTML = railRows.map(({ row, position }, markerIndex) => {
+    const markup = railRows.map(({ row, position }, markerIndex) => {
       const index = row ? Number(row.index) : null;
       const title = escapeAttr(row?.name || `Molecule ${position + 1}`);
       const indexAttr = Number.isFinite(index) ? ` data-buret-grid-rail-index="${index}"` : '';
       return `<button type="button" class="buret-grid-rail-tick" data-buret-grid-rail-marker="${markerIndex}" data-buret-grid-rail-position="${position}"${indexAttr} aria-label="Jump to ${title}"><span class="buret-grid-rail-tick-pill" aria-hidden="true"></span></button>`;
     }).join('');
-    updateGridRailLens(state.railHoveredMarker);
+    if (gridRailMarkup.get(ticks) !== markup) {
+      ticks.innerHTML = markup;
+      gridRailMarkup.set(ticks, markup);
+      updateGridRailLens(state.railHoveredMarker);
+    }
     updateGridRailActive();
   }
 
@@ -4506,8 +4508,17 @@
     if (!ticks) return;
     const markers = [...ticks.querySelectorAll('[data-buret-grid-rail-position]')];
     if (total < 2 || !Number.isFinite(activeIndex) || !markers.length) return;
-    let rowPosition = rows.findIndex(row => Number(row.index) === activeIndex);
-    if (rowPosition < 0) {
+    // Result replacement covers sorting/filtering/edits; remote pages append.
+    let positions = gridRailRowPositions.get(rows);
+    if (!positions || positions.length !== rows.length) {
+      positions = {
+        length: rows.length,
+        byIndex: new Map(rows.map((row, position) => [Number(row.index), position])),
+      };
+      gridRailRowPositions.set(rows, positions);
+    }
+    let rowPosition = positions.byIndex.get(activeIndex);
+    if (rowPosition === undefined) {
       rowPosition = rows.reduce((nearest, row, position) => {
         return Math.abs(Number(row.index) - activeIndex) < Math.abs(Number(rows[nearest].index) - activeIndex) ? position : nearest;
       }, 0);
@@ -4519,6 +4530,7 @@
     }, markers[0]);
     for (const marker of markers) {
       const isCurrent = marker === current;
+      if (marker.classList.contains('is-current') === isCurrent) continue;
       marker.classList.toggle('is-current', isCurrent);
       if (isCurrent) marker.setAttribute('aria-current', 'location');
       else marker.removeAttribute('aria-current');
