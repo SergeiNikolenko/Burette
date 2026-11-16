@@ -105,6 +105,14 @@ decoded UTF-8 replacement expansion is bounded too. No partial structure is
 returned. Browser CORS rules remain applicable; these transport bounds do not
 grant the browser native access to local files or private networks.
 
+Ligand interaction diagrams fetch a ligand's Chemical Component Dictionary
+entry from the fixed URL `https://files.rcsb.org/ligands/download/<CODE>.cif`
+once per ligand code and cache it in the app cache. The code must be one to
+five letters or digits; an entry is read with a 20-second timeout and at most
+4 MiB, and is written to the cache atomically. The structure being mapped is
+read locally and is never uploaded. See
+[Ligand interaction diagrams](interaction-diagrams.md).
+
 ## Avogadro Plugins
 
 Settings Extensions reads the Avogadro plugin index from one fixed address

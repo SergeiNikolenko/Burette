@@ -369,7 +369,7 @@ Every release and CI native build prepares a fresh macOS arm64 environment with
 CPython 3.13.13 and uv 0.11.7 distribution URLs and SHA-256 digests obtained from
 their upstream release assets. Downloads are verified before extraction or execution.
 The complete `requirements.txt` pins a vendored xyzrender 0.3.9+burette.1 upstream snapshot,
-RDKit 2026.9.1 and transitive wheels with hashes. The snapshot's immutable source,
+RDKit 2026.9.1, gemmi 0.7.5 for interaction diagrams and transitive wheels with hashes. The snapshot's immutable source,
 reproducible wheel hashes and regeneration procedure are recorded in
 [`config/xyzrender/README.md`](../config/xyzrender/README.md); it is not a PyPI release.
 Installation disables source builds, automatic Python downloads

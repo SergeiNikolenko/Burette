@@ -102,7 +102,7 @@ assert.deepEqual(resolveDockDropPaths(
 assert.deepEqual(defaultDockTabs("right").map((tab) => tab.kind), ["inspector", "text", "files"]);
 assert.deepEqual(defaultDockTabs("bottom").map((tab) => tab.kind), ["files", "chemical-space", "jobs"]);
 // Scientific tools are catalogued here; DockPanel shows them only for applicable content.
-assert.deepEqual(dockTabCatalog("right"), ["scene", "xyzrender", "chemical-space", "collection-chart", "inspector", "story", "text", "vibrations", "scientific-spectra", "orbitals", "potential", "fields", "geometry", "crystal", "symmetry", "structure-edit", "files"]);
+assert.deepEqual(dockTabCatalog("right"), ["scene", "xyzrender", "chemical-space", "collection-chart", "inspector", "interactions", "story", "text", "vibrations", "scientific-spectra", "orbitals", "potential", "fields", "geometry", "crystal", "symmetry", "structure-edit", "files"]);
 // Structure Basket, Compare and Review render and accept drops but used to be
 // reachable from no catalog; they now sit in the bottom dock's add menu.
 assert.deepEqual(dockTabCatalog("bottom"), ["plots", "files", "chemical-space", "collection-chart", "jobs", "folding", "spectrum", "structure-basket", "compare", "review", "logs"]);

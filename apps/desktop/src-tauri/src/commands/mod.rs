@@ -17,6 +17,7 @@ pub(crate) mod file_drag;
 pub(crate) mod file_operations;
 pub(crate) mod folding_results;
 pub(crate) mod grid;
+pub(crate) mod interaction_diagram;
 pub(crate) mod job_host;
 pub(crate) mod ketcher_pdb;
 pub(crate) mod mdsmooth;

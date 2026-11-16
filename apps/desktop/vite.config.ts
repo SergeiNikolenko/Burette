@@ -60,6 +60,7 @@ import {
   selectedBrowserDevXtbPath,
 } from "./vite/browser-dev/xtb-runtime";
 import { registerBrowserDevXyzrenderRoute } from "./vite/browser-dev/xyzrender";
+import { registerBrowserDevInteractionDiagramRoute } from "./vite/browser-dev/interaction-diagram";
 
 const desktopRoot = fileURLToPath(new URL(".", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
@@ -3613,6 +3614,13 @@ export function browserDevXyzrenderPlugin() {
       registerBrowserDevModelRuntimeRoutes(server, repoRoot);
       registerBrowserDevFileContentRoutes(server, fileRoutes);
       registerBrowserDevFoldingResultRoute(server, { isDevFileReadAllowed });
+      registerBrowserDevInteractionDiagramRoute(server, {
+        runnerPath: join(repoRoot, "apps/desktop/src-tauri/src/commands/interaction_diagram_runner.py"),
+        componentsDir: BROWSER_DEV_CCD_CACHE_ROOT,
+        isDevFileReadAllowed,
+        resolveXyzrenderExecutable,
+        pythonCandidates: browserDevDescriptorPythonCandidates,
+      });
       registerBrowserDevXyzrenderRoute(server, {
         buildArgs: buildXyzrenderArgs,
         execFileAsync,

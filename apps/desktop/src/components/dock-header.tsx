@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, type ComponentProps, type MouseEvent } from "react";
 import * as RovingFocusGroup from "@radix-ui/react-roving-focus";
 import { DOCK_TAB_LABELS, type DockArea, type DockTab, type DockTabKind } from "../lib/dock";
-import { BarChart, ColorTheme, Cube, MoveHorizontal, Expand, Atom, Chart, Compare, Edit, Eye, FileCode, FileDocument, Folder, Grid, InfoCircle, Orbit, Plus, Scissor, SettingsSlider, SettingsWrench, Stack, Stopwatch, X, type AppIconType } from "./ui/app-icons";
+import { BarChart, ColorTheme, Cube, MoveHorizontal, Expand, Atom, Chart, Compare, Edit, Eye, FileCode, FileDocument, Focus, Folder, Grid, InfoCircle, Orbit, Plus, Scissor, SettingsSlider, SettingsWrench, Stack, Stopwatch, X, type AppIconType } from "./ui/app-icons";
 import { Button } from "./ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 
@@ -10,7 +10,7 @@ const icons: Record<DockTabKind, AppIconType> = {
   plots: BarChart, orbitals: Cube, potential: ColorTheme, fields: Scissor, "scientific-spectra": Chart, vibrations: MoveHorizontal, geometry: SettingsSlider, crystal: Grid, symmetry: Atom, "structure-edit": Edit,
   story: FileDocument, inspector: InfoCircle, folding: Atom, "structure-basket": Stack,
   compare: Compare, jobs: Stopwatch, logs: FileCode, diagnostics: SettingsWrench,
-  review: Eye, "chemical-space": Orbit, "collection-chart": Chart,
+  review: Eye, "chemical-space": Orbit, "collection-chart": Chart, interactions: Focus,
 };
 
 export function DockHeader({ area, tabs, activeKind, panelId, readOnly, transientTabId, fileDragProps, onSelect, onClose, onAdd, onHide, onOpenScreen, openScreenLabel = "Open as Workspace Tab" }: {

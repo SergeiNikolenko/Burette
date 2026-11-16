@@ -1162,6 +1162,18 @@ pub(crate) fn run_python_script(
     payload: Value,
     timeout: Duration,
 ) -> Result<Value, String> {
+    run_python_script_with_env(python_path, &[], script, payload, timeout)
+}
+
+// The same transport for an interpreter that needs its runtime's environment,
+// such as the bundled xyzrender Python and its package directory.
+pub(crate) fn run_python_script_with_env(
+    python_path: &Path,
+    envs: &[(&str, String)],
+    script: &str,
+    payload: Value,
+    timeout: Duration,
+) -> Result<Value, String> {
     let input = serde_json::to_vec(&payload).map_err(|err| err.to_string())?;
     let mut child = Command::new(python_path)
         .arg("-c")
@@ -1170,6 +1182,7 @@ pub(crate) fn run_python_script(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .env("PYTHONNOUSERSITE", "1")
+        .envs(envs.iter().map(|(key, value)| (*key, value.as_str())))
         .spawn()
         .map_err(|err| format!("Failed to launch the Python runtime: {err}"))?;
     if let Some(mut stdin) = child.stdin.take() {
