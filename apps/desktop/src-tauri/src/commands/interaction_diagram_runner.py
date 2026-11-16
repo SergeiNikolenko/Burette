@@ -1934,9 +1934,20 @@ def build(path: Path, ligand_id: str, rules: dict = DEFAULT_RULES) -> dict:
         "overlay": {"contour": contour, "ligandAtoms": ligand_overlay, "chainLinks": chain_links,
                     "ligandAtomIds": [lig_atom_ids[i] for i in range(len(lig_xy))]},
         "atomRefs": atom_refs,
-        "ligand": {"id": ligand_id, "name": name, "chain": chain, "number": int(number), "smiles": Chem.MolToSmiles(mol)},
+        # the molblock keeps the 3D pose with the dictionary's bond orders and charges; the ligand card draws the molecule from it
+        "ligand": {"id": ligand_id, "name": name, "chain": chain, "number": int(number), "smiles": Chem.MolToSmiles(mol),
+                   "molblock": ligand_molblock(mol, ligand_id)},
         "pdb": path.stem,
     }
+
+
+def ligand_molblock(mol, title):
+    try:
+        m = Chem.Mol(mol)
+        m.SetProp("_Name", title)
+        return Chem.MolToMolBlock(m)
+    except Exception:  # a ligand RDKit cannot kekulize keeps the drawing the viewer infers
+        return ""
 
 
 def add_wedges(mol, flat, lig_xy, bond_json, lig_atom_ids):

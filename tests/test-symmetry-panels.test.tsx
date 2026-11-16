@@ -30,9 +30,11 @@ const { CrystalPanel } = await import("../apps/desktop/src/components/workbench/
 const { SymmetryPanel } = await import("../apps/desktop/src/components/workbench/symmetry-panel");
 const { readCrystalDocument } = await import("../apps/desktop/src/lib/molecular-workbench/crystal-io");
 
+// A panel re-renders between polls, so a control may be briefly absent; that counts as not ready yet.
 const wait = async (check: () => boolean, label: string) => {
-  for (let i = 0; i < 400 && !check(); i++) await act(async () => new Promise(resolve => setTimeout(resolve, 10)));
-  expect(check(), label).toBe(true);
+  const ready = () => { try { return check(); } catch { return false; } };
+  for (let i = 0; i < 400 && !ready(); i++) await act(async () => new Promise(resolve => setTimeout(resolve, 10)));
+  expect(ready(), label).toBe(true);
 };
 const buttons = () => [...browser.document.querySelectorAll("button")] as unknown as HTMLButtonElement[];
 const button = (label: string) => buttons().find(node => node.textContent === label || node.getAttribute("aria-label") === label)!;
