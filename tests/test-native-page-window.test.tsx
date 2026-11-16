@@ -18,7 +18,8 @@ mock.module("../apps/desktop/src/stores/tab-workspace-store", () => ({ defaultTa
 mock.module("../apps/desktop/src/stores/molecule-store", () => ({ useMoleculeStore: { getState: () => state } }));
 mock.module("../apps/desktop/src/lib/tauri", () => ({ isTauriRuntime: () => true, trackTauriListener: () => () => {} }));
 mock.module("../apps/desktop/src/components/ui/toast", () => ({ toast: { add() {} } }));
-mock.module("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ label: "main", listen: async (_: string, receive: typeof listener) => { listener = receive; return () => {}; } }) }));
+const closed: string[] = [];
+mock.module("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ label: "main", listen: async (_: string, receive: typeof listener) => { listener = receive; return () => {}; } }), Window: { getByLabel: async (label: string) => ({ close: async () => { closed.push(label); } }) } }));
 mock.module("@tauri-apps/api/core", () => ({ convertFileSrc: (path: string) => path, invoke: async (command: string, args: any) => {
   if (command === "open_new_workspace_window") return "workspace-child";
   if (command === "relay_workspace_page") sent.push(args);
@@ -37,6 +38,9 @@ test("new windows retain the source and accept only their own acknowledgement", 
   await listener({ payload: { kind: "ready", id: request.message.id, from: "wrong-window" } });
   expect(finished).toBe(false);
   await listener({ payload: { kind: "ready", id: request.message.id, from: "workspace-child" } });
+  expect(sent.at(-1).message.kind).toBe("commit");
+  expect(finished).toBe(false);
+  await listener({ payload: { kind: "committed", id: request.message.id, from: "workspace-child" } });
   await opening;
   expect(state.tabs).toEqual([source]);
   const offer = { kind: "open", id: "request", from: "workspace-peer", location: request.message.location };
@@ -44,8 +48,19 @@ test("new windows retain the source and accept only their own acknowledgement", 
   expect(paths).toEqual([["/collection.sdf"]]);
   expect(opened).toEqual([source.location]);
   expect(sent.at(-1).message.kind).toBe("ready");
+  expect(document.body.inert).toBe(true);
+  await listener({ payload: { kind: "commit", id: "request", from: "workspace-peer" } });
+  expect(document.body.inert).toBe(false);
+  expect(sent.at(-1).message.kind).toBe("committed");
   await listener({ payload: { kind: "open", id: "missing-text", from: "workspace-peer", location: { kind: "text-file", path: "/missing.txt" } } });
   expect(sent.at(-1).message.kind).toBe("failed");
   expect(opened.length).toBe(1);
+  const rejected = openNativePageWindow(source as any);
+  await flush();
+  const rejectedRequest = sent.at(-1);
+  await listener({ payload: { kind: "failed", id: rejectedRequest.message.id, from: "workspace-child" } });
+  await rejected;
+  expect(closed).toEqual(["workspace-child"]);
+  expect(state.tabs).toEqual([source]);
   await act(async () => root.unmount());
 });

@@ -64,7 +64,8 @@ def prepare():
         subprocess.run(command + ['pip', 'check', '--python', str(environment / 'bin/python3')],
                        env=env, check=True, stdout=sys.stderr)
         subprocess.run([str(environment / 'bin/python3'), '-c',
-                        'import xyzrender; from rdkit import Chem; assert Chem.MolFromSmiles("CCO") is not None'],
+                        # The interaction diagram engine runs here too and also needs gemmi and SciPy.
+                        'import gemmi, scipy.optimize, xyzrender; from rdkit import Chem; assert Chem.MolFromSmiles("CCO") is not None'],
                        env=env, check=True, stdout=sys.stderr)
         return environment
     except BaseException:

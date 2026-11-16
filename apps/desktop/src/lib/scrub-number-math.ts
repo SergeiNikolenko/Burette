@@ -312,14 +312,17 @@ export function quantizeNumber(value: number, step: number) {
     return value
   }
 
-  const quantized = Math.round(value / step) * step
+  const units = value / step
+  // Below the value's floating-point resolution, rounding units only adds noise.
+  if (Math.abs(units) >= Number.MAX_SAFE_INTEGER) return value
+  const quantized = Math.round(units) * step
 
   if (Number.isInteger(step)) {
     return quantized
   }
 
-  const decimals = step.toString().split(".")[1]?.length ?? 0
-  return parseFloat(quantized.toFixed(decimals))
+  const decimals = getDecimalPlaces(step)
+  return decimals > 100 ? quantized : parseFloat(quantized.toFixed(decimals))
 }
 
 export function getDecimalPlaces(step: number) {
@@ -327,7 +330,8 @@ export function getDecimalPlaces(step: number) {
     return 0
   }
 
-  return step.toString().split(".")[1]?.length ?? 0
+  const [mantissa, exponent = "0"] = step.toString().toLowerCase().split("e")
+  return Math.max(0, (mantissa.split(".")[1]?.length ?? 0) - Number(exponent))
 }
 
 function toPlainNumberString(value: number) {
@@ -341,7 +345,7 @@ function toPlainNumberString(value: number) {
 
   const str = value.toString()
 
-  if (!/[eE]/.test(str)) {
+  if (!/[eE]/.test(str) || (value !== 0 && Math.abs(value) < 1e-100)) {
     return str
   }
 
@@ -368,7 +372,7 @@ export function countDraftDecimalPlaces(draft: string) {
     return 0
   }
 
-  return body.split(".")[1]?.length ?? 0
+  return Math.min(100, body.split(".")[1]?.length ?? 0)
 }
 
 export function resolveDisplayDecimalPlaces(
@@ -397,7 +401,7 @@ export function formatDisplayValue(
   userDecimalPlaces: number | null = null,
 ) {
   const formatted =
-    userDecimalPlaces != null && userDecimalPlaces > 0
+    userDecimalPlaces != null && userDecimalPlaces > 0 && userDecimalPlaces <= 100
       ? value.toFixed(userDecimalPlaces)
       : formatMinimalDisplayValue(value)
 
@@ -474,13 +478,7 @@ export function getValueDecimalPlaces(value: number) {
     return 0
   }
 
-  const text = normalized.toString()
-
-  if (text.includes("e") || text.includes("E")) {
-    return getValueDecimalPlaces(Number(normalized.toFixed(12)))
-  }
-
-  return text.split(".")[1]?.length ?? 0
+  return getDecimalPlaces(normalized)
 }
 
 export function stepFromDecimalPlaces(decimals: number) {
@@ -488,7 +486,7 @@ export function stepFromDecimalPlaces(decimals: number) {
     return 1
   }
 
-  return Number((1 / 10 ** decimals).toFixed(decimals))
+  return 10 ** -decimals
 }
 
 export function resolveQuantizeStep(options: {
@@ -524,7 +522,7 @@ export function applyStepDelta(
 ) {
   const next = current + delta
 
-  if (options.userDecimalPlaces != null && options.userDecimalPlaces > 0) {
+  if (options.userDecimalPlaces != null && options.userDecimalPlaces > 0 && options.userDecimalPlaces <= 100) {
     return parseFloat(next.toFixed(options.userDecimalPlaces))
   }
 
@@ -591,6 +589,7 @@ export function resolveFineStep(step: number, fineStep?: number) {
 }
 
 export function sanitizeNumericDraft(value: string, previousValue = "") {
+  value = value.replace(/,/g, ".")
   if (value === "") {
     return ""
   }

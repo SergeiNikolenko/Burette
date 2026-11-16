@@ -13,6 +13,64 @@ mock.module("../apps/desktop/src/lib/viewer-bridge", () => ({ ...viewerBridge, r
 const { createRoot } = await import("react-dom/client");
 const { SceneComputeMenu } = await import("../apps/desktop/src/components/editor-area/scene-compute-menu");
 
+test("hosted scenes omit Compute and never request a compute anchor", async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const postMessage = mock(() => {});
+  const iframeRef = { current: { contentWindow: { postMessage } } as unknown as HTMLIFrameElement };
+  const target = { id: "cloud", path: "/1CRN.pdb", extension: "pdb", renderer: "molstar" } as ViewerDocument;
+  window.__BURETTE_HOSTED_MCP_WIDGET__ = true;
+  try {
+    await act(async () => root.render(<SceneComputeMenu document={target} actions={{} as ShellActions} iframeRef={iframeRef} />));
+    expect(container.childElementCount).toBe(0);
+    expect(postMessage).not.toHaveBeenCalled();
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    delete window.__BURETTE_HOSTED_MCP_WIDGET__;
+  }
+});
+
+test("Compute follows the active viewer's anchor after a frame replacement", async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const frames = [document.createElement("iframe"), document.createElement("iframe")];
+  for (const frame of frames) {
+    document.body.append(frame);
+    Object.defineProperties(frame, { clientWidth: { value: 360 }, clientHeight: { value: 600 } });
+  }
+  const iframeRef = { current: frames[0] };
+  const target = { id: "xyz", path: "/structure.xyz", extension: "xyz", renderer: "xyzrender-external" } as ViewerDocument;
+  const report = (frame: HTMLIFrameElement, top: number, covered = false) => {
+    browser.dispatchEvent(new browser.MessageEvent("message", {
+      source: frame.contentWindow,
+      data: { source: "burette-viewer", body: { type: "sceneComputeAnchor", documentId: target.id, top, right: 56, covered } },
+    }));
+  };
+  try {
+    await act(async () => root.render(<SceneComputeMenu document={target} actions={{} as ShellActions} iframeRef={iframeRef} />));
+    const anchor = container.firstElementChild as HTMLElement;
+    report(frames[0], 56);
+    expect([anchor.style.top, anchor.style.right, anchor.style.visibility]).toEqual(["56px", "56px", "visible"]);
+    // A viewer menu under the host button hides Compute until the menu closes.
+    report(frames[0], 56, true);
+    expect(anchor.style.visibility).toBe("hidden");
+    report(frames[0], 56);
+    expect(anchor.style.visibility).toBe("visible");
+    iframeRef.current = frames[1];
+    report(frames[0], 140);
+    expect(anchor.style.top).toBe("56px");
+    report(frames[1], 140);
+    expect(anchor.style.top).toBe("140px");
+  } finally {
+    await act(async () => root.unmount());
+    for (const frame of frames) frame.remove();
+    container.remove();
+  }
+});
+
 test("XYZ scene exposes Compute and dispatches the selected calculation for its own document", async () => {
   const container=document.createElement("div"); document.body.append(container); const root=createRoot(container);
   const target={id:"trajectory",path:"/trajectory.xyz",extension:"xyz",renderer:"molstar"} as ViewerDocument;
@@ -27,7 +85,10 @@ test("XYZ scene exposes Compute and dispatches the selected calculation for its 
     expect(item).toBeDefined(); await act(async()=>item.click());
     expect(runXtbActiveOperation.mock.calls).toEqual([["properties",target]]);
     await act(async()=>root.render(<SceneComputeMenu document={{...target,extension:"sdf"}} actions={actions}/>));
-    expect(container.querySelector("button")).toBeNull();
+    const polymerTrigger=container.querySelector<HTMLButtonElement>("button")!;
+    expect(polymerTrigger).not.toBeNull();
+    await act(async()=>{polymerTrigger.dispatchEvent(new MouseEvent("pointerdown",{bubbles:true,button:0}));polymerTrigger.click();});
+    expect([...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].map(item=>item.textContent)).toEqual(["Show electrostatic potential", "Build polymer…", "Build peptide…", "Build DNA or RNA…", "Build metal complex…"]);
   } finally {await act(async()=>root.unmount());container.remove();}
 });
 

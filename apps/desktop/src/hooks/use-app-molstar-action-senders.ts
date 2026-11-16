@@ -1,7 +1,8 @@
 import { useCallback } from "react";
 
-import type { StructureViewerAction } from "../components/types";
+import type { StructureViewerAction, StructureViewerActionOptions } from "../components/types";
 import type { TextStructureSelection } from "../lib/text-structure-selection";
+import { requestViewerAction } from "../lib/viewer-bridge";
 import type { ActiveViewerIframeForDocument } from "../lib/viewer-bridge";
 import type { TextFileDocument, ViewerDocument } from "../types";
 
@@ -55,7 +56,9 @@ export function useAppMolstarActionSenders({
     }, "*");
   }, [activeDocument, activeViewerIframeForDocument, documents]);
 
-  const runStructureViewerAction = useCallback((document: ViewerDocument, action: StructureViewerAction) => {
+  const runStructureViewerAction = useCallback((document: ViewerDocument, action: StructureViewerAction, options?: StructureViewerActionOptions) => {
+    if (action.type === "record_movie") return requestViewerAction(document.id, action, action.seconds * action.fps * 1500 + 60000, options?.signal, { target: options?.target });
+    if (action.type === "select_source_atom" || action.type === "show_scalar_field" || action.type === "scalar_field_binding" || action.type === "scalar_field_validate" || action.type === "geometry_binding" || action.type === "update_geometry" || action.type === "atom_drag" || action.type === "atom_draw" || action.type === "select_command" || action.type === "export_svg") return requestViewerAction(document.id, action, 15000, options?.signal, { target: options?.target });
     // A collection shows its molecules as cards: a composition row selects and
     // reveals the card rather than asking for a structure viewer.
     if (document.renderer === "grid2d" && (action.type === "set_sdf_molecule" || action.type === "clear_selection")) {
@@ -78,6 +81,7 @@ export function useAppMolstarActionSenders({
     }
     const iframe = activeViewerIframeForDocument(document.id);
     if (!iframe?.contentWindow) {
+      if (action.type === "preview_geometry") return;
       pushStatus(`Open ${document.title} in the main viewer first`, "error");
       return;
     }

@@ -38,3 +38,14 @@
     pointer-events: none;
   }
 }
+
+@media (prefers-reduced-motion: no-preference) {
+  .atlas-floating-tooltip:is([data-state="delayed-open"], [data-state="instant-open"]) {
+    transform-origin: var(--radix-tooltip-content-transform-origin);
+    animation: atlas-tooltip-enter 250ms var(--cubic-enter, cubic-bezier(.19, 1, .22, 1)) both;
+  }
+}
+@keyframes atlas-tooltip-enter {
+  from { opacity: 0; scale: .96; }
+  to { opacity: 1; scale: 1; }
+}

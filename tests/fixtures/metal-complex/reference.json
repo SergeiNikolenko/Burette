@@ -1,0 +1,2146 @@
+{
+ "tools": {
+  "python": "3.12.13",
+  "rdkit": "2025.09.1",
+  "openbabel": "3.1.0",
+  "gemmi": "0.7.5"
+ },
+ "avogadrolibs": "064eeb4706877ffed8ddc4b037489ed3748b0547",
+ "openbabelCovalentRadii": {
+  "Sc": 1.7,
+  "Ti": 1.6,
+  "V": 1.53,
+  "Cr": 1.39,
+  "Mn": 1.39,
+  "Fe": 1.32,
+  "Co": 1.26,
+  "Ni": 1.24,
+  "Cu": 1.32,
+  "Zn": 1.22,
+  "Y": 1.9,
+  "Zr": 1.75,
+  "Nb": 1.64,
+  "Mo": 1.54,
+  "Tc": 1.47,
+  "Ru": 1.46,
+  "Rh": 1.42,
+  "Pd": 1.39,
+  "Ag": 1.45,
+  "Cd": 1.44,
+  "Hf": 1.75,
+  "Ta": 1.7,
+  "W": 1.62,
+  "Re": 1.51,
+  "Os": 1.44,
+  "Ir": 1.41,
+  "Pt": 1.36,
+  "Au": 1.36,
+  "Hg": 1.32,
+  "Mg": 1.41,
+  "Al": 1.21,
+  "Ga": 1.22
+ },
+ "avogadroCenters": {
+  "linear": {
+   "file": "avogadro/qtplugins/templatetool/centers/2-lin.cjson",
+   "angles": [
+    180.0
+   ]
+  },
+  "trigonal-planar": {
+   "file": "avogadro/qtplugins/templatetool/centers/3-tpl.cjson",
+   "angles": [
+    120.0,
+    120.0,
+    120.0
+   ]
+  },
+  "tetrahedral": {
+   "file": "avogadro/qtplugins/templatetool/centers/4-tet.cjson",
+   "angles": [
+    109.47,
+    109.47,
+    109.47,
+    109.47,
+    109.47,
+    109.47
+   ]
+  },
+  "square-planar": {
+   "file": "avogadro/qtplugins/templatetool/centers/4-sqp.cjson",
+   "angles": [
+    90.0,
+    90.0,
+    90.0,
+    90.0,
+    180.0,
+    180.0
+   ]
+  },
+  "trigonal-bipyramidal": {
+   "file": "avogadro/qtplugins/templatetool/centers/5-tbp.cjson",
+   "angles": [
+    89.99,
+    89.99,
+    90.0,
+    90.0,
+    90.01,
+    90.01,
+    119.86,
+    120.0,
+    120.14,
+    179.98
+   ]
+  },
+  "square-pyramidal": {
+   "file": "avogadro/qtplugins/templatetool/centers/5-spy.cjson",
+   "angles": [
+    80.93,
+    80.93,
+    80.93,
+    80.93,
+    113.39,
+    113.39,
+    113.39,
+    113.39,
+    133.21,
+    133.21
+   ]
+  },
+  "octahedral": {
+   "file": "avogadro/qtplugins/templatetool/centers/6-oct.cjson",
+   "angles": [
+    90.0,
+    90.0,
+    90.0,
+    90.0,
+    90.0,
+    90.0,
+    90.0,
+    90.0,
+    90.0,
+    90.0,
+    90.0,
+    90.0,
+    180.0,
+    180.0,
+    180.0
+   ]
+  },
+  "trigonal-prismatic": {
+   "file": "avogadro/qtplugins/templatetool/centers/6-tpr.cjson",
+   "angles": [
+    72.14,
+    75.92,
+    75.99,
+    75.99,
+    77.2,
+    77.2,
+    95.91,
+    95.91,
+    95.91,
+    129.23,
+    129.23,
+    131.83,
+    131.83,
+    134.44,
+    134.44
+   ]
+  },
+  "pentagonal-bipyramidal": {
+   "file": "avogadro/qtplugins/templatetool/centers/7-pbp.cjson",
+   "angles": [
+    72.0,
+    72.0,
+    72.0,
+    72.0,
+    72.0,
+    90.0,
+    90.0,
+    90.0,
+    90.0,
+    90.0,
+    90.0,
+    90.0,
+    90.0,
+    90.0,
+    90.0,
+    144.0,
+    144.0,
+    144.0,
+    144.0,
+    144.0,
+    180.0
+   ]
+  },
+  "square-antiprismatic": {
+   "file": "avogadro/qtplugins/templatetool/centers/8-sqa.cjson",
+   "angles": [
+    63.0,
+    63.0,
+    69.17,
+    69.17,
+    69.17,
+    69.17,
+    80.92,
+    80.92,
+    80.92,
+    80.92,
+    80.92,
+    80.92,
+    80.92,
+    80.92,
+    91.96,
+    91.96,
+    91.97,
+    91.97,
+    132.17,
+    132.17,
+    132.17,
+    132.17,
+    136.64,
+    136.64,
+    136.64,
+    136.64,
+    158.66,
+    158.66
+   ]
+  }
+ },
+ "complexes": {
+  "cisplatin": {
+   "rdkit": {
+    "formula": "H6Cl2N2Pt",
+    "charge": 0,
+    "atoms": 11,
+    "bonds": 10,
+    "dative": 4,
+    "donorToMetal": 4,
+    "metal": "Pt",
+    "metalCharge": 2,
+    "ligandSmiles": [
+     "N",
+     "N",
+     "[Cl-]",
+     "[Cl-]"
+    ],
+    "distances": [
+     2.07,
+     2.07,
+     2.38,
+     2.38
+    ],
+    "angles": [
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     180.0,
+     180.0
+    ]
+   },
+   "openbabel": {
+    "formula": "Cl2H6N2Pt",
+    "charge": 0,
+    "atoms": 11,
+    "bonds": 10,
+    "coordination": 4
+   },
+   "crystal": {
+    "cod": "2235566",
+    "structure": "cis-[PtCl2(NH3)2]·DMF, Acta Cryst. E 2012",
+    "spheres": [
+     {
+      "site": "Pt1",
+      "distances": [
+       2.034,
+       2.037,
+       2.309,
+       2.313
+      ],
+      "angles": [
+       87.62,
+       87.9,
+       91.85,
+       92.63,
+       179.0,
+       179.35
+      ],
+      "donorDistances": {
+       "Cl": [
+        2.309,
+        2.313
+       ],
+       "N": [
+        2.034,
+        2.037
+       ]
+      }
+     }
+    ]
+   }
+  },
+  "transplatin": {
+   "rdkit": {
+    "formula": "H6Cl2N2Pt",
+    "charge": 0,
+    "atoms": 11,
+    "bonds": 10,
+    "dative": 4,
+    "donorToMetal": 4,
+    "metal": "Pt",
+    "metalCharge": 2,
+    "ligandSmiles": [
+     "N",
+     "N",
+     "[Cl-]",
+     "[Cl-]"
+    ],
+    "distances": [
+     2.07,
+     2.07,
+     2.38,
+     2.38
+    ],
+    "angles": [
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     180.0,
+     180.0
+    ]
+   },
+   "openbabel": {
+    "formula": "Cl2H6N2Pt",
+    "charge": 0,
+    "atoms": 11,
+    "bonds": 10,
+    "coordination": 4
+   },
+   "crystal": {
+    "cod": "1538403",
+    "structure": "trans-[PtCl2(NH3)2], Milburn & Truter 1966",
+    "spheres": [
+     {
+      "site": "Pt1",
+      "distances": [
+       2.044,
+       2.044,
+       2.324,
+       2.324
+      ],
+      "angles": [
+       88.31,
+       88.31,
+       91.69,
+       91.69,
+       180.0,
+       180.0
+      ],
+      "donorDistances": {
+       "Cl": [
+        2.324,
+        2.324
+       ],
+       "N": [
+        2.044,
+        2.044
+       ]
+      }
+     }
+    ]
+   }
+  },
+  "hexaamminecobalt": {
+   "rdkit": {
+    "formula": "H18CoN6+3",
+    "charge": 3,
+    "atoms": 25,
+    "bonds": 24,
+    "dative": 6,
+    "donorToMetal": 6,
+    "metal": "Co",
+    "metalCharge": 3,
+    "ligandSmiles": [
+     "N",
+     "N",
+     "N",
+     "N",
+     "N",
+     "N"
+    ],
+    "distances": [
+     1.97,
+     1.97,
+     1.97,
+     1.97,
+     1.97,
+     1.97
+    ],
+    "angles": [
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     180.0,
+     180.0,
+     180.0
+    ]
+   },
+   "openbabel": {
+    "formula": "CoH18N6+++",
+    "charge": 3,
+    "atoms": 25,
+    "bonds": 24,
+    "coordination": 6
+   },
+   "crystal": {
+    "cod": "2106540",
+    "structure": "[Co(NH3)6]Cl3, Kruger & Reynhardt 1978",
+    "spheres": [
+     {
+      "site": "Co2",
+      "distances": [
+       1.962,
+       1.962,
+       1.968,
+       1.968,
+       1.978,
+       1.978
+      ],
+      "angles": [
+       88.48,
+       88.48,
+       89.6,
+       89.6,
+       89.73,
+       90.29,
+       90.29,
+       90.48,
+       90.48,
+       90.76,
+       90.76,
+       91.08,
+       178.51,
+       178.98,
+       178.98
+      ],
+      "donorDistances": {
+       "N": [
+        1.962,
+        1.962,
+        1.968,
+        1.968,
+        1.978,
+        1.978
+       ]
+      }
+     },
+     {
+      "site": "Co3",
+      "distances": [
+       1.957,
+       1.957,
+       1.957,
+       1.957,
+       1.961,
+       1.961
+      ],
+      "angles": [
+       88.66,
+       88.66,
+       88.66,
+       88.66,
+       88.81,
+       88.81,
+       91.19,
+       91.19,
+       91.34,
+       91.34,
+       91.34,
+       91.34,
+       180.0,
+       180.0,
+       180.0
+      ],
+      "donorDistances": {
+       "N": [
+        1.957,
+        1.957,
+        1.957,
+        1.957,
+        1.961,
+        1.961
+       ]
+      }
+     },
+     {
+      "site": "Co1",
+      "distances": [
+       1.962,
+       1.962,
+       1.97,
+       1.97,
+       1.974,
+       1.974
+      ],
+      "angles": [
+       89.0,
+       89.17,
+       89.17,
+       89.35,
+       89.35,
+       90.25,
+       90.25,
+       90.28,
+       90.28,
+       90.43,
+       91.26,
+       91.26,
+       177.89,
+       179.17,
+       179.17
+      ],
+      "donorDistances": {
+       "N": [
+        1.962,
+        1.962,
+        1.97,
+        1.97,
+        1.974,
+        1.974
+       ]
+      }
+     },
+     {
+      "site": "Co4",
+      "distances": [
+       1.955,
+       1.955,
+       1.959,
+       1.959,
+       1.983,
+       1.983
+      ],
+      "angles": [
+       89.31,
+       89.31,
+       90.0,
+       90.0,
+       90.0,
+       90.0,
+       90.0,
+       90.0,
+       90.0,
+       90.0,
+       90.69,
+       90.69,
+       180.0,
+       180.0,
+       180.0
+      ],
+      "donorDistances": {
+       "N": [
+        1.955,
+        1.955,
+        1.959,
+        1.959,
+        1.983,
+        1.983
+       ]
+      }
+     }
+    ]
+   }
+  },
+  "tetracyanonickelate": {
+   "rdkit": {
+    "formula": "C4N4Ni-2",
+    "charge": -2,
+    "atoms": 9,
+    "bonds": 8,
+    "dative": 4,
+    "donorToMetal": 4,
+    "metal": "Ni",
+    "metalCharge": 2,
+    "ligandSmiles": [
+     "[C-]#N",
+     "[C-]#N",
+     "[C-]#N",
+     "[C-]#N"
+    ],
+    "distances": [
+     1.93,
+     1.93,
+     1.93,
+     1.93
+    ],
+    "angles": [
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     180.0,
+     180.0
+    ]
+   },
+   "openbabel": {
+    "formula": "C4N4Ni--",
+    "charge": -2,
+    "atoms": 9,
+    "bonds": 8,
+    "coordination": 4
+   },
+   "crystal": {
+    "cod": "2002899",
+    "structure": "Na2[Ni(CN)4]·3H2O, 295 K, Acta Cryst. B 1998",
+    "spheres": [
+     {
+      "site": "Ni1",
+      "distances": [
+       1.851,
+       1.853,
+       1.853,
+       1.855
+      ],
+      "angles": [
+       89.0,
+       89.97,
+       90.34,
+       90.73,
+       177.98,
+       178.43
+      ],
+      "donorDistances": {
+       "C": [
+        1.851,
+        1.853,
+        1.853,
+        1.855
+       ]
+      }
+     },
+     {
+      "site": "Ni2",
+      "distances": [
+       1.852,
+       1.853,
+       1.86,
+       1.86
+      ],
+      "angles": [
+       88.92,
+       89.47,
+       90.38,
+       91.27,
+       177.99,
+       178.6
+      ],
+      "donorDistances": {
+       "C": [
+        1.852,
+        1.853,
+        1.86,
+        1.86
+       ]
+      }
+     }
+    ]
+   }
+  },
+  "pentacarbonyliron": {
+   "rdkit": {
+    "formula": "C5FeO5",
+    "charge": 0,
+    "atoms": 11,
+    "bonds": 10,
+    "dative": 5,
+    "donorToMetal": 5,
+    "metal": "Fe",
+    "metalCharge": 0,
+    "ligandSmiles": [
+     "[C-]#[O+]",
+     "[C-]#[O+]",
+     "[C-]#[O+]",
+     "[C-]#[O+]",
+     "[C-]#[O+]"
+    ],
+    "distances": [
+     2.01,
+     2.01,
+     2.01,
+     2.01,
+     2.01
+    ],
+    "angles": [
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     120.0,
+     120.0,
+     120.0,
+     180.0
+    ]
+   },
+   "openbabel": {
+    "formula": "C5FeO5",
+    "charge": 0,
+    "atoms": 11,
+    "bonds": 10,
+    "coordination": 5
+   },
+   "crystal": {
+    "cod": "2310564",
+    "structure": "Fe(CO)5, Donohue & Caron 1964",
+    "spheres": [
+     {
+      "site": "Fe1",
+      "distances": [
+       1.765,
+       1.797,
+       1.797,
+       1.81,
+       1.81
+      ],
+      "angles": [
+       88.19,
+       88.19,
+       90.41,
+       90.41,
+       91.5,
+       91.5,
+       116.07,
+       121.96,
+       121.96,
+       176.38
+      ],
+      "donorDistances": {
+       "C": [
+        1.765,
+        1.797,
+        1.797,
+        1.81,
+        1.81
+       ]
+      }
+     }
+    ]
+   }
+  },
+  "tetraammineaquacopper": {
+   "rdkit": {
+    "formula": "H14CuN4O+2",
+    "charge": 2,
+    "atoms": 20,
+    "bonds": 19,
+    "dative": 5,
+    "donorToMetal": 5,
+    "metal": "Cu",
+    "metalCharge": 2,
+    "ligandSmiles": [
+     "N",
+     "N",
+     "N",
+     "N",
+     "O"
+    ],
+    "distances": [
+     1.98,
+     2.03,
+     2.03,
+     2.03,
+     2.03
+    ],
+    "angles": [
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     180.0,
+     180.0
+    ]
+   },
+   "openbabel": {
+    "formula": "CuH14N4O++",
+    "charge": 2,
+    "atoms": 20,
+    "bonds": 19,
+    "coordination": 5
+   },
+   "crystal": {
+    "cod": "2310816",
+    "structure": "[Cu(NH3)4(H2O)]SO4, 1955",
+    "spheres": [
+     {
+      "site": "Cu1",
+      "distances": [
+       2.034,
+       2.034,
+       2.06,
+       2.06,
+       2.589
+      ],
+      "angles": [
+       86.61,
+       86.61,
+       92.24,
+       92.24,
+       92.24,
+       93.77,
+       94.4,
+       94.4,
+       173.33,
+       173.33
+      ],
+      "donorDistances": {
+       "N": [
+        2.034,
+        2.034,
+        2.06,
+        2.06
+       ],
+       "O": [
+        2.589
+       ]
+      }
+     }
+    ]
+   }
+  },
+  "tetrabromozincate": {
+   "rdkit": {
+    "formula": "Br4Zn-2",
+    "charge": -2,
+    "atoms": 5,
+    "bonds": 4,
+    "dative": 4,
+    "donorToMetal": 4,
+    "metal": "Zn",
+    "metalCharge": 2,
+    "ligandSmiles": [
+     "[Br-]",
+     "[Br-]",
+     "[Br-]",
+     "[Br-]"
+    ],
+    "distances": [
+     2.42,
+     2.42,
+     2.42,
+     2.42
+    ],
+    "angles": [
+     109.47,
+     109.47,
+     109.47,
+     109.47,
+     109.47,
+     109.47
+    ]
+   },
+   "openbabel": {
+    "formula": "Br4Zn--",
+    "charge": -2,
+    "atoms": 5,
+    "bonds": 4,
+    "coordination": 4
+   },
+   "crystal": {
+    "cod": "2310916",
+    "structure": "Cs2[ZnBr4], 1959",
+    "spheres": [
+     {
+      "site": "Zn1",
+      "distances": [
+       2.377,
+       2.377,
+       2.386,
+       2.41
+      ],
+      "angles": [
+       106.44,
+       106.44,
+       109.62,
+       109.66,
+       109.66,
+       114.85
+      ],
+      "donorDistances": {
+       "Br": [
+        2.377,
+        2.377,
+        2.386,
+        2.41
+       ]
+      }
+     }
+    ]
+   }
+  },
+  "dicyanoaurate": {
+   "rdkit": {
+    "formula": "C2AuN2-",
+    "charge": -1,
+    "atoms": 5,
+    "bonds": 4,
+    "dative": 2,
+    "donorToMetal": 2,
+    "metal": "Au",
+    "metalCharge": 1,
+    "ligandSmiles": [
+     "[C-]#N",
+     "[C-]#N"
+    ],
+    "distances": [
+     2.05,
+     2.05
+    ],
+    "angles": [
+     180.0
+    ]
+   },
+   "openbabel": {
+    "formula": "C2AuN2-",
+    "charge": -1,
+    "atoms": 5,
+    "bonds": 4,
+    "coordination": 2
+   },
+   "crystal": {
+    "cod": "2310938",
+    "structure": "K[Au(CN)2], 1959",
+    "spheres": [
+     {
+      "site": "Au1",
+      "distances": [
+       2.121,
+       2.121
+      ],
+      "angles": [
+       180.0
+      ],
+      "donorDistances": {
+       "C": [
+        2.121,
+        2.121
+       ]
+      }
+     }
+    ]
+   }
+  },
+  "tris-acac-iron": {
+   "rdkit": {
+    "formula": "C15H21FeO6",
+    "charge": 0,
+    "atoms": 43,
+    "bonds": 45,
+    "dative": 6,
+    "donorToMetal": 6,
+    "metal": "Fe",
+    "metalCharge": 3,
+    "ligandSmiles": [
+     "CC(=O)C=C(C)[O-]",
+     "CC(=O)C=C(C)[O-]",
+     "CC(=O)C=C(C)[O-]"
+    ],
+    "distances": [
+     2.0,
+     2.0,
+     2.0,
+     2.0,
+     2.0,
+     2.0
+    ],
+    "angles": [
+     89.34,
+     89.34,
+     89.34,
+     90.0,
+     90.0,
+     90.0,
+     90.33,
+     90.33,
+     90.33,
+     90.33,
+     90.33,
+     90.33,
+     179.53,
+     179.53,
+     179.53
+    ]
+   },
+   "openbabel": {
+    "formula": "C15H21FeO6",
+    "charge": 0,
+    "atoms": 43,
+    "bonds": 45,
+    "coordination": 6
+   },
+   "crystal": {
+    "cod": "2241338",
+    "structure": "[Fe(acac)3], Acta Cryst. E 2015",
+    "spheres": [
+     {
+      "site": "Fe1",
+      "distances": [
+       1.987,
+       1.999,
+       1.999,
+       2.001,
+       2.006,
+       2.01
+      ],
+      "angles": [
+       86.9,
+       87.13,
+       87.53,
+       87.53,
+       87.93,
+       89.79,
+       89.89,
+       90.21,
+       90.55,
+       93.34,
+       94.19,
+       95.77,
+       173.63,
+       174.23,
+       176.36
+      ],
+      "donorDistances": {
+       "O": [
+        1.987,
+        1.999,
+        1.999,
+        2.001,
+        2.006,
+        2.01
+       ]
+      }
+     }
+    ]
+   }
+  },
+  "trioxalatoferrate": {
+   "rdkit": {
+    "formula": "C6FeO12-3",
+    "charge": -3,
+    "atoms": 19,
+    "bonds": 21,
+    "dative": 6,
+    "donorToMetal": 6,
+    "metal": "Fe",
+    "metalCharge": 3,
+    "ligandSmiles": [
+     "O=C([O-])C(=O)[O-]",
+     "O=C([O-])C(=O)[O-]",
+     "O=C([O-])C(=O)[O-]"
+    ],
+    "distances": [
+     2.01,
+     2.01,
+     2.01,
+     2.01,
+     2.01,
+     2.01
+    ],
+    "angles": [
+     80.54,
+     80.54,
+     80.54,
+     90.39,
+     90.39,
+     90.39,
+     94.71,
+     94.71,
+     94.71,
+     94.71,
+     94.71,
+     94.71,
+     173.32,
+     173.32,
+     173.32
+    ]
+   },
+   "openbabel": {
+    "formula": "C6FeO12---",
+    "charge": -3,
+    "atoms": 19,
+    "bonds": 21,
+    "coordination": 6
+   },
+   "crystal": {
+    "cod": "1528614",
+    "structure": "K3[Fe(C2O4)3]·3H2O, 2005",
+    "spheres": [
+     {
+      "site": "Fe1",
+      "distances": [
+       1.981,
+       1.986,
+       2.001,
+       2.01,
+       2.031,
+       2.031
+      ],
+      "angles": [
+       79.31,
+       80.39,
+       80.41,
+       87.16,
+       89.1,
+       89.48,
+       89.66,
+       90.84,
+       92.43,
+       100.81,
+       102.18,
+       105.46,
+       162.98,
+       163.03,
+       164.45
+      ],
+      "donorDistances": {
+       "O": [
+        1.981,
+        1.986,
+        2.001,
+        2.01,
+        2.031,
+        2.031
+       ]
+      }
+     }
+    ]
+   }
+  },
+  "tris-bpy-ruthenium": {
+   "rdkit": {
+    "formula": "C30H24N6Ru+2",
+    "charge": 2,
+    "atoms": 61,
+    "bonds": 69,
+    "dative": 6,
+    "donorToMetal": 6,
+    "metal": "Ru",
+    "metalCharge": 2,
+    "ligandSmiles": [
+     "c1ccc(-c2ccccn2)nc1",
+     "c1ccc(-c2ccccn2)nc1",
+     "c1ccc(-c2ccccn2)nc1"
+    ],
+    "distances": [
+     2.07,
+     2.07,
+     2.07,
+     2.07,
+     2.07,
+     2.07
+    ],
+    "angles": [
+     78.21,
+     78.21,
+     78.21,
+     90.6,
+     90.6,
+     90.6,
+     95.86,
+     95.86,
+     95.86,
+     95.86,
+     95.86,
+     95.86,
+     171.67,
+     171.67,
+     171.67
+    ]
+   },
+   "openbabel": {
+    "formula": "C30H24N6Ru++",
+    "charge": 2,
+    "atoms": 61,
+    "bonds": 69,
+    "coordination": 6
+   },
+   "crystal": {
+    "cod": "2105090",
+    "structure": "[Ru(bpy)3]Cl2·6H2O, Acta Cryst. B 2012",
+    "spheres": [
+     {
+      "site": "Ru1",
+      "distances": [
+       2.064,
+       2.064,
+       2.065,
+       2.065,
+       2.066,
+       2.066
+      ],
+      "angles": [
+       78.97,
+       78.97,
+       79.01,
+       92.36,
+       92.4,
+       92.4,
+       94.63,
+       94.63,
+       94.65,
+       94.65,
+       94.67,
+       94.67,
+       170.84,
+       170.9,
+       170.9
+      ],
+      "donorDistances": {
+       "N": [
+        2.064,
+        2.064,
+        2.065,
+        2.065,
+        2.066,
+        2.066
+       ]
+      }
+     }
+    ]
+   }
+  },
+  "tris-en-cobalt": {
+   "rdkit": {
+    "formula": "C6H24CoN6+3",
+    "charge": 3,
+    "atoms": 37,
+    "bonds": 39,
+    "dative": 6,
+    "donorToMetal": 6,
+    "metal": "Co",
+    "metalCharge": 3,
+    "ligandSmiles": [
+     "NCCN",
+     "NCCN",
+     "NCCN"
+    ],
+    "distances": [
+     1.96,
+     1.96,
+     1.96,
+     1.96,
+     1.96,
+     1.96
+    ],
+    "angles": [
+     89.78,
+     89.78,
+     89.78,
+     90.0,
+     90.0,
+     90.0,
+     90.11,
+     90.11,
+     90.11,
+     90.11,
+     90.11,
+     90.11,
+     179.85,
+     179.85,
+     179.85
+    ]
+   },
+   "openbabel": {
+    "formula": "C6H24CoN6+++",
+    "charge": 3,
+    "atoms": 37,
+    "bonds": 39,
+    "coordination": 6
+   },
+   "crystal": {
+    "cod": "2243918",
+    "structure": "(Δ/Λ)-[Co(en)3]Cl3 NaCl double salt, 2021",
+    "spheres": [
+     {
+      "site": "Co1",
+      "distances": [
+       1.96,
+       1.96,
+       1.961,
+       1.967,
+       1.968,
+       1.968
+      ],
+      "angles": [
+       85.47,
+       85.47,
+       85.51,
+       90.54,
+       90.55,
+       90.56,
+       90.93,
+       90.94,
+       90.95,
+       93.26,
+       93.3,
+       93.3,
+       174.47,
+       174.52,
+       174.53
+      ],
+      "donorDistances": {
+       "N": [
+        1.96,
+        1.96,
+        1.961,
+        1.967,
+        1.968,
+        1.968
+       ]
+      }
+     }
+    ]
+   }
+  },
+  "mixed-octahedral": {
+   "rdkit": {
+    "formula": "C20H23CrFN3OP+",
+    "charge": 1,
+    "atoms": 50,
+    "bonds": 54,
+    "dative": 6,
+    "donorToMetal": 6,
+    "metal": "Cr",
+    "metalCharge": 3,
+    "ligandSmiles": [
+     "CP(C)C",
+     "[F-]",
+     "[OH-]",
+     "c1ccncc1",
+     "c1cnc2c(c1)ccc1cccnc12"
+    ],
+    "distances": [
+     1.96,
+     2.05,
+     2.1,
+     2.1,
+     2.1,
+     2.46
+    ],
+    "angles": [
+     76.11,
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     96.94,
+     96.94,
+     173.06,
+     173.06,
+     180.0
+    ]
+   },
+   "openbabel": {
+    "formula": "C20H23CrFN3OP+",
+    "charge": 1,
+    "atoms": 50,
+    "bonds": 54,
+    "coordination": 6
+   }
+  },
+  "trigonal-planar": {
+   "rdkit": {
+    "formula": "CH3CuIOP",
+    "charge": 0,
+    "atoms": 8,
+    "bonds": 7,
+    "dative": 3,
+    "donorToMetal": 3,
+    "metal": "Cu",
+    "metalCharge": 1,
+    "ligandSmiles": [
+     "P",
+     "[C-]#[O+]",
+     "[I-]"
+    ],
+    "distances": [
+     2.01,
+     2.39,
+     2.71
+    ],
+    "angles": [
+     120.0,
+     120.0,
+     120.0
+    ]
+   },
+   "openbabel": {
+    "formula": "CH3CuIOP",
+    "charge": 0,
+    "atoms": 8,
+    "bonds": 7,
+    "coordination": 3
+   }
+  },
+  "ferrocene": {
+   "rdkit": {
+    "formula": "C10H10Fe",
+    "charge": 0,
+    "atoms": 21,
+    "bonds": 30,
+    "dative": 10,
+    "donorToMetal": 10,
+    "metal": "Fe",
+    "metalCharge": 2,
+    "ligandSmiles": [
+     "c1cc[cH-]c1",
+     "c1cc[cH-]c1"
+    ],
+    "distances": [
+     2.028,
+     2.028,
+     2.04,
+     2.04,
+     2.043,
+     2.043,
+     2.063,
+     2.063,
+     2.065,
+     2.065
+    ],
+    "angles": [
+     39.45,
+     39.45,
+     39.66,
+     39.66,
+     39.72,
+     39.72,
+     40.02,
+     40.03,
+     40.07,
+     40.07,
+     66.61,
+     66.61,
+     66.64,
+     66.64,
+     66.85,
+     66.85,
+     66.89,
+     66.89,
+     67.04,
+     67.04,
+     112.2,
+     112.33,
+     112.33,
+     112.5,
+     112.5,
+     113.81,
+     114.03,
+     114.03,
+     114.34,
+     114.34,
+     137.96,
+     137.96,
+     138.31,
+     138.31,
+     138.55,
+     141.99,
+     141.99,
+     142.35,
+     142.35,
+     142.6,
+     177.63,
+     177.65,
+     177.65,
+     177.67,
+     177.67
+    ]
+   },
+   "openbabel": {
+    "formula": "C10H10Fe",
+    "charge": 0,
+    "atoms": 21,
+    "bonds": 30,
+    "coordination": 10
+   }
+  },
+  "bis-benzene-chromium": {
+   "rdkit": {
+    "formula": "C12H12Cr",
+    "charge": 0,
+    "atoms": 25,
+    "bonds": 36,
+    "dative": 12,
+    "donorToMetal": 12,
+    "metal": "Cr",
+    "metalCharge": 0,
+    "ligandSmiles": [
+     "c1ccccc1",
+     "c1ccccc1"
+    ],
+    "distances": [
+     2.12,
+     2.12,
+     2.12,
+     2.121,
+     2.123,
+     2.123,
+     2.124,
+     2.124,
+     2.126,
+     2.127,
+     2.127,
+     2.127
+    ],
+    "angles": [
+     37.99,
+     37.99,
+     38.02,
+     38.02,
+     38.03,
+     38.03,
+     38.08,
+     38.08,
+     38.09,
+     38.09,
+     38.12,
+     38.12,
+     68.7,
+     68.7,
+     68.7,
+     68.7,
+     68.75,
+     68.75,
+     68.77,
+     68.77,
+     68.82,
+     68.82,
+     68.83,
+     68.83,
+     81.39,
+     81.39,
+     81.39,
+     81.39,
+     81.39,
+     81.39,
+     101.32,
+     101.33,
+     101.33,
+     101.35,
+     101.35,
+     101.36,
+     102.51,
+     102.51,
+     102.57,
+     102.57,
+     102.62,
+     102.62,
+     123.57,
+     123.57,
+     123.63,
+     123.63,
+     123.69,
+     123.69,
+     126.49,
+     126.53,
+     126.53,
+     126.61,
+     126.61,
+     126.65,
+     158.73,
+     158.74,
+     158.75,
+     158.78,
+     158.78,
+     158.8,
+     162.35,
+     162.35,
+     162.38,
+     162.38,
+     162.41,
+     162.41
+    ]
+   },
+   "openbabel": {
+    "formula": "C12H12Cr",
+    "charge": 0,
+    "atoms": 25,
+    "bonds": 36,
+    "coordination": 12
+   }
+  },
+  "zeise-anion": {
+   "rdkit": {
+    "formula": "C2H4Cl3Pt-",
+    "charge": -1,
+    "atoms": 10,
+    "bonds": 10,
+    "dative": 5,
+    "donorToMetal": 5,
+    "metal": "Pt",
+    "metalCharge": 2,
+    "ligandSmiles": [
+     "C=C",
+     "[Cl-]",
+     "[Cl-]",
+     "[Cl-]"
+    ],
+    "distances": [
+     2.09,
+     2.09,
+     2.38,
+     2.38,
+     2.38
+    ],
+    "angles": [
+     37.28,
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     161.36,
+     161.36,
+     180.0
+    ]
+   },
+   "openbabel": {
+    "formula": "C2H4Cl3Pt-",
+    "charge": -1,
+    "atoms": 10,
+    "bonds": 10,
+    "coordination": 5
+   }
+  },
+  "cymantrene": {
+   "rdkit": {
+    "formula": "C8H5MnO3",
+    "charge": 0,
+    "atoms": 17,
+    "bonds": 21,
+    "dative": 8,
+    "donorToMetal": 8,
+    "metal": "Mn",
+    "metalCharge": 1,
+    "ligandSmiles": [
+     "[C-]#[O+]",
+     "[C-]#[O+]",
+     "[C-]#[O+]",
+     "c1cc[cH-]c1"
+    ],
+    "distances": [
+     2.08,
+     2.08,
+     2.08,
+     2.102,
+     2.114,
+     2.117,
+     2.138,
+     2.14
+    ],
+    "angles": [
+     38.02,
+     38.22,
+     38.28,
+     38.57,
+     38.61,
+     64.01,
+     64.03,
+     64.23,
+     64.26,
+     64.41,
+     75.83,
+     77.93,
+     77.97,
+     85.45,
+     85.98,
+     96.48,
+     96.66,
+     109.13,
+     109.47,
+     109.47,
+     109.47,
+     109.53,
+     122.42,
+     122.77,
+     134.59,
+     135.01,
+     142.13,
+     142.36
+    ]
+   },
+   "openbabel": {
+    "formula": "C8H5MnO3",
+    "charge": 0,
+    "atoms": 17,
+    "bonds": 21,
+    "coordination": 8
+   }
+  },
+  "edta-ferrate": {
+   "rdkit": {
+    "formula": "C10H12FeN2O8-",
+    "charge": -1,
+    "atoms": 33,
+    "bonds": 37,
+    "dative": 6,
+    "donorToMetal": 6,
+    "metal": "Fe",
+    "metalCharge": 3,
+    "ligandSmiles": [
+     "O=C([O-])CN(CCN(CC(=O)[O-])CC(=O)[O-])CC(=O)[O-]"
+    ],
+    "distances": [
+     1.81,
+     1.81,
+     1.812,
+     1.812,
+     1.927,
+     1.928
+    ],
+    "angles": [
+     82.86,
+     82.88,
+     84.88,
+     84.95,
+     87.88,
+     87.93,
+     88.57,
+     88.76,
+     90.46,
+     101.44,
+     101.46,
+     101.69,
+     166.62,
+     168.63,
+     168.63
+    ]
+   },
+   "openbabel": {
+    "formula": "C10H12FeN2O8-",
+    "charge": -1,
+    "atoms": 33,
+    "bonds": 37,
+    "coordination": 6
+   }
+  },
+  "bis-terpy-ruthenium": {
+   "rdkit": {
+    "formula": "C30H22N6Ru+2",
+    "charge": 2,
+    "atoms": 59,
+    "bonds": 68,
+    "dative": 6,
+    "donorToMetal": 6,
+    "metal": "Ru",
+    "metalCharge": 2,
+    "ligandSmiles": [
+     "c1ccc(-c2cccc(-c3ccccn3)n2)nc1",
+     "c1ccc(-c2cccc(-c3ccccn3)n2)nc1"
+    ],
+    "distances": [
+     1.909,
+     1.909,
+     1.989,
+     1.989,
+     1.989,
+     1.989
+    ],
+    "angles": [
+     82.86,
+     82.86,
+     82.86,
+     82.86,
+     90.88,
+     90.88,
+     90.88,
+     90.89,
+     97.14,
+     97.14,
+     97.14,
+     97.14,
+     165.72,
+     165.72,
+     180.0
+    ]
+   },
+   "openbabel": {
+    "formula": "C30H22N6Ru++",
+    "charge": 2,
+    "atoms": 59,
+    "bonds": 68,
+    "coordination": 6
+   }
+  },
+  "bis-tacn-cobalt": {
+   "rdkit": {
+    "formula": "C12H30CoN6+3",
+    "charge": 3,
+    "atoms": 49,
+    "bonds": 54,
+    "dative": 6,
+    "donorToMetal": 6,
+    "metal": "Co",
+    "metalCharge": 3,
+    "ligandSmiles": [
+     "C1CNCCNCCN1",
+     "C1CNCCNCCN1"
+    ],
+    "distances": [
+     1.984,
+     1.984,
+     1.991,
+     1.991,
+     2.02,
+     2.02
+    ],
+    "angles": [
+     85.73,
+     85.73,
+     88.23,
+     88.23,
+     88.69,
+     88.69,
+     91.29,
+     91.36,
+     93.02,
+     93.02,
+     93.03,
+     93.03,
+     178.22,
+     178.75,
+     178.75
+    ]
+   },
+   "openbabel": {
+    "formula": "C12H30CoN6+++",
+    "charge": 3,
+    "atoms": 49,
+    "bonds": 54,
+    "coordination": 6
+   }
+  },
+  "bis-tp-iron": {
+   "rdkit": {
+    "formula": "C18H20B2FeN12",
+    "charge": 0,
+    "atoms": 53,
+    "bonds": 62,
+    "dative": 6,
+    "donorToMetal": 6,
+    "metal": "Fe",
+    "metalCharge": 2,
+    "ligandSmiles": [
+     "c1cnn([BH-](n2cccn2)n2cccn2)c1",
+     "c1cnn([BH-](n2cccn2)n2cccn2)c1"
+    ],
+    "distances": [
+     2.011,
+     2.011,
+     2.011,
+     2.011,
+     2.012,
+     2.012
+    ],
+    "angles": [
+     84.52,
+     84.52,
+     84.77,
+     84.77,
+     85.86,
+     85.86,
+     94.79,
+     94.79,
+     94.82,
+     94.82,
+     95.2,
+     95.26,
+     179.03,
+     179.31,
+     179.31
+    ]
+   },
+   "openbabel": {
+    "formula": "C18H20B2FeN12",
+    "charge": 0,
+    "atoms": 53,
+    "bonds": 62,
+    "coordination": 6
+   }
+  },
+  "cyclam-nickel": {
+   "rdkit": {
+    "formula": "C10H24N4Ni+2",
+    "charge": 2,
+    "atoms": 39,
+    "bonds": 42,
+    "dative": 4,
+    "donorToMetal": 4,
+    "metal": "Ni",
+    "metalCharge": 2,
+    "ligandSmiles": [
+     "C1CNCCNCCCNCCNC1"
+    ],
+    "distances": [
+     1.881,
+     1.881,
+     1.882,
+     1.883
+    ],
+    "angles": [
+     83.55,
+     83.6,
+     96.42,
+     96.43,
+     179.23,
+     179.29
+    ]
+   },
+   "openbabel": {
+    "formula": "C10H24N4Ni++",
+    "charge": 2,
+    "atoms": 39,
+    "bonds": 42,
+    "coordination": 4
+   }
+  },
+  "porphyrin-zinc": {
+   "rdkit": {
+    "formula": "C20H12N4Zn",
+    "charge": 0,
+    "atoms": 37,
+    "bonds": 44,
+    "dative": 4,
+    "donorToMetal": 4,
+    "metal": "Zn",
+    "metalCharge": 2,
+    "ligandSmiles": [
+     "C1=Cc2cc3ccc(cc4nc(cc5ccc(cc1n2)[n-]5)C=C4)[n-]3"
+    ],
+    "distances": [
+     2.05,
+     2.072,
+     2.104,
+     2.104
+    ],
+    "angles": [
+     89.73,
+     89.75,
+     90.32,
+     90.34,
+     177.19,
+     177.19
+    ]
+   },
+   "openbabel": {
+    "formula": "C20H12N4Zn",
+    "charge": 0,
+    "atoms": 37,
+    "bonds": 44,
+    "coordination": 4
+   }
+  },
+  "hexamethyltungsten": {
+   "rdkit": {
+    "formula": "C6H18W",
+    "charge": 0,
+    "atoms": 25,
+    "bonds": 24,
+    "dative": 6,
+    "donorToMetal": 6,
+    "metal": "W",
+    "metalCharge": 6,
+    "ligandSmiles": [
+     "[CH3-]",
+     "[CH3-]",
+     "[CH3-]",
+     "[CH3-]",
+     "[CH3-]",
+     "[CH3-]"
+    ],
+    "distances": [
+     2.38,
+     2.38,
+     2.38,
+     2.38,
+     2.38,
+     2.38
+    ],
+    "angles": [
+     81.79,
+     81.79,
+     81.79,
+     81.79,
+     81.79,
+     81.79,
+     81.79,
+     81.79,
+     81.79,
+     135.58,
+     135.58,
+     135.59,
+     135.59,
+     135.59,
+     135.59
+    ]
+   },
+   "openbabel": {
+    "formula": "C6H18W",
+    "charge": 0,
+    "atoms": 25,
+    "bonds": 24,
+    "coordination": 6
+   }
+  },
+  "heptafluorozirconate": {
+   "rdkit": {
+    "formula": "F7Zr-3",
+    "charge": -3,
+    "atoms": 8,
+    "bonds": 7,
+    "dative": 7,
+    "donorToMetal": 7,
+    "metal": "Zr",
+    "metalCharge": 4,
+    "ligandSmiles": [
+     "[F-]",
+     "[F-]",
+     "[F-]",
+     "[F-]",
+     "[F-]",
+     "[F-]",
+     "[F-]"
+    ],
+    "distances": [
+     2.32,
+     2.32,
+     2.32,
+     2.32,
+     2.32,
+     2.32,
+     2.32
+    ],
+    "angles": [
+     72.0,
+     72.0,
+     72.0,
+     72.0,
+     72.0,
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     90.0,
+     144.0,
+     144.0,
+     144.0,
+     144.0,
+     144.0,
+     180.0
+    ]
+   },
+   "openbabel": {
+    "formula": "F7Zr---",
+    "charge": -3,
+    "atoms": 8,
+    "bonds": 7,
+    "coordination": 7
+   }
+  },
+  "octacyanomolybdate": {
+   "rdkit": {
+    "formula": "C8MoN8-4",
+    "charge": -4,
+    "atoms": 17,
+    "bonds": 16,
+    "dative": 8,
+    "donorToMetal": 8,
+    "metal": "Mo",
+    "metalCharge": 4,
+    "ligandSmiles": [
+     "[C-]#N",
+     "[C-]#N",
+     "[C-]#N",
+     "[C-]#N",
+     "[C-]#N",
+     "[C-]#N",
+     "[C-]#N",
+     "[C-]#N"
+    ],
+    "distances": [
+     2.23,
+     2.23,
+     2.23,
+     2.23,
+     2.23,
+     2.23,
+     2.23,
+     2.23
+    ],
+    "angles": [
+     74.86,
+     74.86,
+     74.86,
+     74.86,
+     74.86,
+     74.86,
+     74.86,
+     74.86,
+     74.86,
+     74.86,
+     74.86,
+     74.86,
+     74.86,
+     74.86,
+     74.86,
+     74.86,
+     118.53,
+     118.53,
+     118.53,
+     118.53,
+     141.59,
+     141.59,
+     141.59,
+     141.59,
+     141.59,
+     141.59,
+     141.59,
+     141.59
+    ]
+   },
+   "openbabel": {
+    "formula": "C8MoN8----",
+    "charge": -4,
+    "atoms": 17,
+    "bonds": 16,
+    "coordination": 8
+   }
+  }
+ }
+}

@@ -22,7 +22,7 @@ test("palette typing reuses project entries and leaves the shell outside the que
     get title() { projectReads++; return `Ligand ${index}`; },
     renderer: "molstar", extension: "sdf", byteCount: 100, documentId: `document-${index}`,
   }));
-  const state = { sidebarProjects: [{ title: "Project", items }], preferences: { rendererMode: "auto" } } as unknown as ShellViewState;
+  const state = { activeDocument: null, activeTab: null, sidebarProjects: [{ title: "Project", items }], preferences: { rendererMode: "auto" } } as unknown as ShellViewState;
   const actions = { selectDocument: (id: string) => opened.push(id) } as unknown as ShellActions;
   function Shell() {
     shellRenders++;
@@ -63,7 +63,7 @@ test("large search results stay bounded and keyboard navigation reaches every re
     source: "project", path: `/project/candidate-${index}.pdb`, relativePath: `candidate-${index}.pdb`,
     title: `Candidate ${index}`, renderer: "molstar", extension: "pdb", byteCount: 100, documentId: `document-${index}`,
   }));
-  const state = { sidebarProjects: [{ title: "Project", items }], preferences: { rendererMode: "auto" } } as unknown as ShellViewState;
+  const state = { activeDocument: null, activeTab: null, sidebarProjects: [{ title: "Project", items }], preferences: { rendererMode: "auto" } } as unknown as ShellViewState;
   const actions = { selectDocument: (id: string) => opened.push(id) } as unknown as ShellActions;
   const mount = document.createElement("div"); document.body.append(mount);
   const root = createRoot(mount);

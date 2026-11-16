@@ -15,11 +15,11 @@ let openSource = async () => ({
 });
 const errors = [];
 globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
-globalThis.window = { location: { search: "" }, confirm() { throw new Error("Native source close used window.confirm"); }, alert() { throw new Error("Native source close used window.alert"); }, setTimeout: () => 1, clearTimeout() {} };
+globalThis.window = { location: { search: "" }, addEventListener() {}, removeEventListener() {}, confirm() { throw new Error("Native source close used window.confirm"); }, alert() { throw new Error("Native source close used window.alert"); }, setTimeout: () => 1, clearTimeout() {} };
 const react = await import("react");
 mock.module("react", () => ({
   ...react,
-  useCallback: callback => callback, useMemo: callback => callback(), useEffect() {},
+  useCallback: callback => callback, useMemo: callback => callback(), useEffect() {}, useLayoutEffect() {},
   useRef: current => ({ current }), useState: initial => [initial, value => { sessions = value; }],
 }));
 const core = await import("@tauri-apps/api/core");
@@ -28,13 +28,17 @@ mock.module("@tauri-apps/api/core", () => ({ ...core, invoke: async (command, ar
   if (command === "open_source_edit_session") return openSource();
   if (command === "close_opened_source_documents") return close();
   if (command === "save_source_document") return saveSource();
+  if (command === "open_text_structure") return { runtimePath: "/tmp/source-candidate.html" };
 } }));
+const dialogExports = await import("@tauri-apps/plugin-dialog");
 mock.module("@tauri-apps/plugin-dialog", () => ({
+  ...dialogExports,
   confirm: async (text, options) => { dialogs.push(["confirm", text, options]); return confirm(); },
   message: async (text, options) => { dialogs.push(["message", text, options]); return message(); },
 }));
 mock.module("../apps/desktop/src/components/workspace-panes/native-scene-window", () => ({
   nativePopoutBusy: () => false, isNativePopoutTab: () => false, returnNativePopout: async () => false,
+  checkpointNativeScenesForClose: async () => {},
 }));
 mock.module("../apps/desktop/src/lib/tauri", () => ({ isTauriRuntime: () => true, trackTauriListener: () => () => {} }));
 mock.module("../apps/desktop/src/hooks/use-deferred-viewer-runtime", () => ({ prepareDeferredViewerRuntime: async document => document, useDeferredViewerRuntime: document => document }));
@@ -44,11 +48,21 @@ const { createDocumentCloseShellActions } = await import("../apps/desktop/src/ho
 const { useMoleculeStore } = await import("../apps/desktop/src/stores/molecule-store.ts");
 const document = { id: "doc", path: "/tmp/source.pdb", title: "source.pdb", extension: "pdb", renderer: "molstar", runtimePath: "/tmp/preview.html" };
 const controller = useSourceEditingController({ activeDocument: document, preferences: {},
-  pushErrorStatus: error => errors.push(error), setDockOpen() {}, setDockActiveTab() {},
+  pushErrorStatus: error => errors.push(error),
 });
 await controller.beginEditing(document);
+const sourceTab = useMoleculeStore.getState().tabs.find(tab => tab.pane === "right" && tab.location.kind === "tool" && tab.location.tool === "text");
+assert.equal(sourceTab?.location.sourcePath, document.path, "Edit Source stays bound to the requested molecule");
+await controller.beginEditing(document);
+assert.deepEqual(useMoleculeStore.getState().tabs.filter(tab => tab.pane === "right").map(tab => tab.id), [sourceTab.id], "Editing the same source reuses its right-group tab");
 controller.updateDraft(document, "ATOM draft\n");
 const draft = sessions[document.path];
+const callsBeforeWrongOwnerSave = calls.length;
+const draftBeforeWrongOwnerSave = sessions[document.path];
+await controller.save({ ...document, id: "another-document-at-same-path" });
+assert.equal(calls.length, callsBeforeWrongOwnerSave, "another document cannot save this session through native IPC");
+assert.equal(sessions[document.path], draftBeforeWrongOwnerSave, "another document cannot alter the original dirty session");
+const operation = controller.captureOperation(document);
 
 function shellActions() {
   useMoleculeStore.getState().setDocuments([document]);
@@ -73,20 +87,25 @@ for (const route of ["closeTab", "clearAllDocuments"]) {
   await actions[route](tabs[0].id);
   assert.deepEqual(useMoleculeStore.getState().tabs, tabs);
   assert.equal(sessions[document.path], draft);
+  assert.equal(operation.isCurrent(), true, "Cancel keeps the pending edit's document lifetime");
 }
 assert.equal(calls.filter(([command]) => command === "close_opened_source_documents").length, 0);
 assert.deepEqual(dialogs.at(-1)[2], { title: "Unsaved Source Changes", kind: "warning", okLabel: "Discard", cancelLabel: "Cancel" });
 
-let answer;
-confirm = () => new Promise(resolve => { answer = resolve; });
+let answer, promptShown;
+const promptReady = new Promise(resolve => { promptShown = resolve; });
+confirm = () => new Promise(resolve => { answer = resolve; promptShown(); });
 const prompting = controller.closeDocuments([document.id]);
+await promptReady;
 controller.updateDraft(document, "must not replace draft during confirmation");
 await controller.save(document);
 assert.equal(await controller.closeDocuments([document.id]), false, "overlapping closes cannot bypass the pending prompt");
 assert.equal(sessions[document.path], draft);
 assert.equal(controller.getWindowDirtySnapshot().closeTransitionActive, true);
+assert.equal(operation.isCurrent(), false, "an edit cannot write during the close prompt");
 answer(false);
 assert.equal(await prompting, false);
+assert.equal(operation.isCurrent(), true);
 assert.equal(controller.getWindowDirtySnapshot().closeTransitionActive, false);
 confirm = async () => { throw new Error("dialog unavailable"); };
 assert.equal(await controller.closeDocuments([document.id]), false);
@@ -97,6 +116,7 @@ confirm = async () => true;
 close = async () => { throw new Error("source_commit_uncertain"); };
 assert.equal(await controller.closeDocuments([document.id]), false);
 assert.equal(sessions[document.path], draft, "a rejected native release preserves the full editable draft");
+assert.equal(operation.isCurrent(), true, "a failed native release cannot invalidate pending edits");
 assert.equal(errors.length, 1);
 
 let release;
@@ -104,13 +124,15 @@ let closeStarted;
 const closing = new Promise(resolve => { closeStarted = resolve; });
 close = () => { closeStarted(); return new Promise(resolve => { release = resolve; }); };
 const pending = controller.closeDocuments([document.id]);
+await closing;
 controller.updateDraft(document, "must not replace draft during close");
 await controller.save(document);
 assert.equal(sessions[document.path], draft);
 assert.equal(controller.getWindowDirtySnapshot().closeTransitionActive, true);
-await closing;
 release();
 assert.equal(await pending, true);
+assert.equal(operation.isCurrent(), false, "the close acknowledgement permanently invalidates the pending edit");
+operation.release();
 assert.deepEqual(sessions, {});
 assert.equal(controller.getWindowDirtySnapshot().closeTransitionActive, false);
 assert.equal(calls.filter(([command]) => command === "close_source_edit_session").length, 0,
@@ -178,4 +200,77 @@ completeOpen({ handleId: "late-handle", content: "ATOM late\n", previewMode: "li
 await opening;
 assert.deepEqual(sessions, {});
 assert.deepEqual(calls.at(-1), ["close_source_edit_session", { request: { handleId: "late-handle" } }]);
+// Transferring a source draft freezes edits/save until the destination accepts,
+// preserves the original disk revision, and never asks to discard on commit.
+openSource = async () => ({ handleId: "transfer-handle", content: "ATOM original\n", previewMode: "live",
+  revision: { modifiedAt: 0, byteCount: 14, contentHash: "original" } });
+await controller.beginEditing(document);
+controller.updateDraft(document, "ATOM transferred draft\n");
+const transfer = controller.beginTransfer(document);
+assert.equal(controller.getWindowDirtySnapshot().closeTransitionActive, true);
+const beforeTransferCalls = calls.length;
+controller.updateDraft(document, "must not change during transfer");
+await controller.save(document);
+assert.equal(calls.length, beforeTransferCalls);
+assert.throws(() => controller.beginTransfer(document), /Wait for source editing/);
+assert.equal(await controller.closeDocuments(["unrelated-document"]), true,
+  "moving one source does not block closing unrelated documents");
+assert.equal(controller.getWindowDirtySnapshot().closeTransitionActive, true);
+assert.equal(await controller.finishTransfer(document, false), true);
+assert.equal(sessions[document.path].content, transfer.content);
+assert.equal(sessions[document.path].dirty, true);
+
+const receiver = useSourceEditingController({ activeDocument: document, preferences: {},
+  pushErrorStatus: error => errors.push(error),
+});
+openSource = async () => ({ handleId: "receiver-handle", content: "ATOM externally changed\n", previewMode: "live",
+  revision: { modifiedAt: 10, byteCount: 24, contentHash: "external" } });
+await receiver.receiveTransfer(document, transfer);
+assert.equal(sessions[document.path].dirty, true);
+assert.equal(sessions[document.path].content, transfer.content);
+assert.equal(sessions[document.path].baseContent, transfer.baseContent);
+assert.deepEqual(sessions[document.path].expectedRevision, transfer.expectedRevision,
+  "external disk changes remain a conflict, not an implicitly accepted revision");
+await assert.rejects(receiver.receiveTransfer(document, transfer), /already being edited/);
+assert.deepEqual(receiver.beginTransfer(document), transfer);
+await receiver.finishTransfer(document, false);
+
+controller.beginTransfer(document);
+confirm = async () => { throw new Error("a transfer must not ask to discard"); };
+const dialogCount = dialogs.length;
+assert.equal(await controller.finishTransfer(document, true), true);
+assert.equal(dialogs.length, dialogCount);
+assert.deepEqual(sessions, {});
+assert.equal(await controller.finishTransfer(document, true), false, "a consumed transfer cannot release twice");
+
+const recoveryPath = "/private/popout-scenes/11111111-1111-1111-1111-111111111111.molx";
+useMoleculeStore.getState().setDocuments([{ ...document, recoveryPath }]);
+useMoleculeStore.setState(state => ({ tabs: state.tabs.map(tab => ({ ...tab, back: [tab.location], forward: [tab.location] })) }));
+await controller.beginEditing(document);
+controller.updateDraft(document, "ATOM save transferred source\n");
+confirm = async () => true;
+saveSource = async () => { throw new Error("disk full"); };
+await controller.save(document);
+assert.equal(useMoleculeStore.getState().documents[0].recoveryPath, recoveryPath, "failed save keeps recovery");
+saveSource = async () => ({ revision: { modifiedAt: 20, byteCount: 29, contentHash: "saved" } });
+await controller.save(document);
+assert.equal(useMoleculeStore.getState().documents[0].recoveryPath, undefined);
+for (const tab of useMoleculeStore.getState().tabs) {
+  for (const location of [tab.location, ...tab.back, ...tab.forward]) assert.equal(location.recoveryPath, undefined);
+}
+// A restored/transferred tab can use a different renderer from the global
+// default. Editing its source must keep the runtime compatible with its owner.
+for (const renderer of ["molstar", "xyzrender-external", "grid2d"]) {
+  const previewDocument = { ...document, id: `preview-${renderer}`, renderer };
+  const previewController = useSourceEditingController({ activeDocument: previewDocument,
+    preferences: { rendererMode: renderer === "molstar" ? "xyzrender-external" : "molstar", theme: "dark" },
+    pushErrorStatus: error => errors.push(error),
+  });
+  await previewController.beginEditing(previewDocument);
+  previewController.updateDraft(previewDocument, "ATOM      1  N   GLY A   1      -1.204   0.176   0.000  1.00 20.00           N\nEND\n");
+  await previewController.applyPreview(previewDocument);
+  const previewCall = calls.filter(([command]) => command === "open_text_structure").at(-1);
+  assert.ok(previewCall, "valid draft must request a preview");
+  assert.deepEqual(previewCall[1].preferences, { rendererMode: renderer, theme: "dark" });
+}
 console.log("source close acknowledgement tests passed");

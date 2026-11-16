@@ -1,0 +1,52 @@
+{
+  "date": "2026-11-04",
+  "baseHead": "c474fe2f2",
+  "runtime": "vite-dev",
+  "fixture": "samples/mini.pdb",
+  "secondSource": "same source with x += 20 Angstrom; original serials retained",
+  "sourceSha256": "bc23f976fecd954dc1f597d92493ab008b5253b43270c81bf08f276301acd430",
+  "before": {
+    "status": "completed",
+    "sceneAtomCount": 18,
+    "exportedAtomCount": 9,
+    "lostAtoms": 9
+  },
+  "after": {
+    "singlePdb": {
+      "status": "completed",
+      "atomCount": 9,
+      "coordinatesMatch": true
+    },
+    "multiPdb": {
+      "ok": false,
+      "command": "export_scene_structure",
+      "error": {
+        "code": "ACTION_ERROR",
+        "message": "PDB export cannot preserve multiple scene structures yet. Export mmCIF to keep all structures."
+      }
+    },
+    "multiMmcif": {
+      "status": "completed",
+      "atomCount": 18,
+      "coordinatesAndElementsMatchBothInputsExactly": true,
+      "sha256": "410ec95c3d9a561f9e7269e8aaefea17c0f362075ade1967c0db4c784387d3eb"
+    },
+    "reopened": {
+      "document": {
+        "id": "browser-1uywgnf",
+        "path": "/OpenedFiles/burette-pdb-guard-all.cif",
+        "title": "burette-pdb-guard-all.cif",
+        "extension": "cif",
+        "renderer": "molstar",
+        "active": true
+      },
+      "sourceTextSha256": "sha256-410ec95c3d9a561f9e7269e8aaefea17c0f362075ade1967c0db4c784387d3eb",
+      "structure": {
+        "atomCount": 18,
+        "bondCount": 16,
+        "graph": "perceived",
+        "graphComplete": false
+      }
+    }
+  }
+}

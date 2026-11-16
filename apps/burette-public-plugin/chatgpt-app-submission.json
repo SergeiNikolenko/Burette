@@ -60,12 +60,12 @@
       "annotations": {
         "readOnlyHint": false,
         "openWorldHint": false,
-        "destructiveHint": false
+        "destructiveHint": true
       },
       "justifications": {
         "read_only_justification": "Edits only the ephemeral Ketcher surface in the current widget; it never mutates the source attachment or local files.",
         "open_world_justification": "Revision-checked actions stay inside the isolated Burette relay and do not publish content or call third-party systems.",
-        "destructive_justification": "Clear and replace affect only the transient widget state; saving stops at an explicit user-confirmation boundary."
+        "destructive_justification": "Clear and replace can discard the current transient sketch. Revision checks prevent stale edits, but do not provide durable undo or recovery. No source file is changed."
       }
     }
   },

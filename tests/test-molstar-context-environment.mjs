@@ -28,7 +28,7 @@ const receptor = await parseStructure(lines.filter(line => line.startsWith('ATOM
 const ligand = await parseStructure(lines.filter(line => line.startsWith('HETATM') && line.slice(17, 20) === 'NAD' && line[21] === 'A'), 'ligand');
 const pick = Structure.toStructureElementLoci(ligand);
 const { StateTransforms } = await import('@molstar/viewer/state-transforms');
-const queryLoci = new Function('window', 'molstarStructureRuntime', 'compositionQueryCache', `${functionSource('compositionQueryLoci')}; return compositionQueryLoci;`)(
+const queryLoci = new Function('window', 'molstarStructureRuntime', 'compositionQueryCache', `${functionSource('molstarQueryComponentType')}; ${functionSource('compositionQueryLoci')}; return compositionQueryLoci;`)(
   { molstar: { lib: { plugin: { StateTransforms } } } }, () => ({ Structure }), new WeakMap(),
 );
 const ligandRef = { cell: { obj: { data: ligand } } };

@@ -24,6 +24,7 @@ import { basename } from "../lib/sidebar-projects";
 import { pathExtension } from "../lib/file-routing";
 import { isTauriRuntime } from "../lib/tauri";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
+import { compressedName } from "../lib/compressed-files/formats";
 
 export function DocumentSurface({ path }: { path: string }) {
   const source = useDocumentSource(path);
@@ -106,7 +107,8 @@ function useDocumentSource(path: string): DocumentSourceState & { retry: () => v
     if (picked) return { kind: "blob", blob: picked, fileName: basename(path), identityKey: path };
     const virtualText = readBrowserDevVirtualTextDocument(path);
     if (virtualText !== null) {
-      return { kind: "text", text: virtualText, fileName: basename(path), identityKey: path };
+      // Decoded text of a compressed copy is the file inside: data.csv.gz shows as data.csv.
+      return { kind: "text", text: virtualText, fileName: compressedName(basename(path))?.innerName ?? basename(path), identityKey: path };
     }
     return {
       kind: "url",

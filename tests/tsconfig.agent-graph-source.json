@@ -1,0 +1,5 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "types": ["bun"], "strict": true },
+  "include": ["test-agent-source-prerequisite.test.ts", "test-agent-graph-input.test.ts", "../apps/desktop/src/**/*.d.ts"]
+}

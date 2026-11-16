@@ -1,0 +1,54 @@
+/* Crystal panel, powder diffraction and g(r). Layout only: colours come from the shell tokens. */
+.crystal-panel {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 12px;
+}
+.crystal-panel .workbench-actions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+.crystal-sites {
+  max-height: 160px;
+  min-width: 0;
+  overflow: auto;
+}
+.crystal-sites .workbench-table thead th {
+  top: 0;
+}
+.crystal-fill-group {
+  flex: 1 1 160px;
+}
+.powder-xrd-settings {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+}
+.powder-xrd-result {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  transition: opacity 120ms ease;
+}
+.powder-xrd-result[aria-busy="true"] {
+  opacity: 0.6;
+}
+.powder-xrd-peaks {
+  max-height: 180px;
+  min-width: 0;
+  overflow: auto;
+}
+.powder-xrd-peaks .workbench-table thead th {
+  top: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .powder-xrd-result {
+    transition: none;
+  }
+}

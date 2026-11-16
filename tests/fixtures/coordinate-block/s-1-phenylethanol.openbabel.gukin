@@ -1,0 +1,45 @@
+title
+s-1-phenylethanol RDKit ETKDGv3 MMFF94
+
+#
+# NB: Class I directives (e.g. memory, multiplicity, charge etc) go here
+#
+# For more information see: http://www.cfs.dl.ac.uk/docs/index.shtml
+#
+
+geometry angstrom
+    -2.36181544      0.33499170     -0.62328161   6   C
+    -1.57699152     -0.46330271      0.40896732   6   C
+    -2.05780297     -0.13034195      1.71053369   8   O
+    -0.08632355     -0.21678198      0.32728545   6   C
+     0.45930894      1.03254626      0.66331074   6   C
+     1.83544718      1.25205089      0.58702069   6   C
+     2.68280749      0.22650752      0.17366210   6   C
+     2.15525685     -1.01830064     -0.16373717   6   C
+     0.77863177     -1.23970598     -0.08789407   6   C
+    -3.43054628      0.10653853     -0.54652080   1   H
+    -2.02892134      0.10969941     -1.64157901   1   H
+    -2.26310263      1.41378887     -0.45811068   1   H
+    -1.78489986     -1.52956008      0.26341344   1   H
+    -1.33289632     -0.30605604      2.33531205   1   H
+    -0.19147459      1.84238787      0.98874296   1   H
+     2.24530018      2.22397750      0.84938987   1   H
+     3.75438690      0.39775097      0.11324956   1   H
+     2.81668363     -1.81787339     -0.48760918   1   H
+     0.38695157     -2.21831674     -0.35726422   1   H
+end
+
+
+basis 6-31G
+
+#
+# NB: Class II directives go here
+#
+# To perform a dft calculation with b3lyp and medium quadrature uncomment the below
+# dft b3lyp
+# dft quadrature medium
+#
+
+runtype scf
+
+enter

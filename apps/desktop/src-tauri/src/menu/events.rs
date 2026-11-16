@@ -49,6 +49,12 @@ const FORWARDED_COMMANDS: &[&str] = &[
     "structure.generate-3d",
     "structure.crest-generate",
     "structure.prism-prune",
+    "structure.optimize-geometry",
+    "structure.auto-optimize",
+    "structure.calculate-energy",
+    "structure.configure-optimization",
+    "structure.freeze-atoms",
+    "structure.unfreeze-atoms",
     "structure.xtb-optimize",
     "structure.xtb-properties",
     "structure.xtb-frequencies",
@@ -72,16 +78,22 @@ const FORWARDED_COMMANDS: &[&str] = &[
     "collection.transform.split-rows",
     "collection.merge-columns",
     "collection.merge-rows",
+    "collection.pivot",
+    "collection.unpivot",
+    "collection.merge-by-key",
+    "collection.record-view",
     "collection.reaction.add-smiles",
     "collection.reaction.extract-reactants",
     "collection.reaction.extract-catalysts",
     "collection.reaction.extract-products",
     "collection.reaction.extract-transformation",
     "collection.reaction.perform",
+    "collection.reaction.enumerate",
     "collection.delete-rows.selected",
     "collection.delete-rows.duplicates",
     "collection.delete-columns",
     "analyze.chemical-space",
+    "analyze.chart",
     "analyze.cluster",
     "analyze.diverse",
     "analyze.correlation-matrix",
@@ -96,6 +108,8 @@ const FORWARDED_COMMANDS: &[&str] = &[
     "database.retrieve-sql",
     "analyze.scaffolds",
     "analyze.rgroups",
+    "analyze.sar-table",
+    "analyze.matched-pairs",
     "analyze.substructure-count",
     "analyze.find-similar",
     "window.previous-tab",
@@ -276,7 +290,9 @@ fn emit_command_to_window<R: Runtime>(
         )
         .is_ok()
     {
-        let _ = window.emit(MENU_COMMAND_EVENT, ());
+        let _ = window
+            .app_handle()
+            .emit_to(window.label(), MENU_COMMAND_EVENT, ());
     }
 }
 
@@ -291,9 +307,10 @@ fn focused_window<R: Runtime>(app: &tauri::AppHandle<R>) -> Option<tauri::Webvie
     windows
         .values()
         .find(|window| window.is_focused().unwrap_or(false))
-        .or_else(|| windows.get("main"))
-        .or_else(|| windows.values().next())
         .cloned()
+        .or_else(|| {
+            crate::windows::focused_window_label(app).and_then(|label| windows.get(&label).cloned())
+        })
 }
 
 #[cfg(test)]

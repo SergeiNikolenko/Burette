@@ -1,0 +1,1 @@
+{"extends":"../tsconfig.json","compilerOptions":{"types":["bun"]},"files":["test-molecule-file-preview.test.tsx","../apps/desktop/src/lib/native-mcp-workspace.ts"],"include":["../apps/desktop/src/**/*.d.ts"]}

@@ -1,5 +1,7 @@
 #![allow(deprecated, unexpected_cfgs)]
 #![allow(clippy::items_after_test_module, clippy::too_many_arguments)]
+// The native menu state fixture is one large serde_json::json! literal.
+#![recursion_limit = "256"]
 
 mod commands;
 mod compute;
@@ -60,8 +62,7 @@ pub fn run() {
                 .cloned()
                 .collect();
             let paths = startup::file_args_from_argv(argv, cwd);
-            show_and_emit_open_documents(app, paths);
-            startup::emit_agent_session(app, session_dir);
+            show_and_emit_startup(app, paths, session_dir);
             deep_links::receive(app, links);
         }))
         .plugin(tauri_plugin_dialog::init())
@@ -125,11 +126,14 @@ pub fn run() {
                 .filter(|arg| arg.starts_with("burette") && arg.contains("://"))
                 .cloned()
                 .collect();
+            let startup_session =
+                startup::agent_session_from_argv(argv.clone(), std::env::current_dir().ok());
             let startup_paths = startup::file_args_from_argv(argv, std::env::current_dir().ok());
             // A fresh install opened on its own plays the first-launch opening.
             let entrance = if cfg!(target_os = "macos")
                 && startup_paths.is_empty()
                 && startup_links.is_empty()
+                && startup_session.is_none()
                 && app.state::<window_state::WindowStateRegistry>().is_fresh()
             {
                 windows::WindowEntrance::Intro
@@ -145,6 +149,7 @@ pub fn run() {
             menu::configure_menu(app)?;
             if launch_mode.is_register() && startup_paths.is_empty() {
                 windows::hide_workspace_application(app.handle());
+                startup::finish_workspace_restoration(app.handle());
             } else {
                 preview::xyzrender::warmup_renderer(preview::xyzrender::XyzrenderWarmup::Startup);
                 let initial_app = app.handle().clone();
@@ -152,9 +157,8 @@ pub fn run() {
                     if let Err(error) = windows::restore_workspace_windows(&initial_app, entrance) {
                         eprintln!("failed to restore Burette workspaces: {error}");
                     }
-                    if !startup_paths.is_empty() {
-                        show_and_emit_open_documents(&initial_app, startup_paths);
-                    }
+                    show_and_emit_startup(&initial_app, startup_paths, startup_session);
+                    startup::finish_workspace_restoration(&initial_app);
                     deep_links::receive(&initial_app, startup_links);
                 };
                 #[cfg(target_os = "macos")]
@@ -233,6 +237,7 @@ pub fn run() {
                 commands::rgroups::rgroup_runtime_status,
                 commands::rgroups::rgroup_decompose,
                 commands::rgroup_results::rgroup_store_results,
+                commands::interaction_diagram::interaction_diagram,
                 commands::descriptors::descriptor_calculate,
                 commands::descriptors::descriptor_calculate_grid,
                 commands::descriptors::descriptor_start_grid,
@@ -310,6 +315,20 @@ pub fn run() {
                 perf_trace::append_perf_trace,
                 preview::trajectory::read_indexed_trajectory_frame,
                 commands::shell::open_external_url,
+                commands::avogadro_plugins::fetch_avogadro_plugin_index,
+                commands::avogadro_plugins::open_avogadro_plugin_link,
+                commands::avogadro_plugins::avogadro_plugins_installed,
+                commands::avogadro_plugins::avogadro_plugin_install,
+                commands::avogadro_plugins::avogadro_plugin_remove,
+                commands::avogadro_plugins::avogadro_plugin_prepare,
+                commands::avogadro_plugins::avogadro_plugin_run,
+                commands::avogadro_plugins::avogadro_plugin_options,
+                commands::avogadro_plugins::avogadro_plugin_cancel,
+                commands::energy_models::energy_models_list,
+                commands::energy_models::energy_model_open,
+                commands::energy_models::energy_model_evaluate,
+                commands::energy_models::energy_model_evaluate_batch,
+                commands::energy_models::energy_model_close,
                 commands::shell::existing_paths,
                 commands::shell::watch_project_roots,
                 commands::shell::open_new_workspace_window,
@@ -319,6 +338,8 @@ pub fn run() {
                 commands::shell::reveal_path,
                 commands::file_operations::operate_sidebar_file,
                 commands::file_drag::start_file_drag,
+                commands::tab_drag::start_tab_drag,
+                commands::workspace_page::grid_transfer_source_version,
                 commands::tab_thumbnail::capture_tab_thumbnail,
                 commands::context_menu::popup_macos_context_menu,
                 commands::folder_contents::read_folder_contents,
@@ -385,16 +406,10 @@ pub fn run() {
             }
         }
         #[cfg(target_os = "macos")]
-        RunEvent::Reopen {
-            has_visible_windows,
-            ..
-        } => {
-            if !has_visible_windows {
-                let _ = windows::focus_or_create_workspace_window(
-                    app,
-                    Some(windows::MAIN_WINDOW_LABEL),
-                );
-            }
+        RunEvent::Reopen { .. } => {
+            // A visible inspector does not replace the main workspace. Reuse
+            // the last workspace, unminimizing it, or create one if none remain.
+            let _ = windows::focus_or_create_workspace_window(app, None);
         }
         RunEvent::ExitRequested { code, api, .. } if menu::should_prevent_exit(app) => {
             api.prevent_exit();
@@ -409,6 +424,7 @@ pub fn run() {
                 menu::request_quit(app);
             }
         }
+        RunEvent::Exit => commands::energy_models::close_all(),
         _ => {}
     });
 }
@@ -436,7 +452,19 @@ fn packaged_compute_service_path() -> Option<PathBuf> {
 }
 
 fn show_and_emit_open_documents<R: tauri::Runtime>(app: &tauri::AppHandle<R>, paths: Vec<String>) {
-    if paths.is_empty() || menu::exit_transition_is_active(app) {
+    startup::route_external_open_documents(app, paths);
+}
+
+fn show_and_emit_startup<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    paths: Vec<String>,
+    session_dir: Option<String>,
+) {
+    if session_dir.is_none() {
+        show_and_emit_open_documents(app, paths);
+        return;
+    }
+    if menu::exit_transition_is_active(app) {
         return;
     }
     let preferred_label = windows::focused_window_label(app);
@@ -445,6 +473,7 @@ fn show_and_emit_open_documents<R: tauri::Runtime>(app: &tauri::AppHandle<R>, pa
         return;
     };
     startup::signal_open_documents_for_window(app, window.label(), paths);
+    startup::emit_agent_session(app, window.label(), session_dir);
 }
 
 #[cfg(target_os = "macos")]

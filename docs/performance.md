@@ -283,6 +283,29 @@ the query token changes, and retains the existing 100,000-ID bridge limit.
 `tests/test-grid-filter-performance.mjs` exercises these production paths with
 bounded fixtures and counts accesses/requests without chemistry calculations.
 
+The Chart dock tab reads whole columns with `collectionChartRequestData`
+(`requestId`, `subscriberId`, and up to six `columns` of `{ id, valueType:
+"number" | "text" }`). The grid answers `collectionChartData` with
+`sourceRevision`, `sourceRecordIds`, one `values` array per column in the same
+row order (numbers or `null`; text cut at 120 characters), and `total`, or
+`failed: true`. Rows are
+capped at the 100,000-ID bridge limit rather than the 20,000-record
+Chemical Space limit, which is unchanged. In memory the grid answers from its
+rows with pending edits applied. A paged desktop collection is read by one walk
+over its unfiltered pages in index order for all requested columns together; a
+newer request with the same `subscriberId`, an edit, or a document change ends
+a walk without an answer. The chart takes selection from `gridMenuStateChanged`
+and filtered rows from the Chemical Space visibility subscription described
+above, sends selection back as `chemicalSpaceSelectionChanged` with
+`filterToSelection: false`, and re-reads rows when `gridDirtyChanged` or
+`chemicalSpaceIndexState` reports another revision than the answer carried, or
+when a `gridFilterModel` shows a new value range for a charted column of an
+in-memory collection. The scatter chart paints into a pixel buffer:
+`tests/test-collection-chart-performance.test.ts` holds a pan-and-zoom frame of
+10,000 rows (project, paint, pick) under 16.7 ms with antialiased points, and
+of 100,000 rows under 16.7 ms with the solid points used while the view moves
+and under 50 ms for the antialiased frame painted when it rests.
+
 `scripts/perf-smoke.sh` includes an opt-in FTS perf smoke:
 
 ```bash

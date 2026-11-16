@@ -62,3 +62,53 @@ runs offline because its transport is local IPC/browser adaptation. It does not
 retry side effects or persist paths, and a late response cannot populate another
 file's menu. Existing shell/document stores and bridge commands remain owners
 of mutations and workspace state.
+
+
+## Source Draft Recovery
+
+The single `SourceEditingProvider` renders the controller's pending recovery
+request. Close or Edit source exposes a retired draft as read-only text; Save
+copy uses its original source format and leaves the restored scene open. The draft remains available after Cancel or Save copy; only explicit Discard
+removes it. Request and source-owner checks prevent late copies from changing a
+later scene or recovery request.
+
+```bash
+bun run test:source-draft-recovery
+bun run typecheck:source-draft-recovery
+```
+
+
+## Logical XYZ Geometry Source
+
+A validated XYZ source inside MOLX is admitted only by Geometry. Its session keeps
+its original archive path, exact source text, Original asset and scientific source
+owner. Preview sends the retained runtime Geometry lease and viewer target and
+becomes current only after the matching applied ACK. Restore, replacement, close
+and unmount revoke pending reads and writes; retired dirty drafts use recovery.
+
+Geometry may pass `beginEditing` its pre-gesture `geometryBinding` to avoid waiting
+for its own transient preview. Admission checks the binding target and baseline;
+it never reads a new lease for an already computed edit. Raw XYZ keeps its Text
+preview lane and exact source history. Its baseline comparison projects only the
+one leading BOM consumed by the renderer's UTF-8 loader; ownership always uses
+source generation and viewer identity. Logical MOLX text is compared exactly.
+
+Topology edits in a logical XYZ source require the row editor's exact atom
+provenance and a source-owned scene/measurement capture before recording a draft.
+The same Geometry lease and scene receipt are checked before generation and
+promotion; a new renderer never grants authority to an old computed edit.
+Revision snapshots restore objects whose anchors did not exist in the previous
+scene; surviving objects keep the user's latest settings. Owned layers
+and selection retain surviving source atoms; measurements missing an anchor are
+absent for that revision. Unknown native metadata, focus/decorators, and unmapped
+Text edits fail closed while the previous scene and recoverable draft remain.
+The receiver, XYZ measurement transfer and Mol* topology-scene adapter must ship
+together. Older receivers refuse preflight before source publication. These are
+private preview actions, not additions to the public agent CLI protocol.
+
+Browser dirty-source closes use `use-source-close-confirmation.ts` and the existing
+source-editing provider to host the shared Atlas AlertDialog. The source owner
+holds the close transition through the answer and checkpoint acknowledgement;
+Cancel or unmount preserves the draft. Tauri uses its native confirmation, and
+browser `beforeunload`, Grid/scene guards and retired-draft recovery remain separate.
+Run `vp run test:browser-source-close-dialog` and `vp run check:browser-source-close-dialog`.

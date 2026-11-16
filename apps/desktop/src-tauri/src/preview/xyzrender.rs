@@ -509,6 +509,13 @@ struct XyzrenderBatchHelperLaunch {
     envs: Vec<(&'static str, String)>,
 }
 
+/// The interpreter of the xyzrender runtime and the environment it needs. Other
+/// Python engines run in it for its scientific packages (RDKit, NumPy, SciPy).
+pub(crate) fn xyzrender_runtime_python() -> Option<(PathBuf, Vec<(&'static str, String)>)> {
+    let script = resolve_xyzrender_executable().ok()?;
+    xyzrender_batch_helper_launch(&script).map(|launch| (launch.program, launch.envs))
+}
+
 fn xyzrender_batch_helper_launch(script: &Path) -> Option<XyzrenderBatchHelperLaunch> {
     bundled_xyzrender_python_launch(script).or_else(|| {
         python_interpreter_from_script(script).map(|program| XyzrenderBatchHelperLaunch {

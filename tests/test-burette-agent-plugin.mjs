@@ -62,7 +62,7 @@ assert.equal(compatibility.bundle.relativePath, "plugins/burette-agent");
 
 const mcpConfig = JSON.parse(await read(".mcp.json"));
 assert.equal(mcpConfig.mcpServers.burette_agent_mcp.command, "node");
-assert.deepEqual(mcpConfig.mcpServers.burette_agent_mcp.args, ["./mcp/lib/server-bundle.mjs", "--stdio"]);
+assert.deepEqual(mcpConfig.mcpServers.burette_agent_mcp.args, ["--max-semi-space-size=1", "./mcp/lib/server-bundle.mjs", "--stdio"]);
 assert.deepEqual(mcpConfig.mcpServers.burette_agent_mcp.icons, [
   { src: "./assets/composer-icon.png", mimeType: "image/png", sizes: ["32x32"] },
   { src: "./assets/app-icon.png", mimeType: "image/png", sizes: ["512x512"] },
@@ -317,6 +317,7 @@ for (const asset of [
   "scripts/mvs-story-templates.mjs",
   "scripts/install-local.mjs",
   "scripts/preserve-native-widget.mjs",
+  "python/burette_workbench.py",
   "skills/mvs-story/references/molviewspec-authoring.md",
   "assets/mvs-story-templates/aligned-structure-comparison.json",
   "assets/mvs-story-templates/binding-site-tour.json",
@@ -336,15 +337,18 @@ assert.equal(packedFiles.has("scripts/rdkit_conformer.py"), false, "browser shel
 
 for (const entrypoint of ["browser-shell-dist/index.html", "browser-shell-dist/index.js"]) {
   const source = await read(entrypoint);
-  for (const match of source.matchAll(/["'`](?:\.\/)?(assets\/[^"'`?#\s]+)["'`]/gu)) {
+  // Packaged files carry an extension; MOLX archive entry prefixes such as `assets/burette-science-` do not.
+  for (const match of source.matchAll(/["'`](?:\.\/)?(assets\/[^"'`?#\s]+\.[a-z0-9]+)["'`]/gu)) {
     const reference = path.posix.normalize(match[1]);
     if (!reference.startsWith("assets/")) continue;
     const referencedAsset = path.posix.join("browser-shell-dist", reference);
     assert.equal(packedFiles.has(referencedAsset), true, `npm package is missing ${referencedAsset}`);
   }
 }
-const browserShellIndex = await read("browser-shell-dist/index.js");
-assert.match(browserShellIndex, /molstar-preset-preview-controller\.js/);
+// The shell's entry and chunks load the controller; the editor frame's embedded viewer does not count.
+const shellScripts = [...packedFiles].filter(file => /^browser-shell-dist\/(?:index\.js|assets\/[^/]+\.js)$/u.test(file));
+const shellSources = await Promise.all(shellScripts.map(read));
+assert.equal(shellSources.some(source => source.includes("molstar-preset-preview-controller.js")), true, "the browser shell must load the Mol* preset preview controller");
 
 const bundledServerSource = await read("mcp/lib/server-bundle.mjs");
 for (const match of bundledServerSource.matchAll(/["']\.\/(server-chunk-[^"'/?#\s]+\.mjs)["']/gu)) {

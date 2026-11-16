@@ -1,0 +1,151 @@
+{
+  "runtime": "prebuilt-static",
+  "tensorUnits": "angstrom^2",
+  "referenceTensor": [
+    0.1,
+    0.2,
+    0.3,
+    0.01,
+    0.02,
+    0.03
+  ],
+  "movingSourceTensor": [
+    0.2,
+    0.1,
+    0.3,
+    -0.01,
+    -0.03,
+    0.02
+  ],
+  "tensorOrder": [
+    "U[1][1]",
+    "U[2][2]",
+    "U[3][3]",
+    "U[1][2]",
+    "U[1][3]",
+    "U[2][3]"
+  ],
+  "stages": {
+    "before": [
+      {
+        "atoms": 4,
+        "anisotropicAtoms": 4,
+        "firstTensor": [
+          0.1,
+          0.2,
+          0.3,
+          0.01,
+          0.02,
+          0.03
+        ],
+        "maxTensorError": 0.0,
+        "maxCoordinateErrorAngstrom": 0.0
+      },
+      {
+        "atoms": 4,
+        "anisotropicAtoms": 4,
+        "firstTensor": [
+          0.2,
+          0.1,
+          0.3,
+          -0.01,
+          -0.03,
+          0.02
+        ],
+        "maxTensorError": 0.0,
+        "maxCoordinateErrorAngstrom": 0.0
+      }
+    ],
+    "after": [
+      {
+        "atoms": 4,
+        "anisotropicAtoms": 4,
+        "firstTensor": [
+          0.1,
+          0.2,
+          0.3,
+          0.01,
+          0.02,
+          0.03
+        ],
+        "maxTensorError": 0.0,
+        "maxCoordinateErrorAngstrom": 0.0
+      },
+      {
+        "atoms": 4,
+        "anisotropicAtoms": 4,
+        "firstTensor": [
+          0.1,
+          0.2,
+          0.3,
+          0.01,
+          0.02,
+          0.03
+        ],
+        "maxTensorError": 0.0,
+        "maxCoordinateErrorAngstrom": 0.0
+      }
+    ],
+    "reexport": [
+      {
+        "atoms": 4,
+        "anisotropicAtoms": 4,
+        "firstTensor": [
+          0.1,
+          0.2,
+          0.3,
+          0.01,
+          0.02,
+          0.03
+        ],
+        "maxTensorError": 0.0,
+        "maxCoordinateErrorAngstrom": 0.0
+      },
+      {
+        "atoms": 4,
+        "anisotropicAtoms": 4,
+        "firstTensor": [
+          0.1,
+          0.2,
+          0.3,
+          0.01,
+          0.02,
+          0.03
+        ],
+        "maxTensorError": 0.0,
+        "maxCoordinateErrorAngstrom": 0.0
+      }
+    ],
+    "reexport2": [
+      {
+        "atoms": 4,
+        "anisotropicAtoms": 4,
+        "firstTensor": [
+          0.1,
+          0.2,
+          0.3,
+          0.01,
+          0.02,
+          0.03
+        ],
+        "maxTensorError": 0.0,
+        "maxCoordinateErrorAngstrom": 0.0
+      },
+      {
+        "atoms": 4,
+        "anisotropicAtoms": 4,
+        "firstTensor": [
+          0.1,
+          0.2,
+          0.3,
+          0.01,
+          0.02,
+          0.03
+        ],
+        "maxTensorError": 0.0,
+        "maxCoordinateErrorAngstrom": 0.0
+      }
+    ]
+  },
+  "transformedTensorsCorrect": true
+}

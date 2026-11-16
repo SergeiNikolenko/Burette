@@ -4,7 +4,7 @@ import React, { act } from "react";
 const browser = new Window();
 for (const key of ["window", "document", "navigator", "HTMLElement", "Node", "Event", "MutationObserver", "getComputedStyle"] as const) Object.defineProperty(globalThis, key, { configurable: true, value: key === "window" ? browser : browser[key] });
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-const scene = () => ({ id: "scene", path: "/cache/scene.pdb", title: "My scene", sceneSourcePaths: ["/a.pdb", "/b.pdb"], sceneUnsaved: true });
+const scene = () => ({ id: "scene", path: "/cache/scene.pdb", title: "My scene", extension: "pdb", sceneSourcePaths: ["/a.pdb", "/b.pdb"], sceneUnsaved: true });
 let documents = [scene()];
 const snapshot = mock(async () => ({ dataBase64: "UEsAAf8=" }));
 const save = mock(async (): Promise<string | null> => "/saved.molx");

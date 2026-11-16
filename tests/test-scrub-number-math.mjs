@@ -10,6 +10,10 @@ import {
   normalizeNumberFieldBounds,
   preserveDisplayDraft,
   quantizeNumber,
+  getDecimalPlaces,
+  getValueDecimalPlaces,
+  resolveQuantizeStep,
+  countDraftDecimalPlaces,
   resolveActiveStep,
   resolveDisplayDecimalPlaces,
   resolveFineStep,
@@ -27,9 +31,22 @@ for (const [value, step, expected] of [
   [0.956, 0.01, 0.96],
   [1.274, 0.05, 1.25],
   [-1.274, 0.05, -1.25],
+  [179.9999918842198, 1e-13, 179.9999918842198],
+  [1.23456e-7, 1e-10, 1.235e-7],
+  [-1.23456e-7, 2.5e-10, -1.235e-7],
+  [179.9999918842198, 1e-300, 179.9999918842198],
 ]) {
   assert.equal(quantizeNumber(value, step), expected, `quantize ${value} by ${step}`);
 }
+
+assert.equal(getDecimalPlaces(2.5e-10), 11);
+assert.equal(getValueDecimalPlaces(1e-8), 8);
+assert.equal(getValueDecimalPlaces(1e-300), 300);
+assert.equal(countDraftDecimalPlaces('1.' + '2'.repeat(200)), 100);
+const preciseAngle = 179.9999918842198;
+assert.equal(quantizeNumber(preciseAngle, resolveQuantizeStep({
+  step: 1, fineStep: 0.1, currentValue: preciseAngle, userDecimalPlaces: 13,
+})), preciseAngle);
 
 assert.equal(resolveFineStep(0.005), 0.0005);
 assert.equal(resolveActiveStep({ step: 1, shiftStep: 10, fineStep: 0.1 }), 1);
@@ -50,6 +67,8 @@ assert.equal(hasExceededScrubThreshold({ clientX: 13, clientY: 0 }, 10, 0, "hori
 assert.equal(hasExceededScrubThreshold({ clientX: 14, clientY: 0 }, 10, 0, "horizontal"), true);
 
 assert.equal(sanitizeNumericDraft("-12.50"), "-12.50");
+assert.equal(sanitizeNumericDraft("1,25"), "1.25");
+assert.equal(sanitizeNumericDraft("1,2,3", "1.2"), "1.2");
 assert.equal(sanitizeNumericDraft("1e5", "12"), "12");
 assert.equal(sanitizeNumericDraft("1.2.3", "1.2"), "1.2");
 assert.equal(preserveDisplayDraft("12.50", 12.5, "12.5"), "12.50");

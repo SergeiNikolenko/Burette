@@ -1,0 +1,9 @@
+/* Maestro draws every ligand bond in plain ink; only the element labels carry colour.
+   Bond gradients are recoloured per theme, detected from the carbon stop colour
+   the drawer writes as rgb() (light C #000000, dark C #ebebeb), so exports keep it too. */
+#draw-area:has(stop[stop-color="rgb(0, 0, 0)"]) [id^="draw-area_s_"][id$="_g"] stop {
+  stop-color: #000000;
+}
+#draw-area:has(stop[stop-color="rgb(235, 235, 235)"]) [id^="draw-area_s_"][id$="_g"] stop {
+  stop-color: #ebebeb;
+}

@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "types": ["bun"], "strict": true },
+  "include": [
+    "fixtures/coordinate-export-compiler.ts",
+    "../apps/desktop/src/components/geometry-panel.tsx",
+    "../apps/desktop/src/components/workbench/zmatrix-panel.tsx",
+    "../apps/desktop/src/**/*.d.ts"
+  ]
+}

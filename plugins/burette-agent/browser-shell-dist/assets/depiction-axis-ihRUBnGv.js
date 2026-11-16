@@ -1,0 +1,2 @@
+var e={1:[.87,.87,.87],6:[.87,.87,.87],7:[.45,.62,1],8:[1,.45,.45],35:[.86,.56,.36],53:[.78,.5,.96]};function t(e){let t=[];for(let n of e.split(`
+`).slice(4)){let e=/^\s*(-?\d+\.\d+)\s+(-?\d+\.\d+)\s+-?\d+\.\d+\s+[A-Za-z*]/.exec(n);if(e)t.push([Number(e[1]),Number(e[2])]);else if(t.length)break}if(t.length<2)return 0;let n=t.reduce((e,t)=>e+t[0],0)/t.length,r=t.reduce((e,t)=>e+t[1],0)/t.length,i=0,a=0,o=0;for(let[e,s]of t)i+=(e-n)**2,a+=(s-r)**2,o+=(e-n)*(s-r);return .5*Math.atan2(2*o,i-a)*180/Math.PI}export{e as n,t};

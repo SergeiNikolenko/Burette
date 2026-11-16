@@ -7,6 +7,16 @@ contains only documents that describe the active project.
 
 - [Interaction performance audit, 2026-11-16](performance-audit-2026-11-16.md):
   measured interaction fixes, production browser comparisons, native VM evidence, and coverage limits.
+- [Avogadro capability adoption](avogadro-adoption.md): complete twelve-stage
+  functional contract and scientific acceptance requirements.
+- [Avogadro staged delivery plan](avogadro-stage-plan.md): the order of the
+  remaining parity work, one finished workflow per stage.
+- [Feature gap stage plan](feature-gap-stage-plan.md): stages 14–26 for what
+  Avogadro, Chemcraft and DataWarrior still do that Burette does not.
+- [Avogadro parity acceptance ledger](avogadro-parity-checklist.md): adopted
+  foundations, partial workflows and remaining surface-specific evidence.
+- [Avogadro extension contracts](avogadro-extensions.md): pinned candidate
+  protocols, licenses, resource publication and remaining adapter scope.
 - [Performance and reliability audit, 2026-09-20](performance-reliability-audit-2026-09-20.md):
   22 source-backed findings, isolated mechanism checks, priorities and acceptance scenarios.
 - [macOS product quality priorities](macos-product-quality.md): calendar release
@@ -16,6 +26,29 @@ contains only documents that describe the active project.
 - [Changelog](../CHANGELOG.md): pointer to GitHub Releases, which are the
   human-readable changelog for each version.
 - [Architecture](architecture.md): repository boundaries and runtime shape.
+- [Graph editing and molecular properties](graph-editing-and-properties.md):
+  document-owned graph history, scientific operations and focused acceptance scope.
+- [Internal coordinate editing](internal-coordinate-editing.md): Z-matrix definitions,
+  scientific revision invariants, controls and focused validation.
+- [Peptide graph prerequisite](peptide-graph-builder.md): neutral residue graphs,
+  terminal chemistry, stereochemistry and the remaining 3D builder scope.
+- [Peptide geometry](peptide-geometry.md): named 3D backbone templates, charged termini, and mmCIF roundtrip.
+- [Hydrogens and pH protonation](hydrogen-protonation.md): Add/Remove Hydrogens
+  placement and the cited pKa rule table behind *Adjust hydrogens for pH*.
+- [Polymer builder](polymer-builder.md): attachment-directed repeat placement,
+  source/copy mapping and supported terminal chemistry.
+- [Quantum input templates](quantum-input-export.md): engine routes, coordinate
+  conventions, constraints, periodic cells and template validation.
+- [Chemical JSON graph source prerequisite](cjson-graph-source.md): explicit bonds,
+  source atom order, Cartesian sets and graph-preserving import constraints.
+- [Biological assemblies](biological-assemblies.md): explicit deposited operators,
+  materialized atom and connection identity, export limits and validation scope.
+- [Native scene composition](native-scene-composition.md): bounded live MOLX counts,
+  chain controls and viewer ownership.
+- [Scientific scene format](scientific-scene-format.md): MOLX attachment protocol,
+  scientific validation, source identity and runtime asset ownership.
+- [Clean scientific attachments](browser-scientific-attachments.md): tab-scoped MCD
+  admission, shared storage limits and exact-source reopening.
 - [Repository layout](repository-layout.md): top-level code map, app surfaces,
   checked-in samples, and scratch-file policy.
 - [Product direction](product.md): current product surfaces, users, core jobs,
@@ -40,6 +73,8 @@ contains only documents that describe the active project.
   PRISM runs on SSH hosts, reattach after restart, results download.
 - [Renderer support](renderer-support.md): renderer modes, supported formats,
   Ketcher editing scope, artifacts, and checks.
+- [Ligand interaction diagrams](interaction-diagrams.md): where the 2D maps
+  appear, designs, the bundled engine, network use and page messages.
 - [Mesoscale viewer implementation plan](mesoscale-viewer-implementation-plan.md):
   shipped Mol* Mesoscale Explorer integration (#556) — the shipped-reality
   summary, format/routing contract, and the historical staged plan it
@@ -126,3 +161,5 @@ contains only documents that describe the active project.
   active docs graph.
 - Verify doc claims against code, scripts, or runtime output before changing
   docs.
+
+- [Scalar field source ownership](scalar-field-binding.md): scientific/native source correspondence and retained calculation receipts.

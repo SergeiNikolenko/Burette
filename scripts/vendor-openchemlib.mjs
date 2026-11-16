@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdir } from 'node:fs/promises';
+import { copyFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 
 const repoRoot = path.resolve(import.meta.dirname, '..');
@@ -24,4 +24,5 @@ if (!result.success) {
   for (const log of result.logs) console.error(log);
   process.exit(1);
 }
+await copyFile(path.join(repoRoot, 'node_modules/openchemlib/LICENSE'), path.join(outputDir, 'LICENSE'));
 console.log(`Vendored ${path.relative(repoRoot, output)} as an OpenChemLib browser global.`);

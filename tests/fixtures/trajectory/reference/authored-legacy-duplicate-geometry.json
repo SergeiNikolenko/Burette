@@ -1,0 +1,107 @@
+{
+  "format": "xyz",
+  "atoms": [
+    {
+      "element": "C",
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "element": "O",
+      "x": 1,
+      "y": 0,
+      "z": 0
+    }
+  ],
+  "frames": [
+    {
+      "atoms": [
+        {
+          "element": "C",
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        {
+          "element": "O",
+          "x": 1,
+          "y": 0,
+          "z": 0
+        }
+      ],
+      "energyHartree": -1.25
+    },
+    {
+      "atoms": [
+        {
+          "element": "C",
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        {
+          "element": "O",
+          "x": 1,
+          "y": 0,
+          "z": 0
+        }
+      ],
+      "energyHartree": -2.5
+    }
+  ],
+  "modes": [
+    {
+      "index": 0,
+      "frequencyCm1": 100,
+      "displacements": [
+        [
+          0.1,
+          0,
+          0
+        ],
+        [
+          -0.1,
+          0,
+          0
+        ]
+      ]
+    }
+  ],
+  "orbitals": [
+    {
+      "index": 0,
+      "spin": "alpha",
+      "occupancy": 2,
+      "energyHartree": -0.5,
+      "coefficients": []
+    }
+  ],
+  "spectra": {
+    "kind": "scientific-spectra",
+    "version": 1,
+    "source": {
+      "format": "cjson",
+      "scope": "file",
+      "name": "authored-file-nmr"
+    },
+    "atomicNumbers": [
+      6,
+      8
+    ],
+    "spectra": [
+      {
+        "kind": "nmr",
+        "quantity": "native-input",
+        "atomIndices": [
+          0,
+          1
+        ],
+        "valuesPpm": [
+          10,
+          20
+        ]
+      }
+    ]
+  }
+}

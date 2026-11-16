@@ -1,0 +1,1 @@
+async function e(e){let t=typeof e==`string`?new TextEncoder().encode(e):e,n=await crypto.subtle.digest(`SHA-256`,t);return Array.from(new Uint8Array(n),e=>e.toString(16).padStart(2,`0`)).join(``)}function t(e,t,n=.001){if(e.length!==t.length)return!1;for(let r=0;r<e.length;r++)if(!(Math.abs(e[r]-t[r])<=n))return!1;return!0}export{e as n,t};

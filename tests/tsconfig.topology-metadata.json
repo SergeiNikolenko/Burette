@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.logical-topology.json",
+  "include": ["../apps/desktop/src/**/*.d.ts", "./test-logical-xyz-topology-metadata.test.tsx"]
+}

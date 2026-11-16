@@ -94,6 +94,66 @@ for (const helper of ["molstarStructureAtomSerials", "molstarChainAtomSerials", 
   assert.match(fn(helper), /StructureProperties\.atom\.id\(location\)/, helper);
 }
 
+// Execute the actual fallback boundary: overlapping serials from two scene
+// structures must never reach the single-source filter and report success.
+{
+  let structures = [{ structure: { elementCount: 9 } }], reads = 0;
+  const context = {
+    molstarCurrentStructuresForExport: () => structures,
+    molstarCurrentAtomSerialsForExport: () => { reads++; return new Set([1, 2, 3]); },
+    molstarExportFileName: () => "mini.modified.pdb",
+    molstarPdbExportPayloadForAtomSerials: (serials, name) => ({ name, count: serials.size }),
+  };
+  const exportPdb = runInNewContext(`${fn("molstarModifiedPdbExportPayload")}\nmolstarModifiedPdbExportPayload`, context);
+  assert.equal(exportPdb().count, 3);
+  structures = [...structures, { structure: { elementCount: 9 } }];
+  assert.throws(() => exportPdb(), /Export mmCIF to keep all structures/);
+  assert.equal(reads, 1, "multi-structure failure must precede source serial collection");
+}
+
+// Separate source namespaces must stay in separate CIF blocks, including when
+// names collide; never pass unrelated models to the first-model category copier.
+{
+  const first = { metadata: 'first' }, second = { metadata: 'second' };
+  let entries = [{ name: 'same', structure: first }], emptySecond = false;
+  const calls = [];
+  const exportCif = runInNewContext(`${fn('molstarModifiedMmCifExportPayload')}\nmolstarModifiedMmCifExportPayload`, {
+    molstarCurrentStructuresForExport: () => entries,
+    molstarExportFileName: () => 'scene.cif',
+    molstarExportToMmCif: () => (name, structure, binary, options) => {
+      assert.ok(structure === first || structure === second);
+      assert.equal(binary, false);
+      assert.equal(options.copyAllCategories, true);
+      calls.push(name);
+      return emptySecond && structure === second ? '' : `data_${name}\n_entry.id ${structure.metadata}\n#\n`;
+    },
+  });
+  assert.equal(exportCif().text, 'data_same\n_entry.id first\n#\n');
+  entries.push({ name: 'same', structure: second });
+  const combined = exportCif();
+  assert.equal(combined.count, 2);
+  assert.equal(new Set(calls.slice(1)).size, 2);
+  assert.match(combined.text, /_entry.id first[\s\S]*data_burette_modified_structures_2\n_entry.id second/);
+  emptySecond = true;
+  assert.throws(exportCif, /empty mmCIF export/);
+}
+
+// A source-backed filter must not label SDF bytes as a successful PDB file.
+{
+  let source = { format: "sdf", data: "Water\n  Burette\n\n  3  2  0  0  0  0            999 V2000\nM  END\n" };
+  const context = {
+    molstarContextSourceEntryForActiveConfig: () => source,
+    molstarExportFileName: () => "water.modified.pdb",
+    pdbSerialFromLine: line => Number(line.slice(6, 11).trim()),
+    filteredPdbConectLine: () => null,
+  };
+  const exportPdb = runInNewContext(`${exportPayload}\nmolstarPdbExportPayloadForAtomSerials`, context);
+  assert.throws(() => exportPdb(new Set([1, 2, 3])), /Export mmCIF to keep the scene geometry/);
+  const atom = "HETATM    1  O1  MOL A   1       0.000   0.000   0.000  1.00 10.00           O";
+  source = { format: "pdb", data: `${atom}\nEND\n` };
+  assert.equal(exportPdb(new Set([1])).text, `${atom}\nEND\n`);
+}
+
 // Split and extract reach the scene's structure even when no pick supplied one.
 assert.match(fn("splitMolstarStructureIntoChains"), /molstarTargetStructureData\(target\)/);
 assert.match(fn("extractMolstarChainToFile"), /molstarTargetStructureData\(target\)/);
@@ -104,7 +164,8 @@ assert.match(fn("extractMolstarSelectionToFile"), /for \(const structure of mols
 assert.match(fn("molstarSelectionQuery"), /plugin\?\.query\?\.structure\?\.registry[\s\S]*label[\s\S]*includes\(needle\)/);
 assert.match(viewer, /applyMolstarSelectionQuery\('whole residues'\)/);
 assert.match(viewer, /applyMolstarSelectionQuery\('surrounding residues', 'add'\)/);
-assert.match(viewer, /applyMolstarSelectionQuery\('inverse'\)/);
+// Invert is an atom-level command (test:select-commands); Mol*'s inverse query widens to the picking level.
+assert.match(viewer, /runMolstarSelectCommand\('invert'\)/);
 assert.match(viewer, /const MOLSTAR_SELECTION_LEVELS = \[\['element', 'Atom'\], \['residue', 'Residue'\], \['chain', 'Chain'\]\]/);
 assert.match(fn("setMolstarSelectionLevel"), /interactivity\.setProps\(\{ granularity: level \}\)/);
 assert.match(fn("molstarContextSelectionLoci"), /const pickingLevel = target\?\.pickingLevel \|\| molstarContextMenuMode/);

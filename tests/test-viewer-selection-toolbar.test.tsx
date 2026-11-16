@@ -34,12 +34,12 @@ test("selection toolbar follows live scene state and retains one action binding 
     molstarSelectionLevel: () => level, setMolstarSelectionLevel: (value: string) => { level = value; calls.push(["level", value]); },
     VIEWPORT_GRANULARITIES: [["none", "None"], ["atom", "Atom"], ["residue", "Residue"], ["chain", "Chain"]],
     initViewportRailDrag: () => {}, updateViewportAnimateState: () => {}, updateFloatingLayoutOffsets: () => {},
-    viewportRailState: () => ({ selectionMode: plugin.selectionMode, hasSelection: plugin.managers.structure.selection.stats.elementCount > 0, illumination: false, motion: "off" }),
+    viewportRailState: () => ({ selectionMode: plugin.selectionMode, hasSelection: plugin.managers.structure.selection.stats.elementCount > 0, motion: "off" }),
     runViewportRailAction: () => {}, runViewportMenuAction: () => false,
     viewportQueryMenu: () => {}, viewportApplyMenu: () => {},
     openViewportMenu: (button: HTMLButtonElement, name: string) => { button.setAttribute("aria-expanded", "true"); calls.push(["open", name]); },
   };
-  const methods = ["initViewportControls", "updateSelectionBar", "runSelectionBarAction", "closeViewportMenu"].map(source).join("\n");
+  const methods = ["initViewportControls", "installViewportKeyboardCamera", "updateSelectionBar", "runSelectionBarAction", "closeViewportMenu"].map(source).join("\n");
   const api = new Function(...Object.keys(bindings), `let viewportControlsDisposers = []; let viewportSelectionControls = null; let viewportMenuControls = null; let viewportRailControls = null;
     ${methods}; return { init: initViewportControls, update: updateSelectionBar, dispose: () => {
       viewportSelectionControls?.dispose(); viewportRailControls?.dispose(); viewportControlsDisposers.forEach(dispose => dispose());

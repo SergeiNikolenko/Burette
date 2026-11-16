@@ -140,7 +140,8 @@ export function setGridDocumentCloseTransition(documentIds: Iterable<string>, ac
   }
 }
 
-export async function waitForGridDocumentCloseTransition(documentIds: Iterable<string>) {
+export async function waitForGridDocumentCloseTransition(documentIds: Iterable<string>, signal?: AbortSignal) {
+  signal?.throwIfAborted();
   if (typeof document === "undefined" || typeof window === "undefined") return;
   const targetIds = new Set(documentIds);
   const acknowledgements: Promise<void>[] = [];
@@ -175,7 +176,12 @@ export async function waitForGridDocumentCloseTransition(documentIds: Iterable<s
         if (timeoutId !== undefined) window.clearTimeout(timeoutId);
         if (retryTimeoutId !== undefined) window.clearTimeout(retryTimeoutId);
         window.removeEventListener("message", handleAcknowledgement);
+        signal?.removeEventListener("abort", abort);
         stopTracking();
+      };
+      const abort = () => {
+        cleanup();
+        reject(signal?.reason);
       };
       const handleAcknowledgement = (event: MessageEvent) => {
         if (event.source !== contentWindow) return;
@@ -191,6 +197,7 @@ export async function waitForGridDocumentCloseTransition(documentIds: Iterable<s
         resolve();
       };
       window.addEventListener("message", handleAcknowledgement);
+      signal?.addEventListener("abort", abort, { once: true });
       timeoutId = window.setTimeout(() => {
         cleanup();
         reject(new Error("Grid did not acknowledge the document transition."));

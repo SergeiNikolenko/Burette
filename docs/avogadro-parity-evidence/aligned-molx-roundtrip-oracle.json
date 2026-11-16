@@ -1,0 +1,49 @@
+{
+  "runtime": "prebuilt-static",
+  "workflow": "90 degree rotation + translation alignment, UI Save scene download, reopen, second UI save/download and reopen; both original PDB paths absent during reopens",
+  "coordinateStages": {
+    "after": {
+      "blocks": 2,
+      "atomCount": 8,
+      "maxCoordinateErrorAngstrom": 0.0
+    },
+    "reexport": {
+      "blocks": 2,
+      "atomCount": 8,
+      "maxCoordinateErrorAngstrom": 0.0
+    },
+    "reexport-round2": {
+      "blocks": 2,
+      "atomCount": 8,
+      "maxCoordinateErrorAngstrom": 0.0
+    }
+  },
+  "archives": [
+    {
+      "round": 1,
+      "bytes": 8274,
+      "entries": [
+        "state.json"
+      ],
+      "embeddedPdbSha256": {
+        "molx-reference.pdb": "6605c0868e4da7f0f78f91d6faa16d056ea86f97f6a8fd81dd4401f420eb4cc4",
+        "molx-moving.pdb": "afc6c72a5d3d4ac5642e38ba76a0f285c3dbe92b55879db88290733934845000"
+      },
+      "alignmentMatrixMaxError": 3.552713678800501e-15,
+      "sha256": "625b985474af21142b77d31af3471255d07ad11acaa2dbbfdf75fa4213040cc6"
+    },
+    {
+      "round": 2,
+      "bytes": 8287,
+      "entries": [
+        "state.json"
+      ],
+      "embeddedPdbSha256": {
+        "molx-reference.pdb": "6605c0868e4da7f0f78f91d6faa16d056ea86f97f6a8fd81dd4401f420eb4cc4",
+        "molx-moving.pdb": "afc6c72a5d3d4ac5642e38ba76a0f285c3dbe92b55879db88290733934845000"
+      },
+      "alignmentMatrixMaxError": 3.552713678800501e-15,
+      "sha256": "9ddbb9d826ed45d94ba7833c42bdab44d7ca35f9641373185e224ba36909fcc3"
+    }
+  ]
+}

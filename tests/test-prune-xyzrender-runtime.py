@@ -62,6 +62,7 @@ class PruneRuntimeTests(unittest.TestCase):
                 self.distribution(site, "decorator")
                 self.distribution(site, "scipy", ("numpy",))
                 self.distribution(site, "numpy")
+                self.distribution(site, "gemmi")
                 self.distribution(site, "datamol", ("rdkit", "scipy", "pandas"))
                 self.distribution(site, "pandas")
                 cache = site / "datamol/__pycache__"
@@ -76,7 +77,7 @@ class PruneRuntimeTests(unittest.TestCase):
                 with record.open("a") as stream:
                     stream.write(f"{outside},,\n")
                 MODULE.prune(runtime, python)
-                expected = {"xyzrender", "rdkit", "formatreader", "shared", "decoder", "cclib", "networkx", "decorator", "scipy", "numpy"}
+                expected = {"xyzrender", "rdkit", "formatreader", "shared", "decoder", "cclib", "networkx", "decorator", "scipy", "numpy", "gemmi"}
                 self.assertEqual({p.stem for p in site.glob("*.py")}, expected)
                 self.assertFalse((site / "datamol").exists())
                 self.assertFalse(provenance.exists())

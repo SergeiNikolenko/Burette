@@ -1,0 +1,687 @@
+// Workspace file imports and scene-file science attachments; the scene's object context menus own their UI.
+(function () {
+  const sessions = new WeakMap();
+  const modelLoads = new WeakSet();
+  const appendOwners = new WeakMap();
+  // Appended objects never own the existing document's scientific source, even
+  // when their coordinates and raw bytes happen to be identical. Keep refs so
+  // deleting and undoing a scene-tree removal does not erase that provenance.
+  const appendedStructureRefs = new WeakMap();
+  const MAX_SCENE_MODELS = 200;
+  const allModels = preset => preset === 'all-models' || preset === 'preset-trajectory-all-models';
+  const modelLimit = () => new Error('A scene supports up to 200 loaded models. Open a collection and select fewer structures.');
+  function modelCount(viewer) {
+    const models = viewer?.plugin?.managers?.structure?.hierarchy?.current?.models;
+    if (!Array.isArray(models)) throw new Error('The scene model inventory is unavailable.');
+    return models.length;
+  }
+  function checkTrajectoryCount(count) {
+    if (!Number.isSafeInteger(count) || count < 1 || count > MAX_SCENE_MODELS) throw modelLimit();
+  }
+  function preflightModels(viewer, sources) {
+    let incoming = 0;
+    const remaining = MAX_SCENE_MODELS - modelCount(viewer);
+    for (const source of sources) {
+      if (source.format !== 'sdf' || !allModels(source.loadPreset)) {
+        if (++incoming > remaining) throw modelLimit();
+        continue;
+      }
+      // Mol* recognizes a line beginning with $$$$, including suffixes. Scan
+      // without splitting or copying the SDF; retain an unterminated last record.
+      const text = source.data;
+      let nonblank = false;
+      let headerLines = 4;
+      let propertyValue = 0; // 0: data items, 1: first value line, 2: continuation
+      for (let i = 0; i < text.length;) {
+        // Delimiter-looking titles/program/comments and the first property
+        // value are ordinary data to Mol*'s SDF reader.
+        if (!headerLines && !propertyValue && text.startsWith('$$$$', i)) {
+          if (++incoming > remaining) throw modelLimit();
+          nonblank = false;
+          headerLines = 4;
+          while (i < text.length && text[i] !== '\r' && text[i] !== '\n') i++;
+        } else {
+          if (headerLines) headerLines--;
+          else if (propertyValue === 1) propertyValue = 2;
+          else if (propertyValue === 2) {
+            // Mol* consumes the terminating line while finishing a value; it
+            // does not interpret that same line again as a record boundary.
+            if (text[i] === '\r' || text[i] === '\n' || text.startsWith('$$$$', i) || text.startsWith('> ', i)) propertyValue = 0;
+          } else if (text.startsWith('> ', i)) propertyValue = 1;
+          while (i < text.length && text[i] !== '\r' && text[i] !== '\n') {
+            if (!nonblank && !/\s/u.test(text[i])) nonblank = true;
+            i++;
+          }
+        }
+        if (text[i] === '\r') i++;
+        if (text[i] === '\n') i++;
+      }
+      if (nonblank && ++incoming > remaining) throw modelLimit();
+    }
+  }
+  async function loadModels(viewer, source, parse, options, appendOwner) {
+    const plugin = viewer.plugin;
+    if (modelLoads.has(plugin) || (appendOwners.has(plugin) && appendOwners.get(plugin) !== appendOwner)) {
+      throw new Error('Wait for the current scene model load to finish.');
+    }
+    preflightModels(viewer, [source]);
+    modelLoads.add(plugin);
+    let raw;
+    try {
+      raw = await plugin.builders.data.rawData({ data: source.data, label: source.label });
+      const trajectories = await parse(plugin, raw, source.format);
+      checkTrajectoryCount(trajectories.length);
+      const preset = source.loadPreset || 'default';
+      let incoming = 0;
+      for (const trajectory of trajectories) {
+        const frames = trajectory?.obj?.data?.frameCount;
+        if (!Number.isSafeInteger(frames) || frames < 1) throw new Error('The source has no valid model count.');
+        incoming += allModels(preset) ? frames : 1;
+        if (modelCount(viewer) + incoming > MAX_SCENE_MODELS) throw modelLimit();
+      }
+      // No await between admission and entering the protected preset loop.
+      // Concurrent loads through this boundary refuse instead of queuing work.
+      for (const trajectory of trajectories) {
+        await plugin.builders.structure.hierarchy.applyPreset(trajectory, preset, options);
+        if (modelCount(viewer) > MAX_SCENE_MODELS) throw modelLimit();
+      }
+    } catch (error) {
+      if (raw) await plugin.state.data.build().delete(raw.ref).commit();
+      throw error;
+    } finally {
+      modelLoads.delete(plugin);
+    }
+  }
+  // A source file stays part of the scene while a top-level data node still
+  // carries its file name. Deleting a structure in the tree frees the file for
+  // a later import, and a rebuild no longer resurrects it. Scenes whose data
+  // nodes use other labels keep the given list unchanged.
+  function livePaths(viewer, paths) {
+    const data = viewer?.plugin?.state?.data;
+    const root = data?.tree?.root?.ref;
+    if (!root) return paths;
+    let children = 0;
+    const labels = new Set();
+    for (const [ref, cell] of data.cells) {
+      if (ref === root || cell.transform.parent !== root) continue;
+      children += 1;
+      const label = cell.obj?.label || cell.transform.params?.label;
+      if (label) labels.add(label);
+    }
+    if (!children) return [];
+    const live = paths.filter(path => labels.has(path.split('/').pop()));
+    return live.length ? live : paths;
+  }
+
+  // Scientific session data rides in the scene's MOLX archive as Mol* file assets with
+  // Burette's reserved ids; the host owns their content. Export assets exist only during
+  // serialization. Imported assets remain until the host acknowledges a validated import.
+  // Other assets are never touched.
+  const SCIENCE_PREFIX = 'burette-science-';
+  const SCIENCE_TAG = 'burette-science-session';
+  const SCIENCE_ASSET_LIMIT = 65;
+  const SCIENCE_BYTE_LIMIT = 21 * 1024 * 1024;
+  const SCIENCE_ATOM_LIMIT = 10000;
+  const scienceSessions = new WeakMap();
+  const scienceImportListeners = new WeakMap();
+  function scienceImportPending(plugin) {
+    const session = scienceSessions.get(plugin);
+    return Boolean(session?.importLoading || (session?.importToken && !session.lastManifestSha256
+      && plugin?.managers?.asset?.assets?.some(({ asset }) => String(asset?.id).startsWith(SCIENCE_PREFIX))));
+  }
+  function notifyScienceImport(plugin) {
+    for (const listener of scienceImportListeners.get(plugin) || []) {
+      try { listener(); } catch (error) { console.error(error); }
+    }
+  }
+  function scienceSession(plugin) {
+    let session = scienceSessions.get(plugin);
+    if (!session) {
+      session = { present: false, exporting: null, publicExporting: false, lastManifestSha256: null, lastSourceSha256: null, importToken: null, importLoading: false };
+      scienceSessions.set(plugin, session);
+    }
+    return session;
+  }
+  // Comparison roots explicitly name their scientific owner. This marker persists
+  // in MOLX, but is not sufficient by itself: every root must share the exact
+  // trajectory and complete source atom ordering. Unrelated roots remain invalid.
+  const SCIENCE_COMPARISON_TAG = 'burette-trajectory-comparison-v1:';
+  const TRAJECTORY_ALL_TAG = 'burette-trajectory-all-v1:';
+  const comparisonJobs = new WeakSet();
+
+  // Preserve the source model and authored comparisons. Only additions owned by
+  // this operation are removed when leaving All; edits commit as one transaction.
+  async function setTrajectoryComparisons(viewer, enabled, represent, signal) {
+    const plugin = viewer?.plugin;
+    if (comparisonJobs.has(plugin)) throw new Error('Wait for the frame comparison to finish.');
+    if (scienceSessions.get(plugin)?.exporting) throw new Error('The scene is already being saved.');
+    if (scienceImportPending(plugin)) throw new Error('Wait for scientific data to finish restoring.');
+    const owner = scienceBinding(viewer);
+    const state = plugin.state.data;
+    const roots = plugin.managers.structure.hierarchy.current.structures;
+    const marker = TRAJECTORY_ALL_TAG + owner.structureRef;
+    const owned = roots.filter(root => root.cell.transform.tags?.includes(marker));
+    const checkCancelled = () => signal?.throwIfAborted();
+    checkCancelled();
+    if (enabled && typeof represent !== 'function') throw new Error('Frame comparison representations are unavailable.');
+    const present = new Set(roots.map(root => scienceBindingOfRoot(viewer, root.cell).frameIndex));
+    if (enabled && owner.frameCount > 256) throw new Error('This comparison would exceed the 256-structure scene limit.');
+    const missing = Array.from({ length: enabled ? owner.frameCount : 0 }, (_, index) => index).filter(index => !present.has(index));
+    if (enabled && roots.length + missing.length > 256) throw new Error('This comparison would exceed the 256-structure scene limit.');
+    comparisonJobs.add(plugin);
+    try {
+      await plugin.dataTransaction(async () => {
+        if (enabled) {
+          for (const index of missing) {
+            checkCancelled();
+            const model = await plugin.builders.structure.createModel(owner.trajectoryRef, { modelIndex: index });
+            const structure = await plugin.builders.structure.createStructure(model);
+            const frame = scienceBindingOfRoot(viewer, state.cells.get(structure.ref));
+            if (frame.frameIndex !== index || frame.atomCount !== owner.atomCount
+              || frame.elements.some((element, atom) => element !== owner.elements[atom])
+              || !frame.positions.every(Number.isFinite)) throw new Error(`Frame ${index + 1} does not preserve the source atom ordering and finite coordinates.`);
+            await state.build().to(structure).tag([SCIENCE_COMPARISON_TAG + owner.structureRef, marker]).commit();
+            await represent(structure, index);
+          }
+        } else {
+          const refs = new Set(owned.map(root => root.cell.transform.ref));
+          const update = state.build();
+          const removedModels = new Set();
+          for (const root of owned) {
+            const report = scienceBindingOfRoot(viewer, root.cell);
+            const children = Array.from(state.tree.children.get(report.modelRef) || []);
+            // A model can also own an authored sibling: do not delete that sibling.
+            if (children.length && children.every(ref => refs.has(ref))) {
+              if (!removedModels.has(report.modelRef)) update.delete(report.modelRef);
+              removedModels.add(report.modelRef);
+            } else update.delete(root.cell.transform.ref);
+          }
+          await update.commit();
+        }
+        checkCancelled();
+      }, { rethrowErrors: true });
+    } finally {
+      comparisonJobs.delete(plugin);
+    }
+    // Mol* can roll back a failed state update without throwing. Verify the
+    // committed graph rather than reporting the requested state as successful.
+    const current = scienceBinding(viewer);
+    const committed = plugin.managers.structure.hierarchy.current.structures;
+    if (current.structureRef !== owner.structureRef || current.modelRef !== owner.modelRef || current.frameIndex !== owner.frameIndex
+      || (enabled ? new Set(committed.map(root => scienceBindingOfRoot(viewer, root.cell).frameIndex)).size !== owner.frameCount
+        : committed.some(root => root.cell.transform.tags?.includes(marker)))) throw new Error('The frame comparison could not be committed.');
+    return { frameCount: owner.frameCount, structureCount: committed.length };
+  }
+  // Align fits every comparison onto the source's displayed frame by source atom
+  // order. Matrices live in tagged conformation transforms between each comparison
+  // and its representations, so they persist in MOLX while comparison coordinates,
+  // the source structure and its science stay untouched. The caller supplies the
+  // rigid fit and Mol* transformer to keep this module independent of the viewer.
+  const TRAJECTORY_ALIGN_TAG = 'burette-trajectory-align-v1:';
+  async function setTrajectoryComparisonAlignment(viewer, enabled, fit, transformer) {
+    const plugin = viewer?.plugin;
+    if (comparisonJobs.has(plugin)) throw new Error('Wait for the frame comparison to finish.');
+    if (scienceSessions.get(plugin)?.exporting) throw new Error('The scene is already being saved.');
+    if (scienceImportPending(plugin)) throw new Error('Wait for scientific data to finish restoring.');
+    if (!transformer) throw new Error('Mol* conformation transforms are unavailable.');
+    if (enabled && typeof fit !== 'function') throw new Error('Frame alignment is unavailable.');
+    const owner = scienceBinding(viewer);
+    const state = plugin.state.data;
+    const tag = TRAJECTORY_ALIGN_TAG + owner.structureRef;
+    const comparisons = plugin.managers.structure.hierarchy.current.structures.filter(root => root.cell.transform.ref !== owner.structureRef);
+    if (enabled && !comparisons.length) throw new Error('Show all frames before aligning them.');
+    const reference = Array.from({ length: owner.atomCount }, (_, atom) => Array.from(owner.positions.subarray(atom * 3, atom * 3 + 3)));
+    const update = state.build();
+    let rmsdTotal = 0;
+    for (const root of comparisons) {
+      const existing = root.transform?.cell;
+      if (existing && !existing.transform.tags?.includes(tag)) throw new Error('A frame comparison already has another transform.');
+      if (!enabled) {
+        if (existing) update.delete(existing.transform.ref);
+        continue;
+      }
+      const frame = scienceBindingOfRoot(viewer, root.cell);
+      const moving = Array.from({ length: frame.atomCount }, (_, atom) => Array.from(frame.positions.subarray(atom * 3, atom * 3 + 3)));
+      const result = fit(moving, reference);
+      if (!result?.matrix || result.matrix.length !== 16 || !Array.from(result.matrix).every(Number.isFinite) || !Number.isFinite(result.rmsd)) {
+        throw new Error(`Frame ${frame.frameIndex + 1} could not be aligned.`);
+      }
+      const params = { transform: { name: 'matrix', params: { data: Array.from(result.matrix), transpose: false } } };
+      if (existing) update.to(existing).update(params);
+      else update.to(root.cell).insert(transformer, params, { tags: tag });
+      rmsdTotal += result.rmsd;
+    }
+    await plugin.runTask(state.updateTree(update, { revertOnError: true, revertIfAborted: true }));
+    const mode = trajectoryComparisonMode(viewer);
+    if (!mode || mode.aligned !== Boolean(enabled)) throw new Error('The frame alignment could not be committed.');
+    return { aligned: mode.aligned, structureCount: comparisons.length, rmsd: enabled ? rmsdTotal / comparisons.length : null };
+  }
+  // The toolbar state of a scientific trajectory scene, or null for other scenes.
+  function trajectoryComparisonMode(viewer) {
+    let owner;
+    try { owner = scienceBinding(viewer); } catch (_) { return null; }
+    if (owner.frameCount < 2) return null;
+    const roots = viewer.plugin.managers.structure.hierarchy.current.structures;
+    const comparisons = roots.filter(root => root.cell.transform.ref !== owner.structureRef);
+    const alignTag = TRAJECTORY_ALIGN_TAG + owner.structureRef;
+    return {
+      frameIndex: owner.frameIndex,
+      frameCount: owner.frameCount,
+      // Stepping under All can show one frame twice: N + 1 roots within the 256 limit.
+      available: owner.frameCount < 256,
+      all: roots.some(root => root.cell.transform.tags?.includes(TRAJECTORY_ALL_TAG + owner.structureRef)),
+      // Stepping the source away from its frame leaves that frame unshown.
+      complete: new Set(roots.map(root => root.model?.cell?.transform.params?.modelIndex ?? 0)).size === owner.frameCount,
+      aligned: comparisons.length > 0 && comparisons.every(root => root.transform?.cell?.transform.tags?.includes(alignTag)),
+    };
+  }
+  function scienceBinding(viewer) {
+    const plugin = viewer?.plugin;
+    const session = scienceSessions.get(plugin);
+    if (session?.importLoading || appendOwners.has(plugin)) throw new Error('Wait for the scene to finish opening.');
+    const roots = plugin?.managers?.structure?.hierarchy?.current?.structures;
+    const invalid = () => { throw new Error('Scientific data is saved with one source structure and its validated trajectory comparisons.'); };
+    if (!Array.isArray(roots) || !roots.length || roots.length > 256) return invalid();
+    const marked = roots.map(root => ({ root, tags: (root.cell?.transform.tags || []).filter(tag => tag.startsWith(SCIENCE_COMPARISON_TAG)) }));
+    const owners = marked.filter(entry => !entry.tags.length);
+    if (owners.length !== 1) return invalid();
+    const owner = owners[0].root;
+    if (appendedStructureRefs.get(plugin)?.has(owner.cell?.transform.ref)) throw Object.assign(new Error('The original scientific structure was removed from this scene.'), { code: 'SCIENCE_SOURCE_REMOVED' });
+    const report = scienceBindingOfRoot(viewer, owner.cell);
+    for (const entry of marked) {
+      if (entry.root === owner) continue;
+      if (entry.tags.length !== 1 || entry.tags[0] !== SCIENCE_COMPARISON_TAG + report.structureRef) return invalid();
+      const comparison = scienceBindingOfRoot(viewer, entry.root.cell);
+      const model = plugin.state.data.cells.get(comparison.modelRef);
+      if (comparison.trajectoryRef !== report.trajectoryRef || comparison.modelRef === report.modelRef
+        || comparison.frameCount !== report.frameCount || comparison.frameCount < 2
+        || model?.transform.params?.modelIndex !== comparison.frameIndex
+        || comparison.frameIndex >= comparison.frameCount
+        || comparison.atomCount !== report.atomCount
+        || comparison.elements.some((element, index) => element !== report.elements[index])
+        || entry.root.cell.obj.data.units.some(unit => unit.model !== model.obj.data)) return invalid();
+    }
+    return report;
+  }
+  // Its refs, selected frame and atom coordinates in source order.
+  function scienceBindingOfRoot(viewer, structureCell) {
+    const plugin = viewer.plugin;
+    const session = scienceSessions.get(plugin);
+    const structure = structureCell?.obj?.data;
+    if (!structure) throw new Error('Wait for the scene to load.');
+    const cells = plugin.state.data.cells;
+    let model = null;
+    let trajectory = null;
+    for (let cell = cells.get(structureCell.transform.parent); cell;) {
+      const id = String(cell.transform.transformer?.id || '');
+      if (!model && id.endsWith('model-from-trajectory')) model = cell;
+      else if (model && id.includes('trajectory-from-')) { trajectory = cell; break; }
+      const parent = cell.transform.parent;
+      if (!parent || parent === cell.transform.ref) break;
+      cell = cells.get(parent);
+    }
+    if (!model || !trajectory) throw new Error('This scene structure has no trajectory source.');
+    const atomCount = structure.elementCount;
+    if (!Number.isInteger(atomCount) || atomCount < 1 || atomCount > SCIENCE_ATOM_LIMIT) throw new Error('Scientific data is saved for structures of 1–10,000 atoms.');
+    const elements = Array.from({ length: atomCount });
+    const positions = new Float64Array(atomCount * 3);
+    const seen = new Uint8Array(atomCount);
+    for (const unit of structure.units) {
+      if (unit.kind !== 0) throw new Error('Scientific data needs an atomic structure.');
+      const hierarchy = unit.model.atomicHierarchy;
+      for (let index = 0; index < unit.elements.length; index++) {
+        const element = unit.elements[index];
+        const source = hierarchy.atomSourceIndex.value(element);
+        if (!(source >= 0 && source < atomCount) || seen[source]) throw new Error('The scene structure does not list each atom once.');
+        seen[source] = 1;
+        elements[source] = String(hierarchy.atoms.type_symbol.value(element));
+        positions[source * 3] = unit.conformation.x(element);
+        positions[source * 3 + 1] = unit.conformation.y(element);
+        positions[source * 3 + 2] = unit.conformation.z(element);
+      }
+    }
+    if (seen.includes(0)) throw new Error('The scene structure does not list each atom once.');
+    return {
+      structureRef: structureCell.transform.ref,
+      modelRef: model.transform.ref,
+      trajectoryRef: trajectory.transform.ref,
+      frameIndex: Math.max(0, Math.trunc(Number(model.transform.params?.modelIndex) || 0)),
+      frameCount: Math.max(1, Math.trunc(Number(trajectory.obj?.data?.frameCount) || 1)),
+      atomCount,
+      elements,
+      positions,
+      ...(session?.importToken ? { importToken: session.importToken } : {}),
+    };
+  }
+  // Explicit graph identity includes the exact parser input, not coincident positions.
+  async function graphSourceBinding(viewer, expectedFormat) {
+    const report = scienceBinding(viewer);
+    const cells = viewer.plugin.state.data.cells;
+    const trajectory = cells.get(report.trajectoryRef);
+    const transformer = String(trajectory?.transform?.transformer?.id || '');
+    const sourceFormat = transformer.endsWith('trajectory-from-sdf') ? 'sdf' : transformer.endsWith('trajectory-from-mol') ? 'mol' : transformer.endsWith('trajectory-from-xyz') ? 'xyz' : null;
+    if (expectedFormat && sourceFormat !== expectedFormat) throw new Error('The scene graph source format changed.');
+    if (!sourceFormat) throw new Error('This scene has no MOL, SDF or XYZ source.');
+    let raw = cells.get(trajectory.transform.parent);
+    // XYZ has a parsed intermediate; its nearest string ancestor owns the parser input.
+    if (sourceFormat === 'xyz') while (raw && typeof raw.obj?.data !== 'string') {
+      if (raw.transform.parent === raw.transform.ref) break;
+      raw = cells.get(raw.transform.parent);
+    }
+    const rawRef = raw?.transform.ref;
+    const text = raw?.obj?.data;
+    if (typeof text !== 'string' || new TextEncoder().encode(text).byteLength > 16 * 1024 * 1024) throw new Error('This scene has no bounded graph source.');
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+    // Do not return an identity captured before another model/source was loaded.
+    const current = scienceBinding(viewer);
+    if (!sameScienceBinding(current, { binding: report, positions: report.positions }) || cells.get(report.trajectoryRef) !== trajectory
+      || String(trajectory.transform.transformer?.id || '') !== transformer || cells.get(rawRef) !== raw || raw.obj.data !== text) throw new Error('The scene source changed while it was being read.');
+    return { ...report, sourceFormat, sourceSha256: Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, '0')).join('') };
+  }
+  async function sdfSourceBinding(viewer) {
+    const { sourceFormat, ...report } = await graphSourceBinding(viewer, 'sdf');
+    if (sourceFormat !== 'sdf') throw new Error('This scene has no SDF graph source.');
+    return report;
+  }
+  function sameScienceBinding(current, expected) {
+    const binding = expected?.binding;
+    if (!binding || !['structureRef', 'modelRef', 'trajectoryRef', 'frameIndex', 'frameCount', 'atomCount'].every(key => current[key] === binding[key])) return false;
+    const positions = expected.positions;
+    if (!positions || positions.length !== current.positions.length) return false;
+    for (let index = 0; index < positions.length; index++) if (!(Math.abs(positions[index] - current.positions[index]) <= 1e-3)) return false;
+    return true;
+  }
+  async function serializeSceneExclusively(plugin, run) {
+    const session = scienceSession(plugin);
+    while (session.exporting) await session.exporting;
+    if (comparisonJobs.has(plugin)) throw new Error('Wait for the frame comparison to finish.');
+    if (session.importLoading) throw new Error('Wait for the scene to finish opening.');
+    let release;
+    session.exporting = new Promise(resolve => { release = resolve; });
+    session.publicExporting = true;
+    try {
+      return await run();
+    } finally {
+      session.publicExporting = false;
+      session.exporting = null;
+      release();
+    }
+  }
+  async function serializeScience(viewer, request, params) {
+    if (comparisonJobs.has(viewer?.plugin)) throw new Error('Wait for the frame comparison to finish.');
+    const plugin = viewer?.plugin;
+    const manager = plugin?.managers?.asset;
+    const assets = request?.assets;
+    if (!manager || !plugin.managers.snapshot || !Array.isArray(assets) || !assets.length || assets.length > SCIENCE_ASSET_LIMIT) throw new Error('The scene received invalid scientific data.');
+    const ids = new Set();
+    let bytes = 0;
+    for (const asset of assets) {
+      if (!asset || typeof asset.id !== 'string' || !asset.id.startsWith(SCIENCE_PREFIX) || asset.id.length > 64 || ids.has(asset.id)
+        || typeof asset.name !== 'string' || asset.name.length > 128 || !(asset.bytes instanceof Uint8Array)) throw new Error('The scene received invalid scientific data.');
+      ids.add(asset.id);
+      bytes += asset.bytes.byteLength;
+    }
+    if (bytes > SCIENCE_BYTE_LIMIT) throw new Error('Scientific data exceeds the 20 MiB a scene can carry.');
+    const session = scienceSession(plugin);
+    if (session.exporting) throw new Error('The scene is already being saved.');
+    const admit = () => {
+      if (manager.assets.some(({ asset }) => String(asset?.id).startsWith(SCIENCE_PREFIX))) throw new Error('The scene holds scientific attachments.');
+    };
+    admit();
+    const check = async () => {
+      const current = request.sourceSha256 ? await graphSourceBinding(viewer, request.sourceExtension || 'sdf') : scienceBinding(viewer);
+      if ((request.sourceSha256 && current.sourceSha256 !== request.sourceSha256) || !sameScienceBinding(current, request)) throw new Error('The scene changed while it was being saved. Save the scene again.');
+    };
+    let release;
+    session.exporting = new Promise(resolve => { release = resolve; });
+    const created = new Map();
+    try {
+      await check();
+      admit();
+      for (const asset of assets) {
+        const descriptor = { kind: 'file', id: asset.id, name: asset.name };
+        manager.set(descriptor, new File([asset.bytes], asset.name), { tag: SCIENCE_TAG });
+        created.set(asset.id, manager.get(descriptor));
+      }
+      const archive = await plugin.managers.snapshot.serialize(params);
+      await check();
+      for (const [id, entry] of created) {
+        if (manager.get({ id }) !== entry) throw new Error('The scene attachments changed while it was being saved. Save the scene again.');
+      }
+      session.present = true;
+      return archive;
+    } finally {
+      for (const [id, entry] of created) if (manager.get({ id }) === entry) manager.delete({ id });
+      session.exporting = null;
+      release();
+    }
+  }
+  function beginScienceImport(plugin) {
+    const session = scienceSession(plugin);
+    if (session.publicExporting) throw new Error('The scene is already being saved.');
+    appendedStructureRefs.delete(plugin);
+    session.importToken = crypto.randomUUID();
+    session.importLoading = true;
+    session.lastManifestSha256 = null;
+    session.lastSourceSha256 = null;
+    session.present = false;
+    notifyScienceImport(plugin);
+    return session.importToken;
+  }
+  function completeScienceImport(plugin, token) {
+    const session = scienceSessions.get(plugin);
+    if (!session || session.importToken !== token) return false;
+    session.importLoading = false;
+    notifyScienceImport(plugin);
+    return true;
+  }
+  // Transfer imported assets only after the host validated the same archive manifest.
+  async function adoptValidatedScience(viewer, request) {
+    const plugin = viewer?.plugin;
+    const manager = plugin?.managers?.asset;
+    const receipt = request?.manifestSha256;
+    if (!manager || typeof receipt !== 'string' || !/^[0-9a-f]{64}$/.test(receipt)) throw new Error('The scene has no matching validated scientific data.');
+    const session = scienceSession(plugin);
+    const sameImport = () => !session.importLoading && typeof request.importToken === 'string' && request.importToken === session.importToken;
+    if (!sameImport()) throw new Error('The scene import changed before its scientific data was adopted.');
+    while (session.exporting) {
+      await session.exporting;
+      if (!sameImport()) throw new Error('The scene import changed before its scientific data was adopted.');
+    }
+    const inventory = () => manager.assets.filter(({ asset }) => String(asset?.id).startsWith(SCIENCE_PREFIX));
+    const entries = inventory().map(entry => ({ entry, asset: entry.asset, file: entry.file, id: entry.asset.id, name: entry.asset.name }));
+    const unchanged = () => inventory().length === entries.length && entries.every(({ entry, asset, file, id, name }) =>
+      manager.get({ id }) === entry && entry.asset === asset && entry.file === file && asset.id === id && asset.name === name);
+    const check = async () => {
+      if (!sameImport()) throw new Error('The scene import changed before its scientific data was adopted.');
+      const current = request.sourceSha256 ? await graphSourceBinding(viewer, request.sourceExtension || 'sdf') : scienceBinding(viewer);
+      if (!sameImport() || (request.sourceSha256 && current.sourceSha256 !== request.sourceSha256) || !sameScienceBinding(current, request)) throw new Error('The scene changed before its scientific data was adopted.');
+    };
+    let release;
+    session.exporting = new Promise(resolve => { release = resolve; });
+    try {
+      await check();
+      if (!entries.length && session.lastManifestSha256 === receipt && unchanged()) {
+        if (session.lastSourceSha256 && request.sourceSha256 !== session.lastSourceSha256) throw new Error('The scene has no matching validated graph source.');
+        return true;
+      }
+      const manifest = entries.find(({ id }) => id === `${SCIENCE_PREFIX}manifest`);
+      if (!manifest || entries.length > SCIENCE_ASSET_LIMIT || manifest.file.size > 4 * 1024 * 1024) throw new Error('The scene has no matching validated scientific data.');
+      const bytes = await manifest.file.arrayBuffer();
+      const digest = async data => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', data)), value => value.toString(16).padStart(2, '0')).join('');
+      if (await digest(bytes) !== receipt) throw new Error('The scene has no matching validated scientific data.');
+      const document = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+      if (['sdf', 'mol'].includes(document.source?.extension) && (request.sourceSha256 !== document.source.sha256 || (request.sourceExtension || 'sdf') !== document.source.extension)) throw new Error('The scene has no matching validated graph source.');
+      const attachments = document.attachments;
+      if (!Array.isArray(attachments) || attachments.length > 64 || entries.length !== attachments.length + 1) throw new Error('The scene has invalid scientific attachments.');
+      let total = 0;
+      const seen = new Set();
+      for (const attachment of attachments) {
+        if (!attachment || typeof attachment.id !== 'string' || !/^burette-science-attachment-\d{1,3}$/.test(attachment.id) || seen.has(attachment.id)
+          || !Number.isSafeInteger(attachment.byteLength) || attachment.byteLength < 0 || typeof attachment.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(attachment.sha256)) throw new Error('The scene has invalid scientific attachments.');
+        total += attachment.byteLength;
+        if (total > 20 * 1024 * 1024) throw new Error('The scene has invalid scientific attachments.');
+        seen.add(attachment.id);
+      }
+      for (const attachment of attachments) {
+        const found = entries.find(({ id }) => id === attachment.id);
+        if (!found || found.file.size !== attachment.byteLength || await digest(await found.file.arrayBuffer()) !== attachment.sha256) throw new Error('The scene scientific attachments changed before adoption.');
+      }
+      await check();
+      if (!unchanged()) throw new Error('The scene scientific attachments changed before adoption.');
+      // No await between the final guards and ownership transfer.
+      for (const { asset } of entries) manager.delete(asset);
+      session.lastManifestSha256 = receipt;
+      session.lastSourceSha256 = document.source?.extension === 'sdf' ? document.source.sha256 : null;
+      session.present = true;
+      notifyScienceImport(plugin);
+      return true;
+    } finally {
+      session.exporting = null;
+      release();
+    }
+  }
+
+  // An absent owner is an expected result when inspecting an edited scene. Strict
+  // binding/serialization still throw; unrelated failures must reach the caller.
+  async function scienceBindingReport(viewer, extension) {
+    try {
+      return extension === 'sdf' ? await sdfSourceBinding(viewer) : ['mol', 'xyz'].includes(extension)
+        ? await graphSourceBinding(viewer, extension) : scienceBinding(viewer);
+    } catch (error) {
+      if (error?.code !== 'SCIENCE_SOURCE_REMOVED') throw error;
+      return { unavailable: 'SCIENCE_SOURCE_REMOVED', reason: error.message };
+    }
+  }
+
+  window.BuretteSceneFiles = {
+    loadModels,
+    checkTrajectoryCount,
+    livePaths,
+    science: {
+      prefix: SCIENCE_PREFIX,
+      binding: scienceBinding,
+      setTrajectoryComparisons,
+      setTrajectoryComparisonAlignment,
+      trajectoryComparisonMode,
+      comparisonPending: plugin => comparisonJobs.has(plugin),
+      bindingReport: scienceBindingReport,
+      sdfBinding: sdfSourceBinding,
+      graphBinding: graphSourceBinding,
+      serialize: serializeScience,
+      beginImport: beginScienceImport,
+      completeImport: completeScienceImport,
+      adoptValidated: adoptValidatedScience,
+      present: plugin => Boolean(scienceSessions.get(plugin)?.present),
+      importPending: scienceImportPending,
+      subscribeImport(plugin, listener) {
+        let listeners = scienceImportListeners.get(plugin);
+        if (!listeners) scienceImportListeners.set(plugin, listeners = new Set());
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      // Full scene saves preserve existing attachments.
+      serializeSnapshot(plugin, params) {
+        return serializeSceneExclusively(plugin, () => plugin.managers.snapshot.serialize(params));
+      },
+      // Bounded agent session exports must not include scientific attachments.
+      async exclusive(plugin, run) {
+        return serializeSceneExclusively(plugin, () => {
+          if (plugin?.managers?.asset?.assets?.some(({ asset }) => String(asset?.id).startsWith(SCIENCE_PREFIX))) throw new Error('The scene holds scientific attachments.');
+          return run();
+        });
+      },
+    },
+    sequence(viewer) {
+      const records = [];
+      const seen = new Set();
+      for (const entry of viewer?.plugin?.managers?.structure?.hierarchy?.current?.structures || []) {
+        for (const model of entry.cell?.obj?.data?.models || []) {
+          if (seen.has(model.id)) continue;
+          seen.add(model.id);
+          for (const entity of model.sequence?.sequences || []) {
+            const sequence = entity.sequence;
+            if (!['protein', 'DNA', 'RNA'].includes(sequence.kind)) continue;
+            if (sequence.length > 100000) throw new Error('Sequence exceeds 100,000 residues.');
+            const code = Array.from({ length: sequence.length }, (_, index) => sequence.code.value(index)).join('');
+            records.push(`>${model.label || 'structure'} | entity ${entity.entityId}\n${code}`);
+          }
+        }
+      }
+      if (!records.length) throw new Error('This structure has no polymer sequence.');
+      const text = records.join('\n');
+      if (text.length > 1024 * 1024) throw new Error('Sequence export exceeds 1 MB.');
+      return text;
+    },
+    async append(viewer, action, context) {
+      if (!viewer?.plugin?.state?.data) throw new Error('The scene is still loading.');
+      // Refuse before taking a rollback snapshot: another loader's newly
+      // created raw node never belongs to this append's cleanup.
+      if (modelLoads.has(viewer.plugin) || appendOwners.has(viewer.plugin)) throw new Error('Wait for the current scene model load to finish.');
+      let session = sessions.get(viewer);
+      if (!session) {
+        session = { paths: new Set(), busy: false };
+        sessions.set(viewer, session);
+      }
+      if (session.busy) throw new Error('Wait for the current scene import to finish.');
+      let sources = action.sources;
+      if (!Array.isArray(sources) || !sources.length || sources.length > 200) throw new Error('Choose 1–200 structures.');
+      let bytes = 0;
+      const incoming = new Set();
+      for (const source of sources) {
+        if (typeof source.path !== 'string' || source.path.length > 4096
+          || typeof source.data !== 'string' || !['pdb', 'cif', 'mmcif', 'mol', 'sdf', 'mol2', 'xyz'].includes(source.format)) {
+          throw new Error('Unsupported scene source.');
+        }
+        bytes += new TextEncoder().encode(source.data).length;
+        if (incoming.has(source.path) && !action.skipExisting) throw new Error('The selection contains duplicate files.');
+        incoming.add(source.path);
+      }
+      if (bytes > 24 * 1024 * 1024) throw new Error('Scene imports are limited to 24 MB at a time.');
+      for (const path of (action.existingPaths || []).slice(0, 200)) session.paths.add(path);
+      session.paths = new Set(livePaths(viewer, Array.from(session.paths)));
+      if (action.skipExisting) {
+        const fresh = new Map(sources.filter(source => !session.paths.has(source.path)).map(source => [source.path, source]));
+        sources = Array.from(fresh.values());
+        if (!sources.length) return { ok: true, command: 'append_scene_files', result: { added: 0, paths: Array.from(session.paths) } };
+      }
+      if (sources.some(source => session.paths.has(source.path))) throw new Error('A selected file is already in this scene.');
+      if (session.paths.size + sources.length > 200) throw new Error('A scene supports up to 200 source files.');
+      preflightModels(viewer, sources.map(source => ({ ...source,
+        loadPreset: source.format === 'sdf' ? 'all-models' : 'default' })));
+      const data = viewer.plugin.state.data;
+      const before = new Set(data.cells.keys());
+      const camera = context.capture(viewer);
+      session.busy = true;
+      const owner = {};
+      appendOwners.set(viewer.plugin, owner);
+      try {
+        for (const source of sources) await context.load(viewer, {
+          ...source,
+          label: source.label || source.path.split('/').pop(),
+          // Each SDF record is a ligand, not an animation frame to discard.
+          loadPreset: source.format === 'sdf' ? 'all-models' : 'default'
+        }, undefined, owner);
+        let appended = appendedStructureRefs.get(viewer.plugin);
+        if (!appended) appendedStructureRefs.set(viewer.plugin, appended = new Set());
+        for (const entry of viewer.plugin.managers.structure.hierarchy.current.structures || []) {
+          const ref = entry.cell?.transform.ref;
+          if (typeof ref === 'string' && !before.has(ref)) appended.add(ref);
+        }
+        sources.forEach(source => session.paths.add(source.path));
+        return { ok: true, command: 'append_scene_files', result: { added: sources.length, paths: Array.from(session.paths) } };
+      } catch (error) {
+        const update = data.build();
+        for (const [ref, cell] of data.cells) {
+          if (!before.has(ref) && before.has(cell.transform.parent)) update.delete(ref);
+        }
+        await update.commit();
+        throw error;
+      } finally {
+        session.busy = false;
+        appendOwners.delete(viewer.plugin);
+        context.restore(viewer, camera);
+      }
+    }
+  };
+})();

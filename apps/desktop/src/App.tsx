@@ -1,3 +1,16 @@
+import { PolymerBuilderDialogHost } from "./components/workbench/polymer-builder-host";
+import { MeasurementCoordinateDialogHost } from "./components/workbench/measurement-coordinate-host";
+import { AssemblyDialogHost } from "./components/workbench/assembly-dialog-host";
+import { AvogadroCommandHost } from "./components/workbench/avogadro-command-host";
+import { PeptideBuilderDialogHost } from "./components/workbench/peptide-builder-host";
+import { MetalComplexBuilderDialogHost } from "./components/workbench/metal-complex-builder-host";
+import { NucleicBuilderDialogHost } from "./components/workbench/nucleic-builder-host";
+import { InputExportDialogHost } from "./components/workbench/input-export-host";
+import { PropertiesDialogHost } from "./components/workbench/properties-dialog-host";
+import { SmartsSelectDialogHost } from "./components/workbench/smarts-select-dialog-host";
+import { MovieDialogHost } from "./components/workbench/movie-dialog-host";
+import { EnumerateLibraryDialogHost } from "./components/workbench/enumerate-library-dialog-host";
+import { DataShapingDialogHost } from "./components/data-shaping/data-shaping-dialog-host";
 import { useMoleculeStore } from "./stores/molecule-store";
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { AppLayout } from "./components/app-layout";
@@ -15,6 +28,7 @@ import {
 import { useAppActiveTextDocument } from "./hooks/use-app-active-text-document";
 import { useAppBrowserDevStartup } from "./hooks/use-app-browser-dev-startup";
 import { useAppAgentSessionActions } from "./hooks/use-app-agent-session-actions";
+import { useResourceExtensions } from "./hooks/use-resource-extensions";
 import { useAppChemistryJobs } from "./hooks/use-app-chemistry-jobs";
 import { useAppConformerWorkflows } from "./hooks/use-app-conformer-workflows";
 import { CalculatePropertiesDialog, type CalculatePropertiesRequest } from "./components/calculate-properties-dialog";
@@ -28,6 +42,7 @@ import { SplitValueRowsDialog, type SplitValueRowsRequest } from "./components/s
 import { PerformReactionDialog, type PerformReactionRequest } from "./components/perform-reaction-dialog";
 import { SubstructureCountDialog, type SubstructureCountRequest } from "./components/substructure-count-dialog";
 import { RGroupDecompositionDialog, type RGroupDecompositionRequest } from "./components/rgroup-decomposition-dialog";
+import { useSarAnalysisDialogs } from "./components/sar-analysis-dialogs";
 import { requestGridColumns, useAppDerivedColumns } from "./hooks/use-app-derived-columns";
 import { useAppDatabase } from "./hooks/use-app-database";
 import { useAppDescriptors } from "./hooks/use-app-descriptors";
@@ -263,8 +278,6 @@ export default function App() {
     bottomDockTabs,
     closeDockTab,
     documents,
-    rightDockActiveTab,
-    rightDockDocumentId,
     setDockActiveTab,
     setDockDocument,
     setDockOpen,
@@ -345,6 +358,7 @@ export default function App() {
     xtbSettings,
     xtbStatus,
   } = useAppChemistryJobs({ pushErrorStatus, pushStatus });
+  const resourceExtensions = useResourceExtensions();
   const {
     buildInfo,
     checkForUpdates,
@@ -576,6 +590,7 @@ export default function App() {
     if (!target) return;
     setRGroupDecompositionRequest({ documentId, documentTitle: target.title });
   }, [documents]);
+  const { openMatchedPairs, openSarTable, sarAnalysisDialogs } = useSarAnalysisDialogs({ documents, pushStatus });
   const {
     pendingViewerReloadOptionsRef,
     pendingViewerReloadDocumentIdRef,
@@ -638,8 +653,6 @@ export default function App() {
     activeDocument,
     preferences,
     pushErrorStatus,
-    setDockActiveTab,
-    setDockOpen,
   });
   const activeSourceSession = sourceEditing.sessionForDocument(activeDocument);
   const sourceSaveEnabled = Boolean(activeDocument
@@ -1034,6 +1047,7 @@ export default function App() {
     pushErrorStatus,
     pushStatus,
     setDockDocument,
+    sourceDraftForDocument: document => sourceEditing.sessionForDocument(document)?.content ?? null,
   });
   const { reloadActive, reloadXyzrenderDocument } = useAppViewerReloadActions({
     activeDocument,
@@ -1047,6 +1061,7 @@ export default function App() {
     openDockTab("bottom", "jobs");
   }, [openDockTab]);
   useAppViewerBridgeController({
+    ownsCurrentSourceFrame: sourceEditing.ownsCurrentSourceFrame,
     activeDocument,
     addBackgroundDocuments,
     addDocuments,
@@ -1110,6 +1125,11 @@ export default function App() {
   });
 
   const actions = useAppShellActions({
+    installCrystals: resourceExtensions.installCrystals,
+    removeCrystals: resourceExtensions.remove,
+    refreshResourceExtensions: resourceExtensions.refresh,
+    cancelResourceJob: resourceExtensions.cancel,
+    clearResourceJobs: resourceExtensions.clearFinished,
     setGridColumnFilter,
     clearGridColumnFilters,
     activeDocument,
@@ -1139,6 +1159,8 @@ export default function App() {
     openSubstructureCount,
     findSimilarInFile,
     openRGroupDecomposition,
+    openMatchedPairs,
+    openSarTable,
     canNavigateBack,
     canNavigateForward,
     cancelConformerJob,
@@ -1269,6 +1291,8 @@ export default function App() {
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
   const state = useAppShellViewState({
+    resourceExtensions: { installed: resourceExtensions.installed, initialized: resourceExtensions.initialized, error: resourceExtensions.error },
+    resourceJobs: resourceExtensions.jobs,
     dirtyGridDocuments,
     gridFilterModel: activeGridFilterModel,
     documents,
@@ -1318,6 +1342,7 @@ export default function App() {
     databaseJobs,
     viewerLigandSelections,
     structureStories,
+    structureOverlayModes,
     structureOverlayMode: activeDocument ? structureOverlayModes[activeDocument.id] ?? "single" : "single",
     xtbStatus,
     xtbSettings,
@@ -1350,7 +1375,20 @@ export default function App() {
 
   return (
     <SourceEditingProvider value={sourceEditing}>
-      <WindowTitle activeDocument={activeDocument} />
+      <WindowTitle state={state} />
+      <InputExportDialogHost actions={actions} />
+      <PropertiesDialogHost actions={actions} />
+      <SmartsSelectDialogHost actions={actions} onError={pushErrorStatus} />
+      <MovieDialogHost actions={actions} />
+      <EnumerateLibraryDialogHost actions={actions} onStatus={pushStatus} />
+      <DataShapingDialogHost />
+      <PeptideBuilderDialogHost actions={actions} />
+      <MetalComplexBuilderDialogHost actions={actions} />
+      <NucleicBuilderDialogHost actions={actions} />
+      <PolymerBuilderDialogHost actions={actions} />
+      <AssemblyDialogHost actions={actions} />
+      <MeasurementCoordinateDialogHost />
+      <AvogadroCommandHost actions={actions} />
       <AppLayout
         state={state}
         actions={actions}
@@ -1440,6 +1478,7 @@ export default function App() {
         onDismiss={() => setRGroupDecompositionRequest(null)}
         onRun={decomposeGridRGroups}
       />
+      {sarAnalysisDialogs}
       <CalculatePropertiesDialog
         request={calculatePropertiesRequest}
         onDismiss={() => setCalculatePropertiesRequest(null)}

@@ -10,12 +10,22 @@ import { requestGridView, requestViewerAction } from "../lib/viewer-bridge";
 import { writeClipboardText } from "../lib/clipboard";
 import { fileCapabilities } from "../components/workspace-menu-items";
 import { togetherDockingRequest } from "../lib/docking-documents";
+import { useSourceEditing } from "../lib/source-editing/context";
+import { captureWorkspaceSceneSnapshot } from "./workspace-scene-snapshot";
+import { useScienceSessionRestore } from "../lib/science-session/restore";
 import type { ShellActions, ShellViewState } from "../components/types";
+import type { StructureExportFormat } from "../lib/workbench/structure-export";
+import { downloadBlobFile } from "../lib/file-export";
+import { arrayBufferToBase64 } from "../lib/preview-image-export";
+import { logicalSourceFor } from "../lib/science-session/state";
 import type { ViewerDocument } from "../types";
 
 export function useWorkspaceFileActions(state: ShellViewState, actions: ShellActions) {
   // Files and records imported into each open scene, so a scene can later join another one whole.
   const added = useRef(new Map<string, StructureDragPayload>());
+  const sourceEditing = useSourceEditing();
+  // Opened MOLX scenes get back the scientific source they were saved with.
+  useScienceSessionRestore(state.documents);
   const sceneSources = (document: ViewerDocument) => {
     const extra = added.current.get(document.id);
     return {
@@ -68,9 +78,15 @@ export function useWorkspaceFileActions(state: ShellViewState, actions: ShellAct
     await requestGridView(document.id, mode);
   };
   const saveScene = async (document: ViewerDocument) => {
-    await focusViewer(document);
-    const result = await requestViewerAction(document.id, { type: "workspace_scene_snapshot" });
-    if (typeof result.dataBase64 !== "string") throw new Error("The scene did not return a session file.");
+    const snapshot = await captureWorkspaceSceneSnapshot(document, { sourceEditing, sceneFileCount: scenePaths(document).length, scientificData: "allow-omission" });
+    document = snapshot.document;
+    if (snapshot.result.kind !== "molx") throw new Error("The scene did not return a session file.");
+    const result = snapshot.result;
+    const { useMoleculeStore } = await import("../stores/molecule-store");
+    await snapshot.confirm();
+    const warnUnsaved = () => {
+      if (snapshot.omissionReason) toast.add({ title: "Scene saved without scientific data", description: snapshot.omissionReason, type: "warning" });
+    };
     const tab = state.tabs.find(tab => tab.location.kind === "file" && tab.location.documentId === document.id);
     const name = (tab?.title ?? document.title).replace(/\.[^.]+$/, '') + '.molx';
     if (!isTauriRuntime()) {
@@ -78,12 +94,14 @@ export function useWorkspaceFileActions(state: ShellViewState, actions: ShellAct
       const url = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
       const link = window.document.createElement("a"); link.href = url; link.download = name; link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      warnUnsaved();
       return;
     }
     const outputPath = await save({ title: "Save Scene", defaultPath: name, filters: [{ name: "Molecular Scene", extensions: ["molx"] }] });
     if (!outputPath) return;
+    await snapshot.confirm();
     const path = await invoke<string>("write_base64_file", { request: { outputPath, contentsBase64: result.dataBase64 } });
-    const { useMoleculeStore } = await import("../stores/molecule-store");
+    warnUnsaved();
     useMoleculeStore.setState(current => ({ documents: current.documents.map(candidate => candidate.id === document.id && JSON.stringify(candidate.sceneSourcePaths) === JSON.stringify(document.sceneSourcePaths) ? { ...candidate, sceneUnsaved: false } : candidate) }));
     await actions.openPaths([path]);
     if (!state.pinnedStructurePaths.includes(path)) actions.togglePinnedStructure(path);
@@ -119,11 +137,39 @@ export function useWorkspaceFileActions(state: ShellViewState, actions: ShellAct
     await focusViewer(document);
     await requestViewerAction(document.id, { type: "align_scene_files" });
   };
-  const exportStructure = async (document: ViewerDocument, format: "pdb" | "mmcif") => {
+  // The text the document shows: its unsaved draft, a restored scene's source or the file.
+  const currentSource = async (document: ViewerDocument) => {
+    const { readWorkbenchAgentSource } = await import("../lib/workbench/agent-source");
+    return (await readWorkbenchAgentSource(document, current => sourceEditing?.sessionForDocument(current)?.content ?? null)).text;
+  };
+  const stem = (document: ViewerDocument) => document.title.replace(/\.[^.]+$/, "");
+  const exportStructure = async (document: ViewerDocument, format: "pdb" | "mmcif" | "sdf" | StructureExportFormat) => {
+    if (format === "xyz" || format === "mol" || format === "cjson") {
+      const [{ structureExportText }, text] = await Promise.all([import("../lib/workbench/structure-export"), currentSource(document)]);
+      await actions.saveKetcherExportFile({ title: `${stem(document)}.${format}`, extension: format, text: await structureExportText(document, text, format) });
+      return;
+    }
+    if (format === "sdf") {
+      const snapshot = await captureWorkspaceSceneSnapshot(document, { sourceEditing, sceneFileCount: scenePaths(document).length, scientificData: "require" });
+      if (snapshot.source?.extension !== "sdf") throw new Error("This scene has no validated SDF source to export.");
+      await snapshot.confirm();
+      await actions.saveKetcherExportFile({ title: document.title.replace(/\.[^.]+$/, "") + ".sdf", extension: "sdf", text: snapshot.source.text, beforeWrite: snapshot.confirm });
+      return;
+    }
     await focusViewer(document);
     const result = await requestViewerAction(document.id, { type: "export_scene_structure", format });
     if (typeof result.text !== "string") throw new Error("No structure was returned.");
     await actions.saveKetcherExportFile({ title: String(result.name || document.title), extension: format === "mmcif" ? "cif" : format, text: result.text });
+  };
+  // A gzip copy of the current text, named after the format inside it (caffeine.sdf.gz).
+  const exportCompressedCopy = async (document: ViewerDocument) => {
+    const [{ encodeCompressedBlob }, text] = await Promise.all([import("../lib/compressed-files/task"), currentSource(document)]);
+    const blob = await encodeCompressedBlob("gzip", text);
+    const extension = logicalSourceFor(document.id)?.extension ?? document.extension.replace(/^\./u, "");
+    const name = `${stem(document)}.${extension}.gz`;
+    if (!isTauriRuntime()) { downloadBlobFile(name, blob); return; }
+    const outputPath = await save({ title: "Export Compressed Copy", defaultPath: name, filters: [{ name: "Gzip", extensions: ["gz"] }] });
+    if (outputPath) await invoke("write_base64_file", { request: { outputPath, contentsBase64: arrayBufferToBase64(await blob.arrayBuffer()) } });
   };
   const copySequence = async (document: ViewerDocument) => {
     await focusViewer(document);
@@ -144,5 +190,5 @@ export function useWorkspaceFileActions(state: ShellViewState, actions: ShellAct
     }
   };
   const copyNames = (paths: string[]) => writeClipboardText(paths.map(path => path.split('/').pop() || path).join('\n'));
-  return { isCombinedScene: (document: ViewerDocument) => scenePaths(document).length > 1, sceneTargets, addToScene, addRecordsToScene, mergeTargets, mergeScene, gridView, saveScene, copyNames, focusViewer, openRecordScene, openTogether, openPoses, openAligned, exportStructure, copySequence, exportImage };
+  return { isCombinedScene: (document: ViewerDocument) => scenePaths(document).length > 1, sceneTargets, addToScene, addRecordsToScene, mergeTargets, mergeScene, gridView, saveScene, copyNames, focusViewer, openRecordScene, openTogether, openPoses, openAligned, exportStructure, exportCompressedCopy, copySequence, exportImage };
 }

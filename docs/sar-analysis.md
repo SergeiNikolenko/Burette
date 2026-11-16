@@ -60,3 +60,60 @@ be mistaken for additional structures on reopen. The native Save output in
 `tests/fixtures/sar/two-series-saved.csv` is a regression fixture for this path.
 The browser importer and Swift preview parser also honour that primary SMILES
 column (`test-collection-documents.mjs`, `test-sar-preview-import.mjs`).
+
+## Matched pairs
+
+Analyze > Matched Pairs… (command palette: Matched pairs) fragments every
+molecule of the collection by single cuts, the way Hussain and Rea describe
+and mmpdb implements: each acyclic single bond matching mmpdb's default cut
+pattern splits the molecule into a constant and a variable part, molecules
+that share a constant part form pairs, and a pair is a transformation from one
+variable part to the other. A molecule that equals a constant part capped with
+hydrogen pairs through `[*:1][H]`. Only variable parts of up to 10 heavy atoms
+are indexed. Molecules with several components, a wildcard atom, fewer than 2
+or more than 100 heavy atoms, or more than 10 rotatable bonds are left out, as
+mmpdb leaves them out with `--salt-remover '<none>'`; the dialog says how many.
+
+The dialog lists the transformations with their pair count and, for a chosen
+numeric column, the mean and sample standard deviation of the change (To minus
+From) over the pairs in which both molecules have a value. Selecting a
+transformation shows its pairs; Select in grid replaces the grid selection with
+their molecules. Nothing is written to the collection.
+
+The work runs in a worker (`lib/matched-pairs`). It reads at most 2,000
+molecules and stops at 200,000 fragmentations or 200,000 pairs; the dialog
+reports each limit it hit. On the desktop the molecules come from the
+collection database, the values from the grid's column channel.
+
+A cut can turn an atom with two equal branches into a stereocentre. mmpdb
+writes such a fragment with the centre undefined and in both configurations,
+so that it meets the same fragment of a molecule in which the centre is
+defined; the module does the same, with mmpdb's restriction to the fragment
+that holds the first atom of the canonical SMILES. Symmetry classes come from
+a refinement over the molecular graph rather than from RDKit's canonical ranks,
+which the WASM build does not expose.
+
+Verification: `tests/test-matched-pairs.test.ts` compares every fragmentation,
+pair and statistic of two ChEMBL series with mmpdb 3.1.6
+(`tests/fixtures/matched-pairs/README.md` has the commands and the one known
+difference: next to a stereo double bond mmpdb can invert the geometry of a
+fragment, the module keeps it).
+
+## SAR table
+
+Analyze > SAR Table… (command palette: SAR table) lays the R-group columns of
+a collection out as a matrix: one R position down, another across, each cell
+holding the molecules with that pair of substituents. A cell shows the value
+of a chosen numeric column, or the mean when it holds several molecules, and
+is tinted from the lowest cell mean to the highest. Hovering or focusing a
+cell shows its molecules; clicking pins it for Select in grid.
+
+The table reads the `RGroup_*` columns, whether Decompose R-Groups wrote them
+in this session or they came with the file. It shows one Series at a time,
+largest first, and starts with the two positions that vary most. Past 40
+different substituents on an axis the rarest are left out and the dialog says
+so. In a collection that is paged from the database the grid's column channel
+answers for the rows it has loaded.
+
+Verification: `tests/test-sar-analysis-dialogs.test.tsx` drives both dialogs
+through the grid channel on the factor Xa fixture.

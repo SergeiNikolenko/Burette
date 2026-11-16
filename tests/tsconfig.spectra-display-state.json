@@ -1,0 +1,5 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "types": ["bun"] },
+  "include": ["test-spectra-display-state.test.tsx", "fixtures/spectra-display-compiler.ts", "../apps/desktop/src/**/*.d.ts"]
+}

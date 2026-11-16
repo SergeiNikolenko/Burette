@@ -1,0 +1,33 @@
+{
+  "source": "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/5950,5862,6288,6306/property/MolecularFormula,IsomericSMILES,IUPACName/JSON",
+  "residues": [
+    {
+      "code": "A",
+      "cid": 5950,
+      "formula": "C3H7NO2",
+      "smiles": "C[C@@H](C(=O)O)N",
+      "name": "(2S)-2-aminopropanoic acid"
+    },
+    {
+      "code": "C",
+      "cid": 5862,
+      "formula": "C3H7NO2S",
+      "smiles": "C([C@@H](C(=O)O)N)S",
+      "name": "(2R)-2-amino-3-sulfanylpropanoic acid"
+    },
+    {
+      "code": "T",
+      "cid": 6288,
+      "formula": "C4H9NO3",
+      "smiles": "C[C@H]([C@@H](C(=O)O)N)O",
+      "name": "(2S,3R)-2-amino-3-hydroxybutanoic acid"
+    },
+    {
+      "code": "I",
+      "cid": 6306,
+      "formula": "C6H13NO2",
+      "smiles": "CC[C@H](C)[C@@H](C(=O)O)N",
+      "name": "(2S,3S)-2-amino-3-methylpentanoic acid"
+    }
+  ]
+}

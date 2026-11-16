@@ -450,6 +450,8 @@ export type ViewerDocument = {
   title: string;
   extension: string;
   renderer: string;
+  /** Durable scene snapshot used to restore this document without changing its source identity. */
+  recoveryPath?: string;
   viewerProfile?: "structure" | "mesoscale" | "grid" | "spectrum";
   runtimePath: string;
   /** Admitted source; native runtime is prepared when a viewer mounts. */
@@ -531,6 +533,11 @@ export type ViewerPreferences = {
   gridCardRenderer: "rdkit" | "xyzrender";
   gridCardSize: number;
   hydrogenDisplay: "none" | "all";
+  // The ligand card in the 3D view: what it shows first, the design of its
+  // interaction map and whether it opens on hover or stays open.
+  ligandCardContent: "diagram" | "molecule";
+  ligandCardDiagramStyle: string;
+  ligandCardDisplay: "hover" | "always";
   quickLookGridSdf: boolean;
   quickLookGridSmiles: boolean;
   quickLookGridCsv: boolean;

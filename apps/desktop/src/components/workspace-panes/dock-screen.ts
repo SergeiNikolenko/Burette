@@ -1,7 +1,7 @@
 import type { ShellActions, ShellViewState } from "../types";
 import type { DockArea, DockTabKind } from "../../lib/dock";
 import type { Location } from "../editor-area/page-kinds";
-import { useMoleculeStore, type TabPane } from "../../stores/molecule-store";
+import { useMoleculeStore } from "../../stores/molecule-store";
 import { defaultTabWorkspace, useTabWorkspaceStore } from "../../stores/tab-workspace-store";
 import { openScreen } from "./pane-actions";
 
@@ -13,6 +13,7 @@ export function dockScreenLocation(area: DockArea, kind: DockTabKind, state: She
   if (kind === "chemical-space") return source ? { kind: "chemical-space", collectionPath: source.path } : null;
   if (kind === "files") {
     if ((area === "right" ? state.rightDockTool : state.bottomDockTool) === "ketcher") return { kind: "ketcher" };
+    if (area === "right") return { kind: "tool", tool: "files", area };
     if (source) return { kind: "file", path: source.path, documentId: source.id };
     if (text) return { kind: "text-file", path: text.path, documentId: text.id };
     return null;
@@ -20,14 +21,14 @@ export function dockScreenLocation(area: DockArea, kind: DockTabKind, state: She
   return { kind: "tool", tool: kind, area, ...(source ? { sourcePath: source.path } : {}) };
 }
 
-export function openDockScreen(area: DockArea, kind: DockTabKind, state: ShellViewState, actions: ShellActions, pane: TabPane | null = null) {
+export function openDockScreen(area: DockArea, kind: DockTabKind, state: ShellViewState, actions: ShellActions) {
   const location = dockScreenLocation(area, kind, state);
   if (!location) return;
   // Capture the previous tool owner before changing focus.
   actions.setDockOpen(area, false);
-  openScreen(location, pane);
+  openScreen(location, null);
   const id = useMoleculeStore.getState().activeTabId;
-  if (id && location.kind === "tool") {
+  if (id && location.kind === "tool" && location.tool !== "files") {
     const store = useTabWorkspaceStore.getState();
     store.restoreSnapshot({ workspaces: { ...store.workspaces, [id]: { ...(store.workspaces[id] ?? defaultTabWorkspace()),
       droppedStructures: structuredClone(state.dockDroppedStructures?.filter(drop => drop.area === area && drop.tabKind === kind) ?? []) } } });

@@ -46,6 +46,168 @@ Mol* interactive preview is used for:
   coordinate pairs (for example XTC/TRR next to a topology), and trajectories
   without a topology through synthetic topology generation
 
+### Cube coordinate units
+
+The [Cube format](https://paulbourke.net/dataformats/cube/) uses signed voxel
+counts. The pinned Mol* reader applies this consistently: three positive
+counts declare Bohr, three negative counts declare Angstrom. The same scale
+applies to the origin, oblique voxel axes and atom coordinates. Mixed signs,
+zero counts and nonintegral counts are rejected before a field is produced.
+The atom-count sign remains the orbital-dataset flag and does not choose units.
+The source-owned `molstar-cube-units.mjs` adapter is applied to both interactive
+Mol* and Mesoscale builds; it refuses an unexpected upstream version or shape.
+
+`test:molstar-cube-units` covers actual native atom/volume construction and the
+scientific reader. The native Cube dataset selector deinterleaves each voxel's values using the
+selected index as the offset and the number of datasets as the stride. Out-of-range
+and nonintegral indices fail before a volume is produced. `test:molstar-cube-datasets`
+covers all three fields, native state selection/Undo and unchanged single-field
+output. The scientific import reads the same fields, in file order, into `gridDatasets` (orbital
+datasets keep their MO numbers); its first field stays the document's scalar grid, and all
+fields together stay within one million values. These checks and generated
+bundle builds do not establish packaged, Quick Look or browser UI acceptance.
+
+The interactive Mol* build adapts the native Cube editor's Update action through
+`molstar-cube-ui-history.mjs`. Only a changed dataset enters the viewer's existing
+scene Undo/Redo owner, which captures/restores native StateTree snapshots and keeps
+its 20-step bound. Original Cube bytes/assets, atoms and axes remain source-owned;
+no single-field rewrite or molecular-file export is involved. Existing Apply-menu
+Undo/Redo and host shortcuts consume that same owner. Custom updates, other
+transform editors and hosts without the callback retain their native behavior.
+A completion from a retired viewer or removed Cube node cannot append old state
+to the current scene history.
+The build adapter and viewer registration must ship together. `test:cube-ui-history`
+uses the real native React editor, original viewer history functions and existing
+Apply controls; independent omissions of either half fail the same UI assertions.
+Actual Browser/WebGL and packaged acceptance remain separate from these tests.
+
+ORCA's Molden files (`created by orca_2mkl` in their title) give the coefficient of each
+unnormalized primitive and the m = ±3 (f, g) and ±4 (g) real harmonics with the opposite sign;
+the Molden reader undoes both for those files only, which makes their orbitals orthonormal.
+
+### Scientific files in the browser
+
+Ordinary Open, project-folder selection and file drop classify scientific files
+through `lib/workbench/scientific-files.ts`. FCHK/FCH, Molden (`.molden`, `.molf`,
+`molden.input`), ORCA `.hess`, Cube/CUB, Z-matrix and `.qcschema` use their declared
+names. `.out`/`.log`/`.dat` require ORCA, Gaussian, GAMESS/Firefly, NWChem, Psi4,
+Q-Chem, Molpro or xtb evidence (program banner, or the `energy: … gnorm: … xtb:` comment of an
+`xtbopt.log` trajectory) in the first 64 KiB;
+`*.property.txt`/`*_property.txt` require the ORCA 6 property banner or ORCA 5's
+`!PROPERTIES!` banner; `.json` requires a recognised QCSchema `schema_name` at the root. A nested schema
+field does not reroute unrelated JSON. Ordinary XYZ retains its normal structure
+route; the explicit scientific import function also accepts XYZ.
+
+The import uses the isolated `runReaderTask` parser. Scientific uploads and
+decoded text are bounded at 16 MiB; the explicit scientific batch accepts at
+most 16 files. Compressed classification inspects a bounded decoded prefix,
+then the actual bounded decoder and reader validate the full input. A stored
+scientific marker is a route hint, not permission to skip parsing. Recognised
+malformed input reports a named failure and never silently opens as bare text
+or geometry. Other readable files in the selection retain their own routes.
+
+Explicit local server selections (`devFiles`, authorized workspace paths, and
+selected folders) use the same scientific parser through the existing authenticated
+`/@fs/` route. The client reads at most 16 MiB, checks stream length even when
+headers are absent or inaccurate, and discards stale selections before publication.
+This does not authorize arbitrary URLs or filesystem paths and does not change
+server allow-roots. Non-scientific logs and JSON keep their ordinary routes.
+Server originals retain their selected filename, bytes and compressed wrapper;
+they are read again on a fresh open rather than copied into the browser import store.
+
+The opened representation is XYZ with the supported parsed data
+attached to its document. The source owner reads the current XYZ even when its
+durable upload path ends in `.fchk`, `.molden`, `.json` or `.out`. Logical scene
+sources take priority. The uploaded Original is separate: its immutable name
+and bytes retain UTF-8 BOM, CRLF and, for compressed input, the outer compressed
+bytes. Browser originals persist in the bounded IndexedDB import store. Closing
+a document releases its live science/Original claim, not that stored upload;
+a fresh open reparses it. Geometry edits do not rewrite Original.
+
+Reopening an already live scientific document preserves its identity and draft.
+An in-flight preparation observes its exact source owner until publication: a
+newer same-path document publication or close invalidates the old result,
+including a transition back to no document. A later explicit reopen is a new
+request. Different paths can prepare independently. Cancellation and supersession release only the
+request's temporary normalized cache; successful publication transfers host
+text to the durable path and also releases that temporary entry.
+
+Focused source/consumer checks are:
+
+```bash
+vp run test:scientific-import
+vp run test:scientific-browser-open
+vp run test:scientific-server-startup
+vp run test:scientific-source-representation
+vp run test:scientific-open-entrypoints
+vp run test:scientific-original
+```
+
+These cover real readers, source ownership, durable reopen, chooser/drop
+consumers and the Geometry/Original download component, including its compiled
+subscription. The browser file controls expose that component; their focused
+integration check is `vp run test:scientific-original-header`.
+
+Compiled browser acceptance covers the actual file chooser with Molden, ORCA
+output and gzip-wrapped Molden containing BOM and CRLF. Original downloads match
+the input bytes, including the gzip wrapper. Closing an ORCA document, reopening
+its downloaded Original and downloading again preserves those bytes. Explicit
+CLI startup paths also open ORCA and gzip Molden through the scientific route.
+
+Imported XYZ supports Text editing and the Geometry dock. Browser checks cover
+coordinate changes, a changed geometry download, unchanged Original downloads,
+Geometry Undo and Text Undo after switching panels. A downloaded XYZ reopens
+with the changed coordinates and fresh editor history. The input-export dialog
+opens once and saves an ORCA input containing the current coordinates.
+
+Z-matrix browser checks cover shared variables, reference points, definition
+export, Undo/Redo and atom addition. Both O–H bonds follow their shared variable;
+reference points remain outside the exported atom list. After topology changes,
+the reader waits for the source session's confirmed active frame before creating
+a new model binding. Atom-add Undo/Redo and subsequent coordinate editing have
+been exercised against the compiled browser runtime. The dock retains its state
+through Settings and works at 760 pixels in explicit light and dark themes
+without page-level horizontal overflow.
+
+Focused checks are `test:geometry-ui`, `test:geometry-topology-binding` and
+`test:scientific-server-startup`. These do not establish complete parity.
+Restored logical XYZ/MOLX atom-count changes, actual file-drop and normal
+reload/restoration acceptance remain pending. Packaged macOS, Finder Quick Look
+and iPhone acceptance remain separate; their file registration is unchanged by
+this browser import path.
+
+Vibrations is available through Compute and the command palette when the current
+scientific source has normal modes, or a Hessian with the masses its source states. A
+geometry with only such a Hessian offers Compute modes: a worker projects translations and
+rotations out of the mass-weighted Hessian and diagonalizes it (`normal-modes.ts`; 3N − 6, or
+3N − 5 for a linear geometry). Modes as JSON saves each mode's columns with its Cartesian
+displacement vectors and the atoms they displace. IR and Raman use separate physical units;
+older ORCA output carrying only squared transition dipoles keeps its T² atomic
+units. Peak-height Gaussian curves and the supplemental sticks/area-normalized
+view remain distinct. Mode selection, live Mol* animation, frame-specific data,
+trajectory/displaced geometry and source CSV/JSON/Hessian exports share the
+current source owner. The external renderer retains its own animation path.
+
+Actual browser acceptance at `2ab996833985087d9e482097e510f3f16db45967`
+used an immutable build from that exact Git tree. The Gaussian water FCHK and
+ORCA 3.0.2 methane Hessian fixtures exercised Compute, command-palette focus,
+IR/Raman/T² selection, keyboard peak selection, axis editing and Animate/Stop.
+The water trajectory opened with 20 seekable frames; all exported trajectory
+and negative-displacement coordinates matched the original normal vectors to
+floating-point precision. CSV/JSON retained the source quantities, and all
+81 Hessian elements matched the packed source matrix. Original FCHK downloads
+remained byte-exact after animation and after another source was closed.
+Reduced motion prevented automatic animation while allowing explicit Animate.
+Light and dark themes at 760 pixels had no page-level horizontal overflow;
+closing a source with its panel hidden preserved the other open source.
+
+Focused checks are `test:vibrational-spectrum-ui`, `test:vibrations-panel`,
+`test:vibrations-owner`, `test:vibrations-activation` and
+`test:scientific-source-lifetime`. These browser observations do not establish
+packaged macOS, Quick Look, iPhone or external-renderer acceptance. The six
+additional spectral data/plot/reader foundations are separate from normal-file
+routing, scene persistence and their future user interfaces.
+
 Single native trajectories play through a registered Mol* animation using native
 `ModelFromTrajectory` transforms. Its relative stride uses a conservative 1/16-loop cap and coprime stride
 at saturation to avoid short-cycle absolute-time aliasing under slow rendering; target FPS describes source-frame
@@ -144,6 +306,23 @@ applies the name; Escape cancels. Use **Save** to write the collection, or
 the Name property while preserving structures, identifiers, and other data.
 Renaming participates in the collection's Undo/Redo history.
 
+A collection's columns can be plotted in the **Chart** dock tab: **Analyze →
+Chart Columns…**, "Chart columns" in the command palette, or **Chart** in a
+dock's add menu while a collection is in front. It draws a scatter chart of two
+number columns, a histogram of one, a bar chart of the rows (or the mean of a
+number column) per category, or a box chart of a number column per category.
+Any column, including computed property and analysis columns, can be picked; in
+a scatter chart the points can take their colour from any column and their size
+from a number column. The chart and the grid share one selection: clicking a
+point, bar, bin, box or outlier, dragging across bars, or drawing a lasso
+selects those rows in the grid (Shift adds or toggles), and rows selected in
+the grid are highlighted in the chart. With the keyboard, the arrow keys walk
+the bars, bins or boxes, Enter or Space selects the one in focus and Escape
+clears the selection. Rows hidden by the grid's search and filters are not
+drawn. The scatter view zooms with the wheel, pans with a drag
+or the arrow keys, and **Fit** or `0` shows every point again. A chart reads at
+most 100,000 rows and says so when the collection is larger.
+
 Mass-spectrometry formats (MS, MAGMA, MGF, MSP, MZML, MZXML) open in the
 dedicated spectrum viewer.
 
@@ -206,6 +385,68 @@ last operation. Up to 64 map edits are recorded in the scene and replayed before
 body labels and mask previews are restored. **Export map** writes a separate MRC
 containing those edits. The iPhone preview can inspect and segment maps, but
 export controls are omitted because its host does not expose a binary save bridge.
+
+## 3D Model Export
+
+The viewport Screenshot menu ends with **Export 3D model**, a folded group with
+one action per format: PLY, glTF, OBJ, X3D, VRML and POV-Ray. Image export
+(PNG/JPEG/WebP up to 8K, transparency, axes, crop) stays in the same menu above
+it. Each action writes the visible Mol* scene to `<document>.<ext>` through the
+viewer's ordinary download path (host `exportData`/`exportText`, or a browser
+download when no host is attached).
+
+`scripts/molstar-scene-export.js` (bundled into `molstar.js` as
+`molstar.BuretteSceneExport`) tessellates every visible render object with Mol*'s
+geo-export `MeshExporter`: meshes, GPU texture meshes, impostor spheres and
+cylinders, and lines and points as thin tubes and small spheres. Unlike Mol*'s own
+GLB/OBJ/STL/USDZ exporters it does not recentre, scale or quantize: positions stay
+in scene coordinates in ångström, each instance is expanded with its own
+transform, normals use the inverse transpose, and reflecting or flip-sided
+instances keep outward winding. Each vertex carries the drawn colour (palette and
+overpaint) and an opacity from the object alpha and per-group transparency.
+Hidden objects, fully transparent objects and triangles that are fully transparent
+at every corner are left out. Text labels, images, direct-volume rendering and
+clipping cannot be held by a triangle mesh and stop the export with a message.
+Hover and selection markers are neither exported nor a reason to refuse.
+
+Limits: tessellated size is checked against 64 MiB before any object is built or
+its instances are expanded, GPU readback of a texture mesh is checked before its
+buffers are allocated, coordinates must be finite and within ±1,000,000 Å, every
+output file is at most 64 MiB, and an empty scene is an error. The export runs as
+a Mol* task with progress and Abort in the viewer's task overlay, checked inside
+the loops of a single large object and between batches of text output. The scene
+is snapshotted when the export is requested (render objects, visibility, opacity
+and the value cell of every exported property); a change before the file is
+complete or downloaded, such as a playing trajectory frame, rejects the export
+without pausing anything. A failed or cancelled export changes neither the scene
+nor its source.
+
+`scripts/ply-mesh.mjs` validates the tessellated chunks and writes binary
+little-endian PLY; `scripts/scene-mesh-formats.mjs` writes the other formats from
+the same chunks:
+
+| Format | File | Colour and opacity | View |
+| --- | --- | --- | --- |
+| PLY | `.ply`, binary, float32 xyz/normal + RGBA bytes | per vertex | — |
+| glTF | `.glb`, one indexed primitive, `extras.lengthUnit = "angstrom"` | linear `COLOR_0` RGBA, `BLEND` when translucent | — |
+| OBJ | `.obj` with `v x y z r g b` and `vn` | per vertex RGB; translucent scenes are refused | — |
+| X3D 3.3 | `.x3d`, `IndexedTriangleSet`, `<unit … conversionFactor="1e-10">` | `ColorRGBA` per vertex | viewport `Viewpoint`/`OrthoViewpoint`, background |
+| VRML 2.0 | `.wrl`, `IndexedFaceSet` | per vertex RGB, one shape per opacity; opacity varying across a face is refused | viewport `Viewpoint`, background |
+| POV-Ray 3.7 | `.pov`, `mesh2` with per-vertex textures | `srgbt` per distinct colour | viewport camera (right-handed), headlight, background |
+
+glTF, OBJ, X3D and VRML have no ångström unit of their own; one model unit is one
+ångström (X3D also declares it). Avogadro 2 exports POV-Ray and VRML from its
+ball-and-stick primitives; these exports carry every visible Mol*
+representation instead, including surfaces and cartoons. No Avogadro code is
+ported.
+
+Verification: `bun test tests/molstar-scene-export.test.mjs` covers transforms,
+winding, colours, refusals, limits, Abort and scene changes on real Mol* render
+objects; `bun tests/test-scene-export-readers.mjs` exports a headless Mol* scene of
+`tests/fixtures/scene-export/ethanol.sdf` in every format and reads it back with
+plyfile, trimesh and XML parsing through `uv`
+(`tests/fixtures/scene-export/read-exports.py`), plus VTK's VRML importer and a
+POV-Ray render when those are installed.
 
 ## Ketcher Editing
 
@@ -416,3 +657,106 @@ worker, which keeps a four-process pool for GIF frames between requests. A
 default 384 px / 120-frame rotation takes about 1.5 s there instead of about
 4 s for a new process, with identical output. Without the bundled Python
 runtime, rendering falls back to a separate process.
+
+## Private Geometry runtime ownership
+
+The desktop's `geometry_binding` action reads an opaque runtime lease together with
+the effective XYZ baseline. The host pins its source generation and viewer frame
+before reading, and constructs the editing model from that same text. Every
+`update_geometry` preview, commit and rollback carries the retained lease; it may
+not acquire a new owner for an already computed edit. Verified own coordinate
+updates retain the lease; renderer StateTree Undo, source replacement and MOLX restoration
+invalidate it. Both actions remain private to the desktop and outside CLI/MCP.
+
+The binding covers one structure with one model and one atomic unit from a
+single-frame XYZ, a MOL or a one-record SDF. For XYZ the baseline is the source
+text. For MOL/SDF it is a generated single-frame XYZ of the model atoms in source
+order (element symbol and the shortest decimal that keeps each float32
+coordinate); the MOL/SDF bytes are never rewritten. `update_geometry` refuses a
+changed atom count or element order, keeps the file's declared bonds (XYZ bonds
+are still rechecked against distance) and keeps the camera.
+
+### Atom dragging
+
+`atom_drag` `{ enabled, lease }` turns drag mode on or off for the structure
+behind a Geometry lease; enabling fails once the lease no longer owns the scene.
+The viewer loads `atom-drag.js` on first use. In drag mode a plain left press on
+an atom moves that atom, or the whole selection when the atom is selected, in the
+camera plane through it. Presses on empty space or with Shift, Ctrl, Alt or Cmd
+reach Mol* unchanged, so the camera still rotates and selection bindings still
+work. Escape, `pointercancel` or a lost focus cancels the drag and restores the
+text read at the press.
+
+The viewer applies the moved coordinates itself through the same Geometry queue,
+so dragging works without an optimizer. It posts
+`{ type: 'atom-drag', phase: 'start' | 'move' | 'end' | 'cancel', lease, atoms, positions }`
+to the host: `atoms` are zero-based source atom indices, `positions` their
+coordinates in Å, equal to the decimals written into the Geometry text. `move`
+is posted at most once per animation frame; `cancel` carries the restored start
+positions. While a drag holds atoms, every applied `update_geometry` text has the
+held atoms' rows replaced by the pointer positions, so an optimizer can move the
+other atoms without pulling the dragged ones back; drag frames never supersede a
+queued host update. A stale lease ends drag mode at the next press, and a drag
+whose lease goes stale posts `cancel`. The host side is `lib/atom-drag.ts`.
+
+With `manipulate: true` (the Edit panel's Move tool, Avogadro's Manipulate and
+Bond-Centric tools) drag mode also takes bond presses and Alt presses:
+
+| Press | Effect | `atoms` |
+| --- | --- | --- |
+| drag a bond | turns the smaller side about the bond axis, π/360 rad per pixel | atoms of that side |
+| Alt-drag a bond | stretches the bond along its axis, moving the smaller side; at least 0.5 Å | atoms of that side |
+| Alt-drag a selected atom | rotates the selection rigidly about its centre, around the screen axis perpendicular to the drag | the selection |
+
+A bond in a ring has no smaller side and stays with Mol*. The Move tool records
+each `end` as one `positions` draft operation, so every drag is one Undo step.
+
+### Drawing
+
+`atom_draw` `{ enabled, lease }` turns the Draw tool on or off in the active
+viewer; `atom-drag.js` holds both pointer tools. The canvas shows a crosshair.
+A plain left click on empty space, a click on an atom or a bond, and a drag from
+an atom each post one
+`{ type: 'atom-draw', lease, gesture, atoms?, position? }` to the host:
+
+| `gesture` | Press | `atoms` | `position` |
+| --- | --- | --- | --- |
+| `empty` | click on empty space | — | under the pointer, at the depth of the camera target |
+| `atom` | click on an atom | `[atom]` | — |
+| `drag` | drag from an atom into space | `[atom]` | under the pointer, at the atom's depth |
+| `bond` | drag from an atom onto another | `[from, to]` | — |
+| `bond-click` | click on a bond | `[a, b]` | — |
+
+Atoms are zero-based source indices and positions model coordinates in Å. A
+press that moves on empty space still rotates the camera and posts nothing;
+presses with a modifier key reach Mol* unchanged; Escape drops a drag in
+progress. The Edit panel turns each gesture into one graph-draft operation
+(`draw`), so every stroke is one Undo step, and renews the mode with a new lease
+whenever the draft reloads the scene.
+
+### Vector images and movies
+
+`export_svg` `{ transparent? }` returns `{ svg, atoms, bonds }` for the visible
+ball-and-stick, licorice (ball-and-stick with equal radii) and spacefill
+representations, from the current camera. The viewer loads `scene-media.js` on
+first use. Colours and radii come from each representation's own colour and size
+themes and its `sizeFactor` and `sizeAspectRatio`, so the drawing matches the
+render. Shapes are painted back to front: each atom is one `<circle>` with a
+radial gradient and a `<title>` such as `O1`, and each bond one `<g class="bond">`
+with a half in each atom's colour and one stroke per bond order. Other
+representation types are not drawn; a scene with none of the supported ones is
+refused.
+
+`record_movie` `{ seconds, fps, spin }` records the canvas for 1–60 s at 24, 30
+or 60 fps (12, 25 and 50 are accepted too) and returns `{ dataUri, type, bytes }`.
+Where WebCodecs encodes H.264 (Chromium and WebKit, so also the Mac app) the
+viewer encodes each frame with a synthetic timestamp and writes the MP4 itself,
+so the movie always has `seconds × fps` frames at `fps`, however fast the view
+renders. With `spin` each frame is taken after the view has drawn the next
+angle of one turn about the screen's vertical axis, and the camera returns to
+its start afterwards. Without it frames are taken on the wall clock, which
+captures vibrations and trajectories that play during the recording; a view
+that renders slower than `fps` plays back faster than it ran. Without WebCodecs
+MediaRecorder records a 2D copy of the canvas (MP4 or WebM) on the wall clock.
+The host offers both exports as File → Export → Vector Image… and Movie…, and
+in the command palette.

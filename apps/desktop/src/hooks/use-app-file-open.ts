@@ -1,3 +1,4 @@
+import { openRightTool } from "../lib/right-workspace-panel";
 import { isNativePreviewWindow } from "../lib/window-scope";
 import { useCallback } from "react";
 import { saveStructureRecordsInFolder } from "./save-structure-records";
@@ -6,8 +7,10 @@ import { invoke } from "@tauri-apps/api/core";
 
 import { showNativeContextMenu } from "../components/native-context-menu";
 import type { FepNetworkLocation } from "../components/editor-area/page-kinds/fep-network";
-import type { FileOpenOptions, StatusKind } from "../components/types";
-import { openBrowserDevDocuments, openBrowserDevTextDocument } from "../lib/browser-dev-documents";
+import type { FileOpenOptions, StatusKind, StructureRecordsOpenOptions } from "../components/types";
+import { deleteBrowserDevVirtualTextDocument, openBrowserDevDocuments, openBrowserDevTextDocument } from "../lib/browser-dev-documents";
+import { openStoredScientificFile } from "../lib/workbench/browser-import";
+import { importedOriginalFor } from "../lib/workbench/scientific-source-state";
 import { openBrowserDevTextFiles } from "../lib/browser-dev-text-files";
 import type { DockArea, DockTabKind } from "../lib/dock";
 import {
@@ -19,6 +22,7 @@ import {
   isFepGraphmlPath,
   isPreferredTextPath,
   NOT_RENDERABLE_RENDERER,
+  openRoutingExtension,
   pathExtension,
   structureAndTextExtensions,
   structureExtensionFromPath,
@@ -63,7 +67,7 @@ type UseAppFileOpenOptions = {
   addProjectRoot: (path: string) => void;
   addBackgroundDocuments: (documents: ViewerDocument[]) => void;
   addBackgroundTextDocuments: (documents: TextFileDocument[]) => void;
-  addDocuments: (documents: ViewerDocument[], options?: { preserveActiveTab?: boolean }) => void;
+  addDocuments: (documents: ViewerDocument[], options?: { preserveActiveTab?: boolean; gridViewMode?: "cards" | "table"; gridViewState?: string }) => void;
   addTextDocuments: (documents: TextFileDocument[], options?: { preserveActiveTab?: boolean }) => void;
   closeDocument: (id: string) => void;
   detectContentSpectrumPaths: (paths: string[]) => Promise<Set<string>>;
@@ -92,6 +96,24 @@ async function fitsRetabTextViewer(path: string) {
     return true;
   }
 }
+
+/**
+ * Releases prepared text structures that were never added: their native source registration
+ * and virtual grid runtime on the desktop, their virtual text in the browser. A path or id
+ * that an open document already uses stays.
+ */
+async function releaseUnadoptedStructures(documents: ViewerDocument[]) {
+  const open = useMoleculeStore.getState().documents;
+  const unadopted = documents.filter((document) => !open.some(({ id, path }) => id === document.id || path === document.path));
+  if (unadopted.length === 0) return;
+  if (!isTauriRuntime()) {
+    for (const document of unadopted) deleteBrowserDevVirtualTextDocument(document.path);
+    return;
+  }
+  await abortOpenDocumentClaims(unadopted);
+  await invoke("close_opened_source_documents", { documentIds: unadopted.map((document) => document.id) });
+}
+
 
 export function useAppFileOpen({
   preferences,
@@ -177,7 +199,7 @@ export function useAppFileOpen({
       paths: string[],
       reloadOptions?: ViewerReloadOptions,
       preferencesOverride?: Partial<ViewerPreferences>,
-      options: { replace?: boolean; inActiveTab?: boolean; mode?: OpenDocumentsMode; deferErrorStatus?: boolean; preserveActiveTab?: boolean; reuseExisting?: boolean; shouldApply?: () => boolean } = {},
+      options: { replace?: boolean; inActiveTab?: boolean; fromSource?: boolean; mode?: OpenDocumentsMode; gridViewMode?: "cards" | "table"; gridViewState?: string; deferErrorStatus?: boolean; preserveActiveTab?: boolean; reuseExisting?: boolean; shouldApply?: () => boolean } = {},
     ) => {
       const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
       if (!cleanPaths.length) return;
@@ -224,11 +246,13 @@ export function useAppFileOpen({
             ? useMoleculeStore.getState().documents.map((document) => [document.path, document] as const)
             : []);
           const pathsToOpen = batchPaths.filter((path) => !retainedByPath.has(path));
+          const recoveryPaths = new Map(useMoleculeStore.getState().documents.flatMap(document => !options.fromSource && document.recoveryPath
+            ? [[document.path, document.recoveryPath] as const] : []));
           let batch: OpenDocumentsResult;
           try {
             batch = pathsToOpen.length === 0 ? { documents: [], errors: [] } : isTauriRuntime()
               ? await invoke<OpenDocumentsResult>("open_documents", {
-                  paths: pathsToOpen,
+                  paths: pathsToOpen.map(path => recoveryPaths.get(path) ?? path),
                   preferences: effectivePreferences,
                   reloadOptions,
                   mode: options.mode,
@@ -240,7 +264,10 @@ export function useAppFileOpen({
               ? { ...document, runtimeDeferredPreferences: { ...preferencesOverride, rendererMode: effectivePreferences.rendererMode } }
               : document);
             if (retainedByPath.size > 0) {
-              const openedByPath = new Map(batch.documents.map((document) => [document.path, document]));
+              const openedByPath = new Map(batch.documents.flatMap((document) => [
+                [document.path, document] as const,
+                ...(document.recoveryPath ? [[document.recoveryPath, document] as const] : []),
+              ]));
               batch.documents = batchPaths.flatMap((path) => {
                 const document = retainedByPath.get(path) ?? openedByPath.get(path);
                 return document ? [document] : [];
@@ -257,13 +284,19 @@ export function useAppFileOpen({
             await abortOpenDocumentClaims(batch.documents);
             return null;
           }
+          if (options.fromSource) {
+            for (const opened of batch.documents) {
+              const previous = useMoleculeStore.getState().documents.find(document => document.path === opened.path && document.recoveryPath);
+              if (previous) replaceDocument(previous.id, opened);
+            }
+          }
           result.errors.push(...batch.errors);
           if (batch.documents.length === 0) continue;
           const previousActiveTabId = useMoleculeStore.getState().activeTabId;
           try {
             if (result.documents.length === 0 && options.replace) setDocuments(batch.documents);
             else if (result.documents.length === 0 && options.inActiveTab) openDocumentsInActiveTab(batch.documents);
-            else addDocuments(batch.documents, { preserveActiveTab: options.preserveActiveTab || result.documents.length > 0 });
+            else addDocuments(batch.documents, { preserveActiveTab: options.preserveActiveTab || result.documents.length > 0, gridViewMode: options.gridViewMode, gridViewState: options.gridViewState });
           } catch (error) {
             void abortOpenDocumentClaims(batch.documents).catch((abortError) => {
               console.warn("Open document claim abort failed", abortError);
@@ -379,9 +412,7 @@ export function useAppFileOpen({
         }
         if (!options.background && !options.inActiveTab && !options.preserveActiveTab && documents[0]) {
           setActiveDocument(documents[0].id);
-          setDockDocument("right", documents[0].id);
-          setDockActiveTab("right", "inspector");
-          setDockOpen("right", true);
+          openRightTool("inspector", documents[0].path);
           setDockDocument("bottom", documents[0].id);
           openDockTab("bottom", "spectrum");
         }
@@ -450,7 +481,37 @@ export function useAppFileOpen({
     const contentSpectrumPaths = await detectContentSpectrumPaths(cleanPaths);
 
     for (const path of cleanPaths) {
-      const extension = pathExtension(path);
+      if (!isTauriRuntime()) {
+        const existing = useMoleculeStore.getState().documents.find((document) => document.path === path);
+        // Opening the same scientific tab preserves its current draft and import lifetime.
+        if (existing?.virtual && importedOriginalFor(existing.id)) {
+          openedAny = true;
+          preferredStructureDocumentId ??= existing.id;
+          continue;
+        }
+        // A later open/close owns this path even if it eventually returns to no document.
+        let sourceCurrent = true;
+        const stopWatching = useMoleculeStore.subscribe((state) => {
+          if (state.documents.find((document) => document.path === path) !== existing) sourceCurrent = false;
+        });
+        let scientific: ViewerDocument[] | null;
+        try {
+          scientific = await openStoredScientificFile(path, preferences, (document) => {
+            addDocuments([document], { preserveActiveTab: options.preserveActiveTab });
+          }, () => mayApply() && sourceCurrent);
+        } finally { stopWatching(); }
+        if (!mayApply()) return;
+        if (scientific !== null) {
+          const current = useMoleculeStore.getState().documents.find((document) => document.path === path);
+          const opened = scientific[0] ?? (current?.virtual && importedOriginalFor(current.id) ? current : null);
+          // The scientific import claims its Original after the open callback returns.
+          if (opened) rememberRecentStructures([opened]);
+          openedAny ||= Boolean(opened);
+          preferredStructureDocumentId ??= opened?.id ?? null;
+          continue;
+        }
+      }
+      const extension = openRoutingExtension(path);
       if (isSpectrumPath(path, extension) || contentSpectrumPaths.has(path)) {
         spectrumPaths.push(path);
       } else if (isDocumentViewerPath(path, extension)) {
@@ -531,11 +592,11 @@ export function useAppFileOpen({
     }
 
     const unopenedStructureAndTextPaths = structureAndTextPaths.filter((path) => !openedStructureAndTextPaths.has(path));
-    const fallbackDocumentPaths = unopenedStructureAndTextPaths.filter((path) => documentFallbackExtensions.has(pathExtension(path)));
+    const fallbackDocumentPaths = unopenedStructureAndTextPaths.filter((path) => documentFallbackExtensions.has(openRoutingExtension(path)));
     for (const path of fallbackDocumentPaths) {
       openDocumentTab(path); openedAny = true;
     }
-    const fallbackTextPaths = unopenedStructureAndTextPaths.filter((path) => !documentFallbackExtensions.has(pathExtension(path)));
+    const fallbackTextPaths = unopenedStructureAndTextPaths.filter((path) => !documentFallbackExtensions.has(openRoutingExtension(path)));
     if (fallbackTextPaths.length > 0) {
       const result = await openTextDocuments(fallbackTextPaths, options);
       if (!mayApply()) return;
@@ -545,7 +606,7 @@ export function useAppFileOpen({
       setActiveDocument(preferredStructureDocumentId);
     }
     if (options.requireSuccess && !openedAny) throw new Error("The file could not be opened. Check its format and contents.");
-  }, [addProjectRoot, closeDocument, detectContentSpectrumPaths, expandStructureBundles, openDocuments, openDocumentTab, openSpectrumDocuments, openTextDocuments, pushErrorStatus, pushStatus, setActiveDocument]);
+  }, [addProjectRoot, closeDocument, detectContentSpectrumPaths, expandStructureBundles, openDocuments, openDocumentTab, openSpectrumDocuments, openTextDocuments, pushErrorStatus, pushStatus, setActiveDocument, preferences, addDocuments, rememberRecentStructures]);
 
   const openPaths = useCallback(async (paths: string[], options: FileOpenOptions = {}) => {
     // Restore the selected file before classification/routing of the tail,
@@ -557,7 +618,7 @@ export function useAppFileOpen({
     if (paths.length > 0) await openPathBatch(paths, options);
   }, [openPathBatch]);
 
-  const openStructureRecordDocuments = useCallback(async (records: StructureDragRecord[]) => {
+  const openStructureRecordDocuments = useCallback(async (records: StructureDragRecord[], options: { newDocument?: boolean } = {}) => {
     const cleanRecords = records.filter((record) => record.text.trim().length > 0);
     if (cleanRecords.length === 0) return { opened: [], errors: [] };
     const opened: ViewerDocument[] = [];
@@ -574,7 +635,7 @@ export function useAppFileOpen({
               preferences,
               reloadOptions: undefined,
             })
-          : await openBrowserDevTextDocument(record.path, record.inputExtension, record.text, preferences);
+          : await openBrowserDevTextDocument(record.path, record.inputExtension, record.text, preferences, undefined, undefined, options);
         opened.push(document);
       } catch (error) {
         errors.push(error instanceof Error ? error.message : String(error));
@@ -583,20 +644,32 @@ export function useAppFileOpen({
     return { opened, errors };
   }, [preferences]);
 
-  const openStructureRecords = useCallback(async (records: StructureDragRecord[], directory?: string) => {
+  const openStructureRecords = useCallback(async (records: StructureDragRecord[], directory?: string, options: StructureRecordsOpenOptions = {}) => {
+    const mayApply = () => options.shouldApply?.() !== false;
+    if (!mayApply()) return [];
     if (directory) {
       try {
         const { paths, errors } = await saveStructureRecordsInFolder(records, directory);
         window.dispatchEvent(new Event("burette-folder-contents-changed"));
-        if (paths.length) await openDocuments(paths);
+        if (paths.length && mayApply()) await openDocuments(paths);
         const message = `Saved ${paths.length} molecule file${paths.length === 1 ? "" : "s"} in ${directory}`;
         pushStatus(errors.length ? `${message}. ${summarizeErrors(errors)}` : message, errors.length ? "error" : "success", errors);
       } catch (error) { pushErrorStatus(error, "Could not save dropped molecules"); }
-      return;
+      return [];
     }
     pushStatus("Opening pasted structures...");
-    const { opened, errors } = await openStructureRecordDocuments(records);
-    if (opened.length === 0 && errors.length === 0) return;
+    const { opened, errors } = await openStructureRecordDocuments(records, options);
+    if (options.validateBeforeAdopt && opened.length && mayApply()) {
+      let accepted: boolean;
+      try { accepted = await options.validateBeforeAdopt(); }
+      catch (error) { await releaseUnadoptedStructures(opened); throw error; }
+      if (!accepted) { await releaseUnadoptedStructures(opened); return []; }
+    }
+    if (!mayApply()) {
+      await releaseUnadoptedStructures(opened);
+      return [];
+    }
+    if (opened.length === 0 && errors.length === 0) return opened;
     if (opened.length > 0) {
       addDocuments(opened);
       rememberRecentStructures(opened);
@@ -604,9 +677,10 @@ export function useAppFileOpen({
     const openedText = "Opened " + opened.length + " pasted structure" + (opened.length === 1 ? "" : "s");
     if (errors.length > 0) {
       pushStatus(opened.length > 0 ? `${openedText}. ${summarizeErrors(errors)}` : summarizeErrors(errors), "error", errors);
-      return;
+      return opened;
     }
     pushStatus(openedText);
+    return opened;
   }, [addDocuments, openDocuments, openStructureRecordDocuments, pushErrorStatus, pushStatus, rememberRecentStructures]);
 
   const openStructureUrlInMolstar = useCallback(async (url: string) => {

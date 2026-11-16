@@ -1,0 +1,28 @@
+unspecified-center
+     RDKit          2D
+
+  0  0  0  0  0  0  0  0  0  0999 V3000
+M  V30 BEGIN CTAB
+M  V30 COUNTS 4 3 0 0 0
+M  V30 BEGIN ATOM
+M  V30 1 C 0.000000 0.000000 0.000000 101
+M  V30 2 C 1.299038 0.750000 0.000000 102
+M  V30 3 O 2.598076 -0.000000 0.000000 103
+M  V30 4 F 1.299038 2.250000 0.000000 104
+M  V30 END ATOM
+M  V30 BEGIN BOND
+M  V30 1 1 1 2
+M  V30 2 1 2 3
+M  V30 3 1 2 4
+M  V30 END BOND
+M  V30 END CTAB
+M  END
+>  <BURETTE_METADATA_V1>
+{"version":1,"atoms":[{"id":"48c809bf-e434-55dd-b3b1-83b58073f4b6","atomName":"SRC0","residue":{"name":"ORC","sequence":19,"chain":"Q","insertionCode":""}},{"id":"ec0a383b-8395-5837-a6b1-db9f1527765a","atomName":"SRC1","residue":{"name":"ORC","sequence":19,"chain":"Q","insertionCode":""}},{"id":"916ce75d-4794-5e82-94db-d47ef7499b39","atomName":"SRC2","residue":{"name":"ORC","sequence":19,"chain":"Q","insertionCode":""}},{"id":"ebbd162b-9b62-57b8-ac76-87643290ffc1","atomName":"SRC3","residue":{"name":"ORC","sequence":19,"chain":"Q","insertionCode":""}}],"conformer":{"id":"42eb69cc-2763-571b-a1d0-d2413f9b2363","label":"Original 2D reference"}}
+
+>  <FOREIGN_MULTILINE>
+retain this value exactly
+> <Not a new data field>
+UTF-8: αβ
+
+$$$$

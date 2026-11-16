@@ -1,0 +1,90 @@
+---
+name: preview-molecular-structures
+description: Preview supported molecular attachments or an explicit public PDB ID in Burette's interactive viewer, or use the bounded hosted Ketcher editor for transient chemical sketches.
+---
+
+# Preview molecular structures
+
+Use Burette for bounded molecular inspection and transient chemical sketching.
+
+## Choose the tool
+
+- Use `preview_molecular_file` when the user provides one supported molecular
+  structure attachment.
+- Use `preview_pdb_structure` only when the user explicitly names a
+  four-character PDB ID or clearly asks to open that public PDB entry.
+- Use `render_molecular_scene` when the user asks to select or focus a typed
+  chain, residue range, or component; clear a selection; reset the camera; or
+  hide/show polymers, ligands, ions, or water. Pass the same PDB ID or authorized
+  attachment again because the public server does not retain widget sessions.
+  When the source and selector are supplied, call this tool directly once:
+  it loads the structure and applies the actions, so a preliminary preview is
+  unnecessary. Do not split opening, selecting, focusing, and hiding waters
+  across multiple cards.
+- Use `open_ketcher` when the user asks to draw or edit a small chemical
+  structure in the hosted widget. Seed only bounded inline KET, MOL, RXN, or
+  SMILES content when it is supplied.
+- Use `control_ketcher` for a follow-up Ketcher action. First use the current
+  `surfaceId` and `structureRevision` from the editor snapshot; send a
+  revision-checked `set_structure`, `clear_structure`, `highlight_atoms`, or
+  `get_structure` action. `request_persist` only reaches a user-confirmation
+  boundary and never writes silently.
+- If several supported attachments are present and the target is unclear, ask
+  which single structure to open.
+- If no structure is identified in this conversation, ask for an attachment or
+  PDB ID before any molecular call. Do not borrow an identifier from another
+  chat, a cached widget, a suggested demo, or earlier unrelated activity.
+
+## Present the result
+
+1. Call the selected tool once with the user's attachment or PDB ID.
+2. Report the bounded composition summary returned by the tool. Do not infer
+   counts that are absent from the result.
+3. Let the interactive Burette preview carry the detailed 3D inspection.
+   The user can rotate, zoom, select residues, inspect the sequence, change
+   representations, and use measurements directly in the result.
+4. State format limitations or parser notes when the result includes them.
+5. Treat `burette.activeSelection` from widget context as the user's current
+   selection only when its source matches the structure explicitly opened in
+   this conversation. Tool-returned data and a prepared scene are not a loaded
+   view. Do not say “done”, “selected”, “focused”, or “hidden” until the widget
+   reports those applied actions. If there is no acknowledgement, explicitly
+   state that rendering/application is unconfirmed, not completed.
+
+## Boundaries
+
+- For unsupported docking, affinity, simulation, or local overwrite requests,
+  explain the limitation without opening a preview as a substitute. Offer
+  inspection separately; a PDB ID in a docking request is not an inspection request.
+- Do not claim that this public plugin edits, overwrites, or deletes molecular
+  source files. Ketcher edits exist only in the ephemeral hosted widget relay.
+- Do not claim local macOS app control, docking, simulation, structure
+  prediction, or remote job execution. Those are outside this hosted plugin.
+- Do not treat a molecular preview as medical diagnosis, clinical advice, or
+  proof of biological function.
+- Do not request credentials, private URLs, local paths, health records, or
+  other sensitive identifiers.
+- Files larger than 3 MiB or unsupported formats need a smaller supported
+  structure file.
+- Arbitrary residue isolation and persistent representation overpaint are not
+  available in the hosted action allowlist.
+
+## Cloud transport and unavailable inputs
+
+- All tools use the hosted HTTPS service. Never install or start a local MCP,
+  run a desktop bridge, or open a localhost URL to fulfill this skill.
+- Before processing a private attachment, explain that its contents are sent
+  to Burette's hosted service. Proceed only when the user authorizes cloud
+  processing of that file. A request for local inspection is not permission
+  to upload it.
+- Use only a host-provided attachment reference with its real `file_id` and
+  `download_url`. Never invent an ID or URL, upload a file to public storage,
+  or substitute a local path, file URL, or private-network URL. If the host
+  cannot provide a downloadable attachment, explain that this input is not
+  supported in the current host and ask for an accessible attachment or PDB ID.
+- On network/service failure, report the failed operation. Do not silently
+  fall back to a local installation.
+- An expired Ketcher surface is not recoverable from its ID. Offer to reopen
+  it from the last user-supplied structure; never claim unsaved edits survived.
+- If the host does not mount MCP Apps resources, report the returned summary
+  and explicitly say the interactive viewer has not been displayed.

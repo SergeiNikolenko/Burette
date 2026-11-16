@@ -1,0 +1,1852 @@
+ Entering Gaussian System, Link 0=g03
+ Input=input.gjf
+ Output=input.log
+ Initial command:
+ /opt/g03/l1.exe /scratch/alongd/Gau-19672.inp -scrdir=/scratch/alongd/
+ Entering Link 1 = /opt/g03/l1.exe PID=     19674.
+  
+ Copyright (c) 1988,1990,1992,1993,1995,1998,2003,2004, Gaussian, Inc.
+                  All Rights Reserved.
+  
+ This is the Gaussian(R) 03 program.  It is based on the
+ the Gaussian(R) 98 system (copyright 1998, Gaussian, Inc.),
+ the Gaussian(R) 94 system (copyright 1995, Gaussian, Inc.),
+ the Gaussian 92(TM) system (copyright 1992, Gaussian, Inc.),
+ the Gaussian 90(TM) system (copyright 1990, Gaussian, Inc.),
+ the Gaussian 88(TM) system (copyright 1988, Gaussian, Inc.),
+ the Gaussian 86(TM) system (copyright 1986, Carnegie Mellon
+ University), and the Gaussian 82(TM) system (copyright 1983,
+ Carnegie Mellon University). Gaussian is a federally registered
+ trademark of Gaussian, Inc.
+  
+ This software contains proprietary and confidential information,
+ including trade secrets, belonging to Gaussian, Inc.
+  
+ This software is provided under written license and may be
+ used, copied, transmitted, or stored only in accord with that
+ written license.
+  
+ The following legend is applicable only to US Government
+ contracts under FAR:
+  
+                    RESTRICTED RIGHTS LEGEND
+  
+ Use, reproduction and disclosure by the US Government is
+ subject to restrictions as set forth in subparagraphs (a)
+ and (c) of the Commercial Computer Software - Restricted
+ Rights clause in FAR 52.227-19.
+  
+ Gaussian, Inc.
+ 340 Quinnipiac St., Bldg. 40, Wallingford CT 06492
+  
+  
+ ---------------------------------------------------------------
+ Warning -- This program may not be used in any manner that
+ competes with the business of Gaussian, Inc. or will provide
+ assistance to any competitor of Gaussian, Inc.  The licensee
+ of this program is prohibited from giving any competitor of
+ Gaussian, Inc. access to this program.  By using this program,
+ the user acknowledges that Gaussian, Inc. is engaged in the
+ business of creating and licensing software in the field of
+ computational chemistry and represents and warrants to the
+ licensee that it is not a competitor of Gaussian, Inc. and that
+ it will not use this program in any manner prohibited above.
+ ---------------------------------------------------------------
+  
+
+ Cite this work as:
+ Gaussian 03, Revision D.01,
+ M. J. Frisch, G. W. Trucks, H. B. Schlegel, G. E. Scuseria, 
+ M. A. Robb, J. R. Cheeseman, J. A. Montgomery, Jr., T. Vreven, 
+ K. N. Kudin, J. C. Burant, J. M. Millam, S. S. Iyengar, J. Tomasi, 
+ V. Barone, B. Mennucci, M. Cossi, G. Scalmani, N. Rega, 
+ G. A. Petersson, H. Nakatsuji, M. Hada, M. Ehara, K. Toyota, 
+ R. Fukuda, J. Hasegawa, M. Ishida, T. Nakajima, Y. Honda, O. Kitao, 
+ H. Nakai, M. Klene, X. Li, J. E. Knox, H. P. Hratchian, J. B. Cross, 
+ V. Bakken, C. Adamo, J. Jaramillo, R. Gomperts, R. E. Stratmann, 
+ O. Yazyev, A. J. Austin, R. Cammi, C. Pomelli, J. W. Ochterski, 
+ P. Y. Ayala, K. Morokuma, G. A. Voth, P. Salvador, J. J. Dannenberg, 
+ V. G. Zakrzewski, S. Dapprich, A. D. Daniels, M. C. Strain, 
+ O. Farkas, D. K. Malick, A. D. Rabuck, K. Raghavachari, 
+ J. B. Foresman, J. V. Ortiz, Q. Cui, A. G. Baboul, S. Clifford, 
+ J. Cioslowski, B. B. Stefanov, G. Liu, A. Liashenko, P. Piskorz, 
+ I. Komaromi, R. L. Martin, D. J. Fox, T. Keith, M. A. Al-Laham, 
+ C. Y. Peng, A. Nanayakkara, M. Challacombe, P. M. W. Gill, 
+ B. Johnson, W. Chen, M. W. Wong, C. Gonzalez, and J. A. Pople, 
+ Gaussian, Inc., Wallingford CT, 2004.
+ 
+ ******************************************
+ Gaussian 03:  AM64L-G03RevD.01 13-Oct-2005
+                31-Jan-2019 
+ ******************************************
+ %chk=check.chk
+ %mem=1500mb
+ %nproc=8
+ Will use up to    8 processors via shared memory.
+ --------------------------------------------------------------------
+ # opt=(modredundant, calcfc, noeigentest) b3lyp/6-311+g(d,p) scf=xqc
+ --------------------------------------------------------------------
+ 1/10=4,11=1,14=-1,18=120,26=3,38=1/1,3;
+ 2/9=110,17=6,18=5,40=1/2;
+ 3/5=4,6=6,7=111,11=2,16=1,25=1,30=1,74=-5/1,2,3;
+ 4//1;
+ 5/5=2,8=3,13=1,38=5/2,8;
+ 8/6=4,10=90,11=11/1;
+ 11/6=1,8=1,9=11,15=111,16=1/1,2,10;
+ 10/6=1,7=6/2;
+ 6/7=2,8=2,9=2,10=2,28=1/1;
+ 7/10=1,18=20,25=1/1,2,3,16;
+ 1/10=4,11=1,14=-1,18=20/3(3);
+ 2/9=110/2;
+ 6/7=2,8=2,9=2,10=2,19=2,28=1/1;
+ 99//99;
+ 2/9=110/2;
+ 3/5=4,6=6,7=111,11=2,16=1,25=1,30=1,74=-5/1,2,3;
+ 4/5=5,16=3/1;
+ 5/5=2,8=3,13=1,38=5/2,8;
+ 7//1,2,3,16;
+ 1/11=1,14=-1,18=20/3(-5);
+ 2/9=110/2;
+ 6/7=2,8=2,9=2,10=2,19=2,28=1/1;
+ 99/9=1/99;
+ ----
+ name
+ ----
+ Symbolic Z-matrix:
+ Charge =  0 Multiplicity = 1
+ O                    -0.70267  -0.11865  -0.05331 
+ O                     0.70267   0.11865  -0.05331 
+ H                    -1.02356   0.65172   0.42683 
+ H                     1.02356  -0.65172   0.42683 
+ 
+ The following ModRedundant input section has been read:
+ D    3    1    2    4 S  36 10.000                                            
+
+ GradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGrad
+ Berny optimization.
+ Initialization pass.
+                           ----------------------------
+                           !    Initial Parameters    !
+                           ! (Angstroms and Degrees)  !
+ --------------------------                            --------------------------
+ ! Name  Definition              Value          Derivative Info.                !
+ --------------------------------------------------------------------------------
+ ! R1    R(1,2)                  1.4252         calculate D2E/DX2 analytically  !
+ ! R2    R(1,3)                  0.9628         calculate D2E/DX2 analytically  !
+ ! R3    R(2,4)                  0.9628         calculate D2E/DX2 analytically  !
+ ! A1    A(2,1,3)              101.2687         calculate D2E/DX2 analytically  !
+ ! A2    A(1,2,4)              101.2687         calculate D2E/DX2 analytically  !
+ ! D1    D(3,1,2,4)            118.8736         Scan                            !
+ --------------------------------------------------------------------------------
+ Trust Radius=3.00D-01 FncErr=1.00D-07 GrdErr=1.00D-06
+ Number of optimizations in scan=  37
+ Number of steps in this run=  20 maximum allowed number of steps= 100.
+ GradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGrad
+
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.702671   -0.118654   -0.053306
+    2          8             0        0.702671    0.118654   -0.053306
+    3          1             0       -1.023563    0.651724    0.426828
+    4          1             0        1.023563   -0.651724    0.426828
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.712618   -0.053348
+    2          8             0        0.000000   -0.712618   -0.053348
+    3          1             0        0.813055    0.900759    0.426786
+    4          1             0       -0.813055   -0.900759    0.426786
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.601624317     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point     1 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.715366   -0.121692   -0.054943
+    2          8             0        0.715366    0.121692   -0.054943
+    3          1             0       -1.028396    0.655416    0.428465
+    4          1             0        1.028396   -0.655416    0.428465
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.725642   -0.053712
+    2          8             0        0.000000   -0.725642   -0.053712
+    3          1             0        0.818598    0.903917    0.429696
+    4          1             0       -0.818598   -0.903917    0.429696
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.602056902     A.U. after    9 cycles
+ Step number   2 out of a maximum of  20 on scan point     1 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.716460   -0.121911   -0.055019
+    2          8             0        0.716460    0.121911   -0.055019
+    3          1             0       -1.028641    0.655594    0.428541
+    4          1             0        1.028641   -0.655594    0.428541
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.726758   -0.053729
+    2          8             0        0.000000   -0.726758   -0.053729
+    3          1             0        0.818855    0.904092    0.429831
+    4          1             0       -0.818855   -0.904092    0.429831
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.602059309     A.U. after    6 cycles
+ Step number   3 out of a maximum of  20 on scan point     1 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.714266   -0.134199   -0.018409
+    2          8             0        0.714266    0.134199   -0.018409
+    3          1             0       -1.047039    0.676146    0.391930
+    4          1             0        1.047039   -0.676146    0.391930
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.726764   -0.045593
+    2          8             0        0.000000   -0.726764   -0.045593
+    3          1             0        0.857857    0.904182    0.364746
+    4          1             0       -0.857857   -0.904182    0.364746
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.601987213     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point     2 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.715072   -0.136232   -0.018587
+    2          8             0        0.715072    0.136232   -0.018587
+    3          1             0       -1.043617    0.675219    0.392108
+    4          1             0        1.043617   -0.675219    0.392108
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.727933   -0.045633
+    2          8             0        0.000000   -0.727933   -0.045633
+    3          1             0        0.858601    0.898811    0.365062
+    4          1             0       -0.858601   -0.898811    0.365062
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.601997808     A.U. after    7 cycles
+ Step number   2 out of a maximum of  20 on scan point     2 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.713089   -0.146172    0.019609
+    2          8             0        0.713089    0.146172    0.019609
+    3          1             0       -1.059403    0.692506    0.353913
+    4          1             0        1.059403   -0.692506    0.353913
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.727916   -0.037145
+    2          8             0        0.000000   -0.727916   -0.037145
+    3          1             0        0.891138    0.898762    0.297159
+    4          1             0       -0.891138   -0.898762    0.297159
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.601764730     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point     3 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.713906   -0.148028    0.019482
+    2          8             0        0.713906    0.148028    0.019482
+    3          1             0       -1.056469    0.691725    0.354039
+    4          1             0        1.056469   -0.691725    0.354039
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.729091   -0.037173
+    2          8             0        0.000000   -0.729091   -0.037173
+    3          1             0        0.891813    0.894024    0.297384
+    4          1             0       -0.891813   -0.894024    0.297384
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.601773366     A.U. after    7 cycles
+ Step number   2 out of a maximum of  20 on scan point     3 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.712270   -0.155629    0.058983
+    2          8             0        0.712270    0.155629    0.058983
+    3          1             0       -1.069401    0.705559    0.314539
+    4          1             0        1.069401   -0.705559    0.314539
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.729074   -0.028395
+    2          8             0        0.000000   -0.729074   -0.028395
+    3          1             0        0.917572    0.894144    0.227160
+    4          1             0       -0.917572   -0.894144    0.227160
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.601466759     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point     4 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.713013   -0.157171    0.058903
+    2          8             0        0.713013    0.157171    0.058903
+    3          1             0       -1.067111    0.704967    0.314619
+    4          1             0        1.067111   -0.704967    0.314619
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.730130   -0.028413
+    2          8             0        0.000000   -0.730130   -0.028413
+    3          1             0        0.918151    0.890339    0.227304
+    4          1             0       -0.918151   -0.890339    0.227304
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.601472935     A.U. after    7 cycles
+ Step number   2 out of a maximum of  20 on scan point     4 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.711783   -0.162594    0.099401
+    2          8             0        0.711783    0.162594    0.099401
+    3          1             0       -1.076717    0.715118    0.274121
+    4          1             0        1.076717   -0.715118    0.274121
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.730118   -0.019413
+    2          8             0        0.000000   -0.730118   -0.019413
+    3          1             0        0.936939    0.890425    0.155307
+    4          1             0       -0.936939   -0.890425    0.155307
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.601173760     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point     5 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.712373   -0.163738    0.099359
+    2          8             0        0.712373    0.163738    0.099359
+    3          1             0       -1.075104    0.714714    0.274163
+    4          1             0        1.075104   -0.714714    0.274163
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.730949   -0.019423
+    2          8             0        0.000000   -0.730949   -0.019423
+    3          1             0        0.937383    0.887681    0.155381
+    4          1             0       -0.937383   -0.887681    0.155381
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.601177264     A.U. after    7 cycles
+ Step number   2 out of a maximum of  20 on scan point     5 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.711596   -0.167055    0.140541
+    2          8             0        0.711596    0.167055    0.140541
+    3          1             0       -1.081138    0.721042    0.232981
+    4          1             0        1.081138   -0.721042    0.232981
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.730942   -0.010271
+    2          8             0        0.000000   -0.730942   -0.010271
+    3          1             0        0.949050    0.887731    0.082169
+    4          1             0       -0.949050   -0.887731    0.082169
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.600956249     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point     6 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.711984   -0.167761    0.140527
+    2          8             0        0.711984    0.167761    0.140527
+    3          1             0       -1.080182    0.720809    0.232994
+    4          1             0        1.080182   -0.720809    0.232994
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.731481   -0.010274
+    2          8             0        0.000000   -0.731481   -0.010274
+    3          1             0        0.949330    0.886077    0.082193
+    4          1             0       -0.949330   -0.886077    0.082193
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.600957616     A.U. after    6 cycles
+ Step number   2 out of a maximum of  20 on scan point     6 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.711685   -0.169014    0.182073
+    2          8             0        0.711685    0.169014    0.182073
+    3          1             0       -1.082498    0.723226    0.191449
+    4          1             0        1.082498   -0.723226    0.191449
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.731479   -0.001042
+    2          8             0        0.000000   -0.731479   -0.001042
+    3          1             0        0.953776    0.886098    0.008334
+    4          1             0       -0.953776   -0.886098    0.008334
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.600864848     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point     7 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.712030   -0.168489    0.223659
+    2          8             0        0.712030    0.168489    0.223659
+    3          1             0       -1.080682    0.721614    0.149863
+    4          1             0        1.080682   -0.721614    0.149863
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.731693   -0.008200
+    2          8             0        0.000000   -0.731693   -0.008200
+    3          1             0       -0.951073    0.885472    0.065596
+    4          1             0        0.951073   -0.885472    0.065596
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.600924159     A.U. after   11 cycles
+ Step number   1 out of a maximum of  20 on scan point     8 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.712602   -0.165454    0.264958
+    2          8             0        0.712602    0.165454    0.264958
+    3          1             0       -1.075729    0.716218    0.108563
+    4          1             0        1.075729   -0.716218    0.108563
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.731557   -0.017377
+    2          8             0        0.000000   -0.731557   -0.017377
+    3          1             0       -0.940954    0.885871    0.139018
+    4          1             0        0.940954   -0.885871    0.139018
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.601118037     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point     9 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.713397   -0.159891    0.305635
+    2          8             0        0.713397    0.159891    0.305635
+    3          1             0       -1.067753    0.707108    0.067886
+    4          1             0        1.067753   -0.707108    0.067886
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.731095   -0.026417
+    2          8             0        0.000000   -0.731095   -0.026417
+    3          1             0       -0.923508    0.887260    0.211332
+    4          1             0        0.923508   -0.887260    0.211332
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.601400169     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point    10 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.712851   -0.158885    0.305584
+    2          8             0        0.712851    0.158885    0.305584
+    3          1             0       -1.069174    0.707459    0.067937
+    4          1             0        1.069174   -0.707459    0.067937
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.730343   -0.026405
+    2          8             0        0.000000   -0.730343   -0.026405
+    3          1             0       -0.923112    0.889659    0.211242
+    4          1             0        0.923112   -0.889659    0.211242
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.601403058     A.U. after    7 cycles
+ Step number   2 out of a maximum of  20 on scan point    10 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.714392   -0.151722    0.345359
+    2          8             0        0.714392    0.151722    0.345359
+    3          1             0       -1.057055    0.694434    0.028163
+    4          1             0        1.057055   -0.694434    0.028163
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.730325   -0.035244
+    2          8             0        0.000000   -0.730325   -0.035244
+    3          1             0       -0.898882    0.889728    0.281952
+    4          1             0        0.898882   -0.889728    0.281952
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.601704047     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point    11 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.713675   -0.150333    0.345265
+    2          8             0        0.713675    0.150333    0.345265
+    3          1             0       -1.059134    0.694965    0.028256
+    4          1             0        1.059134   -0.694965    0.028256
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.729337   -0.035223
+    2          8             0        0.000000   -0.729337   -0.035223
+    3          1             0       -0.898353    0.893142    0.281786
+    4          1             0        0.898353   -0.893142    0.281786
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.601709454     A.U. after    7 cycles
+ Step number   2 out of a maximum of  20 on scan point    11 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.715582   -0.140909    0.383809
+    2          8             0        0.715582    0.140909    0.383809
+    3          1             0       -1.043959    0.678384   -0.010288
+    4          1             0        1.043959   -0.678384   -0.010288
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.729324   -0.043789
+    2          8             0        0.000000   -0.729324   -0.043789
+    3          1             0       -0.867300    0.893222    0.350308
+    4          1             0        0.867300   -0.893222    0.350308
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.601950150     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point    12 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.714766   -0.139219    0.383669
+    2          8             0        0.714766    0.139219    0.383669
+    3          1             0       -1.046675    0.679101   -0.010147
+    4          1             0        1.046675   -0.679101   -0.010147
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.728198   -0.043757
+    2          8             0        0.000000   -0.728198   -0.043757
+    3          1             0       -0.866681    0.897536    0.350058
+    4          1             0        0.866681   -0.897536    0.350058
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.601958140     A.U. after    7 cycles
+ Step number   2 out of a maximum of  20 on scan point    12 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.716947   -0.127417    0.420686
+    2          8             0        0.716947    0.127417    0.420686
+    3          1             0       -1.028866    0.659193   -0.047164
+    4          1             0        1.028866   -0.659193   -0.047164
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.728181   -0.051983
+    2          8             0        0.000000   -0.728181   -0.051983
+    3          1             0       -0.829054    0.897647    0.415866
+    4          1             0        0.829054   -0.897647    0.415866
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.602054439     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point    13 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.716121   -0.125497    0.420489
+    2          8             0        0.716121    0.125497    0.420489
+    3          1             0       -1.032197    0.660091   -0.046967
+    4          1             0        1.032197   -0.660091   -0.046967
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.727034   -0.051939
+    2          8             0        0.000000   -0.727034   -0.051939
+    3          1             0       -0.828355    0.902761    0.415516
+    4          1             0        0.828355   -0.902761    0.415516
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.602064496     A.U. after    7 cycles
+ Step number   2 out of a maximum of  20 on scan point    13 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.718462   -0.111199    0.455695
+    2          8             0        0.718462    0.111199    0.455695
+    3          1             0       -1.012253    0.637125   -0.082173
+    4          1             0        1.012253   -0.637125   -0.082173
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.727017   -0.059763
+    2          8             0        0.000000   -0.727017   -0.059763
+    3          1             0       -0.784455    0.902892    0.478105
+    4          1             0        0.784455   -0.902892    0.478105
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.601926436     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point    14 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.717720   -0.109096    0.455436
+    2          8             0        0.717720    0.109096    0.455436
+    3          1             0       -1.016247    0.638228   -0.081914
+    4          1             0        1.016247   -0.638228   -0.081914
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.725964   -0.059706
+    2          8             0        0.000000   -0.725964   -0.059706
+    3          1             0       -0.783699    0.908795    0.477644
+    4          1             0        0.783699   -0.908795    0.477644
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.601938238     A.U. after    7 cycles
+ Step number   2 out of a maximum of  20 on scan point    14 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.720074   -0.092178    0.488562
+    2          8             0        0.720074    0.092178    0.488562
+    3          1             0       -0.994767    0.612524   -0.115040
+    4          1             0        0.994767   -0.612524   -0.115040
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.725950   -0.067067
+    2          8             0        0.000000   -0.725950   -0.067067
+    3          1             0       -0.733876    0.908940    0.536536
+    4          1             0        0.733876   -0.908940    0.536536
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.601494964     A.U. after    9 cycles
+ Step number   1 out of a maximum of  20 on scan point    15 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.719511   -0.089919    0.488225
+    2          8             0        0.719511    0.089919    0.488225
+    3          1             0       -0.999492    0.613850   -0.114703
+    4          1             0        0.999492   -0.613850   -0.114703
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.725108   -0.066992
+    2          8             0        0.000000   -0.725108   -0.066992
+    3          1             0       -0.733056    0.915655    0.535936
+    4          1             0        0.733056   -0.915655    0.535936
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.601508532     A.U. after    7 cycles
+ Step number   2 out of a maximum of  20 on scan point    15 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.721687   -0.070262    0.519016
+    2          8             0        0.721687    0.070262    0.519016
+    3          1             0       -0.977168    0.585774   -0.145495
+    4          1             0        0.977168   -0.585774   -0.145495
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.725099   -0.073835
+    2          8             0        0.000000   -0.725099   -0.073835
+    3          1             0       -0.677705    0.915807    0.590676
+    4          1             0        0.677705   -0.915807    0.590676
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.600723056     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point    16 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.721397   -0.067923    0.518587
+    2          8             0        0.721397    0.067923    0.518587
+    3          1             0       -0.982574    0.587308   -0.145065
+    4          1             0        0.982574   -0.587308   -0.145065
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.724588   -0.073739
+    2          8             0        0.000000   -0.724588   -0.073739
+    3          1             0       -0.676828    0.923193    0.589913
+    4          1             0        0.676828   -0.923193    0.589913
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.600738015     A.U. after    7 cycles
+ Step number   2 out of a maximum of  20 on scan point    16 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.723160   -0.045444    0.546809
+    2          8             0        0.723160    0.045444    0.546809
+    3          1             0       -0.960189    0.557272   -0.173287
+    4          1             0        0.960189   -0.557272   -0.173287
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.724586   -0.080011
+    2          8             0        0.000000   -0.724586   -0.080011
+    3          1             0       -0.616395    0.923348    0.640086
+    4          1             0        0.616395   -0.923348    0.640086
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.599617972     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point    17 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.723209   -0.043126    0.546272
+    2          8             0        0.723209    0.043126    0.546272
+    3          1             0       -0.966107    0.558959   -0.172750
+    4          1             0        0.966107   -0.558959   -0.172750
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.724494   -0.079891
+    2          8             0        0.000000   -0.724494   -0.079891
+    3          1             0       -0.615476    0.931122    0.639131
+    4          1             0        0.615476   -0.931122    0.639131
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.599633708     A.U. after    7 cycles
+ Step number   2 out of a maximum of  20 on scan point    17 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.724280   -0.017791    0.571713
+    2          8             0        0.724280    0.017791    0.571713
+    3          1             0       -0.944521    0.527415   -0.198191
+    4          1             0        0.944521   -0.527415   -0.198191
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.724498   -0.085545
+    2          8             0        0.000000   -0.724498   -0.085545
+    3          1             0       -0.550450    0.931285    0.684359
+    4          1             0        0.550450   -0.931285    0.684359
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.598212332     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point    18 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.724680   -0.015550    0.571065
+    2          8             0        0.724680    0.015550    0.571065
+    3          1             0       -0.950891    0.529246   -0.197543
+    4          1             0        0.950891   -0.529246   -0.197543
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.724847   -0.085401
+    2          8             0        0.000000   -0.724847   -0.085401
+    3          1             0       -0.549523    0.939319    0.683208
+    4          1             0        0.549523   -0.939319    0.683208
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.598229143     A.U. after    7 cycles
+ Step number   2 out of a maximum of  20 on scan point    18 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.724748    0.012588    0.593536
+    2          8             0        0.724748   -0.012588    0.593536
+    3          1             0       -0.930994    0.496671   -0.220015
+    4          1             0        0.930994   -0.496671   -0.220015
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.724857   -0.090395
+    2          8             0        0.000000   -0.724857   -0.090395
+    3          1             0       -0.480428    0.939479    0.723156
+    4          1             0        0.480428   -0.939479    0.723156
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.596566423     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point    19 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.725454    0.014750    0.592753
+    2          8             0        0.725454   -0.014750    0.592753
+    3          1             0       -0.937880    0.498671   -0.219231
+    4          1             0        0.937880   -0.498671   -0.219231
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.725604   -0.090220
+    2          8             0        0.000000   -0.725604   -0.090220
+    3          1             0       -0.479502    0.947823    0.721763
+    4          1             0        0.479502   -0.947823    0.721763
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.596585295     A.U. after    7 cycles
+ Step number   2 out of a maximum of  20 on scan point    19 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.724191    0.045522    0.612091
+    2          8             0        0.724191   -0.045522    0.612091
+    3          1             0       -0.920559    0.465566   -0.238570
+    4          1             0        0.920559   -0.465566   -0.238570
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.725620   -0.094518
+    2          8             0        0.000000   -0.725620   -0.094518
+    3          1             0       -0.406897    0.947953    0.756143
+    4          1             0        0.406897   -0.947953    0.756143
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.594771478     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point    20 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.725126    0.047552    0.611174
+    2          8             0        0.725126   -0.047552    0.611174
+    3          1             0       -0.927930    0.467743   -0.237652
+    4          1             0        0.927930   -0.467743   -0.237652
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.726684   -0.094314
+    2          8             0        0.000000   -0.726684   -0.094314
+    3          1             0       -0.406019    0.956549    0.754512
+    4          1             0        0.406019   -0.956549    0.754512
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.594792509     A.U. after    7 cycles
+ Step number   2 out of a maximum of  20 on scan point    20 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.722213    0.080661    0.627247
+    2          8             0        0.722213   -0.080661    0.627247
+    3          1             0       -0.914044    0.434631   -0.253725
+    4          1             0        0.914044   -0.434631   -0.253725
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.726703   -0.097886
+    2          8             0        0.000000   -0.726703   -0.097886
+    3          1             0       -0.330490    0.956639    0.783087
+    4          1             0        0.330490   -0.956639    0.783087
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.592957234     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point    21 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.723270    0.082436    0.626249
+    2          8             0        0.723270   -0.082436    0.626249
+    3          1             0       -0.921606    0.436918   -0.252728
+    4          1             0        0.921606   -0.436918   -0.252728
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.727953   -0.097664
+    2          8             0        0.000000   -0.727953   -0.097664
+    3          1             0       -0.329742    0.965156    0.781313
+    4          1             0        0.329742   -0.965156    0.781313
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.592978726     A.U. after    7 cycles
+ Step number   2 out of a maximum of  20 on scan point    21 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.718435    0.117452    0.638950
+    2          8             0        0.718435   -0.117452    0.638950
+    3          1             0       -0.911926    0.404309   -0.265428
+    4          1             0        0.911926   -0.404309   -0.265428
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.727973   -0.100487
+    2          8             0        0.000000   -0.727973   -0.100487
+    3          1             0       -0.251881    0.965210    0.803892
+    4          1             0        0.251881   -0.965210    0.803892
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.591277369     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point    22 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.719471    0.118853    0.637947
+    2          8             0        0.719471   -0.118853    0.637947
+    3          1             0       -0.919245    0.406583   -0.264425
+    4          1             0        0.919245   -0.406583   -0.264425
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.729222   -0.100264
+    2          8             0        0.000000   -0.729222   -0.100264
+    3          1             0       -0.251322    0.973221    0.802108
+    4          1             0        0.251322   -0.973221    0.802108
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.591296703     A.U. after    7 cycles
+ Step number   2 out of a maximum of  20 on scan point    22 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.712528    0.155225    0.647189
+    2          8             0        0.712528   -0.155225    0.647189
+    3          1             0       -0.914392    0.374951   -0.273667
+    4          1             0        0.914392   -0.374951   -0.273667
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.729240   -0.102317
+    2          8             0        0.000000   -0.729240   -0.102317
+    3          1             0       -0.171721    0.973248    0.818539
+    4          1             0        0.171721   -0.973248    0.818539
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.589893122     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point    23 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.713423    0.156154    0.646295
+    2          8             0        0.713423   -0.156154    0.646295
+    3          1             0       -0.920710    0.376970   -0.272773
+    4          1             0        0.920710   -0.376970   -0.272773
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.730312   -0.102119
+    2          8             0        0.000000   -0.730312   -0.102119
+    3          1             0       -0.171388    0.980020    0.816950
+    4          1             0        0.171388   -0.980020    0.816950
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.589907026     A.U. after    7 cycles
+ Step number   2 out of a maximum of  20 on scan point    23 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.704298    0.193243    0.652024
+    2          8             0        0.704298   -0.193243    0.652024
+    3          1             0       -0.921109    0.346716   -0.278502
+    4          1             0        0.921109   -0.346716   -0.278502
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.730328   -0.103392
+    2          8             0        0.000000   -0.730328   -0.103392
+    3          1             0       -0.090635    0.980020    0.827134
+    4          1             0        0.090635   -0.980020    0.827134
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.588955333     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point    24 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.704949    0.193697    0.651387
+    2          8             0        0.704949   -0.193697    0.651387
+    3          1             0       -0.925549    0.348176   -0.277866
+    4          1             0        0.925549   -0.348176   -0.277866
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.731076   -0.103250
+    2          8             0        0.000000   -0.731076   -0.103250
+    3          1             0       -0.090511    0.984721    0.826003
+    4          1             0        0.090511   -0.984721    0.826003
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.588962051     A.U. after    7 cycles
+ Step number   2 out of a maximum of  20 on scan point    24 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.693688    0.230832    0.653569
+    2          8             0        0.693688   -0.230832    0.653569
+    3          1             0       -0.931450    0.319621   -0.280047
+    4          1             0        0.931450   -0.319621   -0.280047
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.731086   -0.103735
+    2          8             0        0.000000   -0.731086   -0.103735
+    3          1             0       -0.009177    0.984719    0.829881
+    4          1             0        0.009177   -0.984719    0.829881
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.588580166     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point    25 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.693972    0.230938    0.653310
+    2          8             0        0.693972   -0.230938    0.653310
+    3          1             0       -0.933286    0.320243   -0.279788
+    4          1             0        0.933286   -0.320243   -0.279788
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.731389   -0.103677
+    2          8             0        0.000000   -0.731389   -0.103677
+    3          1             0       -0.009172    0.986658    0.829420
+    4          1             0        0.009172   -0.986658    0.829420
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.588581295     A.U. after    6 cycles
+ Step number   2 out of a maximum of  20 on scan point    25 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.680737    0.267451    0.651934
+    2          8             0        0.680737   -0.267451    0.651934
+    3          1             0       -0.944727    0.293610   -0.278413
+    4          1             0        0.944727   -0.293610   -0.278413
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.731392   -0.103372
+    2          8             0        0.000000   -0.731392   -0.103372
+    3          1             0        0.072187    0.986664    0.826975
+    4          1             0       -0.072187   -0.986664    0.826975
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.588823180     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point    26 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.680538    0.267432    0.652098
+    2          8             0        0.680538   -0.267432    0.652098
+    3          1             0       -0.943563    0.293205   -0.278576
+    4          1             0        0.943563   -0.293205   -0.278576
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.731198   -0.103408
+    2          8             0        0.000000   -0.731198   -0.103408
+    3          1             0        0.072213    0.985427    0.827266
+    4          1             0       -0.072213   -0.985427    0.827266
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.588823637     A.U. after    6 cycles
+ Step number   2 out of a maximum of  20 on scan point    26 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.665598    0.302703    0.647181
+    2          8             0        0.665598   -0.302703    0.647181
+    3          1             0       -0.960375    0.268627   -0.273659
+    4          1             0        0.960375   -0.268627   -0.273659
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.731197   -0.102316
+    2          8             0        0.000000   -0.731197   -0.102316
+    3          1             0        0.153052    0.985422    0.818525
+    4          1             0       -0.153052   -0.985422    0.818525
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.589645328     A.U. after    9 cycles
+ Step number   1 out of a maximum of  20 on scan point    27 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.664832    0.302780    0.647725
+    2          8             0        0.664832   -0.302780    0.647725
+    3          1             0       -0.956562    0.267265   -0.274204
+    4          1             0        0.956562   -0.267265   -0.274204
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.730532   -0.102437
+    2          8             0        0.000000   -0.730532   -0.102437
+    3          1             0        0.153233    0.981306    0.819493
+    4          1             0       -0.153233   -0.981306    0.819493
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.589650462     A.U. after    7 cycles
+ Step number   2 out of a maximum of  20 on scan point    27 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.648543    0.336259    0.639299
+    2          8             0        0.648543   -0.336259    0.639299
+    3          1             0       -0.978402    0.244824   -0.265778
+    4          1             0        0.978402   -0.244824   -0.265778
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.730533   -0.100564
+    2          8             0        0.000000   -0.730533   -0.100564
+    3          1             0        0.233004    0.981284    0.804513
+    4          1             0       -0.233004   -0.981284    0.804513
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.590940163     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point    28 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.647214    0.336576    0.640115
+    2          8             0        0.647214   -0.336576    0.640115
+    3          1             0       -0.972666    0.242722   -0.266593
+    4          1             0        0.972666   -0.242722   -0.266593
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.729499   -0.100745
+    2          8             0        0.000000   -0.729499   -0.100745
+    3          1             0        0.233424    0.974939    0.805963
+    4          1             0       -0.233424   -0.974939    0.805963
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.590952335     A.U. after    7 cycles
+ Step number   2 out of a maximum of  20 on scan point    28 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.630002    0.367800    0.628227
+    2          8             0        0.630002   -0.367800    0.628227
+    3          1             0       -0.999023    0.222460   -0.254705
+    4          1             0        0.999023   -0.222460   -0.254705
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.729506   -0.098104
+    2          8             0        0.000000   -0.729506   -0.098104
+    3          1             0        0.311567    0.974916    0.784829
+    4          1             0       -0.311567   -0.974916    0.784829
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.592564483     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point    29 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.628195    0.368407    0.629177
+    2          8             0        0.628195   -0.368407    0.629177
+    3          1             0       -0.992158    0.219883   -0.255655
+    4          1             0        0.992158   -0.219883   -0.255655
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.728254   -0.098315
+    2          8             0        0.000000   -0.728254   -0.098315
+    3          1             0        0.312238    0.967075    0.786517
+    4          1             0       -0.312238   -0.967075    0.786517
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.592582691     A.U. after    7 cycles
+ Step number   2 out of a maximum of  20 on scan point    29 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.610526    0.397025    0.613894
+    2          8             0        0.610526   -0.397025    0.613894
+    3          1             0       -1.022357    0.201805   -0.240372
+    4          1             0        1.022357   -0.201805   -0.240372
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.728266   -0.094918
+    2          8             0        0.000000   -0.728266   -0.094918
+    3          1             0        0.388174    0.967088    0.759347
+    4          1             0       -0.388174   -0.967088    0.759347
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.594359357     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point    30 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.608403    0.397891    0.614856
+    2          8             0        0.608403   -0.397891    0.614856
+    3          1             0       -1.015153    0.199041   -0.241335
+    4          1             0        1.015153   -0.199041   -0.241335
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.726961   -0.095132
+    2          8             0        0.000000   -0.726961   -0.095132
+    3          1             0        0.389049    0.958537    0.761059
+    4          1             0       -0.389049   -0.958537    0.761059
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.594380469     A.U. after    7 cycles
+ Step number   2 out of a maximum of  20 on scan point    30 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.590751    0.423690    0.596278
+    2          8             0        0.590751   -0.423690    0.596278
+    3          1             0       -1.048333    0.183092   -0.222756
+    4          1             0        1.048333   -0.183092   -0.222756
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.726980   -0.091004
+    2          8             0        0.000000   -0.726980   -0.091004
+    3          1             0        0.462195    0.958593    0.728030
+    4          1             0       -0.462195   -0.958593    0.728030
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.596169259     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point    31 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.588513    0.424809    0.597182
+    2          8             0        0.588513   -0.424809    0.597182
+    3          1             0       -1.041242    0.180318   -0.223660
+    4          1             0        1.041242   -0.180318   -0.223660
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.725817   -0.091205
+    2          8             0        0.000000   -0.725817   -0.091205
+    3          1             0        0.463215    0.949806    0.729637
+    4          1             0       -0.463215   -0.949806    0.729637
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.596190515     A.U. after    7 cycles
+ Step number   2 out of a maximum of  20 on scan point    31 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.571314    0.447711    0.575433
+    2          8             0        0.571314   -0.447711    0.575433
+    3          1             0       -1.076433    0.166393   -0.201911
+    4          1             0        1.076433   -0.166393   -0.201911
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.725841   -0.086372
+    2          8             0        0.000000   -0.725841   -0.086372
+    3          1             0        0.532992    0.949902    0.690972
+    4          1             0       -0.532992   -0.949902    0.690972
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.597857421     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point    32 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.569146    0.449067    0.576224
+    2          8             0        0.569146   -0.449067    0.576224
+    3          1             0       -1.069737    0.163737   -0.202703
+    4          1             0        1.069737   -0.163737   -0.202703
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.724975   -0.086547
+    2          8             0        0.000000   -0.724975   -0.086547
+    3          1             0        0.534078    0.941227    0.692380
+    4          1             0       -0.534078   -0.941227    0.692380
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.597876940     A.U. after    7 cycles
+ Step number   2 out of a maximum of  20 on scan point    32 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.552774    0.469107    0.551461
+    2          8             0        0.552774   -0.469107    0.551461
+    3          1             0       -1.105918    0.151696   -0.177939
+    4          1             0        1.105918   -0.151696   -0.177939
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.724997   -0.081044
+    2          8             0        0.000000   -0.724997   -0.081044
+    3          1             0        0.599921    0.941361    0.648356
+    4          1             0       -0.599921   -0.941361    0.648356
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.599324435     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point    33 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.550800    0.470699    0.552117
+    2          8             0        0.550800   -0.470699    0.552117
+    3          1             0       -1.099694    0.149209   -0.178595
+    4          1             0        1.099694   -0.149209   -0.178595
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.724526   -0.081190
+    2          8             0        0.000000   -0.724526   -0.081190
+    3          1             0        0.601000    0.932946    0.649522
+    4          1             0       -0.601000   -0.932946    0.649522
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.599341829     A.U. after    7 cycles
+ Step number   2 out of a maximum of  20 on scan point    33 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.535547    0.488006    0.524526
+    2          8             0        0.535547   -0.488006    0.524526
+    3          1             0       -1.135848    0.138887   -0.151004
+    4          1             0        1.135848   -0.138887   -0.151004
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.724541   -0.075059
+    2          8             0        0.000000   -0.724541   -0.075059
+    3          1             0        0.662378    0.933111    0.600471
+    4          1             0       -0.662378   -0.933111    0.600471
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.600501378     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point    34 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.533819    0.489865    0.525067
+    2          8             0        0.533819   -0.489865    0.525067
+    3          1             0       -1.130052    0.136559   -0.151545
+    4          1             0        1.130052   -0.136559   -0.151545
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.724521   -0.075179
+    2          8             0        0.000000   -0.724521   -0.075179
+    3          1             0        0.663439    0.924941    0.601433
+    4          1             0       -0.663439   -0.924941    0.601433
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.600517481     A.U. after    7 cycles
+ Step number   2 out of a maximum of  20 on scan point    34 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.519898    0.504624    0.494858
+    2          8             0        0.519898   -0.504624    0.494858
+    3          1             0       -1.165208    0.127781   -0.121336
+    4          1             0        1.165208   -0.127781   -0.121336
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.724527   -0.068466
+    2          8             0        0.000000   -0.724527   -0.068466
+    3          1             0        0.719861    0.925115    0.547728
+    4          1             0       -0.719861   -0.925115    0.547728
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.601349736     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point    35 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.518450    0.506720    0.495289
+    2          8             0        0.518450   -0.506720    0.495289
+    3          1             0       -1.159871    0.125633   -0.121767
+    4          1             0        1.159871   -0.125633   -0.121767
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.724952   -0.068562
+    2          8             0        0.000000   -0.724952   -0.068562
+    3          1             0        0.720869    0.917297    0.548495
+    4          1             0       -0.720869   -0.917297    0.548495
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.601365079     A.U. after    7 cycles
+ Step number   2 out of a maximum of  20 on scan point    35 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.506008    0.519141    0.462692
+    2          8             0        0.506008   -0.519141    0.462692
+    3          1             0       -1.193128    0.118234   -0.089170
+    4          1             0        1.193128   -0.118234   -0.089170
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.724950   -0.061318
+    2          8             0        0.000000   -0.724950   -0.061318
+    3          1             0        0.771881    0.917461    0.490545
+    4          1             0       -0.771881   -0.917461    0.490545
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.601855722     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point    36 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.504861    0.521368    0.463024
+    2          8             0        0.504861   -0.521368    0.463024
+    3          1             0       -1.188394    0.116321   -0.089503
+    4          1             0        1.188394   -0.116321   -0.089503
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.725747   -0.061392
+    2          8             0        0.000000   -0.725747   -0.061392
+    3          1             0        0.772810    0.910261    0.491135
+    4          1             0       -0.772810   -0.910261    0.491135
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.601869908     A.U. after    7 cycles
+ Step number   2 out of a maximum of  20 on scan point    36 out of    37
+ Optimization completed.
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.493990    0.531662    0.428290
+    2          8             0        0.493990   -0.531662    0.428290
+    3          1             0       -1.218957    0.110162   -0.054768
+    4          1             0        1.218957   -0.110162   -0.054768
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.725735   -0.053673
+    2          8             0        0.000000   -0.725735   -0.053673
+    3          1             0        0.818005    0.910418    0.429385
+    4          1             0       -0.818005   -0.910418    0.429385
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.602046866     A.U. after   10 cycles
+ Step number   1 out of a maximum of  20 on scan point    37 out of    37
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.493125    0.533891    0.428536
+    2          8             0        0.493125   -0.533891    0.428536
+    3          1             0       -1.214910    0.108516   -0.055014
+    4          1             0        1.214910   -0.108516   -0.055014
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.726782   -0.053728
+    2          8             0        0.000000   -0.726782   -0.053728
+    3          1             0        0.818839    0.904038    0.429823
+    4          1             0       -0.818839   -0.904038    0.429823
+ ---------------------------------------------------------------------
+ SCF Done:  E(RB+HF-LYP) =  -151.602059305     A.U. after    7 cycles
+ Step number   2 out of a maximum of  20 on scan point    37 out of    37
+ Optimization completed.
+ Summary of Optimized Potential Surface Scan
+                           1         2         3         4         5
+     EIGENVALUES --  -151.60206-151.60200-151.60177-151.60147-151.60118
+           R1           1.45352   1.45587   1.45818   1.46026   1.46190
+           R2           0.96737   0.96699   0.96668   0.96647   0.96634
+           R3           0.96737   0.96699   0.96668   0.96647   0.96634
+           A1         100.56295 100.17824  99.82379  99.54180  99.33415
+           A2         100.56295 100.17824  99.82379  99.54180  99.33415
+           D1         118.87361 128.87361 138.87361 148.87361 158.87361
+                           6         7         8         9        10
+     EIGENVALUES --  -151.60096-151.60086-151.60092-151.60112-151.60140
+           R1           1.46296   1.46296   1.46339   1.46311   1.46069
+           R2           0.96627   0.96627   0.96625   0.96626   0.96643
+           R3           0.96627   0.96627   0.96625   0.96626   0.96643
+           A1          99.20645  99.20783  99.15759  99.18957  99.48851
+           A2          99.20645  99.20783  99.15759  99.18957  99.48851
+           D1         168.87361 178.87361-171.12639-161.12639-151.12639
+                          11        12        13        14        15
+     EIGENVALUES --  -151.60171-151.60196-151.60206-151.60194-151.60151
+           R1           1.45867   1.45640   1.45407   1.45193   1.45022
+           R2           0.96663   0.96690   0.96725   0.96766   0.96809
+           R3           0.96663   0.96690   0.96725   0.96766   0.96809
+           A1          99.75647 100.08644 100.46750 100.89104 101.35149
+           A2          99.75647 100.08644 100.46750 100.89104 101.35149
+           D1        -141.12639-131.12639-121.12639-111.12639-101.12639
+                          16        17        18        19        20
+     EIGENVALUES --  -151.60074-151.59963-151.59823-151.59659-151.59479
+           R1           1.44918   1.44899   1.44969   1.45121   1.45337
+           R2           0.96849   0.96876   0.96888   0.96882   0.96860
+           R3           0.96849   0.96876   0.96888   0.96882   0.96860
+           A1         101.83341 102.31529 102.78893 103.25994 103.72818
+           A2         101.83341 102.31529 102.78893 103.25994 103.72818
+           D1         -91.12639 -81.12639 -71.12639 -61.12639 -51.12639
+                          21        22        23        24        25
+     EIGENVALUES --  -151.59298-151.59130-151.58991-151.58896-151.58858
+           R1           1.45591   1.45844   1.46062   1.46215   1.46278
+           R2           0.96830   0.96797   0.96769   0.96749   0.96743
+           R3           0.96830   0.96797   0.96769   0.96749   0.96743
+           A1         104.18002 104.60016 104.95419 105.19870 105.29949
+           A2         104.18002 104.60016 104.95419 105.19870 105.29949
+           D1         -41.12639 -31.12639 -21.12639 -11.12639  -1.12639
+                          26        27        28        29        30
+     EIGENVALUES --  -151.58882-151.58965-151.59095-151.59258-151.59438
+           R1           1.46240   1.46106   1.45900   1.45651   1.45392
+           R2           0.96747   0.96764   0.96791   0.96822   0.96853
+           R3           0.96747   0.96764   0.96791   0.96822   0.96853
+           A1         105.23484 105.02028 104.68930 104.27991 103.83347
+           A2         105.23484 105.02028 104.68930 104.27991 103.83347
+           D1           8.87361  18.87361  28.87361  38.87361  48.87361
+                          31        32        33        34        35
+     EIGENVALUES --  -151.59619-151.59788-151.59934-151.60052-151.60137
+           R1           1.45163   1.44995   1.44905   1.44904   1.44990
+           R2           0.96877   0.96888   0.96880   0.96857   0.96820
+           R3           0.96877   0.96888   0.96880   0.96857   0.96820
+           A1         103.36826 102.89692 102.42322 101.94214 101.45873
+           A2         103.36826 102.89692 102.42322 101.94214 101.45873
+           D1          58.87361  68.87361  78.87361  88.87361  98.87361
+                          36        37
+     EIGENVALUES --  -151.60187-151.60206
+           R1           1.45149   1.45356
+           R2           0.96776   0.96734
+           R3           0.96776   0.96734
+           A1         100.99134 100.55861
+           A2         100.99134 100.55861
+           D1         108.87361 118.87361
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0       -0.493125    0.533891    0.428536
+    2          8             0        0.493125   -0.533891    0.428536
+    3          1             0       -1.214910    0.108516   -0.055014
+    4          1             0        1.214910   -0.108516   -0.055014
+ ---------------------------------------------------------------------
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic     Atomic              Coordinates (Angstroms)
+ Number     Number      Type              X           Y           Z
+ ---------------------------------------------------------------------
+    1          8             0        0.000000    0.726782   -0.053728
+    2          8             0        0.000000   -0.726782   -0.053728
+    3          1             0        0.818839    0.904038    0.429823
+    4          1             0       -0.818839   -0.904038    0.429823
+ ---------------------------------------------------------------------
+ Normal termination of Gaussian 03 at Thu Jan 31 07:15:02 2019.

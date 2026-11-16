@@ -41,6 +41,9 @@ const LIVE_APPLIED_PREFERENCE_MESSAGES = {
   gridCardRenderer: "setGridCardRendererDefault",
   gridCardSize: "setGridCardSizeDefault",
   hydrogenDisplay: "setGridHydrogenDisplayDefault",
+  ligandCardContent: "setLigandCardContentDefault",
+  ligandCardDiagramStyle: "setLigandCardDiagramStyleDefault",
+  ligandCardDisplay: "setLigandCardDisplayDefault",
   // Read only by the Quick Look extension (synced through sync_viewer_preferences).
   quickLookGridSdf: null,
   quickLookGridSmiles: null,
@@ -68,9 +71,16 @@ function changedLiveAppliedKeys(previous: ViewerPreferences, next: ViewerPrefere
   const changed: LiveAppliedPreferenceKey[] = [];
   for (const key of Object.keys(next) as (keyof ViewerPreferences)[]) {
     if (previous[key] === next[key]) continue;
+    if (key === "shortcutOverrides") {
+      const before = previous.shortcutOverrides ?? {};
+      const after = next.shortcutOverrides ?? {};
+      if (Object.keys({ ...before, ...after }).every(command => before[command] === after[command])) continue;
+    }
     if (!(key in LIVE_APPLIED_PREFERENCE_MESSAGES)) return null;
     changed.push(key as LiveAppliedPreferenceKey);
   }
+  // Rehydration on window focus creates an equal object. An empty change list
+  // needs no viewer work; null means a real change requires rebuilding HTML.
   return changed;
 }
 
@@ -166,7 +176,8 @@ export function useAppPreferenceEffects({
       preserveActiveTab: true,
       shouldApply: () => {
         const current = currentInputsRef.current;
-        if (current.preferences !== preferences || !current.documents.includes(document)) return false;
+        const preferencesChanged = changedLiveAppliedKeys(preferences, current.preferences)?.length !== 0;
+        if (preferencesChanged || !current.documents.includes(document)) return false;
         deferred = current.isDocumentDirty(document);
         return !deferred;
       },

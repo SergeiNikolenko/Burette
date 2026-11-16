@@ -1,3 +1,4 @@
+import { useNativeSceneComposition } from "../hooks/use-native-scene-composition";
 import { Checkbox } from "./ui/checkbox";
 import { Slider } from "./ui/slider";
 import { TrajectorySetting } from "./trajectory-setting";
@@ -14,8 +15,14 @@ import { ShortcutTooltip } from "./shortcut-tooltip";
 import { FoldingResultsPanel, useFoldingResult } from "./folding-results-panel";
 import type { MenuItemSpec } from "./menu-types";
 import type { ShellActions, ShellViewState, StructureOverlayMode, StructureViewerAction } from "./types";
+import { classifyCifStructure, type CifStructureClassification } from "../lib/cif-structure-classification";
+import { useLogicalSource } from "../lib/science-session/state";
+import { useSourceEditing } from "../lib/source-editing/context";
 import { structureBriefForDocument, type StructureBriefRow as BriefRow } from "../lib/structure-brief";
-import { parseStructureComposition, type StructureCompositionSummary, type StructureSummaryRow } from "../lib/structure-composition";
+import { parseStructureComposition, unitCellComposition, type StructureCompositionSummary, type StructureSummaryRow } from "../lib/structure-composition";
+import { periodicCrystalFormat } from "../lib/molecular-workbench/crystal-io";
+import { SOURCE_EDIT_MAX_BYTES } from "../lib/source-editing/policy";
+import { runReaderTask } from "../lib/workbench/reader-task";
 import { activeViewerIframeForDocument, isKnownViewerMessageSource, requestViewerAction } from "../lib/viewer-bridge";
 import { compositionSceneAction } from "../lib/composition-scene-actions";
 import { compositionRowFromScene, type CompositionSceneState } from "../lib/composition-scene-state";
@@ -29,6 +36,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrubNumberField } from "@/components/ui/scrub-number-input";
 import { Item, ItemContent, ItemDescription, ItemGroup } from "@/components/ui/item";
 import { InspectorToolRow } from "./inspector-tool-row";
+import { PropertiesToolRow } from "./workbench/properties-entrypoint";
+import { sourceExtension, useTrajectoryFrame, type TrajectoryFrameState } from "../lib/workbench/source";
+import { CoordinateSetCard } from "./workbench/coordinate-set-card";
+import { CalculationResultsCard } from "./workbench/calculation-results-card";
 import { CollapsibleSection } from "./ui/collapsible-section";
 import { Field, FieldGroup, FieldTitle, FieldLabel, FieldDescription, FieldSet, FieldLegend } from "./ui/field";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
@@ -79,6 +90,7 @@ type StructureInfoPanelProps = {
 
 type XtbSettingsCategory = "core" | "solvation" | "properties" | "dynamics" | "output";
 type InspectorStructureTextSource = {
+  text?: string;
   path: string;
   extension: string;
   virtual: boolean;
@@ -99,14 +111,7 @@ type TrajectorySmoothingResult = {
   preset?: "light" | "balanced" | "strong";
   settingsSignature?: string;
 };
-type TrajectoryPlaybackState = {
-  frameIndex: number;
-  frameCount: number;
-  globalFrameIndex: number;
-  segmentStartFrame: number;
-  sourcePath: string;
-  playing: boolean;
-};
+type TrajectoryPlaybackState = TrajectoryFrameState;
 type AssemblySymmetryState = {
   available: boolean;
   shown: boolean;
@@ -173,7 +178,7 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
   const [trajectorySmoothingResult, setTrajectorySmoothingResult] = useState<TrajectorySmoothingResult | null>(null);
   const [trajectorySmoothingSignal, setTrajectorySmoothingSignal] = useState<MdsmoothSignal>("rmsd");
   const [trajectorySmoothingMode, setTrajectorySmoothingMode] = useState<MdsmoothMode>("extrema");
-  const [trajectoryPlayback, setTrajectoryPlayback] = useState<TrajectoryPlaybackState | null>(null);
+  const trajectoryPlayback = useTrajectoryFrame(document?.id ?? null);
   const [assemblySymmetry, setAssemblySymmetry] = useState<AssemblySymmetryState>({ available: false, shown: false });
   const [assemblySymmetryPending, setAssemblySymmetryPending] = useState(false);
   const trajectorySmoothingSourcePath = useRef("");
@@ -186,7 +191,6 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
     setTrajectorySmoothingBuilt(false);
     setTrajectorySmoothingView("original");
     setTrajectorySmoothingResult(null);
-    setTrajectoryPlayback(null);
     trajectorySmoothingSourcePath.current = "";
   }, [document?.id]);
 
@@ -227,24 +231,6 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
     if (viewerLigandSelection) return;
     setActiveActionKey((current) => current && current.includes("focus_ligand") ? null : current);
   }, [viewerLigandSelection]);
-
-  useEffect(() => {
-    const handle = (event: Event) => {
-      const detail = (event as CustomEvent<Record<string, unknown>>).detail;
-      if (String(detail?.documentId || "") !== document?.id) return;
-      const frameCount = Math.max(1, Math.trunc(Number(detail.frameCount) || 1));
-      setTrajectoryPlayback({
-        frameIndex: Math.max(0, Math.min(frameCount - 1, Math.trunc(Number(detail.frameIndex) || 0))),
-        frameCount,
-        globalFrameIndex: Math.max(0, Math.trunc(Number(detail.globalFrameIndex) || 0)),
-        segmentStartFrame: Math.max(0, Math.trunc(Number(detail.segmentStartFrame) || 0)),
-        sourcePath: String(detail.sourcePath || ""),
-        playing: detail.playing === true,
-      });
-    };
-    window.addEventListener("burette:trajectory-frame-changed", handle);
-    return () => window.removeEventListener("burette:trajectory-frame-changed", handle);
-  }, [document?.id]);
 
   useEffect(() => {
     const handle = (event: Event) => {
@@ -309,12 +295,13 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
     );
   }
 
-  const brief = structureBriefForDocument(document, formatBytes(document.byteCount));
+  const brief = structureBriefForDocument(document, formatBytes(document.byteCount), composition.cifKind);
   const derivedTopology = document.dockingRequest?.syntheticTopology === true;
   // Placeholder atoms have no chemical identity, so a parsed composition would
   // mislabel atom count as residues/ligands and must stay hidden until the user
   // attaches the matching topology.
   const compositionSummary = !derivedTopology && composition.documentId === document.id ? composition.summary : null;
+  const periodicCrystal = composition.documentId === document.id && composition.periodic;
   const compositionPending = !derivedTopology && composition.documentId === document.id && composition.loading;
   const rawCompositionError = !derivedTopology && composition.documentId === document.id ? composition.error : null;
   const virtualScene = isVirtualMolstarScene(document);
@@ -498,19 +485,21 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
           )}
         >
           <ItemGroup className="gap-1">
-            <InspectorToolRow
+            <PropertiesToolRow document={document} actions={actions} />
+            {/* xTB and CREST treat the input as an isolated molecule; a periodic cell is not one. */}
+            {periodicCrystal ? null : <InspectorToolRow
               name="Molecular calculations"
               detail={xtbMissing ? "Not installed" : oversizedForDirectJob ? oversizedNotice[0].hint : runningXtbJob ? `${operationTitle(runningXtbJob.operation)} · ${runningXtbJob.inputLabel}` : xtbSettingsShort(xtbSettings)}
               detailTitle={runningXtbJob || xtbBlocked ? undefined : xtbSettingsSummary(xtbSettings)}
               state={runningXtbJob ? "running" : xtbMissing ? "missing" : "ready"}
               primaryLabel="Optimize"
               primaryDisabled={xtbBlocked}
-              onPrimary={() => void actions.runXtbActiveOperation("optimize")}
+              onPrimary={() => void actions.runXtbActiveOperation("optimize", document)}
               key={document.id}
               inputLabel={document.title}
               onHistory={() => actions.toggleDockTab("bottom", "jobs")}
               runLabel={xtbOperation === "optimize" ? "Optimize" : operationTitle(xtbOperation)}
-              onRun={() => void actions.runXtbActiveOperation(xtbOperation)}
+              onRun={() => void actions.runXtbActiveOperation(xtbOperation, document)}
             >
               <FieldGroup className="mb-5">
                 <Field>
@@ -529,9 +518,9 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
                 </Field>
               </FieldGroup>
               <XtbInlineSettings settings={xtbSettings} xtbStatus={xtbStatus} actions={actions} />
-            </InspectorToolRow>
+            </InspectorToolRow>}
           </ItemGroup>
-          <ConformerToolRows
+          {periodicCrystal ? null : <ConformerToolRows
             document={document}
             selectedEntity={selectedEntity}
             viewerLigandSelection={viewerLigandSelection}
@@ -539,7 +528,7 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
             settings={conformerSettings}
             oversizedNotice={oversizedNotice}
             actions={actions}
-          />
+          />}
           {document.renderer === "grid2d" ? (
             <ItemGroup>
               <GridDescriptorStatus documentId={document.id} />
@@ -552,6 +541,9 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
         ) : null}
 
       </> : null}
+
+      {sourceExtension(document) === "mol" ? <CoordinateSetCard document={document} /> : null}
+      <CalculationResultsCard document={document} />
 
       {derivedTopology ? (
         <DerivedTopologyCard document={document} isBrowserDev={isBrowserDev} actions={actions} />
@@ -637,7 +629,7 @@ const HEADER_STAT_LABELS = ["Chains", "Molecules", "Frames", "Models"] as const;
 function inspectorHeaderStats(document: ViewerDocument, summary: StructureCompositionSummary | null) {
   const size = { label: "Size", value: formatBytes(document.byteCount) };
   if (!summary) return [size];
-  const atomCount = structureAtomCountFromSummary(summary);
+  const atomCount = structureAtomCountFromSummary(summary) ?? (summary.sceneRequestId && valueForLabel(summary.rows, "Atoms") === "0" ? 0 : null);
   const counts = [
     atomCount === null ? null : { label: "Atoms", value: atomCount.toLocaleString() },
     ...HEADER_STAT_LABELS.map((label) => {
@@ -2165,35 +2157,59 @@ function XtbArtifactInfoCard({
 }
 
 function useStructureComposition(document: ViewerDocument | null) {
+  const logical = useLogicalSource(document?.id);
+  const native = useNativeSceneComposition(document?.renderer === "molstar" && document.extension.replace(/^\./u, "").toLowerCase() === "molx" && !logical ? document : null);
+  const draft = useSourceEditing()?.sessionForDocument(document)?.content;
+  const sourceIdentity = useMemo(() => ({ document, logical, draft }), [document, logical, draft]);
   const [state, setState] = useState<{
     documentId: string | null;
+    sourceIdentity: object | null;
+    cifKind: CifStructureClassification["kind"];
+    /** A periodic crystal (CIF with fractional sites, POSCAR, XYZ with a Lattice). */
+    periodic: boolean;
     loading: boolean;
     summary: StructureCompositionSummary | null;
     error: string | null;
-  }>({ documentId: null, loading: false, summary: null, error: null });
+  }>({ documentId: null, sourceIdentity: null, cifKind: null, periodic: false, loading: false, summary: null, error: null });
 
   useEffect(() => {
-    if (!document) {
-      setState({ documentId: null, loading: false, summary: null, error: null });
+    // A MOLX is an archive, not coordinate text. Its validated logical source
+    // arrives asynchronously; foreign scenes have no text composition to parse.
+    if (!document || (document.extension.replace(/^\./u, "").toLowerCase() === "molx" && !logical)) {
+      setState({ documentId: document?.id ?? null, sourceIdentity, cifKind: null, periodic: false, loading: false, summary: null, error: null });
       return undefined;
     }
     let cancelled = false;
-    setState({ documentId: document.id, loading: true, summary: null, error: null });
-    const source = structureCompositionSourceForDocument(document);
+    setState({ documentId: document.id, sourceIdentity, cifKind: null, periodic: false, loading: true, summary: null, error: null });
+    const source = document.dockingRequest ? structureCompositionSourceForDocument(document)
+      : { ...structureCompositionSourceForDocument(document), extension: logical?.extension ?? document.extension,
+          text: draft ?? logical?.text };
     void readInspectorStructureText(source)
-      .then((text) => {
+      .then(async (text) => {
         if (cancelled) return;
+        // Reuse this source read; publish its classification only for this exact revision.
+        const cifKind = ["cif", "mmcif"].includes(source.extension.replace(/^\./u, "").toLowerCase())
+          ? (await classifyCifStructure(text)).kind : null;
+        const format = text.length <= SOURCE_EDIT_MAX_BYTES ? periodicCrystalFormat(source.extension.replace(/^\./u, "").toLowerCase(), text) : null;
+        const summary = parseStructureComposition(text, source.extension);
         setState({
           documentId: document.id,
+          sourceIdentity, cifKind, periodic: format !== null,
           loading: false,
-          summary: parseStructureComposition(text, source.extension),
+          summary,
           error: null,
         });
+        // A crystal is shown as its full unit cell, so it is counted that way once it is read.
+        if (!format || format === "xyz") return;
+        const cell = await runReaderTask({ action: "crystal", format, text }).catch(() => null);
+        if (cancelled || !cell) return;
+        setState((current) => current.sourceIdentity === sourceIdentity ? { ...current, summary: unitCellComposition(summary, cell.atoms) } : current);
       })
       .catch((error) => {
         if (cancelled) return;
         setState({
           documentId: document.id,
+          sourceIdentity, cifKind: null, periodic: false,
           loading: false,
           summary: null,
           error: error instanceof Error ? error.message : String(error),
@@ -2202,9 +2218,9 @@ function useStructureComposition(document: ViewerDocument | null) {
     return () => {
       cancelled = true;
     };
-  }, [document]);
+  }, [document, logical, draft]);
 
-  return state;
+  return { ...state, summary: native ?? state.summary, cifKind: state.sourceIdentity === sourceIdentity ? state.cifKind : null };
 }
 
 function structureCompositionSourceForDocument(document: ViewerDocument): InspectorStructureTextSource {
@@ -2220,7 +2236,7 @@ function structureCompositionSourceForDocument(document: ViewerDocument): Inspec
 
 function readInspectorStructureText(source: InspectorStructureTextSource) {
   const maxBytes = compositionReadLimit(source);
-  const virtualText = source.virtual ? readBrowserDevVirtualTextDocument(source.path) : null;
+  const virtualText = source.text ?? (source.virtual ? readBrowserDevVirtualTextDocument(source.path) : null);
   if (virtualText !== null) {
     return Promise.resolve(maxBytes === undefined ? virtualText : virtualText.slice(0, maxBytes));
   }
@@ -3797,6 +3813,7 @@ function StructureCompositionCard({
       const body = event.data?.body;
       if (body?.type === "ready") requestVisibility();
       if (body?.type !== "compositionVisibilityChanged" || !Array.isArray(body.rows)) return;
+      if (summary?.sceneRequestId && (!Array.isArray(body.hierarchyRequestIds) || body.hierarchyRequestIds.length > 16 || !body.hierarchyRequestIds.includes(summary.sceneRequestId))) return;
       setSceneRows(current => {
         const next = new Map(current);
         for (const row of body.rows.slice(0, 128)) {
@@ -3829,7 +3846,7 @@ function StructureCompositionCard({
     window.addEventListener("message", receive);
     requestVisibility();
     return () => window.removeEventListener("message", receive);
-  }, [document.id, sourceGroups]);
+  }, [document.id, sourceGroups, summary?.sceneRequestId]);
   const markHidden = (row: StructureSummaryRow, hide: boolean) => {
     setHiddenRows((current) => {
       const next = new Set(current);

@@ -16,6 +16,8 @@ widget omits desktop document tabs, sidebars, and docks while preserving the
 native interactive viewer controls, sequence, selection, measurements, and
 representations. The package does not expose a separate branded viewer page:
 the root URL redirects to the public plugin documentation.
+Hosted viewer and Ketcher cards omit the Compute menu because this service
+does not provide calculation jobs. Ketcher mounts directly inside its card.
 
 ## MCP contract
 

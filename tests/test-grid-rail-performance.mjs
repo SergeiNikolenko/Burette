@@ -27,10 +27,13 @@ const state = { rows, remoteMode: false, railHoveredMarker: null, token: 1,
 let lensUpdates = 0;
 let chromeUpdates = 0;
 let rangeReads = 0;
+let presentations = 0;
 const frames = [];
+const timers = [];
+window.setTimeout = (callback, delay) => { timers.push({ callback, delay }); return timers.length; };
 window.requestAnimationFrame = callback => { frames.push(callback); return frames.length; };
 const names = ['updateGridRail', 'gridRailRows', 'gridRailTotalRows', 'updateGridRailActive',
-  'updateGridRailCurrentMarker', 'handleGridScroll', 'scheduleVirtualWindowRender', 'renderVirtualWindow'];
+  'updateGridRailCurrentMarker', 'handleGridScroll', 'scheduleGridPresentation', 'scheduleVirtualWindowRender', 'renderVirtualWindow'];
 const declarations = source.slice(source.indexOf('  const gridRailMarkup ='), source.indexOf('  function updateGridRail()'));
 const runtime = new Function('state', 'window', 'document', 'root', 'metrics', `
   const GRID_RAIL_ITEM_SIZE = 10;
@@ -41,6 +44,7 @@ const runtime = new Function('state', 'window', 'document', 'root', 'metrics', `
   function escapeAttr(value) { return value.replaceAll('&', '&amp;').replaceAll('"', '&quot;'); }
   function updateGridRailLens() { metrics.lens(); }
   function updateChrome() { metrics.chrome(); }
+  function publishGridPresentation() { metrics.presentation(); }
   function updateGridToolbarCondensed() {}
   function maybeLoadMore() {}
   function updateTableHeaderStick() {}
@@ -50,6 +54,7 @@ const runtime = new Function('state', 'window', 'document', 'root', 'metrics', `
   return { updateGridRail, updateGridRailCurrentMarker, handleGridScroll };
 `)(state, window, document, root, {
   lens: () => { lensUpdates++; }, chrome: () => { chromeUpdates++; }, range: () => { rangeReads++; },
+  presentation: () => { presentations++; },
 });
 
 runtime.updateGridRail();
@@ -92,6 +97,11 @@ card.getBoundingClientRect = () => ({ top: 0 });
 grid.appendChild(card);
 for (let index = 0; index < 20; index++) runtime.handleGridScroll({});
 assert.equal(frames.length, 1, 'scroll events share one animation frame');
+assert.equal(timers.length, 1, 'scroll events retain the coalesced host presentation update');
+assert.equal(timers[0].delay, 100);
+timers[0].callback();
+assert.equal(presentations, 1);
+assert.equal(state.gridPresentationTimer, 0);
 frames.shift()();
 assert.equal(rangeReads, 1);
 assert.equal(chromeUpdates, 0, 'scroll within the retained window only updates its active rail marker');

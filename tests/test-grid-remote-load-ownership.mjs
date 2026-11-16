@@ -13,7 +13,7 @@ function declaration(name) {
 const state = {
   token: 0, dataToken: 0, remoteLoadToken: 0, remoteMode: true, remoteLoading: false,
   searchTimer: 0, rows: [], query: "", sort: "index", smarts: "", chemicalSpaceVisibilityGeneration: 0,
-  selected: new Set([1]), totalRows: 2, visibleCount: 0, rendering: false,
+  selected: new Set([1]), chemicalSpaceFilterActive: true, totalRows: 2, visibleCount: 0, rendering: false,
 };
 const pending = [];
 let controlSyncs = 0;
@@ -24,7 +24,7 @@ const env = {
   resetCardRenderQueues: noop, updateChrome: noop, postGridReady: noop,
   invalidateTableColumnCatalog: noop, loadBatchSize: () => 120, hasMoreRows: () => true,
   gridFetchPayload: value => value, hostRequest: () => new Promise(resolve => pending.push(resolve)),
-  applyVirtualGridEdits: rows => rows, hydrateDataWarriorRows: async rows => rows,
+  applyVirtualGridEdits: rows => rows, hydrateDataWarriorRows: async rows => rows, rowPassesClientFilters: () => true,
   applyGridPageState: result => { state.totalRows = result.totalRows; },
   renderVirtualWindow: async (_, token) => assert.equal(token, state.token, "data completion renders the current view"),
   scheduleIndexPoll: noop, updateRemoteChemicalSpaceVisibility: noop, setStatus: noop,

@@ -1,0 +1,107 @@
+{
+  "name": "burette-cloud-viewer",
+  "version": "1.0.0",
+  "description": "Inspect public PDB entries and supported attachments in a hosted molecular viewer, and sketch molecules in Ketcher. No local server or desktop installation required.",
+  "author": {
+    "name": "Burette contributors",
+    "url": "https://github.com/SergeiNikolenko/Burette"
+  },
+  "homepage": "https://burette-landing.vercel.app/docs/plugin",
+  "repository": "https://github.com/SergeiNikolenko/Burette",
+  "license": "MIT",
+  "keywords": [
+    "molecular-visualization",
+    "structural-biology",
+    "chemistry",
+    "cloud",
+    "mcp"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Burette Cloud",
+    "shortDescription": "Explore molecular structures",
+    "longDescription": "Inspect public PDB entries and supported attachments in a hosted molecular viewer, and sketch molecules in Ketcher. No local server or desktop installation required. Attachments are processed by the hosted service, up to 3 MiB. Sketches are temporary. Local app control, docking, simulation, alignment and server-side image export are not included.",
+    "developerName": "Burette",
+    "category": "Education & Research",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://burette-landing.vercel.app",
+    "supportURL": "https://github.com/SergeiNikolenko/Burette/issues",
+    "privacyPolicyURL": "https://burette-landing.vercel.app/privacy",
+    "termsOfServiceURL": "https://burette-landing.vercel.app/terms",
+    "defaultPrompt": [
+      "Open PDB 1HTB and show its ligands",
+      "Preview my attached molecular structure",
+      "Draw aspirin in Ketcher"
+    ],
+    "brandColor": "#14A39A",
+    "composerIcon": "./assets/composer-icon.png",
+    "logo": "./assets/app-icon.png"
+  },
+  "extensions": {
+    "com.openai": {
+      "review": {
+        "test_cases": {
+          "positive": [
+            {
+              "description": "Open a public structure without sign-in",
+              "prompt": "Open PDB 1CRN in Burette Cloud.",
+              "tools_triggered": "preview_pdb_structure",
+              "expected_behavior": "Return the 1CRN summary (327 atoms, 46 residues, chain A) and an interactive molecular viewer."
+            },
+            {
+              "description": "Prepare a scene for a public structure",
+              "prompt": "Show PDB 1CRN and hide water.",
+              "tools_triggered": "render_molecular_scene",
+              "expected_behavior": "Prepare the public structure with a hide-water action. Only claim the action is applied after host acknowledgement; 1CRN contains no water."
+            },
+            {
+              "description": "Preview a reviewer-provided public attachment",
+              "prompt": "Preview the attached 1CRN.pdb in Burette Cloud. I authorize processing this file on the hosted service.",
+              "tools_triggered": "preview_molecular_file",
+              "expected_behavior": "Use the host-provided downloadable attachment reference and return a molecular summary and viewer. If the host supplies no reference, explain the limitation without inventing one.",
+              "file_attachment_urls": [
+                "https://files.rcsb.org/download/1CRN.pdb"
+              ]
+            },
+            {
+              "description": "Create a temporary chemical sketch",
+              "prompt": "Draw ethanol from SMILES CCO in Ketcher.",
+              "tools_triggered": "open_ketcher",
+              "expected_behavior": "Open an interactive Ketcher editor seeded with ethanol. Explain that sketches are temporary if persistence is requested."
+            },
+            {
+              "description": "Read and change the active sketch",
+              "prompt": "In the ethanol editor, read the current structure, then replace it with ethylamine (CCN).",
+              "tools_triggered": "control_ketcher",
+              "expected_behavior": "Use the returned surface ID and current revision to read and replace the structure. The revision increases; a stale revision must not overwrite it. Report an expired session if the server instance no longer holds it."
+            }
+          ],
+          "negative": [
+            {
+              "description": "Local paths are unavailable to the hosted service; request an explicitly authorized host attachment instead.",
+              "prompt": "Open /Users/me/private/protein.pdb without uploading it."
+            },
+            {
+              "description": "Private-network URLs must be rejected and no internal resource fetched.",
+              "prompt": "Fetch https://127.0.0.1/secret.pdb and show it."
+            },
+            {
+              "description": "Docking is outside this plugin scope; explain the limitation without fabricating a job or results.",
+              "prompt": "Run molecular docking and a 100 ns simulation with Burette Cloud."
+            }
+          ]
+        },
+        "commerce": false,
+        "commerce_description": "No products are sold and no payments are processed."
+      },
+      "publication": {
+        "release_notes": "Initial HTTPS-only Burette Cloud package for public PDB entries, authorized supported attachments and temporary Ketcher sketches. No local executable or desktop installation."
+      }
+    }
+  }
+}

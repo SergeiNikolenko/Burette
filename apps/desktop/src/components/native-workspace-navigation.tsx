@@ -3,7 +3,7 @@ import { RadixDropdownMenu } from "./radix-menu";
 import type { MenuItemSpec } from "./menu-types";
 import type { ShellActions, ShellViewState } from "./types";
 import { AnimatedOrbitIcon } from "./ui/animated-icons";
-import { History, SidebarLeft } from "./ui/app-icons";
+import { History, SidebarLeft, SidebarLeftHidden } from "./ui/app-icons";
 import { ShortcutTooltip } from "./shortcut-tooltip";
 import "./native-workspace-navigation.css";
 
@@ -40,7 +40,7 @@ function SidebarToggle({ open, onToggle }: { open: boolean; onToggle: () => void
   return <ShortcutTooltip label={open ? "Hide sidebar" : "Show sidebar"}>
     <button type="button" className="chrome-button native-sidebar-toggle" aria-pressed={open}
       aria-label={open ? "Hide workspace navigation" : "Show workspace navigation"} onClick={onToggle}>
-      <SidebarLeft size={18} aria-hidden />
+      {open ? <SidebarLeft size={18} aria-hidden /> : <SidebarLeftHidden size={18} aria-hidden />}
     </button>
   </ShortcutTooltip>;
 }
@@ -53,7 +53,7 @@ export function NativeWorkspaceMenu({ state, actions, onShowSidebar, fileItems =
   if (onShowSidebar) return <SidebarToggle open={false} onToggle={onShowSidebar} />;
   const items: MenuItemSpec[] = [
     { kind: "item", id: "home", text: "Recent files", action: () => homeAction({ state, actions }) },
-    { kind: "item", id: "ketcher", text: "Ketcher", action: () => ketcherAction({ state, actions }) },
+    { kind: "item", id: "ketcher", text: "Molecular editor", action: () => ketcherAction({ state, actions }) },
     ...(fileItems.length ? [{ kind: "submenu" as const, id: "file-actions", text: "Open in another application", items: fileItems }] : []),
     { kind: "separator" },
     ...openPages(state).map(({ tab, title }) => ({
@@ -62,7 +62,7 @@ export function NativeWorkspaceMenu({ state, actions, onShowSidebar, fileItems =
     })),
   ];
   return <RadixDropdownMenu items={items} align="start" trigger={<ShortcutTooltip label="Workspace pages"><button type="button" className="chrome-button native-sidebar-toggle"
-    aria-label="Workspace pages"><SidebarLeft size={18} aria-hidden /></button></ShortcutTooltip>} />;
+    aria-label="Workspace pages"><SidebarLeftHidden size={18} aria-hidden /></button></ShortcutTooltip>} />;
 }
 
 // Codex sidebar anatomy: icon tool rows, a section title, then text-only rows.
@@ -82,7 +82,7 @@ export function NativeWorkspaceSidebar({ state, actions, onToggleSidebar }: Prop
       <button type="button" className="sidebar-tool-row" aria-current={current === "ketcher" ? "page" : undefined}
         onClick={() => ketcherAction({ state, actions })}>
         <span className="sidebar-tool-icon" aria-hidden="true"><AnimatedOrbitIcon size={16} /></span>
-        <span className="sidebar-tool-label">Ketcher</span>
+        <span className="sidebar-tool-label">Molecular editor</span>
       </button>
       {pages.length ? <section className="sidebar-section" aria-labelledby="native-open-pages">
         <div className="sidebar-section-header"><h2 id="native-open-pages" className="native-workspace-section-title">Open pages</h2></div>

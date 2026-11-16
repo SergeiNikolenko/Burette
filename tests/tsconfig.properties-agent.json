@@ -1,0 +1,5 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "strict": true, "types": ["bun"] },
+  "include": ["test-properties-agent-contract.test.ts", "test-properties-agent.test.ts", "../apps/desktop/src/**/*.d.ts"]
+}

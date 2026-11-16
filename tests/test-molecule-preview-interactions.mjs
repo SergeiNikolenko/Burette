@@ -94,57 +94,105 @@ const installResize = new Function('window', 'document', 'Element', 'runMolstarM
   return installMolstarMoleculePreviewResize;
 `)(window, document, window.Element, (action) => actions.push(action));
 const card = document.createElement('div');
-card.innerHTML = '<div data-buret-molecule-preview-drag><button data-buret-molecule-preview-action="close"><span>Close</span></button></div>';
+card.innerHTML = '<div class="buret-molecule-card-header" data-buret-molecule-preview-drag><button data-buret-molecule-preview-action="collapse"><span>Collapse</span></button></div>';
 document.body.appendChild(card);
 let cardCaptures = 0;
 card.setPointerCapture = () => { cardCaptures++; };
 card.releasePointerCapture = () => {};
 installResize(card);
-const closeGlyph = card.querySelector('span');
-closeGlyph.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, button: 0, pointerId: 1 }));
-assert.equal(cardCaptures, 0, 'Close must not capture the pointer as a header drag');
-closeGlyph.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
-assert.deepEqual(actions, ['close']);
-card.firstElementChild.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, button: 0, pointerId: 2 }));
+const collapseGlyph = card.querySelector('span');
+collapseGlyph.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, button: 0, pointerId: 1 }));
+assert.equal(cardCaptures, 0, 'Collapse must not capture the pointer as a header drag');
+collapseGlyph.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+assert.deepEqual(actions, ['collapse']);
+// A click on the header folds the card; the click ending a header drag does not.
+const header = card.firstElementChild;
+header.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, button: 0, pointerId: 2 }));
 assert.equal(cardCaptures, 1, 'The header background must remain draggable');
 card.dispatchEvent(new window.PointerEvent('pointerup', { pointerId: 2 }));
-// Hide survives selection clearing, Escape/resize cleanup and new selections.
-// Restoring explicitly opens the current selection; document teardown resets it.
+header.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+assert.deepEqual(actions, ['collapse', 'collapse']);
+header.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, button: 0, pointerId: 3, clientX: 10, clientY: 10 }));
+card.dispatchEvent(new window.PointerEvent('pointermove', { pointerId: 3, clientX: 40, clientY: 10 }));
+card.dispatchEvent(new window.PointerEvent('pointerup', { pointerId: 3 }));
+header.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+assert.deepEqual(actions, ['collapse', 'collapse']);
+// The card folds into a chip and opens again. Hover opens a folded card only
+// when Settings say "On hover" and the user has not opened or closed it yet;
+// after that clicks alone decide. With nothing selected the card keeps its
+// last ligand, or the structure's first ligand.
 const previewFunction = name => viewerSource.match(new RegExp(`\\n  (?:async )?function ${name}\\([\\s\\S]*?\\n  \\}`, 'u'))[0];
-const visibility = new Function(`
-  let molstarMoleculePreviewSuppressed = false, molstarMoleculePreviewMinimized = false;
-  let molstarMoleculePreview = null, molstarMoleculePreviewTarget = { label: 'GDP A' };
-  let molstarMoleculePreviewMinimizedTarget = null, molstarMoleculePreviewFrame = 0;
-  let selected = { label: 'GDP A' }, chip = null, shown = [], scheduled = 0;
-  const hideMolstarMoleculePreview = () => { molstarMoleculePreview = null; };
-  const showMolstarMoleculePreviewChip = label => { chip = label; };
-  const removeMolstarMoleculePreviewChip = () => { chip = null; };
+const ligandCard = new Function(`
+  let display = 'hover', active = false, selected = null;
+  let molstarMoleculePreviewExpanded = null, molstarMoleculePreviewHovered = false, molstarMoleculePreviewHoverTimer = 0;
+  let molstarMoleculePreviewFrame = 0, molstarHydrogensPending = false;
+  let molstarMoleculePreview = {}, molstarMoleculePreviewTarget = null;
+  const timers = [];
+  const setTimeout = callback => timers.push(callback);
+  const clearTimeout = id => { if (id) timers[id - 1] = null; };
+  const cancelAnimationFrame = () => {};
+  const molstarLigandCardDefaults = () => ({ display });
+  const molstarMoleculePreviewIsActive = () => active;
+  const presentMolstarMoleculePreview = () => {};
   const molstarSelectedMoleculePreviewTarget = () => selected;
-  const showMolstarMoleculePreview = target => { shown.push(target.label); };
-  const showMolstarSelectedMoleculePreview = () => { scheduled++; return true; };
-  ${['dismissMolstarMoleculePreview', 'minimizeMolstarMoleculePreview', 'restoreMolstarMoleculePreview', 'clearMolstarPersistentMoleculePreview', 'scheduleMolstarSelectedMoleculePreview'].map(previewFunction).join('\n')}
+  const showMolstarSelectedMoleculePreview = () => {
+    if (selected) molstarMoleculePreviewTarget = selected;
+    return !!selected;
+  };
+  const molstarMoleculePreviewEntry = target => target;
+  const molstarPreviewLigandEntries = () => [{ scope: 'ion', label: 'MG' }, { scope: 'ligand', label: 'STI A 600' }];
+  const molstarPreviewLigandTarget = entry => ({ label: entry.label });
+  const showMolstarMoleculePreview = (target, { hover = false } = {}) => {
+    if (hover) molstarMoleculePreviewHovered = true;
+    molstarMoleculePreviewTarget = target;
+  };
+  const removeMolstarMoleculePreview = () => { molstarMoleculePreview = null; molstarMoleculePreviewTarget = null; };
+  ${['molstarMoleculePreviewIsExpanded', 'setMolstarMoleculePreviewExpanded', 'releaseMolstarMoleculePreviewHover',
+    'scheduleMolstarSelectedMoleculePreview', 'showMolstarResidentMoleculePreview', 'clearMolstarPersistentMoleculePreview',
+    'hideMolstarMoleculePreview'].map(previewFunction).join('\n')}
   return {
-    hide: dismissMolstarMoleculePreview, restore: restoreMolstarMoleculePreview,
-    clear: clearMolstarPersistentMoleculePreview, schedule: scheduleMolstarSelectedMoleculePreview,
-    select: value => { selected = value; },
-    state: () => ({ hidden: molstarMoleculePreviewSuppressed, minimized: molstarMoleculePreviewMinimized, chip, shown, scheduled })
+    hover: label => showMolstarMoleculePreview({ label }, { hover: true }),
+    release: releaseMolstarMoleculePreviewHover, open: setMolstarMoleculePreviewExpanded,
+    schedule: scheduleMolstarSelectedMoleculePreview, clear: clearMolstarPersistentMoleculePreview,
+    flush: () => timers.splice(0).forEach(callback => callback?.()),
+    set: values => { ({ display = display, active = active, selected = selected } = values); },
+    state: () => ({ open: molstarMoleculePreviewIsExpanded(), label: molstarMoleculePreviewTarget?.label ?? null })
   };
 `)();
-visibility.hide();
-visibility.select(null);
-visibility.schedule();
-visibility.clear();
-visibility.select({ label: 'GDP B' });
-visibility.schedule();
-assert.deepEqual(visibility.state(), { hidden: true, minimized: true, chip: 'GDP A', shown: [], scheduled: 0 });
-visibility.restore();
-assert.deepEqual(visibility.state(), { hidden: false, minimized: false, chip: null, shown: ['GDP B'], scheduled: 0 });
-visibility.hide();
-visibility.clear({ reset: true });
-visibility.schedule();
-assert.equal(visibility.state().hidden, false);
-assert.equal(visibility.state().chip, null);
-assert.equal(visibility.state().scheduled, 1);
+ligandCard.schedule();
+assert.deepEqual(ligandCard.state(), { open: false, label: 'STI A 600' });
+ligandCard.hover('GDP B');
+ligandCard.release();
+assert.deepEqual(ligandCard.state(), { open: true, label: 'GDP B' }, 'Leaving the ligand folds the card a moment later');
+ligandCard.flush();
+assert.deepEqual(ligandCard.state(), { open: false, label: 'GDP B' });
+ligandCard.hover('GDP B');
+ligandCard.release();
+ligandCard.set({ active: true });
+ligandCard.flush();
+assert.equal(ligandCard.state().open, true, 'The pointer on the card keeps it open');
+ligandCard.set({ active: false });
+ligandCard.release();
+ligandCard.flush();
+assert.equal(ligandCard.state().open, false);
+ligandCard.open(true);
+ligandCard.hover('GDP B');
+ligandCard.release();
+ligandCard.flush();
+assert.equal(ligandCard.state().open, true, 'A card opened by a click stays open');
+ligandCard.clear();
+assert.equal(ligandCard.state().open, true, 'Escape folds only what hover opened');
+ligandCard.open(false);
+ligandCard.hover('GDP B');
+assert.equal(ligandCard.state().open, false, 'A card closed with × or its header stays folded over a ligand');
+ligandCard.set({ display: 'always' });
+ligandCard.clear({ reset: true });
+ligandCard.set({ selected: { label: 'GDP A' } });
+ligandCard.schedule();
+assert.deepEqual(ligandCard.state(), { open: true, label: 'GDP A' }, 'Always: open from the start, showing the selection');
+ligandCard.open(false);
+ligandCard.hover('GDP B');
+assert.equal(ligandCard.state().open, false, 'Always: a card the user folded stays folded over a ligand');
 window.happyDOM.abort();
 console.log('2D preview zoom, lasso, cancellation and replacement passed');
 
@@ -166,11 +214,14 @@ console.log('2D preview zoom, lasso, cancellation and replacement passed');
     molstarMoleculePreviewRDKitSVG: () => new Promise((resolve, reject) => pending.push({ resolve, reject })),
     selectMolstarMoleculePreviewAtoms: target => { selected = target; },
     updateMolstarHydrogenButtons() {},
+    molstarMoleculePreviewDiagram: () => null, configureMolstarMoleculePreviewDiagram() {}, requestMolstarDiagramLigandMolblock() {},
+    molstarMoleculePreviewClamp() {}, molstarMoleculePreviewFitHeight: () => 0,
+    molstarMoleculePreviewIsExpanded: () => true, presentMolstarMoleculePreview() {}, molstarContextResidueLabel: () => '',
   };
   let selected;
   const api = new Function(...Object.keys(bindings), `
     let molstarMoleculePreview = null, molstarMoleculePreviewTarget = null;
-    let molstarMoleculePreviewSuppressed = false, molstarMoleculePreviewMinimized = false;
+    let molstarMoleculePreviewHovered = false, molstarMoleculePreviewHoverTimer = 0;
     ${previewFunction('showMolstarMoleculePreview')}
     return { show: showMolstarMoleculePreview, card: () => molstarMoleculePreview,
       clear() { molstarMoleculePreview?.remove(); molstarMoleculePreview = null; molstarMoleculePreviewTarget = null; } };
@@ -201,3 +252,91 @@ console.log('2D preview zoom, lasso, cancellation and replacement passed');
   drawingWindow.happyDOM.abort();
 }
 console.log('Delayed depictions and shared SVGs retain current document/structure ownership');
+
+// The host closes its Radix menu after blur when a press enters the iframe.
+// Its late reply and document pointerup must retain the card until button click.
+{
+  const frameWindow = new Window(), frameDocument = frameWindow.document;
+  new Function('window', 'document', source)(frameWindow, frameDocument);
+  const posted = [], selected = [], selectionUpdates = [], selectionListeners = new Set();
+  const changed = { subscribe(update) { selectionListeners.add(update); return { unsubscribe() { selectionListeners.delete(update); } }; } };
+  const pointerHandler = viewerSource.slice(viewerSource.indexOf('    const onPointerDown = (event) => {', viewerSource.indexOf('  function installMolstarContextMenu(')), viewerSource.indexOf('    const onPointerMove = (event) => {', viewerSource.indexOf('  function installMolstarContextMenu(')));
+  const dependencies = {
+    window: frameWindow, document: frameDocument, Element: frameWindow.Element, Event: frameWindow.Event,
+    activeConfig: { appViewer: true }, postHostMessage: message => { posted.push(message); return true; },
+    molstarNativeMenuEntries: () => [{ kind: 'item', id: 'focus', text: 'Focus' }],
+    pushMolstarEditUndoSnapshot() {}, moleculeMenuCloseSubmenus() {}, moleculeMenuCancelHoverIntent() {},
+    rememberMolstarMoleculePreviewGeometry() {}, beginMolstarSelectionPreserve() {}, clearTouchContextPointer() {},
+    molstarContextEventIsTouch: () => false, menuIsInAtomMode: () => false,
+    molstarSelectedMoleculeTargetFromSelection: () => null,
+    notifyMolstarSelectionChanged: target => selectionUpdates.push(target),
+    selectionViewer: { plugin: { managers: { structure: { selection: { events: { changed } } } } } },
+  };
+  const api = new Function(...Object.keys(dependencies), `
+    let molstarNativeMenuSerial = 0, molstarNativeMenuPending = null, molstarContextMenuPick = null, contextPointer = null;
+    let molstarMoleculePreviewFrame = 0, molstarMoleculePreview = null, molstarMoleculePreviewTarget = null;
+    let molstarHydrogensPending = false, molstarMoleculePreviewDrag = null;
+    let molstarMoleculePreviewHovered = false, molstarMoleculePreviewHoverTimer = 0;
+    let molstarSelectionPreviewCleanup = null;
+    const molstarSelectedMoleculePreviewTarget = () => null;
+    // With no ligand selected the card goes back to its last ligand (folded).
+    let refreshes = 0;
+    const showMolstarResidentMoleculePreview = () => { refreshes++; };
+    ${['showDesktopNativeMolstarContextMenu', 'handleMolstarNativeMenuResult', 'hideMolstarContextMenu',
+      'scheduleMolstarSelectedMoleculePreview', 'hideMolstarMoleculePreview', 'runMolstarMoleculePreviewAction',
+      'installMolstarMoleculePreviewResize', 'subscribeMolstarPreviewEvent', 'installMolstarSelectionPreviewSync'].map(previewFunction).join('\n')}
+    ${pointerHandler}
+    document.addEventListener('pointerdown', onPointerDown, true);
+    installMolstarSelectionPreviewSync(selectionViewer);
+    // installing it shows the folded card once; count what follows
+    refreshes = 0;
+    return {
+      open(card) {
+        molstarMoleculePreview = card; molstarMoleculePreviewTarget = { label: 'Molecule' };
+        installMolstarMoleculePreviewResize(card);
+        return showDesktopNativeMolstarContextMenu({ clientX: 20, clientY: 20 }, {}, molstarMoleculePreviewTarget, 'residue');
+      },
+      closed(requestId) { handleMolstarNativeMenuResult({ event: 'closed', requestId }); },
+      refreshes: () => refreshes,
+      cleanup() { molstarSelectionPreviewCleanup(); }
+    };
+  `)(...Object.values(dependencies));
+  const card = frameDocument.createElement('div'); card.className = 'buret-molstar-molecule-preview';
+  card.innerHTML = '<button data-buret-molecule-preview-action="lasso" aria-pressed="false">Lasso</button><div class="buret-molstar-molecule-preview-image"><svg viewBox="0 0 100 100"><circle class="buret-preview-atom atom-0" cx="20" cy="20" data-source-position="1,2,3"/></svg></div>';
+  frameDocument.body.append(card);
+  const button = card.querySelector('button'), image = card.querySelector('.buret-molstar-molecule-preview-image'), svg = image.querySelector('svg');
+  svg.createSVGPoint = () => ({ x: 0, y: 0, matrixTransform() { return { x: this.x, y: this.y }; } });
+  svg.getScreenCTM = () => ({ inverse: () => ({}) });
+  image.setPointerCapture = () => {}; image.hasPointerCapture = () => false;
+  frameWindow.BuretteMoleculePreviewInteractions.install(image, positions => selected.push(positions));
+  assert.equal(api.open(card), true);
+  const request = posted.at(-1); assert.equal(request.type, 'molstarContextMenu');
+  button.dispatchEvent(new frameWindow.PointerEvent('pointerdown', { bubbles: true, button: 0, pointerId: 1 }));
+  // The actual host promise resolves on its deferred blur cleanup, after press.
+  await new Promise(resolve => setTimeout(resolve, 0)); api.closed(request.requestId);
+  assert.equal(api.refreshes(), 0, 'The host close reply must not rebuild the pressed preview card');
+  button.dispatchEvent(new frameWindow.PointerEvent('pointerup', { bubbles: true, button: 0, pointerId: 1 }));
+  assert.equal(api.refreshes(), 0, 'Document pointerup must not rebuild the card before its button click');
+  button.dispatchEvent(new frameWindow.MouseEvent('click', { bubbles: true }));
+  assert.equal(button.getAttribute('aria-pressed'), 'true');
+  assert.equal(image.classList.contains('buret-preview-lasso-active'), true);
+  button.dispatchEvent(new frameWindow.KeyboardEvent('keyup', { bubbles: true, key: 'Enter' }));
+  assert.equal(api.refreshes(), 0, 'Toolbar keyboard interaction must retain the preview');
+  const pick = (type, x, y) => image.dispatchEvent(new frameWindow.PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 2, button: 0, clientX: x, clientY: y }));
+  pick('pointerdown', 10, 10); pick('pointermove', 40, 10); pick('pointermove', 40, 40); pick('pointermove', 10, 40); pick('pointerup', 10, 10);
+  assert.deepEqual(selected, [[[1, 2, 3]]]);
+  assert.deepEqual(selectionUpdates, [null], 'Preview controls must not publish empty selection updates');
+  for (const update of selectionListeners) update({});
+  assert.equal(api.refreshes(), 1, 'Actual Mol* selection changes must still refresh the preview');
+  assert.deepEqual(selectionUpdates, [null, null]);
+  api.open(card);
+  frameDocument.body.dispatchEvent(new frameWindow.PointerEvent('pointerup', { bubbles: true }));
+  assert.equal(api.refreshes(), 2, 'Pointer release outside the preview must still refresh selection');
+  assert.deepEqual(selectionUpdates, [null, null, null]);
+  assert.equal(api.open(card), true);
+  api.closed(posted.at(-1).requestId);
+  assert.equal(api.refreshes(), 3, 'An ordinary dismissal still restores the selected-molecule preview');
+  api.cleanup(); assert.equal(selectionListeners.size, 0);
+  frameWindow.happyDOM.abort();
+}
+console.log('Host context-menu dismissal retains a pressed 2D preview and its working lasso');

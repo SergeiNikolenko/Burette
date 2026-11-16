@@ -13,6 +13,12 @@ const source = name => {
   assert.ok(start >= 0, name);
   return viewer.slice(start, viewer.indexOf('\n  }', start) + 4);
 };
+const constant = name => {
+  const start = viewer.indexOf(`  const ${name} = `);
+  assert.ok(start >= 0, name);
+  return viewer.slice(start, viewer.indexOf(';\n', start) + 2);
+};
+const cameraViewsSource = constant('VIEWPORT_AXIS_VIEWS');
 const controls = new Function('document', `
   ${['sceneTreeMenuItem', 'sceneTreeMenuSection', 'sceneTreeMenuSelect', 'sceneTreeMenuSlider', 'sceneTreeMenuThemePicker'].map(source).join('\n')}
   return { sceneTreeMenuItem, sceneTreeMenuSection, sceneTreeMenuSelect, sceneTreeMenuSlider, sceneTreeMenuThemePicker };
@@ -80,6 +86,63 @@ const events = [];
   assert.deepEqual(exports, [{ type: 'exportData', name: 'structure.png', mimeType: 'image/png', base64: 'aW1hZ2U=' }]);
   menu.remove();
 }
+// Export 3D model lists one action per format below the image settings; the chosen
+// format reaches the scene exporter, and its outcome becomes a download or a status.
+{
+  const helper = { values: { resolution: { name: 'viewport' }, format: { name: 'png' } }, cropParams: {} };
+  const formats = { ply: { extension: 'ply' }, glb: { extension: 'glb' }, obj: { extension: 'obj' }, x3d: { extension: 'x3d' }, wrl: { extension: 'wrl' }, pov: { extension: 'pov' } };
+  const calls = [], downloads = [], statuses = [];
+  let outcome;
+  const exporter = { formats, exportScene: (plugin, format) => { calls.push(format); return outcome(); } };
+  const bindings = { window: { BuretteNativeViewerMenus: window.BuretteNativeViewerMenus, molstar: { BuretteSceneExport: exporter } },
+    document, navigator: {}, activeConfig: { label: 'ethanol.sdf' }, resolveViewerTheme: () => 'light',
+    viewportScreenshotHelper: () => helper, viewportPlugin: () => ({}), positionOpenViewportMenu: () => {},
+    setStatus: (text, kind = 'info') => statuses.push([kind, text]), downloadBlob: (blob, name) => downloads.push(name),
+    sceneTreeIconElement: () => document.createElementNS('http://www.w3.org/2000/svg', 'svg'),
+    APP_ICON_DATA: { Check: [], ChevronDown: [] }, VIEWPORT_ICON: { download: [], clipboard: [] },
+    VIEWPORT_SCREENSHOT_RESOLUTIONS: [['viewport', 'Viewport']], VIEWPORT_SCREENSHOT_FORMATS: [['png', 'PNG']],
+  };
+  const constant = viewer.match(/  const VIEWPORT_MODEL_FORMATS = \[[\s\S]*?\];/)[0];
+  const code = ['viewportMenuItem', 'sceneTreeMenuSection', 'viewportScreenshotChoice', 'viewportScreenshotGroup', 'viewportScreenshotToggle',
+    'viewportScreenshotMenu', 'safeExportBaseName', 'exportViewportModel', 'runViewportScreenshotAction'].map(source).join('\n');
+  const actions = new Function(...Object.keys(bindings), `${constant}\nlet viewportModelExport = null;\n${code}
+    return { build: viewportScreenshotMenu, run: runViewportScreenshotAction, pending: () => viewportModelExport };`)(...Object.values(bindings));
+  const build = () => { const menu = document.createElement('div'); actions.build(menu); return menu; };
+  const items = menu => [...menu.querySelectorAll('[data-buret-viewport-menu="screenshot-model"]')];
+  const menu = build();
+  const group = menu.querySelector('[data-buret-screenshot-group="screenshot-model"]');
+  assert.equal(group.querySelector('summary .buret-tree-menu-label').textContent, 'Export 3D model');
+  assert.equal(group.querySelector('.buret-screenshot-group-value').textContent, '');
+  assert.deepEqual(items(menu).map(item => [item.getAttribute('role'), item.textContent]),
+    ['PLY', 'glTF', 'OBJ', 'X3D', 'VRML', 'POV-Ray'].map(label => ['menuitem', label]));
+  let changed = false;
+  outcome = () => Promise.resolve({ blob: new Blob(['ply']), assertSceneUnchanged: () => { if (changed) throw new Error('The 3D scene changed during the export.'); } });
+  assert.equal(actions.run('model', items(menu)[0]), false, 'starting an export closes the menu');
+  assert.ok(actions.pending(), 'an export is running');
+  assert.ok(items(build()).every(item => item.disabled), 'a second export cannot start while one runs');
+  await actions.pending();
+  assert.deepEqual([calls, downloads, actions.pending()], [['ply'], ['ethanol.ply'], null]);
+  // The scene changed after the file was written: nothing is downloaded.
+  changed = true;
+  actions.run('model', items(build())[4]);
+  await actions.pending();
+  outcome = () => Promise.reject(new DOMException('3D model export cancelled.', 'AbortError'));
+  actions.run('model', items(build())[1]);
+  await actions.pending();
+  outcome = () => Promise.reject(new Error('A 3D model cannot include text labels. Hide them and export again.'));
+  actions.run('model', items(build())[5]);
+  await actions.pending();
+  assert.deepEqual([calls, downloads, statuses], [['ply', 'wrl', 'glb', 'pov'], ['ethanol.ply'], [
+    ['error', '[web] 3D model export failed. The 3D scene changed during the export.'],
+    ['info', '[web] 3D model export cancelled.'],
+    ['error', '[web] 3D model export failed. A 3D model cannot include text labels. Hide them and export again.'],
+  ]]);
+  assert.ok(items(build()).every(item => !item.disabled));
+  // Without the exporter (an older runtime) the group is not offered.
+  const bare = new Function(...Object.keys(bindings), `${constant}\nlet viewportModelExport = null;\n${code}\nreturn viewportScreenshotMenu;`)(...Object.values({ ...bindings, window: { BuretteNativeViewerMenus: window.BuretteNativeViewerMenus } }));
+  const plain = document.createElement('div'); bare(plain);
+  assert.equal(plain.querySelector('[data-buret-screenshot-group="screenshot-model"]'), null);
+}
 // The live compute trigger keeps its label and busy state while consuming the
 // same Button/LoadingIndicator source as the shell, including theme changes.
 {
@@ -112,17 +175,24 @@ const events = [];
   document.body.append(menu);
   const bindings = { window, document, activeConfig: {}, resolveViewerTheme: () => 'dark',
     sceneTreeIconElement: () => document.createElementNS('http://www.w3.org/2000/svg', 'svg'),
-    SCENE_TREE_ICON: { focus: [], restore: [] }, VIEWPORT_ICON: { layFlat: [] } };
-  new Function(...Object.keys(bindings), source('viewportMenuItem') + source('viewportCameraMenu') + '; viewportCameraMenu(document.getElementById("buret-viewport-menu"));')(...Object.values(bindings));
+    viewportPlugin: () => ({ canvas3d: { camera: { state: { mode: 'orthographic' } } } }),
+    APP_ICON_DATA: { Check: [] }, SCENE_TREE_ICON: { focus: [], restore: [] }, VIEWPORT_ICON: { layFlat: [] } };
+  new Function(...Object.keys(bindings), cameraViewsSource + ['viewportMenuItem', 'appendMolstarPresetMenuSeparator', 'viewportScreenshotChoice', 'viewportCameraMenu'].map(source).join('\n')
+    + '; viewportCameraMenu(document.getElementById("buret-viewport-menu"));')(...Object.values(bindings));
   const rows = [...menu.querySelectorAll('button')];
   assert.equal(menu.classList.contains('buret-tree-menu'), false);
   assert.equal(menu.classList.contains('atlas-menu-content'), true);
-  assert.deepEqual(rows.map(row => [row.textContent, row.dataset.buretViewportMenu, row.className]), [
-    ['Reset zoom', 'camera-reset', 'atlas-menu-item'], ['Lay flat', 'camera-orient', 'atlas-menu-item'], ['Reset axes', 'camera-axes', 'atlas-menu-item'],
+  assert.deepEqual(rows.map(row => [row.textContent, row.dataset.buretViewportMenu, row.getAttribute('role'), row.getAttribute('aria-checked')]), [
+    ['Reset zoom', 'camera-reset', 'menuitem', null], ['Lay flat', 'camera-orient', 'menuitem', null], ['Reset axes', 'camera-axes', 'menuitem', null],
+    // The projection rows show the live camera mode.
+    ['Perspective', 'camera-projection', 'menuitemradio', 'false'], ['Orthographic', 'camera-projection', 'menuitemradio', 'true'],
+    ...['+X', '−X', '+Y', '−Y', '+Z', '−Z'].map(axis => [`View from ${axis}`, 'camera-view-axis', 'menuitem', null]),
   ]);
+  assert.equal(menu.querySelectorAll('[role="separator"]').length, 2);
   rows[1].disabled = true;
   rows[0].focus();
-  for (const [key, expected] of [['ArrowDown', rows[2]], ['ArrowDown', rows[0]], ['ArrowUp', rows[2]], ['Home', rows[0]], ['End', rows[2]]]) {
+  const last = rows.at(-1);
+  for (const [key, expected] of [['ArrowDown', rows[2]], ['ArrowUp', rows[0]], ['ArrowUp', last], ['ArrowDown', rows[0]], ['Home', rows[0]], ['End', last]]) {
     const event = new window.KeyboardEvent('keydown', { key, cancelable: true });
     window.BuretteNativeViewerMenus.moveMenuFocus(menu, event);
     assert.equal(document.activeElement, expected);
@@ -140,6 +210,82 @@ const events = [];
   assert.equal(trigger.getAttribute('aria-expanded'), 'false');
   assert.equal(document.activeElement, trigger);
   rail.remove();
+}
+// Camera actions reach Mol*: projection through the canvas props, axis views and
+// later framing through one focus request that keeps the chosen projection.
+{
+  const { Vec3, Mat4 } = await import('@molstar/core/math/linear-algebra');
+  const resets = [], props = [];
+  const state = { mode: 'orthographic', target: [1, 2, 3], radius: 5 };
+  // Like Mol*, getFocus keeps the camera on its current side (+Z here) whatever the direction's sign.
+  const camera = { state, target: state.target, getFocus: (target, radius) => ({ target, radius, position: [target[0], target[1], target[2] + 10], up: [0, 1, 0] }) };
+  const viewer = { plugin: { canvas3d: { camera, boundingSphere: { center: [1, 2, 3], radius: 4 }, setProps: value => props.push(value),
+    requestCameraReset: value => resets.push(value), requestDraw() {} } } };
+  const bindings = { document, debug: () => {}, viewportPlugin: () => viewer.plugin, activeMolstarViewer: () => viewer,
+    fittedMolstarStructureFocus: () => { throw new Error('perspective fit used for an orthographic camera'); } };
+  const api = new Function(...Object.keys(bindings), cameraViewsSource + ['requestMolstarStructureFocus', 'runViewportMenuAction'].map(source).join('\n')
+    + '; return { requestMolstarStructureFocus, runViewportMenuAction, VIEWPORT_AXIS_VIEWS };')(...Object.values(bindings));
+  const control = value => ({ dataset: { viewportValue: value } });
+  api.runViewportMenuAction('camera-projection', control('perspective'));
+  assert.deepEqual(props, [{ camera: { mode: 'perspective' } }]);
+  api.requestMolstarStructureFocus(viewer);
+  assert.equal(resets.at(-1).snapshot.mode, 'orthographic');
+  // "View from +X" puts the camera on the +X side of the structure, with an up
+  // direction square to the view; the six views are the six axis sides.
+  const directions = api.VIEWPORT_AXIS_VIEWS.map(([label], index) => {
+    api.runViewportMenuAction('camera-view-axis', control(String(index)));
+    const { position, target, up, mode } = resets.at(-1).snapshot;
+    const side = position.map((value, i) => (value - target[i]) / 10);
+    const axis = 'XYZ'.indexOf(label[1]);
+    assert.deepEqual(side.map(value => Math.round(value * 1e9) / 1e9), [0, 1, 2].map(i => i === axis ? (label[0] === '+' ? 1 : -1) : 0), label);
+    assert.equal(Vec3.dot(side, up), 0, label);
+    assert.equal(mode, 'orthographic', label);
+    return side.join();
+  });
+  assert.equal(new Set(directions).size, 6);
+
+  // Keyboard steps on a focused 3D view, with Mol*'s own math.
+  const canvas = document.createElement('canvas'); document.body.append(canvas);
+  const view = { position: [0, 0, 10], target: [0, 0, 0], up: [0, 1, 0] };
+  const keyCamera = { getSnapshot: () => structuredClone(view), setState: next => Object.assign(view, structuredClone(next)) };
+  const plugin = { canvas3dContext: { canvas }, canvas3d: { camera: keyCamera, requestDraw() {} } };
+  const keys = new Function('window', constant('VIEWPORT_KEY_CAMERA') + ['rotateViewportCamera', 'stepViewportCamera', 'installViewportKeyboardCamera'].map(source).join('\n')
+    + '; return installViewportKeyboardCamera;')({ molstar: { lib: { math: { LinearAlgebra: { Vec3, Mat4 } } } } });
+  keys(plugin);
+  assert.deepEqual([canvas.tabIndex, canvas.getAttribute('role'), canvas.getAttribute('aria-label')], [0, 'application', '3D view']);
+  const press = (code, init = {}) => {
+    const event = new window.KeyboardEvent('keydown', { code, key: code, bubbles: true, cancelable: true, ...init });
+    canvas.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+  const close = (a, b) => a.every((value, axis) => Math.abs(value - b[axis]) < 1e-9);
+  // Plain arrows stay with pose stepping; Shift+arrows turn the camera.
+  assert.equal(press('ArrowRight'), false);
+  assert.ok(close(view.position, [0, 0, 10]));
+  assert.equal(press('ArrowRight', { shiftKey: true }), true);
+  assert.ok(Math.abs(Vec3.magnitude(view.position) - 10) < 1e-9 && view.position[0] !== 0 && close(view.up, [0, 1, 0]));
+  for (let step = 1; step < 72; step += 1) press('ArrowRight', { shiftKey: true });
+  assert.ok(close(view.position, [0, 0, 10]), 'a full turn returns to the start');
+  press('ArrowUp', { shiftKey: true });
+  assert.ok(Math.abs(Vec3.dot(Vec3.sub(Vec3(), view.position, view.target), view.up)) < 1e-9, 'pitch keeps up square to the view');
+  press('ArrowDown', { shiftKey: true });
+  press('KeyE');
+  assert.ok(close(view.position, [0, 0, 10]) && !close(view.up, [0, 1, 0]));
+  press('KeyQ');
+  assert.ok(close(view.up, [0, 1, 0]));
+  press('KeyW');
+  assert.ok(Math.abs(Vec3.magnitude(view.position) - 9) < 1e-9);
+  press('KeyS');
+  assert.ok(Math.abs(Vec3.magnitude(view.position) - 10) < 1e-9);
+  press('KeyA');
+  assert.ok(close(Vec3.sub(Vec3(), view.position, view.target), [0, 0, 10]) && view.target[0] > 0 && Math.abs(view.target[1]) < 1e-9, 'A moves the camera right, so the structure moves left');
+  press('KeyD');
+  assert.ok(close(view.target, [0, 0, 0]));
+  // While the pointer is over the canvas Mol* owns these keys.
+  canvas.dispatchEvent(new window.PointerEvent('pointerenter'));
+  assert.equal(press('KeyW'), false);
+  assert.ok(Math.abs(Vec3.magnitude(view.position) - 10) < 1e-9);
+  canvas.remove();
 }
 // Style keeps the viewer's real radio model while consuming the shared menu
 // surface, checked icon and theme engine. Styling must not reset focus/selection.
@@ -171,17 +317,17 @@ const events = [];
   assert.equal(document.querySelectorAll('#buret-atlas-menu-styles').length, 1);
   assert.equal(document.activeElement, rows[1]);
   assert.deepEqual(rows.map(row => [row.tabIndex, row.getAttribute('aria-checked')]), [[-1, 'false'], [0, 'true'], [-1, 'false'], [-1, 'false']]);
-  const shared = readFileSync('apps/desktop/src/components/ui/dropdown-menu.css', 'utf8').replace('@layer components {', '').replace(/}\s*$/, '');
+  const shared = readFileSync('apps/desktop/src/components/ui/dropdown-menu.css', 'utf8').replaceAll('@layer components {', '@media all {');
   assert.ok(document.getElementById('buret-atlas-menu-styles').textContent.includes(shared));
   for (const name of ['button.atlas.css', 'loading-indicator.atlas.css']) {
     const css = readFileSync(`apps/desktop/src/components/ui/${name}`, 'utf8')
       .replace('@layer theme, base, components, utilities;', '')
-      .replace('@layer components {', '').replace(/}\s*$/, '');
+      .replaceAll('@layer components {', '@media all {');
     assert.ok(document.getElementById('buret-atlas-menu-styles').textContent.includes(css));
   }
   assert.ok(document.getElementById('buret-atlas-menu-styles').textContent.startsWith(
     readFileSync('apps/desktop/src/styles/codex-tokens.css', 'utf8').replaceAll('.app-shell', '.buret-atlas-surface')));
-  const popoverSurface = readFileSync('apps/desktop/src/components/ui/popover-surface.css', 'utf8').replace('@layer components {', '').replace(/}\s*$/, '');
+  const popoverSurface = readFileSync('apps/desktop/src/components/ui/popover-surface.css', 'utf8').replaceAll('@layer components {', '@media all {');
   assert.ok(document.getElementById('buret-atlas-menu-styles').textContent.includes(popoverSurface));
   menu.dataset.buretMolstarPresetMenu = '1';
   const preview = document.createElement('div');

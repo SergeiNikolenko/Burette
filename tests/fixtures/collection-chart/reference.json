@@ -1,0 +1,135 @@
+{
+ "records": 47,
+ "histogram": {
+  "MolWt": [
+   2,
+   5,
+   9,
+   13,
+   15,
+   3
+  ],
+  "SLogP": [
+   1,
+   2,
+   11,
+   23,
+   9,
+   1
+  ],
+  "TPSA": [
+   1,
+   5,
+   17,
+   14,
+   10
+  ],
+  "Rings": [
+   3,
+   21,
+   17,
+   6
+  ]
+ },
+ "box": {
+  "SLogP by Halogen": {
+   "Br+F": {
+    "count": 1,
+    "q1": 3.44984,
+    "median": 3.44984,
+    "q3": 3.44984,
+    "whiskerLow": 3.44984,
+    "whiskerHigh": 3.44984,
+    "outliers": []
+   },
+   "Cl": {
+    "count": 5,
+    "q1": 2.5951,
+    "median": 2.9434,
+    "q3": 3.13992,
+    "whiskerLow": 2.5951,
+    "whiskerHigh": 3.6208,
+    "outliers": [
+     1.3846
+    ]
+   },
+   "Cl+F": {
+    "count": 1,
+    "q1": 2.5596,
+    "median": 2.5596,
+    "q3": 2.5596,
+    "whiskerLow": 2.5596,
+    "whiskerHigh": 2.5596,
+    "outliers": []
+   },
+   "F": {
+    "count": 7,
+    "q1": 1.82205,
+    "median": 2.1695,
+    "q3": 3.0771699999999997,
+    "whiskerLow": 1.2789,
+    "whiskerHigh": 4.2069,
+    "outliers": []
+   },
+   "none": {
+    "count": 33,
+    "q1": 1.97172,
+    "median": 2.47278,
+    "q3": 2.8926,
+    "whiskerLow": 0.93124,
+    "whiskerHigh": 3.8502,
+    "outliers": [
+     -0.0092,
+     0.2051
+    ]
+   }
+  },
+  "MolWt by Rings": {
+   "1": {
+    "count": 3,
+    "q1": 284.3415,
+    "median": 287.381,
+    "q3": 298.548,
+    "whiskerLow": 281.302,
+    "whiskerHigh": 309.715,
+    "outliers": []
+   },
+   "2": {
+    "count": 21,
+    "q1": 289.762,
+    "median": 310.438,
+    "q3": 324.427,
+    "whiskerLow": 262.33,
+    "whiskerHigh": 350.465,
+    "outliers": []
+   },
+   "3": {
+    "count": 17,
+    "q1": 286.356,
+    "median": 304.394,
+    "q3": 322.324,
+    "whiskerLow": 250.371,
+    "whiskerHigh": 346.399,
+    "outliers": []
+   },
+   "4": {
+    "count": 6,
+    "q1": 319.09475000000003,
+    "median": 323.8695,
+    "q3": 328.61199999999997,
+    "whiskerLow": 314.393,
+    "whiskerHigh": 329.363,
+    "outliers": [
+     345.428
+    ]
+   }
+  }
+ },
+ "mean MolWt by Halogen": {
+  "Br+F": 283.144,
+  "Cl": 299.4668,
+  "Cl+F": 309.715,
+  "F": 308.4718571428571,
+  "none": 308.13645454545457
+ }
+}

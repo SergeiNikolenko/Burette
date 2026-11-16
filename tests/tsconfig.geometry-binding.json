@@ -1,0 +1,15 @@
+{
+  "extends": "../apps/desktop/tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": false
+  },
+  "include": [
+    "../apps/desktop/src/lib/geometry-binding.ts",
+    "../apps/desktop/src/hooks/use-geometry-binding.ts",
+    "../apps/desktop/src/**/*.d.ts",
+    "./test-geometry-binding.test.ts"
+  ]
+}

@@ -1,3 +1,19 @@
+import { openPlots, usePlotsAvailable, PLOTS_COMMAND } from "../../lib/workbench/plots-tool";
+import { openSmartsSelect, runSelectCommand, SELECT_COMMANDS } from "../../lib/workbench/select-commands";
+import { exportSceneSvg, openMovieDialog } from "../../lib/workbench/scene-media";
+import { openEnumerateLibrary } from "../../lib/library-enumeration-task";
+import { startAvogadroCommand, useAvogadroCommands } from "../../lib/extensions/avogadro-commands";
+import { openScientificSpectra, useScientificSpectraAvailable, SCIENTIFIC_SPECTRA_COMMAND } from "../../lib/workbench/scientific-spectra-tool";
+import { openOrbitals, useOrbitalsAvailable, ORBITALS_COMMAND } from "../../lib/workbench/orbitals-tool";
+import { openPotential, usePotentialAvailable, POTENTIAL_COMMAND } from "../../lib/workbench/potential-tool";
+import { FIELDS_COMMAND, openFields, useFieldsAvailable } from "../../lib/workbench/fields-tool";
+import { focusToolDock, type WorkbenchToolDockKind } from "../../lib/workbench/focus-tool-dock";
+import { openVibrations, useVibrationsAvailable, VIBRATIONS_COMMAND } from "../../lib/workbench/vibrations-tool";
+import { CRYSTAL_COMMAND, openSymmetryTool, SYMMETRY_COMMAND, useSymmetryAvailable } from "../../lib/workbench/symmetry-tools";
+import { useCrystalAvailable } from "../../lib/workbench/use-crystal-draft";
+import { structureEditAvailable } from "../../lib/workbench/graph-draft";
+import { geometryPanelAvailable } from "../../lib/geometry-editing";
+import { OPTIMIZATION_COMMANDS, requestOptimizationCommand } from "../../lib/workbench/optimization-commands";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Command,
@@ -53,6 +69,16 @@ export function CommandPalette({
   const listRef = useRef<HTMLDivElement | null>(null);
   const query = useCommandPaletteSearch();
   const onQueryChange = useSetCommandPaletteSearch();
+  const workbenchFocus = useRef<{ kind: WorkbenchToolDockKind; documentId: string; workspaceId: string } | null>(null);
+  const hasOrbitals = useOrbitalsAvailable(state.activeDocument ?? null);
+  const hasPotential = usePotentialAvailable(state.activeDocument ?? null);
+  const hasFields = useFieldsAvailable(state.activeDocument ?? null);
+  const hasPlots = usePlotsAvailable(state.activeDocument);
+  const hasScientificSpectra = useScientificSpectraAvailable(state.activeDocument ?? null);
+  const hasVibrations = useVibrationsAvailable(state.activeDocument ?? null);
+  const hasCrystal = useCrystalAvailable(state.activeDocument ?? null);
+  const hasSymmetry = useSymmetryAvailable(state.activeDocument ?? null);
+  const pluginCommands = useAvogadroCommands(state.activeDocument ?? null);
 
   const projectItems = useMemo<PaletteItem[]>(() => (
     state.sidebarProjects.flatMap((project) => project.items.map((item) => ({
@@ -82,6 +108,36 @@ export function CommandPalette({
   const items = useMemo<PaletteItem[]>(() => {
     const commands: PaletteItem[] = [
       ...projectItems,
+      ...(hasOrbitals && state.activeDocument ? [{ id: "workbench-tool-orbitals", group: "Suggested", ...ORBITALS_COMMAND, run: () => openOrbitals(actions, state.activeDocument!.id) }] : []),
+      ...(hasPotential && state.activeDocument ? [{ id: "workbench-tool-potential", group: "Suggested", ...POTENTIAL_COMMAND, run: () => openPotential(actions, state.activeDocument!.id) }] : []),
+      ...(hasFields && state.activeDocument ? [{ id: "workbench-tool-fields", group: "Suggested", ...FIELDS_COMMAND, run: () => openFields(actions, state.activeDocument!.id) }] : []),
+      ...(hasVibrations && state.activeDocument ? [{ id: "workbench-tool-vibrations", group: "Suggested", ...VIBRATIONS_COMMAND, run: () => openVibrations(actions, state.activeDocument!.id) }] : []),
+      ...(hasCrystal && state.activeDocument ? [{ id: "workbench-tool-crystal", group: "Suggested", ...CRYSTAL_COMMAND, run: () => openSymmetryTool(actions, state.activeDocument!.id, "crystal") }] : []),
+      ...(hasSymmetry && state.activeDocument ? [{ id: "workbench-tool-symmetry", group: "Suggested", ...SYMMETRY_COMMAND, run: () => openSymmetryTool(actions, state.activeDocument!.id, "symmetry") }] : []),
+      ...(hasPlots && state.activeDocument ? [{ id: "workbench-tool-plots", group: "Suggested", ...PLOTS_COMMAND, run: () => openPlots(actions, state.activeDocument!.id) }] : []),
+      ...(hasScientificSpectra && state.activeDocument ? [{ id: "workbench-tool-scientific-spectra", group: "Suggested", ...SCIENTIFIC_SPECTRA_COMMAND, run: () => openScientificSpectra(actions, state.activeDocument!.id) }] : []),
+      // The editing docks otherwise open only from the dock's add-tab menu.
+      ...([["structure-edit", "Edit atoms and bonds", "Elements, charges and bond orders", structureEditAvailable], ["geometry", "Edit geometry", "Bond lengths, angles and dihedrals", geometryPanelAvailable]] as const)
+        .flatMap(([kind, label, description, available]) => state.activeDocument && available(state.activeDocument) ? [{ id: `workbench-tool-${kind}`, group: "Suggested", label, description,
+          run: () => { actions.setDockDocument("right", state.activeDocument!.id); actions.openDockTab("right", kind); } }] : []),
+      ...(() => {
+        const document = state.activeDocument ?? null;
+        const panel = structureEditAvailable(document) ? "structure-edit" : geometryPanelAvailable(document) ? "geometry" : null;
+        return document && panel ? OPTIMIZATION_COMMANDS.map(({ command, label }) => ({ id: `optimization-${command}`, group: "Calculate", label, description: "",
+          shortcut: command === "optimize" ? "⌥⌘O" : undefined, run: () => requestOptimizationCommand(actions, document, panel, command) })) : [];
+      })(),
+      ...(state.activeDocument?.renderer === "molstar" ? [
+        ...SELECT_COMMANDS.map(({ command, label }) => ({ id: `select-${command}`, group: "Select", label, description: "",
+          run: () => runSelectCommand(actions, state.activeDocument!, command) })),
+        ...(structureEditAvailable(state.activeDocument) ? [{ id: "select-smarts", group: "Select", label: "Select by SMARTS…", description: "",
+          run: () => openSmartsSelect(state.activeDocument!) }] : []),
+        { id: "export-svg", group: "Export", label: "Export image as SVG", description: "", run: () => exportSceneSvg(actions, state.activeDocument!) },
+        { id: "record-movie", group: "Export", label: "Record movie…", description: "", run: () => openMovieDialog(state.activeDocument!) },
+      ] : []),
+      // Building blocks can be pasted, so the library does not need an open collection.
+      { id: "enumerate-library", group: "Collection", label: "Enumerate library…", description: "", run: () => openEnumerateLibrary(state.activeDocument ?? null) },
+      ...(state.activeDocument ? pluginCommands.map(entry => ({ id: `avogadro-command-${entry.id}`, group: "Extensions", label: entry.path.join(" › "),
+        description: entry.plugin.name, run: () => startAvogadroCommand(entry, state.activeDocument!) })) : []),
       ...buildShellCommands(state, actions, query).map((command) => ({
         ...command,
         group: command.group === "Suggested" ? "Quick actions" : command.group,
@@ -90,7 +146,7 @@ export function CommandPalette({
       })),
     ];
     return commands;
-  }, [actions, projectItems, query, state]);
+  }, [actions, projectItems, query, state, hasVibrations, hasOrbitals, hasPotential, hasFields, hasScientificSpectra, hasPlots, hasCrystal, hasSymmetry, pluginCommands]);
 
   const visibleItems = useMemo<PaletteItem[]>(() => {
     const queryUrl = query.trim();
@@ -136,6 +192,8 @@ export function CommandPalette({
   }, [firstValue, isOpen, query]);
 
   const runItem = (item: PaletteItem) => {
+    const kind = item.id.startsWith("workbench-tool-") ? item.id.slice("workbench-tool-".length) as WorkbenchToolDockKind : null;
+    workbenchFocus.current = kind && state.activeDocument && state.activeTab ? { kind, documentId: state.activeDocument.id, workspaceId: state.activeTab.id } : null;
     onClose();
     void Promise.resolve(item.run()).catch((error) => {
       onRunError(error, `${item.label} failed`);
@@ -161,6 +219,11 @@ export function CommandPalette({
       open={isOpen}
       onOpenChange={(open) => {
         if (!open) onClose();
+      }}
+      onCloseAutoFocus={event => {
+        const intent = workbenchFocus.current;
+        workbenchFocus.current = null;
+        if (intent && focusToolDock(intent.kind, intent.documentId, intent.workspaceId)) event.preventDefault();
       }}
       title="Command Palette"
       description="Search commands and structures."

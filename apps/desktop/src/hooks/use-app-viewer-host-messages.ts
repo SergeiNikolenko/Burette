@@ -1,3 +1,4 @@
+import { isRetiredGeometryActionResult } from "../lib/geometry-action-status";
 import { useCallback, useRef } from "react";
 
 type RefValue<T> = { current: T };
@@ -57,7 +58,7 @@ export function useAppViewerHostMessages({
   // other commands that were never recovered stay visible.
   const failureToastsRef = useRef(new Map<string, DismissStatus>());
 
-  const handleViewerHostMessage = useCallback((source: ViewerMessageSource, body: ViewerHostMessageBody) => {
+  const handleViewerHostMessage = useCallback((source: ViewerMessageSource, body: ViewerHostMessageBody, eventSource: MessageEventSource | null = null) => {
     if (body?.type === "molstarStructureReplaced") {
       const requestId = bodyString(body.requestId);
       const resolve = pendingMolstarReplaceRef.current.get(requestId);
@@ -70,6 +71,7 @@ export function useAppViewerHostMessages({
 
     if (source === "burette-agent-viewer" && body?.type === "agent-action-result") {
       if (bodyString(body.id).startsWith("text-selection-")) return true;
+      if (isRetiredGeometryActionResult(bodyString(body.id), eventSource)) return true;
       const result = agentActionResult(body.result);
       const actionKey = agentActionKey(result);
       failureToastsRef.current.get(actionKey)?.();

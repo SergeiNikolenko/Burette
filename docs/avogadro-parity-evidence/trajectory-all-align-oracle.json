@@ -1,0 +1,411 @@
+{
+ "checks": [
+  {
+   "name": "opened: one source root, All shown, Align hidden",
+   "ok": true,
+   "buttons": [
+    {
+     "action": "scene-frame-alignment",
+     "hidden": true,
+     "disabled": false,
+     "pressed": "false",
+     "text": "Align",
+     "label": null
+    },
+    {
+     "action": "scene-frame-comparisons",
+     "hidden": false,
+     "disabled": false,
+     "pressed": "false",
+     "text": "All",
+     "label": "Show all 6 frames together"
+    }
+   ]
+  },
+  {
+   "name": "All: one root per trajectory frame",
+   "ok": true,
+   "frames": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+   ]
+  },
+  {
+   "name": "All: source binding unchanged",
+   "ok": true
+  },
+  {
+   "name": "All: raw coordinates untouched",
+   "ok": true
+  },
+  {
+   "name": "Align: source has no transform",
+   "ok": true
+  },
+  {
+   "name": "Align: frame 1 displayed fit is optimal",
+   "ok": true,
+   "displayedRmsd": 0.15578465702228025,
+   "kabschRmsd": 0.15578465702227964,
+   "rawRmsd": 2.4538367809278627,
+   "maxDistanceChange": 1.7763568394002505e-15
+  },
+  {
+   "name": "Align: frame 1 transform is rigid",
+   "ok": true
+  },
+  {
+   "name": "Align: frame 3 displayed fit is optimal",
+   "ok": true,
+   "displayedRmsd": 0.03770550675479991,
+   "kabschRmsd": 0.03770550675479924,
+   "rawRmsd": 0.03776253578171271,
+   "maxDistanceChange": 1.7763568394002505e-15
+  },
+  {
+   "name": "Align: frame 3 transform is rigid",
+   "ok": true
+  },
+  {
+   "name": "Align: frame 4 displayed fit is optimal",
+   "ok": true,
+   "displayedRmsd": 0.03747327586029221,
+   "kabschRmsd": 0.03747327586029209,
+   "rawRmsd": 0.037595891215364906,
+   "maxDistanceChange": 1.7763568394002505e-15
+  },
+  {
+   "name": "Align: frame 4 transform is rigid",
+   "ok": true
+  },
+  {
+   "name": "Align: frame 5 displayed fit is optimal",
+   "ok": true,
+   "displayedRmsd": 0.03726995343407572,
+   "kabschRmsd": 0.03726995343407606,
+   "rawRmsd": 0.0374025831775335,
+   "maxDistanceChange": 1.7763568394002505e-15
+  },
+  {
+   "name": "Align: frame 5 transform is rigid",
+   "ok": true
+  },
+  {
+   "name": "Align: frame 6 displayed fit is optimal",
+   "ok": true,
+   "displayedRmsd": 0.03726995343407572,
+   "kabschRmsd": 0.03726995343407606,
+   "rawRmsd": 0.0374025831775335,
+   "maxDistanceChange": 1.7763568394002505e-15
+  },
+  {
+   "name": "Align: frame 6 transform is rigid",
+   "ok": true
+  },
+  {
+   "name": "Align: source binding unchanged",
+   "ok": true
+  },
+  {
+   "name": "Step: source frame advanced",
+   "ok": true,
+   "before": 1,
+   "after": 2
+  },
+  {
+   "name": "Step: source has no transform",
+   "ok": true
+  },
+  {
+   "name": "Step: frame 1 displayed fit is optimal",
+   "ok": true,
+   "displayedRmsd": 0.11896517922901664,
+   "kabschRmsd": 0.11896517922901685,
+   "rawRmsd": 2.444092074700259,
+   "maxDistanceChange": 1.7763568394002505e-15
+  },
+  {
+   "name": "Step: frame 1 transform is rigid",
+   "ok": true
+  },
+  {
+   "name": "Step: frame 3 displayed fit is optimal",
+   "ok": true,
+   "displayedRmsd": 0.0,
+   "kabschRmsd": 2.753613297297307e-16,
+   "rawRmsd": 0.0,
+   "maxDistanceChange": 0.0
+  },
+  {
+   "name": "Step: frame 3 transform is rigid",
+   "ok": true
+  },
+  {
+   "name": "Step: frame 4 displayed fit is optimal",
+   "ok": true,
+   "displayedRmsd": 0.0025739840744018992,
+   "kabschRmsd": 0.0025739840744017973,
+   "rawRmsd": 0.002743440225054676,
+   "maxDistanceChange": 3.552713678800501e-15
+  },
+  {
+   "name": "Step: frame 4 transform is rigid",
+   "ok": true
+  },
+  {
+   "name": "Step: frame 5 displayed fit is optimal",
+   "ok": true,
+   "displayedRmsd": 0.00275980842413984,
+   "kabschRmsd": 0.002759808424139691,
+   "rawRmsd": 0.002957084479106729,
+   "maxDistanceChange": 1.7763568394002505e-15
+  },
+  {
+   "name": "Step: frame 5 transform is rigid",
+   "ok": true
+  },
+  {
+   "name": "Step: frame 6 displayed fit is optimal",
+   "ok": true,
+   "displayedRmsd": 0.00275980842413984,
+   "kabschRmsd": 0.002759808424139691,
+   "rawRmsd": 0.002957084479106729,
+   "maxDistanceChange": 1.7763568394002505e-15
+  },
+  {
+   "name": "Step: frame 6 transform is rigid",
+   "ok": true
+  },
+  {
+   "name": "Step: frame 2 displayed fit is optimal",
+   "ok": true,
+   "displayedRmsd": 0.03770550675479978,
+   "kabschRmsd": 0.037705506754799833,
+   "rawRmsd": 0.03776253578171271,
+   "maxDistanceChange": 1.7763568394002505e-15
+  },
+  {
+   "name": "Step: frame 2 transform is rigid",
+   "ok": true
+  },
+  {
+   "name": "Step: every frame still shown",
+   "ok": true,
+   "frames": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+   ]
+  },
+  {
+   "name": "Step: alignment kept on",
+   "ok": true,
+   "mode": {
+    "frameIndex": 2,
+    "frameCount": 6,
+    "available": true,
+    "all": true,
+    "complete": true,
+    "aligned": true
+   }
+  },
+  {
+   "name": "Reopen: aligned All restored",
+   "ok": true,
+   "mode": {
+    "frameIndex": 2,
+    "frameCount": 6,
+    "available": true,
+    "all": true,
+    "complete": true,
+    "aligned": true
+   }
+  },
+  {
+   "name": "Reopen: source frame retained",
+   "ok": true
+  },
+  {
+   "name": "Reopen: displayed coordinates retained",
+   "ok": true
+  },
+  {
+   "name": "Reopen: source has no transform",
+   "ok": true
+  },
+  {
+   "name": "Reopen: frame 1 displayed fit is optimal",
+   "ok": true,
+   "displayedRmsd": 0.11896517922901664,
+   "kabschRmsd": 0.11896517922901685,
+   "rawRmsd": 2.444092074700259,
+   "maxDistanceChange": 1.7763568394002505e-15
+  },
+  {
+   "name": "Reopen: frame 1 transform is rigid",
+   "ok": true
+  },
+  {
+   "name": "Reopen: frame 3 displayed fit is optimal",
+   "ok": true,
+   "displayedRmsd": 0.0,
+   "kabschRmsd": 2.753613297297307e-16,
+   "rawRmsd": 0.0,
+   "maxDistanceChange": 0.0
+  },
+  {
+   "name": "Reopen: frame 3 transform is rigid",
+   "ok": true
+  },
+  {
+   "name": "Reopen: frame 4 displayed fit is optimal",
+   "ok": true,
+   "displayedRmsd": 0.0025739840744018992,
+   "kabschRmsd": 0.0025739840744017973,
+   "rawRmsd": 0.002743440225054676,
+   "maxDistanceChange": 3.552713678800501e-15
+  },
+  {
+   "name": "Reopen: frame 4 transform is rigid",
+   "ok": true
+  },
+  {
+   "name": "Reopen: frame 5 displayed fit is optimal",
+   "ok": true,
+   "displayedRmsd": 0.00275980842413984,
+   "kabschRmsd": 0.002759808424139691,
+   "rawRmsd": 0.002957084479106729,
+   "maxDistanceChange": 1.7763568394002505e-15
+  },
+  {
+   "name": "Reopen: frame 5 transform is rigid",
+   "ok": true
+  },
+  {
+   "name": "Reopen: frame 6 displayed fit is optimal",
+   "ok": true,
+   "displayedRmsd": 0.00275980842413984,
+   "kabschRmsd": 0.002759808424139691,
+   "rawRmsd": 0.002957084479106729,
+   "maxDistanceChange": 1.7763568394002505e-15
+  },
+  {
+   "name": "Reopen: frame 6 transform is rigid",
+   "ok": true
+  },
+  {
+   "name": "Reopen: frame 2 displayed fit is optimal",
+   "ok": true,
+   "displayedRmsd": 0.03770550675479978,
+   "kabschRmsd": 0.037705506754799833,
+   "rawRmsd": 0.03776253578171271,
+   "maxDistanceChange": 1.7763568394002505e-15
+  },
+  {
+   "name": "Reopen: frame 2 transform is rigid",
+   "ok": true
+  },
+  {
+   "name": "Align off: transforms removed",
+   "ok": true
+  },
+  {
+   "name": "All off: only the source remains",
+   "ok": true
+  },
+  {
+   "name": "create: no unexpected page or console errors",
+   "ok": true,
+   "errors": [],
+   "known": 4
+  },
+  {
+   "name": "reopen: no unexpected page or console errors",
+   "ok": true,
+   "errors": [],
+   "known": 4
+  },
+  {
+   "name": "Scientific attachments and manifest identical in every archive",
+   "ok": true
+  },
+  {
+   "name": "Manifest binding changes only by the stepped source frame",
+   "ok": true,
+   "changes": [
+    {
+     "frameIndex": [
+      1,
+      2
+     ]
+    },
+    {
+     "frameIndex": [
+      1,
+      2
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Archive roots/transforms: original none, aligned save 6+6 after the step, final none",
+   "ok": true,
+   "counts": [
+    [
+     0,
+     0
+    ],
+    [
+     6,
+     6
+    ],
+    [
+     0,
+     0
+    ]
+   ]
+  }
+ ],
+ "archives": {
+  "samples/allalign-source.molx": {
+   "sha256": "b1b0af797e0cfe59ad764d7387e27057cb452658c72834b9022646382de126c4",
+   "science": {
+    "assets/burette-science-attachment-0": "2c797e96dc2a53d7e384fdf88372ac08096a11684af132d3f702c73bb0aaa589",
+    "assets/burette-science-attachment-1": "1e72bd9a98e59dded7b36d46c1a6080b1a494f2ff1e350272e9e1807a3570e9e",
+    "assets/burette-science-attachment-2": "f4e280b32b0d9f25ac7a21cfe47e810fe5cecb8b669e8d9751329a0ffded260d",
+    "manifest-without-binding": "806529400fd1bfff299ecd3d308ad9bd669100bf010d1c1a6b438c299382b0e3"
+   },
+   "alignTransforms": 0,
+   "allRoots": 0
+  },
+  "samples/allalign-aligned.molx": {
+   "sha256": "619fe5ae30ca7fe5523ce7198a95f9221b85f696e072380ecf254f827e77390e",
+   "science": {
+    "assets/burette-science-attachment-0": "2c797e96dc2a53d7e384fdf88372ac08096a11684af132d3f702c73bb0aaa589",
+    "assets/burette-science-attachment-1": "1e72bd9a98e59dded7b36d46c1a6080b1a494f2ff1e350272e9e1807a3570e9e",
+    "assets/burette-science-attachment-2": "f4e280b32b0d9f25ac7a21cfe47e810fe5cecb8b669e8d9751329a0ffded260d",
+    "manifest-without-binding": "806529400fd1bfff299ecd3d308ad9bd669100bf010d1c1a6b438c299382b0e3"
+   },
+   "alignTransforms": 6,
+   "allRoots": 6
+  },
+  "samples/allalign-final.molx": {
+   "sha256": "175cf11f02af41827315d7c9a31247be184a89a1c5f4e90dcfd69c34685b1911",
+   "science": {
+    "assets/burette-science-attachment-0": "2c797e96dc2a53d7e384fdf88372ac08096a11684af132d3f702c73bb0aaa589",
+    "assets/burette-science-attachment-1": "1e72bd9a98e59dded7b36d46c1a6080b1a494f2ff1e350272e9e1807a3570e9e",
+    "assets/burette-science-attachment-2": "f4e280b32b0d9f25ac7a21cfe47e810fe5cecb8b669e8d9751329a0ffded260d",
+    "manifest-without-binding": "806529400fd1bfff299ecd3d308ad9bd669100bf010d1c1a6b438c299382b0e3"
+   },
+   "alignTransforms": 0,
+   "allRoots": 0
+  }
+ }
+}

@@ -2,38 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { gzipSync, gunzipSync } from "node:zlib";
 import { readFileSync } from "node:fs";
 import { basename, extname } from "node:path";
-import { inflateStructureBytes } from "../apps/desktop/src/lib/structure-inflate";
 
+// Browser reads of compressed files use the shared bounded decoder; see test-compressed-routes.test.tsx.
 describe("bounded structure decompression", () => {
-  test("preserves complete UTF-8 at the exact boundary", async () => {
-    const text = Buffer.from("Molecule 分子 🧪\n".repeat(100));
-    expect(Buffer.from(await inflateStructureBytes(gzipSync(text), text.length))).toEqual(text);
-    await expect(inflateStructureBytes(gzipSync(text), text.length - 1)).rejects.toThrow("decompressed preview limit");
-  });
-  test("rejects corruption and an oversized later gzip member", async () => {
-    const first = gzipSync(Buffer.from("first\n"));
-    const second = gzipSync(Buffer.alloc(100_000, 32));
-    await expect(inflateStructureBytes(Buffer.concat([first, second]), 1024)).rejects.toThrow();
-    const corrupt = Buffer.from(first);
-    corrupt[corrupt.length - 8] ^= 1;
-    await expect(inflateStructureBytes(corrupt, 1024)).rejects.toThrow();
-    await expect(inflateStructureBytes(first.subarray(0, first.length - 1), 1024)).rejects.toThrow();
-  });
-  test("browser document entry points use bounded decompression", async () => {
-    const source = readFileSync(new URL("../apps/desktop/src/lib/browser-dev-documents.ts", import.meta.url), "utf8");
-    const start = source.indexOf("async function inflateCompressedStructure(");
-    const end = source.indexOf("\nfunction browserDevSourceByteCount", start);
-    const code = new Bun.Transpiler({ loader: "ts" }).transformSync(source.slice(start, end));
-    const api = new Function("inflateStructureBytes", "COMPRESSED_STRUCTURE_NAME", "fileTitle", "MAX_STRUCTURE_FILE_SIZE", "decodeUtf8", `${code}\nreturn {inflateCompressedStructure, decodeStructureText};`)(
-      inflateStructureBytes, /\.(pdb|cif)\.gz$/i, basename, 1024, (bytes: Uint8Array) => new TextDecoder().decode(bytes),
-    );
-    const bytes = gzipSync(Buffer.from("ordinary coordinates"));
-    expect(await api.decodeStructureText(bytes, "maegz")).toBe("ordinary coordinates");
-    expect(Buffer.from(await api.inflateCompressedStructure("sample.pdb.gz", bytes))).toEqual(Buffer.from("ordinary coordinates"));
-    await expect(api.inflateCompressedStructure("sample.pdb.gz", gzipSync(Buffer.alloc(1025)))).rejects.toThrow("decompressed preview limit");
-    const bomb = gzipSync(Buffer.alloc(64 * 1024 * 1024 + 1, 32));
-    await expect(api.decodeStructureText(bomb, "maegz")).rejects.toThrow("decompressed preview limit");
-  });
   test("server and CLI entry points reject inflation before conversion", () => {
     const bomb = gzipSync(Buffer.alloc(64 * 1024 * 1024 + 1, 32));
     for (const path of ["apps/desktop/vite.config.ts", "scripts/agent-shell-server.mjs"]) {

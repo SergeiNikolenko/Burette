@@ -1,0 +1,9 @@
+{
+  "sourceValuesPpm": [
+    8.356
+  ],
+  "expectedPeakPpm": 183.68200000000002,
+  "observedPeakPpm": 183.67999267578125,
+  "points": 20000,
+  "gaussianAbsoluteErrorBelow": 0.001
+}

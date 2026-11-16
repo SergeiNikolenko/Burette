@@ -39,7 +39,7 @@ const publicToolAnnotations = {
   preview_pdb_structure: { readOnlyHint: true, openWorldHint: true, destructiveHint: false },
   render_molecular_scene: { readOnlyHint: true, openWorldHint: true, destructiveHint: false },
   open_ketcher: { readOnlyHint: false, openWorldHint: false, destructiveHint: false },
-  control_ketcher: { readOnlyHint: false, openWorldHint: false, destructiveHint: false },
+  control_ketcher: { readOnlyHint: false, openWorldHint: false, destructiveHint: true },
 } as const;
 
 describe("plugin submission bundle", () => {

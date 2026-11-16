@@ -21,30 +21,30 @@ test("shared toolbar appearance retains command nodes, dynamic labels, disabled 
   runInNewContext(readFileSync("PreviewExtension/Web/viewer-shell.js", "utf8"), { window: shellWindow, document });
   shellWindow.BuretteViewerShell!.mountToolbar();
   const toolbar = document.getElementById("buret-toolbar")!;
-  const left = toolbar.querySelector<HTMLButtonElement>('[data-buret-toggle="left"]')!;
+  const lasso = toolbar.querySelector<HTMLButtonElement>('[data-buret-action="molstar-lasso"]')!;
   const theme = toolbar.querySelector<HTMLButtonElement>('[data-buret-action="theme"]')!;
   const preset = toolbar.querySelector<HTMLButtonElement>('[data-buret-molstar-preset-trigger]')!;
   const save = toolbar.querySelector<HTMLButtonElement>('[data-buret-action="save-modified-structure"]')!;
   let clicks = 0;
-  left.addEventListener("click", () => clicks++);
+  lasso.addEventListener("click", () => clicks++);
   const tokens = { dark: { background: "#181818", foreground: "#FFFFFF", accent: "#339CFF" } };
   styleViewerMainToolbar(toolbar, tokens, "dark");
   const inner = theme.querySelector(".atlas-button-inner");
   const label = preset.querySelector("[data-buret-molstar-preset-label]");
   styleViewerMainToolbar(toolbar, tokens, "dark");
-  left.click();
-  expect([clicks, toolbar.querySelector('[data-buret-toggle="left"]') === left, theme.querySelectorAll(".atlas-button-inner").length]).toEqual([1, true, 1]);
-  expect([left.hasAttribute("data-uniform"), preset.hasAttribute("data-uniform"), left.querySelector("[data-buret-mode-icon]")?.getAttribute("data-buret-mode-icon")]).toEqual([true, false, "SidebarLeft"]);
+  lasso.click();
+  expect([clicks, toolbar.querySelector('[data-buret-action="molstar-lasso"]') === lasso, theme.querySelectorAll(".atlas-button-inner").length]).toEqual([1, true, 1]);
+  expect([lasso.hasAttribute("data-uniform"), preset.hasAttribute("data-uniform")]).toEqual([true, false]);
   expect(toolbar.querySelector('[data-buret-xyzrender-popover] button')?.classList.contains("atlas-button")).toBe(false);
-  save.disabled = true; left.classList.add("active");
+  save.disabled = true; lasso.classList.add("active");
   await new Promise(resolve => setTimeout(resolve, 0));
-  expect([save.hasAttribute("data-disabled"), left.hasAttribute("data-selected")]).toEqual([true, true]);
-  save.disabled = false; left.classList.remove("active"); left.setAttribute("aria-pressed", "true");
+  expect([save.hasAttribute("data-disabled"), lasso.hasAttribute("data-selected")]).toEqual([true, true]);
+  save.disabled = false; lasso.classList.remove("active"); lasso.setAttribute("aria-pressed", "true");
   await new Promise(resolve => setTimeout(resolve, 0));
-  expect([save.hasAttribute("data-disabled"), left.hasAttribute("data-selected")]).toEqual([false, true]);
-  left.setAttribute("aria-pressed", "false");
+  expect([save.hasAttribute("data-disabled"), lasso.hasAttribute("data-selected")]).toEqual([false, true]);
+  lasso.setAttribute("aria-pressed", "false");
   await new Promise(resolve => setTimeout(resolve, 0));
-  expect(left.hasAttribute("data-selected")).toBe(false);
+  expect(lasso.hasAttribute("data-selected")).toBe(false);
   // Exercise the real controller: changing the theme must not replace Button's
   // wrapper or move the local hint inside its flex content.
   const scope = { document, viewerTheme: "dark", APP_ICON_DATA: { ThemeDark: {} },
@@ -61,7 +61,7 @@ test("shared toolbar appearance retains command nodes, dynamic labels, disabled 
   expect(preset.querySelector(".buret-tooltip")?.textContent).toBe("Style: Spacefill by Element");
   styleViewerMainToolbar(toolbar, tokens, "light");
   expect([theme.dataset.effectiveTheme, theme.querySelector(".atlas-button-inner") === inner, preset.querySelectorAll(".atlas-button-inner").length]).toEqual(["light", true, 1]);
-  left.focus();
+  lasso.focus();
   toolbar.classList.add("collapsed");
   await new Promise(resolve => setTimeout(resolve, 0));
   const content = toolbar.querySelector<HTMLElement>("[data-buret-toolbar-content]")!;

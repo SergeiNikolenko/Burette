@@ -21,7 +21,8 @@ earlyExitCancellation.abort();
 await assert.rejects(earlyExit, { name: 'AbortError' });
 await assert.rejects(
   runWithStdin('/usr/bin/true', [], largeInput, process.cwd(), 1000),
-  error => error.code === 'EPIPE',
+  // macOS reports a write to an exited reader as EPIPE or, on newer runners, ENOTCONN.
+  error => error.code === 'EPIPE' || error.code === 'ENOTCONN',
   'a broken stdin without cancellation must remain an observable failure',
 );
 

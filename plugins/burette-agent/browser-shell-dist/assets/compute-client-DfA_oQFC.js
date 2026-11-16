@@ -1,0 +1,1 @@
+import{t as e}from"./worker-task-uCZzEDtO.js";function t(t,n={}){return e(()=>new Worker(new URL(new URL(`compute-worker-CLHlUpc1.js`,import.meta.url).href,``+import.meta.url),{type:`module`}),t,n)}export{t};

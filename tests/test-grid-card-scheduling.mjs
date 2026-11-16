@@ -44,12 +44,12 @@ const makeCache = (count = 2000, bytes = 128, entry = 64) => new Function(
   const drawingState = {
     svgCache: makeCache(2000, 128, 64), smartsMatches: new Map(), rdkitUseInputCoords: false,
     rdkit: {
-      get_mol(text) { moleculeCalls++; return { get_svg: () => text === 'large' ? oversized : normal, delete() {} }; },
+      get_mol(text) { moleculeCalls++; const svg = () => text === 'large' ? oversized : normal; return { get_svg: svg, get_svg_with_highlights: svg, get_molblock: () => '', delete() {} }; },
       get_rxn(text) { reactionCalls++; return { get_svg: () => text === 'large' ? oversized : normal, delete() {} }; },
     },
   };
   const dependencies = {
-    state: drawingState, RDKIT_SVG_SIZE: 200, RDKIT_REACTION_SVG_WIDTH: 300, RDKIT_REACTION_SVG_HEIGHT: 100,
+    state: drawingState, RDKIT_SVG_SIZE: 200, RDKIT_DRAWINGS: { card: {}, table: {}, fragment: {} }, depictionLongAxisAngle: () => 0, tableBondLineWidth: () => 2, RDKIT_REACTION_SVG_WIDTH: 300, RDKIT_REACTION_SVG_HEIGHT: 100,
     rowReactionText: row => row.reaction || '', rdkitCardKey: row => row.key,
     hasMolblockInputCoordinates: () => false, applyHydrogenDisplay: (_mol, match) => match,
     sanitizeSVG: value => value, stripSVGClipping: value => value, padSVGViewBox: value => value,
@@ -171,12 +171,12 @@ console.log('Grid card scheduling: priority, frame budget, in-flight deduplicati
 {
   const callbacks = [];
   const scrolling = { tableScrollLeft: 0, tableColumnScrollFrame: 0, rows: [{}], token: 1 };
-  let columns = [{ id: 'name' }, { id: 'smiles' }], rebuilds = 0;
+  let columns = [{ id: 'name' }, { id: 'smiles' }], rebuilds = 0, checkpoints = 0;
   const scroll = new Function('state', 'window', 'tableColumnWindow', 'tableVisibleColumns',
-    'tableColumnCatalog', 'startVisibleRdkitCards', 'renderVirtualWindow', `
+    'tableColumnCatalog', 'startVisibleRdkitCards', 'renderVirtualWindow', 'scheduleGridPresentation', `
       ${body('handleTableColumnScroll')} return handleTableColumnScroll;
     `)(scrolling, { requestAnimationFrame(fn) { callbacks.push(fn); return 1; } },
-    () => ({ windowColumns: columns }), value => value, () => [], () => {}, () => { rebuilds++; });
+    () => ({ windowColumns: columns }), value => value, () => [], () => {}, () => { rebuilds++; }, () => { checkpoints++; });
   const wrapper = { scrollLeft: 20, dataset: { columnWindow: 'name|smiles' } };
   scroll(wrapper, {});
   callbacks.shift()();
@@ -186,6 +186,7 @@ console.log('Grid card scheduling: priority, frame budget, in-flight deduplicati
   scroll(wrapper, {});
   callbacks.shift()();
   assert.equal(rebuilds, 1, 'crossing the column window mounts newly visible columns');
+  assert.equal(checkpoints, 2, 'both horizontal scroll changes schedule presentation persistence');
 }
 
 {
@@ -210,10 +211,11 @@ console.log('Grid card scheduling: priority, frame budget, in-flight deduplicati
   const cell = new Function('escapeAttr', 'drawRdkitPlaceholder', 'tableHighlightedTextHTML', `${body('tableCellHTML')} return tableCellHTML;`)(
     value => value.replaceAll('"', '&quot;'), row => `<drawing>${row.smiles}</drawing>`, value => value,
   );
-  for (const id of ['descriptor:RGroup_Core', 'prop:RGroup_R1', 'prop:RGroup_Components', 'descriptor:Scaffold']) {
+  for (const id of ['descriptor:RGroup_Core', 'prop:RGroup_R1', 'prop:RGroup_Components', 'descriptor:Scaffold', 'prop:Reactant 1', 'prop:Reactant 12']) {
     assert.match(cell({}, { id, get: () => 'C[*:1]' }, {}), /data-buret-fragment-smiles="C\[\*:1\]"/);
   }
   assert.doesNotMatch(cell({}, { id: 'prop:RGroup_Status', get: () => 'Matched' }, {}), /drawing/);
+  assert.doesNotMatch(cell({}, { id: 'prop:Reactant 1 source', get: () => 'acids.smi #1' }, {}), /drawing/);
   assert.doesNotMatch(cell({}, { id: 'prop:RGroup_R1', get: () => '' }, {}), /drawing/);
 }
 

@@ -1,16 +1,18 @@
 import { useRef, type ReactNode } from "react";
 import { AnnotateToggle } from "./annotation-layer";
 import { useWorkspaceHeaderBand } from "../hooks/use-workspace-header-band";
+import { FullViewExitButton } from "./workspace-panes/full-view-exit";
 import { RadixDropdownMenu } from "./radix-menu";
 import { ShortcutTooltip } from "./shortcut-tooltip";
 import { FileKindIcon, fileKindForPath } from "./sidebar/file-kind-icon";
-import { ChevronDown, SidebarRight } from "./ui/app-icons";
+import { ChevronDown, SidebarRight, SidebarRightHidden } from "./ui/app-icons";
 import type { ShellActions } from "./types";
 import type { MenuItemSpec } from "./menu-types";
 import "./workspace-file-header.css";
 
-export function WorkspaceFileHeader({ activeFile, bandDocumentId = null, rightDockOpen, defaultApplicationIconUrl, items, actions, fileActionsAvailable = true, onOpen, openLabel = "Open with default app", navigation }: {
+export function WorkspaceFileHeader({ activeFile, bandDocumentId = null, rightDockOpen, defaultApplicationIconUrl, items, actions, fileActionsAvailable = true, onOpen, openLabel = "Open with default app", navigation, fileAction }: {
   navigation?: ReactNode;
+  fileAction?: ReactNode;
   activeFile: { path: string; label: string };
   /** A viewer document whose own controls share this row. */
   bandDocumentId?: string | null;
@@ -55,10 +57,12 @@ export function WorkspaceFileHeader({ activeFile, bandDocumentId = null, rightDo
             </ShortcutTooltip>
           )} />
       </div> : null}
+      {fileAction}
+      <FullViewExitButton />
       <ShortcutTooltip label={rightDockOpen ? "Hide right panel" : "Show right panel"}>
         <button type="button" className="chrome-button" aria-label="Toggle right panel" aria-pressed={rightDockOpen}
           onClick={() => actions.toggleDock("right")}>
-          <SidebarRight size={18} aria-hidden />
+          {rightDockOpen ? <SidebarRight size={18} aria-hidden /> : <SidebarRightHidden size={18} aria-hidden />}
         </button>
       </ShortcutTooltip>
     </header>

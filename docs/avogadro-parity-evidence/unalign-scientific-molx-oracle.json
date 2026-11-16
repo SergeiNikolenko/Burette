@@ -1,0 +1,146 @@
+{
+  "live_restored_max_coordinate_error_angstrom": 1.0708618169985584e-07,
+  "status": "passed",
+  "oracle": "Independent Python Gaussian Standard orientation / SCF / Mulliken / dipole parser, cross-checked stored cclib reference; no application parser imports",
+  "source_sha256": "f4e280b32b0d9f25ac7a21cfe47e810fe5cecb8b669e8d9751329a0ffded260d",
+  "cclib_energy_max_abs_error_hartree": 5.684341886080802e-14,
+  "source_bytes": 210729,
+  "uuid": "83b37b4d-3c03-4b80-b723-ebc727590e7c",
+  "rounds": [
+    {
+      "round": 1,
+      "archive_sha256": "b1b0af797e0cfe59ad764d7387e27057cb452658c72834b9022646382de126c4",
+      "manifest_sha256": "81380bbdc06de025ecd93c36a637baf5a4ffef7ccbce940df2c00b541b57efcf",
+      "attachments": {
+        "burette-science-attachment-0": "2c797e96dc2a53d7e384fdf88372ac08096a11684af132d3f702c73bb0aaa589",
+        "burette-science-attachment-1": "1e72bd9a98e59dded7b36d46c1a6080b1a494f2ff1e350272e9e1807a3570e9e",
+        "burette-science-attachment-2": "f4e280b32b0d9f25ac7a21cfe47e810fe5cecb8b669e8d9751329a0ffded260d"
+      },
+      "frames": 6,
+      "atoms_per_frame": 20,
+      "source_xyz_coordinate_values_exact": 360,
+      "scientific_coordinate_values_exact": 360,
+      "energies_exact": 5,
+      "charges_exact": 40,
+      "dipole_components_exact": 6,
+      "referenceFrameIndex": 0,
+      "binding_frameIndex": 1,
+      "binding": {
+        "structureRef": "iEmWIT2UABECoxAAAAAAFz",
+        "modelRef": "iEmWIT2UABECoxAAAAAAFt",
+        "trajectoryRef": "iEmWIT2UABECoxAAAAAAFe",
+        "frameIndex": 1,
+        "frameCount": 6,
+        "atomCount": 20
+      }
+    },
+    {
+      "round": 2,
+      "archive_sha256": "13fc07d132190f878eeafbc7f109b5d6cf8734c7cc00992b82efabb4b4376cc5",
+      "manifest_sha256": "81380bbdc06de025ecd93c36a637baf5a4ffef7ccbce940df2c00b541b57efcf",
+      "attachments": {
+        "burette-science-attachment-0": "2c797e96dc2a53d7e384fdf88372ac08096a11684af132d3f702c73bb0aaa589",
+        "burette-science-attachment-1": "1e72bd9a98e59dded7b36d46c1a6080b1a494f2ff1e350272e9e1807a3570e9e",
+        "burette-science-attachment-2": "f4e280b32b0d9f25ac7a21cfe47e810fe5cecb8b669e8d9751329a0ffded260d"
+      },
+      "frames": 6,
+      "atoms_per_frame": 20,
+      "source_xyz_coordinate_values_exact": 360,
+      "scientific_coordinate_values_exact": 360,
+      "energies_exact": 5,
+      "charges_exact": 40,
+      "dipole_components_exact": 6,
+      "referenceFrameIndex": 0,
+      "binding_frameIndex": 1,
+      "binding": {
+        "structureRef": "iEmWIT2UABECoxAAAAAAFz",
+        "modelRef": "iEmWIT2UABECoxAAAAAAFt",
+        "trajectoryRef": "iEmWIT2UABECoxAAAAAAFe",
+        "frameIndex": 1,
+        "frameCount": 6,
+        "atomCount": 20
+      }
+    }
+  ],
+  "active_geometry": [
+    {
+      "capture": "fixed-geometry",
+      "sha256": "cbc774db24fc08b4cfa1a6a3427804fb2971f39321da2916cb9f7a44a1deabbc",
+      "frame_index": 1,
+      "atoms": 20,
+      "coordinate_values": 60,
+      "max_abs_error_angstrom": 0.0004979999999999984,
+      "tolerance_angstrom": 0.000501
+    },
+    {
+      "capture": "second-reopened-geometry",
+      "sha256": "a980a2220824382fbe5303e6cc37fa66277a8ccaf114f5dc2fb5c86529500597",
+      "frame_index": 1,
+      "atoms": 20,
+      "coordinate_values": 60,
+      "max_abs_error_angstrom": 0.0004979999999999984,
+      "tolerance_angstrom": 0.000501
+    }
+  ],
+  "all_attachment_bytes_and_identity_stable": true,
+  "ui_control_limit": "Parent live UI observed Align and All controls on initial XYZ toolbar but absent on restored MOLX; this oracle proves data/frame preservation, not full toolbar parity.",
+  "expected_omissions": [
+    "Sixth frame is final geometry reprint without new SCF energy; no energy invented.",
+    "Only frames0 and5 contain Mulliken charges and dipole; other frames retain absence.",
+    "Steps layout omits document-level eigenvalue-only orbitals from structured science; complete producer Original retains them."
+  ],
+  "browser_acceptance": {
+    "scenario": "Open Gaussian optimization; select frame 2/6; Align and disable alignment in light 1400x900; repeat in dark 900x800; Save scene; fresh reopen while original file is absent; assert 2/6 and Save again.",
+    "surface": "Gauss Chromium headless browser-agent-shell; fresh web shell build and SHA-256-verified served viewer asset",
+    "viewer_sha256": "69fb11d799c4d236cf9e493790db05c357383cef62c9a54f9f195283617459af",
+    "runtime_source_verification": {
+      "checked": 1528,
+      "mismatches": []
+    },
+    "runtime_source_manifest_sha256": "09dca843eff106ec9a26f9f1bac6ffdd52c9eb06db7d326071df2fbef1a306c4",
+    "tests_passed": [
+      "test-viewer-scene-recovery.mjs",
+      "test-indexed-trajectory.mjs",
+      "build:agent-shell"
+    ],
+    "broader_check": "test-ui-shell-contract.mjs fails at pre-existing line 6536 requiring old toMmCif(label, structures, ...) spelling; reproduced using unchanged HEAD viewer through read-only fs injection. Not counted as passed.",
+    "cleanup": {
+      "servers": [
+        {
+          "pid": 515430,
+          "port": 34201,
+          "closed": true
+        },
+        {
+          "pid": 1804655,
+          "port": 44803,
+          "closed": true
+        },
+        {
+          "pid": 3275996,
+          "port": 33533,
+          "closed": true
+        },
+        {
+          "pid": 2297085,
+          "port": 40287,
+          "closed": true
+        },
+        {
+          "pid": 3210591,
+          "port": 41181,
+          "closed": true
+        }
+      ],
+      "original_restored": true
+    },
+    "oracle_script_sha256": "d4af0e8489232c61b7b957f62edb88d31a4c9498dcd6fa41280c551bb165252f",
+    "browser_script_sha256": "65c303099f774b8458c80d5b1f92d8286aa5e9a5135b05124278d19b3b198452",
+    "reopen_script_sha256": "b5306b1f6ab34d170b01a25c21a7abf46be64ef1e6e871c9908af9690d72c409",
+    "limitations": [
+      "MOLX restored Align/All controls remain absent.",
+      "No native, IAB manual, complete Atlas or accessibility acceptance.",
+      "All-mode alignment and failure/cancellation recovery are not established by this scenario."
+    ]
+  }
+}

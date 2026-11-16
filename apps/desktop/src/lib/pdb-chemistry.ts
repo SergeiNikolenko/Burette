@@ -4,7 +4,7 @@ export function validatePdbMolecule(text: string) {
   if (text.length > 512 * 1024) throw new Error("Select a molecule with at most 300 atoms.");
   const lines = text.split(/\r?\n/u);
   if (lines.filter(line => line.startsWith("MODEL ")).length > 1) {
-    throw new Error("Select one model before opening the molecule in Ketcher.");
+    throw new Error("Select one model before opening the molecule in the molecular editor.");
   }
   const atoms = lines.filter(line => /^(ATOM  |HETATM)/u.test(line)).map(line => ({
     serial: Number(line.slice(6, 11)),
@@ -16,7 +16,7 @@ export function validatePdbMolecule(text: string) {
     throw new Error("Select a molecule with 1–300 atoms and valid coordinates.");
   }
   if (new Set(atoms.map(atom => atom.serial)).size !== atoms.length || atoms.some(atom => atom.alternate)) {
-    throw new Error("Select a single conformation before opening the molecule in Ketcher.");
+    throw new Error("Select a single conformation before opening the molecule in the molecular editor.");
   }
   return atoms;
 }

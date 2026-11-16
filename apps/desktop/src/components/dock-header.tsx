@@ -1,18 +1,19 @@
 import { useLayoutEffect, useRef, type ComponentProps, type MouseEvent } from "react";
 import * as RovingFocusGroup from "@radix-ui/react-roving-focus";
 import { DOCK_TAB_LABELS, type DockArea, type DockTab, type DockTabKind } from "../lib/dock";
-import { Expand, Atom, Chart, Compare, Eye, FileCode, FileDocument, Folder, InfoCircle, Orbit, Plus, SettingsWrench, Stack, Stopwatch, X, type AppIconType } from "./ui/app-icons";
+import { BarChart, ColorTheme, Cube, MoveHorizontal, Expand, Atom, Chart, Compare, Edit, Eye, FileCode, FileDocument, Focus, Folder, Grid, InfoCircle, Orbit, Plus, Scissor, SettingsSlider, SettingsWrench, Stack, Stopwatch, X, type AppIconType } from "./ui/app-icons";
 import { Button } from "./ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 
 const icons: Record<DockTabKind, AppIconType> = {
   scene: Stack, xyzrender: Atom, files: Folder, spectrum: Chart, text: FileDocument,
+  plots: BarChart, orbitals: Cube, potential: ColorTheme, fields: Scissor, "scientific-spectra": Chart, vibrations: MoveHorizontal, geometry: SettingsSlider, crystal: Grid, symmetry: Atom, "structure-edit": Edit,
   story: FileDocument, inspector: InfoCircle, folding: Atom, "structure-basket": Stack,
   compare: Compare, jobs: Stopwatch, logs: FileCode, diagnostics: SettingsWrench,
-  review: Eye, "chemical-space": Orbit,
+  review: Eye, "chemical-space": Orbit, "collection-chart": Chart, interactions: Focus,
 };
 
-export function DockHeader({ area, tabs, activeKind, panelId, readOnly, transientTabId, fileDragProps, onSelect, onClose, onAdd, onHide, onOpenScreen }: {
+export function DockHeader({ area, tabs, activeKind, panelId, readOnly, transientTabId, fileDragProps, onSelect, onClose, onAdd, onHide, onOpenScreen, openScreenLabel = "Open as Workspace Tab" }: {
   area: DockArea;
   tabs: DockTab[];
   activeKind: DockTabKind;
@@ -25,6 +26,7 @@ export function DockHeader({ area, tabs, activeKind, panelId, readOnly, transien
   onAdd: (event: MouseEvent<HTMLButtonElement>) => void;
   onHide: () => void;
   onOpenScreen?: () => void;
+  openScreenLabel?: string;
 }) {
   const header = useRef<HTMLDivElement>(null);
   const restoreFocus = useRef(false);
@@ -72,7 +74,7 @@ export function DockHeader({ area, tabs, activeKind, panelId, readOnly, transien
       </div>
     </RovingFocusGroup.Root>
     {!readOnly && <>
-      {onOpenScreen && <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon-toolbar" className="dock-icon-button" onClick={onOpenScreen} aria-label="Open as Workspace Tab"><Expand aria-hidden /></Button></TooltipTrigger><TooltipContent compact showArrow={false}>Open as Workspace Tab</TooltipContent></Tooltip>}
+      {onOpenScreen && <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon-toolbar" className="dock-icon-button" onClick={onOpenScreen} aria-label={openScreenLabel}><Expand aria-hidden /></Button></TooltipTrigger><TooltipContent compact showArrow={false}>{openScreenLabel}</TooltipContent></Tooltip>}
       <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon-toolbar" className="dock-icon-button" onClick={onAdd} aria-label={`Add ${area} dock tab`}><Plus aria-hidden /></Button></TooltipTrigger><TooltipContent compact showArrow={false}>Add panel</TooltipContent></Tooltip>
       {area === "bottom" && <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon-toolbar" className="dock-icon-button dock-hide-button" onClick={onHide} aria-label={`Close ${area} dock`}><X aria-hidden /></Button></TooltipTrigger><TooltipContent compact showArrow={false}>Close panel</TooltipContent></Tooltip>}
     </>}

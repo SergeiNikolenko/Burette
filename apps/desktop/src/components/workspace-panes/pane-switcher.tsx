@@ -9,7 +9,7 @@ import { MarqueeName } from "../marquee-name";
 import { ChevronDown } from "../ui/app-icons";
 import { Button } from "../ui/button";
 import { isMainTab, type MoleculeTab, type TabPane } from "../../stores/molecule-store";
-import { SCREEN_ENTRIES, openScreen, paneMoveItems, placeScreen } from "./pane-actions";
+import { SCREEN_ENTRIES, openScreenInGroup, paneMoveItems, placeScreen } from "./pane-actions";
 import { TabNameDialog } from "../scene-name-dialog";
 
 // The "Codex ⌄" control of a pane header: the screen's glyph and title, and a
@@ -51,7 +51,7 @@ export function paneSwitcherItems(pane: TabPane, tab: MoleculeTab, state: ShellV
   // The floating window holds one screen and takes any open tab in exchange.
   const here = state.tabs.filter((candidate) => candidate.pane === pane);
   const elsewhere = state.tabs.filter(isMainTab);
-  const screens = here.map((candidate) => screenRow(candidate, state, tab, () => {}));
+  const screens = here.map((candidate) => screenRow(candidate, state, tab, () => actions.selectTab(candidate.id)));
   const bring: MenuItemSpec[] = elsewhere.map((candidate) => ({
     kind: "item",
     id: `pane-bring-${candidate.id}`,
@@ -59,8 +59,7 @@ export function paneSwitcherItems(pane: TabPane, tab: MoleculeTab, state: ShellV
     action: () => placeScreen(candidate.id, pane),
   }));
   const open: MenuItemSpec[] = SCREEN_ENTRIES
-    .filter((entry) => !state.tabs.some((candidate) => candidate.pane === pane && candidate.location.kind === entry.location.kind))
-    .map((entry) => ({ kind: "item", id: `pane-open-${entry.id}`, text: entry.text, action: () => openScreen(entry.location, pane) }));
+    .map((entry) => ({ kind: "item", id: `pane-open-${entry.id}`, text: entry.text, action: () => openScreenInGroup(entry.location, pane, tab.id) }));
   return menuSections(
     screens,
     bring.length ? [{ kind: "submenu", id: "pane-bring", text: "Show Tab in Window", items: bring }] : [],

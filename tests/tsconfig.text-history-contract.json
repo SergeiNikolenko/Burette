@@ -1,0 +1,18 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": [
+      "bun"
+    ]
+  },
+  "files": [
+    "test-source-save-label.test.tsx",
+    "structure-edit-fixture.tsx",
+    "test-mol-graph-identities.test.tsx",
+    "test-logical-sdf-molx-flow.test.tsx",
+    "test-source-draft-recovery.test.tsx"
+  ],
+  "include": [
+    "../apps/desktop/src/**/*.d.ts"
+  ]
+}

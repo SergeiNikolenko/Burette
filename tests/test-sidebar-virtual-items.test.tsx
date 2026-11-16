@@ -43,7 +43,7 @@ test("large search keeps every navigation anchor while mounting only intersectin
     })),
   };
   const state = { sidebarProjects: [project], sidebarQuery: "test", expandedProjectIds: [], documents: [] } as unknown as ShellViewState;
-  const actions = { setStructureDragActive() {}, openRecentStructure: ({ path }: { path: string }) => { opened.push(path); } } as unknown as ShellActions;
+  const actions = { setStructureDragActive() {}, openPaths: async (paths: string[]) => { opened.push(...paths); } } as unknown as ShellActions;
   let selection: ReturnType<typeof useFileSelection>;
   function Shell() {
     selection = useFileSelection();

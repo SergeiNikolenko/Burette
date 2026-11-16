@@ -51,9 +51,11 @@ The shell is a workspace, not a brand canvas.
 
 ## Surface Rules
 
-- Preserve the classic Codex shell: its background and edge-to-edge sidebar.
-  Component migration does not authorize the newer navigation rail, inset
-  panels, or a different sidebar treatment.
+- Use the workspace shell in InterfaceAtlas build 26.1027 as the reference for
+  the window frame, headers, tabs, menus and motion. The file sidebar replaces
+  chat navigation; do not add chat destinations merely to reproduce its rail.
+  Main and right groups belong to one workspace surface, with a shared header
+  rhythm and one right-panel visibility control.
 - The molecular preview, collection, text artifact, or workflow panel stays the
   primary visual object.
 - Chrome should remain compact and predictable: sidebar, tab strip, command
@@ -133,10 +135,10 @@ The shell is a workspace, not a brand canvas.
 
 ### Viewer Top Chrome
 
-The viewer's floating chrome is one set of shapes. Pills (toolbar, viewport
-rail, pose controls, scene tree toggle) are 36 px tall with 18 px corners, and
-their controls sit 4 px inside with 14 px corners, so every fill follows the
-pill's ends. Panels (scene tree, pose menu) follow the Atlas menu: 20 px corners
+The desktop toolbar, viewport rail and scene tree toggle share the native
+widget's Atlas capsule material and button states. The desktop toolbar floats
+in the scene, while the widget aligns it with its file header. Panels
+(scene tree, pose menu) follow the Atlas menu: 20 px corners
 around pill-shaped rows. The scene tree opens out of its toggle and closes back
 into it. When the pose controls share the toggle's column, the tree starts below
 them and moves with them while their playback row opens or closes.
@@ -144,9 +146,14 @@ them and moves with them while their playback row opens or closes.
 Discrete chrome changes morph through the View Transitions API (280 ms):
 collapsing the toolbar from its grip, and the pose controls' three states (the
 animation button opens or closes the playback row, a right-click folds the
-controls, a click unfolds them). When the window resizes, the pills glide to
-their new positions after the first layout, except while dragging. A toolbar
-that no longer fits wraps onto a second row instead of clipping under the grip.
+controls, a click unfolds them). The controls follow the viewport during window
+resize without easing their positions. A toolbar that no longer fits wraps onto
+a second row. The desktop Compute menu sits below the toolbar and inside the
+viewport rail. Its host requests the anchor on frame load and tab activation
+(`sceneComputeAnchorRequest`); the active viewer reports changed coordinates
+(`sceneComputeAnchor`) after laying out the toolbar, Sequence and selection
+controls. The host accepts the coordinates only from that document's active
+iframe.
 
 ### Docking Pose Picker
 

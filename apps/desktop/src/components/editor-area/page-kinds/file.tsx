@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useGridViewModeSession } from "../../../hooks/use-grid-view-mode-session";
 import { findIndexedDocument } from "../document-index";
 import type { ViewerDocument } from "../../../types";
 import { hasStructureDrag, readStructureDragPayload } from "../../../lib/structure-drag";
@@ -7,6 +8,7 @@ import { runShellDropActionChoices, shellDropActionChoices } from "../../drop-ac
 import type { ShellActions } from "../../types";
 import { ViewerFrame } from "../viewer-frame";
 import { SceneComputeMenu } from "../scene-compute-menu";
+import { isHostedMcpWidget } from "../../../lib/hosted-mcp-widget";
 import { showNativeContextMenu } from "../../native-context-menu";
 import { definePageKind } from "./types";
 import { SpectrumViewer } from "../../spectrum-viewer";
@@ -18,7 +20,7 @@ import { MesoscaleSceneOverlay, MesoscaleSceneToggle } from "../../mesoscale/mes
 import { MesoscaleCanvasContextMenu } from "../../mesoscale/mesoscale-canvas-context-menu";
 import { MesoscaleSelectionBar } from "../../mesoscale/mesoscale-selection-bar";
 
-export type FileLocation = { kind: "file"; documentId?: string; path: string };
+export type FileLocation = { kind: "file"; documentId?: string; path: string; recoveryPath?: string; gridViewMode?: "cards" | "table"; gridViewState?: string };
 
 export const fileKind = definePageKind<"file", FileLocation>({
   kind: "file",
@@ -27,21 +29,23 @@ export const fileKind = definePageKind<"file", FileLocation>({
     return document?.title ?? "Structure";
   },
   description: "Open structure",
-  Component: ({ location, state, actions, isActive }) => {
+  Component: ({ tabId, location, state, actions, isActive }) => {
     const document = findIndexedDocument(state.documents, location);
-    return document ? <ViewerSurface document={document} actions={actions} preferences={state.preferences} isActive={isActive} /> : null;
+    return document ? <ViewerSurface tabId={tabId} document={document} actions={actions} preferences={state.preferences} isActive={isActive} /> : null;
   },
   keepAlive: true,
-  fromPayload: (data) => (typeof data.path === "string" ? { kind: "file", documentId: typeof data.documentId === "string" ? data.documentId : undefined, path: data.path } : null),
-  serialize: (location) => ({ documentId: location.documentId, path: location.path }),
+  fromPayload: (data) => (typeof data.path === "string" ? { kind: "file", documentId: typeof data.documentId === "string" ? data.documentId : undefined, path: data.path, ...(data.gridViewMode === "cards" || data.gridViewMode === "table" ? { gridViewMode: data.gridViewMode } : {}), ...(typeof data.gridViewState === "string" && data.gridViewState.length <= 32768 ? { gridViewState: data.gridViewState } : {}), ...(typeof data.recoveryPath === "string" ? { recoveryPath: data.recoveryPath } : {}) } : null),
+  serialize: (location) => ({ documentId: location.documentId, path: location.path, ...(location.gridViewMode ? { gridViewMode: location.gridViewMode } : {}), ...(typeof location.gridViewState === "string" && location.gridViewState.length <= 32768 ? { gridViewState: location.gridViewState } : {}), ...(location.recoveryPath ? { recoveryPath: location.recoveryPath } : {}) }),
 });
 
 function ViewerSurface({
+  tabId,
   document,
   actions,
   preferences,
   isActive,
 }: {
+  tabId: string;
   document: ViewerDocument;
   actions: ShellActions;
   preferences: Parameters<typeof MesoscaleToolbar>[0]["preferences"];
@@ -50,21 +54,24 @@ function ViewerSurface({
   if (document.renderer === "spectrum") {
     return <SpectrumViewer document={document} />;
   }
-  return <StructureViewerSurface document={document} actions={actions} preferences={preferences} isActive={isActive} />;
+  return <StructureViewerSurface tabId={tabId} document={document} actions={actions} preferences={preferences} isActive={isActive} />;
 }
 
 function StructureViewerSurface({
+  tabId,
   document,
   actions,
   preferences,
   isActive,
 }: {
+  tabId: string;
   document: ViewerDocument;
   actions: ShellActions;
   preferences: Parameters<typeof MesoscaleToolbar>[0]["preferences"];
   isActive: boolean;
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const restoreGridViewMode = useGridViewModeSession(tabId, document.path, document.renderer === "grid2d", iframeRef);
   const stagingIframeRef = useRef<HTMLIFrameElement>(null);
   const sourceEditing = useSourceEditing();
   const sourceSession = sourceEditing?.sessionForDocument(document) ?? null;
@@ -92,8 +99,15 @@ function StructureViewerSurface({
 
   const handleViewerLoad = useCallback((frame: HTMLIFrameElement, active: boolean) => {
     postViewerVisibility(frame, active);
+    if (active && isActive && !window.BuretteMcpWorkspace && !isHostedMcpWidget() && (document.renderer === "molstar" || document.renderer === "xyzrender-external")) {
+      frame.contentWindow?.postMessage({
+        source: "burette-host",
+        body: { type: "sceneComputeAnchorRequest", documentId: document.id },
+      }, "*");
+    }
+    restoreGridViewMode(frame, active);
     if (mesoscale && active && frame.contentWindow) bindMesoscaleFrame(document.id, frame.contentWindow);
-  }, [document.id, mesoscale, postViewerVisibility]);
+  }, [document.id, document.renderer, isActive, mesoscale, postViewerVisibility, restoreGridViewMode]);
   const dropTarget = useMemo(() => ({
     kind: "active-viewer" as const,
     documentId: document.id,
@@ -163,7 +177,7 @@ function StructureViewerSurface({
         onViewerLoad={handleViewerLoad}
         onStagingLoad={(identity, frame) => sourceEditing?.stagingLoaded(document, identity, frame)}
       />
-      {!mesoscale && isActive ? <SceneComputeMenu document={document} actions={actions} /> : null}
+      {!mesoscale && isActive ? <SceneComputeMenu document={document} actions={actions} iframeRef={iframeRef} /> : null}
       {mesoscale ? <MesoscaleCanvasContextMenu document={document} /> : null}
       {mesoscale ? <MesoscaleSelectionBar documentId={document.id} /> : null}
       {mesoscale && mesoscaleSceneOpen ? <MesoscaleSceneOverlay document={document} onClose={() => setMesoscaleSceneOpen(document.id, false)} /> : null}

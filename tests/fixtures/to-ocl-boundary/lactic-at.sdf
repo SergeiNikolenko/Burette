@@ -1,0 +1,32 @@
+lactic-at
+     RDKit          2D
+
+  0  0  0  0  0  0  0  0  0  0999 V3000
+M  V30 BEGIN CTAB
+M  V30 COUNTS 6 5 0 0 0
+M  V30 BEGIN ATOM
+M  V30 1 C 0.000000 0.000000 0.000000 101
+M  V30 2 C 1.299038 0.750000 0.000000 102
+M  V30 3 O 1.299038 2.250000 0.000000 103
+M  V30 4 C 2.598076 -0.000000 0.000000 104
+M  V30 5 O 2.598076 -1.500000 0.000000 105
+M  V30 6 O 3.897114 0.750000 0.000000 106
+M  V30 END ATOM
+M  V30 BEGIN BOND
+M  V30 1 1 2 1 CFG=3
+M  V30 2 1 2 3
+M  V30 3 1 2 4
+M  V30 4 2 4 5
+M  V30 5 1 4 6
+M  V30 END BOND
+M  V30 END CTAB
+M  END
+>  <BURETTE_METADATA_V1>
+{"version":1,"atoms":[{"id":"c89fe86e-94f1-5ad7-b964-8b36fcfad154","atomName":"SRC0","residue":{"name":"ORC","sequence":1,"chain":"Q","insertionCode":""}},{"id":"5dd999b0-94ba-54bd-b2dd-c353b60df7d2","atomName":"SRC1","residue":{"name":"ORC","sequence":1,"chain":"Q","insertionCode":""}},{"id":"573cc3d8-8598-5dde-8757-1384972f778a","atomName":"SRC2","residue":{"name":"ORC","sequence":1,"chain":"Q","insertionCode":""}},{"id":"f42a843b-2060-5f64-b883-6c1428605ce6","atomName":"SRC3","residue":{"name":"ORC","sequence":1,"chain":"Q","insertionCode":""}},{"id":"6ed04d0c-1aa4-5255-b0bf-2be1114c740a","atomName":"SRC4","residue":{"name":"ORC","sequence":1,"chain":"Q","insertionCode":""}},{"id":"cd29dde4-8555-5916-af63-c1c6b0a88ccd","atomName":"SRC5","residue":{"name":"ORC","sequence":1,"chain":"Q","insertionCode":""}}],"conformer":{"id":"c96a2db7-1f8f-50cc-963b-d9c339914bef","label":"Original 2D reference"}}
+
+>  <FOREIGN_MULTILINE>
+retain this value exactly
+> <Not a new data field>
+UTF-8: αβ
+
+$$$$

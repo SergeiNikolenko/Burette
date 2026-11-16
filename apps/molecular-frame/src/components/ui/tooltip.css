@@ -1,0 +1,67 @@
+/* FloatingTooltip, original Atlas 26.1002: compact surface and shortcut.
+   Explicit pixels preserve source metrics in embedded chemistry documents. */
+@layer components {
+  .atlas-tooltip {
+    --tooltip-background: #1a1c1f;
+    --tooltip-text: #fff;
+    --tooltip-border: rgb(255 255 255 / 5%);
+    --tooltip-shortcut: rgb(255 255 255 / 25%);
+    max-width: min(320px, var(--available-width, 100vw), calc(100vw - 16px));
+    max-height: min(var(--available-height, 100dvh), calc(100dvh - 16px));
+    padding: 5px 12px;
+    border: 1px solid var(--tooltip-border);
+    border-radius: 20px;
+    background: var(--tooltip-background);
+    color: var(--tooltip-text);
+    font-size: 13px;
+    font-weight: 430;
+    line-height: 18px;
+    letter-spacing: -.15px;
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    box-shadow: 0 8px 18px rgb(15 23 42 / 20%);
+    user-select: none;
+  }
+  .dark .atlas-tooltip {
+    --tooltip-background: #2d2d2d;
+    --tooltip-text: #dfdfdf;
+    --tooltip-border: rgb(223 223 223 / 5%);
+    --tooltip-shortcut: rgb(223 223 223 / 25%);
+  }
+  .atlas-tooltip [data-slot="tooltip-shortcut"] {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 18px;
+    margin-inline-end: -7px;
+    padding: 0 6px;
+    border: 0;
+    border-radius: 12.5px;
+    background: var(--tooltip-shortcut);
+    color: inherit;
+    font: inherit;
+    white-space: nowrap;
+    box-shadow: none;
+  }
+  /* Codex "surface" color: elevated menu surface, hairline ring, secondary text. */
+  .atlas-tooltip[data-variant="surface"] {
+    --tooltip-background: var(--popover);
+    --tooltip-text: var(--popover-foreground);
+    --tooltip-shortcut: var(--muted);
+    padding: 6px 8px;
+    border: 0;
+    border-radius: 10px;
+    line-height: 18.5px;
+    letter-spacing: 0;
+    text-align: start;
+    box-shadow: 0 0 0 .5px rgb(26 28 31 / 8%), 0 8px 16px -4px rgb(0 0 0 / 12%);
+  }
+  .dark .atlas-tooltip[data-variant="surface"] {
+    --tooltip-background: var(--popover);
+    --tooltip-text: var(--popover-foreground);
+    box-shadow: 0 0 0 .5px rgb(255 255 255 / 8%), 0 8px 16px -4px rgb(0 0 0 / 12%);
+  }
+}

@@ -11,6 +11,7 @@
     "browser-shell-dist/",
     "mcp/",
     "preview-web/",
+    "python/",
     "scripts/",
     "skills/"
   ],

@@ -123,11 +123,12 @@ export function useTabWindow(tabs: readonly { id: string }[], activeId: string |
 
   const reorderIndex = useCallback((id: string, pointerX: number) => {
     const element = viewportRef.current;
-    if (!element || !windowed) return null;
+    if (!element) return null;
     const rect = element.getBoundingClientRect();
     if (pointerX < rect.left + 28) element.scrollLeft = Math.max(0, element.scrollLeft - 24);
     else if (pointerX > rect.right - 28) element.scrollLeft += 24;
     syncViewport();
+    if (!windowed) return null;
     const offset = pointerX - rect.left + element.scrollLeft;
     let insertion = 0;
     for (let index = 0; index < tabs.length; index += 1) {

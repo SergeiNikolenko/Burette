@@ -1,17 +1,20 @@
 import { useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { molstarContextMenuItems } from "../components/molstar-context-menu";
+import { molstarToolMenuItems } from "../components/molstar-tool-menu";
 import { showNativeContextMenu } from "../components/native-context-menu";
 import { xyzrenderContextMenuItems } from "../components/xyzrender-context-menu";
 import { isTauriRuntime } from "../lib/tauri";
 import type { PostMessageToViewerSource } from "../lib/viewer-bridge";
 import type { ViewerDocument } from "../types";
+import type { DockTabKind } from "../lib/dock";
 
 type XyzrenderSheetMessageBody = Record<string, unknown> | null | undefined;
 
 type UseAppXyzrenderSheetMessagesOptions = {
   documents: ViewerDocument[];
   postMessageToViewerSource: PostMessageToViewerSource;
+  openDockTab: (area: "right", kind: DockTabKind) => void;
 };
 
 // A viewer reports its click in frame coordinates; the menu opens in window ones.
@@ -29,6 +32,7 @@ function viewerFramePoint(source: MessageEventSource | null, body: Record<string
 export function useAppXyzrenderSheetMessages({
   documents,
   postMessageToViewerSource,
+  openDockTab,
 }: UseAppXyzrenderSheetMessagesOptions) {
   const handleXyzrenderSheetMessage = useCallback((
     sourceName: unknown,
@@ -67,6 +71,8 @@ export function useAppXyzrenderSheetMessages({
         .filter(document => document.renderer === "grid2d" && ["sdf", "sd"].includes(document.extension.toLowerCase()))
         .map(document => ({ id: document.id, title: document.title }));
       const items = molstarContextMenuItems(body.items, (id, value) => reply({ event: "select", id, value }), gridTargets);
+      const owner = body.type === "molstarContextMenu" && sourceName === "burette-viewer" ? documents.find(document => document.id === body.documentId) : undefined;
+      if (owner && items.length) items.splice(Math.max(0, items.findIndex(item => item.kind === "separator") + 1), 0, ...molstarToolMenuItems(owner, body.atomIndex, openDockTab));
       if (!items.length) {
         reply({ event: "unsupported" });
         return true;
@@ -130,7 +136,7 @@ export function useAppXyzrenderSheetMessages({
       }
     })();
     return true;
-  }, [documents, postMessageToViewerSource]);
+  }, [documents, postMessageToViewerSource, openDockTab]);
 
   return { handleXyzrenderSheetMessage };
 }

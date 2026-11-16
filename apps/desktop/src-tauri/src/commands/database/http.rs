@@ -7,6 +7,7 @@
 //! every provider rather than remembered per provider.
 
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use burette_core::bounded_process::{self, Limits};
@@ -80,6 +81,8 @@ impl DatabaseRequest {
     }
 }
 
+pub(crate) const FETCH_CANCELLED: &str = "The request was cancelled";
+
 /// A redirect chain is the classic way around a URL allow-list, so the hop count
 /// is bounded.
 const MAX_REDIRECTS: usize = 3;
@@ -97,6 +100,15 @@ const REDIRECT_MARKER: &str = "burette-redirect:";
 /// scheme, so a public endpoint answering `302 http://169.254.169.254/` would
 /// otherwise walk straight past the allow-list.
 pub(crate) fn fetch(request: &DatabaseRequest) -> Result<Vec<u8>, String> {
+    fetch_cancellable(request, &AtomicBool::new(false))
+}
+
+/// [`fetch`] that stops, discarding partial data, once `cancel` is set. The
+/// error is [`FETCH_CANCELLED`].
+pub(crate) fn fetch_cancellable(
+    request: &DatabaseRequest,
+    cancel: &AtomicBool,
+) -> Result<Vec<u8>, String> {
     let deadline = Instant::now() + Duration::from_secs(u64::from(request.timeout_seconds));
     let origin = validate_request_url(&request.url)?;
     let mut target = origin.clone();
@@ -105,7 +117,10 @@ pub(crate) fn fetch(request: &DatabaseRequest) -> Result<Vec<u8>, String> {
         // the body; a redirect elsewhere is replayed as a bare GET, which is what
         // curl itself does for 301/302/303 and for `Authorization` across hosts.
         let trusted = target.origin() == origin.origin();
-        let (body, redirect) = run_curl(request, &target, trusted, deadline)?;
+        if cancel.load(Ordering::Relaxed) {
+            return Err(FETCH_CANCELLED.to_string());
+        }
+        let (body, redirect) = run_curl(request, &target, trusted, deadline, cancel)?;
         let Some(redirect) = redirect else {
             return Ok(body);
         };
@@ -121,6 +136,7 @@ fn run_curl(
     target: &url::Url,
     trusted: bool,
     deadline: Instant,
+    cancel: &AtomicBool,
 ) -> Result<(Vec<u8>, Option<String>), String> {
     let max_filesize = request.max_bytes.to_string();
     let addresses = public_fetch_addresses(target, deadline)?;
@@ -178,7 +194,7 @@ fn run_curl(
         command.args(["--config", "-"]);
     }
     command.arg(target.as_str());
-    let output = bounded_process::run(
+    let output = bounded_process::run_cancellable(
         &mut command,
         config.as_deref().unwrap_or("").as_bytes(),
         Limits {
@@ -186,8 +202,12 @@ fn run_curl(
             stderr_bytes: 64 * 1024,
             deadline,
         },
+        cancel,
     )
-    .map_err(|error| format!("Database request failed: {error}"))?;
+    .map_err(|error| match error.kind() {
+        std::io::ErrorKind::Interrupted => FETCH_CANCELLED.to_string(),
+        _ => format!("Database request failed: {error}"),
+    })?;
     let (message, redirect) = split_curl_stderr(&String::from_utf8_lossy(&output.stderr));
     if !output.status.success() {
         return Err(if message.is_empty() {
@@ -288,9 +308,15 @@ mod tests {
         let target = validate_request_url(&request.url).unwrap();
         // The hop must honor time already consumed by DNS and earlier redirects,
         // even though the original request has a much larger timeout configured.
-        assert!(run_curl(&request, &target, true, Instant::now())
-            .unwrap_err()
-            .contains("deadline expired"));
+        assert!(run_curl(
+            &request,
+            &target,
+            true,
+            Instant::now(),
+            &AtomicBool::new(false)
+        )
+        .unwrap_err()
+        .contains("deadline expired"));
         assert!(
             fetch(&DatabaseRequest::get("https://dns-must-not-run.invalid/").with_timeout(0))
                 .unwrap_err()

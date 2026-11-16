@@ -21,7 +21,9 @@ export function measureGeometry(kind, atoms) {
   else if (kind === 'angle') {
     const a = normalized(subtract(points[0], points[1]));
     const b = normalized(subtract(points[2], points[1]));
-    value = Math.acos(Math.max(-1, Math.min(1, dot(a, b)))) * 180 / Math.PI;
+    // atan2 retains the small transverse component near 0 and 180 degrees;
+    // acos rounds it away when the dot product rounds to +/-1.
+    value = Math.atan2(Math.hypot(...cross(a, b)), dot(a, b)) * 180 / Math.PI;
   } else {
     const axis = normalized(subtract(points[2], points[1]));
     const start = subtract(points[0], points[1]);
