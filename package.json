@@ -487,7 +487,7 @@
     "cmdk": "^1.1.1",
     "dompurify": "^3.4.16",
     "fast-uri": "4.2.1",
-    "fflate": "0.8.2",
+    "fflate": "0.8.3",
     "fp-ts": "2.16.11",
     "h264-mp4-encoder": "1.0.12",
     "immutable": "5.1.9",
