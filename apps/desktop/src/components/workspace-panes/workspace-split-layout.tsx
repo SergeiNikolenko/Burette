@@ -8,6 +8,7 @@ import { ToolbarButton } from "../ui/toolbar-button";
 import { Expand } from "../ui/app-icons";
 import { ShortcutTooltip } from "../shortcut-tooltip";
 import { selectedGroupTab } from "./use-pane-tabs";
+import { useRightPanelMotion } from "./use-right-panel-motion";
 import "./workspace-panes.css";
 
 function WorkspaceGroupHeader({ group, state, actions, tab }: {
@@ -42,15 +43,20 @@ export function WorkspaceSplitLayout({ tabs, state, actions, children }: {
   const fullViewTabId = useWorkspacePanesStore(store => store.fullViewTabId);
   const selectedTabs = useWorkspacePanesStore(store => store.selectedTabs);
   const visible = !fullViewTabId && state.page !== "settings";
-  const right = visible && !closedGroups.right ? selectedGroupTab(tabs, state.activeTabId, selectedTabs, "right") : null;
+  const openRight = visible && !closedGroups.right ? selectedGroupTab(tabs, state.activeTabId, selectedTabs, "right") : null;
   const bottom = visible && !closedGroups.bottom ? selectedGroupTab(tabs, state.activeTabId, selectedTabs, "bottom") : null;
   const sideGeometry = useRef({ width: 0, ratio: split.right });
+  const { displayed: right, fraction } = useRightPanelMotion(ref, openRight, visible, split.right, (open) => {
+    const shell = ref.current?.closest<HTMLElement>(".app-shell");
+    const geometry = sideGeometry.current;
+    if (shell) publishWorkspaceSideWidth(shell, geometry.width * (1 - geometry.ratio) * open);
+  });
   useLayoutEffect(() => {
     const shell = ref.current?.closest<HTMLElement>(".app-shell");
     if (!right || !shell) return;
     const geometry = sideGeometry.current;
     if (!endResize.current) geometry.ratio = split.right;
-    publishWorkspaceSideWidth(shell, geometry.width * (1 - geometry.ratio));
+    publishWorkspaceSideWidth(shell, geometry.width * (1 - geometry.ratio) * fraction());
   });
   useLayoutEffect(() => {
     const stack = ref.current;
@@ -59,7 +65,7 @@ export function WorkspaceSplitLayout({ tabs, state, actions, children }: {
     const observer = new ResizeObserver(([record]) => {
       const geometry = sideGeometry.current;
       geometry.width = record.contentRect.width;
-      publishWorkspaceSideWidth(shell, geometry.width * (1 - geometry.ratio));
+      publishWorkspaceSideWidth(shell, geometry.width * (1 - geometry.ratio) * fraction());
     });
     observer.observe(stack);
     return () => {
