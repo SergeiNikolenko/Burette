@@ -123,6 +123,13 @@
   visibility: visible;
   pointer-events: auto;
 }
+/* A closing right group keeps painting while it slides out
+   (use-right-panel-motion.ts). */
+.page-stack > .page-surface[data-pane][data-pane-leaving] {
+  display: block;
+  visibility: visible;
+  pointer-events: none;
+}
 .page-stack[data-split-right] > .page-surface:not([data-pane]) { right: calc(100% - var(--split-right)); }
 .page-stack[data-split-bottom] > .page-surface:not([data-pane]) { bottom: calc(100% - var(--split-bottom)); }
 .page-stack > .page-surface[data-pane="right"] { left: var(--split-right); }

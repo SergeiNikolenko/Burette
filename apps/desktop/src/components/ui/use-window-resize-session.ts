@@ -19,12 +19,12 @@ export function useWindowResizeSession(shellRef: RefObject<HTMLElement | null>, 
       if (!release && shellRef.current) release = beginViewerLayoutGesture(shellRef.current);
       window.clearTimeout(timer);
       cancelAnimationFrame(frame);
+      // Live resizes report about once per frame, so five quiet frames mean the
+      // pointer has stopped. One frame after the commit lets panels settle.
       timer = window.setTimeout(() => {
         commitRef.current();
-        frame = requestAnimationFrame(() => {
-          frame = requestAnimationFrame(finish);
-        });
-      }, 120);
+        frame = requestAnimationFrame(finish);
+      }, 80);
     };
     window.addEventListener("resize", resize);
     return () => {

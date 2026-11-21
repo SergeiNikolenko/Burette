@@ -36,6 +36,7 @@ test("split, focus, full view and return retain the same mounted views", async (
     </>;
   }
   await act(async () => root.render(<Workspace />));
+  const running = () => Array.from(host.querySelectorAll<HTMLElement>("*")).flatMap(element => element.getAnimations());
   const a = host.querySelector('iframe[title="a"]');
   await act(async () => useMoleculeStore.getState().placeTab("b", "right"));
   const b = host.querySelector('iframe[title="b"]');
@@ -49,12 +50,21 @@ test("split, focus, full view and return retain the same mounted views", async (
   expect(activeViewerIframeForDocument("shared")).toBe(a);
   await act(async () => { useMoleculeStore.getState().setActiveTab("b"); toggleWorkspacePanel("right"); });
   expect(useMoleculeStore.getState().activeTabId).toBe("a");
+  // The closed group slides out first; the split layout goes once it is gone.
+  expect(host.querySelector('.page-surface[data-pane-leaving] iframe')).toBe(b);
+  expect(host.querySelector('[data-split-right]')).not.toBeNull();
+  await act(async () => { for (const animation of running()) animation.finish(); });
+  expect(host.querySelector('[data-pane-leaving]')).toBeNull();
+  expect(running()).toHaveLength(0);
   expect(host.querySelector('[data-split-right]')).toBeNull();
   expect(host.querySelectorAll('[data-workspace-visible]').length).toBe(1);
   expect(host.querySelector('iframe[title="b"]')).toBe(b);
   await act(async () => toggleWorkspacePanel("right"));
   expect(useWorkspacePanesStore.getState().selectedTabs.right).toBe("b");
   expect(host.querySelector('[data-split-right]')).not.toBeNull();
+  expect(host.querySelector('.page-surface[data-pane="right"]')!.getAnimations()).toHaveLength(1);
+  await act(async () => { for (const animation of running()) animation.finish(); });
+  expect(running()).toHaveLength(0);
   const rightHeader = host.querySelector('.workspace-group-header[data-group="right"]');
   await act(async () => openRightTool("inspector", "/scene.pdb"));
   expect(host.querySelectorAll('.workspace-group-header[data-group="right"]')).toHaveLength(1);

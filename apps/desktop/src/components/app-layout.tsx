@@ -121,11 +121,9 @@ function usePanelToggleAnimation(open: boolean, shellRef: React.RefObject<HTMLEl
         void Promise.allSettled(transitions.map((animation) => animation.finished)).then(() => {
           if (cancelled) return;
           setAnimating(false);
-          // Nested groups correct their pixel sizes in ResizeObserver + rAF.
-          // Keep the canvas held until those final corrections have painted.
-          frame = requestAnimationFrame(() => {
-            frame = requestAnimationFrame(() => release?.());
-          });
+          // Draw at the final size the moment the panel stops. A late nested
+          // pixel correction is an ordinary discrete resize, drawn before paint.
+          release?.();
         });
       });
     });

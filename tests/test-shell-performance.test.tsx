@@ -274,8 +274,7 @@ test("window resize holds canvases and batches React bounds until settling, and 
     for (let i = 0; i < 200; i++) window.dispatchEvent(new browser.Event("resize"));
     expect([measures, commits, timers.size, iframe.style.width, shell.hasAttribute("data-resizing")]).toEqual([0, 0, 1, "", true]);
     await act(async () => { const pending = [...timers.values()]; timers.clear(); pending.forEach(callback => callback()); });
-    expect(commits).toBe(1);
-    tick(); expect(shell.hasAttribute("data-resizing")).toBe(true);
+    expect([commits, shell.hasAttribute("data-resizing")]).toEqual([1, true]);
     tick(); expect(shell.hasAttribute("data-resizing")).toBe(false);
     expect(shell.querySelector("iframe")).toBe(iframe);
     window.dispatchEvent(new browser.Event("resize"));
