@@ -154,6 +154,21 @@ describe("MCP wire contract", () => {
     expect(await transport.prepareFrame(`${directory}index.html?hostOrigin=x`)).toBe(
       `<html><head><meta name="burette-frame-base" content="${directory}"><meta name="burette-host-origin" content="https://sandbox.example"><script src="${frameScript}" data-burette-frame-child></script><script type="module" src="${directory}assets/index.js"></script></head></html>`,
     );
+    const darkWindow = { parent: {}, origin: "https://sandbox.example", Worker: FakeWorker } as Record<string, unknown>;
+    runInNewContext(readFileSync(new URL("../assets/burette-hosted-frame.js", import.meta.url), "utf8"), {
+      window: darkWindow, URL: FakeURL, Blob,
+      getComputedStyle: () => ({ getPropertyValue: () => "#181818" }),
+      document: {
+        baseURI: "https://sandbox.example/widget",
+        documentElement: { dataset: { hostTheme: "dark" } },
+        currentScript: { src: frameScript, hasAttribute: () => false },
+      },
+      fetch: async () => ({ ok: true, text: async () => '<html lang="en"><head><script type="module" src="./assets/index.js"></script></head></html>' }),
+    });
+    const darkTransport = darkWindow.BuretteHostedFrameTransport as { prepareFrame(href: string): Promise<string> };
+    expect(await darkTransport.prepareFrame(`${directory}index.html?hostOrigin=x`)).toBe(
+      `<html lang="en" class="dark"><head><meta name="burette-frame-base" content="${directory}"><meta name="burette-host-origin" content="https://sandbox.example"><meta name="burette-frame-theme" content="dark"><style>html,body{color-scheme:dark;background:#181818;}</style><script src="${frameScript}" data-burette-frame-child></script><script type="module" src="${directory}assets/index.js"></script></head></html>`,
+    );
 
     const fetched: string[] = [];
     const child = { origin: "https://sandbox.example", fetch: async (input: string) => { fetched.push(String(input)); } } as Record<string, unknown>;

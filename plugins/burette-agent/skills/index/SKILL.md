@@ -1,6 +1,6 @@
 ---
 name: index
-description: "Primary router for Burette. Use when the plugin is at-mentioned or for molecular workspace work: opening structures, operating Mol* or Ketcher, reviewing SDF/property collections, trajectories, workflow result bundles, molecular reports, or Browser/Computer visual QA."
+description: "Primary router for Burette. Use when the plugin is at-mentioned or for molecular workspace work: opening structures, operating Mol* or the molecular editor, reviewing SDF/property collections, trajectories, workflow result bundles, molecular reports, or Browser/Computer visual QA."
 ---
 
 # Burette
@@ -143,7 +143,7 @@ A Burette workflow is complete only when:
   link;
 - `observe.activeDocument.ready` is true and the Mol* `viewerAgent` reports
   available/ready when the active renderer is Mol*;
-- when the active surface is Ketcher, `activeSurface.ready` is true and
+- when the active surface is the molecular editor, `activeSurface.ready` is true and
   `chemicalEditor.phase` is `ready`;
 - Browser or Computer visual QA is run when the user asked to see the UI or the
   change affects visible layout;

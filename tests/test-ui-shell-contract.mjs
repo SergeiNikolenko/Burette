@@ -3155,10 +3155,10 @@ assert.match(ketcherPage, /const editorShellRef = useRef<HTMLDivElement \| null>
 assert.doesNotMatch(ketcherPage, /"--ketcher-ui-scale-inverse"/);
 assert.match(ketcherPage, /className=\{cn\("ketcher-editor-scale-frame", showReactionEditor && "invisible"\)\}/);
 assert.match(ketcherPage, /aria-label="Molecular editor scale"/);
-assert.match(ketcherPage, /Decrease Ketcher scale/);
-assert.match(ketcherPage, /Increase Ketcher scale/);
-assert.match(ketcherPage, /<TooltipContent[^>]*>Decrease Ketcher scale<\/TooltipContent>/);
-assert.match(ketcherPage, /<TooltipContent[^>]*>Increase Ketcher scale<\/TooltipContent>/);
+assert.match(ketcherPage, /Decrease molecular editor scale/);
+assert.match(ketcherPage, /Increase molecular editor scale/);
+assert.match(ketcherPage, /<TooltipContent[^>]*>Decrease molecular editor scale<\/TooltipContent>/);
+assert.match(ketcherPage, /<TooltipContent[^>]*>Increase molecular editor scale<\/TooltipContent>/);
 assert.match(ketcherPage, /ketcher\.setZoom\(nextZoom\)/);
 assert.doesNotMatch(ketcherPage, /ketcherThemeMode === "light" \? " active" : ""/);
 assert.match(ketcherPage, /aria-label=\{ketcherThemeTitle\}/);

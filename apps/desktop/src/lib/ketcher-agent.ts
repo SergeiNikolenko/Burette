@@ -309,9 +309,9 @@ export class KetcherAgentController {
   }
 
   private async executeValidated(action: KetcherControlAction & { input?: { format: string; content?: string; contentRef?: string } }): Promise<KetcherAgentResult> {
-    if (this.disposed || this.state.phase === "disposed") return this.failure(action.command, "STALE_TARGET", "The Ketcher editor has been disposed.", action.actionId);
-    if (action.surfaceId !== this.surfaceId) return this.failure(action.command, "STALE_TARGET", "The requested Ketcher surface is not registered.", action.actionId);
-    if (this.state.phase !== "ready") return this.failure(action.command, "NOT_READY", "The Ketcher editor is not ready.", action.actionId);
+    if (this.disposed || this.state.phase === "disposed") return this.failure(action.command, "STALE_TARGET", "The molecular editor has been disposed.", action.actionId);
+    if (action.surfaceId !== this.surfaceId) return this.failure(action.command, "STALE_TARGET", "The requested molecular editor surface is not registered.", action.actionId);
+    if (this.state.phase !== "ready") return this.failure(action.command, "NOT_READY", "The molecular editor is not ready.", action.actionId);
     if (action.expectedRevision !== this.state.structureRevision) {
       return this.failure(action.command, "REVISION_CONFLICT", revisionConflictMessage(action.expectedRevision, this.state.structureRevision), action.actionId);
     }
@@ -340,7 +340,7 @@ export class KetcherAgentController {
       else await this.editor.setMolecule(input.content ?? "", { needZoom: true });
       await waitForEditorPaint();
       const nextKet = await this.editor.getKet();
-      if (action.command === "set_structure" && !nextKet.trim()) throw new Error("Ketcher returned an empty structure after set_structure.");
+      if (action.command === "set_structure" && !nextKet.trim()) throw new Error("The molecular editor returned an empty structure after set_structure.");
       this.lastKet = nextKet;
       this.summary = await this.readSummary();
       this.selectedAtoms = [];
@@ -358,7 +358,7 @@ export class KetcherAgentController {
         this.lastKet = previousKet;
         this.lastAction = { ok: false, command: action.command, actionId: action.actionId, error: { code: "RECOVERY_FAILED" } };
         this.emit();
-        return this.failure(action.command, "RECOVERY_FAILED", "Ketcher could not restore the previous structure.", action.actionId);
+        return this.failure(action.command, "RECOVERY_FAILED", "The molecular editor could not restore the previous structure.", action.actionId);
       }
       this.state = { ...previousState, phase: "ready" };
       this.summary = previousSummary;
@@ -394,7 +394,7 @@ export class KetcherAgentController {
       return this.failure(
         action.command,
         "TRANSPORT_UNAVAILABLE",
-        `delivery "${delivery}" is not available on the desktop Ketcher surface; use delivery "inline" (up to 64 KiB) or request_persist to save a file.`,
+        `delivery "${delivery}" is not available on the desktop molecular editor surface; use delivery "inline" (up to 64 KiB) or request_persist to save a file.`,
         action.actionId,
       );
     }
@@ -465,7 +465,7 @@ export class KetcherAgentController {
 
   private async readContentRef(format: string, contentRef: string): Promise<ContentRefResult> {
     const read = this.host.readContentRef;
-    if (!read) return { ok: false, code: "TRANSPORT_UNAVAILABLE", message: "This Ketcher surface cannot resolve contentRef; send inline content instead." };
+    if (!read) return { ok: false, code: "TRANSPORT_UNAVAILABLE", message: "This molecular editor surface cannot resolve contentRef; send inline content instead." };
     const path = localContentRefPath(contentRef);
     if (!path) return { ok: false, code: "INVALID_INPUT", message: "contentRef must be an absolute local file path or a file:// URL." };
     const allowed = CONTENT_REF_EXTENSIONS[format] ?? [];
@@ -498,7 +498,7 @@ export class KetcherAgentController {
     if (format === "sdf") return this.editor.getSdf?.("v2000") ?? this.editor.getMolfile("v2000");
     if (format === "cdxml") {
       const value = await this.editor.getCDXml?.();
-      if (value === undefined) throw new Error("The Ketcher runtime does not expose CDXML export.");
+      if (value === undefined) throw new Error("The molecular editor runtime does not expose CDXML export.");
       return value;
     }
     throw new Error(`Unsupported export format: ${format}`);

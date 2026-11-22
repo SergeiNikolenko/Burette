@@ -13,8 +13,17 @@ export function readMolecularAppearance(container) {
   probe.remove();
   variables.foreground ??= style.color;
   variables['font-sans'] = style.fontFamily;
+  const explicitTheme =
+    container.closest?.('[data-effective-theme]')?.getAttribute('data-effective-theme')
+    ?? document.documentElement.dataset.hostTheme
+    ?? document.documentElement.dataset.theme;
+  const isDark = explicitTheme === 'dark'
+    ? true
+    : explicitTheme === 'light'
+      ? false
+      : document.documentElement.classList.contains('dark') || style.colorScheme === 'dark';
   return {
-    theme: document.documentElement.classList.contains('dark') || style.colorScheme === 'dark' ? 'dark' : 'light',
+    theme: isDark ? 'dark' : 'light',
     locale: document.documentElement.lang,
     variables,
   };
@@ -25,12 +34,14 @@ export function createMolecularEditor(container, options = {}) {
   const transport = options.transport ?? window.BuretteMcpWorkspace;
   const sameHost = base.protocol === location.protocol && base.host === location.host;
   const frameOrigin = transport || sameHost ? window.origin : base.origin;
+  const initialAppearance = readMolecularAppearance(container);
   const element = document.createElement('iframe');
   element.title = options.title ?? 'Molecular editor';
   element.allow = 'fullscreen; clipboard-read; clipboard-write';
-  element.style.cssText = 'display:block;width:100%;height:100%;border:0;';
+  element.style.cssText = `display:block;width:100%;height:100%;border:0;background:transparent;color-scheme:${initialAppearance.theme};opacity:0;transition:opacity 120ms ease;`;
   const url = new URL('index.html', base);
   url.searchParams.set('hostOrigin', window.origin);
+  url.searchParams.set('theme', initialAppearance.theme);
   const pending = new Map();
   const listeners = new Map(['change', 'state', 'error'].map(name => [name, new Set()]));
   let sequence = 0;
@@ -73,10 +84,17 @@ export function createMolecularEditor(container, options = {}) {
     element.src = url.href;
     container.append(element);
   }
-  const syncAppearance = () => request('appearance', { ...readMolecularAppearance(container), openFile: Boolean(options.onOpenFile) });
+  const reveal = () => { if (!disposed) element.style.opacity = '1'; };
+  const syncAppearance = () => {
+    const appearance = readMolecularAppearance(container);
+    element.style.colorScheme = appearance.theme;
+    return request('appearance', { ...appearance, openFile: Boolean(options.onOpenFile) });
+  };
   const observer = new MutationObserver(() => { if (loaded) void syncAppearance().catch(() => {}); });
-  for (let ancestor = container; ancestor; ancestor = ancestor.parentElement) observer.observe(ancestor, { attributes: true, attributeFilter: ['class', 'style', 'lang'] });
-  const ready = mounted.then(syncAppearance);
+  for (let ancestor = container; ancestor; ancestor = ancestor.parentElement) {
+    observer.observe(ancestor, { attributes: true, attributeFilter: ['class', 'style', 'lang', 'data-theme', 'data-effective-theme', 'data-host-theme'] });
+  }
+  const ready = mounted.then(syncAppearance).then(value => { reveal(); return value; }, error => { reveal(); throw error; });
   return {
     element, ready,
     get editor() {
