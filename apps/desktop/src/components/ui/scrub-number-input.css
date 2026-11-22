@@ -104,7 +104,6 @@
 
 .scrub-bound-field {
   transition: border-color 150ms ease-out;
-  will-change: transform;
 }
 
 .scrub-bound-wrap.is-bound-error .scrub-bound-field {
@@ -113,6 +112,7 @@
 }
 
 .scrub-bound-field.is-shaking {
+  will-change: transform;
   animation: scrub-bound-shake-x var(--scrub-bound-feedback-ms) linear;
 }
 

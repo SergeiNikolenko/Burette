@@ -1005,12 +1005,13 @@ button, select, input, textarea, [role="button"], [role="separator"], a[href], s
   border-radius: 999px;
   background: currentColor;
   opacity: 0.6;
-  transition: width 140ms ease;
+  transform: scaleX(1);
+  transition: transform 120ms cubic-bezier(0.22, 1, 0.36, 1);
   pointer-events: none;
 }
 .grid-hover-molecule-strap:hover .grid-hover-molecule-strap-grip,
 .grid-hover-molecule-strap:focus-visible .grid-hover-molecule-strap-grip {
-  width: 28px;
+  transform: scaleX(1.4);
 }
 /* The name is what tells the bar apart from a divider, so it takes the row and
    the chevron stays pinned to the trailing edge. */
@@ -1217,13 +1218,13 @@ button, select, input, textarea, [role="button"], [role="separator"], a[href], s
    swap that value instantly; easing it recreates the pre-refactor slide. The
    transition only exists while the app marks the group as animating a toggle —
    a standing one would rubber-band pointer drags and window resizes, where the
-   library rewrites flex-grow every frame. Timings match the old .sidebar-shell
-   (140ms ease-out) and .dock-panel (180ms) rules. */
+   library rewrites flex-grow every frame. Timings use crisp native macOS
+   deceleration curves (130ms sidebar, 150ms docks). */
 .workspace-panels[data-panels-animating] > [data-panel] {
-  transition: flex-grow 140ms ease-out;
+  transition: flex-grow 130ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .workbench-main-panels[data-panels-animating] > [data-panel] {
-  transition: flex-grow 180ms cubic-bezier(0.2, 0, 0, 1);
+  transition: flex-grow 150ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 /* While a separator drag or a toggle animation is in flight the shell carries
    data-resizing (set by beginViewerLayoutGesture) and every viewer holds its
@@ -1262,7 +1263,7 @@ button, select, input, textarea, [role="button"], [role="separator"], a[href], s
 .workbench-main-panels { overflow: clip !important; min-width: 0; min-height: 0; height: 100%; width: 100%; }
 .main-panel { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: flex; }
 .dock-panel-shell { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: flex; contain: layout style; }
-.dock-panel-shell .dock-panel { width: 100%; height: 100%; flex: 1; transition: opacity 140ms ease-out; will-change: opacity; }
+.dock-panel-shell .dock-panel { width: 100%; height: 100%; flex: 1; transition: opacity 120ms ease-out; }
 .dock-panel-shell .dock-panel-inner { width: 100%; height: 100%; }
 .resizable-handle {
   position: relative;
@@ -1328,7 +1329,7 @@ button, select, input, textarea, [role="button"], [role="separator"], a[href], s
   border-radius: 999px;
   background: var(--text-muted);
   opacity: 0;
-  transition: background 120ms ease, height 120ms ease, width 120ms ease, opacity 120ms ease;
+  transition: background 120ms ease, transform 120ms cubic-bezier(0.22, 1, 0.36, 1), opacity 120ms ease;
   pointer-events: none;
 }
 .resizable-handle-horizontal .resizable-handle-grip { width: 44px; height: 4px; }
@@ -1336,9 +1337,9 @@ button, select, input, textarea, [role="button"], [role="separator"], a[href], s
 .resizable-handle:focus-visible .resizable-handle-grip { opacity: 1; }
 .resizable-handle:active .resizable-handle-grip { opacity: 1; background: var(--text-primary); }
 .resizable-handle:hover .resizable-handle-grip,
-.resizable-handle:active .resizable-handle-grip { height: 56px; }
+.resizable-handle:active .resizable-handle-grip { transform: translate(-50%, -50%) scaleY(1.27); }
 .resizable-handle-horizontal:hover .resizable-handle-grip,
-.resizable-handle-horizontal:active .resizable-handle-grip { height: 4px; width: 56px; }
+.resizable-handle-horizontal:active .resizable-handle-grip { transform: translate(-50%, -50%) scaleX(1.27); }
 .workbench {
   min-width: 0;
   min-height: 0;
@@ -1404,11 +1405,11 @@ html[data-hosted-mcp-widget="true"] #root {
   box-shadow: 0 12px 32px rgb(0 0 0 / 0.16);
 }
 .app-shell[data-sidebar-peek="open"] .sidebar-shell-inner {
-  animation: sidebar-peek-in 300ms cubic-bezier(0.2, 0, 0, 1);
+  animation: sidebar-peek-in 180ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .app-shell[data-sidebar-peek="closing"] .sidebar-shell-inner {
   pointer-events: none;
-  animation: sidebar-peek-out 200ms cubic-bezier(0.4, 0, 1, 1) forwards;
+  animation: sidebar-peek-out 140ms cubic-bezier(0.4, 0, 1, 1) forwards;
 }
 @keyframes sidebar-peek-in { from { transform: translateX(-100%); } }
 @keyframes sidebar-peek-out { to { transform: translateX(-100%); } }
@@ -1808,7 +1809,7 @@ kbd span { margin-left: 2px; }
   pointer-events: none;
 }
 .anim-icon {
-  transition: transform 240ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: transform 150ms cubic-bezier(0.22, 1, 0.36, 1);
   transform-origin: center;
 }
 .anim-icon-spin:hover,
@@ -1987,7 +1988,7 @@ kbd span { margin-left: 2px; }
   opacity: 0;
   overflow: hidden;
   pointer-events: none;
-  transition: grid-template-rows 160ms ease-out, opacity 120ms ease-out;
+  transition: grid-template-rows 135ms cubic-bezier(0.22, 1, 0.36, 1), opacity 110ms ease-out;
 }
 .project-folder-children-shell[data-expanded="true"] {
   grid-template-rows: 1fr;
@@ -2000,7 +2001,7 @@ kbd span { margin-left: 2px; }
   opacity: 0;
   overflow: hidden;
   pointer-events: none;
-  transition: grid-template-rows 160ms ease-out, opacity 120ms ease-out;
+  transition: grid-template-rows 135ms cubic-bezier(0.22, 1, 0.36, 1), opacity 110ms ease-out;
 }
 .project-group-children-shell[data-expanded="true"] {
   grid-template-rows: 1fr;
@@ -2018,7 +2019,7 @@ kbd span { margin-left: 2px; }
   opacity: 0;
   overflow: hidden;
   pointer-events: none;
-  transition: grid-template-rows 160ms ease-out, margin-top 160ms ease-out, opacity 120ms ease-out;
+  transition: grid-template-rows 135ms cubic-bezier(0.22, 1, 0.36, 1), margin-top 135ms cubic-bezier(0.22, 1, 0.36, 1), opacity 110ms ease-out;
 }
 .project-tail-shell[data-expanded="true"] {
   grid-template-rows: 1fr;
@@ -6803,7 +6804,7 @@ img.radix-menu-item-icon {
   border-radius: 18px;
   background: var(--mesoscale-island);
   box-shadow: var(--mesoscale-island-shadow);
-  backdrop-filter: blur(18px);
+  backdrop-filter: blur(12px);
   touch-action: none;
   user-select: none;
 }
@@ -6815,7 +6816,7 @@ img.radix-menu-item-icon {
 .mesoscale-toolbar .mesoscale-toolbar-graphics svg { width: 14px; height: 14px; color: var(--color-text-tertiary); }
 .mesoscale-toolbar .mesoscale-toolbar-grip { cursor: grab; touch-action: none; }
 .mesoscale-toolbar.dragging .mesoscale-toolbar-grip { cursor: grabbing; }
-.mesoscale-toolbar.collapsed .mesoscale-toolbar-grip { width: 36px; height: 36px; border: 1px solid var(--line-subtle); border-radius: 18px; background: var(--mesoscale-island); box-shadow: var(--mesoscale-island-shadow); backdrop-filter: blur(18px); }
+.mesoscale-toolbar.collapsed .mesoscale-toolbar-grip { width: 36px; height: 36px; border: 1px solid var(--line-subtle); border-radius: 18px; background: var(--mesoscale-island); box-shadow: var(--mesoscale-island-shadow); backdrop-filter: blur(12px); }
 
 .mesoscale-selection-bar {
   position: absolute;
@@ -6877,7 +6878,7 @@ img.radix-menu-item-icon {
   color: var(--text-secondary);
   background: var(--mesoscale-island);
   box-shadow: var(--mesoscale-island-shadow);
-  backdrop-filter: blur(18px);
+  backdrop-filter: blur(12px);
 }
 .mesoscale-scene-toggle:hover { color: var(--text-primary); background: linear-gradient(var(--surface-hover), var(--surface-hover)), var(--mesoscale-island); }
 .mesoscale-scene-toggle.active { color: var(--text-primary); background: linear-gradient(var(--surface-active), var(--surface-active)), var(--mesoscale-island); }
@@ -7011,8 +7012,8 @@ img.radix-menu-item-icon {
   background: color-mix(in srgb, var(--bg-base) 82%, transparent);
   color: var(--text-primary);
   box-shadow: 0 28px 80px rgb(0 0 0 / 0.38), 0 1px 0 rgb(255 255 255 / 0.16) inset;
-  backdrop-filter: blur(34px) saturate(1.35);
-  -webkit-backdrop-filter: blur(34px) saturate(1.35);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
 }
 .web-quicklook-titlebar {
   min-width: 0;
@@ -8017,10 +8018,10 @@ img.radix-menu-item-icon {
   font-size: var(--text-base);
 }
 .radix-dialog[data-state="open"] {
-  animation: radix-dialog-in 160ms cubic-bezier(0.2, 0.9, 0.3, 1);
+  animation: radix-dialog-in 130ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .radix-dialog-overlay[data-state="open"] {
-  animation: radix-dialog-fade 160ms ease-out;
+  animation: radix-dialog-fade 130ms ease-out;
 }
 @keyframes radix-dialog-in {
   from { opacity: 0; transform: translate(-50%, -50%) scale(0.97); }

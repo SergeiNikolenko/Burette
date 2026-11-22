@@ -2338,8 +2338,8 @@ assert.match(appLayout, /if \(!meta\.isUserInteraction\) return;/);
 assert.match(appLayout, /function usePanelToggleAnimation/);
 assert.ok(appLayout.indexOf("usePanelToggleAnimation(sidebarVisible)") < appLayout.indexOf("useCollapsiblePanelSync(sidebarVisible"), "toggle-animation hooks must be called before the collapse/expand sync hooks");
 assert.match(appLayout, /data-panels-animating=\{sidebarAnimating \|\| undefined\}/);
-assert.match(styles, /\.workspace-panels\[data-panels-animating\] > \[data-panel\] \{\s*transition: flex-grow 140ms ease-out;/);
-assert.match(styles, /\.workbench-main-panels\[data-panels-animating\] > \[data-panel\] \{\s*transition: flex-grow 180ms cubic-bezier\(0\.2, 0, 0, 1\);/);
+assert.match(styles, /\.workspace-panels\[data-panels-animating\] > \[data-panel\] \{\s*transition: flex-grow 130ms cubic-bezier\(0\.22, 1, 0\.36, 1\);/);
+assert.match(styles, /\.workbench-main-panels\[data-panels-animating\] > \[data-panel\] \{\s*transition: flex-grow 150ms cubic-bezier\(0\.22, 1, 0\.36, 1\);/);
 // The tab strip rides the measured panel edges, so it must not ease `left` on
 // its own — that eased every drag frame and dragged the strip behind the
 // sidebar. Only the library's collapsed state closes a collapsible panel: a
@@ -3157,10 +3157,10 @@ assert.match(ketcherPage, /const editorShellRef = useRef<HTMLDivElement \| null>
 assert.doesNotMatch(ketcherPage, /"--ketcher-ui-scale-inverse"/);
 assert.match(ketcherPage, /className=\{cn\("ketcher-editor-scale-frame", showReactionEditor && "invisible"\)\}/);
 assert.match(ketcherPage, /aria-label="Molecular editor scale"/);
-assert.match(ketcherPage, /Decrease Ketcher scale/);
-assert.match(ketcherPage, /Increase Ketcher scale/);
-assert.match(ketcherPage, /<TooltipContent[^>]*>Decrease Ketcher scale<\/TooltipContent>/);
-assert.match(ketcherPage, /<TooltipContent[^>]*>Increase Ketcher scale<\/TooltipContent>/);
+assert.match(ketcherPage, /Decrease molecular editor scale/);
+assert.match(ketcherPage, /Increase molecular editor scale/);
+assert.match(ketcherPage, /<TooltipContent[^>]*>Decrease molecular editor scale<\/TooltipContent>/);
+assert.match(ketcherPage, /<TooltipContent[^>]*>Increase molecular editor scale<\/TooltipContent>/);
 assert.match(ketcherPage, /ketcher\.setZoom\(nextZoom\)/);
 assert.doesNotMatch(ketcherPage, /ketcherThemeMode === "light" \? " active" : ""/);
 assert.match(ketcherPage, /aria-label=\{ketcherThemeTitle\}/);
@@ -3811,14 +3811,14 @@ assert.match(styles, /\.project-folder-name \{[^}]*flex: 1;/s);
 assert.match(styles, /\.project-folder-name-input \{[^}]*flex: 1;/s);
 assert.match(styles, /\n\.project \{[^}]*color: var\(--color-text\);/s);
 assert.match(styles, /\.project:hover \{\s*background: var\(--color-background-primary-ghost-hover\);\s*\}/);
-assert.match(styles, /\.project-folder-children-shell \{[^}]*grid-template-rows: 0fr;[^}]*overflow: hidden;[^}]*transition: grid-template-rows 160ms ease-out, opacity 120ms ease-out;/s);
+assert.match(styles, /\.project-folder-children-shell \{[^}]*grid-template-rows: 0fr;[^}]*overflow: hidden;[^}]*transition: grid-template-rows 135ms cubic-bezier\(0\.22, 1, 0\.36, 1\), opacity 110ms ease-out;/s);
 assert.match(styles, /\.project-folder-children-shell\[data-expanded="true"\] \{[^}]*grid-template-rows: 1fr;[^}]*pointer-events: auto;/s);
 // Lazy tails retain the existing slide and reduced-motion styles.
 assert.match(sidebarSurface, /className="project-tail-shell"\s*open=\{showAllItems\}/);
 assert.match(sidebarSurface, /className="project-tail-shell"\s*open=\{showAllChildren\}/);
 assert.match(sidebarSurface, /aria-expanded=\{showAllItems\}\s*aria-label=\{showAllItems \?/);
 assert.match(sidebarSurface, /aria-expanded=\{showAllChildren\}\s*aria-label=\{showAllChildren \?/);
-assert.match(styles, /\.project-tail-shell \{[^}]*grid-template-rows: 0fr;[^}]*overflow: hidden;[^}]*transition: grid-template-rows 160ms ease-out, margin-top 160ms ease-out, opacity 120ms ease-out;/s);
+assert.match(styles, /\.project-tail-shell \{[^}]*grid-template-rows: 0fr;[^}]*overflow: hidden;[^}]*transition: grid-template-rows 135ms cubic-bezier\(0\.22, 1, 0\.36, 1\), margin-top 135ms cubic-bezier\(0\.22, 1, 0\.36, 1\), opacity 110ms ease-out;/s);
 assert.match(styles, /\.project-tail-shell\[data-expanded="true"\] \{[^}]*grid-template-rows: 1fr;[^}]*pointer-events: auto;/s);
 assert.match(styles, /@media \(prefers-reduced-motion: reduce\) \{\s*\.project-group-children-shell,\s*\.project-folder-children-shell,\s*\.project-tail-shell \{ transition: none; \}/);
 assert.match(styles, /\.project-folder-children \{[^}]*min-height: 0;[^}]*overflow: hidden;/s);

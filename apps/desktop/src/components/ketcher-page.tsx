@@ -1432,7 +1432,7 @@ export function KetcherPage({
                   <Minus aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent showArrow={false}>Decrease Ketcher scale</TooltipContent>
+              <TooltipContent showArrow={false}>Decrease molecular editor scale</TooltipContent>
             </Tooltip>
             <span className="min-w-10 text-center text-sm text-(--color-text-tertiary) tabular-nums">{ketcherZoomPercent}%</span>
             <Tooltip>
@@ -1441,7 +1441,7 @@ export function KetcherPage({
                   <Plus aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent showArrow={false}>Increase Ketcher scale</TooltipContent>
+              <TooltipContent showArrow={false}>Increase molecular editor scale</TooltipContent>
             </Tooltip>
           </div>
           <Tooltip>
@@ -1689,7 +1689,7 @@ async function ketcherCollectionRecord(ketcher: KetcherEditorApi, molfile: strin
     return {
       title: "ketcher-sketch.smi",
       extension: "smi" as const,
-      text: `${smiles} Ketcher sketch\n`,
+      text: `${smiles} Molecular editor sketch\n`,
     };
   }
 
@@ -1698,7 +1698,7 @@ async function ketcherCollectionRecord(ketcher: KetcherEditorApi, molfile: strin
   return {
     title: `ketcher-sketch.${extension}`,
     extension,
-    text: `smiles${separator}name\n${escapeDelimitedCell(smiles, separator)}${separator}Ketcher sketch\n`,
+    text: `smiles${separator}name\n${escapeDelimitedCell(smiles, separator)}${separator}Molecular editor sketch\n`,
   };
 }
 

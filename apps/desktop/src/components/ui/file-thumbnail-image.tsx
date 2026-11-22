@@ -60,7 +60,7 @@ export function FileThumbnailImage({
           reportError();
         }}
         className={cn(
-          "absolute inset-0 size-full object-cover transition-opacity duration-300",
+          "absolute inset-0 size-full object-cover transition-opacity duration-150",
           loaded ? "opacity-100" : "opacity-0",
           className,
         )}

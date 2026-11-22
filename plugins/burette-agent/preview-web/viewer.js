@@ -3988,7 +3988,7 @@
         if (loop && !loop.isAnimating) loop.start();
       } else loop?.stop({ noDraw: true });
       if (hostViewerVisible && activeViewer) scheduleViewerResize(activeViewer);
-      if (hostViewerVisible && hostComputeAnchorRequested) scheduleFloatingLayoutRefresh();
+      if (hostViewerVisible && typeof hostComputeAnchorRequested !== 'undefined' && hostComputeAnchorRequested && typeof scheduleFloatingLayoutRefresh === 'function') scheduleFloatingLayoutRefresh();
       return;
     }
     if (event.source === window.parent && body.type === 'captureRendererViewState') {
@@ -4001,6 +4001,7 @@
     }
     if (event.source === window.parent && body.type === 'hostLayoutGesture') {
       hostLayoutGestureActive = body.active === true;
+      document.documentElement?.classList?.toggle('buret-host-layout-gesture', hostLayoutGestureActive);
       if (hostLayoutGestureActive) deferViewerResize(activeViewer);
       else {
         // A load or tab activation can replace activeViewer while a gesture is
@@ -4008,6 +4009,7 @@
         for (const viewer of hostLayoutGestureViewers) window.molstar?.BuretteResizeInteraction?.release(viewer);
         hostLayoutGestureViewers.clear();
         if (activeViewer) scheduleViewerResize(activeViewer);
+        if (typeof flushDeferredFloatingLayout === 'function') flushDeferredFloatingLayout();
       }
       return;
     }
@@ -7565,7 +7567,7 @@
         // guard pending. A later keyboard activation must still work.
         if (event.detail !== 0) return;
       }
-      activateToolbarGrip(toolbar, activeViewer || resizeState.viewer);
+      activateToolbarGrip(toolbar, (typeof activeViewer !== 'undefined' && activeViewer) || resizeState.viewer);
     });
     toolbar.addEventListener('pointerdown', event => {
       if (event.target.closest('[data-buret-toggle]')) return;
@@ -7609,7 +7611,7 @@
       drag = null;
       if (shouldToggle) {
         ignoreNextGripClick = true;
-        activateToolbarGrip(toolbar, activeViewer || resizeState.viewer);
+        activateToolbarGrip(toolbar, (typeof activeViewer !== 'undefined' && activeViewer) || resizeState.viewer);
       } else if (shouldSavePosition) {
         ignoreNextGripClick = startedOnHandle;
         toolbar.dataset.defaultPosition = '0';
@@ -7883,6 +7885,7 @@
       ? Math.max(TOOLBAR_MARGIN, Math.ceil(toolbarRect.right - selectionBarWidth))
       : TOOLBAR_MARGIN;
     root.style.setProperty('--buret-selection-controls-left', `${selectionBarLeft}px`);
+    root.style.setProperty('--buret-selection-controls-right', Math.max(TOOLBAR_MARGIN, Math.round(frameWidth - (selectionBarLeft + selectionBarWidth))) + 'px');
     root.style.setProperty('--buret-selection-controls-width', `${selectionBarWidth}px`);
     // Measured from where the bar actually starts. Taken from the toolbar's left
     // edge it collapsed along with the toolbar, capping the bar at 180px — the two
@@ -7920,6 +7923,12 @@
         : toolbarRect.right - viewportRailWidth
       : frameWidth - TOOLBAR_MARGIN - viewportRailWidth;
     root.style.setProperty('--buret-viewport-rail-left', Math.round(viewportRailLeft) + 'px');
+    const viewportRailRight = Math.max(TOOLBAR_MARGIN, Math.round(frameWidth - (viewportRailLeft + viewportRailWidth)));
+    root.style.setProperty('--buret-viewport-rail-right', viewportRailRight + 'px');
+    const rightAnchored = (!toolbar || toolbar.dataset.defaultPosition === '1' || dockCorner?.endsWith('right')) && railHorizontal === 'right';
+    if (viewportRail) viewportRail.dataset.anchorEdge = rightAnchored ? 'right' : 'left';
+    const selectionBarEl = document.getElementById('buret-selection-bar');
+    if (selectionBarEl) selectionBarEl.dataset.anchorEdge = rightAnchored ? 'right' : 'left';
     // Our own rail stands where Mol*'s used to; whichever of the two is on screen is
     // the edge the compute button has to keep clear of. The rail's left edge is
     // exactly the property just written.
@@ -8046,7 +8055,20 @@
     setTimeout(() => document.documentElement.classList.add('buret-chrome-settled'), 800);
   }
 
+  let floatingLayoutRefreshDeferred = false;
+  function flushDeferredFloatingLayout() {
+    if (!floatingLayoutRefreshDeferred) return;
+    floatingLayoutRefreshDeferred = false;
+    if (!floatingResizeToolbar) floatingResizeToolbar = document.getElementById('buret-toolbar');
+    scheduleFloatingLayoutRefresh();
+    if (sceneTreeClearanceRoot?.isConnected) syncSceneTreeClearance(sceneTreeClearanceRoot);
+  }
+
   function scheduleFloatingLayoutRefresh() {
+    if (hostLayoutGestureActive) {
+      floatingLayoutRefreshDeferred = true;
+      return;
+    }
     if (floatingLayoutFrame) return;
     floatingLayoutFrame = requestAnimationFrame(() => {
       floatingLayoutFrame = 0;
@@ -9494,7 +9516,7 @@ SOFTWARE.
     if (side) menu.dataset.motion = 'side';
     if (!floatingMenuMotion(menu)) return;
     menu.style.transformOrigin = origin;
-    menu.animate(floatingMenuFrames(menu), { duration: side ? 220 : 180, easing: FLOATING_MENU_EASE });
+    menu.animate(floatingMenuFrames(menu), { duration: side ? 150 : 120, easing: FLOATING_MENU_EASE });
   }
   function dismissFloatingMenu(menu) {
     if (!menu?.isConnected) return;
@@ -9505,7 +9527,7 @@ SOFTWARE.
     menu.removeAttribute('id');
     menu.inert = true;
     menu.style.pointerEvents = 'none';
-    const exit = menu.animate(floatingMenuFrames(menu).reverse(), { duration: 140, easing: 'ease-out', fill: 'forwards' });
+    const exit = menu.animate(floatingMenuFrames(menu).reverse(), { duration: 95, easing: 'ease-out', fill: 'forwards' });
     exit.onfinish = exit.oncancel = () => menu.remove();
   }
 
@@ -21369,6 +21391,10 @@ SOFTWARE.
     ? new ResizeObserver(() => syncSceneTreeClearance(sceneTreeClearanceRoot))
     : null;
   function syncSceneTreeClearance(root) {
+    if (hostLayoutGestureActive) {
+      floatingLayoutRefreshDeferred = true;
+      return;
+    }
     if (root !== sceneTreeClearanceRoot) {
       sceneTreeClearanceObserver?.disconnect();
       sceneTreeClearanceRoot = root;

@@ -3,8 +3,8 @@ import type { MoleculeTab } from "../../stores/molecule-store";
 import { beginViewerLayoutGesture } from "../editor-area/viewer-frame";
 
 // Matches the bottom dock's toggle (styles.css, .workbench-main-panels).
-const DURATION_MS = 180;
-const EASING = "cubic-bezier(0.2, 0, 0, 1)";
+const DURATION_MS = 150;
+const EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
 
 type Motion = {
   animations: Animation[];

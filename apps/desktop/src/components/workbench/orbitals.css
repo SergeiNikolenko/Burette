@@ -38,7 +38,7 @@
 .orbital-diagram .orbital-diagram-unit { fill: var(--text-secondary); }
 .orbital-diagram-gap {
   fill: var(--surface-subtle);
-  animation: orbital-fade 320ms ease-out both;
+  animation: orbital-fade 160ms ease-out both;
 }
 .orbital-diagram-partner {
   stroke: var(--color-border);
@@ -48,7 +48,7 @@
 .orbital-diagram-partner[data-active] { stroke: var(--text-muted); }
 .orbital-diagram-pill {
   fill: var(--surface-subtle-strong);
-  transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1), width 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: transform 150ms cubic-bezier(0.22, 1, 0.36, 1), width 150ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .orbital-level-hit { fill: transparent; }
 .orbital-level-bar {
@@ -58,7 +58,7 @@
   transform-box: fill-box;
   transform-origin: left center;
   transition: stroke 150ms ease-out, stroke-width 150ms ease-out;
-  animation: orbital-bar-in 280ms cubic-bezier(0.2, 0.8, 0.2, 1) var(--orbital-delay, 0ms) both;
+  animation: orbital-bar-in 180ms cubic-bezier(0.22, 1, 0.36, 1) var(--orbital-delay, 0ms) both;
 }
 .orbital-level-bar[data-side="left"] { transform-origin: right center; }
 .orbital-level[data-occupied] .orbital-level-bar { stroke: var(--color-text); }
@@ -69,7 +69,7 @@
 }
 .orbital-diagram .orbital-level-label {
   transition: fill 150ms ease-out;
-  animation: orbital-fade 240ms ease-out calc(var(--orbital-delay, 0ms) + 120ms) both;
+  animation: orbital-fade 160ms ease-out calc(var(--orbital-delay, 0ms) + 70ms) both;
 }
 .orbital-level[data-tag] .orbital-level-label { fill: var(--text-secondary); }
 .orbital-diagram .orbital-level-tag { fill: var(--color-text); font-size: 9.5px; font-weight: 500; }

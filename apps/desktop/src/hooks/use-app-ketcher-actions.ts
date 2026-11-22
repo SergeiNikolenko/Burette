@@ -356,7 +356,7 @@ export function useAppKetcherActions({
             })
           ));
           rememberRecentStructures([document]);
-          pushStatus(`Added Ketcher sketch to ${basename(document.path)}`);
+          pushStatus(`Added molecular editor sketch to ${basename(document.path)}`);
           return;
         }
 
@@ -367,7 +367,7 @@ export function useAppKetcherActions({
         );
         openDocumentsInActiveTab([document]);
         rememberRecentStructures([document]);
-        pushStatus(`Added Ketcher sketch to ${basename(request.collectionTargetPath)}`);
+        pushStatus(`Added molecular editor sketch to ${basename(request.collectionTargetPath)}`);
         return;
       }
       if (request.target === "collection") {
@@ -499,7 +499,7 @@ export function useAppKetcherActions({
       addDocuments([document]);
       rememberRecentStructures([document]);
       pushStatus(
-        `Opened Ketcher sketch in ${request.target === "grid" ? "grid" : request.target === "molstar" ? "Molstar" : "xyzrender"}`,
+        `Opened molecular editor sketch in ${request.target === "grid" ? "grid" : request.target === "molstar" ? "Molstar" : "xyzrender"}`,
       );
     } catch (error) {
       pushErrorStatus(error, "Open molecular editor sketch failed");

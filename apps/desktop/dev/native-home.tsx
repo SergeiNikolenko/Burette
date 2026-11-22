@@ -31,7 +31,7 @@ function HomeExample({ scenario }: { scenario: string }) {
     };
   });
   return <>
-    <NativeWorkspaceHome home={home} actions={{ openKetcher: () => setSelected("Ketcher") } as ShellActions} />
+    <NativeWorkspaceHome home={home} actions={{ openKetcher: () => setSelected("Molecular editor") } as ShellActions} />
     {selected ? <output className="mx-auto pb-6 text-sm">{selected}</output> : null}
   </>;
 }

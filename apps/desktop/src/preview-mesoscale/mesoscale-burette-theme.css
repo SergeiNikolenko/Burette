@@ -122,18 +122,18 @@ body .msp-plugin .msp-layout-right .msp-scrollable {
   background: color-mix(in srgb, var(--buret-meso-text) 55%, transparent);
   opacity: 0;
   transform: translate(-50%, -50%);
-  transition: background 120ms ease, height 120ms ease, width 120ms ease, opacity 120ms ease;
+  transition: background 120ms ease, transform 120ms cubic-bezier(0.22, 1, 0.36, 1), opacity 120ms ease;
   pointer-events: none;
 }
 
 .buret-meso-panel-resizer:hover .buret-meso-panel-resizer-grip,
 .buret-meso-panel-resizer:focus-visible .buret-meso-panel-resizer-grip {
-  height: 56px;
+  transform: translate(-50%, -50%) scaleY(1.27);
   opacity: 1;
 }
 
 .buret-meso-panel-resizer.dragging .buret-meso-panel-resizer-grip {
-  height: 56px;
+  transform: translate(-50%, -50%) scaleY(1.27);
   background: var(--buret-meso-text);
   opacity: 1;
 }
@@ -146,8 +146,7 @@ body .msp-plugin .msp-layout-right .msp-scrollable {
 .buret-meso-panel-resizer[data-axis="bottom"]:hover .buret-meso-panel-resizer-grip,
 .buret-meso-panel-resizer[data-axis="bottom"]:focus-visible .buret-meso-panel-resizer-grip,
 .buret-meso-panel-resizer[data-axis="bottom"].dragging .buret-meso-panel-resizer-grip {
-  width: 56px;
-  height: 4px;
+  transform: translate(-50%, -50%) scaleX(1.27);
 }
 
 .buret-meso-panel-resizer:focus-visible {
@@ -409,7 +408,7 @@ body .msp-plugin .msp-highlight-info {
   background: color-mix(in srgb, var(--buret-meso-panel) 92%, transparent) !important;
   box-shadow: 0 12px 30px rgb(0 0 0 / 0.22);
   opacity: 1 !important;
-  backdrop-filter: blur(16px);
+  backdrop-filter: blur(12px);
 }
 
 body .msp-plugin .msp-highlight-info-additional {

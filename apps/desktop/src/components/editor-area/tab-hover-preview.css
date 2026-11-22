@@ -22,7 +22,7 @@
 
 .tab-hover-preview[data-moved],
 .sidebar-hover-card[data-moved] {
-  transition: transform 150ms var(--ease-enter-snappy);
+  transition: transform 110ms var(--ease-enter-snappy);
 }
 
 .tab-hover-preview-frame {

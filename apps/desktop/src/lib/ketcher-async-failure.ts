@@ -15,7 +15,7 @@ export async function rejectOnKetcherAsyncFailure<T>(
   eventBus.once(KETCHER_FAILURE_EVENT, markFailed);
   try {
     const result = await operation();
-    if (failed) throw new Error("Ketcher could not parse or import the supplied structure.");
+    if (failed) throw new Error("Molecular editor could not parse or import the supplied structure.");
     return result;
   } finally {
     eventBus.removeListener(KETCHER_FAILURE_EVENT, markFailed);

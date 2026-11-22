@@ -167,7 +167,7 @@ export function KetcherDialog({ children, title, headerContent, footerContent, c
       // Ketcher's forms have no action: a native submission (Enter on a form
       // control, a default-type button) would reload the editor page.
       onSubmit={(event) => { event.preventDefault(); rest.onSubmit?.(event); }}>
-      <DialogHeader><DialogTitle asChild><div>{headerContent || title || (className?.includes("About-module") ? "About Ketcher" : "Structure properties")}</div></DialogTitle></DialogHeader>
+      <DialogHeader><DialogTitle asChild><div>{headerContent || title || (className?.includes("About-module") ? "About Molecular editor" : "Structure properties")}</div></DialogTitle></DialogHeader>
       <div className={cn("ketcher-ui-dialog-body", className, params?.className)} data-testid="info-modal-body">{children}</div>
       {(footerContent || buttons.length > 0) && <DialogFooter>
         {footerContent}

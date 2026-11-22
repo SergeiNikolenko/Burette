@@ -40,8 +40,8 @@ const KetcherPage = lazy(() => {
 
 export const ketcherKind = definePageKind<"ketcher", KetcherLocation>({
   kind: "ketcher",
-  title: () => "Molecule editor",
-  description: "Molecule sketch editor",
+  title: () => "Molecular editor",
+  description: "Molecular editor",
   Component: ({ tabId, location, state, actions, isActive }) => (
     <Suspense fallback={null}>
       <KetcherPage tabId={tabId} location={location} state={state} actions={actions} isActive={isActive} />

@@ -125,7 +125,7 @@ function CommandList({
     <CommandPrimitive.List
       data-slot="command-list"
       className={cn(
-        "outline-none",
+        "outline-none transition-none!",
         className
       )}
       {...props}

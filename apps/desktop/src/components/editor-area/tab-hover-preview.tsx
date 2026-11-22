@@ -128,7 +128,7 @@ export function TabHoverPreview({ stripRef, describe }: {
 
   const info = shown && shown.anchor.isConnected ? describe(shown.tabId) : null;
   if (!shown || !info || !container) return null;
-  const duration = reducedMotion || shown.keyboard ? 0 : 0.15;
+  const duration = reducedMotion || shown.keyboard ? 0 : 0.11;
   return createPortal(
     <div
       id={id}

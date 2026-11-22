@@ -267,7 +267,7 @@ async function callKetcherWhenReady<T>(operation: () => Promise<T>) {
       if (!isKetcherInstanceError(error)) break;
     }
   }
-  throw lastError instanceof Error ? lastError : new Error(String(lastError || "Ketcher operation failed"));
+  throw lastError instanceof Error ? lastError : new Error(String(lastError || "Molecular editor operation failed"));
 }
 
 function isKetcherInstanceError(error: unknown) {
@@ -470,7 +470,7 @@ export function KetcherEditor({
         const normalizedError = error instanceof Error ? error : new Error(String(error));
         setLoadError(normalizedError);
         onLoadError?.(normalizedError);
-        onStatus("Ketcher failed to load");
+        onStatus("Molecular editor failed to load");
       });
 
     return () => {
@@ -504,7 +504,7 @@ export function KetcherEditor({
       const normalized = error instanceof Error ? error : new Error(String(error));
       setLoadError(normalized);
       onLoadError?.(normalized);
-      onStatus("Ketcher failed to load");
+      onStatus("Molecular editor failed to load");
     });
   }, [onReady, onStatus, onLoadError, runtime]);
 

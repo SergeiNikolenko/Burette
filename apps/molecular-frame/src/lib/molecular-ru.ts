@@ -284,6 +284,7 @@ export const molecularRu: Record<string, string> = {
   "Enter fullscreen": "На весь экран",
   "Exit fullscreen": "Выйти из полноэкранного режима",
   "Structure properties": "Свойства структуры",
+  "About Molecular editor": "О редакторе",
   "About Ketcher": "О редакторе",
   "Save": "Сохранить",
   "Already in use": "Уже используется",

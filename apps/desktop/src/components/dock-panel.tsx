@@ -1524,7 +1524,7 @@ function dockFilesDragPayload(
     return {
       paths: [],
       records: [],
-      items: [{ kind: "ketcher", title: "Molecular editor", detail: "Sketcher" }],
+      items: [{ kind: "ketcher", title: "Molecular editor", detail: "Editor" }],
     };
   }
   return null;
