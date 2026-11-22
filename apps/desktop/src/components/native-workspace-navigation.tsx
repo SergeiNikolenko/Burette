@@ -51,15 +51,18 @@ export function NativeWorkspaceMenu({ state, actions, onShowSidebar, fileItems =
   onShowSidebar?: () => void;
 }) {
   if (onShowSidebar) return <SidebarToggle open={false} onToggle={onShowSidebar} />;
+  const pages = openPages(state);
   const items: MenuItemSpec[] = [
     { kind: "item", id: "home", text: "Recent files", action: () => homeAction({ state, actions }) },
     { kind: "item", id: "ketcher", text: "Molecular editor", action: () => ketcherAction({ state, actions }) },
     ...(fileItems.length ? [{ kind: "submenu" as const, id: "file-actions", text: "Open in another application", items: fileItems }] : []),
-    { kind: "separator" },
-    ...openPages(state).map(({ tab, title }) => ({
-      kind: "item" as const, id: tab.id, text: title,
-      action: () => actions.selectTab(tab.id),
-    })),
+    ...(pages.length ? [
+      { kind: "separator" as const },
+      ...pages.map(({ tab, title }) => ({
+        kind: "item" as const, id: tab.id, text: title,
+        action: () => actions.selectTab(tab.id),
+      })),
+    ] : []),
   ];
   return <RadixDropdownMenu items={items} align="start" trigger={<ShortcutTooltip label="Workspace pages"><button type="button" className="chrome-button native-sidebar-toggle"
     aria-label="Workspace pages"><SidebarLeftHidden size={18} aria-hidden /></button></ShortcutTooltip>} />;

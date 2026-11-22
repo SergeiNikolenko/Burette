@@ -155,3 +155,38 @@ test("hosted workspace home shows PDB search and featured examples while opening
     expect(opened).toEqual(["https://www.rcsb.org/structure/1CRN"]);
   });
 });
+
+test("fullscreen native sidebar omits duplicate toggle when top chrome owns it, and hosted back button exposes compact label", async () => {
+  const { HostedKetcherViewSwitch } = await import("../apps/desktop/src/components/hosted-ketcher-view-switch");
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    const state = {
+      tabs: [{ id: "home", location: { kind: "launcher" } }],
+      activeTab: { id: "home", location: { kind: "launcher" } },
+      activeTabId: "home",
+      documents: [],
+      ketcherDraftMolfile: "",
+    } as unknown as ShellViewState;
+    const actions = {
+      selectTab: () => {},
+      openNewTab: () => {},
+      openKetcher: () => {},
+      openKetcherSketch: async () => {},
+      clearAllDocuments: async () => {},
+    } as unknown as ShellActions;
+    await act(async () => root.render(<NativeWorkspaceSidebar state={state} actions={actions} />));
+    expect(container.querySelector('.native-workspace-sidebar-top button')).toBeNull();
+
+    await act(async () => root.render(
+      <HostedKetcherViewSwitch state={state} actions={actions} showHomeBack showSketchSwitch />,
+    ));
+    const backButton = container.querySelector<HTMLButtonElement>(".hosted-home-back");
+    expect(backButton?.getAttribute("aria-label")).toBe("Back to Home");
+    expect(backButton?.querySelector(".hosted-home-back-label")?.textContent).toBe("Home");
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});

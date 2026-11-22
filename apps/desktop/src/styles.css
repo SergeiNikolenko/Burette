@@ -240,6 +240,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   display: flex;
   align-items: center;
   justify-content: flex-start;
+  flex: none;
   min-width: 0;
 }
 .hosted-workspace-bar-center {
@@ -247,6 +248,12 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   align-items: center;
   justify-content: center;
   min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.hosted-workspace-bar-center::-webkit-scrollbar {
+  display: none;
 }
 .hosted-workspace-bar-trailing {
   min-width: 0;
@@ -264,7 +271,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   font-size: var(--text-sm);
   font-weight: 500;
 }
-@media (max-width: 520px) {
+@media (max-width: 600px) {
   .hosted-ketcher-view-switch[data-has-home="true"] {
     grid-template-columns: auto minmax(0, 1fr);
   }
@@ -273,6 +280,26 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   }
   .hosted-ketcher-view-switch[data-has-home="true"] .hosted-workspace-bar-center {
     justify-content: flex-end;
+  }
+}
+@media (max-width: 480px) {
+  .hosted-ketcher-view-switch[data-has-home="true"] {
+    gap: 6px;
+    padding: 6px 8px;
+  }
+  .hosted-ketcher-view-switch[data-has-home="true"] .hosted-home-back {
+    width: 28px;
+    min-width: 28px;
+    padding: 0;
+    justify-content: center;
+  }
+  .hosted-ketcher-view-switch[data-has-home="true"] .hosted-home-back-label {
+    display: none;
+  }
+  .hosted-ketcher-view-switch[data-has-home="true"] [data-slot="toggle-group-item"] {
+    padding-inline: 8px;
+    font-size: 12px;
+    white-space: nowrap;
   }
 }
 .app-shell[data-theme="auto"] {
@@ -1382,7 +1409,7 @@ html[data-hosted-mcp-widget="true"] #root {
   z-index: 1;
   height: 100%;
   min-width: 220px;
-  max-width: 420px;
+  max-width: 520px;
   display: flex;
   flex-direction: column;
   background: transparent;
