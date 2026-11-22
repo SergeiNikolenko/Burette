@@ -2275,6 +2275,8 @@ assert.match(styles, /\.tab-shell \{[^}]*position: relative/s);
 assert.match(styles, /\.tab \{[^}]*height: 32px;[^}]*border-radius: 10px;/s);
 assert.match(styles, /--tab-width: clamp\(90px,[^;]*240px\);/);
 assert.doesNotMatch(styles, /\.tab(?:\.active|:hover) \{[^}]*backdrop-filter:/s);
+assert.doesNotMatch(styles, /\.app-shell\s*\{[^}]*backdrop-filter:/s);
+assert.doesNotMatch(styles, /\.dock-panel\s*\{[^}]*will-change:\s*width,\s*height/s);
 // The close button sits inside the pill's right padding from the start and
 // only fades in; sliding it in from outside forced every tab to reserve the
 // slide distance on top of the button, which spread the strip out.
@@ -3057,7 +3059,7 @@ assert.match(dockPanel, /const documentPromise = virtualText === null[\s\S]*read
 assert.match(styles, /--dock-divider-color: var\(--line-subtler\)/);
 assert.doesNotMatch(styles, /\.app-shell\[data-effective-theme="dark"\] \.dock-panel \{[\s\S]*--dock-divider-color:/);
 assert.match(styles, /\.app-shell\[data-effective-theme="dark"\] \.dock-panel \{/);
-assert.match(styles, /\.dock-panel \{[\s\S]*transition: width 180ms cubic-bezier\(0\.2, 0, 0, 1\), height 180ms cubic-bezier\(0\.2, 0, 0, 1\), opacity 140ms ease-out;/);
+assert.match(styles, /\.dock-panel \{[\s\S]*transition: opacity 140ms ease-out;/);
 assert.match(styles, /\.dock-panel\[data-open="false"\] \{/);
 assert.match(styles, /\.xyzrender-dock-preset-gallery \{[\s\S]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
 assert.match(styles, /\.xyzrender-dock-display-grid \{[\s\S]*grid-template-columns: repeat\(6, minmax\(0, 1fr\)\);/);

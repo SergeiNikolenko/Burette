@@ -201,8 +201,6 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   flex-direction: column;
   background: var(--bg);
   color: var(--text-secondary);
-  backdrop-filter: blur(32px);
-  -webkit-backdrop-filter: blur(32px);
   font-size: var(--text-sm);
   font-weight: var(--font-ui-weight);
   line-height: 1.2;
@@ -1208,6 +1206,19 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .app-shell[data-resizing] .viewer-iframe {
   pointer-events: none;
 }
+.app-shell[data-resizing] :is(
+  .mesoscale-toolbar,
+  .mesoscale-toolbar-grip,
+  .mesoscale-selection-bar,
+  .mesoscale-viewport-rail,
+  .mesoscale-scene-toggle,
+  .workspace-file-header,
+  .ketcher-drop-overlay,
+  .web-quicklook-card
+) {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
 .workspace-sidebar-panel { position: relative; height: 100%; min-height: 0; overflow: hidden; }
 .workspace-center-panel { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: flex; }
 /* Only the sidebar shows the window material. The titlebar beside it and the
@@ -1222,7 +1233,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 /* The separator overhang must not scroll the stage upward when it gains focus. */
 .workbench-main-panels { overflow: clip !important; min-width: 0; min-height: 0; height: 100%; width: 100%; }
 .main-panel { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: flex; }
-.dock-panel-shell { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: flex; }
+.dock-panel-shell { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: flex; contain: layout style; }
 .dock-panel-shell .dock-panel { width: 100%; height: 100%; flex: 1; transition: opacity 140ms ease-out; will-change: opacity; }
 .dock-panel-shell .dock-panel-inner { width: 100%; height: 100%; }
 .resizable-handle {
@@ -1412,7 +1423,7 @@ html[data-hosted-mcp-widget="true"] #root {
   background: var(--sidebar-divider-right);
 }
 .sidebar-spacer { height: var(--chrome-height); flex: 0 0 var(--chrome-height); }
-.sidebar-scroll { min-height: 0; flex: 1; overflow-y: auto; padding: 0 8px 12px; scrollbar-width: none; }
+.sidebar-scroll { min-height: 0; flex: 1; overflow-y: auto; padding: 0 8px 12px; scrollbar-width: none; contain: layout style; }
 .sidebar-scroll::-webkit-scrollbar { display: none; }
 .sidebar-browser-header {
   width: 100%;
@@ -2668,8 +2679,7 @@ img.radix-menu-item-icon {
   color: var(--text-primary);
   overflow: hidden;
   opacity: 1;
-  transition: width 180ms cubic-bezier(0.2, 0, 0, 1), height 180ms cubic-bezier(0.2, 0, 0, 1), opacity 140ms ease-out;
-  will-change: width, height;
+  transition: opacity 140ms ease-out;
 }
 .app-shell[data-effective-theme="dark"] .dock-panel {
   --dock-divider-active-color: color-mix(in srgb, var(--accent) 70%, var(--text-primary));
@@ -2680,6 +2690,7 @@ img.radix-menu-item-icon {
 }
 .dock-panel[data-open="false"] .dock-panel-inner {
   visibility: hidden;
+  content-visibility: hidden;
 }
 .dock-panel[data-area="right"][data-open="false"] {
   min-width: 0;
@@ -5282,6 +5293,13 @@ img.radix-menu-item-icon {
 .page-surface[data-page-kind="file"]:not([data-active]),
 .page-surface[data-page-kind="text-file"]:not([data-active]),
 .page-surface[data-page-kind="ketcher"]:not([data-active]) { display: block; }
+.page-surface[data-page-kind="file"]:not([data-active]):not([data-workspace-visible]):not([data-pane-leaving]) {
+  contain: layout paint style;
+}
+.page-surface[data-page-kind="text-file"]:not([data-active]):not([data-workspace-visible]):not([data-pane-leaving]),
+.page-surface[data-page-kind="ketcher"]:not([data-active]):not([data-workspace-visible]):not([data-pane-leaving]) {
+  content-visibility: hidden;
+}
 .page-surface[data-active] { z-index: 1; visibility: visible; pointer-events: auto; }
 .page-surface[data-page-kind="settings"] { overflow: hidden; }
 .page-surface[data-page-kind="ketcher"] { overflow: hidden; }

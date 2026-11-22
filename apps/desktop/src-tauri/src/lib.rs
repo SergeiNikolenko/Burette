@@ -21,8 +21,18 @@ use commands::descriptors::DescriptorGridJobRegistry;
 use commands::recent_documents::RecentDocumentsRegistry;
 use commands::source_editing::{OpenedSourceRegistry, SourceEditRegistry};
 use preview::grid_store::GridRuntimeRegistry;
-use std::{fs, path::PathBuf};
+use std::{
+    path::PathBuf,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Once,
+    },
+    thread,
+};
 use tauri::{Manager, RunEvent};
+
+static XYZRENDER_WARMUP_ARMED: AtomicBool = AtomicBool::new(false);
+static XYZRENDER_STARTUP_WARMUP: Once = Once::new();
 
 pub fn run_compute_service() -> Result<(), String> {
     compute::service::run_compute_service()
@@ -45,9 +55,13 @@ pub fn run() {
     }
 
     #[cfg(target_os = "macos")]
-    if let Err(error) = commands::quicklook::maintain_launch_services_on_startup() {
-        eprintln!("failed to maintain LaunchServices registration: {error}");
-    }
+    let _ = thread::Builder::new()
+        .name("burette-launch-services".into())
+        .spawn(|| {
+            if let Err(error) = commands::quicklook::maintain_launch_services_on_startup() {
+                eprintln!("failed to maintain LaunchServices registration: {error}");
+            }
+        });
 
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
@@ -79,6 +93,17 @@ pub fn run() {
         .on_page_load(|webview, payload| {
             if payload.event() == tauri::webview::PageLoadEvent::Finished {
                 zoom::sync_on_page_load(webview);
+                if XYZRENDER_WARMUP_ARMED.load(Ordering::Acquire) {
+                    XYZRENDER_STARTUP_WARMUP.call_once(|| {
+                        let _ = thread::Builder::new()
+                            .name("burette-xyzrender-warmup".into())
+                            .spawn(|| {
+                                preview::xyzrender::warmup_renderer(
+                                    preview::xyzrender::XyzrenderWarmup::Startup,
+                                );
+                            });
+                    });
+                }
             }
         })
         .setup(|app| {
@@ -96,17 +121,12 @@ pub fn run() {
                 .path()
                 .app_data_dir()
                 .map(|app_data| {
-                    if let Err(error) = fs::create_dir_all(&app_data) {
-                        return compute::coordinator::ComputeCoordinator::unavailable(format!(
-                            "compute app-data directory cannot be created: {error}"
-                        ));
-                    }
                     let resource_root = app.path().resource_dir().ok();
                     let metal_runtime_root =
                         resource_root.as_ref().map(|root| root.join("ComputeMetal"));
                     let viewer_runtime_root =
                         resource_root.as_ref().map(|root| root.join("ViewerWeb"));
-                    compute::coordinator::ComputeCoordinator::initialize_with_service(
+                    compute::coordinator::ComputeCoordinator::initialize_background_with_service(
                         app_data.join("compute"),
                         metal_runtime_root,
                         viewer_runtime_root,
@@ -151,7 +171,7 @@ pub fn run() {
                 windows::hide_workspace_application(app.handle());
                 startup::finish_workspace_restoration(app.handle());
             } else {
-                preview::xyzrender::warmup_renderer(preview::xyzrender::XyzrenderWarmup::Startup);
+                XYZRENDER_WARMUP_ARMED.store(true, Ordering::Release);
                 let initial_app = app.handle().clone();
                 let initial_workspace = move || {
                     if let Err(error) = windows::restore_workspace_windows(&initial_app, entrance) {
@@ -160,6 +180,9 @@ pub fn run() {
                     show_and_emit_startup(&initial_app, startup_paths, startup_session);
                     startup::finish_workspace_restoration(&initial_app);
                     deep_links::receive(&initial_app, startup_links);
+                    initial_app
+                        .state::<compute::coordinator::ComputeCoordinator>()
+                        .spawn_background_init();
                 };
                 #[cfg(target_os = "macos")]
                 macos::after_current_appkit_event(initial_workspace);
@@ -371,6 +394,10 @@ pub fn run() {
     #[cfg(target_os = "macos")]
     macos::install_termination_handler(app.handle())
         .expect("failed to install the macOS termination handler");
+    #[cfg(target_os = "macos")]
+    if let Err(error) = macos::install_memory_pressure_monitor(app.handle()) {
+        eprintln!("failed to install the macOS memory-pressure monitor: {error}");
+    }
 
     commands::native_updates::initialize(app.handle());
 

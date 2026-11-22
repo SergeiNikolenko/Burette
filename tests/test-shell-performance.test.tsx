@@ -60,6 +60,7 @@ test("warm residency preserves visited views without valid heap telemetry and bo
   const evaluate = new Function("window", "navigator", "performance", `${js}; return mountedWarmPageLimit();`);
   const limit = (memory?: { usedJSHeapSize?: unknown; jsHeapSizeLimit?: unknown }, deviceMemory = 8) =>
     evaluate({}, { deviceMemory }, memory ? { memory } : {});
+  const evaluateNative = new Function("window", "navigator", "performance", "level", `${js}; return mountedWarmPageLimit(level);`);
   const valid = { usedJSHeapSize: 100 * 1024 * 1024, jsHeapSizeLimit: 2 * 1024 ** 3 };
   expect([
     evaluate({}, undefined, undefined), limit(), limit({}), limit({ usedJSHeapSize: 100 }),
@@ -75,7 +76,18 @@ test("warm residency preserves visited views without valid heap telemetry and bo
     limit(valid), limit(valid, 4), limit({ ...valid, usedJSHeapSize: 768 * 1024 * 1024 }),
     limit({ usedJSHeapSize: 70, jsHeapSizeLimit: 100 }), limit({ usedJSHeapSize: 69, jsHeapSizeLimit: 100 }),
     limit({ usedJSHeapSize: 0, jsHeapSizeLimit: 100 }), evaluate({ BuretteMcpWorkspace: {} }, undefined, undefined),
-  ]).toEqual([10, 6, 4, 4, 10, 10, Infinity]);
+    evaluateNative({}, undefined, undefined, "normal"),
+    evaluateNative({}, undefined, undefined, "warn"),
+    evaluateNative({}, undefined, undefined, "critical"),
+    evaluateNative({ BuretteMcpWorkspace: {} }, undefined, undefined, "critical"),
+  ]).toEqual([10, 6, 4, 4, 10, 10, Infinity, 10, 4, 2, Infinity]);
+});
+
+test("native memory pressure normalizes only known macOS kernel levels", async () => {
+  const { normalizeMemoryPressureLevel } = await import("../apps/desktop/src/components/editor-area/use-native-memory-pressure");
+  expect(["normal", "warn", "critical", "high", "", null, undefined, 2].map(normalizeMemoryPressureLevel)).toEqual([
+    "normal", "warn", "critical", null, null, null, null, null,
+  ]);
 });
 
 test("folder indexing lists only folders that hold files and walks wide/deep trees without spread or recursive copies", () => {

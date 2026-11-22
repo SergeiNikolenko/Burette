@@ -16,6 +16,11 @@
   padding: 12px 4px;
   gap: 10px;
 }
+.structure-brief > :is(.structure-brief-card:not(.structure-inspector-header), [data-slot="collapsible-section"]) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 180px;
+  overflow-clip-margin: 8px;
+}
 .structure-brief > .structure-brief-card + .structure-brief-card {
   border-top: 1px solid var(--line-subtle);
 }
