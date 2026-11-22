@@ -21,7 +21,7 @@
   "interface": {
     "displayName": "Burette Cloud",
     "shortDescription": "Explore molecular structures",
-    "longDescription": "Inspect public PDB entries and supported attachments in a hosted molecular viewer, and sketch molecules in the Burette molecular editor. The viewer and editor open in the Codex side panel, and local structure files open from the file browser. No local server or desktop installation required. Attachments are processed by the hosted service, up to 3 MiB. Sketches are temporary. Local app control, docking, simulation, alignment and server-side image export are not included.",
+    "longDescription": "Inspect public PDB entries and supported attachments in a hosted molecular viewer, and sketch molecules in the Burette molecular editor. The molecular editor opens inline in chat, molecular structures open in the Codex side panel, and local structure files open from the file browser. No local server or desktop installation required. Attachments are processed by the hosted service, up to 3 MiB. Sketches are temporary. Local app control, docking, simulation, alignment and server-side image export are not included.",
     "developerName": "Burette",
     "category": "Education & Research",
     "capabilities": [

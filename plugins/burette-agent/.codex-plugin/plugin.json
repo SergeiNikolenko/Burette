@@ -24,7 +24,7 @@
   "interface": {
     "displayName": "Burette",
     "shortDescription": "Universal molecular viewer",
-    "longDescription": "Explore proteins, ligands, and molecular structures in one interactive workspace. View proteins and binding sites with Mol*, draw and edit molecules in Ketcher, and visualize molecular geometries with xyzrender. Open structure files, inspect molecular interactions, and browse molecule collections.",
+    "longDescription": "Explore proteins, ligands, and molecular structures in one interactive workspace. View proteins and binding sites in 3D, draw and edit molecules with the Burette molecular editor, and inspect molecular geometries. Open structure files, inspect molecular interactions, and browse molecule collections.",
     "developerName": "Burette",
     "category": "Education & Research",
     "capabilities": [
@@ -38,8 +38,8 @@
     "termsOfServiceURL": "https://github.com/SergeiNikolenko/Burette/blob/main/TERMS.md",
     "defaultPrompt": [
       "Open PDB 1HTB and show its ligands",
-      "Draw aspirin in Ketcher",
-      "Show caffeine in 3D with xyzrender"
+      "Draw aspirin in the molecular editor",
+      "Show caffeine in 3D"
     ],
     "brandColor": "#14A39A",
     "composerIcon": "./assets/composer-icon.png",
