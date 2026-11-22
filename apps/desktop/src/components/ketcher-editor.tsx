@@ -119,6 +119,7 @@ function suppressFilledKetcherSelectionPaths(root: HTMLElement) {
     .filter((path) => getComputedStyle(path).fill === "rgb(0, 0, 0)");
   if (!blackPaths.length) return;
   const rootRect = root.getBoundingClientRect();
+  if (rootRect.width <= 0 || rootRect.height <= 0) return;
   const minWidth = rootRect.width * 0.45;
   const minHeight = rootRect.height * 0.45;
 

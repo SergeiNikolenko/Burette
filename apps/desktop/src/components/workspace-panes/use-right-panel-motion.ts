@@ -50,10 +50,15 @@ export function useRightPanelMotion(stackRef: RefObject<HTMLDivElement | null>, 
   useLayoutEffect(() => {
     const last = previous.current;
     previous.current = { right, visible };
+    if (!visible) {
+      stop();
+      setLeaving(null);
+      return;
+    }
     if (!last || Boolean(last.right) === Boolean(right)) return;
     const stack = stackRef.current;
     const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    if (!stack || !visible || !last.visible || reduced) {
+    if (!stack || !last.visible || reduced) {
       stop();
       setLeaving(null);
       return;
@@ -128,8 +133,12 @@ export function useRightPanelMotion(stackRef: RefObject<HTMLDivElement | null>, 
         next.awaitingUnmount = true;
         setLeaving(null);
       }
-    }, () => {});
+    }, () => {
+      if (motion.current !== next) return;
+      stop();
+      setLeaving(null);
+    });
   });
   useLayoutEffect(() => stop, [stop]);
-  return { displayed, fraction };
+  return { displayed, fraction, stop, leaving: Boolean(leaving) };
 }

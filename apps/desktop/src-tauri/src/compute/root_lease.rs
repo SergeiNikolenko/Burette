@@ -92,17 +92,26 @@ impl ComputeRootLease {
         let lock_file = create_or_open_lock_file(&root_directory)?;
         let lock_identity = validate_private_lock_file(&lock_file)?;
 
-        match flock(&lock_file, FlockOperation::NonBlockingLockExclusive) {
-            Ok(()) => {}
-            Err(Errno::AGAIN) => {
-                return Err(ComputeCoordinatorError::Unavailable(
-                    "the compute root is already owned by another Burette process".into(),
-                ));
-            }
-            Err(error) => {
-                return Err(filesystem(format!(
-                    "cannot acquire the compute root owner lock: {error}"
-                )));
+        // Allow a brief window for a previous Burette instance finishing
+        // process teardown during an update restart to release the flock.
+        const LOCK_RETRY_ATTEMPTS: usize = 10;
+        const LOCK_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(50);
+        for attempt in 0..LOCK_RETRY_ATTEMPTS {
+            match flock(&lock_file, FlockOperation::NonBlockingLockExclusive) {
+                Ok(()) => break,
+                Err(Errno::AGAIN) if attempt + 1 < LOCK_RETRY_ATTEMPTS => {
+                    std::thread::sleep(LOCK_RETRY_DELAY);
+                }
+                Err(Errno::AGAIN) => {
+                    return Err(ComputeCoordinatorError::Unavailable(
+                        "the compute root is already owned by another Burette process".into(),
+                    ));
+                }
+                Err(error) => {
+                    return Err(filesystem(format!(
+                        "cannot acquire the compute root owner lock: {error}"
+                    )));
+                }
             }
         }
 

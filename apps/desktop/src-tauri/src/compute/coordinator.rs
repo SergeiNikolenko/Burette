@@ -108,6 +108,7 @@ pub(crate) struct ComputeCoordinator {
 struct LazyCoordinatorState {
     config: Option<CoordinatorInitConfig>,
     resolved: OnceLock<CoordinatorState>,
+    shutting_down: std::sync::atomic::AtomicBool,
 }
 
 #[derive(Debug)]
@@ -1144,6 +1145,7 @@ impl ComputeCoordinator {
                     service_mode: Some(service_executable),
                 }),
                 resolved: OnceLock::new(),
+                shutting_down: std::sync::atomic::AtomicBool::new(false),
             }),
         }
     }
@@ -1157,16 +1159,41 @@ impl ComputeCoordinator {
             });
     }
 
+    pub(crate) fn shutdown(&self) {
+        self.state
+            .shutting_down
+            .store(true, std::sync::atomic::Ordering::Release);
+        if let Some(CoordinatorState::Ready(ready)) = self.state.resolved.get() {
+            if let Some(service) = &ready.compute_service {
+                service.shutdown();
+            }
+        }
+    }
+
     fn state(&self) -> &CoordinatorState {
         self.state
             .resolved
             .get_or_init(|| match &self.state.config {
-                Some(config) => Self::build_state(
-                    config.compute_root.clone(),
-                    config.metal_runtime_root.clone(),
-                    config.viewer_runtime_root.clone(),
-                    config.service_mode.clone(),
-                ),
+                Some(config) => {
+                    let state = Self::build_state(
+                        config.compute_root.clone(),
+                        config.metal_runtime_root.clone(),
+                        config.viewer_runtime_root.clone(),
+                        config.service_mode.clone(),
+                    );
+                    if self
+                        .state
+                        .shutting_down
+                        .load(std::sync::atomic::Ordering::Acquire)
+                    {
+                        if let CoordinatorState::Ready(ready) = &state {
+                            if let Some(service) = &ready.compute_service {
+                                service.shutdown();
+                            }
+                        }
+                    }
+                    state
+                }
                 None => CoordinatorState::Unavailable("compute coordinator is unavailable".into()),
             })
     }
@@ -1190,6 +1217,7 @@ impl ComputeCoordinator {
             state: Arc::new(LazyCoordinatorState {
                 config: None,
                 resolved,
+                shutting_down: std::sync::atomic::AtomicBool::new(false),
             }),
         }
     }
@@ -1256,6 +1284,7 @@ impl ComputeCoordinator {
             state: Arc::new(LazyCoordinatorState {
                 config: None,
                 resolved,
+                shutting_down: std::sync::atomic::AtomicBool::new(false),
             }),
         }
     }
@@ -3662,7 +3691,7 @@ fn current_executable_sha256() -> Result<String, String> {
         )
     })?;
     let mut hasher = Sha256::new();
-    let mut buffer = [0_u8; 1024 * 1024];
+    let mut buffer = [0_u8; 64 * 1024];
     loop {
         let read = file
             .read(&mut buffer)

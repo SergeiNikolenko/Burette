@@ -316,27 +316,29 @@ pub(crate) struct MetalHost {
 
 impl MetalHost {
     pub(crate) fn load(library_bytes: &[u8]) -> Result<Self, MetalRuntimeError> {
-        if std::env::consts::ARCH != "aarch64" {
-            return Err(MetalRuntimeError::UnsupportedPlatform(
-                "native Metal compute requires Apple Silicon".into(),
-            ));
-        }
-        let device = Device::system_default().ok_or_else(|| {
-            MetalRuntimeError::MetalUnavailable("Metal has no default GPU device".into())
-        })?;
-        if !device.has_unified_memory() {
-            return Err(MetalRuntimeError::UnsupportedPlatform(
-                "native compute requires a unified-memory Apple GPU".into(),
-            ));
-        }
-        let library = device
-            .new_library_with_data(library_bytes)
-            .map_err(|error| {
-                MetalRuntimeError::KernelUnavailable(format!(
-                    "verified Metal library cannot load: {error}"
-                ))
+        autoreleasepool(|| {
+            if std::env::consts::ARCH != "aarch64" {
+                return Err(MetalRuntimeError::UnsupportedPlatform(
+                    "native Metal compute requires Apple Silicon".into(),
+                ));
+            }
+            let device = Device::system_default().ok_or_else(|| {
+                MetalRuntimeError::MetalUnavailable("Metal has no default GPU device".into())
             })?;
-        Self::from_library(device, &library)
+            if !device.has_unified_memory() {
+                return Err(MetalRuntimeError::UnsupportedPlatform(
+                    "native compute requires a unified-memory Apple GPU".into(),
+                ));
+            }
+            let library = device
+                .new_library_with_data(library_bytes)
+                .map_err(|error| {
+                    MetalRuntimeError::KernelUnavailable(format!(
+                        "verified Metal library cannot load: {error}"
+                    ))
+                })?;
+            Self::from_library(device, &library)
+        })
     }
 
     fn from_library(device: Device, library: &LibraryRef) -> Result<Self, MetalRuntimeError> {

@@ -5937,15 +5937,15 @@ html.buret-chrome-settled #buret-viewport-rail:not(.buret-dragging) {
 
 /* A pane narrower than the toolbar wraps its buttons onto a second row
    instead of clipping them under the grip. */
-#buret-toolbar.buret-toolbar-docked.buret-toolbar-wrapped { border-radius: 20px; }
-#buret-toolbar.buret-toolbar-docked.buret-toolbar-wrapped .buret-toolbar-content {
+#buret-toolbar.buret-toolbar-wrapped { border-radius: 20px; }
+#buret-toolbar.buret-toolbar-wrapped .buret-toolbar-content {
   flex-wrap: wrap;
   row-gap: 2px;
   overflow: visible;
 }
 /* Centred between wrapped rows the grip read as one more button; it holds the
    top corner instead. */
-#buret-toolbar.buret-toolbar-docked.buret-toolbar-wrapped { align-items: flex-start; }
+#buret-toolbar.buret-toolbar-wrapped { align-items: flex-start; }
 @media (prefers-reduced-motion: reduce) {
   html.buret-chrome-settled #buret-toolbar:not(.buret-dragging),
   html.buret-chrome-settled body .buret-docking-poses:not(.buret-docking-poses-dragging),

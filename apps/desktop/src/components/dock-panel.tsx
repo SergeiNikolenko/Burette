@@ -111,7 +111,8 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
   const open = area === "right" ? state.rightDockOpen : state.bottomDockOpen;
   useLayoutEffect(() => {
     if (open || !panel.current?.contains(document.activeElement)) return;
-    panel.current.closest(".app-shell")?.querySelector<HTMLButtonElement>(`button[aria-label="Show ${area} dock"]`)?.focus();
+    const selector = area === "right" ? 'button[aria-label="Toggle right panel"]' : `button[aria-label="Show ${area} dock"]`;
+    panel.current.closest(".app-shell")?.querySelector<HTMLButtonElement>(selector)?.focus();
   }, [open, area]);
   const dockDocumentId = area === "right" ? state.rightDockDocumentId : state.bottomDockDocumentId;
   const dockTool = area === "right" ? state.rightDockTool : state.bottomDockTool;

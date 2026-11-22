@@ -20,6 +20,11 @@ const DOWNLOAD_PROGRESS_END: f64 = 0.34;
 const DOWNLOAD_PROGRESS_POLL_INTERVAL: Duration = Duration::from_millis(500);
 static UPDATE_INSTALL_ACTIVE: AtomicBool = AtomicBool::new(false);
 
+#[cfg(target_os = "macos")]
+pub(crate) fn update_install_is_active() -> bool {
+    UPDATE_INSTALL_ACTIVE.load(Ordering::Acquire)
+}
+
 struct UpdateInstallLease;
 
 impl UpdateInstallLease {

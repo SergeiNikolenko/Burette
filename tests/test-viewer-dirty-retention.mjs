@@ -42,4 +42,19 @@ assert.equal(unseenDirty.mountedTabIds.has("tab-999"), true, "the requested docu
 assert.equal(planSceneResidency({ ...options, documents: heavy, residentPageKeys: new Set() }).deferredTabIds.size, 0, "a single large active scene opens normally");
 const indexed = { ...heavy[999], byteCount: 11 * 1024 ** 3, extension: "pdb", dockingRequest: { receptorPath: "/topology.pdb", ligandPaths: ["/large.dcd"] } };
 assert.equal(estimatedSceneBytes(indexed), 384 * 1024 ** 2, "file-backed trajectory cost is not total file size");
+const inspectorTab = { id: "tab-inspector", pane: "right", location: { kind: "tool", area: "right", tool: "inspector" }, back: [], forward: [] };
+const mediumFile = { ...documents[1], byteCount: 16 * 1024 * 1024 };
+const criticalWithInspector = planSceneResidency({
+  tabs: [tabs[1], inspectorTab],
+  documents: [mediumFile],
+  recentTabIds: ["tab-1", "tab-inspector"],
+  visibleTabIds: new Set(["tab-1", "tab-inspector"]),
+  protectedDocumentIds: new Set(),
+  limit: 2,
+  frameCounts: new Map(),
+  residentPageKeys: new Set([scenePageKey(inspectorTab.id, inspectorTab.location)]),
+});
+assert.equal(criticalWithInspector.deferredTabIds.size, 0, "open non-file Inspector pane must not pause a newly opened file under critical pressure");
+assert.equal(criticalWithInspector.mountedTabIds.has("tab-1"), true);
+assert.equal(criticalWithInspector.retainedPages, 1, "non-file panes do not consume WebGL scene slots");
 console.log("Cost-aware viewer residency, pane, staging, history and dirty-state retention checks passed.");

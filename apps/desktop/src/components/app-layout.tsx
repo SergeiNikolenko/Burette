@@ -624,7 +624,11 @@ function WorkspaceAppLayout({
                   maxSize="100%"
                   groupResizeBehavior="preserve-pixel-size"
                 >
-                  <DockPanel area="bottom" state={layoutState} actions={actions} />
+                  <DockPanel
+                    area="bottom"
+                    state={bottomDockOpen === layoutState.bottomDockOpen ? layoutState : { ...layoutState, bottomDockOpen }}
+                    actions={actions}
+                  />
                 </ResizablePanel>
               </ResizablePanelGroup>
             </section>

@@ -54,15 +54,6 @@ pub fn run() {
         Err(error) => eprintln!("failed to migrate the legacy app path: {error}"),
     }
 
-    #[cfg(target_os = "macos")]
-    let _ = thread::Builder::new()
-        .name("burette-launch-services".into())
-        .spawn(|| {
-            if let Err(error) = commands::quicklook::maintain_launch_services_on_startup() {
-                eprintln!("failed to maintain LaunchServices registration: {error}");
-            }
-        });
-
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
             if menu::exit_transition_is_active(app) {
@@ -107,6 +98,17 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            // Run LaunchServices maintenance after tauri_plugin_single_instance
+            // has exited duplicate instances so secondary launches cannot race
+            // with an in-progress update staging or Quick Look reset.
+            #[cfg(target_os = "macos")]
+            let _ = thread::Builder::new()
+                .name("burette-launch-services".into())
+                .spawn(|| {
+                    if let Err(error) = commands::quicklook::maintain_launch_services_on_startup() {
+                        eprintln!("failed to maintain LaunchServices registration: {error}");
+                    }
+                });
             commands::telemetry::initialize(app.handle())?;
             if let Ok(cache_dir) = app.path().app_cache_dir() {
                 perf_trace::install(cache_dir);
@@ -195,6 +197,7 @@ pub fn run() {
         .invoke_handler(perf_trace::timed::<tauri::Wry, _>(
             commands::recent_documents::ordered(tauri::generate_handler![
                 intro::present_intro,
+                current_memory_pressure_level,
                 commands::telemetry::statistics_status,
                 commands::telemetry::statistics_consent,
                 commands::telemetry::statistics_record,
@@ -451,9 +454,30 @@ pub fn run() {
                 menu::request_quit(app);
             }
         }
-        RunEvent::Exit => commands::energy_models::close_all(),
+        RunEvent::Exit => {
+            commands::energy_models::close_all();
+            preview::xyzrender::shutdown_pool();
+            app.state::<compute::coordinator::ComputeCoordinator>()
+                .shutdown();
+            #[cfg(target_os = "macos")]
+            macos::cancel_memory_pressure_monitor();
+        }
         _ => {}
     });
+}
+
+#[tauri::command]
+fn current_memory_pressure_level() -> serde_json::Value {
+    #[cfg(target_os = "macos")]
+    {
+        serde_json::json!(macos::MemoryPressureEvent {
+            level: macos::current_memory_pressure_level(),
+        })
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        serde_json::json!({ "level": "normal" })
+    }
 }
 
 #[cfg(target_os = "macos")]

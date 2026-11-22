@@ -130,7 +130,7 @@ strong { font-weight: 600; }
   app-region: drag;
   -webkit-app-region: drag;
 }
-button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .tab-history-button, .sidebar-search-row, .sidebar-search-action-row, .sidebar-tool-row, .sidebar-section-title-button, .sidebar-section-menu-button, .project-group-row, .project-folder-row, .project-folder-toggle-button, .project-group-menu-button, .project, .project-show-more, .pin-hit, .splitter {
+button, select, input, textarea, [role="button"], [role="separator"], a[href], summary, .tab-shell, .tab, .new-tab, .chrome-button, .tab-history-button, .sidebar-search-row, .sidebar-search-action-row, .sidebar-tool-row, .sidebar-section-title-button, .sidebar-section-menu-button, .project-group-row, .project-folder-row, .project-folder-toggle-button, .project-group-menu-button, .project, .project-show-more, .pin-hit, .resizable-handle, .workspace-split-handle, .floating-pane-header {
   app-region: no-drag;
   -webkit-app-region: no-drag;
 }
@@ -1209,12 +1209,13 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .app-shell[data-resizing] :is(
   .mesoscale-toolbar,
   .mesoscale-toolbar-grip,
+  .mesoscale-toolbar.collapsed .mesoscale-toolbar-grip,
   .mesoscale-selection-bar,
   .mesoscale-viewport-rail,
   .mesoscale-scene-toggle,
-  .workspace-file-header,
+  .workspace-file-header .workspace-file-control,
   .ketcher-drop-overlay,
-  .web-quicklook-card
+  .web-quicklook-window
 ) {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
@@ -1679,11 +1680,16 @@ kbd span { margin-left: 2px; }
   display: grid;
   place-items: center;
   opacity: 0;
+  pointer-events: none;
   cursor: default;
   transition: background 140ms ease-out, color 140ms ease-out, opacity 140ms ease-out, transform 140ms ease-out;
 }
 .sidebar-section-header:hover .sidebar-section-menu-button,
-.sidebar-section-menu-button:focus-visible { opacity: 1; }
+.sidebar-section-header:focus-within .sidebar-section-menu-button,
+.sidebar-section-menu-button:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
 .sidebar-section-menu-button:hover,
 .sidebar-section-menu-button:focus-visible { background: var(--color-background-primary-ghost-hover); color: var(--color-text); outline: none; }
 .sidebar-section-menu-button:active { transform: scale(0.99); }
@@ -1909,6 +1915,7 @@ kbd span { margin-left: 2px; }
 /* Atlas SidebarFolderRow: the more button joins the pin on hover. */
 .project-group-row > .project-group-actions > .project-group-menu-button {
   opacity: 0;
+  pointer-events: none;
   transition: color 140ms ease-out, opacity 140ms ease-out;
 }
 .project-group-row:hover > .project-group-actions > .project-group-menu-button,
@@ -2690,7 +2697,7 @@ img.radix-menu-item-icon {
 }
 .dock-panel[data-open="false"] .dock-panel-inner {
   visibility: hidden;
-  content-visibility: hidden;
+  contain: layout paint style;
 }
 .dock-panel[data-area="right"][data-open="false"] {
   min-width: 0;
@@ -4521,12 +4528,18 @@ img.radix-menu-item-icon {
   box-shadow: inset 0 0 0 1px var(--focus-ring);
 }
 .structure-inspector-row-dot {
+  position: relative;
   align-self: center;
   width: 10px;
   height: 10px;
   border: 1px solid rgba(127, 127, 127, 0.4);
   border-radius: 50%;
   background: var(--text-faint);
+}
+.structure-inspector-row-dot::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
 }
 .structure-inspector-row-dot[data-tone="polymer"] { background: #4e79a7; }
 .structure-inspector-row-dot[data-tone="ligand"] { background: #59a14f; }
@@ -5293,12 +5306,10 @@ img.radix-menu-item-icon {
 .page-surface[data-page-kind="file"]:not([data-active]),
 .page-surface[data-page-kind="text-file"]:not([data-active]),
 .page-surface[data-page-kind="ketcher"]:not([data-active]) { display: block; }
-.page-surface[data-page-kind="file"]:not([data-active]):not([data-workspace-visible]):not([data-pane-leaving]) {
+.page-surface[data-page-kind="file"]:not([data-active]):not([data-workspace-visible]):not([data-pane-leaving]):not([data-pane-shown]),
+.page-surface[data-page-kind="text-file"]:not([data-active]):not([data-workspace-visible]):not([data-pane-leaving]):not([data-pane-shown]),
+.page-surface[data-page-kind="ketcher"]:not([data-active]):not([data-workspace-visible]):not([data-pane-leaving]):not([data-pane-shown]) {
   contain: layout paint style;
-}
-.page-surface[data-page-kind="text-file"]:not([data-active]):not([data-workspace-visible]):not([data-pane-leaving]),
-.page-surface[data-page-kind="ketcher"]:not([data-active]):not([data-workspace-visible]):not([data-pane-leaving]) {
-  content-visibility: hidden;
 }
 .page-surface[data-active] { z-index: 1; visibility: visible; pointer-events: auto; }
 .page-surface[data-page-kind="settings"] { overflow: hidden; }
@@ -8737,7 +8748,7 @@ img.settings-open-destination-icon {
 .ssh-folder-loading { position: sticky; top: 0; padding: 6px; background: var(--popover); color: var(--text-muted); }
 .ssh-dialog-error { color: var(--destructive); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .ssh-project-tree .project-folder-row { text-align: left; padding-right: 52px; }
-.sidebar-add-project { opacity: 1; }
+.sidebar-add-project { opacity: 1; pointer-events: auto; }
 
 
 .ssh-dialog button:not([data-size]), .ssh-dialog input { font-weight: 400; }

@@ -6,6 +6,13 @@
   display: block;
   visibility: visible;
   pointer-events: auto;
+  content-visibility: visible;
+  contain: none;
+}
+
+.workspace-group-header[data-leaving="true"],
+.workspace-split-handle[data-leaving="true"] {
+  pointer-events: none;
 }
 
 .page-stack > .page-surface[data-pane="floating"] {

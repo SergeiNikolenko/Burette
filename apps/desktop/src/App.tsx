@@ -299,7 +299,7 @@ export default function App() {
   // painted forever. Any drag-ending gesture clears the flag.
   useEffect(() => {
     if (!structureDragActive) return undefined;
-    const clear = () => setStructureDragActiveState(false);
+    const clear = () => setStructureDragActive(false);
     window.addEventListener("dragend", clear);
     window.addEventListener("drop", clear);
     window.addEventListener("mouseup", clear);
@@ -310,7 +310,7 @@ export default function App() {
       window.removeEventListener("mouseup", clear);
       window.removeEventListener("blur", clear);
     };
-  }, [structureDragActive]);
+  }, [structureDragActive, setStructureDragActive]);
   const { status, statusDetails, dismissStatusDetails, pushStatus, pushErrorStatus, recentErrorsRef } = useAppStatus();
   const {
     clearDirtyGridDocuments,

@@ -404,6 +404,7 @@ export function KetcherPage({
     if (!shell) return undefined;
     const update = () => {
       const width = shell.clientWidth;
+      if (width <= 0) return;
       const nextNarrow = width <= KETCHER_NARROW_SHELL_WIDTH;
       setKetcherNarrow((current) => current === nextNarrow ? current : nextNarrow);
     };

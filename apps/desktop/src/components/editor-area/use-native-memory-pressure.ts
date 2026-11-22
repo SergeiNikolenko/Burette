@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { isTauriRuntime, trackTauriListener } from "../../lib/tauri";
 
 export type NativeMemoryPressureLevel = "normal" | "warn" | "critical";
 
 export const MEMORY_PRESSURE_EVENT = "memory-pressure";
+export const MEMORY_PRESSURE_LEVEL_COMMAND = "current_memory_pressure_level";
 
 type NativeMemoryPressurePayload = {
   level?: unknown;
@@ -19,13 +21,30 @@ export function useNativeMemoryPressure(): NativeMemoryPressureLevel {
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
-    return trackTauriListener(
+    let disposed = false;
+    let receivedLiveEvent = false;
+    const cleanup = trackTauriListener(
       listen<NativeMemoryPressurePayload>(MEMORY_PRESSURE_EVENT, (event) => {
+        if (disposed) return;
         const next = normalizeMemoryPressureLevel(event.payload?.level);
-        if (next) setLevel(next);
+        if (next) {
+          receivedLiveEvent = true;
+          setLevel(next);
+        }
       }),
       "memory-pressure",
     );
+    void invoke<NativeMemoryPressurePayload>(MEMORY_PRESSURE_LEVEL_COMMAND)
+      .then((payload) => {
+        if (disposed || receivedLiveEvent) return;
+        const initial = normalizeMemoryPressureLevel(payload?.level);
+        if (initial) setLevel(initial);
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+      cleanup();
+    };
   }, []);
 
   return level;

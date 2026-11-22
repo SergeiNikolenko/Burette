@@ -109,6 +109,15 @@ impl std::fmt::Debug for ComputeServiceConnection {
 }
 
 impl ComputeServiceClient {
+    pub(crate) fn shutdown(&self) {
+        if let Ok(connection) = self.connection.lock() {
+            if let Ok(mut child) = connection.child.lock() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+        }
+    }
+
     pub(crate) fn launch(executable: &Path, runtime_root: &Path) -> Result<Self, String> {
         Ok(Self {
             executable: executable.to_path_buf(),

@@ -23,8 +23,7 @@ extern "C" {
 
 static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
 static TERMINATION_PENDING: AtomicBool = AtomicBool::new(false);
-static MEMORY_PRESSURE_APP: OnceLock<tauri::AppHandle> = OnceLock::new();
-static MEMORY_PRESSURE_SOURCE: OnceLock<RetainedDispatchSource> = OnceLock::new();
+static MEMORY_PRESSURE_MONITOR: OnceLock<MemoryPressureMonitor> = OnceLock::new();
 static LAST_MEMORY_PRESSURE: AtomicU8 = AtomicU8::new(MemoryPressureLevel::Normal as u8);
 
 pub(crate) const MEMORY_PRESSURE_EVENT: &str = "memory-pressure";
@@ -44,11 +43,24 @@ pub(crate) struct MemoryPressureEvent {
     pub(crate) level: MemoryPressureLevel,
 }
 
-struct RetainedDispatchSource(DispatchRetained<DispatchSource>);
+struct MemoryPressureMonitor {
+    app: tauri::AppHandle,
+    source: DispatchRetained<DispatchSource>,
+}
 
-// Dispatch sources are thread-safe kernel event handles retained for the life of the app.
-unsafe impl Send for RetainedDispatchSource {}
-unsafe impl Sync for RetainedDispatchSource {}
+pub(crate) fn current_memory_pressure_level() -> MemoryPressureLevel {
+    match LAST_MEMORY_PRESSURE.load(Ordering::Acquire) {
+        1 => MemoryPressureLevel::Warn,
+        2 => MemoryPressureLevel::Critical,
+        _ => MemoryPressureLevel::Normal,
+    }
+}
+
+pub(crate) fn cancel_memory_pressure_monitor() {
+    if let Some(monitor) = MEMORY_PRESSURE_MONITOR.get() {
+        monitor.source.cancel();
+    }
+}
 
 fn memory_pressure_level_from_flags(flags: usize) -> Option<MemoryPressureLevel> {
     let critical =
@@ -69,50 +81,55 @@ fn memory_pressure_level_from_flags(flags: usize) -> Option<MemoryPressureLevel>
 /// Subscribes to macOS kernel memory-pressure notifications and forwards level
 /// transitions to the frontend so idle background WebGL scenes can be evicted.
 pub(crate) fn install_memory_pressure_monitor(app: &tauri::AppHandle) -> Result<(), String> {
-    MEMORY_PRESSURE_APP
-        .set(app.clone())
-        .map_err(|_| "the macOS memory-pressure monitor is already installed".to_string())?;
-
-    let queue = DispatchQueue::global_queue(GlobalQueueIdentifier::QualityOfService(
-        DispatchQoS::Utility,
-    ));
-    let mask = (dispatch_source_memorypressure_flags_t::DISPATCH_MEMORYPRESSURE_NORMAL.0
-        | dispatch_source_memorypressure_flags_t::DISPATCH_MEMORYPRESSURE_WARN.0
-        | dispatch_source_memorypressure_flags_t::DISPATCH_MEMORYPRESSURE_CRITICAL.0)
-        as usize;
-    let source = unsafe {
-        DispatchSource::new(
-            addr_of!(_dispatch_source_type_memorypressure).cast_mut(),
-            0,
-            mask,
-            Some(&queue),
-        )
-    };
-    source.set_event_handler_f(memory_pressure_event_handler);
-    MEMORY_PRESSURE_SOURCE
-        .set(RetainedDispatchSource(source))
-        .map_err(|_| "the macOS memory-pressure source is already installed".to_string())?;
-    if let Some(retained) = MEMORY_PRESSURE_SOURCE.get() {
-        retained.0.activate();
+    if MEMORY_PRESSURE_MONITOR.get().is_some() {
+        return Err("the macOS memory-pressure monitor is already installed".to_string());
     }
+    let mut installed = false;
+    let monitor = MEMORY_PRESSURE_MONITOR.get_or_init(|| {
+        installed = true;
+        let queue = DispatchQueue::global_queue(GlobalQueueIdentifier::QualityOfService(
+            DispatchQoS::Utility,
+        ));
+        let mask = (dispatch_source_memorypressure_flags_t::DISPATCH_MEMORYPRESSURE_NORMAL.0
+            | dispatch_source_memorypressure_flags_t::DISPATCH_MEMORYPRESSURE_WARN.0
+            | dispatch_source_memorypressure_flags_t::DISPATCH_MEMORYPRESSURE_CRITICAL.0)
+            as usize;
+        let source = unsafe {
+            DispatchSource::new(
+                addr_of!(_dispatch_source_type_memorypressure).cast_mut(),
+                0,
+                mask,
+                Some(&queue),
+            )
+        };
+        source.set_event_handler_f(memory_pressure_event_handler);
+        MemoryPressureMonitor {
+            app: app.clone(),
+            source,
+        }
+    });
+    if !installed {
+        return Err("the macOS memory-pressure monitor is already installed".to_string());
+    }
+    monitor.source.activate();
     Ok(())
 }
 
 extern "C" fn memory_pressure_event_handler(_context: *mut c_void) {
     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let Some(retained) = MEMORY_PRESSURE_SOURCE.get() else {
+        let Some(monitor) = MEMORY_PRESSURE_MONITOR.get() else {
             return;
         };
-        let Some(level) = memory_pressure_level_from_flags(retained.0.data()) else {
+        let Some(level) = memory_pressure_level_from_flags(monitor.source.data()) else {
             return;
         };
         let encoded = level as u8;
         if LAST_MEMORY_PRESSURE.swap(encoded, Ordering::AcqRel) == encoded {
             return;
         }
-        if let Some(app) = MEMORY_PRESSURE_APP.get() {
-            let _ = app.emit(MEMORY_PRESSURE_EVENT, MemoryPressureEvent { level });
-        }
+        let _ = monitor
+            .app
+            .emit(MEMORY_PRESSURE_EVENT, MemoryPressureEvent { level });
     }));
 }
 

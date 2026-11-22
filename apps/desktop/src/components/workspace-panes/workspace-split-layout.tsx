@@ -11,10 +11,10 @@ import { selectedGroupTab } from "./use-pane-tabs";
 import { useRightPanelMotion } from "./use-right-panel-motion";
 import "./workspace-panes.css";
 
-function WorkspaceGroupHeader({ group, state, actions, tab }: {
-  group: WorkspaceGroup; state: ShellViewState; actions: ShellActions; tab: MoleculeTab;
+function WorkspaceGroupHeader({ group, state, actions, tab, leaving = false }: {
+  group: WorkspaceGroup; state: ShellViewState; actions: ShellActions; tab: MoleculeTab; leaving?: boolean;
 }) {
-  return <div className="workspace-group-header" data-group={group}>
+  return <div className="workspace-group-header" data-group={group} data-leaving={leaving ? "true" : undefined}>
     <EditorTabs group={group} state={state} actions={actions} />
     <ShortcutTooltip label="Enter Full View"><ToolbarButton aria-label="Enter Full View" onClick={() => {
       actions.selectTab(tab.id);
@@ -36,8 +36,8 @@ export function WorkspaceSplitLayout({ tabs, state, actions, children }: {
   tabs: MoleculeTab[]; state: ShellViewState; actions: ShellActions; children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const endResize = useRef<(() => void) | null>(null);
-  useLayoutEffect(() => () => endResize.current?.(), []);
+  const endResize = useRef<{ axis: "right" | "bottom"; end: () => void } | null>(null);
+  useLayoutEffect(() => () => endResize.current?.end(), []);
   const closedGroups = useWorkspacePanesStore(store => store.closedGroups);
   const split = useWorkspacePanesStore(store => store.split);
   const fullViewTabId = useWorkspacePanesStore(store => store.fullViewTabId);
@@ -46,11 +46,15 @@ export function WorkspaceSplitLayout({ tabs, state, actions, children }: {
   const openRight = visible && !closedGroups.right ? selectedGroupTab(tabs, state.activeTabId, selectedTabs, "right") : null;
   const bottom = visible && !closedGroups.bottom ? selectedGroupTab(tabs, state.activeTabId, selectedTabs, "bottom") : null;
   const sideGeometry = useRef({ width: 0, ratio: split.right });
-  const { displayed: right, fraction } = useRightPanelMotion(ref, openRight, visible, split.right, (open) => {
+  const { displayed: right, fraction, stop: stopRightMotion, leaving: rightLeaving } = useRightPanelMotion(ref, openRight, visible, split.right, (open) => {
     const shell = ref.current?.closest<HTMLElement>(".app-shell");
     const geometry = sideGeometry.current;
     if (shell) publishWorkspaceSideWidth(shell, geometry.width * (1 - geometry.ratio) * open);
   });
+  useLayoutEffect(() => {
+    if (!right && endResize.current?.axis === "right") endResize.current.end();
+    if (!bottom && endResize.current?.axis === "bottom") endResize.current.end();
+  }, [Boolean(right), Boolean(bottom)]);
   useLayoutEffect(() => {
     const shell = ref.current?.closest<HTMLElement>(".app-shell");
     if (!right || !shell) return;
@@ -101,7 +105,8 @@ export function WorkspaceSplitLayout({ tabs, state, actions, children }: {
   const resize = (event: PointerEvent<HTMLDivElement>, axis: "right" | "bottom") => {
     if (event.button !== 0 || !ref.current) return;
     event.preventDefault();
-    endResize.current?.();
+    stopRightMotion();
+    endResize.current?.end();
     const handle = event.currentTarget;
     const stack = ref.current;
     const bounds = stack.getBoundingClientRect();
@@ -138,7 +143,7 @@ export function WorkspaceSplitLayout({ tabs, state, actions, children }: {
       release();
       useWorkspacePanesStore.getState().setSplit(axis, ratio);
     };
-    endResize.current = end;
+    endResize.current = { axis, end };
     handle.addEventListener("pointermove", move);
     handle.addEventListener("pointerup", end, { once: true });
     handle.addEventListener("pointercancel", end, { once: true });
@@ -147,10 +152,11 @@ export function WorkspaceSplitLayout({ tabs, state, actions, children }: {
   return <div ref={ref} className="page-stack" data-split-right={Boolean(right) || undefined} data-split-bottom={Boolean(bottom) || undefined}
     style={{ "--split-right": `${split.right * 100}%`, "--split-bottom": `${split.bottom * 100}%` } as CSSProperties}>
     {children}
-    {right && <WorkspaceGroupHeader group="right" state={state} actions={actions} tab={right} />}
+    {right && <WorkspaceGroupHeader group="right" state={state} actions={actions} tab={right} leaving={rightLeaving} />}
     {bottom && <WorkspaceGroupHeader group="bottom" state={state} actions={actions} tab={bottom} />}
     {(["right", "bottom"] as const).filter(axis => axis === "right" ? right : bottom).map(axis => <div key={axis}
       className={`workspace-split-handle workspace-split-${axis}`} role="separator" tabIndex={0} aria-label={`Resize ${axis} split`}
+      data-leaving={axis === "right" && rightLeaving ? "true" : undefined}
       aria-orientation={axis === "right" ? "vertical" : "horizontal"} aria-valuenow={Math.round(split[axis] * 100)} aria-valuemin={20} aria-valuemax={80}
       onPointerDown={event => resize(event, axis)} onKeyDown={event => {
         const keys = axis === "right" ? ["ArrowLeft", "ArrowRight"] : ["ArrowUp", "ArrowDown"];

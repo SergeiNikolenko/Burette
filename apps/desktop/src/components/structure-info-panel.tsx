@@ -4089,11 +4089,13 @@ function StructureActionRow({
   const showContextMenu = (event: MouseEvent<HTMLElement>) => {
     event.preventDefault();
     event.stopPropagation();
+    const rect = event.detail === 0 ? event.currentTarget.getBoundingClientRect() : null;
+    const point = rect ? { x: rect.left + rect.width / 2, y: rect.bottom } : { x: event.clientX, y: event.clientY };
     if (hideAction?.type === "hide_components" && hideAction.query && hideAction.kind) {
       actions.runStructureViewerAction(document, {
         type: "open_components_menu", label: row.label, componentLabel: row.label,
         query: hideAction.query, kind: hideAction.kind,
-        x: event.clientX, y: event.clientY, notify: false,
+        x: point.x, y: point.y, notify: false,
       });
       return;
     }
@@ -4110,7 +4112,7 @@ function StructureActionRow({
         actions.runStructureViewerAction(document, { type: "clear_selection", label: "Clear selection" });
         setActiveActionKey(null);
       },
-    }), { x: event.clientX, y: event.clientY });
+    }), point);
   };
 
   if (secondaryAction) {
