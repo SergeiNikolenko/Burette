@@ -318,7 +318,9 @@ function WorkspaceAppLayout({
   // zooms. At narrow widths the history buttons disappear, so the tab strip
   // only needs to clear the sidebar toggle beside those lights.
   const chromeLeadingInset = compactLeadingChrome
-    ? "112px"
+    ? viewportWidth <= 520
+      ? "48px"
+      : "112px"
     : viewportWidth <= 520
       ? "calc(82px / var(--window-zoom, 1) + 40px)"
       : "calc(92px / var(--window-zoom, 1) + 100px)";
@@ -482,20 +484,23 @@ function WorkspaceAppLayout({
                   </ToolbarButton>
                 </ShortcutTooltip>
               </div>
-              <ShortcutTooltip label="Toggle sidebar" shortcut="⌘B">
-                <ToolbarButton
-                  type="button"
-                  className="sidebar-toggle-root"
-                  data-sidebar-peek-area={window.BuretteMcpWorkspace ? undefined : "sidebar"}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={window.BuretteMcpWorkspace ? () => setNativeNavigationOpen(open => !open) : onToggleSidebar}
-                  disabled={Boolean(window.BuretteMcpWorkspace && !nativeExpanded)}
-                  aria-label={sidebarVisible ? "Hide sidebar" : "Show sidebar"}
-                  aria-expanded={sidebarVisible}
-                >
-                  {sidebarVisible ? <SidebarLeft size={16} aria-hidden /> : <SidebarLeftHidden size={16} aria-hidden />}
-                </ToolbarButton>
-              </ShortcutTooltip>
+              {window.BuretteMcpWorkspace && !nativeExpanded ? (
+                <NativeWorkspaceMenu state={layoutState} actions={actions} />
+              ) : (
+                <ShortcutTooltip label="Toggle sidebar" shortcut="⌘B">
+                  <ToolbarButton
+                    type="button"
+                    className="sidebar-toggle-root"
+                    data-sidebar-peek-area={window.BuretteMcpWorkspace ? undefined : "sidebar"}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={window.BuretteMcpWorkspace ? () => setNativeNavigationOpen(open => !open) : onToggleSidebar}
+                    aria-label={sidebarVisible ? "Hide sidebar" : "Show sidebar"}
+                    aria-expanded={sidebarVisible}
+                  >
+                    {sidebarVisible ? <SidebarLeft size={16} aria-hidden /> : <SidebarLeftHidden size={16} aria-hidden />}
+                  </ToolbarButton>
+                </ShortcutTooltip>
+              )}
             </div>
           ) : null}
           <div className="chrome-trailing-controls" ref={trailingControlsRef} data-tauri-drag-region>
@@ -565,7 +570,7 @@ function WorkspaceAppLayout({
               groupResizeBehavior="preserve-pixel-size"
             >
               <div className="sidebar-shell-inner" ref={sidebarShellRef}>
-                {window.BuretteMcpWorkspace ? <NativeWorkspaceSidebar state={layoutState} actions={actions} onToggleSidebar={() => setNativeNavigationOpen(false)} /> : <Sidebar state={layoutState} actions={actions} open={sidebarVisible || sidebarPeek === "open"} />}
+                {window.BuretteMcpWorkspace ? <NativeWorkspaceSidebar state={layoutState} actions={actions} onToggleSidebar={nativeWorkspaceChrome ? undefined : () => setNativeNavigationOpen(false)} /> : <Sidebar state={layoutState} actions={actions} open={sidebarVisible || sidebarPeek === "open"} />}
               </div>
             </ResizablePanel>
           ) : null}
@@ -612,24 +617,26 @@ function WorkspaceAppLayout({
                     onPointerDown={(event) => { if (event.button === 0) beginResizeDrag(bottomDockResize); }}
                   />
                 ) : null}
-                <ResizablePanel
-                  id="bottom-dock"
-                  className="dock-panel-shell"
-                  style={CLIPPED_PANEL_STYLE}
-                  panelRef={bottomDockPanelRef}
-                  collapsible
-                  collapsedSize="0px"
-                  defaultSize={`${initialBottomDockSize}px`}
-                  minSize="180px"
-                  maxSize="100%"
-                  groupResizeBehavior="preserve-pixel-size"
-                >
-                  <DockPanel
-                    area="bottom"
-                    state={bottomDockOpen === layoutState.bottomDockOpen ? layoutState : { ...layoutState, bottomDockOpen }}
-                    actions={actions}
-                  />
-                </ResizablePanel>
+                {!hostedMcpWidget && !pluginSurface ? (
+                  <ResizablePanel
+                    id="bottom-dock"
+                    className="dock-panel-shell"
+                    style={CLIPPED_PANEL_STYLE}
+                    panelRef={bottomDockPanelRef}
+                    collapsible
+                    collapsedSize="0px"
+                    defaultSize={`${initialBottomDockSize}px`}
+                    minSize="180px"
+                    maxSize="100%"
+                    groupResizeBehavior="preserve-pixel-size"
+                  >
+                    <DockPanel
+                      area="bottom"
+                      state={bottomDockOpen === layoutState.bottomDockOpen ? layoutState : { ...layoutState, bottomDockOpen }}
+                      actions={actions}
+                    />
+                  </ResizablePanel>
+                ) : null}
               </ResizablePanelGroup>
             </section>
           </ResizablePanel>

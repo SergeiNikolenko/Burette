@@ -1462,7 +1462,7 @@ assert.match(appLayout, /const compactLeadingChrome = !tauriRuntime \|\| windowF
 // only reaches the DOM a render after the drag frame that produced it. React
 // contributes the leading-chrome inset (traffic lights) and the first-paint
 // seeds; the sidebar and workspace group publish their measured edges.
-assert.match(appLayout, /const chromeLeadingInset = compactLeadingChrome\s*\?\s*"112px"\s*:\s*viewportWidth <= 520\s*\?\s*"calc\(82px \/ var\(--window-zoom, 1\) \+ 40px\)"\s*:\s*"calc\(92px \/ var\(--window-zoom, 1\) \+ 100px\)"/);
+assert.match(appLayout, /const chromeLeadingInset = compactLeadingChrome\s*\?\s*viewportWidth <= 520\s*\?\s*"48px"\s*:\s*"112px"\s*:\s*viewportWidth <= 520\s*\?\s*"calc\(82px \/ var\(--window-zoom, 1\) \+ 40px\)"\s*:\s*"calc\(92px \/ var\(--window-zoom, 1\) \+ 100px\)"/);
 assert.match(appLayout, /"--chrome-leading-inset": chromeLeadingInset/);
 assert.doesNotMatch(appLayout, /tabChromeLeft/);
 assert.match(appLayout, /import \{ usePanelEdgeVariables \} from "\.\/ui\/use-panel-edge-variables"/);
@@ -1551,7 +1551,7 @@ assert.match(appLayout, /actions\.canNavigateForward/);
 assert.match(appLayout, /<ShortcutTooltip label="Back" shortcut="⌘\[">/);
 assert.match(appLayout, /<ShortcutTooltip label="Forward" shortcut="⌘\]">/);
 assert.match(appLayout, /<ShortcutTooltip label="Toggle sidebar" shortcut="⌘B">/);
-assert.match(editorTabs, /<ShortcutTooltip label="New tab" shortcut="⌘T">/);
+assert.match(editorTabs, /<ShortcutTooltip label="New tab" shortcut="⌘T"(?: open=\{[^}]+\})?>/);
 assert.doesNotMatch(editorTabs, /className="new-tab"[^>]*title=/);
 assert.match(appLayout, /getCurrentWindow/);
 assert.match(appLayout, /appWindow\.isFullscreen\(\)/);

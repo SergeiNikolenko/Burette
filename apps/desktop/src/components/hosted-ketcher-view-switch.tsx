@@ -66,9 +66,9 @@ export function HostedKetcherViewSwitch({
     <nav className="hosted-ketcher-view-switch" data-has-home={showHomeBack ? "true" : undefined} aria-label={showSketchSwitch ? "Sketch view" : "Workspace navigation"}>
       <div className="hosted-workspace-bar-leading">
         {showHomeBack ? (
-          <Button type="button" variant="ghost" size="xs" className="hosted-home-back" onClick={returnHome}>
+          <Button type="button" variant="ghost" size="xs" className="hosted-home-back" aria-label="Back to Home" onClick={returnHome}>
             <ArrowLeft size={14} aria-hidden />
-            Home
+            <span className="hosted-home-back-label">Home</span>
           </Button>
         ) : null}
       </div>

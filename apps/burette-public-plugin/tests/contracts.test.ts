@@ -131,7 +131,7 @@ describe("viewer resource contract", () => {
     expect(VIEWER_RESOURCE_URI).toBe("ui://burette/molecular-viewer-v21.html");
     expect(html).toContain(`https://burette.example${VIEWER_SHELL_SCRIPT_PATH}`);
     expect(html).toContain(`https://burette.example${VIEWER_SHELL_STYLES_PATH}`);
-    expect(html).toContain("?v=viewer-v24");
+    expect(html).toContain("?v=viewer-v25");
     // Chunks import the entry without a query; a versioned entry URL would
     // instantiate the shell module twice.
     expect(html).not.toContain(`${VIEWER_SHELL_SCRIPT_PATH}?`);

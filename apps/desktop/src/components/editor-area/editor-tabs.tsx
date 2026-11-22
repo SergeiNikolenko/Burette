@@ -71,6 +71,7 @@ export function EditorTabs({
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const [selectedTabIds, setSelectedTabIds] = useState<Set<string>>(() => new Set());
   const [selectionAnchorTabId, setSelectionAnchorTabId] = useState<string | null>(null);
+  const [newTabMenuOpen, setNewTabMenuOpen] = useState(false);
   const draggingTabIdRef = useRef<string | null>(null);
   const selectedTabIdsRef = useRef<Set<string>>(new Set());
   const reorderSnapshotRef = useRef<string[] | null>(null);
@@ -939,10 +940,16 @@ export function EditorTabs({
         })}
         </div>
       </ScrollFade>
-      {!readOnly ? <ShortcutTooltip label="New tab" shortcut="⌘T">
+      {!readOnly ? <ShortcutTooltip label="New tab" shortcut="⌘T" open={newTabMenuOpen ? false : undefined}>
         <ToolbarButton type="button" className="new-tab" onMouseDown={(event) => event.preventDefault()}
-          onClick={(event) => showNewTabMenu(event, group, selectedTab, state)}
-          onContextMenu={(event) => showNewTabMenu(event, group, selectedTab, state)}
+          onClick={(event) => {
+            setNewTabMenuOpen(true);
+            void showNewTabMenu(event, group, selectedTab, state).finally(() => setNewTabMenuOpen(false));
+          }}
+          onContextMenu={(event) => {
+            setNewTabMenuOpen(true);
+            void showNewTabMenu(event, group, selectedTab, state).finally(() => setNewTabMenuOpen(false));
+          }}
           aria-label="New tab" aria-haspopup="menu">
           <Plus size={16} aria-hidden />
         </ToolbarButton>
@@ -966,7 +973,9 @@ function showNewTabMenu(event: React.MouseEvent<HTMLButtonElement>, group: Works
   const main = selectedGroupTab(state.tabs, state.activeTabId, useWorkspacePanesStore.getState().selectedTabs, "main")?.location;
   const sourcePath = (location?.kind === "file" ? location.path : location?.kind === "tool" ? location.sourcePath : null)
     ?? state.activeDocument?.path ?? (main?.kind === "file" ? main.path : null);
-  const entries = [...SCREEN_ENTRIES];
+  const entries = window.BuretteMcpWorkspace
+    ? SCREEN_ENTRIES.filter((entry) => entry.location.kind === "launcher" || entry.location.kind === "ketcher")
+    : [...SCREEN_ENTRIES];
   if (sourcePath) entries.push(
     { id: "screen-info", text: "Info", icon: "InfoCircle", location: { kind: "tool", tool: "inspector", area: "right", sourcePath } },
     { id: "screen-text", text: "Text", icon: "FileDocument", location: { kind: "tool", tool: "text", area: "right", sourcePath } },
@@ -980,5 +989,5 @@ function showNewTabMenu(event: React.MouseEvent<HTMLButtonElement>, group: Works
     accelerator: entry.location.kind === "launcher" ? "CmdOrCtrl+T" : undefined,
     action: () => openScreenInGroup(entry.location, pane, selected?.id),
   }));
-  void showNativeContextMenu(items, { x: rect.left, y: rect.bottom + 4 }, { presentation: "dropdown", contentClassName: "workspace-new-tab-menu" });
+  return showNativeContextMenu(items, { x: rect.left, y: rect.bottom + 4 }, { presentation: "dropdown", contentClassName: "workspace-new-tab-menu" });
 }

@@ -83,6 +83,10 @@ span.annotation-pin {pointer-events: none}
 }
 .annotate-toggle.annotate-toggle:hover {background:color-mix(in srgb,var(--text-primary,#222) 12%,var(--bg-base,#fff))}
 .annotate-toggle.annotate-toggle[data-active] {background:#e0efff; color:#0065bc; border-color:#a8d3ff}
+@media (max-width: 640px) {
+  .chrome-trailing-controls .annotate-toggle.annotate-toggle {width:32px; padding:0; gap:0}
+  .chrome-trailing-controls .annotate-toggle.annotate-toggle > span {display:none}
+}
 [data-theme="dark"] .annotate-toggle.annotate-toggle,.dark .annotate-toggle.annotate-toggle {background:#363636; border-color:#414141; color:#f5f5f5}
 [data-theme="dark"] .annotate-toggle.annotate-toggle[data-active],.dark .annotate-toggle.annotate-toggle[data-active] {background:#323f4b; border-color:#3c5369; color:#58a9f3}
 .annotate-toggle.annotate-toggle:focus-visible {outline:2px solid #59adff; outline-offset:2px}

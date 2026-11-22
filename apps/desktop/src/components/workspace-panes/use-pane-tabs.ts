@@ -1,6 +1,7 @@
 import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
 import { useMoleculeStore, type MoleculeTab } from "../../stores/molecule-store";
 import { useWorkspacePanesStore, type WorkspaceGroup } from "../../stores/workspace-panes-store";
+import { useNativeWorkspacePlacement } from "../../hooks/use-native-workspace-placement";
 
 import { reconcileGroupSelections, selectedGroupTab } from "../../lib/group-selection";
 
@@ -26,6 +27,8 @@ export function usePaneVisibility(settingsMode: boolean) {
   }, [tabs, selected, storedSelected]);
   const fullViewTabId = useWorkspacePanesStore(state => state.fullViewTabId);
   const floatingMinimized = useWorkspacePanesStore(state => state.floatingMinimized);
+  const nativePlacement = useNativeWorkspacePlacement();
+  const compactNativePlugin = Boolean(window.BuretteMcpWorkspace) && nativePlacement?.mode !== "fullscreen";
   useLayoutEffect(() => {
     const active = tabs.find(tab => tab.id === activeTabId);
     if (active && active.location.kind !== "settings") {
@@ -42,13 +45,13 @@ export function usePaneVisibility(settingsMode: boolean) {
     const ids = new Set<string>();
     if (!settingsMode && !fullViewTabId) {
       for (const group of WORKSPACE_GROUPS) {
-        if ((group === "right" || group === "bottom") && closedGroups[group]) continue;
+        if ((group === "right" || group === "bottom") && (closedGroups[group] || compactNativePlugin)) continue;
         const tab = selectedGroupTab(tabs, activeTabId, selected, group);
         if (tab) ids.add(tab.id);
       }
     }
     return ids;
-  }, [tabs, activeTabId, selected, closedGroups, settingsMode, fullViewTabId]);
+  }, [tabs, activeTabId, selected, closedGroups, compactNativePlugin, settingsMode, fullViewTabId]);
   return useCallback((tab: MoleculeTab): PaneShown => {
     if (settingsMode) return tab.id === activeTabId ? "visible" : "hidden";
     if (fullViewTabId) return tab.id === fullViewTabId ? "visible" : "hidden";

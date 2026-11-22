@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, type CSSProperties, type PointerEvent, type ReactNode } from "react";
 import type { MoleculeTab } from "../../stores/molecule-store";
 import { useWorkspacePanesStore, type WorkspaceGroup } from "../../stores/workspace-panes-store";
+import { useNativeWorkspacePlacement } from "../../hooks/use-native-workspace-placement";
 import type { ShellActions, ShellViewState } from "../types";
 import { EditorTabs } from "../editor-area/editor-tabs";
 import { beginViewerLayoutGesture } from "../editor-area/viewer-frame";
@@ -42,7 +43,9 @@ export function WorkspaceSplitLayout({ tabs, state, actions, children }: {
   const split = useWorkspacePanesStore(store => store.split);
   const fullViewTabId = useWorkspacePanesStore(store => store.fullViewTabId);
   const selectedTabs = useWorkspacePanesStore(store => store.selectedTabs);
-  const visible = !fullViewTabId && state.page !== "settings";
+  const nativePlacement = useNativeWorkspacePlacement();
+  const compactNativePlugin = Boolean(window.BuretteMcpWorkspace) && nativePlacement?.mode !== "fullscreen";
+  const visible = !fullViewTabId && state.page !== "settings" && !compactNativePlugin;
   const openRight = visible && !closedGroups.right ? selectedGroupTab(tabs, state.activeTabId, selectedTabs, "right") : null;
   const bottom = visible && !closedGroups.bottom ? selectedGroupTab(tabs, state.activeTabId, selectedTabs, "bottom") : null;
   const sideGeometry = useRef({ width: 0, ratio: split.right });

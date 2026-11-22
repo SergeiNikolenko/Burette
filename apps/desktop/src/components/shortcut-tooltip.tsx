@@ -6,12 +6,13 @@ type ShortcutTooltipProps = Omit<ComponentProps<typeof TooltipTrigger>, "childre
   label: string;
   shortcut?: string;
   side?: "top" | "bottom";
+  open?: boolean;
   children: ReactElement;
 };
 
-export function ShortcutTooltip({ label, shortcut, side = "bottom", children, ...triggerProps }: ShortcutTooltipProps) {
+export function ShortcutTooltip({ label, shortcut, side = "bottom", open, children, ...triggerProps }: ShortcutTooltipProps) {
   return (
-    <TooltipProvider><Tooltip>
+    <TooltipProvider><Tooltip open={open}>
       <TooltipTrigger asChild {...triggerProps}>{children}</TooltipTrigger>
       <TooltipContent variant="floating" side={side} maxWidth={320} collisionPadding={8}>
         <span className="flex items-center gap-2">
