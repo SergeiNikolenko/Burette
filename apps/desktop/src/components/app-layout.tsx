@@ -12,7 +12,7 @@ import { useWindowResizeSession } from "./ui/use-window-resize-session";
 import { usePanelEdgeVariables } from "./ui/use-panel-edge-variables";
 import { SidebarFileOperations } from "./sidebar/file-operations";
 import { WorkspaceMenus } from "./workspace-menus";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { ArrowLeft, ArrowRight, SidebarLeft, SidebarLeftHidden } from "@/components/ui/app-icons";
 import { RightDockToggle } from "./workspace-panes/right-dock-toggle";
 import { FullViewExitButton } from "./workspace-panes/full-view-exit";
@@ -215,6 +215,11 @@ export function AppLayout(props: Parameters<typeof WorkspaceAppLayout>[0]) {
     : <WorkspaceAppLayout {...props} />;
 }
 
+const subscribeHostedHome = (listener: () => void) => {
+  window.addEventListener("burette-hosted-home", listener);
+  return () => window.removeEventListener("burette-hosted-home", listener);
+};
+
 function WorkspaceAppLayout({
   state,
   actions,
@@ -280,6 +285,11 @@ function WorkspaceAppLayout({
   const nativeWorkspaceChrome = placement?.mode === "fullscreen";
   const nativeExpanded = nativeWorkspaceChrome && viewportWidth >= 760;
   const hostedMcpWidget = isHostedMcpWidget();
+  const hostedHome = useSyncExternalStore(
+    subscribeHostedHome,
+    () => (hostedMcpWidget ? window.BuretteHostedAppBridge?.home : undefined),
+    () => undefined,
+  );
   const heroEmbed = isWebDemoHeroEmbed();
   // Codex sidebar bounds: 240px up to 520px, always leaving 240px of content.
   const maxSidebarWidth = Math.max(240, Math.min(520, viewportWidth - 240));
@@ -381,6 +391,12 @@ function WorkspaceAppLayout({
   } as CSSProperties;
   const effectiveTheme = resolveThemeMode(state.preferences.theme, systemThemeMode);
   const activePageKind = state.activeTab?.location.kind ?? null;
+  const hasHostedSketch = hostedMcpWidget && (
+    isHostedKetcherWidget()
+    || state.tabs.some((tab) => tab.location.kind === "ketcher")
+  );
+  const showHostedHomeBack = hostedMcpWidget && Boolean(hostedHome) && activePageKind !== null && activePageKind !== "launcher";
+  const showHostedTopBar = hasHostedSketch || showHostedHomeBack;
   if (import.meta.env.VITE_BURETTE_WEB_DEMO === "1" && viewportWidth < 768 && !heroEmbed && !state.quickLookStandalone) {
     return <MobileWebDemoLayout state={state} actions={actions} style={shellStyle} theme={effectiveTheme} />;
   }
@@ -495,7 +511,15 @@ function WorkspaceAppLayout({
           </header>
         </>
       )}
-      {isHostedKetcherWidget() ? <HostedKetcherViewSwitch state={state} actions={actions} /> : null}
+      {showHostedTopBar ? (
+        <HostedKetcherViewSwitch
+          state={state}
+          actions={actions}
+          showHomeBack={showHostedHomeBack}
+          showSketchSwitch={hasHostedSketch}
+          title={state.activeDocument?.title ?? state.activeTab?.title ?? null}
+        />
+      ) : null}
       <section className="workspace">
         {/* Sizes AND open flags are persisted from onLayoutChanged, not
             onResize: onResize is driven by a ResizeObserver and also fires for
@@ -526,23 +550,25 @@ function WorkspaceAppLayout({
             }
           }}
         >
-          <ResizablePanel
-            id="sidebar"
-            className="workspace-sidebar-panel"
-            style={sidebarPeeking ? PEEK_PANEL_STYLE : CLIPPED_PANEL_STYLE}
-            elementRef={sidebarElementRef}
-            panelRef={sidebarPanelRef}
-            collapsible
-            collapsedSize="0px"
-            defaultSize={`${initialSidebarSize}px`}
-            minSize="240px"
-            maxSize={`${maxSidebarWidth}px`}
-            groupResizeBehavior="preserve-pixel-size"
-          >
-            <div className="sidebar-shell-inner" ref={sidebarShellRef}>
-              {window.BuretteMcpWorkspace ? <NativeWorkspaceSidebar state={layoutState} actions={actions} onToggleSidebar={() => setNativeNavigationOpen(false)} /> : <Sidebar state={layoutState} actions={actions} open={sidebarVisible || sidebarPeek === "open"} />}
-            </div>
-          </ResizablePanel>
+          {!hostedMcpWidget ? (
+            <ResizablePanel
+              id="sidebar"
+              className="workspace-sidebar-panel"
+              style={sidebarPeeking ? PEEK_PANEL_STYLE : CLIPPED_PANEL_STYLE}
+              elementRef={sidebarElementRef}
+              panelRef={sidebarPanelRef}
+              collapsible
+              collapsedSize="0px"
+              defaultSize={`${initialSidebarSize}px`}
+              minSize="240px"
+              maxSize={`${maxSidebarWidth}px`}
+              groupResizeBehavior="preserve-pixel-size"
+            >
+              <div className="sidebar-shell-inner" ref={sidebarShellRef}>
+                {window.BuretteMcpWorkspace ? <NativeWorkspaceSidebar state={layoutState} actions={actions} onToggleSidebar={() => setNativeNavigationOpen(false)} /> : <Sidebar state={layoutState} actions={actions} open={sidebarVisible || sidebarPeek === "open"} />}
+              </div>
+            </ResizablePanel>
+          ) : null}
           {chromeVisible && (!window.BuretteMcpWorkspace || nativeExpanded) ? (
             <ResizableHandle
               withHandle

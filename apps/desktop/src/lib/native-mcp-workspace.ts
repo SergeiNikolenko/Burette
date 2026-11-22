@@ -11,6 +11,9 @@ export type NativeWorkspaceHome = {
   recent: () => Promise<NativeWorkspaceRecentFile[]>;
   /** Posts a user message to the chat that owns the workspace. */
   ask: (text: string) => Promise<void>;
+  /** Optional hosted start-page search bar and curated starter PDB structures. */
+  featured?: readonly NativeWorkspaceStructureLink[];
+  searchPlaceholder?: string;
 };
 
 /** Optional transport supplied by the native MCP resource before this shell loads. */

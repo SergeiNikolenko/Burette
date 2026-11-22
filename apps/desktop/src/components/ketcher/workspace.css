@@ -31,7 +31,11 @@
    collection actions need the desktop workspace, which the widget lacks. */
 .app-shell[data-hosted-mcp-widget="true"] .ketcher-page { grid-template-rows: minmax(0, 1fr) auto; }
 .app-shell[data-hosted-mcp-widget="true"] .ketcher-page .ketcher-page-header { display: none; }
-.app-shell[data-hosted-mcp-widget="true"] .ketcher-page .ketcher-page-body { padding: 8px; }
+.app-shell[data-hosted-mcp-widget="true"] .ketcher-page .ketcher-page-body { padding: 0 0 var(--burette-hosted-bottom-inset, 0px); }
+.app-shell[data-hosted-mcp-widget="true"] .ketcher-page .ketcher-editor-shell { border: 0; border-radius: 0; }
+html[data-hosted-entrypoint="global"] .app-shell[data-hosted-mcp-widget="true"] .ketcher-page .ketcher-page-body {
+  padding-bottom: max(var(--burette-hosted-bottom-inset, 0px), 112px);
+}
 .ketcher-dock-workflow .ketcher-dock-toolbar { gap: 12px; }
 .ketcher-dock-workflow .ketcher-dock-title { flex: 1; min-width: 0; }
 .ketcher-dock-workflow textarea[data-slot="textarea"] { border-radius: 8px; padding: 12px; font-family: var(--font-mono); }

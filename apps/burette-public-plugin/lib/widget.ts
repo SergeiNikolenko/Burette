@@ -10,7 +10,7 @@ export const VIEWER_RUNTIME_ASSETS_PATH = "/burette-viewer/";
 export const VIEWER_MOBILE_SCRIPT_PATH = "/burette-hosted-mobile.js";
 export const VIEWER_APP_BRIDGE_SCRIPT_PATH = "/burette-hosted-app.js";
 export const VIEWER_FRAME_SCRIPT_PATH = "/burette-hosted-frame.js";
-const VIEWER_SHELL_ASSET_VERSION = "viewer-v23";
+const VIEWER_SHELL_ASSET_VERSION = "viewer-v24";
 
 function assetUrl(origin: string, assetPath: string): string {
   if (!origin) return assetPath;
@@ -100,13 +100,39 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
       html, body, #root { width: 100%; min-height: 0; height: 100%; }
       html { height: 100vh; }
       body .app-shell { width: 100%; height: 100%; }
-      body { margin: 0; overflow: hidden; background: #ffffff; }
-      @media (prefers-color-scheme: dark) { body { background: #000000; } }${narrowLayout}
+      body { margin: 0; overflow: hidden; background: var(--burette-host-background, #ffffff); }
+      @media (prefers-color-scheme: dark) { body { background: var(--burette-host-background, #000000); } }
+      html[data-host-theme="light"] body { background: var(--burette-host-background, #ffffff); }
+      html[data-host-theme="dark"] body { background: var(--burette-host-background, #000000); }${narrowLayout}
     </style>
     <script src="${frameScript}"></script>
     <script>
       (() => {
         const config = ${bootstrap};
+        const parseHex = (value) => {
+          if (typeof value !== "string") return null;
+          const trimmed = value.trim().toLowerCase();
+          if (/^#[0-9a-f]{6}$/u.test(trimmed)) return trimmed;
+          const short = /^#([0-9a-f]{3})$/u.exec(trimmed);
+          if (short) return "#" + short[1].split("").map((c) => c + c).join("");
+          const rgb = /^rgba?\\(\\s*(\\d{1,3})\\s*,\\s*(\\d{1,3})\\s*,\\s*(\\d{1,3})(?:\\s*,\\s*([0-9.]+))?\\s*\\)$/u.exec(trimmed);
+          if (!rgb || (rgb[4] !== undefined && Number(rgb[4]) < 0.9)) return null;
+          const hex = (n) => Math.max(0, Math.min(255, Number(n))).toString(16).padStart(2, "0");
+          return "#" + hex(rgb[1]) + hex(rgb[2]) + hex(rgb[3]);
+        };
+        const initialTheme = window.openai?.theme === "light" || window.openai?.theme === "dark"
+          ? window.openai.theme
+          : undefined;
+        const initialBg = parseHex(window.openai?.surfaceBackgroundColor);
+        const initialBackgrounds = initialBg
+          ? { light: initialTheme === "light" ? initialBg : "#ffffff", dark: initialTheme === "dark" ? initialBg : "#181818" }
+          : undefined;
+        if (initialTheme) document.documentElement.dataset.hostTheme = initialTheme;
+        if (initialBg) document.documentElement.style.setProperty("--burette-host-background", initialBg);
+        const initialBottomInset = Number(window.openai?.safeArea?.insets?.bottom);
+        if (Number.isFinite(initialBottomInset) && initialBottomInset > 0) {
+          document.documentElement.style.setProperty("--burette-hosted-bottom-inset", Math.round(initialBottomInset) + "px");
+        }
         window.__BURETTE_HOSTED_MCP_WIDGET__ = true;
         window.__BURETTE_HOSTED_KETCHER_WIDGET__ = config.ketcherWidget === true;
         window.__BURETTE_HOSTED_KETCHER_SEED__ = null;
@@ -125,7 +151,15 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
         });
         const acceptKetcherResult = (value) => {
           if (!window.__BURETTE_HOSTED_KETCHER_WIDGET__) return;
-          const containers = [value, value?._meta, value?.meta, value?.structuredContent, value?.structuredContent?._meta];
+          const containers = [
+            value,
+            value?._meta,
+            value?.meta,
+            value?.structuredContent,
+            value?.structuredContent?._meta,
+            value?.structuredContent?.meta,
+            value?.structuredContent?.structuredContent,
+          ];
           let source = containers.find((candidate) => candidate && typeof candidate === "object" && Object.hasOwn(candidate, "ketcherSeed"));
           if (!source && window.__BURETTE_HOSTED_KETCHER_SEED__ === null) {
             const initial = containers.find((candidate) => candidate && typeof candidate === "object" && Object.hasOwn(candidate, "ketcherInitialSeed"));
@@ -155,6 +189,8 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
         };
         window.BuretteHostedAppBridge = {
           ready: appReady,
+          ...(initialTheme ? { theme: initialTheme } : {}),
+          ...(initialBackgrounds ? { backgrounds: initialBackgrounds } : {}),
           setSource: (...args) => { appQueue.push({ method: "setSource", args }); },
           updateSelection: (...args) => {
             appQueue.push({ method: "updateSelection", args });
@@ -199,6 +235,12 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
             _meta: window.__BURETTE_HOSTED_OPENAI_GLOBALS__.toolResponseMetadata,
           });
         }, { passive: true });
+        if (window.openai?.toolOutput !== undefined || window.openai?.toolResponseMetadata !== undefined) {
+          acceptKetcherResult({
+            structuredContent: window.openai.toolOutput,
+            _meta: window.openai.toolResponseMetadata,
+          });
+        }
       })();
     </script>
     <script type="module" crossorigin src="${appBridgeScript}"></script>
@@ -207,8 +249,13 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
     <div id="root"></div>
     <script>
       (() => {
-        const mobile = window.matchMedia("(max-width: 600px)").matches
-          || /iPhone|iPad|iPod/iu.test(navigator.userAgent);
+        const deviceType = window.openai?.userAgent?.device?.type;
+        const mobileUa = /iPhone|iPad|iPod|Android/iu.test(navigator.userAgent);
+        const narrowTouch = window.innerWidth > 0
+          && window.matchMedia("(max-width: 600px)").matches
+          && window.matchMedia("(pointer: coarse)").matches;
+        const mobile = deviceType === "mobile"
+          || (deviceType !== "desktop" && (mobileUa || narrowTouch));
         const script = document.createElement("script");
         script.src = mobile && !window.__BURETTE_HOSTED_KETCHER_WIDGET__ ? ${serializeForInlineScript(mobileScript)} : ${serializeForInlineScript(shellScript)};
         if (!mobile || window.__BURETTE_HOSTED_KETCHER_WIDGET__) script.type = "module";

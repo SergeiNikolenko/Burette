@@ -3,6 +3,23 @@ import { codexThemeFromTokens, type CodexTheme } from "./codex-theme";
 
 export type ThemeMode = "light" | "dark";
 
+export type HostThemeSource = {
+  theme?: ThemeMode;
+  backgrounds?: { light: string; dark: string };
+};
+
+export function hostThemeSource(): HostThemeSource | null {
+  if (typeof window === "undefined") return null;
+  if (window.BuretteMcpWorkspace) return window.BuretteMcpWorkspace;
+  if (window.__BURETTE_HOSTED_MCP_WIDGET__ === true) {
+    const bridge = window.BuretteHostedAppBridge;
+    if (bridge?.theme || bridge?.backgrounds) return bridge;
+    const openAiTheme = window.openai?.theme;
+    if (openAiTheme === "light" || openAiTheme === "dark") return { theme: openAiTheme };
+  }
+  return null;
+}
+
 type ThemeTokens = {
   accent: string;
   background: string;
@@ -38,8 +55,12 @@ export function readThemeTokens(preferences: ViewerPreferences, mode: ThemeMode)
 
 export function resolveAppearanceTheme(preferences: ViewerPreferences, mode: ThemeMode): CodexTheme {
   const theme = codexThemeFromTokens(readThemeTokens(preferences, mode), mode);
-  const native = typeof window !== "undefined" && window.BuretteMcpWorkspace;
-  return native ? { ...theme, surface: native.backgrounds?.[mode] ?? (mode === "dark" ? "#101010" : "#ffffff") } : theme;
+  const host = hostThemeSource();
+  if (!host) return theme;
+  const fallbackSurface = typeof window !== "undefined" && window.BuretteMcpWorkspace
+    ? (mode === "dark" ? "#101010" : "#ffffff")
+    : (mode === "dark" ? "#181818" : "#ffffff");
+  return { ...theme, surface: host.backgrounds?.[mode] ?? fallbackSurface };
 }
 
 // The viewer frames derive their chrome from these colours, so they get the

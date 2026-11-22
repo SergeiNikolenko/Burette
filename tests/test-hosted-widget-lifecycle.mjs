@@ -87,4 +87,23 @@ await check('MCP errors override stale structure metadata rather than reporting 
   assert.equal(h.closes, closes + 1);
   assert.equal(h.pending.length, 1); cleanup();
 });
+await check('Codex wrapped toolOutput envelope with null toolResponseMetadata opens on mount', async () => {
+  const h = harness();
+  h.window.openai = { toolOutput: result, toolResponseMetadata: null };
+  const cleanup = h.effects[0]();
+  assert.equal(h.pending.length, 1);
+  h.pending[0]({ path: '/virtual/wrapped' }); await Promise.resolve();
+  assert.equal(h.added.length, 1);
+  cleanup();
+});
+await check('returning home clears cached structure so reopening the same entry works', async () => {
+  const h = harness(); const cleanup = h.effects[0]();
+  h.message(result); assert.equal(h.pending.length, 1);
+  h.pending[0]({ path: '/virtual/home1' }); await Promise.resolve();
+  h.window.dispatchEvent(new h.window.Event('burette-hosted-return-home'));
+  h.message(result); assert.equal(h.pending.length, 2);
+  h.pending[1]({ path: '/virtual/home2' }); await Promise.resolve();
+  assert.equal(h.added.length, 2);
+  cleanup();
+});
 assert.deepEqual(failures, []);

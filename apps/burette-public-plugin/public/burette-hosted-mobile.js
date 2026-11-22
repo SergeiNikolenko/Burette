@@ -28,10 +28,16 @@
   };
   const resultMetadata = (result) => {
     const metadata = record(result?._meta) || record(result?.meta);
-    return record(metadata?._meta)
+    const resolved = metadata
+      ? (record(metadata?._meta)
       || nestedMetadata(metadata?.mcp_tool_result)
       || nestedMetadata(metadata?.call_tool_result)
-      || metadata;
+      || metadata)
+      : null;
+    if (resolved && (Object.hasOwn(resolved, "structure") || Object.hasOwn(resolved, "scene"))) {
+      return resolved;
+    }
+    return nestedMetadata(result?.structuredContent) || resolved;
   };
   const structureFromResult = (value) => {
     const result = record(value);
@@ -42,11 +48,13 @@
     const format = normalizedFormat(structure?.format);
     const byteCount = new TextEncoder().encode(data).length;
     if (!data || !format || byteCount > MAX_STRUCTURE_BYTES) return null;
+    const structured = record(result?.structuredContent);
+    const nestedStructured = record(structured?.structuredContent);
     return {
       data,
       format,
       byteCount,
-      label: bounded(structure?.label, bounded(record(result?.structuredContent)?.fileName, "Molecular structure")),
+      label: bounded(structure?.label, bounded(structured?.fileName || nestedStructured?.fileName, "Molecular structure")),
       source: record(scene?.source),
       actions: Array.isArray(scene?.actions)
         ? scene.actions.slice(0, 8).map(record).filter(Boolean)

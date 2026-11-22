@@ -128,7 +128,7 @@ export function useAppPreferenceEffects({
 
   // The Codex host switches the widget's theme without a preference change.
   useEffect(() => {
-    if (!window.BuretteMcpWorkspace) return;
+    if (!window.BuretteMcpWorkspace && window.__BURETTE_HOSTED_MCP_WIDGET__ !== true) return;
     return subscribeSystemThemeMode(() => broadcastLiveAppliedPreferences(["theme"], currentInputsRef.current.preferences));
   }, []);
 
