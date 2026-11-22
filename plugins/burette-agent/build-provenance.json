@@ -3,7 +3,7 @@
   "applicationSource": "/Users/nikolenko/.codex/worktrees/burette-dark-editor-inline/Burette",
   "transportSource": "/Users/nikolenko/Documents/Worktrees/Burette/molecular-plugin",
   "molecularFrameVersion": "de7bfa9f33c5",
-  "nativeManifestSha256": "e3ba63e7011e7ed477e3a1da5cd58d833edcfc5dd6d1cde215c181d53b793299",
+  "nativeManifestSha256": "6b8eaad65d1d71af28d112b62bd306058ba25c874d6300252fd76f0edec0ac78",
   "previewManifestVersion": 1,
   "previewAssets": {
     "atom-drag.js": "c325a37286c08424e2aff6e14d9fb2b686f927b6dd725241ebbb2d3be9b3cb8f",

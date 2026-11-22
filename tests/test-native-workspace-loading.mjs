@@ -28,6 +28,12 @@ test('host detach leaves a visible recovery message instead of an empty retained
     assert.equal(status.hidden, false);
     assert.match(status.querySelector('[role="alert"]').textContent, /workspace disconnected/);
     assert.equal(status.querySelector('button').textContent, 'Retry');
+    let reloaded = 0;
+    dom.location.reload = () => { reloaded++; };
+    status.querySelector('button').click();
+    assert.equal(reloaded, 0, 'in-place retry must not call window.location.reload inside a srcdoc sandbox');
+    assert.equal(status.hidden, false);
+    assert.ok(status.querySelector('.workspace-loading-spinner'), 'retry restores the loading spinner in place');
   } finally { dom.close(); }
 });
 test('opening uses one accessible spinner and its stable familiar label without duplication', () => {

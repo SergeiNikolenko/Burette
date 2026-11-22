@@ -71,7 +71,7 @@ export async function startNativeWorkspace(app, initialResult) {
     clearTimeout(loadingDeadline);
     startupFailed = true;
     root.inert = true;
-    showWorkspaceFailure(status, message);
+    showWorkspaceFailure(status, message, retryWorkspace);
   }
   // A workspace the user opened from a host entrypoint is unknown to the model,
   // so its idle context names the session the model can add files to.
@@ -120,27 +120,47 @@ export async function startNativeWorkspace(app, initialResult) {
   let contextQueue = Promise.resolve();
   const gridSelections = new Map();
   const workers = new Set();
+  const NativeFetch = window.fetch;
   const NativeWorker = window.Worker;
   class WorkspaceWorker extends NativeWorker {
     constructor(...args) { super(...args); workers.add(this); }
     terminate() { workers.delete(this); super.terminate(); }
   }
+  let retrying = false;
+  function cleanupAttempt() {
+    clearTimeout(loadingDeadline);
+    placement.dispose();
+    checkpoint?.dispose();
+    for (const frame of document.querySelectorAll('iframe')) {
+      try { void frame.contentWindow?.BuretteViewerActions?.run({ type: 'dispose_viewer' }); } catch {}
+    }
+    window.BuretteMcpWorkspace?.unmount?.();
+    for (const worker of workers) worker.terminate();
+    workers.clear();
+    transport?.dispose();
+    assets?.dispose();
+    gridSelections.clear();
+    for (const link of document.head?.querySelectorAll?.('link[data-burette-workspace-style]') ?? []) link.remove();
+    if (window.fetch !== NativeFetch) window.fetch = NativeFetch;
+    if (window.Worker !== NativeWorker) window.Worker = NativeWorker;
+  }
+  function retryWorkspace() {
+    if (retrying) return;
+    retrying = true;
+    window.removeEventListener?.('message', onWindowMessage);
+    window.removeEventListener?.('pagehide', onPageHide);
+    cleanupAttempt();
+    root.replaceChildren?.();
+    root.inert = true;
+    showWorkspaceOpening(status);
+    void startNativeWorkspace(app, initialResult);
+  }
   const lifetime = createViewerLifetime({
     dispose({ terminal }) {
-      clearTimeout(loadingDeadline);
-      placement.dispose();
-      checkpoint?.dispose();
-      for (const frame of document.querySelectorAll('iframe')) {
-        try { void frame.contentWindow?.BuretteViewerActions?.run({ type: 'dispose_viewer' }); } catch {}
-      }
-      window.BuretteMcpWorkspace?.unmount?.();
-      for (const worker of workers) worker.terminate();
-      transport?.dispose();
-      assets?.dispose();
-      gridSelections.clear();
+      cleanupAttempt();
       if (!terminal) {
         root.inert = true;
-        showWorkspaceFailure(status, 'The workspace disconnected. Retry to restore this session.');
+        showWorkspaceFailure(status, 'The workspace disconnected. Retry to restore this session.', retryWorkspace);
       }
       if (terminal) for (const key of Object.keys(localStorage)) if (key.endsWith(`.mcp-${session?.sessionId}`)) localStorage.removeItem(key);
     },
@@ -279,6 +299,7 @@ export async function startNativeWorkspace(app, initialResult) {
       for (const path of manifest.styles) {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
+        link.dataset.buretteWorkspaceStyle = path;
         link.href = await assets.asset(path);
         await new Promise((resolve, reject) => {
           link.onload = resolve;
@@ -314,7 +335,7 @@ export async function startNativeWorkspace(app, initialResult) {
     }
   };
   app.onteardown = async () => { await checkpoint?.flush(); await lifetime.detach(); return {}; };
-  window.addEventListener('message', event => {
+  function onWindowMessage(event) {
     if (lifetime.closed) return;
     if (![...document.querySelectorAll('iframe')].some(frame => frame.contentWindow === event.source)) return;
     if (event.data?.source === 'burette-viewer' && event.data.body?.type === 'error') {
@@ -329,7 +350,9 @@ export async function startNativeWorkspace(app, initialResult) {
       selectionTruncated: body.selectionTruncated === true || body.selectedSourceIndexes?.length > 256,
     });
     if (transport) observe(transport.state());
-  });
-  window.addEventListener('pagehide', event => { if (!event.persisted) void lifetime.detach(); });
+  }
+  function onPageHide(event) { if (!event.persisted) void lifetime.detach(); }
+  window.addEventListener('message', onWindowMessage);
+  window.addEventListener('pagehide', onPageHide);
   await load(initialResult);
 }

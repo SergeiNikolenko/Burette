@@ -35,7 +35,7 @@ export function showWorkspaceOpening(status) {
   status.replaceChildren(row);
 }
 
-export function showWorkspaceFailure(status, message) {
+export function showWorkspaceFailure(status, message, onRetry) {
   const row = document.createElement('div');
   row.className = 'workspace-failure';
   row.setAttribute('role', 'alert');
@@ -44,7 +44,7 @@ export function showWorkspaceFailure(status, message) {
   const retry = document.createElement('button');
   retry.type = 'button';
   retry.textContent = 'Retry';
-  retry.onclick = () => window.location.reload();
+  retry.onclick = () => (typeof onRetry === 'function' ? onRetry() : window.location.reload());
   row.append(detail, retry);
   status.replaceChildren(row);
   status.hidden = false;
