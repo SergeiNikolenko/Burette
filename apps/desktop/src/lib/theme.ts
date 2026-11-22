@@ -2,19 +2,31 @@ import { useSyncExternalStore, type CSSProperties } from "react";
 import type { ViewerPreferences } from "../types";
 import { buildCodexThemeVariables, codexAccent } from "./codex-theme";
 
-import { readThemeTokens, readPreviewThemeTokens, resolveAppearanceTheme, type ThemeMode } from "./theme-tokens";
+import { hostThemeSource, readThemeTokens, readPreviewThemeTokens, resolveAppearanceTheme, type ThemeMode } from "./theme-tokens";
 
 export { readThemeTokens, readPreviewThemeTokens, resolveAppearanceTheme, type ThemeMode } from "./theme-tokens";
 
 export function readSystemThemeMode(): ThemeMode {
-  if (typeof window !== "undefined" && window.BuretteMcpWorkspace) return window.BuretteMcpWorkspace.theme;
+  const hostTheme = hostThemeSource()?.theme;
+  if (hostTheme === "light" || hostTheme === "dark") return hostTheme;
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return "dark";
   return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
 }
 
 export function subscribeSystemThemeMode(onChange: () => void): () => void {
-  if (typeof window !== "undefined" && window.BuretteMcpWorkspace) {
+  if (typeof window !== "undefined" && (window.BuretteMcpWorkspace || window.__BURETTE_HOSTED_MCP_WIDGET__ === true)) {
     window.addEventListener("burette-host-theme", onChange);
+    const media = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-color-scheme: light)") : null;
+    if (!media || window.BuretteMcpWorkspace) {
+      return () => window.removeEventListener("burette-host-theme", onChange);
+    }
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", onChange);
+      return () => {
+        window.removeEventListener("burette-host-theme", onChange);
+        media.removeEventListener("change", onChange);
+      };
+    }
     return () => window.removeEventListener("burette-host-theme", onChange);
   }
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return () => {};
@@ -32,7 +44,7 @@ export function useSystemThemeMode(): ThemeMode {
 }
 
 export function resolveThemeMode(theme: ViewerPreferences["theme"], systemThemeMode = readSystemThemeMode()): ThemeMode {
-  if (typeof window !== "undefined" && window.BuretteMcpWorkspace) return systemThemeMode;
+  if (hostThemeSource()?.theme) return systemThemeMode;
   if (theme === "light" || theme === "dark") return theme;
   return systemThemeMode;
 }
@@ -40,7 +52,7 @@ export function resolveThemeMode(theme: ViewerPreferences["theme"], systemThemeM
 // The Codex host owns the widget's theme. A viewer frame left on "auto" would
 // read the system appearance instead, which the host may override.
 export function viewerThemePreference(theme: ViewerPreferences["theme"]): ViewerPreferences["theme"] {
-  return typeof window !== "undefined" && window.BuretteMcpWorkspace ? window.BuretteMcpWorkspace.theme : theme;
+  return hostThemeSource()?.theme ?? theme;
 }
 
 export function viewerAppearanceMessage(preferences: ViewerPreferences) {

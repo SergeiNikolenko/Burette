@@ -152,6 +152,7 @@ export function useHostedMcpWidget({
 
     window.addEventListener("message", onMessage);
     window.addEventListener("openai:set_globals", onOpenAiGlobals);
+    window.addEventListener("burette-hosted-return-home", clearOpenedStructure);
     window.__BURETTE_HOSTED_MCP_BRIDGE_READY__ = true;
 
     const queuedResults = window.__BURETTE_HOSTED_MCP_RESULTS__?.splice(0) ?? [];
@@ -174,6 +175,7 @@ export function useHostedMcpWidget({
     return () => {
       window.removeEventListener("message", onMessage);
       window.removeEventListener("openai:set_globals", onOpenAiGlobals);
+      window.removeEventListener("burette-hosted-return-home", clearOpenedStructure);
       window.__BURETTE_HOSTED_MCP_BRIDGE_READY__ = false;
       window.__BURETTE_HOSTED_MCP_RESULTS__ = [];
       openSequenceRef.current += 1;

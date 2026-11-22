@@ -133,3 +133,25 @@ test("repeated clicks open once; old failures cannot overwrite a new host's pend
     await act(async () => finish()); expect(current.disabled).toBe(false);
   });
 });
+
+test("hosted workspace home shows PDB search and featured examples while opening entries directly", async () => {
+  await homeFixture(async (mount, render) => {
+    const opened: string[] = [];
+    const searched: string[] = [];
+    const home = homeStub({
+      searchPlaceholder: "Search Protein Data Bank…",
+      featured: [{ uri: "https://www.rcsb.org/structure/1CRN", name: "1CRN", title: "1CRN · Crambin" }],
+      search: async (query) => {
+        searched.push(query);
+        return [{ uri: "https://www.rcsb.org/structure/4INS", name: "4INS", title: "4INS · Insulin" }];
+      },
+      open: async (link) => { opened.push(link); },
+    });
+    await render(home);
+    expect(mount.querySelector("h1")?.textContent).toBe("Burette");
+    expect(mount.querySelector('input[type="search"]')).not.toBeNull();
+    const example = mount.querySelector<HTMLButtonElement>('[aria-label="Open 1CRN · Crambin"]')!;
+    await act(async () => example.click());
+    expect(opened).toEqual(["https://www.rcsb.org/structure/1CRN"]);
+  });
+});

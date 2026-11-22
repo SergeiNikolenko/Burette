@@ -34,11 +34,22 @@ function normalizedFormat(value: unknown) {
 
 function metadataFromResult(result: UnknownRecord) {
   const metadata = record(result._meta) ?? record(result.meta);
-  if (!metadata) return null;
-  return record(metadata._meta)
-    ?? nestedResultMetadata(metadata.mcp_tool_result)
-    ?? nestedResultMetadata(metadata.call_tool_result)
-    ?? metadata;
+  const resolved = metadata
+    ? (record(metadata._meta)
+      ?? nestedResultMetadata(metadata.mcp_tool_result)
+      ?? nestedResultMetadata(metadata.call_tool_result)
+      ?? metadata)
+    : null;
+  if (resolved && (
+    Object.hasOwn(resolved, "structure")
+    || Object.hasOwn(resolved, "scene")
+    || Object.hasOwn(resolved, "workspace")
+  )) {
+    return resolved;
+  }
+  // Codex Desktop can place the full CallToolResult envelope (with _meta) inside
+  // window.openai.toolOutput while leaving toolResponseMetadata null.
+  return nestedResultMetadata(result.structuredContent) ?? resolved;
 }
 
 function nestedResultMetadata(value: unknown) {
@@ -51,8 +62,12 @@ export function isHostedMcpStructureFailure(value: unknown): boolean {
   const result = record(value);
   if (!result) return false;
   const metadata = metadataFromResult(result);
+  const structured = record(result.structuredContent);
+  const nestedStructured = record(structured?.structuredContent);
   return result.isError === true
-    || record(result.structuredContent)?.viewerAvailable === false
+    || structured?.isError === true
+    || structured?.viewerAvailable === false
+    || nestedStructured?.viewerAvailable === false
     || (metadata !== null && Object.hasOwn(metadata, "structure")
       && parseHostedMcpStructureResult(value) === null);
 }
@@ -108,9 +123,10 @@ export function parseHostedMcpStructureResult(value: unknown): HostedMcpStructur
   if (!data || byteCount > MAX_HOSTED_STRUCTURE_BYTES || !format) return null;
 
   const structuredContent = record(result.structuredContent);
+  const nestedStructuredContent = record(structuredContent?.structuredContent);
   const label = boundedLabel(
     structure?.label,
-    boundedLabel(structuredContent?.fileName, "Molecular structure"),
+    boundedLabel(structuredContent?.fileName ?? nestedStructuredContent?.fileName, "Molecular structure"),
   );
   return {
     data,

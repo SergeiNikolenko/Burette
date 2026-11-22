@@ -41,6 +41,9 @@ interface Window {
       arguments_?: Record<string, unknown>,
     ) => Promise<unknown>;
     sanitizeViewerActions: (actions: unknown) => Record<string, unknown>[];
+    theme?: "light" | "dark";
+    backgrounds?: { light: string; dark: string };
+    entrypoint?: "global" | "thread" | "file";
     /** Present in a workspace the user opened beside the conversation. */
     home?: import("./lib/native-mcp-workspace").NativeWorkspaceHome;
   };
@@ -55,6 +58,11 @@ interface Window {
   openai?: {
     toolOutput?: unknown;
     toolResponseMetadata?: unknown;
+    theme?: "light" | "dark";
+    surfaceBackgroundColor?: string;
+    displayMode?: string;
+    safeArea?: { insets?: { top?: number; right?: number; bottom?: number; left?: number } };
+    userAgent?: { device?: { type?: string } };
   };
 }
 

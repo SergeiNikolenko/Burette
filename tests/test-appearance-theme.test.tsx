@@ -19,6 +19,23 @@ test("native workspace shell and molecular preview follow the host background", 
   } finally { Object.defineProperty(globalThis, "window", { configurable: true, value: previous }); }
 });
 
+test("hosted cloud widget shell and molecular preview follow the host theme and surface background", () => {
+  const previous = globalThis.window;
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      __BURETTE_HOSTED_MCP_WIDGET__: true,
+      BuretteHostedAppBridge: { theme: "dark", backgrounds: { light: "#ffffff", dark: "#181818" } },
+    },
+  });
+  try {
+    expect(resolveAppearanceTheme(defaultPreferences, "dark").surface).toBe("#181818");
+    expect(readPreviewThemeTokens(defaultPreferences, "dark").background).toBe("#181818");
+    expect(buildThemeStyle(defaultPreferences, "dark")["--bg-base" as keyof React.CSSProperties]).toBe("#181818");
+    expect(resolveAppearanceTheme(defaultPreferences, "light").surface).toBe("#ffffff");
+  } finally { Object.defineProperty(globalThis, "window", { configurable: true, value: previous }); }
+});
+
 test("appearance controls show the same resolved defaults as the rendered shell", () => {
   for (const mode of ["light", "dark"] as const) {
     // The theme card edits the active mode, as in Codex.

@@ -162,6 +162,24 @@ const initialStructure = selectHostedMcpInitialStructure([
 assert.equal(initialStructure?.label, "latest.pdb");
 assert.equal(initialStructure?.data, "LATEST");
 
+// Codex Desktop can put the full CallToolResult envelope (with _meta) inside
+// window.openai.toolOutput while leaving toolResponseMetadata null.
+const wrappedCodexResult = parseHostedMcpStructureResult({
+  structuredContent: {
+    content: [{ type: "text", text: "1STP" }],
+    structuredContent: { fileName: "1STP.pdb" },
+    _meta: {
+      structure: { data: "ATOM      1  N   ASP A  13\nEND\n", format: "pdb", label: "1STP.pdb" },
+      scene: { source: { kind: "pdb", pdbId: "1STP" }, actions: [{ type: "hide_components", kind: "water" }] },
+    },
+  },
+  _meta: null,
+});
+assert.equal(wrappedCodexResult?.label, "1STP.pdb");
+assert.equal(wrappedCodexResult?.format, "pdb");
+assert.deepEqual(wrappedCodexResult?.source, { kind: "pdb", pdbId: "1STP" });
+assert.equal(wrappedCodexResult?.actions.length, 1);
+
 const selectionContext = createSelectionContext({
   source: "lasso",
   label: "Lasso selection: 4 visible atoms across 2 residues",

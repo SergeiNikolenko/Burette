@@ -131,7 +131,7 @@ describe("viewer resource contract", () => {
     expect(VIEWER_RESOURCE_URI).toBe("ui://burette/molecular-viewer-v21.html");
     expect(html).toContain(`https://burette.example${VIEWER_SHELL_SCRIPT_PATH}`);
     expect(html).toContain(`https://burette.example${VIEWER_SHELL_STYLES_PATH}`);
-    expect(html).toContain("?v=viewer-v23");
+    expect(html).toContain("?v=viewer-v24");
     // Chunks import the entry without a query; a versioned entry URL would
     // instantiate the shell module twice.
     expect(html).not.toContain(`${VIEWER_SHELL_SCRIPT_PATH}?`);
@@ -341,6 +341,87 @@ describe("viewer resource contract", () => {
     expect(root.insertedHtml).toContain("Loading structure");
   });
 
+  test("starts the mobile viewer when toolOutput carries the full CallToolResult envelope", () => {
+    const source = readFileSync(path.resolve(
+      import.meta.dir,
+      "../assets/burette-hosted-mobile.js",
+    ), "utf8");
+    const root = { id: "root", insertedHtml: "", insertAdjacentHTML(_pos: string, html: string) { this.insertedHtml = html; } };
+    const window = {
+      parent: {},
+      setTimeout: () => 1,
+      clearTimeout() {},
+      addEventListener() {},
+      openai: {
+        toolOutput: {
+          structuredContent: { fileName: "1STP.pdb" },
+          _meta: { structure: { data: "ATOM\nEND\n", format: "pdb", label: "1STP.pdb" } },
+        },
+        toolResponseMetadata: null,
+      },
+    };
+    const document = {
+      body: { className: "", appendChild() {} },
+      head: { appendChild() {} },
+      documentElement: { classList: { add() {} } },
+      getElementById: (id: string) => (id === root.id ? root : null),
+      createElement: () => ({ addEventListener() {}, style: { setProperty() {} }, textContent: "" }),
+    };
+    vm.runInNewContext(source, { TextEncoder, btoa, document, navigator: { userAgent: "iPhone" }, window });
+    expect(root.id).toBe("app");
+    expect(root.insertedHtml).toContain("Loading structure");
+  });
+
+  test("keeps desktop background and narrow tabs on the desktop shell while routing mobile hosts to mobile", () => {
+    const html = createViewerWidgetHtml("https://burette.example");
+    const bodyScriptMatch = html.match(/<div id="root"><\/div>\s*<script>([\s\S]*?)<\/script>/u);
+    expect(bodyScriptMatch).not.toBeNull();
+    const loaderCode = bodyScriptMatch![1];
+
+    const runLoader = (opts: {
+      innerWidth: number;
+      coarsePointer: boolean;
+      userAgent: string;
+      deviceType?: string;
+    }) => {
+      const appended: Array<{ src?: string; type?: string }> = [];
+      const windowObj = {
+        innerWidth: opts.innerWidth,
+        __BURETTE_HOSTED_KETCHER_WIDGET__: false,
+        openai: opts.deviceType ? { userAgent: { device: { type: opts.deviceType } } } : undefined,
+        matchMedia(query: string) {
+          if (query.includes("max-width: 600px")) return { matches: opts.innerWidth <= 600 };
+          if (query.includes("pointer: coarse")) return { matches: opts.coarsePointer };
+          return { matches: false };
+        },
+        setTimeout: () => 1,
+        clearTimeout() {},
+      };
+      const documentObj = {
+        createElement: () => ({ addEventListener() {} }),
+        getElementById: () => null,
+        body: { appendChild(el: { src?: string; type?: string }) { appended.push(el); } },
+      };
+      vm.runInNewContext(loaderCode, {
+        window: windowObj,
+        document: documentObj,
+        navigator: { userAgent: opts.userAgent },
+      });
+      return appended[0];
+    };
+
+    expect(runLoader({ innerWidth: 0, coarsePointer: false, userAgent: "Mozilla/5.0 Macintosh", deviceType: "desktop" })?.src)
+      .toContain(VIEWER_SHELL_SCRIPT_PATH);
+    expect(runLoader({ innerWidth: 480, coarsePointer: false, userAgent: "Mozilla/5.0 Macintosh", deviceType: "desktop" })?.src)
+      .toContain(VIEWER_SHELL_SCRIPT_PATH);
+    expect(runLoader({ innerWidth: 0, coarsePointer: false, userAgent: "Mozilla/5.0 Macintosh" })?.src)
+      .toContain(VIEWER_SHELL_SCRIPT_PATH);
+    expect(runLoader({ innerWidth: 390, coarsePointer: true, userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0)" })?.src)
+      .toContain(VIEWER_MOBILE_SCRIPT_PATH);
+    expect(runLoader({ innerWidth: 412, coarsePointer: true, userAgent: "Mozilla/5.0", deviceType: "mobile" })?.src)
+      .toContain(VIEWER_MOBILE_SCRIPT_PATH);
+  });
+
   test("initializes the Apps bridge before publishing bounded viewer state", () => {
     const source = readFileSync(path.resolve(
       import.meta.dir,
@@ -408,7 +489,7 @@ describe("viewer resource contract", () => {
 
   test("uses a true black MCP widget background in dark mode", () => {
     const html = createViewerWidgetHtml("https://burette.example");
-    expect(html).toContain("background: #000000;");
+    expect(html).toContain("background: var(--burette-host-background, #000000);");
     expect(html).toContain("html, body, #root, #app { min-height: 0; height: 100%; }");
     expect(html).not.toContain("background: #111315;");
     // Both editors fill the height allocated by the host, not 80% of it.
