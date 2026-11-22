@@ -123,6 +123,10 @@ describe("viewer resource contract", () => {
     expect(meta.ui.csp).not.toHaveProperty("frameDomains");
     expect(meta.ui.prefersBorder).toBe(false);
     expect(meta["openai/widgetPrefersBorder"]).toBe(false);
+    expect(meta["openai/ui"]).toEqual({
+      availableDisplayModes: ["inline", "fullscreen"],
+      preferredDisplayMode: "fullscreen",
+    });
     expect(meta["openai/widgetCSP"]).not.toHaveProperty("frame_domains");
   });
 
@@ -131,7 +135,7 @@ describe("viewer resource contract", () => {
     expect(VIEWER_RESOURCE_URI).toBe("ui://burette/molecular-viewer-v21.html");
     expect(html).toContain(`https://burette.example${VIEWER_SHELL_SCRIPT_PATH}`);
     expect(html).toContain(`https://burette.example${VIEWER_SHELL_STYLES_PATH}`);
-    expect(html).toContain("?v=viewer-v25");
+    expect(html).toContain("?v=viewer-v26");
     // Chunks import the entry without a query; a versioned entry URL would
     // instantiate the shell module twice.
     expect(html).not.toContain(`${VIEWER_SHELL_SCRIPT_PATH}?`);

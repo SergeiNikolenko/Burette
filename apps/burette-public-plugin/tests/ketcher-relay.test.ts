@@ -114,6 +114,10 @@ describe("hosted Ketcher widget contract", () => {
     expect("resourceUri" in meta.ui).toBe(false);
     expect(meta.ui.domain).toBe("https://burette.example");
     expect(meta.ui.csp.connectDomains).toEqual(["https://burette.example"]);
+    expect(meta["openai/ui"]).toEqual({
+      availableDisplayModes: ["inline", "fullscreen"],
+      preferredDisplayMode: "inline",
+    });
     expect(meta["openai/widgetDescription"]).toContain("molecular editor");
     expect(toolMeta.ui.resourceUri).toBe(KETCHER_RESOURCE_URI);
     expect(toolMeta["openai/widgetAccessible"]).toBe(true);
@@ -126,6 +130,8 @@ describe("hosted Ketcher widget contract", () => {
     expect(html).toContain("burette-ketcher-seed");
     expect(html).toContain("callServerTool");
     expect(html).toContain("/viewer-shell/assets/burette-hosted-shell.js");
+    expect(html).toContain('html[data-host-theme="dark"] { color-scheme: dark;');
+    expect(html).toContain('html[data-display-mode="inline"] { height: 540px; }');
     expect(html).not.toContain("contentRef");
   });
 });

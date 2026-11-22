@@ -10,7 +10,7 @@ export const VIEWER_RUNTIME_ASSETS_PATH = "/burette-viewer/";
 export const VIEWER_MOBILE_SCRIPT_PATH = "/burette-hosted-mobile.js";
 export const VIEWER_APP_BRIDGE_SCRIPT_PATH = "/burette-hosted-app.js";
 export const VIEWER_FRAME_SCRIPT_PATH = "/burette-hosted-frame.js";
-const VIEWER_SHELL_ASSET_VERSION = "viewer-v25";
+const VIEWER_SHELL_ASSET_VERSION = "viewer-v26";
 
 function assetUrl(origin: string, assetPath: string): string {
   if (!origin) return assetPath;
@@ -54,8 +54,12 @@ export function createViewerResourceMeta(appOrigin: string) {
 export function createKetcherResourceMeta(appOrigin: string) {
   return {
     ...createViewerResourceMeta(appOrigin),
+    "openai/ui": {
+      availableDisplayModes: ["inline", "fullscreen"],
+      preferredDisplayMode: "inline",
+    },
     "openai/widgetDescription":
-      "Burette molecular editor with a revision-checked agent bridge.",
+      "Burette molecular editor opening inline in chat with a revision-checked agent bridge.",
   } as const;
 }
 
@@ -99,11 +103,13 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
     <style>
       html, body, #root { width: 100%; min-height: 0; height: 100%; }
       html { height: 100vh; }
+      html { color-scheme: light; background: var(--burette-host-background, #ffffff); }
+      @media (prefers-color-scheme: dark) { html:not([data-host-theme="light"]) { color-scheme: dark; background: var(--burette-host-background, #000000); } }
+      html[data-host-theme="light"] { color-scheme: light; background: var(--burette-host-background, #ffffff); }
+      html[data-host-theme="dark"] { color-scheme: dark; background: var(--burette-host-background, #000000); }
+      html[data-display-mode="inline"] { height: 540px; }
       body .app-shell { width: 100%; height: 100%; }
-      body { margin: 0; overflow: hidden; background: var(--burette-host-background, #ffffff); }
-      @media (prefers-color-scheme: dark) { body { background: var(--burette-host-background, #000000); } }
-      html[data-host-theme="light"] body { background: var(--burette-host-background, #ffffff); }
-      html[data-host-theme="dark"] body { background: var(--burette-host-background, #000000); }${narrowLayout}
+      body { margin: 0; overflow: hidden; background: inherit; }${narrowLayout}
     </style>
     <script src="${frameScript}"></script>
     <script>
@@ -127,8 +133,14 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
         const initialBackgrounds = initialBg
           ? { light: initialTheme === "light" ? initialBg : "#ffffff", dark: initialTheme === "dark" ? initialBg : "#181818" }
           : undefined;
-        if (initialTheme) document.documentElement.dataset.hostTheme = initialTheme;
+        if (initialTheme) {
+          document.documentElement.dataset.hostTheme = initialTheme;
+          document.documentElement.style.colorScheme = initialTheme;
+        }
         if (initialBg) document.documentElement.style.setProperty("--burette-host-background", initialBg);
+        if (config.ketcherWidget && (window.openai?.displayMode === "inline" || window.openai?.displayMode === "fullscreen")) {
+          document.documentElement.dataset.displayMode = window.openai.displayMode;
+        }
         const initialBottomInset = Number(window.openai?.safeArea?.insets?.bottom);
         if (Number.isFinite(initialBottomInset) && initialBottomInset > 0) {
           document.documentElement.style.setProperty("--burette-hosted-bottom-inset", Math.round(initialBottomInset) + "px");

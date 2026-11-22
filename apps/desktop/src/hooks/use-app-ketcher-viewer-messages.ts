@@ -92,7 +92,7 @@ export function useAppKetcherViewerMessages({
         try {
           const text = decodeBase64Text(textBase64);
           if (!text.trim()) return [];
-          const title = bodyString((fragment as Record<string, unknown>).title).trim() || "ketcher-sketch.sdf";
+          const title = bodyString((fragment as Record<string, unknown>).title).trim() || "molecule.sdf";
           return [{
             title,
             text,

@@ -1,6 +1,6 @@
 ---
 name: preview-molecular-structures
-description: Preview supported molecular attachments or an explicit public PDB ID in Burette's interactive viewer, or use the bounded hosted Ketcher editor for transient chemical sketches.
+description: Preview supported molecular attachments or an explicit public PDB ID in Burette's interactive viewer, or use Burette's bounded hosted molecular editor for transient chemical sketches.
 ---
 
 # Preview molecular structures
@@ -57,7 +57,7 @@ Use Burette for bounded molecular inspection and transient chemical sketching.
   explain the limitation without opening a preview as a substitute. Offer
   inspection separately; a PDB ID in a docking request is not an inspection request.
 - Do not claim that this public plugin edits, overwrites, or deletes molecular
-  source files. Ketcher edits exist only in the ephemeral hosted widget relay.
+  source files. Molecular editor edits exist only in the ephemeral hosted widget relay.
 - Do not claim local macOS app control, docking, simulation, structure
   prediction, or remote job execution. Those are outside this hosted plugin.
 - Do not treat a molecular preview as medical diagnosis, clinical advice, or

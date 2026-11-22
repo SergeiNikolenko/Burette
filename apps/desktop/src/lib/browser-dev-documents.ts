@@ -291,7 +291,7 @@ export async function openBrowserDevTextDocument(
   options: { newDocument?: boolean } = {},
 ): Promise<ViewerDocument> {
   const cleanExtension = extension.toLowerCase().replace(/^\./u, "");
-  const cleanTitle = fileTitle(title).replace(/[\\/]/gu, "").trim() || `ketcher-sketch.${cleanExtension}`;
+  const cleanTitle = fileTitle(title).replace(/[\\/]/gu, "").trim() || `molecule.${cleanExtension}`;
   // Match native text imports: a requested new document owns its own source path.
   const sourceId = options.newDocument ? crypto.randomUUID() : stableId(`${cleanTitle}:${text}`);
   const path = `burette-ketcher://${sourceId}/${cleanTitle}`;
@@ -610,7 +610,7 @@ export async function appendToBrowserDevCollection(
   const baseText = browserDevVirtualTextDocuments.get(receiverPath) ?? await readBrowserDevCollectionText(targetPath);
   const merged = mergeCollectionSources([
     { path: receiverPath, extension: collectionExtension(receiverName) || record.extension, text: baseText },
-    { path: `ketcher-sketch.${record.extension}`, extension: record.extension, text: record.text },
+    { path: `molecule.${record.extension}`, extension: record.extension, text: record.text },
   ]);
   const grid = gridPayload(receiverPath, merged.extension, merged.text);
   if (!grid) throw new Error("The sketch did not produce a supported molecule collection record.");
@@ -1406,7 +1406,7 @@ function viewerHtml(
     Object.assign(config, { nativeMolecularComputeUnavailable: true });
   }
   if (mesoscale) {
-    return mesoscaleViewerHtml(label, bytes, config, visuals.transparentBackground);
+    return mesoscaleViewerHtml(label, bytes, config, visuals.transparentBackground, preferences);
   }
   const hostedMcpBootstrap = config.hostedMcpWidgetBootstrap === true;
   const viewerAsset = (name: string) => hostedMcpBootstrap
@@ -1466,6 +1466,7 @@ function mesoscaleViewerHtml(
   bytes: Uint8Array,
   config: Record<string, unknown>,
   transparentBackground: boolean,
+  preferences: ViewerPreferences,
 ) {
   const version = `${MESOSCALE_ASSET_VERSION}-${RUNTIME_ASSET_SESSION}`;
   return nativePreviewHtml(`<!doctype html>
@@ -1475,6 +1476,7 @@ function mesoscaleViewerHtml(
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <base href="${WEB_ASSETS_BASE}" />
   <title>Burette Mesoscale - ${escapeHtml(label)}</title>
+  <style>${previewBackgroundStyle(preferences)}</style>
   <link rel="stylesheet" href="mesoscale.css?v=${version}" />
   <style>html,body,#app{width:100%;height:100%;margin:0;overflow:hidden}#status{position:fixed;left:16px;bottom:16px;z-index:10000;padding:10px 12px;border-radius:8px;background:#17191f;color:#fff;font:13px -apple-system,BlinkMacSystemFont,sans-serif}.hidden{display:none}</style>
 </head>
@@ -1687,6 +1689,7 @@ async function gridHtml(
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   ${hosted ? "" : `<base href="${WEB_ASSETS_BASE}" />`}
   <title>Burette Grid - ${escapeHtml(label)}</title>
+  <style>${previewBackgroundStyle(preferences)}</style>
   <link rel="stylesheet" href="${gridAsset("grid.css")}?v=${GRID_ASSET_VERSION}" />
   ${hosted ? "" : `<script>
     window.__mqlPost = function (type, message, payload) {

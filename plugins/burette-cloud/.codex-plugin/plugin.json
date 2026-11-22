@@ -100,7 +100,7 @@
         "commerce_description": "No products are sold and no payments are processed."
       },
       "publication": {
-        "release_notes": "Burette Cloud 1.1.0 replaces Ketcher with Burette's own molecular editor, opens the viewer and editor in the Codex side panel, adds a Burette workspace tab with recent PDB entries, and opens structure and sketch files from the Codex file browser. No local executable or desktop installation."
+        "release_notes": "Burette Cloud 1.1.0 includes Burette's own molecular editor opening inline in chat, opens molecular structures in the Codex side panel, adds a Burette workspace tab with recent PDB entries, and opens structure and sketch files from the Codex file browser. No local executable or desktop installation."
       }
     }
   }

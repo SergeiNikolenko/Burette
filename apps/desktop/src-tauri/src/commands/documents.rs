@@ -1752,7 +1752,7 @@ fn generated_conformer_title(title: &str) -> String {
     let stem = Path::new(&file_name)
         .file_stem()
         .and_then(|value| value.to_str())
-        .unwrap_or("ketcher-sketch");
+        .unwrap_or("molecule");
     format!("{stem}-3d.sdf")
 }
 
@@ -1761,7 +1761,7 @@ fn generated_conformer_set_title(title: &str) -> String {
     let stem = Path::new(&file_name)
         .file_stem()
         .and_then(|value| value.to_str())
-        .unwrap_or("ketcher-sketch");
+        .unwrap_or("molecule");
     format!("{stem}-3d-conformers.sdf")
 }
 
@@ -2589,7 +2589,7 @@ fn safe_text_structure_file_name(title: &str, extension: &str) -> String {
     let raw_stem = Path::new(title)
         .file_stem()
         .and_then(|value| value.to_str())
-        .unwrap_or("ketcher-sketch");
+        .unwrap_or("molecule");
     let stem: String = raw_stem
         .chars()
         .map(|ch| {
@@ -2603,7 +2603,7 @@ fn safe_text_structure_file_name(title: &str, extension: &str) -> String {
         .trim_matches(['-', '_', '.'])
         .to_string();
     let stem = if stem.is_empty() {
-        "ketcher-sketch".to_string()
+        "molecule".to_string()
     } else {
         stem
     };
@@ -3663,10 +3663,7 @@ mod tests {
 
     #[test]
     fn generated_conformer_title_adds_3d_suffix() {
-        assert_eq!(
-            generated_conformer_title("ketcher-sketch.sdf"),
-            "ketcher-sketch-3d.sdf"
-        );
+        assert_eq!(generated_conformer_title("molecule.sdf"), "molecule-3d.sdf");
         assert_eq!(generated_conformer_title("Ligand A.mol"), "Ligand-A-3d.sdf");
     }
 
@@ -4029,10 +4026,10 @@ mod tests {
             app.handle(),
             crate::windows::MAIN_WINDOW_LABEL,
             TextStructureRequest {
-                title: "ketcher-sketch.sdf".to_string(),
+                title: "molecule.sdf".to_string(),
                 extension: "sdf".to_string(),
                 text: concat!(
-                    "Ketcher sketch\n",
+                    "Molecule sketch\n",
                     "\n",
                     "\n",
                     "  3  2  0  0  0  0  0  0  0  0999 V2000\n",

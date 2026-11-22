@@ -1785,27 +1785,27 @@ function chunkArray<T>(items: T[], size: number) {
 }
 
 function safeTextStructureFileName(title: string, extension: string) {
-  const rawName = title.replace(/\\/g, "/").split("/").filter(Boolean).pop() || "ketcher-sketch";
+  const rawName = title.replace(/\\/g, "/").split("/").filter(Boolean).pop() || "molecule";
   const dotIndex = rawName.lastIndexOf(".");
   const rawStem = dotIndex > 0 ? rawName.slice(0, dotIndex) : rawName;
   const stem = rawStem
     .replace(/[^A-Za-z0-9_.-]/gu, "-")
     .replace(/^[-_.]+|[-_.]+$/gu, "")
-    || "ketcher-sketch";
+    || "molecule";
   return `${stem}.${extension}`;
 }
 
 function generatedConformerTitle(title: string) {
   const fileName = safeTextStructureFileName(title, "sdf");
   const dotIndex = fileName.lastIndexOf(".");
-  const stem = dotIndex > 0 ? fileName.slice(0, dotIndex) : "ketcher-sketch";
+  const stem = dotIndex > 0 ? fileName.slice(0, dotIndex) : "molecule";
   return `${stem}-3d.sdf`;
 }
 
 function generatedConformerSetTitle(title: string) {
   const fileName = safeTextStructureFileName(title, "sdf");
   const dotIndex = fileName.lastIndexOf(".");
-  const stem = dotIndex > 0 ? fileName.slice(0, dotIndex) : "ketcher-sketch";
+  const stem = dotIndex > 0 ? fileName.slice(0, dotIndex) : "molecule";
   return `${stem}-3d-conformers.sdf`;
 }
 
@@ -1817,7 +1817,7 @@ function readConformerRequestBody(body: unknown) {
     throw new Error("Missing conformer generation request");
   }
   const request = source as Record<string, unknown>;
-  const title = typeof request.title === "string" && request.title.trim() ? request.title : "ketcher-sketch.sdf";
+  const title = typeof request.title === "string" && request.title.trim() ? request.title : "molecule.sdf";
   const extension = String(request.extension || "").trim().replace(/^\./u, "").toLowerCase();
   const text = typeof request.text === "string" ? request.text : "";
   const requestedEngine = String(request.engine || "rdkit").trim().toLowerCase();

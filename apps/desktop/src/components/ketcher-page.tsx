@@ -827,7 +827,7 @@ export function KetcherPage({
         : null;
       await persistDraft(molfile, draftKet);
       await actions.openKetcherSketch({
-        title: collectionRecord?.title ?? "ketcher-sketch.sdf",
+        title: collectionRecord?.title ?? "molecule.sdf",
         extension: collectionRecord?.extension ?? "sdf",
         text: collectionRecord?.text ?? molfileToSdf(molfile),
         draftKet,
@@ -888,7 +888,7 @@ export function KetcherPage({
     ]);
     if (!smiles.trim() || !molfile.trim()) return null;
     return {
-      path: "ketcher-sketch.sdf",
+      path: "molecule.sdf",
       inputExtension: "sdf",
       text: molfileToSdf(molfile, smiles),
     };
@@ -1431,7 +1431,7 @@ export function KetcherPage({
                   <Minus aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent showArrow={false}>Decrease Ketcher scale</TooltipContent>
+              <TooltipContent showArrow={false}>Decrease molecular editor scale</TooltipContent>
             </Tooltip>
             <span className="min-w-10 text-center text-sm text-(--color-text-tertiary) tabular-nums">{ketcherZoomPercent}%</span>
             <Tooltip>
@@ -1440,7 +1440,7 @@ export function KetcherPage({
                   <Plus aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent showArrow={false}>Increase Ketcher scale</TooltipContent>
+              <TooltipContent showArrow={false}>Increase molecular editor scale</TooltipContent>
             </Tooltip>
           </div>
           <Tooltip>
@@ -1676,7 +1676,7 @@ function isCollectionAppendTarget(document: ShellViewState["documents"][number])
 async function ketcherCollectionRecord(ketcher: KetcherEditorApi, molfile: string, family: CollectionFamily) {
   if (family === "sdf") {
     return {
-      title: "ketcher-sketch.sdf",
+      title: "molecule.sdf",
       extension: "sdf" as const,
       text: molfileToSdf(molfile),
     };
@@ -1686,18 +1686,18 @@ async function ketcherCollectionRecord(ketcher: KetcherEditorApi, molfile: strin
   if (!smiles) throw new Error("The molecular editor did not return SMILES for this sketch.");
   if (family === "smiles") {
     return {
-      title: "ketcher-sketch.smi",
+      title: "molecule.smi",
       extension: "smi" as const,
-      text: `${smiles} Ketcher sketch\n`,
+      text: `${smiles} Molecule sketch\n`,
     };
   }
 
   const separator = family === "tsv" ? "\t" : ",";
   const extension = family === "tsv" ? ("tsv" as const) : ("csv" as const);
   return {
-    title: `ketcher-sketch.${extension}`,
+    title: `molecule.${extension}`,
     extension,
-    text: `smiles${separator}name\n${escapeDelimitedCell(smiles, separator)}${separator}Ketcher sketch\n`,
+    text: `smiles${separator}name\n${escapeDelimitedCell(smiles, separator)}${separator}Molecule sketch\n`,
   };
 }
 
