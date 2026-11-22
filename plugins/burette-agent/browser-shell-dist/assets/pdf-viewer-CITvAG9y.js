@@ -1,1 +1,0 @@
-import{a as e}from"./document-page-BVILcFii.js";export{e as PdfResourceContent};

@@ -104,13 +104,26 @@ export function prepareWorkspacePreview(html) {
   const doc = new DOMParser().parseFromString(html, 'text/html');
   // The offline loader restores styles before viewer-shell.js can run. Guard
   // the very first paint, using the shared viewer's existing reveal lifecycle.
-  doc.documentElement.classList.add('buret-viewer-booting');
-  const bootStyle = doc.createElement('style');
-  bootStyle.textContent = 'html.buret-viewer-booting,html.buret-viewer-booting body{background:transparent!important;color-scheme:normal}html.buret-viewer-booting body{opacity:0!important}';
-  doc.head.appendChild(bootStyle);
   const config = doc.getElementById('burette-runtime-config');
-  if (config) {
-    config.textContent = JSON.stringify({ ...JSON.parse(config.textContent), autoFocusStructure: true, defaultToolbarCollapsed: true, hostedMcpWidgetBootstrap: true }).replaceAll('<', '\\u003c');
+  const parsedConfig = config ? JSON.parse(config.textContent) : null;
+  const hostTheme = (typeof document !== 'undefined' && (document.documentElement?.dataset?.theme === 'dark' || document.documentElement?.dataset?.theme === 'light'))
+    ? document.documentElement.dataset.theme
+    : (typeof window !== 'undefined' && (window.BuretteMcpWorkspace?.theme === 'dark' || window.BuretteMcpWorkspace?.theme === 'light'))
+      ? window.BuretteMcpWorkspace.theme
+      : (parsedConfig?.theme === 'dark' || parsedConfig?.theme === 'light')
+        ? parsedConfig.theme
+        : (typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+          ? 'dark'
+          : null;
+  doc.documentElement.classList.add('buret-viewer-booting');
+  if (hostTheme) doc.documentElement.setAttribute('data-buret-boot-color-scheme', hostTheme);
+  const bootStyle = doc.createElement('style');
+  bootStyle.textContent = hostTheme
+    ? `html.buret-viewer-booting,html.buret-viewer-booting body{background:transparent!important;color-scheme:${hostTheme}}html.buret-viewer-booting body{opacity:0!important}`
+    : 'html.buret-viewer-booting,html.buret-viewer-booting body{background:transparent!important}html.buret-viewer-booting body{opacity:0!important}';
+  doc.head.appendChild(bootStyle);
+  if (config && parsedConfig) {
+    config.textContent = JSON.stringify({ ...parsedConfig, autoFocusStructure: true, defaultToolbarCollapsed: true, hostedMcpWidgetBootstrap: true }).replaceAll('<', '\\u003c');
   }
   doc.querySelectorAll('base').forEach(element => element.remove());
   for (const script of doc.querySelectorAll('script')) {

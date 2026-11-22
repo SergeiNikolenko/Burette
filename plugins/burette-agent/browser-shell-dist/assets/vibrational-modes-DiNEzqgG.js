@@ -1,0 +1,1 @@
+function e(e){return e?.filter(e=>Math.abs(e.frequencyCm1)>=1)??[]}function t(e){return e.frequencyCm1<0?`${Math.abs(e.frequencyCm1).toFixed(1)}i`:e.frequencyCm1.toFixed(1)}export{e as n,t};

@@ -8,9 +8,33 @@ The preview engines and MolViewSpec authoring schema are built from the immutabl
 
 This project follows the same broad product idea as QuickLookProtein: a host macOS app that packages a Quick Look extension and renders protein/3D structure files in a WebKit view. No QuickLookProtein source files are vendored here.
 
-## xyzrender
+## xyzrender and the bundled Python runtime
 
-Burette can call a user-installed `xyzrender` executable from the standalone app and Quick Look previews. The `xyzrender` Python package is MIT-licensed by Alister S. Goodfellow and contributors. `xyzrender` itself is not bundled with Burette.
+The app bundles a locked Python runtime (`config/xyzrender/requirements.txt`)
+in `Contents/Resources/xyzrender-python` and `xyzrender-runtime`. It carries
+xyzrender 0.3.9+burette.1 (MIT, Alister S. Goodfellow and contributors), RDKit
+(BSD-3-Clause), NumPy and SciPy (BSD-3-Clause), and gemmi 0.7.5 (MPL-2.0,
+Global Phasing Ltd) for ligand interaction diagrams. Each package keeps the
+license files from its wheel in the runtime's `site-packages`; gemmi's source
+is available at https://github.com/project-gemmi/gemmi. Burette can also call
+a user-installed `xyzrender` executable instead.
+
+## Ligand interaction diagram page
+
+`apps/desktop/public/interaction-diagram/vendor/` ships three libraries beside
+their licenses: InteractionDrawer (rareylab/InteractionDrawer, revision
+`59cf647`, BSD-3-Clause, Copyright (c) 2023 Konrad Diedrich, Matthias Rarey),
+minified with esbuild with its license comments kept; d3 7.9.0 (ISC, Copyright
+2010-2023 Mike Bostock); and Fraction.js 4.3.7 (MIT, Copyright (c) 2023 Robert
+Eisele).
+
+## OpenChemLib
+
+Burette bundles OpenChemLib from the `openchemlib` package for molecular
+processing and the fallback 2D preview. It is BSD-3-Clause licensed,
+copyright (c) 2015-2017, cheminfo. The package's complete license is copied
+to `PreviewExtension/Web/openchemlib/LICENSE` and ships beside the browser
+runtime.
 
 ## RDKit
 
@@ -23,6 +47,10 @@ is BSD-3-Clause licensed by Rational Discovery LLC, Greg Landrum, Julie
 Penzotti, and other contributors. The authoritative license text copied from
 that revision is stored at `compute/rdkit-conformer/RDKIT_LICENSE.txt` and must
 ship with the extractor binary.
+
+The browser also calls RDKit's UFF force field and Gasteiger-Marsili partial
+charges through that pinned extractor. The public APIs retain explicit atom
+order and refuse missing force-field or charge parameters.
 
 ## mlxmolkit and native GPU Compute Layer provenance
 
@@ -162,3 +190,219 @@ from OpenMOPAC correction behavior through the pinned
 Apache-2.0 and mlxmolkit's MIT attribution apply. The generated compact native
 table and production PM6-D3H4 SCF composition are parity-gated on CPU and Metal;
 the upstream NPZ files remain development-time source assets only.
+
+## Avogadro FIRE2 / ABC-FIRE integrator
+
+The browser optimizer in `apps/desktop/src/lib/molecular-workbench/minimizer.ts`
+adapts the FIRE2/ABC-FIRE integration from OpenChemistry/avogadrolibs,
+`avogadro/calc/energyoptimizer.cpp`, revision
+`f5aea255b15d24f658a18d258e56357fa2719646`.
+Copyright (c) 2011-2020, Kitware, Inc. BSD-3-Clause; the full notice and license
+are retained in `docs/third-party/avogadro-LICENSE` and shipped in
+`apps/desktop/public/third-party-licenses/avogadro-LICENSE`.
+
+## Avogadro coordinate block and Cartesian coordinate editor
+
+`apps/desktop/src/lib/molecular-workbench/coordinate-block.ts` adapts the
+coordinate-block format, the field widths and precisions, the ragged and padded
+Z-matrix field rules, the editor presets, the element names and the empty-format
+detection from OpenChemistry/avogadrolibs revision
+`064eeb4706877ffed8ddc4b037489ed3748b0547`
+(`avogadro/core/coordinateblockgenerator.cpp`,
+`avogadro/qtplugins/coordinateeditor/coordinateeditordialog.cpp`,
+`avogadro/core/elementdata.h`). Copyright (c) 2011-2020, Kitware, Inc.
+BSD-3-Clause; the license is retained in `docs/third-party/avogadro-LICENSE` and
+shipped in `apps/desktop/public/third-party-licenses/avogadro-LICENSE`. The
+program presets reproduce the coordinate specifications of the Avogadro input
+generators, OpenChemistry/avogenerators revision
+`965ea6302b930cfc34b0b2deefdab5737bfe15c0`, Copyright (c) 2011-2018, Kitware,
+Inc., BSD-3-Clause, retained in `docs/third-party/avogenerators-LICENSE` and
+`apps/desktop/public/third-party-licenses/avogenerators-LICENSE`.
+
+## Avogadro file-format and input-generator plugin protocol
+
+`apps/desktop/src/lib/extensions/avogadro-input-generators.ts` adapts the
+keyword replacement of `InterfaceScript::replaceKeywords` (the `Coordinates`
+choice and the removal of the unused keyword's line) from
+OpenChemistry/avogadrolibs revision `cb0e94852889da9f7288bd1e58241e69990935a7`
+(`avogadro/qtgui/interfacescript.cpp`), BSD-3-Clause as above. The test fixtures
+`tests/fixtures/avogadro/avogadro-generators-965ea630.pyproject.toml`,
+`generators-gaussian-options.json`, `generators-orca-options.toml` and the
+recorded `generators-*.stdout.json` answers come from OpenChemistry/avogenerators
+revision `965ea6302b930cfc34b0b2deefdab5737bfe15c0` (BSD-3-Clause, license as
+above). `avogadro-cclib-cf5f13ba.pyproject.toml` and the recorded
+`cclib-read-water-mp2.stdout.cjson` come from OpenChemistry/avogadro-cclib
+revision `cf5f13ba091d0b46f1f243d579f71facbd572e90`, Copyright (c) 2021, Open
+Chemistry, BSD-3-Clause. No plugin code is bundled; users install the packages.
+
+Open Babel is used only as an external test oracle by
+`tests/support/regenerate-coordinate-block-oracles.py`; its GPL code is not
+bundled or adapted. The committed files under `tests/fixtures/coordinate-block/`
+are its outputs for the existing RDKit test conformers.
+
+## Compressed file codecs
+
+The browser reads and writes gzip, XZ and Zstandard files with npm packages, loaded
+only in the compression worker (`apps/desktop/src/lib/compressed-files/`):
+
+- `fflate` 0.8.3, MIT, Copyright (c) Arjun Barrett: gzip reading and writing.
+- `xz-decompress` 0.2.3, MIT, Copyright (c) Tim Perry and Steve Sanderson
+  (xzwasm), embedding XZ Embedded by Lasse Collin and Igor Pavlov (public
+  domain) and walloc (MIT, Igalia, S.L.).
+- `node-liblzma` 5.1.3, LGPL-3.0, Copyright (c) Olivier Orabona: XZ
+  writing through the explicit WebAssembly entry and liblzma. The unmodified
+  package source and its license are available at
+  <https://github.com/oorabona/node-liblzma/tree/v5.1.3>.
+- `@hpcc-js/wasm-zstd` 1.17.0, Apache-2.0, Copyright (c) HPCC Systems,
+  embedding the Zstandard reference library (BSD-3-Clause, Copyright (c) Meta
+  Platforms, Inc. and affiliates) and `fzstd` (MIT, Arjun Barrett) to unpack it.
+
+The license and notice texts are retained in
+`apps/desktop/public/third-party-licenses/`, including the embedded walloc,
+liblzma, Zstandard and fzstd components. Vite copies this directory into the
+desktop, agent-shell plugin and hosted shell outputs; the native bundle also
+copies it as the `third-party-licenses` resource.
+
+## libmsym and spglib symmetry engines
+
+The browser symmetry engines in
+`apps/desktop/src/lib/molecular-workbench/symmetry/` are standalone WebAssembly
+builds produced by `compute/symmetry-wasm/build-wasm.sh` from pinned sources:
+
+- `burette-msym.wasm`: libmsym (mcodev31/libmsym), commit
+  `85e47232376a8e735c2a7b5283f40b59b3953db1`, MIT, Copyright (c) 2015 Marcus
+  Johansson. License text: `compute/symmetry-wasm/LIBMSYM_LICENSE.txt`.
+- `burette-niggli.wasm`: `src/niggli.c` from spglib v2.8.0, commit
+  `3ebd8ac3318793932baeee90b44f453a7c35b5b4`, BSD-3-Clause, Copyright (c) 2024,
+  Spglib team. License text: `compute/symmetry-wasm/SPGLIB_LICENSE.txt`.
+
+The optional normal, loose and very-loose point-group tolerance presets copy
+the libmsym threshold values from OpenChemistry/avogadrolibs
+`avogadro/qtplugins/symmetry/symmetrywidget.cpp`, revision
+`f5aea255b15d24f658a18d258e56357fa2719646`, BSD-3-Clause; the notice is in
+`docs/third-party/avogadro-LICENSE`.
+
+## moyo crystal symmetry
+
+Space-group analysis and conventional/primitive standardization of crystal cells
+in the browser use `@spglib/moyo-wasm` 0.21.0 (spglib/moyo, tag `v0.21.0`),
+MIT OR Apache-2.0 (used under MIT), Copyright (c) 2023 Kohei Shinohara. The
+published WebAssembly module runs only in the crystal worker
+(`apps/desktop/src/lib/workbench/crystal-worker.ts`); the MIT text is
+`apps/desktop/public/third-party-licenses/moyo-LICENSE-MIT`.
+
+## Gemmi powder-diffraction engine
+
+`apps/desktop/src/lib/molecular-workbench/xrd/burette-xrd.wasm` is a standalone
+WebAssembly build produced by `compute/xrd-wasm/build-wasm.sh` from Gemmi
+(project-gemmi/gemmi) v0.7.5, commit `5cc1c23c6007e0e6cbd69289c6f7c0bff50e943e`,
+Mozilla Public License 2.0, Copyright Global Phasing Ltd. It is a separate
+module loaded only by the diffraction worker. The unmodified Gemmi headers and
+`src/symmetry.cpp` listed in `compute/xrd-wasm/sources.sha256` are compiled with
+the adapter `compute/xrd-wasm/burette_xrd.cpp`; their source is available at
+https://github.com/project-gemmi/gemmi at that commit. License text:
+`compute/xrd-wasm/GEMMI_LICENSE.txt` (also shipped as
+`third-party-licenses/gemmi-LICENSE`). The X-ray form-factor coefficients come
+from International Tables for Crystallography Vol. C (1992) as tabulated in
+Gemmi's `it92.hpp`.
+
+The test-only reference `tests/fixtures/xrd/pymatgen-reference.json` and the
+symmetrized CIFs beside it were generated with pymatgen 2026.10.24 (MIT) by
+`tests/fixtures/xrd/generate-reference.py`; no pymatgen code is bundled.
+
+## OpenChemistry peptide geometry and residue templates
+
+`peptide-geometry.ts` adapts peptide assembly from OpenChemistry/avogadrolibs
+`d250eb3c62a61470b1e0cdf205dcfe26b06f991f`; `peptide-residues.json` mechanically
+extracts its residue bond dictionary and the amino-acid internal coordinates from
+OpenChemistry/fragments `7d842f435aec4729a308b23ad7f9501bdd44aa02`. Both are
+BSD-3-Clause. The existing Avogadro notice is in
+`docs/third-party/avogadro-LICENSE`; the fragment copyright (2022 Open Chemistry)
+and full license are in `docs/third-party/fragments-LICENSE`. Both licenses are
+also included in `apps/desktop/public/third-party-licenses/`. Source identities and
+regeneration instructions are in `config/peptide-residue-sources.json` and
+`docs/peptide-geometry.md`.
+
+## OpenChemistry functional-group fragments
+
+`fragment-library.json` mechanically extracts the 166 functional groups under
+`groups/` of OpenChemistry/fragments `7d842f435aec4729a308b23ad7f9501bdd44aa02`
+(BSD-3-Clause, Copyright 2022 Open Chemistry): their Cartesian coordinates,
+bond orders, formal charges and dummy attachment atoms. The same fragment
+license applies; per-file hashes are pinned in `config/fragment-library-sources.json`
+and `scripts/generate-fragment-library.mjs` regenerates or checks the extract.
+`tests/fixtures/fragments/groups.smi` concatenates the upstream `groups.smi`
+reference lists of that revision under the same license.
+
+## OpenChemistry ligand templates
+
+`metal-ligands.json` copies the Cartesian coordinates and bonds of 75 ligand files
+under `ligands/` of OpenChemistry/fragments
+`7d842f435aec4729a308b23ad7f9501bdd44aa02` (BSD-3-Clause, Copyright 2022 Open
+Chemistry; `docs/third-party/fragments-LICENSE`), with each file's path and SHA-256;
+formal charges are reassigned for dative coordination, hydroxido is aqua with one
+H removed, and the corrections listed in `docs/metal-complex-builder.md` are applied. `scripts/generate-metal-ligands.ts` regenerates the extract. The metal
+complex builder follows the OpenChemistry/avogadrolibs Template tool
+(`avogadro/qtplugins/templatetool`, `064eeb4706877ffed8ddc4b037489ed3748b0547`,
+`docs/third-party/avogadro-LICENSE`) as an interface reference; its center templates
+are used only as test references.
+
+## Chemical JSON stereochemistry test graphs
+
+`tests/fixtures/cjson/L-alanine.cjson` and `D-alanine.cjson` retain the graph and
+Cartesian coordinates from OpenChemistry/avogadrodata commit
+`67ab090bb4cc1ec9417d420f8df1f316c6a214f3`, under its molecules-directory
+BSD-3-Clause license (Copyright 2016 Geoffrey Hutchison, University of Pittsburgh).
+The exact license and source hashes are retained beside these test-only extracts.
+
+## Open-Source PyMOL nucleotide templates and Z-DNA data
+
+The DNA/RNA builder (`apps/desktop/src/lib/molecular-workbench/nucleic-templates.ts`)
+uses the heavy-atom coordinates of the `fnab` nucleotide fragments shipped with
+Open-Source PyMOL 3.1 (`data/chempy/fragments/{atp,ctp,gtp,ttp}{A,B}.pkl` and
+`utpA.pkl`, identical in the `pymol-open-source-whl` 3.1.0.4 wheel), which PyMOL
+credits to the 3DNA fiber models (Lu & Olson, Nucleic Acids Res. 32, W667, 2004).
+Open-Source PyMOL is Copyright (C) Schrodinger, LLC, under its BSD-like permission
+notice; the full text is the `LICENSE` file at the root of
+<https://github.com/schrodinger/pymol-open-source> (shipped as
+`pymol_open_source_whl-3.1.0.4.dist-info/licenses/LICENSE`) and is retained in
+`docs/third-party/pymol-LICENSE` and `apps/desktop/public/third-party-licenses/pymol-LICENSE`.
+PyMOL is a trademark of Schrodinger, LLC.
+
+The Z-DNA backbone is derived from PDB entry 4OCB (Z-DNA d(CGCGCGCGCGCG)2 at 0.75 A),
+wwPDB data under CC0 1.0. Atom names and bonds follow the wwPDB Chemical Component
+Dictionary (CC0). Test-only references in `tests/fixtures/nucleic/` (wwPDB entries
+1BNA, 1RNA, 1DCG, 2F8W and CCD components, CC0; PyMOL `fnab` outputs; MDAnalysis and
+RDKit results) are described in that directory's README.
+
+## cclib quantum-chemistry test outputs
+
+Files named `cclib-*` under `tests/fixtures/quantum/{nwchem,psi4,xtb,gamess,qchem,molpro,gaussian}/` are
+byte-identical copies of program outputs from the `data/` directory of
+[cclib](https://github.com/cclib/cclib) commit
+`0c6e08e0a0d04b308201666793030ef3b77b2973`, under cclib's BSD-3-Clause license
+(Copyright the cclib development team); the two `cclib-C_bigbasis-trimmed.out` files drop
+printed integral, density and population matrices as documented beside them. The license is retained as
+`tests/fixtures/quantum/cclib-LICENSE.txt`. cclib itself is used only as an
+external test oracle (`tests/fixtures/quantum/cclib-reference.py`); no cclib code
+is bundled; PySCF (Apache-2.0) is likewise only an external oracle. The other outputs in those directories were generated for Burette with
+NWChem 7.3.0, Psi4 1.11 and xtb 6.7.1; the programs are not bundled. The QCSchema
+files under `tests/fixtures/quantum/qcschema/` were generated for Burette with QCEngine,
+QCElemental, Psi4 and optking (BSD-3-Clause), none of which is bundled.
+
+## ORCA property-file test inputs
+
+The ORCA property files under `tests/fixtures/quantum/orca-property/` are byte-identical copies
+from MIT-licensed repositories: kmilozeta27/MAA-quantum-chemical-protocol (Copyright (c) 2026
+kmilozeta), Spin-Chemistry-Labs/radicalpy (Copyright (c) 2022 Lewis Antill),
+arpank-2380/PyEPFD (Copyright (c) 2023 Arpan Kundu) and
+shabab-kabir/Density_Functional_Theory_Research (Copyright (c) 2023 Shabab Kabir). Their
+licenses and source commits are retained beside the files. They are test inputs only. The ORCA
+Molden files under `tests/fixtures/quantum/molden/` come from the last repository under the same
+license, retained there.
+
+## JAMA eigenvalue routines
+
+`apps/desktop/src/lib/molecular-workbench/normal-modes.ts` follows the Householder `tred2` and
+implicit-QL `tql2` routines of EISPACK as published in JAMA (A Java Matrix Package, MathWorks
+and NIST), which its authors released into the public domain.

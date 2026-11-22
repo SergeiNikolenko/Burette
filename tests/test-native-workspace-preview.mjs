@@ -16,6 +16,28 @@ test('native preview preserves runtime configuration and safely defaults control
   assert.deepEqual(JSON.parse(doc.getElementById('burette-runtime-config').textContent), { ...config, autoFocusStructure: true, defaultToolbarCollapsed: true, hostedMcpWidgetBootstrap: true });
   assert.equal(doc.querySelector('img'), null);
   assert.equal(doc.querySelector('[data-burette-script="viewer.js"]').type, 'application/burette-pending');
+  assert.ok(!html.includes('color-scheme:normal'), 'dark preview boot must never force light normal color-scheme');
+  assert.ok(html.includes('color-scheme:dark'), 'dark preview boot must preserve dark color-scheme');
+  await window.happyDOM.close();
+});
+
+test('native frame loader omits base element and propagates dark host theme', async () => {
+  const window = new Window();
+  window.document.documentElement.dataset.theme = 'dark';
+  const source = await readFile(new URL('../plugins/burette-agent/ui/native-workspace-frame.mjs', import.meta.url), 'utf8');
+  const prepareFrame = runInNewContext(source.replace(/^import .*\n/gm, '').replace('export async function', 'async function') + '\nprepareWorkspaceFrame', {
+    DOMParser: window.DOMParser, document: window.document, window,
+  });
+  const assets = {
+    response: async () => ({ text: async () => '<html lang="en"><head><script type="module" src="./assets/index.js"></script></head><body></body></html>' }),
+    moduleBase: (path) => `https://burette.invalid/${path}`,
+    resolve: (href) => href.replace(/^\.\//, 'shell/molecular-frame/'),
+    asset: async (p) => `blob:${p}`,
+  };
+  const html = await prepareFrame('shell/molecular-frame/index.html', assets, 'https://sandbox.example');
+  assert.ok(!/<base\b/i.test(html), 'CSP base-uri self forbids <base> elements in child frames');
+  assert.ok(html.includes('class="dark"'), 'dark host theme must mark child root dark before first paint');
+  assert.ok(html.includes('color-scheme:dark'), 'dark host theme must set dark color-scheme on child frame');
   await window.happyDOM.close();
 });
 

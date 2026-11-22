@@ -72,7 +72,8 @@ export async function recentMcpDocuments(limit = 8) {
 // The CLI owns this transport. MCP only forwards bounded operations to it.
 export async function runMcpAppOperation(input, { assetRoot } = {}) {
   if (input.operation === 'open') {
-    if (input.view != null && !['auto', 'ketcher', 'docking', 'xyzrender'].includes(input.view)) throw new Error('Unknown native workspace view.');
+    const normalizedView = input.view === 'editor' ? 'ketcher' : input.view;
+    if (normalizedView != null && !['auto', 'ketcher', 'docking', 'xyzrender'].includes(normalizedView)) throw new Error('Unknown native workspace view.');
     if (input.displayMode != null && !['inline', 'fullscreen'].includes(input.displayMode)) throw new Error('Display mode must be inline or fullscreen.');
     if (input.additionalFiles != null && (!Array.isArray(input.additionalFiles) || input.additionalFiles.length > 7)) throw new Error('A native workspace supports at most 8 files.');
     if (input.entrypoint != null && !['file', 'thread', 'global'].includes(input.entrypoint)) throw new Error('Unknown host entrypoint.');
@@ -83,11 +84,11 @@ export async function runMcpAppOperation(input, { assetRoot } = {}) {
         await writeFile(sourceFile, input.structure.content, { mode: 0o600, flag: 'wx' });
       }
       const { snapshots } = input.empty ? { snapshots: [] } : await snapshotMcpDocuments([sourceFile, ...(input.additionalFiles || [])], input.autonomous ? false : input.workspace);
-      if (input.view === 'docking' && snapshots.length < 2) throw new Error('Docking requires a receptor and at least one ligand file.');
-      if (input.view === 'ketcher' && !['mol', 'sdf', 'sd', 'smi', 'smiles', 'ket', 'rxn'].includes(snapshots[0].document.format)) throw new Error('Ketcher requires MOL, SDF, SMILES, KET or RXN input.');
+      if (normalizedView === 'docking' && snapshots.length < 2) throw new Error('Docking requires a receptor and at least one ligand file.');
+      if (normalizedView === 'ketcher' && snapshots.length > 0 && !['mol', 'sdf', 'sd', 'smi', 'smiles', 'ket', 'rxn'].includes(snapshots[0].document.format)) throw new Error('The molecular editor requires MOL, SDF, SMILES, KET or RXN input.');
       await mkdir(join(sessionDir, 'actions'), { mode: 0o700 });
       const { label, format, byteCount, sha256 } = snapshots[0]?.document ?? { label: 'Burette', format: null, byteCount: 0, sha256: null };
-      const session = { apiVersion, sessionId, token: randomUUID(), label, format, byteCount, sha256, documents: snapshots.map(item => item.document), requestedDisplayMode: input.displayMode || 'inline', ...(input.workspace ? { workspace: true, view: input.view || 'auto' } : {}), ...(input.entrypoint ? { entrypoint: input.entrypoint } : {}) };
+      const session = { apiVersion, sessionId, token: randomUUID(), label, format, byteCount, sha256, documents: snapshots.map(item => item.document), requestedDisplayMode: input.displayMode || 'inline', ...(input.workspace ? { workspace: true, view: normalizedView || 'auto' } : {}), ...(input.entrypoint ? { entrypoint: input.entrypoint } : {}) };
       // Snapshot once; publish the session only after all its sources and state.
       for (const [index, item] of snapshots.entries()) await writeFile(join(sessionDir, index === 0 ? 'source' : `source-${item.document.id}`), item.bytes, { mode: 0o600 });
       await writeJson(join(sessionDir, 'observe.json'), { ready: false, revision: 0, displayMode: 'inline' });

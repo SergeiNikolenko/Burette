@@ -1,6 +1,6 @@
 ---
 name: index
-description: "Primary router for Burette. Use when the plugin is at-mentioned or for molecular workspace work: opening structures, operating Mol* or Ketcher, reviewing SDF/property collections, trajectories, workflow result bundles, molecular reports, or Browser/Computer visual QA."
+description: "Primary router for Burette. Use when the plugin is at-mentioned or for molecular workspace work: opening structures, operating Mol* or the molecular editor, reviewing SDF/property collections, trajectories, workflow result bundles, molecular reports, or Browser/Computer visual QA."
 ---
 
 # Burette
@@ -29,7 +29,7 @@ These operations use a durable molecular session and do not require a mounted
 panel. Prefer this path for an unattended task, including requests that combine
 analysis with a final illustration. Do not stop at `awaiting_mount` or ask the
 user to open the chat to run these operations. A live panel remains necessary
-for interactive Ketcher edits and direct manipulation of its current selection.
+for interactive molecular editor edits and direct manipulation of its current selection.
 
 ## Default: open the native Burette plugin
 
@@ -81,7 +81,7 @@ the card appears when the chat is opened. Do not claim the molecule is shown,
 call it a failure, poll repeatedly, or offer alternative viewers. Do not switch
 to the standalone desktop app, issue commands to an unmounted editor, or
 request fullscreen to repair mounting.
-After ready, verify the Ketcher exported structure matches the requested
+After ready, verify the molecular editor exported structure matches the requested
 molecule before reporting a successful drawing.
 
 When the native card is the chosen surface, this section is the complete
@@ -99,7 +99,7 @@ opening workflow:
    Ask the user to bring its existing pane back. Use `burette.control_inline_viewer` only for actions the user requested.
    A completed acknowledgement does not need another identical control call.
 
-The native opener defaults to the side pane except Ketcher, which stays inline
+Structures open in the side pane via `burette.open_viewer`, while the molecular editor opens inline in the main chat via `burette.open_molecular_editor`
 unless expansion is explicitly requested. Use `set_display_mode` with
 `mode: "inline"` only when the user wants the chat card. To arrange the active
 workspace use `set_workspace_panel` with `area: "right" | "bottom"`, `open: true`
@@ -188,7 +188,7 @@ The interactive workspace omits Compute/Tools menus, Chemical Space, folding
 and Jobs panels. Bounded geometric analysis is available through the autonomous
 tools described above. The project sidebar
 is hidden; the inline widget hides the bottom dock and its resize handle, while
-the side pane retains it. The right dock retains viewing tools and Ketcher uses right Text.
+the side pane retains it. The right dock retains viewing tools and the molecular editor uses right Text.
 
 For visual self-checks, call `control_inline_viewer` with
 `action: { type: "capture_scene" }`. The tool returns actual PNG image blocks,
@@ -234,7 +234,7 @@ For Browser work, distinguish two local surfaces:
   `http://127.0.0.1:<fresh-port>/?devFiles=<encoded absolute path>&agentLayout=focus`.
   The focus layout starts with the inspector and output panels closed so the
   molecular canvas has the available space. Use it when the user wants the
-  shared app UI for structures, tabs, Ketcher, inspection, and import/export.
+  shared app UI for structures, tabs, molecular editor, inspection, and import/export.
   Use `manage_burette_tabs` to list or switch tabs. UI selection is available
   in the active document's bounded `observe.scene.selection`; deselection and
   switching to another surface must not carry the previous selection forward.
@@ -303,7 +303,7 @@ A Burette workflow is complete only when:
   link;
 - `observe.activeDocument.ready` is true and the Mol* `viewerAgent` reports
   available/ready when the active renderer is Mol*;
-- when the active surface is Ketcher, `activeSurface.ready` is true and
+- when the active surface is the molecular editor, `activeSurface.ready` is true and
   `chemicalEditor.phase` is `ready`;
 - Browser or Computer visual QA is run when the user asked to see the UI or the
   change affects visible layout;

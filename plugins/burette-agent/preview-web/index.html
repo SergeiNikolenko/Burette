@@ -6,11 +6,27 @@
   <title>Burette Preview</title>
   <!-- Guard the first paint before external styles and viewer scripts load. -->
   <style>
-    html.buret-viewer-booting, html.buret-viewer-booting body { background: transparent !important; color-scheme: normal; }
+    html { color-scheme: light dark; }
+    html.buret-viewer-booting, html.buret-viewer-booting body { background: transparent !important; }
     html.buret-viewer-booting body { opacity: 0 !important; }
   </style>
   <script>
     (function () {
+      try {
+        var frame = window.frameElement;
+        var scheme = frame && getComputedStyle(frame).colorScheme;
+        if (scheme !== 'dark' && scheme !== 'light') {
+          var el = frame && frame.closest && frame.closest('[data-effective-theme]');
+          var attr = (el && el.getAttribute('data-effective-theme'))
+            || (window.parent && window.parent.document && window.parent.document.documentElement
+              && (window.parent.document.documentElement.dataset.hostTheme || window.parent.document.documentElement.dataset.theme));
+          if (attr === 'dark' || attr === 'light') scheme = attr;
+        }
+        if (scheme === 'dark' || scheme === 'light') {
+          document.documentElement.style.colorScheme = scheme;
+          document.documentElement.style.setProperty('--buret-boot-color-scheme', scheme);
+        }
+      } catch (_) {}
       window.setTimeout(function () { document.documentElement.classList.remove('buret-viewer-booting'); }, 8000);
       function post(type, message) {
         try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burette.postMessage({ type: type, message: message || '' }); } catch (_) {}
@@ -54,6 +70,7 @@
   <script src="./sequence-panel.js"></script>
   <script src="./native-viewer-menus.js"></script>
   <script src="./scene-file-actions.js"></script>
+  <script src="./geometry-preview.js"></script>
   <script src="./svg-sanitizer.js"></script>
   <script src="./viewer.js"></script>
 </body>

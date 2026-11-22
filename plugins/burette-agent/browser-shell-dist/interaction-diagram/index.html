@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Interactions</title>
+<script src="boot.js"></script>
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="binding-ui.css">
+</head>
+<body>
+<div class="app">
+  <header class="toolbar">
+    <form class="source" id="source">
+      <select id="ligand" class="field" aria-label="Ligand"></select>
+      <select id="style" class="field" aria-label="Diagram representation"></select>
+    </form>
+    <div class="sep"></div>
+    <div class="group" role="group" aria-label="Tool">
+      <button data-tool="movement" aria-pressed="true" title="Drag residues and the ligand">Move</button>
+      <button data-tool="rotation" aria-pressed="false" title="Rotate a structure">Rotate</button>
+      <button data-tool="clickSelect" aria-pressed="false" title="Select atoms and contacts">Select</button>
+    </div>
+    <button class="icon" id="undo" title="Undo" aria-label="Undo"><svg class="i" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+    <button class="icon" id="redo" title="Redo" aria-label="Redo"><svg class="i" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
+    <button class="icon" id="fit" title="Fit to view" aria-label="Fit to view"><svg class="i" viewBox="0 0 24 24"><path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4"/></svg></button>
+    <button class="icon" id="reset" title="Reset layout" aria-label="Reset layout"><svg class="i" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></button>
+    <div class="spacer"></div>
+    <div class="menu">
+      <button id="view-btn" aria-haspopup="menu" aria-expanded="false">View<svg class="i chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+      <div class="menu-list" id="view-menu" role="menu">
+        <label class="menu-check"><input type="checkbox" data-layer="contour" checked>Pocket contour</label>
+        <label class="menu-check"><input type="checkbox" data-layer="exposure" checked>Ligand exposure</label>
+        <label class="menu-check"><input type="checkbox" data-layer="halos" checked>Residue exposure</label>
+        <label class="menu-check"><input type="checkbox" data-layer="context" checked>Pocket residues</label>
+        <label class="menu-check"><input type="checkbox" data-layer="waters" checked>Waters</label>
+        <label class="menu-check"><input type="checkbox" data-layer="chain" checked>Chain</label>
+        <label class="menu-check"><input type="checkbox" data-layer="legend" checked>Legend</label>
+      </div>
+    </div>
+    <button class="icon" id="theme" title="Theme" aria-label="Toggle theme"><svg class="i" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg></button>
+    <div class="menu">
+      <button id="export-btn" aria-haspopup="menu" aria-expanded="false">Export<svg class="i chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+      <div class="menu-list" id="export-menu" role="menu">
+        <button data-export="svg" role="menuitem">SVG</button>
+        <button data-export="png" role="menuitem">PNG</button>
+        <button data-export="json" role="menuitem">Scene JSON</button>
+        <button data-export="csv" role="menuitem">Contacts CSV</button>
+      </div>
+    </div>
+  </header>
+  <main class="main">
+    <section class="canvas" id="canvas">
+      <svg id="draw-area"></svg>
+      <div class="legend" id="legend"></div>
+      <div class="status" id="status" hidden></div>
+    </section>
+    <aside class="side">
+      <div class="inspector">
+        <div class="list" id="types"></div>
+        <div class="list contacts" id="contacts"></div>
+      </div>
+    </aside>
+  </main>
+</div>
+<script src="vendor/d3.min.js"></script>
+<script src="vendor/fraction.min.js"></script>
+<script src="vendor/interaction-drawer.min.js"></script>
+<script src="layout-labels.js"></script>
+<script src="layout-spatial.js"></script>
+<script src="layout-panels.js"></script>
+<script src="study-runtime.js"></script>
+<script src="app.js"></script>
+<script src="binding-edit.js"></script>
+<script src="binding-motion.js"></script>
+<script src="embed.js"></script>
+</body>
+</html>

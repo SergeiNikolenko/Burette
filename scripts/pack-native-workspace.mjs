@@ -116,7 +116,7 @@ export async function packNativeWorkspace({ shellRoot, runtimeRoot, outputRoot, 
     for (const resource of entry.resources) if (!manifest.assets[resource]) throw new Error(`Missing resource ${resource} for ${path}`);
   }
   const json = JSON.stringify(manifest);
-  if (Buffer.byteLength(json) > 192 * 1024) throw new Error('Workspace asset manifest exceeds 192 KiB.');
+  if (Buffer.byteLength(json) > 512 * 1024) throw new Error('Workspace asset manifest exceeds 512 KiB.');
   await writeFile(join(outputRoot, 'manifest.json'), json);
   return manifest;
 }

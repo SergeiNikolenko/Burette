@@ -1,0 +1,1 @@
+import{t as e}from"./worker-task-uCZzEDtO.js";function t(t,n={}){return!Array.isArray(t.ligands)||t.ligands.length>8?Promise.reject(Error(`Use at most 8 ligands.`)):e(()=>new Worker(new URL(new URL(`metal-complex-worker-DRYtL8s5.js`,import.meta.url).href,``+import.meta.url),{type:`module`}),t,n)}export{t};

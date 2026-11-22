@@ -116,6 +116,14 @@ try {
   const workspaceResource = await request('resources/read', { uri: workspaceTool._meta.ui.resourceUri });
   assert.match(workspaceResource.contents[0].text, /BuretteMcpWorkspace/u);
   assert.deepEqual(workspaceResource.contents[0]._meta.ui.csp.frameDomains, ['blob:']);
+  assert.equal(workspaceResource.contents[0]._meta['openai/ui'].preferredDisplayMode, 'fullscreen');
+  const editorTool = listed.tools.find(tool => tool.name === 'burette.open_molecular_editor');
+  assert.equal(editorTool._meta.ui.resourceUri, 'ui://burette/native-editor-v1.html');
+  const editorResource = await request('resources/read', { uri: editorTool._meta.ui.resourceUri });
+  assert.equal(editorResource.contents[0]._meta['openai/ui'].preferredDisplayMode, 'inline');
+  const blankEditor = await request('tools/call', { name: 'burette.open_molecular_editor', arguments: {} });
+  assert.equal(blankEditor.structuredContent.requestedDisplayMode, 'inline');
+  assert.equal(blankEditor.structuredContent.view, 'ketcher');
   const toolNames = listed.tools.map(tool => tool.name).sort();
   for (const required of [
     "burette.get_context",

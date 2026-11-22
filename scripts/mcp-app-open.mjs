@@ -22,16 +22,17 @@ export async function openMcpSession(root, input, create) {
   const key = input.openRequestId;
   if (key != null && (typeof key !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(key))) fail('INVALID_OPEN_REQUEST', 'openRequestId must be a UUID v4.');
   const structure = input.structure;
-  if (structure != null && (!input.workspace || input.view !== 'ketcher' || input.file != null || input.additionalFiles?.length
+  const effectiveView = input.view === 'editor' ? 'ketcher' : (input.view ?? 'auto');
+  if (structure != null && (!input.workspace || effectiveView !== 'ketcher' || input.file != null || input.additionalFiles?.length
     || !['smi', 'mol', 'sdf', 'ket'].includes(structure.format)
     || typeof structure.content !== 'string' || !structure.content.trim() || Buffer.byteLength(structure.content) > 65536)) {
-    fail('INVALID_OPEN_REQUEST', 'Provide either a file or a Ketcher structure (smi, mol, sdf, ket; nonempty, at most 64 KiB).');
+    fail('INVALID_OPEN_REQUEST', 'Provide either a file or a molecular editor structure (smi, mol, sdf, ket; nonempty, at most 64 KiB).');
   }
   // Host entrypoints (a thread tab or the sidebar app) open with no arguments,
   // so a workspace may start empty and receive files later.
   const empty = input.empty === true;
-  if (empty && (!input.workspace || input.file != null || structure != null || input.additionalFiles?.length || (input.view ?? 'auto') !== 'auto')) {
-    fail('INVALID_OPEN_REQUEST', 'An empty workspace takes no files, structure or view.');
+  if (empty && (!input.workspace || input.file != null || structure != null || input.additionalFiles?.length || !['auto', 'ketcher'].includes(effectiveView))) {
+    fail('INVALID_OPEN_REQUEST', 'An empty workspace takes no files, structure or unsupported view.');
   }
   const paths = structure == null && !empty ? [input.file, ...(input.additionalFiles || [])] : [];
   if (paths.some(path => typeof path !== 'string' || !path || path.length > 4096)) fail('INVALID_OPEN_REQUEST', 'Provide nonempty file paths of at most 4096 characters.');

@@ -27,12 +27,22 @@ export async function startNativeWorkspace(app, initialResult) {
     return alpha === 255 ? `#${[red, green, blue].map(value => value.toString(16).padStart(2, '0')).join('')}` : null;
   }
   function syncHostBackground(context = {}) {
-    const theme = context.theme || document.documentElement.dataset.theme || 'light';
+    const theme = resolveHostTheme(context.theme);
     const color = opaqueHex(context.styles?.variables?.['--color-background-primary']);
     if ((theme === 'light' || theme === 'dark') && color) backgrounds[theme] = color;
     document.documentElement.style.setProperty('--burette-host-background', backgrounds[theme] || backgrounds.light);
   }
-  document.documentElement.dataset.theme = app.getHostContext()?.theme || 'light';
+  function resolveHostTheme(candidate) {
+    if (candidate === 'light' || candidate === 'dark') return candidate;
+    const current = document.documentElement.dataset.theme;
+    if (current === 'light' || current === 'dark') return current;
+    return window.matchMedia?.('(prefers-color-scheme: dark)')?.matches ? 'dark' : 'light';
+  }
+  const initialTheme = resolveHostTheme(app.getHostContext()?.theme);
+  if (app.getHostContext()?.theme === 'light' || app.getHostContext()?.theme === 'dark') {
+    document.documentElement.dataset.theme = initialTheme;
+  }
+  document.documentElement.style.colorScheme = initialTheme;
   syncHostBackground(app.getHostContext());
   const placement = createWorkspacePlacement(app, status);
   let session, assets, transport, checkpoint;
@@ -168,9 +178,9 @@ export async function startNativeWorkspace(app, initialResult) {
     const context = selection?.atoms > 0 && state.activeDocument?.ready
       ? { ...createSelectionContext(selection, state.activeDocument.id, { kind: 'attachment', fileName: state.activeDocument.title }), presentation: { composerAttachmentLayout: 'card', composerLabel: `Burette · ${state.activeDocument.title}` } }
       : editor?.phase === 'ready' && editor.selectedAtomCount > 0
-        ? { content: [{ type: 'text', text: `Burette · Ketcher. ${editor.selectedAtomCount} selected atoms in the current sketch. Atom indexes: ${editor.selectedAtoms.join(', ')}${editor.selectionTruncated ? ' (bounded sample)' : ''}.` }],
+        ? { content: [{ type: 'text', text: `Burette · Molecular editor. ${editor.selectedAtomCount} selected atoms in the current sketch. Atom indexes: ${editor.selectedAtoms.join(', ')}${editor.selectionTruncated ? ' (bounded sample)' : ''}.` }],
           structuredContent: { burette: { chemicalEditor: { surfaceId: editor.surfaceId, structureRevision: editor.structureRevision, selectedAtoms: editor.selectedAtoms, selectedAtomCount: editor.selectedAtomCount, selectionTruncated: editor.selectionTruncated } } },
-          presentation: { composerAttachmentLayout: 'card', composerLabel: 'Burette · Ketcher selection' },
+          presentation: { composerAttachmentLayout: 'card', composerLabel: 'Burette · Molecular editor selection' },
         } : state.activeDocument?.ready && grid?.selectedCount > 0
           ? { content: [{ type: 'text', text: `Burette · ${state.activeDocument.title}. ${grid.selectedCount} selected collection rows. Source indexes (zero-based): ${grid.selectedSourceIndexes.join(', ')}${grid.selectionTruncated ? ' (bounded sample)' : ''}.` }],
             structuredContent: { burette: { collectionSelection: { documentId: state.activeDocument.id, ...grid } } },
@@ -224,8 +234,9 @@ export async function startNativeWorkspace(app, initialResult) {
       if (mounted.closed) { await lifetime.close(); return; }
       placement.update(app.getHostContext());
       // Apply the opener's requested placement once, never again on resize.
-      if (result.structuredContent?.requestedDisplayMode === 'fullscreen' && placement.mode !== 'fullscreen') {
-        await placement.set('fullscreen');
+      const requestedMode = result.structuredContent?.requestedDisplayMode;
+      if ((requestedMode === 'fullscreen' || requestedMode === 'inline') && placement.mode !== requestedMode) {
+        await placement.set(requestedMode);
       }
       if (lifetime.closed) return;
       const { manifest } = await exchange({ asset: { manifest: true } });
@@ -233,7 +244,7 @@ export async function startNativeWorkspace(app, initialResult) {
       assets = createWorkspaceAssets({ manifest, exchange, isClosed: () => lifetime.closed });
       checkpoint = await createWorkspaceCheckpoint({ exchange, sessionId: session.sessionId });
       const descriptor = { ...result.structuredContent, ...(checkpoint.restored ? { view: 'auto' } : {}), documents: mounted.documents || result.structuredContent.documents };
-      emptyWorkspace = descriptor.documents.length === 0;
+      emptyWorkspace = descriptor.documents.length === 0 && descriptor.view !== 'ketcher';
       const agent = createWorkspaceAgent({ displayMode: () => placement.mode });
       if (descriptor.view === 'xyzrender') agent.request(descriptor.documents.map(item => item.path), 'xyzrender');
       transport = createWorkspaceTransport({ descriptor, assets, exchange, isClosed: () => lifetime.closed, observe,
@@ -253,7 +264,7 @@ export async function startNativeWorkspace(app, initialResult) {
       window.BuretteMcpWorkspace = { ...assets, placement, sessionId: session.sessionId, get closed() { return lifetime.closed; },
         prepareFrame: path => prepareWorkspaceFrame(path, assets, window.origin),
         firstFrame(documentId) { if (!lifetime.closed) { paintedDocuments.add(documentId); reveal(); } },
-        theme: app.getHostContext()?.theme || 'light', backgrounds,
+        theme: resolveHostTheme(app.getHostContext()?.theme), backgrounds,
         initialPaths: !checkpoint.restored && ['auto', 'xyzrender'].includes(descriptor.view) ? descriptor.documents.map(item => item.path) : [],
         initialRenderer: descriptor.view === 'xyzrender' ? 'xyzrender-external' : undefined,
         restore: checkpoint.restored, storage: checkpoint.storage, authorizedPaths: descriptor.documents.map(item => item.path),
@@ -262,7 +273,9 @@ export async function startNativeWorkspace(app, initialResult) {
       window.fetch = transport.fetch;
       window.Worker = WorkspaceWorker;
       window.__BURETTE_WEB_ASSETS_BASE__ = '/__burette/runtime/';
-      document.documentElement.dataset.theme = app.getHostContext()?.theme || 'light';
+      const resolvedTheme = resolveHostTheme(app.getHostContext()?.theme);
+      document.documentElement.dataset.theme = resolvedTheme;
+      document.documentElement.style.colorScheme = resolvedTheme;
       for (const path of manifest.styles) {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
@@ -295,6 +308,7 @@ export async function startNativeWorkspace(app, initialResult) {
     }
     if (context.theme === 'light' || context.theme === 'dark') {
       document.documentElement.dataset.theme = context.theme;
+      document.documentElement.style.colorScheme = context.theme;
       if (window.BuretteMcpWorkspace) window.BuretteMcpWorkspace.theme = context.theme;
       window.dispatchEvent(new Event('burette-host-theme'));
     }

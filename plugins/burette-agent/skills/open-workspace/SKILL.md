@@ -14,7 +14,7 @@ To show a structure in Codex, call `burette.open_viewer` with `file` (local
 path), `pdbId` (the requested public PDB entry), or a bundled `example`.
 Use the native side pane and retain its `sessionId` for observation and control.
 A normal "show 1HTB" request does not need Browser setup, a localhost URL,
-or an "Open in Burette desktop" link. Ketcher drawings open inline by default.
+or an "Open in Burette desktop" link. Molecular editor drawings open inline in chat by default via `burette.open_molecular_editor`, while structures open in the side pane via `burette.open_viewer`.
 Use the Browser/desktop workflow below only when explicitly requested or when
 a native capability is unavailable and that limitation has been explained.
 Never switch surfaces merely because the native card is awaiting mount.
@@ -22,8 +22,8 @@ Never switch surfaces merely because the native card is awaiting mount.
 ## Native Codex card and compact inline viewer
 
 Use `burette.open_viewer` (it also accepts `pdbId`) for native cards of local structures, SDF/SMILES/CSV collections,
-Ketcher sketches, docking scenes and packaged MVSX Stories in the native Codex
-workspace. Ketcher defaults to inline chat; other views default to the side pane.
+molecular editor sketches, docking scenes and packaged MVSX Stories in the native Codex
+workspace. The molecular editor opens inline in the main chat; structures open in the side pane.
 Inline uses full chat width with content-adaptive height. Its shadcn
 button at the bottom right opens the side pane or returns to chat. Use
 `set_display_mode` with `fullscreen` only when the user requests right-side
@@ -31,7 +31,7 @@ placement; do not repeat that request on resize. Use `burette.open_inline_viewer
 only when the user wants a compact PDB/mmCIF chat card. The native opener runs
 the full shared workspace; the compact resource is separate. Both use the same
 session and control tools without a localhost server or upload, but the compact
-viewer is single-document: `open_files`, tabs, Ketcher, Story, docking, panels
+viewer is single-document: `open_files`, tabs, molecular editor, Story, docking, panels
 and xyzrender are rejected there. Use `burette.open_viewer` for those.
 Pass up to seven `additionalFiles` to `open_viewer` (16 MiB total). Switching,
 closing and reordering stay in that workspace. Inspect
@@ -44,7 +44,7 @@ Use `view: "ketcher"` to seed from the first MOL/SDF/SMILES/KET file, or
 `view: "docking"` with `file` as receptor and `additionalFiles` as ligands.
 For native follow-up controls, send `control_inline_viewer.action` with
 `type: "control_ketcher"`, observed `surfaceId`/`expectedRevision`
-(`chemicalEditor.surfaceId`/`structureRevision`), and the Ketcher command; all
+(`chemicalEditor.surfaceId`/`structureRevision`), and the molecular editor command; all
 fields are top-level and `actionId` is optional. Replace the drawing with
 `{type:"control_ketcher",command:"set_structure",surfaceId,expectedRevision,format:"smiles",content:"CC(=O)Oc1ccccc1C(=O)O"}`;
 its `result.snapshot.structure.smiles` is the new SMILES. To read it back,
@@ -116,7 +116,7 @@ After plugin updates, new tools may require a new task or host reload.
      `http://127.0.0.1:<port>/?devFiles=<encoded absolute path>&agentLayout=focus`.
      The visualization-only plugin profile hides the project sidebar and
      bottom-dock toggles, Compute/Tools engines, and Jobs. The right inspector,
-     Mol* controls, tabs, and Ketcher remain available. Ketcher import/export
+     Mol* controls, tabs, and the molecular editor remain available. Molecular editor import/export
      can open its output panel. Use `manage_burette_tabs` for tab operations.
      This mode prefers the prebuilt `apps/desktop/dist` bundle served by
      `scripts/agent-shell-server.mjs`; in a source checkout without that bundle,

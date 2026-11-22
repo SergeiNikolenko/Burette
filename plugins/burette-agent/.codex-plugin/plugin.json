@@ -1,6 +1,6 @@
 {
   "name": "burette",
-  "version": "0.2.83-molecular-frame.20261115",
+  "version": "0.2.84-molecular-frame.20261122",
   "description": "A universal molecular viewer for proteins, ligands, and molecular structures, with 3D visualization and 2D editing.",
   "author": {
     "name": "Sergei Nikolenko",

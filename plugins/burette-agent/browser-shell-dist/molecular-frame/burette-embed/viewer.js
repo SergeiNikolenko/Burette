@@ -11,6 +11,11 @@
   const DOCKING_POSE_POSITION_VERSION = '8';
   const TOOLBAR_MARGIN = 12;
   const FLOATING_LAYOUT_GAP = 12;
+  // Below this pane width the toolbar wraps into rows over the structure.
+  const COMPACT_CHROME_ENTER_WIDTH = 280;
+  const COMPACT_CHROME_EXIT_WIDTH = 320;
+  // The host's Compute capsule size for hit tests (the iframe cannot measure host DOM).
+  const HOST_COMPUTE_SIZE = { width: 112, height: 32 };
   const TOOLBAR_CORNER_SNAP_DISTANCE = 64;
   const TOOLBAR_CORNER_RELEASE_DISTANCE = 96;
   const TOOLBAR_ORIENTATION_HYSTERESIS = 48;
@@ -216,11 +221,12 @@
   // The card is destroyed and rebuilt whenever the selection changes, so the size
   // and the corner the user dragged it to live out here instead of on the element.
   let molstarMoleculePreviewGeometry = null;
-  // Hiding the card leaves the selection alone and parks it in a restore chip.
-  // The hidden state lasts until explicit restore or document teardown.
-  let molstarMoleculePreviewSuppressed = false;
-  let molstarMoleculePreviewMinimized = false;
-  let molstarMoleculePreviewMinimizedTarget = null;
+  // The card is either open or folded into a small chip in the bottom-left
+  // corner. Null follows the Settings default until the user opens or folds it.
+  let molstarMoleculePreviewExpanded = null;
+  // The pointer rests on a ligand; a card set to open on hover is open meanwhile.
+  let molstarMoleculePreviewHovered = false;
+  let molstarMoleculePreviewHoverTimer = 0;
   let molstarMoleculePreviewChip = null;
   let molstarSelectionHostSignature = '';
   let molstarPreviewRdkit = null;
@@ -344,6 +350,29 @@
 
   let molstarControlTooltip = null;
   let molstarControlTooltipTarget = null;
+  const molstarControlTitleLabels = new WeakMap();
+  let lastHostComputeAnchor = '';
+  let hostComputeAnchor = null;
+
+  // Host chrome paints above the iframe, so the host button also yields while a
+  // viewer hint would sit under it.
+  function postHostComputeAnchor() {
+    if (!hostComputeAnchor) return;
+    const { top, right, menuCovered } = hostComputeAnchor;
+    const hint = molstarControlTooltip?.classList.contains('visible') ? molstarControlTooltip.getBoundingClientRect() : null;
+    const boxRight = window.innerWidth - right;
+    const hintCovers = Boolean(hint && hint.width && hint.left < boxRight && hint.right > boxRight - HOST_COMPUTE_SIZE.width
+      && hint.top < top + HOST_COMPUTE_SIZE.height && hint.bottom > top);
+    // The host button appears with the rest of the chrome, not over a loading page.
+    const booting = document.documentElement.classList.contains('buret-viewer-booting');
+    const covered = booting || menuCovered || hintCovers;
+    const operations = hostComputeOperations();
+    const pendingLabel = generate3dPending ? (generate3dPendingMode === 'ensemble' ? 'Generating set...' : 'Generating 3D...') : '';
+    const key = JSON.stringify([top, right, covered, operations, pendingLabel]);
+    if (key === lastHostComputeAnchor) return;
+    lastHostComputeAnchor = key;
+    postHostMessage({ type: 'sceneComputeAnchor', top, right, covered, operations, pendingLabel });
+  }
 
   function installMolstarControlTooltips() {
     if (window.__buretteMolstarControlTooltipsInstalled) return;
@@ -418,13 +447,24 @@
   // The top-layer hint replaces both the local bubble and the native title.
   function stashMolstarControlTitle(control) {
     if (!control.hasAttribute('title')) return;
-    control.dataset.buretHint = control.getAttribute('title');
+    const title = control.getAttribute('title');
+    // Native icon buttons use title as their only name. Track only our fallback
+    // so controller retitles update it without taking over authored labels/text.
+    const previous = molstarControlTitleLabels.get(control);
+    if (previous !== undefined && control.getAttribute('aria-label') === previous) control.removeAttribute('aria-label');
+    molstarControlTitleLabels.delete(control);
+    if (title.trim() && control.matches('button, [role="button"]')
+      && !control.hasAttribute('aria-label') && !control.hasAttribute('aria-labelledby') && !control.textContent.trim()) {
+      control.setAttribute('aria-label', title);
+      molstarControlTitleLabels.set(control, title);
+    }
+    control.dataset.buretHint = title;
     control.removeAttribute('title');
   }
 
   function showMolstarControlTooltip(control) {
-    const label = molstarTooltipLabel(control);
     stashMolstarControlTitle(control);
+    const label = molstarTooltipLabel(control);
     // An open menu already names what its button does and the hint would cover it.
     // The controls grip reports its expanded panel, not an open menu.
     if (!label || (control.getAttribute('aria-expanded') === 'true' && !control.matches('[data-drag-handle]'))) {
@@ -443,6 +483,7 @@
     tooltip.setAttribute('aria-hidden', 'false');
     if (tooltip.hasAttribute('popover')) tooltip.showPopover();
     positionMolstarControlTooltip(control);
+    postHostComputeAnchor();
   }
 
   function positionMolstarControlTooltip(control) {
@@ -473,6 +514,7 @@
     molstarControlTooltip.classList.remove('visible');
     if (molstarControlTooltip.hasAttribute('popover')) molstarControlTooltip.hidePopover();
     molstarControlTooltip.setAttribute('aria-hidden', 'true');
+    postHostComputeAnchor();
   }
 
   installMolstarControlTooltips();
@@ -693,7 +735,181 @@
     }
   }
 
-  async function executeBuretteAgentAction(action) {
+  // `atomName` narrows the residue to one atom (a contact's end).
+  function molstarResidueLoci(plugin, chain, number, atomName = null) {
+    const { StructureElement, StructureProperties } = window.molstar?.lib?.structure || {};
+    if (!StructureElement || !StructureProperties || !chain || !Number.isFinite(number)) return null;
+    const atomMatches = location => !atomName
+      || StructureProperties.atom.auth_atom_id(location) === atomName
+      || StructureProperties.atom.label_atom_id(location) === atomName;
+    for (const entry of plugin.managers.structure.hierarchy.current.structures) {
+      const structure = entry.cell.obj?.data;
+      if (!structure) continue;
+      const location = StructureElement.Location.create(structure);
+      const elements = [];
+      for (const unit of structure.units) {
+        location.unit = unit;
+        const indices = [];
+        for (let index = 0; index < unit.elements.length; index++) {
+          location.element = unit.elements[index];
+          if (StructureProperties.residue.auth_seq_id(location) === number
+            && StructureProperties.chain.auth_asym_id(location) === chain && atomMatches(location)) indices.push(index);
+        }
+        if (indices.length) elements.push({ unit, indices: new Int32Array(indices) });
+      }
+      if (elements.length) return StructureElement.Loci(structure, elements);
+    }
+    return null;
+  }
+
+  // A contact picked in an interaction diagram is drawn in 3D as a distance
+  // between its two atoms, and its residue stays marked like a selection until
+  // the next pick. Ring contacts have no single atom and keep only the mark.
+  const DIAGRAM_CONTACT_TAG = 'burette-diagram-contact';
+  let diagramMarkedLoci = null;
+
+  function diagramContactVisualParams() {
+    const dark = resolveViewerTheme() === 'dark';
+    return {
+      // the value sits above its line, which stays visible even when short
+      textSize: 0.9, textColor: dark ? 0xfafafa : 0x18181b, attachment: 'bottom-center', offsetZ: 2,
+      background: true, backgroundColor: dark ? 0x18181b : 0xffffff, backgroundOpacity: 0.85, backgroundMargin: 0.15,
+      linesSize: 0.07, linesColor: dark ? 0xfafafa : 0x18181b, dashLength: 0.18
+    };
+  }
+
+  // The pick whose distances are on screen and the theme they were drawn in.
+  let diagramContactAction = null;
+  let diagramContactTheme = null;
+
+  function molstarDiagramContactRefs(plugin) {
+    return [...plugin.state.data.cells.values()]
+      .filter(cell => cell.transform.tags?.includes(DIAGRAM_CONTACT_TAG))
+      .map(cell => cell.transform.ref);
+  }
+
+  async function clearMolstarDiagramContacts(plugin) {
+    const stale = molstarDiagramContactRefs(plugin);
+    if (!stale.length) return;
+    const update = plugin.build();
+    for (const ref of stale) update.delete(ref);
+    await update.commit();
+  }
+
+  // Distances keep the colours they were drawn with (updating the visual's
+  // parameters leaves its label background and lines as they were), so a theme
+  // change draws them again.
+  function restyleMolstarDiagramContacts() {
+    const plugin = activeMolstarViewer()?.plugin;
+    const action = diagramContactAction;
+    if (!plugin || !action || diagramContactTheme === resolveViewerTheme() || !molstarDiagramContactRefs(plugin).length) return;
+    clearMolstarDiagramContacts(plugin)
+      .then(() => diagramContactAction === action && drawMolstarDiagramContacts(plugin, action))
+      .catch(() => {});
+  }
+
+  async function showMolstarDiagramContacts(plugin, action, residueLoci) {
+    await clearMolstarDiagramContacts(plugin);
+    // Mol* MarkerAction: Select = 4, Deselect = 8
+    if (diagramMarkedLoci) plugin.canvas3d?.mark?.({ loci: diagramMarkedLoci }, 8);
+    diagramMarkedLoci = residueLoci;
+    diagramContactAction = action;
+    const ligandEnds = await drawMolstarDiagramContacts(plugin, action);
+    // new focus visuals are built after this call, so mark again once they exist
+    const mark = () => { if (diagramMarkedLoci === residueLoci) plugin.canvas3d?.mark?.({ loci: residueLoci }, 4); };
+    mark();
+    setTimeout(mark, 350);
+    setTimeout(mark, 1000);
+    return ligandEnds;
+  }
+
+  // Returns the ligand ends of the distances drawn.
+  async function drawMolstarDiagramContacts(plugin, action) {
+    diagramContactTheme = resolveViewerTheme();
+    const visualParams = diagramContactVisualParams();
+    const ligand = action.ligand;
+    const residue = action.selector || {};
+    const ligandEnds = [];
+    for (const link of Array.isArray(action.links) ? action.links : []) {
+      if (!ligand || !link.ligandAtom || !link.residueAtom || link.ligandAtom === 'ring' || link.residueAtom === 'ring') continue;
+      const a = molstarResidueLoci(plugin, String(ligand.chain), Number(ligand.number), String(link.ligandAtom));
+      const b = molstarResidueLoci(plugin, String(residue.chain), Number(residue.auth_seq_id), String(link.residueAtom));
+      if (!a || !b) continue;
+      ligandEnds.push(a);
+      await plugin.managers.structure.measurement.addDistance(a, b, { selectionTags: DIAGRAM_CONTACT_TAG, visualParams });
+    }
+    return ligandEnds;
+  }
+
+  // Of the side-on views around a contact, the one with the fewest atoms between
+  // the camera and the contact; nearer the current view on a tie.
+  function clearestSideDirection(structure, center, axis, side) {
+    const sideLength = Math.hypot(...side);
+    const u = side.map(value => value / sideLength);
+    const w = [axis[1] * u[2] - axis[2] * u[1], axis[2] * u[0] - axis[0] * u[2], axis[0] * u[1] - axis[1] * u[0]];
+    const near = [];
+    const position = [0, 0, 0];
+    for (const unit of structure?.units || []) {
+      for (let index = 0; index < unit.elements.length; index++) {
+        unit.conformation.position(unit.elements[index], position);
+        const offset = [position[0] - center[0], position[1] - center[1], position[2] - center[2]];
+        if (Math.hypot(...offset) < 16) near.push(offset);
+      }
+    }
+    let best = u, bestCost = Infinity;
+    for (let step = 0; step < 12; step++) {
+      const angle = step * Math.PI / 6;
+      const direction = [0, 1, 2].map(axisIndex => u[axisIndex] * Math.cos(angle) + w[axisIndex] * Math.sin(angle));
+      let blocking = 0;
+      for (const offset of near) {
+        // the camera looks along `direction`, so it sits on the negative side
+        const depth = -(offset[0] * direction[0] + offset[1] * direction[1] + offset[2] * direction[2]);
+        if (depth < 2 || depth > 14) continue;
+        const across = Math.hypot(offset[0] + depth * direction[0], offset[1] + depth * direction[1], offset[2] + depth * direction[2]);
+        if (across < 3.5) blocking++;
+      }
+      const cost = blocking + 2 * (1 - Math.cos(angle));
+      if (cost < bestCost) { best = direction; bestCost = cost; }
+    }
+    return best;
+  }
+
+  // Mol* clips everything nearer than the focus sphere, so a sphere around the
+  // residue alone cut off the ligand end of its contact and stretched the line
+  // towards the camera. The view takes in both ends and turns the contact
+  // side-on, so its full length is visible.
+  function focusMolstarDiagramContact(plugin, residueLoci, ligandEnds, extraRadius) {
+    const getBoundary = window.molstar?.lib?.structure?.StructureElement?.Loci?.getBoundary;
+    const camera = plugin.canvas3d?.camera;
+    if (!ligandEnds.length || !getBoundary || typeof camera?.getFocus !== 'function') {
+      plugin.managers.camera.focusLoci(residueLoci, { durationMs: 250, extraRadius });
+      return;
+    }
+    const boxes = [residueLoci, ...ligandEnds].map(loci => getBoundary(loci).box);
+    const min = [0, 1, 2].map(axis => Math.min(...boxes.map(box => box.min[axis])));
+    const max = [0, 1, 2].map(axis => Math.max(...boxes.map(box => box.max[axis])));
+    const center = [0, 1, 2].map(axis => (min[axis] + max[axis]) / 2);
+    const radius = Math.hypot(...[0, 1, 2].map(axis => (max[axis] - min[axis]) / 2)) + extraRadius;
+    const residueCenter = getBoundary(residueLoci).sphere.center;
+    const ligandCenter = [0, 1, 2].map(axis => ligandEnds.reduce((sum, end) => sum + getBoundary(end).sphere.center[axis], 0) / ligandEnds.length);
+    const along = [0, 1, 2].map(axis => ligandCenter[axis] - residueCenter[axis]);
+    const length = Math.hypot(...along) || 1;
+    const axisUnit = along.map(value => value / length);
+    const view = [0, 1, 2].map(axis => camera.state.target[axis] - camera.state.position[axis]);
+    const dot = [0, 1, 2].reduce((sum, axis) => sum + view[axis] * axisUnit[axis], 0);
+    const side = [0, 1, 2].map(axis => view[axis] - dot * axisUnit[axis]);
+    // a contact pointing straight at the camera keeps the current direction
+    const direction = Math.hypot(...side) > 1e-3 * Math.hypot(...view)
+      ? clearestSideDirection(residueLoci.structure, center, axisUnit, side)
+      : view;
+    const snapshot = camera.getFocus(center, radius, undefined, direction);
+    plugin.canvas3d.requestCameraReset({ snapshot, durationMs: 250 });
+  }
+
+  let geometryPreviewRequest = 0;
+  let scalarFieldRequest = 0, scalarBindingRequest = 0;
+  let geometryPreviewLoading = null, atomDragLoading = null, sceneMediaLoading = null;
+  async function executeBuretteAgentAction(action, requestOwner) {
     const type = String(action?.type || '');
     if (type === 'workspace_scene_snapshot') {
       if ((activeConfig || window.BuretteConfig || {}).renderer === 'xyzrender-external') {
@@ -712,12 +928,54 @@
       }
       const plugin = activeMolstarViewer()?.plugin;
       if (!plugin) throw new Error('Wait for the scene to load.');
-      const archive = await plugin.managers.snapshot.serialize({ type: 'molx', params: { structureSelection: true, cameraTransition: { name: 'instant', params: {} } } });
+      const params = { type: 'molx', params: { structureSelection: true, behavior: true, cameraTransition: { name: 'instant', params: {} } } };
+      // Host scientific data is written as Burette's own Mol* assets, only for this archive.
+      if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
+      const archive = action.science
+        ? await window.BuretteSceneFiles.science.serialize(activeMolstarViewer(), action.science, params)
+        : await window.BuretteSceneFiles.science.serializeSnapshot(plugin, params);
       if (archive.size > 24 * 1024 * 1024) throw new Error('The scene is too large to move.');
       return { ok: true, result: { dataBase64: bytesToBase64(new Uint8Array(await archive.arrayBuffer())) } };
     }
+    if (type === 'indexed_trajectory_frame') {
+      const indexed = window.molstar?.BuretteIndexedTrajectory;
+      if (!indexed) throw new Error('Trajectory frame data is unavailable in this runtime.');
+      return { ok: true, result: indexed.readActiveFrame(activeMolstarViewer(), action) };
+    }
+    if (type === 'indexed_trajectory_scan') {
+      const indexed = window.molstar?.BuretteIndexedTrajectory;
+      if (!indexed?.scanPositions) throw new Error('Trajectory scans are unavailable in this runtime.');
+      return { ok: true, result: await indexed.scanPositions(activeMolstarViewer(), action) };
+    }
+    if (type === 'scene_science_binding') {
+      if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
+      return { ok: true, result: await window.BuretteSceneFiles.science.bindingReport(activeMolstarViewer(), action.sourceExtension) };
+    }
+    if (type === 'scene_science_restore_ack') {
+      if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
+      return { ok: true, result: { adopted: await window.BuretteSceneFiles.science.adoptValidated(activeMolstarViewer(), action) } };
+    }
+    if (type === 'measurement_preview_capture') {
+      const viewer = activeMolstarViewer();
+      const runtime = await measurementCoordinateRuntime();
+      if (activeMolstarViewer() !== viewer) throw new Error('The Geometry source or viewer changed.');
+      const result = await runtime.capture(viewer, window.BuretteSceneFiles.science,
+        action.sourceExtension === 'xyz' ? { sourceFormat: 'xyz', lease: action.lease } : undefined);
+      if (activeMolstarViewer() !== viewer) throw new Error('The Geometry source or viewer changed.');
+      return { ok: true, result };
+    }
+    if (type === 'geometry_topology_scene_capture' || type === 'geometry_topology_scene_validate') {
+      const viewer = activeMolstarViewer(), runtime = window.molstar?.BuretteTopologyScene;
+      if (!viewer?.plugin || !runtime) throw new Error('Reload a runtime supporting topology scene transfer.');
+      if (typeof action.lease !== 'string' || !action.lease || action.lease.length > 128) throw new Error('Read the current Geometry before changing topology.');
+      const result = type === 'geometry_topology_scene_capture'
+        ? runtime.capture(viewer.plugin, action.lease)
+        : { valid: runtime.validate(viewer.plugin, action.receipt, action.lease) };
+      if (activeMolstarViewer() !== viewer) throw new Error('The Geometry source or viewer changed.');
+      return { ok: true, result };
+    }
     if (type === 'workspace_scene_state') {
-      return { ok: true, result: { ready: Boolean(activeMolstarViewer()?.plugin?.managers?.structure?.hierarchy?.current?.structures?.length || (document.querySelector('.buret-external-artifact-root .buret-xyzrender-sheet-item-body > svg') && !document.querySelector('[data-buret-popout-animation=loading], [data-buret-popout-animation=failed]'))) } };
+      return { ok: true, result: { structureCount: activeMolstarViewer()?.plugin?.managers?.structure?.hierarchy?.current?.structures?.length ?? 0, ready: Boolean(activeMolstarViewer()?.plugin?.managers?.structure?.hierarchy?.current?.structures?.length || (document.querySelector('.buret-external-artifact-root .buret-xyzrender-sheet-item-body > svg') && !document.querySelector('[data-buret-popout-animation=loading], [data-buret-popout-animation=failed]'))) } };
     }
     if (type === 'align_scene_files') {
       if (!activeStructureAlignmentControl) throw new Error('This scene does not support structure alignment.');
@@ -728,6 +986,19 @@
       const payload = molstarModifiedStructureExportPayloadForFormat(action.format);
       if (new TextEncoder().encode(payload.text).length > 24 * 1024 * 1024) throw new Error('Structure export exceeds 24 MB.');
       return { ok: true, result: payload };
+    }
+    // The visible scene as the viewport menu's Export 3D model writes it; the CLI saves the bytes to a file.
+    if (type === 'export_scene_model') {
+      const exporter = window.molstar?.BuretteSceneExport, plugin = viewportPlugin();
+      if (!exporter || !plugin) throw new Error('This viewer cannot export a 3D model.');
+      const format = action.format ?? 'glb';
+      if (!exporter.formats[format]) throw new Error(`3D model format must be one of ${Object.keys(exporter.formats).join(', ')}.`);
+      const { blob, vertexCount, faceCount, assertSceneUnchanged } = await exporter.exportScene(plugin, format);
+      assertSceneUnchanged();
+      if (blob.size > 16 * 1024 * 1024) throw new Error('The 3D model exceeds the 16 MiB agent export limit. Hide components or export it from the viewport menu.');
+      const { extension, mimeType } = exporter.formats[format];
+      return { ok: true, result: { name: `${safeExportBaseName(activeConfig?.label, 'scene')}.${extension}`, format, mimeType, byteCount: blob.size, vertexCount, faceCount,
+        dataBase64: bytesToBase64(new Uint8Array(await blob.arrayBuffer())) } };
     }
     if (type === 'copy_scene_sequence') {
       if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
@@ -794,6 +1065,23 @@
       if (result?.ok !== false) scheduleMolstarSelectedMoleculePreview(previewTarget);
       return result;
     }
+    // A residue picked outside the scene (an interaction diagram) is shown the way
+    // a click in the scene shows it: focused with its surroundings, framed in one
+    // camera move and highlighted. The selection stays as it is.
+    if (type === 'focus_residue') {
+      const plugin = activeMolstarViewer()?.plugin;
+      // `atom` narrows the pick to one atom of the residue (an atom picked in a diagram)
+      const atomName = typeof action.atom === 'string' && action.atom ? action.atom : null;
+      const loci = plugin && molstarResidueLoci(plugin, String(action.selector?.chain ?? ''), Number(action.selector?.auth_seq_id), atomName);
+      if (!loci) return agentActionFailure(type, 'SELECTION_EMPTY', 'No residue matched the selector.');
+      plugin.managers.structure.focus.setFromLoci(loci);
+      const ligandEnds = await showMolstarDiagramContacts(plugin, action, loci);
+      // A drawn contact gets a tight margin: the clipping plane then also cuts
+      // away the chain in front of the pair.
+      const margin = Number.isFinite(action.extraRadius) ? action.extraRadius : ligandEnds.length ? 2 : 6;
+      focusMolstarDiagramContact(plugin, loci, ligandEnds, margin);
+      return { ok: true, command: 'focus_residue' };
+    }
     if (type === 'show_ligands') {
       return window.BuretteAgent.run({ command: 'showLigands', args: action.args || {} });
     }
@@ -819,6 +1107,195 @@
     if (type === 'create_component') {
       return withMolstarDrawHold(activeViewer, async () => (await window.BuretteSceneActions?.createComponent?.(action))
         || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.createComponent is unavailable.'));
+    }
+    if (type === 'polymer_source_binding' || type === 'polymer_pick_atom' || type === 'polymer_source_release' || type === 'polymer_source_validate') {
+      const viewer = activeMolstarViewer(), controller = new AbortController();
+      const cancel = event => { if (requestOwner && event.source === requestOwner.source && event.data?.source === 'burette-agent-host'
+        && event.data.body?.type === 'agent-action-cancel' && event.data.body.id === requestOwner.id) controller.abort(); };
+      window.addEventListener('message', cancel);
+      try {
+        if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
+        if (!window.BurettePolymerPick) await loadScript(runtimeURL('BurettePolymerPickURL', './polymer-pick.js'), 'polymer picking', 10000);
+        controller.signal.throwIfAborted();
+        if (viewer !== activeMolstarViewer()) throw new Error('The polymer source changed.');
+        const result = type === 'polymer_source_binding' ? await window.BurettePolymerPick.bind(viewer, action, activeMolstarViewer, postHostMessage, controller.signal)
+          : type === 'polymer_pick_atom' ? await window.BurettePolymerPick.pick(viewer, action.lease, controller.signal)
+          : type === 'polymer_source_validate' ? window.BurettePolymerPick.validate(viewer, action.lease)
+          : window.BurettePolymerPick.release(viewer, action.lease);
+        return { ok: true, result: result || {} };
+      } finally { window.removeEventListener('message', cancel); }
+    }
+    if (type === 'geometry_binding') {
+      const viewer = activeMolstarViewer();
+      if (!window.molstar?.BuretteGeometry) throw new Error('Reload a runtime supporting live Geometry.');
+      return { ok: true, result: window.molstar.BuretteGeometry.binding(viewer?.plugin, () => activeMolstarViewer() === viewer) };
+    }
+    if (type === 'calculation_overlay') {
+      const plugin = activeMolstarViewer()?.plugin;
+      // Charge colours are overpaint on the atoms; without an overlay every atom returns to its theme colour.
+      if (action.kind === 'charge-colors') {
+        if (action.overlay) {
+          return window.BuretteAgent.run({ command: 'colorScalarField', args: { mode: 'partial-charge', values: action.overlay.values || [], provenance: { source: String(action.overlay.source || '') } } });
+        }
+        const all = (plugin?.query?.structure?.registry?.list || []).find(query => query?.label === 'All');
+        if (!all) throw new Error('The 3D viewer is not ready.');
+        await plugin.managers.structure.component.applyTheme({ action: { name: 'resetColor', params: {} }, selection: all });
+        return { ok: true, result: { kind: 'charge-colors', shown: false } };
+      }
+      const overlay = window.molstar?.BuretteCalculationOverlay;
+      if (!overlay) throw new Error('Reload a runtime supporting calculation overlays.');
+      return { ok: true, result: action.overlay ? await overlay.show(plugin, action.kind, action.overlay) : await overlay.hide(plugin, action.kind) };
+    }
+    if (type === 'update_geometry') {
+      const viewer = activeMolstarViewer();
+      const geometry = window.molstar?.BuretteGeometry;
+      if (!geometry) throw new Error('Reload a runtime supporting live Geometry.');
+      if (typeof action.lease !== 'string' || !action.lease) throw new Error('Read the current Geometry before changing it.');
+      const owner = geometry.capture(viewer?.plugin, () => activeMolstarViewer() === viewer, action.lease);
+      if (!window.BuretteGeometryPreview) {
+        if (!geometryPreviewLoading) geometryPreviewLoading = loadScript(runtimeURL('BuretteGeometryPreviewURL', './geometry-preview.js'), 'geometry preview', 10000).finally(() => { geometryPreviewLoading = null; });
+        await geometryPreviewLoading;
+      }
+      return window.BuretteGeometryPreview.update(viewer, action, owner);
+    }
+    if (type === 'export_svg' || type === 'record_movie') {
+      const viewer = activeMolstarViewer();
+      if (!viewer?.plugin) throw new Error('Open a structure in the 3D view first.');
+      if (!window.BuretteSceneMedia) {
+        sceneMediaLoading ||= loadScript(runtimeURL('BuretteSceneMediaURL', './scene-media.js'), 'scene media', 10000).finally(() => { sceneMediaLoading = null; });
+        await sceneMediaLoading;
+      }
+      const media = window.BuretteSceneMedia;
+      if (type === 'export_svg') return { ok: true, result: media.svg(viewer.plugin, { transparent: action.transparent === true }) };
+      const seconds = Number(action.seconds), fps = Number(action.fps);
+      // The host cancels a recording the user dismissed; the camera stops turning and returns.
+      const controller = new AbortController();
+      const cancel = event => { if (requestOwner && event.source === requestOwner.source && event.data?.source === 'burette-agent-host'
+        && event.data.body?.type === 'agent-action-cancel' && event.data.body.id === requestOwner.id) controller.abort(); };
+      window.addEventListener('message', cancel);
+      let blob, mediaType;
+      try { ({ blob, type: mediaType } = await media.record(viewer.plugin, { seconds, fps, spin: action.spin === true }, controller.signal)); }
+      finally { window.removeEventListener('message', cancel); }
+      const dataUri = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result); reader.onerror = () => reject(reader.error || new Error('The movie could not be read.'));
+        reader.readAsDataURL(blob);
+      });
+      return { ok: true, result: { dataUri, type: mediaType, bytes: blob.size } };
+    }
+    if (type === 'atom_drag' || type === 'atom_draw') {
+      const viewer = activeMolstarViewer();
+      if (!window.BuretteAtomDrag) {
+        atomDragLoading ||= loadScript(runtimeURL('BuretteAtomDragURL', './atom-drag.js'), 'atom dragging', 10000).finally(() => { atomDragLoading = null; });
+        await atomDragLoading;
+      }
+      if (viewer !== activeMolstarViewer()) throw new Error('The structure changed. Read the current Geometry again.');
+      const tools = window.BuretteAtomDrag;
+      return { ok: true, result: type === 'atom_draw' ? tools.draw(viewer, action, activeMolstarViewer, postHostMessage) : tools.set(viewer, action, activeMolstarViewer, postHostMessage) };
+    }
+    if (type === 'show_scalar_field' || type === 'scalar_field_binding' || type === 'scalar_field_validate') {
+      const viewer = activeMolstarViewer();
+      const request = type === 'show_scalar_field' ? ++scalarFieldRequest : scalarFieldRequest;
+      const bindingRequest = type === 'scalar_field_binding' ? ++scalarBindingRequest : scalarBindingRequest;
+      const sourceCell = () => {
+        const plugin = viewer?.plugin;
+        const volumes = plugin?.managers.volume.hierarchy.current.volumes.filter(volume => {
+          for (let cell = volume.cell; cell;) {
+            if (cell.transform.tags?.includes('burette-scalar-field')) return false;
+            const parent = cell.transform.parent;
+            if (parent === cell.transform.ref) break;
+            cell = plugin.state.data.cells.get(parent);
+          }
+          return true;
+        }) || [];
+        const roots = plugin?.managers.structure.hierarchy.current.structures;
+        return volumes.length === 1 ? volumes[0].cell : !volumes.length && roots?.length === 1 ? roots[0].cell : null;
+      };
+      const cell = sourceCell(), data = cell?.obj?.data, version = cell?.transform.version;
+      const current = () => Boolean(data && !viewer.plugin.disposed && request === scalarFieldRequest && viewer === activeMolstarViewer()
+        && sourceCell() === cell && cell.obj?.data === data && cell.transform.version === version);
+      if (!current()) throw new Error('Open a single structure before displaying a scalar field.');
+      const ancestors = [];
+      for (let ancestor = cell; ancestor;) {
+        ancestors.push({ cell: ancestor, data: ancestor.obj?.data, version: ancestor.transform.version });
+        if (ancestor.transform.ref === ancestor.transform.parent) break;
+        ancestor = viewer.plugin.state.data.cells.get(ancestor.transform.parent);
+      }
+      let revoked = false;
+      const owned = () => !revoked && bindingRequest === scalarBindingRequest && viewer === activeMolstarViewer() && !viewer.plugin.disposed && sourceCell() === cell
+        && ancestors.every(entry => viewer.plugin.state.data.cells.get(entry.cell.transform.ref) === entry.cell
+          && entry.cell.obj?.data === entry.data && entry.cell.transform.version === entry.version);
+      const subscription = type === 'scalar_field_binding' ? viewer.plugin.state.data.events.changed.subscribe({
+        next: () => { if (!owned()) revoked = true; }, complete: () => { revoked = true; },
+      }) : null;
+      const dispose = () => { revoked = true; subscription?.unsubscribe(); };
+
+      try {
+      if (!window.BuretteGeometryPreview) {
+        if (!geometryPreviewLoading) geometryPreviewLoading = loadScript(runtimeURL('BuretteGeometryPreviewURL', './geometry-preview.js'), 'geometry preview', 10000).finally(() => { geometryPreviewLoading = null; });
+        await geometryPreviewLoading;
+      }
+      if (type === 'scalar_field_binding') return await window.BuretteGeometryPreview.bindField(viewer, action.expected, { cell, ancestors, current: owned, dispose });
+      const binding = window.BuretteGeometryPreview.fieldBinding(viewer, action.lease);
+      if (type === 'scalar_field_validate') return { ok: true };
+      return await window.BuretteGeometryPreview.field(viewer, action, () => current() && binding());
+      } catch (error) { dispose(); throw error; }
+    }
+    if (type === 'select_source_atom') {
+      const request = ++geometryPreviewRequest, viewer = activeMolstarViewer(), plugin = viewer?.plugin;
+      const roots = plugin?.managers.structure.hierarchy.current.structures || [];
+      const cell = roots.length === 1 ? roots[0].cell : null;
+      if (!cell?.obj?.data) throw new Error('Open a single atomic structure before selecting a spectrum atom.');
+      const ancestors = [];
+      for (let item = cell; item;) {
+        ancestors.push({ cell: item, object: item.obj, data: item.obj?.data, version: item.transform.version });
+        if (item.transform.parent === item.transform.ref) break;
+        item = plugin.state.data.cells.get(item.transform.parent);
+      }
+      let revoked = false;
+      const current = () => !revoked && request === geometryPreviewRequest && viewer === activeMolstarViewer() && !plugin.disposed
+        && plugin.managers.structure.hierarchy.current.structures.length === 1 && plugin.managers.structure.hierarchy.current.structures[0].cell === cell
+        && ancestors.every(item => plugin.state.data.cells.get(item.cell.transform.ref) === item.cell
+          && item.cell.obj === item.object && item.cell.obj?.data === item.data && item.cell.transform.version === item.version);
+      const changed = plugin.state.data.events.changed.subscribe({ next: () => { if (!current()) revoked = true; }, complete: () => { revoked = true; } });
+      const selected = plugin.managers.structure.selection.events.changed.subscribe(() => { revoked = true; });
+      const cancel = event => {
+        if (requestOwner && event.source === requestOwner.source && event.data?.source === 'burette-agent-host'
+          && event.data.body?.type === 'agent-action-cancel' && event.data.body.id === requestOwner.id) revoked = true;
+      };
+      window.addEventListener('message', cancel);
+      try {
+        if (!window.BuretteGeometryPreview) {
+          geometryPreviewLoading ||= loadScript(runtimeURL('BuretteGeometryPreviewURL', './geometry-preview.js'), 'geometry preview', 10000)
+            .finally(() => { geometryPreviewLoading = null; });
+          await geometryPreviewLoading;
+        }
+        return await window.BuretteGeometryPreview.selectSourceAtom(viewer, action, { cell, ancestors, current });
+      } finally { changed.unsubscribe(); selected.unsubscribe(); window.removeEventListener('message', cancel); }
+    }
+    if (type === 'preview_geometry') {
+      const request = ++geometryPreviewRequest;
+      const viewer = activeMolstarViewer();
+      const roots = viewer?.plugin?.managers.structure.hierarchy.current.structures || [];
+      const cell = roots.length === 1 ? roots[0].cell : null;
+      const structure = cell?.obj?.data;
+      if (!structure) return { ok: true };
+      if (!window.BuretteGeometryPreview) {
+        geometryPreviewLoading ||= loadScript(runtimeURL('BuretteGeometryPreviewURL', './geometry-preview.js'), 'geometry preview', 10000)
+          .finally(() => { geometryPreviewLoading = null; });
+        await geometryPreviewLoading;
+      }
+      const current = viewer.plugin.managers.structure.hierarchy.current.structures;
+      if (request !== geometryPreviewRequest || viewer !== activeMolstarViewer() || current.length !== 1
+        || current[0].cell !== cell || cell.obj?.data !== structure) return { ok: true };
+      return window.BuretteGeometryPreview.apply(viewer, action);
+    }
+    if (type === 'select_command') {
+      const commands = ['all', 'none', 'invert', 'residues', 'enlarge', 'element', 'atoms'];
+      if (!commands.includes(action.command)) throw new Error('Unknown selection command.');
+      if (action.command === 'element' && !/^[A-Z][a-z]?$/u.test(String(action.element))) throw new Error('Choose an element symbol.');
+      if (action.command === 'atoms' && !(Array.isArray(action.atoms) && action.atoms.length <= 100000 && action.atoms.every(atom => Number.isSafeInteger(atom) && atom >= 0))) throw new Error('Atoms must be source atom indices.');
+      return { ok: true, result: { selected: await runMolstarSelectCommand(action.command, action.command === 'element' ? action.element : action.atoms) } };
     }
     if (type === 'select_residues') {
       const previewTarget = molstarMoleculePreviewTargetForAction(action);
@@ -964,7 +1441,7 @@
     if (type === 'describe_region') return describeAgentRegion(action);
     if (type === 'annotation_snapshot') return annotationSnapshot(action);
     if (type === 'replace_document') return replaceMolecularDocument(action);
-    if (['set_scene_motion', 'set_scene_wiggle', 'rotate_camera'].includes(type)) return controlViewportFromAction(action);
+    if (['set_scene_motion', 'set_scene_wiggle', 'rotate_camera', 'set_camera_projection', 'view_axis'].includes(type)) return controlViewportFromAction(action);
     if (type === 'hide_waters') {
       return window.BuretteSceneActions?.hideWaters?.() || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.hideWaters is unavailable.');
     }
@@ -1638,10 +2115,15 @@
   window.addEventListener('message', event => {
     const body = event.data && event.data.source === 'burette-agent-host' ? event.data.body : null;
     if (body?.type === 'compositionVisibilityRequest') {
+      if (typeof body.releaseId === 'string' && body.releaseId.length <= 128) molstarCompositionHierarchyRequests.delete(body.releaseId);
+      if (body.hierarchy === true && typeof body.requestId === 'string' && body.requestId.length > 0 && body.requestId.length <= 128
+        && (molstarCompositionHierarchyRequests.has(body.requestId) || molstarCompositionHierarchyRequests.size < 16)) {
+        molstarCompositionHierarchyRequests.add(body.requestId); molstarCompositionQueries.set('all', null);
+      }
       for (const query of (Array.isArray(body.queries) ? body.queries.slice(0, 128) : [])) {
         if (typeof query === 'string' && query.length > 0 && query.length <= 4096) molstarCompositionQueries.set(query, null);
       }
-      while (molstarCompositionQueries.size > 128) molstarCompositionQueries.delete(molstarCompositionQueries.keys().next().value);
+      while (molstarCompositionQueries.size > 128) molstarCompositionQueries.delete([...molstarCompositionQueries.keys()].find(query => query !== 'all' || !molstarCompositionHierarchyRequests.size));
       molstarCompositionVisibilitySignature = '';
       reportMolstarCompositionVisibility();
       return;
@@ -1650,7 +2132,7 @@
     void (async () => {
       let result;
       try {
-        result = await executeBuretteAgentAction(body.action);
+        result = await executeBuretteAgentAction(body.action, { id: body.id, source: event.source });
       } catch (error) {
         const actionType = String(body.action?.type || 'unknown');
         result = agentActionFailure(actionType, 'ACTION_ERROR', error && error.message || String(error));
@@ -1911,7 +2393,6 @@
   };
   let hostViewerVisible = true;
   let hostComputeAnchorRequested = false;
-  let lastHostComputeAnchor = '';
   // Explicit host gestures keep the shared buffer hold alive even when the
   // pointer pauses. Discrete layout changes draw at their actual bounds.
   let hostLayoutGestureActive = false;
@@ -2050,6 +2531,39 @@
     viewerResizeObserver = { observer, container };
   }
 
+  // Mol* keeps the camera distance when the viewport changes shape, so a camera
+  // nobody moved would crop the scene in a narrower pane. Each frame records
+  // whether the camera is where a reset puts it (target on the scene centre at
+  // the fitting distance; rotation keeps that). `resized` fires inside the frame
+  // after the new viewport is set and before drawing, so the refit lands on that
+  // same frame. A zoom, pan or focus leaves its view as it is.
+  const cameraRefitCanvases = new WeakSet();
+  function installCameraRefit(viewer) {
+    const canvas3d = viewer?.plugin?.canvas3d;
+    if (!canvas3d?.resized || !canvas3d.didDraw || cameraRefitCanvases.has(canvas3d)) return;
+    cameraRefitCanvases.add(canvas3d);
+    const fitsScene = () => {
+      const { center, radius } = canvas3d.boundingSphereVisible;
+      if (!(radius > 0)) return false;
+      const camera = canvas3d.camera;
+      const view = camera.getSettledSnapshot?.() ?? camera.getSnapshot();
+      const distance = Math.hypot(view.position[0] - view.target[0], view.position[1] - view.target[1], view.position[2] - view.target[2]);
+      const tolerance = 1e-3 * Math.max(radius, distance);
+      return Math.hypot(view.target[0] - center[0], view.target[1] - center[1], view.target[2] - center[2]) <= tolerance
+        && Math.abs(distance - camera.getTargetDistance(Math.max(radius, 0.01))) <= tolerance;
+    };
+    let fitted = false;
+    canvas3d.didDraw.subscribe(() => { fitted = fitsScene(); });
+    // A BehaviorSubject replays its last value on subscribe; that is no resize.
+    let replayed = false;
+    canvas3d.resized.subscribe(() => {
+      if (!replayed) { replayed = true; return; }
+      if (!fitted) return;
+      const { center, radius } = canvas3d.boundingSphereVisible;
+      if (radius > 0) canvas3d.camera.setState(canvas3d.camera.getFocus(center, radius), 0);
+    });
+  }
+
   const DEFAULT_VIEWER_UI_SCALE = 0.9;
   const MIN_VIEWER_UI_SCALE = 0.9;
   const MAX_VIEWER_UI_SCALE = 0.9;
@@ -2096,6 +2610,9 @@
   let themeListenerInstalled = false;
   let floatingPanelTrackingInstalled = false;
   let floatingLayoutFrame = 0;
+  let floatingLayoutObserver = null;
+  let floatingResizeToolbar = null;
+  let floatingLayoutPassSize = '';
   let molstarViewportPanelOpen = false;
   let molstarSelectionControlsOpen = false;
   const previewDockState = { right: false, bottom: false };
@@ -2142,6 +2659,7 @@
     document.body.classList.toggle('burette-transparent-background', transparentBackground);
     document.body.classList.toggle('burette-opaque-background', !transparentBackground);
     applyViewerThemeTokens(resolvedTheme);
+    restyleMolstarDiagramContacts();
     document.documentElement.style.backgroundColor = canvasBackgroundCSS();
     document.documentElement.style.setProperty('--buret-canvas-background', canvasBackgroundCSS());
     document.documentElement.style.setProperty('--buret-overlay-opacity', overlayOpacity.toFixed(2));
@@ -2744,7 +3262,9 @@
       toolbar.dataset.ketcherBound = '1';
     }
     const canGenerate3d = canGenerate3DConformerFromConfig(config, renderer);
-    generate3dButton?.classList.toggle('hidden', !canGenerate3d);
+    // The desktop host draws one Compute menu over the viewer and lists these
+    // operations in it, so a second trigger here would sit under it.
+    generate3dButton?.classList.toggle('hidden', !canGenerate3d || hostComputeAnchorRequested);
     generate3dMenu?.classList.toggle('hidden', true);
     if (generate3dButton) {
       generate3dButton.disabled = !canGenerate3d || generate3dPending;
@@ -3198,6 +3718,7 @@
     generate3dPendingMode = mode === 'ensemble' ? 'ensemble' : 'single';
     const button = document.querySelector('[data-buret-action="generate-3d-conformer"]');
     if (button) applyGenerate3DPendingState(button);
+    if (hostComputeAnchorRequested) scheduleFloatingLayoutRefresh();
   }
 
   function applyGenerate3DPendingState(button) {
@@ -3238,7 +3759,7 @@
     const config = activeConfig || window.BuretteConfig || {};
     // Widgets, Finder Quick Look and the mobile preview have no compute host.
     // An SDF document alone does not imply that this transport is available.
-    if (config.hostedMcpWidgetBootstrap === true || config.visualizationOnly === true || config.quickLookViewer === true) return;
+    if (config.nativeMolecularComputeUnavailable === true || isVisualizationOnly(config)) return;
     const format = normalizeFormat(config.sourceExtension || config.molstarFormat || config.format);
     if (!['sdf', 'sd', 'mol'].includes(format)) {
       setStatus('Native molecular compute supports SDF and MOL structures in Molstar.', 'error');
@@ -3269,10 +3790,28 @@
     setStatus(`[web] ${labels[operation] || 'Starting molecular compute'} in the desktop native runtime...`);
   }
 
+  // The operations of this viewer's own Compute menu, for the host menu that replaces it.
+  function hostComputeOperations() {
+    const config = activeConfig || window.BuretteConfig || {};
+    if (!canGenerate3DConformerFromConfig(config, normalizeRenderer(config.renderer))) return [];
+    return Array.from(document.querySelectorAll('[data-buret-generate-3d-menu] [data-buret-compute-operation]'), button => ({
+      operation: String(button.dataset.buretComputeOperation),
+      label: button.textContent.trim(),
+      disabled: button.disabled || generate3dPending,
+    }));
+  }
+
   function canGenerate3DConformerFromConfig(config, renderer) {
-    if (config?.hostedMcpWidgetBootstrap === true || config?.visualizationOnly === true || config?.quickLookViewer === true) return false;
-    const format = normalizeFormat(config?.sourceExtension || config?.molstarFormat || config?.format);
-    return renderer === 'molstar' && ['sdf', 'sd', 'mol'].includes(format);
+    return config?.nativeMolecularComputeUnavailable !== true && !isVisualizationOnly(config)
+      && renderer === 'molstar' && hasExplicitMolecularGraphFormat(config);
+  }
+
+  function isVisualizationOnly(config) {
+    return config?.hostedMcpWidgetBootstrap === true || config?.visualizationOnly === true || config?.quickLookViewer === true;
+  }
+
+  function hasExplicitMolecularGraphFormat(config) {
+    return ['sdf', 'sd', 'mol'].includes(normalizeFormat(config?.sourceExtension || config?.molstarFormat || config?.format));
   }
 
   function isSdfPoseConformerSet(config) {
@@ -3428,7 +3967,15 @@
       && body.documentId === window.BuretteConfig?.documentId) {
       hostComputeAnchorRequested = true;
       lastHostComputeAnchor = '';
+      hideGenerate3DMenu();
+      document.querySelector('[data-buret-action="generate-3d-conformer"]')?.classList.add('hidden');
       scheduleFloatingLayoutRefresh();
+      return;
+    }
+    if (event.source === window.parent && body.type === 'runComputeOperation'
+      && body.documentId === window.BuretteConfig?.documentId) {
+      const operation = hostComputeOperations().find(item => item.operation === body.operation && !item.disabled);
+      if (operation) requestMolecularCompute(operation.operation, { mode: operation.operation === 'generateEnsemble' ? 'ensemble' : 'single' });
       return;
     }
     if (body.type === 'viewerVisibilityChanged') {
@@ -3508,6 +4055,18 @@
     }
     if (body.type === 'setScreenshotTransparentDefault') {
       setViewportScreenshotDefault('screenshotTransparent', body.value === true);
+      return;
+    }
+    if (body.type === 'setLigandCardContentDefault') {
+      setMolstarLigandCardDefault('ligandCardContent', body.value);
+      return;
+    }
+    if (body.type === 'setLigandCardDiagramStyleDefault') {
+      setMolstarLigandCardDefault('ligandCardDiagramStyle', body.value);
+      return;
+    }
+    if (body.type === 'setLigandCardDisplayDefault') {
+      setMolstarLigandCardDefault('ligandCardDisplay', body.value);
       return;
     }
     if (body.type === 'setXyzrenderControls') {
@@ -3869,11 +4428,21 @@
       const direction = Array.isArray(options.direction) && options.direction.length >= 3
         ? options.direction
         : [0.85, -0.38, 0.92];
-      const fitted = options.mode === 'orthographic' ? null : fittedMolstarStructureFocus(viewer, camera, direction, up);
+      // Framing keeps the projection the user chose unless the caller names one.
+      const mode = options.mode || (camera.state?.mode === 'orthographic' ? 'orthographic' : 'perspective');
+      const fitted = mode === 'orthographic' ? null : fittedMolstarStructureFocus(viewer, camera, direction, up);
       const snapshot = fitted || (typeof camera.getFocus === 'function'
         ? camera.getFocus(target, Math.max(0.1, safeRadius * radiusScale), up, direction)
         : null);
-      if (snapshot) snapshot.mode = options.mode || 'perspective';
+      // getFocus keeps the camera on its current side of the target; a requested
+      // direction names the side, as the fitted path does.
+      const length = Math.hypot(direction[0], direction[1], direction[2]);
+      if (snapshot && !fitted && Array.isArray(options.direction) && length > 0 && snapshot.position && snapshot.target) {
+        const distance = Math.hypot(...[0, 1, 2].map(axis => snapshot.position[axis] - snapshot.target[axis]));
+        snapshot.position = [0, 1, 2].map(axis => snapshot.target[axis] + direction[axis] / length * distance);
+        snapshot.up = [up[0], up[1], up[2]];
+      }
+      if (snapshot) snapshot.mode = mode;
       canvas3d.requestCameraReset({
         snapshot: snapshot || undefined,
         durationMs: Number.isFinite(Number(options.durationMs)) ? Number(options.durationMs) : 160,
@@ -4046,6 +4615,111 @@
     updateStructureOverlayToggleButton(button, prepared);
     button.addEventListener('click', toggleSdfPoseMode);
     return button;
+  }
+
+  // A restored MOLX trajectory keeps one source structure bound to its science.
+  // All adds the other frames as comparisons of the same trajectory; Align fits
+  // them onto the displayed source frame by atom order and follows frame steps.
+  // Both states live in the scene graph, so they survive Save scene and reopen.
+  function createSceneFrameComparisonControls(viewer) {
+    const science = window.BuretteSceneFiles?.science;
+    if (typeof science?.trajectoryComparisonMode !== 'function') return null;
+    const transformer = window.molstar?.lib?.plugin?.StateTransforms?.Model?.TransformStructureConformation;
+    const all = document.createElement('button');
+    all.type = 'button';
+    all.className = 'buret-docking-pose-all';
+    all.dataset.buretAction = 'scene-frame-comparisons';
+    all.textContent = 'All';
+    const align = document.createElement('button');
+    align.type = 'button';
+    align.className = 'buret-docking-pose-align';
+    align.dataset.buretAction = 'scene-frame-alignment';
+    let busy = false;
+    let disposed = false;
+    let alignedFrame = null;
+    let completedFrame = null;
+    let rmsd = null;
+    const fit = (moving, reference) => {
+      const result = pdbRigidAlignment(moving, reference);
+      if (!result) throw new Error('Not enough atoms to align these frames.');
+      validateRigidAlignmentMatrix(result.matrix);
+      return result;
+    };
+    const represent = async (structure) => {
+      const mode = science.trajectoryComparisonMode(viewer);
+      const style = xyzFrameBackgroundStyle(readSdfCollectionContextStyle(activeConfig), xyzFrameForegroundStyle(configuredMolstarStyle(activeConfig)));
+      const opacity = xyzFrameBackgroundLayerOpacity(readSdfCollectionContextOpacity(activeConfig), Math.max(1, (mode?.frameCount || 2) - 1));
+      const representation = sdfCollectionRepresentationForStyle(style, opacity, readXyzFrameContextColor(activeConfig), XYZ_FRAME_BACKGROUND_MIN_ALPHA);
+      const component = await tryCreateMolstarComponent(viewer.plugin, structure, 'all');
+      if (!await addCollectionRepresentation(viewer.plugin, structure, component, representation, 0)) {
+        throw new Error('Mol* could not show this frame.');
+      }
+    };
+    const run = async (task, failure) => {
+      busy = true;
+      sync();
+      try {
+        await task();
+      } catch (error) {
+        setStatus(`${failure}\n\n${error?.message || String(error)}`, 'error');
+      } finally {
+        busy = false;
+        if (!disposed) sync();
+      }
+    };
+    const applyAlignment = async enabled => {
+      const result = await science.setTrajectoryComparisonAlignment(viewer, enabled, fit, transformer);
+      rmsd = result.rmsd;
+      alignedFrame = enabled ? science.trajectoryComparisonMode(viewer)?.frameIndex ?? null : null;
+    };
+    const setAligned = enabled => run(() => applyAlignment(enabled), 'Frames could not be aligned.');
+    // Adds the frame the source stepped away from, keeping the alignment on.
+    const completeFrames = aligned => run(async () => {
+      await science.setTrajectoryComparisons(viewer, true, represent);
+      if (aligned) await applyAlignment(true);
+    }, 'Frames could not be shown together.');
+    function sync() {
+      const mode = disposed ? null : science.trajectoryComparisonMode(viewer);
+      const restoring = Boolean(science.importPending?.(viewer.plugin));
+      all.hidden = !mode?.available;
+      align.hidden = !mode?.available || !mode.all;
+      all.disabled = busy || restoring;
+      align.disabled = busy || restoring || !transformer;
+      const allTitle = mode?.all ? 'Show only the current frame' : `Show all ${mode?.frameCount || ''} frames together`.replace('  ', ' ');
+      all.classList.toggle('active', Boolean(mode?.all));
+      all.setAttribute('aria-pressed', mode?.all ? 'true' : 'false');
+      all.setAttribute('aria-label', allTitle);
+      all.title = allTitle;
+      align.classList.toggle('active', Boolean(mode?.aligned));
+      align.setAttribute('aria-pressed', mode?.aligned ? 'true' : 'false');
+      align.textContent = mode?.aligned ? (Number.isFinite(rmsd) ? `Aligned · ${rmsd.toFixed(2)} Å` : 'Aligned') : 'Align';
+      align.title = mode?.aligned ? 'Show the frames in their original orientation' : 'Superimpose every frame onto the current frame by atom order';
+      if (!mode?.aligned) alignedFrame = null;
+      // A reopened scene was saved aligned onto the frame it reopens at.
+      if (mode?.aligned && alignedFrame === null) alignedFrame = mode.frameIndex;
+      if (!mode || busy || restoring) return;
+      // One attempt per source frame: a refusal is reported once, not retried on every refresh.
+      if (mode.all && !mode.complete && completedFrame !== mode.frameIndex) {
+        completedFrame = mode.frameIndex;
+        void completeFrames(mode.aligned);
+      } else if (mode.aligned && mode.frameIndex !== alignedFrame) {
+        alignedFrame = mode.frameIndex;
+        void setAligned(true);
+      }
+    }
+    all.addEventListener('click', () => {
+      const enabled = !science.trajectoryComparisonMode(viewer)?.all;
+      void run(async () => {
+        await science.setTrajectoryComparisons(viewer, enabled, represent);
+        rmsd = null;
+        alignedFrame = null;
+      }, enabled ? 'Frames could not be shown together.' : 'Frames could not be hidden.');
+    });
+    align.addEventListener('click', () => {
+      void setAligned(!science.trajectoryComparisonMode(viewer)?.aligned);
+    });
+    sync();
+    return { all, align, sync, destroy() { disposed = true; } };
   }
 
   function updateSdfPoseButton() {
@@ -6205,6 +6879,7 @@
     initSequenceResize();
     installSequenceSelectionMode();
     installViewerResizeObserver(viewer);
+    installCameraRefit(viewer);
     updateToolbarVisibility();
     updateSdfPoseButton();
     updateThemeButton();
@@ -6312,18 +6987,12 @@
 
     let lastWidth = 0;
     let lastHeight = 0;
-    let frame = 0;
 
+    // Shares the resize pass: a private frame here repeated the whole chrome
+    // layout one frame after the window resize had already placed it.
     const schedule = () => {
-      if (frame) return;
-      frame = requestAnimationFrame(() => {
-        frame = 0;
-        if (toolbar.dataset.defaultPosition === '1') {
-          applyDefaultToolbarPosition(toolbar);
-        } else {
-          repositionToolbar(toolbar);
-        }
-      });
+      floatingResizeToolbar = toolbar;
+      scheduleFloatingLayoutRefresh();
     };
 
     const handleSizeChange = () => {
@@ -6343,7 +7012,9 @@
       if (content) observer.observe(content);
       // A preserved tab can mount while hidden; its first useful bounds arrive
       // when activated. The frame can also resize without the toolbar changing.
-      const viewportObserver = new ResizeObserver(schedule);
+      const viewportObserver = new ResizeObserver(() => {
+        if (`${window.innerWidth}x${window.innerHeight}` !== floatingLayoutPassSize) schedule();
+      });
       viewportObserver.observe(document.documentElement);
     }
 
@@ -6581,12 +7252,16 @@
     const manager = activeMolstarViewer()?.plugin?.managers.structure.component;
     if (!manager || molstarHydrogensPending) return;
     const restoreFocus = document.activeElement?.matches('[data-buret-molecule-preview-action="hydrogens"]');
+    // Rebuilding the components drops the selection for a moment. The card stays
+    // put meanwhile (see scheduleMolstarSelectedMoleculePreview) and is redrawn
+    // in place afterwards.
+    const previewTarget = molstarMoleculePreviewTarget;
     molstarHydrogensPending = true;
     updateMolstarHydrogenButtons();
     try {
       await manager.setOptions({ ...manager.state.options, hydrogens: molstarShowHydrogens ? 'hide-all' : 'all' });
       molstarShowHydrogens = !molstarShowHydrogens;
-      if (molstarMoleculePreviewTarget) showMolstarMoleculePreview(molstarMoleculePreviewTarget);
+      if (previewTarget && molstarMoleculePreview) showMolstarMoleculePreview(previewTarget);
     } catch (error) {
       setStatus('Could not change hydrogen visibility: ' + (error?.message || error), 'error');
     } finally {
@@ -6781,6 +7456,13 @@
     setToolbarCollapsed(toolbar, collapsed, viewer, false);
   }
 
+  // In a narrow pane a collapsed toolbar is the only floating control left.
+  function syncCompactViewerChrome(collapsed) {
+    const compact = document.body?.classList.contains('buret-compact-chrome') === true;
+    document.body?.classList.toggle('buret-compact-chrome',
+      collapsed && window.innerWidth < (compact ? COMPACT_CHROME_EXIT_WIDTH : COMPACT_CHROME_ENTER_WIDTH));
+  }
+
   function setToolbarCollapsed(toolbar, collapsed, viewer, persist = true) {
     if (collapsed) {
       setXyzrenderPopoverVisibility(toolbar, false);
@@ -6788,8 +7470,14 @@
       hideGenerate3DMenu();
       closeViewportMenu();
     }
+    if (persist) {
+      // A choice made in a narrow pane stands until the pane widens again.
+      delete toolbar.dataset.compactCollapsed;
+      if (!collapsed && window.innerWidth < COMPACT_CHROME_EXIT_WIDTH) toolbar.dataset.compactDeclined = '1';
+    }
     toolbar.classList.toggle('collapsed', collapsed);
     document.body?.classList.toggle('buret-toolbar-collapsed', collapsed);
+    syncCompactViewerChrome(collapsed);
     const grip = toolbar.querySelector('[data-drag-handle]');
     if (grip) {
       grip.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
@@ -6933,21 +7621,12 @@
       toolbar.classList.remove('buret-dragging');
       drag = null;
     });
+    // Resize steps run before animation frame callbacks, so the repositioning
+    // pass still lands in the frame that changed the size. Running it here
+    // directly repeated the whole chrome layout two more times per frame.
     window.addEventListener('resize', () => {
-      repositionToolbar(toolbar);
-      updateFloatingLayoutOffsets();
-      positionXyzrenderPopover(toolbar);
-      positionGenerate3DMenu();
-      const presetMenu = document.querySelector('[data-buret-molstar-preset-menu]');
-      if (presetMenu && !presetMenu.classList.contains('hidden')) {
-        positionMolstarPresetMenu();
-        const presetItem = presetMenu.querySelector(`[data-buret-molstar-preset="${CSS.escape(molstarPresetPreviewPreset)}"]`);
-        const { preview } = molstarPresetPreviewElements();
-        if (presetItem && preview && !preview.classList.contains('hidden')) {
-          positionMolstarPresetPreview(presetItem);
-          scheduleMolstarPresetPreviewResize(presetItem);
-        }
-      }
+      floatingResizeToolbar = toolbar;
+      scheduleFloatingLayoutRefresh();
     });
   }
 
@@ -7117,12 +7796,43 @@
     toolbar.style.maxWidth = Math.max(0, availableWidth - TOOLBAR_MARGIN * 2) + 'px';
     const content = toolbar.querySelector('[data-buret-toolbar-content]');
     if (content) {
-      content.style.maxWidth = Math.max(0, availableWidth - TOOLBAR_MARGIN * 2 - 36) + 'px';
+      const contentMaxWidth = Math.max(0, availableWidth - TOOLBAR_MARGIN * 2 - 36);
+      content.style.maxWidth = contentMaxWidth + 'px';
       // A pane narrower than the toolbar wraps its buttons onto a second row
       // instead of clipping them under the grip.
+      content.style.width = '';
       toolbar.classList.remove('buret-toolbar-wrapped');
-      toolbar.classList.toggle('buret-toolbar-wrapped', !toolbar.classList.contains('collapsed')
-        && content.scrollWidth > content.clientWidth + 1);
+      // max-width animates, so the box can still be at the previous pane's
+      // width. Compare the unwrapped row with the width it is heading for.
+      const wrapped = !toolbar.classList.contains('collapsed') && content.scrollWidth > contentMaxWidth + 1;
+      toolbar.classList.toggle('buret-toolbar-wrapped', wrapped);
+      // A wrapping row box keeps the full available width, leaving a blank strip
+      // beside the shorter row, often with one button alone under it. Take the
+      // narrowest width that keeps the row count, so the rows come out even.
+      if (wrapped) {
+        const left = content.getBoundingClientRect().left;
+        const widest = Math.ceil(Math.max(0, ...Array.from(content.children)
+          .filter(child => child.getClientRects().length)
+          .map(child => child.getBoundingClientRect().right - left)));
+        if (widest > 0) {
+          // The row animates its width; measure each candidate without it.
+          content.style.transition = 'none';
+          content.style.width = widest + 'px';
+          const height = content.scrollHeight;
+          const rows = Math.max(1, Math.round(height / (content.firstElementChild?.offsetHeight || height)));
+          let low = Math.floor(widest / rows);
+          let high = widest;
+          while (low < high) {
+            const width = (low + high) >> 1;
+            content.style.width = width + 'px';
+            if (content.scrollHeight > height + 1 || content.scrollWidth > content.clientWidth + 1) low = width + 1;
+            else high = width;
+          }
+          content.style.width = high + 'px';
+          void content.offsetWidth;
+          content.style.transition = '';
+        }
+      }
     }
   }
 
@@ -7132,9 +7842,28 @@
 
   function updateFloatingLayoutOffsets() {
     const root = document.documentElement;
+    // Read once: in a WebKit subframe each innerWidth/innerHeight read can
+    // first lay out the host page, and the size cannot change during this pass.
+    const frameWidth = window.innerWidth;
+    const frameHeight = window.innerHeight;
+    floatingLayoutPassSize = `${frameWidth}x${frameHeight}`;
+    // The custom properties written below inherit through the whole document,
+    // so every measurement taken after a write restyles all of Mol*. Take the
+    // measurements those writes cannot move first; only the selection bar is
+    // measured after them.
+    const safeTop = toolbarSafeTop();
     const panelState = refreshMolstarViewportPanelState();
     const toolbar = document.getElementById('buret-toolbar');
     const toolbarRect = toolbar && !panelState.open ? toolbar.getBoundingClientRect() : null;
+    const viewportRail = document.getElementById('buret-viewport-rail');
+    const viewportRailHeight = viewportRail?.offsetHeight || viewportRail?.getBoundingClientRect().height || 172;
+    const viewportRailWidth = viewportRail?.offsetWidth || viewportRail?.getBoundingClientRect().width || 36;
+    const ownRailVisible = !!visibleRect('#buret-viewport-rail');
+    const viewportControls = document.querySelector('.msp-plugin .msp-viewport-controls');
+    const viewportControlsRect = viewportControls ? viewportControls.getBoundingClientRect() : null;
+    const viewportControlRailRect = visibleRect('.msp-plugin .msp-viewport-controls-buttons');
+    const mainRect = visibleRect('.msp-plugin .msp-layout-main');
+    const bottomLimit = visibleRectTop('.msp-plugin .msp-layout-bottom') || frameHeight;
     root.style.setProperty('--buret-toolbar-current-width', toolbarRect ? Math.ceil(toolbarRect.width) + 'px' : '0px');
     root.style.setProperty('--buret-toolbar-current-height', toolbarRect ? Math.ceil(toolbarRect.height) + 'px' : '0px');
     // The selection bar is a control of its own, not a drawer of the toolbar, so it
@@ -7144,7 +7873,7 @@
     const toolbarCollapsed = document.body?.classList.contains('buret-toolbar-collapsed') === true;
     const selectionBarWidth = toolbarRect && !toolbarCollapsed
       ? Math.ceil(toolbarRect.width)
-      : Math.min(430, Math.max(240, window.innerWidth - TOOLBAR_MARGIN * 2));
+      : Math.min(430, Math.max(240, frameWidth - TOOLBAR_MARGIN * 2));
     const selectionBarLeft = toolbarRect
       ? Math.max(TOOLBAR_MARGIN, Math.ceil(toolbarRect.right - selectionBarWidth))
       : TOOLBAR_MARGIN;
@@ -7154,23 +7883,20 @@
     // edge it collapsed along with the toolbar, capping the bar at 180px — the two
     // coincide while the toolbar is open, so nothing changes there.
     root.style.setProperty('--buret-selection-controls-max-width',
-      Math.max(180, Math.floor(window.innerWidth - selectionBarLeft - TOOLBAR_MARGIN)) + 'px');
+      Math.max(180, Math.floor(frameWidth - selectionBarLeft - TOOLBAR_MARGIN)) + 'px');
     root.style.setProperty('--buret-selection-controls-top', toolbarRect ? Math.ceil(toolbarRect.bottom - 1) + 'px' : `calc(var(--buret-toolbar-safe-top) + 48px)`);
-    const toolbarBottom = toolbarRect ? toolbarRect.bottom + FLOATING_LAYOUT_GAP : toolbarSafeTop() + 40;
-    const viewportRail = document.getElementById('buret-viewport-rail');
-    const viewportRailHeight = viewportRail?.offsetHeight || viewportRail?.getBoundingClientRect().height || 172;
-    const viewportRailWidth = viewportRail?.offsetWidth || viewportRail?.getBoundingClientRect().width || 36;
+    const toolbarBottom = toolbarRect ? toolbarRect.bottom + FLOATING_LAYOUT_GAP : safeTop + 40;
     const dockCorner = toolbar?.dataset.dockCorner;
-    const toolbarCenterX = toolbarRect ? toolbarRect.left + toolbarRect.width / 2 : window.innerWidth;
+    const toolbarCenterX = toolbarRect ? toolbarRect.left + toolbarRect.width / 2 : frameWidth;
     let railHorizontal = dockCorner?.endsWith('left') ? 'left'
       : dockCorner?.endsWith('right') ? 'right'
-      : viewportRail?.dataset.horizontalPlacement || (toolbarCenterX < window.innerWidth / 2 ? 'left' : 'right');
+      : viewportRail?.dataset.horizontalPlacement || (toolbarCenterX < frameWidth / 2 ? 'left' : 'right');
     if (!dockCorner && toolbarRect) {
-      if (railHorizontal === 'left' && toolbarCenterX > window.innerWidth / 2 + TOOLBAR_ORIENTATION_HYSTERESIS) railHorizontal = 'right';
-      if (railHorizontal === 'right' && toolbarCenterX < window.innerWidth / 2 - TOOLBAR_ORIENTATION_HYSTERESIS) railHorizontal = 'left';
+      if (railHorizontal === 'left' && toolbarCenterX > frameWidth / 2 + TOOLBAR_ORIENTATION_HYSTERESIS) railHorizontal = 'right';
+      if (railHorizontal === 'right' && toolbarCenterX < frameWidth / 2 - TOOLBAR_ORIENTATION_HYSTERESIS) railHorizontal = 'left';
     }
-    const spaceBelowToolbar = toolbarRect ? window.innerHeight - toolbarRect.bottom - TOOLBAR_MARGIN : window.innerHeight;
-    const spaceAboveToolbar = toolbarRect ? toolbarRect.top - toolbarSafeTop() : 0;
+    const spaceBelowToolbar = toolbarRect ? frameHeight - toolbarRect.bottom - TOOLBAR_MARGIN : frameHeight;
+    const spaceAboveToolbar = toolbarRect ? toolbarRect.top - safeTop : 0;
     const requiredRailSpace = viewportRailHeight + FLOATING_LAYOUT_GAP;
     let railVertical = dockCorner?.startsWith('bottom') ? 'above'
       : dockCorner?.startsWith('top') ? 'below'
@@ -7187,16 +7913,14 @@
       ? railHorizontal === 'left'
         ? toolbarRect.left
         : toolbarRect.right - viewportRailWidth
-      : window.innerWidth - TOOLBAR_MARGIN - viewportRailWidth;
+      : frameWidth - TOOLBAR_MARGIN - viewportRailWidth;
     root.style.setProperty('--buret-viewport-rail-left', Math.round(viewportRailLeft) + 'px');
-    const viewportControls = document.querySelector('.msp-plugin .msp-viewport-controls');
-    const viewportControlsRect = viewportControls ? viewportControls.getBoundingClientRect() : null;
-    const viewportControlRailRect = visibleRect('.msp-plugin .msp-viewport-controls-buttons');
     // Our own rail stands where Mol*'s used to; whichever of the two is on screen is
-    // the edge the compute button has to keep clear of.
-    const railRect = visibleRect('#buret-viewport-rail') || viewportControlRailRect;
+    // the edge the compute button has to keep clear of. The rail's left edge is
+    // exactly the property just written.
+    const railRect = ownRailVisible ? { left: Math.round(viewportRailLeft) } : viewportControlRailRect;
     const generate3DControlRight = railRect
-      ? Math.max(TOOLBAR_MARGIN, Math.ceil(window.innerWidth - railRect.left + FLOATING_LAYOUT_GAP * 2))
+      ? Math.max(TOOLBAR_MARGIN, Math.ceil(frameWidth - railRect.left + FLOATING_LAYOUT_GAP * 2))
       : 70;
     root.style.setProperty('--buret-generate-3d-control-right', generate3DControlRight + 'px');
     const selectionToolbarRect = visibleRect('.msp-plugin .msp-selection-viewport-controls > .msp-flex-row')
@@ -7205,7 +7929,6 @@
     // the toolbar is a grip somewhere above and the bar keeps its own rounding.
     document.body?.classList.toggle('buret-selection-toolbar-open',
       !!selectionToolbarRect && !!toolbarRect && !toolbarCollapsed);
-    const mainRect = visibleRect('.msp-plugin .msp-layout-main');
     const mainTop = mainRect ? mainRect.top : 0;
     const defaultViewportTop = mainTop + 56;
     const panelOpenTop = selectionToolbarRect
@@ -7229,28 +7952,28 @@
       ? selectionToolbarRect.bottom + FLOATING_LAYOUT_GAP
       : toolbarBottom;
     const viewportRailTop = Math.min(
-      Math.max(toolbarSafeTop(), Math.ceil(preferredViewportRailTop)),
-      Math.max(toolbarSafeTop(), window.innerHeight - viewportRailHeight - TOOLBAR_MARGIN)
+      Math.max(safeTop, Math.ceil(preferredViewportRailTop)),
+      Math.max(safeTop, frameHeight - viewportRailHeight - TOOLBAR_MARGIN)
     );
     root.style.setProperty('--buret-viewport-rail-top', viewportRailTop + 'px');
     // The desktop menu belongs to the host, but only the iframe knows when
     // Sequence or a wrapped toolbar has moved the controls below it.
     if (hostComputeAnchorRequested && hostViewerVisible && !panelState.open) {
+      // Top-aligned with the rail beside it, on the same gap as the rest of the chrome.
       const top = Math.ceil(Math.max(
-        toolbarSafeTop(),
-        !toolbarRect || toolbarRect.top < window.innerHeight / 2 ? toolbarBottom : 0,
+        safeTop,
+        !toolbarRect || toolbarRect.top < frameHeight / 2 ? toolbarBottom : 0,
         (selectionToolbarRect?.bottom ?? 0) + FLOATING_LAYOUT_GAP,
       ));
       const right = railRect && railHorizontal === 'right'
-        ? Math.ceil(window.innerWidth - viewportRailLeft + FLOATING_LAYOUT_GAP)
+        ? Math.ceil(frameWidth - viewportRailLeft + FLOATING_LAYOUT_GAP)
         : TOOLBAR_MARGIN;
-      // Host chrome paints above the iframe, so it yields while a viewer menu is open.
-      const covered = Array.from(document.querySelectorAll('.buret-atlas-menu, .atlas-popover-surface')).some(isVisible);
-      const key = `${top}:${right}:${covered}`;
-      if (key !== lastHostComputeAnchor) {
-        lastHostComputeAnchor = key;
-        postHostMessage({ type: 'sceneComputeAnchor', top, right, covered });
-      }
+      // Host chrome paints above the iframe, so it yields while a viewer menu is
+      // open, and folds away with the rest of the controls in a narrow pane.
+      const menuCovered = document.body?.classList.contains('buret-compact-chrome') === true
+        || Array.from(document.querySelectorAll('.buret-atlas-menu, .atlas-popover-surface')).some(isVisible);
+      hostComputeAnchor = { top, right, menuCovered };
+      postHostComputeAnchor();
     }
     repositionDockingPoseControlsForLayout(mainRect);
 
@@ -7261,29 +7984,28 @@
       && computeTop < posesRect.bottom + FLOATING_LAYOUT_GAP
       && computeTop + computeRect.height > posesRect.top - FLOATING_LAYOUT_GAP) {
       const below = posesRect.bottom + FLOATING_LAYOUT_GAP;
-      computeTop = below + computeRect.height <= window.innerHeight - TOOLBAR_MARGIN
+      computeTop = below + computeRect.height <= frameHeight - TOOLBAR_MARGIN
         ? below : Math.max(TOOLBAR_MARGIN, posesRect.top - FLOATING_LAYOUT_GAP - computeRect.height);
     }
     root.style.setProperty('--buret-compute-control-top', `${Math.ceil(computeTop)}px`);
     positionGenerate3DMenu();
 
-    const bottomLimit = visibleRectTop('.msp-plugin .msp-layout-bottom') || window.innerHeight;
     const panelMaxHeight = Math.max(160, Math.floor(bottomLimit - viewportControlsViewportTop - FLOATING_LAYOUT_GAP));
     root.style.setProperty('--buret-viewport-panel-max-height', panelMaxHeight + 'px');
     positionOpenViewportMenu();
   }
 
   function visibleRectTop(selector) {
-    const element = document.querySelector(selector);
-    if (!element || !isVisible(element)) return 0;
-    const rect = element.getBoundingClientRect();
-    return rect.height > 0 ? rect.top : 0;
+    return visibleRect(selector)?.top || 0;
   }
 
   function visibleRect(selector) {
     const element = document.querySelector(selector);
-    if (!element || !isVisible(element)) return null;
-    return element.getBoundingClientRect();
+    if (!element) return null;
+    const style = window.getComputedStyle(element);
+    if (style.display === 'none' || style.visibility === 'hidden') return null;
+    const rect = element.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0 ? rect : null;
   }
 
   function isVisible(element) {
@@ -7302,6 +8024,7 @@
     const observer = new MutationObserver(records => {
       if (hasEffectiveLayoutMutation(records)) scheduleFloatingLayoutRefresh();
     });
+    floatingLayoutObserver = observer;
     observer.observe(document.body, {
       childList: true,
       subtree: true,
@@ -7320,7 +8043,43 @@
     if (floatingLayoutFrame) return;
     floatingLayoutFrame = requestAnimationFrame(() => {
       floatingLayoutFrame = 0;
-      updateFloatingLayoutOffsets();
+      const toolbar = floatingResizeToolbar;
+      floatingResizeToolbar = null;
+      if (toolbar?.isConnected) {
+        // A pane too narrow for the toolbar folds the floating controls into the
+        // collapsed grip instead of stacking wrapped rows over the structure.
+        // Only that automatic fold is undone when the pane widens again.
+        const width = window.innerWidth;
+        if (width >= COMPACT_CHROME_EXIT_WIDTH) delete toolbar.dataset.compactDeclined;
+        if (width > 0 && !window.BuretteNativeFirstFrame && width < COMPACT_CHROME_ENTER_WIDTH
+          && !toolbar.classList.contains('collapsed') && toolbar.dataset.compactDeclined !== '1') {
+          toolbar.dataset.compactCollapsed = '1';
+          setToolbarCollapsed(toolbar, true, resizeState.viewer, false);
+        } else if (toolbar.dataset.compactCollapsed === '1' && width >= COMPACT_CHROME_EXIT_WIDTH) {
+          delete toolbar.dataset.compactCollapsed;
+          setToolbarCollapsed(toolbar, false, resizeState.viewer, false);
+        }
+        syncCompactViewerChrome(toolbar.classList.contains('collapsed'));
+        // Every repositionToolbar branch ends in updateFloatingLayoutOffsets().
+        repositionToolbar(toolbar);
+        positionXyzrenderPopover(toolbar);
+        positionGenerate3DMenu();
+        const presetMenu = document.querySelector('[data-buret-molstar-preset-menu]');
+        if (presetMenu && !presetMenu.classList.contains('hidden')) {
+          positionMolstarPresetMenu();
+          const presetItem = presetMenu.querySelector(`[data-buret-molstar-preset="${CSS.escape(molstarPresetPreviewPreset)}"]`);
+          const { preview } = molstarPresetPreviewElements();
+          if (presetItem && preview && !preview.classList.contains('hidden')) {
+            positionMolstarPresetPreview(presetItem);
+            scheduleMolstarPresetPreviewResize(presetItem);
+          }
+        }
+      } else {
+        updateFloatingLayoutOffsets();
+      }
+      // The pass measured the live DOM after its own style writes. Records
+      // from those writes would only schedule an identical pass next frame.
+      floatingLayoutObserver?.takeRecords();
     });
   }
 
@@ -7984,6 +8743,15 @@ SOFTWARE.
     }
     const { children, rootRef } = sceneTreeChildRefs(state);
     if (rootRef === null) return [];
+    const siblingTypeCounts = new Map();
+    for (const [parentRef, refs] of children) {
+      const counts = new Map();
+      for (const ref of refs) {
+        const name = state.cells.get(ref)?.obj?.type?.name;
+        counts.set(name, (counts.get(name) || 0) + 1);
+      }
+      siblingTypeCounts.set(parentRef, counts);
+    }
     const colorTargets = sceneTreeColorTargets(viewer);
     // Decorators such as custom-model-properties re-wrap their parent under the
     // same label. Mol* shows one row for the whole chain, and the managers address
@@ -8019,13 +8787,12 @@ SOFTWARE.
           const objectName = cell.obj.type?.name;
           const childRefs = chain.flatMap(ref => children.get(ref) || [])
             .filter(ref => !isSceneTreeDecorator(state.cells.get(ref)) && state.cells.get(ref)?.obj?.type?.typeClass !== 'Null');
-          const siblings = (children.get(cell.transform.parent) || [])
-            .filter(ref => state.cells.get(ref)?.obj?.type?.name === objectName);
+          const siblingCount = siblingTypeCounts.get(cell.transform.parent)?.get(objectName) || 0;
           const singleTrajectory = objectName === 'Trajectory' && cell.obj.data?.frameCount === 1 && childRefs.length === 1;
-          const singleModel = objectName === 'Model' && siblings.length === 1 && childRefs.length === 1
+          const singleModel = objectName === 'Model' && siblingCount === 1 && childRefs.length === 1
             && state.cells.get(cell.transform.parent)?.obj?.data?.frameCount === 1;
           const plainStructure = cell.transform.transformer?.id === 'ms-plugin.structure-from-model'
-            && siblings.length === 1 && cell.obj.label === 'Model' && childRefs.length > 0;
+            && siblingCount === 1 && cell.obj.label === 'Model' && childRefs.length > 0;
           if (singleTrajectory || singleModel || plainStructure || (molstarStoryState().available && (
             (['Trajectory', 'Model'].includes(objectName) && childRefs.length === 1)
             || cell.transform.transformer?.id === 'ms-plugin.structure-from-model'
@@ -8042,7 +8809,7 @@ SOFTWARE.
           const display = sceneTreeRowLabel(cell, rawLabel);
           const label = display.label;
           const measurementName = ['Label', 'Distance', 'Angle', 'Dihedral'].includes(label);
-          const measurementTargets = measurementEditable ? sceneTreeMeasurementTargets(viewer, nodeRef) : [];
+          const measurementTargets = measurementEditable ? sceneTreeMeasurementTargets(viewer, nodeRef, children) : [];
           const customText = measurementName ? sceneTreeMeasurementValue(measurementTargets, 'custom-text') : undefined;
           const measurementSource = measurementName ? sceneTreeMeasurementSource(nodeCell) : '';
           const nested = build(chain);
@@ -8056,7 +8823,7 @@ SOFTWARE.
             note: measurementName && measurementEditable
               ? ([typeof customText === 'string' ? customText.trim() : '', measurementSource]
                 .filter(Boolean).join(' · '))
-              : String(cell.obj.description || display.note || display.format || ''),
+              : sceneTreeCellNote(cell, display),
             sourceLabel: rawLabel === label ? '' : rawLabel,
             group: String(cell.obj.type?.name || '') === 'Primitive Data' ? 'annotations' : 'structures',
             typeClass: String(cell.obj.type?.typeClass || 'Object'),
@@ -8425,7 +9192,38 @@ SOFTWARE.
     for (const target of sceneTreeSubtreeRefs(state, ref)) {
       state.updateCellState(target, { isHidden: hidden });
     }
+    if (isUnitCellCell(state.cells?.get(ref))) writeSceneContextPreference(unitCellPreferenceKey, String(!hidden));
     scheduleSceneTreeRender();
+  }
+
+  // Like Avogadro, a crystal opens with its unit cell shown. Crystals reach Mol* as
+  // XYZ with a Lattice (CIF and POSCAR are converted to it), so only XYZ cells are
+  // shown by default; PDB and mmCIF macromolecules keep theirs hidden. An explicit
+  // toggle is remembered for later documents of the same kind.
+  let unitCellPreferenceKey = 'burette.unit-cell-visible.crystal';
+  function isUnitCellCell(cell) {
+    return cell?.transform?.transformer?.definition?.name === 'model-unitcell-3d';
+  }
+
+  // Mol* names a cell by its model's space group. A crystal shown from its expanded
+  // P1 cell (every CIF, POSCAR and XYZ lattice) would read "P 1" whatever its real
+  // group, so that cell carries no group; the Crystal panel reports the real one.
+  function sceneTreeCellNote(cell, display) {
+    if (isUnitCellCell(cell) && cell.obj?.data?.sourceData?.sourceData?.kind === 'xyz') return '';
+    return String(cell.obj.description || display.note || display.format || '');
+  }
+
+  function applyDefaultUnitCellVisibility(viewer, prepared) {
+    const state = viewer?.plugin?.state?.data;
+    if (typeof state?.updateCellState !== 'function' || !state.cells) return;
+    const crystal = prepared?.format === 'xyz';
+    unitCellPreferenceKey = `burette.unit-cell-visible.${crystal ? 'crystal' : 'macromolecule'}`;
+    const stored = readSceneContextPreference(unitCellPreferenceKey);
+    const visible = stored === 'true' || stored === 'false' ? stored === 'true' : crystal;
+    for (const [ref, cell] of state.cells) {
+      if (!isUnitCellCell(cell) || sceneTreeCellHidden(state, ref) === !visible) continue;
+      for (const target of sceneTreeSubtreeRefs(state, ref)) state.updateCellState(target, { isHidden: !visible });
+    }
   }
 
   async function removeSceneTreeNode(ref) {
@@ -8944,20 +9742,22 @@ SOFTWARE.
     scheduleSceneTreeRender();
   }
 
-  let sceneTreeMeasurementInFlight = false;
-  let sceneTreePendingMeasurement = null;
+  let sceneTreeMeasurementDrain = null;
+  const sceneTreePendingMeasurement = new Map();
   async function streamSceneTreeMeasurementParam(ref, field, value) {
-    sceneTreePendingMeasurement = { ref, field, value };
-    if (sceneTreeMeasurementInFlight) return;
-    sceneTreeMeasurementInFlight = true;
+    sceneTreePendingMeasurement.set(JSON.stringify([ref, field]), { ref, field, value });
+    if (sceneTreeMeasurementDrain) return;
+    let finishDrain;
+    sceneTreeMeasurementDrain = new Promise(resolve => { finishDrain = resolve; });
     try {
-      while (sceneTreePendingMeasurement) {
-        const next = sceneTreePendingMeasurement;
-        sceneTreePendingMeasurement = null;
+      while (sceneTreePendingMeasurement.size) {
+        const [key, next] = sceneTreePendingMeasurement.entries().next().value;
+        sceneTreePendingMeasurement.delete(key);
         await applySceneTreeMeasurementParam(next.ref, next.field, next.value);
       }
     } finally {
-      sceneTreeMeasurementInFlight = false;
+      sceneTreeMeasurementDrain = null;
+      finishDrain();
     }
   }
 
@@ -9041,7 +9841,69 @@ SOFTWARE.
     menu.appendChild(row);
   }
 
+  async function measurementCoordinateRuntime() {
+    if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
+    if (!window.BuretteMeasurementCoordinate) {
+      const sceneScript = Array.from(document.scripts).find(script => script.src && new URL(script.src).pathname.endsWith('/scene-file-actions.js'));
+      const base = new URL(runtimeURL('BuretteSceneFilesURL', sceneScript?.src || './scene-file-actions.js'), document.baseURI);
+      const url = new URL('./measurement-coordinate.js', base); url.search = base.search;
+      await loadScript(String(url), 'measurement coordinates', 10000);
+    }
+    return window.BuretteMeasurementCoordinate;
+  }
+
+  async function restoreMeasurementPreview(viewer, config) {
+    const topologyLimit = 2 * 1024 * 1024 + 8192;
+    if (typeof config.rendererViewState !== 'string' || config.rendererViewState.length > topologyLimit) return null;
+    const byteLength = new TextEncoder().encode(config.rendererViewState).byteLength;
+    if (byteLength > topologyLimit) return null;
+    let state;
+    try { state = JSON.parse(config.rendererViewState); } catch { return null; }
+    if (byteLength > 8192 && !(state?.version === 1 && state?.topologyScene?.version === 1)) return null;
+    if (!state?.topologyScene && !state?.measurementTransfer) return null;
+    if (activeMolstarViewer() !== viewer) throw new Error('The Geometry source or viewer changed.');
+    if (state.topologyScene) {
+      const runtime = window.molstar?.BuretteTopologyScene;
+      if (!runtime) throw new Error('Reload a runtime supporting topology scene transfer.');
+      await runtime.restore(viewer.plugin, state.topologyScene);
+      if (activeMolstarViewer() !== viewer) throw new Error('The Geometry source or viewer changed.');
+    }
+    if (state.measurementTransfer) {
+      const runtime = await measurementCoordinateRuntime();
+      if (activeMolstarViewer() !== viewer) throw new Error('The Geometry source or viewer changed.');
+      await runtime.restore(viewer, state.measurementTransfer, window.BuretteSceneFiles.science);
+      if (activeMolstarViewer() !== viewer) throw new Error('The Geometry source or viewer changed.');
+    }
+    return state.topologyScene?.camera || null;
+  }
+
+  function canEditMeasurementCoordinates(targets) {
+    const config = activeConfig || window.BuretteConfig;
+    // A single-geometry XYZ measurement opens the matching Geometry row in the host.
+    const singleXyz = normalizeFormat(config?.sourceExtension || config?.molstarFormat || config?.format) === 'xyz'
+      && !(Number(config?.trajectoryFrameCount || activeMolstarPrepared?.xyzFrameCount || activeMolstarPrepared?.poseCount || 0) > 1);
+    return config?.appViewer === true && !isVisualizationOnly(config)
+      && (hasExplicitMolecularGraphFormat(config) || singleXyz)
+      && !config.docking && !isSdfPoseConformerSet(config) && targets.length === 1
+      && ['Distance', 'Angle', 'Dihedral'].includes(targets[0].obj?.label);
+  }
+
+  // The host owns the source edit; the viewer only names the measurement's ordered source atoms.
+  async function requestMeasurementCoordinate(ref) {
+    try {
+      const viewer = activeMolstarViewer();
+      const targets = sceneTreeMeasurementTargets(viewer, ref);
+      if (!canEditMeasurementCoordinates(targets)) return;
+      const runtime = await measurementCoordinateRuntime();
+      const measurement = await runtime.describe(viewer, targets, window.BuretteSceneFiles.science);
+      if (activeMolstarViewer() === viewer) postHostMessage({ type: 'editMeasurementCoordinate', measurement });
+    } catch (error) { setStatus(error?.message || 'This measurement cannot change coordinates.', 'error'); }
+  }
+
   function sceneTreeMeasurementMenu(menu, targets) {
+    if (canEditMeasurementCoordinates(targets)) {
+      menu.appendChild(sceneTreeMenuItem(`Set ${targets[0].obj.label.toLowerCase()}…`, 'measurement-coordinate'));
+    }
     const geometryFields = ['geometry-color', 'line-size', 'dash-length', 'arc-scale', 'sector-opacity']
       .filter(field => targets.some(target => sceneTreeMeasurementParam(target, field)));
     if (geometryFields.length) {
@@ -9161,40 +10023,44 @@ SOFTWARE.
     return updateSceneTreeRepresentation(ref, old => ({ ...old, colorTheme }));
   }
 
-  // The opacity slider fires on every pixel of the drag; each apply is a state
-  // commit, so newer moves are folded into the one in flight rather than queued
-  // behind it — the representation follows the thumb and never lags a backlog.
-  let sceneTreeAlphaInFlight = false;
-  let sceneTreePendingAlpha = null;
+  // Keep one pending value per target/control, not per pointer event. A second
+  // slider or representation must not erase the first one's final pending edit.
+  let sceneTreeAlphaDrain = null;
+  const sceneTreePendingAlpha = new Map();
   async function streamSceneTreeReprAlpha(ref, alpha) {
-    sceneTreePendingAlpha = { ref, alpha };
-    if (sceneTreeAlphaInFlight) return;
-    sceneTreeAlphaInFlight = true;
+    sceneTreePendingAlpha.set(ref, { ref, alpha });
+    if (sceneTreeAlphaDrain) return;
+    let finishDrain;
+    sceneTreeAlphaDrain = new Promise(resolve => { finishDrain = resolve; });
     try {
-      while (sceneTreePendingAlpha) {
-        const next = sceneTreePendingAlpha;
-        sceneTreePendingAlpha = null;
+      while (sceneTreePendingAlpha.size) {
+        const [key, next] = sceneTreePendingAlpha.entries().next().value;
+        sceneTreePendingAlpha.delete(key);
         await applySceneTreeReprAlpha(next.ref, next.alpha);
       }
     } finally {
-      sceneTreeAlphaInFlight = false;
+      sceneTreeAlphaDrain = null;
+      finishDrain();
     }
   }
 
-  let sceneTreeParamInFlight = false;
-  let sceneTreePendingParam = null;
-  async function streamSceneTreeReprParam(ref, name, value) {
-    sceneTreePendingParam = { ref, name, value };
-    if (sceneTreeParamInFlight) return;
-    sceneTreeParamInFlight = true;
+  let sceneTreeParamDrain = null;
+  const sceneTreePendingParam = new Map();
+  async function streamSceneTreeReprParam(ref, name, value, { kind = 'representation' } = {}) {
+    sceneTreePendingParam.set(JSON.stringify([kind, ref, name]), { ref, name, value, kind });
+    if (sceneTreeParamDrain) return;
+    let finishDrain;
+    sceneTreeParamDrain = new Promise(resolve => { finishDrain = resolve; });
     try {
-      while (sceneTreePendingParam) {
-        const next = sceneTreePendingParam;
-        sceneTreePendingParam = null;
-        await applySceneTreeReprParam(next.ref, next.name, next.value);
+      while (sceneTreePendingParam.size) {
+        const [key, next] = sceneTreePendingParam.entries().next().value;
+        sceneTreePendingParam.delete(key);
+        if (next.kind === 'symmetry') await updateSceneTreeAssemblySymmetry(next.ref, { scale: next.value });
+        else await applySceneTreeReprParam(next.ref, next.name, next.value);
       }
     } finally {
-      sceneTreeParamInFlight = false;
+      sceneTreeParamDrain = null;
+      finishDrain();
     }
   }
 
@@ -9763,6 +10629,9 @@ SOFTWARE.
       item('visibility', node.hidden ? 'Show' : 'Hide', () =>
         runMolstarSceneEdit(`visibility of ${node.label}`, () => toggleSceneTreeVisibility(ref)))
     ];
+    if (canEditMeasurementCoordinates(measurementTargets)) {
+      items.push(item('measurement-coordinate', `Set ${measurementTargets[0].obj.label.toLowerCase()}…`, () => requestMeasurementCoordinate(ref)));
+    }
     const addField = (field, kind) => {
       if (!measurementTargets.some(target => sceneTreeMeasurementParam(target, field))) return;
       const definition = SCENE_TREE_MEASUREMENT_FIELDS[field];
@@ -9852,6 +10721,7 @@ SOFTWARE.
     else if (action === 'select') selectSceneTreeNode(ref);
     else if (action === 'visibility') toggleSceneTreeVisibility(ref);
     else if (action === 'focus') focusSceneTreeNode(ref);
+    else if (action === 'measurement-coordinate') await requestMeasurementCoordinate(ref);
     else if (action === 'isolate') isolateSceneTreeNode(ref);
     else if (action === 'show-all') showAllSceneTreeNodes(ref);
     else if (action === 'save-focus') await saveSceneTreeFocusNode(ref);
@@ -10291,6 +11161,16 @@ SOFTWARE.
     ['jpeg', 'JPEG'],
     ['webp', 'WebP']
   ];
+  // The visible scene as a 3D model file (molstar.BuretteSceneExport).
+  const VIEWPORT_MODEL_FORMATS = [
+    ['ply', 'PLY'],
+    ['glb', 'glTF'],
+    ['obj', 'OBJ'],
+    ['x3d', 'X3D'],
+    ['wrl', 'VRML'],
+    ['pov', 'POV-Ray']
+  ];
+  let viewportModelExport = null;
   let selectionQueryModifier = 'set';
   let viewportControlsDisposers = [];
   let viewportMenuControls = null;
@@ -10318,7 +11198,9 @@ SOFTWARE.
     const rail = trigger?.closest('#buret-viewport-rail, #buret-selection-bar, .buret-seq-footer');
     if (!menu || !trigger) return;
     const anchor = trigger.getBoundingClientRect();
-    const rect = menu.getBoundingClientRect();
+    // The opening scale animation must not feed changing dimensions back into
+    // placement and schedule another layout pass through the style observers.
+    const rect = { width: menu.offsetWidth, height: menu.offsetHeight };
     // Keep the portalled menu attached to its rail button while the rail moves or
     // the host resizes the preview viewport.
     const bounds = rail.getBoundingClientRect();
@@ -10400,6 +11282,82 @@ SOFTWARE.
     viewportMenuItem(menu, 'Reset zoom', 'camera-reset', { icon: SCENE_TREE_ICON.focus });
     viewportMenuItem(menu, 'Lay flat', 'camera-orient', { icon: VIEWPORT_ICON.layFlat });
     viewportMenuItem(menu, 'Reset axes', 'camera-axes', { icon: SCENE_TREE_ICON.restore });
+    appendMolstarPresetMenuSeparator(menu);
+    const mode = viewportPlugin()?.canvas3d?.camera?.state?.mode === 'orthographic' ? 'orthographic' : 'perspective';
+    viewportScreenshotChoice(menu, 'camera-projection', 'perspective', 'Perspective', mode);
+    viewportScreenshotChoice(menu, 'camera-projection', 'orthographic', 'Orthographic', mode);
+    appendMolstarPresetMenuSeparator(menu);
+    VIEWPORT_AXIS_VIEWS.forEach(([axis], index) => viewportMenuItem(menu, `View from ${axis}`, 'camera-view-axis', { data: { viewportValue: String(index) } }));
+  }
+
+  // Each view puts the camera on the positive or negative side of a world axis
+  // (the focus direction points from the target to the camera), with an up
+  // direction that keeps the other two axes in their usual places.
+  const VIEWPORT_AXIS_VIEWS = [
+    ['+X', [1, 0, 0], [0, 1, 0]], ['−X', [-1, 0, 0], [0, 1, 0]],
+    ['+Y', [0, 1, 0], [0, 0, -1]], ['−Y', [0, -1, 0], [0, 0, 1]],
+    ['+Z', [0, 0, 1], [0, 1, 0]], ['−Z', [0, 0, -1], [0, 1, 0]],
+  ];
+
+  // Mol* moves the camera from these keys only while the pointer is over the canvas.
+  // A focused 3D view without the pointer takes them here, one step per press or
+  // repeat, in Mol*'s directions. Plain arrows stay with pose and ligand stepping.
+  const VIEWPORT_KEY_CAMERA = {
+    ArrowLeft: ['yaw', 1], ArrowRight: ['yaw', -1], ArrowUp: ['pitch', 1], ArrowDown: ['pitch', -1],
+    KeyQ: ['roll', -1], KeyE: ['roll', 1], KeyW: ['zoom', 0.9], KeyS: ['zoom', 1 / 0.9],
+    KeyA: ['pan', [1, 0]], KeyD: ['pan', [-1, 0]], KeyR: ['pan', [0, -1]], KeyF: ['pan', [0, 1]],
+  };
+
+  function rotateViewportCamera(plugin, axis, radians) {
+    const { Vec3, Mat4 } = window.molstar.lib.math.LinearAlgebra;
+    const camera = plugin.canvas3d.camera;
+    const snapshot = camera.getSnapshot();
+    const rotation = Mat4.fromRotation(Mat4(), radians, Vec3.normalize(Vec3(), axis));
+    const offset = Vec3.sub(Vec3(), snapshot.position, snapshot.target);
+    const position = Vec3.add(Vec3(), Vec3.transformMat4(Vec3(), offset, rotation), snapshot.target);
+    const up = Vec3.transformMat4(Vec3(), snapshot.up, rotation);
+    camera.setState({ position, target: snapshot.target, up }, 0);
+    plugin.canvas3d.requestDraw();
+  }
+
+  function stepViewportCamera(plugin, kind, amount) {
+    const { Vec3 } = window.molstar.lib.math.LinearAlgebra;
+    const camera = plugin.canvas3d.camera;
+    const { position, target, up } = camera.getSnapshot();
+    const eye = Vec3.sub(Vec3(), position, target);
+    const right = Vec3.cross(Vec3(), up, eye);
+    if (kind === 'yaw' || kind === 'pitch' || kind === 'roll') {
+      rotateViewportCamera(plugin, kind === 'yaw' ? up : kind === 'pitch' ? right : eye, amount * Math.PI / 36);
+      return;
+    }
+    if (kind === 'zoom') {
+      camera.setState({ position: Vec3.scaleAndAdd(Vec3(), target, eye, amount) }, 0);
+    } else {
+      const step = Vec3.magnitude(eye) * 0.05;
+      const offset = Vec3.add(Vec3(), Vec3.setMagnitude(Vec3(), right, amount[0] * step), Vec3.setMagnitude(Vec3(), up, amount[1] * step));
+      camera.setState({ position: Vec3.add(Vec3(), position, offset), target: Vec3.add(Vec3(), target, offset) }, 0);
+    }
+    plugin.canvas3d.requestDraw();
+  }
+
+  function installViewportKeyboardCamera(plugin) {
+    const canvas = plugin?.canvas3dContext?.canvas;
+    if (!canvas || canvas.dataset.buretKeyboardCamera === '1') return;
+    canvas.dataset.buretKeyboardCamera = '1';
+    canvas.tabIndex = 0;
+    canvas.setAttribute('role', 'application');
+    canvas.setAttribute('aria-label', '3D view');
+    canvas.setAttribute('aria-keyshortcuts', 'Shift+ArrowLeft Shift+ArrowRight Shift+ArrowUp Shift+ArrowDown Q E W S A D R F');
+    let pointerInside = false;
+    canvas.addEventListener('pointerenter', () => { pointerInside = true; });
+    canvas.addEventListener('pointerleave', () => { pointerInside = false; });
+    canvas.addEventListener('keydown', event => {
+      const step = VIEWPORT_KEY_CAMERA[event.code];
+      if (!step || pointerInside || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (event.code.startsWith('Arrow') !== event.shiftKey) return;
+      event.preventDefault();
+      stepViewportCamera(plugin, ...step);
+    });
   }
 
   function viewportScreenshotHelper() {
@@ -10482,7 +11440,11 @@ SOFTWARE.
     summary.append(name, value, chevron);
     disclosure.appendChild(summary);
     menu.appendChild(disclosure);
-    for (const [entry, label] of entries) viewportScreenshotChoice(disclosure, action, entry, label, current);
+    // Without a current entry the group lists actions rather than choices.
+    for (const [entry, label] of entries) {
+      if (current === undefined) viewportMenuItem(disclosure, label, action, { data: { viewportValue: entry }, disabled: Boolean(viewportModelExport) });
+      else viewportScreenshotChoice(disclosure, action, entry, label, current);
+    }
   }
 
   function viewportScreenshotToggle(menu, label, action, checked) {
@@ -10517,6 +11479,30 @@ SOFTWARE.
     viewportScreenshotToggle(menu, 'Transparent background', 'screenshot-transparent', values.transparent === true);
     viewportScreenshotToggle(menu, 'Show axes', 'screenshot-axes', values.axes?.name === 'on');
     viewportScreenshotToggle(menu, 'Crop to content', 'screenshot-crop', helper.cropParams?.auto === true);
+    if (window.molstar?.BuretteSceneExport) {
+      sceneTreeMenuSection(menu);
+      viewportScreenshotGroup(menu, 'Export 3D model', 'screenshot-model', VIEWPORT_MODEL_FORMATS);
+    }
+  }
+
+  // The visible scene as a 3D model file in scene coordinates. Mol*'s task overlay shows
+  // its progress and Abort; the file leaves through the same download path as any export,
+  // and a failure leaves the scene and its source as they were.
+  function exportViewportModel(format) {
+    const plugin = viewportPlugin();
+    const exporter = window.molstar?.BuretteSceneExport;
+    if (!plugin || !exporter?.formats[format] || viewportModelExport) return;
+    const name = `${safeExportBaseName(activeConfig?.label, 'scene')}.${exporter.formats[format].extension}`;
+    viewportModelExport = exporter.exportScene(plugin, format)
+      .then(({ blob, assertSceneUnchanged }) => {
+        assertSceneUnchanged();
+        downloadBlob(blob, name);
+      })
+      .catch(error => {
+        if (error?.name === 'AbortError') setStatus('[web] 3D model export cancelled.');
+        else setStatus(`[web] 3D model export failed. ${error?.message || error}`, 'error');
+      })
+      .finally(() => { viewportModelExport = null; });
   }
 
   // Motion and wiggle are always explicit. A task animation appears only when the
@@ -10904,7 +11890,7 @@ SOFTWARE.
         };
       })));
     return {
-      camera: snapshot ? { position: snapshot.position, target: snapshot.target, up: snapshot.up, radius: snapshot.radius } : null,
+      camera: snapshot ? { mode: snapshot.mode, position: snapshot.position, target: snapshot.target, up: snapshot.up, radius: snapshot.radius } : null,
       exactSelection: window.BuretteAgent?.selectionState?.() ?? null,
       motion: viewportMotionState(),
       wiggle: wiggle ? { name: wiggle.name, animation: Object.fromEntries(VIEWPORT_WIGGLE_SLIDERS.map(spec => [spec.name, Number(wiggle.animation[spec.name]) || 0])) } : null,
@@ -10929,20 +11915,22 @@ SOFTWARE.
         if (!['off', 'even', 'uncertainty'].includes(action.mode)) throw new Error('Wiggle mode must be off, even or uncertainty.');
         await setViewportWiggleKind(action.mode);
         refreshViewportWiggleControls();
+      } else if (action.type === 'set_camera_projection') {
+        // The camera menu's Perspective and Orthographic.
+        if (!['perspective', 'orthographic'].includes(action.mode)) throw new Error('Camera projection must be perspective or orthographic.');
+        plugin.canvas3d.setProps({ camera: { mode: action.mode } });
+      } else if (action.type === 'view_axis') {
+        // The camera menu's View from ±X/Y/Z, without its animation.
+        const index = ['+x', '-x', '+y', '-y', '+z', '-z'].indexOf(String(action.axis).toLowerCase());
+        if (index < 0) throw new Error('View axis must be +x, -x, +y, -y, +z or -z.');
+        const [, direction, up] = VIEWPORT_AXIS_VIEWS[index];
+        requestMolstarStructureFocus(activeMolstarViewer(), { direction, up, durationMs: 0 });
       } else {
         const axis = action.axis;
         if (!Array.isArray(axis) || axis.length !== 3 || !axis.every(Number.isFinite) || !Number.isFinite(Math.hypot(...axis)) || Math.hypot(...axis) === 0 || !Number.isFinite(action.angleDegrees)) {
           throw new Error('Camera rotation requires a nonzero finite axis [x,y,z] and angleDegrees.');
         }
-        const { Vec3, Mat4 } = window.molstar.lib.math.LinearAlgebra;
-        const camera = plugin.canvas3d.camera;
-        const snapshot = camera.getSnapshot();
-        const rotation = Mat4.fromRotation(Mat4(), (action.angleDegrees % 360) * Math.PI / 180, axis.map(value => value / Math.hypot(...axis)));
-        const offset = Vec3.sub(Vec3(), snapshot.position, snapshot.target);
-        const position = Vec3.add(Vec3(), Vec3.transformMat4(Vec3(), offset, rotation), snapshot.target);
-        const up = Vec3.transformMat4(Vec3(), snapshot.up, rotation);
-        camera.setState({ position, target: snapshot.target, up }, 0);
-        plugin.canvas3d.requestDraw();
+        rotateViewportCamera(plugin, axis, (action.angleDegrees % 360) * Math.PI / 180);
       }
       return { ok: true, command: action.type, result: describeViewportScene() };
     } catch (error) {
@@ -11054,6 +12042,10 @@ SOFTWARE.
   // the next capture, and a menu that closed on each toggle would have to be
   // reopened three times to set up one image. Only the two captures dismiss it.
   function runViewportScreenshotAction(action, control) {
+    if (action === 'model') {
+      exportViewportModel(control.dataset.viewportValue);
+      return false;
+    }
     const helper = viewportScreenshotHelper();
     if (!helper) return false;
     if (action === 'save') {
@@ -11117,7 +12109,11 @@ SOFTWARE.
     if (action === 'camera-reset') plugin.canvas3d?.requestCameraReset?.({ durationMs: 250 });
     else if (action === 'camera-orient') plugin.managers.camera.orientAxes(undefined, 250);
     else if (action === 'camera-axes') plugin.managers.camera.resetAxes(250);
-    else if (action.startsWith('screenshot-')) {
+    else if (action === 'camera-projection') plugin.canvas3d?.setProps({ camera: { mode: control.dataset.viewportValue } });
+    else if (action === 'camera-view-axis') {
+      const [, direction, up] = VIEWPORT_AXIS_VIEWS[Number(control.dataset.viewportValue)];
+      requestMolstarStructureFocus(activeMolstarViewer(), { direction, up, durationMs: 250 });
+    } else if (action.startsWith('screenshot-')) {
       return runViewportScreenshotAction(action.slice('screenshot-'.length), control);
     } else if (action === 'animation-play') {
       playViewportAnimation(Number(control.dataset.animationIndex));
@@ -11336,6 +12332,7 @@ SOFTWARE.
     for (const disposer of viewportControlsDisposers) disposer();
     viewportControlsDisposers = [];
     const plugin = viewer?.plugin;
+    installViewportKeyboardCamera(plugin);
     const subscriptions = [
       plugin?.behaviors?.interaction?.selectionMode?.subscribe?.(updateSelectionBar),
       plugin?.managers?.structure?.selection?.events?.changed?.subscribe?.(updateSelectionBar),
@@ -11514,14 +12511,18 @@ SOFTWARE.
       // outside-click dismissal never sees these events and the menu stays open.
       document.addEventListener('input', event => {
         const control = event.target.closest('[data-scene-tree-symmetry-scale]');
-        if (!control) return;
+        const ref = control?.closest('[data-ref]')?.dataset.ref;
+        if (!control || !ref) return;
+        beginSceneTreeControlUndo(control, ref, 'symmetry scale');
         const readout = control.parentElement?.querySelector('.buret-tree-menu-slider-value');
         if (readout) readout.textContent = control.value;
+        streamSceneTreeReprParam(ref, 'scale', Number(control.value), { kind: 'symmetry' });
       });
       document.addEventListener('change', event => {
         const control = event.target.closest('[data-scene-tree-symmetry-scale]');
         const ref = control?.closest('[data-ref]')?.dataset.ref;
         if (!control || !ref) return;
+        if (commitSceneTreeControlUndo(control)) return;
         const node = sceneTreeNodeByRef(sceneTreeNodes(activeMolstarViewer()), ref);
         void runMolstarSceneEdit(`symmetry scale of ${node?.label || 'global symmetry'}`, () => (
           updateSceneTreeAssemblySymmetry(ref, { scale: Number(control.value) })
@@ -11741,6 +12742,7 @@ SOFTWARE.
   // error) replaces it in one step.
   function revealViewer() {
     document.documentElement.classList.remove('buret-viewer-booting');
+    postHostComputeAnchor();
   }
 
   function hideStatus(payload = null) {
@@ -11787,7 +12789,7 @@ SOFTWARE.
   }
 
   function appendCacheBuster(url, cb) {
-    if (String(url || '').startsWith('asset://')) return url;
+    if (/^(asset:\/\/|blob:)/.test(String(url || ''))) return url;
     const separator = url.includes('?') ? '&' : '?';
     return url + separator + 'v=' + encodeURIComponent(cb);
   }
@@ -13545,10 +14547,10 @@ SOFTWARE.
         mvsKind: normalized === 'mvsj' ? molViewSpecJsonKind(data) : null
       };
     }
-    if (normalized === 'ccp4' || normalized === 'mtz') {
+    if (normalized === 'ccp4' || normalized === 'mtz' || normalized === 'cube') {
       return {
         kind: 'volume',
-        data: rawStructureData({ ...config, binary: true }),
+        data: rawStructureData({ ...config, binary: normalized !== 'cube' }),
         format: normalized,
         label: config.label || 'density map'
       };
@@ -15877,7 +16879,7 @@ SOFTWARE.
     const controlLabel = String(config.sdfPoseControlLabel || 'Pose').trim() || 'Pose';
     const records = splitSdfRecords(text);
     if (records.length >= 1 && config.sdfPosePager === true) {
-      const molecules = records.map(parseV2000SdfRecord);
+      const molecules = records.length > 1 ? records.map(parseV2000SdfRecord) : [null];
       const allMoleculesParsed = molecules.every(Boolean);
       const collection = records.length > 1 && allMoleculesParsed
         ? sdfMoleculesToPdbCollection(molecules, label)
@@ -15905,8 +16907,9 @@ SOFTWARE.
         };
       }
       const activeRecord = readTrajectoryControlIndex(config, { controlLabel }, records.length);
-      const recordText = `${records[activeRecord].replace(/\n?\$\$\$\$\s*$/u, '').trimEnd()}\n$$$$\n`;
-      const pdbText = molecules[activeRecord]
+      // A single graph keeps its exact parser input, including bond orders, charges and SD data.
+      const recordText = records.length === 1 ? text : `${records[activeRecord].replace(/\n?\$\$\$\$\s*$/u, '').trimEnd()}\n$$$$\n`;
+      const pdbText = records.length > 1 && molecules[activeRecord]
         ? sdfMoleculesToPdbStructure([molecules[activeRecord]], `${label} ${controlLabel} ${activeRecord + 1}`)
         : null;
       return {
@@ -17507,29 +18510,84 @@ SOFTWARE.
     return normalized === 'default' || normalized === 'illustrative' || normalized === 'illustrative-surface';
   }
 
+  // Match retains the loader's component-specific geometry (including ligands
+  // that a blanket cartoon preset would hide). Only its appearance is faded.
+  async function applyDockingSceneMatchAppearance(viewer, state, structures, alpha, color) {
+    state.matchAppearance ||= new Map();
+    const entries = [];
+    for (const structure of structures) {
+      for (const component of structure.components || []) {
+        if (isMolstarBoxComponent(component)) continue;
+        for (const representation of component.representations || []) {
+          const cell = representation.cell;
+          const ref = cell.transform.ref;
+          const current = cell.transform.params;
+          if (!state.matchAppearance.has(ref)) {
+            state.matchAppearance.set(ref, { alpha: current.type.params.alpha ?? 1,
+              transparentBackfaces: current.type.params.transparentBackfaces, colorTheme: current.colorTheme });
+          } else {
+            const original = state.matchAppearance.get(ref);
+            // A scene-tree edit after our last write becomes the new base,
+            // rather than being mistaken for the temporary Match backdrop.
+            if (original.lastApplied) {
+              if ((current.type.params.alpha ?? 1) !== original.lastApplied.alpha) original.alpha = current.type.params.alpha ?? 1;
+              if (JSON.stringify(current.colorTheme) !== original.lastApplied.color) original.colorTheme = current.colorTheme;
+            }
+          }
+          entries.push(ref);
+        }
+      }
+    }
+    for (let offset = 0; offset < entries.length; offset += 32) {
+      const update = viewer.plugin.state.data.build();
+      for (const ref of entries.slice(offset, offset + 32)) {
+        const original = state.matchAppearance.get(ref);
+        update.to(ref).update(old => ({ ...old,
+          type: { ...old.type, params: { ...old.type.params,
+            alpha: original.alpha * alpha,
+            transparentBackfaces: alpha < 1 ? 'on' : original.transparentBackfaces
+          } },
+          colorTheme: color === 'gray' ? { name: 'uniform', params: { value: 0x6f7886 } } : original.colorTheme
+        }));
+      }
+      await update.commit();
+      for (const ref of entries.slice(offset, offset + 32)) {
+        const actual = viewer.plugin.state.data.cells.get(ref).transform.params;
+        state.matchAppearance.get(ref).lastApplied = { alpha: actual.type.params.alpha ?? 1, color: JSON.stringify(actual.colorTheme) };
+      }
+      if (offset + 32 < entries.length) await new Promise(resolve => setTimeout(resolve, 0));
+    }
+    syncMolstarOutlineTransparency(viewer);
+  }
+
   // `wanted[index]` is '' for the scene style, a backdrop key for the faded All
   // context, and undefined to leave the pose alone. Only poses whose look
   // changes are rebuilt, so stepping through a backdrop restyles two poses.
   async function styleDockingScenePoses(viewer, state, wanted, params) {
     const structuresByPose = dockingSceneStructuresByPose(viewer, state.poseRefs);
     const plain = [];
+    const matchedPlain = [];
     const backdrop = [];
     const changed = [];
     wanted.forEach((key, index) => {
       if (key === undefined || state.poseStyles[index] === key) return;
-      (key ? backdrop : plain).push(...(structuresByPose[index] || []));
+      const targets = key ? backdrop
+        : state.poseStyles[index]?.startsWith('match|') && dockingSceneStyleNeedsReload(params.style) ? matchedPlain : plain;
+      targets.push(...(structuresByPose[index] || []));
       changed.push(index);
     });
-    if (!plain.length && !backdrop.length) return;
+    if (!plain.length && !matchedPlain.length && !backdrop.length) return;
     // A failed build may already have changed some representations. Invalidate
     // visibility now, but cache styles only once the entire update succeeds.
     state.visible = null;
     try {
-      if (backdrop.length) {
-        await applySdfCollectionMolstarStyle(viewer, params.resolvedContextStyle, backdrop, params.contextOpacity, params.contextColor);
-      }
+      if (backdrop.length && !params.matchSceneStyle) await applySdfCollectionMolstarStyle(viewer, params.resolvedContextStyle, backdrop, params.contextOpacity, params.contextColor);
       if (plain.length) await applySdfCollectionMolstarStyle(viewer, normalizeMolstarStyle(params.style), plain, 1, 'colored');
-      await applyMolstarWaterLineRepresentation(viewer);
+      // Water is already normalized when the scene loads. Rebuilding it on a
+      // Match opacity change would replace its refs and restore opaque alpha.
+      if ((backdrop.length && !params.matchSceneStyle) || plain.length) await applyMolstarWaterLineRepresentation(viewer);
+      if (backdrop.length && params.matchSceneStyle) await applyDockingSceneMatchAppearance(viewer, state, backdrop, params.contextOpacity, params.contextColor);
+      if (matchedPlain.length) await applyDockingSceneMatchAppearance(viewer, state, matchedPlain, 1, 'colored');
       for (const index of changed) state.poseStyles[index] = wanted[index];
     } catch (error) {
       // Force a clean reload on retry, including partially changed poses that
@@ -17597,6 +18655,7 @@ SOFTWARE.
     if (!dockingSceneVisibilityStateStillLoaded(viewer, state)) return;
     state.key = dockingSceneStateKey(prepared, configuredMolstarStyle(activeConfig));
     state.poseStyles.fill('');
+    state.matchAppearance = new Map();
     state.visible = null;
     const activePose = readTrajectoryControlIndex(activeConfig, prepared, Number(prepared.poseCount || 0) || 1);
     await applyDockingSceneVisibility(viewer, prepared, activePose, { focus: false });
@@ -17622,16 +18681,16 @@ SOFTWARE.
     if (!poses[activeIndex]) return false;
     const style = configuredMolstarStyle(activeConfig);
     const resolvedContextStyle = dockingSceneBackgroundStyle(readSdfCollectionContextStyle(activeConfig), style);
-    const uniform = resolvedContextStyle === 'default' || resolvedContextStyle === 'illustrative';
+    const matchSceneStyle = dockingSceneStyleNeedsReload(resolvedContextStyle);
     const ensured = await ensureDockingSceneState(viewer, prepared, style,
-      uniform && Boolean(activeDockingSceneVisibilityState?.poseStyles?.some(Boolean)));
+      matchSceneStyle && Boolean(activeDockingSceneVisibilityState?.poseStyles?.some(key => key && !key.startsWith('match|'))));
     if (!ensured) return false;
     const { state, rebuilt } = ensured;
     const contextOpacity = readSdfCollectionContextOpacity(activeConfig);
     const contextColor = readSdfCollectionContextColor(activeConfig);
-    const backdropKey = uniform ? '' : [resolvedContextStyle, contextOpacity, contextColor].join('|');
+    const backdropKey = [matchSceneStyle ? 'match' : resolvedContextStyle, contextOpacity, contextColor].join('|');
     await styleDockingScenePoses(viewer, state, poses.map((_, index) => index === activeIndex ? '' : backdropKey),
-      { style, resolvedContextStyle, contextOpacity, contextColor });
+      { style, resolvedContextStyle, contextOpacity, contextColor, matchSceneStyle });
     showDockingScenePoses(viewer, state, null);
     state.activeIndex = activeIndex;
     updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
@@ -17646,7 +18705,8 @@ SOFTWARE.
     if (!poses[activeIndex]) return false;
     const style = configuredMolstarStyle(activeConfig);
     const ensured = await ensureDockingSceneState(viewer, prepared, style,
-      Boolean(activeDockingSceneVisibilityState?.poseStyles?.[activeIndex]));
+      Boolean(activeDockingSceneVisibilityState?.poseStyles?.[activeIndex]
+        && !activeDockingSceneVisibilityState.poseStyles[activeIndex].startsWith('match|')));
     if (!ensured) return false;
     const { state, rebuilt } = ensured;
     const wanted = [];
@@ -17684,13 +18744,19 @@ SOFTWARE.
       const contextStyle = readSdfCollectionContextStyle(activeConfig);
       const resolvedContextStyle = dockingSceneBackgroundStyle(contextStyle, style);
       const backgroundEntries = poses.filter((_, index) => index !== activeIndex);
-      if (resolvedContextStyle === 'default' || resolvedContextStyle === 'illustrative') {
+      if (dockingSceneStyleNeedsReload(resolvedContextStyle)) {
         const sceneStructures = [];
-        for (const entry of [...backgroundEntries, activeEntry]) {
-          sceneStructures.push(...await loadMolstarEntryWithStructureRefs(viewer, entry, { representationPreset: 'empty' }));
+        for (const entry of backgroundEntries) {
+          const before = molstarStructureCellRefs(viewer);
+          await loadMolstarEntry(viewer, entry);
+          sceneStructures.push(...molstarCurrentStructures(viewer).filter(structure => !before.has(structure.cell.transform.ref)));
         }
+        await loadMolstarEntry(viewer, activeEntry);
+        await applyMolstarStyle(viewer, style);
+        await applyMolstarWaterLineRepresentation(viewer);
         if (sceneStructures.length) {
-          await applySdfCollectionMolstarStyle(viewer, resolvedContextStyle, sceneStructures, 1, 'colored');
+          await applyDockingSceneMatchAppearance(viewer, {}, sceneStructures,
+            readSdfCollectionContextOpacity(activeConfig), readSdfCollectionContextColor(activeConfig));
         }
       } else {
         const contextStructures = [];
@@ -17713,7 +18779,7 @@ SOFTWARE.
           }
         }
       }
-      await applyMolstarWaterLineRepresentation(viewer);
+      if (!dockingSceneStyleNeedsReload(resolvedContextStyle)) await applyMolstarWaterLineRepresentation(viewer);
       updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
       if (options.focus !== false) scheduleMolstarStructureFocus(viewer, { reason: 'docking-scene', durationMs: 180 });
       return;
@@ -18470,10 +19536,20 @@ SOFTWARE.
   }
 
   const molstarCompositionQueries = new Map();
+  const molstarCompositionHierarchyRequests = new Set();
   let molstarCompositionVisibilitySignature = '';
   let molstarQueryComponentActions = Promise.resolve();
 
   const compositionQueryCache = new WeakMap();
+
+  // Inspector rows send Mol* mol-script, which carries any chain name such as
+  // Z_A1 (see apps/desktop/src/lib/molstar-selection-query.ts); agents may still
+  // send the documented PyMOL. Mol-script selections start with a namespaced
+  // `sel.` or `structure-query.` symbol, and PyMOL has no token of that form.
+  function molstarQueryComponentType(query) {
+    const language = /^\(\s*(?:sel|structure-query)\./.test(query) ? 'mol-script' : 'pymol';
+    return { name: 'script', params: { language, expression: query } };
+  }
 
   function compositionQueryLoci(structure, query) {
     const parent = structure.cell?.obj?.data;
@@ -18488,7 +19564,7 @@ SOFTWARE.
     let loci = null;
     try {
       const component = transform.definition.apply({ a: structure.cell.obj, params: {
-        type: { name: 'script', params: { language: 'pymol', expression: query } }, nullIfEmpty: true, label: ''
+        type: molstarQueryComponentType(query), nullIfEmpty: true, label: ''
       }, cache: {} });
       if (component?.data?.elementCount) loci = Structure.toSubStructureElementLoci(parent, component.data);
     } catch (_) { /* Unsupported queries don't fall back to a wider component. */ }
@@ -18509,6 +19585,10 @@ SOFTWARE.
       const matched = [];
       const counts = { atoms: 0, residues: 0, chains: 0, types: 0 };
       const residueTypes = new Set();
+      const hierarchy = query === 'all' && molstarCompositionHierarchyRequests.size > 0
+        ? { polymer: { atoms: 0, residues: 0, chains: 0 }, chains: [], truncated: false } : null;
+      // Leave two of the existing 128 query slots for the whole scene and Polymer group.
+      const chainRows = new Map();
       for (const structure of structures) {
         const loci = compositionQueryLoci(structure, query);
         if (!loci) continue;
@@ -18526,6 +19606,31 @@ SOFTWARE.
           // Count the union: overlapping representations must not count atoms twice.
           const data = StructureElement.Loci.toStructure(represented);
           counts.atoms += data.elementCount;
+          if (hierarchy) {
+            // The same query as the existing Polymer controls; no atom objects or coordinates are retained.
+            const polymer = compositionQueryLoci(structure, 'polymer');
+            const subset = polymer && StructureElement.Loci.toStructure(StructureElement.Loci.remap(polymer, data));
+            if (subset) {
+              hierarchy.polymer.atoms += subset.elementCount;
+              let currentChain = null;
+              Structure.eachAtomicHierarchyElement(subset, {
+                chain: location => {
+                  hierarchy.polymer.chains++;
+                  const table = location.unit.model.atomicHierarchy.chains, index = location.unit.chainIndex[location.element];
+                  const authId = table.auth_asym_id.value(index);
+                  const key = authId;
+                  currentChain = chainRows.get(key) || null;
+                  if (!currentChain && typeof authId === 'string' && authId.length <= 128 && !authId.includes('\0') && chainRows.size < 126) {
+                    currentChain = { authId, atoms: 0, residues: 0 };
+                    chainRows.set(key, currentChain);
+                  }
+                  if (!currentChain) hierarchy.truncated = true;
+                },
+                residue: () => { hierarchy.polymer.residues++; if (currentChain) currentChain.residues++; },
+                atom: () => { if (currentChain) currentChain.atoms++; }
+              });
+            }
+          }
           Structure.eachAtomicHierarchyElement(data, {
             chain: () => { counts.chains++; },
             residue: location => {
@@ -18536,11 +19641,13 @@ SOFTWARE.
         }
       }
       counts.types = residueTypes.size;
+      if (hierarchy) hierarchy.chains = [...chainRows.values()];
       const tint = sceneTreeColorState(matched).value;
       return {
         query,
         present: matched.length > 0,
         counts,
+        ...(hierarchy ? { hierarchy } : {}),
         hidden: !matched.some(component => !component.cell.state.isHidden
           && component.representations?.some(repr => !repr.cell.state.isHidden)),
         color: Number.isFinite(tint) ? sceneTreeColorHex(tint) : null
@@ -18549,7 +19656,7 @@ SOFTWARE.
     const signature = JSON.stringify(rows);
     if (signature === molstarCompositionVisibilitySignature) return;
     molstarCompositionVisibilitySignature = signature;
-    post('compositionVisibilityChanged', '', { rows });
+    post('compositionVisibilityChanged', '', { rows, ...(molstarCompositionHierarchyRequests.size ? { hierarchyRequestIds: [...molstarCompositionHierarchyRequests] } : {}) });
   }
 
   function queueMolstarQueryComponentAction(action, operation) {
@@ -18601,7 +19708,7 @@ SOFTWARE.
           if (!parent) continue;
           const components = [...(structure.components || [])];
           const probe = await plugin.builders.structure.tryCreateComponent(structure.cell, {
-            type: { name: 'script', params: { language: 'pymol', expression: query } },
+            type: molstarQueryComponentType(query),
             nullIfEmpty: true,
             label
           }, `burette-inspector-query-${query}`, ['burette-inspector-subset']);
@@ -18705,7 +19812,7 @@ SOFTWARE.
       }, { canUndo: `${operation} ${label}`, rethrowErrors: true });
       molstarCompositionQueries.delete(query);
       molstarCompositionQueries.set(query, affectedRefs);
-      while (molstarCompositionQueries.size > 128) molstarCompositionQueries.delete(molstarCompositionQueries.keys().next().value);
+      while (molstarCompositionQueries.size > 128) molstarCompositionQueries.delete([...molstarCompositionQueries.keys()].find(query => query !== 'all' || !molstarCompositionHierarchyRequests.size));
     } finally {
       selection.setSnapshot(savedSelection);
       scheduleSceneTreeRender();
@@ -18814,10 +19921,9 @@ SOFTWARE.
   // scene tree, and with it every control the tree already offers: colour theme,
   // tint, representation, isolate, remove.
   //
-  // The query arrives in PyMOL syntax. That is forced: this Mol* build does not
-  // expose MolScriptBuilder, and its mol-script reader silently returns an empty
-  // selection for the keyword-argument form `atom-groups` needs. See
-  // apps/desktop/src/lib/molstar-selection-query.ts, which writes the query.
+  // The query is Mol* mol-script or PyMOL; molstarQueryComponentType tells them
+  // apart. See apps/desktop/src/lib/molstar-selection-query.ts, which writes the
+  // inspector's queries.
   async function createMolstarComponentFromQuery(action = {}) {
     const query = String(action.query || '').trim();
     if (!query) {
@@ -18836,14 +19942,14 @@ SOFTWARE.
     const representation = representationForSceneComponentKind(normalizeSceneComponentKind(action.kind));
     // A component key that repeats for the same row means asking twice reuses the
     // component instead of stacking duplicates on top of each other.
-    const key = `burette-selection-${query.replace(/[^A-Za-z0-9]+/g, '-')}`;
+    const key = `burette-selection-${query}`;
     let created = 0;
     let atoms = 0;
     for (const structure of structures) {
       let component = null;
       try {
         component = await plugin.builders.structure.tryCreateComponent(structure.cell, {
-          type: { name: 'script', params: { language: 'pymol', expression: query } },
+          type: molstarQueryComponentType(query),
           nullIfEmpty: true,
           label
         }, key, 'burette-selection');
@@ -19094,8 +20200,19 @@ SOFTWARE.
       activeDockingPrepared = null;
       let snapshot;
       if (prepared.format === 'molx') {
+        if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
+        const importToken = window.BuretteSceneFiles.science.beginImport(viewer.plugin);
         const manager = viewer.plugin.managers.snapshot;
-        await manager.open(new File([prepared.data], 'scene.molx'));
+        // Mol* reports a failed read only to its log; success is its `opened` event.
+        let opened = false;
+        const subscription = manager.events.opened.subscribe(() => { opened = true; });
+        try {
+          await manager.open(new File([prepared.data], 'scene.molx'));
+        } finally {
+          subscription.unsubscribe();
+        }
+        if (!opened) throw new Error('This scene file could not be read.');
+        if (!window.BuretteSceneFiles.science.completeImport(viewer.plugin, importToken)) throw new Error('The scene changed while it was opening.');
         snapshot = manager.getEntry(manager.state.current)?.snapshot;
       } else {
         const session = JSON.parse(prepared.data);
@@ -19202,6 +20319,10 @@ SOFTWARE.
     await loadMolstarEntry(viewer, { ...prepared, loadPreset: 'default' }, presetOptions);
     if (prepared.keepDefaultMolstarStyle !== true) await applyMolstarStyle(viewer, prepared.molstarStyleOverride || configuredMolstarStyle(activeConfig));
     await applyMolstarWaterLineRepresentation(viewer);
+    // The old overlay remains loaded until reload removes it. Retire its cache
+    // before installing the new pager, or restoring the selected frame builds
+    // another one-frame overlay instead of stepping this native trajectory.
+    if (prepared.xyzFrameOverlayAvailable && prepared.nativeTrajectoryControls) resetXyzFrameOverlayState(viewer);
     installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
   }
 
@@ -19254,6 +20375,17 @@ SOFTWARE.
       if (!indexed) throw new Error('File-backed trajectory support is unavailable in this runtime.');
       const segmentIndex = pair.coordinateEntry.segmentIndex;
       await indexed.load(viewer, pair, options, (frame, signal, validateOnly) => requestTrajectoryFrameFromNative(frame, segmentIndex, signal, validateOnly));
+      if (pair.synthetic) await applyMolstarUniformRepresentation(viewer, molstarDerivedTopologyRepresentation());
+      return !!options.representationPreset;
+    }
+    // Raw TRR, XTC and DCD are read frame by frame, which the Plots dock samples;
+    // an XTC or DCD beyond that budget still loads whole.
+    const rawFormat = normalizeFormat(pair.coordinateEntry.format);
+    const rawLimit = window.molstar?.BuretteIndexedTrajectory?.rawByteLimit ?? 0;
+    if (rawFormat === 'trr' || (['xtc', 'dcd'].includes(rawFormat) && pair.coordinateEntry.data?.byteLength <= rawLimit)) {
+      const indexed = window.molstar?.BuretteIndexedTrajectory;
+      if (!indexed?.loadRaw) throw new Error('Trajectory support is unavailable in this runtime.');
+      await indexed.loadRaw(viewer, pair, rawFormat, options);
       if (pair.synthetic) await applyMolstarUniformRepresentation(viewer, molstarDerivedTopologyRepresentation());
       return !!options.representationPreset;
     }
@@ -20428,6 +21560,16 @@ SOFTWARE.
       });
     });
     if (matches.length) {
+      // A selected comparison is a fixed reference frame, not the playback
+      // target. Only a validated scientific owner overrides ordinary selection;
+      // independent multi-structure scenes keep their existing selection rules.
+      if (plugin.managers?.structure?.hierarchy?.current?.structures?.length > 1) {
+        try {
+          const ownerRef = window.BuretteSceneFiles?.science?.binding(activeViewer)?.modelRef;
+          const owner = matches.find(match => match.ref === ownerRef);
+          if (owner) return owner;
+        } catch (_) { /* No validated scientific owner in this scene. */ }
+      }
       const exact = matches.filter(match => match.countMatches);
       const pool = exact.length ? exact : matches;
       return pool.find(match => match.selected) ||
@@ -20516,6 +21658,10 @@ SOFTWARE.
   async function setNativeTrajectoryPoseDirect(index, poseCount) {
     const transform = nativeTrajectoryModelTransform(poseCount);
     if (!transform) return false;
+    if (window.BuretteSceneFiles?.science?.comparisonPending?.(transform.plugin)) throw new Error('Wait for the frame comparison to finish.');
+    if (window.BuretteSceneFiles?.science?.importPending?.(transform.plugin)) {
+      throw new Error('Wait for scientific data to finish restoring, then change frames.');
+    }
     // Clamp against the frames the cell actually holds: after smoothing the caller's
     // total and the loaded trajectory can disagree, and asking for a frame past the
     // end leaves the model on its last one while we report success.
@@ -20563,7 +21709,9 @@ SOFTWARE.
     const sync = () => {
       if (xyzSingleFrameSceneActive(activeViewer)) return;
       const position = readNativeTrajectoryPosition(poseCount);
-      if (position) onPoseChange(position.index);
+      // Overlay construction briefly exposes a one-frame model before its refs
+      // are registered. It must not reset the six-frame (or other) source pager.
+      if (position?.total === poseCount) onPoseChange(position.index);
     };
     const subscription = state.events.changed.subscribe(sync);
     sync();
@@ -20664,7 +21812,20 @@ SOFTWARE.
     const outOfRange = agentFrameIndexFailure('set_structure_pose', index, Number(activeTrajectoryPlaybackControl?.frameCount?.()));
     if (outOfRange) return outOfRange;
     try {
-      await activeStructurePoseSetter(index);
+      const setter = activeStructurePoseSetter;
+      if (action.expected !== undefined) {
+        const viewer = activeMolstarViewer(), expected = action.expected;
+        if (!expected || expected.sourceExtension !== 'xyz' || typeof expected.sourceSha256 !== 'string' || !/^[a-f0-9]{64}$/u.test(expected.sourceSha256)
+          || !Number.isSafeInteger(expected.frameIndex) || !Number.isSafeInteger(expected.frameCount)
+          || expected.frameIndex < 0 || expected.frameIndex >= expected.frameCount || expected.frameCount > 2000
+          || !['structureRef', 'modelRef', 'trajectoryRef'].every(key => typeof expected[key] === 'string' && expected[key].length > 0 && expected[key].length <= 128)) throw new Error('Invalid trajectory source binding.');
+        if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
+        const current = await window.BuretteSceneFiles.science.graphBinding(viewer, 'xyz');
+        if (activeMolstarViewer() !== viewer || activeStructurePoseSetter !== setter
+          || !['sourceSha256', 'structureRef', 'modelRef', 'trajectoryRef', 'frameIndex', 'frameCount'].every(key => current[key] === expected[key])) throw new Error('The trajectory source changed. Select the current frame again.');
+      }
+      const outcome = await setter(index);
+      if (outcome?.ok === false) throw new Error(outcome.message);
       return {
         ok: true,
         command: 'set_structure_pose',
@@ -21032,7 +22193,7 @@ SOFTWARE.
       if (prepared.dockingSceneMode) {
         const poseCount = Number(prepared.poseCount || 0);
         const activePose = readTrajectoryControlIndex(activeConfig, prepared, poseCount || 1);
-        await applyDockingSceneVisibility(activeViewer, prepared, activePose, { focus: false });
+        await applyDockingSceneVisibility(activeViewer, prepared, activePose, { contextOpacity: opacity, focus: false });
       } else if (prepared.kind === 'docking' && prepared.sdfPoseOverlayAvailable === true) {
         const poseCount = Number(prepared.poseCount || 0);
         const activePose = readTrajectoryControlIndex(activeConfig, prepared, poseCount || 1);
@@ -21560,6 +22721,9 @@ SOFTWARE.
     const controlLabelLower = controlLabel.toLowerCase();
     root.setAttribute('aria-label', `${controlLabel} controls`);
     const all = overlayToggleAvailable ? createStructureOverlayToggleButton(prepared) : null;
+    const sceneComparison = !all && activeMolstarPrepared?.kind === 'session' && activeMolstarPrepared.format === 'molx'
+      ? createSceneFrameComparisonControls(viewer)
+      : null;
     const spread = prepared.kind === 'sdf-collection' ? document.createElement('button') : null;
     if (spread) {
       spread.type = 'button';
@@ -22114,8 +23278,15 @@ SOFTWARE.
     // A running loop wraps, so its ends never disable the step buttons.
     const syncStepButtons = () => {
       const ends = stepBounds(activePose);
-      previous.disabled = !loopActive && activePose <= ends.start;
-      next.disabled = !loopActive && activePose >= ends.end;
+      const restoring = Boolean(window.BuretteSceneFiles?.science?.importPending?.(viewer.plugin));
+      previous.disabled = restoring || (!loopActive && activePose <= ends.start);
+      next.disabled = restoring || (!loopActive && activePose >= ends.end);
+      loop.disabled = restoring;
+      slider.disabled = restoring;
+      if (smooth) smooth.disabled = restoring;
+      root.setAttribute('aria-busy', String(restoring));
+      root.title = restoring ? 'Restoring scientific data. Frame controls will be available when restoration finishes.' : '';
+      root.setAttribute('aria-description', root.title);
     };
     // Every frame step relabels the control, but within a segment the name does not
     // change. Rewriting the text node anyway relaid the line and cut short the hover
@@ -22160,6 +23331,7 @@ SOFTWARE.
       const controlBounds = trajectoryControlBounds(activePose);
       applyLabel(activePose);
       syncStepButtons();
+      sceneComparison?.sync();
       slider.max = String(controlBounds.count);
       slider.value = String(activePose - controlBounds.start + 1);
       slider.dataset.globalFrameIndex = String(activePose);
@@ -22243,6 +23415,7 @@ SOFTWARE.
     };
     const isAnimationOptionsOpen = () => root.classList.contains('buret-docking-poses-animation-open');
     const setLoopActive = (active) => {
+      if (active && window.BuretteSceneFiles?.science?.importPending?.(viewer.plugin)) return;
       loopEpoch += 1;
       loopActive = Boolean(active);
       if (!active) queueNativeLoop(false);
@@ -22488,6 +23661,7 @@ SOFTWARE.
         notifyDockingPoseChanged(activePose, prepared);
         // Only a committed switch outside the open list can request a guide.
         if (options.userStep === true && poseCompareGuide && !isFileListOpen()) requestContextualGuide('pose-compare', label);
+        return { ok: true };
       } catch (error) {
         writeTrajectoryControlIndex(activeConfig, prepared, previousIndex);
         activePose = previousIndex;
@@ -22500,6 +23674,7 @@ SOFTWARE.
         // eslint-disable-next-line no-console
         console.error(error);
         if (options.throwOnError === true) throw error;
+        return { ok: false, message: error?.message || String(error) };
       }
     };
     // Dots and files show or hide poses until the next step; a pin keeps a pose
@@ -22668,7 +23843,11 @@ SOFTWARE.
             xyzFrameAlignment = null;
           }
           align.disabled = true;
-          return applyXyzFrameOverlayVisibility(viewer, prepared, activePose, { focus: true, installControls: false }).then(() => {
+          // Turning alignment off must restore the full native trajectory, not
+          // leave a one-frame overlay that cannot bind to its scientific source.
+          const restoreTrajectory = !enabling && activeSdfPoseMode !== 'all' && prepared.nativeTrajectoryControls;
+          return (restoreTrajectory ? reloadActiveMolstarStructure()
+            : applyXyzFrameOverlayVisibility(viewer, prepared, activePose, { focus: true, installControls: false })).then(() => {
             align.textContent = enabling ? 'Aligned' : 'Align';
             align.classList.toggle('active', enabling);
             align.setAttribute('aria-pressed', enabling ? 'true' : 'false');
@@ -22865,7 +24044,9 @@ SOFTWARE.
     };
     const scheduleSliderInputPose = (index) => {
       pendingSliderIndex = Math.max(0, Math.min(prepared.poseCount - 1, index));
-      if (sliderInputTimer) clearTimeout(sliderInputTimer);
+      // Keep the scheduled flush: resetting it on every input starves live
+      // scrubbing when pointer events arrive faster than the 24 ms interval.
+      if (sliderInputTimer) return;
       sliderInputTimer = window.setTimeout(() => {
         sliderInputTimer = null;
         flushPendingSliderInput();
@@ -22983,6 +24164,7 @@ SOFTWARE.
           return;
         }
       }
+      if (event.shiftKey) return; // Shift+arrows rotate the camera.
       if (event.key === 'ArrowLeft') {
         event.preventDefault();
         if (activePose > stepBounds(activePose).start) void setPose(activePose - 1, { userStep: true });
@@ -23013,6 +24195,7 @@ SOFTWARE.
       if (align) mainRow.append(align);
       if (spread) mainRow.append(spread);
       if (all) mainRow.append(all);
+      if (sceneComparison) mainRow.append(sceneComparison.align, sceneComparison.all);
       animationRow.append(speedField, loop, slider);
       if (smoothAvailable) animationRow.append(smooth);
     }
@@ -23036,6 +24219,9 @@ SOFTWARE.
     const isolationDisposer = installDockingPoseInteractionIsolation(root);
     const hoverDisposer = installDockingPoseHoverSuppression();
     const dragDisposer = initDockingPoseControlsDrag(root);
+    const scienceImportDisposer = window.BuretteSceneFiles?.science?.subscribeImport?.(viewer.plugin, updateControls);
+    // The graph can be ready before the host has acknowledged its scientific data.
+    syncStepButtons();
     const syncDisposer = prepared.nativeTrajectoryControls
       ? installNativeTrajectoryPoseSync(prepared.poseCount, index => {
           activePose = Math.max(0, Math.min(prepared.poseCount - 1, index));
@@ -23073,6 +24259,8 @@ SOFTWARE.
       } else {
         setLoopActive(false);
       }
+      scienceImportDisposer?.();
+      sceneComparison?.destroy();
       syncDisposer?.();
       isolationDisposer?.();
       hoverDisposer?.();
@@ -23436,7 +24624,8 @@ SOFTWARE.
             unit.conformation.position(unit.elements[index], world);
             camera.project(projected, world);
             const clientX = canvasRect.left + ((projected[0] - viewport.x) / viewport.width) * canvasRect.width;
-            const clientY = canvasRect.top + (1 - (projected[1] - viewport.y) / viewport.height) * canvasRect.height;
+            // Camera window coordinates have a top-left origin, as client coordinates do.
+            const clientY = canvasRect.top + ((projected[1] - viewport.y) / viewport.height) * canvasRect.height;
             if (
               projected[3] > 0
               && projected[2] >= 0
@@ -25852,6 +27041,11 @@ SOFTWARE.
   }
 
   function molstarModifiedPdbExportPayload() {
+    // The source-line fallback has one serial namespace. Combining structures
+    // here silently drops atoms whose serials overlap another source.
+    if (molstarCurrentStructuresForExport().length > 1) {
+      throw new Error("PDB export cannot preserve multiple scene structures yet. Export mmCIF to keep all structures.");
+    }
     const includedSerials = molstarCurrentAtomSerialsForExport();
     if (!includedSerials.size) throw new Error('No modified Mol* atoms are available to save.');
     return molstarPdbExportPayloadForAtomSerials(includedSerials, molstarExportFileName('pdb'));
@@ -25863,6 +27057,9 @@ SOFTWARE.
   function molstarPdbExportPayloadForAtomSerials(requestedSerials, fileName) {
     const sourceEntry = molstarContextSourceEntryForActiveConfig();
     if (!sourceEntry) throw new Error('PDB fallback export is unavailable for this structure.');
+    if (sourceEntry.format !== 'pdb') {
+      throw new Error('PDB export cannot convert this source format yet. Export mmCIF to keep the scene geometry.');
+    }
     if (!requestedSerials?.size) throw new Error('No atoms were selected for export.');
     const lines = sourceEntry.data.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
     const output = [];
@@ -25913,8 +27110,14 @@ SOFTWARE.
     const exports = molstarCurrentStructuresForExport();
     if (!exports.length) throw new Error('No modified Mol* structure is available to save.');
     const label = exports.length === 1 ? exports[0].name : 'burette_modified_structures';
-    const structures = exports.length === 1 ? exports[0].structure : exports.map(entry => entry.structure);
-    const text = toMmCif(label, structures, false, { copyAllCategories: true });
+    // Independent sources have independent chain/entity/model namespaces. A
+    // shared block silently merges matching identifiers and copies metadata
+    // from only the first model. The loader preserves one trajectory per block.
+    const text = exports.map((entry, index) => {
+      const block = toMmCif(exports.length === 1 ? label : `${label}_${index + 1}`, entry.structure, false, { copyAllCategories: true });
+      if (typeof block !== 'string' || !block.trim()) throw new Error('Mol* returned an empty mmCIF export.');
+      return block;
+    }).join('\n');
     if (typeof text !== 'string' || !text.trim()) throw new Error('Mol* returned an empty mmCIF export.');
     return {
       name: molstarExportFileName(),
@@ -26082,6 +27285,19 @@ SOFTWARE.
     notifyMolstarEditHistoryChanged();
   }
 
+  function installMolstarCubeDatasetHistory(viewer) {
+    const plugin = viewer.plugin;
+    plugin.customState.buretteCubeDatasetUpdate = (state, ref, params) => {
+      if (activeMolstarViewer()?.plugin !== plugin || state !== plugin.state.data || !state.cells.has(ref)) {
+        throw new Error('The Cube viewer is no longer current.');
+      }
+      return runMolstarSceneEdit('Cube dataset', async () => {
+        const result = await plugin.state.updateTransform(state, ref, params);
+        return activeMolstarViewer()?.plugin === plugin && state.cells.has(ref) ? result : false;
+      });
+    };
+  }
+
   async function runMolstarSceneEdit(label, operation) {
     const snapshot = captureMolstarSceneUndoSnapshot(label);
     try {
@@ -26162,7 +27378,16 @@ SOFTWARE.
     }
   }
 
+  async function waitForSceneTreeControlUpdates() {
+    // A released slider can still have a final state commit pending. Complete
+    // it before capturing redo state or restoring history over a live write.
+    while (sceneTreeParamDrain || sceneTreeAlphaDrain || sceneTreeMeasurementDrain) {
+      await Promise.all([sceneTreeParamDrain, sceneTreeAlphaDrain, sceneTreeMeasurementDrain]);
+    }
+  }
+
   async function undoMolstarLastEdit() {
+    await waitForSceneTreeControlUpdates();
     const snapshot = molstarEditUndoStack.pop();
     if (!snapshot) {
       setStatus('[web] Nothing to undo.');
@@ -26191,6 +27416,7 @@ SOFTWARE.
   }
 
   async function redoMolstarLastEdit() {
+    await waitForSceneTreeControlUpdates();
     const snapshot = molstarEditRedoStack.pop();
     if (!snapshot) {
       setStatus('[web] Nothing to redo.');
@@ -26640,6 +27866,94 @@ SOFTWARE.
     if (!query || typeof selection?.fromSelectionQuery !== 'function') return false;
     await selection.fromSelectionQuery(modifier, query);
     return true;
+  }
+
+  // Avogadro's Select menu, built on the atoms of the shown structures. Every
+  // command replaces the selection and returns the number of atoms selected.
+  const SELECT_MENU_ELEMENT_LIMIT = 8;
+  function molstarAtomicUnits() {
+    return molstarCurrentStructures(activeMolstarViewer()).flatMap(ref => {
+      const structure = molstarStructureFromRef(ref);
+      return structure ? [{ structure, units: structure.units.filter(unit => unit.kind === 0) }] : [];
+    });
+  }
+  function molstarShownElements() {
+    const symbols = new Set();
+    for (const { units } of molstarAtomicUnits()) for (const unit of units) {
+      const type = unit.model.atomicHierarchy.atoms.type_symbol;
+      // Mol* keeps element symbols in upper case.
+      for (const row of unit.elements) { const symbol = type.value(row); symbols.add(symbol.slice(0, 1) + symbol.slice(1).toLowerCase()); }
+    }
+    // Carbon first and hydrogen next, then alphabetical, as in a formula.
+    return [...symbols].sort((a, b) => (a === 'C' ? -2 : a === 'H' ? -1 : 0) - (b === 'C' ? -2 : b === 'H' ? -1 : 0) || a.localeCompare(b));
+  }
+  // Goes through lociSelects so the representation marks follow the selection.
+  function selectMolstarAtomsWhere(test) {
+    const selects = activeMolstarViewer()?.plugin?.managers?.interactivity?.lociSelects;
+    const Element = window.molstar?.lib?.structure?.StructureElement;
+    if (!selects || !Element) throw new Error('No Mol* selection manager is available.');
+    selects.deselectAll();
+    let count = 0;
+    for (const { structure, units } of molstarAtomicUnits()) {
+      const elements = units.flatMap(unit => {
+        const indices = [];
+        for (let i = 0; i < unit.elements.length; i++) if (test(unit, i, structure)) indices.push(i);
+        count += indices.length;
+        return indices.length ? [{ unit, indices: Int32Array.from(indices) }] : [];
+      });
+      // Atom-level commands: the picking granularity (often residue) must not widen them.
+      if (elements.length) selects.select({ loci: Element.Loci(structure, elements) }, false);
+    }
+    return count;
+  }
+  // Calls `visit(unit, i, structure)` for each selected atom of the shown atomic units.
+  function forEachSelectedMolstarAtom(visit) {
+    const manager = activeMolstarViewer()?.plugin?.managers?.structure?.selection;
+    const Element = window.molstar?.lib?.structure?.StructureElement;
+    for (const { structure, units } of molstarAtomicUnits()) {
+      const loci = manager?.getLoci(structure);
+      if (!Element?.Loci.is(loci)) continue;
+      for (const { unit, indices } of loci.elements) {
+        if (unit.kind !== 0 || !units.includes(unit)) continue;
+        Element.Loci.forEachLocation({ kind: 'element-loci', structure, elements: [{ unit, indices }] },
+          location => visit(unit, unit.elements.indexOf(location.element), structure));
+      }
+    }
+  }
+  // Atoms bonded to the selection join it, also across units. Unit ids repeat
+  // between structures, so picked atoms are kept per structure.
+  function enlargeMolstarSelection() {
+    const picked = new Map();
+    forEachSelectedMolstarAtom((unit, i, structure) => {
+      const atoms = picked.get(structure) || picked.set(structure, new Set()).get(structure);
+      const { offset, b } = unit.bonds, links = structure.interUnitBonds;
+      atoms.add(`${unit.id}:${i}`);
+      for (let k = offset[i]; k < offset[i + 1]; k++) atoms.add(`${unit.id}:${b[k]}`);
+      for (const edge of links.getEdgeIndices(i, unit.id)) atoms.add(`${links.edges[edge].unitB}:${links.edges[edge].indexB}`);
+    });
+    return picked.size ? selectMolstarAtomsWhere((unit, i, structure) => picked.get(structure)?.has(`${unit.id}:${i}`) === true) : 0;
+  }
+  function invertMolstarSelection() {
+    const picked = new Map();
+    forEachSelectedMolstarAtom((unit, i, structure) => (picked.get(structure) || picked.set(structure, new Set()).get(structure)).add(`${unit.id}:${i}`));
+    return selectMolstarAtomsWhere((unit, i, structure) => picked.get(structure)?.has(`${unit.id}:${i}`) !== true);
+  }
+  async function runMolstarSelectCommand(command, value) {
+    if (command === 'all') return selectMolstarAtomsWhere(() => true);
+    if (command === 'element') {
+      const symbol = String(value).toUpperCase();
+      return selectMolstarAtomsWhere((unit, i) => unit.model.atomicHierarchy.atoms.type_symbol.value(unit.elements[i]) === symbol);
+    }
+    // Source atom indices, as the host's graph numbers them.
+    if (command === 'atoms') {
+      const wanted = new Set(value);
+      return selectMolstarAtomsWhere((unit, i) => wanted.has(unit.model.atomicHierarchy.atomSourceIndex.value(unit.elements[i])));
+    }
+    if (command === 'enlarge') return enlargeMolstarSelection();
+    if (command === 'invert') return invertMolstarSelection();
+    if (command === 'none') { activeMolstarViewer()?.plugin?.managers?.interactivity?.lociSelects?.deselectAll?.(); return 0; }
+    if (command !== 'residues' || !await applyMolstarSelectionQuery('whole residues', 'set')) throw new Error('This selection command is unavailable.');
+    return null;
   }
 
   // Maestro and PyMOL both pick at a level, not at an atom: clicking a side chain
@@ -27148,6 +28462,7 @@ SOFTWARE.
     { id: 'view', title: 'Visibility', direct: true, breakBefore: true },
     { id: 'represent', title: 'Appearance', direct: true, breakBefore: true },
     { id: 'analyze', title: 'Analyze', rootLabel: 'Tools', breakBefore: true },
+    { id: 'selection', title: 'Select' },
     { id: 'align', title: 'Align' },
     { id: 'export', title: 'Export' },
     { id: 'search', title: 'Search' },
@@ -27278,6 +28593,10 @@ SOFTWARE.
         actions.push(['analyze:angle', 'Measure angle']);
         actions.push(['analyze:dihedral', 'Measure dihedral']);
       }
+      actions.push(['select:all', 'Select all'], ['select:clear', 'Select none'], ['select:invert', 'Invert selection']);
+      const elements = molstarShownElements();
+      if (elements.length > 1 && elements.length <= SELECT_MENU_ELEMENT_LIMIT) actions.push(...elements.map(symbol => [`select:element:${symbol}`, `Select ${symbol} atoms`]));
+      actions.push(['select:whole-residues', 'Select whole residues'], ['select:enlarge', 'Enlarge selection'], ['select:smarts', 'Select by SMARTS…']);
     }
     if (molstarModifiedPdbExportAvailable()) {
       if (molstarContextChainId(target?.atom)) {
@@ -27569,13 +28888,16 @@ SOFTWARE.
           showMolstarContextMenu(point, pick);
         } else if (!this.actionChosen) {
           // A chosen action hides the menu state itself once it has run.
-          hideMolstarContextMenu();
+          if (this.keepMoleculePreview) hideMolstarContextMenu({ keepMoleculePreview: true });
+          else hideMolstarContextMenu();
         }
       }
     };
     const items = molstarNativeMenuEntries(session, { ...target, pickingLevel: mode }, mode);
     molstarNativeMenuPending = session;
-    if (postHostMessage({ type: 'molstarContextMenu', requestId: session.requestId, ...point, items })) return true;
+    // The host adds its editing tools; Edit geometry opens at the picked atom's row.
+    const atomIndex = !target.selectionBased && Number.isInteger(target.atom?.atomIndex) ? target.atom.atomIndex : undefined;
+    if (postHostMessage({ type: 'molstarContextMenu', requestId: session.requestId, ...point, items, atomIndex })) return true;
     molstarNativeMenuPending = null;
     return false;
   }
@@ -27648,6 +28970,7 @@ SOFTWARE.
     if (name === 'select:grow') return 'grown selection';
     if (name === 'select:invert') return 'inverted selection';
     if (name === 'select:clear') return 'cleared selection';
+    if (name === 'select:all' || name === 'select:enlarge' || name.startsWith('select:element:')) return 'selection';
     return null;
   }
 
@@ -27867,11 +29190,19 @@ SOFTWARE.
         if (!await applyMolstarSelectionQuery('surrounding residues', 'add')) throw new Error('Mol* has no surroundings query registered.');
         setStatus('[web] Grew the selection by residues within 5 Å.');
       } else if (action === 'select:invert') {
-        if (!await applyMolstarSelectionQuery('inverse')) throw new Error('Mol* has no inverse query registered.');
+        // Atom level: Mol*'s inverse query would widen the result to the picking level.
+        await runMolstarSelectCommand('invert');
         setStatus('[web] Inverted the selection.');
       } else if (action === 'select:clear') {
-        activeViewer?.plugin?.managers?.structure?.selection?.clear?.();
+        await runMolstarSelectCommand('none');
         setStatus('[web] Cleared the selection.');
+      } else if (action === 'select:all' || action === 'select:enlarge' || action.startsWith('select:element:')) {
+        const command = action === 'select:all' ? 'all' : action === 'select:enlarge' ? 'enlarge' : 'element';
+        const count = await runMolstarSelectCommand(command, action.slice('select:element:'.length));
+        setStatus(`[web] Selected ${count} atoms.`);
+      } else if (action === 'select:smarts') {
+        // The host owns the chemistry toolkit and the source graph; it asks for the pattern.
+        postHostMessage({ type: 'selectBySmarts' });
       } else if (action.startsWith('colour:')) {
         const theme = action.slice('colour:'.length);
         if (!await applyMolstarColourPreset(target, theme)) throw new Error('No Mol* structure is available to colour.');
@@ -27916,6 +29247,9 @@ SOFTWARE.
     if (target.structure && activeMolstarPrepared?.kind === 'sdf-collection') {
       return molstarContextSourceEntryForActiveConfig(target.structure);
     }
+    const diagram = molstarMoleculePreviewDiagram(target);
+    const molblock = diagram ? molstarDiagramLigandMolblocks.get(diagram.ligand) : '';
+    if (molblock) return { data: `${molblock.trimEnd()}\n$$$$\n`, format: 'sdf', label: target.label || diagram.ligand };
     const sdfEntry = molstarMoleculePreviewSdfEntry(target);
     if (sdfEntry) return sdfEntry;
     const entry = target.selectedEntry || target.ligand || null;
@@ -28129,22 +29463,205 @@ SOFTWARE.
       </span>`;
   }
 
-  function molstarMoleculePreviewCardHTML(label, image) {
+  // Where the host draws interaction maps (config.interactionDiagramPage, the
+  // desktop app and browser-dev), a ligand's card shows its map. The map engine
+  // also returns the ligand's molblock with the bond orders and charges of its
+  // dictionary entry; the card's molecule is drawn from it, since a PDB ligand
+  // alone only gives bonds guessed from distances.
+  const molstarDiagramLigandMolblocks = new Map();
+  // The card's own requests have negative ids, apart from the map frame's.
+  const molstarDiagramMolblockRequests = new Map();
+  let molstarDiagramMolblockRequestId = 0;
+
+  function requestMolstarDiagramLigandMolblock(diagram) {
+    if (!diagram || molstarDiagramLigandMolblocks.has(diagram.ligand)) return;
+    if ([...molstarDiagramMolblockRequests.values()].includes(diagram.ligand)) return;
+    const id = --molstarDiagramMolblockRequestId;
+    molstarDiagramMolblockRequests.set(id, diagram.ligand);
+    postHostMessage({ type: 'interactionDiagramRequest', requestId: id, ligand: diagram.ligand, rules: {} });
+  }
+
+  function molstarMoleculePreviewDiagram(target) {
+    const page = (activeConfig || window.BuretteConfig || {}).interactionDiagramPage;
+    const atom = target?.atom;
+    if (typeof page !== 'string' || !page || !atom || target.scope === 'ion') return null;
+    const name = String(atom.auth_comp_id || atom.label_comp_id || '').trim();
+    const chain = String(atom.auth_asym_id || atom.label_asym_id || '').trim();
+    const number = atom.auth_seq_id ?? atom.label_seq_id;
+    return name && chain && number != null ? { page, ligand: `${name}_${chain}_${number}` } : null;
+  }
+
+  // App Settings choose what the card shows first, the design of its map and
+  // whether it opens on hover or stays open (config.viewerDefaults).
+  function molstarLigandCardDefaults() {
+    const defaults = (activeConfig || window.BuretteConfig || {}).viewerDefaults || {};
+    return {
+      content: defaults.ligandCardContent === 'molecule' ? 'molecule' : 'diagram',
+      style: typeof defaults.ligandCardDiagramStyle === 'string' && defaults.ligandCardDiagramStyle ? defaults.ligandCardDiagramStyle : 'style-schrodinger',
+      display: defaults.ligandCardDisplay === 'always' ? 'always' : 'hover'
+    };
+  }
+
+  function setMolstarLigandCardDefault(name, value) {
+    for (const config of new Set([activeConfig, window.BuretteConfig].filter(Boolean))) {
+      config.viewerDefaults = { ...(config.viewerDefaults || {}), [name]: value };
+    }
+    // A new behaviour starts from its own default, not from the last click.
+    if (name === 'ligandCardDisplay') molstarMoleculePreviewExpanded = null;
+    if (name === 'ligandCardDiagramStyle') molstarMoleculePreviewStyle = null;
+    if (molstarMoleculePreviewTarget) showMolstarMoleculePreview(molstarMoleculePreviewTarget);
+    else if (name === 'ligandCardDiagramStyle') configureMolstarMoleculePreviewDiagram();
+  }
+
+  // The card shows either the interaction map or the plain molecule. Until the
+  // user picks one, it shows what Settings say, but the molecule while the
+  // host's Interactions panel already shows that map at full size.
+  let molstarMoleculePreviewView = null;
+  let interactionsPanelOpen = false;
+
+  function molstarMoleculePreviewShowsDiagram() {
+    return (molstarMoleculePreviewView ?? (interactionsPanelOpen ? 'molecule' : molstarLigandCardDefaults().content)) === 'diagram';
+  }
+
+  // The map's designs, as the map frame reports them; the one picked in the
+  // card holds for this document, Settings give the one it starts with.
+  let molstarMoleculePreviewStyles = [];
+  let molstarMoleculePreviewStyle = null;
+
+  function molstarMoleculePreviewDiagramStyle() {
+    return molstarMoleculePreviewStyle ?? molstarLigandCardDefaults().style;
+  }
+
+  function molstarMoleculePreviewStyleHTML() {
+    const current = molstarMoleculePreviewDiagramStyle();
+    const options = molstarMoleculePreviewStyles.map(style =>
+      `<option value="${escapeHTML(style.id)}"${style.id === current ? ' selected' : ''}>${escapeHTML(style.label)}</option>`).join('');
+    return `<span class="buret-molecule-card-style"><select data-buret-molecule-preview-style aria-label="Map style">${options}</select><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>`;
+  }
+
+  function setMolstarMoleculePreviewStyle(style) {
+    if (!molstarMoleculePreviewStyles.some(entry => entry.id === style)) return;
+    molstarMoleculePreviewStyle = style;
+    configureMolstarMoleculePreviewDiagram();
+  }
+
+  // A click on the map's free space shows it at full size in the host's
+  // Interactions panel; the card goes back to the molecule meanwhile.
+  function openMolstarMoleculePreviewDiagramInPanel() {
+    const diagram = molstarMoleculePreviewDiagram(molstarMoleculePreviewTarget);
+    if (!diagram) return;
+    molstarMoleculePreviewView = null;
+    postHostMessage({ type: 'openInteractionsPanel', ligand: diagram.ligand });
+  }
+
+  function molstarMoleculePreviewViewHTML(showsDiagram) {
+    const option = (view, text, active) =>
+      `<button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="view-${view}" aria-pressed="${active}">${text}</button>`;
+    return `<span class="buret-molecule-card-view" role="group" aria-label="Preview">${option('diagram', 'Map', showsDiagram)}${option('molecule', 'Molecule', !showsDiagram)}</span>`;
+  }
+
+  function setMolstarMoleculePreviewView(view) {
+    molstarMoleculePreviewView = view;
+    if (molstarMoleculePreviewTarget) showMolstarMoleculePreview(molstarMoleculePreviewTarget);
+  }
+
+  function molstarMoleculePreviewDiagramHTML(diagram) {
+    const query = new URLSearchParams({
+      embed: '1',
+      collection: 'binding',
+      ligand: diagram.ligand,
+      style: molstarMoleculePreviewDiagramStyle(),
+      theme: resolveViewerTheme(),
+      hydrogens: molstarShowHydrogens ? '1' : '0',
+      // A card is a glance: the contacts without the rest of the pocket, no
+      // legend, and a smaller floor for the drawing scale than a side panel.
+      detail: 'compact',
+      legend: '0',
+      minscale: '1.4'
+    });
+    return `<div class="buret-molstar-molecule-preview-image buret-molecule-card-diagram"><iframe title="Interaction diagram" src="${escapeHTML(`${diagram.page}?${query}`)}"></iframe></div>`;
+  }
+
+  function configureMolstarMoleculePreviewDiagram() {
+    const frame = molstarMoleculePreview?.querySelector('.buret-molecule-card-diagram iframe');
+    const diagram = molstarMoleculePreviewDiagram(molstarMoleculePreviewTarget);
+    if (!frame?.contentWindow || !diagram) return;
+    frame.contentWindow.postMessage({
+      source: 'burette-lid-host', type: 'configure',
+      ligand: diagram.ligand, style: molstarMoleculePreviewDiagramStyle(), theme: resolveViewerTheme(), hydrogens: molstarShowHydrogens
+    }, '*');
+  }
+
+  // A contact picked in the card's diagram is shown with its surroundings. The
+  // selection stays on the ligand, so the card keeps showing it.
+  async function focusMolstarMoleculePreviewContact(contact) {
+    const residue = contact.residue;
+    const result = await executeBuretteAgentAction({ type: 'focus_residue', selector: { chain: residue.chain, auth_seq_id: residue.number }, ligand: contact.ligand, links: contact.links });
+    if (result?.ok === false) debug('diagram contact focus failed: ' + (result.error?.message || 'no residue'));
+  }
+
+  window.addEventListener('message', event => {
+    const message = event.data;
+    if (message?.source !== 'burette-lid') return;
+    const frame = molstarMoleculePreview?.querySelector('.buret-molecule-card-diagram iframe');
+    if (!frame || event.source !== frame.contentWindow) return;
+    if (message.type === 'ready') configureMolstarMoleculePreviewDiagram();
+    // The app computes the diagram; the answer comes back below.
+    else if (message.type === 'diagram-request') postHostMessage({ type: 'interactionDiagramRequest', requestId: message.id, ligand: message.ligand, rules: message.rules });
+    else if (message.type === 'contact' && message.contact?.residue) void focusMolstarMoleculePreviewContact(message.contact);
+    else if (message.type === 'open') openMolstarMoleculePreviewDiagramInPanel();
+    else if (message.type === 'styles' && Array.isArray(message.styles)) {
+      molstarMoleculePreviewStyles = message.styles
+        .filter(style => typeof style?.id === 'string' && typeof style?.label === 'string')
+        .map(style => ({ id: style.id, label: style.label }));
+      if (molstarMoleculePreviewTarget) showMolstarMoleculePreview(molstarMoleculePreviewTarget);
+    }
+  });
+
+  window.addEventListener('message', event => {
+    const body = event.data?.source === 'burette-host' ? event.data.body : null;
+    if (event.source !== window.parent || body?.type !== 'interactionDiagram') return;
+    const ligand = body.result?.diagram?.ligand;
+    if (typeof ligand?.id === 'string' && typeof ligand.molblock === 'string') molstarDiagramLigandMolblocks.set(ligand.id, ligand.molblock);
+    const requested = molstarDiagramMolblockRequests.get(body.requestId);
+    if (requested !== undefined) {
+      molstarDiagramMolblockRequests.delete(body.requestId);
+      // a failed map keeps the inferred drawing and is not asked for again
+      if (!molstarDiagramLigandMolblocks.has(requested)) molstarDiagramLigandMolblocks.set(requested, '');
+      const target = molstarMoleculePreviewTarget;
+      if (target && molstarMoleculePreviewDiagram(target)?.ligand === requested) showMolstarMoleculePreview(target);
+      return;
+    }
+    const frame = molstarMoleculePreview?.querySelector('.buret-molecule-card-diagram iframe');
+    frame?.contentWindow?.postMessage({ source: 'burette-lid-host', type: 'diagram', id: body.requestId, result: body.result, error: body.error }, '*');
+  });
+
+  window.addEventListener('message', event => {
+    const message = event.data;
+    if (event.source !== window.parent || message?.source !== 'burette-interactions-panel' || typeof message.open !== 'boolean') return;
+    if (message.open === interactionsPanelOpen) return;
+    interactionsPanelOpen = message.open;
+    if (molstarMoleculePreviewView === null && molstarMoleculePreview && molstarMoleculePreviewTarget) showMolstarMoleculePreview(molstarMoleculePreviewTarget);
+  });
+
+  function molstarMoleculePreviewCardHTML(label, image, diagram = null, hasDiagram = false) {
     return `
       <div class="buret-molecule-card-header" data-buret-molecule-preview-drag>
         <span class="buret-molecule-card-heading">
           <span class="buret-molecule-card-title" title="${escapeHTML(label)}">${escapeHTML(label)}</span>
         </span>
+        ${diagram && molstarMoleculePreviewStyles.length ? molstarMoleculePreviewStyleHTML() : ''}
         ${molstarMoleculePreviewNavHTML()}
-        <button type="button" class="buret-molecule-card-icon" data-buret-molecule-preview-action="close" aria-label="Hide preview" title="Hide preview">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.close)}</button>
+        <button type="button" class="buret-molecule-card-icon" data-buret-molecule-preview-action="collapse" aria-label="Collapse card" title="Collapse">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.close)}</button>
       </div>
       <div class="buret-molecule-card-toolbar" role="toolbar" aria-label="Molecule preview actions">
         ${activeConfig?.visualizationOnly === true ? '' : `<button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="ketcher" aria-label="Open in molecular editor" title="Open in molecular editor">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.ketcher)}<span>Edit</span></button>`}
         <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="copy-smiles" aria-label="Copy SMILES" title="Copy SMILES">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.copy)}<span>SMILES</span></button>
         <button type="button" class="buret-molecule-card-button" data-buret-hydrogens data-buret-molecule-preview-action="hydrogens" aria-label="${molstarShowHydrogens ? 'Hide' : 'Show'} hydrogens" aria-pressed="${molstarShowHydrogens}" title="${molstarShowHydrogens ? 'Hide' : 'Show'} hydrogens">H</button>
-        <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="lasso" aria-label="Lasso atoms in 2D" aria-pressed="false" title="Select atoms by drawing a lasso · Esc to exit">${molstarMoleculePreviewIconHTML(['M7 17c-3-1-5-3-5-6 0-5 5-8 11-8s9 3 9 7-5 8-11 8', 'M7 15c-3 0-4 2-3 4s4 2 5 0-1-4-2-4', 'M7 21c2 2 5 2 7 0'])}<span>Lasso</span></button>
+        ${diagram ? '' : `<button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="lasso" aria-label="Lasso atoms in 2D" aria-pressed="false" title="Select atoms by drawing a lasso · Esc to exit">${molstarMoleculePreviewIconHTML(['M7 17c-3-1-5-3-5-6 0-5 5-8 11-8s9 3 9 7-5 8-11 8', 'M7 15c-3 0-4 2-3 4s4 2 5 0-1-4-2-4', 'M7 21c2 2 5 2 7 0'])}<span>Lasso</span></button>`}
+        ${hasDiagram ? molstarMoleculePreviewViewHTML(!!diagram) : ''}
       </div>
-      <div class="buret-molstar-molecule-preview-image" data-buret-molecule-preview-drag>${image}</div>
+      ${diagram ? molstarMoleculePreviewDiagramHTML(diagram) : `<div class="buret-molstar-molecule-preview-image" data-buret-molecule-preview-drag>${image}</div>`}
       ${molstarMoleculePreviewResizeHandlesHTML()}`;
   }
 
@@ -28315,63 +29832,84 @@ SOFTWARE.
   }
 
   function runMolstarMoleculePreviewAction(action, control) {
-    if (action === 'close') dismissMolstarMoleculePreview();
-    else if (action === 'minimize') minimizeMolstarMoleculePreview();
+    if (action === 'collapse') setMolstarMoleculePreviewExpanded(false);
+    else if (action === 'style') setMolstarMoleculePreviewStyle(control.value);
     else if (action === 'ketcher') openMolstarMoleculePreviewInKetcher(molstarMoleculePreviewTarget);
     else if (action === 'copy-smiles') void copyMolstarMoleculePreviewSmiles(molstarMoleculePreviewTarget);
     else if (action === 'hydrogens') void toggleMolstarHydrogens();
     else if (action === 'lasso') molstarMoleculePreview?.querySelector('.buret-molstar-molecule-preview-image')?.dispatchEvent(new Event('burette-toggle-lasso'));
     else if (action === 'prev') stepMolstarMoleculePreview(-1);
     else if (action === 'next') stepMolstarMoleculePreview(1);
+    else if (action === 'view-diagram') setMolstarMoleculePreviewView('diagram');
+    else if (action === 'view-molecule') setMolstarMoleculePreviewView('molecule');
   }
 
-  // Hidden state belongs to this viewer document, not its current selection.
-  // Only the bottom restore button or document teardown clears it.
-  function dismissMolstarMoleculePreview() {
-    molstarMoleculePreviewSuppressed = true;
-    minimizeMolstarMoleculePreview();
+  // The card stays in the document while folded, so its map frame keeps the
+  // loaded diagram and opening the card again shows it at once.
+  function molstarMoleculePreviewIsExpanded() {
+    // Once the user has opened or folded the card, hover no longer decides.
+    const display = molstarLigandCardDefaults().display;
+    if (molstarMoleculePreviewExpanded !== null) return molstarMoleculePreviewExpanded;
+    return display === 'always' || molstarMoleculePreviewHovered;
   }
 
-  // Minimize tucks the card into a small chip in the bottom-left corner. The
-  // selection stays, the card stays out of the way, and the chip is the one way
-  // back - hover will not pop it open again.
-  function minimizeMolstarMoleculePreview() {
-    const label = molstarMoleculePreview?.querySelector('.buret-molecule-card-title')?.textContent
-      || molstarMoleculePreviewTarget?.label || 'Molecule';
-    molstarMoleculePreviewMinimizedTarget = molstarMoleculePreviewTarget;
-    molstarMoleculePreviewMinimized = true;
-    hideMolstarMoleculePreview({ force: true });
-    showMolstarMoleculePreviewChip(label);
+  // A click on the chip opens the card and a click on its header folds it back;
+  // that choice holds until the next click or a change of the Settings default.
+  function setMolstarMoleculePreviewExpanded(expanded, { focus = false } = {}) {
+    molstarMoleculePreviewExpanded = expanded;
+    clearTimeout(molstarMoleculePreviewHoverTimer);
+    molstarMoleculePreviewHoverTimer = 0;
+    molstarMoleculePreviewHovered = false;
+    presentMolstarMoleculePreview({ focus });
   }
 
-  function restoreMolstarMoleculePreview() {
-    molstarMoleculePreviewMinimized = false;
-    molstarMoleculePreviewSuppressed = false;
-    removeMolstarMoleculePreviewChip();
-    // Prefer whatever is selected now, so restoring after picking a different
-    // ligand shows that one rather than the molecule that was parked.
-    const target = molstarSelectedMoleculePreviewTarget() || molstarMoleculePreviewMinimizedTarget;
-    molstarMoleculePreviewMinimizedTarget = null;
-    if (target) showMolstarMoleculePreview(target);
-    else scheduleMolstarSelectedMoleculePreview();
+  function presentMolstarMoleculePreview({ focus = false } = {}) {
+    const popover = molstarMoleculePreview;
+    if (!popover) {
+      molstarMoleculePreviewChip?.remove();
+      molstarMoleculePreviewChip = null;
+      return;
+    }
+    const expanded = molstarMoleculePreviewIsExpanded();
+    const hadFocus = popover.contains(document.activeElement);
+    popover.classList.toggle('buret-molecule-card-collapsed', !expanded);
+    const chip = molstarMoleculePreviewChipElement();
+    const label = popover.querySelector('.buret-molecule-card-title')?.textContent || 'Molecule';
+    const chipLabel = chip.querySelector('.buret-molecule-preview-chip-label');
+    if (chipLabel.textContent !== label) {
+      chipLabel.textContent = label;
+      chip.setAttribute('aria-label', `Open ${label} card`);
+    }
+    chip.hidden = expanded;
+    if (focus) (expanded ? popover : chip).focus({ preventScroll: true });
+    else if (hadFocus && !expanded) chip.focus({ preventScroll: true });
   }
 
-  function showMolstarMoleculePreviewChip(label) {
-    removeMolstarMoleculePreviewChip();
+  function molstarMoleculePreviewChipElement() {
+    if (molstarMoleculePreviewChip) return molstarMoleculePreviewChip;
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'buret-molecule-preview-chip';
-    chip.setAttribute('aria-label', `Restore ${label} preview`);
-    chip.title = `Restore ${label} preview`;
-    chip.innerHTML = `${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.molecule)}<span class="buret-molecule-preview-chip-label">${escapeHTML(label)}</span>`;
-    chip.addEventListener('click', () => restoreMolstarMoleculePreview());
+    chip.innerHTML = `${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.molecule)}<span class="buret-molecule-preview-chip-label"></span>`;
+    // A keyboard press moves focus into the opened card; a pointer leaves it be.
+    chip.addEventListener('click', event => setMolstarMoleculePreviewExpanded(true, { focus: event.detail === 0 }));
     document.body.appendChild(chip);
     molstarMoleculePreviewChip = chip;
+    return chip;
   }
 
-  function removeMolstarMoleculePreviewChip() {
-    molstarMoleculePreviewChip?.remove();
-    molstarMoleculePreviewChip = null;
+  // The pointer left the ligand. A card hover opened folds a moment later, so
+  // crossing the gap between two atoms or moving onto the card keeps it open;
+  // only then does it go back to the selected ligand.
+  function releaseMolstarMoleculePreviewHover() {
+    if (molstarMoleculePreviewHoverTimer) return;
+    molstarMoleculePreviewHoverTimer = setTimeout(() => {
+      molstarMoleculePreviewHoverTimer = 0;
+      if (molstarMoleculePreviewIsActive()) return;
+      molstarMoleculePreviewHovered = false;
+      presentMolstarMoleculePreview();
+      scheduleMolstarSelectedMoleculePreview();
+    }, 400);
   }
 
   function installMolstarMoleculePreviewResize(popover) {
@@ -28382,8 +29920,13 @@ SOFTWARE.
     const maxHeight = 420;
     const margin = 8;
     const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+    // A press on the header that does not move folds the card. The captured
+    // pointer sends that click to the card itself, so the press is noted here.
+    let headerPressed = false;
+    let dragMoved = false;
     const finish = (event) => {
       if (!molstarMoleculePreviewDrag || molstarMoleculePreviewDrag.popover !== popover) return;
+      dragMoved = molstarMoleculePreviewDrag.moved;
       try { popover.releasePointerCapture?.(molstarMoleculePreviewDrag.pointerId); } catch (_) {}
       popover.classList.remove('buret-molstar-molecule-preview-resizing');
       popover.classList.remove('buret-molstar-molecule-preview-moving');
@@ -28393,10 +29936,12 @@ SOFTWARE.
     };
     popover.addEventListener('pointerdown', event => {
       const handle = event.target instanceof Element ? event.target.closest('[data-buret-molecule-preview-resize]') : null;
+      dragMoved = false;
+      headerPressed = !handle && !!event.target.closest?.('.buret-molecule-card-header');
       if (event.button !== 0) return;
       // Header controls must keep their pointer target through click. Capturing
       // their pointer on the card turns a close/minimize click into a drag.
-      if (event.target.closest?.('[data-buret-molecule-preview-action]')) return;
+      if (event.target.closest?.('[data-buret-molecule-preview-action], select')) return;
       // Only the header background and the drawing move the card.
       if (!handle && !event.target.closest?.('[data-buret-molecule-preview-drag]')) return;
       const direction = handle?.getAttribute('data-buret-molecule-preview-resize') || '';
@@ -28473,14 +30018,29 @@ SOFTWARE.
     });
     popover.addEventListener('pointerup', finish);
     popover.addEventListener('pointercancel', finish);
+    popover.addEventListener('pointerleave', () => {
+      if (molstarMoleculePreviewHovered) releaseMolstarMoleculePreviewHover();
+    });
+    popover.addEventListener('change', event => {
+      const select = event.target instanceof Element ? event.target.closest('[data-buret-molecule-preview-style]') : null;
+      if (select) runMolstarMoleculePreviewAction('style', select);
+    });
     popover.addEventListener('click', event => {
       const control = event.target instanceof Element
         ? event.target.closest('[data-buret-molecule-preview-action]')
         : null;
-      // Everything the card does now has a button; a click on the drawing or the
-      // header is only ever the tail of a drag and must stay inert.
+      // Everything the card does has a button. A click on the header folds the
+      // card into its chip; one on the drawing is the tail of a drag.
       event.stopPropagation();
-      if (!control) return;
+      if (event.target.closest?.('select')) {
+        headerPressed = false;
+        return;
+      }
+      if (!control) {
+        if (headerPressed && !dragMoved) runMolstarMoleculePreviewAction('collapse');
+        headerPressed = false;
+        return;
+      }
       event.preventDefault();
       runMolstarMoleculePreviewAction(control.dataset.buretMoleculePreviewAction, control);
     });
@@ -28706,6 +30266,25 @@ SOFTWARE.
     while (molstarPreviewSvgCache.size > 64) molstarPreviewSvgCache.delete(molstarPreviewSvgCache.keys().next().value);
   }
 
+  let molstarPreviewOclPromise = null;
+  async function molstarPreviewOclRuntime() {
+    if (window.BuretteOpenChemLib?.Molecule && window.BuretteMoleculePreviewOcl) return window.BuretteMoleculePreviewOcl;
+    if (!molstarPreviewOclPromise) molstarPreviewOclPromise = (async () => {
+      const asset = relative => {
+        if (window.BuretteResolveRuntimeAsset) return relative;
+        const sceneScript = Array.from(document.scripts).find(script => /(?:^|\/)scene-file-actions\.js(?:[?#]|$)/u.test(script.src));
+        const base = new URL(runtimeURL('BuretteSceneFilesURL', sceneScript?.src || './scene-file-actions.js'), document.baseURI);
+        const url = new URL(relative, base); url.search = base.search;
+        return String(url);
+      };
+      if (!window.BuretteOpenChemLib?.Molecule) await loadScript(asset('openchemlib/openchemlib.js'), 'molecule depiction', 15000);
+      if (!window.BuretteMoleculePreviewOcl) await loadScript(asset('molecule-preview-ocl.js'), 'molecule depiction', 10000);
+      if (!window.BuretteOpenChemLib?.Molecule || !window.BuretteMoleculePreviewOcl) throw new Error('Molecule depiction is unavailable.');
+      return window.BuretteMoleculePreviewOcl;
+    })().finally(() => { molstarPreviewOclPromise = null; });
+    return molstarPreviewOclPromise;
+  }
+
   async function molstarMoleculePreviewRDKitSVG(entry) {
     const showHydrogens = molstarShowHydrogens;
     if (normalizeFormat(entry?.format) !== 'sdf') return '';
@@ -28743,7 +30322,12 @@ SOFTWARE.
       }
     } catch (error) {
       debug(`RDKit molecule preview failed; using SVG fallback: ${error?.message || error}`);
-      const fallback = molstarMoleculePreviewFallbackSVG(entry, showHydrogens);
+      let fallback = '';
+      try {
+        const depiction = await molstarPreviewOclRuntime();
+        fallback = molstarPreviewCleanRDKitSVG(depiction.render(String(entry.data || ''), showHydrogens, MOLSTAR_PREVIEW_RDKIT_SVG_SIZE, window.BuretteOpenChemLib));
+      } catch (cause) { debug(`Molecule depiction fallback failed: ${cause?.message || cause}`); }
+      if (!fallback) fallback = molstarMoleculePreviewFallbackSVG(entry, showHydrogens);
       if (!fallback) throw error;
       molstarPreviewCacheSVG(key, fallback);
       return fallback;
@@ -28778,15 +30362,15 @@ SOFTWARE.
     scheduleSceneTreeRender();
   }
 
-  function showMolstarMoleculePreview(target) {
+  // `hover`: the pointer rests on this ligand, which opens a card set to open on hover.
+  function showMolstarMoleculePreview(target, { hover = false } = {}) {
     const entry = molstarMoleculePreviewEntry(target);
-    if (normalizeFormat(entry?.format) !== 'sdf') {
-      hideMolstarMoleculePreview();
-      return;
+    if (normalizeFormat(entry?.format) !== 'sdf') return;
+    if (hover) {
+      clearTimeout(molstarMoleculePreviewHoverTimer);
+      molstarMoleculePreviewHoverTimer = 0;
+      molstarMoleculePreviewHovered = true;
     }
-    // Parked by × or tucked into the chip: stay hidden until the user asks for it
-    // back, not the moment the pointer drifts back over the selected ligand.
-    if (molstarMoleculePreviewSuppressed || molstarMoleculePreviewMinimized) return;
     const key = molstarPreviewKey(entry);
     const image = molstarPreviewSvgCache.get(key) || '';
     const label = target?.label || entry?.label || (target?.scope === 'ion' ? 'Ion' : 'Ligand');
@@ -28798,6 +30382,9 @@ SOFTWARE.
       popover.className = 'buret-molstar-molecule-preview';
       popover.setAttribute('role', 'dialog');
       popover.tabIndex = 0;
+      // Folded from the first frame; measuring the card below would otherwise
+      // start a fade-out of a card that was never shown.
+      popover.classList.toggle('buret-molecule-card-collapsed', !molstarMoleculePreviewIsExpanded());
       installMolstarMoleculePreviewResize(popover);
       document.body.appendChild(popover);
       molstarMoleculePreview = popover;
@@ -28807,15 +30394,50 @@ SOFTWARE.
     // markup each time destroys the button under the cursor between pointerdown and
     // click, so nothing in the footer can be pressed and a resize handle grabbed
     // mid-rebuild belongs to no card. Only redraw when the card would differ.
-    const signature = `${key}\n${label}`;
-    if (popover.dataset.buretPreviewSignature !== signature) {
-      popover.innerHTML = molstarMoleculePreviewCardHTML(label, image || escapeHTML('Rendering 2D preview...'));
-      popover.dataset.buretPreviewSignature = signature;
+    // The diagram redraws its hydrogens in place, so they are not part of its card.
+    // The map frame of a complex is kept across its ligands: it is told the new
+    // ligand instead of loading the diagram page again.
+    const available = molstarMoleculePreviewDiagram(target);
+    const diagram = available && molstarMoleculePreviewShowsDiagram() ? available : null;
+    const body = diagram ? 'diagram' : `molecule:${key}`;
+    // The picked style is not part of it: the select already shows the pick, and
+    // a header swapped between pointerdown and pointerup swallows the click.
+    const chrome = `${label}\n${target?.atom ? molstarContextResidueLabel(target.atom) : ''}\n${diagram ? `diagram:${molstarMoleculePreviewStyles.length}` : 'molecule'}\n${available ? 'map' : ''}`;
+    if (popover.dataset.buretPreviewBody === body && popover.dataset.buretPreviewChrome !== chrome && !molstarMoleculePreviewDrag) {
+      const next = document.createElement('template');
+      next.innerHTML = molstarMoleculePreviewCardHTML(label, '', diagram, !!available);
+      for (const part of ['.buret-molecule-card-header', '.buret-molecule-card-toolbar']) {
+        const replacement = next.content.querySelector(part);
+        if (replacement) popover.querySelector(part)?.replaceWith(replacement);
+      }
+      popover.dataset.buretPreviewChrome = chrome;
+      updateMolstarHydrogenButtons();
+    }
+    if (popover.dataset.buretPreviewBody !== body) {
+      popover.innerHTML = molstarMoleculePreviewCardHTML(label, image || escapeHTML('Rendering 2D preview...'), diagram, !!available);
+      popover.dataset.buretPreviewBody = body;
+      popover.dataset.buretPreviewChrome = chrome;
       popover.dataset.buretPreviewKey = key;
       if (created) applyMolstarMoleculePreviewGeometry(popover);
+      // A diagram needs more room than a molecule thumbnail.
+      popover.classList.toggle('buret-molecule-card-has-diagram', !!diagram);
+      // and a card that can switch to the diagram needs room for the switch
+      if (available && popover.getBoundingClientRect().width < 340) {
+        popover.style.width = '380px';
+        if (diagram) popover.style.height = `${molstarMoleculePreviewFitHeight(popover, 400)}px`;
+        molstarMoleculePreviewClamp(popover);
+      }
       rememberMolstarMoleculePreviewGeometry(popover);
       updateMolstarHydrogenButtons();
     }
+    const styleSelect = popover.querySelector('[data-buret-molecule-preview-style]');
+    if (styleSelect && styleSelect.value !== molstarMoleculePreviewDiagramStyle()) styleSelect.value = molstarMoleculePreviewDiagramStyle();
+    presentMolstarMoleculePreview();
+    if (diagram) {
+      configureMolstarMoleculePreviewDiagram();
+      return;
+    }
+    requestMolstarDiagramLigandMolblock(available);
     void molstarMoleculePreviewRDKitSVG(entry)
       .then(svg => {
         if (!svg || molstarMoleculePreview !== popover || molstarMoleculePreviewTarget !== target || popover.dataset.buretPreviewKey !== key) return;
@@ -28903,23 +30525,33 @@ SOFTWARE.
   }
 
   function scheduleMolstarSelectedMoleculePreview(fallbackTarget = null) {
-    if (molstarMoleculePreviewSuppressed || molstarMoleculePreviewMinimized) return;
+    if (molstarHydrogensPending) return;
     const hasCandidate = Boolean(molstarSelectedMoleculePreviewTarget() || fallbackTarget);
     if (!hasCandidate) {
-      hideMolstarMoleculePreview({ force: true });
+      showMolstarResidentMoleculePreview();
       return;
     }
     if (showMolstarSelectedMoleculePreview(fallbackTarget)) return;
     if (molstarMoleculePreviewFrame) cancelAnimationFrame(molstarMoleculePreviewFrame);
-    const showOrHide = () => {
-      if (!showMolstarSelectedMoleculePreview(fallbackTarget)) hideMolstarMoleculePreview({ force: true });
+    const showOrSettle = () => {
+      if (!showMolstarSelectedMoleculePreview(fallbackTarget)) showMolstarResidentMoleculePreview();
     };
     molstarMoleculePreviewFrame = requestAnimationFrame(() => {
       molstarMoleculePreviewFrame = 0;
       if (showMolstarSelectedMoleculePreview(fallbackTarget)) return;
-      setTimeout(showOrHide, 250);
-      setTimeout(showOrHide, 900);
+      setTimeout(showOrSettle, 250);
+      setTimeout(showOrSettle, 900);
     });
+  }
+
+  // With nothing selected the card keeps the ligand it showed last, or the
+  // first ligand of the structure, so the chip in the corner is always there.
+  function showMolstarResidentMoleculePreview() {
+    const shown = molstarMoleculePreviewTarget && molstarMoleculePreviewEntry(molstarMoleculePreviewTarget) ? molstarMoleculePreviewTarget : null;
+    const first = shown ? null : molstarPreviewLigandEntries().find(entry => entry.scope === 'ligand');
+    const target = shown || (first ? molstarPreviewLigandTarget(first) : null);
+    if (target && molstarMoleculePreviewEntry(target)) showMolstarMoleculePreview(target);
+    else removeMolstarMoleculePreview();
   }
 
   function molstarMoleculePreviewIsActive() {
@@ -28928,28 +30560,40 @@ SOFTWARE.
       molstarMoleculePreview.contains(document.activeElement);
   }
 
+  // Escape, a cleared selection or a resized window fold what hover opened; the
+  // card and the user's open/folded choice stay. Document teardown resets both.
   function clearMolstarPersistentMoleculePreview({ reset = false } = {}) {
-    if (!reset && (molstarMoleculePreviewSuppressed || molstarMoleculePreviewMinimized)) {
-      hideMolstarMoleculePreview({ force: true });
+    if (!reset) {
+      hideMolstarMoleculePreview();
       return;
     }
-    molstarMoleculePreviewSuppressed = false;
-    molstarMoleculePreviewMinimized = false;
-    molstarMoleculePreviewMinimizedTarget = null;
-    removeMolstarMoleculePreviewChip();
-    hideMolstarMoleculePreview({ force: true });
+    molstarMoleculePreviewExpanded = null;
+    removeMolstarMoleculePreview();
   }
 
-  function hideMolstarMoleculePreview(options = {}) {
+  // Folds a card that only hover opened, at once (a lasso, a scroll).
+  function hideMolstarMoleculePreview() {
     if (molstarMoleculePreviewFrame) {
       cancelAnimationFrame(molstarMoleculePreviewFrame);
       molstarMoleculePreviewFrame = 0;
     }
-    if (!molstarMoleculePreview) return;
-    rememberMolstarMoleculePreviewGeometry(molstarMoleculePreview);
-    molstarMoleculePreview.remove();
+    clearTimeout(molstarMoleculePreviewHoverTimer);
+    molstarMoleculePreviewHoverTimer = 0;
+    if (!molstarMoleculePreviewHovered) return;
+    molstarMoleculePreviewHovered = false;
+    presentMolstarMoleculePreview();
+  }
+
+  function removeMolstarMoleculePreview() {
+    hideMolstarMoleculePreview();
+    molstarMoleculePreviewHovered = false;
+    if (molstarMoleculePreview) {
+      rememberMolstarMoleculePreviewGeometry(molstarMoleculePreview);
+      molstarMoleculePreview.remove();
+    }
     molstarMoleculePreview = null;
     molstarMoleculePreviewTarget = null;
+    presentMolstarMoleculePreview();
   }
 
   function hideMolstarContextMenu(options = {}) {
@@ -28965,7 +30609,12 @@ SOFTWARE.
       previousFocus.focus({ preventScroll: true });
     }
     molstarContextMenuPick = null;
-    if (options.keepMoleculePreview) return;
+    if (options.keepMoleculePreview) {
+      // The host menu closes after its blur cleanup. Keep this press's intent
+      // until that asynchronous reply, so it cannot remove the card before click.
+      if (molstarNativeMenuPending) molstarNativeMenuPending.keepMoleculePreview = true;
+      return;
+    }
     scheduleMolstarSelectedMoleculePreview();
   }
 
@@ -30094,16 +31743,20 @@ SOFTWARE.
       if (pick?.loci && !molstarLociIsEmpty(pick.loci)) {
         const previewTarget = molstarContextTargetForPick({ ...pick, position: event.position });
         if (previewTarget.scope === 'ligand' || previewTarget.scope === 'ion') {
-          showMolstarMoleculePreview(previewTarget);
+          showMolstarMoleculePreview(previewTarget, { hover: true });
           return;
         }
       }
-      scheduleMolstarSelectedMoleculePreview();
+      // Off the ligand a hover-opened card folds after a moment and then goes
+      // back to the selection.
+      if (molstarMoleculePreviewHovered) releaseMolstarMoleculePreviewHover();
+      else scheduleMolstarSelectedMoleculePreview();
     };
     const moleculeHoverSubscription = viewer.plugin.behaviors.interaction.hover.subscribe(updateMoleculePreviewFromHover);
     const hideMoleculePreviewFromEvent = (event) => {
       if (event.target instanceof Element && event.target.closest('.buret-molstar-molecule-preview')) return;
-      scheduleMolstarSelectedMoleculePreview();
+      if (molstarMoleculePreviewHovered) releaseMolstarMoleculePreviewHover();
+      else scheduleMolstarSelectedMoleculePreview();
     };
     const onKeyDown = (event) => {
       if (event.defaultPrevented || (event.target instanceof Element && event.target.closest('.buret-molecule-context-menu'))) {
@@ -30114,13 +31767,13 @@ SOFTWARE.
         clearMolstarPersistentMoleculePreview();
         return;
       }
-      // Arrows walk the ligands while the card is up. Typing anywhere — a field, the
-      // sequence, a menu — keeps its own arrow behaviour.
-      if (!molstarMoleculePreview) return;
+      // Arrows walk the ligands while the card is open. Typing anywhere — a field,
+      // the sequence, a menu — keeps its own arrow behaviour.
+      if (!molstarMoleculePreview || !molstarMoleculePreviewIsExpanded()) return;
       const step = event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1
         : event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1
         : 0;
-      if (!step || event.metaKey || event.ctrlKey || event.altKey) return;
+      if (!step || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
       if (event.target instanceof Element
         && event.target.closest('input, select, textarea, [contenteditable="true"], .msp-sequence')) return;
       event.preventDefault();
@@ -30129,6 +31782,7 @@ SOFTWARE.
     const onResize = () => {
       hideMolstarContextMenu();
       clearMolstarPersistentMoleculePreview();
+      if (molstarMoleculePreview) molstarMoleculePreviewClamp(molstarMoleculePreview);
     };
     document.addEventListener('contextmenu', onContextMenu, true);
     document.addEventListener('pointerdown', onPointerDown, true);
@@ -30366,7 +32020,10 @@ SOFTWARE.
     }
     const plugin = viewer?.plugin;
     if (!plugin) return;
-    const update = () => {
+    const update = (event) => {
+      // Toolbar pointerup precedes click; refreshing empty selection here would
+      // remove a context-menu preview before its control can run.
+      if (event instanceof Event && event.target instanceof Element && event.target.closest('.buret-molstar-molecule-preview')) return;
       const target = molstarSelectedMoleculeTargetFromSelection();
       scheduleMolstarSelectedMoleculePreview(target);
       notifyMolstarSelectionChanged(target);
@@ -30497,7 +32154,7 @@ SOFTWARE.
   }
 
   function ensureMolstarStylesheet() {
-    if (document.querySelector('link[href*="molstar.css"]')) return;
+    if (document.querySelector('link[data-buret-molstar-stylesheet], link[href*="molstar.css"]')) return;
     const link = document.createElement('link');
     link.rel = 'stylesheet';
     link.href = runtimeURL('BuretteMolstarCSSURL', './molstar.css');
@@ -30576,6 +32233,8 @@ SOFTWARE.
     activeSdfPoseMode = readSdfPoseMode(config);
     activeSdfCollectionLayout = readSdfCollectionLayout(config);
     ensureMolstarStylesheet();
+    // The app shell floats its Compute button over the corner where Mol* shows hover info.
+    document.body.classList.toggle('buret-app-viewer', config.appViewer === true);
     const container = document.getElementById('app');
     if (container) container.innerHTML = '';
     const size = describeBytes(config.byteCount);
@@ -30614,6 +32273,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       debug('BuretteAgent attach failed: ' + (error && error.message || String(error)));
     }
     activeViewer = viewer;
+    installMolstarCubeDatasetHistory(viewer);
     await viewer.plugin.managers.structure.component.setOptions({
       ...viewer.plugin.managers.structure.component.state.options,
       hydrogens: molstarShowHydrogens ? 'all' : 'hide-all'
@@ -30646,6 +32306,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       `Mol* timed out while parsing/rendering ${prepared.label} as ${prepared.format}.`
     );
     assertMolstarLoadReady(viewer, prepared);
+    applyDefaultUnitCellVisibility(viewer, prepared);
     if (config.demoSnapshotUrl) {
       const response = await fetch(config.demoSnapshotUrl);
       if (!response.ok) throw new Error('Could not load the saved demo scene.');
@@ -30667,6 +32328,8 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     }
     await applyMolstarContextFocus(config);
     notifyMolstarSelectionChanged(molstarSelectedMoleculePreviewTarget());
+    // The ligand card is there from the start, folded or open as Settings say.
+    scheduleMolstarSelectedMoleculePreview();
     void reportBuretteAgentState();
     startBuretteAgentActionPolling();
     trackMolstarOrientation(viewer, config);
@@ -30708,15 +32371,16 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       if (window.BuretteNativeFirstFrame) throw error;
     }
     if (window.BuretteViewerDisposed) return;
+    const topologyCamera = await restoreMeasurementPreview(viewer, config);
     const sourceViewport = await restoredView;
-    const savedCamera = window.BuretteRendererViewState?.read(config.documentId, config.rendererViewState).camera;
-    if (savedCamera && !hasMolstarContextFocus(config) && prepared.kind !== 'mvs') {
+    const savedCamera = topologyCamera || window.BuretteRendererViewState?.read(config.documentId, config.rendererViewState).camera;
+    if (topologyCamera || (savedCamera && !hasMolstarContextFocus(config) && prepared.kind !== 'mvs')) {
       molstarStructureFocusSerial += 1;
-      const camera = sourceViewport
+      const camera = sourceViewport && !topologyCamera
         ? window.BuretteRendererViewState.transferCamera(savedCamera, sourceViewport, viewer.plugin.canvas3d?.camera?.viewport)
         : savedCamera;
       restoreMolstarCameraSnapshotNow(viewer, camera);
-      if (sourceViewport) saveRendererViewState();
+      if (sourceViewport && !topologyCamera) saveRendererViewState();
     } else if ((isQuickLookHost() || prepared.fitSessionCamera) && !hasMolstarContextFocus(config)) {
       // Quick Look keeps the file's orientation and never animates the camera; it
       // only trades Mol*'s bounding-sphere distance for the atom-fitted one. An MVS
@@ -30841,7 +32505,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
             if (next.showHydrogens !== molstarShowHydrogens) await toggleMolstarHydrogens();
             if (next.data === current) continue;
             await activeViewer.plugin.clear();
-            await loadPreparedStructure(activeViewer, { data: next.data, format: 'mol', label: 'Molecule' });
+            await loadPreparedStructure(activeViewer, { data: next.data, format: config.molstarFormat === 'mmcif' ? 'mmcif' : config.molstarFormat === 'sdf' ? 'sdf' : 'mol', label: config.label || 'Molecule' });
             await applyConfiguredMolstarPreset(activeViewer, activeConfig);
             current = next.data;
             await settlePreview();

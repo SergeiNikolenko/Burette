@@ -344,7 +344,7 @@ test('shared native workspace supports explicit chemistry views and rejects unau
   try {
     const file = new URL('../samples/mini.sdf', import.meta.url).pathname;
     const pdb = new URL('../samples/mini.pdb', import.meta.url).pathname;
-    await assert.rejects(run({ operation: 'open', file: pdb, workspace: true, view: 'ketcher' }), /Ketcher requires/u);
+    await assert.rejects(run({ operation: 'open', file: pdb, workspace: true, view: 'ketcher' }), /molecular editor requires/u);
     session = await run({ operation: 'open', file, workspace: true, view: 'ketcher' });
     assert.equal(session.view, 'ketcher');
     const locator = { sessionId: session.sessionId };

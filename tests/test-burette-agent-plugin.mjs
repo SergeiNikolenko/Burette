@@ -344,8 +344,9 @@ for (const entrypoint of ["browser-shell-dist/index.html", "browser-shell-dist/i
     assert.equal(packedFiles.has(referencedAsset), true, `npm package is missing ${referencedAsset}`);
   }
 }
-const browserShellIndex = await read("browser-shell-dist/index.js");
-assert.match(browserShellIndex, /molstar-preset-preview-controller\.js/);
+const shellScripts = [...packedFiles].filter(file => /^browser-shell-dist\/(?:index\.js|assets\/[^/]+\.js)$/u.test(file));
+const shellSources = await Promise.all(shellScripts.map(read));
+assert.equal(shellSources.some(source => source.includes("molstar-preset-preview-controller.js")), true, "the browser shell must load the Mol* preset preview controller");
 
 const bundledServerSource = await read("mcp/lib/server-bundle.mjs");
 for (const match of bundledServerSource.matchAll(/["']\.\/(server-chunk-[^"'/?#\s]+\.mjs)["']/gu)) {

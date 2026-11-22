@@ -2,9 +2,9 @@
 export const workspaceLoadingStyle = `
 html,body,#root{margin:0;width:100%;height:100%;overflow:hidden}
 body:has(#status:not([hidden]) :is(.workspace-loading,.workspace-failure)) #root{opacity:0;pointer-events:none}
-body{background:#fff;color:#111}
-html[data-theme="dark"] body{background:var(--burette-host-background,#101010);color:#eee}
-@media(prefers-color-scheme:dark){html:not([data-theme]) body{background:var(--burette-host-background,#101010);color:#eee}}
+html,body{color-scheme:light;background:var(--burette-host-background,#fff);color:#111}
+html[data-theme="dark"],html[data-theme="dark"] body{color-scheme:dark;background:var(--burette-host-background,#101010);color:#eee}
+@media(prefers-color-scheme:dark){html:not([data-theme="light"]),html:not([data-theme="light"]) body{color-scheme:dark;background:var(--burette-host-background,#101010);color:#eee}}
 #status{font:14px/1.5 system-ui;padding:12px;box-sizing:border-box}
 #status[hidden]{display:none}
 #status:not([hidden]):has(.workspace-loading,.workspace-failure){position:absolute;inset:0;z-index:100;display:grid;place-items:center;max-height:none;background:inherit}

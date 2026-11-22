@@ -20,7 +20,7 @@ export function createWorkspaceTransport({ descriptor, assets, exchange, isClose
   let initialAction = descriptor.view === 'ketcher' ? { type: 'open_ketcher' }
     : descriptor.view === 'docking' ? { type: 'open_docking_view', receptorPath: descriptor.documents[0].path, ligandPaths: descriptor.documents.slice(1).map(item => item.path) } : null;
   let pendingStartup;
-  let seeded = descriptor.view !== 'ketcher';
+  let seeded = descriptor.view !== 'ketcher' || !descriptor.documents?.length;
   let startupError;
   function documentFor(path) {
     const item = descriptor.documents.find(item => item.path === path);
@@ -128,7 +128,7 @@ export function createWorkspaceTransport({ descriptor, assets, exchange, isClose
       const text = new TextDecoder().decode(await source(item));
       const format = ['smi', 'smiles'].includes(item.format) ? 'smiles' : item.format === 'ket' ? 'ket' : 'mol';
       const content = format === 'mol' ? text.split('$$$$')[0].trimEnd() : text;
-      if (new TextEncoder().encode(content).length > 65536) throw new Error('Ketcher seed exceeds 64 KiB.');
+      if (new TextEncoder().encode(content).length > 65536) throw new Error('Molecular editor seed exceeds 64 KiB.');
       const id = crypto.randomUUID();
       startupIds.add(id);
       pendingStartup = { id, status: 'queued', action: { type: 'control_ketcher', apiVersion: 'burette-ketcher-agent/v1', actionId: id,
