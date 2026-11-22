@@ -30,8 +30,10 @@ declare global {
     __BURETTE_HOSTED_APP_QUEUE__?: Array<{ method: string; args: unknown[] }>;
     __BURETTE_HOSTED_APP_READY__?: (ready: boolean) => void;
     __BURETTE_HOSTED_ANALYTICS_ORIGIN__?: string;
+    __BURETTE_HOSTED_KETCHER_WIDGET__?: boolean;
     openai?: {
       theme?: HostTheme;
+      displayMode?: "inline" | "fullscreen" | "pip";
       surfaceBackgroundColor?: string;
       safeArea?: { insets?: { bottom?: number } };
       toolOutput?: unknown;
@@ -129,6 +131,33 @@ const hostBackgrounds: { light: string; dark: string } = {
   light: bridge.backgrounds?.light ?? "#ffffff",
   dark: bridge.backgrounds?.dark ?? "#181818",
 };
+const INLINE_EDITOR_HEIGHT_PX = 540;
+let currentDisplayMode: "inline" | "fullscreen" | undefined;
+let lastSentInlineHeight = 0;
+
+function syncDisplayMode(nextMode?: unknown) {
+  const resolved: "inline" | "fullscreen" | undefined =
+    nextMode === "inline" || nextMode === "fullscreen"
+      ? nextMode
+      : currentDisplayMode;
+  if (!resolved) return;
+  currentDisplayMode = resolved;
+  document.documentElement.dataset.displayMode = resolved;
+  if (window.__BURETTE_HOSTED_KETCHER_WIDGET__ && resolved === "inline") {
+    const height = INLINE_EDITOR_HEIGHT_PX;
+    const filled = Math.max(height, window.innerHeight || 0);
+    document.documentElement.style.height = `${filled}px`;
+    document.body.style.height = `${filled}px`;
+    if (connected && lastSentInlineHeight !== height) {
+      lastSentInlineHeight = height;
+      void app.sendSizeChanged({ height }).catch(() => { lastSentInlineHeight = 0; });
+    }
+  } else {
+    lastSentInlineHeight = 0;
+    document.documentElement.style.height = "";
+    document.body.style.height = "";
+  }
+}
 
 function applyHostAppearance(options: {
   theme?: unknown;
@@ -143,6 +172,7 @@ function applyHostAppearance(options: {
   if (nextTheme && bridge.theme !== nextTheme) {
     bridge.theme = nextTheme;
     document.documentElement.dataset.hostTheme = nextTheme;
+    document.documentElement.style.colorScheme = nextTheme;
     changed = true;
   }
   const activeTheme = bridge.theme;
@@ -165,9 +195,11 @@ function syncFromHostContext(context: ReturnType<App["getHostContext"]> | Record
   if (!context || typeof context !== "object") return;
   const record = context as {
     theme?: unknown;
+    displayMode?: unknown;
     styles?: { variables?: Record<string, unknown> };
     safeAreaInsets?: { bottom?: unknown };
   };
+  syncDisplayMode(record.displayMode);
   applyHostAppearance({
     theme: record.theme,
     surfaceColor: record.styles?.variables?.["--color-background-primary"],
@@ -182,6 +214,7 @@ app.onhostcontextchanged = (params) => {
 window.addEventListener("openai:set_globals", (event) => {
   const globals = (event as CustomEvent<{ globals?: Window["openai"] }>).detail?.globals;
   if (!globals) return;
+  syncDisplayMode(globals.displayMode);
   applyHostAppearance({
     theme: globals.theme,
     surfaceColor: globals.surfaceBackgroundColor,
@@ -189,11 +222,13 @@ window.addEventListener("openai:set_globals", (event) => {
   });
 }, { passive: true });
 
+syncDisplayMode(window.openai?.displayMode);
 applyHostAppearance({
   theme: window.openai?.theme,
   surfaceColor: window.openai?.surfaceBackgroundColor,
   bottomInset: window.openai?.safeArea?.insets?.bottom,
 });
+window.addEventListener("resize", () => syncDisplayMode(currentDisplayMode), { passive: true });
 
 installHostedWorkspace(app, (name, arguments_) => callServerTool(name, arguments_), (home, entrypoint) => {
   bridge.home = home;

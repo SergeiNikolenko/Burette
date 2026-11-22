@@ -42,6 +42,12 @@
     ? document.querySelector('meta[name="burette-frame-base"]')?.content
     : undefined;
   if (frameBase) {
+    const frameTheme = document.querySelector('meta[name="burette-frame-theme"]')?.content;
+    if (frameTheme === "dark" || frameTheme === "light") {
+      document.documentElement?.classList?.toggle("dark", frameTheme === "dark");
+      document.documentElement?.classList?.toggle("light", frameTheme === "light");
+      if (document.documentElement?.style) document.documentElement.style.colorScheme = frameTheme;
+    }
     const absolute = (value) => new URL(String(value), frameBase).href;
     Object.defineProperty(document, "baseURI", { get: () => frameBase, configurable: true });
     window.BuretteResolveRuntimeAsset = absolute;
@@ -52,6 +58,35 @@
     );
   }
 
+  const resolveParentTheme = () => {
+    const root = document.documentElement;
+    const explicit = root?.dataset?.hostTheme
+      || root?.dataset?.theme
+      || document.querySelector?.("[data-effective-theme]")?.getAttribute("data-effective-theme")
+      || window.BuretteHostedAppBridge?.theme;
+    if (explicit === "dark" || explicit === "light") return explicit;
+    if (root?.classList?.contains?.("dark")) return "dark";
+    if (typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: dark)").matches) return "dark";
+    return null;
+  };
+
+  const resolveParentBackground = (theme) => {
+    let bg = "";
+    try {
+      if (typeof getComputedStyle === "function" && document.documentElement) {
+        bg = getComputedStyle(document.documentElement).getPropertyValue("--burette-host-background").trim();
+      }
+    } catch (_) {}
+    return /^#[0-9a-f]{3,8}$|^rgba?\(/iu.test(bg) ? bg : (theme === "dark" ? "#181818" : "#ffffff");
+  };
+
+  const applyHtmlDarkClass = (html) => html.replace(/<html\b([^>]*)>/iu, (tag, attrs) => {
+    if (/\bclass="([^"]*)"/iu.test(attrs)) {
+      return `<html${attrs.replace(/\bclass="([^"]*)"/iu, (_, cls) => `class="${cls.split(/\s+/u).includes("dark") ? cls : `${cls} dark`.trim()}"`)}>`;
+    }
+    return `<html${attrs} class="dark">`;
+  });
+
   // Frame documents keep no inline scripts: the sandbox CSP blocks them in
   // srcdoc children. This script is the only addition and runs before the
   // frame's own scripts.
@@ -60,14 +95,20 @@
     if (!response.ok) throw new Error(`Burette frame returned ${response.status}.`);
     const html = await response.text();
     const directory = new URL(".", href).href;
+    const parentTheme = resolveParentTheme();
+    const themeHead = parentTheme
+      ? `<meta name="burette-frame-theme" content="${attribute(parentTheme)}"><style>html,body{color-scheme:${parentTheme};background:${attribute(resolveParentBackground(parentTheme))};}</style>`
+      : "";
     const head = `<meta name="burette-frame-base" content="${attribute(directory)}">`
       + `<meta name="burette-host-origin" content="${attribute(window.origin)}">`
+      + themeHead
       + `<script src="${attribute(scriptUrl)}" data-burette-frame-child></script>`;
     if (!/<head[^>]*>/iu.test(html)) throw new Error("Burette frame has no document head.");
     const resolved = html.replace(/\b(src|href)="([^"]*)"/giu, (match, name, value) => (
       /^(?:[a-z][a-z\d+.-]*:|#)/iu.test(value) ? match : `${name}="${attribute(new URL(value, directory).href)}"`
     ));
-    return resolved.replace(/<head[^>]*>/iu, (tag) => tag + head);
+    const themed = parentTheme === "dark" ? applyHtmlDarkClass(resolved) : resolved;
+    return themed.replace(/<head[^>]*>/iu, (tag) => tag + head);
   }
 
   const transport = { resolve: (href) => href, prepareFrame };

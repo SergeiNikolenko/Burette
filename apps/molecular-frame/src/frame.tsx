@@ -7,6 +7,13 @@ import './frame.css'
 const hostOrigin = new URLSearchParams(location.search).get('hostOrigin')
   ?? document.querySelector<HTMLMetaElement>('meta[name="burette-host-origin"]')?.content
 const safeOrigin = hostOrigin === 'null' ? 'null' : hostOrigin && URL.canParse(hostOrigin) ? hostOrigin : null
+const initialTheme = new URLSearchParams(location.search).get('theme')
+  ?? document.querySelector<HTMLMetaElement>('meta[name="burette-frame-theme"]')?.content
+if (initialTheme === 'dark' || initialTheme === 'light') {
+  document.documentElement.classList.toggle('dark', initialTheme === 'dark')
+  document.documentElement.classList.toggle('light', initialTheme === 'light')
+  document.documentElement.style.colorScheme = initialTheme
+}
 const send = (type: string, value: unknown) => {
   if (safeOrigin) parent.postMessage({ source: 'burette-molecular-frame', type, value }, safeOrigin === 'null' ? '*' : safeOrigin)
 }
@@ -26,7 +33,10 @@ function Frame() {
       const result = (value: unknown) => send('result', { id: message.id, ok: true, value })
       try {
         if (message.command === 'appearance') {
-          document.documentElement.classList.toggle('dark', message.value.theme === 'dark')
+          const isDark = message.value.theme === 'dark'
+          document.documentElement.classList.toggle('dark', isDark)
+          document.documentElement.classList.toggle('light', !isDark)
+          document.documentElement.style.colorScheme = isDark ? 'dark' : 'light'
           for (const key of variables) {
             const value = message.value.variables?.[key]
             if (typeof value === 'string' && value.length <= 256 && CSS.supports(key === 'font-sans' ? 'font-family' : 'color', value)) document.documentElement.style.setProperty(`--${key}`, value)

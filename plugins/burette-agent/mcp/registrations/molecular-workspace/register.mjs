@@ -216,8 +216,8 @@ export function registerMolecularWorkspace(server) {
     server,
     "burette.open_ketcher",
     {
-      title: "Open Burette Molecular Editor",
-      description: "Open the molecular editor in an existing Burette workspace session.",
+      title: "Open Molecular Editor",
+      description: "Open Burette's molecular editor in an existing Burette workspace session.",
       inputSchema: {
         workspaceSessionId: z.string().trim().optional(),
         viewerSessionId: z.string().trim().optional(),
@@ -435,8 +435,8 @@ export function registerMolecularWorkspace(server) {
     server,
     "burette.control_ketcher",
     {
-      title: "Control Burette Molecular Editor",
-      description: "Apply a bounded, revision-checked action to the active Burette molecular editor surface.",
+      title: "Control Molecular Editor",
+      description: "Apply a bounded, revision-checked action to the active molecular editor surface.",
       inputSchema: {
         workspaceSessionId: z.string().trim().optional(),
         viewerSessionId: z.string().trim().optional(),

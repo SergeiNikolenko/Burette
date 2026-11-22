@@ -10,7 +10,9 @@
    frame whose color scheme differs from its host frame's is painted opaque
    (white for normal), so viewer-shell.js copies the host frame's scheme. */
 html.buret-viewer-booting,
-html.buret-viewer-booting body { background: transparent !important; color-scheme: var(--buret-boot-color-scheme, normal); }
+html.buret-viewer-booting body { background: transparent !important; }
+html.buret-viewer-booting[data-buret-boot-color-scheme],
+html.buret-viewer-booting[data-buret-boot-color-scheme] body { color-scheme: var(--buret-boot-color-scheme); }
 /* Opacity rather than visibility: Mol* marks parts of its layout visible, which
    would override an inherited visibility: hidden. */
 html.buret-viewer-booting body { opacity: 0 !important; }

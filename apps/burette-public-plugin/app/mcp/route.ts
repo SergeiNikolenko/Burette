@@ -235,7 +235,7 @@ function createServer(): McpServer {
     "open_molecular_editor",
     {
       title: "Open Molecular Editor",
-      description: "Open Burette's molecular editor and optionally seed it with one inline structure (SMILES, MOL, KET, or an RXN reaction).",
+      description: "Open Burette's molecular editor inline in chat and optionally seed it with one inline structure (SMILES, MOL, KET, or an RXN reaction).",
       inputSchema: {
         structure: ketcherStructureSchema.optional(),
       },

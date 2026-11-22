@@ -5,8 +5,20 @@
   // revealViewer there). The timer only guards against viewer.js never running.
   document.documentElement.classList.add('buret-viewer-booting');
   try {
-    const hostScheme = window.frameElement && getComputedStyle(window.frameElement).colorScheme;
-    if (hostScheme && hostScheme !== 'normal') document.documentElement.style.setProperty('--buret-boot-color-scheme', hostScheme);
+    const frame = window.frameElement;
+    let hostScheme = frame && getComputedStyle(frame).colorScheme;
+    if (hostScheme !== 'dark' && hostScheme !== 'light') {
+      const effective = frame?.closest?.('[data-effective-theme]')?.getAttribute('data-effective-theme')
+        || window.parent?.document?.documentElement?.dataset?.hostTheme
+        || window.parent?.document?.documentElement?.dataset?.theme
+        || window.BuretteConfig?.theme;
+      if (effective === 'dark' || effective === 'light') hostScheme = effective;
+    }
+    if (hostScheme === 'dark' || hostScheme === 'light') {
+      document.documentElement.setAttribute('data-buret-boot-color-scheme', hostScheme);
+      document.documentElement.style.setProperty('--buret-boot-color-scheme', hostScheme);
+      document.documentElement.style.colorScheme = hostScheme;
+    }
   } catch (_) {}
   if (window.name === 'burette-editable' || window.name === 'burette-read-only') {
     document.documentElement.setAttribute('data-burette-app-chrome', '');
