@@ -422,6 +422,38 @@ describe("viewer resource contract", () => {
       .toContain(VIEWER_MOBILE_SCRIPT_PATH);
   });
 
+  test("parses rgb() surfaceBackgroundColor and host theme synchronously in the head bootstrap", () => {
+    const html = createViewerWidgetHtml("https://burette.example");
+    const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/gu)].map((m) => m[1]);
+    expect(scripts.length).toBeGreaterThanOrEqual(1);
+    const headBootstrap = scripts[0];
+    const cssProps = new Map<string, string>();
+    const dataset: Record<string, string> = {};
+    const windowObj: Record<string, unknown> = {
+      parent: {},
+      openai: {
+        theme: "dark",
+        surfaceBackgroundColor: "rgb(24, 24, 24)",
+        safeArea: { insets: { bottom: 16 } },
+      },
+      addEventListener() {},
+      dispatchEvent() {},
+    };
+    const documentObj = {
+      documentElement: {
+        dataset,
+        style: { setProperty(k: string, v: string) { cssProps.set(k, v); } },
+      },
+    };
+    vm.runInNewContext(headBootstrap, { window: windowObj, document: documentObj, CustomEvent, TextEncoder });
+    expect(dataset.hostTheme).toBe("dark");
+    expect(cssProps.get("--burette-host-background")).toBe("#181818");
+    expect(cssProps.get("--burette-hosted-bottom-inset")).toBe("16px");
+    const bridge = windowObj.BuretteHostedAppBridge as { theme?: string; backgrounds?: { light: string; dark: string } };
+    expect(bridge.theme).toBe("dark");
+    expect(bridge.backgrounds).toEqual({ light: "#ffffff", dark: "#181818" });
+  });
+
   test("initializes the Apps bridge before publishing bounded viewer state", () => {
     const source = readFileSync(path.resolve(
       import.meta.dir,

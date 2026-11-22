@@ -115,7 +115,7 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
           if (/^#[0-9a-f]{6}$/u.test(trimmed)) return trimmed;
           const short = /^#([0-9a-f]{3})$/u.exec(trimmed);
           if (short) return "#" + short[1].split("").map((c) => c + c).join("");
-          const rgb = /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*([0-9.]+))?\s*\)$/u.exec(trimmed);
+          const rgb = /^rgba?\\(\\s*(\\d{1,3})\\s*,\\s*(\\d{1,3})\\s*,\\s*(\\d{1,3})(?:\\s*,\\s*([0-9.]+))?\\s*\\)$/u.exec(trimmed);
           if (!rgb || (rgb[4] !== undefined && Number(rgb[4]) < 0.9)) return null;
           const hex = (n) => Math.max(0, Math.min(255, Number(n))).toString(16).padStart(2, "0");
           return "#" + hex(rgb[1]) + hex(rgb[2]) + hex(rgb[3]);

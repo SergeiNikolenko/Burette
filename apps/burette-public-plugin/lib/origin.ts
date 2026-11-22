@@ -23,6 +23,11 @@ export function getAppOrigin(): string {
     throw new Error("PUBLIC_APP_ORIGIN must be an HTTPS origin or local HTTP origin.");
   }
 
+  if (process.env.VERCEL_ENV === "preview") {
+    const previewHost = process.env.VERCEL_URL?.trim() || process.env.VERCEL_BRANCH_URL?.trim();
+    if (previewHost) return `https://${previewHost}`;
+  }
+
   const productionHost = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
   if (productionHost) return `https://${productionHost}`;
 
