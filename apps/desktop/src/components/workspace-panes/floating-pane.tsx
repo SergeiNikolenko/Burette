@@ -44,6 +44,8 @@ export function FloatingPaneHeader({ tab, state, actions, minimized }: {
   const setFloatingRect = useWorkspacePanesStore((store) => store.setFloatingRect);
   const setFloatingMinimized = useWorkspacePanesStore((store) => store.setFloatingMinimized);
   const rectRef = useRef<FloatingPaneRect>(stored);
+  const endTrackRef = useRef<(() => void) | null>(null);
+  useLayoutEffect(() => () => endTrackRef.current?.(), []);
 
   useLayoutEffect(() => {
     const surface = headerRef.current?.parentElement;
@@ -68,6 +70,7 @@ export function FloatingPaneHeader({ tab, state, actions, minimized }: {
     const shell = surface?.closest<HTMLElement>(".app-shell") ?? surface;
     if (!surface || !shell) return;
     event.preventDefault();
+    endTrackRef.current?.();
     const target = event.currentTarget;
     target.setPointerCapture(event.pointerId);
     const start = { x: event.clientX, y: event.clientY, rect: rectRef.current };
@@ -86,15 +89,20 @@ export function FloatingPaneHeader({ tab, state, actions, minimized }: {
       applyRect(surface, rectRef.current, minimized);
     };
     const onEnd = () => {
+      if (endTrackRef.current !== onEnd) return;
+      endTrackRef.current = null;
       target.removeEventListener("pointermove", onMove);
       target.removeEventListener("pointerup", onEnd);
       target.removeEventListener("pointercancel", onEnd);
+      target.removeEventListener("lostpointercapture", onEnd);
       release();
       setFloatingRect(rectRef.current);
     };
+    endTrackRef.current = onEnd;
     target.addEventListener("pointermove", onMove);
     target.addEventListener("pointerup", onEnd);
     target.addEventListener("pointercancel", onEnd);
+    target.addEventListener("lostpointercapture", onEnd);
   };
 
   const fromControl = (event: ReactPointerEvent) => event.stopPropagation();

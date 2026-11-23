@@ -114,7 +114,7 @@ export function buildShellCommands(
       id: "open-ketcher",
       group: "Suggested",
       label: "Molecular editor",
-      description: "Open molecule sketch tab",
+      description: "Open molecular editor tab",
       run: actions.openKetcher,
     },
     {
@@ -349,7 +349,7 @@ export function shellCommandsForQuery(query: string, actions: ShellActions): She
       id: `draw-smiles-${smilesCommand.smiles}`,
       group: "Commands",
       label: `Draw SMILES in molecular editor: ${shortCommandValue(smilesCommand.smiles)}`,
-      description: `Command: ${smilesCommand.command} · Import SMILES into the molecule sketcher`,
+      description: `Command: ${smilesCommand.command} · Import SMILES into the molecular editor`,
       run: () => actions.openKetcherWithStructures([], [{
         title,
         text: `${smilesCommand.smiles}\n`,

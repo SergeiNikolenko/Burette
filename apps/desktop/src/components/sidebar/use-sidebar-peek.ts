@@ -15,9 +15,9 @@ const PEEK_AREA_SELECTOR = "[data-sidebar-peek-area]";
 const LAYER_SELECTOR = "[data-radix-popper-content-wrapper], [role='menu'], [role='dialog'], .sidebar-hover-card";
 const OPEN_DELAY_MS = 100;
 const CLOSE_DELAY_MS = 100;
-const EXIT_MS = 200;
-// Outlasts the 140ms flex-grow toggle animation of the pinned panel.
-const SETTLE_MS = 200;
+const EXIT_MS = 140;
+// Outlasts the 130ms flex-grow toggle animation of the pinned panel.
+const SETTLE_MS = 160;
 const EDGE_PX = 4;
 
 export function useSidebarPeek({

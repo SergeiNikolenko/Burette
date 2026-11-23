@@ -365,7 +365,9 @@ pub(crate) async fn compute_publish_conformer<R: Runtime>(
     let job_id = parse_uuid("job ID", &job_id)?;
     validate_revision(expected_revision)?;
     let coordinator = coordinator.inner().clone();
-    let job = coordinator.get_job(&owner, job_id)?;
+    let job_coordinator = coordinator.clone();
+    let job_owner = owner.clone();
+    let job = run_blocking(move || job_coordinator.get_job(&job_owner, job_id)).await?;
     let namespaced_document_id = runtime_document_id(&owner, &job.request.source().document_id);
     let grid_lease = registry
         .acquire_snapshot_lease(&namespaced_document_id)

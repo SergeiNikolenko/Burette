@@ -9,7 +9,7 @@ html[data-burette-intro] #burette-boot-overlay {
 }
 
 html[data-burette-intro="leaving"] .app-shell {
-  animation: atom-intro-reveal 0.45s ease both;
+  animation: atom-intro-reveal 240ms ease-out both;
 }
 
 @keyframes atom-intro-reveal {
@@ -24,7 +24,7 @@ html[data-burette-intro="leaving"] .app-shell {
   cursor: default;
   -webkit-user-select: none;
   user-select: none;
-  transition: opacity 0.45s ease;
+  transition: opacity 240ms ease-out;
 }
 
 .atom-intro[data-phase="leaving"] {
@@ -35,7 +35,7 @@ html[data-burette-intro="leaving"] .app-shell {
 .atom-intro-stage {
   position: absolute;
   inset: 0;
-  transition: opacity 0.34s ease;
+  transition: opacity 180ms ease-out;
 }
 
 .atom-intro[data-phase="skipping"] .atom-intro-stage {

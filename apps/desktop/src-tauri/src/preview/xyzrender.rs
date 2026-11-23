@@ -483,6 +483,10 @@ pub(crate) fn warmup_renderer(scope: XyzrenderWarmup) {
     }
 }
 
+pub(crate) fn shutdown_pool() {
+    super::xyzrender_pool::shutdown();
+}
+
 fn xyzrender_worker_launch(executable: &Path) -> Option<XyzrenderWorkerLaunch> {
     let launch = xyzrender_batch_helper_launch(executable)?;
     let metadata = fs::metadata(executable).ok();

@@ -16,6 +16,14 @@ use std::fs;
 use std::path::{Path, PathBuf};
 #[cfg(target_os = "macos")]
 use std::process::Command;
+#[cfg(target_os = "macos")]
+use std::sync::{Mutex, OnceLock};
+
+#[cfg(target_os = "macos")]
+fn launch_services_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
 
 #[cfg(target_os = "macos")]
 const APP_ID: &str = "com.local.BuretteV10";
@@ -280,6 +288,12 @@ pub(crate) fn maintain_launch_services_on_startup() -> Result<(), String> {
 
 #[cfg(target_os = "macos")]
 fn cleanup_owned_update_bundles(current_app: &Path) -> Result<(), String> {
+    let _guard = launch_services_lock()
+        .lock()
+        .unwrap_or_else(|err| err.into_inner());
+    if crate::commands::updater::update_install_is_active() {
+        return Ok(());
+    }
     let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
         return Ok(());
     };
@@ -306,6 +320,9 @@ fn cleanup_owned_update_bundles(current_app: &Path) -> Result<(), String> {
 
 #[cfg(target_os = "macos")]
 fn unregister_stale_owned_bundles(current_app: &Path) -> CommandReport {
+    let _guard = launch_services_lock()
+        .lock()
+        .unwrap_or_else(|err| err.into_inner());
     let command = "lsregister -u (stale Burette bundles)";
     let dump = match Command::new(LSREGISTER).arg("-dump").output() {
         Ok(output) if output.status.success() => output.stdout,

@@ -64,6 +64,15 @@ export function planSceneResidency({ tabs, recentTabIds, visibleTabIds, protecte
     const pageKey = scenePageKey(tab.id, location);
     const keys = historyKeys.get(tab.id) ?? new Set<string>();
     if (pageKeys.has(pageKey)) return true;
+    // Non-file UI panes (Inspector, Jobs, Ketcher, Text) have no WebGL scene
+    // budget to reclaim and must never consume slots or pause cold file tabs.
+    if (location.kind !== "file") {
+      pageKeys.add(pageKey);
+      mountedTabIds.add(tab.id);
+      if (current) deferredTabIds.delete(tab.id);
+      else { keys.add(pageLocationKey(location)); historyKeys.set(tab.id, keys); }
+      return true;
+    }
     const bytes = cost(location);
     const frames = frameCounts.get(documentFor(location)?.id ?? "") ?? 1;
     const resident = !residentPageKeys || residentPageKeys.has(pageKey);

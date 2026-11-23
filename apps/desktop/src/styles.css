@@ -130,7 +130,7 @@ strong { font-weight: 600; }
   app-region: drag;
   -webkit-app-region: drag;
 }
-button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .tab-history-button, .sidebar-search-row, .sidebar-search-action-row, .sidebar-tool-row, .sidebar-section-title-button, .sidebar-section-menu-button, .project-group-row, .project-folder-row, .project-folder-toggle-button, .project-group-menu-button, .project, .project-show-more, .pin-hit, .splitter {
+button, select, input, textarea, [role="button"], [role="separator"], a[href], summary, .tab-shell, .tab, .new-tab, .chrome-button, .tab-history-button, .sidebar-search-row, .sidebar-search-action-row, .sidebar-tool-row, .sidebar-section-title-button, .sidebar-section-menu-button, .project-group-row, .project-folder-row, .project-folder-toggle-button, .project-group-menu-button, .project, .project-show-more, .pin-hit, .resizable-handle, .workspace-split-handle, .floating-pane-header {
   app-region: no-drag;
   -webkit-app-region: no-drag;
 }
@@ -201,8 +201,6 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   flex-direction: column;
   background: var(--bg);
   color: var(--text-secondary);
-  backdrop-filter: blur(32px);
-  -webkit-backdrop-filter: blur(32px);
   font-size: var(--text-sm);
   font-weight: var(--font-ui-weight);
   line-height: 1.2;
@@ -1009,12 +1007,13 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   border-radius: 999px;
   background: currentColor;
   opacity: 0.6;
-  transition: width 140ms ease;
+  transform: scaleX(1);
+  transition: transform 120ms cubic-bezier(0.22, 1, 0.36, 1);
   pointer-events: none;
 }
 .grid-hover-molecule-strap:hover .grid-hover-molecule-strap-grip,
 .grid-hover-molecule-strap:focus-visible .grid-hover-molecule-strap-grip {
-  width: 28px;
+  transform: scaleX(1.4);
 }
 /* The name is what tells the bar apart from a divider, so it takes the row and
    the chevron stays pinned to the trailing edge. */
@@ -1221,13 +1220,13 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
    swap that value instantly; easing it recreates the pre-refactor slide. The
    transition only exists while the app marks the group as animating a toggle —
    a standing one would rubber-band pointer drags and window resizes, where the
-   library rewrites flex-grow every frame. Timings match the old .sidebar-shell
-   (140ms ease-out) and .dock-panel (180ms) rules. */
+   library rewrites flex-grow every frame. Timings use crisp native macOS
+   deceleration curves (130ms sidebar, 150ms docks). */
 .workspace-panels[data-panels-animating] > [data-panel] {
-  transition: flex-grow 140ms ease-out;
+  transition: flex-grow 130ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .workbench-main-panels[data-panels-animating] > [data-panel] {
-  transition: flex-grow 180ms cubic-bezier(0.2, 0, 0, 1);
+  transition: flex-grow 150ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 /* While a separator drag or a toggle animation is in flight the shell carries
    data-resizing (set by beginViewerLayoutGesture) and every viewer holds its
@@ -1236,6 +1235,20 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
    would swallow the drag. */
 .app-shell[data-resizing] .viewer-iframe {
   pointer-events: none;
+}
+.app-shell[data-resizing] :is(
+  .mesoscale-toolbar,
+  .mesoscale-toolbar-grip,
+  .mesoscale-toolbar.collapsed .mesoscale-toolbar-grip,
+  .mesoscale-selection-bar,
+  .mesoscale-viewport-rail,
+  .mesoscale-scene-toggle,
+  .workspace-file-header .workspace-file-control,
+  .ketcher-drop-overlay,
+  .web-quicklook-window
+) {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 .workspace-sidebar-panel { position: relative; height: 100%; min-height: 0; overflow: hidden; }
 .workspace-center-panel { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: flex; }
@@ -1251,8 +1264,8 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 /* The separator overhang must not scroll the stage upward when it gains focus. */
 .workbench-main-panels { overflow: clip !important; min-width: 0; min-height: 0; height: 100%; width: 100%; }
 .main-panel { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: flex; }
-.dock-panel-shell { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: flex; }
-.dock-panel-shell .dock-panel { width: 100%; height: 100%; flex: 1; transition: opacity 140ms ease-out; will-change: opacity; }
+.dock-panel-shell { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: flex; contain: layout style; }
+.dock-panel-shell .dock-panel { width: 100%; height: 100%; flex: 1; transition: opacity 120ms ease-out; }
 .dock-panel-shell .dock-panel-inner { width: 100%; height: 100%; }
 .resizable-handle {
   position: relative;
@@ -1318,7 +1331,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   border-radius: 999px;
   background: var(--text-muted);
   opacity: 0;
-  transition: background 120ms ease, height 120ms ease, width 120ms ease, opacity 120ms ease;
+  transition: background 120ms ease, transform 120ms cubic-bezier(0.22, 1, 0.36, 1), opacity 120ms ease;
   pointer-events: none;
 }
 .resizable-handle-horizontal .resizable-handle-grip { width: 44px; height: 4px; }
@@ -1326,9 +1339,9 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .resizable-handle:focus-visible .resizable-handle-grip { opacity: 1; }
 .resizable-handle:active .resizable-handle-grip { opacity: 1; background: var(--text-primary); }
 .resizable-handle:hover .resizable-handle-grip,
-.resizable-handle:active .resizable-handle-grip { height: 56px; }
+.resizable-handle:active .resizable-handle-grip { transform: translate(-50%, -50%) scaleY(1.27); }
 .resizable-handle-horizontal:hover .resizable-handle-grip,
-.resizable-handle-horizontal:active .resizable-handle-grip { height: 4px; width: 56px; }
+.resizable-handle-horizontal:active .resizable-handle-grip { transform: translate(-50%, -50%) scaleX(1.27); }
 .workbench {
   min-width: 0;
   min-height: 0;
@@ -1394,11 +1407,11 @@ html[data-hosted-mcp-widget="true"] #root {
   box-shadow: 0 12px 32px rgb(0 0 0 / 0.16);
 }
 .app-shell[data-sidebar-peek="open"] .sidebar-shell-inner {
-  animation: sidebar-peek-in 300ms cubic-bezier(0.2, 0, 0, 1);
+  animation: sidebar-peek-in 180ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .app-shell[data-sidebar-peek="closing"] .sidebar-shell-inner {
   pointer-events: none;
-  animation: sidebar-peek-out 200ms cubic-bezier(0.4, 0, 1, 1) forwards;
+  animation: sidebar-peek-out 140ms cubic-bezier(0.4, 0, 1, 1) forwards;
 }
 @keyframes sidebar-peek-in { from { transform: translateX(-100%); } }
 @keyframes sidebar-peek-out { to { transform: translateX(-100%); } }
@@ -1441,7 +1454,7 @@ html[data-hosted-mcp-widget="true"] #root {
   background: var(--sidebar-divider-right);
 }
 .sidebar-spacer { height: var(--chrome-height); flex: 0 0 var(--chrome-height); }
-.sidebar-scroll { min-height: 0; flex: 1; overflow-y: auto; padding: 0 8px 12px; scrollbar-width: none; }
+.sidebar-scroll { min-height: 0; flex: 1; overflow-y: auto; padding: 0 8px 12px; scrollbar-width: none; contain: layout style; }
 .sidebar-scroll::-webkit-scrollbar { display: none; }
 .sidebar-browser-header {
   width: 100%;
@@ -1697,11 +1710,16 @@ kbd span { margin-left: 2px; }
   display: grid;
   place-items: center;
   opacity: 0;
+  pointer-events: none;
   cursor: default;
   transition: background 140ms ease-out, color 140ms ease-out, opacity 140ms ease-out, transform 140ms ease-out;
 }
 .sidebar-section-header:hover .sidebar-section-menu-button,
-.sidebar-section-menu-button:focus-visible { opacity: 1; }
+.sidebar-section-header:focus-within .sidebar-section-menu-button,
+.sidebar-section-menu-button:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
 .sidebar-section-menu-button:hover,
 .sidebar-section-menu-button:focus-visible { background: var(--color-background-primary-ghost-hover); color: var(--color-text); outline: none; }
 .sidebar-section-menu-button:active { transform: scale(0.99); }
@@ -1793,7 +1811,7 @@ kbd span { margin-left: 2px; }
   pointer-events: none;
 }
 .anim-icon {
-  transition: transform 240ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: transform 150ms cubic-bezier(0.22, 1, 0.36, 1);
   transform-origin: center;
 }
 .anim-icon-spin:hover,
@@ -1927,6 +1945,7 @@ kbd span { margin-left: 2px; }
 /* Atlas SidebarFolderRow: the more button joins the pin on hover. */
 .project-group-row > .project-group-actions > .project-group-menu-button {
   opacity: 0;
+  pointer-events: none;
   transition: color 140ms ease-out, opacity 140ms ease-out;
 }
 .project-group-row:hover > .project-group-actions > .project-group-menu-button,
@@ -1971,7 +1990,7 @@ kbd span { margin-left: 2px; }
   opacity: 0;
   overflow: hidden;
   pointer-events: none;
-  transition: grid-template-rows 160ms ease-out, opacity 120ms ease-out;
+  transition: grid-template-rows 135ms cubic-bezier(0.22, 1, 0.36, 1), opacity 110ms ease-out;
 }
 .project-folder-children-shell[data-expanded="true"] {
   grid-template-rows: 1fr;
@@ -1984,7 +2003,7 @@ kbd span { margin-left: 2px; }
   opacity: 0;
   overflow: hidden;
   pointer-events: none;
-  transition: grid-template-rows 160ms ease-out, opacity 120ms ease-out;
+  transition: grid-template-rows 135ms cubic-bezier(0.22, 1, 0.36, 1), opacity 110ms ease-out;
 }
 .project-group-children-shell[data-expanded="true"] {
   grid-template-rows: 1fr;
@@ -2002,7 +2021,7 @@ kbd span { margin-left: 2px; }
   opacity: 0;
   overflow: hidden;
   pointer-events: none;
-  transition: grid-template-rows 160ms ease-out, margin-top 160ms ease-out, opacity 120ms ease-out;
+  transition: grid-template-rows 135ms cubic-bezier(0.22, 1, 0.36, 1), margin-top 135ms cubic-bezier(0.22, 1, 0.36, 1), opacity 110ms ease-out;
 }
 .project-tail-shell[data-expanded="true"] {
   grid-template-rows: 1fr;
@@ -2697,8 +2716,7 @@ img.radix-menu-item-icon {
   color: var(--text-primary);
   overflow: hidden;
   opacity: 1;
-  transition: width 180ms cubic-bezier(0.2, 0, 0, 1), height 180ms cubic-bezier(0.2, 0, 0, 1), opacity 140ms ease-out;
-  will-change: width, height;
+  transition: opacity 140ms ease-out;
 }
 .app-shell[data-effective-theme="dark"] .dock-panel {
   --dock-divider-active-color: color-mix(in srgb, var(--accent) 70%, var(--text-primary));
@@ -2709,6 +2727,7 @@ img.radix-menu-item-icon {
 }
 .dock-panel[data-open="false"] .dock-panel-inner {
   visibility: hidden;
+  contain: layout paint style;
 }
 .dock-panel[data-area="right"][data-open="false"] {
   min-width: 0;
@@ -4539,12 +4558,18 @@ img.radix-menu-item-icon {
   box-shadow: inset 0 0 0 1px var(--focus-ring);
 }
 .structure-inspector-row-dot {
+  position: relative;
   align-self: center;
   width: 10px;
   height: 10px;
   border: 1px solid rgba(127, 127, 127, 0.4);
   border-radius: 50%;
   background: var(--text-faint);
+}
+.structure-inspector-row-dot::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
 }
 .structure-inspector-row-dot[data-tone="polymer"] { background: #4e79a7; }
 .structure-inspector-row-dot[data-tone="ligand"] { background: #59a14f; }
@@ -5311,6 +5336,11 @@ img.radix-menu-item-icon {
 .page-surface[data-page-kind="file"]:not([data-active]),
 .page-surface[data-page-kind="text-file"]:not([data-active]),
 .page-surface[data-page-kind="ketcher"]:not([data-active]) { display: block; }
+.page-surface[data-page-kind="file"]:not([data-active]):not([data-workspace-visible]):not([data-pane-leaving]):not([data-pane-shown]),
+.page-surface[data-page-kind="text-file"]:not([data-active]):not([data-workspace-visible]):not([data-pane-leaving]):not([data-pane-shown]),
+.page-surface[data-page-kind="ketcher"]:not([data-active]):not([data-workspace-visible]):not([data-pane-leaving]):not([data-pane-shown]) {
+  contain: layout paint style;
+}
 .page-surface[data-active] { z-index: 1; visibility: visible; pointer-events: auto; }
 .page-surface[data-page-kind="settings"] { overflow: hidden; }
 .page-surface[data-page-kind="ketcher"] { overflow: hidden; }
@@ -6776,7 +6806,7 @@ img.radix-menu-item-icon {
   border-radius: 18px;
   background: var(--mesoscale-island);
   box-shadow: var(--mesoscale-island-shadow);
-  backdrop-filter: blur(18px);
+  backdrop-filter: blur(12px);
   touch-action: none;
   user-select: none;
 }
@@ -6788,7 +6818,7 @@ img.radix-menu-item-icon {
 .mesoscale-toolbar .mesoscale-toolbar-graphics svg { width: 14px; height: 14px; color: var(--color-text-tertiary); }
 .mesoscale-toolbar .mesoscale-toolbar-grip { cursor: grab; touch-action: none; }
 .mesoscale-toolbar.dragging .mesoscale-toolbar-grip { cursor: grabbing; }
-.mesoscale-toolbar.collapsed .mesoscale-toolbar-grip { width: 36px; height: 36px; border: 1px solid var(--line-subtle); border-radius: 18px; background: var(--mesoscale-island); box-shadow: var(--mesoscale-island-shadow); backdrop-filter: blur(18px); }
+.mesoscale-toolbar.collapsed .mesoscale-toolbar-grip { width: 36px; height: 36px; border: 1px solid var(--line-subtle); border-radius: 18px; background: var(--mesoscale-island); box-shadow: var(--mesoscale-island-shadow); backdrop-filter: blur(12px); }
 
 .mesoscale-selection-bar {
   position: absolute;
@@ -6850,7 +6880,7 @@ img.radix-menu-item-icon {
   color: var(--text-secondary);
   background: var(--mesoscale-island);
   box-shadow: var(--mesoscale-island-shadow);
-  backdrop-filter: blur(18px);
+  backdrop-filter: blur(12px);
 }
 .mesoscale-scene-toggle:hover { color: var(--text-primary); background: linear-gradient(var(--surface-hover), var(--surface-hover)), var(--mesoscale-island); }
 .mesoscale-scene-toggle.active { color: var(--text-primary); background: linear-gradient(var(--surface-active), var(--surface-active)), var(--mesoscale-island); }
@@ -6985,8 +7015,8 @@ img.radix-menu-item-icon {
   background: color-mix(in srgb, var(--bg-base) 82%, transparent);
   color: var(--text-primary);
   box-shadow: 0 28px 80px rgb(0 0 0 / 0.38), 0 1px 0 rgb(255 255 255 / 0.16) inset;
-  backdrop-filter: blur(34px) saturate(1.35);
-  -webkit-backdrop-filter: blur(34px) saturate(1.35);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
 }
 .web-quicklook-titlebar {
   min-width: 0;
@@ -7991,10 +8021,10 @@ img.radix-menu-item-icon {
   font-size: var(--text-base);
 }
 .radix-dialog[data-state="open"] {
-  animation: radix-dialog-in 160ms cubic-bezier(0.2, 0.9, 0.3, 1);
+  animation: radix-dialog-in 130ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .radix-dialog-overlay[data-state="open"] {
-  animation: radix-dialog-fade 160ms ease-out;
+  animation: radix-dialog-fade 130ms ease-out;
 }
 @keyframes radix-dialog-in {
   from { opacity: 0; transform: translate(-50%, -50%) scale(0.97); }
@@ -8749,7 +8779,7 @@ img.settings-open-destination-icon {
 .ssh-folder-loading { position: sticky; top: 0; padding: 6px; background: var(--popover); color: var(--text-muted); }
 .ssh-dialog-error { color: var(--destructive); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .ssh-project-tree .project-folder-row { text-align: left; padding-right: 52px; }
-.sidebar-add-project { opacity: 1; }
+.sidebar-add-project { opacity: 1; pointer-events: auto; }
 
 
 .ssh-dialog button:not([data-size]), .ssh-dialog input { font-weight: 400; }

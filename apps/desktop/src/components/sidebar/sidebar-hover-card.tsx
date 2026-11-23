@@ -166,7 +166,7 @@ export function SidebarHoverCard({ rootRef }: { rootRef: RefObject<HTMLElement |
 
   const info = shown && shown.anchor.isConnected ? cards.get(shown.id) : undefined;
   if (!shown || !info || !container) return null;
-  const duration = reducedMotion || shown.keyboard ? 0 : 0.15;
+  const duration = reducedMotion || shown.keyboard ? 0 : 0.11;
   return createPortal(
     <div
       ref={cardRef}

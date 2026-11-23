@@ -3,10 +3,15 @@ use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
+
+static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
+static POOL: OnceLock<Pool> = OnceLock::new();
+static HELPER_PATH: OnceLock<Mutex<Option<PathBuf>>> = OnceLock::new();
 
 const WORKER_WARMUP_TIMEOUT: Duration = Duration::from_secs(60);
 const WORKER_JOB_TIMEOUT: Duration = Duration::from_secs(20);
@@ -191,15 +196,12 @@ pub(super) fn run_cli(
 /// Prepare the bounded pool while the molecular grid is opening. Reserving slots under
 /// the pool lock makes concurrent document opens bounded and non-blocking.
 pub(super) fn warmup(launch: XyzrenderWorkerLaunch, desired_workers: usize) {
+    if SHUTTING_DOWN.load(Ordering::Acquire) {
+        return;
+    }
     let pool = pool();
     ensure_idle_worker_reaper();
-    pool.discard_stale_workers(&launch.signature);
-    let mut state = pool.state.lock().unwrap_or_else(|err| err.into_inner());
-    let count = desired_workers
-        .min(pool.capacity)
-        .saturating_sub(state.live);
-    state.live += count;
-    drop(state);
+    let (generation, count) = pool.reserve_warmup(&launch.signature, desired_workers);
     if count == 0 {
         return;
     }
@@ -207,7 +209,7 @@ pub(super) fn warmup(launch: XyzrenderWorkerLaunch, desired_workers: usize) {
         thread::scope(|scope| {
             for _ in 0..count {
                 let launch = &launch;
-                scope.spawn(move || match spawn_worker(launch) {
+                scope.spawn(move || match spawn_worker(launch, generation) {
                     Ok(worker) => pool.release(worker),
                     Err(_) => {
                         let mut state = pool.state.lock().unwrap_or_else(|err| err.into_inner());
@@ -218,6 +220,26 @@ pub(super) fn warmup(launch: XyzrenderWorkerLaunch, desired_workers: usize) {
             }
         });
     });
+}
+
+pub(super) fn shutdown() {
+    SHUTTING_DOWN.store(true, Ordering::Release);
+    if let Some(pool) = POOL.get() {
+        let mut state = pool.state.lock().unwrap_or_else(|err| err.into_inner());
+        state.generation = state.generation.wrapping_add(1);
+        let idle = std::mem::take(&mut state.idle);
+        state.live = state.live.saturating_sub(idle.len());
+        drop(state);
+        for entry in idle {
+            entry.worker.kill();
+        }
+        pool.available.notify_all();
+    }
+    if let Some(lock) = HELPER_PATH.get() {
+        if let Some(path) = lock.lock().unwrap_or_else(|err| err.into_inner()).take() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
 }
 
 fn push_outcome(outcomes: &Mutex<Vec<XyzrenderCardOutcome>>, outcome: XyzrenderCardOutcome) {
@@ -236,10 +258,10 @@ fn failed_outcome(job: &XyzrenderCardJob, error: &str) -> XyzrenderCardOutcome {
 }
 
 fn pool() -> &'static Pool {
-    static POOL: OnceLock<Pool> = OnceLock::new();
     POOL.get_or_init(|| Pool {
         state: Mutex::new(PoolState {
             signature: String::new(),
+            generation: 0,
             idle: Vec::new(),
             live: 0,
         }),
@@ -274,6 +296,7 @@ struct Pool {
 
 struct PoolState {
     signature: String,
+    generation: u64,
     idle: Vec<IdleWorker>,
     live: usize,
 }
@@ -284,12 +307,41 @@ struct IdleWorker {
 }
 
 impl Pool {
+    fn reserve_warmup(&self, signature: &str, desired_workers: usize) -> (u64, usize) {
+        let (generation, count, stale) = {
+            let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
+            let stale = if state.signature != signature {
+                state.signature = signature.to_string();
+                state.generation = state.generation.wrapping_add(1);
+                let drained = std::mem::take(&mut state.idle);
+                state.live = state.live.saturating_sub(drained.len());
+                drained
+            } else {
+                Vec::new()
+            };
+            let count = desired_workers
+                .min(self.capacity)
+                .saturating_sub(state.live);
+            state.live += count;
+            (state.generation, count, stale)
+        };
+        let had_stale = !stale.is_empty();
+        for idle in stale {
+            idle.worker.kill();
+        }
+        if had_stale {
+            self.available.notify_all();
+        }
+        (generation, count)
+    }
+
     fn discard_stale_workers(&self, signature: &str) {
         let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
         if state.signature == signature {
             return;
         }
         state.signature = signature.to_string();
+        state.generation = state.generation.wrapping_add(1);
         let stale = std::mem::take(&mut state.idle);
         state.live = state.live.saturating_sub(stale.len());
         drop(state);
@@ -328,8 +380,9 @@ impl Pool {
             }
             if state.live < self.capacity {
                 state.live += 1;
+                let generation = state.generation;
                 drop(state);
-                return spawn_worker(launch).inspect_err(|_| {
+                return spawn_worker(launch, generation).inspect_err(|_| {
                     let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
                     state.live = state.live.saturating_sub(1);
                     self.available.notify_one();
@@ -343,14 +396,19 @@ impl Pool {
     }
 
     fn release(&self, worker: Worker) {
-        self.state
-            .lock()
-            .unwrap_or_else(|err| err.into_inner())
-            .idle
-            .push(IdleWorker {
-                worker,
-                since: Instant::now(),
-            });
+        let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
+        if SHUTTING_DOWN.load(Ordering::Acquire) || worker.generation != state.generation {
+            state.live = state.live.saturating_sub(1);
+            drop(state);
+            worker.kill();
+            self.available.notify_all();
+            return;
+        }
+        state.idle.push(IdleWorker {
+            worker,
+            since: Instant::now(),
+        });
+        drop(state);
         self.available.notify_one();
     }
 
@@ -373,6 +431,7 @@ struct Worker {
     stdin: ChildStdin,
     responses: Receiver<String>,
     stderr: Arc<Mutex<String>>,
+    generation: u64,
 }
 
 impl Worker {
@@ -451,7 +510,10 @@ impl Worker {
     }
 }
 
-fn spawn_worker(launch: &XyzrenderWorkerLaunch) -> Result<Worker, String> {
+fn spawn_worker(launch: &XyzrenderWorkerLaunch, generation: u64) -> Result<Worker, String> {
+    if SHUTTING_DOWN.load(Ordering::Acquire) {
+        return Err("xyzrender pool is shutting down".to_string());
+    }
     let helper_path = write_worker_helper()?;
     let mut command = Command::new(&launch.program);
     command.arg(helper_path);
@@ -506,6 +568,7 @@ fn spawn_worker(launch: &XyzrenderWorkerLaunch) -> Result<Worker, String> {
         stdin,
         responses,
         stderr: captured,
+        generation,
     };
     match worker.exchange(
         "{\"op\":\"warmup\",\"id\":\"warmup\"}",
@@ -526,19 +589,22 @@ fn spawn_worker(launch: &XyzrenderWorkerLaunch) -> Result<Worker, String> {
 }
 
 fn write_worker_helper() -> Result<PathBuf, String> {
-    static HELPER_PATH: OnceLock<Result<PathBuf, String>> = OnceLock::new();
-    HELPER_PATH
-        .get_or_init(|| {
-            let directory = std::env::temp_dir();
-            let helper_path = directory.join(format!(
-                "burette-xyzrender-grid-worker-{}.py",
-                std::process::id()
-            ));
-            std::fs::write(&helper_path, XYZRENDER_GRID_WORKER_HELPER)
-                .map(|_| helper_path)
-                .map_err(|err| format!("Could not write xyzrender worker helper: {err}"))
-        })
-        .clone()
+    let lock = HELPER_PATH.get_or_init(|| Mutex::new(None));
+    let mut cached = lock.lock().unwrap_or_else(|err| err.into_inner());
+    if let Some(path) = cached.as_ref() {
+        if path.exists() {
+            return Ok(path.clone());
+        }
+    }
+    let directory = std::env::temp_dir();
+    let helper_path = directory.join(format!(
+        "burette-xyzrender-grid-worker-{}.py",
+        std::process::id()
+    ));
+    std::fs::write(&helper_path, XYZRENDER_GRID_WORKER_HELPER)
+        .map_err(|err| format!("Could not write xyzrender worker helper: {err}"))?;
+    *cached = Some(helper_path.clone());
+    Ok(helper_path)
 }
 
 const XYZRENDER_GRID_WORKER_HELPER: &str = r#"

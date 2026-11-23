@@ -1,5 +1,6 @@
 @layer components {
   .atlas-checkbox[aria-invalid="true"] { border-color: var(--color-text-danger); }
+  .atlas-checkbox-mark::before, .atlas-checkbox-mark::after { will-change: auto; }
   @media (prefers-reduced-motion: reduce) {
     .atlas-checkbox, .atlas-checkbox-mark, .atlas-checkbox-mark::before, .atlas-checkbox-mark::after {
       transition: none;

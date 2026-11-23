@@ -119,6 +119,7 @@ function suppressFilledKetcherSelectionPaths(root: HTMLElement) {
     .filter((path) => getComputedStyle(path).fill === "rgb(0, 0, 0)");
   if (!blackPaths.length) return;
   const rootRect = root.getBoundingClientRect();
+  if (rootRect.width <= 0 || rootRect.height <= 0) return;
   const minWidth = rootRect.width * 0.45;
   const minHeight = rootRect.height * 0.45;
 
@@ -266,7 +267,7 @@ async function callKetcherWhenReady<T>(operation: () => Promise<T>) {
       if (!isKetcherInstanceError(error)) break;
     }
   }
-  throw lastError instanceof Error ? lastError : new Error(String(lastError || "Ketcher operation failed"));
+  throw lastError instanceof Error ? lastError : new Error(String(lastError || "Molecular editor operation failed"));
 }
 
 function isKetcherInstanceError(error: unknown) {
@@ -469,7 +470,7 @@ export function KetcherEditor({
         const normalizedError = error instanceof Error ? error : new Error(String(error));
         setLoadError(normalizedError);
         onLoadError?.(normalizedError);
-        onStatus("Ketcher failed to load");
+        onStatus("Molecular editor failed to load");
       });
 
     return () => {
@@ -503,7 +504,7 @@ export function KetcherEditor({
       const normalized = error instanceof Error ? error : new Error(String(error));
       setLoadError(normalized);
       onLoadError?.(normalized);
-      onStatus("Ketcher failed to load");
+      onStatus("Molecular editor failed to load");
     });
   }, [onReady, onStatus, onLoadError, runtime]);
 

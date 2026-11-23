@@ -71,7 +71,9 @@ export function DockFileTabs({ area, entries, activeKey, textViews, onTextView, 
           ...(capabilities.scene || capabilities.xyzrender ? [menuItem("open-3d", "Interactive 3D", () => renderer("molstar"))] : []),
           ...(capabilities.xyzrender ? [menuItem("open-xyzrender", "3D render", () => renderer("xyzrender-external"))] : []),
         ];
-        void showNativeContextMenu(items, { x: event.clientX, y: event.clientY });
+        const rect = event.detail === 0 ? event.currentTarget.getBoundingClientRect() : null;
+        const point = rect ? { x: rect.left + rect.width / 2, y: rect.bottom } : { x: event.clientX, y: event.clientY };
+        void showNativeContextMenu(items, point);
       };
       return <DockFileTab key={entry.key} active={active} payload={payload} state={state} actions={actions} menu={menu}
         entry={entry} text={text} select={select} />;

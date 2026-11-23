@@ -42,7 +42,7 @@
 @media (prefers-reduced-motion: no-preference) {
   .atlas-floating-tooltip:is([data-state="delayed-open"], [data-state="instant-open"]) {
     transform-origin: var(--radix-tooltip-content-transform-origin);
-    animation: atlas-tooltip-enter 250ms var(--cubic-enter, cubic-bezier(.19, 1, .22, 1)) both;
+    animation: atlas-tooltip-enter 120ms var(--cubic-enter, cubic-bezier(.22, 1, .36, 1)) both;
   }
 }
 @keyframes atlas-tooltip-enter {

@@ -36,7 +36,7 @@ import { useSourceEditing } from "../../lib/source-editing/context";
 import { toast } from "../ui/toast";
 import { tracePerf } from "../../lib/perf-trace";
 
-const TAB_REORDER_ANIMATION_MS = 150;
+const TAB_REORDER_ANIMATION_MS = 130;
 const TAB_DRAG_ACTIVATE_DELAY_MS = 520;
 const TAB_MOUSE_REORDER_THRESHOLD_PX = 8;
 // Lets a freshly shown page paint before its hover-preview image is taken. A

@@ -15,10 +15,12 @@ import { planSceneResidency, scenePageKey } from "./scene-residency";
 import { useSceneEditProtection } from "./use-scene-edit-protection";
 import { FileViewerEmptyState } from "../ui/file-viewer-state";
 import { Button } from "../ui/button";
+import { useNativeMemoryPressure, type NativeMemoryPressureLevel } from "./use-native-memory-pressure";
 
 const DEFAULT_WARM_PAGE_LIMIT = 10;
 const LOW_DEVICE_MEMORY_WARM_PAGE_LIMIT = 6;
 const MEMORY_PRESSURE_WARM_PAGE_LIMIT = 4;
+const CRITICAL_MEMORY_PRESSURE_WARM_PAGE_LIMIT = 2;
 const MEMORY_PRESSURE_HEAP_BYTES = 768 * 1024 * 1024;
 const MEMORY_PRESSURE_HEAP_RATIO = 0.7;
 
@@ -44,7 +46,8 @@ export function ViewerArea({ state, actions }: { state: ShellViewState; actions:
   const residentPageKeys = useRef<ReadonlySet<string>>(new Set());
   const [overridePageKeys, setOverridePageKeys] = useState<ReadonlySet<string>>(new Set());
   const resumePage = useCallback((key: string) => setOverridePageKeys(previous => new Set([...previous, key])), []);
-  const warmPageLimit = mountedWarmPageLimit();
+  const nativeMemoryPressure = useNativeMemoryPressure();
+  const warmPageLimit = mountedWarmPageLimit(nativeMemoryPressure);
   const paneVisibility = usePaneVisibility(state.page === "settings");
   const sourceEditing = useSourceEditing();
   const editedSceneIds = useSceneEditProtection(state.documents);
@@ -193,7 +196,7 @@ function activeLocation(state: ShellViewState): Location {
   return { kind: "launcher" };
 }
 
-function mountedWarmPageLimit() {
+function mountedWarmPageLimit(nativeMemoryPressure: NativeMemoryPressureLevel = "normal") {
   // Native sessions admit at most eight bounded files; preserve visited views.
   if (window.BuretteMcpWorkspace) return Number.POSITIVE_INFINITY;
   let limit = DEFAULT_WARM_PAGE_LIMIT;
@@ -229,6 +232,11 @@ function mountedWarmPageLimit() {
     )
   );
   if (heapPressure) limit = Math.min(limit, MEMORY_PRESSURE_WARM_PAGE_LIMIT);
+  if (nativeMemoryPressure === "critical") {
+    limit = Math.min(limit, CRITICAL_MEMORY_PRESSURE_WARM_PAGE_LIMIT);
+  } else if (nativeMemoryPressure === "warn") {
+    limit = Math.min(limit, MEMORY_PRESSURE_WARM_PAGE_LIMIT);
+  }
 
   return Math.max(1, Math.min(DEFAULT_WARM_PAGE_LIMIT, limit));
 }

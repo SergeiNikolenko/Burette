@@ -1,10 +1,11 @@
 use std::{
     collections::BTreeMap,
-    fs::File,
+    fs::{self, File},
     io::Read,
     path::PathBuf,
     process::Command,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
+    thread,
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -100,7 +101,22 @@ use crate::windows::runtime_document_id;
 
 #[derive(Clone, Debug)]
 pub(crate) struct ComputeCoordinator {
-    state: Arc<CoordinatorState>,
+    state: Arc<LazyCoordinatorState>,
+}
+
+#[derive(Debug)]
+struct LazyCoordinatorState {
+    config: Option<CoordinatorInitConfig>,
+    resolved: OnceLock<CoordinatorState>,
+    shutting_down: std::sync::atomic::AtomicBool,
+}
+
+#[derive(Debug)]
+struct CoordinatorInitConfig {
+    compute_root: PathBuf,
+    metal_runtime_root: Option<PathBuf>,
+    viewer_runtime_root: Option<PathBuf>,
+    service_mode: Option<Option<PathBuf>>,
 }
 
 #[derive(Debug)]
@@ -1099,6 +1115,7 @@ impl ComputeCoordinator {
         Self::initialize_inner(compute_root, metal_runtime_root, viewer_runtime_root, None)
     }
 
+    #[cfg(test)]
     pub(crate) fn initialize_with_service(
         compute_root: PathBuf,
         metal_runtime_root: Option<PathBuf>,
@@ -1113,13 +1130,112 @@ impl ComputeCoordinator {
         )
     }
 
+    pub(crate) fn initialize_background_with_service(
+        compute_root: PathBuf,
+        metal_runtime_root: Option<PathBuf>,
+        viewer_runtime_root: Option<PathBuf>,
+        service_executable: Option<PathBuf>,
+    ) -> Self {
+        Self {
+            state: Arc::new(LazyCoordinatorState {
+                config: Some(CoordinatorInitConfig {
+                    compute_root,
+                    metal_runtime_root,
+                    viewer_runtime_root,
+                    service_mode: Some(service_executable),
+                }),
+                resolved: OnceLock::new(),
+                shutting_down: std::sync::atomic::AtomicBool::new(false),
+            }),
+        }
+    }
+
+    pub(crate) fn spawn_background_init(&self) {
+        let coordinator = self.clone();
+        let _ = thread::Builder::new()
+            .name("burette-compute-init".into())
+            .spawn(move || {
+                let _ = coordinator.state();
+            });
+    }
+
+    pub(crate) fn shutdown(&self) {
+        self.state
+            .shutting_down
+            .store(true, std::sync::atomic::Ordering::Release);
+        if let Some(CoordinatorState::Ready(ready)) = self.state.resolved.get() {
+            if let Some(service) = &ready.compute_service {
+                service.shutdown();
+            }
+        }
+    }
+
+    fn state(&self) -> &CoordinatorState {
+        self.state
+            .resolved
+            .get_or_init(|| match &self.state.config {
+                Some(config) => {
+                    let state = Self::build_state(
+                        config.compute_root.clone(),
+                        config.metal_runtime_root.clone(),
+                        config.viewer_runtime_root.clone(),
+                        config.service_mode.clone(),
+                    );
+                    if self
+                        .state
+                        .shutting_down
+                        .load(std::sync::atomic::Ordering::Acquire)
+                    {
+                        if let CoordinatorState::Ready(ready) = &state {
+                            if let Some(service) = &ready.compute_service {
+                                service.shutdown();
+                            }
+                        }
+                    }
+                    state
+                }
+                None => CoordinatorState::Unavailable("compute coordinator is unavailable".into()),
+            })
+    }
+
+    #[cfg(test)]
     fn initialize_inner(
         compute_root: PathBuf,
         metal_runtime_root: Option<PathBuf>,
         viewer_runtime_root: Option<PathBuf>,
         service_mode: Option<Option<PathBuf>>,
     ) -> Self {
-        let state = match ComputeStore::initialize(compute_root) {
+        let state = Self::build_state(
+            compute_root,
+            metal_runtime_root,
+            viewer_runtime_root,
+            service_mode,
+        );
+        let resolved = OnceLock::new();
+        let _ = resolved.set(state);
+        Self {
+            state: Arc::new(LazyCoordinatorState {
+                config: None,
+                resolved,
+                shutting_down: std::sync::atomic::AtomicBool::new(false),
+            }),
+        }
+    }
+
+    fn build_state(
+        compute_root: PathBuf,
+        metal_runtime_root: Option<PathBuf>,
+        viewer_runtime_root: Option<PathBuf>,
+        service_mode: Option<Option<PathBuf>>,
+    ) -> CoordinatorState {
+        if let Some(parent) = compute_root.parent() {
+            if let Err(error) = fs::create_dir_all(parent) {
+                return CoordinatorState::Unavailable(format!(
+                    "compute app-data directory cannot be created: {error}"
+                ));
+            }
+        }
+        match ComputeStore::initialize(compute_root) {
             Ok(store) => match SnapshotRepository::initialize(&store) {
                 Ok(snapshots) => match reconcile_artifact_root(&store)
                     .and_then(|()| store.recover_active_jobs(now_ms()))
@@ -1158,20 +1274,23 @@ impl ComputeCoordinator {
                 Err(error) => CoordinatorState::Unavailable(error.to_string()),
             },
             Err(error) => CoordinatorState::Unavailable(error.to_string()),
-        };
-        Self {
-            state: Arc::new(state),
         }
     }
 
     pub(crate) fn unavailable(message: impl Into<String>) -> Self {
+        let resolved = OnceLock::new();
+        let _ = resolved.set(CoordinatorState::Unavailable(message.into()));
         Self {
-            state: Arc::new(CoordinatorState::Unavailable(message.into())),
+            state: Arc::new(LazyCoordinatorState {
+                config: None,
+                resolved,
+                shutting_down: std::sync::atomic::AtomicBool::new(false),
+            }),
         }
     }
 
     pub(crate) fn capability_report(&self) -> ComputeResult<ComputeCapabilityReport> {
-        let report = match self.state.as_ref() {
+        let report = match self.state() {
             CoordinatorState::Ready(ready) => match ready.snapshots.health_check() {
                 Ok(()) => match &ready.compute_service {
                     Some(service) => service.capabilities().unwrap_or_else(|error| {
@@ -3101,7 +3220,7 @@ impl ComputeCoordinator {
     }
 
     fn store(&self) -> ComputeResult<ComputeStore> {
-        match self.state.as_ref() {
+        match self.state() {
             CoordinatorState::Ready(ready) => Ok(ready.store.clone()),
             CoordinatorState::Unavailable(message) => {
                 Err(ComputeCoordinatorError::Unavailable(message.clone()))
@@ -3110,7 +3229,7 @@ impl ComputeCoordinator {
     }
 
     fn ready(&self) -> ComputeResult<&ReadyCoordinator> {
-        match self.state.as_ref() {
+        match self.state() {
             CoordinatorState::Ready(ready) => Ok(ready),
             CoordinatorState::Unavailable(message) => {
                 Err(ComputeCoordinatorError::Unavailable(message.clone()))
@@ -3572,7 +3691,7 @@ fn current_executable_sha256() -> Result<String, String> {
         )
     })?;
     let mut hasher = Sha256::new();
-    let mut buffer = [0_u8; 1024 * 1024];
+    let mut buffer = [0_u8; 64 * 1024];
     loop {
         let read = file
             .read(&mut buffer)

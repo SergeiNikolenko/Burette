@@ -65,7 +65,7 @@ function ShellMenus({ theme }: { theme: Theme }) {
             <DropdownMenuItem><Icon icon={icons.FolderOpen} />Finder<DropdownMenuShortcut>⌘O</DropdownMenuShortcut></DropdownMenuItem>
             <DropdownMenuSub>
               <DropdownMenuSubTrigger><Icon icon={icons.ExternalLink} />Editor</DropdownMenuSubTrigger>
-              <DropdownMenuSubContent><DropdownMenuItem>Ketcher</DropdownMenuItem></DropdownMenuSubContent>
+              <DropdownMenuSubContent><DropdownMenuItem>Molecular editor</DropdownMenuItem></DropdownMenuSubContent>
             </DropdownMenuSub>
             <DropdownMenuItem disabled><Icon icon={icons.Agent} />Agent session</DropdownMenuItem>
             <DropdownMenuSeparator />

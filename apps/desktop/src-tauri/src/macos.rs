@@ -1,15 +1,20 @@
 use cocoa::appkit::{NSApplicationTerminateReply, NSView, NSWindow, NSWindowButton};
 use cocoa::base::{id, NO, YES};
 use cocoa::foundation::NSRect;
-use dispatch2::DispatchQueue;
+use dispatch2::{
+    _dispatch_source_type_memorypressure, dispatch_source_memorypressure_flags_t, DispatchObject,
+    DispatchQoS, DispatchQueue, DispatchRetained, DispatchSource, GlobalQueueIdentifier,
+};
 use objc::declare::ClassDecl;
 use objc::runtime::{
     class_addMethod, class_getInstanceMethod, object_getClass, Class, Imp, Object, Sel,
 };
 use objc::{class, msg_send, sel, sel_impl};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::ffi::c_void;
+use std::ptr::addr_of;
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::OnceLock;
-use tauri::LogicalPosition;
+use tauri::{Emitter, LogicalPosition};
 
 #[link(name = "AppKit", kind = "framework")]
 extern "C" {
@@ -18,6 +23,115 @@ extern "C" {
 
 static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
 static TERMINATION_PENDING: AtomicBool = AtomicBool::new(false);
+static MEMORY_PRESSURE_MONITOR: OnceLock<MemoryPressureMonitor> = OnceLock::new();
+static LAST_MEMORY_PRESSURE: AtomicU8 = AtomicU8::new(MemoryPressureLevel::Normal as u8);
+
+pub(crate) const MEMORY_PRESSURE_EVENT: &str = "memory-pressure";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+#[repr(u8)]
+pub(crate) enum MemoryPressureLevel {
+    Normal = 0,
+    Warn = 1,
+    Critical = 2,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MemoryPressureEvent {
+    pub(crate) level: MemoryPressureLevel,
+}
+
+struct MemoryPressureMonitor {
+    app: tauri::AppHandle,
+    source: DispatchRetained<DispatchSource>,
+}
+
+pub(crate) fn current_memory_pressure_level() -> MemoryPressureLevel {
+    match LAST_MEMORY_PRESSURE.load(Ordering::Acquire) {
+        1 => MemoryPressureLevel::Warn,
+        2 => MemoryPressureLevel::Critical,
+        _ => MemoryPressureLevel::Normal,
+    }
+}
+
+pub(crate) fn cancel_memory_pressure_monitor() {
+    if let Some(monitor) = MEMORY_PRESSURE_MONITOR.get() {
+        monitor.source.cancel();
+    }
+}
+
+fn memory_pressure_level_from_flags(flags: usize) -> Option<MemoryPressureLevel> {
+    let critical =
+        dispatch_source_memorypressure_flags_t::DISPATCH_MEMORYPRESSURE_CRITICAL.0 as usize;
+    let warn = dispatch_source_memorypressure_flags_t::DISPATCH_MEMORYPRESSURE_WARN.0 as usize;
+    let normal = dispatch_source_memorypressure_flags_t::DISPATCH_MEMORYPRESSURE_NORMAL.0 as usize;
+    if flags & critical != 0 {
+        Some(MemoryPressureLevel::Critical)
+    } else if flags & warn != 0 {
+        Some(MemoryPressureLevel::Warn)
+    } else if flags & normal != 0 {
+        Some(MemoryPressureLevel::Normal)
+    } else {
+        None
+    }
+}
+
+/// Subscribes to macOS kernel memory-pressure notifications and forwards level
+/// transitions to the frontend so idle background WebGL scenes can be evicted.
+pub(crate) fn install_memory_pressure_monitor(app: &tauri::AppHandle) -> Result<(), String> {
+    if MEMORY_PRESSURE_MONITOR.get().is_some() {
+        return Err("the macOS memory-pressure monitor is already installed".to_string());
+    }
+    let mut installed = false;
+    let monitor = MEMORY_PRESSURE_MONITOR.get_or_init(|| {
+        installed = true;
+        let queue = DispatchQueue::global_queue(GlobalQueueIdentifier::QualityOfService(
+            DispatchQoS::Utility,
+        ));
+        let mask = (dispatch_source_memorypressure_flags_t::DISPATCH_MEMORYPRESSURE_NORMAL.0
+            | dispatch_source_memorypressure_flags_t::DISPATCH_MEMORYPRESSURE_WARN.0
+            | dispatch_source_memorypressure_flags_t::DISPATCH_MEMORYPRESSURE_CRITICAL.0)
+            as usize;
+        let source = unsafe {
+            DispatchSource::new(
+                addr_of!(_dispatch_source_type_memorypressure).cast_mut(),
+                0,
+                mask,
+                Some(&queue),
+            )
+        };
+        source.set_event_handler_f(memory_pressure_event_handler);
+        MemoryPressureMonitor {
+            app: app.clone(),
+            source,
+        }
+    });
+    if !installed {
+        return Err("the macOS memory-pressure monitor is already installed".to_string());
+    }
+    monitor.source.activate();
+    Ok(())
+}
+
+extern "C" fn memory_pressure_event_handler(_context: *mut c_void) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let Some(monitor) = MEMORY_PRESSURE_MONITOR.get() else {
+            return;
+        };
+        let Some(level) = memory_pressure_level_from_flags(monitor.source.data()) else {
+            return;
+        };
+        let encoded = level as u8;
+        if LAST_MEMORY_PRESSURE.swap(encoded, Ordering::AcqRel) == encoded {
+            return;
+        }
+        let _ = monitor
+            .app
+            .emit(MEMORY_PRESSURE_EVENT, MemoryPressureEvent { level });
+    }));
+}
 
 /// Logical inset of the close/minimize/zoom buttons inside the overlay title bar.
 /// Shared by the window builder and the manual re-layout below so both agree.
@@ -336,5 +450,42 @@ impl<R: tauri::Runtime> Drop for PendingTerminationReply<R> {
         if !self.resolved {
             let _ = reply_to_pending_termination(&self.app, false);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{memory_pressure_level_from_flags, MemoryPressureLevel};
+    use dispatch2::dispatch_source_memorypressure_flags_t;
+
+    #[test]
+    fn maps_macos_memory_pressure_flags_with_highest_severity_priority() {
+        let normal =
+            dispatch_source_memorypressure_flags_t::DISPATCH_MEMORYPRESSURE_NORMAL.0 as usize;
+        let warn = dispatch_source_memorypressure_flags_t::DISPATCH_MEMORYPRESSURE_WARN.0 as usize;
+        let critical =
+            dispatch_source_memorypressure_flags_t::DISPATCH_MEMORYPRESSURE_CRITICAL.0 as usize;
+
+        assert_eq!(memory_pressure_level_from_flags(0), None);
+        assert_eq!(
+            memory_pressure_level_from_flags(normal),
+            Some(MemoryPressureLevel::Normal)
+        );
+        assert_eq!(
+            memory_pressure_level_from_flags(warn),
+            Some(MemoryPressureLevel::Warn)
+        );
+        assert_eq!(
+            memory_pressure_level_from_flags(critical),
+            Some(MemoryPressureLevel::Critical)
+        );
+        assert_eq!(
+            memory_pressure_level_from_flags(normal | warn),
+            Some(MemoryPressureLevel::Warn)
+        );
+        assert_eq!(
+            memory_pressure_level_from_flags(normal | warn | critical),
+            Some(MemoryPressureLevel::Critical)
+        );
     }
 }

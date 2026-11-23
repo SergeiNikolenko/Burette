@@ -3,8 +3,8 @@ import type { MoleculeTab } from "../../stores/molecule-store";
 import { beginViewerLayoutGesture } from "../editor-area/viewer-frame";
 
 // Matches the bottom dock's toggle (styles.css, .workbench-main-panels).
-const DURATION_MS = 180;
-const EASING = "cubic-bezier(0.2, 0, 0, 1)";
+const DURATION_MS = 150;
+const EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
 
 type Motion = {
   animations: Animation[];
@@ -50,10 +50,15 @@ export function useRightPanelMotion(stackRef: RefObject<HTMLDivElement | null>, 
   useLayoutEffect(() => {
     const last = previous.current;
     previous.current = { right, visible };
+    if (!visible) {
+      stop();
+      setLeaving(null);
+      return;
+    }
     if (!last || Boolean(last.right) === Boolean(right)) return;
     const stack = stackRef.current;
     const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    if (!stack || !visible || !last.visible || reduced) {
+    if (!stack || !last.visible || reduced) {
       stop();
       setLeaving(null);
       return;
@@ -128,8 +133,12 @@ export function useRightPanelMotion(stackRef: RefObject<HTMLDivElement | null>, 
         next.awaitingUnmount = true;
         setLeaving(null);
       }
-    }, () => {});
+    }, () => {
+      if (motion.current !== next) return;
+      stop();
+      setLeaving(null);
+    });
   });
   useLayoutEffect(() => stop, [stop]);
-  return { displayed, fraction };
+  return { displayed, fraction, stop, leaving: Boolean(leaving) };
 }

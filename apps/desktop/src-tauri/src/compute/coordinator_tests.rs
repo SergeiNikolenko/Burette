@@ -874,3 +874,31 @@ fn alignment_cancellation_preserves_completed_pose_report() {
     drop(registry);
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn background_initialization_defers_work_until_warmed_or_queried() {
+    let root = std::fs::canonicalize(std::env::temp_dir())
+        .expect("canonical temp root")
+        .join(format!("burette-background-init-{}", Uuid::new_v4()));
+    let compute_root = root.join("nested").join("compute");
+    let viewer_root =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../PreviewExtension/Web");
+    let coordinator = ComputeCoordinator::initialize_background_with_service(
+        compute_root.clone(),
+        None,
+        Some(viewer_root),
+        None,
+    );
+    assert!(
+        !compute_root.exists(),
+        "background initialization must not perform SQLite or directory I/O synchronously"
+    );
+
+    coordinator.spawn_background_init();
+    let report = coordinator.capability_report().unwrap();
+    assert_eq!(report.schema_version, CapabilityReportSchemaVersion::V1);
+    assert!(compute_root.exists());
+
+    drop(coordinator);
+    std::fs::remove_dir_all(root).unwrap();
+}
