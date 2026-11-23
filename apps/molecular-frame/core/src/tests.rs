@@ -662,11 +662,11 @@ fn fit_clears_floating_panels() {
         if desktop {
             assert!(zoom > 100, "{w}x{h}: zoom {zoom}");
         }
-        assert!(zoom <= 400);
+        assert!(zoom <= 150);
         let (lo, hi) = render::extent(e.mol()).unwrap();
         let (lo, hi) = (e.view().screen(lo), e.view().screen(hi));
-        let horizontal_padding: f64 = if w <= 600. { 16. } else { 60. };
-        let pad = v2(horizontal_padding.min(0.3 * w), 60_f64.min(0.3 * h));
+        let horizontal_padding: f64 = if w <= 600. { 32. } else { 64. };
+        let pad = v2(horizontal_padding.min(0.3 * w), 64_f64.min(0.3 * h));
         assert!(lo.x >= pad.x - 0.1 && hi.x <= w - pad.x + 0.1 && lo.y >= pad.y - 0.1 && hi.y <= h - pad.y + 0.1, "{w}x{h}: {lo:?} {hi:?}");
         let c = (lo + hi) * 0.5;
         assert!((c.x - w / 2.).abs() < 0.5 && (c.y - h / 2.).abs() < 0.5, "{w}x{h}: centred, {c:?}");
@@ -678,7 +678,7 @@ fn fit_clears_floating_panels() {
     let mut e = editor();
     e.resize(1400., 900.);
     e.load("c1ccccc1").unwrap();
-    assert_eq!(state(&e, "zoom"), "400", "small drawings stop at the maximum supported zoom");
+    assert_eq!(state(&e, "zoom"), "150", "small drawings stop at the maximum auto-fit zoom");
     e.load("").unwrap();
     assert_eq!(state(&e, "zoom"), "100", "empty drawings keep the natural scale");
 }

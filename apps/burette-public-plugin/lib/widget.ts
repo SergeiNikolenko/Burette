@@ -10,7 +10,7 @@ export const VIEWER_RUNTIME_ASSETS_PATH = "/burette-viewer/";
 export const VIEWER_MOBILE_SCRIPT_PATH = "/burette-hosted-mobile.js";
 export const VIEWER_APP_BRIDGE_SCRIPT_PATH = "/burette-hosted-app.js";
 export const VIEWER_FRAME_SCRIPT_PATH = "/burette-hosted-frame.js";
-const VIEWER_SHELL_ASSET_VERSION = "viewer-v26";
+const VIEWER_SHELL_ASSET_VERSION = "viewer-v27";
 
 function assetUrl(origin: string, assetPath: string): string {
   if (!origin) return assetPath;
