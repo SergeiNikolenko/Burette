@@ -37,6 +37,7 @@ import { ScrubNumberField } from "@/components/ui/scrub-number-input";
 import { Item, ItemContent, ItemDescription, ItemGroup } from "@/components/ui/item";
 import { InspectorToolRow } from "./inspector-tool-row";
 import { PropertiesToolRow } from "./workbench/properties-entrypoint";
+import { StructureEditToolRow } from "./workbench/structure-edit-entrypoint";
 import { sourceExtension, useTrajectoryFrame, type TrajectoryFrameState } from "../lib/workbench/source";
 import { CoordinateSetCard } from "./workbench/coordinate-set-card";
 import { CalculationResultsCard } from "./workbench/calculation-results-card";
@@ -485,6 +486,12 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
           )}
         >
           <ItemGroup className="gap-1">
+            <StructureEditToolRow
+              document={document}
+              viewerLigandSelection={viewerLigandSelection}
+              selectedEntity={selectedEntity}
+              actions={actions}
+            />
             <PropertiesToolRow document={document} actions={actions} />
             {/* xTB and CREST treat the input as an isolated molecule; a periodic cell is not one. */}
             {periodicCrystal ? null : <InspectorToolRow
@@ -551,6 +558,18 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
 
       {poseControls ? (
         <>
+          {!pluginSurface && trajectoryDocument && !derivedTopology && !virtualScene ? (
+            <section className="structure-brief-section" aria-label="3D editing">
+              <ItemGroup className="gap-1">
+                <StructureEditToolRow
+                  document={document}
+                  viewerLigandSelection={viewerLigandSelection}
+                  selectedEntity={selectedEntity}
+                  actions={actions}
+                />
+              </ItemGroup>
+            </section>
+          ) : null}
           {trajectoryDocument && !virtualScene ? (
             <TrajectorySmoothingCard
               document={document}

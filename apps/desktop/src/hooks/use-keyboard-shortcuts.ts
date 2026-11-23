@@ -14,6 +14,7 @@ import { useSettingsStore } from "../stores/settings-store";
 import { isAgentPluginSurface } from "../lib/native-mcp-workspace";
 import { reopenClosedTab } from "../components/workspace-panes/pane-actions";
 import { structureEditAvailable } from "../lib/workbench/graph-draft";
+import { canEditIn3d, requestEditIn3d } from "../lib/workbench/edit-3d";
 import { geometryPanelAvailable } from "../lib/geometry-editing";
 import { requestOptimizationCommand } from "../lib/workbench/optimization-commands";
 
@@ -60,6 +61,10 @@ export function useKeyboardShortcuts(state: ShellViewState, actions: ShellAction
       ["file.close-tab", () => actions.closeActiveDocument()],
       ["file.close-other-tabs", () => state.activeTabId && actions.closeOtherTabs(state.activeTabId)],
       ["file.reopen-closed-tab", () => reopenClosedTab(actions)],
+      ["structure.edit-3d", () => {
+        const document = state.activeDocument ?? null;
+        if (canEditIn3d(document)) requestEditIn3d(document);
+      }],
       ["structure.optimize-geometry", () => {
         const document = state.activeDocument ?? null;
         const panel = structureEditAvailable(document) ? "structure-edit" : geometryPanelAvailable(document) ? "geometry" : null;

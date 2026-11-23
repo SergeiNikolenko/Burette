@@ -262,6 +262,33 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
         MenuItemBuilder::with_id("structure.edit-in-ketcher", "Edit in Molecular Editor")
             .enabled(false)
             .build(app)?;
+    let edit_in_3d = MenuItemBuilder::with_id("structure.edit-3d", "Edit in 3D")
+        .enabled(false)
+        .accelerator("CmdOrCtrl+E")
+        .build(app)?;
+    let build_peptide =
+        MenuItemBuilder::with_id("structure.build-peptide", "Build Peptide…").build(app)?;
+    let build_nucleic =
+        MenuItemBuilder::with_id("structure.build-nucleic", "Build DNA or RNA…").build(app)?;
+    let build_metal =
+        MenuItemBuilder::with_id("structure.build-metal", "Build Metal Complex…").build(app)?;
+    let build_polymer = MenuItemBuilder::with_id("structure.build-polymer", "Build Polymer…")
+        .enabled(false)
+        .build(app)?;
+    let build_assembly =
+        MenuItemBuilder::with_id("structure.build-assembly", "Build Biological Assembly…")
+            .enabled(false)
+            .build(app)?;
+    let build_menu = SubmenuBuilder::with_id(app, "structure.build", "Build")
+        .items(&[
+            &build_peptide,
+            &build_nucleic,
+            &build_metal,
+            &PredefinedMenuItem::separator(app)?,
+            &build_polymer,
+            &build_assembly,
+        ])
+        .build()?;
     let generate_3d = MenuItemBuilder::with_id("structure.generate-3d", "Generate 3D Conformer")
         .enabled(false)
         .build(app)?;
@@ -345,6 +372,9 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
         .items(&[
             &open_in_molstar,
             &edit_in_ketcher,
+            &edit_in_3d,
+            &PredefinedMenuItem::separator(app)?,
+            &build_menu,
             &PredefinedMenuItem::separator(app)?,
             &optimize_geometry,
             &auto_optimize,
