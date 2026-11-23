@@ -5,12 +5,29 @@ import { sourceExtension } from "../science-session/state";
 import { graphMetadataData, hasGraphMetadata, readGraphMetadata, type GraphMetadata } from "./graph-metadata";
 
 const GRAPH_EXTENSIONS = new Set(["sdf", "sd", "mol"]);
+const MAX_EDITABLE_VIRTUAL_GRAPHS = 256;
+const editableVirtualGraphs = new Set<string>();
+
+/** Marks a single-record generated SDF/MOL document as editable in Tauri and browser runtimes. */
+export function markEditableVirtualGraph(documentId: string) {
+  if (!documentId) return;
+  if (editableVirtualGraphs.size >= MAX_EDITABLE_VIRTUAL_GRAPHS) {
+    const oldest = editableVirtualGraphs.values().next().value;
+    if (oldest !== undefined) editableVirtualGraphs.delete(oldest);
+  }
+  editableVirtualGraphs.add(documentId);
+}
+
+export function isEditableVirtualGraph(documentId: string) {
+  return editableVirtualGraphs.has(documentId);
+}
 
 /** Atom and bond editing needs an explicit graph: one SDF/MOL record in a single-structure scene. */
 export function structureEditAvailable(document: ViewerDocument | null): document is ViewerDocument {
   if (!document || document.renderer !== "molstar" || !GRAPH_EXTENSIONS.has(sourceExtension(document))
     || document.dockingRequest || document.mergedCollection) return false;
   if (!document.virtual) return true;
+  if (editableVirtualGraphs.has(document.id)) return true;
   const text = isBrowserDraftSource(document) ? readBrowserDevVirtualTextDocument(document.path) : null;
   return text !== null && classifySourceShape(sourceExtension(document), text) === "single";
 }

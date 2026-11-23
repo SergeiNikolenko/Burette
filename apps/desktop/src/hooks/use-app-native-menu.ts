@@ -31,9 +31,15 @@ import type { DerivedColumnKind } from "../lib/derived-columns";
 import { nativeMenuAccelerators } from "../lib/keyboard-shortcuts";
 import { openEnumerateLibrary } from "../lib/library-enumeration-task";
 import { structureEditAvailable } from "../lib/workbench/graph-draft";
+import { canEditIn3d, openEdit3d, subscribeEditIn3d } from "../lib/workbench/edit-3d";
+import { assemblySourceFormat } from "../lib/workbench/assembly-source";
+import { polymerSourceFormat } from "../lib/workbench/polymer-tool";
+import { useLogicalSource } from "../lib/science-session/state";
+import { useTrajectoryFrame } from "../lib/workbench/source";
 import { geometryPanelAvailable } from "../lib/geometry-editing";
 import { openWorkbenchDialog } from "../lib/workbench/dialog-store";
 import { requestOptimizationCommand, type OptimizationCommand } from "../lib/workbench/optimization-commands";
+import { toast } from "../components/ui/toast";
 import { useSettingsStore } from "../stores/settings-store";
 import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 import { postGridCommand } from "../lib/viewer-bridge";
@@ -178,8 +184,13 @@ export function useAppNativeMenu({
     && canInspectConformerEnsemble(extension)
     && state.conformerStatus?.prism.installed === true);
   // Avogadro's Optimize Geometry and Calculate commands run in the panel that edits the coordinates.
+  const logicalSource = useLogicalSource(activeDocument?.id ?? null);
+  const activeTrajectoryFrame = useTrajectoryFrame(activeDocument?.id ?? null);
   const optimizationPanel = structureEditAvailable(activeDocument) ? "structure-edit" : geometryPanelAvailable(activeDocument) ? "geometry" : null;
   const canOptimizeGeometry = Boolean(!isGrid && optimizationPanel);
+  const canEditActiveIn3d = Boolean(!isGrid && canEditIn3d(activeDocument));
+  const canBuildPolymer = Boolean(!isGrid && activeDocument && polymerSourceFormat(activeDocument, logicalSource?.extension ?? activeDocument.extension) !== null);
+  const canBuildAssembly = Boolean(!isGrid && activeDocument && assemblySourceFormat(activeDocument));
   const canRunXtb = Boolean(activeDocument
     && !isGrid
     && activeDocumentReadable
@@ -274,6 +285,9 @@ export function useAppNativeMenu({
     gridGenerating3d: Boolean(isGrid && gridMenuState?.generating3d),
     canOpenInMolstar,
     canEditInKetcher,
+    canEditIn3d: canEditActiveIn3d,
+    canBuildPolymer,
+    canBuildAssembly,
     canGenerate3d,
     canRunCrest,
     canRunPrism,
@@ -282,7 +296,7 @@ export function useAppNativeMenu({
     rgroupRuntimeAvailable: state.rgroupRuntimeAvailable,
     openDocumentPaths,
     recentDocuments: null,
-  }), [activeDocument, activeTabClosable, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, canOptimizeGeometry, closableTabCount, canOpenCollectionAnalysis, documentRegistryRevision, gridMenuState, isGrid, openDocumentPaths, selectedMoleculeCount, shellEditingText, sourceSaveEnabled, state.activeTab, state.rgroupRuntimeAvailable, state.bottomDockOpen, state.rightDockOpen, state.sidebarOpen, state.tabs.length, windowDocumentDirty]);
+  }), [activeDocument, activeTabClosable, canBuildAssembly, canBuildPolymer, canEditActiveIn3d, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, canOptimizeGeometry, closableTabCount, canOpenCollectionAnalysis, documentRegistryRevision, gridMenuState, isGrid, openDocumentPaths, selectedMoleculeCount, shellEditingText, sourceSaveEnabled, state.activeTab, state.rgroupRuntimeAvailable, state.bottomDockOpen, state.rightDockOpen, state.sidebarOpen, state.tabs.length, windowDocumentDirty]);
   const nativeStateRef = useRef<NativeMenuState>({ ...nativeState, recentDocuments });
   const closingWindowRef = useRef(false);
   const closeRequestInFlightRef = useRef(false);
@@ -746,6 +760,38 @@ export function useAppNativeMenu({
         if (isGrid) gridCommand();
         else await actions.openKetcherWithStructures([activeDocument.path]);
         return;
+      case "structure.edit-3d":
+        if (!activeDocument || !canEditActiveIn3d) return;
+        try {
+          await openEdit3d(activeDocument, actions, {
+            ligand: activeLigandSelection ? {
+              label: activeLigandSelection.label,
+              selector: activeLigandSelection.selector,
+              atoms: activeLigandSelection.atoms,
+            } : null,
+            frameIndex: activeTrajectoryFrame?.frameIndex,
+          });
+        } catch (error) {
+          toast.add({ title: "Cannot edit in 3D", description: error instanceof Error ? error.message : String(error), type: "error" });
+        }
+        return;
+      case "structure.build-peptide":
+        openWorkbenchDialog({ kind: "builder", builder: "peptide", document: activeDocument });
+        return;
+      case "structure.build-nucleic":
+        openWorkbenchDialog({ kind: "builder", builder: "nucleic", document: activeDocument });
+        return;
+      case "structure.build-metal":
+        openWorkbenchDialog({ kind: "builder", builder: "metal", document: activeDocument });
+        return;
+      case "structure.build-polymer":
+        if (!activeDocument || !canBuildPolymer) return;
+        openWorkbenchDialog({ kind: "builder", builder: "polymer", document: activeDocument });
+        return;
+      case "structure.build-assembly":
+        if (!activeDocument || !canBuildAssembly) return;
+        openWorkbenchDialog({ kind: "assembly", document: activeDocument });
+        return;
       case "structure.generate-3d":
         if (!activeDocument || !canGenerate3d) return;
         if (isGrid) gridCommand();
@@ -799,7 +845,19 @@ export function useAppNativeMenu({
       default:
         console.warn(`Unknown native menu command: ${command}`);
     }
-  }, [actions, activeDocument, activeTabClosable, canOpenCollectionAnalysis, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, canOptimizeGeometry, optimizationPanel, closeCurrentWindow, conformerSelection, isGrid, openDocuments, saveActiveSource, sourceSaveEnabled, state.activeTabId, state.activeTab?.pinned, state.tabs]);
+  }, [actions, activeDocument, activeLigandSelection, activeTabClosable, activeTrajectoryFrame?.frameIndex, canBuildAssembly, canBuildPolymer, canOpenCollectionAnalysis, canEditActiveIn3d, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, canOptimizeGeometry, optimizationPanel, closeCurrentWindow, conformerSelection, isGrid, openDocuments, saveActiveSource, sourceSaveEnabled, state.activeTabId, state.activeTab?.pinned, state.tabs]);
+
+  useEffect(() => subscribeEditIn3d(({ document, mode }) => {
+    const ligand = state.viewerLigandSelection?.documentId === document.id ? {
+      label: state.viewerLigandSelection.label,
+      selector: state.viewerLigandSelection.selector,
+      atoms: state.viewerLigandSelection.atoms,
+    } : null;
+    const frameIndex = activeDocument?.id === document.id ? activeTrajectoryFrame?.frameIndex : undefined;
+    void openEdit3d(document, actions, { ligand, mode, frameIndex }).catch((error) => {
+      toast.add({ title: "Cannot edit in 3D", description: error instanceof Error ? error.message : String(error), type: "error" });
+    });
+  }), [actions, activeDocument?.id, activeTrajectoryFrame?.frameIndex, state.viewerLigandSelection]);
 
   // Grid commands need the mounted grid and its records, not just a new document.
   // Cancel if the user leaves the target tab while it is opening.

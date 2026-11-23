@@ -56,6 +56,12 @@ pub(crate) struct NativeMenuState {
     grid_generating_3d: bool,
     can_open_in_molstar: bool,
     can_edit_in_ketcher: bool,
+    #[serde(default)]
+    can_edit_in_3d: bool,
+    #[serde(default)]
+    can_build_polymer: bool,
+    #[serde(default)]
+    can_build_assembly: bool,
     can_generate_3d: bool,
     can_run_crest: bool,
     can_run_prism: bool,
@@ -811,6 +817,13 @@ pub(super) fn sync_native_menu<R: Runtime>(
     )?;
     set_enabled(&app, "structure.open-in-molstar", state.can_open_in_molstar)?;
     set_enabled(&app, "structure.edit-in-ketcher", state.can_edit_in_ketcher)?;
+    set_enabled(&app, "structure.edit-3d", state.can_edit_in_3d)?;
+    set_enabled(&app, "structure.build", true)?;
+    set_enabled(&app, "structure.build-peptide", true)?;
+    set_enabled(&app, "structure.build-nucleic", true)?;
+    set_enabled(&app, "structure.build-metal", true)?;
+    set_enabled(&app, "structure.build-polymer", state.can_build_polymer)?;
+    set_enabled(&app, "structure.build-assembly", state.can_build_assembly)?;
     set_enabled(
         &app,
         "structure.generate-3d",
@@ -1663,6 +1676,9 @@ mod tests {
             "gridGenerating3d": false,
             "canOpenInMolstar": true,
             "canEditInKetcher": true,
+            "canEditIn3d": false,
+            "canBuildPolymer": false,
+            "canBuildAssembly": false,
             "canGenerate3d": true,
             "canRunCrest": false,
             "canRunPrism": false,

@@ -71,6 +71,9 @@ export type NativeMenuState = {
   gridGenerating3d: boolean;
   canOpenInMolstar: boolean;
   canEditInKetcher: boolean;
+  canEditIn3d: boolean;
+  canBuildPolymer: boolean;
+  canBuildAssembly: boolean;
   canGenerate3d: boolean;
   canRunCrest: boolean;
   canRunPrism: boolean;

@@ -12,7 +12,7 @@ import { structureEditAvailable } from "../lib/workbench/graph-draft";
 import type { DockTabKind } from "../lib/dock";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { confirm as confirmDialog, message as messageDialog } from "@tauri-apps/plugin-dialog";
+import { confirm as confirmDialog, message as messageDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import type { PreparedGeometryTopology, SourceEditingBeginOptions, DraftUpdateOptions, SourceEditingContextValue, SourceEditingView, SourcePreviewState, SourceEditingTransfer } from "../lib/source-editing/context";
 import { captureSourceEditorView } from "../lib/source-editing/view-state";
 import { SourcePreviewAdapter } from "../lib/source-preview/adapter";
@@ -447,7 +447,7 @@ export function useSourceEditingController({
         revision: 0,
         lastValidRevision: recovered ? -1 : 0,
         saveDisabledReason: logical ? "Saved with the scene: Export → Scene" : null,
-        saveLabel: isTauriRuntime() ? "Save" : "Save copy",
+        saveLabel: isTauriRuntime() && !document.virtual ? "Save" : "Save copy",
         sourcePreview: adapter.getSnapshot(),
       };
       commitSessions((current) => ({ ...current, [document.path]: session }));
@@ -757,6 +757,39 @@ export function useSourceEditingController({
         downloadTextFile(`${stem || "structure"}.${session.extension}`, session.content);
         updateSession(document.path, current => current.diagnostic === downloadError ? { ...current, diagnostic: null } : current);
       } catch { updateSession(document.path, current => ({ ...current, diagnostic: downloadError })); }
+      return;
+    }
+    if (document.virtual) {
+      const stem = safeExportFileName(session.title).replace(/\.[^.]+$/u, "").slice(0, 100);
+      const defaultPath = `${stem || "structure"}.${session.extension}`;
+      savingPathsRef.current.add(document.path);
+      updateSession(document.path, (current) => ({ ...current, saving: true }));
+      try {
+        const outputPath = await saveDialog({
+          defaultPath,
+          filters: [{ name: session.extension.toUpperCase(), extensions: [session.extension] }],
+        });
+        if (!outputPath) return;
+        await invoke<string>("save_text_as", {
+          text: session.content,
+          outputPath,
+          sourcePath: null,
+        });
+        updateSession(document.path, (current) => current.sessionId !== session.sessionId || !ownsSource(current) ? current : ({
+          ...current,
+          baseContent: session.content,
+          dirty: current.content !== session.content,
+          diagnostic: null,
+        }));
+      } catch (error) {
+        updateSession(document.path, (current) => current.sessionId !== session.sessionId ? current : ({
+          ...current,
+          diagnostic: error instanceof Error ? error.message : String(error),
+        }));
+      } finally {
+        savingPathsRef.current.delete(document.path);
+        updateSession(document.path, (current) => current.sessionId !== session.sessionId ? current : ({ ...current, saving: false }));
+      }
       return;
     }
     if (!session.handleId || !session.expectedRevision) return;

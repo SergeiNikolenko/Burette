@@ -179,7 +179,19 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
   const runtimeTabs = xyzrenderDockDocument && !mesoscaleTabs.some((tab) => tab.kind === "xyzrender")
     ? [createDockTab("xyzrender"), ...mesoscaleTabs]
     : mesoscaleTabs;
-  const visibleTabs = runtimeTabs.filter((tab) => (
+  const contextualEditKind: DockTabKind | null = area !== "right"
+    ? null
+    : structureEditDockAvailable ? "structure-edit"
+    : geometryDockAvailable ? "geometry"
+    : null;
+  const withContextualEdit = contextualEditKind && !runtimeTabs.some((tab) => tab.kind === contextualEditKind)
+    ? (() => {
+        const inspectorIndex = runtimeTabs.findIndex((tab) => tab.kind === "inspector");
+        const insertAt = inspectorIndex >= 0 ? inspectorIndex + 1 : 0;
+        return [...runtimeTabs.slice(0, insertAt), createDockTab(contextualEditKind), ...runtimeTabs.slice(insertAt)];
+      })()
+    : runtimeTabs;
+  const visibleTabs = withContextualEdit.filter((tab) => (
     (tab.kind !== "xyzrender" || Boolean(xyzrenderDockDocument))
     && (tab.kind !== "scene" || Boolean(mesoscaleDockDocument))
   ));
@@ -251,7 +263,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
         kind: "item" as const,
         id: `dock-${area}-${kind}`,
         text: DOCK_TAB_LABELS[kind],
-        disabled: tabs.some((tab) => tab.kind === kind),
+        disabled: visibleTabs.some((tab) => tab.kind === kind),
         action: () => showDockTab(kind, () => actions.openDockTab(area, kind)),
       })),
       { x: rect.left, y: rect.bottom + 6 },
@@ -305,9 +317,21 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
     >
       <div className="dock-panel-inner">
         <DockHeader area={area} tabs={visibleTabs} activeKind={activeTab.kind} panelId={panelId} readOnly={readOnly}
-          transientTabId={rawTabs.some(tab => tab.kind === "xyzrender") ? undefined : visibleTabs.find(tab => tab.kind === "xyzrender")?.id}
+          transientTabId={
+            rawTabs.some(tab => tab.kind === "xyzrender") ? (
+              contextualEditKind && !rawTabs.some(tab => tab.kind === contextualEditKind)
+                ? visibleTabs.find(tab => tab.kind === contextualEditKind)?.id
+                : undefined
+            ) : (
+              visibleTabs.find(tab => tab.kind === "xyzrender")?.id
+              ?? (contextualEditKind && !rawTabs.some(tab => tab.kind === contextualEditKind)
+                ? visibleTabs.find(tab => tab.kind === contextualEditKind)?.id
+                : undefined)
+            )
+          }
           fileDragProps={{ ...filesTabDrag, draggable: Boolean(filesTabDragPayload) }}
-          onSelect={kind => showDockTab(kind, () => actions.setDockActiveTab(area, kind))} onClose={id => actions.closeDockTab(area, id)}
+          onSelect={kind => showDockTab(kind, () => rawTabs.some(tab => tab.kind === kind) ? actions.setDockActiveTab(area, kind) : actions.openDockTab(area, kind))}
+          onClose={id => actions.closeDockTab(area, id)}
           onOpenScreen={dockScreenLocation(area, activeTab.kind, state) ? () => openDockScreen(area, activeTab.kind, state, actions) : undefined}
           openScreenLabel={area === "right" && activeTab.kind === "files" && !dockTool ? "Open Files in Main Tabs" : undefined}
           onAdd={showAddMenu} onHide={() => actions.setDockOpen(area, false)} />

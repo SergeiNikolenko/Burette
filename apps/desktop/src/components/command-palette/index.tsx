@@ -12,6 +12,7 @@ import { openVibrations, useVibrationsAvailable, VIBRATIONS_COMMAND } from "../.
 import { CRYSTAL_COMMAND, openSymmetryTool, SYMMETRY_COMMAND, useSymmetryAvailable } from "../../lib/workbench/symmetry-tools";
 import { useCrystalAvailable } from "../../lib/workbench/use-crystal-draft";
 import { structureEditAvailable } from "../../lib/workbench/graph-draft";
+import { edit3dMode, requestEditIn3d } from "../../lib/workbench/edit-3d";
 import { geometryPanelAvailable } from "../../lib/geometry-editing";
 import { OPTIMIZATION_COMMANDS, requestOptimizationCommand } from "../../lib/workbench/optimization-commands";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -116,10 +117,12 @@ export function CommandPalette({
       ...(hasSymmetry && state.activeDocument ? [{ id: "workbench-tool-symmetry", group: "Suggested", ...SYMMETRY_COMMAND, run: () => openSymmetryTool(actions, state.activeDocument!.id, "symmetry") }] : []),
       ...(hasPlots && state.activeDocument ? [{ id: "workbench-tool-plots", group: "Suggested", ...PLOTS_COMMAND, run: () => openPlots(actions, state.activeDocument!.id) }] : []),
       ...(hasScientificSpectra && state.activeDocument ? [{ id: "workbench-tool-scientific-spectra", group: "Suggested", ...SCIENTIFIC_SPECTRA_COMMAND, run: () => openScientificSpectra(actions, state.activeDocument!.id) }] : []),
-      // The editing docks otherwise open only from the dock's add-tab menu.
+      // The editing docks otherwise open from the dock header, Info panel, or Structure menu.
       ...([["structure-edit", "Edit atoms and bonds", "Elements, charges and bond orders", structureEditAvailable], ["geometry", "Edit geometry", "Bond lengths, angles and dihedrals", geometryPanelAvailable]] as const)
         .flatMap(([kind, label, description, available]) => state.activeDocument && available(state.activeDocument) ? [{ id: `workbench-tool-${kind}`, group: "Suggested", label, description,
           run: () => { actions.setDockDocument("right", state.activeDocument!.id); actions.openDockTab("right", kind); } }] : []),
+      ...(state.activeDocument && edit3dMode(state.activeDocument) === "convert-to-sdf" ? [{ id: "workbench-tool-edit-3d", group: "Suggested", label: "Edit in 3D", description: "Open editable 3D copy",
+        run: () => requestEditIn3d(state.activeDocument!) }] : []),
       ...(() => {
         const document = state.activeDocument ?? null;
         const panel = structureEditAvailable(document) ? "structure-edit" : geometryPanelAvailable(document) ? "geometry" : null;
