@@ -3,7 +3,6 @@ use std::{
     fs::{self, File},
     io::Read,
     path::PathBuf,
-    process::Command,
     sync::{Arc, Mutex, OnceLock},
     thread,
     time::{Instant, SystemTime, UNIX_EPOCH},

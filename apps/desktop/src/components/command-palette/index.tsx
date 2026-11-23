@@ -128,7 +128,7 @@ export function CommandPalette({
         const document = state.activeDocument ?? null;
         const panel = structureEditAvailable(document) ? "structure-edit" : geometryPanelAvailable(document) ? "geometry" : null;
         return document && panel ? OPTIMIZATION_COMMANDS.map(({ command, label }) => ({ id: `optimization-${command}`, group: "Calculate", label, description: "",
-          shortcut: command === "optimize" ? "⌥⌘O" : undefined, run: () => requestOptimizationCommand(actions, document, panel, command) })) : [];
+          shortcut: command === "optimize" ? formatAccelerator("CmdOrCtrl+Alt+O") : undefined, run: () => requestOptimizationCommand(actions, document, panel, command) })) : [];
       })(),
       ...(state.activeDocument?.renderer === "molstar" ? [
         ...SELECT_COMMANDS.map(({ command, label }) => ({ id: `select-${command}`, group: "Select", label, description: "",

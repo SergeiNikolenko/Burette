@@ -365,7 +365,15 @@ test("Cartesian Geometry: a session closed while the scene takes the edit leaves
 // The platform's command key, as CodeMirror reads it: Meta on macOS, Control elsewhere.
 const mac = /Mac/u.test(navigator.platform);
 const textKey = async (host, key, shiftKey = false) => {
-  const init = { bubbles: true, cancelable: true, key: shiftKey ? key.toUpperCase() : key, shiftKey, metaKey: mac, ctrlKey: !mac };
+  const init = {
+    bubbles: true,
+    cancelable: true,
+    key: shiftKey ? key.toUpperCase() : key,
+    keyCode: key.toUpperCase().charCodeAt(0),
+    shiftKey,
+    metaKey: mac,
+    ctrlKey: !mac,
+  };
   await act(async () => host.querySelector(".cm-content").dispatchEvent(new window.KeyboardEvent("keydown", init)));
   await settle();
 };

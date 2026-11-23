@@ -3,6 +3,7 @@ import { alignCoordinates, type CoordinateAxis } from "../../../lib/molecular-wo
 import type { Vec3 } from "../../../lib/molecular-workbench/types";
 import type { AtomAnnotation } from "../../../lib/workbench/graph-draft";
 import { ShortcutTooltip } from "../../shortcut-tooltip";
+import { formatAccelerator } from "../../../lib/keyboard-shortcuts";
 import { ChevronDown, ChevronUp, Delete } from "../../ui/app-icons";
 import { Button } from "../../ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../ui/dropdown-menu";
@@ -44,7 +45,7 @@ export function SelectionEditor({ structure, annotations, atoms, disabled, onApp
   if (!atoms.length) return null;
   const title = atoms.length <= 4 ? atoms.map((atom) => label(structure, atom)).join(", ") : `${atoms.length} atoms`;
   const deleteButton = (
-    <ShortcutTooltip label={atoms.length === 1 ? "Delete atom" : "Delete atoms"} shortcut="⌫">
+    <ShortcutTooltip label={atoms.length === 1 ? "Delete atom" : "Delete atoms"} shortcut={formatAccelerator("Backspace")}>
       <Button type="button" variant="ghost" size="icon-xs" aria-label={atoms.length === 1 ? "Delete atom" : "Delete atoms"} disabled={disabled} onClick={onDelete}><Delete aria-hidden /></Button>
     </ShortcutTooltip>
   );
@@ -54,10 +55,10 @@ export function SelectionEditor({ structure, annotations, atoms, disabled, onApp
       <section className="structure-edit-selection" aria-label={`Atom ${title}`}>
         <div className="workbench-toolbar">
           <h3 className="structure-edit-title">{title}</h3>
-          <ShortcutTooltip label="Move up" shortcut="⌥↑">
+          <ShortcutTooltip label="Move up" shortcut={formatAccelerator("Alt+Up")}>
             <Button type="button" variant="ghost" size="icon-xs" aria-label="Move up" disabled={disabled || atom === 0} onClick={() => onMove(atom, -1)}><ChevronUp aria-hidden /></Button>
           </ShortcutTooltip>
-          <ShortcutTooltip label="Move down" shortcut="⌥↓">
+          <ShortcutTooltip label="Move down" shortcut={formatAccelerator("Alt+Down")}>
             <Button type="button" variant="ghost" size="icon-xs" aria-label="Move down" disabled={disabled || atom === structure.atoms.length - 1} onClick={() => onMove(atom, 1)}><ChevronDown aria-hidden /></Button>
           </ShortcutTooltip>
           <AlignAction structure={structure} atoms={atoms} disabled={disabled} onPositions={onPositions} onError={onError} />

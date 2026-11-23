@@ -40,9 +40,11 @@ stage_xyzrender_runtime() {
 import json, sys
 from importlib.metadata import version
 from pathlib import Path
+import gemmi
 from rdkit import Chem
 assert version("xyzrender") == json.loads(Path(sys.argv[1]).read_text())["version"]
 assert Chem.MolFromSmiles("CCO") is not None
+assert gemmi.__version__
 PY
     echo "error: $source_env does not match the reviewed xyzrender snapshot or has no RDKit; use scripts/prepare-xyzrender-runtime.py." >&2
     exit 1

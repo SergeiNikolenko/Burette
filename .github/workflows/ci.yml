@@ -212,6 +212,13 @@ jobs:
       - name: Build Linux bundles
         run: ./scripts/build-linux.sh
 
+      # The bundled xyzrender runtime also runs the interaction diagram engine.
+      - name: Run the interaction diagram engine in the bundled Linux runtime
+        run: |
+          site_packages=(build/xyzrender-linux/xyzrender-runtime/lib/python3.*/site-packages)
+          PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="${site_packages[0]}" OMP_NUM_THREADS=1 \
+            build/xyzrender-linux/xyzrender-python/bin/python3 tests/test-interaction-diagram-engine.py
+
       - name: Upload Linux bundles
         uses: actions/upload-artifact@v4
         with:
