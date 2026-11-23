@@ -706,7 +706,7 @@ test("the 3D menu adds the document's editing tools after its title and opens Ge
       items: [{ kind: "label", text: "O1" }, { kind: "separator" }, { kind: "item", id: "focus", text: "Focus" }] }, null); });
     await act(flushFocus);
     const rows = [...shell.querySelectorAll<HTMLElement>('[role="menuitem"]')];
-    expect(rows.map(row => row.textContent)).toEqual(["Edit geometry", "Properties…", "Focus"]);
+    expect(rows.map(row => row.textContent)).toEqual(["Edit geometry", "Edit atoms and bonds…", "Properties…", "Focus"]);
     await act(async () => rows[0].click());
     await act(flushFocus);
     expect([docks, focus?.atoms]).toEqual([["geometry"], [2]]);
