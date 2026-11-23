@@ -24,7 +24,10 @@
 use std::collections::VecDeque;
 use std::fs::File;
 use std::io::{Read, Write};
+#[cfg(unix)]
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+#[cfg(windows)]
+use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender};
@@ -64,8 +67,9 @@ pub(crate) struct ScriptSession {
 impl Drop for ScriptSession {
     fn drop(&mut self) {
         // Closing stdin ends a well-behaved server; the kill covers the rest,
-        // including descendants in the process group.
+        // including descendants in the process group on Unix.
         self.requests.take();
+        #[cfg(unix)]
         unsafe {
             libc::kill(-(self.child.id() as i32), libc::SIGKILL);
         }
@@ -74,8 +78,14 @@ impl Drop for ScriptSession {
     }
 }
 
-/// A close-on-exec pipe for the model's stdin: (read end, write end).
-fn input_pipe() -> Result<(OwnedFd, OwnedFd), String> {
+#[cfg(unix)]
+type PipeHandle = OwnedFd;
+#[cfg(windows)]
+type PipeHandle = OwnedHandle;
+
+/// A close-on-exec / non-inheritable pipe for the model's stdin: (read end, write end).
+#[cfg(unix)]
+fn input_pipe() -> Result<(PipeHandle, PipeHandle), String> {
     let mut fds = [0; 2];
     if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 {
         return Err("The energy model's input could not be created".into());
@@ -87,6 +97,46 @@ fn input_pipe() -> Result<(OwnedFd, OwnedFd), String> {
     Ok(ends)
 }
 
+#[cfg(windows)]
+fn input_pipe() -> Result<(PipeHandle, PipeHandle), String> {
+    use windows_sys::Win32::System::Pipes::CreatePipe;
+    let mut read = std::ptr::null_mut();
+    let mut write = std::ptr::null_mut();
+    if unsafe { CreatePipe(&mut read, &mut write, std::ptr::null(), 0) } == 0 {
+        return Err("The energy model's input could not be created".into());
+    }
+    Ok(unsafe {
+        (
+            OwnedHandle::from_raw_handle(read as _),
+            OwnedHandle::from_raw_handle(write as _),
+        )
+    })
+}
+
+#[cfg(unix)]
+fn pipe_unread_bytes(handle: &PipeHandle) -> Option<usize> {
+    let mut unread: libc::c_int = 0;
+    (unsafe { libc::ioctl(handle.as_raw_fd(), libc::FIONREAD, &mut unread) } == 0)
+        .then_some(unread.max(0) as usize)
+}
+
+#[cfg(windows)]
+fn pipe_unread_bytes(handle: &PipeHandle) -> Option<usize> {
+    use windows_sys::Win32::System::Pipes::PeekNamedPipe;
+    let mut unread: u32 = 0;
+    let ok = unsafe {
+        PeekNamedPipe(
+            handle.as_raw_handle() as _,
+            std::ptr::null_mut(),
+            0,
+            std::ptr::null_mut(),
+            &mut unread,
+            std::ptr::null_mut(),
+        )
+    };
+    (ok != 0).then_some(unread as usize)
+}
+
 /// Waits until the process has read everything written so far, judged by a
 /// copy of the pipe's read end that the stdout reader closes once the
 /// process is gone.
@@ -95,12 +145,11 @@ fn input_pipe() -> Result<(OwnedFd, OwnedFd), String> {
 /// which reads ahead: a binary frame already in the pipe vanishes into the
 /// text buffer and the plugin waits forever (avogadro-xtb-energy does this).
 /// Avogadro escapes it only because evaluation starts long after set-up.
-fn wait_until_read(probe: &Mutex<Option<OwnedFd>>) {
+fn wait_until_read(probe: &Mutex<Option<PipeHandle>>) {
     loop {
         let Ok(mut slot) = probe.lock() else { return };
-        let Some(fd) = slot.as_ref() else { return };
-        let mut unread: libc::c_int = 0;
-        if unsafe { libc::ioctl(fd.as_raw_fd(), libc::FIONREAD, &mut unread) } != 0 || unread == 0 {
+        let Some(handle) = slot.as_ref() else { return };
+        if pipe_unread_bytes(handle).is_none_or(|unread| unread == 0) {
             slot.take();
             return;
         }
@@ -138,6 +187,7 @@ impl ScriptSession {
             .stdin(Stdio::from(input))
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        #[cfg(unix)]
         {
             use std::os::unix::process::CommandExt;
             command.process_group(0);

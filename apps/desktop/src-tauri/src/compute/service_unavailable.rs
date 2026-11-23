@@ -27,6 +27,10 @@ pub(crate) enum ComputeServiceClient {}
 
 #[allow(clippy::too_many_arguments)]
 impl ComputeServiceClient {
+    pub(crate) fn shutdown(&self) {
+        match *self {}
+    }
+
     pub(crate) fn launch(_executable: &Path, _runtime_root: &Path) -> Result<Self, String> {
         Err(UNAVAILABLE.into())
     }

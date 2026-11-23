@@ -6,7 +6,6 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
 
@@ -14,6 +13,7 @@ use burette_core::bounded_process::{run_cancellable, Limits};
 use serde::Deserialize;
 
 use super::{Evaluation, CANCELLED};
+use crate::preview::runtime_utils::background_command;
 
 /// CODATA 2018: kcal/mol per hartree and Å per bohr.
 const HARTREE_KCAL_MOL: f64 = 627.509_474_063_1;
@@ -79,10 +79,11 @@ impl XtbSession {
         charge: i32,
         multiplicity: u32,
     ) -> Result<Self, String> {
-        use std::os::unix::fs::DirBuilderExt;
         let dir = std::env::temp_dir().join(format!("burette-xtb-energy-{}", uuid::Uuid::new_v4()));
-        fs::DirBuilder::new()
-            .mode(0o700)
+        let mut builder = fs::DirBuilder::new();
+        #[cfg(unix)]
+        std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+        builder
             .create(&dir)
             .map_err(|error| format!("The xTB folder could not be created: {error}"))?;
         Ok(Self {
@@ -109,7 +110,7 @@ impl XtbSession {
         let _ = fs::remove_file(&engrad);
         fs::write(&input, xyz)
             .map_err(|error| format!("xTB input could not be written: {error}"))?;
-        let mut command = Command::new(&self.executable);
+        let mut command = background_command(&self.executable);
         command
             .arg("input.xyz")
             .args(self.method.arguments())
@@ -222,10 +223,11 @@ mod tests {
     }
 
     fn installed_xtb() -> Option<PathBuf> {
-        let home = PathBuf::from(std::env::var_os("HOME")?);
+        let home = crate::preview::runtime_utils::home_dir()?;
+        let xtb = crate::preview::runtime_utils::executable_name("xtb");
         [
-            home.join(".pixi/bin/xtb"),
-            PathBuf::from("/opt/homebrew/bin/xtb"),
+            home.join(".pixi").join("bin").join(&xtb),
+            PathBuf::from("/opt/homebrew/bin").join(&xtb),
         ]
         .into_iter()
         .find(|path| path.is_file())

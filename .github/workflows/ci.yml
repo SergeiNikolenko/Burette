@@ -268,6 +268,13 @@ jobs:
       - name: Build Windows installer
         run: ./scripts/build-windows.sh
 
+      # The bundled xyzrender runtime also runs the interaction diagram engine.
+      - name: Run the interaction diagram engine in the bundled Windows runtime
+        run: |
+          site_packages=(build/xyzrender-windows/xyzrender-runtime/lib/python3.*/site-packages)
+          PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1 PYTHONUTF8=1 PYTHONPATH="$(cygpath -w "${site_packages[0]}")" OMP_NUM_THREADS=1 \
+            build/xyzrender-windows/xyzrender-python/python.exe tests/test-interaction-diagram-engine.py
+
       - name: Install and launch
         shell: pwsh
         run: ./scripts/windows-smoke.ps1

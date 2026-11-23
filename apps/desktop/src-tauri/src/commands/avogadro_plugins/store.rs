@@ -68,7 +68,7 @@ pub(crate) fn describe_receipt(root: &Path, receipt: Receipt) -> Option<Installe
     let license_text = LICENSE_FILES
         .iter()
         .find_map(|name| read_small(&dir.join(name)));
-    let prepared = dir.join(".pixi/envs/default/bin").is_dir();
+    let prepared = super::runner::environment_bin(&dir).is_dir();
     Some(InstalledPlugin {
         receipt,
         pyproject,
