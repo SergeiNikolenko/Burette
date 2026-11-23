@@ -145,7 +145,8 @@ fn pipe_unread_bytes(handle: &PipeHandle) -> Option<usize> {
 /// which reads ahead: a binary frame already in the pipe vanishes into the
 /// text buffer and the plugin waits forever (avogadro-xtb-energy does this).
 /// Avogadro escapes it only because evaluation starts long after set-up.
-fn wait_until_read(probe: &Mutex<Option<PipeHandle>>) {
+#[cfg(unix)]
+fn wait_until_read(probe: &Mutex<Option<PipeHandle>>, _exited: &AtomicBool) {
     loop {
         let Ok(mut slot) = probe.lock() else { return };
         let Some(handle) = slot.as_ref() else { return };
@@ -155,6 +156,43 @@ fn wait_until_read(probe: &Mutex<Option<PipeHandle>>) {
         }
         drop(slot);
         std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[cfg(windows)]
+fn wait_until_read(probe: &Mutex<Option<PipeHandle>>, exited: &AtomicBool) {
+    let Some(handle) = probe.lock().ok().and_then(|mut slot| slot.take()) else {
+        return;
+    };
+    // On Windows a synchronous anonymous pipe serializes ReadFile and
+    // PeekNamedPipe on the same kernel FILE_OBJECT. Once the child finishes
+    // reading the bootstrap and blocks in its next ReadFile waiting for the
+    // first request, PeekNamedPipe blocks too; a short timeout therefore proves
+    // the bootstrap has already been consumed and lets the writer unblock both.
+    let (ask_tx, ask_rx) = mpsc::sync_channel::<()>(0);
+    let (ans_tx, ans_rx) = mpsc::sync_channel::<Option<usize>>(0);
+    std::thread::spawn(move || {
+        while ask_rx.recv().is_ok() {
+            let unread = pipe_unread_bytes(&handle);
+            if ans_tx.send(unread).is_err() {
+                break;
+            }
+            if unread.is_none_or(|bytes| bytes == 0) {
+                break;
+            }
+        }
+    });
+    loop {
+        if exited.load(Ordering::Acquire) {
+            return;
+        }
+        if ask_tx.send(()).is_err() {
+            return;
+        }
+        match ans_rx.recv_timeout(Duration::from_millis(25)) {
+            Ok(Some(0)) | Ok(None) | Err(_) => return,
+            Ok(Some(_)) => std::thread::sleep(Duration::from_millis(10)),
+        }
     }
 }
 
@@ -199,6 +237,7 @@ impl ScriptSession {
         drop(command);
         let mut stdin = File::from(output);
         let probe = Arc::new(Mutex::new(Some(probe)));
+        let exited = Arc::new(AtomicBool::new(false));
         let mut stdout = child.stdout.take().expect("piped stdout");
         let mut stderr = child.stderr.take().expect("piped stderr");
         // Writes happen on their own thread so a process that stops reading
@@ -206,11 +245,12 @@ impl ScriptSession {
         let (requests, pending) = mpsc::sync_channel::<Vec<u8>>(1);
         let bootstrap = format!("{bootstrap}\n").into_bytes();
         let consumed = probe.clone();
+        let writer_exited = exited.clone();
         std::thread::spawn(move || {
             if stdin.write_all(&bootstrap).is_err() {
                 return;
             }
-            wait_until_read(&consumed);
+            wait_until_read(&consumed, &writer_exited);
             for request in pending {
                 if stdin
                     .write_all(&request)
@@ -231,6 +271,7 @@ impl ScriptSession {
                 }
             }
             // The process is gone: release a writer still waiting on the bootstrap.
+            exited.store(true, Ordering::Release);
             if let Ok(mut probe) = probe.lock() {
                 probe.take();
             }
