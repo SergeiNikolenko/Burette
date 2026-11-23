@@ -257,3 +257,5 @@ plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-g9CEpbgs.js
 plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-CPsOeY9O.js
 plugins/burette-agent/browser-shell-dist/assets/index-CuRHZD2h.css
 plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-B0I35g4P.js
+apps/desktop/public/molecular-frame/assets/molecule_editor_bg-CYBnEW13.wasm
+plugins/burette-agent/browser-shell-dist/molecular-frame/assets/molecule_editor_bg-CYBnEW13.wasm

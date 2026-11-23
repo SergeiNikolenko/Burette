@@ -11,6 +11,7 @@ use std::f64::consts::PI;
 
 const MIN_SCALE: f64 = NATURAL_SCALE * 0.25;
 const MAX_SCALE: f64 = NATURAL_SCALE * 4.;
+const MAX_FIT_SCALE: f64 = NATURAL_SCALE * 1.5;
 /// Zoom-in and zoom-out stops, as fractions of the natural scale.
 const ZOOM_STEPS: [f64; 16] = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1., 1.1, 1.25, 1.5, 1.75, 2., 2.5, 3., 4.];
 const HISTORY: usize = 200;
@@ -199,14 +200,15 @@ impl Editor {
             self.view.offset = v2(w, h) * 0.5;
             return true;
         };
-        // Compact frames move the side rails to the bottom. Use the remaining
-        // canvas width instead of reserving space for absent side rails.
-        let horizontal_padding: f64 = if w <= 600. { 16. } else { 60. };
-        let pad = v2(horizontal_padding.min(0.3 * w), 60_f64.min(0.3 * h));
+        // Compact frames move the side rails to the bottom while keeping
+        // breathing room around small structures in inline previews.
+        let horizontal_padding: f64 = if w <= 600. { 32. } else { 64. };
+        let pad = v2(horizontal_padding.min(0.3 * w), 64_f64.min(0.3 * h));
         let size = hi - lo;
         let scale = ((w - 2. * pad.x) / size.x.max(1e-6)).min((h - 2. * pad.y) / size.y.max(1e-6));
-        // Fill the available area within the editor's supported zoom range.
-        self.view.scale = scale.clamp(MIN_SCALE, MAX_SCALE);
+        // Fit within the canvas without over-magnifying small molecules; users
+        // can still zoom manually up to MAX_SCALE.
+        self.view.scale = scale.clamp(MIN_SCALE, MAX_FIT_SCALE);
         self.view.offset = v2(w, h) * 0.5 - (lo + hi) * (0.5 * self.view.scale);
         self.update_hover();
         true
