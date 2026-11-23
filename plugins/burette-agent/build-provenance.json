@@ -1,9 +1,9 @@
 {
-  "pluginVersion": "0.2.84-molecular-frame.20261122",
-  "applicationSource": "/Users/nikolenko/.codex/worktrees/burette-dark-editor-inline/Burette",
+  "pluginVersion": "0.2.85-molecular-frame.20261123",
+  "applicationSource": "/Users/nikolenko/.codex/worktrees/burette-editor-scale/Burette",
   "transportSource": "/Users/nikolenko/Documents/Worktrees/Burette/molecular-plugin",
-  "molecularFrameVersion": "de7bfa9f33c5",
-  "nativeManifestSha256": "6b8eaad65d1d71af28d112b62bd306058ba25c874d6300252fd76f0edec0ac78",
+  "molecularFrameVersion": "59d0b50f3ffc",
+  "nativeManifestSha256": "95f481b74bfa4484cce49cd7c1516f15c9c7fa093ae1d25b4549c570e1c96f61",
   "previewManifestVersion": 1,
   "previewAssets": {
     "atom-drag.js": "c325a37286c08424e2aff6e14d9fb2b686f927b6dd725241ebbb2d3be9b3cb8f",
