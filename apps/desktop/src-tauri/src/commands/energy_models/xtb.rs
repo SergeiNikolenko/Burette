@@ -80,6 +80,7 @@ impl XtbSession {
         multiplicity: u32,
     ) -> Result<Self, String> {
         let dir = std::env::temp_dir().join(format!("burette-xtb-energy-{}", uuid::Uuid::new_v4()));
+        #[allow(unused_mut)]
         let mut builder = fs::DirBuilder::new();
         #[cfg(unix)]
         std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
