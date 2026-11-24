@@ -1160,7 +1160,11 @@ button, select, input, textarea, [role="button"], [role="separator"], a[href], s
 }
 .tab-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); }
 .tab:hover { background: var(--color-background-primary-ghost-hover); color: var(--color-text); }
-.tab.active { background: light-dark(var(--color-surface), var(--tab-active-bg)); color: var(--color-text); }
+.tab.active {
+  background: light-dark(var(--color-surface), var(--tab-active-bg));
+  color: var(--color-text);
+  box-shadow: inset 0 0 0 1px var(--color-border);
+}
 .tab-shell[data-selected="true"] .tab {
   background: var(--surface-selected);
   color: var(--text-secondary);

@@ -3090,7 +3090,7 @@ assert.match(styles, /\.app-shell\[data-window-fullscreen="true"\] \.chrome-lead
 assert.doesNotMatch(styles, /instance-badge/);
 assert.doesNotMatch(styles, /sidebar-link/);
 assert.match(launcherKind, /export const launcherKind = definePageKind/);
-assert.match(launcherKind, /<WelcomeScreen actions=\{actions\} \/>/);
+assert.match(launcherKind, /<WelcomeScreen actions=\{actions\} isActive=\{isActive\} \/>/);
 assert.doesNotMatch(sidebarWorkspaceSwitcher, /return `v\$\{info\.version\}`;/);
 assert.match(sidebarFileBrowser, /const hideProjectPreviews = sidebar && state\.buildInfo\.isAgentShell && !state\.workspacePath/);
 assert.match(sidebarFileBrowser, /const visibleProjects = useMemo\(\(\) => hideProjectPreviews \? \[\] : sortSidebarProjects/);

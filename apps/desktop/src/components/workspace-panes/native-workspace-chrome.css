@@ -10,6 +10,41 @@
   display: flex;
 }
 
+/* Codex already provides host Back/Forward navigation directly above the
+   expanded widget frame; keep only the sidebar control aligned on the same
+   16px icon rail as the sidebar list below it (10px + 6px button inset). */
+#root .app-shell[data-native-workspace-chrome] .chrome-leading-controls {
+  left: 10px;
+}
+
+#root .app-shell[data-native-workspace-chrome] .chrome-leading-controls .tab-history-controls {
+  display: none;
+}
+
+#root .app-shell[data-native-workspace-chrome] .chrome-leading-controls .native-sidebar-toggle {
+  width: 32px;
+  height: 32px;
+}
+
+#root .app-shell[data-native-workspace-chrome] .topbar {
+  --chrome-leading-inset: 48px;
+}
+
+/* Native plugin chrome shares the host's primary surface (#fff in light mode),
+   so active tabs need both a subtle surface tint and a crisp hairline border
+   to separate from the header strip. */
+#root .app-shell[data-native-workspace-chrome] .tab.active {
+  background: light-dark(
+    color-mix(in srgb, var(--color-text) 4.5%, var(--color-surface)),
+    var(--tab-active-bg)
+  );
+  box-shadow: inset 0 0 0 1px var(--color-border);
+}
+
+#root .app-shell[data-native-workspace-chrome] .tab:not(.active):hover {
+  box-shadow: inset 0 0 0 1px var(--color-border-subtle);
+}
+
 #root .app-shell[data-native-workspace-chrome] .workspace-sidebar-handle {
   display: block;
 }

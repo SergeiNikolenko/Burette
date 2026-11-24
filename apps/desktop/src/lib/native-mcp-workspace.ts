@@ -1,5 +1,5 @@
-/** A PDB entry offered by the workspace's structure search. */
-export type NativeWorkspaceStructureLink = { uri: string; name: string; title?: string; description?: string };
+/** A PDB entry or starter structure offered on the workspace home screen. */
+export type NativeWorkspaceStructureLink = { uri: string; name: string; title?: string; description?: string; badge?: string };
 export type NativeWorkspaceRecentFile = { path: string; label: string; format: string; openedAt: string };
 
 /** Start-page operations the native widget performs through its MCP host. */

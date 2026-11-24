@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { Window } from "happy-dom";
-import { clearRegionSelection, describeRegion } from "../apps/desktop/src/lib/annotation-region";
+import { clearRegionSelection, clickTargetBox, controlAt, describeRegion } from "../apps/desktop/src/lib/annotation-region";
 
 const window = new Window({ url: "http://localhost/" });
-Object.assign(globalThis, { window, document: window.document, HTMLIFrameElement: window.HTMLIFrameElement });
+Object.assign(globalThis, { window, document: window.document, HTMLIFrameElement: window.HTMLIFrameElement, HTMLCanvasElement: window.HTMLCanvasElement });
 const layer = document.createElement("div");
 const frames = [document.createElement("iframe"), document.createElement("iframe")];
 document.body.append(layer, ...frames);
@@ -31,6 +31,19 @@ try {
   clearRegionSelection([{ id: 1, rect, pin: { x: 10, y: 10 }, comment: "Old page", target }]);
   assert.deepEqual(actions, [["describe_region", "clear_selection"], []]);
   assert.deepEqual(Object.keys(target!), ["surface", "atomCount"], "Frame ownership stays out of serialized context");
+
+  // Controls such as the Annotate button itself must never be captured or highlighted.
+  const toggle = document.createElement("button");
+  toggle.className = "annotate-toggle";
+  toggle.setAttribute("data-annotate-ignore", "");
+  const label = document.createElement("span");
+  label.textContent = "Annotate";
+  toggle.append(label);
+  document.body.append(toggle);
+  document.elementsFromPoint = () => [label, toggle];
+  assert.equal(controlAt(layer, 20, 20), true);
+  assert.equal(clickTargetBox(layer, 20, 20), null);
+  assert.equal(await describeRegion(layer, { left: 10, top: 10, width: 20, height: 20 }, "atom"), null);
 } finally {
   await window.happyDOM.close();
 }

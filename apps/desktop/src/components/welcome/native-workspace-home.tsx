@@ -16,7 +16,7 @@ import type { ShellActions } from "../types";
 const DIRECT_PDB_ID = /^[0-9][A-Za-z0-9]{3}$/u;
 
 // The host owns chat and agent controls. This page only opens files and sketches.
-export function NativeWorkspaceHome({ actions, home }: { actions: ShellActions; home: HomeBridge }) {
+export function NativeWorkspaceHome({ actions, home, active = true }: { actions: ShellActions; home: HomeBridge; active?: boolean }) {
   const [recent, setRecent] = useState<NativeWorkspaceRecentFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState<string | null>(null);
@@ -29,6 +29,7 @@ export function NativeWorkspaceHome({ actions, home }: { actions: ShellActions; 
   const generation = useRef(0);
   const searchGeneration = useRef(0);
   const opening = useRef(false);
+  const wasActive = useRef(active);
   const searchEnabled = Boolean(home.searchPlaceholder);
   const featured = home.featured ?? [];
 
@@ -47,6 +48,18 @@ export function NativeWorkspaceHome({ actions, home }: { actions: ShellActions; 
       .finally(() => { if (generation.current === current) setLoading(false); });
     return () => { generation.current++; };
   }, [home, revision]);
+
+  // Refresh recent files silently when the user returns to this tab after
+  // opening structures elsewhere in the workspace.
+  useEffect(() => {
+    const returned = active && !wasActive.current;
+    wasActive.current = active;
+    if (!returned) return;
+    const current = generation.current;
+    Promise.resolve().then(() => home.recent())
+      .then(files => { if (generation.current === current) setRecent(files); })
+      .catch(() => {});
+  }, [active, home]);
 
   useEffect(() => {
     if (!searchEnabled) return undefined;
@@ -238,6 +251,8 @@ function StructureRowList({
     <ul className="native-home-list">
       {items.map(item => {
         const subtitle = structureSubtitle(item);
+        const badge = item.badge ?? "PDB";
+        const extension = badge.toLowerCase().replace(/[^a-z0-9]/gu, "") || "pdb";
         return (
           <li key={item.uri}>
             <button
@@ -248,11 +263,11 @@ function StructureRowList({
               aria-busy={pending === item.uri}
               onClick={() => void onOpen(item)}
             >
-              <span className="native-home-row-icon" aria-hidden><FileKindIcon kind={fileKindForPath(`${item.name}.pdb`)} /></span>
+              <span className="native-home-row-icon" aria-hidden><FileKindIcon kind={fileKindForPath(`${item.name}.${extension}`)} /></span>
               <span className="native-home-row-name">{item.name}</span>
               {subtitle ? <span className="native-home-row-folder">{subtitle}</span> : null}
               <span className="native-home-row-time">
-                {pending === item.uri ? <Spinner aria-label="Opening structure" /> : "PDB"}
+                {pending === item.uri ? <Spinner aria-label="Opening structure" /> : badge}
               </span>
             </button>
           </li>
@@ -267,7 +282,7 @@ function StructureRowList({
 function folderOf(path: string) {
   const folders = path.split("/").slice(1, -1);
   if (folders[folders.length - 1] === "burette-pdb-entries") return "Protein Data Bank";
-  if (folders.slice(-3).join("/") === "burette-agent/assets/examples") return "Burette examples";
+  if (folders.slice(-2).join("/") === "assets/examples") return "Burette examples";
   return folders.slice(-2).join("/");
 }
 

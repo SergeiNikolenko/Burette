@@ -10,7 +10,7 @@ import "./native-workspace-navigation.css";
 type Props = { state: ShellViewState; actions: ShellActions };
 
 function openPages(state: ShellViewState) {
-  const pages = state.tabs.filter(tab => !["launcher", "settings", "ketcher"].includes(tab.location.kind))
+  const pages = state.tabs.filter(tab => !["launcher", "settings", "ketcher", "tool"].includes(tab.location.kind))
     .map(tab => ({ tab, title: pageKind(tab.location).title(tab.location, state) }));
   return pages.map(({ tab, title }) => {
     if (pages.filter(page => page.title === title).length < 2) return { tab, title };
