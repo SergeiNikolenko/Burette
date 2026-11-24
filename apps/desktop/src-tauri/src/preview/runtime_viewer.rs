@@ -12,7 +12,7 @@ use tauri::{Manager, Runtime};
 use super::formats::{normalize_renderer_mode, FormatInfo};
 use super::runtime::{ViewerPreferences, ViewerReloadOptions};
 use super::runtime_utils::{
-    asset_url, create_runtime_dir, escape_html, prune_runtime_dirs, stable_id,
+    asset_document_url, asset_url, create_runtime_dir, escape_html, prune_runtime_dirs, stable_id,
 };
 use super::text_xyz::{converted_data_from_text, decode_structure_text, xyz_data_from_text};
 use super::trace::{runtime_manifest, write_bytes_atomic, write_json_atomic};
@@ -1506,7 +1506,7 @@ fn interaction_diagram_page<R: Runtime>(app: &tauri::AppHandle<R>) -> Option<Str
             tauri::path::BaseDirectory::Resource,
         )
         .ok()?;
-    page.is_file().then(|| asset_url(&page))
+    page.is_file().then(|| asset_document_url(&page))
 }
 
 fn bundled_web_dir<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String> {
