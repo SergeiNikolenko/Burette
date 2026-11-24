@@ -31,7 +31,7 @@
     "events": "3.3.0",
     "gifenc": "^1.0.3",
     "gifuct-js": "^2.1.2",
-    "hast-util-to-jsx-runtime": "^2.3.6",
+    "hast-util-to-jsx-runtime": "^2.3.7",
     "katex": "^0.18.9",
     "ketcher-core": "3.18.0",
     "ketcher-react": "3.18.0",
