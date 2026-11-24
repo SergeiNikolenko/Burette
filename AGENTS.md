@@ -1,7 +1,8 @@
 # Agent Dispatch
 
-Burette is a macOS desktop app, Finder Quick Look extension, source-built
-iPhone preview app, and hosted public plugin for molecular structure files.
+Burette is a desktop app (macOS primary, plus active Linux and Windows ports),
+Finder Quick Look extension, source-built iPhone preview app, and hosted public
+plugin for molecular structure files.
 Keep this file as a dispatcher; load the focused doc for the surface you are
 changing.
 
@@ -69,34 +70,18 @@ changing.
 
 - For frontend development and JavaScript validation, use Vite+ through `vp`;
   see [docs/vite-plus.md](docs/vite-plus.md) and [scripts/README.md](scripts/README.md).
-- Install or refresh lightweight repository tools when the documented workflow
-  requires them, for example `vp install` for Vite+ native bindings. Do not
-  change application code to work around a missing local toolchain.
-- For browser previews, use the built-in Browser plugin. Do not use macOS
-  `open`, Chrome, Safari, or another external browser unless the user explicitly
-  asks for an external browser.
+- Refresh lightweight repository tools when the workflow requires them (e.g.
+  `vp install` for Vite+ native bindings) instead of working around a missing toolchain.
 - Do not open the desktop app as a substitute for a browser preview. Use
   `desktop-app` only for packaged app, native app, Quick Look, or other
   desktop-specific verification.
 - For packaged local testing, always use a unique `BURETTE_DEV_FLAVOR` unless
   the task is explicitly release-bundle work.
-- For Quick Look work, read [PreviewExtension/AGENTS.md](PreviewExtension/AGENTS.md)
-  before building, installing, or forcing previews.
-- For iPhone app work, read [ios/BuretteMobile/AGENTS.md](ios/BuretteMobile/AGENTS.md)
-  and verify the intended surface: generic build, Simulator, or real device.
-- For Apple-platform build/run/test work, invoke the relevant plugin first:
-  `@build-ios-apps` for iOS and `@build-macos-apps` for macOS/Quick Look.
-- This is the only available Mac. Build, sign, package and verify macOS apps,
-  Quick Look and native updates here; the remote compute hosts cannot run
-  these Apple-platform workloads. Hosted CI remains an additional check.
-  A requested native build or update verification authorizes its necessary
-  local build and focused native tests; do not ask again solely for build size.
-- For Apple-platform UI, UX, icon, SF Symbols, SwiftUI/AppKit, or visual polish
-  work, invoke `$apple-design`; invoke `@product-design` for product flow,
-  prototype, or design-context work before implementation.
-- For plugin/MCP/skill work, read
-  [plugins/burette-agent/AGENTS.md](plugins/burette-agent/AGENTS.md) and
-  [docs/agent-platform.md](docs/agent-platform.md).
+- For Apple-platform builds/tests invoke `@build-ios-apps` or `@build-macos-apps`;
+  a requested native build or update verification authorizes its necessary local
+  build and focused native tests without re-asking for build size.
+- For Apple UI/SF Symbols/SwiftUI/AppKit polish invoke `$apple-design`; invoke
+  `@product-design` for product flow or prototype design before implementation.
 - For repo maintenance, PR body, release readiness, or final review work, use
   the repo-local skills under [.codex/skills](.codex/skills). Keep those
   separate from packaged product skills under `plugins/burette-agent/skills`.
@@ -114,34 +99,14 @@ changing.
   documented icon workflow when a shared glyph is missing. Do not edit generated
   icon data or exports by hand.
 
-## Change Discipline
-
-- Keep changes staged and reviewable. If a change is not mechanical and grows
-  beyond a focused patch, split it into the smallest coherent stage that
-  preserves behavior and can be validated independently.
-- As a rule of thumb, keep non-mechanical changes under roughly 500 changed
-  lines. If a diff approaches 800 changed lines, stop and split it unless the
-  change is generated, vendored, or otherwise mechanically reviewed.
-- Do not grow central orchestration files unless the task is trivial or there
-  is a documented reason. Prefer adding focused modules near the surface that
-  owns the behavior.
-- Treat `apps/desktop/src/App.tsx`, `apps/desktop/vite.config.ts`,
-  `PreviewExtension/Web/viewer.js`, and `PreviewExtension/Web/viewer-shell.js`
-  as high-touch boundaries. New behavior should usually live behind existing
-  hooks, Vite helpers, runtime adapters, or dedicated modules.
-- Do not add single-use helper methods, test-only production hooks, broad
-  compatibility shims, or speculative configuration. Use existing abstractions
-  unless a new one removes real duplication or isolates a real boundary.
-- Prefer private/local APIs by default. Export only the symbols that are needed
-  across module or package boundaries.
-- When extracting code from a large file, move the closest relevant tests,
-  comments, and invariants with the implementation so ownership remains clear.
-
 ## Contract Surfaces
 
 Before changing any contract surface, identify the consumer, update the paired
 metadata, and run the focused contract check.
 
+- Treat `apps/desktop/src/App.tsx`, `apps/desktop/vite.config.ts`,
+  `PreviewExtension/Web/viewer.js`, and `PreviewExtension/Web/viewer-shell.js`
+  as high-touch boundaries; place new behavior in focused modules, hooks, or adapters.
 - Quick Look bundle identifiers, content types, document types, Launch Services
   behavior, and native preview registration are stable release contracts.
 - Keep `config/preview-formats.json`,
@@ -159,10 +124,8 @@ metadata, and run the focused contract check.
   booleans or positional literals.
 - Release, installer, updater, Homebrew cask, and versioning changes must keep
   package metadata, release checks, and documentation aligned.
-- Changes should preserve the supported macOS desktop, Quick Look, browser-dev,
-  and iPhone source-app surfaces unless the task is explicitly scoped to one
-  surface. When behavior intentionally diverges by surface, document that
-  decision near the owning code or docs.
+- Preserve the supported desktop (macOS, Linux, Windows), Quick Look,
+  browser-dev, and iPhone source-app surfaces unless explicitly scoped to one.
 
 ## Generated, Vendored, And Lock Files
 
@@ -175,20 +138,6 @@ metadata, and run the focused contract check.
   Tauri capability files change, run the corresponding check before finalizing.
 - Do not edit generated or vendored dist files by hand unless the repository
   script owns that edit path and the generated source of truth is updated too.
-
-## Payload And Context Bounds
-
-- Anything injected into agent context, MCP resources, widget snapshots,
-  browser-session files, reports, or logs must be bounded and intentionally
-  shaped. Do not stream arbitrary full files or unbounded directory listings
-  into agent-visible payloads.
-- Keep molecular report/table/trajectory artifacts within the limits documented
-  by [docs/agent-platform.md](docs/agent-platform.md) and
-  [plugins/burette-agent/AGENTS.md](plugins/burette-agent/AGENTS.md).
-- For large molecular files, keep payloads path-based or summarized unless the
-  receiving runtime explicitly requires inline data.
-- Preserve existing session history and runtime state unless the task is
-  explicitly a reset, migration, or cache-clear operation.
 
 ## Validation Routing
 
@@ -205,24 +154,9 @@ metadata, and run the focused contract check.
   broad, slow, or native-heavy sweeps such as full CI, all-samples native Quick
   Look smoke, release builds, or long performance runs unless the user already
   requested that level of validation.
-
-## Test Guidance
-
-- Prefer contract and integration tests for preview runtime, agent platform,
-  Quick Look routing, Tauri bridge, and browser-shell behavior. Unit tests are
-  useful for pure helpers but are not enough for cross-surface contracts.
-- Do not add tests that only assert static constants, mirror implementation
-  details, or preserve behavior that has intentionally been removed.
-- Avoid production code paths whose only purpose is to make tests easier. Put
-  test helpers in test files or existing test-support modules.
-- When behavior changes user-visible UI, text, menus, tooltips, preview output,
-  or browser-shell state, include the smallest practical UI, Browser, snapshot,
-  or smoke verification.
-- Prefer assertions over whole structured results instead of checking many
-  unrelated fields one by one.
-- Keep fixtures small and reviewed. Large real-world files belong outside git
-  unless they are intentionally minimized and documented under `samples/` or
-  `tests/fixtures/`.
+- Keep agent-visible payloads bounded and path-based for large molecular files
+  (see [docs/agent-platform.md](docs/agent-platform.md)); preserve session
+  history unless explicitly asked to reset it.
 
 ## User-Facing Features
 
@@ -239,29 +173,3 @@ updated with it, not later.
   without the maintainer's go.
 - Draft a short LinkedIn post for each feature a user would notice, next to the
   landing copy. Drafts only; publishing needs the maintainer's go.
-
-## Rust And TypeScript Conventions
-
-- In Rust, prefer enums, named methods, or explicit types over call sites with
-  unclear `false`, `true`, `None`, or numeric positional arguments.
-- Keep Rust `match` statements exhaustive where practical. Avoid wildcard arms
-  when named variants would make future changes safer.
-- New Rust traits should document their role and implementation expectations.
-- Prefer typed TypeScript unions and explicit action names for renderer, shell,
-  and agent messages. Avoid unstructured `any` payloads at boundaries.
-- Do not mutate process-level environment in tests when a dependency, option,
-  or injected setting can model the same behavior.
-
-## Maintenance Rules
-
-- Keep durable engineering docs under `docs/`.
-- Use local README files for ordinary code architecture guidance.
-- Use local AGENTS files only for high-risk agent/runtime boundaries.
-- Use `.codex/skills` for repository maintenance and review workflows, not
-  user-facing molecular plugin workflows.
-- Do not add `.override` docs unless a maintainer explicitly asks for that
-  resolution model.
-- Do not reintroduce imported reference snapshots or migration handoff logs into
-  the active docs graph.
-- Verify doc claims against source, scripts, or runtime output before updating
-  docs.
