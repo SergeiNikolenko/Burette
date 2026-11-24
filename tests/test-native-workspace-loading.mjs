@@ -18,6 +18,9 @@ test('host detach leaves a visible recovery message instead of an empty retained
     const workspace = await readFile(new URL('../plugins/burette-agent/ui/native-workspace.mjs', import.meta.url), 'utf8');
     const start = runInNewContext(source.replaceAll('export ', '') + '\n' + workspace.replace(/^import .*\n/gm, '').replace('export async function', 'async function') + '\nstartNativeWorkspace', {
       window: dom, document, localStorage: dom.localStorage, setTimeout, clearTimeout,
+      applyDocumentTheme: theme => { document.documentElement.dataset.theme = theme; },
+      applyHostStyleVariables() {},
+      applyHostFonts() {},
       createViewerLifetime, createWorkspacePlacement: () => ({ dispose() {} }),
     });
     const app = { getHostContext: () => ({}), updateModelContext: async () => {}, requestTeardown: () => assert.fail('must not close retained session') };

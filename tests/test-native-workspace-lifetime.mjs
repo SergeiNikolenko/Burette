@@ -29,16 +29,20 @@ for (const unmount of ['host-teardown', 'pagehide']) {
         return { _meta: { payload: request.arguments.asset ? { manifest: { styles: [], entry: 'app.js' } } : {} } };
       },
     };
+    const document = {
+      getElementById: () => status, querySelectorAll: () => [{ contentWindow: previewWindow }], documentElement: { dataset: {}, style: { setProperty() {} } },
+      body: { replaceChildren: () => assert.fail('No terminal closed screen'), dataset: {} },
+    };
     const start = runInNewContext(source.replace(/^import .+;$/gmu, '').replace('export async', 'async') + '\nstartNativeWorkspace', {
       createViewerLifetime, localStorage: storage, prepareWorkspacePreview() {},
+      applyDocumentTheme: theme => { document.documentElement.dataset.theme = theme; },
+      applyHostStyleVariables() {},
+      applyHostFonts() {},
       showWorkspaceOpening() {},
       showWorkspaceFailure(status, message) { status.hidden = false; status.textContent = message; },
       createWorkspaceCheckpoint: async () => ({ restored: false, storage: {}, update() {}, dispose() {}, async flush() {} }),
       createWorkspacePlacement: () => ({ set: async mode => ({ ok: true, mode }), update() {}, observe() {}, dispose() {}, mode: 'inline' }),
-      document: {
-        getElementById: () => status, querySelectorAll: () => [{ contentWindow: previewWindow }], documentElement: { dataset: {}, style: { setProperty() {} } },
-        body: { replaceChildren: () => assert.fail('No terminal closed screen'), dataset: {} },
-      },
+      document,
       window, setTimeout, clearTimeout,
       createWorkspaceAssets: () => ({ importModule: async () => {}, dispose: () => disposed.push('assets') }),
       createWorkspaceAgent: () => ({ request() {}, decorate: state => state }),

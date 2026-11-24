@@ -64,14 +64,26 @@ async function runOperation(input, privateResult, assetRoot) {
 export async function registerLocalViewer(server) {
   const resources = await snapshotNativeResources(pluginPath('assets'));
   const operation = (input, privateResult = false) => runOperation(input, privateResult, resources.assetRoot);
-  registerAppResource(server, 'burette-native-workspace', workspaceUri, { mimeType: RESOURCE_MIME_TYPE }, async () => ({
+  registerAppResource(server, 'burette-native-workspace', workspaceUri, {
+    title: 'Burette',
+    description: 'Interactive local Burette molecular workspace for 3D structures, collections, stories, and molecular editing.',
+    mimeType: RESOURCE_MIME_TYPE,
+  }, async () => ({
     contents: [{ uri: workspaceUri, mimeType: RESOURCE_MIME_TYPE, text: resources.workspace, _meta: { ui: { csp: { connectDomains: ['blob:'], resourceDomains: ['blob:', 'data:'], frameDomains: ['blob:'] }, prefersBorder: false }, 'openai/ui': { availableDisplayModes: ['inline', 'fullscreen'], preferredDisplayMode: 'fullscreen' } } }],
   }));
-  registerAppResource(server, 'burette-native-editor', editorUri, { mimeType: RESOURCE_MIME_TYPE }, async () => ({
+  registerAppResource(server, 'burette-native-editor', editorUri, {
+    title: 'Burette Molecular Editor',
+    description: 'Inline 2D molecular editor surface inside the Burette workspace.',
+    mimeType: RESOURCE_MIME_TYPE,
+  }, async () => ({
     contents: [{ uri: editorUri, mimeType: RESOURCE_MIME_TYPE, text: resources.workspace, _meta: { ui: { csp: { connectDomains: ['blob:'], resourceDomains: ['blob:', 'data:'], frameDomains: ['blob:'] }, prefersBorder: false }, 'openai/ui': { availableDisplayModes: ['inline', 'fullscreen'], preferredDisplayMode: 'inline' } } }],
   }));
-  registerAppResource(server, 'burette-local-viewer', uri, { mimeType: RESOURCE_MIME_TYPE }, async () => ({
-    contents: [{ uri, mimeType: RESOURCE_MIME_TYPE, text: resources.compact, _meta: { ui: { csp: { connectDomains: ['blob:'], resourceDomains: ['blob:', 'data:'], frameDomains: ['blob:'] }, prefersBorder: true } } }],
+  registerAppResource(server, 'burette-local-viewer', uri, {
+    title: 'Burette Inline Viewer',
+    description: 'Compact single-structure local Mol* viewer card.',
+    mimeType: RESOURCE_MIME_TYPE,
+  }, async () => ({
+    contents: [{ uri, mimeType: RESOURCE_MIME_TYPE, text: resources.compact, _meta: { ui: { csp: { connectDomains: ['blob:'], resourceDomains: ['blob:', 'data:'], frameDomains: ['blob:'] }, prefersBorder: true }, 'openai/ui': { availableDisplayModes: ['inline', 'fullscreen'], preferredDisplayMode: 'inline' } } }],
   }));
   registerAppTool(server, 'burette.open_molecular_editor', {
     title: 'Molecular Editor',
@@ -151,7 +163,7 @@ export async function registerLocalViewer(server) {
     if (!files) return { content: [], structuredContent: { opened: [] } };
     return operation({ operation: 'act', sessionId, action: { type: 'open_files', paths: files.paths, view: files.view || 'auto' }, waitMs: 0 });
   });
-  server.registerTool('burette.recent_files', {
+  registerAppTool(server, 'burette.recent_files', {
     title: 'Recent Burette files', description: 'Private start-page transport: the newest local files earlier Burette viewers opened.',
     inputSchema: {}, annotations: { ...annotations, readOnlyHint: true, idempotentHint: true }, _meta: { ui: { visibility: ['app'] } },
   }, async () => ({ content: [], structuredContent: { files: await recentMcpDocuments() } }));

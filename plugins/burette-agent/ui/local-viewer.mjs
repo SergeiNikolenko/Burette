@@ -1,3 +1,4 @@
+import { applyDocumentTheme, applyHostFonts, applyHostStyleVariables } from '@modelcontextprotocol/ext-apps';
 import { renderViewerHeader, disposeViewerHeader } from './local-viewer-header';
 import { createLocalViewerContext } from './local-viewer-context';
 import { createViewerDocuments } from './local-viewer-documents.mjs';
@@ -152,8 +153,11 @@ export async function startLocalViewer(app, initialResult) {
     if (lifetime.closed) return;
     window.BuretteDataBytes = initial.bytes;
     window.BuretteConfig = initial.config;
-    window.BuretteConfig.theme = app.getHostContext()?.theme || 'light';
-    document.documentElement.dataset.theme = window.BuretteConfig.theme;
+    const hostContext = app.getHostContext();
+    window.BuretteConfig.theme = hostContext?.theme === 'dark' ? 'dark' : 'light';
+    applyDocumentTheme(window.BuretteConfig.theme);
+    if (hostContext?.styles?.variables && typeof hostContext.styles.variables === 'object') applyHostStyleVariables(hostContext.styles.variables);
+    if (typeof hostContext?.styles?.css?.fonts === 'string' && hostContext.styles.css.fonts.trim()) applyHostFonts(hostContext.styles.css.fonts);
     updateHeader();
     for (const name of ['molstar.css', 'viewer-runtime.css']) {
       const link = document.createElement('link');
@@ -256,8 +260,10 @@ export async function startLocalViewer(app, initialResult) {
   app.onhostcontextchanged = context => {
     if (lifetime.closed) return;
     if (context.displayMode) displayMode = context.displayMode;
-    if (context.theme) {
-      document.documentElement.dataset.theme = context.theme;
+    if (context.styles?.variables && typeof context.styles.variables === 'object') applyHostStyleVariables(context.styles.variables);
+    if (typeof context.styles?.css?.fonts === 'string' && context.styles.css.fonts.trim()) applyHostFonts(context.styles.css.fonts);
+    if (context.theme === 'light' || context.theme === 'dark') {
+      applyDocumentTheme(context.theme);
       window.postMessage({ source: 'burette-host', body: { type: 'setViewerTheme', value: context.theme } }, '*');
     }
     updateHeader();

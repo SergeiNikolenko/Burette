@@ -196,11 +196,19 @@ SOFTWARE.
     --select-list-min-width: min(300px, var(--radix-select-content-available-width, 100vw));
     --select-list-max-width: var(--radix-select-content-available-width, 100vw);
     max-height: min(var(--select-list-max-height, 400px), var(--radix-select-content-available-height));
+    will-change: auto;
+  }
+  .atlas-select::before,
+  .atlas-select::after,
+  .atlas-select-icon,
+  .atlas-select-option::before,
+  .atlas-select-action::before {
+    will-change: auto;
   }
   .atlas-select-menu[data-position=item-aligned] { width: auto; }
-  .atlas-select-menu[data-position=popper][data-state=open] { animation: atlas-select-enter .3s var(--cubic-enter); }
+  .atlas-select-menu[data-position=popper][data-state=open] { animation: atlas-select-enter 130ms var(--cubic-enter); }
   .atlas-select-menu[data-position=popper][data-state=closed] {
-    animation: atlas-select-exit .2s var(--cubic-exit);
+    animation: atlas-select-exit 95ms var(--cubic-exit);
     /* The exit animation must not intercept the next toolbar click. */
     pointer-events: none;
   }
@@ -1954,6 +1962,7 @@ SOFTWARE.
 `;var cv=`@layer components {
   /* Burette composition: preserve alignment utilities on disclosure buttons. */
   .atlas-button { --scale: .96; }
+  .atlas-button::before, .atlas-button::after { will-change: auto; }
   .atlas-button-inner { justify-content: inherit; min-width: 0; }
   @media (prefers-reduced-motion: reduce) {
     .atlas-button, .atlas-button::before, .atlas-button::after, .atlas-button-inner {
@@ -2023,7 +2032,7 @@ SOFTWARE.
 @media (prefers-reduced-motion: no-preference) {
   .atlas-floating-tooltip:is([data-state="delayed-open"], [data-state="instant-open"]) {
     transform-origin: var(--radix-tooltip-content-transform-origin);
-    animation: atlas-tooltip-enter 250ms var(--cubic-enter, cubic-bezier(.19, 1, .22, 1)) both;
+    animation: atlas-tooltip-enter 120ms var(--cubic-enter, cubic-bezier(.22, 1, .36, 1)) both;
   }
 }
 @keyframes atlas-tooltip-enter {

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, open, readdir, readFile, realpath, rename, stat, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { homedir, tmpdir } from 'node:os';
+import { basename, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { localFileAction } from './local-file-actions.mjs';
 import { mcpFileActionPath } from './mcp-app-file-actions.mjs';
@@ -43,28 +43,86 @@ async function readSession(sessionId) {
   }
 }
 
-// Start page of an empty workspace: the newest files earlier viewers opened.
-// Session files are rewritten when files are added, so their mtime orders them.
-export async function recentMcpDocuments(limit = 8) {
-  const entries = await readdir(root, { withFileTypes: true }).catch(error => {
+const recentViewerExtensions = ['.pdb', '.ent', '.pdbqt', '.pqr', '.cif', '.mmcif', '.gro', '.mol2', '.sdf', '.sd', '.mol', '.smi', '.smiles', '.xyz', '.ket', '.rxn', '.mvsj', '.mvsx',
+  ...['.pdb', '.ent', '.cif', '.mmcif'].flatMap(extension => ['.gz', '.bgz', '.bgzf'].map(suffix => extension + suffix))];
+
+function isOpenableRecentPath(path) {
+  if (typeof path !== 'string' || !path.startsWith('/')) return false;
+  const lower = path.toLowerCase();
+  return recentViewerExtensions.some(extension => lower.endsWith(extension));
+}
+
+function isInternalComputeArtifact(path) {
+  return path.includes('/Application Support/com.local.BuretteV10/compute/artifacts/');
+}
+
+async function readSessionDirCandidates(dirPath, excludedRoots) {
+  const entries = await readdir(dirPath, { withFileTypes: true }).catch(error => {
     if (error.code === 'ENOENT') return [];
     throw error;
   });
   const sessions = (await Promise.all(entries.filter(entry => entry.isDirectory() && /^[0-9a-f-]{36}$/u.test(entry.name)).map(entry => {
-    const path = join(root, entry.name, 'session.json');
-    return stat(path).then(info => ({ path, openedAt: info.mtimeMs }), () => null);
-  }))).filter(Boolean).sort((a, b) => b.openedAt - a.openedAt).slice(0, 64);
-  // Sketches live inside session directories and die with them.
-  const sessionRoots = entries.length ? [root, await realpath(root)] : [];
-  const recent = new Map();
+    const path = join(dirPath, entry.name, 'session.json');
+    return stat(path).then(info => ({ path, openedAtMs: info.mtimeMs }), () => null);
+  }))).filter(Boolean).sort((a, b) => b.openedAtMs - a.openedAtMs).slice(0, 64);
+  const candidates = [];
   for (const session of sessions) {
     const documents = await readFile(session.path, 'utf8').then(text => JSON.parse(text).documents, () => null);
     for (const document of Array.isArray(documents) ? documents.toReversed() : []) {
       const { path, label, format } = document || {};
-      if (recent.size >= limit || typeof path !== 'string' || recent.has(path) || sessionRoots.some(prefix => path.startsWith(`${prefix}/`))) continue;
-      if (await stat(path).then(info => info.isFile(), () => false)) recent.set(path, { path, label, format, openedAt: new Date(session.openedAt).toISOString() });
+      if (!isOpenableRecentPath(path) || excludedRoots.some(prefix => path.startsWith(`${prefix}/`))) continue;
+      candidates.push({ path, label: label || basename(path), format: format || '', openedAtMs: session.openedAtMs });
     }
+  }
+  return candidates;
+}
+
+async function readDesktopRecentCandidates(desktopRecentPath) {
+  if (!desktopRecentPath) return [];
+  const data = await readFile(desktopRecentPath, 'utf8').then(JSON.parse, () => null);
+  const documents = Array.isArray(data?.documents) ? data.documents : [];
+  const candidates = [];
+  for (const document of documents) {
+    const { path, title, extension, openedAt } = document || {};
+    if (!isOpenableRecentPath(path) || isInternalComputeArtifact(path)) continue;
+    const openedAtMs = typeof openedAt === 'number' && Number.isFinite(openedAt) ? openedAt : Date.parse(String(openedAt || ''));
+    candidates.push({
+      path,
+      label: typeof title === 'string' && title.trim() ? title.trim() : basename(path),
+      format: typeof extension === 'string' ? extension.toLowerCase() : '',
+      openedAtMs: Number.isFinite(openedAtMs) ? openedAtMs : 0,
+    });
+  }
+  return candidates;
+}
+
+// Start page of an empty workspace: the newest local molecular files opened
+// across MCP sessions, durable autonomous sessions, and desktop Burette.
+export async function recentMcpDocuments(limit = 8, options = {}) {
+  const mcpRoot = options.mcpRoot ?? root;
+  const durableRoot = options.durableRoot ?? molecularSessionRoot;
+  const desktopRecentPath = options.desktopRecentPath === undefined
+    ? join(homedir(), 'Library', 'Application Support', 'com.local.BuretteV10', 'recent-documents-v1.json')
+    : options.desktopRecentPath;
+  // Sketches live inside session directories and die with them.
+  const excludedRoots = (await Promise.all([mcpRoot, durableRoot].map(async dir => [dir, await realpath(dir).catch(() => null)])))
+    .flat()
+    .filter(Boolean);
+  const [tempCandidates, durableCandidates, desktopCandidates] = await Promise.all([
+    readSessionDirCandidates(mcpRoot, excludedRoots),
+    readSessionDirCandidates(durableRoot, excludedRoots),
+    readDesktopRecentCandidates(desktopRecentPath),
+  ]);
+  const merged = [...tempCandidates, ...durableCandidates, ...desktopCandidates]
+    .sort((a, b) => b.openedAtMs - a.openedAtMs);
+  const recent = new Map();
+  for (const item of merged) {
     if (recent.size >= limit) break;
+    if (recent.has(item.path)) continue;
+    if (await stat(item.path).then(info => info.isFile(), () => false)) {
+      const openedAt = item.openedAtMs > 0 ? new Date(item.openedAtMs).toISOString() : '';
+      recent.set(item.path, { path: item.path, label: item.label, format: item.format, openedAt });
+    }
   }
   return [...recent.values()];
 }

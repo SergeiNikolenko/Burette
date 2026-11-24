@@ -122,19 +122,19 @@ body .msp-plugin .msp-layout-right .msp-scrollable {
   border-radius: 999px;
   background: color-mix(in srgb, var(--buret-meso-text) 55%, transparent);
   opacity: 0;
-  transform: translate(-50%, -50%);
-  transition: background 120ms ease, height 120ms ease, width 120ms ease, opacity 120ms ease;
+  transform: translate(-50%, -50%) scaleY(1);
+  transition: background 120ms ease-out, transform 120ms cubic-bezier(0.22, 1, 0.36, 1), opacity 120ms ease-out;
   pointer-events: none;
 }
 
 .buret-meso-panel-resizer:hover .buret-meso-panel-resizer-grip,
 .buret-meso-panel-resizer:focus-visible .buret-meso-panel-resizer-grip {
-  height: 56px;
+  transform: translate(-50%, -50%) scaleY(1.27);
   opacity: 1;
 }
 
 .buret-meso-panel-resizer.dragging .buret-meso-panel-resizer-grip {
-  height: 56px;
+  transform: translate(-50%, -50%) scaleY(1.27);
   background: var(--buret-meso-text);
   opacity: 1;
 }

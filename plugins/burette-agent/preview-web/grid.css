@@ -1141,8 +1141,8 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
   font-size: 12px;
   font-weight: 500;
   letter-spacing: 0;
-  -webkit-backdrop-filter: blur(18px) saturate(1.1);
-  backdrop-filter: blur(18px) saturate(1.1);
+  -webkit-backdrop-filter: blur(10px) saturate(1.1);
+  backdrop-filter: blur(10px) saturate(1.1);
 }
 
 .buret-grid-table th.buret-grid-table-sorted {
@@ -2427,8 +2427,8 @@ body.buret-hide-properties .buret-card-body {
   color: rgba(255, 255, 255, 0.96);
   background: rgba(0, 0, 0, 0.78);
   font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  -webkit-backdrop-filter: blur(18px);
-  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
 }
 
 #status.error {

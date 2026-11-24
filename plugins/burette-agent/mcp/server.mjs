@@ -21,10 +21,13 @@ const pluginManifest = JSON.parse(readFileSync(pluginPath(".codex-plugin", "plug
 const server = new McpServer(
   {
     name: pluginManifest.name,
+    title: pluginManifest.interface?.displayName || "Burette",
     version: pluginManifest.version,
     icons: buretteIcons,
   },
   {
+    // Advertise composer @-mention search through the current OpenAI MCP Extensions capability.
+    capabilities: { extensions: { "openai/mentions": { searchTool: "burette.mentions" } } },
     instructions:
       "Operate Burette molecular workspaces through tools. For contacts, SASA, TM-align and PNG export use open_molecular_session/run_molecular_operation/molecular_job: these run without a mounted panel or an open chat. Keep the sessionId and poll each job to completion. For live scene controls or Ketcher reuse this task's mounted sessionId and await acknowledgement; awaiting_mount blocks only live controls. Requests to operate molecules are not requests to edit Burette source code. Skills own detailed workflow routing. Tool catalogs are context, not a request to install plugins.",
   },

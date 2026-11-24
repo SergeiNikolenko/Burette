@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { gzipSync } from 'node:zlib';
-import { runMcpAppOperation as run } from '../scripts/mcp-app-session.mjs';
+import { recentMcpDocuments, runMcpAppOperation as run } from '../scripts/mcp-app-session.mjs';
 import { createViewerDocuments } from '../plugins/burette-agent/ui/local-viewer-documents.mjs';
 import { registerLocalViewer } from '../plugins/burette-agent/mcp/registrations/local-viewer/register.mjs';
 import { pendingMcpActions } from '../scripts/mcp-app-action-log.mjs';
@@ -407,4 +407,36 @@ test('get_context observes native widget sessions and names the accepted ids oth
   assert.equal(missing.structuredContent.error.code, 'VIEWER_SESSION_NOT_FOUND');
   assert.match(missing.structuredContent.error.message, /burette\.open_viewer.*bws_/su);
   assert.equal((await getContext({ workspaceSessionId: 'bws_unknown' })).structuredContent.error.code, 'WORKSPACE_SESSION_NOT_FOUND');
+});
+
+test('recentMcpDocuments falls back to desktop recent structures and skips unsupported or missing entries', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'burette-recent-test-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const validPdb = join(dir, 'protein.pdb');
+  const validSdf = join(dir, 'ligand.sdf');
+  const unsupportedCsv = join(dir, 'table.csv');
+  await Promise.all([
+    writeFile(validPdb, 'ATOM\n'),
+    writeFile(validSdf, 'MOL\n'),
+    writeFile(unsupportedCsv, 'smiles\nCCO\n'),
+  ]);
+  const desktopRecent = join(dir, 'recent-documents-v1.json');
+  await writeFile(desktopRecent, JSON.stringify({
+    revision: 1,
+    documents: [
+      { path: join(dir, 'missing.pdb'), title: 'missing.pdb', extension: 'pdb', openedAt: 3000 },
+      { path: unsupportedCsv, title: 'table.csv', extension: 'csv', openedAt: 2500 },
+      { path: validSdf, title: 'ligand.sdf', extension: 'sdf', openedAt: 2000 },
+      { path: validPdb, title: 'protein.pdb', extension: 'pdb', openedAt: 1000 },
+    ],
+  }));
+  const files = await recentMcpDocuments(8, {
+    mcpRoot: join(dir, 'empty-mcp'),
+    durableRoot: join(dir, 'empty-durable'),
+    desktopRecentPath: desktopRecent,
+  });
+  assert.deepEqual(files.map(item => ({ path: item.path, label: item.label, format: item.format })), [
+    { path: validSdf, label: 'ligand.sdf', format: 'sdf' },
+    { path: validPdb, label: 'protein.pdb', format: 'pdb' },
+  ]);
 });

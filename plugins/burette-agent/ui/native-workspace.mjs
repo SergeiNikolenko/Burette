@@ -1,3 +1,4 @@
+import { applyDocumentTheme, applyHostFonts, applyHostStyleVariables } from '@modelcontextprotocol/ext-apps';
 import { createSelectionContext } from '../../../apps/burette-public-plugin/lib/hosted-context';
 import { createWorkspaceAssets } from './native-workspace-assets.mjs';
 import { prepareWorkspaceFrame } from './native-workspace-frame.mjs';
@@ -8,6 +9,22 @@ import { createViewerLifetime } from './local-viewer-lifetime.mjs';
 import { createWorkspacePlacement } from './native-workspace-placement.mjs';
 import { createWorkspaceCheckpoint } from './native-workspace-checkpoint.mjs';
 import { showWorkspaceOpening, showWorkspaceFailure } from './native-workspace-loading.mjs';
+
+const featuredStructures = [
+  { uri: '/example/1htb', name: '1HTB', title: '1HTB · Alcohol dehydrogenase', description: 'Bundled enzyme complex with NAD cofactor and zinc ions', badge: 'PDB' },
+  { uri: '/example/caffeine', name: 'Caffeine', title: 'Caffeine · 3D small molecule', description: 'Bundled xyzrender 3D example', badge: 'XYZ' },
+  { uri: '/pdb/1CRN', name: '1CRN', title: '1CRN · Crambin', description: '46-residue plant protein from Protein Data Bank', badge: 'PDB' },
+  { uri: '/pdb/1STP', name: '1STP', title: '1STP · Streptavidin–biotin', description: 'Protein–ligand complex with bound biotin', badge: 'PDB' },
+];
+
+function normalizeHomeLink(link) {
+  const trimmed = String(link || '').trim();
+  if (trimmed.startsWith('/')) return trimmed;
+  if (/^[0-9][A-Za-z0-9]{3}$/u.test(trimmed)) return `/pdb/${trimmed.toUpperCase()}`;
+  const rcsb = /^https?:\/\/(?:www\.)?rcsb\.org\/structure\/([0-9][A-Za-z0-9]{3})(?:[/?#].*)?$/iu.exec(trimmed);
+  if (rcsb) return `/pdb/${rcsb[1].toUpperCase()}`;
+  return trimmed;
+}
 
 export async function startNativeWorkspace(app, initialResult) {
   const status = document.getElementById('status');
@@ -38,12 +55,33 @@ export async function startNativeWorkspace(app, initialResult) {
     if (current === 'light' || current === 'dark') return current;
     return window.matchMedia?.('(prefers-color-scheme: dark)')?.matches ? 'dark' : 'light';
   }
-  const initialTheme = resolveHostTheme(app.getHostContext()?.theme);
-  if (app.getHostContext()?.theme === 'light' || app.getHostContext()?.theme === 'dark') {
-    document.documentElement.dataset.theme = initialTheme;
+  function syncHostContext(context = {}) {
+    if (!context || typeof context !== 'object') return;
+    if (context.theme === 'light' || context.theme === 'dark') {
+      applyDocumentTheme(context.theme);
+    }
+    if (context.styles?.variables && typeof context.styles.variables === 'object') {
+      applyHostStyleVariables(context.styles.variables);
+    }
+    if (typeof context.styles?.css?.fonts === 'string' && context.styles.css.fonts.trim()) {
+      applyHostFonts(context.styles.css.fonts);
+    }
+    const insets = context.safeAreaInsets;
+    if (insets && typeof insets === 'object') {
+      for (const side of ['top', 'right', 'bottom', 'left']) {
+        const value = Number(insets[side]);
+        if (Number.isFinite(value) && value >= 0) {
+          document.documentElement.style.setProperty(`--burette-safe-area-${side}`, `${Math.round(value)}px`);
+          if (side === 'bottom') document.documentElement.style.setProperty('--burette-hosted-bottom-inset', `${Math.round(value)}px`);
+        }
+      }
+    }
+    syncHostBackground(context);
   }
-  document.documentElement.style.colorScheme = initialTheme;
-  syncHostBackground(app.getHostContext());
+  const initialContext = app.getHostContext();
+  const initialTheme = resolveHostTheme(initialContext?.theme);
+  applyDocumentTheme(initialTheme);
+  syncHostContext(initialContext);
   const placement = createWorkspacePlacement(app, status);
   let session, assets, transport, checkpoint;
   let started = false;
@@ -106,7 +144,9 @@ export async function startNativeWorkspace(app, initialResult) {
   }
   // Start-page operations of the shell's welcome screen.
   const home = {
-    open: async link => { await callTool('burette.open_deep_link', { sessionId: session.sessionId, url: link }); },
+    featured: featuredStructures,
+    searchPlaceholder: 'Search Protein Data Bank or enter a PDB ID (e.g. 1HTB, insulin)…',
+    open: async link => { await callTool('burette.open_deep_link', { sessionId: session.sessionId, url: normalizeHomeLink(link) }); },
     search: async query => (await callTool('burette.mentions', { query })).structuredContent?.items ?? [],
     recent: async () => (await callTool('burette.recent_files', {})).structuredContent?.files ?? [],
     async ask(text) {
@@ -254,8 +294,10 @@ export async function startNativeWorkspace(app, initialResult) {
       if (mounted.closed) { await lifetime.close(); return; }
       placement.update(app.getHostContext());
       // Apply the opener's requested placement once, never again on resize.
+      // Host entrypoints (sidebar app, thread tab, file viewer) already own
+      // their placement and should not be collapsed back to inline.
       const requestedMode = result.structuredContent?.requestedDisplayMode;
-      if ((requestedMode === 'fullscreen' || requestedMode === 'inline') && placement.mode !== requestedMode) {
+      if (!entrypoint && (requestedMode === 'fullscreen' || requestedMode === 'inline') && placement.mode !== requestedMode && placement.getSnapshot()?.available !== false) {
         await placement.set(requestedMode);
       }
       if (lifetime.closed) return;
@@ -319,7 +361,7 @@ export async function startNativeWorkspace(app, initialResult) {
   }
   app.onhostcontextchanged = context => {
     if (lifetime.closed) return;
-    syncHostBackground(context);
+    syncHostContext(context);
     placement.update(context);
     const link = context['openai/deepLink']?.url;
     if (link && link !== deepLink) {
@@ -328,8 +370,6 @@ export async function startNativeWorkspace(app, initialResult) {
       if (transport) observe(transport.state());
     }
     if (context.theme === 'light' || context.theme === 'dark') {
-      document.documentElement.dataset.theme = context.theme;
-      document.documentElement.style.colorScheme = context.theme;
       if (window.BuretteMcpWorkspace) window.BuretteMcpWorkspace.theme = context.theme;
       window.dispatchEvent(new Event('burette-host-theme'));
     }

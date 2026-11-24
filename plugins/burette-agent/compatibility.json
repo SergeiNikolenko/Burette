@@ -2,7 +2,7 @@
   "schema": "burette_agent_compatibility.v1",
   "plugin": {
     "name": "burette",
-    "version": "0.2.85-molecular-frame.20261123"
+    "version": "0.2.86-molecular-frame.20261124"
   },
   "requires": {
     "buretteApp": ">=2.1.16",
