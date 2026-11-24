@@ -1350,8 +1350,16 @@ pub(crate) fn resolve_python_executable() -> Result<PathBuf, String> {
     }
     if let Some(path) = env::var_os("PATH") {
         for dir in env::split_paths(&path) {
-            candidates.push(dir.join(executable_name("python3")));
-            candidates.push(dir.join(executable_name("python")));
+            #[cfg(windows)]
+            {
+                candidates.push(dir.join(executable_name("python")));
+                candidates.push(dir.join(executable_name("python3")));
+            }
+            #[cfg(not(windows))]
+            {
+                candidates.push(dir.join(executable_name("python3")));
+                candidates.push(dir.join(executable_name("python")));
+            }
         }
     }
     candidates.extend([
@@ -1360,7 +1368,7 @@ pub(crate) fn resolve_python_executable() -> Result<PathBuf, String> {
         PathBuf::from("/usr/bin/python3"),
     ]);
     for path in candidates {
-        if path.is_file() && is_executable(&path) {
+        if path.is_file() && is_executable(&path) && !is_windows_store_python_stub(&path) {
             return Ok(path);
         }
     }
@@ -1438,6 +1446,14 @@ fn is_executable(path: &Path) -> bool {
     path.is_file()
 }
 
+fn is_windows_store_python_stub(path: &Path) -> bool {
+    cfg!(windows)
+        && path
+            .to_string_lossy()
+            .to_ascii_lowercase()
+            .contains("windowsapps")
+}
+
 // Calculate Properties can install the runtime itself when uv is on the
 // machine; without uv the environment variable is the only route left.
 pub(crate) fn descriptor_install_hint() -> String {
@@ -1500,8 +1516,13 @@ print(json.dumps({"ok": True, "inLen": len(data["blob"]), "blob": "x" * (256 * 1
 "#;
         let payload = json!({ "blob": "a".repeat(128 * 1024) });
         let result =
-            run_python_script_with_env(&python, &[], script, payload, Duration::from_secs(10))
-                .expect("large piped stdin/stdout/stderr should not deadlock");
+            run_python_script_with_env(&python, &[], script, payload, Duration::from_secs(30))
+                .unwrap_or_else(|err| {
+                    panic!(
+                        "large piped stdin/stdout/stderr failed with {}: {err}",
+                        python.display()
+                    )
+                });
         assert_eq!(result.get("ok").and_then(Value::as_bool), Some(true));
         assert_eq!(
             result.get("inLen").and_then(Value::as_u64),

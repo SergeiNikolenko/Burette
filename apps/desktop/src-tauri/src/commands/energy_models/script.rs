@@ -67,14 +67,30 @@ pub(crate) struct ScriptSession {
 impl Drop for ScriptSession {
     fn drop(&mut self) {
         // Closing stdin ends a well-behaved server; the kill covers the rest,
-        // including descendants in the process group on Unix.
+        // including descendants in the process group on Unix and the cmd.exe
+        // wrapper tree on Windows.
         self.requests.take();
         #[cfg(unix)]
         unsafe {
             libc::kill(-(self.child.id() as i32), libc::SIGKILL);
         }
+        #[cfg(windows)]
+        if self.child.try_wait().ok().flatten().is_none() {
+            let _ = crate::preview::runtime_utils::background_command("taskkill.exe")
+                .args(["/T", "/F", "/PID", &self.child.id().to_string()])
+                .output();
+        }
         let _ = self.child.kill();
         let _ = self.child.wait();
+        // Wait briefly for descendants to close inherited stdout so their
+        // working-directory handles are released before callers clean up.
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
+            match self.replies.recv_timeout(remaining) {
+                Ok(_) => continue,
+                Err(RecvTimeoutError::Disconnected) | Err(RecvTimeoutError::Timeout) => break,
+            }
+        }
     }
 }
 
