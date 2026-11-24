@@ -490,7 +490,12 @@ function relabel(scene) {
 
 async function loadStyleSheet() {
   const style = STYLES[state.style];
-  if (style.css && style.cssText == null) style.cssText = await (await fetch(`styles/${state.style}.css`, { cache: 'no-store' })).text();
+  if (style.css && style.cssText == null) {
+    const preloaded = window.LID_STYLE_CSS?.[state.style];
+    style.cssText = typeof preloaded === 'string'
+      ? preloaded
+      : await (await fetch(`styles/${state.style}.css`, { cache: 'no-store' })).text();
+  }
 }
 
 function overlayLoop() {
@@ -1012,7 +1017,10 @@ window.lid = { get drawer() { return drawer; }, state, styles: STYLES, exportSvg
 
 document.documentElement.dataset.theme = state.theme;
 requestAnimationFrame(overlayLoop);
-fetch('styles/index.json').then((response) => response.json()).then((styles) => {
+const stylesReady = window.LID_STYLES && typeof window.LID_STYLES === 'object'
+  ? Promise.resolve(window.LID_STYLES)
+  : fetch('styles/index.json').then((response) => response.json());
+stylesReady.then((styles) => {
   Object.assign(STYLES, styles);
   const options = Object.entries(styles).map(([id, style]) => Object.assign(document.createElement('option'), { value: id, textContent: style.label }));
   $('style').replaceChildren(...options);

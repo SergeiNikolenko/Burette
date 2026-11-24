@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { runInNewContext } from "node:vm";
 
 import {
   dispatchViewerBridgeMessage,
@@ -266,6 +267,34 @@ delete globalThis.document;
   };
   for (const dir of scanRoots) walk(dir);
   assert.deepEqual(offenders, [], `Window postMessage must not be in tail-call position:\n${offenders.join("\n")}`);
+}
+
+// Sandboxed ligand-card iframes run with an opaque ("null") origin, where
+// fetch("styles/...") against asset:// or http://asset.localhost is blocked by
+// CORS. styles/bundle.js preloads styles/index.json and styles/*.css via a
+// classic <script> tag and must stay in sync with those source files.
+{
+  const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+  const lidDir = join(root, "apps/desktop/public/interaction-diagram");
+  const html = readFileSync(join(lidDir, "index.html"), "utf8");
+  const bundleTag = '<script src="styles/bundle.js"></script>';
+  const appTag = '<script src="app.js"></script>';
+  assert.ok(html.includes(bundleTag), "interaction-diagram/index.html must load styles/bundle.js");
+  assert.ok(
+    html.indexOf(bundleTag) < html.indexOf(appTag),
+    "styles/bundle.js must load before app.js in interaction-diagram/index.html",
+  );
+  const sandbox = { window: {} };
+  runInNewContext(readFileSync(join(lidDir, "styles/bundle.js"), "utf8"), sandbox);
+  const expectedStyles = JSON.parse(readFileSync(join(lidDir, "styles/index.json"), "utf8"));
+  assert.deepEqual(structuredClone(sandbox.window.LID_STYLES), expectedStyles);
+  const expectedCss = {};
+  for (const [id, style] of Object.entries(expectedStyles)) {
+    if (style && style.css) {
+      expectedCss[id] = readFileSync(join(lidDir, `styles/${id}.css`), "utf8");
+    }
+  }
+  assert.deepEqual(structuredClone(sandbox.window.LID_STYLE_CSS), expectedCss);
 }
 
 console.log("viewer bridge message contract tests passed");
