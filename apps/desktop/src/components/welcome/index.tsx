@@ -41,11 +41,11 @@ const subscribeHostedHome = (listener: () => void) => {
   return () => window.removeEventListener("burette-hosted-home", listener);
 };
 
-export function WelcomeScreen({ actions }: { actions: ShellActions }) {
+export function WelcomeScreen({ actions, isActive = true }: { actions: ShellActions; isActive?: boolean }) {
   const hostedHome = useSyncExternalStore(subscribeHostedHome, () => window.BuretteHostedAppBridge?.home);
-  if (isHostedMcpWidget()) return hostedHome ? <NativeWorkspaceHome actions={actions} home={hostedHome} /> : <HostedStructurePending />;
+  if (isHostedMcpWidget()) return hostedHome ? <NativeWorkspaceHome actions={actions} home={hostedHome} active={isActive} /> : <HostedStructurePending />;
   const home = window.BuretteMcpWorkspace?.home;
-  if (home) return <NativeWorkspaceHome actions={actions} home={home} />;
+  if (home) return <NativeWorkspaceHome actions={actions} home={home} active={isActive} />;
   // Codex new-chat hero: a 56px mark at 30% opacity, 24px above a 28px title,
   // with a single soft action in place of the composer.
   return (

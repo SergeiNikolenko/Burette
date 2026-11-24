@@ -140,7 +140,10 @@ test("hosted workspace home shows PDB search and featured examples while opening
     const searched: string[] = [];
     const home = homeStub({
       searchPlaceholder: "Search Protein Data Bank…",
-      featured: [{ uri: "https://www.rcsb.org/structure/1CRN", name: "1CRN", title: "1CRN · Crambin" }],
+      featured: [
+        { uri: "https://www.rcsb.org/structure/1CRN", name: "1CRN", title: "1CRN · Crambin" },
+        { uri: "/example/caffeine", name: "Caffeine", title: "Caffeine · 3D small molecule", badge: "XYZ" },
+      ],
       search: async (query) => {
         searched.push(query);
         return [{ uri: "https://www.rcsb.org/structure/4INS", name: "4INS", title: "4INS · Insulin" }];
@@ -150,6 +153,7 @@ test("hosted workspace home shows PDB search and featured examples while opening
     await render(home);
     expect(mount.querySelector("h1")?.textContent).toBe("Burette");
     expect(mount.querySelector('input[type="search"]')).not.toBeNull();
+    expect(mount.textContent).toContain("XYZ");
     const example = mount.querySelector<HTMLButtonElement>('[aria-label="Open 1CRN · Crambin"]')!;
     await act(async () => example.click());
     expect(opened).toEqual(["https://www.rcsb.org/structure/1CRN"]);
@@ -163,10 +167,14 @@ test("fullscreen native sidebar omits duplicate toggle when top chrome owns it, 
   const root = createRoot(container);
   try {
     const state = {
-      tabs: [{ id: "home", location: { kind: "launcher" } }],
-      activeTab: { id: "home", location: { kind: "launcher" } },
-      activeTabId: "home",
-      documents: [],
+      tabs: [
+        { id: "home", location: { kind: "launcher" } },
+        { id: "info-panel", pane: "right", location: { kind: "tool", tool: "info", area: "right" } },
+        { id: "protein", location: { kind: "file", path: "/samples/1htb.pdb" } },
+      ],
+      activeTab: { id: "protein", location: { kind: "file", path: "/samples/1htb.pdb" } },
+      activeTabId: "protein",
+      documents: [{ id: "protein", path: "/samples/1htb.pdb", title: "1htb.pdb" }],
       ketcherDraftMolfile: "",
     } as unknown as ShellViewState;
     const actions = {
@@ -178,6 +186,8 @@ test("fullscreen native sidebar omits duplicate toggle when top chrome owns it, 
     } as unknown as ShellActions;
     await act(async () => root.render(<NativeWorkspaceSidebar state={state} actions={actions} />));
     expect(container.querySelector('.native-workspace-sidebar-top button')).toBeNull();
+    expect(container.textContent).toContain("1htb.pdb");
+    expect(container.textContent).not.toContain("Info");
 
     await act(async () => root.render(
       <HostedKetcherViewSwitch state={state} actions={actions} showHomeBack showSketchSwitch />,

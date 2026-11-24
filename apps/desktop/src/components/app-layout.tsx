@@ -496,6 +496,7 @@ function WorkspaceAppLayout({
                     onClick={window.BuretteMcpWorkspace ? () => setNativeNavigationOpen(open => !open) : onToggleSidebar}
                     aria-label={sidebarVisible ? "Hide sidebar" : "Show sidebar"}
                     aria-expanded={sidebarVisible}
+                    data-suppress-active-style=""
                   >
                     {sidebarVisible ? <SidebarLeft size={16} aria-hidden /> : <SidebarLeftHidden size={16} aria-hidden />}
                   </ToolbarButton>

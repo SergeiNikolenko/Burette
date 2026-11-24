@@ -27,7 +27,7 @@ export function AnnotateToggle({ className }: { className?: string }) {
   if (!window.BuretteMcpWorkspace) return null;
   return (
     <ShortcutTooltip label={active ? "Click anywhere to annotate, or click and drag to select a region. Hold Space to click through the webpage." : "Annotate this page"} shortcut={active ? undefined : "⌘."}>
-      <button type="button" className={`annotate-toggle ${className ?? ""}`} data-active={active || undefined} aria-pressed={active}
+      <button type="button" className={`annotate-toggle ${className ?? ""}`} data-active={active || undefined} data-annotate-ignore="" aria-pressed={active}
         aria-label="Annotate" onMouseDown={(event) => event.preventDefault()} onClick={toggle}>
         <Annotate size={18} aria-hidden />
         <span>Annotate</span>
@@ -164,6 +164,10 @@ export function AnnotationLayer({ documentTitle, picksResidues }: { documentTitl
 
   function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if (event.button !== 0 || busy || spaceHeld || annotations.length >= MAX_ANNOTATIONS) return;
+    if (layerRef.current && controlAt(layerRef.current, event.clientX, event.clientY)) {
+      setPassthrough(true);
+      return;
+    }
     if (draft?.comment.trim()) void commitDraft(draft);
     else setDraft(null);
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -188,6 +192,10 @@ export function AnnotationLayer({ documentTitle, picksResidues }: { documentTitl
         }
         setDraft((current) => current?.key === key ? { ...current, target } : current);
       });
+      return;
+    }
+    if (controlAt(layerRef.current, event.clientX, event.clientY)) {
+      setPassthrough(true);
       return;
     }
     const box = clickTargetBox(layerRef.current, event.clientX, event.clientY);

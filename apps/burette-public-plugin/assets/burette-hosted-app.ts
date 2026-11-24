@@ -1,4 +1,9 @@
-import { App, type McpUiUpdateModelContextRequest } from "@modelcontextprotocol/ext-apps";
+import {
+  App,
+  applyDocumentTheme,
+  applyHostFonts,
+  type McpUiUpdateModelContextRequest,
+} from "@modelcontextprotocol/ext-apps";
 import { inject, pageview } from "@vercel/analytics";
 import {
   createSceneContext,
@@ -172,7 +177,7 @@ function applyHostAppearance(options: {
   if (nextTheme && bridge.theme !== nextTheme) {
     bridge.theme = nextTheme;
     document.documentElement.dataset.hostTheme = nextTheme;
-    document.documentElement.style.colorScheme = nextTheme;
+    applyDocumentTheme(nextTheme);
     changed = true;
   }
   const activeTheme = bridge.theme;
@@ -196,10 +201,13 @@ function syncFromHostContext(context: ReturnType<App["getHostContext"]> | Record
   const record = context as {
     theme?: unknown;
     displayMode?: unknown;
-    styles?: { variables?: Record<string, unknown> };
+    styles?: { variables?: Record<string, unknown>; css?: { fonts?: unknown } };
     safeAreaInsets?: { bottom?: unknown };
   };
   syncDisplayMode(record.displayMode);
+  if (typeof record.styles?.css?.fonts === "string" && record.styles.css.fonts.trim()) {
+    applyHostFonts(record.styles.css.fonts);
+  }
   applyHostAppearance({
     theme: record.theme,
     surfaceColor: record.styles?.variables?.["--color-background-primary"],

@@ -39,10 +39,11 @@ function topElementAt(layer: HTMLElement, x: number, y: number) {
 
 // A click (no drag) on ordinary DOM content annotates the element under the
 // pointer, like the browser annotate tool; canvases and viewer frames keep the
-// small click square and let the viewer pick.
+// small click square and let the viewer pick. Interactive controls and shell
+// chrome stay live and are never selected as annotation targets.
 export function clickTargetBox(layer: HTMLElement, x: number, y: number): RegionRect | null {
   const element = topElementAt(layer, x, y);
-  if (!element || element instanceof HTMLIFrameElement || element instanceof HTMLCanvasElement) return null;
+  if (!element || element instanceof HTMLIFrameElement || element instanceof HTMLCanvasElement || isControl(element)) return null;
   const rect = element.getBoundingClientRect();
   const bounds = layer.getBoundingClientRect();
   if (rect.width * rect.height > bounds.width * bounds.height * 0.4) return null;
@@ -51,7 +52,7 @@ export function clickTargetBox(layer: HTMLElement, x: number, y: number): Region
 
 // Menus, toolbars and other controls keep working in annotate mode: only the
 // scene and plain content take annotations.
-const CONTROL = "button, a[href], input, select, textarea, summary, label, [contenteditable='true'], [role=button], [role=menu], [role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=listbox], [role=option], [role=tab], [role=slider], [role=checkbox], [role=switch], [role=spinbutton], [role=combobox], [role=toolbar], [role=dialog]";
+const CONTROL = "button, a[href], input, select, textarea, summary, label, [contenteditable='true'], [role=button], [role=menu], [role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=listbox], [role=option], [role=tab], [role=slider], [role=checkbox], [role=switch], [role=spinbutton], [role=combobox], [role=toolbar], [role=dialog], .annotate-toggle, .topbar, .chrome-leading-controls, .chrome-trailing-controls, .workspace-file-header, .workspace-group-header, [data-annotate-ignore]";
 
 function isControl(element: Element | null) {
   return Boolean(element && !(element instanceof HTMLCanvasElement) && element.closest(CONTROL));
@@ -151,6 +152,7 @@ export async function describeRegion(layer: HTMLElement, rect: RegionRect, granu
   const element = topElementAt(layer, rect.left + rect.width / 2, rect.top + rect.height / 2);
   // Only viewer runtimes answer; sandboxed document frames would just time out.
   if (element instanceof HTMLIFrameElement) return element.matches(".viewer-iframe") ? describeFrameRegion(element, rect, granularity) : null;
+  if (isControl(element)) return null;
   const text = documentText(layer, rect);
   return text ? { surface: "document", text } : null;
 }
