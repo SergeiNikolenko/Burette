@@ -3852,9 +3852,11 @@ function StructureCompositionCard({
         if (action && "query" in action && action.query) keys.set(action.query, structureActionRowKey(row, 0));
       }
     }
-    const requestVisibility = () => activeViewerIframeForDocument(document.id)?.contentWindow?.postMessage({
-      source: "burette-agent-host", body: { type: "compositionVisibilityRequest", queries: [...keys.keys()].slice(0, 128) },
-    }, "*");
+    const requestVisibility = () => {
+      activeViewerIframeForDocument(document.id)?.contentWindow?.postMessage({
+        source: "burette-agent-host", body: { type: "compositionVisibilityRequest", queries: [...keys.keys()].slice(0, 128) },
+      }, "*");
+    };
     const receive = (event: MessageEvent) => {
       if (!isKnownViewerMessageSource(event.source, document.id)) return;
       const body = event.data?.body;

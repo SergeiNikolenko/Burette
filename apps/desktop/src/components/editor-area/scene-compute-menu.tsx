@@ -144,10 +144,12 @@ export function SceneComputeMenu({ document, actions, iframeRef }: {
     id: `viewer-${operation}`,
     text: label,
     disabled,
-    action: () => iframeRef?.current?.contentWindow?.postMessage({
-      source: "burette-host",
-      body: { type: "runComputeOperation", documentId: document.id, operation },
-    }, "*"),
+    action: () => {
+      iframeRef?.current?.contentWindow?.postMessage({
+        source: "burette-host",
+        body: { type: "runComputeOperation", documentId: document.id, operation },
+      }, "*");
+    },
   })), ...(items.length ? [{ kind: "separator" as const }] : []));
   if (!combined && pluginCommands.length) items.push(...(items.length ? [{ kind: "separator" as const }] : []), ...commandMenuItems(pluginCommands, entry => startAvogadroCommand(entry, document)));
   // Every calculation here, and xTB/CREST started elsewhere, runs where this points.

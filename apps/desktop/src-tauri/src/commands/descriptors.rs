@@ -3,7 +3,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::env;
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{
@@ -1185,23 +1185,34 @@ pub(crate) fn run_python_script_with_env(
         .envs(envs.iter().map(|(key, value)| (*key, value.as_str())))
         .spawn()
         .map_err(|err| format!("Failed to launch the Python runtime: {err}"))?;
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin
-            .write_all(&input)
-            .map_err(|err| format!("Failed to send input to the Python runtime: {err}"))?;
-    }
+    let stdout_reader = spawn_pipe_reader(child.stdout.take());
+    let stderr_reader = spawn_pipe_reader(child.stderr.take());
+    let stdin_writer = child
+        .stdin
+        .take()
+        .map(|mut stdin| thread::spawn(move || stdin.write_all(&input)));
     let start = Instant::now();
     loop {
-        if child.try_wait().map_err(|err| err.to_string())?.is_some() {
-            let output = child.wait_with_output().map_err(|err| err.to_string())?;
-            if !output.status.success() {
+        if let Some(status) = child.try_wait().map_err(|err| err.to_string())? {
+            let stdout_bytes = stdout_reader.join().unwrap_or_default();
+            let stderr_bytes = stderr_reader.join().unwrap_or_default();
+            let write_result = stdin_writer.map(|handle| {
+                handle
+                    .join()
+                    .map_err(|_| std::io::Error::other("Python stdin writer thread panicked"))
+                    .and_then(|res| res)
+            });
+            if !status.success() {
                 return Err(format!(
                     "The Python runtime exited with status {}: {}",
-                    output.status,
-                    String::from_utf8_lossy(&output.stderr).trim()
+                    status,
+                    String::from_utf8_lossy(&stderr_bytes).trim()
                 ));
             }
-            let stdout = String::from_utf8_lossy(&output.stdout);
+            if let Some(Err(err)) = write_result {
+                return Err(format!("Failed to send input to the Python runtime: {err}"));
+            }
+            let stdout = String::from_utf8_lossy(&stdout_bytes);
             return parse_descriptor_runner_output(&stdout);
         }
         if start.elapsed() >= timeout {
@@ -1214,6 +1225,16 @@ pub(crate) fn run_python_script_with_env(
         }
         thread::sleep(Duration::from_millis(25));
     }
+}
+
+fn spawn_pipe_reader<R: Read + Send + 'static>(pipe: Option<R>) -> thread::JoinHandle<Vec<u8>> {
+    thread::spawn(move || {
+        let mut bytes = Vec::new();
+        if let Some(mut reader) = pipe {
+            let _ = reader.read_to_end(&mut bytes);
+        }
+        bytes
+    })
 }
 
 fn parse_descriptor_runner_output(stdout: &str) -> Result<Value, String> {
@@ -1254,25 +1275,28 @@ fn run_descriptor_install_step(
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|err| format!("Failed to launch {}: {err}", path.display()))?;
+    let stdout_reader = spawn_pipe_reader(child.stdout.take());
+    let stderr_reader = spawn_pipe_reader(child.stderr.take());
     if let Ok(mut state) = descriptor_install_state().lock() {
         state.child_pid = Some(child.id());
     }
     let start = Instant::now();
     loop {
-        if child.try_wait().map_err(|err| err.to_string())?.is_some() {
-            let output = child.wait_with_output().map_err(|err| err.to_string())?;
+        if let Some(status) = child.try_wait().map_err(|err| err.to_string())? {
             if let Ok(mut state) = descriptor_install_state().lock() {
                 state.child_pid = None;
             }
-            if output.status.success() {
+            let stdout_bytes = stdout_reader.join().unwrap_or_default();
+            let stderr_bytes = stderr_reader.join().unwrap_or_default();
+            if status.success() {
                 return Ok(());
             }
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&stderr_bytes);
+            let stdout = String::from_utf8_lossy(&stdout_bytes);
             return Err(format!(
                 "{} failed with status {}: {}{}{}",
                 path.display(),
-                output.status,
+                status,
                 stderr.trim(),
                 if stderr.trim().is_empty() || stdout.trim().is_empty() {
                     ""
@@ -1464,5 +1488,30 @@ mod tests {
 
         let row_error = descriptor_error_value("SMILES did not parse");
         assert!(descriptor_row_failed(&[row_error]));
+    }
+
+    #[test]
+    fn run_python_script_with_env_drains_large_stdout_and_stderr_without_deadlocking() {
+        let python = resolve_python_executable().expect("python3 available for pipe drain test");
+        let script = r#"
+import json, sys
+data = json.loads(sys.stdin.read())
+sys.stderr.write("e" * (128 * 1024))
+sys.stderr.flush()
+print(json.dumps({"ok": True, "inLen": len(data["blob"]), "blob": "x" * (256 * 1024)}))
+"#;
+        let payload = json!({ "blob": "a".repeat(128 * 1024) });
+        let result =
+            run_python_script_with_env(&python, &[], script, payload, Duration::from_secs(10))
+                .expect("large piped stdin/stdout/stderr should not deadlock");
+        assert_eq!(result.get("ok").and_then(Value::as_bool), Some(true));
+        assert_eq!(
+            result.get("inLen").and_then(Value::as_u64),
+            Some(128 * 1024)
+        );
+        assert_eq!(
+            result.get("blob").and_then(Value::as_str).map(str::len),
+            Some(256 * 1024)
+        );
     }
 }

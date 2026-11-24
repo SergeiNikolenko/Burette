@@ -24,7 +24,9 @@ export function useGridWorkspaceMenu(state: ShellViewState, actions: ShellAction
       const frame = Array.from(document.querySelectorAll<HTMLIFrameElement>('.viewer-iframe[data-renderer="grid2d"]')).find(frame => frame.contentWindow === event.source);
       if (!frame) return;
       const source = frame.contentWindow!;
-      const reply = (command: string) => source.postMessage({ source: "burette-grid-host", body: { type: "gridWorkspaceMenuResult", requestId: body.requestId, command } }, '*');
+      const reply = (command: string) => {
+        source.postMessage({ source: "burette-grid-host", body: { type: "gridWorkspaceMenuResult", requestId: body.requestId, command } }, '*');
+      };
       const entries = new Map<string, { id: string; label: string; disabled?: boolean }>();
       for (const entry of body.entries) if (entry && typeof entry.id === "string" && entry.id.length < 80 && typeof entry.label === "string") entries.set(entry.id, entry);
       const take = (id: string, text: string): MenuItemSpec[] => {

@@ -27,9 +27,11 @@ function gridRequest(documentId: string, type: "gridWindowCapture" | "gridWindow
       if (body.ok === true && (type !== "gridWindowCapture" || typeof body.snapshot === "string")) resolve(body.snapshot ?? "");
       else reject(new Error(typeof body.error === "string" ? body.error : "The collection could not be transferred."));
     };
-    const send = () => activeViewerIframeForDocument(documentId, "grid2d")?.contentWindow?.postMessage({
-      source: "burette-grid-host", body: { type, requestId, snapshot },
-    }, "*");
+    const send = () => {
+      activeViewerIframeForDocument(documentId, "grid2d")?.contentWindow?.postMessage({
+        source: "burette-grid-host", body: { type, requestId, snapshot },
+      }, "*");
+    };
     const timeout = setTimeout(() => { cleanup(); reject(new Error("The collection did not finish loading.")); }, 15000);
     const retry = setInterval(send, 250);
     window.addEventListener("message", receive);

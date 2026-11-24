@@ -13,7 +13,9 @@
     document.head.append(Object.assign(document.createElement('style'), { textContent: '#legend { display: none !important; }' }));
   }
   const $ = (id) => document.getElementById(id);
-  const post = (message) => window.parent.postMessage({ source: 'burette-lid', ...message }, '*');
+  const post = (message) => {
+    window.parent.postMessage({ source: 'burette-lid', ...message }, '*');
+  };
   const residueOf = (id) => {
     const [name, chain, number] = String(id || '').split('_');
     return name && chain && number ? { name, chain, number: Number(number) } : null;
