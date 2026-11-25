@@ -8,6 +8,7 @@ import { formatBytes } from "../components/format";
 import type { ChemicalEditorTarget } from "../components/types";
 import { basename } from "../lib/sidebar-projects";
 import { isTauriRuntime } from "../lib/tauri";
+import { isMacPlatform, revealInFileManagerLabel } from "../lib/platform";
 import type { TextFileDocument, ViewerDocument } from "../types";
 
 const browserDevChemicalEditorTargets: ChemicalEditorTarget[] = [
@@ -153,9 +154,9 @@ export function useAppFileActions({
         showMacAvailability();
         return;
       }
-      pushStatus(`Revealed ${label} in Finder`);
+      pushStatus(isMacPlatform() ? `Revealed ${label} in Finder` : `Showed ${label} in the file manager`);
     } catch (error) {
-      pushErrorStatus(error, "Reveal in Finder failed");
+      pushErrorStatus(error, `${revealInFileManagerLabel()} failed`);
     }
   }, [pushErrorStatus, pushStatus]);
 

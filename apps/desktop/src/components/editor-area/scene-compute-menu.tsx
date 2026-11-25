@@ -22,6 +22,7 @@ import { ChevronDown } from "../ui/app-icons";
 import { recordedScenePaths, sceneFileStates, type SceneFileState } from "../../hooks/workspace-scene-import";
 import { xtbOperationLabel } from "../../lib/chemistry-settings";
 import { setComputeHost, useComputeHost } from "../../lib/remote-jobs";
+import { isMacPlatform } from "../../lib/platform";
 import { useSshConnections } from "../../lib/ssh-projects";
 import { basename } from "../../lib/sidebar-projects";
 import { isHostedMcpWidget } from "../../lib/hosted-mcp-widget";
@@ -143,17 +144,19 @@ export function SceneComputeMenu({ document, actions, iframeRef }: {
     id: `viewer-${operation}`,
     text: label,
     disabled,
-    action: () => iframeRef?.current?.contentWindow?.postMessage({
-      source: "burette-host",
-      body: { type: "runComputeOperation", documentId: document.id, operation },
-    }, "*"),
+    action: () => {
+      iframeRef?.current?.contentWindow?.postMessage({
+        source: "burette-host",
+        body: { type: "runComputeOperation", documentId: document.id, operation },
+      }, "*");
+    },
   })), ...(items.length ? [{ kind: "separator" as const }] : []));
   if (!combined && pluginCommands.length) items.push(...(items.length ? [{ kind: "separator" as const }] : []), ...commandMenuItems(pluginCommands, entry => startAvogadroCommand(entry, document)));
   // Every calculation here, and xTB/CREST started elsewhere, runs where this points.
   if (!embeddedGraph && connections.length > 0) items.push({ kind: "separator" }, {
     kind: "select", id: "scene-run-on", label: "Run on", value: host ?? THIS_MAC,
     options: [THIS_MAC, ...connections.map(connection => connection.host)],
-    optionLabels: Object.fromEntries([[THIS_MAC, "This Mac"], ...connections.map(connection => [connection.host, connection.name])]),
+    optionLabels: Object.fromEntries([[THIS_MAC, isMacPlatform() ? "This Mac" : "This Computer"], ...connections.map(connection => [connection.host, connection.name])]),
     action: value => setComputeHost(value === THIS_MAC ? null : value),
   });
   // The same opaque capsule as the viewer's toolbar and rail, so the scene never

@@ -22,6 +22,7 @@ new Function('require', 'exports', code)(name => {
     return {id:'aligned-result'};
   } };
   if (name === '../lib/tauri') return { isTauriRuntime: () => native };
+  if (name === '../lib/platform') return { isMacPlatform: () => true, nativeComputeLabel: (label = 'Metal') => label };
   if (name === '../lib/standalone-compute') return { runStandaloneConformerWorkflow: run('standalone') };
   if (name === '../lib/compute-conformer') return { runConformerWorkflow: run('grid') };
   if (name === '../lib/compute-analysis') return { runAnalysisWorkflow: run('analysis') };

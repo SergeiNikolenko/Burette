@@ -16,6 +16,7 @@ mod conformer_schedule;
 mod conformer_stereo;
 mod distance_geometry;
 mod distance_optimizer;
+mod embedding;
 mod etk_geometry;
 mod mmff;
 mod mmff_analytic;
@@ -55,6 +56,7 @@ pub use distance_optimizer::{
     DistanceGeometryOptimizationOptions, DistanceGeometryOptimizationStatus, MmffOptimization,
     MmffOptimizerKind,
 };
+pub use embedding::optimize_embedding;
 pub use etk_geometry::{
     evaluate_etk_geometry, validate_etk_geometry_constraints, EtkDistanceConstraint,
     EtkGeometryError, EtkGeometryEvaluation, EtkGeometryTerms, EtkImproperConstraint,
@@ -106,6 +108,8 @@ pub const FINGERPRINT_WORDS: usize = FINGERPRINT_BITS / u64::BITS as usize;
 pub const FINGERPRINT_METAL_WORDS: usize = FINGERPRINT_BITS / u32::BITS as usize;
 pub const FINGERPRINT_BYTES: usize = FINGERPRINT_BITS / u8::BITS as usize;
 const MEMORY_ACCOUNTING_HEADROOM_BYTES: u64 = 64 * 1024;
+/// Minimum kNN rows per worker thread.
+const KNN_ROWS_PER_WORKER: usize = 128;
 
 /// One fixed-width Morgan fingerprint in increasing bit/word order.
 #[repr(transparent)]
@@ -636,14 +640,81 @@ pub fn build_tanimoto_knn(
     )?;
     let mut counts = Vec::new();
     try_reserve_exact(&mut counts, entry_count, "Tanimoto kNN count output")?;
+    if neighbors_per_vertex == 0 {
+        return Ok(TanimotoKnn {
+            vertex_count,
+            neighbors_per_vertex,
+            source_indices,
+            counts,
+        });
+    }
+    source_indices.resize(entry_count, 0);
+    counts.resize(
+        entry_count,
+        TanimotoCounts {
+            intersection: 0,
+            union: 0,
+        },
+    );
+
+    // Rows are independent, so contiguous row ranges run on separate threads
+    // and write disjoint output slices; the result is identical to one thread.
+    let workers = std::thread::available_parallelism()
+        .map_or(1, NonZeroUsize::get)
+        .min(vertex_count.div_ceil(KNN_ROWS_PER_WORKER));
+    let rows_per_worker = vertex_count.div_ceil(workers.max(1));
+    let chunk_entries = rows_per_worker * neighbors_per_vertex;
+    std::thread::scope(|scope| {
+        let workers = source_indices
+            .chunks_mut(chunk_entries)
+            .zip(counts.chunks_mut(chunk_entries))
+            .enumerate()
+            .map(|(chunk, (indices, counts))| {
+                scope.spawn(move || {
+                    knn_rows(
+                        fingerprints,
+                        chunk * rows_per_worker,
+                        neighbors_per_vertex,
+                        indices,
+                        counts,
+                    )
+                })
+            })
+            .collect::<Vec<_>>();
+        workers
+            .into_iter()
+            .try_for_each(|worker| worker.join().expect("Tanimoto kNN worker panicked"))
+    })?;
+
+    Ok(TanimotoKnn {
+        vertex_count,
+        neighbors_per_vertex,
+        source_indices,
+        counts,
+    })
+}
+
+/// Fills the ranked neighbors of consecutive rows starting at `first_row`.
+fn knn_rows(
+    fingerprints: &[Fingerprint2048],
+    first_row: usize,
+    neighbors_per_vertex: usize,
+    source_indices: &mut [u64],
+    counts: &mut [TanimotoCounts],
+) -> Result<(), ClusterCoreError> {
     let mut row = BinaryHeap::new();
     row.try_reserve(neighbors_per_vertex)
         .map_err(|_| ClusterCoreError::AllocationFailed {
             buffer: "Tanimoto kNN row heap",
             requested_elements: neighbors_per_vertex as u64,
         })?;
-
-    for (source_index, fingerprint) in fingerprints.iter().enumerate() {
+    for (offset, (row_indices, row_counts)) in source_indices
+        .chunks_mut(neighbors_per_vertex)
+        .zip(counts.chunks_mut(neighbors_per_vertex))
+        .enumerate()
+    {
+        let source_index = first_row + offset;
+        let fingerprint = &fingerprints[source_index];
         row.clear();
         for (candidate_index, candidate) in fingerprints.iter().enumerate() {
             if candidate_index == source_index {
@@ -667,16 +738,12 @@ pub fn build_tanimoto_knn(
                 .compare_similarity(left.counts)
                 .then_with(|| left.source_index.cmp(&right.source_index))
         });
-        source_indices.extend(ranked.iter().map(|neighbor| neighbor.source_index));
-        counts.extend(ranked.iter().map(|neighbor| neighbor.counts));
+        for ((index, count), neighbor) in row_indices.iter_mut().zip(row_counts).zip(ranked) {
+            *index = neighbor.source_index;
+            *count = neighbor.counts;
+        }
     }
-
-    Ok(TanimotoKnn {
-        vertex_count,
-        neighbors_per_vertex,
-        source_indices,
-        counts,
-    })
+    Ok(())
 }
 
 pub fn accounted_tanimoto_knn_bytes(

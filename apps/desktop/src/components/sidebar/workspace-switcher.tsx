@@ -1,5 +1,6 @@
 import { SidebarTooltip } from "./sidebar-tooltip";
 import { appInstanceLabel } from "../../lib/instance";
+import { defaultShortcutLabel } from "../../lib/keyboard-shortcuts";
 import { NativeDropdownMenu } from "../native-dropdown-menu";
 import { ChevronUpDown } from "../ui/app-icons";
 import { AnimatedSettingsIcon } from "../ui/animated-icons";
@@ -48,7 +49,7 @@ export function WorkspaceSwitcher({ actions }: { actions: ShellActions }) {
         )}
       />
       <WhatsNew />
-      <SidebarTooltip label="Settings (⌘,)">
+      <SidebarTooltip label={`Settings (${defaultShortcutLabel("settings.open")})`}>
         <button
           type="button"
           className="sidebar-settings-button"

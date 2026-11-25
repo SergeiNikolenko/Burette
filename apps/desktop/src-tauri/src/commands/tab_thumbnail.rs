@@ -5,7 +5,9 @@
 use serde::Deserialize;
 
 /// Width of the stored image in points. The hover card shows it at 304pt.
+#[cfg(target_os = "macos")]
 const THUMBNAIL_WIDTH_POINTS: f64 = 320.0;
+#[cfg(target_os = "macos")]
 const JPEG_QUALITY: f64 = 0.8;
 const MAX_RECT_SIDE: f64 = 16_384.0;
 

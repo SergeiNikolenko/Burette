@@ -16,6 +16,8 @@ jobs:
     if: github.ref == 'refs/heads/main'
     environment: release
     runs-on: macos-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
     env:
       CARGO_TARGET_DIR: ${{ github.workspace }}/../burette-native-target
     steps:
@@ -263,3 +265,54 @@ jobs:
           git add "$cask"
           git commit -m "Update Burette cask to ${version}"
           git push origin HEAD:main
+
+  linux-bundles:
+    name: Build Linux Bundles
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Install Linux build dependencies
+        run: ./scripts/install-linux-build-deps.sh
+
+      - name: Setup Burette toolchain
+        uses: ./.github/actions/setup-burette-toolchain
+
+      - name: Build Linux bundles
+        run: ./scripts/build-linux.sh
+
+      - name: Upload Linux bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-release-bundles
+          path: build/linux
+          retention-days: 7
+          compression-level: 0
+
+  linux-publish:
+    name: Publish Linux Bundles
+    needs:
+      - release
+      - linux-bundles
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download Linux bundles
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-release-bundles
+          path: linux
+
+      - name: Attach Linux bundles to the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tag="${{ needs.release.outputs.tag }}"
+          mv linux/SHA256SUMS "linux/Burette-${tag#v}-linux.sha256"
+          gh release upload "$tag" linux/*

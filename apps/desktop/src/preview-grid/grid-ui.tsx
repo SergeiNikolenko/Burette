@@ -7,6 +7,7 @@ import { NativeSelectControl } from "../components/ui/native-select-control";
 import { SearchInput } from "../components/ui/search-input";
 import { gridAtlasStyles } from "./grid-atlas-styles";
 import { codexThemeColors } from "../lib/codex-theme";
+import { isMacPlatform } from "../lib/platform";
 import { SegmentedControl as AtlasSegmentedControl, SegmentedControlItem } from "../components/ui/segmented-control";
 import { Button } from "../components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
@@ -327,7 +328,7 @@ function ComputeSection(props: GridControlProps & { onRun: (action: () => void) 
           type="button"
           role="menuitem"
           disabled={props.generating3d || noSelection || !props.selectedInput3d}
-          aria-description={needs3d ? "Generate 3D coordinates for every selected molecule first" : "Optimize selected input 3D coordinates with the chosen MMFF variant on Metal"}
+          aria-description={needs3d ? "Generate 3D coordinates for every selected molecule first" : `Optimize selected input 3D coordinates with the chosen MMFF variant${isMacPlatform() ? " on Metal" : ""}`}
           onClick={() => props.onRun(props.onOptimizeGeometry)}
         >
           {ICONS.optimize}
@@ -376,7 +377,7 @@ function ComputeSection(props: GridControlProps & { onRun: (action: () => void) 
           role="menuitem"
           disabled={props.aligningPoses || props.selectedCount < 2 || !props.selectedInput3d}
           aria-busy={props.aligningPoses ? "true" : "false"}
-          aria-description={needs3d ? "Generate 3D coordinates for every selected molecule first" : "Align selected 3D poses to the first selected row on Metal and write scores to Grid"}
+          aria-description={needs3d ? "Generate 3D coordinates for every selected molecule first" : `Align selected 3D poses to the first selected row${isMacPlatform() ? " on Metal" : ""} and write scores to Grid`}
           onClick={() => props.onRun(props.onAlignSelectedPoses)}
         >
           {ICONS.align}

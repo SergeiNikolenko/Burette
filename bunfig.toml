@@ -1,2 +1,6 @@
-# Molecular contract tests and source bundles use the same immutable Mol* tree.
-preload = ["./scripts/molstar-source-preload.mjs"]
+# Molecular contract tests and source bundles use the same immutable Mol* tree;
+# UI tests see a macOS WebKit navigator on every host.
+preload = ["./scripts/molstar-source-preload.mjs", "./tests/happy-dom-macos-preload.mjs"]
+
+[test]
+preload = ["./tests/happy-dom-macos-preload.mjs"]

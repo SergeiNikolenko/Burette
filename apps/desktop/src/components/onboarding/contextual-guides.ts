@@ -1,6 +1,9 @@
 // One-time contextual education shown when the user first reaches a feature.
 // `where` and `when` document the trigger for the dev gallery and docs; they
 // are never rendered in the product.
+import { defaultShortcutLabel } from "../../lib/keyboard-shortcuts";
+import { isMacPlatform } from "../../lib/platform";
+
 export type GuidePattern = "carousel" | "announcement" | "education" | "first-use" | "inline";
 export type GuideMedia = { label: string; image?: string; video?: string; poster?: string };
 export type GuideSlide = { title: string; body: string };
@@ -112,7 +115,7 @@ export const contextualGuides = {
   },
   "source-edit": {
     pattern: "first-use", title: "Edit the source file",
-    body: "Change the records of a local structure and save with ⌘S. Check the result in 3D without closing the text.",
+    body: `Change the records of a local structure and save with ${defaultShortcutLabel("file.save")}. Check the result in 3D without closing the text.`,
     media: [still("Source editor", "source-edit.webp")],
     alt: "An editable structure source beside the molecule.",
     where: "Local structure → Text → Edit source",
@@ -188,7 +191,7 @@ export const contextualGuides = {
   },
   "geometry-edit": {
     pattern: "first-use", title: "Type a value. The molecule follows.",
-    body: "Change a bond length, angle, or torsion in its row and the atoms move. Undo takes the change back, and ⌘S saves the file.",
+    body: `Change a bond length, angle, or torsion in its row and the atoms move. Undo takes the change back, and ${defaultShortcutLabel("file.save")} saves the file.`,
     media: [still("C1–C2 set to 1.8 Å", "geometry-edit.webp")],
     alt: "Ethanol in the Geometry panel after its C1–C2 bond is set to 1.8 Å.",
     where: "3D context menu → Edit geometry, or right dock → Geometry",
@@ -209,7 +212,7 @@ export const contextualGuides = {
   },
   "move-mode": {
     pattern: "first-use", title: "Turn a group around its bond",
-    body: "Drag a bond to rotate its smaller side; only that torsion changes. Hold ⌥ while dragging to stretch the bond.",
+    body: `Drag a bond to rotate its smaller side; only that torsion changes. Hold ${isMacPlatform() ? "⌥" : "Alt"} while dragging to stretch the bond.`,
     media: [still("Dragging C2–C3", "move-turning.webp"), still("Torsion at −90°", "move-turned.webp")],
     animate: true,
     alt: "Butane while its C2–C3 bond is dragged, then with the torsion turned from 180° to −90°.",

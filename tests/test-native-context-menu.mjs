@@ -11,6 +11,8 @@ const source = readFileSync(new URL('../apps/desktop/src/components/native-conte
   .replace(/import\(/g, 'load(');
 const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ESNext } }).outputText;
 let native = true;
+let mac = true;
+let macLoads = 0;
 let webCalls = 0;
 let popup;
 let invoked = 0;
@@ -19,8 +21,9 @@ for (const kind of ['Menu', 'MenuItem', 'IconMenuItem', 'CheckMenuItem', 'Predef
   types[kind] = { new: async options => ({ kind, ...options, popup: async at => { popup = { options, at }; } }) };
 }
 types.LogicalPosition = class { constructor(x, y) { this.x = x; this.y = y; } };
-const show = new Function('withMenuIcons', 'isTauriRuntime', 'showRadixContextMenu', 'load', `${js}\nreturn showNativeContextMenu;`)(
-  withMenuIcons, () => native, () => { webCalls++; }, async path => path === "./mac-context-menu" ? { showMacContextMenu: async () => false } : types,
+const show = new Function('withMenuIcons', 'isMacPlatform', 'isTauriRuntime', 'showRadixContextMenu', 'load', `${js}\nreturn showNativeContextMenu;`)(
+  withMenuIcons, () => mac, () => native, () => { webCalls++; },
+  async path => path === "./mac-context-menu" ? (macLoads++, { showMacContextMenu: async () => false }) : types,
 );
 const spec = [
   { kind: 'item', id: 'open', text: 'Open', nativeIcon: 'QuickLook', action: () => invoked++, accelerator: 'CmdOrCtrl+O' },
@@ -54,6 +57,25 @@ assert.equal(webCalls, 2);
 // Without the AppKit popup, live controls stay in the web menu rather than being dropped.
 await show([{ kind: 'swatches', id: 'tint', colors: ['#0a84ff'] }]);
 assert.equal(webCalls, 3);
+await show([{ kind: 'text', id: 'name', label: 'Name', value: '' }]);
+assert.equal(webCalls, 4);
+// Linux never asks for the AppKit popup and keeps nested submenus, labels and checkboxes.
+mac = false;
+macLoads = 0;
+await show([{ kind: 'submenu', id: 'outer', text: 'Outer', items: [
+  { kind: 'label', id: 'heading', text: 'Heading' },
+  { kind: 'checkbox', id: 'pin', text: 'Pin', checked: false, action: () => invoked++ },
+  { kind: 'submenu', id: 'inner', text: 'Inner', items: [{ kind: 'item', id: 'leaf', text: 'Leaf', action: () => invoked++ }] },
+] }]);
+assert.equal(macLoads, 0);
+assert.equal(webCalls, 4);
+const [outer] = popup.options.items;
+assert.deepEqual(outer.items.map(({ kind, id }) => `${kind}:${id}`), ['MenuItem:heading', 'CheckMenuItem:pin', 'Submenu:inner']);
+assert.equal(outer.items[2].items[0].id, 'leaf');
+outer.items[1].action(); outer.items[2].items[0].action();
+assert.equal(invoked, 4);
+invoked = 2;
+mac = true;
 console.log('Native menu icons, submenus, accelerators, callbacks and runtime routing passed');
 
 const macSource = readFileSync(new URL('../apps/desktop/src/components/mac-context-menu.ts', import.meta.url), 'utf8')

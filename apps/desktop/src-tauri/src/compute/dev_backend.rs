@@ -23,11 +23,14 @@ use uuid::Uuid;
 use crate::preview::grid_store::GridAlignmentSourceRow;
 
 use super::{
-    alignment_workflow::{execute_snapshot_alignment_with_run_id, GridAlignmentRequest},
+    alignment_workflow::{
+        execute_snapshot_alignment_with_run_id, AlignmentBackend, GridAlignmentRequest,
+    },
     chemical_space::{
         cluster_chemical_space_from_fingerprints, decode_knn_cache_payload,
         encode_knn_cache_payload, execute_chemical_space_from_fingerprints_with_knn,
-        ChemicalSpaceClusterRequest, ChemicalSpaceKnnCachePayload, ChemicalSpaceRequest,
+        ChemicalSpaceBackend, ChemicalSpaceClusterRequest, ChemicalSpaceKnnCachePayload,
+        ChemicalSpaceRequest,
     },
     conformer_executor::execute_conformer_distance_geometry_with_service,
     conformer_plan::ConformerMoleculeIdentity,
@@ -149,8 +152,10 @@ pub(crate) fn run() -> Result<(), String> {
         .map_err(|error| error.to_string())?,
         DevComputeOperation::AlignPoses => serde_json::to_value(
             execute_snapshot_alignment_with_run_id(
-                &runtime,
-                None,
+                AlignmentBackend::NativeMetal {
+                    runtime: &runtime,
+                    service: None,
+                },
                 source_rows(&request.source)?,
                 &GridAlignmentRequest {
                     document_id: "browser-dev-inline".into(),
@@ -225,7 +230,7 @@ fn execute_chemical_space(
         &fingerprints,
         &source_record_ids,
         failed_records,
-        runtime,
+        ChemicalSpaceBackend::NativeMetal(runtime),
         input.options,
         cached_knn.as_ref(),
     )
@@ -274,7 +279,7 @@ fn execute_chemical_space_cluster(
         cluster_chemical_space_from_fingerprints(
             &fingerprints,
             &source_record_ids,
-            runtime,
+            ChemicalSpaceBackend::NativeMetal(runtime),
             input.options,
         )
         .map_err(|error| error.to_string())?,

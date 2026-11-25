@@ -13,7 +13,7 @@ const source = readFileSync('apps/desktop/src/hooks/use-open-drop.ts', 'utf8').r
 const dependencies = {
   useCallback: fn => fn, useEffect: () => {}, useRef: value => ({ current: value }), useState: value => [value, () => {}],
   resolveDropActionChoices, describeDropTargetElement, ...drag,
-  isTauriRuntime: () => false, document, window, Element: window.Element,
+  isTauriRuntime: () => false, isMacPlatform: () => false, document, window, Element: window.Element,
 };
 const useOpenDrop = new Function(...Object.keys(dependencies), ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText + '\nreturn useOpenDrop;')(...Object.values(dependencies));
 const received = [];
@@ -93,9 +93,9 @@ console.log('Cold sheet drops wait for the matching frame and flush exactly once
 // Retina native events must never hit-test a second, unscaled point in a dock.
 const queried = [];
 const actualTarget = { id: 'under-cursor' };
-const retinaHitTest = new Function('document', 'window', 'navigator', ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText + '\nreturn elementFromTauriDropPosition;')({
+const retinaHitTest = new Function('document', 'window', 'isMacPlatform', ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText + '\nreturn elementFromTauriDropPosition;')({
   elementFromPoint(x, y) { queried.push([x, y]); return x === 300 ? actualTarget : { closest: () => ({ id: 'wrong-dock' }) }; },
-}, { devicePixelRatio: 2 }, { platform: 'Win32' });
+}, { devicePixelRatio: 2 }, () => false);
 assert.equal(retinaHitTest({ x: 600, y: 400 }), actualTarget);
 assert.deepEqual(queried, [[300, 200]]);
 console.log('Retina drag hit-testing uses one coordinate system and the target under the cursor');
@@ -131,7 +131,7 @@ const folder = document.createElement('div');
 folder.dataset.dropDirectory = '/project/native';
 folder.getBoundingClientRect = () => ({ left: 10, top: 180, width: 200, height: 30 });
 document.elementFromPoint = (x, y) => { assert.deepEqual([x, y], [90, 198]); return folder; };
-const nativeDeps = { ...dependencies, CustomEvent: window.CustomEvent, requestAnimationFrame: fn => fn(), buildFileDropPreview, navigator: { platform: 'MacIntel' }, Event: window.Event,
+const nativeDeps = { ...dependencies, CustomEvent: window.CustomEvent, requestAnimationFrame: fn => fn(), buildFileDropPreview, isMacPlatform: () => true, Event: window.Event,
   isTauriRuntime: () => true, useEffect: fn => nativeEffects.push(fn),
   getCurrentWindow: () => ({ onDragDropEvent: fn => { nativeDrop = fn; return Promise.resolve(() => {}); } }),
   trackTauriListener: () => () => {},

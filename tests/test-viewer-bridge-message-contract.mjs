@@ -1,5 +1,9 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
+import { readdirSync, readFileSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { runInNewContext } from "node:vm";
 
 import {
   dispatchViewerBridgeMessage,
@@ -232,5 +236,65 @@ assert.equal(isReadOnlyViewerMessageSource(eventSource), true);
 assert.equal(isReadOnlyViewerMessageSource({ postMessage() {} }), false);
 assert.equal(isReadOnlyViewerMessageSource(null), false);
 delete globalThis.document;
+
+// JavaScriptCore Proper Tail Call on strict expression-bodied arrows or
+// tail returns collapses the caller frame on WebKitGTK and delivers
+// MessageEvent.source === target instead of window.parent.
+{
+  const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+  const scanRoots = [
+    join(root, "apps/desktop/src"),
+    join(root, "apps/desktop/public/interaction-diagram"),
+  ];
+  const tailPostMessage = /(=>|\breturn\b)\s*[^{;]*?\.postMessage\s*\(/g;
+  const offenders = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === "vendor" || entry.name === "dist") continue;
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) { walk(full); continue; }
+      if (!/\.(?:ts|tsx|js|mjs)$/.test(entry.name) || /\.(?:test|spec)\./.test(entry.name)) continue;
+      const text = readFileSync(full, "utf8");
+      if (!text.includes(".postMessage(")) continue;
+      for (const match of text.matchAll(tailPostMessage)) {
+        const segment = match[0];
+        if (segment.length > 260 || segment.includes("}")) continue;
+        if (/(?:worker|self|scope|ctx|port[12]|messageHandlers\.burette)\.postMessage\s*\($/.test(segment)) continue;
+        const line = text.slice(0, match.index).split("\n").length;
+        offenders.push(`${relative(root, full)}:${line}: ${segment.replace(/\s+/g, " ")}`);
+      }
+    }
+  };
+  for (const dir of scanRoots) walk(dir);
+  assert.deepEqual(offenders, [], `Window postMessage must not be in tail-call position:\n${offenders.join("\n")}`);
+}
+
+// Sandboxed ligand-card iframes run with an opaque ("null") origin, where
+// fetch("styles/...") against asset:// or http://asset.localhost is blocked by
+// CORS. styles/bundle.js preloads styles/index.json and styles/*.css via a
+// classic <script> tag and must stay in sync with those source files.
+{
+  const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+  const lidDir = join(root, "apps/desktop/public/interaction-diagram");
+  const html = readFileSync(join(lidDir, "index.html"), "utf8");
+  const bundleTag = '<script src="styles/bundle.js"></script>';
+  const appTag = '<script src="app.js"></script>';
+  assert.ok(html.includes(bundleTag), "interaction-diagram/index.html must load styles/bundle.js");
+  assert.ok(
+    html.indexOf(bundleTag) < html.indexOf(appTag),
+    "styles/bundle.js must load before app.js in interaction-diagram/index.html",
+  );
+  const sandbox = { window: {} };
+  runInNewContext(readFileSync(join(lidDir, "styles/bundle.js"), "utf8"), sandbox);
+  const expectedStyles = JSON.parse(readFileSync(join(lidDir, "styles/index.json"), "utf8"));
+  assert.deepEqual(structuredClone(sandbox.window.LID_STYLES), expectedStyles);
+  const expectedCss = {};
+  for (const [id, style] of Object.entries(expectedStyles)) {
+    if (style && style.css) {
+      expectedCss[id] = readFileSync(join(lidDir, `styles/${id}.css`), "utf8");
+    }
+  }
+  assert.deepEqual(structuredClone(sandbox.window.LID_STYLE_CSS), expectedCss);
+}
 
 console.log("viewer bridge message contract tests passed");

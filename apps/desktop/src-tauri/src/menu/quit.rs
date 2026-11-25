@@ -800,6 +800,7 @@ pub(crate) async fn validate_exit_permit<R: Runtime>(
         .map(|live_windows| Some(ValidatedExitPermit { live_windows }))
 }
 
+#[cfg(target_os = "macos")]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SystemQuitRequest {
     Authorized,
@@ -810,9 +811,11 @@ pub(crate) enum SystemQuitRequest {
 #[derive(Clone, Copy, Debug)]
 enum QuitOrigin {
     Menu,
+    #[cfg(target_os = "macos")]
     AppKit,
 }
 
+#[cfg(target_os = "macos")]
 pub(crate) fn request_system_quit<R: Runtime>(app: &tauri::AppHandle<R>) -> SystemQuitRequest {
     match begin_quit_request(app) {
         Some(QuitRequestStart::Authorized) => SystemQuitRequest::Authorized,
@@ -934,6 +937,7 @@ fn spawn_quit_flow<R: Runtime>(app: &tauri::AppHandle<R>, origin: QuitOrigin) {
     });
 }
 
+#[cfg(target_os = "macos")]
 fn revoke_exit_authorization<R: Runtime>(app: &tauri::AppHandle<R>) {
     if let Some(guard) = app.try_state::<QuitGuard>() {
         guard.revoke_exit_authorization();

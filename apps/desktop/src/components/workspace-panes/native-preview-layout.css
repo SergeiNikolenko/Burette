@@ -6,6 +6,8 @@
   border-radius: 16px;
   overflow: hidden;
 }
+/* Linux windows are opaque and natively framed, so rounded corners would show the window behind them. */
+.app-shell.native-preview-shell[data-platform="linux"] { border-radius: 0; }
 .native-preview-title { position: relative; height: 36px; flex: 0 0 36px; user-select: none; }
 .native-preview-title .floating-pane-title { justify-content: center; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .native-preview-content { flex: 1; min-height: 0; position: relative; }

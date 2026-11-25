@@ -1,9 +1,10 @@
 use burette_compute_core::{
-    ChiralVolumeConstraint, DistanceConstraint, DistanceGeometryOptimizationOptions,
-    EtkDistanceConstraint, EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint,
-    Fingerprint2048, GraphBuildOptions, MmffParameters, Pm6FockPair, Rm1FockPair,
-    SemiempiricalMolecule, SymmetricCsr, TanimotoCounts, TanimotoKnnOptions, TanimotoQueryOptions,
-    TanimotoUmapGraph, TetrahedralConstraint, UmapOptions,
+    ChemicalSpaceMethod, ChiralVolumeConstraint, DistanceConstraint,
+    DistanceGeometryOptimizationOptions, EtkDistanceConstraint, EtkGeometryTerms,
+    EtkImproperConstraint, EtkTorsionConstraint, Fingerprint2048, GraphBuildOptions,
+    MmffParameters, Pm6FockPair, Rm1FockPair, SemiempiricalMolecule, SymmetricCsr, TanimotoCounts,
+    TanimotoKnnOptions, TanimotoQueryOptions, TanimotoUmapGraph, TetrahedralConstraint,
+    UmapOptions,
 };
 use burette_compute_protocol::{GpuDeviceIdentity, SimilarityCutoff};
 
@@ -89,10 +90,11 @@ impl MetalHost {
         ))
     }
 
-    pub(crate) fn optimize_umap_profiled(
+    pub(crate) fn optimize_embedding_profiled(
         &self,
         _graph: &TanimotoUmapGraph,
         _options: UmapOptions,
+        _method: ChemicalSpaceMethod,
         _max_memory_bytes: u64,
     ) -> Result<MetalUmapDispatch, MetalRuntimeError> {
         Err(MetalRuntimeError::UnsupportedPlatform(

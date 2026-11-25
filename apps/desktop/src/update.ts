@@ -1,5 +1,6 @@
 import packageInfo from "../../../package.json";
 import { compareVersions } from "./lib/semver";
+import { isMacPlatform } from "./lib/platform";
 
 export type UpdateChannel = "stable" | "beta";
 
@@ -175,6 +176,8 @@ function normalizeRelease(release: GitHubRelease): UpdateRelease | null {
 }
 
 function installAssetFor(assets: GitHubAsset[]): UpdateAsset | null {
+  // The in-place installer swaps the macOS app bundle; other platforms open the release page.
+  if (!isMacPlatform()) return null;
   const installExtensions = [".zip"];
   const candidates = assets
     .filter((asset) => asset.name && asset.browser_download_url && Number(asset.size || 0) > 0)

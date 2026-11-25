@@ -119,7 +119,11 @@ export function InteractionsPanel({ documentId, path }: { documentId: string; pa
       const request = readDiagramRequest(message);
       if (request) {
         const frame = event.source as Window;
-        void computeInteractionDiagram(path, request).then((answer) => frame.postMessage(diagramAnswerMessage(answer), "*"));
+        void computeInteractionDiagram(path, request).then((answer) => {
+          // Keep postMessage out of tail position: JavaScriptCore PTC collapses the
+          // caller frame on WebKitGTK and delivers event.source === target frame.
+          frame.postMessage(diagramAnswerMessage(answer), "*");
+        });
       } else if (message.type === "ready") setReady(true);
       else if (message.type === "ligands") setLigands(message.ligands);
       else if (message.type === "loaded") setLigand(message.ligand);

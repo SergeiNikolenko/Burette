@@ -267,10 +267,12 @@ function FepNetworkPreview({ actions, location, preferences }: { actions: ShellA
       const body = event.data?.source === "burette-agent-viewer" ? event.data.body : null;
       if (event.source === frame() && body?.type === "agent-action-result" && body.id === id && body.result?.ok) stop();
     };
-    const interval = window.setInterval(() => frame()?.postMessage({
-      source: "burette-agent-host",
-      body: { type: "agent-action", id, action: { type: "set_sdf_pose_mode", mode: "all" } },
-    }, "*"), 400);
+    const interval = window.setInterval(() => {
+      frame()?.postMessage({
+        source: "burette-agent-host",
+        body: { type: "agent-action", id, action: { type: "set_sdf_pose_mode", mode: "all" } },
+      }, "*");
+    }, 400);
     const timeout = window.setTimeout(stop, 20000);
     window.addEventListener("message", receive);
     return stop;

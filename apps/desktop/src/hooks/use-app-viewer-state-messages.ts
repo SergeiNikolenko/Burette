@@ -210,8 +210,9 @@ export function useAppViewerStateMessages({
       const document = documents.find(document => activeViewerIframeForDocument(document.id, "molstar")?.contentWindow === eventSource);
       const request = readDiagramRequest({ type: "diagram-request", id: body.requestId, ligand: body.ligand, rules: body.rules });
       if (document && request) {
-        void computeInteractionDiagram(document.path, request).then(({ id, ...answer }) =>
-          postMessageToViewerSource(eventSource, { source: "burette-host", body: { type: "interactionDiagram", requestId: id, ...answer } }));
+        void computeInteractionDiagram(document.path, request).then(({ id, ...answer }) => {
+          postMessageToViewerSource(eventSource, { source: "burette-host", body: { type: "interactionDiagram", requestId: id, ...answer } });
+        });
       }
       return true;
     }

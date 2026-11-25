@@ -18,6 +18,23 @@ struct RuntimeOwner {
     _lock: fs::File,
 }
 
+/// Folders above `executable` that may hold Burette's bundled runtimes: the
+/// macOS app's `Contents/Resources` (a flat `Resources` in development builds)
+/// and `lib/Burette`, which the deb, rpm and AppImage bundles place beside
+/// `bin`.
+pub(crate) fn bundled_resource_dirs(executable: &Path) -> Vec<PathBuf> {
+    executable
+        .ancestors()
+        .flat_map(|ancestor| {
+            [
+                ancestor.join("Resources"),
+                ancestor.join("Contents").join("Resources"),
+                ancestor.join("lib").join("Burette"),
+            ]
+        })
+        .collect()
+}
+
 /// Retain runtime files for the process lifetime, including cold tabs and view
 /// history. Closing a grid may still explicitly delete its own runtime. Age or
 /// size-based maintenance must never evict files the current process can reload.
@@ -77,9 +94,49 @@ pub(crate) fn asset_url(path: &Path) -> String {
     }
 }
 
+/// Asset URL for a static HTML page whose relative `<script>`, `<link>`, and
+/// `fetch` references must resolve inside the page's own directory. Path
+/// separators stay literal `/` so relative URL resolution stays in the
+/// resource folder, while each segment (and a leading POSIX `/`) is
+/// percent-encoded for Tauri's asset protocol decoder.
+pub(crate) fn asset_document_url(path: &Path) -> String {
+    #[cfg(target_os = "windows")]
+    {
+        format!(
+            "http://asset.localhost/{}",
+            percent_encode_document_path(path)
+        )
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        format!("asset://localhost/{}", percent_encode_document_path(path))
+    }
+}
+
 fn percent_encode_path(path: &Path) -> String {
-    path.to_string_lossy()
-        .as_bytes()
+    percent_encode_component(&path.to_string_lossy())
+}
+
+fn percent_encode_document_path(path: &Path) -> String {
+    let text = path.to_string_lossy();
+    let normalized = text
+        .strip_prefix(r"\\?\")
+        .unwrap_or(&text)
+        .replace('\\', "/");
+    let (leading, rest) = match normalized.strip_prefix('/') {
+        Some(rest) => ("%2F", rest),
+        None => ("", normalized.as_str()),
+    };
+    let encoded_rest = rest
+        .split('/')
+        .map(percent_encode_component)
+        .collect::<Vec<_>>()
+        .join("/");
+    format!("{leading}{encoded_rest}")
+}
+
+fn percent_encode_component(text: &str) -> String {
+    text.as_bytes()
         .iter()
         .map(|byte| match byte {
             b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
@@ -247,9 +304,9 @@ pub(crate) fn escape_html(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        asset_url, clipped, create_runtime_dir, escape_html, normalized_lines,
-        prune_runtime_dirs_at, runtime_has_live_owner, stable_id, RuntimeMaintenance,
-        MAX_STALE_RUNTIME_DIRS, RUNTIME_LEASE, RUNTIME_PRUNE_INTERVAL,
+        asset_document_url, asset_url, clipped, create_runtime_dir, escape_html, normalized_lines,
+        percent_encode_document_path, prune_runtime_dirs_at, runtime_has_live_owner, stable_id,
+        RuntimeMaintenance, MAX_STALE_RUNTIME_DIRS, RUNTIME_LEASE, RUNTIME_PRUNE_INTERVAL,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -350,6 +407,31 @@ mod tests {
         assert!(url.starts_with("asset://localhost/"));
 
         assert!(url.contains("%2Ftmp%2FBurette%20Preview%2Fa%2Bb%20%231.pdb"));
+    }
+
+    #[test]
+    fn asset_document_url_preserves_directory_separators_for_relative_assets() {
+        let posix = asset_document_url(Path::new(
+            "/usr/lib/Burette Dev/interaction-diagram/index.html",
+        ));
+        #[cfg(target_os = "windows")]
+        assert!(posix.starts_with("http://asset.localhost/"));
+        #[cfg(not(target_os = "windows"))]
+        assert!(posix.starts_with("asset://localhost/"));
+        assert!(posix.ends_with("%2Fusr/lib/Burette%20Dev/interaction-diagram/index.html"));
+
+        assert_eq!(
+            percent_encode_document_path(Path::new(
+                r"\\?\C:\Program Files\Burette\interaction-diagram\index.html"
+            )),
+            "C%3A/Program%20Files/Burette/interaction-diagram/index.html"
+        );
+        assert_eq!(
+            percent_encode_document_path(Path::new(
+                r"C:\Users\runneradmin\AppData\Local\Burette\interaction-diagram\index.html"
+            )),
+            "C%3A/Users/runneradmin/AppData/Local/Burette/interaction-diagram/index.html"
+        );
     }
 
     #[test]

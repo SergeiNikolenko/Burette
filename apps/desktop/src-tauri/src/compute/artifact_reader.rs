@@ -75,6 +75,8 @@ pub(crate) fn open_verified_artifact_file(
     Ok(file)
 }
 
+// `st_mode` is u16 on macOS and u32 on Linux.
+#[allow(clippy::useless_conversion)]
 fn validate_directory_fd(fd: &std::os::fd::OwnedFd, label: &str) -> ComputeResult<()> {
     let metadata =
         fstat(fd).map_err(|error| filesystem(format!("cannot inspect {label}: {error}")))?;
@@ -89,6 +91,7 @@ fn validate_directory_fd(fd: &std::os::fd::OwnedFd, label: &str) -> ComputeResul
     Ok(())
 }
 
+#[allow(clippy::useless_conversion)]
 fn validate_file_fd(fd: &std::os::fd::OwnedFd, descriptor: &ArtifactFile) -> ComputeResult<()> {
     let metadata = fstat(fd).map_err(|error| {
         filesystem(format!(

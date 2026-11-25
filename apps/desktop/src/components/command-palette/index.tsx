@@ -30,6 +30,7 @@ import { Kbd } from "../ui/kbd";
 import { formatBytes, rendererLabel } from "../format";
 import type { ShellActions, ShellViewState } from "../types";
 import { isRemoteStructureUrl } from "../../lib/remote-structure";
+import { defaultShortcutLabel, formatAccelerator } from "../../lib/keyboard-shortcuts";
 import { buildShellCommands, filterShellCommands, type ShellCommand } from "../../lib/shell-commands";
 import { useCommandPaletteSearch, useSetCommandPaletteSearch } from "../../hooks/use-command-palette";
 import { useVirtualResults, PaletteResultItem, VirtualResults } from "./virtual-results";
@@ -54,10 +55,10 @@ const commandIcons: Record<string, AppIconType> = {
   "open-settings": SettingsCog,
 };
 const commandShortcuts: Record<string, string> = {
-  "open-structure": "⌘O",
-  "open-recent": "⇧⌘O",
-  "search-projects": "⌘P",
-  "open-settings": "⌘,",
+  "open-structure": defaultShortcutLabel("file.open"),
+  "open-recent": defaultShortcutLabel("file.open-most-recent"),
+  "search-projects": defaultShortcutLabel("view.command-palette"),
+  "open-settings": defaultShortcutLabel("settings.open"),
 };
 
 export function CommandPalette({
@@ -127,7 +128,7 @@ export function CommandPalette({
         const document = state.activeDocument ?? null;
         const panel = structureEditAvailable(document) ? "structure-edit" : geometryPanelAvailable(document) ? "geometry" : null;
         return document && panel ? OPTIMIZATION_COMMANDS.map(({ command, label }) => ({ id: `optimization-${command}`, group: "Calculate", label, description: "",
-          shortcut: command === "optimize" ? "⌥⌘O" : undefined, run: () => requestOptimizationCommand(actions, document, panel, command) })) : [];
+          shortcut: command === "optimize" ? formatAccelerator("CmdOrCtrl+Alt+O") : undefined, run: () => requestOptimizationCommand(actions, document, panel, command) })) : [];
       })(),
       ...(state.activeDocument?.renderer === "molstar" ? [
         ...SELECT_COMMANDS.map(({ command, label }) => ({ id: `select-${command}`, group: "Select", label, description: "",
@@ -165,7 +166,7 @@ export function CommandPalette({
     const matches = filterShellCommands(allItems, query);
     let structures = 0;
     return matches.filter((item) => query.trim() || item.group !== "Structures" || ++structures <= 9)
-      .map((item, index) => ({ ...item, shortcut: item.group === "Structures" && index < 9 ? `⌘${index + 1}` : item.shortcut }));
+      .map((item, index) => ({ ...item, shortcut: item.group === "Structures" && index < 9 ? formatAccelerator(`CmdOrCtrl+${index + 1}`) : item.shortcut }));
   }, [actions, items, query]);
 
   const visibleGroups = useMemo(() => {

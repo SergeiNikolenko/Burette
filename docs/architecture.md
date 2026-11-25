@@ -3,7 +3,8 @@
 Burette is a windowed macOS desktop app built on a Tauri
 shell, plus a Swift Finder Quick Look extension, a source-built iPhone preview
 app, a hosted public plugin, and a packaged agent plugin — all for molecular
-structure files.
+structure files. The same Tauri shell also ships for Linux; the platform split
+is described below and in [Burette on Linux](linux.md).
 
 ## Repository Boundaries
 
@@ -314,6 +315,20 @@ build/Burette.app/Contents/PlugIns/BuretteThumbnail.appex
 
 Keep the identifiers stable unless doing an explicit Quick Look registration
 migration.
+
+## Linux Platform Boundary
+
+Linux builds compile the same Rust crate and frontend. AppKit, Quick Look,
+Sparkle and Metal code sits behind `#[cfg(target_os = "macos")]`, and each
+macOS-only command keeps its name with a Linux branch: a working equivalent
+(freedesktop Trash, Secret Service, GTK clipboard, desktop notifications,
+`systemd-inhibit`) or an `unsupported` result the frontend handles (native
+context-menu controls, tab and file drag, tab thumbnails). The frontend reads
+the platform once from `lib/platform.ts` and marks the shell with
+`data-platform`, which drives the opaque Linux surfaces, the leading chrome
+inset and Ctrl/Super shortcut labels. `tauri.linux.conf.json` overlays the
+bundle targets, Linux packaging files and resources; `scripts/build-linux.sh`
+builds the bundles.
 
 ## Documentation Graph
 

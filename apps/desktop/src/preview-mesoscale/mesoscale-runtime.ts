@@ -1791,13 +1791,15 @@ function installActionBridge(runtime: MesoscaleRuntimeApi) {
     if (envelope?.source === "burette-mesoscale-host") {
       const request = envelope as MesoscaleRequest;
       const expectedDocumentId = window.BuretteConfig?.documentId;
-      const reply = (result: MesoscaleResult) => (event.source as Window | null)?.postMessage({
-        source: "burette-mesoscale-runtime",
-        apiVersion: MESOSCALE_API_VERSION,
-        documentId: String(expectedDocumentId || ""),
-        requestId: request.requestId,
-        result,
-      }, "*");
+      const reply = (result: MesoscaleResult) => {
+        (event.source as Window | null)?.postMessage({
+          source: "burette-mesoscale-runtime",
+          apiVersion: MESOSCALE_API_VERSION,
+          documentId: String(expectedDocumentId || ""),
+          requestId: request.requestId,
+          result,
+        }, "*");
+      };
       if (event.source !== window.parent || request.apiVersion !== MESOSCALE_API_VERSION || request.documentId !== expectedDocumentId) {
         reply({ kind: "failure", code: "STALE_TARGET", message: "Mesoscale request target is stale or belongs to another document", revision: runtime.revision });
         return;
@@ -1830,10 +1832,12 @@ function installActionBridge(runtime: MesoscaleRuntimeApi) {
     }
     const body = envelope?.source === "burette-agent-host" ? envelope.body : envelope;
     if (body?.type !== "agent-action" || typeof body.id !== "string") return;
-    const reply = (result: Record<string, unknown>) => (event.source as Window | null)?.postMessage({
-      source: "burette-agent-viewer",
-      body: { type: "agent-action-result", id: body.id, result },
-    }, "*");
+    const reply = (result: Record<string, unknown>) => {
+      (event.source as Window | null)?.postMessage({
+        source: "burette-agent-viewer",
+        body: { type: "agent-action-result", id: body.id, result },
+      }, "*");
+    };
     const expectedDocumentId = window.BuretteConfig?.documentId;
     if (event.source !== window.parent || body.documentId && expectedDocumentId && body.documentId !== expectedDocumentId) {
       reply({ ok: false, error: { code: "STALE_TARGET", message: "Mesoscale action target is stale or belongs to another document" } });

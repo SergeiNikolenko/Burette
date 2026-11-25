@@ -2,9 +2,9 @@ use std::{num::NonZeroUsize, time::Instant};
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use burette_compute_core::{
-    build_tanimoto_umap_graph, build_tmap_layout, butina_clusters,
-    ChemicalSpaceMethod as NativeChemicalSpaceMethod, Fingerprint2048, GraphBuildOptions,
-    TanimotoKnnOptions, UmapOptions, FINGERPRINT_BYTES,
+    build_tanimoto_graph, build_tanimoto_knn, build_tanimoto_umap_graph, build_tmap_layout,
+    butina_clusters, optimize_embedding, ChemicalSpaceMethod as NativeChemicalSpaceMethod,
+    Fingerprint2048, GraphBuildOptions, TanimotoKnnOptions, UmapOptions, FINGERPRINT_BYTES,
 };
 use burette_compute_metal::{MetalTanimotoKnnExecution, MetalTanimotoRuntime};
 use burette_compute_protocol::{SimilarityCutoff, MAX_UNDIRECTED_SIMILARITY_EDGES};
@@ -12,7 +12,6 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     cluster_executor::valid_fingerprints,
-    coordinator::NativeMetalState,
     error::{ComputeCoordinatorError, ComputeResult},
     fingerprint_session::CompletedFingerprintBatch,
 };
@@ -55,6 +54,22 @@ impl From<ChemicalSpaceMethod> for NativeChemicalSpaceMethod {
     }
 }
 
+/// Numeric backend that executes one chemical-space request.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum ChemicalSpaceBackend<'a> {
+    NativeMetal(&'a MetalTanimotoRuntime),
+    ReferenceCpu,
+}
+
+impl ChemicalSpaceBackend<'_> {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::NativeMetal(_) => "nativeMetal",
+            Self::ReferenceCpu => "referenceCpu",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct ChemicalSpaceRequest {
@@ -87,6 +102,10 @@ pub(crate) struct ChemicalSpaceResult {
     pub(crate) backend: &'static str,
     pub(crate) tanimoto_gpu_time_ms: u64,
     pub(crate) embedding_gpu_time_ms: u64,
+    /// Wall time of the neighbor search; zero when a cached graph was reused.
+    pub(crate) tanimoto_host_time_ms: f64,
+    /// Wall time of the embedding optimizer; zero for TMAP.
+    pub(crate) embedding_host_time_ms: f64,
     pub(crate) layout_host_time_ms: f64,
     pub(crate) host_time_ms: f64,
 }
@@ -112,7 +131,9 @@ pub(crate) struct ChemicalSpaceClusterResult {
     pub(crate) cluster_ids: Vec<u64>,
     pub(crate) representative_source_record_ids: Vec<u64>,
     pub(crate) cluster_count: usize,
+    pub(crate) backend: &'static str,
     pub(crate) similarity_gpu_time_ms: u64,
+    pub(crate) similarity_host_time_ms: f64,
 }
 
 impl ChemicalSpaceRequest {
@@ -191,7 +212,7 @@ pub(crate) fn decode_knn_cache_payload(
 pub(crate) fn execute_learned_chemical_space_from_knn(
     source_record_ids: &[u64],
     failed_records: usize,
-    runtime: &MetalTanimotoRuntime,
+    backend: ChemicalSpaceBackend<'_>,
     request: ChemicalSpaceRequest,
     knn: &MetalTanimotoKnnExecution,
 ) -> ComputeResult<ChemicalSpaceResult> {
@@ -215,7 +236,7 @@ pub(crate) fn execute_learned_chemical_space_from_knn(
         &fingerprints,
         source_record_ids,
         failed_records,
-        runtime,
+        backend,
         request,
         Some(knn),
     )?
@@ -224,19 +245,11 @@ pub(crate) fn execute_learned_chemical_space_from_knn(
 
 pub(crate) fn execute_chemical_space(
     batch: &CompletedFingerprintBatch,
-    native_metal: &NativeMetalState,
+    backend: ChemicalSpaceBackend<'_>,
     request: ChemicalSpaceRequest,
     cached_knn: Option<&MetalTanimotoKnnExecution>,
 ) -> ComputeResult<ChemicalSpaceExecution> {
     let (fingerprints, valid_ordinals) = valid_fingerprints(batch)?;
-    let runtime = match native_metal {
-        NativeMetalState::Available(runtime) => runtime,
-        NativeMetalState::Unavailable { message, .. } => {
-            return Err(ComputeCoordinatorError::Unavailable(format!(
-                "Chemical-space Metal runtime is unavailable: {message}"
-            )))
-        }
-    };
     let source_record_ids = valid_ordinals
         .iter()
         .map(|ordinal| {
@@ -256,7 +269,7 @@ pub(crate) fn execute_chemical_space(
         &fingerprints,
         &source_record_ids,
         batch.errors.iter().filter(|error| error.is_some()).count(),
-        runtime,
+        backend,
         request,
         cached_knn,
     )
@@ -266,7 +279,7 @@ pub(crate) fn execute_chemical_space_from_fingerprints_with_knn(
     fingerprints: &[Fingerprint2048],
     source_record_ids: &[u64],
     failed_records: usize,
-    runtime: &MetalTanimotoRuntime,
+    backend: ChemicalSpaceBackend<'_>,
     request: ChemicalSpaceRequest,
     cached_knn: Option<&MetalTanimotoKnnExecution>,
 ) -> ComputeResult<ChemicalSpaceExecution> {
@@ -309,15 +322,21 @@ pub(crate) fn execute_chemical_space_from_fingerprints_with_knn(
                 && knn.similarities.len() == fingerprints.len() * neighbors
         })
         .cloned();
+    let knn_started = Instant::now();
     let (knn, tanimoto_gpu_time_ms) = if let Some(knn) = reused_knn {
         (knn, 0)
     } else {
-        let knn = runtime
-            .build_tanimoto_knn_profiled(fingerprints, knn_options)
-            .map_err(metal_error)?;
+        let knn = match backend {
+            ChemicalSpaceBackend::NativeMetal(runtime) => runtime
+                .build_tanimoto_knn_profiled(fingerprints, knn_options)
+                .map_err(metal_error)?,
+            ChemicalSpaceBackend::ReferenceCpu => reference_knn(fingerprints, knn_options)?,
+        };
         let gpu_time_ms = knn.gpu_time_ms;
         (knn, gpu_time_ms)
     };
+    let tanimoto_host_time_ms = knn_started.elapsed().as_secs_f64() * 1_000.0;
+    let embedding_started = Instant::now();
     let (positions, dimensions, tree_edges, embedding_gpu_time_ms, layout_host_time_ms) =
         if request.method == ChemicalSpaceMethod::Tmap {
             let layout_started = Instant::now();
@@ -347,27 +366,41 @@ pub(crate) fn execute_chemical_space_from_fingerprints_with_knn(
                 umap_options,
             )
             .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
-            let embedding = runtime
-                .optimize_embedding_profiled(
-                    &graph,
-                    umap_options,
-                    request.method.into(),
-                    request.max_memory_bytes,
-                )
-                .map_err(metal_error)?;
-            let positions = embedding
-                .positions
+            let (positions, gpu_time_ms) = match backend {
+                ChemicalSpaceBackend::NativeMetal(runtime) => {
+                    let embedding = runtime
+                        .optimize_embedding_profiled(
+                            &graph,
+                            umap_options,
+                            request.method.into(),
+                            request.max_memory_bytes,
+                        )
+                        .map_err(metal_error)?;
+                    (embedding.positions, embedding.gpu_time_ms)
+                }
+                ChemicalSpaceBackend::ReferenceCpu => (
+                    optimize_embedding(&graph, umap_options, request.method.into())
+                        .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?,
+                    0,
+                ),
+            };
+            let positions = positions
                 .into_iter()
                 .map(|position| [position[0], position[1], position[2]])
                 .collect();
             (
                 positions,
-                embedding.component_count,
+                umap_options.n_components(),
                 Vec::new(),
-                embedding.gpu_time_ms,
+                gpu_time_ms,
                 0.0,
             )
         };
+    let embedding_host_time_ms = if request.method == ChemicalSpaceMethod::Tmap {
+        0.0
+    } else {
+        embedding_started.elapsed().as_secs_f64() * 1_000.0
+    };
     let (neighbor_edges, neighbor_similarities) = undirected_neighbor_edges(
         fingerprints.len(),
         knn.neighbors_per_vertex,
@@ -386,9 +419,11 @@ pub(crate) fn execute_chemical_space_from_fingerprints_with_knn(
             neighbors,
             successful_records: fingerprints.len(),
             failed_records,
-            backend: "nativeMetal",
+            backend: backend.label(),
             tanimoto_gpu_time_ms,
             embedding_gpu_time_ms,
+            tanimoto_host_time_ms,
+            embedding_host_time_ms,
             layout_host_time_ms,
             host_time_ms: started.elapsed().as_secs_f64() * 1_000.0,
         },
@@ -399,7 +434,7 @@ pub(crate) fn execute_chemical_space_from_fingerprints_with_knn(
 pub(crate) fn cluster_chemical_space_from_fingerprints(
     fingerprints: &[Fingerprint2048],
     source_record_ids: &[u64],
-    runtime: &MetalTanimotoRuntime,
+    backend: ChemicalSpaceBackend<'_>,
     request: ChemicalSpaceClusterRequest,
 ) -> ComputeResult<ChemicalSpaceClusterResult> {
     if fingerprints.len() < 2 || fingerprints.len() != source_record_ids.len() {
@@ -427,15 +462,27 @@ pub(crate) fn cluster_chemical_space_from_fingerprints(
         request.max_memory_bytes,
     )
     .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
-    let graph_execution = runtime
-        .build_graph_profiled(fingerprints, cutoff, graph_options)
-        .map_err(metal_error)?;
+    let similarity_started = Instant::now();
+    let (graph, similarity_gpu_time_ms) = match backend {
+        ChemicalSpaceBackend::NativeMetal(runtime) => {
+            let execution = runtime
+                .build_graph_profiled(fingerprints, cutoff, graph_options)
+                .map_err(metal_error)?;
+            (execution.graph, execution.gpu_time_ms)
+        }
+        ChemicalSpaceBackend::ReferenceCpu => (
+            build_tanimoto_graph(fingerprints, cutoff, graph_options)
+                .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?,
+            0,
+        ),
+    };
+    let similarity_host_time_ms = similarity_started.elapsed().as_secs_f64() * 1_000.0;
     let butina_options = burette_compute_core::ButinaOptions::try_new(
         MAX_UNDIRECTED_SIMILARITY_EDGES,
         request.max_memory_bytes,
     )
     .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
-    let clusters = butina_clusters(&graph_execution.graph, butina_options)
+    let clusters = butina_clusters(&graph, butina_options)
         .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
     let mut cluster_ids = vec![u64::MAX; fingerprints.len()];
     let mut representatives = Vec::with_capacity(clusters.len());
@@ -457,7 +504,38 @@ pub(crate) fn cluster_chemical_space_from_fingerprints(
         cluster_ids,
         representative_source_record_ids: representatives,
         cluster_count: clusters.len(),
-        similarity_gpu_time_ms: graph_execution.gpu_time_ms,
+        backend: backend.label(),
+        similarity_gpu_time_ms,
+        similarity_host_time_ms,
+    })
+}
+
+/// Exact CPU Tanimoto kNN in the same row-major layout the Metal top-K returns.
+fn reference_knn(
+    fingerprints: &[Fingerprint2048],
+    options: TanimotoKnnOptions,
+) -> ComputeResult<MetalTanimotoKnnExecution> {
+    let knn = build_tanimoto_knn(fingerprints, options)
+        .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
+    let source_indices = knn
+        .source_indices()
+        .iter()
+        .map(|&index| u32::try_from(index))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| {
+            ComputeCoordinatorError::Validation(
+                "Chemical-space neighbor index exceeds the UInt32 row limit".into(),
+            )
+        })?;
+    Ok(MetalTanimotoKnnExecution {
+        source_indices,
+        similarities: knn
+            .counts()
+            .iter()
+            .map(|counts| counts.similarity() as f32)
+            .collect(),
+        neighbors_per_vertex: knn.neighbors_per_vertex(),
+        gpu_time_ms: 0,
     })
 }
 
@@ -522,4 +600,191 @@ fn metal_error(error: burette_compute_metal::MetalRuntimeError) -> ComputeCoordi
     ComputeCoordinatorError::Unavailable(format!(
         "native Metal chemical-space execution failed: {error}"
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use burette_compute_core::FINGERPRINT_WORDS;
+
+    const EMBEDDING_METHODS: [ChemicalSpaceMethod; 8] = [
+        ChemicalSpaceMethod::Umap,
+        ChemicalSpaceMethod::Tsne,
+        ChemicalSpaceMethod::Pacmap,
+        ChemicalSpaceMethod::Localmap,
+        ChemicalSpaceMethod::Trimap,
+        ChemicalSpaceMethod::Dreams,
+        ChemicalSpaceMethod::Cne,
+        ChemicalSpaceMethod::Mmae,
+    ];
+
+    /// Two families of fingerprints that share a family-specific core.
+    fn two_family_fingerprints() -> Vec<Fingerprint2048> {
+        (0_u64..24)
+            .map(|index| {
+                let mut words = [0_u64; FINGERPRINT_WORDS];
+                words[(index / 12) as usize] = u64::MAX;
+                words[2 + index as usize] = index.wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1;
+                Fingerprint2048::from_words(words)
+            })
+            .collect()
+    }
+
+    fn request(method: ChemicalSpaceMethod, dimensions: u32, epochs: u32) -> ChemicalSpaceRequest {
+        ChemicalSpaceRequest {
+            method,
+            dimensions,
+            neighbors: 6,
+            epochs,
+            min_dist: 0.1,
+            spread: 1.0,
+            learning_rate: 1.0,
+            negative_sample_rate: 5,
+            random_seed: 42,
+            max_memory_bytes: DEFAULT_MAX_MEMORY_BYTES,
+        }
+    }
+
+    fn run(
+        backend: ChemicalSpaceBackend<'_>,
+        fingerprints: &[Fingerprint2048],
+        request: ChemicalSpaceRequest,
+    ) -> ChemicalSpaceExecution {
+        let ids = (0..fingerprints.len() as u64).collect::<Vec<_>>();
+        execute_chemical_space_from_fingerprints_with_knn(
+            fingerprints,
+            &ids,
+            0,
+            backend,
+            request,
+            None,
+        )
+        .expect("chemical-space execution")
+    }
+
+    #[test]
+    fn reference_cpu_embeds_tmaps_and_clusters_without_metal() {
+        let fingerprints = two_family_fingerprints();
+        for method in EMBEDDING_METHODS
+            .into_iter()
+            .chain([ChemicalSpaceMethod::Tmap])
+        {
+            let execution = run(
+                ChemicalSpaceBackend::ReferenceCpu,
+                &fingerprints,
+                request(method, 2, 100),
+            );
+            let result = &execution.result;
+            assert_eq!(result.backend, "referenceCpu");
+            assert_eq!(result.positions.len(), fingerprints.len());
+            assert_eq!(
+                (result.tanimoto_gpu_time_ms, result.embedding_gpu_time_ms),
+                (0, 0)
+            );
+            assert!(result
+                .positions
+                .iter()
+                .flatten()
+                .all(|value| value.is_finite()));
+            // Each family's neighbors stay inside the family.
+            for (vertex, neighbors) in execution.knn.source_indices.chunks(6).enumerate() {
+                assert!(neighbors
+                    .iter()
+                    .all(|&neighbor| neighbor / 12 == vertex as u32 / 12));
+            }
+        }
+        let ids = (0..fingerprints.len() as u64).collect::<Vec<_>>();
+        let clusters = cluster_chemical_space_from_fingerprints(
+            &fingerprints,
+            &ids,
+            ChemicalSpaceBackend::ReferenceCpu,
+            ChemicalSpaceClusterRequest {
+                cutoff: 0.3,
+                max_memory_bytes: DEFAULT_MAX_MEMORY_BYTES,
+            },
+        )
+        .expect("CPU chemical-space clustering");
+        assert_eq!(clusters.backend, "referenceCpu");
+        assert_eq!(clusters.cluster_count, 2);
+        assert_eq!(&clusters.cluster_ids[..12], &[clusters.cluster_ids[0]; 12]);
+        assert_eq!(&clusters.cluster_ids[12..], &[clusters.cluster_ids[12]; 12]);
+    }
+
+    /// Compares the CPU reference with the Metal kernels.
+    ///
+    /// The kNN must match in rank order; similarities may differ by the Metal
+    /// float division (a few ULPs, about 6e-8 each near 1). Those ULPs move
+    /// fuzzy-graph weights across the epoch-sampling and pruning thresholds,
+    /// so the optimizers are compared on one shared graph. After one epoch the
+    /// two agree to a few ULPs; SGD then amplifies Metal fast-math `powr`,
+    /// `sqrt` and division differences (measured on an M2 Pro: at most 1e-5 of
+    /// the embedding extent after 10 epochs, 5e-3 after 20 for MMAE), so the
+    /// bound is relative to the extent over a short schedule.
+    #[test]
+    #[cfg(target_os = "macos")]
+    #[ignore = "manual real-GPU parity; set BURETTE_METAL_RUNTIME_ROOT"]
+    fn reference_cpu_matches_the_metal_chemical_space_kernels() {
+        let root = std::env::var_os("BURETTE_METAL_RUNTIME_ROOT")
+            .map(std::path::PathBuf::from)
+            .expect("BURETTE_METAL_RUNTIME_ROOT must name a packaged runtime");
+        let runtime =
+            MetalTanimotoRuntime::load(&root, &"0".repeat(64)).expect("load Metal runtime");
+        let fingerprints = two_family_fingerprints();
+        let neighbors = NonZeroUsize::new(6).expect("nonzero k");
+        let knn_options =
+            TanimotoKnnOptions::try_new(neighbors, DEFAULT_MAX_MEMORY_BYTES).expect("kNN options");
+        let metal_knn = runtime
+            .build_tanimoto_knn_profiled(&fingerprints, knn_options)
+            .expect("Metal kNN");
+        let cpu_knn = reference_knn(&fingerprints, knn_options).expect("CPU kNN");
+        assert_eq!(metal_knn.source_indices, cpu_knn.source_indices);
+        for (left, right) in metal_knn.similarities.iter().zip(&cpu_knn.similarities) {
+            assert!(
+                (left - right).abs() <= 1.0e-6,
+                "similarity {left} vs {right}"
+            );
+        }
+        for dimensions in [2, 3] {
+            let options =
+                UmapOptions::try_new(dimensions, 10, 0.1, 1.0, 1.0, 5, 42).expect("options");
+            let graph = build_tanimoto_umap_graph(
+                fingerprints.len(),
+                neighbors,
+                &metal_knn.source_indices,
+                &metal_knn.similarities,
+                options,
+            )
+            .expect("shared fuzzy graph");
+            for method in EMBEDDING_METHODS {
+                let metal = runtime
+                    .optimize_embedding_profiled(
+                        &graph,
+                        options,
+                        method.into(),
+                        DEFAULT_MAX_MEMORY_BYTES,
+                    )
+                    .expect("Metal embedding")
+                    .positions;
+                let cpu =
+                    optimize_embedding(&graph, options, method.into()).expect("CPU embedding");
+                let deviation = metal
+                    .iter()
+                    .flatten()
+                    .zip(cpu.iter().flatten())
+                    .map(|(left, right)| (left - right).abs())
+                    .fold(0.0_f32, f32::max);
+                let extent = metal
+                    .iter()
+                    .flatten()
+                    .fold(1.0_f32, |extent, value| extent.max(value.abs()));
+                eprintln!(
+                    "{method:?} {dimensions}D max |metal - cpu| = {deviation:e} (extent {extent})"
+                );
+                assert!(
+                    deviation <= 1.0e-4 * extent,
+                    "{method:?} {dimensions}D deviates by {deviation} at extent {extent}"
+                );
+            }
+        }
+    }
 }

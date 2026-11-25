@@ -1,7 +1,9 @@
+#[cfg(target_os = "macos")]
 use plist::Value;
 use serde::Serialize;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+#[cfg(target_os = "macos")]
 use std::process::Command;
 use tauri::{Manager, Runtime};
 
@@ -155,6 +157,7 @@ const GENERIC_CHEMICAL_EXTENSIONS: &[&str] = &[
     "xyz", "cube", "cub", "mae", "maegz", "cms", "gro", "xtc", "trr", "dcd", "pse", "pml",
 ];
 
+#[cfg(target_os = "macos")]
 const FINDER_APP_PATH: &str = "/System/Library/CoreServices/Finder.app";
 
 // Discovery and icon conversion can spawn sips; neither may block AppKit.
@@ -177,12 +180,13 @@ pub(crate) fn list_chemical_editor_targets<R: Runtime>(
 pub(crate) fn finder_icon_path<R: Runtime>(
     app: tauri::AppHandle<R>,
 ) -> Result<Option<String>, String> {
-    Ok(app_icon_png_path(
-        Path::new(FINDER_APP_PATH),
-        &app_icon_cache_dir(&app)?,
-        "finder",
-    )
-    .map(|path| path.to_string_lossy().into_owned()))
+    #[cfg(target_os = "macos")]
+    let file_manager = Some(PathBuf::from(FINDER_APP_PATH));
+    #[cfg(not(target_os = "macos"))]
+    let file_manager = desktop_entries::file_manager();
+    Ok(file_manager
+        .and_then(|path| app_icon_png_path(&path, &app_icon_cache_dir(&app).ok()?, "finder"))
+        .map(|path| path.to_string_lossy().into_owned()))
 }
 
 #[tauri::command(async)]
@@ -224,8 +228,11 @@ pub(crate) fn open_in_chemical_editor<R: Runtime>(
     if !app_path.exists() {
         return Err(format!("{} is no longer installed", target.name));
     }
-    tauri_plugin_opener::open_path(target_path, Some(target.app_path))
-        .map_err(|err| err.to_string())
+    #[cfg(target_os = "macos")]
+    return tauri_plugin_opener::open_path(target_path, Some(target.app_path))
+        .map_err(|err| err.to_string());
+    #[cfg(not(target_os = "macos"))]
+    desktop_entries::launch(&app_path, &target_path)
 }
 
 fn discover_targets_for_extensions(
@@ -246,6 +253,12 @@ fn discover_targets_for_extensions(
     targets
 }
 
+#[cfg(not(target_os = "macos"))]
+fn discover_installed_editors() -> Vec<InstalledEditor> {
+    desktop_entries::installed_editors()
+}
+
+#[cfg(target_os = "macos")]
 fn discover_installed_editors() -> Vec<InstalledEditor> {
     let mut candidates = Vec::new();
     for root in application_roots() {
@@ -257,6 +270,7 @@ fn discover_installed_editors() -> Vec<InstalledEditor> {
         .collect()
 }
 
+#[cfg(target_os = "macos")]
 fn application_roots() -> Vec<PathBuf> {
     let mut roots = vec![PathBuf::from("/Applications")];
     if let Some(home) = std::env::var_os("HOME") {
@@ -265,6 +279,7 @@ fn application_roots() -> Vec<PathBuf> {
     roots
 }
 
+#[cfg(target_os = "macos")]
 fn collect_apps(root: &Path, depth: u8, candidates: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(root) else {
         return;
@@ -282,6 +297,7 @@ fn collect_apps(root: &Path, depth: u8, candidates: &mut Vec<PathBuf>) {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn installed_editor_from_app(app_path: &Path) -> Option<InstalledEditor> {
     let info_path = app_path.join("Contents/Info.plist");
     let info = Value::from_file(&info_path).ok()?;
@@ -327,6 +343,7 @@ fn installed_editor_from_app(app_path: &Path) -> Option<InstalledEditor> {
     })
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn profile_for_app(bundle_id: Option<&str>, app_file_name: &str) -> Option<&'static EditorProfile> {
     EDITOR_PROFILES.iter().find(|profile| {
         bundle_id
@@ -344,6 +361,7 @@ fn profile_for_app(bundle_id: Option<&str>, app_file_name: &str) -> Option<&'sta
     })
 }
 
+#[cfg(target_os = "macos")]
 fn document_type_extensions(types: &[Value]) -> Vec<String> {
     let mut extensions = BTreeSet::new();
     for item in types {
@@ -465,6 +483,7 @@ fn is_generic_chemical_extension(extension: &str) -> bool {
         .any(|candidate| candidate == &extension)
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn is_burette_app_candidate(bundle_id: Option<&str>, app_file_name: &str) -> bool {
     bundle_id
         .map(|value| value.starts_with("com.local.Burette"))
@@ -489,6 +508,12 @@ fn app_icon_cache_dir<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, 
         .join("app-icons"))
 }
 
+#[cfg(not(target_os = "macos"))]
+fn app_icon_png_path(app_path: &Path, cache_dir: &Path, editor_id: &str) -> Option<PathBuf> {
+    desktop_entries::icon_path(app_path, cache_dir, editor_id)
+}
+
+#[cfg(target_os = "macos")]
 fn app_icon_png_path(app_path: &Path, cache_dir: &Path, editor_id: &str) -> Option<PathBuf> {
     let info_path = app_path.join("Contents/Info.plist");
     let info = Value::from_file(&info_path).ok()?;
@@ -566,8 +591,203 @@ fn default_application_path(path: &Path) -> Option<PathBuf> {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn default_application_path(_path: &Path) -> Option<PathBuf> {
-    None
+fn default_application_path(path: &Path) -> Option<PathBuf> {
+    desktop_entries::default_application(path)
+}
+
+/// Linux applications come from freedesktop desktop entries, read through GIO
+/// so `Exec` field codes, `TryExec` and the user's default handlers follow the
+/// same rules as the file manager.
+#[cfg(not(target_os = "macos"))]
+mod desktop_entries {
+    use super::{
+        has_generic_chemical_extension, stable_editor_id, EditorProfile, InstalledEditor,
+        EDITOR_PROFILES,
+    };
+    use gtk::gio::{self, prelude::*};
+    use std::path::{Path, PathBuf};
+
+    /// MIME types that desktop entries declare for formats Burette also opens.
+    const CHEMICAL_MIME_EXTENSIONS: &[(&str, &[&str])] = &[
+        ("chemical/x-pdb", &["pdb", "ent"]),
+        ("chemical/x-cif", &["cif"]),
+        ("chemical/x-mmcif", &["mmcif", "mcif"]),
+        ("chemical/x-mdl-sdfile", &["sdf", "sd"]),
+        ("chemical/x-mdl-molfile", &["mol"]),
+        ("chemical/x-mol2", &["mol2"]),
+        ("chemical/x-xyz", &["xyz"]),
+        ("chemical/x-gaussian-cube", &["cube", "cub"]),
+    ];
+    const ICON_SIZES: &[&str] = &["256x256", "128x128", "96x96", "64x64", "48x48"];
+
+    pub(super) fn installed_editors() -> Vec<InstalledEditor> {
+        gio::AppInfo::all()
+            .into_iter()
+            .filter_map(|info| info.downcast::<gio::DesktopAppInfo>().ok())
+            .filter_map(|info| editor(&info))
+            .collect()
+    }
+
+    fn editor(info: &gio::DesktopAppInfo) -> Option<InstalledEditor> {
+        let desktop_file = info.filename()?;
+        let name = info.name().to_string();
+        if name == "Burette" {
+            return None;
+        }
+        let desktop_id = info.id().map(|id| id.to_string());
+        let profile = desktop_id
+            .as_deref()
+            .and_then(profile_for_desktop_id)
+            .or_else(|| profile_for_name(&name));
+        let document_extensions: Vec<String> = info
+            .supported_types()
+            .iter()
+            .filter_map(|mime| {
+                CHEMICAL_MIME_EXTENSIONS
+                    .iter()
+                    .find(|(candidate, _)| *candidate == mime.as_str())
+            })
+            .flat_map(|(_, extensions)| extensions.iter().map(|extension| extension.to_string()))
+            .collect();
+        if profile.is_none() && !has_generic_chemical_extension(&document_extensions) {
+            return None;
+        }
+        Some(InstalledEditor {
+            id: stable_editor_id(
+                profile.map(|profile| profile.id).unwrap_or("generic"),
+                &desktop_file.to_string_lossy(),
+            ),
+            name,
+            bundle_id: desktop_id,
+            app_path: desktop_file,
+            document_extensions,
+            profile,
+        })
+    }
+
+    /// Flatpak and vendor packages name their desktop entries after the same
+    /// reverse-DNS identifiers the macOS bundles use.
+    fn profile_for_desktop_id(desktop_id: &str) -> Option<&'static EditorProfile> {
+        let desktop_id = desktop_id.strip_suffix(".desktop").unwrap_or(desktop_id);
+        EDITOR_PROFILES.iter().find(|profile| {
+            profile
+                .bundle_ids
+                .iter()
+                .any(|bundle_id| bundle_id.eq_ignore_ascii_case(desktop_id))
+        })
+    }
+
+    /// Desktop entry names carry vendor prefixes and versions ("UCSF ChimeraX",
+    /// "Avogadro2"), so the longest application name contained in the entry
+    /// wins.
+    fn profile_for_name(name: &str) -> Option<&'static EditorProfile> {
+        let name = normalized(name);
+        EDITOR_PROFILES
+            .iter()
+            .flat_map(|profile| {
+                profile
+                    .app_names
+                    .iter()
+                    .map(|app_name| app_name.trim_end_matches(".app"))
+                    .chain([profile.name])
+                    .map(move |app_name| (profile, normalized(app_name)))
+            })
+            .filter(|(_, app_name)| app_name.len() >= 4 && name.contains(app_name))
+            .max_by_key(|(_, app_name)| app_name.len())
+            .map(|(profile, _)| profile)
+    }
+
+    fn normalized(value: &str) -> String {
+        value
+            .chars()
+            .filter(char::is_ascii_alphanumeric)
+            .map(|character| character.to_ascii_lowercase())
+            .collect()
+    }
+
+    pub(super) fn launch(desktop_file: &Path, target: &Path) -> Result<(), String> {
+        let info = gio::DesktopAppInfo::from_filename(desktop_file)
+            .ok_or_else(|| format!("{} is not a desktop entry", desktop_file.display()))?;
+        info.launch(
+            &[gio::File::for_path(target)],
+            None::<&gio::AppLaunchContext>,
+        )
+        .map_err(|error| error.to_string())
+    }
+
+    pub(super) fn default_application(path: &Path) -> Option<PathBuf> {
+        let (content_type, _) = gio::content_type_guess(Some(path), &[]);
+        default_for_type(&content_type)
+    }
+
+    pub(super) fn file_manager() -> Option<PathBuf> {
+        default_for_type("inode/directory")
+    }
+
+    fn default_for_type(content_type: &str) -> Option<PathBuf> {
+        gio::AppInfo::default_for_type(content_type, false)?
+            .downcast::<gio::DesktopAppInfo>()
+            .ok()?
+            .filename()
+    }
+
+    /// Copies the entry's icon into the cache, the only place outside the
+    /// bundle the webview may load images from.
+    pub(super) fn icon_path(desktop_file: &Path, cache_dir: &Path, id: &str) -> Option<PathBuf> {
+        let icon = gio::DesktopAppInfo::from_filename(desktop_file)?.string("Icon")?;
+        let source = icon_file(icon.as_str())?;
+        let extension = source.extension()?.to_str()?;
+        std::fs::create_dir_all(cache_dir).ok()?;
+        let output = cache_dir.join(format!("{id}.{extension}"));
+        if !output.exists() {
+            std::fs::copy(&source, &output).ok()?;
+        }
+        Some(output)
+    }
+
+    fn icon_file(icon: &str) -> Option<PathBuf> {
+        let path = Path::new(icon);
+        if path.is_absolute() {
+            return path.is_file().then(|| path.to_path_buf());
+        }
+        let mut roots = vec![gtk::glib::user_data_dir()];
+        roots.extend(gtk::glib::system_data_dirs());
+        for root in &roots {
+            let theme = root.join("icons/hicolor");
+            let candidates = ICON_SIZES
+                .iter()
+                .map(|size| theme.join(size).join("apps").join(format!("{icon}.png")))
+                .chain([theme.join(format!("scalable/apps/{icon}.svg"))]);
+            if let Some(found) = candidates.into_iter().find(|candidate| candidate.is_file()) {
+                return Some(found);
+            }
+        }
+        ["png", "svg"]
+            .iter()
+            .map(|extension| PathBuf::from(format!("/usr/share/pixmaps/{icon}.{extension}")))
+            .find(|candidate| candidate.is_file())
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::{profile_for_desktop_id, profile_for_name};
+
+        #[test]
+        fn desktop_entry_names_match_editor_profiles() {
+            let id = |name| profile_for_name(name).map(|profile| profile.id);
+            assert_eq!(id("UCSF ChimeraX"), Some("chimerax"));
+            assert_eq!(id("Avogadro2"), Some("avogadro"));
+            assert_eq!(id("PyMOL-RS"), Some("pymol-rs"));
+            assert_eq!(id("PyMOL"), Some("pymol"));
+            // Mol*'s three-letter name would match Molden, MolView and others.
+            assert_eq!(id("Molden"), None);
+            assert_eq!(
+                profile_for_desktop_id("org.openmolecules.datawarrior.desktop")
+                    .map(|profile| profile.id),
+                Some("datawarrior")
+            );
+        }
+    }
 }
 
 #[cfg(test)]

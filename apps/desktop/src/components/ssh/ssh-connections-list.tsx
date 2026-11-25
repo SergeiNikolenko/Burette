@@ -1,5 +1,6 @@
 import { useRef, useState, type RefObject } from "react";
 import type { SshConnection } from "../../lib/ssh-projects";
+import { isMacPlatform } from "../../lib/platform";
 import { NativeDropdownMenu } from "../native-dropdown-menu";
 import { DotsHorizontal, SidebarGlobe } from "../ui/app-icons";
 import { Button, ButtonStyleContext } from "../ui/button";
@@ -17,7 +18,7 @@ type ConnectionActions = {
 export function SshConnectionsList({ connections, onAdd, ...actions }: ConnectionActions & { connections: SshConnection[]; onAdd: () => void }) {
   const addButton = useRef<HTMLButtonElement>(null);
   return <section className="ssh-connections" aria-label="SSH connections">
-    <div className="ssh-connections-header"><h2>SSH connections from this Mac</h2>
+    <div className="ssh-connections-header"><h2>SSH connections from this {isMacPlatform() ? "Mac" : "computer"}</h2>
       {/* Codex section actions are the small primary app pill. */}
       <ButtonStyleContext value="app"><Button ref={addButton} size="xs" className="rounded-full text-sm leading-[18px]" onClick={onAdd}>Add</Button></ButtonStyleContext>
     </div>
