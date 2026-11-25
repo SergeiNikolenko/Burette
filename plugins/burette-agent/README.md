@@ -116,10 +116,21 @@ with:
 bun run build:agent-shell
 ```
 
+For a transport-only correction with existing browser and preview assets, rebuild
+the bundled runtime scripts from their repository sources without rebuilding UI:
+
+```bash
+node scripts/build-agent-shell-plugin.mjs --runtime-scripts-only
+```
+
+Session JSON writes use a temporary file and atomic replacement, so HTTP readers
+and CLI readers cannot observe a truncated action or observation document.
+
 That command writes the runtime files into the plugin bundle:
 
 - `plugins/burette-agent/scripts/burette-agent.mjs`
 - `plugins/burette-agent/scripts/agent-shell-server.mjs`
+- `plugins/burette-agent/scripts/agent-session-atomic-file.mjs`
 - `plugins/burette-agent/scripts/agent-preview.mjs`
 - `plugins/burette-agent/browser-shell-dist/`
 - `plugins/burette-agent/preview-web/`

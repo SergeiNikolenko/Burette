@@ -2,7 +2,7 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, open as openFile, readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, open as openFile, readFile, readdir, realpath, stat } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { homedir, tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +10,7 @@ import { delimiter, dirname, resolve } from 'node:path';
 import { validateMvsDocumentFile, validateMvsStoryFile, writeMvsStoryFile } from './mvs-story.mjs';
 import { instantiateMvsStoryTemplate, listMvsStoryTemplates } from './mvs-story-templates.mjs';
 import { getOfficialMvsAuthoringReference } from './mvs-schema-validator.mjs';
+import { writeAgentSessionJson } from './agent-session-atomic-file.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
@@ -1123,7 +1124,7 @@ async function readJsonFile(path, fallback) {
 }
 
 async function writeJsonFile(path, value) {
-  await writeFile(path, `${JSON.stringify(value, null, 2)}\n`);
+  await writeAgentSessionJson(path, value);
 }
 
 function buildAgentUrl(input, pathname) {

@@ -8,6 +8,7 @@ import { homedir } from 'node:os';
 import { gunzipSync } from 'node:zlib';
 import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { writeAgentSessionJson } from './agent-session-atomic-file.mjs';
 
 const TEXT_FILE_READ_LIMIT = 12 * 1024 * 1024;
 const DEV_FILE_SIZE_LIMIT = 75 * 1024 * 1024;
@@ -357,7 +358,7 @@ async function handleAgentSession(req, res, method, url) {
       return;
     }
     const body = await readJsonBody(req);
-    await writeFile(filePath, `${JSON.stringify(body, null, 2)}\n`);
+    await writeAgentSessionJson(filePath, body);
     sendJson(res, 200, { ok: true });
     return;
   }

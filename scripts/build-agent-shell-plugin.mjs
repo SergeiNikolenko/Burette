@@ -11,6 +11,7 @@ const shellDist = resolve(pluginRoot, 'browser-shell-dist');
 const previewWeb = resolve(pluginRoot, 'preview-web');
 const mcpLibDir = resolve(pluginRoot, 'mcp/lib');
 const runtimeScripts = [
+  'agent-session-atomic-file.mjs',
   'amber_nc_preview_extract.py',
   'agent-preview.mjs',
   'agent-shell-server.mjs',
@@ -18,6 +19,9 @@ const runtimeScripts = [
   'mvs-story.mjs',
   'mvs-story-templates.mjs',
 ];
+if (process.argv.slice(2).some(argument => argument !== '--runtime-scripts-only')) {
+  throw new Error('Only --runtime-scripts-only or no arguments are supported.');
+}
 const requiredPreviewAssets = [
   'viewer.js',
   'viewer-bootstrap.js',
@@ -39,13 +43,18 @@ const requiredPreviewAssets = [
   'rdkit/RDKit_minimal.wasm',
 ];
 
-await rm(shellDist, { recursive: true, force: true });
-await rm(previewWeb, { recursive: true, force: true });
 await mkdir(resolve(pluginRoot, 'scripts'), { recursive: true });
 
 for (const script of runtimeScripts) {
   await cp(resolve(repoRoot, 'scripts', script), resolve(pluginRoot, 'scripts', script));
 }
+// A transport-only correction does not require rebuilding unchanged UI assets.
+if (process.argv.includes('--runtime-scripts-only')) {
+  console.log('Updated bundled runtime scripts; existing browser/preview assets retained.');
+  process.exit(0);
+}
+await rm(shellDist, { recursive: true, force: true });
+await rm(previewWeb, { recursive: true, force: true });
 const storyTemplateAssets = resolve(pluginRoot, 'assets', 'mvs-story-templates');
 await rm(storyTemplateAssets, { recursive: true, force: true });
 await cp(resolve(repoRoot, 'templates', 'mvs-story'), storyTemplateAssets, { recursive: true });
