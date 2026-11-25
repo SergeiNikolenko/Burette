@@ -164,7 +164,7 @@ pub(crate) fn create_xyzrender_artifact(
         input_path
     };
     let orientation_ref_path = write_orientation_ref(orientation_ref_text, &orientation_ref_path)?;
-    let (mut status, mut log) = run_xyzrender_command(
+    let (mut success, mut exit_code, mut log) = run_xyzrender_cli_or_command(
         &executable,
         build_xyzrender_args(
             effective_input_path,
@@ -177,13 +177,10 @@ pub(crate) fn create_xyzrender_artifact(
         &log_path,
         XYZRENDER_TIMEOUT,
     )?;
-    if orientation_ref_path.is_some()
-        && !status.success()
-        && xyzrender_ref_unsupported_for_periodic(&log)
-    {
+    if orientation_ref_path.is_some() && !success && xyzrender_ref_unsupported_for_periodic(&log) {
         let _ = fs::remove_file(&output_path);
         let _ = fs::remove_file(&log_path);
-        let (retry_status, retry_log) = run_xyzrender_command(
+        let (retry_success, retry_code, retry_log) = run_xyzrender_cli_or_command(
             &executable,
             build_xyzrender_args(
                 effective_input_path,
@@ -196,17 +193,18 @@ pub(crate) fn create_xyzrender_artifact(
             &log_path,
             XYZRENDER_TIMEOUT,
         )?;
-        status = retry_status;
+        success = retry_success;
+        exit_code = retry_code;
         log = format!(
             "{}\n[burette] Retried without --ref because xyzrender does not support --ref for periodic structures.\n{}",
             log, retry_log
         );
         let _ = fs::write(&log_path, &log);
     }
-    if !status.success() {
+    if !success {
         return Err(format!(
             "External xyzrender failed with exit status {}. {}",
-            status.code().unwrap_or(-1),
+            exit_code.unwrap_or(-1),
             truncate_text(&log, 320)
         ));
     }
@@ -484,6 +482,9 @@ pub(crate) enum XyzrenderWarmup {
 
 pub(crate) fn warmup_renderer(scope: XyzrenderWarmup) {
     let desired_workers = match scope {
+        #[cfg(windows)]
+        XyzrenderWarmup::Startup => 1,
+        #[cfg(not(windows))]
         XyzrenderWarmup::Startup => 2,
         XyzrenderWarmup::Grid => usize::MAX,
     };
@@ -1654,6 +1655,21 @@ fn split_command_line(value: &str) -> Vec<String> {
         tokens.push(current);
     }
     tokens
+}
+
+fn run_xyzrender_cli_or_command(
+    executable: &Path,
+    args: Vec<String>,
+    log_path: &Path,
+    timeout: Duration,
+) -> Result<(bool, Option<i32>, String), String> {
+    if let Some(launch) = xyzrender_worker_launch(executable) {
+        let outcome = super::xyzrender_pool::run_cli(&launch, &args, timeout)?;
+        let _ = fs::write(log_path, &outcome.log);
+        return Ok((outcome.success, outcome.status, outcome.log));
+    }
+    let (status, log) = run_xyzrender_command(executable, args, log_path, timeout)?;
+    Ok((status.success(), status.code(), log))
 }
 
 fn run_xyzrender_command(

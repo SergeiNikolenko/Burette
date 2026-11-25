@@ -2235,49 +2235,29 @@ body.buret-grid-rail-dragging .buret-grid-rail-tick-pill {
 .buret-card-resize-handle-x {
   top: 0;
   right: 0;
-  bottom: 0;
-  width: 16px;
+  bottom: 18px;
+  width: 6px;
   cursor: col-resize;
 }
 
 .buret-card-resize-handle-y {
-  right: 0;
+  right: 18px;
   bottom: 0;
   left: 0;
-  height: 16px;
+  height: 6px;
   cursor: row-resize;
 }
 
 .buret-card-resize-handle-xy {
   right: 0;
   bottom: 0;
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
   cursor: nwse-resize;
 }
 
-.buret-card-resize-handle-x::after {
-  position: absolute;
-  top: 30%;
-  right: 4px;
-  bottom: 30%;
-  width: 3px;
-  border-radius: 999px;
-  background: var(--buret-border-strong);
-  content: "";
-}
-
-.buret-card-resize-handle-y::after {
-  position: absolute;
-  right: 30%;
-  bottom: 4px;
-  left: 30%;
-  height: 3px;
-  border-radius: 999px;
-  background: var(--buret-border-strong);
-  content: "";
-}
-
+/* Only show the bottom-right corner grip on hover; vertical/horizontal bars
+   along card edges read as broken scrollbars over truncated card metadata. */
 .buret-card-resize-handle-xy::after {
   position: absolute;
   right: 4px;
@@ -2290,21 +2270,17 @@ body.buret-grid-rail-dragging .buret-grid-rail-tick-pill {
   content: "";
 }
 
-.buret-card:hover .buret-card-resize-handle,
+.buret-card:hover .buret-card-resize-handle-xy {
+  opacity: 0.72;
+}
+
+.buret-card-resize-handle-xy:hover,
 .buret-card-resize-handle:focus-visible,
 .buret-card.buret-card-resizing .buret-card-resize-handle {
   opacity: 1;
 }
 
-/* Gray grips darken under the pointer or while dragging. */
-.buret-card-resize-handle-x:is(:hover, :focus-visible)::after,
-.buret-card-resize-handle-y:is(:hover, :focus-visible)::after,
-.buret-card.buret-card-resizing[data-buret-grid-resize-axis="x"] .buret-card-resize-handle-x::after,
-.buret-card.buret-card-resizing[data-buret-grid-resize-axis="y"] .buret-card-resize-handle-y::after,
-.buret-card.buret-card-resizing[data-buret-grid-resize-axis="xy"] :is(.buret-card-resize-handle-x, .buret-card-resize-handle-y)::after {
-  background: var(--buret-muted);
-}
-
+/* Corner grip darkens under the pointer or while dragging. */
 .buret-card-resize-handle-xy:is(:hover, :focus-visible)::after,
 .buret-card.buret-card-resizing[data-buret-grid-resize-axis="xy"] .buret-card-resize-handle-xy::after {
   border-color: var(--buret-muted);

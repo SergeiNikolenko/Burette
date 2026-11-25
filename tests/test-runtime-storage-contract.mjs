@@ -55,6 +55,7 @@ assert.deepEqual(storageConstants(viewer), sortedPairs([
 ]));
 
 assert.deepEqual(storageConstants(gridViewer), sortedPairs([
+  ["CARD_HIDDEN_PROPERTIES_STORAGE_KEY", "buret.grid.cardHiddenProperties"],
   ["CARD_MIN_STORAGE_KEY", "buret.grid.cardMin"],
   ["CARD_RENDERER_STORAGE_KEY", "buret.grid.cardRenderer"],
   ["CLUSTER_CUTOFF_STORAGE_KEY", "buret.grid.clusterCutoff"],

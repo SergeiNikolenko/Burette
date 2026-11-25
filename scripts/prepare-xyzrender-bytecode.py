@@ -33,7 +33,7 @@ def main():
     if len(sites) != 1:
         raise ValueError("Expected one staged renderer site-packages directory")
     sys.path.insert(0, str(sites[0]))
-    from xyzrender import load, render
+    from xyzrender import cli, load, render  # noqa: F401
     from rdkit.Chem import rdDistGeom, rdForceFieldHelpers  # noqa: F401
 
     # Exercise the public renderer entry point, including its lazy imports. Only

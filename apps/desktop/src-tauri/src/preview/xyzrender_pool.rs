@@ -19,7 +19,14 @@ const WORKER_STDERR_CAPTURE_BYTES: usize = 8 * 1024;
 const WORKER_IDLE_TIMEOUT: Duration = Duration::from_secs(120);
 const WORKER_REAP_INTERVAL: Duration = Duration::from_secs(30);
 const WORKER_MIN_COUNT: usize = 2;
+#[cfg(windows)]
+const WORKER_MAX_COUNT: usize = 4;
+#[cfg(not(windows))]
 const WORKER_MAX_COUNT: usize = 6;
+#[cfg(windows)]
+const MAX_CONCURRENT_SPAWNS: usize = 2;
+#[cfg(not(windows))]
+const MAX_CONCURRENT_SPAWNS: usize = 4;
 
 pub(super) struct XyzrenderWorkerLaunch {
     pub(super) program: PathBuf,
@@ -81,6 +88,7 @@ struct WorkerResponse {
 
 pub(super) struct XyzrenderCliOutcome {
     pub(super) success: bool,
+    pub(super) status: Option<i32>,
     pub(super) log: String,
 }
 
@@ -100,29 +108,41 @@ pub(super) fn render_cards(
     ensure_idle_worker_reaper();
     pool.discard_stale_workers(&launch.signature);
     let lanes = jobs.len().min(pool.capacity);
+    pool.ensure_workers(launch, lanes);
     let queue = Mutex::new(VecDeque::from(jobs));
     let outcomes = Mutex::new(Vec::new());
+    let spawn_error: Mutex<Option<String>> = Mutex::new(None);
     thread::scope(|scope| {
         for _ in 0..lanes {
             scope.spawn(|| {
                 let mut worker: Option<Worker> = None;
+                let mut respawned_after_failure = false;
                 loop {
-                    let Some(job) = queue
-                        .lock()
-                        .unwrap_or_else(|err| err.into_inner())
-                        .pop_front()
-                    else {
-                        break;
-                    };
                     if worker.is_none() {
-                        match pool.acquire(launch) {
-                            Ok(value) => worker = Some(value),
-                            Err(error) => {
-                                push_outcome(&outcomes, failed_outcome(&job, &error));
+                        match pool.acquire_while_pending(&queue) {
+                            AcquireOutcome::Worker(value) => worker = Some(value),
+                            AcquireOutcome::QueueEmpty => break,
+                            AcquireOutcome::Failed(error) => {
+                                let mut slot =
+                                    spawn_error.lock().unwrap_or_else(|err| err.into_inner());
+                                if slot.is_none() {
+                                    *slot = Some(error);
+                                }
                                 break;
                             }
                         }
                     }
+                    let (job, queue_now_empty) = {
+                        let mut pending = queue.lock().unwrap_or_else(|err| err.into_inner());
+                        let next = pending.pop_front();
+                        (next, pending.is_empty())
+                    };
+                    if queue_now_empty {
+                        pool.available.notify_all();
+                    }
+                    let Some(job) = job else {
+                        break;
+                    };
                     let Some(active) = worker.as_mut() else { break };
                     match active.render(&job) {
                         Ok(outcome) => push_outcome(&outcomes, outcome),
@@ -133,6 +153,10 @@ pub(super) fn render_cards(
                             push_outcome(&outcomes, failed_outcome(&job, &error));
                             if let Some(broken) = worker.take() {
                                 pool.discard(broken);
+                            }
+                            if !respawned_after_failure && !queue_now_empty {
+                                respawned_after_failure = true;
+                                pool.ensure_workers(launch, 1);
                             }
                         }
                     }
@@ -145,11 +169,12 @@ pub(super) fn render_cards(
     });
     let mut results = outcomes.into_inner().unwrap_or_else(|err| err.into_inner());
     let remaining = queue.into_inner().unwrap_or_else(|err| err.into_inner());
+    let fallback_error = spawn_error
+        .into_inner()
+        .unwrap_or_else(|err| err.into_inner())
+        .unwrap_or_else(|| "No xyzrender worker was available for this card.".to_string());
     for job in remaining {
-        results.push(failed_outcome(
-            &job,
-            "No xyzrender worker was available for this card.",
-        ));
+        results.push(failed_outcome(&job, &fallback_error));
     }
     results
 }
@@ -183,6 +208,7 @@ pub(super) fn run_cli(
             }
             Ok(XyzrenderCliOutcome {
                 success: response.status == Some(0),
+                status: response.status,
                 log: response.log.unwrap_or_default(),
             })
         }
@@ -201,25 +227,7 @@ pub(super) fn warmup(launch: XyzrenderWorkerLaunch, desired_workers: usize) {
     }
     let pool = pool();
     ensure_idle_worker_reaper();
-    let (generation, count) = pool.reserve_warmup(&launch.signature, desired_workers);
-    if count == 0 {
-        return;
-    }
-    thread::spawn(move || {
-        thread::scope(|scope| {
-            for _ in 0..count {
-                let launch = &launch;
-                scope.spawn(move || match spawn_worker(launch, generation) {
-                    Ok(worker) => pool.release(worker),
-                    Err(_) => {
-                        let mut state = pool.state.lock().unwrap_or_else(|err| err.into_inner());
-                        state.live = state.live.saturating_sub(1);
-                        pool.available.notify_all();
-                    }
-                });
-            }
-        });
-    });
+    pool.ensure_workers_owned(launch, desired_workers);
 }
 
 pub(super) fn shutdown() {
@@ -264,6 +272,8 @@ fn pool() -> &'static Pool {
             generation: 0,
             idle: Vec::new(),
             live: 0,
+            spawning: 0,
+            last_spawn_error: None,
         }),
         available: Condvar::new(),
         capacity: worker_capacity(),
@@ -299,6 +309,14 @@ struct PoolState {
     generation: u64,
     idle: Vec<IdleWorker>,
     live: usize,
+    spawning: usize,
+    last_spawn_error: Option<String>,
+}
+
+enum AcquireOutcome {
+    Worker(Worker),
+    QueueEmpty,
+    Failed(String),
 }
 
 struct IdleWorker {
@@ -307,12 +325,100 @@ struct IdleWorker {
 }
 
 impl Pool {
+    fn ensure_workers(&self, launch: &XyzrenderWorkerLaunch, desired_workers: usize) {
+        let owned = XyzrenderWorkerLaunch {
+            program: launch.program.clone(),
+            envs: launch.envs.clone(),
+            signature: launch.signature.clone(),
+        };
+        self.ensure_workers_owned(owned, desired_workers);
+    }
+
+    fn ensure_workers_owned(&self, launch: XyzrenderWorkerLaunch, desired_workers: usize) {
+        if SHUTTING_DOWN.load(Ordering::Acquire) {
+            return;
+        }
+        let (generation, count) = self.reserve_warmup(&launch.signature, desired_workers);
+        if count == 0 {
+            return;
+        }
+        let launch = Arc::new(launch);
+        // Bound simultaneous cold Python startups (especially on Windows where
+        // concurrent interpreter imports contend on disk I/O and Defender) so
+        // the first warm worker becomes ready as quickly as possible.
+        let concurrency = count.min(MAX_CONCURRENT_SPAWNS);
+        let remaining = Arc::new(Mutex::new(count));
+        for _ in 0..concurrency {
+            let launch = Arc::clone(&launch);
+            let remaining = Arc::clone(&remaining);
+            thread::spawn(move || {
+                let pool = pool();
+                loop {
+                    let should_spawn = {
+                        let mut left = remaining.lock().unwrap_or_else(|err| err.into_inner());
+                        if *left == 0 {
+                            false
+                        } else {
+                            *left -= 1;
+                            true
+                        }
+                    };
+                    if !should_spawn {
+                        break;
+                    }
+                    if SHUTTING_DOWN.load(Ordering::Acquire) {
+                        pool.finish_failed_spawn(
+                            generation,
+                            "xyzrender pool is shutting down".into(),
+                        );
+                        continue;
+                    }
+                    match spawn_worker(&launch, generation) {
+                        Ok(worker) => pool.finish_spawned_worker(worker),
+                        Err(error) => pool.finish_failed_spawn(generation, error),
+                    }
+                }
+            });
+        }
+    }
+
+    fn finish_spawned_worker(&self, worker: Worker) {
+        let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
+        state.spawning = state.spawning.saturating_sub(1);
+        if SHUTTING_DOWN.load(Ordering::Acquire) || worker.generation != state.generation {
+            state.live = state.live.saturating_sub(1);
+            drop(state);
+            worker.kill();
+            self.available.notify_all();
+            return;
+        }
+        state.last_spawn_error = None;
+        state.idle.push(IdleWorker {
+            worker,
+            since: Instant::now(),
+        });
+        drop(state);
+        self.available.notify_all();
+    }
+
+    fn finish_failed_spawn(&self, generation: u64, error: String) {
+        let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
+        state.spawning = state.spawning.saturating_sub(1);
+        state.live = state.live.saturating_sub(1);
+        if state.generation == generation {
+            state.last_spawn_error = Some(error);
+        }
+        drop(state);
+        self.available.notify_all();
+    }
+
     fn reserve_warmup(&self, signature: &str, desired_workers: usize) -> (u64, usize) {
         let (generation, count, stale) = {
             let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
             let stale = if state.signature != signature {
                 state.signature = signature.to_string();
                 state.generation = state.generation.wrapping_add(1);
+                state.last_spawn_error = None;
                 let drained = std::mem::take(&mut state.idle);
                 state.live = state.live.saturating_sub(drained.len());
                 drained
@@ -323,6 +429,7 @@ impl Pool {
                 .min(self.capacity)
                 .saturating_sub(state.live);
             state.live += count;
+            state.spawning += count;
             (state.generation, count, stale)
         };
         let had_stale = !stale.is_empty();
@@ -342,6 +449,7 @@ impl Pool {
         }
         state.signature = signature.to_string();
         state.generation = state.generation.wrapping_add(1);
+        state.last_spawn_error = None;
         let stale = std::mem::take(&mut state.idle);
         state.live = state.live.saturating_sub(stale.len());
         drop(state);
@@ -372,6 +480,36 @@ impl Pool {
         }
     }
 
+    fn acquire_while_pending(&self, queue: &Mutex<VecDeque<XyzrenderCardJob>>) -> AcquireOutcome {
+        let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
+        loop {
+            if SHUTTING_DOWN.load(Ordering::Acquire) {
+                return AcquireOutcome::Failed("xyzrender pool is shutting down".to_string());
+            }
+            let empty = queue
+                .lock()
+                .unwrap_or_else(|err| err.into_inner())
+                .is_empty();
+            if empty {
+                return AcquireOutcome::QueueEmpty;
+            }
+            if let Some(idle) = state.idle.pop() {
+                return AcquireOutcome::Worker(idle.worker);
+            }
+            if state.live == 0 {
+                return AcquireOutcome::Failed(
+                    state.last_spawn_error.clone().unwrap_or_else(|| {
+                        "No xyzrender worker was available for this card.".into()
+                    }),
+                );
+            }
+            state = self
+                .available
+                .wait(state)
+                .unwrap_or_else(|err| err.into_inner());
+        }
+    }
+
     fn acquire(&self, launch: &XyzrenderWorkerLaunch) -> Result<Worker, String> {
         let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
         loop {
@@ -380,13 +518,21 @@ impl Pool {
             }
             if state.live < self.capacity {
                 state.live += 1;
+                state.spawning += 1;
                 let generation = state.generation;
                 drop(state);
-                return spawn_worker(launch, generation).inspect_err(|_| {
-                    let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
-                    state.live = state.live.saturating_sub(1);
-                    self.available.notify_one();
-                });
+                match spawn_worker(launch, generation) {
+                    Ok(worker) => {
+                        let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
+                        state.spawning = state.spawning.saturating_sub(1);
+                        state.last_spawn_error = None;
+                        return Ok(worker);
+                    }
+                    Err(error) => {
+                        self.finish_failed_spawn(generation, error.clone());
+                        return Err(error);
+                    }
+                }
             }
             state = self
                 .available
@@ -517,6 +663,13 @@ fn spawn_worker(launch: &XyzrenderWorkerLaunch, generation: u64) -> Result<Worke
     let helper_path = write_worker_helper()?;
     let mut command = crate::preview::runtime_utils::background_command(&launch.program);
     command.arg(helper_path);
+    // Keep BLAS/OpenMP single-threaded inside each pooled worker so multiple
+    // workers do not spawn dozens of competing threads per process on Windows.
+    command
+        .env("OPENBLAS_NUM_THREADS", "1")
+        .env("OMP_NUM_THREADS", "1")
+        .env("MKL_NUM_THREADS", "1")
+        .env("NUMEXPR_NUM_THREADS", "1");
     for (key, value) in &launch.envs {
         command.env(key, value);
     }
@@ -682,17 +835,16 @@ def draw(request):
 
 def use_frame_pool():
     # xyzrender opens a new spawn pool for every GIF, so each animation paid for
-    # importing the render stack in every frame process. Keep one pool per
-    # warm worker; the frames still come from xyzrender's own frame functions.
-    global frame_pool
+    # importing the render stack in every frame process. Keep one pool per warm
+    # worker, created lazily only when a GIF animation actually renders frames.
     from xyzrender import gif
 
-    if frame_pool is None:
-        import multiprocessing
-
-        frame_pool = multiprocessing.get_context("spawn").Pool(ANIMATION_FRAME_PROCESSES)
-
     def parallel_render(worker, items, total):
+        global frame_pool
+        if frame_pool is None:
+            import multiprocessing
+
+            frame_pool = multiprocessing.get_context("spawn").Pool(ANIMATION_FRAME_PROCESSES)
         pngs = [b""] * total
         for index, png in frame_pool.imap_unordered(worker, items, chunksize=4):
             pngs[index] = png
@@ -765,3 +917,41 @@ def serve():
 if __name__ == "__main__":
     serve()
 "#;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn failed_spawn_surfaces_error_for_all_queued_cards_without_hanging() {
+        let launch = XyzrenderWorkerLaunch {
+            program: PathBuf::from("/nonexistent/burette-missing-python"),
+            envs: Vec::new(),
+            signature: format!("missing-python-{}", uuid::Uuid::new_v4()),
+        };
+        let jobs = (0..3)
+            .map(|index| XyzrenderCardJob {
+                id: format!("card-{index}"),
+                smiles: Some("CCO".to_string()),
+                thumbnail: true,
+                input_path: None,
+                output_path: std::env::temp_dir().join(format!("burette-unused-{index}.svg")),
+                config: "default".to_string(),
+                canvas_size: None,
+                display_hydrogens: Some("none"),
+            })
+            .collect();
+        let outcomes = render_cards(&launch, jobs);
+        assert_eq!(outcomes.len(), 3);
+        for outcome in outcomes {
+            assert!(
+                outcome
+                    .error
+                    .as_deref()
+                    .is_some_and(|message| message.contains("Could not start xyzrender worker")),
+                "expected spawn failure error, got {:?}",
+                outcome.error
+            );
+        }
+    }
+}

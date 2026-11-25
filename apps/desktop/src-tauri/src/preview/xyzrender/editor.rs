@@ -247,15 +247,22 @@ pub(crate) fn render(request: EditorRequest, directory: &Path) -> Result<EditorR
                 None,
             );
             args.extend(animation_args.iter().cloned());
-            // Animations reuse a warm worker and its frame processes; a new
-            // process per request spent most of its time importing.
-            if let Some(launch) = animation.and_then(|_| xyzrender_worker_launch(&executable)) {
-                let outcome = crate::preview::xyzrender_pool::run_cli(
-                    &launch,
-                    &args,
-                    Duration::from_secs(120),
-                )?;
-                return Ok((outcome.success, outcome.log));
+            // Static renders and animations reuse a warm pool worker so every
+            // edit or structure open avoids a cold Python + Defender startup.
+            // Only macOS PDF export still spawns directly to supply Homebrew
+            // Cairo via DYLD_FALLBACK_LIBRARY_PATH.
+            let needs_macos_pdf_fallback =
+                cfg!(target_os = "macos") && output.extension().is_some_and(|ext| ext == "pdf");
+            if !needs_macos_pdf_fallback {
+                if let Some(launch) = xyzrender_worker_launch(&executable) {
+                    let timeout = if animation.is_some() {
+                        Duration::from_secs(120)
+                    } else {
+                        XYZRENDER_TIMEOUT
+                    };
+                    let outcome = crate::preview::xyzrender_pool::run_cli(&launch, &args, timeout)?;
+                    return Ok((outcome.success, outcome.log));
+                }
             }
             let mut command = crate::preview::runtime_utils::background_command(&executable);
             command

@@ -104,6 +104,7 @@ type GridControlProps = {
   onExportCSV: () => void;
   onViewModeChange: (value: "cards" | "table") => void;
   onToggleTableColumns: () => void;
+  onToggleCardProperties?: () => void;
   onToggleTableFilters: () => void;
   onSetCardRenderer: (value: "rdkit" | "xyzrender") => void;
   onXyzrenderPresetChange: (value: string) => void;
@@ -666,6 +667,15 @@ function GridActionToolbar(props: GridControlProps) {
         onClick={props.onShowProperties}
       >
         Properties
+      </Button></ControlTooltip>
+      <ControlTooltip label="Choose visible card properties"><Button variant="ghost" size="sm"
+        id="card-properties"
+        className="ab-btn"
+        type="button"
+        aria-pressed="false"
+        onClick={props.onToggleCardProperties}
+      >
+        Fields
       </Button></ControlTooltip>
       {showRendererSwitch ? (
         <label className="buret-renderer-control">

@@ -8047,13 +8047,16 @@ assert.match(gridCss, /\.buret-card:hover\s*\{[^}]*box-shadow:\s*[\s\S]*inset 0 
 assert.doesNotMatch(gridCss, /0 0 0 [2-9]px/);
 assert.doesNotMatch(gridCss, /data-buret-card-tooltip|\.buret-card::after/);
 assert.doesNotMatch(gridCss, /\.buret-card::after|buret-card-hovering-molecule/);
-assert.match(gridCss, /\.buret-card-resize-handle-x\s*\{[^}]*width: 16px;/s);
-assert.match(gridCss, /\.buret-card-resize-handle-y\s*\{[^}]*height: 16px;/s);
-assert.match(gridCss, /\.buret-card-resize-handle-xy\s*\{[^}]*width: 24px;[^}]*height: 24px;/s);
+assert.match(gridCss, /\.buret-card-resize-handle-x\s*\{[^}]*width: 6px;/s);
+assert.match(gridCss, /\.buret-card-resize-handle-y\s*\{[^}]*height: 6px;/s);
+assert.match(gridCss, /\.buret-card-resize-handle-xy\s*\{[^}]*width: 18px;[^}]*height: 18px;/s);
+assert.doesNotMatch(gridCss, /\.buret-card-resize-handle-[xy]::after/);
 // Resize grips stay gray: no accent gradients behind the card edges.
 assert.doesNotMatch(gridCss, /\.buret-card-resize-handle[^{]*\{[^}]*(linear-gradient|--buret-accent)/);
 assert.doesNotMatch(gridCss, /body\.buret-grid-resizing \.buret-card-resize-handle/);
 assert.match(gridCss, /\.buret-card\.buret-card-resizing \.buret-card-resize-handle\s*\{[^}]*opacity: 1;/s);
+assert.match(gridUi, /id="card-properties"/);
+assert.match(gridViewer, /const CARD_HIDDEN_PROPERTIES_STORAGE_KEY = 'buret\.grid\.cardHiddenProperties'/);
 assert.doesNotMatch(gridViewer, /buret-selected-indicator/);
 assert.match(gridViewer, /selectionAnchorIndex: null/);
 assert.match(gridViewer, /selectionKeydownHandler: null/);

@@ -5,6 +5,7 @@
   const status = document.getElementById('status');
   const CARD_MIN_STORAGE_KEY = 'buret.grid.cardMin';
   const GRID_VIEW_MODE_STORAGE_KEY = 'buret.grid.viewMode';
+  const CARD_HIDDEN_PROPERTIES_STORAGE_KEY = 'buret.grid.cardHiddenProperties';
   const TABLE_HIDDEN_COLUMNS_STORAGE_KEY = 'buret.grid.tableHiddenColumns';
   const TABLE_PINNED_COLUMNS_STORAGE_KEY = 'buret.grid.tablePinnedColumns';
   const TABLE_COLUMN_WIDTHS_STORAGE_KEY = 'buret.grid.tableColumnWidths';
@@ -99,6 +100,9 @@
   const TABLE_COLUMN_MIN_WIDTH = 64;
   const TABLE_COLUMN_MAX_WIDTH = 640;
   const TABLE_COLUMN_OVERSCAN_PX = 360;
+  const CARD_INTERNAL_PROPERTY_IDS = new Set(['prop:CSV row', 'prop:SMILES column']);
+  const CARD_DEFAULT_PROPERTY_LIMIT = 6;
+  const CARD_CUSTOM_PROPERTY_LIMIT = 40;
   // Above the row count of a typical SDF, so a re-windowed grid redraws from
   // cache instead of queueing RDKit layout again for every card.
   const RDKIT_SVG_CACHE_LIMIT = 2000;
@@ -140,10 +144,15 @@
     showProperties: false,
     viewMode: storedGridViewMode(),
     tableColumnPanelOpen: false,
+    cardPropertyPanelOpen: false,
     tableFiltersOpen: false,
     gridViewportCover: 0,
     tableColumnQuery: '',
     tableColumnVisibleLimit: TABLE_COLUMN_PICKER_LIMIT,
+    cardPropertyQuery: '',
+    cardPropertyVisibleLimit: TABLE_COLUMN_PICKER_LIMIT,
+    cardHiddenProperties: storedStringSet(CARD_HIDDEN_PROPERTIES_STORAGE_KEY),
+    cardPropertiesCustomized: hasStoredItem(CARD_HIDDEN_PROPERTIES_STORAGE_KEY),
     tableHiddenColumns: storedStringSet(TABLE_HIDDEN_COLUMNS_STORAGE_KEY),
     tablePinnedColumns: storedStringSet(TABLE_PINNED_COLUMNS_STORAGE_KEY),
     tablePinnedOffsets: new Map(),
@@ -157,6 +166,7 @@
     rowListFilter: null,
     reactionRowsCache: null,
     tableColumnPanelOutsideController: null,
+    cardPropertyPanelOutsideController: null,
     tableScrollLeft: 0,
     tableColumnScrollFrame: 0,
     remoteDescriptorIds: [],
@@ -1749,6 +1759,14 @@
     }
   }
 
+  function hasStoredItem(key) {
+    try {
+      return window.localStorage?.getItem(key) !== null;
+    } catch (_) {
+      return false;
+    }
+  }
+
   function storeStringSet(key, values) {
     try {
       window.localStorage?.setItem(key, JSON.stringify([...values].sort()));
@@ -2079,6 +2097,7 @@
       },
       onShowProperties() {
         state.showProperties = !state.showProperties;
+        if (!state.showProperties) closeCardPropertyPanel(cfg, { rerender: false });
         applyGridPreferences(cfg);
       },
       onSelectAll() { selectAllRows(cfg); },
@@ -2098,6 +2117,7 @@
         requestContextualGuide('grid', document.querySelector('[aria-label="Grid view mode"]'), cfg);
       },
       onToggleTableColumns() { toggleTableColumnPanel(cfg); },
+      onToggleCardProperties() { toggleCardPropertyPanel(cfg); },
       onToggleTableFilters() { toggleTableFilters(cfg); },
       onSetCardRenderer(value) { setCardRenderer(value, cfg); },
       onXyzrenderPresetChange(value) { setXyzrenderPreset(value, cfg); },
@@ -2202,6 +2222,8 @@
     syncCardRendererSwitch();
     syncGridViewModeSwitch();
     syncTableColumnsButton();
+    syncCardPropertiesButton();
+    syncCardPropertyPanel(currentCfg);
     syncTableFiltersButtons();
     syncXyzrenderPresetControl(currentCfg);
     syncRdkitCoordinatesControl();
@@ -2369,6 +2391,8 @@
       state.tableFiltersOpen = false;
       state.tableColumnPanelOutsideController?.abort();
       state.tableColumnPanelOutsideController = null;
+    } else {
+      closeCardPropertyPanel(cfg, { rerender: false });
     }
     refreshGridControls(cfg);
     applyGridPreferences(cfg);
@@ -2406,6 +2430,35 @@
     state.tableColumnPanelOutsideController = null;
     applyGridPreferences(cfg);
     void render(cfg);
+  }
+
+  function toggleCardPropertyPanel(cfg) {
+    if (state.viewMode !== 'cards') {
+      state.viewMode = 'cards';
+      store(GRID_VIEW_MODE_STORAGE_KEY, 'cards');
+    }
+    if (!state.showProperties) {
+      state.showProperties = true;
+    }
+    if (state.cardPropertyPanelOpen) {
+      closeCardPropertyPanel(cfg, { rerender: false });
+      return;
+    }
+    state.cardPropertyPanelOpen = true;
+    applyGridPreferences(cfg);
+  }
+
+  function closeCardPropertyPanel(cfg, options = {}) {
+    if (!state.cardPropertyPanelOpen) {
+      document.querySelector('.buret-card-property-panel')?.remove();
+      return;
+    }
+    state.cardPropertyPanelOpen = false;
+    state.cardPropertyPanelOutsideController?.abort();
+    state.cardPropertyPanelOutsideController = null;
+    document.querySelector('.buret-card-property-panel')?.remove();
+    if (options.rerender !== false) applyGridPreferences(cfg);
+    else syncCardPropertiesButton();
   }
 
   function applyDescriptorGridControls(body, cfg) {
@@ -2580,6 +2633,21 @@
     button.hidden = state.viewMode !== 'table';
     button.classList.toggle('active', state.tableColumnPanelOpen);
     button.setAttribute('aria-pressed', state.tableColumnPanelOpen ? 'true' : 'false');
+  }
+
+  function syncCardPropertiesButton() {
+    const button = document.getElementById('card-properties');
+    if (!button) return;
+    const available = state.viewMode === 'cards' && state.showProperties && cardPropertyCatalog().length > 0;
+    button.hidden = !available;
+    if (!available && state.cardPropertyPanelOpen) {
+      state.cardPropertyPanelOpen = false;
+      state.cardPropertyPanelOutsideController?.abort();
+      state.cardPropertyPanelOutsideController = null;
+      document.querySelector('.buret-card-property-panel')?.remove();
+    }
+    button.classList.toggle('active', state.cardPropertyPanelOpen);
+    button.setAttribute('aria-pressed', state.cardPropertyPanelOpen ? 'true' : 'false');
   }
 
   function syncTableFiltersButtons() {
@@ -4083,16 +4151,19 @@
 
   function takeXyzrenderCardBatchJobs() {
     sortXyzrenderCardQueue();
+    const batchLimit = state.xyzrenderCardCache?.size < 4
+      ? Math.min(4, XYZRENDER_CARD_BATCH_SIZE)
+      : XYZRENDER_CARD_BATCH_SIZE;
     const visible = [];
     const deferred = [];
     for (const job of state.xyzrenderCardQueue) {
-      if (visible.length < XYZRENDER_CARD_BATCH_SIZE && cardRenderPriority(job.target) === 0) {
+      if (visible.length < batchLimit && cardRenderPriority(job.target) === 0) {
         visible.push(job);
       } else {
         deferred.push(job);
       }
     }
-    const jobs = visible.length ? visible : deferred.splice(0, XYZRENDER_CARD_BATCH_SIZE);
+    const jobs = visible.length ? visible : deferred.splice(0, batchLimit);
     if (!jobs.length) return;
     const selected = new Set(jobs);
     state.xyzrenderCardQueue = state.xyzrenderCardQueue.filter(job => !selected.has(job));
@@ -4501,6 +4572,8 @@
     }
     const searchInput = document.getElementById('search');
     if (searchInput) searchInput.setAttribute('aria-invalid', String(!!state.smartsError));
+    syncCardPropertiesButton();
+    syncCardPropertyPanel(cfg);
     syncGridClusterControls();
     syncRdkitCoordinatesControl();
     syncGridEditControls();
@@ -5011,6 +5084,8 @@
 
   function card(row, cfg) {
     const caps = capabilities(cfg);
+    const cardFields = cardPropertyCatalog();
+    const showSmiles = Boolean(row.smiles) && cardPropertyIsVisible('smiles', cardFields);
     const el = document.createElement('article');
     const index = Number(row.index);
     el.className = 'buret-card';
@@ -5023,8 +5098,8 @@
       <div class="buret-card-body">
         ${state.smartsMatches.has(index) ? '<div class="buret-match-badge">SMARTS match</div>' : ''}
         <h2>${escapeHTML(row.name || `Molecule ${index + 1}`)}</h2>
-        ${row.smiles ? `<div class="buret-smiles">${escapeHTML(row.smiles)}</div>` : ''}
-        ${metadata(row)}
+        ${showSmiles ? `<div class="buret-smiles">${escapeHTML(row.smiles)}</div>` : ''}
+        ${metadata(row, cardFields, showSmiles)}
       </div>
       <span class="buret-card-resize-handle buret-card-resize-handle-x" role="separator" aria-orientation="vertical" tabindex="0" title="Drag left or right to resize grid cards. Double-click to reset width." data-buret-card-resize="x"></span>
       <span class="buret-card-resize-handle buret-card-resize-handle-y" role="separator" aria-orientation="horizontal" tabindex="0" title="Drag up or down to resize grid cards. Double-click to reset size." data-buret-card-resize="y"></span>
@@ -5925,14 +6000,201 @@
   // against the table it is rendered inside — that box scrolls and would clip
   // the panel to the height of the table.
   function positionTableColumnPanel(panel) {
-    const margin = 8;
     const trigger = document.getElementById('table-columns');
+    positionFloatingColumnPanel(panel, trigger);
+  }
+
+  function positionFloatingColumnPanel(panel, trigger) {
+    const margin = 8;
     const rect = trigger?.getBoundingClientRect();
     const width = panel.offsetWidth || 340;
     const top = rect ? rect.bottom + 6 : margin;
-    const left = rect ? rect.right - width : margin;
+    const preferredLeft = rect
+      ? (rect.left + width <= window.innerWidth - margin ? rect.left : rect.right - width)
+      : margin;
     panel.style.top = `${Math.round(Math.max(margin, top))}px`;
-    panel.style.left = `${Math.round(Math.min(Math.max(margin, left), Math.max(margin, window.innerWidth - width - margin)))}px`;
+    panel.style.left = `${Math.round(Math.min(Math.max(margin, preferredLeft), Math.max(margin, window.innerWidth - width - margin)))}px`;
+  }
+
+  function cardPropertyOrder(column) {
+    if (column.id === 'smiles') return 0;
+    if (column.kind === 'analysis') return 1;
+    if (column.kind === 'descriptor') return 2;
+    if (CARD_INTERNAL_PROPERTY_IDS.has(column.id)) return 4;
+    return 3;
+  }
+
+  function cardPropertyCatalog() {
+    const catalog = tableColumnCatalog();
+    return catalog
+      .filter(column => column.id === 'smiles' || !column.fixed)
+      .sort((left, right) => cardPropertyOrder(left) - cardPropertyOrder(right));
+  }
+
+  function cardPropertyIsVisible(id, catalog = cardPropertyCatalog()) {
+    if (state.cardPropertiesCustomized) return !state.cardHiddenProperties.has(id);
+    if (!CARD_INTERNAL_PROPERTY_IDS.has(id)) return true;
+    return !catalog.some(column => column.id !== 'smiles' && !CARD_INTERNAL_PROPERTY_IDS.has(column.id));
+  }
+
+  function ensureCustomCardHiddenProperties(catalog) {
+    if (state.cardPropertiesCustomized) return;
+    state.cardHiddenProperties = new Set(
+      catalog.filter(column => !cardPropertyIsVisible(column.id, catalog)).map(column => column.id)
+    );
+    state.cardPropertiesCustomized = true;
+  }
+
+  function cardPropertyPanelSummary(visibleCount, totalCount, shownCount, matchCount) {
+    const visibleText = `${visibleCount.toLocaleString()} of ${totalCount.toLocaleString()} visible`;
+    if (matchCount !== totalCount) return `${visibleText} (${matchCount.toLocaleString()} matches)`;
+    if (shownCount < totalCount) return `${visibleText} (${shownCount.toLocaleString()} shown)`;
+    return visibleText;
+  }
+
+  function cardPropertyPickerItemsHTML(columns, visible, matchCount = columns.length) {
+    if (!columns.length) {
+      return '<div class="buret-table-column-empty">No matching properties.</div>';
+    }
+    const items = columns.map(column => `
+      <label class="buret-table-column-item" data-column-search="${escapeAttr(tableColumnPickerSearchText(column))}">
+        <input type="checkbox" ${visible.has(column.id) ? 'checked' : ''} data-buret-card-property="${escapeAttr(column.id)}">
+        <span>${escapeHTML(column.label)}</span>
+        ${column.kind === 'descriptor' || column.kind === 'analysis'
+          ? `<small>${escapeHTML(column.kind)}</small>`
+          : ''}
+      </label>
+    `).join('');
+    const remaining = Math.max(0, matchCount - columns.length);
+    if (!remaining) return items;
+    return `${items}
+      <button type="button" class="buret-table-column-more" data-buret-card-property-show-more>
+        Show next ${Math.min(TABLE_COLUMN_PICKER_LIMIT, remaining).toLocaleString()} properties
+      </button>`;
+  }
+
+  function syncCardPropertyPanel(cfg) {
+    const existing = document.querySelector('.buret-card-property-panel');
+    const catalog = cardPropertyCatalog();
+    if (!state.cardPropertyPanelOpen || state.viewMode !== 'cards' || !state.showProperties || !catalog.length) {
+      existing?.remove();
+      state.cardPropertyPanelOutsideController?.abort();
+      state.cardPropertyPanelOutsideController = null;
+      return;
+    }
+    if (existing) {
+      positionFloatingColumnPanel(existing, document.getElementById('card-properties'));
+      return;
+    }
+    const panel = document.createElement('section');
+    panel.className = 'buret-table-column-panel buret-card-property-panel';
+    panel.setAttribute('aria-label', 'Card properties');
+    panel.innerHTML = `
+      <button type="button" class="buret-table-column-select-all" data-buret-card-property-action="toggle-all" aria-pressed="false">
+        <span class="buret-table-column-checkbox" aria-hidden="true"></span>
+        <span>Select all / none</span>
+      </button>
+      <input type="search" class="buret-table-column-search" value="${escapeAttr(state.cardPropertyQuery)}" placeholder="Search" aria-label="Search card properties" data-buret-card-property-search>
+      <div class="buret-table-column-summary"></div>
+      <div class="buret-table-column-list"></div>`;
+    (root || document.body).appendChild(panel);
+    bindCardPropertyPanel(panel, cfg);
+  }
+
+  function bindCardPropertyPanel(panel, cfg) {
+    const trigger = document.getElementById('card-properties');
+    positionFloatingColumnPanel(panel, trigger);
+    state.cardPropertyPanelOutsideController?.abort();
+    state.cardPropertyPanelOutsideController = new AbortController();
+    const signal = state.cardPropertyPanelOutsideController.signal;
+    const followTrigger = event => {
+      if (event?.target instanceof Node && panel.contains(event.target)) return;
+      positionFloatingColumnPanel(panel, document.getElementById('card-properties'));
+    };
+    window.addEventListener('resize', followTrigger, { signal });
+    window.addEventListener('scroll', followTrigger, { capture: true, signal });
+    document.addEventListener('pointerdown', event => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest('.buret-card-property-panel, #card-properties')) return;
+      closeCardPropertyPanel(cfg);
+    }, { capture: true, signal });
+    document.addEventListener('keydown', event => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      closeCardPropertyPanel(cfg);
+      document.getElementById('card-properties')?.focus?.();
+    }, { capture: true, signal });
+
+    const renderList = () => {
+      const catalog = cardPropertyCatalog();
+      const visible = new Set(catalog.filter(column => cardPropertyIsVisible(column.id, catalog)).map(column => column.id));
+      const matches = tableColumnPickerMatches(catalog, state.cardPropertyQuery);
+      const limit = Math.max(TABLE_COLUMN_PICKER_LIMIT, Number(state.cardPropertyVisibleLimit) || TABLE_COLUMN_PICKER_LIMIT);
+      const shown = matches.slice(0, limit);
+      const allVisible = catalog.length > 0 && visible.size === catalog.length;
+      const selectAll = panel.querySelector('[data-buret-card-property-action="toggle-all"]');
+      if (selectAll) {
+        selectAll.setAttribute('aria-pressed', allVisible ? 'true' : 'false');
+        const mark = selectAll.querySelector('.buret-table-column-checkbox');
+        if (mark) mark.textContent = allVisible ? '✓' : '';
+      }
+      const summary = panel.querySelector('.buret-table-column-summary');
+      if (summary) {
+        summary.textContent = cardPropertyPanelSummary(visible.size, catalog.length, shown.length, matches.length);
+      }
+      const list = panel.querySelector('.buret-table-column-list');
+      if (!list) return;
+      list.innerHTML = cardPropertyPickerItemsHTML(shown, visible, matches.length);
+      list.querySelectorAll('[data-buret-card-property]').forEach(input => {
+        input.addEventListener('change', event => {
+          const propertyId = event.currentTarget.getAttribute('data-buret-card-property');
+          if (!propertyId) return;
+          const latestCatalog = cardPropertyCatalog();
+          ensureCustomCardHiddenProperties(latestCatalog);
+          if (event.currentTarget.checked) state.cardHiddenProperties.delete(propertyId);
+          else state.cardHiddenProperties.add(propertyId);
+          storeStringSet(CARD_HIDDEN_PROPERTIES_STORAGE_KEY, state.cardHiddenProperties);
+          renderList();
+          void render(cfg);
+        });
+      });
+      list.querySelector('[data-buret-card-property-show-more]')?.addEventListener('click', event => {
+        event.preventDefault();
+        state.cardPropertyVisibleLimit += TABLE_COLUMN_PICKER_LIMIT;
+        renderList();
+      });
+    };
+
+    const search = panel.querySelector('[data-buret-card-property-search]');
+    if (search) {
+      const applySearch = () => {
+        const nextQuery = String(search.value || '');
+        if (nextQuery !== state.cardPropertyQuery) {
+          state.cardPropertyVisibleLimit = TABLE_COLUMN_PICKER_LIMIT;
+        }
+        state.cardPropertyQuery = nextQuery;
+        renderList();
+      };
+      search.addEventListener('input', applySearch);
+      search.addEventListener('keyup', applySearch);
+      search.addEventListener('change', applySearch);
+      search.addEventListener('search', applySearch);
+    }
+    panel.querySelector('[data-buret-card-property-action="toggle-all"]')?.addEventListener('click', () => {
+      const catalog = cardPropertyCatalog();
+      const allVisible = catalog.every(column => cardPropertyIsVisible(column.id, catalog));
+      state.cardPropertiesCustomized = true;
+      if (allVisible) {
+        state.cardHiddenProperties = new Set(catalog.map(column => column.id));
+      } else {
+        state.cardHiddenProperties = new Set();
+      }
+      storeStringSet(CARD_HIDDEN_PROPERTIES_STORAGE_KEY, state.cardHiddenProperties);
+      renderList();
+      void render(cfg);
+    });
+    renderList();
   }
 
   function bindTableColumnPanel(wrapper, cfg, catalog) {
@@ -10005,23 +10267,26 @@
     };
   }
 
-  function metadata(row) {
-    const entries = Object.entries(row.props || {}).filter(([, value]) => String(value || '').length).slice(0, 6);
-    const analyses = Object.entries(row.analyses || {})
-      .filter(([, value]) => analysisDisplayValue(value))
-      .slice(0, 6);
-    const descriptors = Object.entries(row.descriptors || {})
-      .filter(([, value]) => descriptorDisplayValue(value))
-      .slice(0, 6);
-    if (!entries.length && !descriptors.length && !analyses.length) return '<div class="buret-no-metadata">No metadata</div>';
-    const propItems = entries.map(([key, value]) => `<dt>${escapeHTML(key)}</dt><dd>${escapeHTML(value)}</dd>`);
-    const analysisItems = analyses.map(([key, value]) => (
-      `<dt>${escapeHTML((state.remoteAnalysisColumns || []).find(column => column.valueId === key)?.label || key)}</dt><dd>${escapeHTML(analysisDisplayValue(value))}</dd>`
-    ));
-    const descriptorItems = descriptors.map(([key, value]) => (
-      `<dt>${escapeHTML(value.label || key)}</dt><dd>${escapeHTML(descriptorDisplayValue(value))}</dd>`
-    ));
-    return `<dl class="buret-metadata">${[...analysisItems, ...descriptorItems, ...propItems].join('')}</dl>`;
+  function metadata(row, catalog = cardPropertyCatalog(), showSmiles = false) {
+    const visibleFields = catalog.filter(column => column.id !== 'smiles' && cardPropertyIsVisible(column.id, catalog));
+    if (!visibleFields.length) {
+      return state.cardPropertiesCustomized || showSmiles ? '' : '<div class="buret-no-metadata">No metadata</div>';
+    }
+    const items = [];
+    const categoryCounts = { analysis: 0, descriptor: 0, property: 0 };
+    for (const column of visibleFields) {
+      const kind = column.kind === 'analysis' ? 'analysis' : column.kind === 'descriptor' ? 'descriptor' : 'property';
+      if (!state.cardPropertiesCustomized && categoryCounts[kind] >= CARD_DEFAULT_PROPERTY_LIMIT) continue;
+      const value = String(column.get(row) ?? '').trim();
+      if (!value) continue;
+      items.push(`<dt>${escapeHTML(column.label)}</dt><dd>${escapeHTML(value)}</dd>`);
+      categoryCounts[kind] += 1;
+      if (state.cardPropertiesCustomized && items.length >= CARD_CUSTOM_PROPERTY_LIMIT) break;
+    }
+    if (!items.length) {
+      return state.cardPropertiesCustomized || showSmiles ? '' : '<div class="buret-no-metadata">No metadata</div>';
+    }
+    return `<dl class="buret-metadata">${items.join('')}</dl>`;
   }
 
   function analysisDisplayValue(cell) {

@@ -49,6 +49,36 @@ def render(mol, **kwargs): return json.dumps(kwargs, sort_keys=True)
                 {'config': 'default'}, {'config': 'default'}, {'config': 'default', 'no_hy': True},
             ])
 
+    def test_cli_static_render_defers_animation_frame_pool(self):
+        with tempfile.TemporaryDirectory(prefix='burette-card-pool-cli-') as directory:
+            root = Path(directory)
+            pkg = root / 'xyzrender'
+            pkg.mkdir()
+            (pkg / '__init__.py').write_text('''
+def load(value, **kwargs): return value
+def render(mol, **kwargs): return '<svg/>'
+''')
+            (pkg / 'gif.py').write_text('_parallel_render = None\n')
+            (pkg / 'cli.py').write_text('''
+import sys
+def main():
+    print('args:' + ','.join(sys.argv[1:]), file=sys.stderr)
+''')
+            # Fail loudly if a static CLI render tries to spawn animation frame processes.
+            (root / 'multiprocessing.py').write_text('''
+def get_context(name):
+    raise AssertionError('static CLI render must not create a multiprocessing pool')
+''')
+            request = {'op': 'cli', 'id': 'static', 'args': ['mol.xyz', '-o', 'out.svg']}
+            result = subprocess.run([sys.executable, '-u', '-c', HELPER],
+                                    input=json.dumps(request) + '\n',
+                                    text=True, capture_output=True, timeout=15,
+                                    env={**os.environ, 'PYTHONPATH': str(root), 'PYTHONDONTWRITEBYTECODE': '1'})
+            self.assertEqual(result.returncode, 0, result.stderr)
+            response = json.loads(result.stdout.strip())
+            self.assertEqual(response['status'], 0)
+            self.assertIn('args:mol.xyz,-o,out.svg', response['log'])
+
     @unittest.skipUnless(LIVE, 'Use --live for thumbnail chemistry and cache validation')
     def test_live_thumbnail_conformer_and_bounded_reuse(self):
         # Exercise the embedded helper without starting its stdin protocol loop.
