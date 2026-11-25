@@ -1,3 +1,5 @@
+use tauri::Emitter;
+
 #[cfg(target_os = "macos")]
 use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(target_os = "macos")]
@@ -52,6 +54,17 @@ static PROGRESS_WINDOW: LazyLock<Mutex<Option<NativeUpdateProgressWindow>>> =
 #[cfg(target_os = "macos")]
 static PROGRESS_WINDOW_ACTIVE: AtomicBool = AtomicBool::new(false);
 
+const UPDATE_PROGRESS_EVENT: &str = "burette://update-progress";
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateProgressEvent {
+    message: String,
+    detail: String,
+    progress: Option<f64>,
+    done: bool,
+}
+
 pub(crate) fn show(app: &tauri::AppHandle, message: impl Into<String>, progress: Option<f64>) {
     show_with_detail(app, message, String::new(), progress);
 }
@@ -62,10 +75,30 @@ pub(crate) fn show_with_detail(
     detail: impl Into<String>,
     progress: Option<f64>,
 ) {
-    show_platform(app, message.into(), detail.into(), progress);
+    let message = message.into();
+    let detail = detail.into();
+    let _ = app.emit(
+        UPDATE_PROGRESS_EVENT,
+        UpdateProgressEvent {
+            message: message.clone(),
+            detail: detail.clone(),
+            progress,
+            done: false,
+        },
+    );
+    show_platform(app, message, detail, progress);
 }
 
 pub(crate) fn close(app: &tauri::AppHandle) {
+    let _ = app.emit(
+        UPDATE_PROGRESS_EVENT,
+        UpdateProgressEvent {
+            message: String::new(),
+            detail: String::new(),
+            progress: None,
+            done: true,
+        },
+    );
     close_platform(app);
 }
 

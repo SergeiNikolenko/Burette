@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import assert from 'node:assert/strict';
+import { generateKeyPairSync } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, realpathSync, readFileSync, writeFileSync, cpSync, rmSync } from 'node:fs';
 import os from 'node:os';
@@ -123,6 +124,34 @@ try {
       `cask "burette" do\n  version "2.3.19"\n  sha256 "${'a'.repeat(64)}"\n  auto_updates true\n  depends_on arch: :arm64\n  depends_on macos: :monterey\n  app "Burette.app"\nend\n`);
   }
   rmSync(path.join(temporary, 'bin/git'));
+
+  // Verify Windows installer signing in release.yml and cross-check sign-release-asset.mjs
+  // against release-signature.mjs using a fresh ephemeral Ed25519 keypair.
+  const windowsPublishBlock = workflow.split('  windows-publish:\n')[1];
+  assert.match(windowsPublishBlock, /environment:\s*release/);
+  assert.match(windowsPublishBlock, /node scripts\/sign-release-asset\.mjs/);
+  const { privateKey, publicKey } = generateKeyPairSync('ed25519');
+  const seedBase64 = privateKey.export({ format: 'der', type: 'pkcs8' }).subarray(-32).toString('base64');
+  const pubBase64 = publicKey.export({ format: 'der', type: 'spki' }).subarray(-32).toString('base64');
+  write('fixture-release-key.txt', `${pubBase64}\n`);
+  write('Burette_2026.11.38_x64-setup.exe', 'fixture-nsis-installer-payload');
+  const signResult = spawnSync(
+    'node',
+    [
+      path.join(root, 'scripts/sign-release-asset.mjs'),
+      '--public-key',
+      path.join(temporary, 'fixture-release-key.txt'),
+      path.join(temporary, 'Burette_2026.11.38_x64-setup.exe'),
+    ],
+    { cwd: temporary, encoding: 'utf8', env: { ...cleanEnv, BURETTE_SPARKLE_PRIVATE_KEY: seedBase64 } },
+  );
+  assert.equal(signResult.status, 0, signResult.stderr);
+  const sigText = readFileSync(path.join(temporary, 'Burette_2026.11.38_x64-setup.exe.ed25519'), 'utf8');
+  const shaText = readFileSync(path.join(temporary, 'Burette_2026.11.38_x64-setup.exe.sha256'), 'utf8');
+  assert.match(sigText.trim(), /^[A-Za-z0-9+/]{86}==$/);
+  assert.match(shaText, /^[0-9a-f]{64}  Burette_2026\.11\.38_x64-setup\.exe\n$/);
+  const { verifyReleaseArchive } = await import(path.join(root, 'packages/burette/bin/release-signature.mjs'));
+  await verifyReleaseArchive(path.join(temporary, 'Burette_2026.11.38_x64-setup.exe'), sigText, pubBase64);
 
   // Check the actual version guard against a fixed PR base commit, without fetching.
   for (const source of ['scripts/check-release-version.mjs', 'scripts/bun-lock.mjs', 'apps/desktop/src/lib/semver.ts']) {

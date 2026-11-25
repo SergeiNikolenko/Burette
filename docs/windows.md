@@ -45,7 +45,7 @@ both.
 | Native compute | Metal on Apple Silicon | CPU reference implementations; the GPU (Metal) setting is hidden. |
 | Tabs | Drag tabs between windows, drag files out, tab hover previews | Tabs move between windows through their menus; no drag-out or hover previews. |
 | Drag and drop | Files from Finder, sidebar items and tabs drag into panes | Files dropped from File Explorer open. The native drop handler WebView2 needs for that turns off HTML drag and drop inside the window, so sidebar items and tabs do not drag into panes; use their menus. |
-| Updates | Sparkle installs in place | The update check reports new versions and opens the release page. |
+| Updates | Sparkle installs in place | Checks GitHub Releases, downloads the signed NSIS installer, verifies SHA-256 and the pinned Ed25519 publisher signature, installs silently in place, and restarts Burette. Releases without signed sidecars open the release page. |
 | Database passwords | Login keychain | Windows Credential Manager. |
 | Trash, notifications, keeping awake | Finder Trash, Notification Center, `caffeinate` | Recycle Bin, Windows notifications, `SetThreadExecutionState`. |
 | SSH | `/usr/bin/ssh` | The OpenSSH client that ships with Windows (`ssh.exe`), reading `%USERPROFILE%\.ssh\config`. Remote job results unpack with the built-in `tar.exe`. |

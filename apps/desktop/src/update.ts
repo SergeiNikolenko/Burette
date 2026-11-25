@@ -1,6 +1,6 @@
 import packageInfo from "../../../package.json";
 import { compareVersions } from "./lib/semver";
-import { isMacPlatform } from "./lib/platform";
+import { desktopPlatform, type DesktopPlatform } from "./lib/platform";
 
 export type UpdateChannel = "stable" | "beta";
 
@@ -16,6 +16,9 @@ export type UpdateAsset = {
   sha256AssetName?: string;
   sha256BrowserDownloadUrl?: string;
   sha256Size?: number;
+  ed25519AssetName?: string;
+  ed25519BrowserDownloadUrl?: string;
+  ed25519Size?: number;
   manifestAssetName?: string;
   manifestBrowserDownloadUrl?: string;
   manifestSize?: number;
@@ -175,42 +178,78 @@ function normalizeRelease(release: GitHubRelease): UpdateRelease | null {
   };
 }
 
-function installAssetFor(assets: GitHubAsset[]): UpdateAsset | null {
-  // The in-place installer swaps the macOS app bundle; other platforms open the release page.
-  if (!isMacPlatform()) return null;
-  const installExtensions = [".zip"];
-  const candidates = assets
-    .filter((asset) => asset.name && asset.browser_download_url && Number(asset.size || 0) > 0)
-    .filter((asset) => installExtensions.some((extension) => asset.name!.toLowerCase().endsWith(extension)))
-    .map((asset) => ({
-      asset,
-      digest: sha256AssetFor(assets, asset.name!),
-      manifest: manifestAssetFor(assets, asset.name!),
-      signature: manifestSignatureAssetFor(assets, asset.name!),
-    }))
-    .filter((entry): entry is { asset: GitHubAsset; digest: GitHubAsset; manifest: GitHubAsset | null; signature: GitHubAsset | null } =>
-      entry.digest !== null);
-  const selected = candidates.find((entry) => /burette|burette/i.test(entry.asset.name!)) ?? candidates[0];
-  if (!selected) return null;
-  const signedManifest = selected.manifest && selected.signature
-    ? {
-        manifestAssetName: selected.manifest.name!,
-        manifestBrowserDownloadUrl: selected.manifest.browser_download_url!,
-        manifestSize: Number(selected.manifest.size || 0),
-        manifestSignatureAssetName: selected.signature.name!,
-        manifestSignatureBrowserDownloadUrl: selected.signature.browser_download_url!,
-        manifestSignatureSize: Number(selected.signature.size || 0),
-      }
-    : {};
-  return {
-    name: selected.asset.name!,
-    browserDownloadUrl: selected.asset.browser_download_url!,
-    size: Number(selected.asset.size || 0),
-    sha256AssetName: selected.digest.name!,
-    sha256BrowserDownloadUrl: selected.digest.browser_download_url!,
-    sha256Size: Number(selected.digest.size || 0),
-    ...signedManifest,
-  };
+export function installAssetFor(
+  assets: GitHubAsset[],
+  platform: DesktopPlatform = desktopPlatform(),
+): UpdateAsset | null {
+  if (platform === "macos") {
+    const installExtensions = [".zip"];
+    const candidates = assets
+      .filter((asset) => asset.name && asset.browser_download_url && Number(asset.size || 0) > 0)
+      .filter((asset) => installExtensions.some((extension) => asset.name!.toLowerCase().endsWith(extension)))
+      .map((asset) => ({
+        asset,
+        digest: sha256AssetFor(assets, asset.name!),
+        manifest: manifestAssetFor(assets, asset.name!),
+        signature: manifestSignatureAssetFor(assets, asset.name!),
+      }))
+      .filter((entry): entry is { asset: GitHubAsset; digest: GitHubAsset; manifest: GitHubAsset | null; signature: GitHubAsset | null } =>
+        entry.digest !== null);
+    const selected = candidates.find((entry) => /burette/i.test(entry.asset.name!)) ?? candidates[0];
+    if (!selected) return null;
+    const signedManifest = selected.manifest && selected.signature
+      ? {
+          manifestAssetName: selected.manifest.name!,
+          manifestBrowserDownloadUrl: selected.manifest.browser_download_url!,
+          manifestSize: Number(selected.manifest.size || 0),
+          manifestSignatureAssetName: selected.signature.name!,
+          manifestSignatureBrowserDownloadUrl: selected.signature.browser_download_url!,
+          manifestSignatureSize: Number(selected.signature.size || 0),
+        }
+      : {};
+    return {
+      name: selected.asset.name!,
+      browserDownloadUrl: selected.asset.browser_download_url!,
+      size: Number(selected.asset.size || 0),
+      sha256AssetName: selected.digest.name!,
+      sha256BrowserDownloadUrl: selected.digest.browser_download_url!,
+      sha256Size: Number(selected.digest.size || 0),
+      ...signedManifest,
+    };
+  }
+
+  if (platform === "windows") {
+    // Windows in-place updates require both the SHA-256 digest and the pinned
+    // Ed25519 publisher signature; older releases fall back to the release page.
+    const candidates = assets
+      .filter((asset) => asset.name && asset.browser_download_url && Number(asset.size || 0) > 0)
+      .filter((asset) => asset.name!.toLowerCase().endsWith("-setup.exe"))
+      .map((asset) => ({
+        asset,
+        digest: sha256AssetFor(assets, asset.name!),
+        ed25519: ed25519AssetFor(assets, asset.name!),
+      }))
+      .filter((entry): entry is { asset: GitHubAsset; digest: GitHubAsset; ed25519: GitHubAsset } =>
+        entry.digest !== null && entry.ed25519 !== null);
+    const selected =
+      candidates.find((entry) => /burette.*x64-setup.exe$/i.test(entry.asset.name!)) ??
+      candidates.find((entry) => /burette/i.test(entry.asset.name!)) ??
+      candidates[0];
+    if (!selected) return null;
+    return {
+      name: selected.asset.name!,
+      browserDownloadUrl: selected.asset.browser_download_url!,
+      size: Number(selected.asset.size || 0),
+      sha256AssetName: selected.digest.name!,
+      sha256BrowserDownloadUrl: selected.digest.browser_download_url!,
+      sha256Size: Number(selected.digest.size || 0),
+      ed25519AssetName: selected.ed25519.name!,
+      ed25519BrowserDownloadUrl: selected.ed25519.browser_download_url!,
+      ed25519Size: Number(selected.ed25519.size || 0),
+    };
+  }
+
+  return null;
 }
 
 function sha256AssetFor(assets: GitHubAsset[], archiveName: string): GitHubAsset | null {
@@ -220,6 +259,16 @@ function sha256AssetFor(assets: GitHubAsset[], archiveName: string): GitHubAsset
     asset.browser_download_url &&
     Number(asset.size || 0) > 0 &&
     Number(asset.size || 0) <= 4096
+  ) ?? null;
+}
+
+function ed25519AssetFor(assets: GitHubAsset[], assetName: string): GitHubAsset | null {
+  const expectedName = assetName + ".ed25519";
+  return assets.find((asset) =>
+    asset.name === expectedName &&
+    asset.browser_download_url &&
+    Number(asset.size || 0) > 0 &&
+    Number(asset.size || 0) <= 512
   ) ?? null;
 }
 

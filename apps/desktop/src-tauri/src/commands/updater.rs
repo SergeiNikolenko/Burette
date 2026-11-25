@@ -1,20 +1,31 @@
+use base64::Engine as _;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::future::Future;
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+#[cfg(any(target_os = "macos", windows, test))]
+use std::process::Stdio;
+use std::process::{Child, Command};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::Manager;
 
 use super::update_progress;
+use crate::preview::runtime_utils;
 
+#[cfg(any(target_os = "macos", test))]
 const APP_ID: &str = "com.local.BuretteV10";
+#[cfg(any(target_os = "macos", test))]
 const EXTENSION_ID: &str = "com.local.BuretteV10.Preview";
 const RELEASE_DOWNLOAD_PREFIX: &str =
     "https://github.com/SergeiNikolenko/Burette/releases/download/";
+const RELEASE_SIGNING_PUBLIC_KEY_B64: &str =
+    include_str!("../../../../../packages/burette/bin/release-signing-key.txt");
+const MAX_UPDATE_ASSET_BYTES: u64 = 1024 * 1024 * 1024;
 const DOWNLOAD_PROGRESS_START: f64 = 0.04;
 const DOWNLOAD_PROGRESS_END: f64 = 0.34;
 const DOWNLOAD_PROGRESS_POLL_INTERVAL: Duration = Duration::from_millis(500);
@@ -24,6 +35,27 @@ static UPDATE_INSTALL_ACTIVE: AtomicBool = AtomicBool::new(false);
 pub(crate) fn update_install_is_active() -> bool {
     UPDATE_INSTALL_ACTIVE.load(Ordering::Acquire)
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum UpdatePackageKind {
+    MacosZip,
+    WindowsNsisInstaller,
+}
+
+#[cfg(target_os = "macos")]
+struct InstallTarget {
+    current_app: PathBuf,
+    destination_app: PathBuf,
+}
+
+#[cfg(windows)]
+struct InstallTarget {
+    install_dir: PathBuf,
+    target_exe: PathBuf,
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
+struct InstallTarget;
 
 struct UpdateInstallLease;
 
@@ -47,6 +79,7 @@ struct InstallerProcessGuard {
 }
 
 impl InstallerProcessGuard {
+    #[cfg(any(target_os = "macos", windows))]
     fn new(child: Child) -> Self {
         Self { child: Some(child) }
     }
@@ -80,15 +113,20 @@ pub(crate) struct UpdateInstallRequest {
     sha256_asset_name: Option<String>,
     sha256_browser_download_url: Option<String>,
     sha256_size: Option<u64>,
+    ed25519_asset_name: Option<String>,
+    ed25519_browser_download_url: Option<String>,
+    ed25519_size: Option<u64>,
     manifest_asset_name: Option<String>,
     manifest_browser_download_url: Option<String>,
     manifest_size: Option<u64>,
     manifest_signature_asset_name: Option<String>,
     manifest_signature_browser_download_url: Option<String>,
     manifest_signature_size: Option<u64>,
+    #[cfg_attr(not(any(target_os = "macos", windows, test)), allow(dead_code))]
     allow_same_version: Option<bool>,
 }
 
+#[cfg(any(target_os = "macos", test))]
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct UpdateManifest {
@@ -141,33 +179,48 @@ pub(crate) async fn install_update(
     let _install_lease = UpdateInstallLease::acquire()?;
     let package_version = app.package_info().version.to_string();
     let app_data_dir = app.path().app_data_dir().map_err(|err| err.to_string())?;
-    let app_bundle = current_app_bundle()?;
-    let destination_app = canonical_update_destination(&app_bundle);
+    let install_target = resolve_install_target()?;
     let progress_app = app.clone();
     let download_app_data_dir = app_data_dir.clone();
     let release_tag = request.tag_name.clone();
 
     update_progress::show(&app, "Preparing update...", Some(0.04));
     let staged_result = tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(windows)]
+        validate_windows_release_identity(&request, &package_version)?;
         let archive = download_update(
             &progress_app,
             &download_app_data_dir,
             &package_version,
             &request,
         )?;
-        let staged_app = unpack_and_validate_update(
-            &progress_app,
-            &download_app_data_dir,
-            &archive,
-            &package_version,
-            &request,
-        )?;
-        Ok::<PathBuf, String>(staged_app)
+        #[cfg(target_os = "macos")]
+        {
+            let staged_payload = unpack_and_validate_update(
+                &progress_app,
+                &download_app_data_dir,
+                &archive,
+                &package_version,
+                &request,
+            )?;
+            Ok::<PathBuf, String>(staged_payload)
+        }
+        #[cfg(windows)]
+        {
+            Ok::<PathBuf, String>(archive)
+        }
+        #[cfg(not(any(target_os = "macos", windows)))]
+        {
+            let _ = archive;
+            Err::<PathBuf, String>(
+                "Automatic in-place updates are not supported on this platform.".into(),
+            )
+        }
     })
     .await;
 
-    let staged_app = match staged_result {
-        Ok(Ok(staged_app)) => staged_app,
+    let staged_payload = match staged_result {
+        Ok(Ok(staged_payload)) => staged_payload,
         Ok(Err(error)) => {
             update_progress::close(&app);
             return Err(error);
@@ -211,13 +264,36 @@ pub(crate) async fn install_update(
 
             update_progress::show(&app, "Preparing installer...", Some(0.96));
             let launch_result = tauri::async_runtime::spawn_blocking(move || {
-                launch_installer(
-                    &app_data_dir,
-                    &staged_app,
-                    &app_bundle,
-                    &destination_app,
-                    &release_tag,
-                )
+                #[cfg(target_os = "macos")]
+                {
+                    launch_installer(
+                        &app_data_dir,
+                        &staged_payload,
+                        &install_target.current_app,
+                        &install_target.destination_app,
+                        &release_tag,
+                    )
+                }
+                #[cfg(windows)]
+                {
+                    launch_windows_installer(
+                        &app_data_dir,
+                        &staged_payload,
+                        &install_target.install_dir,
+                        &install_target.target_exe,
+                        &release_tag,
+                    )
+                }
+                #[cfg(not(any(target_os = "macos", windows)))]
+                {
+                    let _ = (
+                        &app_data_dir,
+                        &staged_payload,
+                        &install_target,
+                        &release_tag,
+                    );
+                    Err("Automatic in-place updates are not supported on this platform.".into())
+                }
             })
             .await;
 
@@ -238,6 +314,33 @@ pub(crate) async fn install_update(
         },
     )
     .await
+}
+
+fn resolve_install_target() -> Result<InstallTarget, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let current_app = current_app_bundle()?;
+        let destination_app = canonical_update_destination(&current_app);
+        Ok(InstallTarget {
+            current_app,
+            destination_app,
+        })
+    }
+    #[cfg(windows)]
+    {
+        let (install_dir, target_exe) = current_windows_install_target()?;
+        Ok(InstallTarget {
+            install_dir,
+            target_exe,
+        })
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
+    {
+        Err(
+            "Automatic in-place updates are not supported on this platform. Download the latest release from GitHub."
+                .into(),
+        )
+    }
 }
 
 fn finish_failed_installer_launch(
@@ -291,7 +394,8 @@ fn download_update(
     package_version: &str,
     request: &UpdateInstallRequest,
 ) -> Result<PathBuf, String> {
-    validate_request(request)?;
+    let package_kind = validate_request(request)?;
+    #[cfg(target_os = "macos")]
     let use_manifest = should_verify_manifest(request);
     let updates_dir = update_dir(app_data_dir, &request.tag_name)?;
     let archive = updates_dir.join(safe_path_component(&request.asset_name));
@@ -329,6 +433,9 @@ fn download_update(
             request.size, downloaded_size
         ));
     }
+    let mut staged_digest: Option<(PathBuf, PathBuf)> = None;
+    let mut staged_signature: Option<(PathBuf, PathBuf)> = None;
+
     if request_has_digest_assets(request) {
         let digest_name = request
             .sha256_asset_name
@@ -365,6 +472,7 @@ fn download_update(
         }
         let expected_sha256 = read_expected_sha256(&temporary_digest)?;
 
+        #[cfg(target_os = "macos")]
         if use_manifest {
             let manifest_name = request
                 .manifest_asset_name
@@ -461,7 +569,65 @@ fn download_update(
             return Err("Downloaded update archive SHA256 does not match release digest.".into());
         }
 
+        staged_digest = Some((temporary_digest, digest));
+    }
+
+    if request_has_ed25519_assets(request) {
+        let signature_name = request
+            .ed25519_asset_name
+            .as_deref()
+            .expect("ed25519 verification requires signature asset name");
+        let signature_url = request
+            .ed25519_browser_download_url
+            .as_deref()
+            .expect("ed25519 verification requires signature download url");
+        let signature_size = request
+            .ed25519_size
+            .expect("ed25519 verification requires signature size");
+        let signature = updates_dir.join(safe_path_component(signature_name));
+        let temporary_signature =
+            updates_dir.join(format!("{}.download", safe_path_component(signature_name)));
+        remove_path_if_exists(&temporary_signature)?;
+        remove_path_if_exists(&signature)?;
+
+        update_progress::show(app, "Verifying publisher signature...", Some(0.54));
+        download_asset(package_version, signature_url, &temporary_signature)?;
+        let downloaded_signature_size = fs::metadata(&temporary_signature)
+            .map_err(|err| err.to_string())?
+            .len();
+        if downloaded_signature_size != signature_size {
+            let mut to_clean: Vec<&Path> = vec![&temporary, &temporary_signature];
+            if let Some((temp_digest, _)) = &staged_digest {
+                to_clean.push(temp_digest);
+            }
+            cleanup_downloads(&to_clean)?;
+            return Err(format!(
+                "Downloaded update signature size mismatch: expected {} bytes, got {} bytes.",
+                signature_size, downloaded_signature_size
+            ));
+        }
+        let asset_bytes = fs::read(&temporary).map_err(|err| err.to_string())?;
+        let signature_text =
+            fs::read_to_string(&temporary_signature).map_err(|err| err.to_string())?;
+        if let Err(error) = verify_release_ed25519_signature(&asset_bytes, &signature_text) {
+            let mut to_clean: Vec<&Path> = vec![&temporary, &temporary_signature];
+            if let Some((temp_digest, _)) = &staged_digest {
+                to_clean.push(temp_digest);
+            }
+            cleanup_downloads(&to_clean)?;
+            return Err(error);
+        }
+        staged_signature = Some((temporary_signature, signature));
+    } else if matches!(package_kind, UpdatePackageKind::WindowsNsisInstaller) {
+        remove_path_if_exists(&temporary)?;
+        return Err("Windows updates require a publisher Ed25519 signature.".into());
+    }
+
+    if let Some((temporary_digest, digest)) = staged_digest {
         fs::rename(&temporary_digest, &digest).map_err(|err| err.to_string())?;
+    }
+    if let Some((temporary_signature, signature)) = staged_signature {
+        fs::rename(&temporary_signature, &signature).map_err(|err| err.to_string())?;
     }
 
     fs::rename(&temporary, &archive).map_err(|err| err.to_string())?;
@@ -514,7 +680,7 @@ fn download_asset_with_progress(
 }
 
 fn curl_download_command(package_version: &str, url: &str, target: &Path) -> Command {
-    let mut command = Command::new("/usr/bin/curl");
+    let mut command = runtime_utils::background_command(runtime_utils::curl_program());
     command
         .args(["--fail", "--location", "--silent", "--show-error"])
         .args([
@@ -528,8 +694,10 @@ fn curl_download_command(package_version: &str, url: &str, target: &Path) -> Com
             "2",
             "--retry-delay",
             "1",
-            "--retry-all-errors",
-        ])
+        ]);
+    #[cfg(not(windows))]
+    command.arg("--retry-all-errors");
+    command
         .arg("--header")
         .arg(format!("User-Agent: Burette/{package_version}"))
         .arg("--output")
@@ -631,6 +799,7 @@ fn format_download_unit(value: f64, unit: &str) -> String {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn unpack_and_validate_update(
     app: &tauri::AppHandle,
     app_data_dir: &Path,
@@ -659,9 +828,18 @@ fn unpack_and_validate_update(
     Ok(app)
 }
 
-fn validate_request(request: &UpdateInstallRequest) -> Result<(), String> {
+fn validate_request(request: &UpdateInstallRequest) -> Result<UpdatePackageKind, String> {
+    validate_request_for_platform(request, cfg!(windows))
+}
+
+fn validate_request_for_platform(
+    request: &UpdateInstallRequest,
+    is_windows: bool,
+) -> Result<UpdatePackageKind, String> {
     let has_digest = request_has_digest_assets(request);
     let has_partial_digest = has_partial_digest_assets(request);
+    let has_ed25519 = request_has_ed25519_assets(request);
+    let has_partial_ed25519 = has_partial_ed25519_assets(request);
     let has_manifest = request_has_manifest_assets(request);
     let has_partial_manifest = has_partial_manifest_assets(request);
     if !request
@@ -670,15 +848,32 @@ fn validate_request(request: &UpdateInstallRequest) -> Result<(), String> {
     {
         return Err("Only Burette GitHub release assets can be installed.".into());
     }
-    if !request.asset_name.to_lowercase().ends_with(".zip") {
-        return Err("Automatic installation supports zipped Burette app archives only.".into());
+    let package_kind = if is_windows {
+        if !request.asset_name.to_lowercase().ends_with("-setup.exe") {
+            return Err(
+                "Automatic installation on Windows supports Burette NSIS installers only.".into(),
+            );
+        }
+        UpdatePackageKind::WindowsNsisInstaller
+    } else {
+        if !request.asset_name.to_lowercase().ends_with(".zip") {
+            return Err("Automatic installation supports zipped Burette app archives only.".into());
+        }
+        UpdatePackageKind::MacosZip
+    };
+    if request.size == 0 || request.size > MAX_UPDATE_ASSET_BYTES {
+        return Err("Release asset size is invalid.".into());
     }
-    if request.size == 0 {
-        return Err("Release asset reports zero bytes.".into());
-    }
-    if has_partial_digest || has_partial_manifest {
+    if has_partial_digest || has_partial_ed25519 || has_partial_manifest {
         return Err(
             "Release integrity sidecars must be provided as a complete digest set and optional complete manifest set.".into(),
+        );
+    }
+    if matches!(package_kind, UpdatePackageKind::WindowsNsisInstaller)
+        && (!has_digest || !has_ed25519)
+    {
+        return Err(
+            "Windows automatic installation requires both SHA256 digest and Ed25519 signature sidecars.".into(),
         );
     }
     if has_manifest && !has_digest {
@@ -701,11 +896,36 @@ fn validate_request(request: &UpdateInstallRequest) -> Result<(), String> {
         }
         if sha256_name != format!("{}.sha256", request.asset_name) {
             return Err(
-                "Release digest asset must be named after the zip asset with .sha256.".into(),
+                "Release digest asset must be named after the update asset with .sha256.".into(),
             );
         }
         if sha256_size == 0 || sha256_size > 4096 {
             return Err("Release digest asset size is invalid.".into());
+        }
+    }
+    if has_ed25519 {
+        let signature_url = request
+            .ed25519_browser_download_url
+            .as_deref()
+            .expect("ed25519 validation requires signature url");
+        let signature_name = request
+            .ed25519_asset_name
+            .as_deref()
+            .expect("ed25519 validation requires signature asset name");
+        let signature_size = request
+            .ed25519_size
+            .expect("ed25519 validation requires signature size");
+        if !signature_url.starts_with(RELEASE_DOWNLOAD_PREFIX) {
+            return Err("Only Burette GitHub release signature assets can be installed.".into());
+        }
+        if signature_name != format!("{}.ed25519", request.asset_name) {
+            return Err(
+                "Release Ed25519 signature asset must be named after the update asset with .ed25519."
+                    .into(),
+            );
+        }
+        if signature_size == 0 || signature_size > 512 {
+            return Err("Release Ed25519 signature asset size is invalid.".into());
         }
     }
     if has_manifest {
@@ -759,7 +979,7 @@ fn validate_request(request: &UpdateInstallRequest) -> Result<(), String> {
             return Err("Release manifest signature asset size is invalid.".into());
         }
     }
-    Ok(())
+    Ok(package_kind)
 }
 
 fn request_has_digest_assets(request: &UpdateInstallRequest) -> bool {
@@ -777,6 +997,26 @@ fn has_partial_digest_assets(request: &UpdateInstallRequest) -> bool {
         request.sha256_asset_name.is_some(),
         request.sha256_browser_download_url.is_some(),
         request.sha256_size.is_some(),
+    ];
+    fields.into_iter().any(std::convert::identity)
+        && !fields.into_iter().all(std::convert::identity)
+}
+
+fn request_has_ed25519_assets(request: &UpdateInstallRequest) -> bool {
+    [
+        request.ed25519_asset_name.is_some(),
+        request.ed25519_browser_download_url.is_some(),
+        request.ed25519_size.is_some(),
+    ]
+    .into_iter()
+    .all(std::convert::identity)
+}
+
+fn has_partial_ed25519_assets(request: &UpdateInstallRequest) -> bool {
+    let fields = [
+        request.ed25519_asset_name.is_some(),
+        request.ed25519_browser_download_url.is_some(),
+        request.ed25519_size.is_some(),
     ];
     fields.into_iter().any(std::convert::identity)
         && !fields.into_iter().all(std::convert::identity)
@@ -808,12 +1048,14 @@ fn has_partial_manifest_assets(request: &UpdateInstallRequest) -> bool {
         && !fields.into_iter().all(std::convert::identity)
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn should_verify_manifest(request: &UpdateInstallRequest) -> bool {
     request_has_digest_assets(request)
         && request_has_manifest_assets(request)
         && manifest_public_key().is_some()
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn manifest_public_key() -> Option<&'static str> {
     option_env!("BURETTE_UPDATE_MANIFEST_PUBLIC_KEY_HEX").and_then(|value| {
         let trimmed = value.trim();
@@ -825,6 +1067,7 @@ fn manifest_public_key() -> Option<&'static str> {
     })
 }
 
+#[cfg(target_os = "macos")]
 fn verify_update_manifest(
     manifest_bytes: &[u8],
     signature_text: &str,
@@ -835,6 +1078,7 @@ fn verify_update_manifest(
     verify_update_manifest_with_key(manifest_bytes, signature_text, public_key)
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn verify_update_manifest_with_key(
     manifest_bytes: &[u8],
     signature_text: &str,
@@ -858,6 +1102,7 @@ fn verify_update_manifest_with_key(
         .map_err(|err| format!("Update manifest JSON is invalid: {err}"))
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn validate_update_manifest(
     manifest: &UpdateManifest,
     request: &UpdateInstallRequest,
@@ -896,6 +1141,89 @@ fn validate_update_manifest(
     Ok(())
 }
 
+fn verify_release_ed25519_signature(
+    asset_bytes: &[u8],
+    signature_text: &str,
+) -> Result<(), String> {
+    verify_release_ed25519_signature_with_key(
+        asset_bytes,
+        signature_text,
+        RELEASE_SIGNING_PUBLIC_KEY_B64,
+    )
+}
+
+fn verify_release_ed25519_signature_with_key(
+    asset_bytes: &[u8],
+    signature_text: &str,
+    public_key_b64: &str,
+) -> Result<(), String> {
+    let public_key_bytes = base64::engine::general_purpose::STANDARD
+        .decode(public_key_b64.trim())
+        .map_err(|_| "Embedded Burette release public key is invalid.".to_string())?;
+    let public_key: [u8; 32] = public_key_bytes
+        .try_into()
+        .map_err(|_| "Embedded Burette release public key must be 32 bytes.".to_string())?;
+    let verifying_key = VerifyingKey::from_bytes(&public_key)
+        .map_err(|_| "Embedded Burette release public key is invalid.".to_string())?;
+
+    let signature_bytes = base64::engine::general_purpose::STANDARD
+        .decode(signature_text.trim())
+        .map_err(|_| "Release asset Ed25519 signature is malformed.".to_string())?;
+    let signature = Signature::from_slice(&signature_bytes)
+        .map_err(|_| "Release asset Ed25519 signature must be 64 bytes.".to_string())?;
+    verifying_key.verify(asset_bytes, &signature).map_err(|_| {
+        "Downloaded update is not signed by the trusted Burette publisher.".to_string()
+    })?;
+    Ok(())
+}
+
+#[cfg(any(windows, test))]
+fn validate_windows_release_identity(
+    request: &UpdateInstallRequest,
+    current_version: &str,
+) -> Result<(), String> {
+    let release_version = request.tag_name.trim().trim_start_matches(['v', 'V']);
+    if release_version.is_empty() {
+        return Err("Release tag is empty.".into());
+    }
+    let comparison = compare_versions(release_version, current_version);
+    let allow_same_version = request.allow_same_version.unwrap_or(false);
+    if comparison < 0 || (comparison == 0 && !allow_same_version) {
+        return Err(format!(
+            "Release version {release_version} is not newer than {current_version}."
+        ));
+    }
+    let expected_prefix = format!("burette_{}_", release_version.to_ascii_lowercase());
+    let lower_asset = request.asset_name.to_ascii_lowercase();
+    if !lower_asset.starts_with(&expected_prefix) || !lower_asset.ends_with("-setup.exe") {
+        return Err(format!(
+            "Windows installer name {} does not match release {}.",
+            request.asset_name, request.tag_name
+        ));
+    }
+    let expected_tag_prefix = format!("{RELEASE_DOWNLOAD_PREFIX}{}/", request.tag_name);
+    for url in [
+        request.browser_download_url.as_str(),
+        request
+            .sha256_browser_download_url
+            .as_deref()
+            .unwrap_or_default(),
+        request
+            .ed25519_browser_download_url
+            .as_deref()
+            .unwrap_or_default(),
+    ] {
+        if !url.starts_with(&expected_tag_prefix) {
+            return Err(format!(
+                "Windows update asset URL must belong to release {}.",
+                request.tag_name
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
 fn find_downloaded_app(directory: &Path) -> Result<PathBuf, String> {
     let mut stack = vec![directory.to_path_buf()];
     while let Some(path) = stack.pop() {
@@ -917,6 +1245,7 @@ fn find_downloaded_app(directory: &Path) -> Result<PathBuf, String> {
     Err("The update archive does not contain Burette.app.".into())
 }
 
+#[cfg(target_os = "macos")]
 fn validate_downloaded_app(
     app: &Path,
     current_version: &str,
@@ -951,6 +1280,7 @@ fn validate_downloaded_app(
     validate_downloaded_app_signature(app)
 }
 
+#[cfg(target_os = "macos")]
 fn validate_downloaded_app_signature(app: &Path) -> Result<(), String> {
     run_status(
         "/usr/bin/codesign",
@@ -970,6 +1300,7 @@ fn validate_downloaded_app_signature(app: &Path) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
 fn validate_downloaded_extension_signature(
     app: &Path,
     downloaded_app_signature: &CodeSignatureDescriptor,
@@ -1018,12 +1349,14 @@ fn validate_downloaded_extension_signature(
     Ok(())
 }
 
+#[cfg(any(target_os = "macos", test))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum DownloadSignatureMode {
     AdHoc,
     DeveloperId { team_identifier: String },
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn validate_downloaded_app_descriptor(
     current_signature: &CodeSignatureDescriptor,
     downloaded_signature: &CodeSignatureDescriptor,
@@ -1054,6 +1387,7 @@ fn validate_downloaded_app_descriptor(
     }
 }
 
+#[cfg(target_os = "macos")]
 fn launch_installer(
     app_data_dir: &Path,
     staged_app: &Path,
@@ -1092,6 +1426,7 @@ fn launch_installer(
         .map_err(|err| format!("Could not launch the updater helper: {err}"))
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn installer_script(
     app_pid: u32,
     staged_app: &Path,
@@ -1374,6 +1709,192 @@ echo "update installed"
     ))
 }
 
+#[cfg(windows)]
+fn current_windows_install_target() -> Result<(PathBuf, PathBuf), String> {
+    use crate::preview::runtime_utils::SimplifiedCanonicalize;
+
+    let executable = std::env::current_exe().map_err(|err| err.to_string())?;
+    let executable = executable.canonicalize_simplified().unwrap_or(executable);
+    let install_dir = executable
+        .parent()
+        .ok_or_else(|| "Could not resolve Burette installation directory.".to_string())?
+        .to_path_buf();
+    let exe_name = executable
+        .file_name()
+        .filter(|name| !name.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("Burette.exe"));
+    let target_exe = install_dir.join(exe_name);
+    Ok((install_dir, target_exe))
+}
+
+#[cfg(windows)]
+fn powershell_program() -> PathBuf {
+    std::env::var_os("SystemRoot")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(r"C:\Windows"))
+        .join("System32")
+        .join("WindowsPowerShell")
+        .join("v1.0")
+        .join("powershell.exe")
+}
+
+#[cfg(windows)]
+fn launch_windows_installer(
+    app_data_dir: &Path,
+    installer_path: &Path,
+    install_dir: &Path,
+    target_exe: &Path,
+    release_tag: &str,
+) -> Result<InstallerProcessGuard, String> {
+    let updates_dir = update_dir(app_data_dir, release_tag)?;
+    let safe_tag = safe_path_component(release_tag);
+    let script = updates_dir.join(format!("install-{safe_tag}.ps1"));
+    let log = updates_dir.join(format!("install-{safe_tag}.log"));
+    let cleanup_paths = [
+        installer_path.to_path_buf(),
+        PathBuf::from(format!("{}.sha256", installer_path.display())),
+        PathBuf::from(format!("{}.ed25519", installer_path.display())),
+    ];
+    let body = windows_installer_script(
+        std::process::id(),
+        installer_path,
+        install_dir,
+        target_exe,
+        &log,
+        &cleanup_paths,
+    )?;
+    // Write UTF-8 with BOM so Windows PowerShell 5.1 preserves non-ASCII paths.
+    let mut bytes = Vec::with_capacity(body.len() + 3);
+    bytes.extend_from_slice(&[0xEF, 0xBB, 0xBF]);
+    bytes.extend_from_slice(body.as_bytes());
+    fs::write(&script, bytes).map_err(|err| err.to_string())?;
+
+    runtime_utils::background_command(powershell_program())
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-WindowStyle",
+            "Hidden",
+            "-File",
+        ])
+        .arg(&script)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map(InstallerProcessGuard::new)
+        .map_err(|err| format!("Could not launch the Windows updater helper: {err}"))
+}
+
+#[cfg(any(windows, test))]
+fn windows_installer_script(
+    app_pid: u32,
+    installer_path: &Path,
+    install_dir: &Path,
+    target_exe: &Path,
+    log: &Path,
+    cleanup_paths: &[PathBuf],
+) -> Result<String, String> {
+    let cleanup_items = cleanup_paths
+        .iter()
+        .map(|path| Ok(powershell_quote(path_str(path)?)))
+        .collect::<Result<Vec<_>, String>>()?
+        .join(", ");
+    Ok(format!(
+        r#"$ErrorActionPreference = 'Stop'
+$appPid = {app_pid}
+$installerPath = {installer_path}
+$installDir = {install_dir}
+$targetExe = {target_exe}
+$logFile = {log}
+$cleanupPaths = @({cleanup_items})
+
+function Write-Log([string]$message) {{
+  $timestamp = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+  Add-Content -LiteralPath $logFile -Value "[$timestamp] $message" -Encoding UTF8
+}}
+
+$logDir = Split-Path -Parent $logFile
+if ($logDir -and -not (Test-Path -LiteralPath $logDir)) {{
+  New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+}}
+
+Write-Log '== Burette Windows updater =='
+Write-Log "installer: $installerPath"
+Write-Log "install dir: $installDir"
+Write-Log "target exe: $targetExe"
+
+$exited = $false
+for ($i = 0; $i -lt 120; $i++) {{
+  if (-not (Get-Process -Id $appPid -ErrorAction SilentlyContinue)) {{
+    $exited = $true
+    break
+  }}
+  Start-Sleep -Milliseconds 250
+}}
+if (-not $exited) {{
+  Write-Log 'error: Burette did not quit in time'
+  exit 1
+}}
+
+Start-Sleep -Seconds 1
+$installPrefix = $installDir.TrimEnd('') + ''
+for ($i = 0; $i -lt 20; $i++) {{
+  $stray = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {{
+    $_.Id -ne $PID -and $_.Path -and $_.Path.StartsWith($installPrefix, [System.StringComparison]::OrdinalIgnoreCase)
+  }})
+  if ($stray.Count -eq 0) {{
+    break
+  }}
+  if ($i -eq 19) {{
+    foreach ($proc in $stray) {{
+      Write-Log "stopping leftover worker pid=$($proc.Id) path=$($proc.Path)"
+      Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+    }}
+    Start-Sleep -Milliseconds 500
+  }} else {{
+    Start-Sleep -Milliseconds 250
+  }}
+}}
+
+Write-Log 'starting silent NSIS installer'
+$installer = Start-Process -FilePath $installerPath -ArgumentList ('/S /D=' + $installDir) -Wait -PassThru
+Write-Log "installer exit code: $($installer.ExitCode)"
+if ($installer.ExitCode -ne 0) {{
+  exit $installer.ExitCode
+}}
+
+if (Test-Path -LiteralPath $targetExe) {{
+  Write-Log 'relaunching Burette'
+  Start-Process -FilePath $targetExe -WorkingDirectory $installDir
+}} else {{
+  Write-Log "warning: expected executable not found at $targetExe"
+}}
+
+foreach ($path in $cleanupPaths) {{
+  if ($path -and (Test-Path -LiteralPath $path)) {{
+    Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+  }}
+}}
+Write-Log 'update installed'
+Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
+"#,
+        installer_path = powershell_quote(path_str(installer_path)?),
+        install_dir = powershell_quote(path_str(install_dir)?),
+        target_exe = powershell_quote(path_str(target_exe)?),
+        log = powershell_quote(path_str(log)?),
+    ))
+}
+
+#[cfg(any(windows, test))]
+fn powershell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
+#[cfg(any(target_os = "macos", test))]
 fn canonical_update_destination(current_app: &Path) -> PathBuf {
     if current_app
         .file_name()
@@ -1510,6 +2031,7 @@ echo "app migration complete"
     ))
 }
 
+#[cfg(target_os = "macos")]
 fn current_app_bundle() -> Result<PathBuf, String> {
     let executable = std::env::current_exe().map_err(|err| err.to_string())?;
     let macos_dir = executable
@@ -1532,6 +2054,7 @@ fn update_dir(app_data_dir: &Path, release_tag: &str) -> Result<PathBuf, String>
     Ok(directory)
 }
 
+#[cfg(target_os = "macos")]
 fn read_plist_value(plist: &Path, key: &str) -> Result<String, String> {
     let output = Command::new("/usr/libexec/PlistBuddy")
         .args(["-c", &format!("Print :{key}")])
@@ -1544,6 +2067,7 @@ fn read_plist_value(plist: &Path, key: &str) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
+#[cfg(target_os = "macos")]
 fn code_signature_descriptor(app: &Path) -> Result<CodeSignatureDescriptor, String> {
     let output = Command::new("/usr/bin/codesign")
         .args(["-dv", "--verbose=4"])
@@ -1575,12 +2099,14 @@ fn code_signature_descriptor(app: &Path) -> Result<CodeSignatureDescriptor, Stri
     })
 }
 
+#[cfg(any(target_os = "macos", test))]
 struct CodeSignatureDescriptor {
     identifier: Option<String>,
     team_identifier: Option<String>,
     is_ad_hoc: bool,
 }
 
+#[cfg(target_os = "macos")]
 fn run_status(executable: &str, arguments: &[&str]) -> Result<(), String> {
     let status = Command::new(executable)
         .args(arguments)
@@ -1625,29 +2151,28 @@ fn read_expected_sha256(path: &Path) -> Result<String, String> {
 }
 
 fn file_sha256(path: &Path) -> Result<String, String> {
-    let output = Command::new("/usr/bin/shasum")
-        .args(["-a", "256"])
-        .arg(path)
-        .output()
-        .map_err(|err| format!("Could not start shasum: {err}"))?;
-    if !output.status.success() {
-        return Err(format!("shasum failed for {}.", path.display()));
+    let mut file = fs::File::open(path)
+        .map_err(|err| format!("Could not open {} for SHA256: {err}", path.display()))?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .map_err(|err| format!("Could not read {} for SHA256: {err}", path.display()))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
     }
-    let text = String::from_utf8_lossy(&output.stdout);
-    let digest = text
-        .split_whitespace()
-        .next()
-        .ok_or_else(|| format!("shasum did not report a digest for {}.", path.display()))?
-        .to_ascii_lowercase();
-    if !is_sha256_hex(&digest) {
-        return Err(format!(
-            "shasum reported an invalid digest for {}.",
-            path.display()
-        ));
+    let mut digest = String::with_capacity(64);
+    for byte in hasher.finalize() {
+        use std::fmt::Write as _;
+        let _ = write!(&mut digest, "{byte:02x}");
     }
     Ok(digest)
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn ensure_macos_version_at_least(minimum: &str) -> Result<(), String> {
     let output = Command::new("/usr/bin/sw_vers")
         .arg("-productVersion")
@@ -1670,6 +2195,7 @@ fn is_sha256_hex(value: &str) -> bool {
     value.len() == 64 && value.chars().all(|character| character.is_ascii_hexdigit())
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn hex_bytes(value: &str) -> Result<Vec<u8>, String> {
     let normalized: String = value
         .chars()
@@ -1687,6 +2213,7 @@ fn hex_bytes(value: &str) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
+#[cfg(any(target_os = "macos", windows, test))]
 fn path_str(path: &Path) -> Result<&str, String> {
     path.to_str()
         .ok_or_else(|| format!("Path is not valid UTF-8: {}", path.display()))
@@ -1711,14 +2238,17 @@ fn safe_path_component(value: &str) -> String {
     }
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
+#[cfg(target_os = "macos")]
 fn uuid() -> String {
     uuid::Uuid::new_v4().to_string()
 }
 
+#[cfg(any(target_os = "macos", windows, test))]
 fn compare_versions(left: &str, right: &str) -> i8 {
     let left_version = parse_version(left);
     let right_version = parse_version(right);
@@ -1733,18 +2263,21 @@ fn compare_versions(left: &str, right: &str) -> i8 {
     compare_prerelease(&left_version.prerelease, &right_version.prerelease)
 }
 
+#[cfg(any(target_os = "macos", windows, test))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct ParsedVersion {
     core: Vec<u64>,
     prerelease: Vec<PrereleaseIdentifier>,
 }
 
+#[cfg(any(target_os = "macos", windows, test))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum PrereleaseIdentifier {
     Numeric(u64),
     Text(String),
 }
 
+#[cfg(any(target_os = "macos", windows, test))]
 fn parse_version(value: &str) -> ParsedVersion {
     let trimmed = value
         .trim()
@@ -1778,6 +2311,7 @@ fn parse_version(value: &str) -> ParsedVersion {
     }
 }
 
+#[cfg(any(target_os = "macos", windows, test))]
 fn compare_prerelease(left: &[PrereleaseIdentifier], right: &[PrereleaseIdentifier]) -> i8 {
     if left.is_empty() && right.is_empty() {
         return 0;
@@ -1849,6 +2383,9 @@ mod tests {
             sha256_asset_name: Some("Burette-0.10.32.zip.sha256".to_string()),
             sha256_browser_download_url: Some("https://github.com/SergeiNikolenko/Burette/releases/download/v0.10.32/Burette-0.10.32.zip.sha256".to_string()),
             sha256_size: Some(80),
+            ed25519_asset_name: None,
+            ed25519_browser_download_url: None,
+            ed25519_size: None,
             manifest_asset_name: Some("Burette-0.10.32.zip.manifest.json".to_string()),
             manifest_browser_download_url: Some("https://github.com/SergeiNikolenko/Burette/releases/download/v0.10.32/Burette-0.10.32.zip.manifest.json".to_string()),
             manifest_size: Some(TEST_MANIFEST.len() as u64),
@@ -1872,7 +2409,8 @@ mod tests {
         request.manifest_signature_browser_download_url = None;
         request.manifest_signature_size = None;
 
-        validate_request(&request).expect("legacy zip-only request should remain supported");
+        validate_request_for_platform(&request, false)
+            .expect("legacy zip-only request should remain supported");
         assert!(!should_verify_manifest(&request));
     }
 
@@ -1886,7 +2424,8 @@ mod tests {
         request.manifest_signature_browser_download_url = None;
         request.manifest_signature_size = None;
 
-        validate_request(&request).expect("sha256-only request should be supported");
+        validate_request_for_platform(&request, false)
+            .expect("sha256-only request should be supported");
         assert!(!should_verify_manifest(&request));
         assert!(request_has_digest_assets(&request));
     }
@@ -1951,7 +2490,8 @@ mod tests {
         let mut request = install_request();
         request.manifest_signature_asset_name = None;
 
-        let error = validate_request(&request).expect_err("partial sidecars must be rejected");
+        let error = validate_request_for_platform(&request, false)
+            .expect_err("partial sidecars must be rejected");
         assert!(error.contains("complete digest set"));
     }
 
@@ -2221,5 +2761,122 @@ mod tests {
         assert!(script.contains("\"$LSREGISTER\" -f -R \"$DEST_APP\""));
         assert!(!script.contains("/usr/bin/swift"));
         assert!(script.contains("/usr/bin/open \"$DEST_APP\""));
+    }
+
+    fn windows_install_request() -> UpdateInstallRequest {
+        UpdateInstallRequest {
+            tag_name: "v2026.11.38".to_string(),
+            asset_name: "Burette_2026.11.38_x64-setup.exe".to_string(),
+            browser_download_url: "https://github.com/SergeiNikolenko/Burette/releases/download/v2026.11.38/Burette_2026.11.38_x64-setup.exe".to_string(),
+            size: 98_765_432,
+            sha256_asset_name: Some("Burette_2026.11.38_x64-setup.exe.sha256".to_string()),
+            sha256_browser_download_url: Some("https://github.com/SergeiNikolenko/Burette/releases/download/v2026.11.38/Burette_2026.11.38_x64-setup.exe.sha256".to_string()),
+            sha256_size: Some(99),
+            ed25519_asset_name: Some("Burette_2026.11.38_x64-setup.exe.ed25519".to_string()),
+            ed25519_browser_download_url: Some("https://github.com/SergeiNikolenko/Burette/releases/download/v2026.11.38/Burette_2026.11.38_x64-setup.exe.ed25519".to_string()),
+            ed25519_size: Some(89),
+            manifest_asset_name: None,
+            manifest_browser_download_url: None,
+            manifest_size: None,
+            manifest_signature_asset_name: None,
+            manifest_signature_browser_download_url: None,
+            manifest_signature_size: None,
+            allow_same_version: None,
+        }
+    }
+
+    #[test]
+    fn windows_request_requires_digest_and_ed25519_signature() {
+        let request = windows_install_request();
+        assert_eq!(
+            validate_request_for_platform(&request, true)
+                .expect("signed Windows NSIS request should validate"),
+            UpdatePackageKind::WindowsNsisInstaller
+        );
+        validate_windows_release_identity(&request, "2026.11.37")
+            .expect("newer Windows release should be accepted");
+
+        let mut unsigned = windows_install_request();
+        unsigned.ed25519_asset_name = None;
+        unsigned.ed25519_browser_download_url = None;
+        unsigned.ed25519_size = None;
+        let error = validate_request_for_platform(&unsigned, true)
+            .expect_err("unsigned Windows installer must be rejected");
+        assert!(error.contains("Ed25519"));
+
+        let downgrade = validate_windows_release_identity(&request, "2026.11.38")
+            .expect_err("same version without opt-in must be rejected");
+        assert!(downgrade.contains("not newer"));
+
+        let mut mismatched_name = windows_install_request();
+        mismatched_name.asset_name = "Burette_2026.11.39_x64-setup.exe".to_string();
+        let mismatch = validate_windows_release_identity(&mismatched_name, "2026.11.37")
+            .expect_err("installer name must match release tag");
+        assert!(mismatch.contains("does not match release"));
+    }
+
+    #[test]
+    fn verifies_ed25519_release_signature_and_rejects_tampering() {
+        // RFC 8032 test vector 1 (empty message) + pinned Burette key decode check.
+        let pinned_bytes = base64::engine::general_purpose::STANDARD
+            .decode(RELEASE_SIGNING_PUBLIC_KEY_B64.trim())
+            .expect("pinned release key must be valid base64");
+        let pinned_array: [u8; 32] = pinned_bytes
+            .try_into()
+            .expect("pinned release key must be 32 bytes");
+        VerifyingKey::from_bytes(&pinned_array).expect("pinned release key must be valid Ed25519");
+
+        let public_key_b64 = base64::engine::general_purpose::STANDARD
+            .encode(hex_bytes(TEST_PUBLIC_KEY_HEX).expect("valid test public key hex"));
+        let signature_b64 = base64::engine::general_purpose::STANDARD
+            .encode(hex_bytes(TEST_SIGNATURE_HEX).expect("valid test signature hex"));
+        verify_release_ed25519_signature_with_key(
+            TEST_MANIFEST.as_bytes(),
+            &signature_b64,
+            &public_key_b64,
+        )
+        .expect("valid Ed25519 signature should verify");
+
+        let error = verify_release_ed25519_signature_with_key(
+            b"tampered installer bytes",
+            &signature_b64,
+            &public_key_b64,
+        )
+        .expect_err("tampered payload must fail verification");
+        assert!(error.contains("trusted Burette publisher"));
+    }
+
+    #[test]
+    fn computes_file_sha256_in_pure_rust() {
+        let path = std::env::temp_dir().join(format!(
+            "burette-updater-sha256-{}.bin",
+            uuid::Uuid::new_v4()
+        ));
+        fs::write(&path, b"abc").expect("write temp file");
+        let digest = file_sha256(&path).expect("hash temp file");
+        let _ = fs::remove_file(&path);
+        assert_eq!(
+            digest,
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
+
+    #[test]
+    fn renders_windows_silent_nsis_updater_script_with_escaped_paths() {
+        let script = windows_installer_script(
+            4242,
+            Path::new(r"C:\Users\O'Brien\AppData\Roaming\com.local.BuretteV10\Updates\v2026.11.38\Burette_2026.11.38_x64-setup.exe"),
+            Path::new(r"C:\Users\O'Brien\AppData\Local\Burette"),
+            Path::new(r"C:\Users\O'Brien\AppData\Local\Burette\Burette.exe"),
+            Path::new(r"C:\Users\O'Brien\AppData\Roaming\com.local.BuretteV10\Updates\v2026.11.38\install-v2026.11.38.log"),
+            &[PathBuf::from(r"C:\temp\Burette_2026.11.38_x64-setup.exe")],
+        )
+        .expect("render Windows updater script");
+
+        assert!(script.contains("$appPid = 4242"));
+        assert!(script.contains("O''Brien"));
+        assert!(script.contains("('/S /D=' + $installDir)"));
+        assert!(script.contains("Start-Process -FilePath $targetExe -WorkingDirectory $installDir"));
+        assert!(script.contains("Remove-Item -LiteralPath $PSCommandPath"));
     }
 }

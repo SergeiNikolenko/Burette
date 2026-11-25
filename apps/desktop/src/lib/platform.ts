@@ -20,6 +20,10 @@ export function isMacPlatform() {
   return desktopPlatform() === "macos";
 }
 
+export function isWindowsPlatform() {
+  return desktopPlatform() === "windows";
+}
+
 /** Status-text name of the native compute backend; Metal exists only on macOS. */
 export function nativeComputeLabel(macLabel = "Metal") {
   return isMacPlatform() ? macLabel : "native compute";

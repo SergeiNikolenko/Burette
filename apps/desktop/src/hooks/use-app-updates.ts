@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { ask } from "@tauri-apps/plugin-dialog";
 
 import type { BuildInfo } from "../components/types";
@@ -26,6 +27,13 @@ type UseAppUpdatesArgs = {
   enabled?: boolean;
   pushErrorStatus: (error: unknown, prefix?: string, details?: string[]) => void;
   pushStatus: (message: string, kind?: "info" | "success" | "error", details?: string[]) => void;
+};
+
+type UpdateProgressPayload = {
+  message: string;
+  detail?: string;
+  progress?: number | null;
+  done?: boolean;
 };
 
 export function useAppUpdates({ enabled = true, pushErrorStatus, pushStatus }: UseAppUpdatesArgs) {
@@ -95,6 +103,9 @@ export function useAppUpdates({ enabled = true, pushErrorStatus, pushStatus }: U
           sha256AssetName: release.installAsset.sha256AssetName,
           sha256BrowserDownloadUrl: release.installAsset.sha256BrowserDownloadUrl,
           sha256Size: release.installAsset.sha256Size,
+          ed25519AssetName: release.installAsset.ed25519AssetName,
+          ed25519BrowserDownloadUrl: release.installAsset.ed25519BrowserDownloadUrl,
+          ed25519Size: release.installAsset.ed25519Size,
           manifestAssetName: release.installAsset.manifestAssetName,
           manifestBrowserDownloadUrl: release.installAsset.manifestBrowserDownloadUrl,
           manifestSize: release.installAsset.manifestSize,
@@ -220,6 +231,28 @@ export function useAppUpdates({ enabled = true, pushErrorStatus, pushStatus }: U
       pushErrorStatus(error, "Open release page failed");
     }
   }, [buildInfo.isBrowserDev, enabled, pushErrorStatus, pushStatus, update.availableRelease]);
+
+  useEffect(() => {
+    if (!enabled || !isTauriRuntime() || native.engine !== "legacy") return undefined;
+    let cancelled = false;
+    let unlisten: (() => void) | null = null;
+    void listen<UpdateProgressPayload>("burette://update-progress", ({ payload }) => {
+      if (cancelled || !payload || payload.done) return;
+      const detail = payload.detail?.trim();
+      const text = detail ? payload.message + " (" + detail + ")" : payload.message;
+      setUpdate((previous) => (previous.isInstalling ? { ...previous, statusText: text } : previous));
+    }).then((dispose) => {
+      if (cancelled) {
+        dispose();
+      } else {
+        unlisten = dispose;
+      }
+    }).catch(() => {});
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [enabled, native.engine]);
 
   useEffect(() => {
     if (!enabled || !buildInfoLoaded || buildInfo.isDevBuild || native.engine !== "legacy") return undefined;
