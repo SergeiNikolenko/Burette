@@ -368,13 +368,33 @@ jobs:
     needs:
       - release
       - windows-bundles
+    environment: release
     runs-on: ubuntu-24.04
     steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
       - name: Download Windows installer
         uses: actions/download-artifact@v4
         with:
           name: windows-release-bundles
           path: windows
+
+      - name: Sign Windows installer for in-app updates
+        env:
+          BURETTE_SPARKLE_PRIVATE_KEY: ${{ secrets.BURETTE_SPARKLE_PRIVATE_KEY }}
+        run: |
+          shopt -s nullglob
+          installers=(windows/*-setup.exe)
+          if (( ${#installers[@]} == 0 )); then
+            echo "::error::No Windows NSIS installer found in windows-release-bundles."
+            exit 1
+          fi
+          node scripts/sign-release-asset.mjs "${installers[@]}"
 
       - name: Attach Windows installer to the GitHub release
         env:
