@@ -36,6 +36,9 @@ Choose the smallest focused workflow that covers the request:
   such as focus ligand, hide waters, surface, color, contacts, and reset camera.
 - [mvs-story](../mvs-story/SKILL.md): create, validate, package, observe, and
   navigate multi-step MolViewSpec molecular narratives.
+- [bio-media](../bio-media/SKILL.md): produce publication-grade molecular
+  stills, pocket measurement/pharmacophore/orbital figures, and smooth 60fps 3D
+  bio-videos following Burette visual standards.
 - [molecule-collection](../molecule-collection/SKILL.md): review SDF/grid/table
   collections, properties, filtering outputs, and selected molecule handoff.
 - [trajectory-review](../trajectory-review/SKILL.md): review trajectories,

@@ -18,6 +18,7 @@ skills/
   open-workspace/        open Browser preview or desktop sessions
   molstar-scene/         allowlisted Mol* actions and scene inspection
   mvs-story/             author, validate, observe, and control MolViewSpec Stories
+  bio-media/             publication molecular photography and 60fps 3D bio-videos
   molecule-collection/   SDF/grid/property workflows
   trajectory-review/     trajectory/result-bundle review
   workflow-results/      external workflow artifact intake

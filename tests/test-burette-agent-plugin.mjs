@@ -96,6 +96,7 @@ assert.equal(repoMarketplace.plugins[0].category, "Education & Research");
 
 const skillInvocationPolicies = [
   ["index", true],
+  ["bio-media", false],
   ["external-agent-contract", false],
   ["molecular-report", false],
   ["molecule-collection", false],
@@ -318,6 +319,8 @@ for (const asset of [
   "scripts/install-local.mjs",
   "scripts/preserve-native-widget.mjs",
   "python/burette_workbench.py",
+  "skills/bio-media/SKILL.md",
+  "skills/bio-media/agents/openai.yaml",
   "skills/mvs-story/references/molviewspec-authoring.md",
   "assets/mvs-story-templates/aligned-structure-comparison.json",
   "assets/mvs-story-templates/binding-site-tour.json",
@@ -378,6 +381,7 @@ assert.match(indexSkill, /external-agent-contract/);
 assert.match(indexSkill, /workspaceSessionId/);
 assert.match(indexSkill, /open-workspace/);
 assert.match(indexSkill, /molstar-scene/);
+assert.match(indexSkill, /bio-media/);
 assert.match(indexSkill, /molecule-collection/);
 assert.match(indexSkill, /trajectory-review/);
 assert.match(indexSkill, /workflow-results/);
