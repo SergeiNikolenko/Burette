@@ -129,7 +129,9 @@ export function useAppUpdates({ enabled = true, pushErrorStatus, pushStatus }: U
     const canInstall = release.installAsset !== null;
     const message = canInstall
       ? "Burette " + release.tagName + " is available. Install it now and restart Burette when the update is ready?"
-      : "Burette " + release.tagName + " is available, but this release does not include an installable app archive.";
+      : isMacPlatform()
+        ? "Burette " + release.tagName + " is available, but this release does not include an installable app archive."
+        : "Burette " + release.tagName + " is available. Open the release page to download the installer?";
     const accepted = isTauriRuntime()
       ? await ask(message, {
         title: "Update Available",
