@@ -1,5 +1,11 @@
 # Releasing Burette
 
+Every public release builds and publishes desktop packages for **macOS**,
+**Linux**, and **Windows** together from `.github/workflows/release.yml` on
+`main`. Maintainers and contributors must keep all three desktop release
+targets, their `xyzrender` runtime locks, and desktop file-association metadata
+working on every release.
+
 Release identity is Burette-specific:
 
 - app name: `Burette`
@@ -207,6 +213,17 @@ mismatched Sparkle credentials stop distribution in either mode. Local output
 archives use the same `Burette-<version>` names as the public release.
 
 ## Artifact Requirements
+
+| Platform | Release artifacts | Build workflow job | Signing and updates |
+| --- | --- | --- | --- |
+| macOS (arm64, macOS 12+) | `Burette-<version>.zip`, `Burette-<version>.dmg`, `.ed25519`, `.sha256`, Sparkle appcast, Homebrew cask | `release` (`macos-latest`) | Ed25519 Sparkle signature required; optional Apple Developer ID + notarization; in-app Sparkle updates + Homebrew tap |
+| Linux (x86_64, WebKitGTK 4.1) | `Burette_<version>_amd64.deb`, `Burette-<version>-1.x86_64.rpm`, `Burette_<version>_amd64.AppImage`, `Burette-<version>-linux.sha256` | `linux-bundles` + `linux-publish` (`ubuntu-24.04`) | Unsigned; in-app update check links to GitHub Releases |
+| Windows (x64, Windows 10/11) | `Burette_<version>_x64-setup.exe`, `Burette-<version>-windows.sha256` | `windows-bundles` + `windows-publish` (`windows-latest`) | Unsigned (SmartScreen prompt on first run); in-app update check links to GitHub Releases |
+
+After every release run, confirm that the GitHub Release page includes all
+macOS, Linux, and Windows artifacts listed above and that `node
+scripts/desktop-metadata.mjs --check` and the three platform `xyzrender` locks
+stay aligned for subsequent PRs.
 
 Current packaging builds an arm64 app and compute helper. The Homebrew cask
 must require Apple Silicon; the Sparkle appcast must advertise `arm64` hardware

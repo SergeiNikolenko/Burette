@@ -1,8 +1,8 @@
 <h1 align="center">Burette</h1>
 
 <p align="center">
-  Preview molecular files with a press of Space.
-  Open the Mac workspace to inspect structures, compare compounds, and edit molecules.
+  Preview molecular files in macOS Finder with a press of Space,
+  or open the desktop workspace on macOS, Windows, and Linux to inspect structures, compare compounds, and edit molecules.
 </p>
 
 <p align="center">
@@ -18,7 +18,7 @@
 
 <p align="center">
   <a href="https://burette-landing.vercel.app/">Website</a> ·
-  <a href="https://github.com/SergeiNikolenko/Burette/releases/latest">Download for Mac</a> ·
+  <a href="https://github.com/SergeiNikolenko/Burette/releases/latest">Download</a> ·
   <a href="https://burette-landing.vercel.app/docs">Documentation</a> ·
   <a href="https://burette-landing.vercel.app/demo">Try in your browser</a>
 </p>
@@ -32,15 +32,15 @@
 ## What Is Burette?
 
 Burette brings molecular previews, structure inspection, and collection browsing
-into one Mac workspace. Explore a protein and its ligand, step through a
+into one desktop workspace for macOS, Windows, and Linux. Explore a protein and its ligand, step through a
 trajectory, filter compounds by their properties, or edit a molecule in the
 built-in molecular editor.
 Project folders, tabs, and side panels keep related files together.
 
 Use it in four ways:
 
-- **Finder previews:** select a molecular file in Finder and press Space.
-- **Desktop workspace:** open Burette directly to inspect files in tabs, browse
+- **Finder previews (macOS):** select a molecular file in Finder and press Space.
+- **Desktop workspace (macOS, Windows, Linux):** open Burette directly to inspect files in tabs, browse
   project folders, search commands and structures, sketch molecules, review
   collections, and send files to external chemistry tools.
 - **iPhone preview app:** build the `BuretteMobile` Xcode target from source,
@@ -53,13 +53,13 @@ plugin for working with molecular files through ChatGPT or Codex.
 
 ## Download
 
-Current macOS release bundles require Apple Silicon and macOS 12 or later.
-Linux releases ship the desktop workspace for x86_64 as deb, rpm and AppImage
-bundles; see [Burette on Linux](docs/linux.md) for installation and the
-differences from the Mac app. Windows releases ship it for x64 as an installer;
-see [Burette on Windows](docs/windows.md).
+Every GitHub release ships desktop builds for **macOS**, **Windows**, and **Linux**:
 
-You can install Burette with the Homebrew tap:
+[Download the latest Burette release](https://github.com/SergeiNikolenko/Burette/releases/latest)
+
+### macOS (Apple Silicon, macOS 12+)
+
+Install with the Homebrew tap:
 
 ```bash
 brew tap SergeiNikolenko/burette
@@ -72,29 +72,45 @@ Check the cask version when you need to confirm a specific release:
 brew info --cask SergeiNikolenko/burette/burette
 ```
 
-You can also download Burette from the GitHub Releases page:
-
-[Download the latest Burette release](https://github.com/SergeiNikolenko/Burette/releases/latest)
+Or install manually from GitHub Releases:
 
 1. Open the latest release.
-2. Download the `Burette-<version>.zip` file (or the signed
-   `Burette-<version>.dmg` for drag-and-drop install).
+2. Download `Burette-<version>.dmg` (drag-and-drop install) or `Burette-<version>.zip`.
 3. Unzip it (or open the DMG).
 4. Move `Burette.app` to your `Applications` folder.
 5. Open Burette once from `Applications`.
+
+### Windows (Windows 10 and 11, x64)
+
+1. Open the latest release and download `Burette_<version>_x64-setup.exe`.
+2. Run the per-user installer (no administrator rights required). WebView2 is included on Windows 11 and current Windows 10, or fetched automatically during setup.
+3. Release installers are not code-signed yet, so SmartScreen asks for confirmation on first run.
+
+See [Burette on Windows](docs/windows.md) for file associations, data paths, and platform differences.
+
+### Linux (x86_64, WebKitGTK 4.1)
+
+Download the bundle for your distribution from the latest release:
+
+```bash
+sudo apt install ./Burette_<version>_amd64.deb           # Debian, Ubuntu
+sudo dnf install ./Burette-<version>-1.x86_64.rpm       # Fedora, RHEL, openSUSE
+chmod +x Burette_<version>_amd64.AppImage && ./Burette_<version>_amd64.AppImage
+```
+
+See [Burette on Linux](docs/linux.md) for desktop integration, MIME types, and platform differences.
 
 ## Quick Start
 
 After installation:
 
-1. Open `Burette.app` once so macOS registers the app and Quick Look extension.
-2. In Finder, select a supported molecular file and press Space.
-3. Open Burette directly for the full workspace:
-   - `Cmd+O` opens molecular structure files.
-   - `Cmd+P` or `/` opens the command palette.
-   - `Cmd+,` opens settings.
+1. On macOS, open `Burette.app` once so macOS registers the app and Finder Quick Look extension, then select a supported molecular file in Finder and press Space.
+2. On macOS, Windows, and Linux, open Burette directly for the full workspace:
+   - `Cmd+O` (macOS) or `Ctrl+O` (Windows/Linux) opens molecular structure files.
+   - `Cmd+P` / `Ctrl+P` or `/` opens the command palette.
+   - `Cmd+,` / `Ctrl+,` opens settings.
    - The sidebar browses project folders, nested structures, and recent files.
-4. If previews do not appear, open the command palette and run
+3. On macOS, if Finder previews do not appear, open the command palette and run
    **Reset Quick Look**. **Open Logs Folder** and **Export Diagnostics** are
    available there as well.
 
@@ -134,7 +150,7 @@ Opening Burette directly gives you a compact molecular workspace:
 - right and bottom docks for comparing structures, text files, the molecular
   editor, grids,
   and workflow panels
-- "Open In" actions for Finder, the default app, or discovered chemistry editors
+- "Open In" actions for Finder / File Explorer / file manager, the default app, or discovered chemistry editors
 - text and structure source viewing with live editing and save for logs,
   scripts, configs, and molecular source files, plus rich Markdown and image
   previews in mixed project folders
@@ -159,7 +175,7 @@ inspect its structure and descriptors alongside the collection.
 
 Map a collection by molecular similarity, inspect neighbouring compounds, and
 bring selected molecules back to the table. Native Chemical Space calculations
-run on Apple Silicon in the Mac app.
+run with Metal acceleration on Apple Silicon and on the CPU in Windows and Linux builds.
 
 ![Chemical Space map beside the molecular collection](docs/public/readme/chemical-space.jpg)
 
@@ -202,7 +218,7 @@ for structure triage:
 - docking and pose-review surfaces backed by the shared Mol* viewer runtime
 - structure superposition (auto, residue-number, sequence, chain, and TM-align
   flows) and Maestro/PyMOL-style structure operations
-- native compute actions on Apple Silicon: molecular clustering, similarity
+- native compute actions (Metal-accelerated on Apple Silicon, CPU reference on Windows and Linux): molecular clustering, similarity
   search, conformer generation, MMFF optimization, alignment and scoring,
   semiempirical energies, and a Chemical Space panel with Metal-accelerated
   embeddings, clustering, activity colouring, and cliffs
@@ -281,7 +297,7 @@ Burette settings cover:
   and runs their commands from Compute › Extensions
 
 Optional integrations include a local `xyzrender` executable, VESTA, external
-chemistry editors discovered by macOS, and managed or detected scientific
+chemistry editors discovered on the system, and managed or detected scientific
 runtimes (xTB via a managed Conda install or an existing binary, CREST,
 descriptor/RDKit Python environments, and Schrödinger tools).
 
@@ -290,7 +306,7 @@ descriptor/RDKit Python environments, and Schrödinger tools).
 If Burette cannot open or preview a molecular file, please [open an unsupported-file issue](https://github.com/SergeiNikolenko/Burette/issues/new?template=7-unsupported-file-format.yml). Before submitting:
 
 1. Search existing issues for the extension or format name.
-2. Include the exact file extension, where the failure occurs, your Burette and macOS versions, and the installation method.
+2. Include the exact file extension, where the failure occurs, your Burette version and OS (macOS, Windows, or Linux distribution), and the installation method.
 3. On macOS, include the output of:
 
    ```bash
@@ -303,6 +319,8 @@ If Burette cannot open or preview a molecular file, please [open an unsupported-
 
 - [Documentation map](docs/README.md)
 - [Changelog](CHANGELOG.md)
+- [Burette on Windows](docs/windows.md)
+- [Burette on Linux](docs/linux.md)
 - [Installing and building from source](docs/installing-building.md)
 - [Configuration](docs/configuration.md)
 - [Security and permissions](docs/security-and-permissions.md)

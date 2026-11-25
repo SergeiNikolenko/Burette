@@ -284,6 +284,12 @@ jobs:
       - name: Setup Burette toolchain
         uses: ./.github/actions/setup-burette-toolchain
 
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: linux
+          save-if: "false"
+
       - name: Build Linux bundles
         run: ./scripts/build-linux.sh
 
@@ -315,7 +321,7 @@ jobs:
         run: |
           tag="${{ needs.release.outputs.tag }}"
           mv linux/SHA256SUMS "linux/Burette-${tag#v}-linux.sha256"
-          gh release upload "$tag" linux/*
+          gh release upload "$tag" linux/* --clobber
 
   windows-bundles:
     name: Build Windows Installer
@@ -339,6 +345,12 @@ jobs:
 
       - name: Setup Burette toolchain
         uses: ./.github/actions/setup-burette-toolchain
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows
+          save-if: "false"
 
       - name: Build Windows installer
         run: ./scripts/build-windows.sh
@@ -371,4 +383,4 @@ jobs:
         run: |
           tag="${{ needs.release.outputs.tag }}"
           mv windows/SHA256SUMS "windows/Burette-${tag#v}-windows.sha256"
-          gh release upload "$tag" windows/*
+          gh release upload "$tag" windows/* --clobber

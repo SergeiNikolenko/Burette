@@ -18,12 +18,15 @@ signing, notarization, or user-facing release docs.
   - Xcode `MARKETING_VERSION`
   - visible About/update version strings
 - Build artifacts:
-  - app bundle layout
+  - macOS app bundle layout
   - Quick Look and thumbnail appex placement
   - updater zip
   - manual dmg
   - generated checksum files
   - Sparkle framework, nested signed helpers and bundled license
+  - Linux bundles (`Burette_<version>_amd64.deb`, `Burette-<version>-1.x86_64.rpm`, `Burette_<version>_amd64.AppImage`, `Burette-<version>-linux.sha256`)
+  - Windows installer (`Burette_<version>_x64-setup.exe`, `Burette-<version>-windows.sha256`)
+  - platform desktop metadata (`packaging/linux/`, `packaging/windows/file-associations.json`) and `config/xyzrender/requirements-*.txt` locks for macOS, Linux, and Windows
 - Native updates:
   - paired Sparkle public variable/private secret and embedded public key
   - signed final ZIP and reachable appcast matching bundle version, minimum OS,
@@ -61,7 +64,10 @@ Prefer:
 
 ```bash
 bun run check:release
+node scripts/desktop-metadata.mjs --check
 ```
+
+Verify `Linux Bundle Build` and `Windows Installer Build` CI checks pass alongside macOS validation before dispatching `.github/workflows/release.yml`, and verify all three platform publish jobs (`release`, `linux-publish`, `windows-publish`) attach their artifacts to the GitHub Release.
 
 For stable releases, also verify the external Homebrew tap after the workflow
 completes:

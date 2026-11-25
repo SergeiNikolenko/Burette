@@ -9,9 +9,9 @@ iPhone app, and the agent/plugin surface.
 
 Burette is a molecular file workspace with five connected surfaces:
 
-- Finder Quick Look previews for molecular files.
-- A compact macOS desktop workspace for opening, comparing, editing, and
-  triaging molecular/project files.
+- Finder Quick Look previews for molecular files (macOS).
+- A compact desktop workspace for macOS, Windows, and Linux for opening,
+  comparing, editing, and triaging molecular/project files.
 - A source-built iPhone preview app that reuses the preview runtime for mobile
   document handoff.
 - Agent/plugin tooling for typed observe/action workflows, reports, and bounded
@@ -50,6 +50,7 @@ current per-family status.
 Production compute is native Metal plus native CPU/reference chemistry. Python
 and MLX are permitted only in development as pinned reference oracles and are
 not ordinary application dependencies.
+Windows and Linux builds run the native CPU reference compute implementations.
 
 ## Primary Users
 
@@ -93,10 +94,10 @@ and a way to recover when renderer or Quick Look infrastructure needs attention.
 
 - **Molecule first.** The structure, collection, trajectory, spectrum, or
   workflow artifact is the visual center. Shell UI exists to support inspection.
-- **Native enough to trust.** Burette should feel like a serious macOS utility:
+- **Native enough to trust.** Burette should feel like a serious desktop utility on macOS, Windows, and Linux:
   predictable menus, keyboard access, stable window behavior, familiar controls,
   and clear recovery actions.
-- **Surface truth matters.** Finder Quick Look, desktop app, browser-dev,
+- **Surface truth matters.** Finder Quick Look, desktop app (macOS, Windows, Linux), browser-dev,
   tokenized browser preview, iPhone app, hosted public plugin, and agent
   sessions are separate runtimes. Product claims must say which surface is
   supported.

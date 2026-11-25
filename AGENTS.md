@@ -1,7 +1,8 @@
 # Agent Dispatch
 
-Burette is a macOS desktop app, Finder Quick Look extension, source-built
-iPhone preview app, and hosted public plugin for molecular structure files.
+Burette is a desktop app for macOS, Windows, and Linux, a macOS Finder Quick Look
+extension, a source-built iPhone preview app, and a hosted public plugin for
+molecular structure files.
 Keep this file as a dispatcher; load the focused doc for the surface you are
 changing.
 
@@ -39,6 +40,8 @@ changing.
 - Agent tool index: [docs/tools/index.md](docs/tools/index.md)
 - Testing surfaces: [docs/tools/testing-surfaces.md](docs/tools/testing-surfaces.md)
 - Release process: [docs/releasing.md](docs/releasing.md)
+- Linux desktop support: [docs/linux.md](docs/linux.md)
+- Windows desktop support: [docs/windows.md](docs/windows.md)
 
 ## Directory Context
 
@@ -54,7 +57,8 @@ changing.
 
 | Boundary | Primary paths | First doc to read |
 | --- | --- | --- |
-| Desktop app shell | `apps/desktop/src`, `apps/desktop/src-tauri` | `docs/architecture.md` |
+| Desktop app shell (macOS, Linux, Windows) | `apps/desktop/src`, `apps/desktop/src-tauri` | `docs/architecture.md` |
+| Linux and Windows packaging | `packaging/linux`, `packaging/windows`, `scripts/build-linux.sh`, `scripts/build-windows.sh`, `scripts/desktop-metadata.mjs` | `docs/linux.md`, `docs/windows.md` |
 | Browser-dev runtime | `apps/desktop/vite`, `apps/desktop/src/hooks` | `docs/tools/testing-surfaces.md` |
 | Finder Quick Look | `PreviewExtension`, `PreviewExtension/Web` | `PreviewExtension/AGENTS.md` |
 | iPhone source app | `ios/BuretteMobile` | `ios/BuretteMobile/AGENTS.md` |
@@ -146,7 +150,9 @@ metadata, and run the focused contract check.
   behavior, and native preview registration are stable release contracts.
 - Keep `config/preview-formats.json`,
   `apps/desktop/src-tauri/AppMetadata.plist`, `PreviewExtension/Info.plist`,
-  `PreviewExtension/ThumbnailInfo.plist`, and related format tests in sync.
+  `PreviewExtension/ThumbnailInfo.plist`, `packaging/linux/`,
+  `packaging/windows/file-associations.json`, and related format tests in sync
+  (`node scripts/desktop-metadata.mjs --check`).
 - Browser-dev, browser Quick Look, tokenized preview, and packaged Quick Look
   are separate runtime surfaces. Passing one does not prove the others.
 - CLI, MCP, and plugin tool contracts are defined by
@@ -157,12 +163,14 @@ metadata, and run the focused contract check.
 - Tauri commands, event payloads, menu actions, and frontend bridge messages are
   app contracts. Prefer typed payloads and explicit discriminants over ambiguous
   booleans or positional literals.
-- Release, installer, updater, Homebrew cask, and versioning changes must keep
-  package metadata, release checks, and documentation aligned.
-- Changes should preserve the supported macOS desktop, Quick Look, browser-dev,
-  and iPhone source-app surfaces unless the task is explicitly scoped to one
-  surface. When behavior intentionally diverges by surface, document that
-  decision near the owning code or docs.
+- Release, installer, updater, Homebrew cask, Linux bundle, Windows installer,
+  and versioning changes must keep package metadata, platform `xyzrender` locks,
+  release checks, and documentation aligned across macOS, Linux, and Windows.
+- Changes should preserve the supported macOS, Windows, and Linux desktop
+  surfaces, Finder Quick Look, browser-dev, and iPhone source-app surfaces
+  unless the task is explicitly scoped to one surface. When behavior
+  intentionally diverges by surface, document that decision near the owning
+  code or docs.
 
 ## Generated, Vendored, And Lock Files
 
@@ -198,6 +206,9 @@ metadata, and run the focused contract check.
   starting dev servers, browser Quick Look URLs, or broad contract checks.
 - Rust validation runs from `apps/desktop/src-tauri`; use `cargo test`,
   `cargo clippy`, and `cargo fmt --check` when changing Tauri/Rust code.
+- When touching desktop metadata, packaging, or cross-platform Rust/UI code,
+  run `node scripts/desktop-metadata.mjs --check` and keep the `Linux Bundle Build`
+  and `Windows Installer Build` CI jobs passing alongside macOS validation.
 - If a Vite+ command reports a missing Rolldown native binding in the Codex
   desktop shell, run `vp install`, then retry with a normal system Node before
   changing app code.
