@@ -1,6 +1,13 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
-import { buildSidebarProjects, filterSidebarProjects, sortSidebarProjects } from "../apps/desktop/src/lib/sidebar-projects.ts";
+import {
+  basename,
+  buildSidebarProjects,
+  filterSidebarProjects,
+  joinPath,
+  parentDirectory,
+  sortSidebarProjects,
+} from "../apps/desktop/src/lib/sidebar-projects.ts";
 
 const documents = [
   {
@@ -235,3 +242,25 @@ assert.deepEqual(ids(sortSidebarProjects([
   { id: "empty", items: [] }, { id: "null", items: [{ openedAt: null }] },
 ], "recent")), ["empty", "null"], "ties preserve manual order");
 console.log("Sidebar sorting preserves source order and visits large lists once");
+
+// Windows paths group by folder like POSIX ones, with `/` separators that Windows APIs accept.
+const windowsProjects = buildSidebarProjects({
+  documents: [],
+  textDocuments: [],
+  recentStructures: [
+    { path: "C:\\Users\\me\\Proteins\\1htb.pdb", title: "1htb.pdb", extension: "pdb", renderer: "molstar", byteCount: 1, openedAt: 2 },
+    { path: "C:\\Users\\me\\Proteins\\ligands\\nad.sdf", title: "nad.sdf", extension: "sdf", renderer: "grid", byteCount: 1, openedAt: 1 },
+  ],
+  projectRoots: ["C:/Users/me/Proteins"],
+  activeDocumentId: null,
+});
+assert.deepEqual(
+  windowsProjects.map((project) => [project.rootPath, project.title, project.subtitle, project.items.map((item) => item.relativePath)]),
+  [["C:/Users/me/Proteins", "Proteins", "C:/Users/me", ["1htb.pdb", "ligands/nad.sdf"]]],
+);
+assert.equal(basename("\\\\lab\\share\\1htb.pdb"), "1htb.pdb");
+assert.equal(parentDirectory("\\\\lab\\share\\1htb.pdb"), "//lab/share");
+assert.equal(parentDirectory("C:\\1htb.pdb"), "C:/", "a bare drive letter is not its root");
+assert.equal(joinPath(parentDirectory("C:\\1htb.pdb"), "notes.md"), "C:/notes.md");
+assert.equal(joinPath(parentDirectory("/Users/me/1htb.pdb"), "img/a.png"), "/Users/me/img/a.png");
+console.log("Sidebar projects group Windows drive and UNC paths");

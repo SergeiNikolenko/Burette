@@ -237,6 +237,11 @@ macOS job creates it: `Burette_<version>_amd64.deb`,
 `Burette-<version>-linux.sha256`. Linux builds are not signed and have no
 in-app installer; the update check sends Linux users to the release page.
 
+It builds the Windows installer the same way on `windows-latest` with
+`scripts/build-windows.sh` and attaches `Burette_<version>_x64-setup.exe` and
+`Burette-<version>-windows.sha256`. The Windows installer is not code-signed,
+and the update check sends Windows users to the release page too.
+
 The zip artifact is the in-app updater artifact. The dmg artifact is for manual
 distribution and is not currently consumed by the updater. The DMG uses the
 branded Finder layout from `packaging/dmg/background.tiff`, with the app and the
@@ -391,8 +396,9 @@ MACOSX_DEPLOYMENT_TARGET=12.0 uv pip compile --no-config --default-index https:/
 ```
 
 Linux bundles use the parallel `bootstrap-linux-x86_64.json` and
-`requirements-linux-x86_64.txt`, constrained to the same versions as the macOS
-lock; `config/xyzrender/README.md` gives the command that regenerates them.
+`requirements-linux-x86_64.txt`, and the Windows installer uses
+`bootstrap-windows-x86_64.json` and `requirements-windows-x86_64.txt`, both
+constrained to the same versions as the macOS lock; `config/xyzrender/README.md` gives the command that regenerates them.
 
 Review changed wheels/bootstrap digests and run the native build plus renderer and
 Quick Look acceptance. Lock/helper changes trigger native CI. Local development

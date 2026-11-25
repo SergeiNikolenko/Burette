@@ -67,7 +67,7 @@ assert.match(xtbRuntime, /if validate_xtb\(&managed\)\.is_ok\(\)[\s\S]*return re
 assert.match(xtbRuntime, /clear_selection_if_unchanged/);
 assert.match(xtbRuntime, /cleanup_inactive_managed_runtimes/);
 assert.match(xtbRuntime, /validate_xtb\(&path\)/);
-assert.match(xtbRuntime, /fs::canonicalize\(&path\)/);
+assert.match(xtbRuntime, /dunce::canonicalize\(&path\)/);
 assert.match(xtbRuntime, /symlink\(target, &next\)/);
 assert.match(xtbCommand, /started\.elapsed\(\) < Duration::from_secs\(5\)/);
 assert.match(xtbCommand, /\.clamp\(1, 86_400\)/);

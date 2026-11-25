@@ -1,0 +1,271 @@
+{
+  "bundle": {
+    "fileAssociations": [
+      {
+        "ext": [
+          "pdb",
+          "ent",
+          "pdbqt",
+          "pqr",
+          "xpdb"
+        ],
+        "name": "Burette.pdb",
+        "description": "Protein Data Bank coordinate file",
+        "role": "Viewer"
+      },
+      {
+        "ext": [
+          "cif"
+        ],
+        "name": "Burette.cif",
+        "description": "Crystallographic information file",
+        "role": "Viewer"
+      },
+      {
+        "ext": [
+          "mmcif",
+          "mcif"
+        ],
+        "name": "Burette.mmcif",
+        "description": "Macromolecular crystallographic information file",
+        "role": "Viewer"
+      },
+      {
+        "ext": [
+          "bcif"
+        ],
+        "name": "Burette.bcif",
+        "description": "BinaryCIF molecular structure file",
+        "role": "Viewer"
+      },
+      {
+        "ext": [
+          "mmtf"
+        ],
+        "name": "Burette.mmtf",
+        "description": "Macromolecular Transmission Format structure file",
+        "role": "Viewer"
+      },
+      {
+        "ext": [
+          "ccp4",
+          "mrc"
+        ],
+        "name": "Burette.volume-map",
+        "description": "CCP4, MRC, or MAP electron-density volume",
+        "role": "Viewer"
+      },
+      {
+        "ext": [
+          "mtz"
+        ],
+        "name": "Burette.reflection-data",
+        "description": "CCP4 MTZ reflection data with map coefficients",
+        "role": "Viewer"
+      },
+      {
+        "ext": [
+          "sdf",
+          "sd"
+        ],
+        "name": "Burette.sdf",
+        "description": "Structure-data molecular file",
+        "role": "Viewer"
+      },
+      {
+        "ext": [
+          "smi",
+          "smiles"
+        ],
+        "name": "Burette.smiles",
+        "description": "SMILES molecular structure list",
+        "role": "Viewer"
+      },
+      {
+        "ext": [
+          "dwar"
+        ],
+        "name": "Burette.datawarrior",
+        "description": "DataWarrior molecular structure table",
+        "role": "Viewer"
+      },
+      {
+        "ext": [
+          "rxn"
+        ],
+        "name": "Burette.reaction",
+        "description": "MDL reaction file",
+        "role": "Viewer"
+      },
+      {
+        "ext": [
+          "mol",
+          "mdl"
+        ],
+        "name": "Burette.mol",
+        "description": "MDL molfile",
+        "role": "Viewer"
+      },
+      {
+        "ext": [
+          "mol2"
+        ],
+        "name": "Burette.mol2",
+        "description": "Tripos MOL2 molecular structure file",
+        "role": "Viewer"
+      },
+      {
+        "ext": [
+          "xyz"
+        ],
+        "name": "Burette.xyz",
+        "description": "XYZ molecular structure file",
+        "role": "Viewer"
+      },
+      {
+        "ext": [
+          "gro"
+        ],
+        "name": "Burette.gro",
+        "description": "GROMACS structure file",
+        "role": "Viewer"
+      },
+      {
+        "ext": [
+          "mvsj"
+        ],
+        "name": "Burette.mol-view-spec-json",
+        "description": "MolViewSpec JSON scene file",
+        "role": "Viewer"
+      },
+      {
+        "ext": [
+          "mvsx"
+        ],
+        "name": "Burette.mol-view-spec-archive",
+        "description": "MolViewSpec archive scene file",
+        "role": "Viewer"
+      },
+      {
+        "ext": [
+          "molj"
+        ],
+        "name": "Burette.mesoscale-state-json",
+        "description": "Molstar Mesoscale Explorer state file",
+        "role": "Viewer"
+      },
+      {
+        "ext": [
+          "molx"
+        ],
+        "name": "Burette.mesoscale-state-archive",
+        "description": "Molstar Mesoscale Explorer state archive",
+        "role": "Viewer"
+      },
+      {
+        "ext": [
+          "mesozip"
+        ],
+        "name": "Burette.mesoscale-model-archive",
+        "description": "Mesoscale model package",
+        "role": "Viewer"
+      },
+      {
+        "ext": [
+          "cjson"
+        ],
+        "name": "Burette.cjson",
+        "description": "Chemical JSON molecular structure file",
+        "role": "Viewer"
+      },
+      {
+        "ext": [
+          "cub",
+          "cube",
+          "fhiaims",
+          "psi4",
+          "xyzr"
+        ],
+        "name": "Burette.xyzrender-input",
+        "description": "xyzrender-compatible molecular structure file",
+        "role": "Viewer"
+      },
+      {
+        "ext": [
+          "xtc",
+          "trr",
+          "dcd",
+          "nctraj",
+          "tng",
+          "h5md",
+          "gsd",
+          "trz",
+          "coor",
+          "namdbin",
+          "lammpstrj",
+          "mdcrd",
+          "crdbox",
+          "trc",
+          "ncrst",
+          "psf",
+          "prmtop",
+          "tpr",
+          "parm7",
+          "itp",
+          "lammps",
+          "lmp",
+          "txyz"
+        ],
+        "name": "Burette.molecular-dynamics",
+        "description": "Molecular dynamics trajectory or topology file",
+        "role": "Viewer"
+      },
+      {
+        "ext": [
+          "mae",
+          "maegz",
+          "cms"
+        ],
+        "name": "Burette.schrodinger",
+        "description": "Schrodinger molecular structure file",
+        "role": "Viewer"
+      },
+      {
+        "ext": [
+          "graphml"
+        ],
+        "name": "Burette.graphml",
+        "description": "GraphML FEP network file",
+        "role": "Viewer"
+      },
+      {
+        "ext": [
+          "ph4"
+        ],
+        "name": "Burette.pharmacophore-model",
+        "description": "Pharmacophore model file",
+        "role": "Viewer"
+      },
+      {
+        "ext": [
+          "inpcrd",
+          "rst7",
+          "restrt"
+        ],
+        "name": "Burette.openmm-coordinate-artifact",
+        "description": "OpenMM workflow coordinate artifact",
+        "role": "Viewer"
+      },
+      {
+        "ext": [
+          "mgf",
+          "mzml",
+          "mzxml"
+        ],
+        "name": "Burette.spectrum",
+        "description": "Mass spectrum or annotated spectrum file",
+        "role": "Viewer"
+      }
+    ]
+  }
+}

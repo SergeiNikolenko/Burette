@@ -9,14 +9,16 @@ pub(crate) enum SnapshotRootEntry {
     },
 }
 
-#[cfg(unix)]
+/// Directory-capability snapshot store. All filesystem access goes through
+/// [`crate::compute::platform_fs`], which documents how the Unix descriptor
+/// and Windows handle capabilities differ.
 mod platform {
+    #[cfg(unix)]
+    use std::ffi::CStr;
     use std::{
         collections::{BTreeMap, BTreeSet},
-        ffi::CStr,
         fs::File,
         io::{Read, Seek, SeekFrom},
-        os::fd::{AsFd, OwnedFd},
         path::{Path, PathBuf},
         sync::Mutex,
     };
@@ -28,35 +30,15 @@ mod platform {
         MolecularSnapshotManifest, MolecularSnapshotRef, PackedFileDescriptor,
         MAX_MOLECULAR_SNAPSHOT_MANIFEST_BYTES, MOLECULAR_RECORDS_FILE_NAME,
     };
-    #[cfg(test)]
-    use rustix::fs::open;
-    use rustix::{
-        fs::{
-            fstat, fstatvfs, fsync, mkdirat, openat, statat, unlinkat, AtFlags, Dir, FileType,
-            Mode, OFlags,
-        },
-        io::{fcntl_dupfd_cloexec, Errno},
-        process::geteuid,
-    };
+    #[cfg(unix)]
+    use rustix::fs::Dir;
     use sha2::{Digest, Sha256};
     use uuid::Uuid;
 
-    use crate::compute::ComputeRootChildDirectory;
-
-    const DIRECTORY_FLAGS: OFlags = OFlags::RDONLY
-        .union(OFlags::DIRECTORY)
-        .union(OFlags::CLOEXEC)
-        .union(OFlags::NOFOLLOW);
-    const FILE_FLAGS: OFlags = OFlags::WRONLY
-        .union(OFlags::CREATE)
-        .union(OFlags::EXCL)
-        .union(OFlags::CLOEXEC)
-        .union(OFlags::NOFOLLOW);
-    const READ_FILE_FLAGS: OFlags = OFlags::RDONLY
-        .union(OFlags::CLOEXEC)
-        .union(OFlags::NOFOLLOW);
-    const DIRECTORY_MODE: Mode = Mode::from_bits_truncate(0o700);
-    const FILE_MODE: Mode = Mode::from_bits_truncate(0o600);
+    use crate::compute::{
+        platform_fs::{self, DirectoryFd, Errno},
+        ComputeRootChildDirectory,
+    };
 
     const PACK_FILES: [&str; 3] = [
         "source-record-ids.bin",
@@ -81,7 +63,9 @@ mod platform {
         inode: u64,
         byte_length: u64,
         link_count: u64,
+        #[cfg(unix)]
         mode: u32,
+        #[cfg(unix)]
         uid: u32,
     }
 
@@ -95,7 +79,7 @@ mod platform {
     #[derive(Debug)]
     pub(crate) struct SnapshotPublicationRoot {
         path: PathBuf,
-        directory: OwnedFd,
+        directory: DirectoryFd,
         identity: DirectoryIdentity,
         attachment: RootAttachment,
         reservations: ReservationPool,
@@ -110,9 +94,10 @@ mod platform {
                 .map_err(|error| format!("Cannot attach compute snapshots directory: {error}"))?;
             let source_identity =
                 validate_private_directory(child.directory(), "compute snapshots directory")?;
-            let directory = fcntl_dupfd_cloexec(child.directory(), 0).map_err(|error| {
-                format!("Cannot retain compute snapshots directory capability: {error}")
-            })?;
+            let directory =
+                platform_fs::duplicate_directory(child.directory()).map_err(|error| {
+                    format!("Cannot retain compute snapshots directory capability: {error}")
+                })?;
             let identity = validate_private_directory(&directory, "publication root")?;
             if identity != source_identity {
                 return Err(
@@ -142,16 +127,16 @@ mod platform {
                 "Snapshot publication root requires a final directory name".to_string()
             })?;
             let parent_directory = open_absolute_directory_nofollow(parent)?;
-            match mkdirat(&parent_directory, leaf, DIRECTORY_MODE) {
+            match platform_fs::create_directory_at(&parent_directory, leaf) {
                 Ok(()) | Err(Errno::EXIST) => {}
                 Err(error) => {
                     return Err(format!("Cannot create snapshot publication root: {error}"));
                 }
             }
-            let directory = openat(&parent_directory, leaf, DIRECTORY_FLAGS, Mode::empty())
+            let directory = platform_fs::open_directory_at(&parent_directory, leaf)
                 .map_err(|error| format!("Cannot open snapshot publication root: {error}"))?;
             let identity = validate_private_directory(&directory, "publication root")?;
-            fsync(&parent_directory)
+            platform_fs::sync_directory(&parent_directory)
                 .map_err(|error| format!("Cannot sync snapshot publication parent: {error}"))?;
             Ok(Self {
                 path: path.to_path_buf(),
@@ -185,12 +170,10 @@ mod platform {
 
         pub(crate) fn available_bytes(&self) -> Result<u64, String> {
             self.verify_path_identity()?;
-            let statistics = fstatvfs(&self.directory).map_err(|error| {
-                format!("Cannot inspect snapshot publication filesystem: {error}")
-            })?;
-            let available = statistics
-                .f_bavail
-                .checked_mul(statistics.f_frsize)
+            let available = platform_fs::available_bytes(&self.directory)
+                .map_err(|error| {
+                    format!("Cannot inspect snapshot publication filesystem: {error}")
+                })?
                 .ok_or_else(|| "Snapshot publication free-space count overflowed".to_string())?;
             self.verify_path_identity()?;
             Ok(available)
@@ -216,15 +199,10 @@ mod platform {
             let mut entries = BTreeSet::new();
             for name in &initial_names {
                 let entry = parse_root_entry(name)?;
-                let directory = openat(
-                    &self.directory,
-                    name.as_str(),
-                    DIRECTORY_FLAGS,
-                    Mode::empty(),
-                )
-                .map_err(|error| {
-                    format!("Cannot open snapshot publication entry '{name}': {error}")
-                })?;
+                let directory = platform_fs::open_directory_at(&self.directory, name.as_str())
+                    .map_err(|error| {
+                        format!("Cannot open snapshot publication entry '{name}': {error}")
+                    })?;
                 validate_private_directory(&directory, "publication entry")?;
                 insert_inventory_entry(&mut entries, entry)?;
             }
@@ -245,13 +223,8 @@ mod platform {
             require_non_nil_uuid("Published snapshot ID", snapshot_id)?;
             self.verify_capability_identity()?;
             let leaf = publication_leaf(snapshot_id);
-            let directory = openat(
-                &self.directory,
-                leaf.as_str(),
-                DIRECTORY_FLAGS,
-                Mode::empty(),
-            )
-            .map_err(|error| format!("Cannot open published snapshot '{leaf}': {error}"))?;
+            let directory = platform_fs::open_directory_at(&self.directory, leaf.as_str())
+                .map_err(|error| format!("Cannot open published snapshot '{leaf}': {error}"))?;
             let identity = validate_private_directory(&directory, "published snapshot")?;
             self.verify_path_identity()?;
             Ok(PublishedSnapshotRoot {
@@ -271,24 +244,20 @@ mod platform {
             require_non_nil_uuid("Staging attempt ID", attempt_id)?;
             self.verify_capability_identity()?;
             let leaf = staging_leaf(snapshot_id, attempt_id);
-            let staging_directory = match openat(
-                &self.directory,
-                leaf.as_str(),
-                DIRECTORY_FLAGS,
-                Mode::empty(),
-            ) {
-                Ok(directory) => directory,
-                Err(Errno::NOENT) => return Ok(()),
-                Err(error) => {
-                    return Err(format!(
-                        "Cannot open snapshot staging directory '{leaf}': {error}"
-                    ));
-                }
-            };
+            let staging_directory =
+                match platform_fs::open_directory_at(&self.directory, leaf.as_str()) {
+                    Ok(directory) => directory,
+                    Err(Errno::NOENT) => return Ok(()),
+                    Err(error) => {
+                        return Err(format!(
+                            "Cannot open snapshot staging directory '{leaf}': {error}"
+                        ));
+                    }
+                };
             let identity = validate_private_directory(&staging_directory, "staging directory")?;
             let tree = validate_partial_snapshot_tree(staging_directory, identity)?;
             remove_validated_tree(&self.directory, &leaf, tree)?;
-            fsync(&self.directory)
+            platform_fs::sync_directory(&self.directory)
                 .map_err(|error| format!("Cannot sync snapshot publication root: {error}"))?;
             self.verify_path_identity()
         }
@@ -311,18 +280,21 @@ mod platform {
                 verified.directory_identity,
             )?;
             require_directory_link_count(&current, "published snapshot", 2, 2)?;
+            let directory_identity = verified.directory_identity;
+            // NTFS refuses to rename a directory while handles to entries
+            // inside it are open, so the verified content handles close first.
+            drop(verified);
             rename_noreplace(&self.directory, &final_leaf, &cleanup_leaf)?;
-            fsync(&self.directory).map_err(|error| {
+            platform_fs::sync_directory(&self.directory).map_err(|error| {
                 format!("Cannot sync quarantined verified snapshot in publication root: {error}")
             })?;
             reopen_directory_entry(
                 &self.directory,
                 &cleanup_leaf,
                 "snapshot cleanup staging",
-                verified.directory_identity,
+                directory_identity,
             )?;
             drop(current);
-            drop(verified);
             self.cleanup_staging(snapshot_id, cleanup_attempt_id)
         }
 
@@ -431,7 +403,7 @@ mod platform {
     pub(crate) struct PublishedSnapshotRoot {
         snapshot_id: Uuid,
         path: PathBuf,
-        directory: OwnedFd,
+        directory: DirectoryFd,
         identity: DirectoryIdentity,
     }
 
@@ -450,18 +422,13 @@ mod platform {
                 "snapshot/manifest.json" => ("snapshot", "manifest.json"),
                 _ => return Err("Unrecognized published snapshot file".into()),
             };
-            let directory = openat(
-                &self.directory,
-                directory_name,
-                DIRECTORY_FLAGS,
-                Mode::empty(),
-            )
-            .map_err(|error| format!("Cannot open published snapshot directory: {error}"))?;
+            let directory = platform_fs::open_directory_at(&self.directory, directory_name)
+                .map_err(|error| format!("Cannot open published snapshot directory: {error}"))?;
             validate_private_directory(&directory, "published content directory")?;
-            let file = openat(&directory, file_name, READ_FILE_FLAGS, Mode::empty())
+            let file = platform_fs::open_file_at(&directory, file_name)
                 .map_err(|error| format!("Cannot open published snapshot file: {error}"))?;
             validate_private_file(&file)?;
-            Ok(file.into())
+            Ok(file)
         }
 
         #[cfg(test)]
@@ -592,11 +559,11 @@ mod platform {
         snapshot_id: Uuid,
         reference: MolecularSnapshotRef,
         manifest: MolecularSnapshotManifest,
-        directory: OwnedFd,
+        directory: DirectoryFd,
         directory_identity: DirectoryIdentity,
-        pack_directory: OwnedFd,
+        pack_directory: DirectoryFd,
         pack_identity: DirectoryIdentity,
-        snapshot_directory: OwnedFd,
+        snapshot_directory: DirectoryFd,
         snapshot_identity: DirectoryIdentity,
         files: BTreeMap<String, VerifiedSnapshotFile>,
     }
@@ -631,7 +598,7 @@ mod platform {
                 &self.snapshot_directory,
                 relative_path,
             )?;
-            if file_identity(file.as_fd())? != expected.identity {
+            if file_identity(&file)? != expected.identity {
                 return Err(format!(
                     "Verified snapshot file changed before handoff: {relative_path}"
                 ));
@@ -701,13 +668,13 @@ mod platform {
                     &self.snapshot_directory,
                     &file.descriptor.relative_path,
                 )?;
-                if file_identity(reopened.as_fd())? != file.identity {
+                if file_identity(&reopened)? != file.identity {
                     return Err(format!(
                         "Verified snapshot directory entry changed: {}",
                         file.descriptor.relative_path
                     ));
                 }
-                let current = file_identity(file.file.as_fd())?;
+                let current = file_identity(&file.file)?;
                 if current != file.identity {
                     return Err(format!(
                         "Verified snapshot file identity changed: {}",
@@ -725,10 +692,16 @@ mod platform {
         attempt_id: Uuid,
         final_leaf: String,
         active_leaf: String,
-        staging_directory: OwnedFd,
-        pack_directory: OwnedFd,
-        snapshot_directory: OwnedFd,
+        staging_directory: DirectoryFd,
+        /// Released before the publish rename: NTFS refuses to rename a
+        /// directory while handles to entries inside it are open.
+        content: Option<StagingContent>,
         armed: bool,
+    }
+
+    struct StagingContent {
+        pack_directory: DirectoryFd,
+        snapshot_directory: DirectoryFd,
     }
 
     impl<'a> SnapshotStaging<'a> {
@@ -744,20 +717,17 @@ mod platform {
             ensure_missing(&root.directory, &final_leaf)?;
 
             let active_leaf = staging_leaf(snapshot_id, attempt_id);
-            mkdirat(&root.directory, active_leaf.as_str(), DIRECTORY_MODE)
+            platform_fs::create_directory_at(&root.directory, active_leaf.as_str())
                 .map_err(|error| format!("Cannot create snapshot staging directory: {error}"))?;
-            let staging_directory = match openat(
-                &root.directory,
-                active_leaf.as_str(),
-                DIRECTORY_FLAGS,
-                Mode::empty(),
-            ) {
-                Ok(directory) => directory,
-                Err(error) => {
-                    let _ = unlinkat(&root.directory, active_leaf.as_str(), AtFlags::REMOVEDIR);
-                    return Err(format!("Cannot open snapshot staging directory: {error}"));
-                }
-            };
+            let staging_directory =
+                match platform_fs::open_directory_at(&root.directory, active_leaf.as_str()) {
+                    Ok(directory) => directory,
+                    Err(error) => {
+                        let _ =
+                            platform_fs::remove_directory_at(&root.directory, active_leaf.as_str());
+                        return Err(format!("Cannot open snapshot staging directory: {error}"));
+                    }
+                };
 
             let directories = create_snapshot_directories(&staging_directory);
             let (pack_directory, snapshot_directory) = match directories {
@@ -783,10 +753,18 @@ mod platform {
                 final_leaf,
                 active_leaf,
                 staging_directory,
-                pack_directory,
-                snapshot_directory,
+                content: Some(StagingContent {
+                    pack_directory,
+                    snapshot_directory,
+                }),
                 armed: true,
             })
+        }
+
+        fn content(&self) -> Result<&StagingContent, String> {
+            self.content
+                .as_ref()
+                .ok_or_else(|| "Snapshot staging content was already released".to_string())
         }
 
         pub(crate) fn create_pack_file(&self, name: &'static str) -> Result<File, String> {
@@ -794,25 +772,26 @@ mod platform {
                 return Err("Unrecognized snapshot pack file".into());
             }
             self.root.verify_path_identity()?;
-            let file = create_file(&self.pack_directory, name)?;
+            let file = create_file(&self.content()?.pack_directory, name)?;
             self.root.verify_path_identity()?;
             Ok(file)
         }
 
         pub(crate) fn create_manifest_file(&self) -> Result<File, String> {
             self.root.verify_path_identity()?;
-            let file = create_file(&self.snapshot_directory, SNAPSHOT_FILES[0])?;
+            let file = create_file(&self.content()?.snapshot_directory, SNAPSHOT_FILES[0])?;
             self.root.verify_path_identity()?;
             Ok(file)
         }
 
         pub(crate) fn sync_directories(&self) -> Result<(), String> {
             self.root.verify_path_identity()?;
-            fsync(&self.pack_directory)
+            let content = self.content()?;
+            platform_fs::sync_directory(&content.pack_directory)
                 .map_err(|error| format!("Cannot sync snapshot pack directory: {error}"))?;
-            fsync(&self.snapshot_directory)
+            platform_fs::sync_directory(&content.snapshot_directory)
                 .map_err(|error| format!("Cannot sync snapshot manifest directory: {error}"))?;
-            fsync(&self.staging_directory)
+            platform_fs::sync_directory(&self.staging_directory)
                 .map_err(|error| format!("Cannot sync snapshot staging directory: {error}"))?;
             self.root.verify_path_identity()
         }
@@ -821,20 +800,19 @@ mod platform {
             self.root.verify_path_identity()?;
             let staging_identity =
                 validate_private_directory(&self.staging_directory, "staging directory")?;
+            drop(self.content.take());
             rename_noreplace(&self.root.directory, &self.active_leaf, &self.final_leaf)?;
             self.active_leaf.clone_from(&self.final_leaf);
 
-            fsync(&self.root.directory)
+            platform_fs::sync_directory(&self.root.directory)
                 .map_err(|error| format!("Cannot sync snapshot publication root: {error}"))?;
             self.root.verify_path_identity()?;
 
-            let published_directory = openat(
-                &self.root.directory,
-                self.final_leaf.as_str(),
-                DIRECTORY_FLAGS,
-                Mode::empty(),
-            )
-            .map_err(|error| format!("Cannot open published snapshot capability: {error}"))?;
+            let published_directory =
+                platform_fs::open_directory_at(&self.root.directory, self.final_leaf.as_str())
+                    .map_err(|error| {
+                        format!("Cannot open published snapshot capability: {error}")
+                    })?;
             let published_identity =
                 validate_private_directory(&published_directory, "published snapshot")?;
             if published_identity != staging_identity {
@@ -930,18 +908,20 @@ mod platform {
     }
 
     #[cfg(test)]
-    fn open_absolute_directory_nofollow(path: &Path) -> Result<OwnedFd, String> {
+    fn open_absolute_directory_nofollow(path: &Path) -> Result<DirectoryFd, String> {
         if !path.is_absolute() {
             return Err("Snapshot publication root must be an absolute path".into());
         }
 
-        let mut directory = open("/", DIRECTORY_FLAGS, Mode::empty())
+        let mut directory = platform_fs::open_absolute_root(path)
             .map_err(|error| format!("Cannot open filesystem root: {error}"))?;
         for component in path.components() {
             match component {
                 Component::RootDir => {}
+                // The drive or UNC prefix was opened as part of the root.
+                Component::Prefix(_) if cfg!(windows) => {}
                 Component::Normal(name) => {
-                    directory = openat(&directory, name, DIRECTORY_FLAGS, Mode::empty()).map_err(
+                    directory = platform_fs::open_directory_at(&directory, name).map_err(
                         |error| {
                             format!(
                                 "Snapshot publication root contains an unavailable or symlink component '{}': {error}",
@@ -961,39 +941,38 @@ mod platform {
     }
 
     fn validate_private_directory(
-        directory: &OwnedFd,
+        directory: &DirectoryFd,
         label: &str,
     ) -> Result<DirectoryIdentity, String> {
-        let metadata = fstat(directory)
+        let metadata = platform_fs::stat(directory)
             .map_err(|error| format!("Cannot inspect snapshot {label}: {error}"))?;
-        if FileType::from_raw_mode(metadata.st_mode) != FileType::Directory {
+        if !metadata.is_directory() {
             return Err(format!("Snapshot {label} must be a directory"));
         }
-        if metadata.st_uid != geteuid().as_raw() {
+        if !metadata.owned_by_current_user() {
             return Err(format!(
                 "Snapshot {label} must be owned by the current user"
             ));
         }
-        if metadata.st_mode & 0o7777 != 0o700 {
+        if !metadata.has_mode(0o700) {
             return Err(format!("Snapshot {label} permissions must be 0700"));
         }
         Ok(DirectoryIdentity {
-            device: metadata.st_dev as u64,
-            inode: metadata.st_ino as u64,
+            device: metadata.device(),
+            inode: metadata.inode(),
         })
     }
 
+    #[cfg(unix)]
     fn require_directory_link_count(
-        directory: &OwnedFd,
+        directory: &DirectoryFd,
         label: &str,
         entry_count: usize,
         subdirectory_count: usize,
     ) -> Result<(), String> {
-        let metadata = fstat(directory)
+        let metadata = platform_fs::stat(directory)
             .map_err(|error| format!("Cannot inspect snapshot {label}: {error}"))?;
-        // `st_nlink` is u16 on macOS and u64 on Linux.
-        #[allow(clippy::useless_conversion)]
-        let observed = u64::from(metadata.st_nlink);
+        let observed = metadata.link_count();
         let platform_count = if cfg!(target_os = "macos") {
             entry_count
         } else {
@@ -1010,47 +989,65 @@ mod platform {
         Ok(())
     }
 
-    fn validate_private_file(file: &OwnedFd) -> Result<(), String> {
+    /// NTFS directories always report one link, so link counts say nothing
+    /// about their entries; the exact-name whitelist checks that accompany
+    /// every call cover the structure on Windows.
+    #[cfg(windows)]
+    fn require_directory_link_count(
+        _directory: &DirectoryFd,
+        _label: &str,
+        _entry_count: usize,
+        _subdirectory_count: usize,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn validate_private_file(file: &File) -> Result<(), String> {
         file_identity(file).map(|_| ())
     }
 
-    fn file_identity(file: impl AsFd) -> Result<FileIdentity, String> {
-        let metadata = fstat(file)
+    fn file_identity(file: &File) -> Result<FileIdentity, String> {
+        let metadata = platform_fs::stat(file)
             .map_err(|error| format!("Cannot inspect published snapshot file: {error}"))?;
-        if FileType::from_raw_mode(metadata.st_mode) != FileType::RegularFile {
+        if !metadata.is_regular_file() {
             return Err("Published snapshot content must be a regular file".into());
         }
-        if metadata.st_uid != geteuid().as_raw() {
+        if !metadata.owned_by_current_user() {
             return Err("Published snapshot file must be owned by the current user".into());
         }
-        if metadata.st_mode & 0o7777 != 0o600 {
+        if !metadata.has_mode(0o600) {
             return Err("Published snapshot file permissions must be 0600".into());
         }
-        if metadata.st_nlink != 1 {
+        if metadata.link_count() != 1 {
             return Err("Published snapshot files must not have hard links".into());
         }
-        let byte_length = u64::try_from(metadata.st_size)
-            .map_err(|_| "Published snapshot file has a negative byte length".to_string())?;
+        let byte_length = metadata
+            .byte_length()
+            .ok_or_else(|| "Published snapshot file has a negative byte length".to_string())?;
         Ok(FileIdentity {
-            device: metadata.st_dev as u64,
-            inode: metadata.st_ino as u64,
+            device: metadata.device(),
+            inode: metadata.inode(),
             byte_length,
-            link_count: metadata.st_nlink as u64,
-            mode: metadata.st_mode as u32,
-            uid: metadata.st_uid as u32,
+            link_count: metadata.link_count(),
+            #[cfg(unix)]
+            mode: metadata.raw_mode(),
+            #[cfg(unix)]
+            uid: metadata.owner(),
         })
     }
 
-    fn open_complete_snapshot_tree(directory: &OwnedFd) -> Result<(OwnedFd, OwnedFd), String> {
+    fn open_complete_snapshot_tree(
+        directory: &DirectoryFd,
+    ) -> Result<(DirectoryFd, DirectoryFd), String> {
         ensure_exact_names(directory, &["pack", "snapshot"])?;
         require_directory_link_count(directory, "published snapshot", 2, 2)?;
-        let pack_directory = openat(directory, "pack", DIRECTORY_FLAGS, Mode::empty())
+        let pack_directory = platform_fs::open_directory_at(directory, "pack")
             .map_err(|error| format!("Cannot open published snapshot pack directory: {error}"))?;
         validate_private_directory(&pack_directory, "published pack directory")?;
         ensure_exact_names(&pack_directory, &PACK_FILES)?;
         require_directory_link_count(&pack_directory, "published pack directory", 3, 0)?;
-        let snapshot_directory = openat(directory, "snapshot", DIRECTORY_FLAGS, Mode::empty())
-            .map_err(|error| {
+        let snapshot_directory =
+            platform_fs::open_directory_at(directory, "snapshot").map_err(|error| {
                 format!("Cannot open published snapshot manifest directory: {error}")
             })?;
         validate_private_directory(&snapshot_directory, "published manifest directory")?;
@@ -1059,7 +1056,7 @@ mod platform {
         Ok((pack_directory, snapshot_directory))
     }
 
-    fn ensure_exact_names(directory: &OwnedFd, expected: &[&str]) -> Result<(), String> {
+    fn ensure_exact_names(directory: &DirectoryFd, expected: &[&str]) -> Result<(), String> {
         let observed = read_bounded_names(
             directory,
             expected.len().saturating_add(1),
@@ -1077,8 +1074,9 @@ mod platform {
         Ok(())
     }
 
+    #[cfg(unix)]
     fn read_bounded_names(
-        directory: &OwnedFd,
+        directory: &DirectoryFd,
         limit: usize,
         label: &str,
     ) -> Result<BTreeSet<String>, String> {
@@ -1101,14 +1099,39 @@ mod platform {
         Ok(observed)
     }
 
+    #[cfg(windows)]
+    fn read_bounded_names(
+        directory: &DirectoryFd,
+        limit: usize,
+        label: &str,
+    ) -> Result<BTreeSet<String>, String> {
+        let entries = platform_fs::read_entry_names(directory)
+            .map_err(|error| format!("Cannot enumerate {label}: {error}"))?;
+        let mut observed = BTreeSet::new();
+        for name in entries {
+            let name = name
+                .map_err(|error| format!("Cannot read {label} entry: {error}"))?
+                .into_string()
+                .map_err(|_| format!("{label} contains a non-UTF-8 entry"))?;
+            if observed.len() >= limit {
+                return Err(format!("{label} exceeds its {limit}-entry bound"));
+            }
+            if !observed.insert(name) {
+                return Err(format!("{label} enumeration returned a duplicate entry"));
+            }
+        }
+        Ok(observed)
+    }
+
+    #[cfg(unix)]
     fn decode_directory_entry_name<'a>(name: &'a CStr, label: &str) -> Result<&'a str, String> {
         name.to_str()
             .map_err(|_| format!("{label} contains a non-UTF-8 entry"))
     }
 
     fn open_snapshot_file(
-        pack_directory: &OwnedFd,
-        snapshot_directory: &OwnedFd,
+        pack_directory: &DirectoryFd,
+        snapshot_directory: &DirectoryFd,
         relative_path: &str,
     ) -> Result<File, String> {
         let (directory, file_name) = match relative_path {
@@ -1118,10 +1141,10 @@ mod platform {
             SNAPSHOT_MANIFEST_PATH => (snapshot_directory, SNAPSHOT_FILES[0]),
             _ => return Err("Unrecognized published snapshot file".into()),
         };
-        let file = openat(directory, file_name, READ_FILE_FLAGS, Mode::empty())
+        let file = platform_fs::open_file_at(directory, file_name)
             .map_err(|error| format!("Cannot open published snapshot file: {error}"))?;
         validate_private_file(&file)?;
-        Ok(file.into())
+        Ok(file)
     }
 
     fn require_exact_pack_layout(manifest: &MolecularSnapshotManifest) -> Result<(), String> {
@@ -1143,7 +1166,7 @@ mod platform {
     }
 
     fn read_bounded_manifest(mut file: File) -> Result<(File, Vec<u8>, FileIdentity), String> {
-        let before = file_identity(file.as_fd())?;
+        let before = file_identity(&file)?;
         if before.byte_length == 0
             || before.byte_length > MAX_MOLECULAR_SNAPSHOT_MANIFEST_BYTES as u64
         {
@@ -1156,7 +1179,7 @@ mod platform {
             .take(MAX_MOLECULAR_SNAPSHOT_MANIFEST_BYTES as u64 + 1)
             .read_to_end(&mut bytes)
             .map_err(|error| format!("Cannot read molecular snapshot manifest: {error}"))?;
-        let after = file_identity(file.as_fd())?;
+        let after = file_identity(&file)?;
         if before != after || bytes.len() as u64 != before.byte_length {
             return Err("Molecular snapshot manifest changed while it was read".into());
         }
@@ -1170,7 +1193,7 @@ mod platform {
         descriptor: &PackedFileDescriptor,
     ) -> Result<FileIdentity, String> {
         descriptor.validate().map_err(|error| error.to_string())?;
-        let before = file_identity(file.as_fd())?;
+        let before = file_identity(file)?;
         if before.byte_length != descriptor.byte_length {
             return Err(format!(
                 "Published snapshot file size differs from its descriptor: {}",
@@ -1207,7 +1230,7 @@ mod platform {
             }
             hasher.update(&buffer[..bytes]);
         }
-        let after = file_identity(file.as_fd())?;
+        let after = file_identity(file)?;
         let digest = hex_bytes(&hasher.finalize());
         if before != after || total != descriptor.byte_length {
             return Err(format!(
@@ -1238,8 +1261,8 @@ mod platform {
         bytes.iter().map(|byte| format!("{byte:02x}")).collect()
     }
 
-    fn ensure_missing(directory: &OwnedFd, leaf: &str) -> Result<(), String> {
-        match statat(directory, leaf, AtFlags::SYMLINK_NOFOLLOW) {
+    fn ensure_missing(directory: &DirectoryFd, leaf: &str) -> Result<(), String> {
+        match platform_fs::stat_at_nofollow(directory, leaf) {
             Ok(_) => Err(format!(
                 "Frozen Grid snapshot destination already exists: {leaf}"
             )),
@@ -1251,20 +1274,20 @@ mod platform {
     }
 
     struct ValidatedCleanupTree {
-        directory: OwnedFd,
+        directory: DirectoryFd,
         identity: DirectoryIdentity,
         pack: Option<ValidatedCleanupDirectory>,
         snapshot: Option<ValidatedCleanupDirectory>,
     }
 
     struct ValidatedCleanupDirectory {
-        directory: OwnedFd,
+        directory: DirectoryFd,
         identity: DirectoryIdentity,
         files: BTreeMap<String, (File, FileIdentity)>,
     }
 
     fn validate_partial_snapshot_tree(
-        directory: OwnedFd,
+        directory: DirectoryFd,
         identity: DirectoryIdentity,
     ) -> Result<ValidatedCleanupTree, String> {
         let names = read_bounded_names(&directory, 2, "snapshot staging directory")?;
@@ -1294,11 +1317,11 @@ mod platform {
     }
 
     fn validate_cleanup_directory(
-        parent: &OwnedFd,
+        parent: &DirectoryFd,
         name: &'static str,
         allowed_files: &[&'static str],
     ) -> Result<ValidatedCleanupDirectory, String> {
-        let directory = openat(parent, name, DIRECTORY_FLAGS, Mode::empty())
+        let directory = platform_fs::open_directory_at(parent, name)
             .map_err(|error| format!("Cannot open staging {name} directory: {error}"))?;
         let identity = validate_private_directory(&directory, "staging content directory")?;
         let names = read_bounded_names(
@@ -1317,15 +1340,12 @@ mod platform {
         }
         let mut files = BTreeMap::new();
         for file_name in names {
-            let file = openat(
-                &directory,
-                file_name.as_str(),
-                READ_FILE_FLAGS,
-                Mode::empty(),
-            )
-            .map_err(|error| format!("Cannot open staging snapshot file '{file_name}': {error}"))?;
+            let file =
+                platform_fs::open_file_at(&directory, file_name.as_str()).map_err(|error| {
+                    format!("Cannot open staging snapshot file '{file_name}': {error}")
+                })?;
             let identity = file_identity(&file)?;
-            files.insert(file_name, (file.into(), identity));
+            files.insert(file_name, (file, identity));
         }
         Ok(ValidatedCleanupDirectory {
             directory,
@@ -1335,7 +1355,7 @@ mod platform {
     }
 
     fn remove_validated_tree(
-        root: &OwnedFd,
+        root: &DirectoryFd,
         leaf: &str,
         tree: ValidatedCleanupTree,
     ) -> Result<(), String> {
@@ -1348,15 +1368,15 @@ mod platform {
         }
         ensure_exact_names(&tree.directory, &[])?;
         require_directory_link_count(&tree.directory, "emptied staging directory", 0, 0)?;
-        fsync(&tree.directory)
+        platform_fs::sync_directory(&tree.directory)
             .map_err(|error| format!("Cannot sync emptied snapshot staging directory: {error}"))?;
         reopen_directory_entry(root, leaf, "staging directory", tree.identity)?;
-        unlinkat(root, leaf, AtFlags::REMOVEDIR)
+        platform_fs::remove_directory_at(root, leaf)
             .map_err(|error| format!("Cannot remove snapshot staging directory '{leaf}': {error}"))
     }
 
     fn remove_cleanup_directory(
-        parent: &OwnedFd,
+        parent: &DirectoryFd,
         name: &'static str,
         directory: ValidatedCleanupDirectory,
     ) -> Result<(), String> {
@@ -1365,46 +1385,46 @@ mod platform {
         }
         ensure_exact_names(&directory.directory, &[])?;
         require_directory_link_count(&directory.directory, "emptied staging content", 0, 0)?;
-        fsync(&directory.directory)
+        platform_fs::sync_directory(&directory.directory)
             .map_err(|error| format!("Cannot sync emptied staging {name} directory: {error}"))?;
         remove_verified_directory(parent, name, directory.identity)
     }
 
     fn unlink_verified_file(
-        directory: &OwnedFd,
+        directory: &DirectoryFd,
         name: &str,
         expected: FileIdentity,
     ) -> Result<(), String> {
-        let current = openat(directory, name, READ_FILE_FLAGS, Mode::empty())
+        let current = platform_fs::open_file_at(directory, name)
             .map_err(|error| format!("Cannot reopen snapshot file '{name}': {error}"))?;
         if file_identity(&current)? != expected {
             return Err(format!(
                 "Snapshot file directory entry changed before removal: {name}"
             ));
         }
-        unlinkat(directory, name, AtFlags::empty())
+        platform_fs::remove_file_at(directory, name)
             .map_err(|error| format!("Cannot remove snapshot file '{name}': {error}"))
     }
 
     fn remove_verified_directory(
-        parent: &OwnedFd,
+        parent: &DirectoryFd,
         name: &str,
         expected: DirectoryIdentity,
     ) -> Result<(), String> {
         let directory = reopen_directory_entry(parent, name, "content directory", expected)?;
         ensure_exact_names(&directory, &[])?;
         require_directory_link_count(&directory, "empty snapshot content directory", 0, 0)?;
-        unlinkat(parent, name, AtFlags::REMOVEDIR)
+        platform_fs::remove_directory_at(parent, name)
             .map_err(|error| format!("Cannot remove snapshot directory '{name}': {error}"))
     }
 
     fn reopen_directory_entry(
-        parent: &OwnedFd,
+        parent: &DirectoryFd,
         name: &str,
         label: &str,
         expected: DirectoryIdentity,
-    ) -> Result<OwnedFd, String> {
-        let directory = openat(parent, name, DIRECTORY_FLAGS, Mode::empty())
+    ) -> Result<DirectoryFd, String> {
+        let directory = platform_fs::open_directory_at(parent, name)
             .map_err(|error| format!("Cannot reopen snapshot {label} '{name}': {error}"))?;
         let current = validate_private_directory(&directory, label)?;
         if current != expected {
@@ -1416,58 +1436,53 @@ mod platform {
     }
 
     fn create_snapshot_directories(
-        staging_directory: &OwnedFd,
-    ) -> Result<(OwnedFd, OwnedFd), String> {
-        mkdirat(staging_directory, "pack", DIRECTORY_MODE)
+        staging_directory: &DirectoryFd,
+    ) -> Result<(DirectoryFd, DirectoryFd), String> {
+        platform_fs::create_directory_at(staging_directory, "pack")
             .map_err(|error| format!("Cannot create snapshot pack directory: {error}"))?;
-        let pack_directory = openat(staging_directory, "pack", DIRECTORY_FLAGS, Mode::empty())
+        let pack_directory = platform_fs::open_directory_at(staging_directory, "pack")
             .map_err(|error| format!("Cannot open snapshot pack directory: {error}"))?;
 
-        if let Err(error) = mkdirat(staging_directory, "snapshot", DIRECTORY_MODE) {
-            let _ = unlinkat(staging_directory, "pack", AtFlags::REMOVEDIR);
+        if let Err(error) = platform_fs::create_directory_at(staging_directory, "snapshot") {
+            let _ = platform_fs::remove_directory_at(staging_directory, "pack");
             return Err(format!(
                 "Cannot create snapshot manifest directory: {error}"
             ));
         }
-        let snapshot_directory = openat(
-            staging_directory,
-            "snapshot",
-            DIRECTORY_FLAGS,
-            Mode::empty(),
-        )
-        .map_err(|error| format!("Cannot open snapshot manifest directory: {error}"))?;
+        let snapshot_directory = platform_fs::open_directory_at(staging_directory, "snapshot")
+            .map_err(|error| format!("Cannot open snapshot manifest directory: {error}"))?;
         Ok((pack_directory, snapshot_directory))
     }
 
-    fn create_file(directory: &OwnedFd, name: &'static str) -> Result<File, String> {
-        let file = openat(directory, name, FILE_FLAGS, FILE_MODE)
-            .map_err(|error| format!("Cannot create snapshot file '{name}': {error}"))?;
-        Ok(file.into())
+    fn create_file(directory: &DirectoryFd, name: &'static str) -> Result<File, String> {
+        platform_fs::create_file_at(directory, name)
+            .map_err(|error| format!("Cannot create snapshot file '{name}': {error}"))
     }
 
-    #[cfg(any(target_vendor = "apple", target_os = "linux", target_os = "android"))]
+    #[cfg(any(
+        target_vendor = "apple",
+        target_os = "linux",
+        target_os = "android",
+        windows
+    ))]
     fn rename_noreplace(
-        directory: &OwnedFd,
+        directory: &DirectoryFd,
         source_leaf: &str,
         destination_leaf: &str,
     ) -> Result<(), String> {
-        rustix::fs::renameat_with(
-            directory,
-            source_leaf,
-            directory,
-            destination_leaf,
-            rustix::fs::RenameFlags::NOREPLACE,
-        )
-        .map_err(|error| {
+        platform_fs::rename_noreplace_at(directory, source_leaf, destination_leaf).map_err(|error| {
             format!(
                 "Cannot publish frozen Grid snapshot without replacement at '{destination_leaf}': {error}"
             )
         })
     }
 
-    #[cfg(not(any(target_vendor = "apple", target_os = "linux", target_os = "android")))]
+    #[cfg(all(
+        unix,
+        not(any(target_vendor = "apple", target_os = "linux", target_os = "android"))
+    ))]
     fn rename_noreplace(
-        _directory: &OwnedFd,
+        _directory: &DirectoryFd,
         _source_leaf: &str,
         _destination_leaf: &str,
     ) -> Result<(), String> {
@@ -1475,25 +1490,25 @@ mod platform {
     }
 
     fn cleanup_tree(
-        root: &OwnedFd,
+        root: &DirectoryFd,
         active_leaf: &str,
-        staging: &OwnedFd,
-        pack: Option<&OwnedFd>,
-        snapshot: Option<&OwnedFd>,
+        staging: &DirectoryFd,
+        pack: Option<&DirectoryFd>,
+        snapshot: Option<&DirectoryFd>,
     ) {
         if let Some(pack) = pack {
             for file in PACK_FILES {
-                let _ = unlinkat(pack, file, AtFlags::empty());
+                let _ = platform_fs::remove_file_at(pack, file);
             }
         }
         if let Some(snapshot) = snapshot {
             for file in SNAPSHOT_FILES {
-                let _ = unlinkat(snapshot, file, AtFlags::empty());
+                let _ = platform_fs::remove_file_at(snapshot, file);
             }
         }
-        let _ = unlinkat(staging, "pack", AtFlags::REMOVEDIR);
-        let _ = unlinkat(staging, "snapshot", AtFlags::REMOVEDIR);
-        let _ = unlinkat(root, active_leaf, AtFlags::REMOVEDIR);
+        let _ = platform_fs::remove_directory_at(staging, "pack");
+        let _ = platform_fs::remove_directory_at(staging, "snapshot");
+        let _ = platform_fs::remove_directory_at(root, active_leaf);
     }
 
     #[cfg(test)]
@@ -1505,10 +1520,11 @@ mod platform {
 
         use uuid::Uuid;
 
+        #[cfg(unix)]
+        use super::decode_directory_entry_name;
         use super::{
-            decode_directory_entry_name, insert_inventory_entry, parse_root_entry,
-            require_stable_inventory_names, ReservationPool, SnapshotRootEntry,
-            MAX_SNAPSHOT_ROOT_ENTRIES,
+            insert_inventory_entry, parse_root_entry, require_stable_inventory_names,
+            ReservationPool, SnapshotRootEntry, MAX_SNAPSHOT_ROOT_ENTRIES,
         };
 
         #[test]
@@ -1572,6 +1588,7 @@ mod platform {
             assert!(parse_root_entry("snapshot-not-a-uuid").is_err());
         }
 
+        #[cfg(unix)]
         #[test]
         #[allow(
             clippy::manual_c_str_literals,
@@ -1619,158 +1636,6 @@ mod platform {
             let mutated = ["snapshot-b".to_string()].into_iter().collect();
             assert!(require_stable_inventory_names(&initial, &unchanged).is_ok());
             assert!(require_stable_inventory_names(&initial, &mutated).is_err());
-        }
-    }
-}
-
-#[cfg(not(unix))]
-mod platform {
-    use std::{
-        fs::File,
-        path::{Path, PathBuf},
-    };
-
-    use uuid::Uuid;
-
-    use crate::compute::ComputeRootChildDirectory;
-
-    #[derive(Debug)]
-    pub(crate) struct SnapshotPublicationRoot;
-
-    #[derive(Debug)]
-    pub(crate) struct PublishedSnapshotRoot;
-
-    #[derive(Debug)]
-    pub(crate) struct VerifiedSnapshot;
-
-    impl VerifiedSnapshot {
-        pub(crate) fn reopen_file(
-            &self,
-            _relative_path: &str,
-        ) -> Result<(File, burette_compute_protocol::PackedFileDescriptor), String> {
-            Err("Snapshot publication requires Unix directory capabilities".into())
-        }
-    }
-
-    #[derive(Debug)]
-    pub(crate) struct SnapshotByteReservation<'a> {
-        _root: &'a SnapshotPublicationRoot,
-    }
-
-    impl SnapshotPublicationRoot {
-        pub(crate) fn from_compute_directory(
-            _child: ComputeRootChildDirectory,
-        ) -> Result<Self, String> {
-            Err("Snapshot publication requires Unix directory capabilities".into())
-        }
-
-        #[cfg(test)]
-        pub(crate) fn create(_path: &Path) -> Result<Self, String> {
-            Err("Snapshot publication requires Unix directory capabilities".into())
-        }
-
-        pub(crate) fn health_check(&self) -> Result<(), String> {
-            Err("Snapshot publication requires Unix directory capabilities".into())
-        }
-
-        pub(crate) fn inventory(&self) -> Result<Vec<super::SnapshotRootEntry>, String> {
-            Err("Snapshot publication requires Unix directory capabilities".into())
-        }
-
-        pub(crate) fn open_published(
-            &self,
-            _snapshot_id: Uuid,
-        ) -> Result<PublishedSnapshotRoot, String> {
-            Err("Snapshot publication requires Unix directory capabilities".into())
-        }
-
-        pub(crate) fn cleanup_staging(
-            &self,
-            _snapshot_id: Uuid,
-            _attempt_id: Uuid,
-        ) -> Result<(), String> {
-            Err("Snapshot publication requires Unix directory capabilities".into())
-        }
-
-        pub(crate) fn remove_verified(
-            &self,
-            _verified: VerifiedSnapshot,
-            _cleanup_attempt_id: Uuid,
-        ) -> Result<(), String> {
-            Err("Snapshot publication requires Unix directory capabilities".into())
-        }
-
-        #[cfg(test)]
-        pub(crate) fn open(_path: &Path) -> Result<Self, String> {
-            Err("Snapshot publication requires Unix directory capabilities".into())
-        }
-
-        pub(crate) fn destination_path(&self, _snapshot_id: Uuid) -> PathBuf {
-            PathBuf::new()
-        }
-
-        pub(crate) fn available_bytes(&self) -> Result<u64, String> {
-            Err("Snapshot publication requires Unix directory capabilities".into())
-        }
-
-        pub(crate) fn reserve_bytes(
-            &self,
-            _required_bytes: u64,
-            _headroom_bytes: u64,
-        ) -> Result<SnapshotByteReservation<'_>, String> {
-            Err("Snapshot publication requires Unix directory capabilities".into())
-        }
-    }
-
-    impl PublishedSnapshotRoot {
-        pub(crate) fn path(&self) -> &Path {
-            Path::new("")
-        }
-
-        #[cfg(test)]
-        pub(crate) fn open_file(&self, _relative_path: &str) -> Result<File, String> {
-            Err("Snapshot publication requires Unix directory capabilities".into())
-        }
-
-        pub(crate) fn verify(
-            self,
-            _expected: &burette_compute_protocol::MolecularSnapshotRef,
-        ) -> Result<VerifiedSnapshot, String> {
-            Err("Snapshot publication requires Unix directory capabilities".into())
-        }
-
-        pub(crate) fn verify_observed(self) -> Result<VerifiedSnapshot, String> {
-            Err("Snapshot publication requires Unix directory capabilities".into())
-        }
-    }
-
-    pub(crate) struct SnapshotStaging<'a> {
-        _root: &'a SnapshotPublicationRoot,
-    }
-
-    impl<'a> SnapshotStaging<'a> {
-        pub(crate) fn create(
-            _root: &'a SnapshotPublicationRoot,
-            _snapshot_id: Uuid,
-            _attempt_id: Uuid,
-        ) -> Result<Self, String> {
-            Err("Snapshot publication requires Unix directory capabilities".into())
-        }
-
-        pub(crate) fn create_pack_file(&self, _name: &'static str) -> Result<File, String> {
-            Err("Snapshot publication requires Unix directory capabilities".into())
-        }
-
-        pub(crate) fn create_manifest_file(&self) -> Result<File, String> {
-            Err("Snapshot publication requires Unix directory capabilities".into())
-        }
-
-        pub(crate) fn sync_directories(&self) -> Result<(), String> {
-            Err("Snapshot publication requires Unix directory capabilities".into())
-        }
-
-        pub(crate) fn publish(self) -> Result<PublishedSnapshotRoot, String> {
-            Err("Snapshot publication requires Unix directory capabilities".into())
         }
     }
 }

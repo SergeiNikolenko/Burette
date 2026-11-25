@@ -37,6 +37,7 @@ import { isFileDragTab, tabFileDragPayload } from "./tab-file-drag";
 import { useSourceEditing } from "../../lib/source-editing/context";
 import { toast } from "../ui/toast";
 import { tracePerf } from "../../lib/perf-trace";
+import { basename, parentDirectory } from "../../lib/sidebar-projects";
 
 const TAB_REORDER_ANIMATION_MS = 130;
 const TAB_DRAG_ACTIVATE_DELAY_MS = 520;
@@ -640,7 +641,7 @@ export function EditorTabs({
     const path = tabPathForLocation(tab);
     return {
       title: tab.title ?? pageKind(tab.location).title(tab.location, state),
-      subtitle: path ? path.slice(0, path.lastIndexOf("/")).replace(/^\/Users\/[^/]+(?=\/|$)/, "~") : null,
+      subtitle: path ? parentDirectory(path)?.replace(/^\/Users\/[^/]+(?=\/|$)/, "~") ?? null : null,
       active: tab.id === activeTabId,
       newTab: tab.location.kind === "launcher",
     };
@@ -715,7 +716,7 @@ export function EditorTabs({
                 if (!state.sidebarOpen) actions.toggleSidebar();
                 const project = state.sidebarProjects.find(project => project.items.some(item => item.path === tabPath));
                 if (project && !state.expandedProjectIds.includes(project.id)) actions.toggleProjectExpanded(project.id);
-                actions.setSidebarQuery(tabPath.split("/").pop() ?? tabPath);
+                actions.setSidebarQuery(basename(tabPath));
               } },
             );
             if (canSaveAs) items.push({ kind: "item", id: "save-as", text: "Save as…",

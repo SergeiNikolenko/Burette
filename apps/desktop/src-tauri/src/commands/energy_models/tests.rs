@@ -1,4 +1,5 @@
 use super::*;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
@@ -12,9 +13,21 @@ fn fixture(name: &str) -> PathBuf {
 }
 
 fn python() -> PathBuf {
+    let candidates: &[&str] = if cfg!(windows) {
+        &["python.exe", "python3.exe"]
+    } else {
+        &["python3"]
+    };
     std::env::split_paths(&std::env::var_os("PATH").unwrap())
-        .map(|dir| dir.join("python3"))
-        .find(|path| path.is_file())
+        .flat_map(|dir| candidates.iter().map(move |name| dir.join(name)))
+        .find(|path| {
+            path.is_file()
+                && (!cfg!(windows)
+                    || !path
+                        .to_string_lossy()
+                        .to_ascii_lowercase()
+                        .contains("windowsapps"))
+        })
         .expect("python3 on PATH")
 }
 
@@ -32,19 +45,35 @@ fn installed_fixture(prepared: bool) -> PathBuf {
     )
     .unwrap();
     if prepared {
-        let bin = dir.join(".pixi/envs/default/bin");
+        let bin = crate::commands::avogadro_plugins::environment_bin(&dir);
         std::fs::create_dir_all(&bin).unwrap();
-        let script = bin.join(PACKAGE);
-        std::fs::write(
-            &script,
-            format!(
-                "#!/bin/sh\nexec '{}' '{}' \"$@\"\n",
-                python().display(),
-                fixture("harmonic_energy.py").display()
-            ),
-        )
-        .unwrap();
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700)).unwrap();
+        #[cfg(unix)]
+        {
+            let script = bin.join(PACKAGE);
+            std::fs::write(
+                &script,
+                format!(
+                    "#!/bin/sh\nexec '{}' '{}' \"$@\"\n",
+                    python().display(),
+                    fixture("harmonic_energy.py").display()
+                ),
+            )
+            .unwrap();
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        #[cfg(windows)]
+        {
+            let script = bin.join(format!("{PACKAGE}.cmd"));
+            std::fs::write(
+                &script,
+                format!(
+                    "@echo off\r\n\"{}\" \"{}\" %*\r\n",
+                    python().display(),
+                    fixture("harmonic_energy.py").display()
+                ),
+            )
+            .unwrap();
+        }
     }
     root
 }
@@ -263,7 +292,10 @@ fn real_avogadro_xtb_energy_plugin_matches_the_xtb_program() {
         PathBuf::from(std::env::var_os("BURETTE_AVOGADRO_XTB_ENERGY").expect("package folder"));
     let root = std::env::temp_dir().join(format!("burette-energy-real-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(root.join(PACKAGE)).unwrap();
+    #[cfg(unix)]
     std::os::unix::fs::symlink(&source, root.join(PACKAGE).join(COMMIT)).unwrap();
+    #[cfg(windows)]
+    std::os::windows::fs::symlink_dir(&source, root.join(PACKAGE).join(COMMIT)).unwrap();
     std::fs::write(
         root.join(PACKAGE).join("installed.json"),
         serde_json::json!({ "name": PACKAGE, "version": "0.2.0", "commit": COMMIT, "sha256": "0".repeat(64),

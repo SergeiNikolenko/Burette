@@ -2,7 +2,6 @@ use super::numpy_artifact::{read_numpy_arrays, NumpyArraySummary};
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashSet;
-use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -98,7 +97,7 @@ pub(crate) fn read_folding_result_bundle(path: String) -> Result<FoldingResultBu
 }
 
 fn read_folding_result_bundle_impl(path: PathBuf) -> Result<FoldingResultBundle, String> {
-    let input = fs::canonicalize(&path).map_err(|err| format!("{}: {err}", path.display()))?;
+    let input = dunce::canonicalize(&path).map_err(|err| format!("{}: {err}", path.display()))?;
     let roots = candidate_roots(&input)?;
     for root in roots.iter() {
         let bundle = scan_folding_root(root, &input)?;
@@ -814,7 +813,7 @@ fn collect_files(root: &Path, depth: usize, files: &mut Vec<FileEntry>) {
 }
 
 fn candidate_roots(input: &Path) -> Result<Vec<PathBuf>, String> {
-    let home = env::var_os("HOME").map(PathBuf::from);
+    let home = crate::preview::runtime_utils::home_dir();
     candidate_roots_with_home(input, home.as_deref())
 }
 
@@ -1168,10 +1167,10 @@ mod tests {
         )
         .expect("unrelated json should write");
         let bundle = read_folding_result_bundle_impl(pdb.clone()).expect("bundle should read");
-        let canonical_dir = fs::canonicalize(&dir).expect("dir should canonicalize");
+        let canonical_dir = dunce::canonicalize(&dir).expect("dir should canonicalize");
         assert_eq!(bundle.root_path, canonical_dir.to_string_lossy());
         assert_eq!(bundle.models.len(), 1);
-        let canonical_pdb = fs::canonicalize(&pdb).expect("pdb should canonicalize");
+        let canonical_pdb = dunce::canonicalize(&pdb).expect("pdb should canonicalize");
         assert_eq!(
             bundle.models[0].structure_path,
             canonical_pdb.to_string_lossy()

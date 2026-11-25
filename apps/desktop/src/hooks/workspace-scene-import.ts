@@ -7,6 +7,7 @@ import { pathExtension } from "../lib/file-routing";
 import { isMolstarSceneImportSource, isStructureComparisonSource } from "../lib/docking-documents";
 import { isTauriRuntime } from "../lib/tauri";
 import { useSettingsStore } from "../stores/settings-store";
+import { basename } from "../lib/sidebar-projects";
 
 export async function focusSceneDocument(document: ViewerDocument, select: (id: string) => void, signal?: AbortSignal) {
   signal?.throwIfAborted();
@@ -145,7 +146,7 @@ export async function appendScenePayload(
   const scenePaths = preserveScene || options.incremental || document.sceneSourcePaths ? null : await structureScenePaths(document, payload);
   if (scenePaths) return rebuildStructureScene(document, scenePaths, payload.paths.length);
   const sources = payload.records.map(record => ({
-    path: record.path, label: record.path.split('/').pop(), format: record.inputExtension, data: record.text,
+    path: record.path, label: basename(record.path), format: record.inputExtension, data: record.text,
   }));
   if (sources.length + payload.paths.length > 200) throw new Error("Choose up to 200 structures.");
   let total = sources.reduce((size, source) => size + new TextEncoder().encode(source.data).byteLength, 0);
@@ -154,7 +155,7 @@ export async function appendScenePayload(
     const source = await readStructureTextDocument(path, undefined, { maxBytes: 24 * 1024 * 1024 - total });
     total += new TextEncoder().encode(source.content).byteLength;
     if (source.truncated) throw new Error("Scene imports are limited to 24 MB at a time.");
-    sources.push({ path, label: path.split('/').pop(), format: pathExtension(path), data: source.content });
+    sources.push({ path, label: basename(path), format: pathExtension(path), data: source.content });
   }
   if (total > 24 * 1024 * 1024) throw new Error("Scene imports are limited to 24 MB at a time.");
   if (options.incremental) await waitForSceneDocument(document, options.signal);

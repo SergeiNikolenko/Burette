@@ -1,3 +1,7 @@
+# Check every file out byte-for-byte on every platform. Vendored runtime assets
+# are verified by size and hash, and several fixtures keep CRLF on purpose; Git
+# for Windows would otherwise rewrite text files to CRLF.
+* -text
 # Generated Browser bundles may contain significant trailing spaces inside embedded source text.
 plugins/burette-agent/browser-shell-dist/** whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
 # Keep pinned upstream Mol* bundles byte-for-byte, including shader/template whitespace.

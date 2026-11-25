@@ -13,5 +13,21 @@ fn main() {
         // Menu text fields read raw key events from the Carbon dispatcher.
         println!("cargo:rustc-link-lib=framework=Carbon");
     }
-    tauri_build::build()
+    // Dialogs need Common Controls v6, which the app manifest requests.
+    // tauri-build embeds it in the app binary only, and test binaries without
+    // it fail to load (STATUS_ENTRYPOINT_NOT_FOUND), so every executable gets it.
+    let mut attributes = tauri_build::Attributes::new();
+    if std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
+        println!("cargo:rerun-if-changed=windows-app-manifest.xml");
+        let manifest =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("windows-app-manifest.xml");
+        println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
+        println!("cargo:rustc-link-arg=/MANIFESTINPUT:{}", manifest.display());
+        // Windows gives the main thread 1 MiB of stack where macOS and Linux
+        // give 8 MiB, and app startup overflowed it.
+        println!("cargo:rustc-link-arg-bins=/STACK:8388608");
+        attributes = attributes
+            .windows_attributes(tauri_build::WindowsAttributes::new_without_app_manifest());
+    }
+    tauri_build::try_build(attributes).expect("failed to run tauri-build");
 }

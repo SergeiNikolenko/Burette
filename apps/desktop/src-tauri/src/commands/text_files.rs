@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use tauri::{Manager, Runtime};
 
 use crate::menu::OpenDocumentRegistry;
+use crate::preview::runtime_utils::SimplifiedCanonicalize;
 
 const TEXT_FILE_READ_LIMIT: usize = 12 * 1024 * 1024;
 const TEXT_BATCH_READ_LIMIT: usize = 64 * 1024 * 1024;
@@ -156,7 +157,7 @@ pub(crate) async fn open_text_files<R: Runtime>(
 }
 
 fn canonical_text_file_path(path: &Path) -> Result<PathBuf, String> {
-    path.canonicalize()
+    path.canonicalize_simplified()
         .map_err(|err| format!("{}: {err}", path.display()))
 }
 

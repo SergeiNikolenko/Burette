@@ -1,0 +1,12 @@
+{
+  "python": {
+    "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260414/cpython-3.13.13%2B20260414-x86_64-pc-windows-msvc-install_only_stripped.tar.gz",
+    "sha256": "b84dce293464cfd366ee792a3d5b42abe5174fc9cce733ba895b3ef467cb3161",
+    "executable": "python/python.exe"
+  },
+  "uv": {
+    "url": "https://github.com/astral-sh/uv/releases/download/0.11.7/uv-x86_64-pc-windows-msvc.zip",
+    "sha256": "fe0c7815acf4fc45f8a5eff58ed3cf7ae2e15c3cf1dceadbd10c816ec1690cc1",
+    "executable": "uv.exe"
+  }
+}

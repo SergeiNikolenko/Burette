@@ -20,6 +20,8 @@ use tauri::{Manager, Runtime};
 use crate::commands::database::http::{fetch, fetch_cancellable, DatabaseRequest, FETCH_CANCELLED};
 pub(crate) use index::PluginLink;
 use index::{entry, plugin_link, IndexEntry, SAVED_INDEX};
+#[cfg(test)]
+pub(crate) use runner::environment_bin;
 pub(crate) use runner::{package_command, valid_identifier, valid_script};
 pub(crate) use store::{installed, InstalledPlugin};
 

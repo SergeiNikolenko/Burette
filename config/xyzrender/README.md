@@ -52,6 +52,24 @@ grep -E '^[a-z0-9][a-z0-9._-]*==' config/xyzrender/requirements.txt | sed 's/ \\
 uv pip compile --no-config --default-index https://pypi.org/simple --python-version 3.13.13 --python-platform x86_64-manylinux_2_28 --generate-hashes --only-binary :all: -c build/xyzrender-darwin-pins.txt config/xyzrender/requirements.in -o config/xyzrender/requirements-linux-x86_64.txt
 ```
 
+Windows x86_64 bundles use `bootstrap-windows-x86_64.json` (the same CPython
+and uv releases, Windows assets) and `requirements-windows-x86_64.txt`. It pins
+the macOS versions too; IPython's POSIX terminal packages (`pexpect`,
+`ptyprocess`) and `appnope` are absent and `colorama` is added, and the pruned
+runtime ships none of them. Regenerate it like the Linux lock with
+`--python-platform x86_64-pc-windows-msvc` and
+`-o config/xyzrender/requirements-windows-x86_64.txt`; uv resolves Windows
+wheels from any host.
+
+`scripts/stage-xyzrender-windows.py --out DIR` stages the Windows resources:
+`DIR/xyzrender-runtime` (wheels installed with `uv pip sync --target` into
+`lib/python3.13/site-packages`, plus the `bin\xyzrender.cmd` wrapper),
+`DIR/xyzrender-python` (the standalone CPython without Tcl/Tk, headers and
+import libraries) and the Tauri overlay `DIR/tauri.xyzrender.conf.json`,
+whose path it prints. On Windows it also compiles startup bytecode with the
+staged interpreter and runs the wrapper. Other hosts can inspect the same tree
+with `--cross`, which installs the Windows wheels without executing them.
+
 Run scientific regressions with the prepared environment's Python:
 
 ```bash

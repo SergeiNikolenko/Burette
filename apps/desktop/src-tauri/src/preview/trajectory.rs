@@ -16,6 +16,7 @@ use tauri::{Manager, Runtime};
 use super::desmond_trajectory::DesmondIndex;
 use super::runtime_utils::stable_id;
 use super::trajectory_dcd::DcdIndex;
+use crate::preview::runtime_utils::SimplifiedCanonicalize;
 
 const MAX_FRAME_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_INDEX_FRAMES: usize = 10_000_000;
@@ -122,7 +123,9 @@ pub(crate) fn prepare<R: Runtime>(
     app: &tauri::AppHandle<R>,
     path: &Path,
 ) -> Result<(IndexedTrajectory, Vec<u8>), String> {
-    let source = path.canonicalize().map_err(|error| error.to_string())?;
+    let source = path
+        .canonicalize_simplified()
+        .map_err(|error| error.to_string())?;
     let revision = Revision::read(&source)?;
     let format = source
         .extension()
@@ -268,8 +271,12 @@ pub(crate) fn prepare_desmond<R: Runtime>(
             first_time_ps: time,
             first_cell_basis: cell,
             source: Some(TrajectorySource::Desmond {
-                cms: cms.canonicalize().map_err(|error| error.to_string())?,
-                trj: trj.canonicalize().map_err(|error| error.to_string())?,
+                cms: cms
+                    .canonicalize_simplified()
+                    .map_err(|error| error.to_string())?,
+                trj: trj
+                    .canonicalize_simplified()
+                    .map_err(|error| error.to_string())?,
             }),
         },
         first,
@@ -359,9 +366,9 @@ pub(crate) async fn read_indexed_trajectory_frame<R: Runtime>(
     });
     let _slot = slots[NEXT.fetch_add(1, Ordering::Relaxed) % 2].lock().await;
     tauri::async_runtime::spawn_blocking(move || {
-        let runtime = PathBuf::from(runtime_path).canonicalize().map_err(|error| error.to_string())?;
+        let runtime = PathBuf::from(runtime_path).canonicalize_simplified().map_err(|error| error.to_string())?;
         let viewer_root = app.path().app_cache_dir().map_err(|error| error.to_string())?.join("viewer")
-            .canonicalize().map_err(|error| error.to_string())?;
+            .canonicalize_simplified().map_err(|error| error.to_string())?;
         if !runtime.starts_with(&viewer_root) || runtime.file_name().and_then(|value| value.to_str()) != Some("index.html") {
             return Err("Invalid trajectory runtime.".into());
         }
@@ -588,7 +595,7 @@ mod tests {
             first_time_ps: Some(0.0),
             first_cell_basis: None,
             source: Some(TrajectorySource::File {
-                path: PathBuf::from("/data/run.xtc"),
+                path: std::env::temp_dir().join("run.xtc"),
             }),
         };
         let saved: IndexedTrajectory =
@@ -608,7 +615,7 @@ mod tests {
         }
         for path in [
             PathBuf::from("relative.xtc"),
-            PathBuf::from(format!("/{}", "x".repeat(4096))),
+            std::env::temp_dir().join("x".repeat(4096)),
         ] {
             assert!(TrajectorySource::File { path }.validate().is_err());
         }

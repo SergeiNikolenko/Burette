@@ -9,6 +9,8 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime};
 use tauri::{Manager, Runtime};
 
+use crate::preview::runtime_utils::executable_name;
+
 const CONFIG_FILE: &str = "config.json";
 const PIXI_MANIFEST: &str = include_str!("../../../../../config/xtb/pixi.toml");
 const PIXI_LOCK: &str = include_str!("../../../../../config/xtb/pixi.lock");
@@ -87,7 +89,7 @@ pub(crate) fn install_managed<R: Runtime>(
     let root = runtime_root(app)?;
     cleanup_inactive_managed_runtimes(&root);
     let config_before = read_config(&root)?;
-    let managed = root.join("current/.pixi/envs/default/bin/xtb");
+    let managed = environment_xtb(&root.join("current/.pixi/envs/default"));
     if validate_xtb(&managed).is_ok() {
         clear_selection_if_unchanged(&root, &config_before)?;
         return resolve_from_root(&root);
@@ -125,7 +127,7 @@ fn clear_selection_if_unchanged(
 }
 
 fn cleanup_inactive_managed_runtimes(root: &Path) {
-    let active = fs::canonicalize(root.join("current")).ok();
+    let active = dunce::canonicalize(root.join("current")).ok();
     let Ok(entries) = fs::read_dir(root) else {
         return;
     };
@@ -137,7 +139,7 @@ fn cleanup_inactive_managed_runtimes(root: &Path) {
             continue;
         }
         let path = entry.path();
-        if active.as_ref() == fs::canonicalize(&path).ok().as_ref() {
+        if active.as_ref() == dunce::canonicalize(&path).ok().as_ref() {
             continue;
         }
         let old_enough = entry
@@ -189,7 +191,7 @@ fn resolve_automatic_candidates(
         match validate_xtb(&path) {
             Ok(_) => {
                 return Ok(Some(XtbRuntimeResolution {
-                    executable_path: fs::canonicalize(&path).unwrap_or(path),
+                    executable_path: dunce::canonicalize(&path).unwrap_or(path),
                     source,
                     selected_executable_path: None,
                 }));
@@ -217,33 +219,34 @@ fn resolve_automatic_candidates(
 
 fn automatic_candidates(root: &Path) -> Vec<(PathBuf, XtbRuntimeSource)> {
     let mut candidates = vec![(
-        root.join("current/.pixi/envs/default/bin/xtb"),
+        environment_xtb(&root.join("current/.pixi/envs/default")),
         XtbRuntimeSource::Managed,
     )];
     if let Some(prefix) = std::env::var_os("CONDA_PREFIX") {
-        candidates.push((
-            PathBuf::from(prefix).join("bin/xtb"),
-            XtbRuntimeSource::Conda,
-        ));
+        candidates.push((environment_xtb(Path::new(&prefix)), XtbRuntimeSource::Conda));
     }
-    if let Some(home) = std::env::var_os("HOME") {
-        let home = PathBuf::from(home);
+    if let Some(home) = crate::preview::runtime_utils::home_dir() {
         for directory in ["miniconda3", "miniforge3", "mambaforge", "anaconda3"] {
             candidates.push((
-                home.join(directory).join("bin/xtb"),
+                environment_xtb(&home.join(directory)),
                 XtbRuntimeSource::Conda,
             ));
         }
         candidates.extend(conda_environment_candidates(&home));
         candidates.extend(registered_conda_environment_candidates(&home));
-        candidates.push((home.join(".pixi/bin/xtb"), XtbRuntimeSource::Pixi));
+        candidates.push((
+            home.join(".pixi").join("bin").join(executable_name("xtb")),
+            XtbRuntimeSource::Pixi,
+        ));
         candidates.push((home.join(".local/bin/xtb"), XtbRuntimeSource::Path));
     }
     if let Some(path) = std::env::var_os("PATH") {
-        candidates.extend(
-            std::env::split_paths(&path)
-                .map(|directory| (directory.join("xtb"), XtbRuntimeSource::Path)),
-        );
+        candidates.extend(std::env::split_paths(&path).map(|directory| {
+            (
+                directory.join(executable_name("xtb")),
+                XtbRuntimeSource::Path,
+            )
+        }));
     }
     candidates.push((
         PathBuf::from("/opt/homebrew/bin/xtb"),
@@ -276,7 +279,7 @@ fn conda_environment_candidates(home: &Path) -> Vec<(PathBuf, XtbRuntimeSource)>
                 .file_type()
                 .ok()
                 .filter(|file_type| file_type.is_dir())
-                .map(|_| (entry.path().join("bin/xtb"), XtbRuntimeSource::Conda))
+                .map(|_| (environment_xtb(&entry.path()), XtbRuntimeSource::Conda))
         }));
     }
     candidates
@@ -303,19 +306,29 @@ fn registered_conda_environment_candidates(home: &Path) -> Vec<(PathBuf, XtbRunt
         .take(REGISTRY_MAX_ENTRIES)
         .map(PathBuf::from)
         .filter(|prefix| prefix.is_absolute())
-        .map(|prefix| (prefix.join("bin/xtb"), XtbRuntimeSource::Conda))
+        .map(|prefix| (environment_xtb(&prefix), XtbRuntimeSource::Conda))
         .collect()
+}
+
+/// Conda puts executables under `Library\bin` on Windows.
+fn environment_xtb(prefix: &Path) -> PathBuf {
+    if cfg!(windows) {
+        prefix.join("Library").join("bin").join("xtb.exe")
+    } else {
+        prefix.join("bin").join("xtb")
+    }
 }
 
 fn resolve_pixi() -> Option<PathBuf> {
     let mut candidates = Vec::new();
-    if let Some(home) = std::env::var_os("HOME") {
-        let home = PathBuf::from(home);
-        candidates.push(home.join(".pixi/bin/pixi"));
+    if let Some(home) = crate::preview::runtime_utils::home_dir() {
+        candidates.push(home.join(".pixi").join("bin").join(executable_name("pixi")));
         candidates.push(home.join(".local/bin/pixi"));
     }
     if let Some(path) = std::env::var_os("PATH") {
-        candidates.extend(std::env::split_paths(&path).map(|directory| directory.join("pixi")));
+        candidates.extend(
+            std::env::split_paths(&path).map(|directory| directory.join(executable_name("pixi"))),
+        );
     }
     candidates.extend([
         PathBuf::from("/opt/homebrew/bin/pixi"),
@@ -336,7 +349,7 @@ fn install_with_pixi(pixi: &Path, staging: &Path) -> Result<(), String> {
         .map_err(|error| format!("Could not write {}: {error}", manifest.display()))?;
     fs::write(staging.join("pixi.lock"), PIXI_LOCK)
         .map_err(|error| format!("Could not write the xTB Pixi lockfile: {error}"))?;
-    let mut command = Command::new(pixi);
+    let mut command = crate::preview::runtime_utils::background_command(pixi);
     command
         .args(["install", "--locked", "--manifest-path"])
         .arg(&manifest);
@@ -354,7 +367,7 @@ fn install_with_pixi(pixi: &Path, staging: &Path) -> Result<(), String> {
             truncate_output(&format!("{stderr}\n{stdout}"), 1200)
         ));
     }
-    let executable = staging.join(".pixi/envs/default/bin/xtb");
+    let executable = environment_xtb(&staging.join(".pixi/envs/default"));
     validate_xtb(&executable).map_err(|error| {
         format!("Pixi completed, but the managed xTB runtime failed validation: {error}")
     })?;
@@ -371,8 +384,14 @@ fn promote_staged_runtime(root: &Path, staging: &Path) -> Result<(), String> {
     #[cfg(unix)]
     std::os::unix::fs::symlink(target, &next)
         .map_err(|error| format!("Could not prepare the managed xTB runtime pointer: {error}"))?;
-    #[cfg(not(unix))]
-    return Err("Managed xTB runtime promotion is supported on Unix platforms.".into());
+    // Symlinks need Developer Mode or elevation on Windows, so the staged
+    // environment itself becomes `current`; xtb.exe finds its DLLs beside it.
+    #[cfg(windows)]
+    {
+        let _ = target;
+        fs::rename(staging, &next)
+            .map_err(|error| format!("Could not prepare the managed xTB runtime: {error}"))?;
+    }
 
     let mut legacy = None;
     if current.is_dir() && !current.is_symlink() {
@@ -394,7 +413,7 @@ fn promote_staged_runtime(root: &Path, staging: &Path) -> Result<(), String> {
 
 fn validate_xtb(path: &Path) -> Result<String, String> {
     validate_selected(path)?;
-    let mut command = Command::new(path);
+    let mut command = crate::preview::runtime_utils::background_command(path);
     command.arg("--version");
     let (status, stdout, stderr) =
         run_bounded_command(command, XTB_PROBE_TIMEOUT, 128 * 1024, "xTB")?;
@@ -539,7 +558,8 @@ pub(crate) fn is_executable_file(path: &Path) -> bool {
     }
 }
 
-#[cfg(test)]
+// The fixtures are shell scripts.
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
@@ -649,7 +669,7 @@ chmod +x "$prefix/bin/xtb"
         let resolution = resolve_from_root(&root).expect("resolve managed");
         assert_eq!(
             resolution.executable_path,
-            fs::canonicalize(managed).expect("canonical managed executable")
+            dunce::canonicalize(managed).expect("canonical managed executable")
         );
         assert_eq!(resolution.source, XtbRuntimeSource::Managed);
         fs::remove_dir_all(root).ok();

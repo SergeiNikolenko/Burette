@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -1049,8 +1049,7 @@ fn sync_parent_directory(path: &Path) -> Result<(), String> {
     let parent = path
         .parent()
         .ok_or_else(|| "The source has no parent directory.".to_string())?;
-    File::open(parent)
-        .and_then(|directory| directory.sync_all())
+    crate::compute::platform_fs::sync_directory_path(parent)
         .map_err(|_| "Could not flush the source directory.".to_string())
 }
 
@@ -1095,6 +1094,7 @@ fn source_error_with_details(code: &str, message: &str, details: Value) -> Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::preview::runtime_utils::SimplifiedCanonicalize;
     use std::thread::sleep;
     use std::time::Duration;
 
@@ -1298,7 +1298,10 @@ mod tests {
         let pointer = root.join("run_trj/clickme.dtr");
         fs::write(&pointer, b"").unwrap();
         let effective = crate::preview::runtime::document_identity_path(&pointer);
-        assert_eq!(effective, root.join("run-out.cms").canonicalize().unwrap());
+        assert_eq!(
+            effective,
+            root.join("run-out.cms").canonicalize_simplified().unwrap()
+        );
         let id = crate::preview::runtime_utils::stable_id(&effective);
         let sources = OpenedSourceRegistry::default();
         let edits = SourceEditRegistry::default();

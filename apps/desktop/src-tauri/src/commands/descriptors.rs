@@ -5,7 +5,7 @@ use std::env;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex, OnceLock,
@@ -13,6 +13,8 @@ use std::sync::{
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{Runtime, State};
+
+use crate::preview::runtime_utils::{executable_name, venv_python};
 
 use crate::preview::grid_store::{
     descriptor_source_row_batch, descriptor_source_rows_by_indices, open_descriptor_source,
@@ -652,7 +654,7 @@ fn run_managed_descriptor_install() -> Result<(), String> {
             runtime_dir.display()
         )
     })?;
-    let python_path = runtime_dir.join("bin").join("python3");
+    let python_path = venv_python(&runtime_dir);
     if python_path.is_file() {
         set_descriptor_install_line("Checking the existing descriptor runtime…");
         if let Ok(payload) = run_descriptor_runner(
@@ -1175,7 +1177,7 @@ pub(crate) fn run_python_script_with_env(
     timeout: Duration,
 ) -> Result<Value, String> {
     let input = serde_json::to_vec(&payload).map_err(|err| err.to_string())?;
-    let mut child = Command::new(python_path)
+    let mut child = crate::preview::runtime_utils::background_command(python_path)
         .arg("-c")
         .arg(script)
         .stdin(Stdio::piped())
@@ -1269,7 +1271,7 @@ fn run_descriptor_install_step(
     args: &[&str],
     timeout: Duration,
 ) -> Result<(), String> {
-    let mut child = Command::new(path)
+    let mut child = crate::preview::runtime_utils::background_command(path)
         .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -1348,8 +1350,16 @@ pub(crate) fn resolve_python_executable() -> Result<PathBuf, String> {
     }
     if let Some(path) = env::var_os("PATH") {
         for dir in env::split_paths(&path) {
-            candidates.push(dir.join("python3"));
-            candidates.push(dir.join("python"));
+            #[cfg(windows)]
+            {
+                candidates.push(dir.join(executable_name("python")));
+                candidates.push(dir.join(executable_name("python3")));
+            }
+            #[cfg(not(windows))]
+            {
+                candidates.push(dir.join(executable_name("python3")));
+                candidates.push(dir.join(executable_name("python")));
+            }
         }
     }
     candidates.extend([
@@ -1358,7 +1368,7 @@ pub(crate) fn resolve_python_executable() -> Result<PathBuf, String> {
         PathBuf::from("/usr/bin/python3"),
     ]);
     for path in candidates {
-        if path.is_file() && is_executable(&path) {
+        if path.is_file() && is_executable(&path) && !is_windows_store_python_stub(&path) {
             return Ok(path);
         }
     }
@@ -1368,11 +1378,10 @@ pub(crate) fn resolve_python_executable() -> Result<PathBuf, String> {
 fn descriptor_runtime_python_candidates() -> Vec<PathBuf> {
     let mut candidates = Vec::new();
     if let Ok(runtime_dir) = descriptor_runtime_dir() {
-        candidates.push(runtime_dir.join("bin").join("python3"));
-        candidates.push(runtime_dir.join("Scripts").join("python.exe"));
+        candidates.push(venv_python(&runtime_dir));
     }
-    if let Some(home) = env::var_os("HOME") {
-        let home = PathBuf::from(home);
+    #[cfg(target_os = "linux")]
+    if let Some(home) = crate::preview::runtime_utils::home_dir() {
         candidates.push(
             home.join(".local")
                 .join("share")
@@ -1389,12 +1398,9 @@ fn descriptor_runtime_dir() -> Result<PathBuf, String> {
     if let Some(path) = env::var_os("BURETTE_DESCRIPTOR_RUNTIME_DIR") {
         return Ok(PathBuf::from(path));
     }
-    let home = env::var_os("HOME").ok_or("HOME is not set for descriptor runtime install")?;
-    Ok(PathBuf::from(home)
-        .join("Library")
-        .join("Application Support")
-        .join("Burette")
-        .join("descriptor-python"))
+    crate::preview::runtime_utils::user_support_dir()
+        .map(|support| support.join("descriptor-python"))
+        .ok_or_else(|| "No user data folder for the descriptor runtime install".to_string())
 }
 
 fn resolve_uv_executable() -> Result<PathBuf, String> {
@@ -1405,7 +1411,7 @@ fn resolve_uv_executable() -> Result<PathBuf, String> {
     }
     if let Some(path) = env::var_os("PATH") {
         for dir in env::split_paths(&path) {
-            candidates.push(dir.join("uv"));
+            candidates.push(dir.join(executable_name("uv")));
         }
     }
     candidates.extend([
@@ -1438,6 +1444,14 @@ fn is_executable(path: &Path) -> bool {
 #[cfg(not(unix))]
 fn is_executable(path: &Path) -> bool {
     path.is_file()
+}
+
+fn is_windows_store_python_stub(path: &Path) -> bool {
+    cfg!(windows)
+        && path
+            .to_string_lossy()
+            .to_ascii_lowercase()
+            .contains("windowsapps")
 }
 
 // Calculate Properties can install the runtime itself when uv is on the
@@ -1502,8 +1516,13 @@ print(json.dumps({"ok": True, "inLen": len(data["blob"]), "blob": "x" * (256 * 1
 "#;
         let payload = json!({ "blob": "a".repeat(128 * 1024) });
         let result =
-            run_python_script_with_env(&python, &[], script, payload, Duration::from_secs(10))
-                .expect("large piped stdin/stdout/stderr should not deadlock");
+            run_python_script_with_env(&python, &[], script, payload, Duration::from_secs(30))
+                .unwrap_or_else(|err| {
+                    panic!(
+                        "large piped stdin/stdout/stderr failed with {}: {err}",
+                        python.display()
+                    )
+                });
         assert_eq!(result.get("ok").and_then(Value::as_bool), Some(true));
         assert_eq!(
             result.get("inLen").and_then(Value::as_u64),

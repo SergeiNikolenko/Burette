@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
-use std::process::{Child, ChildStdin, Command, Stdio};
+use std::process::{Child, ChildStdin, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
@@ -515,7 +515,7 @@ fn spawn_worker(launch: &XyzrenderWorkerLaunch, generation: u64) -> Result<Worke
         return Err("xyzrender pool is shutting down".to_string());
     }
     let helper_path = write_worker_helper()?;
-    let mut command = Command::new(&launch.program);
+    let mut command = crate::preview::runtime_utils::background_command(&launch.program);
     command.arg(helper_path);
     for (key, value) in &launch.envs {
         command.env(key, value);

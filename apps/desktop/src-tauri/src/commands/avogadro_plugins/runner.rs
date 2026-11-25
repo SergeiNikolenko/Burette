@@ -13,6 +13,8 @@ use std::time::{Duration, Instant};
 
 use burette_core::bounded_process::{run_cancellable, Limits};
 
+use crate::preview::runtime_utils::background_command;
+
 use super::store::{describe_receipt, package_dir, read_receipt, InstalledPlugin};
 use super::CANCELLED;
 
@@ -24,8 +26,13 @@ const MAX_INPUT_BYTES: usize = 16 * 1024 * 1024;
 const MAX_RESULT_BYTES: usize = 32 * 1024 * 1024;
 const MAX_OPTION_BYTES: u64 = 64 * 1024;
 
-fn environment_bin(dir: &Path) -> PathBuf {
-    dir.join(".pixi").join("envs").join("default").join("bin")
+pub(crate) fn environment_bin(dir: &Path) -> PathBuf {
+    let env = dir.join(".pixi").join("envs").join("default");
+    if cfg!(windows) {
+        env.join("Scripts")
+    } else {
+        env.join("bin")
+    }
 }
 
 fn interrupted(error: std::io::Error, what: &str) -> String {
@@ -61,7 +68,7 @@ pub(crate) fn prepare(
         return Err(NO_WORKSPACE.into());
     }
     let pixi = pixi.ok_or(NO_PIXI)?;
-    let mut command = Command::new(pixi);
+    let mut command = background_command(pixi);
     command
         .arg("install")
         .current_dir(&dir)
@@ -102,8 +109,45 @@ pub(crate) fn valid_identifier(identifier: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || b"_.-".contains(&byte))
 }
 
+fn resolve_script_executable(bin: &Path, script: &str) -> PathBuf {
+    #[cfg(windows)]
+    {
+        for extension in ["exe", "cmd", "bat"] {
+            let candidate = bin.join(format!("{script}.{extension}"));
+            if candidate.is_file() {
+                return candidate;
+            }
+        }
+    }
+    bin.join(script)
+}
+
+fn environment_path(dir: &Path, bin: &Path) -> std::ffi::OsString {
+    #[cfg(windows)]
+    {
+        let env = dir.join(".pixi").join("envs").join("default");
+        let system_root = std::env::var_os("SystemRoot")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
+        let entries = [
+            bin.to_path_buf(),
+            env.clone(),
+            env.join("Library").join("bin"),
+            system_root.join("System32"),
+            system_root,
+        ];
+        std::env::join_paths(entries).unwrap_or_else(|_| bin.as_os_str().to_os_string())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = dir;
+        std::ffi::OsString::from(format!("{}:/usr/bin:/bin:/usr/sbin:/sbin", bin.display()))
+    }
+}
+
 /// The console script of a prepared package, started from the package folder
-/// with its environment's `bin` first on `PATH` and no inherited Python paths.
+/// with its environment's `bin` (or `Scripts` on Windows) first on `PATH` and
+/// no inherited Python paths.
 pub(crate) fn package_command(root: &Path, name: &str, script: &str) -> Result<Command, String> {
     if !valid_script(script) {
         return Err("Invalid plugin command".into());
@@ -111,7 +155,7 @@ pub(crate) fn package_command(root: &Path, name: &str, script: &str) -> Result<C
     let receipt = read_receipt(root, name).ok_or("This plugin is not installed")?;
     let dir = package_dir(root, &receipt);
     let bin = environment_bin(&dir);
-    let executable = bin.join(script);
+    let executable = resolve_script_executable(&bin, script);
     let resolved = executable
         .canonicalize()
         .map_err(|_| "Set up this plugin before running its commands".to_string())?;
@@ -122,13 +166,10 @@ pub(crate) fn package_command(root: &Path, name: &str, script: &str) -> Result<C
     if !resolved.starts_with(&environment) || !resolved.is_file() {
         return Err("Invalid plugin command".into());
     }
-    let mut command = Command::new(&executable);
+    let mut command = background_command(&executable);
     command
         .current_dir(&dir)
-        .env(
-            "PATH",
-            format!("{}:/usr/bin:/bin:/usr/sbin:/sbin", bin.display()),
-        )
+        .env("PATH", environment_path(&dir, &bin))
         .env_remove("PYTHONPATH")
         .env_remove("PYTHONHOME");
     Ok(command)
@@ -196,6 +237,8 @@ pub(crate) fn read_options(root: &Path, name: &str, relative: &str) -> Result<St
     if !(relative.ends_with(".json") || relative.ends_with(".toml"))
         || relative.len() > 256
         || relative.starts_with('/')
+        || relative.contains('\\')
+        || relative.contains(':')
         || relative
             .split('/')
             .any(|part| part.is_empty() || part == "." || part == "..")
@@ -219,6 +262,7 @@ mod tests {
     use super::*;
     use crate::commands::avogadro_plugins::index::{entry, SAVED_INDEX};
     use crate::commands::avogadro_plugins::store::install;
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
 
     const RDKIT: &[u8] =
@@ -237,14 +281,48 @@ mod tests {
         root
     }
 
+    #[cfg(windows)]
+    fn test_python() -> PathBuf {
+        std::env::split_paths(&std::env::var_os("PATH").unwrap())
+            .flat_map(|dir| [dir.join("python.exe"), dir.join("python3.exe")])
+            .find(|path| {
+                path.is_file()
+                    && !path
+                        .to_string_lossy()
+                        .to_ascii_lowercase()
+                        .contains("windowsapps")
+            })
+            .expect("python.exe on PATH")
+    }
+
     /// Stands in for the environment `pixi install` creates: a console script.
-    fn fake_environment(root: &Path, script: &str, body: &str) {
+    fn fake_environment(root: &Path, script: &str, unix_body: &str, windows_python: &str) {
         let receipt = read_receipt(root, "avogadro-rdkit").unwrap();
         let bin = environment_bin(&package_dir(root, &receipt));
         std::fs::create_dir_all(&bin).unwrap();
-        let path = bin.join(script);
-        std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+        #[cfg(unix)]
+        {
+            let _ = windows_python;
+            let path = bin.join(script);
+            std::fs::write(&path, format!("#!/bin/sh\n{unix_body}\n")).unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        #[cfg(windows)]
+        {
+            let _ = unix_body;
+            let helper = bin.join(format!("{script}.py"));
+            std::fs::write(&helper, windows_python).unwrap();
+            let path = bin.join(format!("{script}.cmd"));
+            std::fs::write(
+                &path,
+                format!(
+                    "@echo off\r\n\"{}\" \"{}\" %*\r\n",
+                    test_python().display(),
+                    helper.display()
+                ),
+            )
+            .unwrap();
+        }
     }
 
     #[test]
@@ -265,6 +343,7 @@ mod tests {
             &root,
             "avogadro-rdkit",
             r#"read input; printf '{"feature":"%s","lang":"%s","input":%s}' "$1" "$3" "$input""#,
+            "import sys\ninp = sys.stdin.readline().strip()\nsys.stdout.write(f'{{\"feature\":\"{sys.argv[1]}\",\"lang\":\"{sys.argv[3]}\",\"input\":{inp}}}')\n",
         );
         assert_eq!(
             run(
@@ -280,7 +359,12 @@ mod tests {
             r#"{"feature":"uff","lang":"en","input":{"sdf":"x"}}"#
         );
         // A format reads with `--read`, between the identifier and `--lang`.
-        fake_environment(&root, "avogadro-rdkit", r#"printf '%s|' "$@""#);
+        fake_environment(
+            &root,
+            "avogadro-rdkit",
+            r#"printf '%s|' "$@""#,
+            "import sys\nsys.stdout.write('|'.join(sys.argv[1:]) + '|')\n",
+        );
         assert_eq!(
             run(
                 &root,
@@ -298,6 +382,7 @@ mod tests {
             &root,
             "avogadro-rdkit",
             "echo 'Traceback: boom' >&2; exit 3",
+            "import sys\nprint('Traceback: boom', file=sys.stderr)\nsys.exit(3)\n",
         );
         assert!(run(
             &root,
@@ -352,9 +437,23 @@ mod tests {
             prepare(&root, "avogadro-rdkit", None, &AtomicBool::new(false)).unwrap_err(),
             NO_PIXI
         );
-        let fake_pixi = root.join("fake-pixi");
-        std::fs::write(&fake_pixi, "#!/bin/sh\nmkdir -p .pixi/envs/default/bin\n").unwrap();
-        std::fs::set_permissions(&fake_pixi, std::fs::Permissions::from_mode(0o700)).unwrap();
+        #[cfg(unix)]
+        let fake_pixi = {
+            let path = root.join("fake-pixi");
+            std::fs::write(&path, "#!/bin/sh\nmkdir -p .pixi/envs/default/bin\n").unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+            path
+        };
+        #[cfg(windows)]
+        let fake_pixi = {
+            let path = root.join("fake-pixi.cmd");
+            std::fs::write(
+                &path,
+                "@echo off\r\nmkdir .pixi\\envs\\default\\Scripts\r\n",
+            )
+            .unwrap();
+            path
+        };
         assert!(
             prepare(
                 &root,

@@ -21,6 +21,15 @@ impl Drop for ChildGuard {
         unsafe {
             libc::kill(-(self.0.id() as i32), libc::SIGKILL);
         }
+        #[cfg(windows)]
+        if self.0.try_wait().ok().flatten().is_none() {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            let _ = Command::new("taskkill.exe")
+                .args(["/T", "/F", "/PID", &self.0.id().to_string()])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output();
+        }
         let _ = self.0.kill();
         let _ = self.0.wait();
     }

@@ -51,6 +51,8 @@ contains only documents that describe the active project.
   admission, shared storage limits and exact-source reopening.
 - [Burette on Linux](linux.md): Linux bundles, desktop integration, build
   steps, and the features that stay macOS-only.
+- [Burette on Windows](windows.md): the Windows installer, file associations,
+  build steps, and the features that stay macOS-only.
 - [Repository layout](repository-layout.md): top-level code map, app surfaces,
   checked-in samples, and scratch-file policy.
 - [Product direction](product.md): current product surfaces, users, core jobs,

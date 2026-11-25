@@ -2,14 +2,10 @@ import { syntaxTree } from "@codemirror/language";
 import { Prec, type Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { openPath, openUrl } from "@tauri-apps/plugin-opener";
+import { isAbsoluteNativeFilePath } from "../../lib/native-menu-paths";
+import { joinPath, parentDirectory } from "../../lib/sidebar-projects";
 
 export type MarkdownOpenPaths = (paths: string[]) => void | Promise<void>;
-
-function parentDirectory(path: string): string | null {
-  const normalized = path.replace(/\\/g, "/");
-  const index = normalized.lastIndexOf("/");
-  return index > 0 ? normalized.slice(0, index) : null;
-}
 
 function isExternalUrl(href: string) {
   return /^[a-z][a-z0-9+.-]*:/i.test(href);
@@ -26,9 +22,9 @@ function stripFragmentAndQuery(href: string) {
 function resolveLocalPath(href: string, filePath: string) {
   const cleanHref = decodeURIComponent(stripFragmentAndQuery(href));
   if (!cleanHref) return null;
-  if (cleanHref.startsWith("/")) return cleanHref;
+  if (isAbsoluteNativeFilePath(cleanHref)) return cleanHref;
   const parent = parentDirectory(filePath);
-  return parent ? `${parent}/${cleanHref}` : cleanHref;
+  return parent ? joinPath(parent, cleanHref) : cleanHref;
 }
 
 function getLinkHref(view: EditorView, pos: number) {
@@ -75,7 +71,8 @@ async function followLink(href: string | null, filePath: string, openPaths?: Mar
     await openUrl(href);
     return;
   }
-  if (isExternalUrl(href)) {
+  // A drive letter reads as a one-letter URL scheme.
+  if (isExternalUrl(href) && !isAbsoluteNativeFilePath(href)) {
     await openUrl(href);
     return;
   }

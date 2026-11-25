@@ -2,10 +2,9 @@
 use serde::{Deserialize, Serialize};
 mod preview_cache;
 mod transport;
-use std::os::unix::process::CommandExt;
 use std::{
     io::{Read, Write},
-    process::{Command, Stdio},
+    process::Stdio,
     time::{Duration, Instant},
 };
 use tauri::Manager;
@@ -122,7 +121,7 @@ fn run_worker(
     let _connection = transport::Connection::acquire()?;
     // Only the bundled worker is shell-quoted. User paths travel as JSON on stdin.
     let remote_command = format!("python3 -c '{}'", worker.replace('\'', "'\\''"));
-    let mut child = Command::new("/usr/bin/ssh")
+    let mut child = transport::ssh_command()
         .args(transport::CONNECTION_OPTIONS)
         .args([
             "-T",
@@ -137,7 +136,6 @@ fn run_worker(
             host,
             &remote_command,
         ])
-        .process_group(0)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -167,11 +165,7 @@ fn run_worker(
                 std::thread::sleep(Duration::from_millis(25))
             }
             other => {
-                // Kill proxy descendants too so their inherited pipes cannot hold readers open.
-                unsafe {
-                    libc::kill(-(child.id() as i32), libc::SIGKILL);
-                }
-                let _ = child.kill();
+                transport::kill_process_tree(&mut child);
                 let _ = child.wait();
                 break Err(match other {
                     Err(e) => e.to_string(),
@@ -200,9 +194,9 @@ fn run_worker(
 #[tauri::command]
 pub(crate) async fn ssh_hosts() -> Result<Vec<Host>, String> {
     // Literal aliases are suggestions; OpenSSH resolves Include, Match and ProxyJump on connection.
-    let home = std::env::var("HOME").map_err(|e| e.to_string())?;
+    let home = crate::preview::runtime_utils::home_dir().ok_or("No home folder")?;
     let mut config = String::new();
-    if let Ok(file) = std::fs::File::open(format!("{home}/.ssh/config")) {
+    if let Ok(file) = std::fs::File::open(home.join(".ssh").join("config")) {
         file.take(512 * 1024)
             .read_to_string(&mut config)
             .map_err(|e| e.to_string())?;

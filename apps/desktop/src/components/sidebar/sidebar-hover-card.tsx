@@ -2,7 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, ty
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import previewFormatRegistry from "../../../../../config/preview-formats.json";
-import type { SidebarProjectItem } from "../../lib/sidebar-projects";
+import { parentDirectory, type SidebarProjectItem } from "../../lib/sidebar-projects";
 import type { SshProject } from "../../lib/ssh-projects";
 import { PinFilled, SidebarFolder, SidebarGlobe, Stack } from "../ui/app-icons";
 import { useAppShellPortalContainer } from "../ui/portal-container";
@@ -239,11 +239,6 @@ function homeRelativePath(path: string) {
   return path.replace(/^\/(?:Users|home)\/[^/]+(?=\/|$)/, "~");
 }
 
-function parentDirectory(path: string) {
-  const index = path.lastIndexOf("/");
-  return index > 0 ? path.slice(0, index) : "";
-}
-
 function structureCountLabel(count: number) {
   return count > 0 ? `${count} structure${count === 1 ? "" : "s"}` : null;
 }
@@ -259,7 +254,7 @@ export function structureHoverCard(item: SidebarProjectItem): SidebarHoverCardIn
     titleIcon: pinnedIcon(item.isPinned),
     timestamp: item.openedAt,
     rows: [
-      { id: "folder", icon: <SidebarFolder />, label: homeRelativePath(parentDirectory(item.path)) },
+      { id: "folder", icon: <SidebarFolder />, label: homeRelativePath(parentDirectory(item.path) ?? "") },
       {
         id: "kind",
         icon: <FileKindIcon kind={fileKindForPath(item.path, item.extension)} />,

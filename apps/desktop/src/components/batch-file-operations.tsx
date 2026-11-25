@@ -2,6 +2,8 @@ import { useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { isTauriRuntime } from "../lib/tauri";
+import { moveToTrashMenuLabel, trashName } from "../lib/platform";
+import { basename } from "../lib/sidebar-projects";
 import { useMoleculeStore } from "../stores/molecule-store";
 import { useShellStore } from "../stores/shell-store";
 import { TrashFilesDialog } from "./file-operation-dialogs";
@@ -34,7 +36,7 @@ export function useBatchFileOperations(actions: ShellActions, state: ShellViewSt
       setPaths([]);
     } catch (error) {
       console.error("Move files to Trash failed", error);
-      setError("Could not move these files to Trash. Try again.");
+      setError(`Could not move these files to the ${trashName()}. Try again.`);
       setCompleted(moved);
       setPaths(paths.filter(path => !moved.includes(path)));
     } finally {
@@ -52,7 +54,7 @@ export function useBatchFileOperations(actions: ShellActions, state: ShellViewSt
     let copied = 0;
     try {
       for (const path of files) {
-        await invoke("operate_sidebar_file", { request: { operation: "saveCopy", path, destination: destination + '/' + path.split('/').pop() } });
+        await invoke("operate_sidebar_file", { request: { operation: "saveCopy", path, destination: destination + '/' + basename(path) } });
         copied++;
       }
     } catch (error) {
@@ -62,7 +64,7 @@ export function useBatchFileOperations(actions: ShellActions, state: ShellViewSt
   };
   const items = (files: string[]) => !isTauriRuntime() || files.length < 2 || files.length > 200 ? [] : [
     { ...menuItem("save-file-copy", "Selected files…", () => exportFiles(files)), disabled: hasDirtyFile(files) },
-    { ...menuItem("trash-file", "Move to trash", () => trash(files)), variant: "destructive" as const },
+    { ...menuItem("trash-file", moveToTrashMenuLabel(), () => trash(files)), variant: "destructive" as const },
   ];
   const dialog = <TrashFilesDialog paths={paths} completed={completed.length} error={error} busy={busy}
     onDismiss={() => { if (!running.current) setPaths([]); }} onRetry={() => void trash(paths)} />;
