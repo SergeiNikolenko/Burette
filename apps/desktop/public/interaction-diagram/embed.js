@@ -55,6 +55,7 @@
     post({ type: 'ligands', ligands });
   }
   new MutationObserver(reportLigands).observe($('ligand'), { childList: true });
+  if ($('ligand').options.length) reportLigands();
 
   // The designs made for a host, in their order, once they have loaded; a card
   // offers them next to its title.
@@ -64,6 +65,9 @@
     if (styles.length) post({ type: 'styles', styles });
   }
   new MutationObserver(reportStyles).observe($('style'), { childList: true });
+  // styles/bundle.js resolves app.js's startup microtask before this script runs,
+  // so #style may already be populated before the observer above is attached.
+  reportStyles();
 
   // Hydrogens are drawn as counts on their heavy atoms (NH, OH). Hiding them
   // redraws with zero counts; the counts of the loaded diagram restore them.

@@ -295,6 +295,53 @@ delete globalThis.document;
     }
   }
   assert.deepEqual(structuredClone(sandbox.window.LID_STYLE_CSS), expectedCss);
+  const embedSource = readFileSync(join(lidDir, "embed.js"), "utf8");
+  // When styles/bundle.js preloads window.LID_STYLES, app.js populates #style
+  // before embed.js attaches its MutationObserver; embed.js must still report
+  // the styles to the host immediately on load.
+  const posted = [];
+  const fakeEl = (options = []) => ({
+    options,
+    classList: { add() {} },
+    style: { setProperty() {} },
+    getBoundingClientRect: () => ({ width: 0, height: 0 }),
+  });
+  const elements = {
+    ligand: fakeEl([]),
+    style: fakeEl([]),
+    status: fakeEl(),
+    "draw-area": fakeEl(),
+  };
+  const embedSandbox = {
+    URLSearchParams,
+    location: { search: "?embed=1&legend=0" },
+    document: {
+      documentElement: fakeEl(),
+      head: { append() {} },
+      body: fakeEl(),
+      createElement: () => ({}),
+      getElementById: (id) => elements[id] ?? fakeEl(),
+      addEventListener() {},
+    },
+    MutationObserver: class { observe() {} },
+    ResizeObserver: class { observe() {} },
+    window: {
+      frameElement: null,
+      lid: { styles: expectedStyles, state: {} },
+      parent: { postMessage: (message) => posted.push(message) },
+      addEventListener() {},
+    },
+  };
+  runInNewContext(embedSource, embedSandbox);
+  const stylesMessage = posted.find((message) => message?.source === "burette-lid" && message.type === "styles");
+  assert.deepEqual(
+    structuredClone(stylesMessage?.styles),
+    Object.entries(expectedStyles)
+      .filter(([, style]) => style.panel)
+      .sort((a, b) => a[1].panel - b[1].panel)
+      .map(([id, style]) => ({ id, label: style.label })),
+    "embed.js must post preloaded styles immediately when styles/bundle.js already populated window.lid.styles",
+  );
 }
 
 console.log("viewer bridge message contract tests passed");
