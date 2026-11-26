@@ -28,6 +28,7 @@ an isolated Ketcher editor contract:
 | Tool | Behavior |
 | --- | --- |
 | `preview_molecular_file` | Reads one ChatGPT-authorized PDB, ENT, PDBQT, CIF, mmCIF, SDF, SD, XYZ, or extXYZ attachment. |
+| `preview_molecule_grid` | Renders an interactive 2D molecule grid and property table from bounded inline molecules, inline CSV/TSV/SMILES/SDF/DWAR text, or one authorized attachment. |
 | `preview_pdb_structure` | Retrieves one public RCSB structure from an explicit four-character PDB ID. |
 | `render_molecular_scene` | Re-renders one PDB entry or authorized attachment with bounded select, focus, clear, reset, and component visibility actions. |
 | `open_molecular_editor` | Creates an ephemeral molecular editor surface and optionally seeds one bounded inline KET, MOL, RXN, or SMILES structure. |

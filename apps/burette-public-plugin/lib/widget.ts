@@ -89,6 +89,7 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
       }`;
   const bootstrap = serializeForInlineScript({
     viewerAssets,
+    shellScript,
     analyticsOrigin: assetOrigin.replace(/\/$/u, ""),
     ketcherWidget,
   });
@@ -149,6 +150,7 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
         window.__BURETTE_HOSTED_KETCHER_WIDGET__ = config.ketcherWidget === true;
         window.__BURETTE_HOSTED_KETCHER_SEED__ = null;
         window.__BURETTE_WEB_ASSETS_BASE__ = config.viewerAssets;
+        window.__BURETTE_HOSTED_SHELL_SCRIPT__ = config.shellScript;
         window.__BURETTE_HOSTED_ANALYTICS_ORIGIN__ = config.analyticsOrigin;
         window.__BURETTE_HOSTED_MCP_RESULTS__ = [];
         window.__BURETTE_HOSTED_OPENAI_GLOBALS__ = {};

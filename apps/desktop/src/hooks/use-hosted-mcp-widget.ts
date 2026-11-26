@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import {
   deleteBrowserDevVirtualTextDocument,
   openBrowserDevMolstarContextDocument,
+  openBrowserDevTextDocument,
 } from "../lib/browser-dev-documents";
 import {
   isHostedKetcherWidget,
@@ -15,6 +16,11 @@ import {
   type HostedMcpStructure,
 } from "../lib/hosted-mcp-widget";
 import type { ViewerDocument, ViewerPreferences } from "../types";
+
+function hostedGridExtension(format: string): string {
+  if (format === "smiles") return "smi";
+  return format;
+}
 
 type UseHostedMcpWidgetOptions = {
   addDocuments: (documents: ViewerDocument[]) => void;
@@ -67,6 +73,7 @@ export function useHostedMcpWidget({
       if (
         opened?.label === structure.label
         && opened.format === structure.format
+        && opened.kind === structure.kind
         && opened.data === structure.data
         && JSON.stringify(opened.source) === JSON.stringify(structure.source)
         && JSON.stringify(opened.actions) === JSON.stringify(structure.actions)
@@ -79,22 +86,33 @@ export function useHostedMcpWidget({
       const sequence = openSequenceRef.current;
       forgetOpenedDocument();
       closeAllDocuments();
-      void openBrowserDevMolstarContextDocument({
-        label: structure.label,
-        context: {
-          hostedMcpWidget: true,
-          hostedMcpActions: structure.actions,
-        },
-        entries: [{
-          role: "structure",
-          label: structure.label,
-          format: structure.format,
-          data: structure.data,
-        }],
-      }, {
-        ...preferences,
-        rendererMode: "molstar",
-      })
+      const openDocument = structure.kind === "grid"
+        ? openBrowserDevTextDocument(
+            structure.label,
+            hostedGridExtension(structure.format),
+            structure.data,
+            {
+              ...preferences,
+              rendererMode: "grid2d",
+            },
+          )
+        : openBrowserDevMolstarContextDocument({
+            label: structure.label,
+            context: {
+              hostedMcpWidget: true,
+              hostedMcpActions: structure.actions,
+            },
+            entries: [{
+              role: "structure",
+              label: structure.label,
+              format: structure.format,
+              data: structure.data,
+            }],
+          }, {
+            ...preferences,
+            rendererMode: "molstar",
+          });
+      void openDocument
         .then((viewerDocument) => {
           if (sequence !== openSequenceRef.current) {
             deleteBrowserDevVirtualTextDocument(viewerDocument.path);

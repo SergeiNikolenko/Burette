@@ -46,7 +46,7 @@ export interface ChatGptFileReference {
 }
 
 export interface PublicStructureSummary extends Record<string, unknown> {
-  source: "attachment" | "rcsb";
+  source: "attachment" | "rcsb" | "inline";
   pdbId?: string;
   fileName: string;
   format: string;
@@ -341,7 +341,7 @@ async function requestPinnedHttps(
   throw lastError ?? new Error("No public address was available.");
 }
 
-async function fetchPublicText(source: string): Promise<string> {
+export async function fetchPublicText(source: string): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), STRUCTURE_FETCH_TIMEOUT_MS);
   let current = source;

@@ -11,6 +11,9 @@ required; private files still require explicit cloud-processing authorization.
 - Open an explicit public PDB ID and inspect bounded composition counts.
 - Preview one supported attachment up to 3 MiB when the host provides a
   downloadable attachment reference.
+- Preview an interactive 2D molecule grid and filterable property table from
+  bounded inline SMILES/properties, inline CSV/TSV/SMILES/SDF/DWAR text, or one
+  authorized attachment up to 3 MiB.
 - Prepare selections, focus and component visibility changes in the MCP App.
 - Open a temporary sketch in the Burette molecular editor and apply
   revision-checked edits.

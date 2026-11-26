@@ -8,7 +8,8 @@ export type HostedKetcherSeed = {
 
 const MAX_HOSTED_STRUCTURE_BYTES = 3 * 1024 * 1024;
 const MAX_HOSTED_LABEL_LENGTH = 255;
-const HOSTED_STRUCTURE_FORMATS = new Set(["pdb", "mmcif", "sdf", "xyz"]);
+const HOSTED_GRID_FORMATS = new Set(["csv", "tsv", "smiles", "dwar"]);
+const HOSTED_STRUCTURE_FORMATS = new Set(["pdb", "mmcif", "sdf", "xyz", ...HOSTED_GRID_FORMATS]);
 const HOSTED_KETCHER_FORMATS = new Set(["ket", "mol", "rxn", "smiles"]);
 
 type UnknownRecord = Record<string, unknown>;
@@ -17,6 +18,7 @@ export type HostedMcpStructure = {
   data: string;
   format: string;
   label: string;
+  kind: "structure" | "grid";
   source: UnknownRecord | null;
   actions: UnknownRecord[];
 };
@@ -29,6 +31,7 @@ function normalizedFormat(value: unknown) {
   const format = typeof value === "string" ? value.trim().toLowerCase() : "";
   if (format === "cif" || format === "mcif") return "mmcif";
   if (format === "sd") return "sdf";
+  if (format === "smi") return "smiles";
   return HOSTED_STRUCTURE_FORMATS.has(format) ? format : null;
 }
 
@@ -128,10 +131,12 @@ export function parseHostedMcpStructureResult(value: unknown): HostedMcpStructur
     structure?.label,
     boundedLabel(structuredContent?.fileName ?? nestedStructuredContent?.fileName, "Molecular structure"),
   );
+  const kind = structure?.kind === "grid" || HOSTED_GRID_FORMATS.has(format) ? "grid" : "structure";
   return {
     data,
     format,
     label,
+    kind,
     source: record(scene?.source),
     actions: Array.isArray(scene?.actions)
       ? scene.actions.slice(0, 8).map(record).filter((action): action is UnknownRecord => action !== null)

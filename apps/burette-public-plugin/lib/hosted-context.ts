@@ -20,6 +20,9 @@ function boundedSource(value: unknown) {
   if (source?.kind === "attachment") {
     return { kind: "attachment", fileName: bounded(source.fileName) };
   }
+  if (source?.kind === "inline") {
+    return { kind: "inline", fileName: bounded(source.fileName) };
+  }
   return null;
 }
 

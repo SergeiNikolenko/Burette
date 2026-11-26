@@ -802,7 +802,13 @@ def load_thumbnail(smiles):
     params.randomSeed = 42
     if rdDistGeom.EmbedMolecule(mol, params) < 0:
         # Keep the existing recovery path for difficult embeddings.
-        return load(smiles, smiles=True)
+        try:
+            return load(smiles, smiles=True)
+        except Exception as exc:
+            message = str(exc)
+            if "failed to embed" in message.lower() or len(message) > 200:
+                raise ValueError("Cannot generate 3D coordinates for this structure") from None
+            raise
     rdForceFieldHelpers.MMFFOptimizeMolecule(mol)
     molecule = load(mol)
     # Bound both entry count and molecule/key size, including explicit H atoms.

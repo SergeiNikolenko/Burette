@@ -4,7 +4,8 @@
   const MAX_STRUCTURE_BYTES = 3 * 1024 * 1024;
   const ASSET_LOAD_TIMEOUT_MS = 30_000;
   const BOOTSTRAP_TIMEOUT_MS = 15_000;
-  const SUPPORTED_FORMATS = new Set(["pdb", "mmcif", "sdf", "xyz"]);
+  const GRID_FORMATS = new Set(["csv", "tsv", "smiles", "dwar"]);
+  const SUPPORTED_FORMATS = new Set(["pdb", "mmcif", "sdf", "xyz", ...GRID_FORMATS]);
   const assetsBase = String(window.__BURETTE_WEB_ASSETS_BASE__ || "/burette-viewer/").replace(/\/$/u, "");
   let started = false;
   let latestToolOutput;
@@ -19,6 +20,7 @@
     const format = typeof value === "string" ? value.trim().toLowerCase() : "";
     if (format === "cif" || format === "mcif") return "mmcif";
     if (format === "sd") return "sdf";
+    if (format === "smi") return "smiles";
     return SUPPORTED_FORMATS.has(format) ? format : null;
   };
   const nestedMetadata = (value) => {
@@ -54,6 +56,7 @@
       data,
       format,
       byteCount,
+      kind: structure?.kind === "grid" || GRID_FORMATS.has(format) ? "grid" : "structure",
       label: bounded(structure?.label, bounded(structured?.fileName || nestedStructured?.fileName, "Molecular structure")),
       source: record(scene?.source),
       actions: Array.isArray(scene?.actions)
@@ -225,6 +228,22 @@
     if (started) return;
     const structure = structureFromResult(value);
     if (!structure) return;
+    if (structure.kind === "grid") {
+      const shellScript = window.__BURETTE_HOSTED_SHELL_SCRIPT__;
+      if (typeof shellScript === "string" && shellScript) {
+        started = true;
+        window.clearTimeout(bootstrapTimeout);
+        if (Array.isArray(window.__BURETTE_HOSTED_MCP_RESULTS__)) {
+          window.__BURETTE_HOSTED_MCP_RESULTS__.push(value);
+        }
+        const script = document.createElement("script");
+        script.type = "module";
+        script.crossOrigin = "anonymous";
+        script.src = shellScript;
+        document.body.appendChild(script);
+        return;
+      }
+    }
     start(structure).catch((error) => {
       showBootstrapError(error?.message || String(error));
     });

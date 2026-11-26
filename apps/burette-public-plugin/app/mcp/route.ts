@@ -8,10 +8,12 @@ import { McpServer, WebStandardStreamableHTTPServerTransport } from "@modelconte
 import { z } from "zod/v4";
 import {
   APP_ONLY_TOOL_META,
+  BURETTE_CLOUD_ICONS,
   entrypointToolMeta,
   fileEntrypointInputSchema,
   fileReferenceSchema,
   molecularSceneInputSchema,
+  moleculeGridInputSchema,
   SKETCH_FILE_EXTENSIONS,
   STRUCTURE_FILE_EXTENSIONS,
   exposeNoauthSecuritySchemes,
@@ -37,6 +39,11 @@ import {
   StructureServiceError,
   structureSummaryText,
 } from "@/lib/structure-service";
+import {
+  isGridExtension,
+  prepareGridText,
+  prepareMoleculeGrid,
+} from "@/lib/grid-service";
 import {
   createViewerResourceMeta,
   createViewerWidgetHtml,
@@ -178,9 +185,9 @@ function createServer(): McpServer {
   // Hosts show this icon next to widget context cards above the composer.
   const server = new McpServer({
     name: "burette-molecular-viewer",
-    title: "Burette",
+    title: "Burette Cloud",
     version: "0.1.0",
-    icons: [{ src: `${appOrigin}/icons/burette-app-icon.png`, mimeType: "image/png", sizes: ["512x512"] }],
+    icons: BURETTE_CLOUD_ICONS,
   }, {
     // Codex finds the composer mention search through this capability; the
     // per-tool "mentions/search" marker is only its deprecated fallback.
@@ -192,7 +199,7 @@ function createServer(): McpServer {
     "burette-molecular-viewer",
     VIEWER_RESOURCE_URI,
     {
-      title: "Burette",
+      title: "Burette Cloud",
       description:
         "Interactive Burette workspace for a bounded molecular structure result.",
       mimeType: RESOURCE_MIME_TYPE,
@@ -385,6 +392,50 @@ function createServer(): McpServer {
 
   registerAppTool(
     server,
+    "preview_molecule_grid",
+    {
+      title: "Preview a molecule grid",
+      description:
+        "Render an interactive 2D molecule grid and filterable property table in Burette's viewer. Pass inline molecules (SMILES with optional names and properties), inline CSV/TSV/SMILES/SDF/DWAR text, or one authorized attachment. Useful for inspecting compound series, ligand TSV/CSV tables, SAR datasets, and multi-molecule SDF files. Input is processed in memory and is not saved.",
+      inputSchema: moleculeGridInputSchema,
+      outputSchema: z.object(publicStructureOutputSchema),
+      annotations: TOOL_ANNOTATIONS,
+      ...NOAUTH_TOOL_SECURITY,
+      _meta: {
+        ...viewerToolMeta("Preparing molecule grid…", "Molecule grid ready"),
+        "openai/fileParams": ["gridFile"],
+      },
+    },
+    async (input: z.infer<typeof moleculeGridInputSchema>) => {
+      try {
+        const prepared = await prepareMoleculeGrid(input);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: structureSummaryText(prepared.summary),
+            },
+          ],
+          structuredContent: prepared.summary,
+          _meta: {
+            structure: prepared.viewer,
+            scene: {
+              source: {
+                kind: prepared.summary.source === "attachment" ? "attachment" : "inline",
+                fileName: prepared.summary.fileName,
+              },
+              actions: [],
+            },
+          },
+        };
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  registerAppTool(
+    server,
     "render_molecular_scene",
     {
       title: "Render a molecular scene",
@@ -476,7 +527,7 @@ function createServer(): McpServer {
   // repeat the plugin name, while the sidebar app keeps it.
   for (const [name, type, title, description] of [
     ["open_workspace_tab", "thread", "Molecule Workspace", "Open an empty Burette workspace beside the conversation."],
-    ["open_app", "global", "Burette", "Open the Burette workspace from the sidebar."],
+    ["open_app", "global", "Burette Cloud", "Open the Burette Cloud workspace from the sidebar."],
   ] as const) {
     registerAppTool(
       server,
@@ -501,7 +552,7 @@ function createServer(): McpServer {
   server.registerTool(
     "search_pdb_mentions",
     {
-      title: "Burette structures",
+      title: "Burette Cloud structures",
       description: "Composer at-mention search for PDB entries. Called by the host, not the model.",
       inputSchema: { query: z.string().max(200) },
       outputSchema: mentionsOutputSchema,
@@ -524,7 +575,7 @@ function createServer(): McpServer {
     server,
     "open_structure_file",
     {
-      title: "Burette",
+      title: "Burette Cloud",
       description: "Open a molecular structure file in Burette's viewer.",
       inputSchema: fileEntrypointInputSchema,
       outputSchema: entrypointOutputSchema,
@@ -575,7 +626,9 @@ function createServer(): McpServer {
     },
     async ({ fileName, content }: { fileName: string; content: string }) => {
       try {
-        const prepared = prepareStructureText(content, fileName, "attachment");
+        const prepared = isGridExtension(fileName) && !/\.(?:sdf|sd)$/iu.test(fileName)
+          ? prepareGridText(content, fileName, "attachment")
+          : prepareStructureText(content, fileName, "attachment");
         return {
           content: [{ type: "text" as const, text: structureSummaryText(prepared.summary) }],
           structuredContent: prepared.summary,

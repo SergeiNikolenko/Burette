@@ -9698,7 +9698,7 @@
 
   function drawXyzrenderCard(row, cfg) {
     const record = gridDragRecord(row);
-    if (!record) return '<div class="buret-molecule-error"><strong>Molecule</strong><span>No structure data</span></div>';
+    if (!record) return xyzrenderUnavailableHTML('No structure data');
     const key = xyzrenderCardKey(row, record);
     const cached = state.xyzrenderCardCache.get(key);
     if (cached?.html) {
@@ -9706,7 +9706,7 @@
       state.xyzrenderCardCache.set(key, cached);
       return cached.html;
     }
-    if (cached?.error) return `<div class="buret-molecule-error"><strong>${escapeHTML(row.name || `Molecule ${Number(row.index) + 1}`)}</strong><span>${escapeHTML(cached.error)}</span></div>`;
+    if (cached?.error) return xyzrenderUnavailableHTML(cached.error);
     const preview = '<div class="buret-molecule-loading" aria-label="Rendering molecule with xyzrender"></div>';
     return `<div class="buret-molecule-picture buret-xyzrender-preview" data-buret-xyzrender-card-key="${escapeAttr(key)}">${preview}</div>`;
   }
@@ -9920,7 +9920,7 @@
     } catch (error) {
       const message = error?.message || String(error);
       state.xyzrenderCardCache.set(key, { error: message });
-      updateXyzrenderCard(key, `<div class="buret-molecule-error"><strong>${escapeHTML(row.name || `Molecule ${Number(row.index) + 1}`)}</strong><span>${escapeHTML(message)}</span></div>`);
+      updateXyzrenderCard(key, xyzrenderUnavailableHTML(message));
       emitGridPerfMetric(cfg, 'xyzrender-card-error', startedAt, {
         rowIndex: Number(row.index),
         error: message
@@ -10008,7 +10008,7 @@
       return;
     }
     state.xyzrenderCardCache.set(job.key, { error: message });
-    updateXyzrenderCard(job.key, `<div class="buret-molecule-error"><strong>${escapeHTML(job.row.name || `Molecule ${Number(job.row.index) + 1}`)}</strong><span>${escapeHTML(message)}</span></div>`);
+    updateXyzrenderCard(job.key, xyzrenderUnavailableHTML(message));
     emitGridPerfMetric(job.cfg, 'xyzrender-card-error', nowMs(), {
       rowIndex: Number(job.row.index),
       error: message
@@ -10054,6 +10054,29 @@
   function moleculeErrorHTML(label, message) {
     const denseClass = String(label).length > 36 ? ' buret-molecule-error-dense' : '';
     return `<div class="buret-molecule-error${denseClass}"><strong>${escapeHTML(label)}</strong><span>${escapeHTML(message)}</span></div>`;
+  }
+
+  function sanitizeXyzrenderErrorTooltip(message) {
+    const raw = String(message || '').trim();
+    if (!raw) return 'Cannot generate 3D coordinates for this structure.';
+    if (/failed to embed|embedmolecule|conformer|3d coordinates/i.test(raw)) {
+      return 'Cannot generate 3D coordinates for this structure.';
+    }
+    if (/could not parse|invalid smiles|sanitize/i.test(raw)) {
+      return 'Cannot parse this structure for 3D rendering.';
+    }
+    if (/no structure data/i.test(raw)) {
+      return 'No structure data available.';
+    }
+    const compact = raw
+      .replace(/\s+/g, ' ')
+      .replace(/SMILES\s*['"][^'"]*['"]/gi, 'SMILES');
+    return compact.length > 160 ? `${compact.slice(0, 157)}...` : compact;
+  }
+
+  function xyzrenderUnavailableHTML(rawError) {
+    const tooltip = sanitizeXyzrenderErrorTooltip(rawError);
+    return `<div class="buret-molecule-unavailable" title="${escapeAttr(tooltip)}" aria-label="${escapeAttr(tooltip)}"><span>3D unavailable</span></div>`;
   }
 
   function isDegenerateMoleculeSVG(svg) {

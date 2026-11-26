@@ -365,6 +365,7 @@ describe("MCP wire contract", () => {
       "open_workspace_tab",
       "prepare_structure_content",
       "preview_molecular_file",
+      "preview_molecule_grid",
       "preview_pdb_structure",
       "render_molecular_scene",
       "search_pdb_mentions",
@@ -373,5 +374,76 @@ describe("MCP wire contract", () => {
       expect(tool.outputSchema).toBeDefined();
       expect(tool.annotations).toMatchObject(submitted.tools[tool.name!]!.annotations);
     }
+  });
+
+  test("renders an interactive molecule grid from inline molecules and TSV text", async () => {
+    const callGrid = async (args: Record<string, unknown>) => {
+      const response = await handleMcpPost(new Request("https://burette.example/mcp", {
+        method: "POST",
+        headers: {
+          accept: "application/json, text/event-stream",
+          "content-type": "application/json",
+          "mcp-protocol-version": LATEST_PROTOCOL_VERSION,
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: { name: "preview_molecule_grid", arguments: args },
+        }),
+      }));
+      expect(response.status).toBe(200);
+      return await readSseResponse(response) as {
+        result: {
+          isError?: boolean;
+          content: Array<{ text: string }>;
+          structuredContent: {
+            source: string;
+            fileName: string;
+            format: string;
+            kind: string;
+            counts: Record<string, number>;
+            components: { molecules?: Array<{ index: number; title: string }> };
+          };
+          _meta?: {
+            structure?: { data: string; format: string; label: string; kind?: string };
+            scene?: { source: { kind: string; fileName: string }; actions: unknown[] };
+          };
+        };
+      };
+    };
+
+    const fromMolecules = await callGrid({
+      title: "tests_sample.tsv",
+      molecules: [
+        { smiles: "CC(=O)Oc1ccccc1C(=O)O", name: "Aspirin", properties: { ccd: "AIN", pIC50: 5.4 } },
+        { smiles: "COc1ccc2cc(C(C)C(=O)O)ccc2c1", name: "Naproxen", properties: { ccd: "NPS", pIC50: 6.5 } },
+      ],
+    });
+    expect(fromMolecules.result.isError).toBeUndefined();
+    expect(fromMolecules.result.structuredContent.source).toBe("inline");
+    expect(fromMolecules.result.structuredContent.fileName).toBe("tests_sample.tsv");
+    expect(fromMolecules.result.structuredContent.kind).toBe("Molecule grid");
+    expect(fromMolecules.result.structuredContent.counts.molecules).toBe(2);
+    expect(fromMolecules.result.structuredContent.components.molecules).toEqual([
+      { index: 1, title: "Aspirin" },
+      { index: 2, title: "Naproxen" },
+    ]);
+    expect(fromMolecules.result._meta?.structure).toEqual({
+      data: "name\tsmiles\tccd\tpIC50\nAspirin\tCC(=O)Oc1ccccc1C(=O)O\tAIN\t5.4\nNaproxen\tCOc1ccc2cc(C(C)C(=O)O)ccc2c1\tNPS\t6.5\n",
+      format: "tsv",
+      label: "tests_sample.tsv",
+      kind: "grid",
+    });
+
+    const fromTsv = await callGrid({
+      title: "ligands.tsv",
+      content: "uid\tsmiles\tdataset_name\n4mw9_2EJ\tC#Cc1cccc(CNCCCNC(=O)Nc2ccsc2)c1\tTimesplit validation\n",
+    });
+    expect(fromTsv.result.isError).toBeUndefined();
+    expect(fromTsv.result.structuredContent.format).toBe("TSV");
+    expect(fromTsv.result.structuredContent.counts.molecules).toBe(1);
+    expect(fromTsv.result._meta?.structure?.format).toBe("tsv");
+    expect(fromTsv.result._meta?.structure?.kind).toBe("grid");
   });
 });

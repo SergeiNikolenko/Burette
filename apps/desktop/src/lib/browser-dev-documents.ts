@@ -1628,7 +1628,7 @@ async function gridHtml(
     quickLookBuild: "burette-browser-dev-grid2d",
     debug: false,
     appViewer: true,
-    pubChemSearch: true,
+    pubChemSearch: !hosted,
     tauriViewer: false,
     theme: visuals.theme,
     themeTokens: previewThemeTokens(preferences),

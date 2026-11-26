@@ -1,16 +1,25 @@
 ---
 name: preview-molecular-structures
-description: Preview supported molecular attachments or an explicit public PDB ID in Burette's interactive viewer, or use the bounded hosted Burette molecular editor for transient chemical sketches.
+description: Preview supported molecular attachments, interactive 2D molecule grids, or an explicit public PDB ID in Burette's interactive viewer, or use the bounded hosted Burette molecular editor for transient chemical sketches.
 ---
 
 # Preview molecular structures
 
-Use Burette for bounded molecular inspection and transient chemical sketching.
+Use Burette for bounded molecular inspection, interactive molecule grids, and transient chemical sketching.
 
 ## Choose the tool
 
 - Use `preview_molecular_file` when the user provides one supported molecular
   structure attachment.
+- Use `preview_molecule_grid` when the user wants to inspect multiple small
+  molecules, a compound series, SAR table, docking hit list, or ligand TSV/CSV/SMILES/SDF/DWAR
+  table as an interactive 2D molecule grid and filterable property table. Pass
+  bounded inline `molecules` (`smiles`, optional `name`, optional scalar `properties`),
+  inline `content` with `format` (`csv`, `tsv`, `smiles`, `sdf`, or `dwar`), or one
+  authorized `gridFile` attachment. When working from a local TSV/CSV/SMI/SDF file in
+  a host without remote attachment URLs, extract the bounded rows (up to 500 molecules
+  or 3 MiB) and pass them inline via `molecules` or `content` after cloud-processing
+  consent for private data.
 - Use `preview_pdb_structure` only when the user explicitly names a
   four-character PDB ID or clearly asks to open that public PDB entry. A PDB
   entry the user picked with an `@Burette` mention counts as named.

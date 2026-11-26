@@ -13,6 +13,7 @@ import { createSelectionContext } from "../apps/burette-public-plugin/lib/hosted
 import {
   deleteBrowserDevVirtualTextDocument,
   openBrowserDevMolstarContextDocument,
+  openBrowserDevTextDocument,
   readBrowserDevVirtualTextDocument,
 } from "../apps/desktop/src/lib/browser-dev-documents.ts";
 import { defaultPreferences } from "../apps/desktop/src/stores/settings-store.ts";
@@ -177,8 +178,36 @@ const wrappedCodexResult = parseHostedMcpStructureResult({
 });
 assert.equal(wrappedCodexResult?.label, "1STP.pdb");
 assert.equal(wrappedCodexResult?.format, "pdb");
+assert.equal(wrappedCodexResult?.kind, "structure");
 assert.deepEqual(wrappedCodexResult?.source, { kind: "pdb", pdbId: "1STP" });
 assert.equal(wrappedCodexResult?.actions.length, 1);
+
+const gridResult = parseHostedMcpStructureResult({
+  structuredContent: { fileName: "tests_sample.tsv" },
+  _meta: {
+    structure: {
+      data: "name\tsmiles\tccd\n4mw9_2EJ\tC#Cc1cccc(CNCCCNC(=O)Nc2ccsc2)c1\t2EJ\n",
+      format: "tsv",
+      label: "tests_sample.tsv",
+      kind: "grid",
+    },
+    scene: { source: { kind: "inline", fileName: "tests_sample.tsv" }, actions: [] },
+  },
+});
+assert.equal(gridResult?.label, "tests_sample.tsv");
+assert.equal(gridResult?.format, "tsv");
+assert.equal(gridResult?.kind, "grid");
+assert.deepEqual(gridResult?.source, { kind: "inline", fileName: "tests_sample.tsv" });
+
+const hostedGridDoc = await openBrowserDevTextDocument(
+  "tests_sample.tsv",
+  "tsv",
+  gridResult.data,
+  { ...defaultPreferences, rendererMode: "grid2d" },
+);
+assert.equal(hostedGridDoc.renderer, "grid2d");
+assert.match(hostedGridDoc.runtimePath, /4mw9_2EJ/);
+deleteBrowserDevVirtualTextDocument(hostedGridDoc.path);
 
 const selectionContext = createSelectionContext({
   source: "lasso",

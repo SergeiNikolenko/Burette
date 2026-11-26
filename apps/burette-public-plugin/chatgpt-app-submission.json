@@ -20,6 +20,18 @@
         "destructive_justification": "Cannot delete, overwrite, send, revoke, or perform another irreversible action."
       }
     },
+    "preview_molecule_grid": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Processes bounded inline molecules or one user-authorized table/SDF attachment in memory to render an interactive molecule grid without saving or modifying files.",
+        "open_world_justification": "Does not publish content or change any public or third-party system.",
+        "destructive_justification": "Cannot delete, overwrite, send, revoke, or perform another irreversible action."
+      }
+    },
     "preview_pdb_structure": {
       "annotations": {
         "readOnlyHint": true,
@@ -166,6 +178,14 @@
       ],
       "tools_triggered": "preview_molecular_file",
       "expected_output": "Reports 3 molecules named Salicylic acid, Aspirin and Methyl salicylate; 34 stored atoms and 34 bonds, C24 O10. Hydrogens are implicit, not absent chemically. All three distinct structures can be inspected; blank or inaccessible records fail. Coordinates are 2D, not optimized conformers.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Display a small compound series with properties in an interactive molecule grid.",
+      "user_prompt": "Open a Burette molecule grid comparing aspirin (CC(=O)Oc1ccccc1C(=O)O, pIC50 5.4), ibuprofen (CC(C)Cc1ccc(C(C)C(=O)O)cc1, pIC50 6.1), and naproxen (COc1ccc2cc(C(C)C(=O)O)ccc2c1, pIC50 6.5).",
+      "file_attachment_urls": null,
+      "tools_triggered": "preview_molecule_grid",
+      "expected_output": "Opens an interactive 2D molecule grid with 3 molecules (aspirin, ibuprofen, naproxen) and their pIC50 property column, returning a bounded summary without saving files.",
       "expected_output_url": null
     },
     {

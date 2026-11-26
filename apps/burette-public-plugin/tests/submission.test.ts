@@ -28,6 +28,7 @@ const submission = JSON.parse(
 
 const publicToolNames = [
   "preview_molecular_file",
+  "preview_molecule_grid",
   "preview_pdb_structure",
   "render_molecular_scene",
   "open_molecular_editor",
@@ -36,6 +37,7 @@ const publicToolNames = [
 
 const publicToolAnnotations = {
   preview_molecular_file: { readOnlyHint: true, openWorldHint: false, destructiveHint: false },
+  preview_molecule_grid: { readOnlyHint: true, openWorldHint: false, destructiveHint: false },
   preview_pdb_structure: { readOnlyHint: true, openWorldHint: true, destructiveHint: false },
   render_molecular_scene: { readOnlyHint: true, openWorldHint: true, destructiveHint: false },
   open_molecular_editor: { readOnlyHint: false, openWorldHint: false, destructiveHint: false },
@@ -70,8 +72,8 @@ describe("plugin submission bundle", () => {
     expect(submission.tools.search_pdb_mentions?.annotations).toEqual({ ...appOnlyAnnotations, openWorldHint: true });
   });
 
-  test("provides exactly five independent positive and three negative review cases", () => {
-    expect(submission.test_cases).toHaveLength(5);
+  test("provides independent positive review cases for every public tool and three negative review cases", () => {
+    expect(submission.test_cases).toHaveLength(publicToolNames.length);
     expect(submission.negative_test_cases).toHaveLength(3);
     for (const testCase of submission.test_cases) {
       expect(publicToolNames as readonly string[]).toContain(

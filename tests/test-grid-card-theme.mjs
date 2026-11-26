@@ -19,5 +19,16 @@ assert.equal(svg.querySelector('circle').getAttribute('fill'), '#ffffff', 'white
 assert.equal(svg.querySelector('path').getAttribute('stroke'), '#ff0d0d', 'element colours are not inverted');
 assert.equal(svg.querySelector('rect').getAttribute('width'), '10', 'molecular geometry is retained');
 assert.equal(svg.documentElement.getAttribute('data-buret-xyzrender-svg'), 'true');
+
+const unavailable = new Function('escapeAttr',
+  ['sanitizeXyzrenderErrorTooltip', 'xyzrenderUnavailableHTML'].map(fn).join('\n') + '\nreturn xyzrenderUnavailableHTML;')(
+  value => String(value).replaceAll('&', '&amp;').replaceAll('"', '&quot;'));
+const peptideError = "rdkit failed to embed SMILES '[H]/N=C(/N)NCCC[C@H](NC(=O)[C@H](C)NC(=O)[C@@H](N)CCCC[NH3+])C(=O)O'";
+const placeholder = unavailable(peptideError);
+assert.match(placeholder, /class="buret-molecule-unavailable"/);
+assert.match(placeholder, />3D unavailable</);
+assert.doesNotMatch(placeholder, /rdkit/i);
+assert.doesNotMatch(placeholder, /\[H\]\/N=C/);
+assert.match(placeholder, /title="Cannot generate 3D coordinates for this structure\."/);
 window.happyDOM.abort();
 console.log('Card theming removes only the canvas background and preserves molecular colours');

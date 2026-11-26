@@ -11,6 +11,9 @@ export const PUBLIC_OUTPUT_LIMITS = {
   notes: 10,
 } as const;
 
+export const MAX_PUBLIC_GRID_INLINE_MOLECULES = 500;
+const MAX_INLINE_GRID_CONTENT_BYTES = 3 * 1024 * 1024;
+
 export const TOOL_ANNOTATIONS = {
   readOnlyHint: true,
   openWorldHint: false,
@@ -25,6 +28,30 @@ export const NOAUTH_SECURITY_SCHEMES = [{ type: "noauth" as const }];
 export const NOAUTH_TOOL_SECURITY = {
   securitySchemes: NOAUTH_SECURITY_SCHEMES,
 } as const;
+
+// Monochrome 20x20 currentColor Burette Cloud glyph (atom + cloud cutout badge)
+// matching Codex sidebar/tab icon geometry (1.33px strokes, no tile frame).
+const BURETTE_CLOUD_SIDEBAR_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.33" stroke-linecap="round" stroke-linejoin="round">' +
+  '<defs><mask id="burette-cloud-cut"><rect width="20" height="20" fill="white"/><path d="M10.4 18.6H16.9C18.5 18.6 19.7 17.4 19.7 15.8C19.7 14.4 18.6 13.2 17.3 13.0C16.9 11.0 15.2 9.6 13.2 9.6C11.5 9.6 10.0 10.7 9.4 12.2C8.1 12.6 7.2 13.8 7.2 15.2C7.2 17.1 8.6 18.6 10.4 18.6Z" fill="black"/></mask></defs>' +
+  '<g mask="url(#burette-cloud-cut)"><ellipse cx="8.6" cy="8.6" rx="6.6" ry="2.7"/><ellipse cx="8.6" cy="8.6" rx="6.6" ry="2.7" transform="rotate(60 8.6 8.6)"/><ellipse cx="8.6" cy="8.6" rx="6.6" ry="2.7" transform="rotate(-60 8.6 8.6)"/><circle cx="8.6" cy="8.6" r="1.2" fill="currentColor" stroke="none"/></g>' +
+  '<path d="M11.1 17.6H16.4C17.6 17.6 18.5 16.7 18.5 15.55C18.5 14.48 17.68 13.6 16.62 13.5C16.36 12.05 15.1 10.95 13.55 10.95C12.22 10.95 11.1 11.78 10.65 12.94C9.62 13.15 8.85 14.06 8.85 15.15C8.85 16.5 9.86 17.6 11.1 17.6Z" stroke-width="1.33"/></svg>';
+
+export const BURETTE_CLOUD_ICONS = [
+  {
+    src: `data:image/svg+xml;base64,${Buffer.from(BURETTE_CLOUD_SIDEBAR_SVG).toString("base64")}`,
+    mimeType: "image/svg+xml",
+    sizes: ["any"],
+  },
+];
+
+const CLOUD_ENTRYPOINT_TOOL_NAMES = new Set([
+  "open_app",
+  "open_workspace_tab",
+  "open_structure_file",
+  "open_sketch_file",
+  "search_pdb_mentions",
+]);
 
 type ListToolsResult = z.infer<typeof ListToolsResultSchema>;
 
@@ -51,6 +78,7 @@ export function exposeNoauthSecuritySchemes(server: McpServer): void {
       tools: result.tools.map((tool) => ({
         ...tool,
         securitySchemes: NOAUTH_SECURITY_SCHEMES,
+        ...(CLOUD_ENTRYPOINT_TOOL_NAMES.has(tool.name) ? { icons: BURETTE_CLOUD_ICONS } : {}),
       })),
     } as ListToolsResult;
   });
@@ -66,7 +94,7 @@ const scalarRecordSchema = z.record(
 );
 
 export const publicStructureOutputSchema = {
-  source: z.enum(["attachment", "rcsb"]),
+  source: z.enum(["attachment", "rcsb", "inline"]),
   pdbId: z.string().max(4).optional(),
   fileName: z.string().max(PUBLIC_OUTPUT_LIMITS.fileNameChars),
   format: z.string().max(PUBLIC_OUTPUT_LIMITS.scalarChars),
@@ -104,6 +132,66 @@ export const fileReferenceSchema = z.object({
   mime_type: z.string().max(256).optional(),
   file_name: z.string().min(1).max(255).optional(),
 });
+
+export const moleculeGridItemSchema = z.object({
+  smiles: z.string().trim().min(1).max(4096),
+  name: z.string().trim().max(PUBLIC_OUTPUT_LIMITS.fileNameChars).optional(),
+  properties: z.record(
+    z.string().trim().min(1).max(128),
+    z.union([
+      z.string().max(PUBLIC_OUTPUT_LIMITS.scalarChars),
+      z.number(),
+      z.boolean(),
+      z.null(),
+    ]),
+  ).optional(),
+}).strict();
+
+export type MoleculeGridItem = z.infer<typeof moleculeGridItemSchema>;
+
+export const moleculeGridInputSchema = z.object({
+  molecules: z.array(moleculeGridItemSchema).min(1).max(MAX_PUBLIC_GRID_INLINE_MOLECULES).optional()
+    .describe("Inline molecules (SMILES, optional name, and optional scalar properties) to display in Burette's interactive molecule grid."),
+  content: z.string().min(1).max(MAX_INLINE_GRID_CONTENT_BYTES).optional()
+    .describe("Inline CSV, TSV, SMILES, SDF, or DataWarrior (.dwar) text containing molecules."),
+  format: z.enum(["csv", "tsv", "smiles", "sdf", "dwar"]).optional()
+    .describe("Format of inline content or attachment (csv, tsv, smiles, sdf, or dwar)."),
+  gridFile: fileReferenceSchema.optional()
+    .describe("One ChatGPT-authorized CSV, TSV, SMI, SMILES, SDF, SD, or DWAR attachment."),
+  title: z.string().trim().min(1).max(PUBLIC_OUTPUT_LIMITS.fileNameChars).optional()
+    .describe("Optional title or filename for the molecule grid, for example tests_sample.tsv or SAR series."),
+}).strict().superRefine((input, context) => {
+  const provided = [
+    input.molecules !== undefined,
+    input.content !== undefined,
+    input.gridFile !== undefined,
+  ].filter(Boolean).length;
+  if (provided === 0) {
+    context.addIssue({
+      code: "custom",
+      path: ["molecules"],
+      message: "Provide one of molecules, content, or gridFile.",
+    });
+  } else if (provided > 1) {
+    context.addIssue({
+      code: "custom",
+      path: ["molecules"],
+      message: "Provide only one of molecules, content, or gridFile.",
+    });
+  }
+  if (input.content !== undefined && !input.format) {
+    const ext = input.title ? input.title.split(".").pop()?.toLowerCase() : "";
+    if (!["csv", "tsv", "smi", "smiles", "sdf", "sd", "dwar"].includes(ext ?? "")) {
+      context.addIssue({
+        code: "custom",
+        path: ["format"],
+        message: "Specify format (csv, tsv, smiles, sdf, or dwar) when passing inline content without a matching file extension in title.",
+      });
+    }
+  }
+});
+
+export type MoleculeGridInput = z.infer<typeof moleculeGridInputSchema>;
 
 export const viewerSelectorSchema = z.object({
   kind: z.enum(["all", "polymer", "protein", "nucleic", "ligand", "ion", "water"]).optional(),
