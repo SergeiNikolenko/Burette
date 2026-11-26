@@ -122,7 +122,7 @@ const RDKIT_CONFORMER_SCRIPT_PATH = join(repoRoot, "scripts", "rdkit_conformer.p
 const MDSMOOTH_RUNNER_PATH = join(repoRoot, "scripts", "mdsmooth_runner.py");
 const BROWSER_DEV_GENERATED_FILES_ROOT = process.env.BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT
   ? resolve(process.env.BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT)
-  : join(homedir(), "Desktop", "Burette Generated Files");
+  : join(homedir(), ".cache", "burette", "generated-files");
 const BROWSER_DEV_XTB_JOBS_ROOT = join(BROWSER_DEV_GENERATED_FILES_ROOT, "xTB Jobs");
 const BROWSER_DEV_CONFORMER_JOBS_ROOT = join(BROWSER_DEV_GENERATED_FILES_ROOT, "Conformer Jobs");
 // Topologies derived from bare trajectories land here, and the inspector reads

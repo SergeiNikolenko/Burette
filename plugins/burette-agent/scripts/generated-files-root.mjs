@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 export function browserGeneratedFilesRoot() {
   return process.env.BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT
     ? resolve(process.env.BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT)
-    : resolve(homedir(), 'Desktop', 'Burette Generated Files');
+    : resolve(homedir(), '.cache', 'burette', 'generated-files');
 }
 
 export async function createGeneratedOutputDirectory(prefix) {

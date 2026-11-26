@@ -845,7 +845,7 @@ async function testMockedWorkspaceToolScenarios(tempRoot) {
   assert.deepEqual(openedLigandTab.structuredContent.result.action.payload.paths, [
     openedLigandTab.structuredContent.extracted.outputPath,
   ]);
-  await rm(openedLigandTab.structuredContent.extracted.outputPath, { force: true });
+  await rm(path.dirname(openedLigandTab.structuredContent.extracted.outputPath), { recursive: true, force: true });
 
   const notReadyLigandTab = await server.tools.get("manage_burette_structure_component").handler({
     operation: "open_as_tab",
@@ -862,7 +862,7 @@ async function testMockedWorkspaceToolScenarios(tempRoot) {
   assert.equal(notReadyLigandTab.isError, true);
   assert.equal(notReadyLigandTab.structuredContent.ready, false);
   assert.equal(notReadyLigandTab.structuredContent.error.code, "WORKSPACE_DOCUMENT_NOT_READY");
-  await rm(notReadyLigandTab.structuredContent.extracted.outputPath, { force: true });
+  await rm(path.dirname(notReadyLigandTab.structuredContent.extracted.outputPath), { recursive: true, force: true });
 
   const dockingView = await server.tools.get("open_burette_docking_view").handler({
     receptorPath: sampleMini,
@@ -950,7 +950,7 @@ async function testMockedWorkspaceToolScenarios(tempRoot) {
   assert.deepEqual(editedFragment.structuredContent.opened.action.payload.paths, [
     editedFragment.structuredContent.edited.outputPath,
   ]);
-  await rm(editedFragment.structuredContent.edited.outputPath, { force: true });
+  await rm(path.dirname(editedFragment.structuredContent.edited.outputPath), { recursive: true, force: true });
 
   const failedOpenFragment = await server.tools.get("edit_burette_fragment").handler({
     operation: "remove_to_new_file",
@@ -964,7 +964,7 @@ async function testMockedWorkspaceToolScenarios(tempRoot) {
   assert.equal(failedOpenFragment.isError, true);
   assert.equal(failedOpenFragment.structuredContent.edited.removedAtomCount, 142);
   assert.equal(failedOpenFragment.structuredContent.error.code, "ACT_FAILED");
-  await rm(failedOpenFragment.structuredContent.edited.outputPath, { force: true });
+  await rm(path.dirname(failedOpenFragment.structuredContent.edited.outputPath), { recursive: true, force: true });
 
   const notReadyFragment = await server.tools.get("edit_burette_fragment").handler({
     operation: "remove_to_new_file",
@@ -981,7 +981,7 @@ async function testMockedWorkspaceToolScenarios(tempRoot) {
   assert.equal(notReadyFragment.structuredContent.completionState, "not_ready");
   assert.equal(notReadyFragment.structuredContent.observe.activeDocument.path, notReadyFragment.structuredContent.edited.outputPath);
   assert.equal(notReadyFragment.structuredContent.error.code, "WORKSPACE_DOCUMENT_NOT_READY");
-  await rm(notReadyFragment.structuredContent.edited.outputPath, { force: true });
+  await rm(path.dirname(notReadyFragment.structuredContent.edited.outputPath), { recursive: true, force: true });
 
   assert.deepEqual([...coveredTools].sort(), [
     "act_molstar_scene",
@@ -1117,6 +1117,8 @@ async function testCliBridgeErrors(tempRoot) {
 }
 
 const tempRoot = await mkdtemp(path.join(tmpdir(), "burette-agent-mcp-test-"));
+const previousGeneratedRoot = process.env.BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT;
+process.env.BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT = path.join(tempRoot, "generated-files");
 try {
   assert.match(await readFile(path.join(sourcePluginRoot, ".codex-plugin", "plugin.json"), "utf8"), /"name": "burette"/);
   await testMcpRegistrations(tempRoot);
@@ -1126,6 +1128,8 @@ try {
   await testActiveDocumentSummaryAndToolErrors(tempRoot);
   await testCliBridgeErrors(tempRoot);
 } finally {
+  if (previousGeneratedRoot === undefined) delete process.env.BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT;
+  else process.env.BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT = previousGeneratedRoot;
   await rm(tempRoot, { recursive: true, force: true });
 }
 

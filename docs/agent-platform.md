@@ -657,7 +657,7 @@ must additionally open a link with the app closed and running.
 
 Agent component extraction and fragment editing write each result into a private
 random directory below `BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT` (by default
-`~/Desktop/Burette Generated Files`). Files are created exclusively with owner-only
+`~/.cache/burette/generated-files`). Files are created exclusively with owner-only
 permissions. This root is already included in browser workspace file grants, so
 subsequent results can open as tabs without authorizing arbitrary temporary files.
 The generated root must be owned by the current user and not writable by others.

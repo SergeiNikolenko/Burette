@@ -816,7 +816,7 @@ assert.match(viteConfig, /registerBrowserDevXtbRoutes\(server,/);
 assert.match(browserDevXtb, /server\.middlewares\.use\("\/__burette\/xtb-status"/);
 assert.match(browserDevXtb, /server\.middlewares\.use\("\/__burette\/run-xtb-job"/);
 assert.match(viteConfig, /const BROWSER_DEV_GENERATED_FILES_ROOT = process\.env\.BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT/);
-assert.match(viteConfig, /join\(homedir\(\), "Desktop", "Burette Generated Files"\)/);
+assert.match(viteConfig, /join\(homedir\(\), "\.cache", "burette", "generated-files"\)/);
 assert.match(viteConfig, /const BROWSER_DEV_XTB_JOBS_ROOT = join\(BROWSER_DEV_GENERATED_FILES_ROOT, "xTB Jobs"\);/);
 assert.match(viteConfig, /const BROWSER_DEV_CONFORMER_JOBS_ROOT = join\(BROWSER_DEV_GENERATED_FILES_ROOT, "Conformer Jobs"\);/);
 // Derived topologies are generated files too: browser dev writes them and the

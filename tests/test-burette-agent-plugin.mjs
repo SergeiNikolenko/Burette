@@ -529,54 +529,63 @@ assert.equal(structureSummary.format, "PDB");
 assert.equal(structureSummary.counts.atoms, 9);
 assert.equal(structureSummary.counts.chains, 1);
 
-const extractedLigand = await extractStructureComponentFile({
-  file: "samples/structures/proteins/1htb.pdb",
-  component: "ligand",
-  chain: "A",
-  compId: "NAD",
-  seq: 377,
-  title: "test-nad-a-377",
-});
-assert.equal(extractedLigand.atomCount, 44);
-assert.match(extractedLigand.outputPath, /test-nad-a-377\.pdb$/);
-await rm(path.dirname(extractedLigand.outputPath), { recursive: true, force: true });
+const componentTempRoot = await mkdtemp(path.join(tmpdir(), "burette-plugin-components-test-"));
+const previousGeneratedRoot = process.env.BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT;
+process.env.BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT = path.join(componentTempRoot, "generated-files");
+try {
+  const extractedLigand = await extractStructureComponentFile({
+    file: "samples/structures/proteins/1htb.pdb",
+    component: "ligand",
+    chain: "A",
+    compId: "NAD",
+    seq: 377,
+    title: "test-nad-a-377",
+  });
+  assert.equal(extractedLigand.atomCount, 44);
+  assert.match(extractedLigand.outputPath, /test-nad-a-377\.pdb$/);
+  await rm(path.dirname(extractedLigand.outputPath), { recursive: true, force: true });
 
-const removedLigand = await editStructureFragmentFile({
-  file: "samples/structures/proteins/1htb.pdb",
-  operation: "remove_to_new_file",
-  component: "ligand",
-  chain: "A",
-  compId: "NAD",
-  seq: 377,
-  title: "test-1htb-without-nad",
-});
-assert.equal(removedLigand.removedAtomCount, 44);
-assert.equal(removedLigand.insertedAtomCount, 0);
-assert.match(removedLigand.outputPath, /test-1htb-without-nad\.pdb$/);
-const removedLigandText = await readFile(removedLigand.outputPath, "utf8");
-assert.doesNotMatch(removedLigandText, /^(?:ATOM|HETATM).{11}NAD A\s+377\b/m);
-assert.doesNotMatch(removedLigandText, /^CONECT/m);
-await rm(path.dirname(removedLigand.outputPath), { recursive: true, force: true });
+  const removedLigand = await editStructureFragmentFile({
+    file: "samples/structures/proteins/1htb.pdb",
+    operation: "remove_to_new_file",
+    component: "ligand",
+    chain: "A",
+    compId: "NAD",
+    seq: 377,
+    title: "test-1htb-without-nad",
+  });
+  assert.equal(removedLigand.removedAtomCount, 44);
+  assert.equal(removedLigand.insertedAtomCount, 0);
+  assert.match(removedLigand.outputPath, /test-1htb-without-nad\.pdb$/);
+  const removedLigandText = await readFile(removedLigand.outputPath, "utf8");
+  assert.doesNotMatch(removedLigandText, /^(?:ATOM|HETATM).{11}NAD A\s+377\b/m);
+  assert.doesNotMatch(removedLigandText, /^CONECT/m);
+  await rm(path.dirname(removedLigand.outputPath), { recursive: true, force: true });
 
-const replacementLigand = await editStructureFragmentFile({
-  file: "samples/structures/proteins/1htb.pdb",
-  operation: "replace_to_new_file",
-  component: "ligand",
-  chain: "A",
-  compId: "NAD",
-  seq: 377,
-  replacementFile: "samples/mini.pdb",
-  title: "test-1htb-nad-replaced",
-});
-assert.equal(replacementLigand.removedAtomCount, 44);
-assert.equal(replacementLigand.insertedAtomCount, 9);
-assert.match(replacementLigand.outputPath, /test-1htb-nad-replaced\.pdb$/);
-const replacementLigandText = await readFile(replacementLigand.outputPath, "utf8");
-assert.match(replacementLigandText, /REMARK Operation replace_to_new_file/);
-assert.doesNotMatch(replacementLigandText, /^(?:ATOM|HETATM).{11}NAD A\s+377\b/m);
-assert.doesNotMatch(replacementLigandText, /^CONECT/m);
-assert.match(replacementLigandText, /\bGLY A\s+1\b/);
-await rm(path.dirname(replacementLigand.outputPath), { recursive: true, force: true });
+  const replacementLigand = await editStructureFragmentFile({
+    file: "samples/structures/proteins/1htb.pdb",
+    operation: "replace_to_new_file",
+    component: "ligand",
+    chain: "A",
+    compId: "NAD",
+    seq: 377,
+    replacementFile: "samples/mini.pdb",
+    title: "test-1htb-nad-replaced",
+  });
+  assert.equal(replacementLigand.removedAtomCount, 44);
+  assert.equal(replacementLigand.insertedAtomCount, 9);
+  assert.match(replacementLigand.outputPath, /test-1htb-nad-replaced\.pdb$/);
+  const replacementLigandText = await readFile(replacementLigand.outputPath, "utf8");
+  assert.match(replacementLigandText, /REMARK Operation replace_to_new_file/);
+  assert.doesNotMatch(replacementLigandText, /^(?:ATOM|HETATM).{11}NAD A\s+377\b/m);
+  assert.doesNotMatch(replacementLigandText, /^CONECT/m);
+  assert.match(replacementLigandText, /\bGLY A\s+1\b/);
+  await rm(path.dirname(replacementLigand.outputPath), { recursive: true, force: true });
+} finally {
+  if (previousGeneratedRoot === undefined) delete process.env.BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT;
+  else process.env.BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT = previousGeneratedRoot;
+  await rm(componentTempRoot, { recursive: true, force: true });
+}
 
 const selfContainedPluginCheck = runNode([
   "--input-type=module",
