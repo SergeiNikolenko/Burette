@@ -8136,8 +8136,8 @@ assert.match(gridCss, /\.buret-molecule-error \{[^}]*min-width: 0;[^}]*overflow:
 assert.match(gridCss, /\.buret-molecule-error \{[^}]*align-self: stretch;[^}]*height: 100%;/s);
 assert.match(gridCss, /\.buret-molecule-loading \{[^}]*align-self: stretch;[^}]*height: 100%;[^}]*min-height: var\(--buret-picture-min-height\);/s);
 assert.match(gridCss, /\.buret-molecule-loading::before \{[^}]*content: "";[^}]*aspect-ratio: 1\.6;/s);
-assert.match(gridCss, /\.buret-molecule-error strong \{[^}]*max-height: 9\.6em;[^}]*font-size: 12px;/s);
-assert.match(gridCss, /\.buret-molecule-error-dense strong \{[^}]*font-size: 10px;/s);
+assert.match(gridCss, /\.buret-molecule-error strong \{[^}]*-webkit-line-clamp: 3;[^}]*font-size: 12px;/s);
+assert.match(gridCss, /\.buret-molecule-error-dense strong \{[^}]*font-size: 11px;/s);
 assert.match(gridViewer, /buret-molecule-error-dense/);
 assert.match(gridViewer, /function moleculeErrorHTML\(label, message\)/);
 assert.match(gridViewer, /function isDegenerateMoleculeSVG\(svg\)/);
