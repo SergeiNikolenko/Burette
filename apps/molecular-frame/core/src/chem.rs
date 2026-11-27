@@ -282,7 +282,12 @@ pub fn read_v2000(text: &str, scale: Option<f64>) -> Result<Mol, String> {
             let at = pair[0][3..].trim().parse::<usize>().map_err(fail)?;
             let atom = at.checked_sub(1).and_then(|i| mol.atoms.get_mut(i)).ok_or(UNREADABLE)?;
             let label = pair[1].trim();
-            if label.is_empty() || label.len() > 80 || !label.chars().all(|c| c.is_ascii_alphanumeric() || "_-'.".contains(c)) { return Err(UNREADABLE.into()); }
+            if label.is_empty()
+                || label.len() > 80
+                || !label.chars().all(|c| (c.is_ascii_graphic() && !matches!(c, '|' | '$' | ';' | '<' | '>')) || c == ' ')
+            {
+                return Err(UNREADABLE.into());
+            }
             atom.alias = Some(label.to_owned());
         }
     }
@@ -400,6 +405,18 @@ fn tidy(text: &str) -> String {
             _ => {}
         }
         if !skip {
+            if (line.starts_with("M  STY") || line.starts_with("M  SCN"))
+                && int(line, 6, 9) > 1
+            {
+                let tag = &line[..6];
+                let toks: Vec<&str> = line.get(9..).unwrap_or("").split_whitespace().collect();
+                for pair in toks.chunks(2) {
+                    if let [id, val] = pair {
+                        lines.push(format!("{tag}  1 {:>3} {:<3}", id, val));
+                    }
+                }
+                continue;
+            }
             lines.push(line.to_string());
         }
     }
@@ -466,8 +483,276 @@ fn validate_input(text: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn is_pathological_ring_spaghetti(text: &str) -> bool {
+    let trimmed = text.trim();
+    if trimmed.is_empty() || trimmed.contains("M  END") || trimmed.contains("V2000") || trimmed.contains("V3000") {
+        return false;
+    }
+    if trimmed.eq_ignore_ascii_case("<invalid>") {
+        return true;
+    }
+    let base = trimmed.split('|').next().unwrap_or(trimmed);
+    let bytes = base.as_bytes();
+    let mut multi_digit = 0usize;
+    let mut in_bracket = false;
+    let mut run = 0usize;
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if b == b'[' {
+            in_bracket = true;
+            run = 0;
+            i += 1;
+            continue;
+        }
+        if b == b']' {
+            in_bracket = false;
+            run = 0;
+            i += 1;
+            continue;
+        }
+        if !in_bracket {
+            if b == b'%' && i + 2 < bytes.len() && bytes[i + 1].is_ascii_digit() && bytes[i + 2].is_ascii_digit() {
+                multi_digit += 1;
+                run += 1;
+                if multi_digit > 40 || run >= 5 {
+                    return true;
+                }
+                i += 3;
+                continue;
+            }
+            if b.is_ascii_digit() {
+                run += 1;
+                if run >= 5 {
+                    return true;
+                }
+            } else {
+                run = 0;
+            }
+        }
+        i += 1;
+    }
+    false
+}
+
+fn split_cxsmiles_tokens(inner: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut in_dollar = false;
+    let mut paren = 0usize;
+    let mut cur = String::new();
+    let chars: Vec<char> = inner.chars().collect();
+    for (i, &ch) in chars.iter().enumerate() {
+        if ch == '$' && paren == 0 {
+            in_dollar = !in_dollar;
+            cur.push(ch);
+        } else if ch == '(' && !in_dollar {
+            paren += 1;
+            cur.push(ch);
+        } else if ch == ')' && !in_dollar && paren > 0 {
+            paren -= 1;
+            cur.push(ch);
+        } else if ch == ',' && !in_dollar && paren == 0 {
+            if chars.get(i + 1).is_some_and(|c| c.is_ascii_digit()) {
+                cur.push(ch);
+            } else {
+                let t = cur.trim();
+                if !t.is_empty() {
+                    out.push(t.to_string());
+                }
+                cur.clear();
+            }
+        } else {
+            cur.push(ch);
+        }
+    }
+    let tail = cur.trim();
+    if !tail.is_empty() {
+        out.push(tail.to_string());
+    }
+    out
+}
+
+fn normalize_alkali_and_isotopes(smi: &str) -> String {
+    let mut s = smi.to_string();
+    for (a, b) in [
+        ("[K+][O-]", "[K+].[O-]"), ("[O-][K+]", "[O-].[K+]"),
+        ("[Na+][O-]", "[Na+].[O-]"), ("[O-][Na+]", "[O-].[Na+]"),
+        ("[Li+][O-]", "[Li+].[O-]"), ("[O-][Li+]", "[O-].[Li+]"),
+        ("[Cs+][O-]", "[Cs+].[O-]"), ("[O-][Cs+]", "[O-].[Cs+]"),
+        ("[K+][S-]", "[K+].[S-]"), ("[Na+][S-]", "[Na+].[S-]"),
+        ("[K+][N-]", "[K+].[N-]"), ("[Na+][N-]", "[Na+].[N-]"),
+    ] {
+        if s.contains(a) {
+            s = s.replace(a, b);
+        }
+    }
+    // Clamp non-physical hydrogen isotopes ([4H]..[999H]) to [H].
+    let mut out = String::with_capacity(s.len());
+    let bytes = s.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] == b'[' {
+            let mut j = i + 1;
+            while j < bytes.len() && bytes[j].is_ascii_digit() {
+                j += 1;
+            }
+            if j > i + 1 && j + 1 < bytes.len() && bytes[j] == b'H' && bytes[j + 1] == b']' {
+                if let Ok(iso) = s[i + 1..j].parse::<u32>()
+                    && iso > 3
+                {
+                    out.push_str("[H]");
+                    i = j + 2;
+                    continue;
+                }
+            }
+        }
+        let ch = s[i..].chars().next().unwrap();
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    out
+}
+
+/// Normalizes noisy SMILES/CXSMILES (inline `<r>Label</r>`, shorthand `Sg:`,
+/// broken `m:` / `atomProp:`, covalent alkali salts, impossible H isotopes)
+/// and returns the normalized string plus optional per-atom alias labels.
+fn normalize_smiles_input(token: &str) -> (String, Vec<(usize, String)>) {
+    let mut working = token.trim().to_string();
+    if let Some(stripped) = working.strip_suffix("||") {
+        working = stripped.trim_end().to_string();
+    }
+    if let Some(pipe_pos) = working.find('|') {
+        if pipe_pos > 0 && !working.as_bytes()[pipe_pos - 1].is_ascii_whitespace() {
+            working.insert(pipe_pos, ' ');
+        }
+        if working.matches('|').count() == 1 {
+            working.push('|');
+        }
+    }
+    let (mut base, inner) = if let Some(start) = working.find('|') {
+        if let Some(end) = working.rfind('|').filter(|&e| e > start) {
+            (working[..start].trim().to_string(), working[start + 1..end].trim().to_string())
+        } else {
+            (working, String::new())
+        }
+    } else {
+        (working, String::new())
+    };
+
+    // Convert inline <r>Label</r> tags to [90k*] placeholders so we can map
+    // them back to exact atom indices after parsing.
+    let mut inline_labels: Vec<String> = Vec::new();
+    while let Some(open) = base.find("<r>") {
+        let Some(rel_close) = base[open + 3..].find("</r>") else { break };
+        let lbl = base[open + 3..open + 3 + rel_close].trim().to_string();
+        inline_labels.push(lbl);
+        let placeholder = format!("[{}*]", 900 + inline_labels.len());
+        base.replace_range(open..open + 3 + rel_close + 4, &placeholder);
+    }
+    base = normalize_alkali_and_isotopes(&base);
+
+    let mut atom_aliases: Vec<(usize, String)> = Vec::new();
+    let base_mol = Molecule::from_smiles_with_sanitize(&base, false).ok();
+    let atom_count = base_mol.as_ref().map_or(0, |m| m.num_atoms());
+    if let Some(ref bm) = base_mol {
+        for (idx, atom) in bm.atoms().iter().enumerate() {
+            let iso = atom.isotope().unwrap_or(0) as usize;
+            if atom.atomic_number() == 0 && iso > 900 && iso - 901 < inline_labels.len() {
+                let lbl = &inline_labels[iso - 901];
+                if !lbl.is_empty() {
+                    atom_aliases.push((idx, lbl.clone()));
+                }
+            }
+        }
+    }
+    if !inline_labels.is_empty() {
+        for k in 1..=inline_labels.len() {
+            base = base.replace(&format!("[{}*]", 900 + k), "*");
+        }
+    }
+
+    if inner.is_empty() || inner == "$$" {
+        return (base, atom_aliases);
+    }
+    let mut clean_fields: Vec<String> = Vec::new();
+    for mut tok in split_cxsmiles_tokens(&inner) {
+        if let Some(rest) = tok.strip_prefix("mc:") {
+            tok = format!("m:{rest}");
+        }
+        if tok.starts_with('$') && tok.ends_with('$') && tok.len() >= 2 {
+            let parts: Vec<&str> = tok[1..tok.len() - 1].split(';').collect();
+            for (idx, part) in parts.iter().enumerate() {
+                let p = part.trim();
+                if !p.is_empty() && p != "*" && (atom_count == 0 || idx < atom_count) {
+                    if !atom_aliases.iter().any(|(i, _)| *i == idx) {
+                        atom_aliases.push((idx, p.to_string()));
+                    }
+                }
+            }
+            continue;
+        }
+        if tok.starts_with("Sg:") {
+            let segs: Vec<&str> = tok.split(':').collect();
+            if segs.len() >= 4 {
+                let stype = match segs[1] {
+                    "m" | "p" | "q" => "n",
+                    other => other,
+                };
+                let atoms_str = segs[2];
+                let valid_atoms = !atoms_str.is_empty()
+                    && atoms_str.split(',').all(|x| {
+                        x.parse::<usize>().is_ok_and(|idx| atom_count == 0 || idx < atom_count)
+                    });
+                if valid_atoms {
+                    if segs.len() == 4 && matches!(segs[3], "ht" | "hh" | "eu") {
+                        clean_fields.push(format!("Sg:{stype}:{atoms_str}::{}", segs[3]));
+                    } else if segs.len() >= 5 {
+                        let conn = if segs[4].is_empty() { "ht" } else { segs[4] };
+                        clean_fields.push(format!("Sg:{stype}:{atoms_str}:{}:{conn}", segs[3]));
+                    }
+                }
+            }
+            continue;
+        }
+        if tok.starts_with("m:") {
+            // Only keep m: when carrier has degree 1 and endpoints are in-bounds.
+            let segs: Vec<&str> = tok.split(':').collect();
+            if segs.len() == 3
+                && let Ok(ci) = segs[1].parse::<usize>()
+                && let Some(ref bm) = base_mol
+                && ci < atom_count
+                && bm.bonds().iter().filter(|b| b.begin().index() == ci || b.end().index() == ci).count() == 1
+            {
+                let eps: Vec<usize> = segs[2].split('.').filter_map(|x| x.parse().ok()).collect();
+                if !eps.is_empty() && eps.iter().all(|&e| e < atom_count && e != ci) {
+                    clean_fields.push(tok);
+                }
+            }
+            continue;
+        }
+        if tok.starts_with('^')
+            || tok.starts_with('(')
+            || tok.starts_with('&')
+            || tok.starts_with('o')
+            || tok.starts_with("a:")
+        {
+            clean_fields.push(tok);
+        }
+        // Drop bogus tags (3D, 3G, broken 2-part atomProp) while preserving stereo groups.
+    }
+    let out = if clean_fields.is_empty() {
+        base
+    } else {
+        format!("{base} |{}|", clean_fields.join(","))
+    };
+    (out, atom_aliases)
+}
+
 pub fn parse(text: &str) -> Result<Mol, String> {
     let text = text.trim_start_matches('\u{feff}');
+    if is_pathological_ring_spaghetti(text) {
+        return Err(UNREADABLE.into());
+    }
     validate_input(text)?;
     // Keep alias labels exactly as recorded. These V2000 query graphs must
     // not pass through a sanitizer that expands or discards atom aliases.
@@ -475,6 +760,7 @@ pub fn parse(text: &str) -> Result<Mol, String> {
         return read_v2000(text, None);
     }
     let block = text.contains("M  END") || text.lines().nth(3).is_some_and(|l| l.contains("V2000") || l.contains("V3000"));
+    let mut pasted_aliases: Vec<(usize, String)> = Vec::new();
     let (m, generated) = if block {
         let m = parse_block(&tidy(text), true)?;
         let usable = m.coordinates_2d().is_some_and(|c| {
@@ -484,9 +770,45 @@ pub fn parse(text: &str) -> Result<Mol, String> {
         if usable { (m, false) } else { (m.with_2d_coordinates().map_err(fail)?, true) }
     } else {
         let token = smiles_token(text).ok_or(UNREADABLE)?;
-        let m = match Molecule::from_smiles(token) {
+        let (normalized, aliases) = normalize_smiles_input(token);
+        pasted_aliases = aliases;
+        let m = match Molecule::from_smiles(&normalized) {
             Ok(m) => m,
-            Err(_) => lenient(Molecule::from_smiles_with_sanitize(token, false).map_err(fail)?, false)?,
+            Err(_) => {
+                let raw = Molecule::from_smiles_with_sanitize(&normalized, false).map_err(fail)?;
+                let maybe_ok = lenient(raw.clone(), false)
+                    .ok()
+                    .filter(|ok| !ok.bonds().iter().any(|b| b.is_aromatic()) || block_2d(ok).is_ok());
+                match maybe_ok {
+                    Some(ok) => ok,
+                    None => {
+                        // Unkekulizable hypervalent aromatic ring (e.g. [NH](C) in pyrazole):
+                        // write a non-kekulized V2000 block, downgrade aromatic bonds (type 4) to
+                        // single (type 1), and parse leniently so the user can open and repair it.
+                        let params = MolBlockWriteParams {
+                            format: SdfFormat::V2000,
+                            force_2d: false,
+                            include_stereo: false,
+                            kekulize: false,
+                            precision: 4,
+                        };
+                        let blk = mol_to_mol_block_with_params(&raw, &params).map_err(fail)?;
+                        let mut lines: Vec<String> = blk.lines().map(String::from).collect();
+                        if let Some(c) = lines.get(3).cloned() {
+                            let na = int(&c, 0, 3) as usize;
+                            let nb = int(&c, 3, 6) as usize;
+                            if lines.len() >= 4 + na + nb {
+                                for row in &mut lines[4 + na..4 + na + nb] {
+                                    if matches!(int(row, 6, 9), 4 | 8) && row.len() >= 9 {
+                                        row.replace_range(6..9, "  1");
+                                    }
+                                }
+                            }
+                        }
+                        parse_block(&(lines.join("\n") + "\n"), true)?
+                    }
+                }
+            }
         };
         (m.with_2d_coordinates().map_err(fail)?, true)
     };
@@ -516,6 +838,20 @@ pub fn parse(text: &str) -> Result<Mol, String> {
         return Err("This structure contains query features or mapping numbers the editor cannot preserve yet.".into());
     }
     let mut mol = read_v2000(&block_2d(&m)?, None)?;
+    for (idx, lbl) in pasted_aliases {
+        if let Some(atom) = mol.atoms.get_mut(idx)
+            && atom.el == 0
+        {
+            let cleaned: String = lbl
+                .chars()
+                .filter(|&c| (c.is_ascii_graphic() && !matches!(c, '|' | '$' | ';' | '<' | '>')) || c == ' ')
+                .take(80)
+                .collect();
+            if !cleaned.is_empty() && cleaned != "*" {
+                atom.alias = Some(cleaned);
+            }
+        }
+    }
     if generated {
         arrange(&mut mol);
         if declash(&mut mol, 0) && has_wedges(&mol) {

@@ -59,6 +59,10 @@
   font-family: Arial, Helvetica, sans-serif;
 }
 .me-root :is(.me-bond, .me-ring-circle) { stroke: currentColor; }
+.me-root .me-bracket { stroke: #d97706; stroke-width: 1.45; }
+.dark .me-root .me-bracket { stroke: #fbbf24; }
+.me-root .me-bracket-label { --me-el: #b45309; font-weight: 600; }
+.dark .me-root .me-bracket-label { --me-el: #fbbf24; font-weight: 600; }
 .me-root :is(.me-wedge, .me-label, .me-charge) { fill: var(--me-el, currentColor); }
 .me-root .me-cip { fill: var(--me-fg-secondary); }
 /* Halos are filled capsules under the drawing; hover and error tint what lies
@@ -83,6 +87,7 @@
 .me-root .me-el-Br { --me-el: #a62929; }
 .me-root .me-el-I { --me-el: #940094; }
 .me-root .me-el-B { --me-el: #d4797b; }
+.me-root .me-el-R { --me-el: #6d4aff; font-weight: 500; }
 .dark .me-root .me-el-N { --me-el: #9bb7ff; }
 .dark .me-root .me-el-O { --me-el: #ff8585; }
 .dark .me-root .me-el-S { --me-el: #efd16c; }
@@ -90,6 +95,7 @@
 .dark .me-root .me-el-Br { --me-el: #d9a08c; }
 .dark .me-root .me-el-I { --me-el: #dca6ef; }
 .dark .me-root .me-el-B { --me-el: #ffb5b5; }
+.dark .me-root .me-el-R { --me-el: #a78bfa; font-weight: 500; }
 .me-root .me-canvas text.me-error { --me-el: var(--me-danger); }
 
 /* Floating panels */

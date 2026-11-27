@@ -1,4 +1,4 @@
-const VERSION = "3117911a6489";
+const VERSION = "c9bb92febe80";
 const LOAD_TIMEOUT_MS = 60_000;
 const COMMAND_TIMEOUT_MS = 30_000;
 const MAX_SCENE_BYTES = 100 * 1024 * 1024;
@@ -161,7 +161,8 @@ export function createBuretteViewer(container, options = {}) {
       const element = document.createElement('iframe');
       element.title = options.title ?? 'Molecular structure';
       element.allow = 'fullscreen; clipboard-write';
-      element.style.cssText = 'display:block;width:100%;height:100%;border:0;';
+      const scheme = theme === 'dark' || theme === 'light' ? theme : 'inherit';
+      element.style.cssText = `display:block;width:100%;height:100%;border:0;background:transparent;color-scheme:${scheme};`;
       const controller = new AbortController();
       const current = session = { controller, element, ready: false };
       try {

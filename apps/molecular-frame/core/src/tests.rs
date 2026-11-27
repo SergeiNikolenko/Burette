@@ -1855,3 +1855,71 @@ fn fit_follows_resize_until_the_view_is_manually_changed() {
     assert_eq!(e.zoom(), fitted);
     assert_eq!(e.molfile(), original);
 }
+
+#[test]
+fn rejects_pathological_ring_spaghetti_dos_inputs() {
+    let mut e = editor();
+    assert!(e.load("C%10%11%12%13%14C%10%11%12%13%14").is_err());
+    assert!(e.load("<invalid>").is_err());
+}
+
+#[test]
+fn parses_inline_r_tags_and_cxsmiles_normalization() {
+    let mut e = editor();
+    e.load("c1ccccc1<r>Boc</r>").unwrap();
+    assert!(e.mol().atoms.iter().any(|a| a.alias.as_deref() == Some("Boc")));
+
+    // Empty CXSMILES, degree-0 m:, and non-standard Sg:m: + 3-colon Sg:n:idx:ht
+    e.load("CC ||").unwrap();
+    assert_eq!(e.mol().atoms.len(), 2);
+
+    e.load("c1ccccc1.* |m:6:0.1.2.3.4.5|").unwrap();
+    assert_eq!(e.mol().atoms.len(), 7);
+
+    e.load("*CC* |Sg:n:1,2:ht|").unwrap();
+    assert_eq!(e.mol().sgroups.len(), 1);
+
+    e.load("*CC* |Sg:m:1,2:m:ht|").unwrap();
+    assert_eq!(e.mol().sgroups.len(), 1);
+}
+
+#[test]
+fn normalizes_alkali_oxides_and_ocr_isotopes() {
+    let mut e = editor();
+    e.load("[K+][O-]C(=O)C").unwrap();
+    assert!(e.mol().atoms.iter().any(|a| a.el == 19 && a.charge == 1));
+
+    e.load("[12H]C(F)(F)F").unwrap();
+    assert!(e.mol().atoms.iter().any(|a| a.el == 6));
+}
+
+#[test]
+fn accepts_expanded_v2000_alias_characters() {
+    let mut e = editor();
+    let mf = molfile(
+        &[("C", 0., 0.), ("*", 1.5, 0.)],
+        &[(1, 2, 1)],
+        "A    2\nM+ / 1/2 C1-6 alkyl\n",
+    );
+    e.load(&mf).unwrap();
+    assert_eq!(e.mol().atoms[1].alias.as_deref(), Some("M+ / 1/2 C1-6 alkyl"));
+}
+
+#[test]
+fn splits_multi_entry_m_sty_and_loads_both_srus() {
+    let mut e = editor();
+    let mf = molfile(
+        &[("C", 0., 0.), ("C", 1.5, 0.), ("C", 3., 0.), ("C", 4.5, 0.)],
+        &[(1, 2, 1), (2, 3, 1), (3, 4, 1)],
+        "M  STY  2   1 SRU   2 SRU\nM  SCN  2   1 HT    2 HT \nM  SAL   1  1   2\nM  SMT   1 n\nM  SAL   2  1   3\nM  SMT   2 m\n",
+    );
+    e.load(&mf).unwrap();
+    assert_eq!(e.mol().sgroups.len(), 2);
+}
+
+#[test]
+fn loads_unkekulizable_hypervalent_aromatic_draft() {
+    let mut e = editor();
+    e.load("C#Cc1cc(C)[NH](C)n1").unwrap();
+    assert_eq!(e.mol().atoms.len(), 9);
+}
