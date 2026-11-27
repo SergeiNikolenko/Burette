@@ -341,7 +341,7 @@ console.log('3D cards: late cache delivery, remount priority, preset reuse and U
 {
   const errors = { xyzrenderCardCache: new Map([['preload', { pending: true }]]) };
   const updates = [];
-  const fail = new Function('state', 'updateXyzrenderCard', 'escapeHTML', 'emitGridPerfMetric', 'nowMs', `${body('markXyzrenderCardError')} return markXyzrenderCardError;`)(errors, (...args) => updates.push(args), value => value, () => {}, () => 0);
+  const fail = new Function('state', 'updateXyzrenderCard', 'escapeHTML', 'xyzrenderUnavailableHTML', 'emitGridPerfMetric', 'nowMs', `${body('markXyzrenderCardError')} return markXyzrenderCardError;`)(errors, (...args) => updates.push(args), value => value, value => value, () => {}, () => 0);
   fail({ key: 'preload', target: null }, 'temporarily unavailable');
   assert.equal(errors.xyzrenderCardCache.has('preload'), false, 'explicit opening can retry failed background work');
   assert.equal(updates.length, 0);
