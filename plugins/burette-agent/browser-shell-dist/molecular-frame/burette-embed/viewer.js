@@ -11,6 +11,9 @@
   const DOCKING_POSE_POSITION_VERSION = '8';
   const TOOLBAR_MARGIN = 12;
   const FLOATING_LAYOUT_GAP = 12;
+  // Below this pane width the toolbar wraps into rows over the structure.
+  const COMPACT_CHROME_ENTER_WIDTH = 280;
+  const COMPACT_CHROME_EXIT_WIDTH = 320;
   // The host's Compute capsule size for hit tests (the iframe cannot measure host DOM).
   const HOST_COMPUTE_SIZE = { width: 112, height: 32 };
   const TOOLBAR_CORNER_SNAP_DISTANCE = 64;
@@ -2607,6 +2610,9 @@
   let themeListenerInstalled = false;
   let floatingPanelTrackingInstalled = false;
   let floatingLayoutFrame = 0;
+  let floatingLayoutObserver = null;
+  let floatingResizeToolbar = null;
+  let floatingLayoutPassSize = '';
   let molstarViewportPanelOpen = false;
   let molstarSelectionControlsOpen = false;
   const previewDockState = { right: false, bottom: false };
@@ -6981,18 +6987,12 @@
 
     let lastWidth = 0;
     let lastHeight = 0;
-    let frame = 0;
 
+    // Shares the resize pass: a private frame here repeated the whole chrome
+    // layout one frame after the window resize had already placed it.
     const schedule = () => {
-      if (frame) return;
-      frame = requestAnimationFrame(() => {
-        frame = 0;
-        if (toolbar.dataset.defaultPosition === '1') {
-          applyDefaultToolbarPosition(toolbar);
-        } else {
-          repositionToolbar(toolbar);
-        }
-      });
+      floatingResizeToolbar = toolbar;
+      scheduleFloatingLayoutRefresh();
     };
 
     const handleSizeChange = () => {
@@ -7012,7 +7012,9 @@
       if (content) observer.observe(content);
       // A preserved tab can mount while hidden; its first useful bounds arrive
       // when activated. The frame can also resize without the toolbar changing.
-      const viewportObserver = new ResizeObserver(schedule);
+      const viewportObserver = new ResizeObserver(() => {
+        if (`${window.innerWidth}x${window.innerHeight}` !== floatingLayoutPassSize) schedule();
+      });
       viewportObserver.observe(document.documentElement);
     }
 
@@ -7454,6 +7456,13 @@
     setToolbarCollapsed(toolbar, collapsed, viewer, false);
   }
 
+  // In a narrow pane a collapsed toolbar is the only floating control left.
+  function syncCompactViewerChrome(collapsed) {
+    const compact = document.body?.classList.contains('buret-compact-chrome') === true;
+    document.body?.classList.toggle('buret-compact-chrome',
+      collapsed && window.innerWidth < (compact ? COMPACT_CHROME_EXIT_WIDTH : COMPACT_CHROME_ENTER_WIDTH));
+  }
+
   function setToolbarCollapsed(toolbar, collapsed, viewer, persist = true) {
     if (collapsed) {
       setXyzrenderPopoverVisibility(toolbar, false);
@@ -7461,8 +7470,14 @@
       hideGenerate3DMenu();
       closeViewportMenu();
     }
+    if (persist) {
+      // A choice made in a narrow pane stands until the pane widens again.
+      delete toolbar.dataset.compactCollapsed;
+      if (!collapsed && window.innerWidth < COMPACT_CHROME_EXIT_WIDTH) toolbar.dataset.compactDeclined = '1';
+    }
     toolbar.classList.toggle('collapsed', collapsed);
     document.body?.classList.toggle('buret-toolbar-collapsed', collapsed);
+    syncCompactViewerChrome(collapsed);
     const grip = toolbar.querySelector('[data-drag-handle]');
     if (grip) {
       grip.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
@@ -7606,21 +7621,12 @@
       toolbar.classList.remove('buret-dragging');
       drag = null;
     });
+    // Resize steps run before animation frame callbacks, so the repositioning
+    // pass still lands in the frame that changed the size. Running it here
+    // directly repeated the whole chrome layout two more times per frame.
     window.addEventListener('resize', () => {
-      repositionToolbar(toolbar);
-      updateFloatingLayoutOffsets();
-      positionXyzrenderPopover(toolbar);
-      positionGenerate3DMenu();
-      const presetMenu = document.querySelector('[data-buret-molstar-preset-menu]');
-      if (presetMenu && !presetMenu.classList.contains('hidden')) {
-        positionMolstarPresetMenu();
-        const presetItem = presetMenu.querySelector(`[data-buret-molstar-preset="${CSS.escape(molstarPresetPreviewPreset)}"]`);
-        const { preview } = molstarPresetPreviewElements();
-        if (presetItem && preview && !preview.classList.contains('hidden')) {
-          positionMolstarPresetPreview(presetItem);
-          scheduleMolstarPresetPreviewResize(presetItem);
-        }
-      }
+      floatingResizeToolbar = toolbar;
+      scheduleFloatingLayoutRefresh();
     });
   }
 
@@ -7790,12 +7796,15 @@
     toolbar.style.maxWidth = Math.max(0, availableWidth - TOOLBAR_MARGIN * 2) + 'px';
     const content = toolbar.querySelector('[data-buret-toolbar-content]');
     if (content) {
-      content.style.maxWidth = Math.max(0, availableWidth - TOOLBAR_MARGIN * 2 - 36) + 'px';
+      const contentMaxWidth = Math.max(0, availableWidth - TOOLBAR_MARGIN * 2 - 36);
+      content.style.maxWidth = contentMaxWidth + 'px';
       // A pane narrower than the toolbar wraps its buttons onto a second row
       // instead of clipping them under the grip.
       content.style.width = '';
       toolbar.classList.remove('buret-toolbar-wrapped');
-      const wrapped = !toolbar.classList.contains('collapsed') && content.scrollWidth > content.clientWidth + 1;
+      // max-width animates, so the box can still be at the previous pane's
+      // width. Compare the unwrapped row with the width it is heading for.
+      const wrapped = !toolbar.classList.contains('collapsed') && content.scrollWidth > contentMaxWidth + 1;
       toolbar.classList.toggle('buret-toolbar-wrapped', wrapped);
       // A wrapping row box keeps the full available width, leaving a blank strip
       // beside the shorter row, often with one button alone under it. Take the
@@ -7833,9 +7842,28 @@
 
   function updateFloatingLayoutOffsets() {
     const root = document.documentElement;
+    // Read once: in a WebKit subframe each innerWidth/innerHeight read can
+    // first lay out the host page, and the size cannot change during this pass.
+    const frameWidth = window.innerWidth;
+    const frameHeight = window.innerHeight;
+    floatingLayoutPassSize = `${frameWidth}x${frameHeight}`;
+    // The custom properties written below inherit through the whole document,
+    // so every measurement taken after a write restyles all of Mol*. Take the
+    // measurements those writes cannot move first; only the selection bar is
+    // measured after them.
+    const safeTop = toolbarSafeTop();
     const panelState = refreshMolstarViewportPanelState();
     const toolbar = document.getElementById('buret-toolbar');
     const toolbarRect = toolbar && !panelState.open ? toolbar.getBoundingClientRect() : null;
+    const viewportRail = document.getElementById('buret-viewport-rail');
+    const viewportRailHeight = viewportRail?.offsetHeight || viewportRail?.getBoundingClientRect().height || 172;
+    const viewportRailWidth = viewportRail?.offsetWidth || viewportRail?.getBoundingClientRect().width || 36;
+    const ownRailVisible = !!visibleRect('#buret-viewport-rail');
+    const viewportControls = document.querySelector('.msp-plugin .msp-viewport-controls');
+    const viewportControlsRect = viewportControls ? viewportControls.getBoundingClientRect() : null;
+    const viewportControlRailRect = visibleRect('.msp-plugin .msp-viewport-controls-buttons');
+    const mainRect = visibleRect('.msp-plugin .msp-layout-main');
+    const bottomLimit = visibleRectTop('.msp-plugin .msp-layout-bottom') || frameHeight;
     root.style.setProperty('--buret-toolbar-current-width', toolbarRect ? Math.ceil(toolbarRect.width) + 'px' : '0px');
     root.style.setProperty('--buret-toolbar-current-height', toolbarRect ? Math.ceil(toolbarRect.height) + 'px' : '0px');
     // The selection bar is a control of its own, not a drawer of the toolbar, so it
@@ -7845,7 +7873,7 @@
     const toolbarCollapsed = document.body?.classList.contains('buret-toolbar-collapsed') === true;
     const selectionBarWidth = toolbarRect && !toolbarCollapsed
       ? Math.ceil(toolbarRect.width)
-      : Math.min(430, Math.max(240, window.innerWidth - TOOLBAR_MARGIN * 2));
+      : Math.min(430, Math.max(240, frameWidth - TOOLBAR_MARGIN * 2));
     const selectionBarLeft = toolbarRect
       ? Math.max(TOOLBAR_MARGIN, Math.ceil(toolbarRect.right - selectionBarWidth))
       : TOOLBAR_MARGIN;
@@ -7855,23 +7883,20 @@
     // edge it collapsed along with the toolbar, capping the bar at 180px — the two
     // coincide while the toolbar is open, so nothing changes there.
     root.style.setProperty('--buret-selection-controls-max-width',
-      Math.max(180, Math.floor(window.innerWidth - selectionBarLeft - TOOLBAR_MARGIN)) + 'px');
+      Math.max(180, Math.floor(frameWidth - selectionBarLeft - TOOLBAR_MARGIN)) + 'px');
     root.style.setProperty('--buret-selection-controls-top', toolbarRect ? Math.ceil(toolbarRect.bottom - 1) + 'px' : `calc(var(--buret-toolbar-safe-top) + 48px)`);
-    const toolbarBottom = toolbarRect ? toolbarRect.bottom + FLOATING_LAYOUT_GAP : toolbarSafeTop() + 40;
-    const viewportRail = document.getElementById('buret-viewport-rail');
-    const viewportRailHeight = viewportRail?.offsetHeight || viewportRail?.getBoundingClientRect().height || 172;
-    const viewportRailWidth = viewportRail?.offsetWidth || viewportRail?.getBoundingClientRect().width || 36;
+    const toolbarBottom = toolbarRect ? toolbarRect.bottom + FLOATING_LAYOUT_GAP : safeTop + 40;
     const dockCorner = toolbar?.dataset.dockCorner;
-    const toolbarCenterX = toolbarRect ? toolbarRect.left + toolbarRect.width / 2 : window.innerWidth;
+    const toolbarCenterX = toolbarRect ? toolbarRect.left + toolbarRect.width / 2 : frameWidth;
     let railHorizontal = dockCorner?.endsWith('left') ? 'left'
       : dockCorner?.endsWith('right') ? 'right'
-      : viewportRail?.dataset.horizontalPlacement || (toolbarCenterX < window.innerWidth / 2 ? 'left' : 'right');
+      : viewportRail?.dataset.horizontalPlacement || (toolbarCenterX < frameWidth / 2 ? 'left' : 'right');
     if (!dockCorner && toolbarRect) {
-      if (railHorizontal === 'left' && toolbarCenterX > window.innerWidth / 2 + TOOLBAR_ORIENTATION_HYSTERESIS) railHorizontal = 'right';
-      if (railHorizontal === 'right' && toolbarCenterX < window.innerWidth / 2 - TOOLBAR_ORIENTATION_HYSTERESIS) railHorizontal = 'left';
+      if (railHorizontal === 'left' && toolbarCenterX > frameWidth / 2 + TOOLBAR_ORIENTATION_HYSTERESIS) railHorizontal = 'right';
+      if (railHorizontal === 'right' && toolbarCenterX < frameWidth / 2 - TOOLBAR_ORIENTATION_HYSTERESIS) railHorizontal = 'left';
     }
-    const spaceBelowToolbar = toolbarRect ? window.innerHeight - toolbarRect.bottom - TOOLBAR_MARGIN : window.innerHeight;
-    const spaceAboveToolbar = toolbarRect ? toolbarRect.top - toolbarSafeTop() : 0;
+    const spaceBelowToolbar = toolbarRect ? frameHeight - toolbarRect.bottom - TOOLBAR_MARGIN : frameHeight;
+    const spaceAboveToolbar = toolbarRect ? toolbarRect.top - safeTop : 0;
     const requiredRailSpace = viewportRailHeight + FLOATING_LAYOUT_GAP;
     let railVertical = dockCorner?.startsWith('bottom') ? 'above'
       : dockCorner?.startsWith('top') ? 'below'
@@ -7888,16 +7913,14 @@
       ? railHorizontal === 'left'
         ? toolbarRect.left
         : toolbarRect.right - viewportRailWidth
-      : window.innerWidth - TOOLBAR_MARGIN - viewportRailWidth;
+      : frameWidth - TOOLBAR_MARGIN - viewportRailWidth;
     root.style.setProperty('--buret-viewport-rail-left', Math.round(viewportRailLeft) + 'px');
-    const viewportControls = document.querySelector('.msp-plugin .msp-viewport-controls');
-    const viewportControlsRect = viewportControls ? viewportControls.getBoundingClientRect() : null;
-    const viewportControlRailRect = visibleRect('.msp-plugin .msp-viewport-controls-buttons');
     // Our own rail stands where Mol*'s used to; whichever of the two is on screen is
-    // the edge the compute button has to keep clear of.
-    const railRect = visibleRect('#buret-viewport-rail') || viewportControlRailRect;
+    // the edge the compute button has to keep clear of. The rail's left edge is
+    // exactly the property just written.
+    const railRect = ownRailVisible ? { left: Math.round(viewportRailLeft) } : viewportControlRailRect;
     const generate3DControlRight = railRect
-      ? Math.max(TOOLBAR_MARGIN, Math.ceil(window.innerWidth - railRect.left + FLOATING_LAYOUT_GAP * 2))
+      ? Math.max(TOOLBAR_MARGIN, Math.ceil(frameWidth - railRect.left + FLOATING_LAYOUT_GAP * 2))
       : 70;
     root.style.setProperty('--buret-generate-3d-control-right', generate3DControlRight + 'px');
     const selectionToolbarRect = visibleRect('.msp-plugin .msp-selection-viewport-controls > .msp-flex-row')
@@ -7906,7 +7929,6 @@
     // the toolbar is a grip somewhere above and the bar keeps its own rounding.
     document.body?.classList.toggle('buret-selection-toolbar-open',
       !!selectionToolbarRect && !!toolbarRect && !toolbarCollapsed);
-    const mainRect = visibleRect('.msp-plugin .msp-layout-main');
     const mainTop = mainRect ? mainRect.top : 0;
     const defaultViewportTop = mainTop + 56;
     const panelOpenTop = selectionToolbarRect
@@ -7930,8 +7952,8 @@
       ? selectionToolbarRect.bottom + FLOATING_LAYOUT_GAP
       : toolbarBottom;
     const viewportRailTop = Math.min(
-      Math.max(toolbarSafeTop(), Math.ceil(preferredViewportRailTop)),
-      Math.max(toolbarSafeTop(), window.innerHeight - viewportRailHeight - TOOLBAR_MARGIN)
+      Math.max(safeTop, Math.ceil(preferredViewportRailTop)),
+      Math.max(safeTop, frameHeight - viewportRailHeight - TOOLBAR_MARGIN)
     );
     root.style.setProperty('--buret-viewport-rail-top', viewportRailTop + 'px');
     // The desktop menu belongs to the host, but only the iframe knows when
@@ -7939,15 +7961,17 @@
     if (hostComputeAnchorRequested && hostViewerVisible && !panelState.open) {
       // Top-aligned with the rail beside it, on the same gap as the rest of the chrome.
       const top = Math.ceil(Math.max(
-        toolbarSafeTop(),
-        !toolbarRect || toolbarRect.top < window.innerHeight / 2 ? toolbarBottom : 0,
+        safeTop,
+        !toolbarRect || toolbarRect.top < frameHeight / 2 ? toolbarBottom : 0,
         (selectionToolbarRect?.bottom ?? 0) + FLOATING_LAYOUT_GAP,
       ));
       const right = railRect && railHorizontal === 'right'
-        ? Math.ceil(window.innerWidth - viewportRailLeft + FLOATING_LAYOUT_GAP)
+        ? Math.ceil(frameWidth - viewportRailLeft + FLOATING_LAYOUT_GAP)
         : TOOLBAR_MARGIN;
-      // Host chrome paints above the iframe, so it yields while a viewer menu is open.
-      const menuCovered = Array.from(document.querySelectorAll('.buret-atlas-menu, .atlas-popover-surface')).some(isVisible);
+      // Host chrome paints above the iframe, so it yields while a viewer menu is
+      // open, and folds away with the rest of the controls in a narrow pane.
+      const menuCovered = document.body?.classList.contains('buret-compact-chrome') === true
+        || Array.from(document.querySelectorAll('.buret-atlas-menu, .atlas-popover-surface')).some(isVisible);
       hostComputeAnchor = { top, right, menuCovered };
       postHostComputeAnchor();
     }
@@ -7960,29 +7984,28 @@
       && computeTop < posesRect.bottom + FLOATING_LAYOUT_GAP
       && computeTop + computeRect.height > posesRect.top - FLOATING_LAYOUT_GAP) {
       const below = posesRect.bottom + FLOATING_LAYOUT_GAP;
-      computeTop = below + computeRect.height <= window.innerHeight - TOOLBAR_MARGIN
+      computeTop = below + computeRect.height <= frameHeight - TOOLBAR_MARGIN
         ? below : Math.max(TOOLBAR_MARGIN, posesRect.top - FLOATING_LAYOUT_GAP - computeRect.height);
     }
     root.style.setProperty('--buret-compute-control-top', `${Math.ceil(computeTop)}px`);
     positionGenerate3DMenu();
 
-    const bottomLimit = visibleRectTop('.msp-plugin .msp-layout-bottom') || window.innerHeight;
     const panelMaxHeight = Math.max(160, Math.floor(bottomLimit - viewportControlsViewportTop - FLOATING_LAYOUT_GAP));
     root.style.setProperty('--buret-viewport-panel-max-height', panelMaxHeight + 'px');
     positionOpenViewportMenu();
   }
 
   function visibleRectTop(selector) {
-    const element = document.querySelector(selector);
-    if (!element || !isVisible(element)) return 0;
-    const rect = element.getBoundingClientRect();
-    return rect.height > 0 ? rect.top : 0;
+    return visibleRect(selector)?.top || 0;
   }
 
   function visibleRect(selector) {
     const element = document.querySelector(selector);
-    if (!element || !isVisible(element)) return null;
-    return element.getBoundingClientRect();
+    if (!element) return null;
+    const style = window.getComputedStyle(element);
+    if (style.display === 'none' || style.visibility === 'hidden') return null;
+    const rect = element.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0 ? rect : null;
   }
 
   function isVisible(element) {
@@ -8001,6 +8024,7 @@
     const observer = new MutationObserver(records => {
       if (hasEffectiveLayoutMutation(records)) scheduleFloatingLayoutRefresh();
     });
+    floatingLayoutObserver = observer;
     observer.observe(document.body, {
       childList: true,
       subtree: true,
@@ -8019,7 +8043,43 @@
     if (floatingLayoutFrame) return;
     floatingLayoutFrame = requestAnimationFrame(() => {
       floatingLayoutFrame = 0;
-      updateFloatingLayoutOffsets();
+      const toolbar = floatingResizeToolbar;
+      floatingResizeToolbar = null;
+      if (toolbar?.isConnected) {
+        // A pane too narrow for the toolbar folds the floating controls into the
+        // collapsed grip instead of stacking wrapped rows over the structure.
+        // Only that automatic fold is undone when the pane widens again.
+        const width = window.innerWidth;
+        if (width >= COMPACT_CHROME_EXIT_WIDTH) delete toolbar.dataset.compactDeclined;
+        if (width > 0 && !window.BuretteNativeFirstFrame && width < COMPACT_CHROME_ENTER_WIDTH
+          && !toolbar.classList.contains('collapsed') && toolbar.dataset.compactDeclined !== '1') {
+          toolbar.dataset.compactCollapsed = '1';
+          setToolbarCollapsed(toolbar, true, resizeState.viewer, false);
+        } else if (toolbar.dataset.compactCollapsed === '1' && width >= COMPACT_CHROME_EXIT_WIDTH) {
+          delete toolbar.dataset.compactCollapsed;
+          setToolbarCollapsed(toolbar, false, resizeState.viewer, false);
+        }
+        syncCompactViewerChrome(toolbar.classList.contains('collapsed'));
+        // Every repositionToolbar branch ends in updateFloatingLayoutOffsets().
+        repositionToolbar(toolbar);
+        positionXyzrenderPopover(toolbar);
+        positionGenerate3DMenu();
+        const presetMenu = document.querySelector('[data-buret-molstar-preset-menu]');
+        if (presetMenu && !presetMenu.classList.contains('hidden')) {
+          positionMolstarPresetMenu();
+          const presetItem = presetMenu.querySelector(`[data-buret-molstar-preset="${CSS.escape(molstarPresetPreviewPreset)}"]`);
+          const { preview } = molstarPresetPreviewElements();
+          if (presetItem && preview && !preview.classList.contains('hidden')) {
+            positionMolstarPresetPreview(presetItem);
+            scheduleMolstarPresetPreviewResize(presetItem);
+          }
+        }
+      } else {
+        updateFloatingLayoutOffsets();
+      }
+      // The pass measured the live DOM after its own style writes. Records
+      // from those writes would only schedule an identical pass next frame.
+      floatingLayoutObserver?.takeRecords();
     });
   }
 
@@ -8683,6 +8743,15 @@ SOFTWARE.
     }
     const { children, rootRef } = sceneTreeChildRefs(state);
     if (rootRef === null) return [];
+    const siblingTypeCounts = new Map();
+    for (const [parentRef, refs] of children) {
+      const counts = new Map();
+      for (const ref of refs) {
+        const name = state.cells.get(ref)?.obj?.type?.name;
+        counts.set(name, (counts.get(name) || 0) + 1);
+      }
+      siblingTypeCounts.set(parentRef, counts);
+    }
     const colorTargets = sceneTreeColorTargets(viewer);
     // Decorators such as custom-model-properties re-wrap their parent under the
     // same label. Mol* shows one row for the whole chain, and the managers address
@@ -8718,13 +8787,12 @@ SOFTWARE.
           const objectName = cell.obj.type?.name;
           const childRefs = chain.flatMap(ref => children.get(ref) || [])
             .filter(ref => !isSceneTreeDecorator(state.cells.get(ref)) && state.cells.get(ref)?.obj?.type?.typeClass !== 'Null');
-          const siblings = (children.get(cell.transform.parent) || [])
-            .filter(ref => state.cells.get(ref)?.obj?.type?.name === objectName);
+          const siblingCount = siblingTypeCounts.get(cell.transform.parent)?.get(objectName) || 0;
           const singleTrajectory = objectName === 'Trajectory' && cell.obj.data?.frameCount === 1 && childRefs.length === 1;
-          const singleModel = objectName === 'Model' && siblings.length === 1 && childRefs.length === 1
+          const singleModel = objectName === 'Model' && siblingCount === 1 && childRefs.length === 1
             && state.cells.get(cell.transform.parent)?.obj?.data?.frameCount === 1;
           const plainStructure = cell.transform.transformer?.id === 'ms-plugin.structure-from-model'
-            && siblings.length === 1 && cell.obj.label === 'Model' && childRefs.length > 0;
+            && siblingCount === 1 && cell.obj.label === 'Model' && childRefs.length > 0;
           if (singleTrajectory || singleModel || plainStructure || (molstarStoryState().available && (
             (['Trajectory', 'Model'].includes(objectName) && childRefs.length === 1)
             || cell.transform.transformer?.id === 'ms-plugin.structure-from-model'
@@ -8741,7 +8809,7 @@ SOFTWARE.
           const display = sceneTreeRowLabel(cell, rawLabel);
           const label = display.label;
           const measurementName = ['Label', 'Distance', 'Angle', 'Dihedral'].includes(label);
-          const measurementTargets = measurementEditable ? sceneTreeMeasurementTargets(viewer, nodeRef) : [];
+          const measurementTargets = measurementEditable ? sceneTreeMeasurementTargets(viewer, nodeRef, children) : [];
           const customText = measurementName ? sceneTreeMeasurementValue(measurementTargets, 'custom-text') : undefined;
           const measurementSource = measurementName ? sceneTreeMeasurementSource(nodeCell) : '';
           const nested = build(chain);
@@ -9674,20 +9742,22 @@ SOFTWARE.
     scheduleSceneTreeRender();
   }
 
-  let sceneTreeMeasurementInFlight = false;
-  let sceneTreePendingMeasurement = null;
+  let sceneTreeMeasurementDrain = null;
+  const sceneTreePendingMeasurement = new Map();
   async function streamSceneTreeMeasurementParam(ref, field, value) {
-    sceneTreePendingMeasurement = { ref, field, value };
-    if (sceneTreeMeasurementInFlight) return;
-    sceneTreeMeasurementInFlight = true;
+    sceneTreePendingMeasurement.set(JSON.stringify([ref, field]), { ref, field, value });
+    if (sceneTreeMeasurementDrain) return;
+    let finishDrain;
+    sceneTreeMeasurementDrain = new Promise(resolve => { finishDrain = resolve; });
     try {
-      while (sceneTreePendingMeasurement) {
-        const next = sceneTreePendingMeasurement;
-        sceneTreePendingMeasurement = null;
+      while (sceneTreePendingMeasurement.size) {
+        const [key, next] = sceneTreePendingMeasurement.entries().next().value;
+        sceneTreePendingMeasurement.delete(key);
         await applySceneTreeMeasurementParam(next.ref, next.field, next.value);
       }
     } finally {
-      sceneTreeMeasurementInFlight = false;
+      sceneTreeMeasurementDrain = null;
+      finishDrain();
     }
   }
 
@@ -9953,40 +10023,44 @@ SOFTWARE.
     return updateSceneTreeRepresentation(ref, old => ({ ...old, colorTheme }));
   }
 
-  // The opacity slider fires on every pixel of the drag; each apply is a state
-  // commit, so newer moves are folded into the one in flight rather than queued
-  // behind it — the representation follows the thumb and never lags a backlog.
-  let sceneTreeAlphaInFlight = false;
-  let sceneTreePendingAlpha = null;
+  // Keep one pending value per target/control, not per pointer event. A second
+  // slider or representation must not erase the first one's final pending edit.
+  let sceneTreeAlphaDrain = null;
+  const sceneTreePendingAlpha = new Map();
   async function streamSceneTreeReprAlpha(ref, alpha) {
-    sceneTreePendingAlpha = { ref, alpha };
-    if (sceneTreeAlphaInFlight) return;
-    sceneTreeAlphaInFlight = true;
+    sceneTreePendingAlpha.set(ref, { ref, alpha });
+    if (sceneTreeAlphaDrain) return;
+    let finishDrain;
+    sceneTreeAlphaDrain = new Promise(resolve => { finishDrain = resolve; });
     try {
-      while (sceneTreePendingAlpha) {
-        const next = sceneTreePendingAlpha;
-        sceneTreePendingAlpha = null;
+      while (sceneTreePendingAlpha.size) {
+        const [key, next] = sceneTreePendingAlpha.entries().next().value;
+        sceneTreePendingAlpha.delete(key);
         await applySceneTreeReprAlpha(next.ref, next.alpha);
       }
     } finally {
-      sceneTreeAlphaInFlight = false;
+      sceneTreeAlphaDrain = null;
+      finishDrain();
     }
   }
 
-  let sceneTreeParamInFlight = false;
-  let sceneTreePendingParam = null;
-  async function streamSceneTreeReprParam(ref, name, value) {
-    sceneTreePendingParam = { ref, name, value };
-    if (sceneTreeParamInFlight) return;
-    sceneTreeParamInFlight = true;
+  let sceneTreeParamDrain = null;
+  const sceneTreePendingParam = new Map();
+  async function streamSceneTreeReprParam(ref, name, value, { kind = 'representation' } = {}) {
+    sceneTreePendingParam.set(JSON.stringify([kind, ref, name]), { ref, name, value, kind });
+    if (sceneTreeParamDrain) return;
+    let finishDrain;
+    sceneTreeParamDrain = new Promise(resolve => { finishDrain = resolve; });
     try {
-      while (sceneTreePendingParam) {
-        const next = sceneTreePendingParam;
-        sceneTreePendingParam = null;
-        await applySceneTreeReprParam(next.ref, next.name, next.value);
+      while (sceneTreePendingParam.size) {
+        const [key, next] = sceneTreePendingParam.entries().next().value;
+        sceneTreePendingParam.delete(key);
+        if (next.kind === 'symmetry') await updateSceneTreeAssemblySymmetry(next.ref, { scale: next.value });
+        else await applySceneTreeReprParam(next.ref, next.name, next.value);
       }
     } finally {
-      sceneTreeParamInFlight = false;
+      sceneTreeParamDrain = null;
+      finishDrain();
     }
   }
 
@@ -11124,7 +11198,9 @@ SOFTWARE.
     const rail = trigger?.closest('#buret-viewport-rail, #buret-selection-bar, .buret-seq-footer');
     if (!menu || !trigger) return;
     const anchor = trigger.getBoundingClientRect();
-    const rect = menu.getBoundingClientRect();
+    // The opening scale animation must not feed changing dimensions back into
+    // placement and schedule another layout pass through the style observers.
+    const rect = { width: menu.offsetWidth, height: menu.offsetHeight };
     // Keep the portalled menu attached to its rail button while the rail moves or
     // the host resizes the preview viewport.
     const bounds = rail.getBoundingClientRect();
@@ -12435,14 +12511,18 @@ SOFTWARE.
       // outside-click dismissal never sees these events and the menu stays open.
       document.addEventListener('input', event => {
         const control = event.target.closest('[data-scene-tree-symmetry-scale]');
-        if (!control) return;
+        const ref = control?.closest('[data-ref]')?.dataset.ref;
+        if (!control || !ref) return;
+        beginSceneTreeControlUndo(control, ref, 'symmetry scale');
         const readout = control.parentElement?.querySelector('.buret-tree-menu-slider-value');
         if (readout) readout.textContent = control.value;
+        streamSceneTreeReprParam(ref, 'scale', Number(control.value), { kind: 'symmetry' });
       });
       document.addEventListener('change', event => {
         const control = event.target.closest('[data-scene-tree-symmetry-scale]');
         const ref = control?.closest('[data-ref]')?.dataset.ref;
         if (!control || !ref) return;
+        if (commitSceneTreeControlUndo(control)) return;
         const node = sceneTreeNodeByRef(sceneTreeNodes(activeMolstarViewer()), ref);
         void runMolstarSceneEdit(`symmetry scale of ${node?.label || 'global symmetry'}`, () => (
           updateSceneTreeAssemblySymmetry(ref, { scale: Number(control.value) })
@@ -18430,29 +18510,84 @@ SOFTWARE.
     return normalized === 'default' || normalized === 'illustrative' || normalized === 'illustrative-surface';
   }
 
+  // Match retains the loader's component-specific geometry (including ligands
+  // that a blanket cartoon preset would hide). Only its appearance is faded.
+  async function applyDockingSceneMatchAppearance(viewer, state, structures, alpha, color) {
+    state.matchAppearance ||= new Map();
+    const entries = [];
+    for (const structure of structures) {
+      for (const component of structure.components || []) {
+        if (isMolstarBoxComponent(component)) continue;
+        for (const representation of component.representations || []) {
+          const cell = representation.cell;
+          const ref = cell.transform.ref;
+          const current = cell.transform.params;
+          if (!state.matchAppearance.has(ref)) {
+            state.matchAppearance.set(ref, { alpha: current.type.params.alpha ?? 1,
+              transparentBackfaces: current.type.params.transparentBackfaces, colorTheme: current.colorTheme });
+          } else {
+            const original = state.matchAppearance.get(ref);
+            // A scene-tree edit after our last write becomes the new base,
+            // rather than being mistaken for the temporary Match backdrop.
+            if (original.lastApplied) {
+              if ((current.type.params.alpha ?? 1) !== original.lastApplied.alpha) original.alpha = current.type.params.alpha ?? 1;
+              if (JSON.stringify(current.colorTheme) !== original.lastApplied.color) original.colorTheme = current.colorTheme;
+            }
+          }
+          entries.push(ref);
+        }
+      }
+    }
+    for (let offset = 0; offset < entries.length; offset += 32) {
+      const update = viewer.plugin.state.data.build();
+      for (const ref of entries.slice(offset, offset + 32)) {
+        const original = state.matchAppearance.get(ref);
+        update.to(ref).update(old => ({ ...old,
+          type: { ...old.type, params: { ...old.type.params,
+            alpha: original.alpha * alpha,
+            transparentBackfaces: alpha < 1 ? 'on' : original.transparentBackfaces
+          } },
+          colorTheme: color === 'gray' ? { name: 'uniform', params: { value: 0x6f7886 } } : original.colorTheme
+        }));
+      }
+      await update.commit();
+      for (const ref of entries.slice(offset, offset + 32)) {
+        const actual = viewer.plugin.state.data.cells.get(ref).transform.params;
+        state.matchAppearance.get(ref).lastApplied = { alpha: actual.type.params.alpha ?? 1, color: JSON.stringify(actual.colorTheme) };
+      }
+      if (offset + 32 < entries.length) await new Promise(resolve => setTimeout(resolve, 0));
+    }
+    syncMolstarOutlineTransparency(viewer);
+  }
+
   // `wanted[index]` is '' for the scene style, a backdrop key for the faded All
   // context, and undefined to leave the pose alone. Only poses whose look
   // changes are rebuilt, so stepping through a backdrop restyles two poses.
   async function styleDockingScenePoses(viewer, state, wanted, params) {
     const structuresByPose = dockingSceneStructuresByPose(viewer, state.poseRefs);
     const plain = [];
+    const matchedPlain = [];
     const backdrop = [];
     const changed = [];
     wanted.forEach((key, index) => {
       if (key === undefined || state.poseStyles[index] === key) return;
-      (key ? backdrop : plain).push(...(structuresByPose[index] || []));
+      const targets = key ? backdrop
+        : state.poseStyles[index]?.startsWith('match|') && dockingSceneStyleNeedsReload(params.style) ? matchedPlain : plain;
+      targets.push(...(structuresByPose[index] || []));
       changed.push(index);
     });
-    if (!plain.length && !backdrop.length) return;
+    if (!plain.length && !matchedPlain.length && !backdrop.length) return;
     // A failed build may already have changed some representations. Invalidate
     // visibility now, but cache styles only once the entire update succeeds.
     state.visible = null;
     try {
-      if (backdrop.length) {
-        await applySdfCollectionMolstarStyle(viewer, params.resolvedContextStyle, backdrop, params.contextOpacity, params.contextColor);
-      }
+      if (backdrop.length && !params.matchSceneStyle) await applySdfCollectionMolstarStyle(viewer, params.resolvedContextStyle, backdrop, params.contextOpacity, params.contextColor);
       if (plain.length) await applySdfCollectionMolstarStyle(viewer, normalizeMolstarStyle(params.style), plain, 1, 'colored');
-      await applyMolstarWaterLineRepresentation(viewer);
+      // Water is already normalized when the scene loads. Rebuilding it on a
+      // Match opacity change would replace its refs and restore opaque alpha.
+      if ((backdrop.length && !params.matchSceneStyle) || plain.length) await applyMolstarWaterLineRepresentation(viewer);
+      if (backdrop.length && params.matchSceneStyle) await applyDockingSceneMatchAppearance(viewer, state, backdrop, params.contextOpacity, params.contextColor);
+      if (matchedPlain.length) await applyDockingSceneMatchAppearance(viewer, state, matchedPlain, 1, 'colored');
       for (const index of changed) state.poseStyles[index] = wanted[index];
     } catch (error) {
       // Force a clean reload on retry, including partially changed poses that
@@ -18520,6 +18655,7 @@ SOFTWARE.
     if (!dockingSceneVisibilityStateStillLoaded(viewer, state)) return;
     state.key = dockingSceneStateKey(prepared, configuredMolstarStyle(activeConfig));
     state.poseStyles.fill('');
+    state.matchAppearance = new Map();
     state.visible = null;
     const activePose = readTrajectoryControlIndex(activeConfig, prepared, Number(prepared.poseCount || 0) || 1);
     await applyDockingSceneVisibility(viewer, prepared, activePose, { focus: false });
@@ -18545,16 +18681,16 @@ SOFTWARE.
     if (!poses[activeIndex]) return false;
     const style = configuredMolstarStyle(activeConfig);
     const resolvedContextStyle = dockingSceneBackgroundStyle(readSdfCollectionContextStyle(activeConfig), style);
-    const uniform = resolvedContextStyle === 'default' || resolvedContextStyle === 'illustrative';
+    const matchSceneStyle = dockingSceneStyleNeedsReload(resolvedContextStyle);
     const ensured = await ensureDockingSceneState(viewer, prepared, style,
-      uniform && Boolean(activeDockingSceneVisibilityState?.poseStyles?.some(Boolean)));
+      matchSceneStyle && Boolean(activeDockingSceneVisibilityState?.poseStyles?.some(key => key && !key.startsWith('match|'))));
     if (!ensured) return false;
     const { state, rebuilt } = ensured;
     const contextOpacity = readSdfCollectionContextOpacity(activeConfig);
     const contextColor = readSdfCollectionContextColor(activeConfig);
-    const backdropKey = uniform ? '' : [resolvedContextStyle, contextOpacity, contextColor].join('|');
+    const backdropKey = [matchSceneStyle ? 'match' : resolvedContextStyle, contextOpacity, contextColor].join('|');
     await styleDockingScenePoses(viewer, state, poses.map((_, index) => index === activeIndex ? '' : backdropKey),
-      { style, resolvedContextStyle, contextOpacity, contextColor });
+      { style, resolvedContextStyle, contextOpacity, contextColor, matchSceneStyle });
     showDockingScenePoses(viewer, state, null);
     state.activeIndex = activeIndex;
     updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
@@ -18569,7 +18705,8 @@ SOFTWARE.
     if (!poses[activeIndex]) return false;
     const style = configuredMolstarStyle(activeConfig);
     const ensured = await ensureDockingSceneState(viewer, prepared, style,
-      Boolean(activeDockingSceneVisibilityState?.poseStyles?.[activeIndex]));
+      Boolean(activeDockingSceneVisibilityState?.poseStyles?.[activeIndex]
+        && !activeDockingSceneVisibilityState.poseStyles[activeIndex].startsWith('match|')));
     if (!ensured) return false;
     const { state, rebuilt } = ensured;
     const wanted = [];
@@ -18607,13 +18744,19 @@ SOFTWARE.
       const contextStyle = readSdfCollectionContextStyle(activeConfig);
       const resolvedContextStyle = dockingSceneBackgroundStyle(contextStyle, style);
       const backgroundEntries = poses.filter((_, index) => index !== activeIndex);
-      if (resolvedContextStyle === 'default' || resolvedContextStyle === 'illustrative') {
+      if (dockingSceneStyleNeedsReload(resolvedContextStyle)) {
         const sceneStructures = [];
-        for (const entry of [...backgroundEntries, activeEntry]) {
-          sceneStructures.push(...await loadMolstarEntryWithStructureRefs(viewer, entry, { representationPreset: 'empty' }));
+        for (const entry of backgroundEntries) {
+          const before = molstarStructureCellRefs(viewer);
+          await loadMolstarEntry(viewer, entry);
+          sceneStructures.push(...molstarCurrentStructures(viewer).filter(structure => !before.has(structure.cell.transform.ref)));
         }
+        await loadMolstarEntry(viewer, activeEntry);
+        await applyMolstarStyle(viewer, style);
+        await applyMolstarWaterLineRepresentation(viewer);
         if (sceneStructures.length) {
-          await applySdfCollectionMolstarStyle(viewer, resolvedContextStyle, sceneStructures, 1, 'colored');
+          await applyDockingSceneMatchAppearance(viewer, {}, sceneStructures,
+            readSdfCollectionContextOpacity(activeConfig), readSdfCollectionContextColor(activeConfig));
         }
       } else {
         const contextStructures = [];
@@ -18636,7 +18779,7 @@ SOFTWARE.
           }
         }
       }
-      await applyMolstarWaterLineRepresentation(viewer);
+      if (!dockingSceneStyleNeedsReload(resolvedContextStyle)) await applyMolstarWaterLineRepresentation(viewer);
       updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
       if (options.focus !== false) scheduleMolstarStructureFocus(viewer, { reason: 'docking-scene', durationMs: 180 });
       return;
@@ -22050,7 +22193,7 @@ SOFTWARE.
       if (prepared.dockingSceneMode) {
         const poseCount = Number(prepared.poseCount || 0);
         const activePose = readTrajectoryControlIndex(activeConfig, prepared, poseCount || 1);
-        await applyDockingSceneVisibility(activeViewer, prepared, activePose, { focus: false });
+        await applyDockingSceneVisibility(activeViewer, prepared, activePose, { contextOpacity: opacity, focus: false });
       } else if (prepared.kind === 'docking' && prepared.sdfPoseOverlayAvailable === true) {
         const poseCount = Number(prepared.poseCount || 0);
         const activePose = readTrajectoryControlIndex(activeConfig, prepared, poseCount || 1);
@@ -23901,7 +24044,9 @@ SOFTWARE.
     };
     const scheduleSliderInputPose = (index) => {
       pendingSliderIndex = Math.max(0, Math.min(prepared.poseCount - 1, index));
-      if (sliderInputTimer) clearTimeout(sliderInputTimer);
+      // Keep the scheduled flush: resetting it on every input starves live
+      // scrubbing when pointer events arrive faster than the 24 ms interval.
+      if (sliderInputTimer) return;
       sliderInputTimer = window.setTimeout(() => {
         sliderInputTimer = null;
         flushPendingSliderInput();
@@ -27233,7 +27378,16 @@ SOFTWARE.
     }
   }
 
+  async function waitForSceneTreeControlUpdates() {
+    // A released slider can still have a final state commit pending. Complete
+    // it before capturing redo state or restoring history over a live write.
+    while (sceneTreeParamDrain || sceneTreeAlphaDrain || sceneTreeMeasurementDrain) {
+      await Promise.all([sceneTreeParamDrain, sceneTreeAlphaDrain, sceneTreeMeasurementDrain]);
+    }
+  }
+
   async function undoMolstarLastEdit() {
+    await waitForSceneTreeControlUpdates();
     const snapshot = molstarEditUndoStack.pop();
     if (!snapshot) {
       setStatus('[web] Nothing to undo.');
@@ -27262,6 +27416,7 @@ SOFTWARE.
   }
 
   async function redoMolstarLastEdit() {
+    await waitForSceneTreeControlUpdates();
     const snapshot = molstarEditRedoStack.pop();
     if (!snapshot) {
       setStatus('[web] Nothing to redo.');
@@ -29092,6 +29247,9 @@ SOFTWARE.
     if (target.structure && activeMolstarPrepared?.kind === 'sdf-collection') {
       return molstarContextSourceEntryForActiveConfig(target.structure);
     }
+    const diagram = molstarMoleculePreviewDiagram(target);
+    const molblock = diagram ? molstarDiagramLigandMolblocks.get(diagram.ligand) : '';
+    if (molblock) return { data: `${molblock.trimEnd()}\n$$$$\n`, format: 'sdf', label: target.label || diagram.ligand };
     const sdfEntry = molstarMoleculePreviewSdfEntry(target);
     if (sdfEntry) return sdfEntry;
     const entry = target.selectedEntry || target.ligand || null;
@@ -29306,9 +29464,23 @@ SOFTWARE.
   }
 
   // Where the host draws interaction maps (config.interactionDiagramPage, the
-  // desktop app and browser-dev), a ligand's card shows its map. The molecule
-  // drawn otherwise has bonds guessed from distances and no bond orders, so the
-  // map is also the faithful 2D picture of it.
+  // desktop app and browser-dev), a ligand's card shows its map. The map engine
+  // also returns the ligand's molblock with the bond orders and charges of its
+  // dictionary entry; the card's molecule is drawn from it, since a PDB ligand
+  // alone only gives bonds guessed from distances.
+  const molstarDiagramLigandMolblocks = new Map();
+  // The card's own requests have negative ids, apart from the map frame's.
+  const molstarDiagramMolblockRequests = new Map();
+  let molstarDiagramMolblockRequestId = 0;
+
+  function requestMolstarDiagramLigandMolblock(diagram) {
+    if (!diagram || molstarDiagramLigandMolblocks.has(diagram.ligand)) return;
+    if ([...molstarDiagramMolblockRequests.values()].includes(diagram.ligand)) return;
+    const id = --molstarDiagramMolblockRequestId;
+    molstarDiagramMolblockRequests.set(id, diagram.ligand);
+    postHostMessage({ type: 'interactionDiagramRequest', requestId: id, ligand: diagram.ligand, rules: {} });
+  }
+
   function molstarMoleculePreviewDiagram(target) {
     const page = (activeConfig || window.BuretteConfig || {}).interactionDiagramPage;
     const atom = target?.atom;
@@ -29449,6 +29621,17 @@ SOFTWARE.
   window.addEventListener('message', event => {
     const body = event.data?.source === 'burette-host' ? event.data.body : null;
     if (event.source !== window.parent || body?.type !== 'interactionDiagram') return;
+    const ligand = body.result?.diagram?.ligand;
+    if (typeof ligand?.id === 'string' && typeof ligand.molblock === 'string') molstarDiagramLigandMolblocks.set(ligand.id, ligand.molblock);
+    const requested = molstarDiagramMolblockRequests.get(body.requestId);
+    if (requested !== undefined) {
+      molstarDiagramMolblockRequests.delete(body.requestId);
+      // a failed map keeps the inferred drawing and is not asked for again
+      if (!molstarDiagramLigandMolblocks.has(requested)) molstarDiagramLigandMolblocks.set(requested, '');
+      const target = molstarMoleculePreviewTarget;
+      if (target && molstarMoleculePreviewDiagram(target)?.ligand === requested) showMolstarMoleculePreview(target);
+      return;
+    }
     const frame = molstarMoleculePreview?.querySelector('.buret-molecule-card-diagram iframe');
     frame?.contentWindow?.postMessage({ source: 'burette-lid-host', type: 'diagram', id: body.requestId, result: body.result, error: body.error }, '*');
   });
@@ -30254,6 +30437,7 @@ SOFTWARE.
       configureMolstarMoleculePreviewDiagram();
       return;
     }
+    requestMolstarDiagramLigandMolblock(available);
     void molstarMoleculePreviewRDKitSVG(entry)
       .then(svg => {
         if (!svg || molstarMoleculePreview !== popover || molstarMoleculePreviewTarget !== target || popover.dataset.buretPreviewKey !== key) return;
