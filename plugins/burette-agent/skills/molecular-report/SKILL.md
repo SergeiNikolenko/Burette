@@ -25,6 +25,32 @@ charts, property summaries, or workflow reports.
 - Source paths and metric definitions must be visible in sources or notes.
 - Large raw logs belong in files, not inline payloads.
 
+## ADMET Separability Calibration (`spread / MAE`)
+
+Whenever a report compares a group of two or more compounds on predicted ADMET
+regression endpoints, compute and display `xMAE = spread / model_error` using
+the ADMETForge champion calibration JSON (`champion_calibration.json`, schema
+`1.0.0`; see [references/admet-separability.md](references/admet-separability.md)):
+
+- Always compute `spread = max(y_pred) - min(y_pred)` in the **exact same
+  target scale and units** recorded in the calibration entry (`scale` /
+  `target_transform`, e.g., `log10(1 + max(x, 0))` for OpenADMET KSol/HLM/MPPB,
+  `pKa` for IUPAC pKa, `%` for TDC PPBR). Never divide linear-unit spread by a
+  log-scale MAE.
+- Assign and report one of three separability statuses for every calibrated
+  ADMET endpoint:
+  - `separable` (`xMAE >= 2.0`): differences clearly exceed model error; safe
+    to rank compounds.
+  - `borderline` (`1.0 <= xMAE < 2.0`): marginal signal; interpret rankings
+    with caution.
+  - `noise` (`xMAE < 1.0`): spread falls within model error; **do not rank**
+    compounds on this endpoint and flag it explicitly in both summary tables
+    and prose (for example, hERG at `0.4× MAE`).
+- Every ADMET summary table (both markdown tables and `snapshot.datasets`
+  table blocks) must include columns for `scale`, `model_error` (`MAE` or
+  `RMSE`), `spread`, `xMAE`, and `separability` (`separable` / `borderline` /
+  `noise`), and cite the champion model and calibration source in notes.
+
 ## Panel Rule
 
 Use Burette side panels for work the user should see beside the molecular
