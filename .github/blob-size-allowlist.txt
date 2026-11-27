@@ -200,8 +200,8 @@ plugins/burette-agent/browser-shell-dist/assets/index-laV_2sV6.css
 # Shared molecular frame: staged editor and embedded viewer runtime, plus the editor core WASM.
 apps/desktop/public/molecular-frame/assets/indigo-ketcher-1.46.0-f_xBxuuS.wasm
 apps/desktop/public/molecular-frame/assets/index.modern-C7D2JuZo.js
-apps/desktop/public/molecular-frame/assets/molecule_editor_bg-PSb2VGQp.wasm
-apps/desktop/public/molecular-frame/assets/molecule_editor_bg-DZABOe7T.wasm
+apps/desktop/public/molecular-frame/assets/molecule_editor_bg-ATixf2Fj.wasm
+apps/desktop/public/molecular-frame/assets/molecule_editor_bg-ATixf2Fj.wasm
 apps/desktop/public/molecular-frame/burette-embed/molstar.js
 apps/desktop/public/molecular-frame/burette-embed/native-viewer-menus.js
 apps/desktop/public/molecular-frame/burette-embed/rdkit/RDKit_minimal.wasm
@@ -235,7 +235,7 @@ plugins/burette-agent/browser-shell-dist/assets/reader-worker-TJyq8b7n.js
 plugins/burette-agent/browser-shell-dist/assets/viewer-CETPiU2k.js
 plugins/burette-agent/browser-shell-dist/molecular-frame/assets/index.modern-C7D2JuZo.js
 plugins/burette-agent/browser-shell-dist/molecular-frame/assets/indigo-ketcher-1.46.0-f_xBxuuS.wasm
-plugins/burette-agent/browser-shell-dist/molecular-frame/assets/molecule_editor_bg-DZABOe7T.wasm
+plugins/burette-agent/browser-shell-dist/molecular-frame/assets/molecule_editor_bg-ATixf2Fj.wasm
 plugins/burette-agent/browser-shell-dist/molecular-frame/burette-embed/molstar.js
 plugins/burette-agent/browser-shell-dist/molecular-frame/burette-embed/native-viewer-menus.js
 plugins/burette-agent/browser-shell-dist/molecular-frame/burette-embed/rdkit/RDKit_minimal.wasm
@@ -248,8 +248,8 @@ plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-emHp8bkr.js
 plugins/burette-agent/browser-shell-dist/assets/dist-Cj3SlgH_.js
 plugins/burette-agent/browser-shell-dist/assets/molecule-store-58hH_LMa.js
 plugins/burette-agent/browser-shell-dist/assets/viewer-CF076mAP.js
-apps/desktop/public/molecular-frame/assets/molecule_editor_bg-aUReMP2G.wasm
-plugins/burette-agent/browser-shell-dist/molecular-frame/assets/molecule_editor_bg-aUReMP2G.wasm
+apps/desktop/public/molecular-frame/assets/molecule_editor_bg-ATixf2Fj.wasm
+plugins/burette-agent/browser-shell-dist/molecular-frame/assets/molecule_editor_bg-ATixf2Fj.wasm
 plugins/burette-agent/browser-shell-dist/assets/molecule-store-DvBNZavS.js
 plugins/burette-agent/browser-shell-dist/assets/dist-COLCB-H0.js
 plugins/burette-agent/browser-shell-dist/assets/viewer-Dvz9ZysQ.js
@@ -257,5 +257,5 @@ plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-g9CEpbgs.js
 plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-CPsOeY9O.js
 plugins/burette-agent/browser-shell-dist/assets/index-CuRHZD2h.css
 plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-B0I35g4P.js
-apps/desktop/public/molecular-frame/assets/molecule_editor_bg-CYBnEW13.wasm
-plugins/burette-agent/browser-shell-dist/molecular-frame/assets/molecule_editor_bg-CYBnEW13.wasm
+apps/desktop/public/molecular-frame/assets/molecule_editor_bg-ATixf2Fj.wasm
+plugins/burette-agent/browser-shell-dist/molecular-frame/assets/molecule_editor_bg-ATixf2Fj.wasm
